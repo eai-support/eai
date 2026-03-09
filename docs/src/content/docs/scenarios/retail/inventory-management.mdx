@@ -1,0 +1,180 @@
+---
+title: Inventory Management
+description: Track stock levels, automate reorder workflows, and manage supplier relationships for retail operations using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role:** Supply Chain Analyst at a specialty retail company.
+
+You manage inventory across 12 warehouse locations and 45 retail stores. Each location maintains independent stock levels, and reorder decisions are currently made by store managers using intuition rather than data. Stockouts on popular items cost sales, while overstocking on slow movers ties up capital. You need a centralized system that connects stock data, reorder logic, and supplier performance.
+
+## Business Problem
+
+Stock visibility is siloed by location. Store managers email the central warehouse when they run low, but there is no automated reorder trigger. Supplier lead times are tracked informally, and there is no systematic way to evaluate supplier performance. You need:
+
+- Real-time stock tracking by product and location with reorder point thresholds.
+- Automated reorder requests that route to the correct supplier.
+- Supplier profiles with lead time and performance rating data.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **StockItem** | product, location, quantity, reorderPoint | has many ReorderRequests | update-quantity, set-reorder-point, flag-low-stock |
+| **ReorderRequest** | item, quantity, supplier, status | belongs to StockItem, links to Supplier | create, approve, fulfill, cancel |
+| **Supplier** | name, contact, leadTime, rating | has many ReorderRequests | onboard, update-rating, deactivate |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the vertical**
+
+   ```bash
+   eai init inventory-management
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define Object Types**
+
+   Add StockItem, ReorderRequest, and Supplier to `src/eai.config/object-types.ts`.
+
+4. **Validate and seed**
+
+   ```bash
+   eai types validate
+   eai types seed
+   ```
+
+   ```
+   Tenant: inventory-management
+   ✔ StockItem — 4 props, 1 link, 3 actions
+   ✔ ReorderRequest — 4 props, 2 links, 4 actions
+   ✔ Supplier — 4 props, 1 link, 3 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Add a stock item**
+
+   ```bash
+   eai resources create StockItem \
+     --data '{"product": "Organic Coffee Beans 1kg", "location": "Warehouse-Central", "quantity": 240, "reorderPoint": 50}'
+   ```
+
+6. **Create a reorder request**
+
+   ```bash
+   eai resources create ReorderRequest \
+     --data '{"item": "stock-001", "quantity": 500, "supplier": "supplier-green-valley", "status": "pending"}'
+   ```
+
+7. **List low-stock items**
+
+   ```bash
+   eai resources list StockItem --filter 'quantity<50'
+   ```
+
+8. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'inventory-management': [
+    {
+      name: 'StockItem',
+      displayName: 'Stock Item',
+      description: 'A product at a specific location with quantity and reorder threshold tracking',
+      properties: [
+        { name: 'product', type: 'text' as const, required: true, indexed: true },
+        { name: 'location', type: 'text' as const, required: true, indexed: true },
+        { name: 'quantity', type: 'number' as const, required: true },
+        { name: 'reorderPoint', type: 'number' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'reorderRequests', target: 'ReorderRequest', cardinality: 'many' as const },
+      ],
+      actions: [
+        { name: 'update-quantity', displayName: 'Update Quantity' },
+        { name: 'set-reorder-point', displayName: 'Set Reorder Point' },
+        { name: 'flag-low-stock', displayName: 'Flag Low Stock' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'ReorderRequest',
+      displayName: 'Reorder Request',
+      description: 'A request to replenish stock from a supplier for a specific item',
+      properties: [
+        { name: 'item', type: 'text' as const, required: true },
+        { name: 'quantity', type: 'number' as const, required: true },
+        { name: 'supplier', type: 'text' as const, required: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'pending',
+          options: [
+            { label: 'Pending', value: 'pending' },
+            { label: 'Approved', value: 'approved' },
+            { label: 'Ordered', value: 'ordered' },
+            { label: 'Fulfilled', value: 'fulfilled' },
+            { label: 'Cancelled', value: 'cancelled' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'stockItem', target: 'StockItem', cardinality: 'one' as const },
+        { name: 'supplier', target: 'Supplier', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'create', displayName: 'Create Request' },
+        { name: 'approve', displayName: 'Approve Request' },
+        { name: 'fulfill', displayName: 'Mark Fulfilled' },
+        { name: 'cancel', displayName: 'Cancel Request' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Supplier',
+      displayName: 'Supplier',
+      description: 'A vendor that supplies products, tracked with lead time and performance data',
+      properties: [
+        { name: 'name', type: 'text' as const, required: true, indexed: true },
+        { name: 'contact', type: 'text' as const, required: true },
+        { name: 'leadTime', type: 'number' as const, required: true },
+        { name: 'rating', type: 'number' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'reorderRequests', target: 'ReorderRequest', cardinality: 'many' as const },
+      ],
+      actions: [
+        { name: 'onboard', displayName: 'Onboard Supplier' },
+        { name: 'update-rating', displayName: 'Update Rating' },
+        { name: 'deactivate', displayName: 'Deactivate Supplier' },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Reorder point thresholds automate replenishment.** Each StockItem carries a reorderPoint, enabling automated low-stock detection and reorder request generation.
+- **Supplier-linked reorder requests streamline procurement.** ReorderRequests reference both the StockItem and the Supplier, creating a clear path from stock need to vendor fulfillment.
+- **Supplier performance tracking informs sourcing decisions.** The rating field on Suppliers provides data-driven input for contract renewals and vendor consolidation.
+- **Location-level visibility eliminates guesswork.** Tracking stock by product and location enables analysts to identify imbalances and optimize distribution across the network.

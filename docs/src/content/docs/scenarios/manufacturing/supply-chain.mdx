@@ -1,0 +1,186 @@
+---
+title: Supply Chain
+description: Build a supplier management, purchase order, and delivery tracking workflow for manufacturing using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Supply chain developer at a mid-size manufacturer sourcing raw materials from 40+ suppliers.
+
+The procurement team manages supplier relationships through email, tracks purchase orders in spreadsheets, and verifies incoming deliveries against paper packing slips. Lead time data is anecdotal, quality ratings are informal, and there is no way to quickly evaluate which suppliers are reliable. The company needs a digital supply chain management system.
+
+## Business Problem
+
+Production stoppages due to late or low-quality deliveries cost the company significant revenue. Procurement decisions are based on relationships rather than data because supplier performance metrics are not tracked systematically. Purchase orders sent via email are difficult to reconcile against actual deliveries, and quality issues with received materials are not linked back to the supplier. This scenario builds a supply chain workflow that maintains supplier profiles with performance data, tracks purchase orders through fulfillment, and records delivery quality.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Supplier** | `name` (text), `materials` (text), `leadTime` (number), `qualityRating` (number), `contact` (text), `status` (select: active, probation, inactive) | one-to-many → PurchaseOrder | -- |
+| **PurchaseOrder** | `items` (text), `total` (number), `orderDate` (date), `expectedDate` (date), `status` (select: draft, submitted, confirmed, delivered, cancelled) | many-to-one → Supplier, one-to-many → Delivery | `submitOrder` |
+| **Delivery** | `receivedDate` (date), `quantity` (number), `qualityStatus` (select: accepted, partial, rejected), `notes` (text) | many-to-one → PurchaseOrder | `acceptDelivery` |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init supply-chain
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the Supplier, PurchaseOrder, and Delivery types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: supply-chain
+   ✔ Supplier — 6 props, 1 link, 0 actions
+   ✔ PurchaseOrder — 5 props, 2 links, 1 action
+   ✔ Delivery — 4 props, 1 link, 1 action
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create Supplier --data '{"name": "Pacific Steel Corp", "materials": "Cold-rolled steel coils", "leadTime": 14, "qualityRating": 4.5, "contact": "orders@pacificsteel.com", "status": "active"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'supply-chain': [
+    {
+      name: 'Supplier',
+      displayName: 'Supplier',
+      description: 'A raw material or component supplier',
+      properties: [
+        { name: 'name', type: 'text' as const, required: true, indexed: true },
+        { name: 'materials', type: 'text' as const, required: true },
+        { name: 'leadTime', type: 'number' as const, required: true },
+        { name: 'qualityRating', type: 'number' as const, required: false },
+        { name: 'contact', type: 'text' as const, required: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'active', options: [
+          { label: 'Active', value: 'active' },
+          { label: 'Probation', value: 'probation' },
+          { label: 'Inactive', value: 'inactive' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'purchaseOrders', targetObjectType: 'PurchaseOrder', cardinality: 'one-to-many' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+    {
+      name: 'PurchaseOrder',
+      displayName: 'Purchase Order',
+      description: 'A purchase order placed with a supplier',
+      properties: [
+        { name: 'items', type: 'text' as const, required: true },
+        { name: 'total', type: 'number' as const, required: true },
+        { name: 'orderDate', type: 'date' as const, required: true, indexed: true },
+        { name: 'expectedDate', type: 'date' as const, required: true, indexed: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'draft', options: [
+          { label: 'Draft', value: 'draft' },
+          { label: 'Submitted', value: 'submitted' },
+          { label: 'Confirmed', value: 'confirmed' },
+          { label: 'Delivered', value: 'delivered' },
+          { label: 'Cancelled', value: 'cancelled' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'supplier', targetObjectType: 'Supplier', cardinality: 'many-to-one' as const },
+        { name: 'deliveries', targetObjectType: 'Delivery', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'submitOrder',
+          displayName: 'Submit Order',
+          description: 'Submit a draft purchase order to the supplier',
+          requiredRole: 'tenant-staff',
+          validationRules: { requiredFields: ['items', 'total', 'expectedDate'], requiredStatus: 'draft' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'submitted' },
+            { type: 'set_timestamp', field: 'orderDate' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Delivery',
+      displayName: 'Delivery',
+      description: 'A delivery received against a purchase order',
+      properties: [
+        { name: 'receivedDate', type: 'date' as const, required: true, indexed: true },
+        { name: 'quantity', type: 'number' as const, required: true },
+        { name: 'qualityStatus', type: 'select' as const, required: true, options: [
+          { label: 'Accepted', value: 'accepted' },
+          { label: 'Partial', value: 'partial' },
+          { label: 'Rejected', value: 'rejected' },
+        ]},
+        { name: 'notes', type: 'text' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'purchaseOrder', targetObjectType: 'PurchaseOrder', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'acceptDelivery',
+          displayName: 'Accept Delivery',
+          description: 'Record acceptance of a delivery and update quality status',
+          requiredRole: 'tenant-user',
+          validationRules: { requiredFields: ['quantity', 'qualityStatus'] },
+          sideEffects: [
+            { type: 'set_timestamp', field: 'receivedDate' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Data-driven procurement**: Supplier quality ratings and lead time tracking enable objective evaluation when choosing between vendors for new orders.
+- **Order lifecycle visibility**: Purchase orders move through a structured status flow from draft to delivery, making it clear where every order stands.
+- **Delivery quality tracking**: Recording quality status on each delivery creates a feedback loop that directly informs supplier ratings and future sourcing decisions.
+- **Lead time accuracy**: Comparing expected delivery dates against actual received dates builds a real-world lead time dataset for better production planning.

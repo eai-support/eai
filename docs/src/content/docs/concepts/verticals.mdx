@@ -1,0 +1,119 @@
+---
+title: Verticals
+description: What vertical business applications are, why they matter, and how the EAI CLI helps you build them across industries.
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## What Are Vertical Business Applications?
+
+A **vertical business application** is software designed for a specific industry or domain. Unlike horizontal platforms (generic CRMs, project management tools, spreadsheet-based systems), verticals encode the exact data model, workflows, compliance rules, and terminology that a particular industry requires.
+
+| Horizontal Platform | Vertical Application |
+|---|---|
+| Generic fields and labels | Domain-specific Object Types (e.g., `Patient`, `LoanApplication`, `Permit`) |
+| One-size-fits-all workflows | Industry-specific actions (e.g., `submit_for_review`, `approve_claim`) |
+| Manual configuration per customer | Multi-tenant by design, with shared schema and isolated data |
+| Bolted-on AI features | AI chat and document processing tuned to domain vocabulary |
+
+## Why Verticals Matter
+
+### 1. Domain Precision
+
+A healthcare intake system needs fields for insurance ID, allergies, and referring physician -- not "Custom Field 7." Verticals let you express domain concepts directly in the data model, which means fewer mapping layers, fewer bugs, and clearer communication with stakeholders.
+
+### 2. Compliance by Design
+
+Regulated industries (finance, healthcare, government) have strict rules about data access, audit trails, and role separation. EnterpriseAI enforces multi-tenant isolation and role-based access at the platform level, so compliance is structural rather than aspirational.
+
+### 3. Faster Time to Value
+
+When the platform already handles authentication, tenant isolation, resource CRUD, and AI integration, developers spend their time on business logic -- not plumbing. A vertical can go from `eai init` to production in days, not months.
+
+### 4. Maintainability
+
+Verticals are schema-driven. The Object Type definition _is_ the source of truth for the data model, validation rules, and available actions. Changing a field type or adding a relationship is a definition change, not a migration script.
+
+## Industry Examples
+
+<CardGrid>
+  <Card title="Healthcare" icon="heart">
+    **Object Types**: Patient, Encounter, ClinicalTrial, Referral
+
+    **Actions**: submit_intake, assign_provider, flag_for_review
+
+    **AI**: Triage chat, medical document classification
+  </Card>
+  <Card title="Finance" icon="document">
+    **Object Types**: KYCApplication, LoanRequest, Transaction, RiskAssessment
+
+    **Actions**: approve_kyc, escalate_risk, close_account
+
+    **AI**: Fraud detection chat, financial document extraction
+  </Card>
+  <Card title="Government" icon="information">
+    **Object Types**: PlanningPermit, CitizenRequest, ComplianceRecord
+
+    **Actions**: submit_application, issue_permit, request_amendment
+
+    **AI**: Citizen services chat, permit document classification
+  </Card>
+  <Card title="Retail" icon="rocket">
+    **Object Types**: Product, ComplianceCheck, LoyaltyMember, Inventory
+
+    **Actions**: verify_compliance, issue_reward, restock_alert
+
+    **AI**: Product compliance chat, inventory document processing
+  </Card>
+  <Card title="Education" icon="open-book">
+    **Object Types**: Course, Student, Enrollment, Assessment
+
+    **Actions**: enroll_student, submit_grade, approve_transcript
+
+    **AI**: Learning analytics chat, transcript classification
+  </Card>
+  <Card title="Manufacturing" icon="setting">
+    **Object Types**: ProductionRun, QualityCheck, Equipment, WorkOrder
+
+    **Actions**: start_run, log_defect, approve_batch
+
+    **AI**: Quality control chat, inspection report processing
+  </Card>
+</CardGrid>
+
+## The CLI's Role in Building Verticals
+
+The EAI CLI provides the complete lifecycle for vertical application development:
+
+```bash
+# 1. Scaffold a new vertical
+eai init patient-intake
+
+# 2. Define your domain model in src/eai.config/object-types.ts
+#    (Patient, Encounter, Referral, etc.)
+
+# 3. Validate the schema
+eai types validate
+
+# 4. Push definitions to the platform
+eai types seed
+
+# 5. Start developing
+eai dev
+```
+
+Every CLI command is designed around the vertical workflow. You define Object Types that match your domain, validate them against platform rules, seed them to create the schema, and then use the resource, chat, and document APIs to build your application.
+
+## Verticals vs. Microservices
+
+Verticals are not microservices. A vertical is a **complete application** with its own data model, UI, and business logic. It uses the platform's shared services (resource management, AI, documents) but owns its domain model entirely.
+
+Think of it this way: the platform is the foundation; the vertical is the building. You do not need to build a new foundation for every building, but every building has its own floor plan.
+
+## Next Steps
+
+<CardGrid>
+  <LinkCard title="Data Model" href="/eai-cli/concepts/data-model/" description="Learn how Object Types, Properties, Links, Actions, and Side Effects define your domain." />
+  <LinkCard title="Architecture" href="/eai-cli/concepts/architecture/" description="Understand the platform architecture and how the CLI connects to it." />
+  <LinkCard title="Browse Scenarios" href="/eai-cli/scenarios/healthcare/patient-intake/" description="See complete vertical examples across six industries." />
+</CardGrid>

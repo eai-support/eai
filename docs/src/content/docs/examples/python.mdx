@@ -1,0 +1,274 @@
+---
+title: Python Examples
+description: Interact with the EAI Platform API from Python using requests and httpx with both sync and async patterns.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+These examples demonstrate how to call the EAI Platform API from Python. Both synchronous (`requests`) and asynchronous (`httpx`) patterns are shown.
+
+<Aside>
+  All examples assume you have `BASE_URL_PUBLIC_API` and your access token available as environment variables. Run `eai env pull` to populate your `.env.local` file.
+</Aside>
+
+## Setup
+
+<Tabs>
+  <TabItem label="Sync (requests)">
+```python
+import os
+import requests
+
+BASE_URL = os.environ["BASE_URL_PUBLIC_API"]
+TENANT_ID = os.environ["TENANT_ID"]
+TOKEN = os.environ["EAI_ACCESS_TOKEN"]
+
+session = requests.Session()
+session.headers.update({
+    "Authorization": f"Bearer {TOKEN}",
+    "Content-Type": "application/json",
+})
+
+
+def eai_request(method: str, path: str, json_body: dict | None = None) -> dict:
+    """Send a request to the EAI Platform API."""
+    url = f"{BASE_URL}{path}"
+    response = session.request(method, url, json=json_body)
+    response.raise_for_status()
+    return response.json() if response.content else {}
+```
+  </TabItem>
+  <TabItem label="Async (httpx)">
+```python
+import os
+import httpx
+
+BASE_URL = os.environ["BASE_URL_PUBLIC_API"]
+TENANT_ID = os.environ["TENANT_ID"]
+TOKEN = os.environ["EAI_ACCESS_TOKEN"]
+
+client = httpx.AsyncClient(
+    base_url=BASE_URL,
+    headers={
+        "Authorization": f"Bearer {TOKEN}",
+        "Content-Type": "application/json",
+    },
+)
+
+
+async def eai_request(method: str, path: str, json_body: dict | None = None) -> dict:
+    """Send an async request to the EAI Platform API."""
+    response = await client.request(method, path, json=json_body)
+    response.raise_for_status()
+    return response.json() if response.content else {}
+```
+  </TabItem>
+</Tabs>
+
+## Authentication
+
+Verify your token and retrieve your user profile:
+
+```python
+def get_authenticated_user() -> dict:
+    """Fetch the current user's profile."""
+    return eai_request("GET", "/v3/auth/me")
+
+
+def provision_user() -> None:
+    """Provision the current user on the platform."""
+    eai_request("POST", "/v3/users/provisionme")
+
+
+user = get_authenticated_user()
+print(f"Logged in as {user['displayName']} ({user['email']})")
+```
+
+## Resource CRUD
+
+Create, list, get, update, and delete resources:
+
+```python
+def create_resource(object_type: str, data: dict) -> dict:
+    """Create a new resource."""
+    return eai_request("POST", f"/v3/resources/{TENANT_ID}/{object_type}", data)
+
+
+def list_resources(object_type: str) -> dict:
+    """List all resources of a given type."""
+    return eai_request("GET", f"/v3/resources/{TENANT_ID}/{object_type}")
+
+
+def get_resource(object_type: str, resource_id: str) -> dict:
+    """Get a single resource by ID."""
+    return eai_request("GET", f"/v3/resources/{TENANT_ID}/{object_type}/{resource_id}")
+
+
+def update_resource(object_type: str, resource_id: str, data: dict) -> dict:
+    """Update an existing resource."""
+    return eai_request("PUT", f"/v3/resources/{TENANT_ID}/{object_type}/{resource_id}", data)
+
+
+def delete_resource(object_type: str, resource_id: str) -> None:
+    """Delete a resource."""
+    eai_request("DELETE", f"/v3/resources/{TENANT_ID}/{object_type}/{resource_id}")
+```
+
+### Full CRUD workflow
+
+```python
+# Create
+task = create_resource("Task", {
+    "title": "Review pull request",
+    "status": "open",
+    "priority": "high",
+})
+print(f"Created task {task['id']}")
+
+# List
+tasks = list_resources("Task")
+print(f"Found {tasks['total']} tasks")
+
+# Get
+fetched = get_resource("Task", task["id"])
+print(f"Task title: {fetched['data']['title']}")
+
+# Update
+updated = update_resource("Task", task["id"], {
+    **fetched["data"],
+    "status": "in-progress",
+})
+print(f"Updated status to {updated['data']['status']}")
+
+# Delete
+delete_resource("Task", task["id"])
+print("Task deleted")
+```
+
+## Querying resources
+
+Fetch the tenant schema to discover available object types:
+
+```python
+def get_schema() -> dict:
+    """Fetch the object type schema for the tenant."""
+    return eai_request("GET", f"/v3/resources/schema/{TENANT_ID}")
+
+
+schema = get_schema()
+type_names = [ot["name"] for ot in schema["objectTypes"]]
+print("Available object types:", type_names)
+```
+
+## Chat
+
+Send a message to an AI workflow. Both blocking and streaming modes are supported:
+
+<Tabs>
+  <TabItem label="Blocking">
+```python
+def send_chat_message(workflow_id: str, stage: str, message: str) -> dict:
+    """Send a chat message and receive the full response."""
+    return eai_request(
+        "POST",
+        f"/v3/chat/{TENANT_ID}/{workflow_id}/{stage}",
+        {"message": message},
+    )
+
+
+reply = send_chat_message("wf-123", "default", "Summarize open tasks")
+print(f"AI: {reply['message']}")
+```
+  </TabItem>
+  <TabItem label="Streaming">
+```python
+def stream_chat(workflow_id: str, stage: str, message: str) -> None:
+    """Stream a chat response token by token."""
+    url = f"{BASE_URL}/v3/chat/stream/{TENANT_ID}/{workflow_id}/{stage}"
+    with session.post(url, json={"message": message}, stream=True) as response:
+        response.raise_for_status()
+        for chunk in response.iter_content(decode_unicode=True):
+            print(chunk, end="", flush=True)
+    print()  # Final newline
+
+
+stream_chat("wf-123", "default", "What is the project status?")
+```
+  </TabItem>
+  <TabItem label="Async streaming">
+```python
+import httpx
+
+
+async def stream_chat_async(workflow_id: str, stage: str, message: str) -> None:
+    """Stream a chat response asynchronously."""
+    url = f"/v3/chat/stream/{TENANT_ID}/{workflow_id}/{stage}"
+    async with client.stream("POST", url, json={"message": message}) as response:
+        response.raise_for_status()
+        async for chunk in response.aiter_text():
+            print(chunk, end="", flush=True)
+    print()
+
+
+import asyncio
+asyncio.run(stream_chat_async("wf-123", "default", "What is the project status?"))
+```
+  </TabItem>
+</Tabs>
+
+## Error handling
+
+Handle API errors with structured exception handling:
+
+```python
+import requests
+
+
+class EaiApiError(Exception):
+    """Structured error from the EAI Platform API."""
+
+    def __init__(self, status_code: int, body: str):
+        self.status_code = status_code
+        self.body = body
+        super().__init__(f"EAI API error {status_code}: {body}")
+
+    @property
+    def is_unauthorized(self) -> bool:
+        return self.status_code == 401
+
+    @property
+    def is_not_found(self) -> bool:
+        return self.status_code == 404
+
+    @property
+    def is_rate_limited(self) -> bool:
+        return self.status_code == 429
+
+
+def safe_request(method: str, path: str, **kwargs) -> dict:
+    """Make an API call with structured error handling."""
+    import time
+
+    try:
+        return eai_request(method, path, **kwargs)
+    except requests.HTTPError as exc:
+        status = exc.response.status_code
+        body = exc.response.text
+        error = EaiApiError(status, body)
+
+        if error.is_unauthorized:
+            print("Token expired. Run `eai login` to re-authenticate.")
+        elif error.is_rate_limited:
+            print("Rate limited. Retrying after delay...")
+            time.sleep(2)
+            return eai_request(method, path, **kwargs)
+        else:
+            print(f"API error: {error}")
+
+        raise error from exc
+
+
+# Usage
+result = safe_request("GET", f"/v3/resources/{TENANT_ID}/Task")
+print(f"Found {result['total']} tasks")
+```

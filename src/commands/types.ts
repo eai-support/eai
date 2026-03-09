@@ -1,9 +1,9 @@
 /**
  * eai types — manage Object Type definitions.
  *
- * seed:     Push local Object Types to Configurator via PublicAPI
+ * seed:     Push local Object Types to platform via PublicAPI
  * validate: Check types against platform schema rules
- * diff:     Compare local definitions with remote Configurator state
+ * diff:     Compare local definitions with remote platform state
  * pull:     Download remote Object Types to local TypeScript
  * define:   Interactive Object Type builder (future)
  */
@@ -22,7 +22,7 @@ export const typesCommand = new Command('types')
 
 typesCommand
   .command('seed')
-  .description('Push Object Types to Configurator')
+  .description('Push Object Types to platform')
   .option('--env <environment>', 'Target environment', 'dev')
   .option('--tenant-key <key>', 'Specific tenant key from object-types.ts')
   .option('--dry-run', 'Show what would be seeded without making changes', false)
@@ -100,13 +100,8 @@ typesCommand
 
         try {
           // Check if type exists
-          const checkRes = await client.orchestrate({
-            target_backend: 'payload',
-            endpoint: '/object-types',
-            method: 'GET',
-            params: {
-              where: { name: { equals: type.name }, tenant: { equals: tenantId } },
-            },
+          const checkRes = await client.platformRequest('/object-types', 'GET', undefined, {
+            where: { name: { equals: type.name }, tenant: { equals: tenantId } },
           });
 
           const checkData = await checkRes.json() as { docs?: Array<{ id: string }> };
@@ -114,19 +109,14 @@ typesCommand
 
           if (existing) {
             // Update
-            const updateRes = await client.orchestrate({
-              target_backend: 'payload',
-              endpoint: `/object-types/${existing.id}`,
-              method: 'PATCH',
-              body: {
-                displayName: type.displayName,
-                description: type.description,
-                properties: type.properties,
-                linkTypes: type.linkTypes,
-                actions: type.actions,
-                storageBackend: type.storageBackend,
-                status: type.status,
-              },
+            const updateRes = await client.platformRequest(`/object-types/${existing.id}`, 'PATCH', {
+              displayName: type.displayName,
+              description: type.description,
+              properties: type.properties,
+              linkTypes: type.linkTypes,
+              actions: type.actions,
+              storageBackend: type.storageBackend,
+              status: type.status,
             });
 
             if (updateRes.ok) {
@@ -138,21 +128,16 @@ typesCommand
             }
           } else {
             // Create
-            const createRes = await client.orchestrate({
-              target_backend: 'payload',
-              endpoint: '/object-types',
-              method: 'POST',
-              body: {
-                name: type.name,
-                displayName: type.displayName,
-                description: type.description,
-                properties: type.properties,
-                linkTypes: type.linkTypes,
-                actions: type.actions,
-                storageBackend: type.storageBackend,
-                status: type.status,
-                tenant: tenantId,
-              },
+            const createRes = await client.platformRequest('/object-types', 'POST', {
+              name: type.name,
+              displayName: type.displayName,
+              description: type.description,
+              properties: type.properties,
+              linkTypes: type.linkTypes,
+              actions: type.actions,
+              storageBackend: type.storageBackend,
+              status: type.status,
+              tenant: tenantId,
             });
 
             if (createRes.ok) {
@@ -311,7 +296,7 @@ typesCommand
 
 typesCommand
   .command('diff')
-  .description('Compare local Object Types with remote Configurator')
+  .description('Compare local Object Types with remote platform')
   .action(async () => {
     const root = await findProjectRoot();
     if (!root) {
@@ -355,11 +340,8 @@ typesCommand
       const remoteSpinner = ora('  Fetching remote types...').start();
 
       try {
-        const res = await client.orchestrate({
-          target_backend: 'payload',
-          endpoint: '/object-types',
-          method: 'GET',
-          params: { where: { tenant: { equals: tenantId } }, limit: 100 },
+        const res = await client.platformRequest('/object-types', 'GET', undefined, {
+          where: { tenant: { equals: tenantId } }, limit: 100,
         });
 
         const data = await res.json() as { docs?: Array<{ name: string; properties: unknown[]; linkTypes: unknown[]; actions: unknown[] }> };
@@ -418,7 +400,7 @@ typesCommand
 typesCommand
   .command('pull')
   .description('Download remote Object Types to local TypeScript')
-  .option('--tenant-id <id>', 'Configurator tenant ID')
+  .option('--tenant-id <id>', 'platform tenant ID')
   .option('--output <path>', 'Output file path', 'src/eai.config/object-types.generated.ts')
   .action(async (options) => {
     const root = await findProjectRoot();
@@ -441,11 +423,8 @@ typesCommand
 
     try {
       const client = new PlatformAPIClient(publicApiUrl, tenantId);
-      const res = await client.orchestrate({
-        target_backend: 'payload',
-        endpoint: '/object-types',
-        method: 'GET',
-        params: { where: { tenant: { equals: tenantId } }, limit: 100 },
+      const res = await client.platformRequest('/object-types', 'GET', undefined, {
+        where: { tenant: { equals: tenantId } }, limit: 100,
       });
 
       const data = await res.json() as { docs?: ObjectTypeDefinition[] };

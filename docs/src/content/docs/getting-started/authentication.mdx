@@ -1,0 +1,215 @@
+---
+title: Authentication
+description: Authenticate with the EnterpriseAI platform
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The EAI CLI uses Microsoft Entra ID with CIAM (Customer Identity and Access Management) to authenticate you with the EnterpriseAI platform. Authentication is required for any command that communicates with the platform -- seeding types, managing resources, pulling environment configuration, and more.
+
+This page explains how the authentication flow works, where tokens are stored, and how to manage your session.
+
+## How it works
+
+The CLI uses the **device code flow**, an OAuth 2.0 pattern designed for command-line tools and devices without a browser. Instead of opening a browser window directly, it gives you a short code to enter on a separate device or browser tab.
+
+<Steps>
+
+1. **You run `eai login`**
+
+   The CLI contacts Entra CIAM and requests a device code.
+
+2. **The CLI displays a code and a URL**
+
+   You see a message like:
+
+   ```
+   To sign in, use a web browser to open https://microsoft.com/devicelogin
+   and enter the code ABCD-EFGH to authenticate.
+   ```
+
+3. **You open the URL and enter the code**
+
+   In any browser -- on your machine, your phone, or another device -- navigate to the URL and type in the code. Then sign in with your Microsoft account.
+
+4. **The CLI detects the completed login**
+
+   The CLI polls the Entra token endpoint in the background. Once you complete the browser sign-in, it receives your access and refresh tokens automatically.
+
+5. **Tokens are stored locally**
+
+   Your tokens are encrypted and saved to `~/.eai/tokens.json`. All subsequent CLI commands use these tokens.
+
+</Steps>
+
+<Aside>
+  The device code flow is secure because the code is short-lived and single-use. Even if someone sees the code, they cannot use it after you have already authenticated.
+</Aside>
+
+## Logging in
+
+Run the login command from any directory:
+
+```bash
+eai login
+```
+
+If you are inside an EAI project (a directory with `src/eai.config/`), the CLI automatically picks up your Entra client ID from `.env.local`. Otherwise, you can provide it explicitly:
+
+```bash
+eai login --client-id your-app-client-id
+```
+
+The full set of login options:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--client-id <id>` | From `.env.local` | App registration client ID |
+| `--tenant-name <name>` | `eaidevmyentepriseai` | CIAM tenant name |
+| `--tenant-id <id>` | Platform default | CIAM tenant ID |
+| `--scope <scope>` | `openid profile email offline_access` | OAuth scopes |
+
+A successful login looks like this:
+
+```
+Authenticating with Entra CIAM
+Tenant: eaidevmyentepriseai
+Client: a1b2c3d4-...
+
+To sign in, use a web browser to open https://microsoft.com/devicelogin
+and enter the code ABCD-EFGH to authenticate.
+
+✔ Authenticated as you@example.com
+Token expires: 3/10/2026, 2:30:00 PM
+```
+
+## Token storage
+
+Tokens are stored in `~/.eai/tokens.json`, encrypted with AES-256-CBC. The encryption key is derived from your system's home directory path, so tokens are tied to your user account on this machine.
+
+The stored token file contains:
+
+- **Access token** -- used for API calls to the platform
+- **Refresh token** -- used to get a new access token when the current one expires
+- **Expiration timestamp** -- when the access token becomes invalid
+- **Tenant information** -- which Entra CIAM tenant you authenticated against
+- **User principal name** -- your email or username
+
+<Aside type="tip">
+  You never need to manage these tokens manually. The CLI handles reading, refreshing, and storing them for you.
+</Aside>
+
+## Automatic token refresh
+
+Access tokens have a limited lifetime (typically 1 hour). When a token is about to expire (within 5 minutes of expiration), the CLI automatically uses the refresh token to obtain a new access token. This happens transparently -- you do not need to run `eai login` again.
+
+If the refresh token itself has expired (after extended inactivity), the CLI returns a `null` token and you will need to run `eai login` again.
+
+## Checking your auth status
+
+Use `eai whoami` to see who you are logged in as and the status of your session:
+
+```bash
+eai whoami
+```
+
+```
+Authentication
+✔ Logged in as you@example.com
+
+  Tenant      eaidevmyentepriseai
+  Tenant ID   50808ce0-f31b-4fd0-9861-74b83b8c112a
+  Expires     3/10/2026, 2:30:00 PM
+  Status      Active
+```
+
+If you run this from inside an EAI project, it also shows your project context:
+
+```
+Project
+  App Name       my-vertical
+  Environment    dev
+  PublicAPI      https://test-api.myenterprise.ai
+  Config Tenant  abc123-def456
+  Workflow       wf-789
+```
+
+If your token has expired, you will see:
+
+```
+Authentication
+⚠ Token expired. Run `eai login` to re-authenticate.
+```
+
+## Logging out
+
+To clear your stored tokens:
+
+```bash
+eai logout
+```
+
+```
+✔ Logged out. Stored tokens cleared.
+```
+
+This deletes `~/.eai/tokens.json`. You will need to run `eai login` again before using any authenticated commands.
+
+## Working with multiple accounts
+
+The CLI stores one set of credentials at a time in `~/.eai/tokens.json`. To switch between accounts:
+
+<Steps>
+
+1. **Log out of the current account**
+
+   ```bash
+   eai logout
+   ```
+
+2. **Log in with the other account**
+
+   ```bash
+   eai login
+   ```
+
+   When the browser opens, sign in with the different Microsoft account.
+
+</Steps>
+
+If you frequently switch between accounts, consider using different client IDs for different projects. The CLI picks up the client ID from each project's `.env.local`, so you can have multiple projects authenticated against different Entra app registrations.
+
+## Troubleshooting
+
+### "No client ID provided"
+
+The CLI could not find your Entra client ID. Either:
+- Run the command from inside an EAI project directory (one with `src/eai.config/`)
+- Pass it explicitly: `eai login --client-id your-id`
+- Set `ENTRA_CLIENT_ID` in your project's `.env.local`
+
+### "Device code flow timed out"
+
+You did not complete the browser sign-in before the code expired. The code is valid for a limited time (usually 15 minutes). Run `eai login` again to get a new code.
+
+### "Token request failed"
+
+The Entra CIAM tenant rejected the authentication. Common causes:
+- The client ID is incorrect or does not exist in the Entra tenant
+- Your account does not have permission to use this application
+- The Entra tenant has conditional access policies that block device code flow
+
+### Token file cannot be read
+
+If `~/.eai/tokens.json` becomes corrupted, delete it and log in again:
+
+```bash
+rm ~/.eai/tokens.json
+eai login
+```
+
+## Next steps
+
+- [Quick Start](/eai-cli/getting-started/quickstart/) -- walk through the full setup workflow
+- [Your First Vertical](/eai-cli/getting-started/first-vertical/) -- build a complete vertical application
+- [Environment](/eai-cli/guides/environment/) -- learn about `eai env pull` and cloud configuration

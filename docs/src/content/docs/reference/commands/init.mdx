@@ -1,0 +1,129 @@
+---
+title: eai init
+description: Scaffold a new vertical application from the Vertical-Template
+---
+
+## Synopsis
+
+```
+eai init [name] [options]
+```
+
+## Description
+
+`eai init` scaffolds a new vertical application from the [Vertical-Template](https://github.com/eai-tools/Vertical-Template). It clones the template, customizes configuration files, generates an Object Types scaffold, sets up a deployment workflow, and initializes a fresh git repository.
+
+If `name` is not provided on the command line, the CLI will prompt for it interactively along with other configuration options such as display name, tenant structure, and feature selection.
+
+The generated project is a Next.js 15 application with EAI platform integration, including:
+
+- A pre-configured `.env.local` with placeholder values
+- An Object Types scaffold in `src/eai.config/object-types.ts`
+- A GitHub Actions deployment workflow in `.github/workflows/deploy-demo.yml`
+- A `CLAUDE.md` project reference file
+- An initial git commit
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `[name]` | Name for the vertical (kebab-case). Prompted interactively if omitted. | -- |
+| `--from <repo>` | GitHub repo URL or local path for the template. | `https://github.com/eai-tools/Vertical-Template.git` |
+| `--skip-prompts` | Use defaults without interactive prompts. Requires `name` argument. | `false` |
+| `-h, --help` | Display help for the command. | -- |
+
+### Interactive Prompts
+
+When running without `--skip-prompts`, the CLI will ask:
+
+| Prompt | Description | Default |
+|--------|-------------|---------|
+| Vertical name | kebab-case identifier (e.g., `patient-intake`) | Value of `[name]` argument |
+| Display name | Human-readable name (e.g., `Patient Intake`) | Derived from vertical name |
+| Description | Short description of the application | `<Display Name> vertical application` |
+| Tenant structure | Single tenant, dual tenant, or multi-tenant hierarchy | Single tenant |
+| Include AI chat? | Whether to include AI chat features | Yes |
+| Include document management? | Whether to include document upload/classification | Yes |
+| Auth provider | Entra ID CIAM, Entra ID B2B, or Dual | CIAM |
+
+## Examples
+
+### Scaffold with interactive prompts
+
+```bash
+eai init
+```
+
+```
+? Vertical name (kebab-case): patient-intake
+? Display name: Patient Intake
+? Description: Patient intake and triage vertical application
+? Tenant structure: Single tenant (most common)
+? Include AI chat? Yes
+? Include document management? Yes
+? Auth provider: Entra ID CIAM (recommended)
+
+Creating Patient Intake
+
+✔ Cloned from eai-tools/Vertical-Template
+✔ Updated package.json
+✔ Generated .env.local
+✔ Created Object Types scaffold
+✔ Created deploy-demo.yml
+✔ Generated CLAUDE.md
+✔ Initialized git repository
+
+✔ Created Patient Intake at /Users/you/projects/patient-intake
+
+Next steps:
+  1. cd patient-intake
+  2. npm install
+  3. eai login — authenticate with Entra CIAM
+  4. eai env pull — sync environment from cloud
+  5. Edit src/eai.config/object-types.ts — define your data model
+  6. eai types validate — check your types
+  7. eai types seed — push types to platform
+  8. eai dev — start local development
+  9. Review CLAUDE.md — platform architecture reference
+```
+
+### Scaffold with name argument
+
+```bash
+eai init claims-processing
+```
+
+The CLI skips the name prompt and proceeds to the remaining interactive prompts.
+
+### Scaffold with all defaults (no prompts)
+
+```bash
+eai init claims-processing --skip-prompts
+```
+
+```
+Creating Claims Processing
+
+✔ Cloned from eai-tools/Vertical-Template
+✔ Updated package.json
+✔ Generated .env.local
+✔ Created Object Types scaffold
+✔ Created deploy-demo.yml
+✔ Generated CLAUDE.md
+✔ Initialized git repository
+
+✔ Created Claims Processing at /Users/you/projects/claims-processing
+```
+
+### Scaffold from a custom template
+
+```bash
+eai init my-vertical --from https://github.com/my-org/my-template.git
+```
+
+## Related Commands
+
+- [`eai login`](/eai-cli/reference/commands/login/) -- authenticate after scaffolding
+- [`eai env pull`](/eai-cli/reference/commands/env/) -- sync environment variables from cloud
+- [`eai types validate`](/eai-cli/reference/commands/types/) -- validate Object Type definitions
+- [`eai dev`](/eai-cli/reference/commands/dev/) -- start local development server

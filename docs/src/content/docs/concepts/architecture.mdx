@@ -1,0 +1,162 @@
+---
+title: Architecture
+description: High-level architecture of the EnterpriseAI platform, showing how the CLI, Platform API, and services connect.
+---
+
+import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
+
+## Overview
+
+The EnterpriseAI platform follows a layered architecture. Developer tools (the CLI and Platform SDK) communicate with the **Platform API**, which routes requests to the appropriate backend services. Applications built on the platform use a **BFF proxy pattern** to keep credentials server-side.
+
+```
+┌──────────────────────────────────────────────────────┐
+│                   Developer Tools                    │
+│                                                      │
+│   ┌──────────┐    ┌──────────────┐    ┌──────────┐   │
+│   │  EAI CLI │    │ Platform SDK │    │  Web UI  │   │
+│   └────┬─────┘    └──────┬───────┘    └────┬─────┘   │
+│        │                 │                 │         │
+└────────┼─────────────────┼─────────────────┼─────────┘
+         │                 │                 │
+         │  Direct API     │  BFF Proxy      │  Browser
+         │  (Bearer token) │  (server-side)  │  (session)
+         │                 │                 │
+┌────────▼─────────────────▼─────────────────▼─────────┐
+│                     Platform API                      │
+│                      /v3/*                            │
+├───────────────┬───────────────┬───────────────────────┤
+│  /v3/resources│   /v3/chat    │   /v3/documents       │
+│  /v3/auth     │   /v3/users   │   /v3/orchestrate     │
+└───────┬───────┴───────┬───────┴───────────┬───────────┘
+        │               │                   │
+┌───────▼───────┐ ┌─────▼─────┐ ┌───────────▼───────────┐
+│   Platform    │ │    AI     │ │      Document         │
+│   Service     │ │  Service  │ │      Service          │
+│  (resources,  │ │  (chat,   │ │  (classify, index,    │
+│   tenants,    │ │  stream,  │ │   RAG)                │
+│   schemas)    │ │  RAG)     │ │                       │
+└───────────────┘ └───────────┘ └───────────────────────┘
+```
+
+## Layers
+
+### CLI and Platform SDK
+
+The **EAI CLI** calls the Platform API directly using a Bearer token obtained through the Entra CIAM device code flow. It is the primary tool for development-time operations: scaffolding, seeding Object Types, managing resources, and deploying.
+
+The **Platform SDK** (`@eai-tools/platform-sdk`) is a TypeScript library used inside Next.js applications. It calls the Platform API through the BFF proxy (see below) and provides typed helpers for resource operations, chat, and document uploads.
+
+### Platform API
+
+All client-facing traffic goes through the Platform API at `/v3/*`. The API is the single entry point for:
+
+| Path | Purpose |
+|---|---|
+| `/v3/resources/{tenantId}/{objectType}` | CRUD and query operations on resources |
+| `/v3/resources/schema/{tenantId}` | Published Object Type definitions |
+| `/v3/chat/{tenantId}/{workflowId}/{stage}` | Send a chat message |
+| `/v3/chat/stream/{tenantId}/{workflowId}/{stage}` | Stream a chat conversation (SSE) |
+| `/v3/documents/classify` | Upload and classify a document |
+| `/v3/documents/rag-index` | Index a document for RAG |
+| `/v3/auth/me` | Current authenticated user |
+| `/v3/users/provisionme` | Self-provision into a tenant |
+
+All endpoints require authentication (Bearer token or session cookie) and enforce tenant scoping.
+
+### Backend Services
+
+The Platform API delegates to three categories of backend service:
+
+- **Platform service** -- manages resources, Object Type schemas, tenants, and users.
+- **AI service** -- handles chat workflows, streaming, and retrieval-augmented generation.
+- **Document service** -- classifies uploaded files, extracts structured data, and indexes content for search.
+
+<Aside type="note">
+  This documentation describes the **public** architecture only. Internal service topology, database implementation, and infrastructure details are not covered here.
+</Aside>
+
+## BFF Proxy Pattern
+
+Next.js applications built with the Platform SDK use a **Backend-for-Frontend (BFF) proxy** to call the Platform API. The pattern works as follows:
+
+```
+┌───────────────────────────────────────────────┐
+│              Next.js Application              │
+│                                               │
+│  ┌─────────────┐       ┌──────────────────┐   │
+│  │  Browser     │       │  Next.js API     │   │
+│  │  (React)     │──────▶│  Routes (BFF)    │   │
+│  │              │       │                  │   │
+│  └─────────────┘       └────────┬─────────┘   │
+│                                 │              │
+└─────────────────────────────────┼──────────────┘
+                                  │ Bearer token
+                                  │ (server-side only)
+                          ┌───────▼───────┐
+                          │  Platform API │
+                          └───────────────┘
+```
+
+1. The browser sends requests to Next.js API routes.
+2. The API route handler adds the user's access token (stored server-side) and forwards the request to the Platform API.
+3. The response is returned to the browser.
+
+This pattern keeps access tokens out of the browser and allows server-side enforcement of additional business rules before forwarding requests.
+
+## Authentication Flow
+
+Authentication uses **Microsoft Entra CIAM** (Customer Identity and Access Management):
+
+```
+┌──────────┐                ┌──────────────┐           ┌──────────────┐
+│  CLI /   │  1. Request    │   Entra      │           │  Platform    │
+│  Browser │  device code   │   CIAM       │           │  API         │
+│          │───────────────▶│              │           │              │
+│          │◀───────────────│  2. Return   │           │              │
+│          │  user code +   │  code + URL  │           │              │
+│          │  verify URL    │              │           │              │
+│          │                │              │           │              │
+│  User    │  3. User opens │              │           │              │
+│  browser │  URL, enters   │              │           │              │
+│          │  code, signs in│              │           │              │
+│          │───────────────▶│              │           │              │
+│          │                │              │           │              │
+│  CLI     │  4. Poll for   │              │           │              │
+│  polls   │  token         │              │           │              │
+│          │───────────────▶│              │           │              │
+│          │◀───────────────│  5. Return   │           │              │
+│          │  access token  │  tokens      │           │              │
+│          │  + refresh     │              │           │              │
+│          │                │              │           │              │
+│          │  6. API calls with Bearer token            │              │
+│          │──────────────────────────────────────────▶│              │
+│          │◀──────────────────────────────────────────│  7. Response │
+└──────────┘                └──────────────┘           └──────────────┘
+```
+
+1. The CLI requests a device code from Entra CIAM.
+2. Entra returns a user code and a verification URL.
+3. The user opens the URL in a browser and enters the code to sign in.
+4. The CLI polls Entra for the access token.
+5. Entra returns an access token and refresh token.
+6. The CLI uses the access token as a Bearer token for all Platform API calls.
+7. Tokens are stored locally at `~/.eai/tokens.json` and refreshed automatically.
+
+## Key Design Decisions
+
+| Decision | Rationale |
+|---|---|
+| **Single API gateway** | All traffic goes through `/v3/*`. Clients never call backend services directly. |
+| **Tenant-scoped URLs** | The tenant ID is part of the URL path (`/v3/resources/{tenantId}/...`), making tenant isolation explicit and auditable. |
+| **BFF proxy for web apps** | Keeps tokens server-side. The browser never holds an access token. |
+| **Device code flow for CLI** | No browser required on the machine running the CLI. The user can authenticate from any device. |
+| **Schema-driven resources** | Object Types define the schema. The platform validates all resource operations against the published schema. |
+
+## Next Steps
+
+<CardGrid>
+  <LinkCard title="Data Model" href="/eai-cli/concepts/data-model/" description="Understand Object Types, Properties, Links, Actions, and Side Effects." />
+  <LinkCard title="Security Model" href="/eai-cli/concepts/security-model/" description="Roles, tenant isolation, and authentication details." />
+  <LinkCard title="API Surface" href="/eai-cli/reference/api-surface/" description="Complete reference of all Platform API endpoints." />
+</CardGrid>

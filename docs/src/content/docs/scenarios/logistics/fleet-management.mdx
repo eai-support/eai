@@ -1,0 +1,158 @@
+---
+title: Fleet Management
+description: Build a vehicle tracking, maintenance scheduling, and fuel logging workflow for fleet operations using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Fleet systems developer at a delivery company operating 75 vehicles across three depots.
+
+Vehicle maintenance is scheduled based on calendar reminders rather than actual mileage, fuel costs are tracked only at the fleet level with no per-vehicle breakdown, and there is no centralized record of vehicle condition or service history. When a vehicle breaks down, the operations team has no data to predict which vehicles are at risk.
+
+## Business Problem
+
+Unexpected vehicle breakdowns disrupt delivery schedules and cost the company in towing fees, emergency repairs, and missed deliveries. Without mileage-based maintenance tracking, vehicles are either serviced too frequently (wasting money) or too infrequently (risking breakdowns). Fuel costs are rising but the company cannot identify which vehicles are inefficient. This scenario builds a fleet management workflow that tracks vehicle status and mileage, schedules maintenance based on usage data, and logs fuel consumption per vehicle.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Vehicle** | `make` (text), `model` (text), `year` (number), `mileage` (number), `status` (select: active, maintenance, retired) | one-to-many → MaintenanceRecord, one-to-many → FuelLog | -- |
+| **MaintenanceRecord** | `type` (select: oil-change, tires, brakes, inspection, repair), `date` (date), `cost` (number), `vendor` (text), `mileageAtService` (number) | many-to-one → Vehicle | -- |
+| **FuelLog** | `date` (date), `gallons` (number), `cost` (number), `odometer` (number) | many-to-one → Vehicle | -- |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init fleet-management
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the Vehicle, MaintenanceRecord, and FuelLog types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: fleet-management
+   ✔ Vehicle — 5 props, 2 links, 0 actions
+   ✔ MaintenanceRecord — 5 props, 1 link, 0 actions
+   ✔ FuelLog — 4 props, 1 link, 0 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create Vehicle --data '{"make": "Ford", "model": "Transit 250", "year": 2023, "mileage": 34500, "status": "active"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'fleet-management': [
+    {
+      name: 'Vehicle',
+      displayName: 'Vehicle',
+      description: 'A vehicle in the company fleet',
+      properties: [
+        { name: 'make', type: 'text' as const, required: true },
+        { name: 'model', type: 'text' as const, required: true },
+        { name: 'year', type: 'number' as const, required: true },
+        { name: 'mileage', type: 'number' as const, required: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'active', options: [
+          { label: 'Active', value: 'active' },
+          { label: 'Maintenance', value: 'maintenance' },
+          { label: 'Retired', value: 'retired' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'maintenanceRecords', targetObjectType: 'MaintenanceRecord', cardinality: 'one-to-many' as const },
+        { name: 'fuelLogs', targetObjectType: 'FuelLog', cardinality: 'one-to-many' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+    {
+      name: 'MaintenanceRecord',
+      displayName: 'Maintenance Record',
+      description: 'A service or repair performed on a fleet vehicle',
+      properties: [
+        { name: 'type', type: 'select' as const, required: true, options: [
+          { label: 'Oil Change', value: 'oil-change' },
+          { label: 'Tires', value: 'tires' },
+          { label: 'Brakes', value: 'brakes' },
+          { label: 'Inspection', value: 'inspection' },
+          { label: 'Repair', value: 'repair' },
+        ]},
+        { name: 'date', type: 'date' as const, required: true, indexed: true },
+        { name: 'cost', type: 'number' as const, required: true },
+        { name: 'vendor', type: 'text' as const, required: true },
+        { name: 'mileageAtService', type: 'number' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'vehicle', targetObjectType: 'Vehicle', cardinality: 'many-to-one' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+    {
+      name: 'FuelLog',
+      displayName: 'Fuel Log',
+      description: 'A fuel fill-up record for a fleet vehicle',
+      properties: [
+        { name: 'date', type: 'date' as const, required: true, indexed: true },
+        { name: 'gallons', type: 'number' as const, required: true },
+        { name: 'cost', type: 'number' as const, required: true },
+        { name: 'odometer', type: 'number' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'vehicle', targetObjectType: 'Vehicle', cardinality: 'many-to-one' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Mileage-based maintenance**: Recording mileage at each service enables scheduling based on actual usage rather than arbitrary calendar intervals.
+- **Per-vehicle cost analysis**: Maintenance costs and fuel consumption tracked per vehicle reveal which units are expensive to operate and may be candidates for replacement.
+- **Fuel efficiency monitoring**: Odometer readings on fuel logs enable calculation of miles-per-gallon trends, identifying vehicles with declining efficiency.
+- **Complete vehicle history**: Linking maintenance records and fuel logs to vehicles creates a comprehensive service history that supports resale value documentation and warranty claims.

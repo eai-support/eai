@@ -74,45 +74,40 @@ export const verifyCommand = new Command('verify')
       failed++;
     }
 
-    // Check 3: Configurator via orchestrate
+    // Check 3: Platform service connectivity
     if (authenticated && tenantId) {
-      const cfgSpinner = ora('Configurator (via orchestrate)').start();
+      const cfgSpinner = ora('Platform service').start();
       try {
-        const res = await client.orchestrate({
-          target_backend: 'payload',
-          endpoint: '/object-types',
-          method: 'GET',
-          params: { limit: 1 },
-        });
+        const res = await client.platformRequest('/object-types', 'GET', undefined, { limit: 1 });
         if (res.ok) {
-          cfgSpinner.succeed('Configurator reachable');
+          cfgSpinner.succeed('Platform service reachable');
           passed++;
         } else {
-          cfgSpinner.fail(`Configurator returned ${res.status}`);
+          cfgSpinner.fail(`Platform service returned ${res.status}`);
           failed++;
         }
       } catch (err) {
-        cfgSpinner.fail(`Configurator not reachable: ${err instanceof Error ? err.message : String(err)}`);
+        cfgSpinner.fail(`Platform service not reachable: ${err instanceof Error ? err.message : String(err)}`);
         failed++;
       }
     }
 
-    // Check 4: ResourceAPI schema
+    // Check 4: Data service (schema)
     if (authenticated && tenantId) {
-      const resSpinner = ora('ResourceAPI (schema)').start();
+      const resSpinner = ora('Data service (schema)').start();
       try {
         const res = await client.getSchema();
         if (res.ok) {
           const schema = await res.json() as { objectTypes?: unknown[] };
           const typeCount = (schema?.objectTypes as unknown[])?.length || 0;
-          resSpinner.succeed(`ResourceAPI reachable — ${typeCount} published types`);
+          resSpinner.succeed(`Data service reachable — ${typeCount} published types`);
           passed++;
         } else {
-          resSpinner.fail(`ResourceAPI returned ${res.status}`);
+          resSpinner.fail(`Data service returned ${res.status}`);
           failed++;
         }
       } catch (err) {
-        resSpinner.fail(`ResourceAPI not reachable: ${err instanceof Error ? err.message : String(err)}`);
+        resSpinner.fail(`Data service not reachable: ${err instanceof Error ? err.message : String(err)}`);
         failed++;
       }
     }
@@ -144,7 +139,7 @@ export const verifyCommand = new Command('verify')
 export const doctorCommand = new Command('doctor')
   .description('Diagnose common issues and suggest fixes')
   .option('--fix', 'Attempt to fix issues automatically', false)
-  .action(async (options) => {
+  .action(async (_options) => {
     const issues: Array<{ severity: 'error' | 'warn' | 'info'; message: string; fix?: string }> = [];
 
     out.heading('EAI Platform Health Check');
@@ -249,13 +244,13 @@ export const doctorCommand = new Command('doctor')
       out.success('Platform SDK present');
     } catch {
       try {
-        await access(join(root, 'node_modules', '@enterpriseaigroup', 'platform-sdk'));
+        await access(join(root, 'node_modules', '@eai-tools', 'platform-sdk'));
         out.success('Platform SDK installed');
       } catch {
         issues.push({
           severity: 'warn',
           message: 'Platform SDK not found',
-          fix: 'Run `npm install` to install @enterpriseaigroup/platform-sdk',
+          fix: 'Run `npm install` to install @eai-tools/platform-sdk',
         });
         out.warn('Platform SDK not found');
       }

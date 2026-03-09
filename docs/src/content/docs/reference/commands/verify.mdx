@@ -1,0 +1,123 @@
+---
+title: eai verify
+description: Run platform connectivity checks to ensure your environment is properly configured
+---
+
+## Synopsis
+
+```
+eai verify
+```
+
+## Description
+
+`eai verify` runs a series of connectivity and configuration checks against the EAI platform. It validates that your local environment can communicate with the API gateway, that authentication is working, that platform services are reachable, and that your local Object Types are loadable.
+
+This command is useful after initial setup, when debugging connectivity issues, or before deploying to confirm your environment is healthy.
+
+The command must be run from within an EAI project directory and requires `BASE_URL_PUBLIC_API` to be set in `.env.local` or the environment.
+
+## Checks Performed
+
+| Check | What it verifies |
+|-------|-----------------|
+| **API gateway** | The PublicAPI endpoint is reachable (HTTP request to `/health`). Reports latency. |
+| **Authentication** | A valid authentication token exists in `~/.eai/`. Shows the authenticated user. |
+| **Platform service** | The platform service responds to Object Type queries (requires auth + tenant ID). |
+| **Data service** | The data service schema endpoint is reachable. Reports the number of published types. |
+| **Local Object Types** | `src/eai.config/object-types.ts` is loadable and reports type/tenant counts. |
+
+Checks 3 and 4 (platform service and data service) are only run if authentication is valid and a tenant ID is available.
+
+## Options
+
+| Option | Description |
+|--------|-------------|
+| `-h, --help` | Display help for the command. |
+
+## Examples
+
+### All checks passing
+
+```bash
+eai verify
+```
+
+```
+Platform Connectivity Checks
+
+✔ PublicAPI reachable (142ms)
+✔ Authenticated as jane.doe@example.com
+✔ Platform service reachable
+✔ Data service reachable — 3 published types
+✔ 3 types across 1 tenant scope(s)
+
+✔ All 5 checks passed
+```
+
+### Partial failures
+
+```bash
+eai verify
+```
+
+```
+Platform Connectivity Checks
+
+✔ PublicAPI reachable (89ms)
+⚠ Not authenticated — run `eai login`
+✔ 2 types across 1 tenant scope(s)
+
+⚠ 1 passed, 1 failed
+```
+
+### API gateway unreachable
+
+```bash
+eai verify
+```
+
+```
+Platform Connectivity Checks
+
+✖ PublicAPI not reachable: fetch failed
+⚠ Not authenticated — run `eai login`
+✔ 2 types across 1 tenant scope(s)
+
+⚠ 1 passed, 2 failed
+```
+
+### No Object Types defined
+
+```bash
+eai verify
+```
+
+```
+Platform Connectivity Checks
+
+✔ PublicAPI reachable (95ms)
+✔ Authenticated as jane.doe@example.com
+✔ Platform service reachable
+✔ Data service reachable — 0 published types
+✖ No Object Types found: Cannot find module 'src/eai.config/object-types.ts'
+
+⚠ 4 passed, 1 failed
+```
+
+## Troubleshooting
+
+| Failure | Resolution |
+|---------|------------|
+| PublicAPI not reachable | Check `BASE_URL_PUBLIC_API` in `.env.local`. Run `eai env pull` to sync. Verify network connectivity. |
+| Not authenticated | Run `eai login` to authenticate with Entra CIAM. |
+| Platform service not reachable | Confirm your tenant ID is correct. Check `TENANT_*_ID` in `.env.local`. |
+| Data service returned error | The tenant may not have published types yet. Run `eai types seed` to publish. |
+| No Object Types found | Create or fix `src/eai.config/object-types.ts`. Run `eai init` for a scaffold. |
+
+## Related Commands
+
+- [`eai login`](/eai-cli/reference/commands/login/) -- authenticate to resolve auth check failures
+- [`eai env pull`](/eai-cli/reference/commands/env/) -- sync environment variables to resolve config issues
+- [`eai types validate`](/eai-cli/reference/commands/types/) -- validate Object Types before seeding
+- [`eai dev`](/eai-cli/reference/commands/dev/) -- runs a subset of these checks before starting the dev server

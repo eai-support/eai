@@ -1,0 +1,375 @@
+---
+title: Rust Examples
+description: Interact with the EAI Platform API from Rust using reqwest with tokio and serde for JSON serialization.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+These examples show how to call the EAI Platform API from Rust using `reqwest` for HTTP, `tokio` for async runtime, and `serde` for JSON serialization.
+
+<Aside>
+  Add the following to your `Cargo.toml` dependencies:
+
+  ```toml
+  [dependencies]
+  reqwest = { version = "0.12", features = ["json", "stream"] }
+  tokio = { version = "1", features = ["full"] }
+  serde = { version = "1", features = ["derive"] }
+  serde_json = "1"
+  ```
+</Aside>
+
+## Setup
+
+```rust
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use serde::{Deserialize, Serialize};
+use std::env;
+
+pub struct EaiClient {
+    http: reqwest::Client,
+    base_url: String,
+    tenant_id: String,
+}
+
+impl EaiClient {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let token = env::var("EAI_ACCESS_TOKEN")?;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", token))?,
+        );
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+
+        let http = reqwest::Client::builder()
+            .default_headers(headers)
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?;
+
+        Ok(Self {
+            http,
+            base_url: env::var("BASE_URL_PUBLIC_API")?,
+            tenant_id: env::var("TENANT_ID")?,
+        })
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!("{}{}", self.base_url, path)
+    }
+}
+```
+
+## Authentication
+
+Verify your token and retrieve your user profile:
+
+```rust
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserProfile {
+    pub id: String,
+    pub email: String,
+    pub display_name: String,
+    pub roles: Vec<String>,
+}
+
+impl EaiClient {
+    pub async fn get_authenticated_user(&self) -> Result<UserProfile, EaiError> {
+        let resp = self.http.get(self.url("/v3/auth/me")).send().await?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(EaiError::Api {
+                status: status.as_u16(),
+                body: resp.text().await.unwrap_or_default(),
+            });
+        }
+        Ok(resp.json().await?)
+    }
+
+    pub async fn provision_user(&self) -> Result<(), EaiError> {
+        let resp = self.http.post(self.url("/v3/users/provisionme")).send().await?;
+        if !resp.status().is_success() {
+            return Err(EaiError::Api {
+                status: resp.status().as_u16(),
+                body: resp.text().await.unwrap_or_default(),
+            });
+        }
+        Ok(())
+    }
+}
+
+// Usage
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = EaiClient::new()?;
+    let user = client.get_authenticated_user().await?;
+    println!("Logged in as {} ({})", user.display_name, user.email);
+    Ok(())
+}
+```
+
+## Resource CRUD
+
+Create, list, get, update, and delete resources:
+
+```rust
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Resource {
+    pub id: String,
+    pub object_type: String,
+    pub data: serde_json::Value,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceList {
+    pub items: Vec<Resource>,
+    pub total: u64,
+    pub page: u64,
+    pub page_size: u64,
+}
+
+impl EaiClient {
+    pub async fn create_resource(
+        &self, object_type: &str, data: &serde_json::Value,
+    ) -> Result<Resource, EaiError> {
+        let path = format!("/v3/resources/{}/{}", self.tenant_id, object_type);
+        let resp = self.http.post(self.url(&path)).json(data).send().await?;
+        Self::parse_response(resp).await
+    }
+
+    pub async fn list_resources(&self, object_type: &str) -> Result<ResourceList, EaiError> {
+        let path = format!("/v3/resources/{}/{}", self.tenant_id, object_type);
+        let resp = self.http.get(self.url(&path)).send().await?;
+        Self::parse_response(resp).await
+    }
+
+    pub async fn get_resource(
+        &self, object_type: &str, resource_id: &str,
+    ) -> Result<Resource, EaiError> {
+        let path = format!("/v3/resources/{}/{}/{}", self.tenant_id, object_type, resource_id);
+        let resp = self.http.get(self.url(&path)).send().await?;
+        Self::parse_response(resp).await
+    }
+
+    pub async fn update_resource(
+        &self, object_type: &str, resource_id: &str, data: &serde_json::Value,
+    ) -> Result<Resource, EaiError> {
+        let path = format!("/v3/resources/{}/{}/{}", self.tenant_id, object_type, resource_id);
+        let resp = self.http.put(self.url(&path)).json(data).send().await?;
+        Self::parse_response(resp).await
+    }
+
+    pub async fn delete_resource(
+        &self, object_type: &str, resource_id: &str,
+    ) -> Result<(), EaiError> {
+        let path = format!("/v3/resources/{}/{}/{}", self.tenant_id, object_type, resource_id);
+        let resp = self.http.delete(self.url(&path)).send().await?;
+        if !resp.status().is_success() {
+            return Err(EaiError::Api {
+                status: resp.status().as_u16(),
+                body: resp.text().await.unwrap_or_default(),
+            });
+        }
+        Ok(())
+    }
+
+    async fn parse_response<T: serde::de::DeserializeOwned>(
+        resp: reqwest::Response,
+    ) -> Result<T, EaiError> {
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(EaiError::Api {
+                status: status.as_u16(),
+                body: resp.text().await.unwrap_or_default(),
+            });
+        }
+        Ok(resp.json().await?)
+    }
+}
+```
+
+### Full CRUD workflow
+
+```rust
+use serde_json::json;
+
+let task = client.create_resource("Task", &json!({
+    "title": "Review pull request",
+    "status": "open",
+    "priority": "high"
+})).await?;
+println!("Created task {}", task.id);
+
+let tasks = client.list_resources("Task").await?;
+println!("Found {} tasks", tasks.total);
+
+let fetched = client.get_resource("Task", &task.id).await?;
+println!("Task title: {}", fetched.data["title"]);
+
+let updated = client.update_resource("Task", &task.id, &json!({
+    "title": "Review pull request",
+    "status": "in-progress",
+    "priority": "high"
+})).await?;
+println!("Updated status to {}", updated.data["status"]);
+
+client.delete_resource("Task", &task.id).await?;
+println!("Task deleted");
+```
+
+## Querying resources
+
+Fetch the tenant schema to discover available object types:
+
+```rust
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaResponse {
+    pub object_types: Vec<ObjectTypeSchema>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ObjectTypeSchema {
+    pub name: String,
+    pub properties: Vec<serde_json::Value>,
+}
+
+impl EaiClient {
+    pub async fn get_schema(&self) -> Result<SchemaResponse, EaiError> {
+        let path = format!("/v3/resources/schema/{}", self.tenant_id);
+        let resp = self.http.get(self.url(&path)).send().await?;
+        Self::parse_response(resp).await
+    }
+}
+
+let schema = client.get_schema().await?;
+for ot in &schema.object_types {
+    println!("  - {}", ot.name);
+}
+```
+
+## Chat
+
+Send a message to an AI workflow:
+
+<Tabs>
+  <TabItem label="Blocking">
+```rust
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatResponse {
+    pub message: String,
+    pub conversation_id: String,
+}
+
+impl EaiClient {
+    pub async fn send_chat_message(
+        &self, workflow_id: &str, stage: &str, message: &str,
+    ) -> Result<ChatResponse, EaiError> {
+        let path = format!("/v3/chat/{}/{}/{}", self.tenant_id, workflow_id, stage);
+        let resp = self.http.post(self.url(&path))
+            .json(&json!({"message": message}))
+            .send().await?;
+        Self::parse_response(resp).await
+    }
+}
+
+let reply = client.send_chat_message("wf-123", "default", "Summarize open tasks").await?;
+println!("AI: {}", reply.message);
+```
+  </TabItem>
+  <TabItem label="Streaming">
+```rust
+use futures_util::StreamExt;
+
+impl EaiClient {
+    pub async fn stream_chat(
+        &self, workflow_id: &str, stage: &str, message: &str,
+    ) -> Result<(), EaiError> {
+        let path = format!("/v3/chat/stream/{}/{}/{}", self.tenant_id, workflow_id, stage);
+        let resp = self.http.post(self.url(&path))
+            .json(&json!({"message": message}))
+            .send().await?;
+
+        if !resp.status().is_success() {
+            return Err(EaiError::Api {
+                status: resp.status().as_u16(),
+                body: resp.text().await.unwrap_or_default(),
+            });
+        }
+
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let bytes = chunk.map_err(EaiError::Http)?;
+            print!("{}", String::from_utf8_lossy(&bytes));
+        }
+        println!();
+        Ok(())
+    }
+}
+
+client.stream_chat("wf-123", "default", "What is the project status?").await?;
+```
+  </TabItem>
+</Tabs>
+
+## Error handling
+
+Define a custom error enum and handle common status codes:
+
+```rust
+#[derive(Debug)]
+pub enum EaiError {
+    Http(reqwest::Error),
+    Api { status: u16, body: String },
+}
+
+impl std::fmt::Display for EaiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EaiError::Http(e) => write!(f, "HTTP error: {}", e),
+            EaiError::Api { status, body } => write!(f, "EAI API error {}: {}", status, body),
+        }
+    }
+}
+
+impl std::error::Error for EaiError {}
+
+impl From<reqwest::Error> for EaiError {
+    fn from(err: reqwest::Error) -> Self {
+        EaiError::Http(err)
+    }
+}
+
+impl EaiError {
+    pub fn is_unauthorized(&self) -> bool {
+        matches!(self, EaiError::Api { status: 401, .. })
+    }
+    pub fn is_not_found(&self) -> bool {
+        matches!(self, EaiError::Api { status: 404, .. })
+    }
+    pub fn is_rate_limited(&self) -> bool {
+        matches!(self, EaiError::Api { status: 429, .. })
+    }
+}
+
+// Usage
+match client.list_resources("Task").await {
+    Ok(tasks) => println!("Found {} tasks", tasks.total),
+    Err(ref e) if e.is_unauthorized() => {
+        eprintln!("Token expired. Run `eai login` to re-authenticate.");
+    }
+    Err(ref e) if e.is_rate_limited() => {
+        eprintln!("Rate limited. Retrying after delay...");
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let tasks = client.list_resources("Task").await?;
+        println!("Found {} tasks", tasks.total);
+    }
+    Err(e) => eprintln!("API error: {}", e),
+}
+```

@@ -1,5 +1,5 @@
 /**
- * eai tenant — manage tenants in Configurator.
+ * eai tenant — manage tenants on the platform.
  */
 
 import { Command } from 'commander';
@@ -10,7 +10,7 @@ import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
 
 export const tenantCommand = new Command('tenant')
-  .description('Manage tenants in Configurator');
+  .description('Manage tenants on the platform');
 
 // ─── eai tenant list ──────────────────────────────────────────────────────
 

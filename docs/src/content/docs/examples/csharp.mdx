@@ -1,0 +1,311 @@
+---
+title: "C# Examples"
+description: Interact with the EAI Platform API from C# using HttpClient, async/await, and System.Text.Json.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+These examples show how to call the EAI Platform API from C# using `HttpClient` with `async/await` and `System.Text.Json` for serialization.
+
+<Aside>
+  All examples assume you have `BASE_URL_PUBLIC_API` and your access token available as environment variables. Run `eai env pull` to populate your `.env.local` file.
+</Aside>
+
+## Setup
+
+```csharp
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+public class EaiClient : IDisposable
+{
+    private readonly HttpClient _http;
+    private readonly string _baseUrl;
+    private readonly string _tenantId;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    public EaiClient(string baseUrl, string tenantId, string accessToken)
+    {
+        _baseUrl = baseUrl;
+        _tenantId = tenantId;
+        _http = new HttpClient();
+        _http.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", accessToken);
+        _http.DefaultRequestHeaders.Accept.Add(
+            new MediaTypeWithQualityHeaderValue("application/json"));
+    }
+
+    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null)
+    {
+        using var request = new HttpRequestMessage(method, $"{_baseUrl}{path}");
+
+        if (body is not null)
+        {
+            var json = JsonSerializer.Serialize(body, JsonOptions);
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+        }
+
+        using var response = await _http.SendAsync(request);
+        var responseBody = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+            throw new EaiApiException((int)response.StatusCode, responseBody);
+
+        return JsonSerializer.Deserialize<T>(responseBody, JsonOptions)!;
+    }
+
+    public void Dispose() => _http.Dispose();
+}
+```
+
+## Authentication
+
+Verify your token and retrieve your user profile:
+
+```csharp
+public record UserProfile(
+    string Id,
+    string Email,
+    string DisplayName,
+    string[] Roles
+);
+
+// Add to EaiClient class
+public async Task<UserProfile> GetAuthenticatedUserAsync()
+{
+    return await SendAsync<UserProfile>(HttpMethod.Get, "/v3/auth/me");
+}
+
+public async Task ProvisionUserAsync()
+{
+    await SendAsync<object>(HttpMethod.Post, "/v3/users/provisionme");
+}
+
+// Usage
+var baseUrl = Environment.GetEnvironmentVariable("BASE_URL_PUBLIC_API")!;
+var tenantId = Environment.GetEnvironmentVariable("TENANT_ID")!;
+var token = Environment.GetEnvironmentVariable("EAI_ACCESS_TOKEN")!;
+
+using var client = new EaiClient(baseUrl, tenantId, token);
+var me = await client.GetAuthenticatedUserAsync();
+Console.WriteLine($"Logged in as {me.DisplayName} ({me.Email})");
+```
+
+## Resource CRUD
+
+Create, list, get, update, and delete resources:
+
+```csharp
+public record Resource(
+    string Id,
+    string ObjectType,
+    Dictionary<string, object> Data,
+    DateTime CreatedAt,
+    DateTime UpdatedAt
+);
+
+public record ResourceList(
+    Resource[] Items,
+    int Total,
+    int Page,
+    int PageSize
+);
+
+// Add these methods to EaiClient
+public async Task<Resource> CreateResourceAsync(string objectType, object data)
+{
+    return await SendAsync<Resource>(
+        HttpMethod.Post, $"/v3/resources/{_tenantId}/{objectType}", data);
+}
+
+public async Task<ResourceList> ListResourcesAsync(string objectType)
+{
+    return await SendAsync<ResourceList>(
+        HttpMethod.Get, $"/v3/resources/{_tenantId}/{objectType}");
+}
+
+public async Task<Resource> GetResourceAsync(string objectType, string resourceId)
+{
+    return await SendAsync<Resource>(
+        HttpMethod.Get, $"/v3/resources/{_tenantId}/{objectType}/{resourceId}");
+}
+
+public async Task<Resource> UpdateResourceAsync(
+    string objectType, string resourceId, object data)
+{
+    return await SendAsync<Resource>(
+        HttpMethod.Put, $"/v3/resources/{_tenantId}/{objectType}/{resourceId}", data);
+}
+
+public async Task DeleteResourceAsync(string objectType, string resourceId)
+{
+    await SendAsync<object>(
+        HttpMethod.Delete, $"/v3/resources/{_tenantId}/{objectType}/{resourceId}");
+}
+```
+
+### Full CRUD workflow
+
+```csharp
+// Create
+var task = await client.CreateResourceAsync("Task", new
+{
+    Title = "Review pull request",
+    Status = "open",
+    Priority = "high",
+});
+Console.WriteLine($"Created task {task.Id}");
+
+// List
+var tasks = await client.ListResourcesAsync("Task");
+Console.WriteLine($"Found {tasks.Total} tasks");
+
+// Get
+var fetched = await client.GetResourceAsync("Task", task.Id);
+Console.WriteLine($"Task title: {fetched.Data["title"]}");
+
+// Update
+var updated = await client.UpdateResourceAsync("Task", task.Id, new
+{
+    Title = "Review pull request",
+    Status = "in-progress",
+    Priority = "high",
+});
+Console.WriteLine($"Updated status to {updated.Data["status"]}");
+
+// Delete
+await client.DeleteResourceAsync("Task", task.Id);
+Console.WriteLine("Task deleted");
+```
+
+## Querying resources
+
+Fetch the tenant schema to discover available object types:
+
+```csharp
+public record ObjectTypeSchema(string Name, object[] Properties);
+public record SchemaResponse(ObjectTypeSchema[] ObjectTypes);
+
+// Add to EaiClient
+public async Task<SchemaResponse> GetSchemaAsync()
+{
+    return await SendAsync<SchemaResponse>(
+        HttpMethod.Get, $"/v3/resources/schema/{_tenantId}");
+}
+
+var schema = await client.GetSchemaAsync();
+var typeNames = schema.ObjectTypes.Select(ot => ot.Name);
+Console.WriteLine($"Available object types: {string.Join(", ", typeNames)}");
+```
+
+## Chat
+
+Send a message to an AI workflow:
+
+<Tabs>
+  <TabItem label="Blocking">
+```csharp
+public record ChatResponse(
+    string Message,
+    string ConversationId,
+    Dictionary<string, object>? Metadata
+);
+
+// Add to EaiClient
+public async Task<ChatResponse> SendChatMessageAsync(
+    string workflowId, string stage, string message)
+{
+    return await SendAsync<ChatResponse>(
+        HttpMethod.Post,
+        $"/v3/chat/{_tenantId}/{workflowId}/{stage}",
+        new { Message = message });
+}
+
+var reply = await client.SendChatMessageAsync("wf-123", "default", "Summarize open tasks");
+Console.WriteLine($"AI: {reply.Message}");
+```
+  </TabItem>
+  <TabItem label="Streaming">
+```csharp
+// Add to EaiClient
+public async Task StreamChatAsync(string workflowId, string stage, string message)
+{
+    var url = $"{_baseUrl}/v3/chat/stream/{_tenantId}/{workflowId}/{stage}";
+    var json = JsonSerializer.Serialize(new { Message = message }, JsonOptions);
+    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+    using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+    using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+    response.EnsureSuccessStatusCode();
+
+    await using var stream = await response.Content.ReadAsStreamAsync();
+    using var reader = new StreamReader(stream);
+
+    var buffer = new char[256];
+    int bytesRead;
+    while ((bytesRead = await reader.ReadAsync(buffer, 0, buffer.Length)) > 0)
+    {
+        Console.Write(new string(buffer, 0, bytesRead));
+    }
+
+    Console.WriteLine();
+}
+
+await client.StreamChatAsync("wf-123", "default", "What is the project status?");
+```
+  </TabItem>
+</Tabs>
+
+## Error handling
+
+Define a custom exception and handle common error codes:
+
+```csharp
+public class EaiApiException : Exception
+{
+    public int StatusCode { get; }
+    public string ResponseBody { get; }
+
+    public EaiApiException(int statusCode, string responseBody)
+        : base($"EAI API error {statusCode}: {responseBody}")
+    {
+        StatusCode = statusCode;
+        ResponseBody = responseBody;
+    }
+
+    public bool IsUnauthorized => StatusCode == 401;
+    public bool IsNotFound => StatusCode == 404;
+    public bool IsRateLimited => StatusCode == 429;
+}
+
+// Usage with structured error handling
+async Task<ResourceList> SafeListResources(EaiClient client, string objectType)
+{
+    try
+    {
+        return await client.ListResourcesAsync(objectType);
+    }
+    catch (EaiApiException ex) when (ex.IsUnauthorized)
+    {
+        Console.Error.WriteLine("Token expired. Run `eai login` to re-authenticate.");
+        throw;
+    }
+    catch (EaiApiException ex) when (ex.IsRateLimited)
+    {
+        Console.Error.WriteLine("Rate limited. Retrying after delay...");
+        await Task.Delay(2000);
+        return await client.ListResourcesAsync(objectType);
+    }
+    catch (EaiApiException ex)
+    {
+        Console.Error.WriteLine($"API error: {ex.Message}");
+        throw;
+    }
+}
+```

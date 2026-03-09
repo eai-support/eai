@@ -1,0 +1,293 @@
+---
+title: AI Features
+description: Send chat messages, stream conversations, upload and classify documents, and index content for retrieval-augmented generation.
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+The EAI platform provides AI capabilities through two command groups: `eai chat` for conversational AI workflows, and `eai docs` for document processing. These commands call the Platform API's `/v3/chat` and `/v3/documents` endpoints.
+
+## How it works
+
+```
+eai chat send / stream       eai docs upload / classify / index
+        │                              │
+        ▼                              ▼
+  /v3/chat endpoint           /v3/documents endpoint
+        │                              │
+        ▼                              ▼
+   AI service                   AI service (classification,
+  (workflow execution)          embedding, RAG indexing)
+```
+
+Chat commands require a **workflow ID** that determines which AI workflow processes your messages. Document commands handle upload, classification, and indexing for retrieval-augmented generation (RAG).
+
+## Chat: sending messages
+
+Send a single message to an AI workflow and receive the complete response:
+
+```bash
+eai chat send "What are the common side effects of ibuprofen?" \
+  --workflow wf-12345
+```
+
+The CLI prints the conversation ID and the response:
+
+```
+ℹ Conversation: a1b2c3d4-5678-abcd-ef01-234567890abc
+
+{
+  "response": "Common side effects of ibuprofen include...",
+  "conversation_id": "a1b2c3d4-...",
+  "stage": "chat"
+}
+```
+
+### Specifying a stage
+
+Workflows can have multiple stages (e.g. `triage`, `chat`, `summary`). The default stage is `chat`:
+
+```bash
+eai chat send "Summarize the patient history" \
+  --workflow wf-12345 \
+  --stage summary
+```
+
+### Continuing a conversation
+
+Pass a conversation ID to continue an existing conversation thread:
+
+```bash
+# First message starts a conversation
+eai chat send "Tell me about clinical trial phases" --workflow wf-12345
+# Output: Conversation: a1b2c3d4-...
+
+# Continue the same conversation
+eai chat send "What happens in Phase III?" \
+  --workflow wf-12345 \
+  --conversation a1b2c3d4-5678-abcd-ef01-234567890abc
+```
+
+<Aside type="tip">
+  If you omit `--conversation`, the CLI generates a new conversation ID automatically. Save the ID from the output to continue the conversation later.
+</Aside>
+
+## Chat: streaming responses
+
+For real-time output, use `eai chat stream`. The response is delivered via Server-Sent Events (SSE), and the CLI prints tokens as they arrive:
+
+```bash
+eai chat stream "Explain the drug approval process step by step" \
+  --workflow wf-12345
+```
+
+Output streams in real time:
+
+```
+ℹ Streaming conversation: b2c3d4e5-...
+
+The drug approval process involves several key phases:
+
+1. **Preclinical Research**: Before testing in humans, the drug
+   undergoes laboratory and animal studies...
+2. **Phase I Clinical Trials**: A small group of healthy volunteers...
+
+✔ Stream complete
+```
+
+Streaming accepts the same `--stage` and `--conversation` flags as `send`:
+
+```bash
+eai chat stream "Continue the analysis" \
+  --workflow wf-12345 \
+  --stage chat \
+  --conversation b2c3d4e5-6789-abcd-ef01-234567890abc
+```
+
+## Documents: uploading
+
+Upload a document to the platform:
+
+```bash
+eai docs upload ./reports/inspection-report.pdf
+```
+
+Output:
+
+```
+✔ Uploaded inspection-report.pdf
+{
+  "id": "doc-abc123",
+  "filename": "inspection-report.pdf",
+  "size": 245760,
+  "content_type": "application/pdf"
+}
+```
+
+The upload endpoint accepts any file type. The returned document ID is used for subsequent classification and indexing operations.
+
+## Documents: classifying
+
+Classify a document using AI to determine its type and extract metadata:
+
+```bash
+eai docs classify ./reports/inspection-report.pdf
+```
+
+Output:
+
+```
+✔ Classified inspection-report.pdf
+{
+  "classification": "inspection_report",
+  "confidence": 0.94,
+  "extracted_fields": {
+    "title": "Monthly Quality Inspection - Line 4",
+    "date": "2025-01-15",
+    "inspector": "J. Smith"
+  }
+}
+```
+
+<Aside type="note">
+  Classification uses the AI service to analyze the document content. The available classifications depend on how your AI workflow is configured.
+</Aside>
+
+## Documents: indexing for RAG
+
+Index a previously uploaded document for retrieval-augmented generation. Once indexed, the document content becomes available to chat workflows for context-aware responses:
+
+```bash
+eai docs index doc-abc123
+```
+
+Output:
+
+```
+✔ Indexed document doc-abc123 for RAG
+```
+
+After indexing, chat workflows can retrieve relevant sections of the document when answering questions.
+
+## Example: document Q&A workflow
+
+Here is a complete workflow that uploads a document, indexes it for RAG, and then asks questions about it using chat:
+
+<Steps>
+1. **Upload the document:**
+
+   ```bash
+   eai docs upload ./manuals/equipment-manual.pdf
+   ```
+
+   Save the document ID from the output (e.g. `doc-xyz789`).
+
+2. **Classify the document** (optional, for metadata extraction):
+
+   ```bash
+   eai docs classify ./manuals/equipment-manual.pdf
+   ```
+
+3. **Index the document for RAG:**
+
+   ```bash
+   eai docs index doc-xyz789
+   ```
+
+4. **Ask questions about the document:**
+
+   ```bash
+   eai chat send "What is the maintenance schedule for the hydraulic press?" \
+     --workflow wf-qa-12345
+   ```
+
+   The AI workflow retrieves relevant sections from the indexed document and generates an answer grounded in the source material.
+
+5. **Stream a follow-up question:**
+
+   ```bash
+   eai chat stream "What are the safety precautions during maintenance?" \
+     --workflow wf-qa-12345 \
+     --conversation <conversation-id-from-step-4>
+   ```
+</Steps>
+
+## Scripting with AI commands
+
+### Process a batch of documents
+
+```bash
+#!/bin/bash
+# Upload and index all PDFs in a directory
+
+for file in documents/*.pdf; do
+  echo "Processing $file..."
+
+  # Upload
+  result=$(eai docs upload "$file" 2>/dev/null)
+  doc_id=$(echo "$result" | grep -o '"id": "[^"]*"' | head -1 | cut -d'"' -f4)
+
+  if [ -n "$doc_id" ]; then
+    # Index for RAG
+    eai docs index "$doc_id"
+    echo "Indexed $file as $doc_id"
+  fi
+done
+```
+
+### Chat with JSON output for automation
+
+```bash
+# Send a chat message and extract just the response text
+eai chat send "Summarize this quarter's inspection findings" \
+  --workflow wf-12345 \
+  | jq -r '.response'
+```
+
+## Configuration requirements
+
+AI commands require the same environment setup as other CLI commands:
+
+| Variable              | Purpose                                          |
+|-----------------------|--------------------------------------------------|
+| `BASE_URL_PUBLIC_API` | Platform API base URL (routes to AI service)     |
+| `TENANT_DEFAULT_ID`   | Tenant ID for scoping requests                   |
+
+Additionally, you need:
+- A valid authentication token (run `eai login` first)
+- A workflow ID for chat commands (provided by your platform administrator)
+
+<Aside type="tip">
+  Store your workflow ID in `.env.local` for convenience: `WORKFLOW_DEFAULT_ID=wf-12345`. Then reference it in scripts with `$WORKFLOW_DEFAULT_ID`.
+</Aside>
+
+## Command reference
+
+### Chat commands
+
+| Command                  | Description                               |
+|--------------------------|-------------------------------------------|
+| `eai chat send <message>` | Send a message and receive full response |
+| `eai chat stream <message>` | Stream a response in real time (SSE)  |
+
+#### Chat flags
+
+| Flag                     | Description                                     |
+|--------------------------|-------------------------------------------------|
+| `--workflow <id>`        | **(required)** Workflow ID to execute            |
+| `--stage <stage>`        | Chat stage (default: `chat`)                    |
+| `--conversation <id>`   | Conversation ID to continue (auto-generated if omitted) |
+
+### Document commands
+
+| Command                      | Description                            |
+|------------------------------|----------------------------------------|
+| `eai docs upload <file>`     | Upload a document                      |
+| `eai docs classify <file>`   | Classify a document with AI            |
+| `eai docs index <documentId>` | Index a document for RAG             |
+
+## Next steps
+
+- [Object Types](/eai-cli/guides/object-types/) -- define the data model that AI workflows can interact with
+- [Resources](/eai-cli/guides/resources/) -- manage the resources that AI workflows create and modify
+- [Security](/eai-cli/guides/security/) -- understand authentication requirements for AI endpoints

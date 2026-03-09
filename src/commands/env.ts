@@ -9,7 +9,7 @@
 import { Command } from 'commander';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import ora from 'ora';
 import chalk from 'chalk';
@@ -199,7 +199,7 @@ envCommand
           '--yes',
         ]);
         pushed++;
-      } catch (err) {
+      } catch (_err) {
         spinner.warn(`Failed to push ${key}`);
       }
     }

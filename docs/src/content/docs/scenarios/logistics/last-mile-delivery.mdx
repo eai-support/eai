@@ -1,0 +1,173 @@
+---
+title: Last Mile Delivery
+description: Build a delivery assignment, customer notification, and proof of delivery workflow using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Platform developer at a last-mile delivery startup handling 1,000+ daily deliveries in an urban market.
+
+Drivers receive assignments through a consumer messaging app, customers have no visibility into delivery timing, and proof of delivery is a photo texted to a dispatcher who saves it to a shared folder. When a customer claims non-delivery, there is no structured evidence to resolve the dispute. The startup needs a purpose-built delivery management platform.
+
+## Business Problem
+
+Last-mile delivery is defined by tight time windows and high customer expectations. When customers do not know when their delivery will arrive, they are unavailable at the door, causing failed deliveries and redelivery costs. When proof of delivery is informal, disputes are unresolvable. When driver assignments are managed through messaging apps, there is no audit trail, no performance data, and no way to reassign deliveries when a driver calls in sick. This scenario builds a last-mile delivery workflow that assigns packages to drivers with time windows, sends notifications to customers at key milestones, and captures structured proof of delivery.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **DeliveryAssignment** | `package` (text), `driver` (text), `timeWindow` (text), `address` (text), `status` (select: assigned, en-route, attempted, delivered, failed) | one-to-many → Notification, one-to-many → ProofOfDelivery | `markEnRoute` |
+| **Notification** | `type` (select: assignment, en-route, delivered, failed), `sentAt` (date), `channel` (select: sms, email, push), `recipient` (text) | many-to-one → DeliveryAssignment | -- |
+| **ProofOfDelivery** | `photo` (file), `signature` (text), `timestamp` (date), `notes` (text) | many-to-one → DeliveryAssignment | -- |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init last-mile-delivery
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the DeliveryAssignment, Notification, and ProofOfDelivery types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: last-mile-delivery
+   ✔ DeliveryAssignment — 5 props, 2 links, 1 action
+   ✔ Notification — 4 props, 1 link, 0 actions
+   ✔ ProofOfDelivery — 4 props, 1 link, 0 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create DeliveryAssignment --data '{"package": "PKG-2025-08-001", "driver": "Ana Rodriguez", "timeWindow": "2:00 PM - 4:00 PM", "address": "456 Oak Ave, Apt 3B", "status": "assigned"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'last-mile-delivery': [
+    {
+      name: 'DeliveryAssignment',
+      displayName: 'Delivery Assignment',
+      description: 'A package assigned to a driver for last-mile delivery',
+      properties: [
+        { name: 'package', type: 'text' as const, required: true, indexed: true },
+        { name: 'driver', type: 'text' as const, required: true, indexed: true },
+        { name: 'timeWindow', type: 'text' as const, required: true },
+        { name: 'address', type: 'text' as const, required: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'assigned', options: [
+          { label: 'Assigned', value: 'assigned' },
+          { label: 'En Route', value: 'en-route' },
+          { label: 'Attempted', value: 'attempted' },
+          { label: 'Delivered', value: 'delivered' },
+          { label: 'Failed', value: 'failed' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'notifications', targetObjectType: 'Notification', cardinality: 'one-to-many' as const },
+        { name: 'proofOfDelivery', targetObjectType: 'ProofOfDelivery', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'markEnRoute',
+          displayName: 'Mark En Route',
+          description: 'Indicate the driver is en route to the delivery address',
+          requiredRole: 'tenant-user',
+          validationRules: { requiredFields: ['driver', 'address'], requiredStatus: 'assigned' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'en-route' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Notification',
+      displayName: 'Notification',
+      description: 'A notification sent to the customer about delivery status',
+      properties: [
+        { name: 'type', type: 'select' as const, required: true, options: [
+          { label: 'Assignment', value: 'assignment' },
+          { label: 'En Route', value: 'en-route' },
+          { label: 'Delivered', value: 'delivered' },
+          { label: 'Failed', value: 'failed' },
+        ]},
+        { name: 'sentAt', type: 'date' as const, required: true, indexed: true },
+        { name: 'channel', type: 'select' as const, required: true, options: [
+          { label: 'SMS', value: 'sms' },
+          { label: 'Email', value: 'email' },
+          { label: 'Push', value: 'push' },
+        ]},
+        { name: 'recipient', type: 'text' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'deliveryAssignment', targetObjectType: 'DeliveryAssignment', cardinality: 'many-to-one' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+    {
+      name: 'ProofOfDelivery',
+      displayName: 'Proof of Delivery',
+      description: 'Photo and signature evidence that a delivery was completed',
+      properties: [
+        { name: 'photo', type: 'file' as const, required: false },
+        { name: 'signature', type: 'text' as const, required: false },
+        { name: 'timestamp', type: 'date' as const, required: true, indexed: true },
+        { name: 'notes', type: 'text' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'deliveryAssignment', targetObjectType: 'DeliveryAssignment', cardinality: 'many-to-one' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Customer communication**: Structured notifications at each delivery milestone (assigned, en route, delivered) keep customers informed and reduce failed delivery attempts.
+- **Dispute resolution**: Photo and signature proof of delivery linked to specific assignments provides clear evidence when customers dispute receipt.
+- **Multi-channel notifications**: Supporting SMS, email, and push notification channels ensures customers receive updates through their preferred communication method.
+- **Driver performance data**: Timestamped status transitions on delivery assignments enable analysis of delivery times, success rates, and driver efficiency.

@@ -7,7 +7,6 @@
 
 import { Command } from 'commander';
 import { spawn } from 'node:child_process';
-import { join } from 'node:path';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import * as out from '../lib/output.js';

@@ -1,0 +1,205 @@
+---
+title: Admissions Portal
+description: Manage student applications, document verification, and admission decisions for higher education using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role:** Director of Admissions Technology at a private university.
+
+You oversee the technology stack supporting the admissions office, which processes 12,000 applications annually across undergraduate, graduate, and professional programs. Each application involves document collection, committee review, and a final decision with potential conditions. The existing portal is aging and cannot accommodate new program types without extensive custom development.
+
+## Business Problem
+
+Applications arrive through a web portal, but supporting documents -- transcripts, recommendation letters, test scores -- are uploaded to a separate file share with no automated link to the application. Committee members review applications in a spreadsheet, and decisions are communicated via mail merge. There is no single view of an application's completeness or decision status. You need:
+
+- A unified application record with program and term tracking.
+- Document management linked to applications with verification status.
+- Structured decision records that capture committee outcomes and conditions.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Application** | applicant, program, term, status | has many Documents, has one Decision | submit, review, request-info |
+| **Document** | application, type, fileUrl, verified | belongs to Application | upload, verify, reject |
+| **Decision** | application, committee, outcome, conditions | belongs to Application | recommend, approve, deny, defer |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the vertical**
+
+   ```bash
+   eai init admissions-portal
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define Object Types**
+
+   Add Application, Document, and Decision to `src/eai.config/object-types.ts`.
+
+4. **Validate and seed**
+
+   ```bash
+   eai types validate
+   eai types seed
+   ```
+
+   ```
+   Tenant: admissions-portal
+   ✔ Application — 4 props, 2 links, 3 actions
+   ✔ Document — 4 props, 1 link, 3 actions
+   ✔ Decision — 4 props, 1 link, 4 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Create an application**
+
+   ```bash
+   eai resources create Application \
+     --data '{"applicant": "jordan.lee@email.com", "program": "ms-data-science", "term": "Fall 2026", "status": "submitted"}'
+   ```
+
+6. **Upload a document record**
+
+   ```bash
+   eai resources create Document \
+     --data '{"application": "app-001", "type": "transcript", "fileUrl": "/uploads/transcript-jordan-lee.pdf", "verified": false}'
+   ```
+
+7. **List applications by program**
+
+   ```bash
+   eai resources list Application --filter 'program=ms-data-science'
+   ```
+
+8. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'admissions-portal': [
+    {
+      name: 'Application',
+      displayName: 'Application',
+      description: 'A student application to a specific academic program and enrollment term',
+      properties: [
+        { name: 'applicant', type: 'text' as const, required: true, indexed: true },
+        { name: 'program', type: 'select' as const, required: true,
+          options: [
+            { label: 'BS Computer Science', value: 'bs-computer-science' },
+            { label: 'MS Data Science', value: 'ms-data-science' },
+            { label: 'MBA', value: 'mba' },
+            { label: 'JD', value: 'jd' },
+            { label: 'PhD Biology', value: 'phd-biology' },
+          ],
+        },
+        { name: 'term', type: 'text' as const, required: true, indexed: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'draft',
+          options: [
+            { label: 'Draft', value: 'draft' },
+            { label: 'Submitted', value: 'submitted' },
+            { label: 'Complete', value: 'complete' },
+            { label: 'Under Review', value: 'under-review' },
+            { label: 'Decision Made', value: 'decision-made' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'documents', target: 'Document', cardinality: 'many' as const },
+        { name: 'decision', target: 'Decision', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'submit', displayName: 'Submit Application' },
+        { name: 'review', displayName: 'Begin Review' },
+        { name: 'request-info', displayName: 'Request Additional Info' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Document',
+      displayName: 'Document',
+      description: 'A supporting document uploaded as part of an admissions application',
+      properties: [
+        { name: 'application', type: 'text' as const, required: true },
+        { name: 'type', type: 'select' as const, required: true,
+          options: [
+            { label: 'Transcript', value: 'transcript' },
+            { label: 'Recommendation Letter', value: 'recommendation' },
+            { label: 'Personal Statement', value: 'personal-statement' },
+            { label: 'Test Score', value: 'test-score' },
+            { label: 'Resume', value: 'resume' },
+            { label: 'Portfolio', value: 'portfolio' },
+          ],
+        },
+        { name: 'fileUrl', type: 'text' as const, required: true },
+        { name: 'verified', type: 'boolean' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'application', target: 'Application', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'upload', displayName: 'Upload Document' },
+        { name: 'verify', displayName: 'Verify Document' },
+        { name: 'reject', displayName: 'Reject Document' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Decision',
+      displayName: 'Decision',
+      description: 'The admissions committee decision for a specific application',
+      properties: [
+        { name: 'application', type: 'text' as const, required: true },
+        { name: 'committee', type: 'text' as const, required: true },
+        { name: 'outcome', type: 'select' as const, required: true,
+          options: [
+            { label: 'Admit', value: 'admit' },
+            { label: 'Admit with Conditions', value: 'admit-conditions' },
+            { label: 'Waitlist', value: 'waitlist' },
+            { label: 'Deny', value: 'deny' },
+            { label: 'Defer', value: 'defer' },
+          ],
+        },
+        { name: 'conditions', type: 'text' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'application', target: 'Application', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'recommend', displayName: 'Recommend Decision' },
+        { name: 'approve', displayName: 'Approve Admission' },
+        { name: 'deny', displayName: 'Deny Admission' },
+        { name: 'defer', displayName: 'Defer Decision' },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Document completeness tracking prevents review delays.** Linking Documents to Applications with a verified flag lets the admissions office quickly identify incomplete applications before sending them to committee.
+- **Program-specific filtering streamlines committee work.** Committee members can filter applications by program and term, focusing their review on the relevant applicant pool.
+- **Conditional admissions are first-class records.** The Decision type captures conditions alongside outcomes, ensuring that conditional admits receive appropriate follow-up.
+- **Unified application lifecycle.** From draft through submission to decision, every stage is captured in structured status fields, giving leadership real-time visibility into pipeline health.

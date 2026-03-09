@@ -24,19 +24,14 @@ export class PlatformAPIClient {
     return h;
   }
 
-  // --------------- Orchestrate ---------------
+  // --------------- Internal routing ---------------
 
-  async orchestrate(request: {
-    target_backend: 'payload' | 'mid' | 'resources';
-    endpoint: string;
-    method?: string;
-    body?: unknown;
-    params?: Record<string, unknown>;
-  }): Promise<Response> {
+  /** @internal — do not use directly; use typed methods below. */
+  private async _route(backend: string, endpoint: string, method = 'GET', body?: unknown, params?: Record<string, unknown>): Promise<Response> {
     return fetch(`${this.baseUrl}/v3/orchestrate`, {
       method: 'POST',
       headers: await this.headers(),
-      body: JSON.stringify(request),
+      body: JSON.stringify({ target_backend: backend, endpoint, method, body, params }),
     });
   }
 
@@ -204,6 +199,13 @@ export class PlatformAPIClient {
     });
   }
 
+  // --------------- Platform requests ---------------
+
+  /** Route a request through the platform gateway. */
+  async platformRequest(endpoint: string, method = 'GET', body?: unknown, params?: Record<string, unknown>): Promise<Response> {
+    return this._route('payload', endpoint, method, body, params);
+  }
+
   // --------------- Tenants ---------------
 
   async listTenants(parentId?: string): Promise<Response> {
@@ -211,20 +213,11 @@ export class PlatformAPIClient {
     if (parentId) {
       params.where = { parent: { equals: parentId } };
     }
-    return this.orchestrate({
-      target_backend: 'payload',
-      endpoint: '/tenants',
-      method: 'GET',
-      params,
-    });
+    return this._route('payload', '/tenants', 'GET', undefined, params);
   }
 
   async getTenant(id: string): Promise<Response> {
-    return this.orchestrate({
-      target_backend: 'payload',
-      endpoint: `/tenants/${id}`,
-      method: 'GET',
-    });
+    return this._route('payload', `/tenants/${id}`);
   }
 
   async createTenant(data: {
@@ -233,12 +226,7 @@ export class PlatformAPIClient {
     parent?: string;
     domain?: string[];
   }): Promise<Response> {
-    return this.orchestrate({
-      target_backend: 'payload',
-      endpoint: '/tenants',
-      method: 'POST',
-      body: data,
-    });
+    return this._route('payload', '/tenants', 'POST', data);
   }
 
   // --------------- Users ---------------

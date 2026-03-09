@@ -1,0 +1,190 @@
+---
+title: Planning Permits
+description: Manage permit applications, review workflows, and approval tracking for municipal planning departments using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role:** Planning Systems Analyst at a mid-sized county government.
+
+You work in the Planning and Zoning department, responsible for digitizing the permit lifecycle. Your team processes hundreds of building, grading, and land-use permits each quarter. Paper forms and email-based reviews have led to missed deadlines and inconsistent decisions. You need a structured system that tracks every application from intake through final approval.
+
+## Business Problem
+
+The current permit workflow is fragmented across spreadsheets, shared drives, and email threads. Reviewers lack visibility into application status, applicants cannot self-serve on progress updates, and the department has no audit trail for approval decisions. You need a vertical application that provides:
+
+- A single intake point for all permit types.
+- Structured review assignments with recommendation tracking.
+- Conditional approvals with expiry dates and enforceable conditions.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **PermitApplication** | type, address, description, status | has many Reviews, has one Approval | submit, assign-reviewer, withdraw |
+| **Review** | application, reviewer, comments, recommendation | belongs to PermitApplication | complete-review, request-revision |
+| **Approval** | application, authority, conditions, expiryDate | belongs to PermitApplication | grant, deny, extend |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the vertical**
+
+   ```bash
+   eai init planning-permits
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define Object Types**
+
+   Create your permit data model in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: planning-permits
+   ✔ PermitApplication — 4 props, 2 links, 3 actions
+   ✔ Review — 4 props, 1 link, 2 actions
+   ✔ Approval — 4 props, 1 link, 3 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create a sample permit application**
+
+   ```bash
+   eai resources create PermitApplication \
+     --data '{"type": "building", "address": "42 Elm St", "description": "Two-story residential addition", "status": "submitted"}'
+   ```
+
+7. **Query applications by status**
+
+   ```bash
+   eai resources list PermitApplication --filter 'status=submitted'
+   ```
+
+8. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'planning-permits': [
+    {
+      name: 'PermitApplication',
+      displayName: 'Permit Application',
+      description: 'A planning or building permit application submitted for review',
+      properties: [
+        { name: 'type', type: 'select' as const, required: true,
+          options: [
+            { label: 'Building', value: 'building' },
+            { label: 'Grading', value: 'grading' },
+            { label: 'Land Use', value: 'land-use' },
+            { label: 'Demolition', value: 'demolition' },
+          ],
+        },
+        { name: 'address', type: 'text' as const, required: true, indexed: true },
+        { name: 'description', type: 'text' as const, required: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'draft',
+          options: [
+            { label: 'Draft', value: 'draft' },
+            { label: 'Submitted', value: 'submitted' },
+            { label: 'Under Review', value: 'under-review' },
+            { label: 'Approved', value: 'approved' },
+            { label: 'Denied', value: 'denied' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'reviews', target: 'Review', cardinality: 'many' as const },
+        { name: 'approval', target: 'Approval', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'submit', displayName: 'Submit Application' },
+        { name: 'assign-reviewer', displayName: 'Assign Reviewer' },
+        { name: 'withdraw', displayName: 'Withdraw Application' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Review',
+      displayName: 'Review',
+      description: 'A review conducted by a planning staff member on a permit application',
+      properties: [
+        { name: 'application', type: 'text' as const, required: true },
+        { name: 'reviewer', type: 'text' as const, required: true },
+        { name: 'comments', type: 'text' as const, required: false },
+        { name: 'recommendation', type: 'select' as const, required: false,
+          options: [
+            { label: 'Approve', value: 'approve' },
+            { label: 'Approve with Conditions', value: 'approve-conditions' },
+            { label: 'Deny', value: 'deny' },
+            { label: 'Request Revision', value: 'request-revision' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'permitApplication', target: 'PermitApplication', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'complete-review', displayName: 'Complete Review' },
+        { name: 'request-revision', displayName: 'Request Revision' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Approval',
+      displayName: 'Approval',
+      description: 'The final approval or denial decision for a permit application',
+      properties: [
+        { name: 'application', type: 'text' as const, required: true },
+        { name: 'authority', type: 'text' as const, required: true },
+        { name: 'conditions', type: 'text' as const, required: false },
+        { name: 'expiryDate', type: 'date' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'permitApplication', target: 'PermitApplication', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'grant', displayName: 'Grant Approval' },
+        { name: 'deny', displayName: 'Deny Application' },
+        { name: 'extend', displayName: 'Extend Expiry' },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Structured review workflow.** Linking Reviews to PermitApplications ensures every decision is traceable and no application falls through the cracks.
+- **Status-driven lifecycle.** Select-type properties with defined options enforce a consistent permit lifecycle that maps directly to departmental procedures.
+- **Conditional approvals with expiry.** The Approval type captures conditions and expiry dates, giving enforcement staff a clear reference for compliance follow-up.
+- **Self-service visibility.** Applicants and staff can query permits by status, reducing phone inquiries and improving departmental transparency.

@@ -1,0 +1,409 @@
+---
+title: Object Types
+description: Define declarative data models with properties, links, actions, and side effects using TypeScript.
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+Object Types are the foundation of every EAI vertical application. They define your data model declaratively -- what fields exist, how types relate to each other, what business operations are available, and what happens automatically when those operations run.
+
+Think of an Object Type as a blueprint for a business entity like a "Patient", "Invoice", or "Inspection Report". You write it once in TypeScript, validate it locally, and push it to the platform.
+
+## How it works
+
+```
+object-types.ts  ──→  eai types validate  ──→  eai types seed  ──→  Platform
+   (local)              (check rules)           (publish)           (live)
+```
+
+You define Object Types in `src/eai.config/object-types.ts`. Each type has four parts:
+
+1. **Properties** -- the fields on the object (text, number, date, etc.)
+2. **Links** -- relationships to other Object Types (one-to-one, one-to-many, etc.)
+3. **Actions** -- named business operations with role gates and validation
+4. **Side Effects** -- computed values that run automatically when actions execute
+
+## Defining an Object Type
+
+Object Types are exported as a record keyed by tenant scope:
+
+```typescript title="src/eai.config/object-types.ts"
+import type { ObjectTypeDefinition } from '@eai-tools/cli';
+
+export const objectTypes: Record<string, ObjectTypeDefinition[]> = {
+  'my-tenant': [
+    {
+      name: 'Patient',
+      displayName: 'Patient',
+      description: 'A registered patient in the system',
+      status: 'published',
+      properties: [
+        { name: 'firstName', type: 'text', required: true },
+        { name: 'lastName', type: 'text', required: true },
+        { name: 'dateOfBirth', type: 'date', required: true },
+        { name: 'email', type: 'text', required: false, indexed: true },
+        { name: 'status', type: 'select', required: true, options: [
+          { label: 'Active', value: 'active' },
+          { label: 'Inactive', value: 'inactive' },
+          { label: 'Discharged', value: 'discharged' },
+        ]},
+      ],
+      linkTypes: [],
+      actions: [],
+    },
+  ],
+};
+```
+
+<Aside type="tip">
+  The tenant key (e.g. `'my-tenant'`) maps to the environment variable `TENANT_MY_TENANT_ID` in your `.env.local`. The CLI resolves this automatically when seeding.
+</Aside>
+
+## Properties (field types)
+
+Every property has a `name`, `type`, and `required` flag. Some types accept additional configuration.
+
+| Type       | Description                        | Additional options       |
+|------------|------------------------------------|--------------------------|
+| `text`     | String value                       | `indexed`, `defaultValue` |
+| `number`   | Numeric value (integer or float)   | `indexed`, `defaultValue` |
+| `boolean`  | True/false                         | `defaultValue`           |
+| `date`     | ISO 8601 date/datetime             | `indexed`                |
+| `select`   | Constrained choice from options    | `options` (required)     |
+| `json`     | Arbitrary JSON object              | --                       |
+| `file`     | File attachment reference          | --                       |
+| `relationship` | Reference to another resource  | `indexed`                |
+
+### Property examples
+
+```typescript
+// Simple text field
+{ name: 'title', type: 'text', required: true }
+
+// Number with a default
+{ name: 'priority', type: 'number', required: false, defaultValue: 0 }
+
+// Boolean flag
+{ name: 'isUrgent', type: 'boolean', required: false, defaultValue: false }
+
+// Date field with indexing for fast queries
+{ name: 'submittedAt', type: 'date', required: false, indexed: true }
+
+// Select with constrained options
+{
+  name: 'severity',
+  type: 'select',
+  required: true,
+  options: [
+    { label: 'Low', value: 'low' },
+    { label: 'Medium', value: 'medium' },
+    { label: 'High', value: 'high' },
+    { label: 'Critical', value: 'critical' },
+  ],
+}
+
+// JSON for flexible/nested data
+{ name: 'metadata', type: 'json', required: false }
+
+// File attachment
+{ name: 'attachment', type: 'file', required: false }
+
+// Relationship to another resource
+{ name: 'assignedTo', type: 'relationship', required: false, indexed: true }
+```
+
+<Aside type="caution">
+  Select properties **must** include an `options` array. The validator will reject a select field without options.
+</Aside>
+
+## Links (relationships)
+
+Links define how Object Types relate to each other. Each link specifies a target type and a cardinality.
+
+```typescript
+linkTypes: [
+  {
+    name: 'appointments',
+    targetObjectType: 'Appointment',
+    cardinality: 'one-to-many',
+  },
+  {
+    name: 'primaryPhysician',
+    targetObjectType: 'Physician',
+    cardinality: 'many-to-one',
+  },
+  {
+    name: 'emergencyContact',
+    targetObjectType: 'Contact',
+    cardinality: 'one-to-one',
+    cascadeDelete: true,
+  },
+  {
+    name: 'insurancePlans',
+    targetObjectType: 'InsurancePlan',
+    cardinality: 'many-to-many',
+  },
+]
+```
+
+### Cardinality options
+
+| Cardinality    | Meaning                                      |
+|----------------|----------------------------------------------|
+| `one-to-one`   | Exactly one related resource                 |
+| `one-to-many`  | This resource has many of the target type     |
+| `many-to-one`  | Many of this resource point to one target     |
+| `many-to-many` | Many-to-many relationship                    |
+
+When `cascadeDelete` is `true`, deleting the parent resource also deletes linked resources.
+
+## Actions (business operations)
+
+Actions define named operations that users can perform on a resource. Each action specifies who can run it (via `requiredRole`), what validation must pass, and what side effects execute automatically.
+
+```typescript
+actions: [
+  {
+    name: 'submit',
+    displayName: 'Submit for Review',
+    requiredRole: 'tenant-user',
+    validationRules: {
+      requiredFields: ['firstName', 'lastName', 'dateOfBirth'],
+      requiredStatus: 'draft',
+    },
+    sideEffects: [
+      { type: 'set_field', field: 'status', value: 'submitted' },
+      { type: 'set_timestamp', field: 'submittedAt' },
+      { type: 'set_user', field: 'submittedBy' },
+    ],
+  },
+  {
+    name: 'approve',
+    displayName: 'Approve',
+    requiredRole: 'tenant-staff',
+    validationRules: {
+      requiredStatus: 'submitted',
+    },
+    sideEffects: [
+      { type: 'set_field', field: 'status', value: 'approved' },
+      { type: 'set_timestamp', field: 'approvedAt' },
+      { type: 'set_user', field: 'approvedBy' },
+    ],
+  },
+]
+```
+
+### Roles
+
+| Role            | Description                                    |
+|-----------------|------------------------------------------------|
+| `tenant-user`   | Any authenticated user within the tenant       |
+| `tenant-staff`  | Staff-level user with elevated permissions     |
+| `tenant-admin`  | Full administrative access within the tenant   |
+
+### Validation rules
+
+- **`requiredFields`** -- an array of property names that must be non-empty before the action can run.
+- **`requiredStatus`** -- the current value of the `status` field that must match (if your type uses a status field).
+
+## Side effects (computed values)
+
+Side effects run automatically when an action executes. They set field values without requiring the caller to provide them.
+
+| Side effect type  | What it does                                      |
+|-------------------|---------------------------------------------------|
+| `set_field`       | Sets a property to a fixed value                  |
+| `set_timestamp`   | Sets a property to the current ISO 8601 timestamp |
+| `set_user`        | Sets a property to the ID of the acting user      |
+
+```typescript
+sideEffects: [
+  // Set the status to 'approved'
+  { type: 'set_field', field: 'status', value: 'approved' },
+
+  // Record when the action happened
+  { type: 'set_timestamp', field: 'approvedAt' },
+
+  // Record who performed the action
+  { type: 'set_user', field: 'approvedBy' },
+]
+```
+
+<Aside type="tip">
+  The validator warns if a side effect references a field that is not defined in the type's `properties` array. Always define the target field first.
+</Aside>
+
+## Complete example
+
+Here is a full Object Type definition for an inspection report workflow:
+
+```typescript title="src/eai.config/object-types.ts"
+import type { ObjectTypeDefinition } from '@eai-tools/cli';
+
+export const objectTypes: Record<string, ObjectTypeDefinition[]> = {
+  'quality-control': [
+    {
+      name: 'InspectionReport',
+      displayName: 'Inspection Report',
+      description: 'Quality inspection report for manufacturing line items',
+      status: 'published',
+      properties: [
+        { name: 'title', type: 'text', required: true },
+        { name: 'description', type: 'text', required: false },
+        { name: 'inspectionDate', type: 'date', required: true, indexed: true },
+        { name: 'severity', type: 'select', required: true, options: [
+          { label: 'Minor', value: 'minor' },
+          { label: 'Major', value: 'major' },
+          { label: 'Critical', value: 'critical' },
+        ]},
+        { name: 'status', type: 'select', required: true, options: [
+          { label: 'Draft', value: 'draft' },
+          { label: 'Submitted', value: 'submitted' },
+          { label: 'Approved', value: 'approved' },
+          { label: 'Rejected', value: 'rejected' },
+        ]},
+        { name: 'findings', type: 'json', required: false },
+        { name: 'photos', type: 'file', required: false },
+        { name: 'submittedAt', type: 'date', required: false },
+        { name: 'submittedBy', type: 'text', required: false },
+        { name: 'approvedAt', type: 'date', required: false },
+        { name: 'approvedBy', type: 'text', required: false },
+      ],
+      linkTypes: [
+        {
+          name: 'productionLine',
+          targetObjectType: 'ProductionLine',
+          cardinality: 'many-to-one',
+        },
+        {
+          name: 'correctiveActions',
+          targetObjectType: 'CorrectiveAction',
+          cardinality: 'one-to-many',
+          cascadeDelete: true,
+        },
+      ],
+      actions: [
+        {
+          name: 'submit',
+          displayName: 'Submit Report',
+          requiredRole: 'tenant-user',
+          validationRules: {
+            requiredFields: ['title', 'inspectionDate', 'severity'],
+            requiredStatus: 'draft',
+          },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'submitted' },
+            { type: 'set_timestamp', field: 'submittedAt' },
+            { type: 'set_user', field: 'submittedBy' },
+          ],
+        },
+        {
+          name: 'approve',
+          displayName: 'Approve Report',
+          requiredRole: 'tenant-staff',
+          validationRules: {
+            requiredStatus: 'submitted',
+          },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'approved' },
+            { type: 'set_timestamp', field: 'approvedAt' },
+            { type: 'set_user', field: 'approvedBy' },
+          ],
+        },
+        {
+          name: 'reject',
+          displayName: 'Reject Report',
+          requiredRole: 'tenant-staff',
+          validationRules: {
+            requiredStatus: 'submitted',
+          },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'rejected' },
+          ],
+        },
+      ],
+    },
+  ],
+};
+```
+
+## Validation rules
+
+The CLI validates your Object Types before publishing. Run validation locally:
+
+```bash
+eai types validate
+```
+
+The validator checks:
+
+| Rule                                 | Severity |
+|--------------------------------------|----------|
+| Name must be PascalCase              | Error    |
+| `displayName` is required            | Error    |
+| `status` must be `draft`, `published`, or `deprecated` | Error |
+| No duplicate property names          | Error    |
+| Property type must be a valid type   | Error    |
+| Select properties must have `options`| Error    |
+| Link `targetObjectType` is required  | Error    |
+| Link `cardinality` must be valid     | Error    |
+| Action `name` is required            | Error    |
+| Action `requiredRole` must be valid  | Error    |
+| Side effect `type` must be valid     | Error    |
+| Side effect references unknown field | Warning  |
+| Non-select property has `options`    | Warning  |
+
+## CLI commands
+
+<Steps>
+1. **Validate** your types locally:
+   ```bash
+   eai types validate
+   ```
+
+2. **Seed** (push) types to the platform:
+   ```bash
+   eai types seed
+   ```
+   Use `--dry-run` to preview without making changes:
+   ```bash
+   eai types seed --dry-run
+   ```
+
+3. **Diff** local vs. remote types:
+   ```bash
+   eai types diff
+   ```
+
+4. **Pull** remote types into a generated TypeScript file:
+   ```bash
+   eai types pull
+   ```
+   Output goes to `src/eai.config/object-types.generated.ts` by default.
+</Steps>
+
+### Seeding to a specific tenant
+
+If your `object-types.ts` exports multiple tenant scopes, you can seed a specific one:
+
+```bash
+eai types seed --tenant-key quality-control
+```
+
+## Status lifecycle
+
+Object Types have a status that controls their visibility on the platform:
+
+```
+draft  ──→  published  ──→  deprecated
+```
+
+- **`draft`** -- visible only in development, not queryable via the resources API.
+- **`published`** -- live on the platform, resources can be created against this type.
+- **`deprecated`** -- existing resources are still accessible, but new resources cannot be created.
+
+## Next steps
+
+- [Resources](/eai-cli/guides/resources/) -- create, query, and manage resources based on your Object Types
+- [AI Features](/eai-cli/guides/ai-features/) -- integrate AI workflows with your data model
+- [Security](/eai-cli/guides/security/) -- understand how roles and actions interact with access control

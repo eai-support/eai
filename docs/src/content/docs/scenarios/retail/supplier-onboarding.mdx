@@ -1,0 +1,188 @@
+---
+title: Supplier Onboarding
+description: Streamline vendor applications, contract management, and performance tracking for retail procurement using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role:** Procurement Lead at a large retail group.
+
+You manage the process of evaluating, onboarding, and monitoring suppliers across multiple product categories. Each year, your team processes over 200 vendor applications. Approved vendors sign contracts with specific terms, and their performance is reviewed quarterly. The current process involves PDF application forms, manual contract filing, and ad-hoc performance conversations.
+
+## Business Problem
+
+Vendor applications arrive as email attachments with no standardized format. Contract terms are stored in a shared drive with no link to the original application. Performance reviews happen informally, and there is no structured score that feeds back into contract renewal decisions. You need:
+
+- A standardized vendor application pipeline with status tracking.
+- Contract management linked to approved vendors with term visibility.
+- Quarterly performance reviews that produce a score tied to contract renewals.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **VendorApplication** | company, category, status, submittedDate | has one Contract | submit, review, approve, reject |
+| **Contract** | vendor, terms, startDate, endDate | belongs to VendorApplication, has many PerformanceReviews | execute, amend, terminate |
+| **PerformanceReview** | vendor, period, metrics, score | belongs to Contract | schedule, complete, flag-issue |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the vertical**
+
+   ```bash
+   eai init supplier-onboarding
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define Object Types**
+
+   Add VendorApplication, Contract, and PerformanceReview to `src/eai.config/object-types.ts`.
+
+4. **Validate and seed**
+
+   ```bash
+   eai types validate
+   eai types seed
+   ```
+
+   ```
+   Tenant: supplier-onboarding
+   ✔ VendorApplication — 4 props, 1 link, 4 actions
+   ✔ Contract — 4 props, 2 links, 3 actions
+   ✔ PerformanceReview — 4 props, 1 link, 3 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Submit a vendor application**
+
+   ```bash
+   eai resources create VendorApplication \
+     --data '{"company": "Artisan Foods Co.", "category": "food-beverage", "status": "submitted", "submittedDate": "2026-03-01"}'
+   ```
+
+6. **Create a contract**
+
+   ```bash
+   eai resources create Contract \
+     --data '{"vendor": "artisan-foods", "terms": "Net 30, minimum order 500 units", "startDate": "2026-04-01", "endDate": "2027-03-31"}'
+   ```
+
+7. **List applications under review**
+
+   ```bash
+   eai resources list VendorApplication --filter 'status=under-review'
+   ```
+
+8. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'supplier-onboarding': [
+    {
+      name: 'VendorApplication',
+      displayName: 'Vendor Application',
+      description: 'An application submitted by a company seeking to become an approved supplier',
+      properties: [
+        { name: 'company', type: 'text' as const, required: true, indexed: true },
+        { name: 'category', type: 'select' as const, required: true,
+          options: [
+            { label: 'Food & Beverage', value: 'food-beverage' },
+            { label: 'Apparel', value: 'apparel' },
+            { label: 'Electronics', value: 'electronics' },
+            { label: 'Home Goods', value: 'home-goods' },
+            { label: 'Health & Beauty', value: 'health-beauty' },
+          ],
+        },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'submitted',
+          options: [
+            { label: 'Submitted', value: 'submitted' },
+            { label: 'Under Review', value: 'under-review' },
+            { label: 'Approved', value: 'approved' },
+            { label: 'Rejected', value: 'rejected' },
+            { label: 'On Hold', value: 'on-hold' },
+          ],
+        },
+        { name: 'submittedDate', type: 'date' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'contract', target: 'Contract', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'submit', displayName: 'Submit Application' },
+        { name: 'review', displayName: 'Begin Review' },
+        { name: 'approve', displayName: 'Approve Vendor' },
+        { name: 'reject', displayName: 'Reject Application' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Contract',
+      displayName: 'Contract',
+      description: 'A supply agreement between the retail group and an approved vendor',
+      properties: [
+        { name: 'vendor', type: 'text' as const, required: true, indexed: true },
+        { name: 'terms', type: 'text' as const, required: true },
+        { name: 'startDate', type: 'date' as const, required: true },
+        { name: 'endDate', type: 'date' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'vendorApplication', target: 'VendorApplication', cardinality: 'one' as const },
+        { name: 'performanceReviews', target: 'PerformanceReview', cardinality: 'many' as const },
+      ],
+      actions: [
+        { name: 'execute', displayName: 'Execute Contract' },
+        { name: 'amend', displayName: 'Amend Contract' },
+        { name: 'terminate', displayName: 'Terminate Contract' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'PerformanceReview',
+      displayName: 'Performance Review',
+      description: 'A periodic evaluation of a vendor against quality, delivery, and service metrics',
+      properties: [
+        { name: 'vendor', type: 'text' as const, required: true },
+        { name: 'period', type: 'text' as const, required: true },
+        { name: 'metrics', type: 'text' as const, required: true },
+        { name: 'score', type: 'number' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'contract', target: 'Contract', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'schedule', displayName: 'Schedule Review' },
+        { name: 'complete', displayName: 'Complete Review' },
+        { name: 'flag-issue', displayName: 'Flag Issue' },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Standardized application pipeline reduces procurement friction.** Every vendor goes through the same structured intake, eliminating inconsistency from ad-hoc email submissions.
+- **Contract-linked applications create an audit trail.** The link between VendorApplication and Contract ensures that every supply agreement traces back to a vetted and approved application.
+- **Performance scores drive data-driven renewals.** Quarterly PerformanceReviews produce numeric scores that inform contract renewal, amendment, or termination decisions.
+- **Category-based vendor segmentation.** Categorizing vendors by product type enables procurement leads to assess supplier diversity and identify gaps in the vendor portfolio.

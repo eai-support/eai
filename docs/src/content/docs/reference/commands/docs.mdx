@@ -1,0 +1,133 @@
+---
+title: eai docs
+description: Upload, classify, and index documents on the platform
+---
+
+## Synopsis
+
+```
+eai docs <subcommand> <argument> [options]
+```
+
+## Description
+
+`eai docs` manages documents on the EAI platform. You can upload files, run AI-powered classification to automatically categorize documents, and index them for retrieval-augmented generation (RAG) so they become searchable by AI chat workflows.
+
+This command requires `BASE_URL_PUBLIC_API` and a tenant ID to be set in `.env.local` or the environment. The `upload` subcommand also requires valid authentication tokens (run `eai login` first).
+
+## Subcommands
+
+### eai docs upload
+
+Upload a file to the platform. The file is sent as a multipart form upload with an authorization header.
+
+```
+eai docs upload <file>
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<file>` | Path to the file to upload | Required |
+
+### eai docs classify
+
+Run AI-powered classification on a document. The platform analyzes the document content and returns a classification result including category, confidence score, and extracted metadata.
+
+```
+eai docs classify <file>
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<file>` | Path to the file to classify | Required |
+
+### eai docs index
+
+Index an uploaded document for RAG (retrieval-augmented generation). Once indexed, the document's content becomes available to AI chat workflows for context-aware responses.
+
+```
+eai docs index <documentId>
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<documentId>` | The ID of the previously uploaded document | Required |
+
+## Examples
+
+### Upload a document
+
+```bash
+eai docs upload ./reports/q1-financial-summary.pdf
+```
+
+```
+⠋ Uploading q1-financial-summary.pdf...
+✔ Uploaded q1-financial-summary.pdf
+{
+  "id": "doc-8f3a1b2c-d4e5-6789-abcd-ef0123456789",
+  "fileName": "q1-financial-summary.pdf",
+  "fileUrl": "https://storage.myenterprise.ai/docs/doc-8f3a1b2c.pdf",
+  "uploadedAt": "2026-03-09T10:30:00Z"
+}
+```
+
+### Classify a document
+
+```bash
+eai docs classify ./reports/q1-financial-summary.pdf
+```
+
+```
+⠋ Classifying q1-financial-summary.pdf...
+✔ Classified q1-financial-summary.pdf
+{
+  "category": "report",
+  "confidence": 0.94,
+  "subcategory": "financial-report",
+  "extractedMetadata": {
+    "period": "Q1 2026",
+    "department": "Finance",
+    "documentType": "Quarterly Summary"
+  }
+}
+```
+
+### Index a document for RAG
+
+```bash
+eai docs index doc-8f3a1b2c-d4e5-6789-abcd-ef0123456789
+```
+
+```
+⠋ Indexing document doc-8f3a1b2c-d4e5-6789-abcd-ef0123456789...
+✔ Indexed document doc-8f3a1b2c-... for RAG
+```
+
+### Full workflow: upload, classify, and index
+
+```bash
+# Step 1: Upload the document
+eai docs upload ./evidence/patient-lab-results.pdf
+
+# Step 2: Classify the document
+eai docs classify ./evidence/patient-lab-results.pdf
+
+# Step 3: Index for RAG (use the document ID from the upload response)
+eai docs index doc-a7c9e4d1-b2c3-4567-89ab-cdef01234567
+
+# Step 4: Query via AI chat
+eai chat stream "What do the lab results show?" --workflow wf-medical-789
+```
+
+## Prerequisites
+
+- **Authentication**: Run `eai login` before uploading documents. Upload requires a valid access token.
+- **Environment**: `BASE_URL_PUBLIC_API` and a tenant ID must be configured.
+- **File access**: The file path must be accessible from the current working directory.
+
+## Related Commands
+
+- [`eai chat`](/eai-cli/reference/commands/chat/) -- query indexed documents through AI chat
+- [`eai resources`](/eai-cli/reference/commands/resources/) -- manage Document resources (Object Type)
+- [`eai login`](/eai-cli/reference/commands/login/) -- authenticate before uploading

@@ -1,0 +1,284 @@
+---
+title: Security
+description: Authentication flows, role-based access control, token management, and security best practices for the EAI CLI.
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+Security on the EAI platform covers authentication (proving who you are), authorization (what you are allowed to do), and credential management (keeping secrets safe). The CLI uses Entra CIAM with the device code flow for authentication and passes Bearer tokens to the Platform API for every request.
+
+## Authentication flow
+
+The CLI uses the **OAuth 2.0 device code flow**, designed for CLI and device applications where a browser is available but the application itself cannot handle redirects.
+
+```
+Terminal                    Browser                     Entra CIAM
+   │                          │                            │
+   │  eai login               │                            │
+   │──────────────────────────────────────────────────────→│
+   │  ← device code + URL     │                            │
+   │                          │                            │
+   │  "Go to https://...      │                            │
+   │   and enter code: ABCD"  │                            │
+   │                          │                            │
+   │                     User opens URL                    │
+   │                     Enters code                       │
+   │                     Signs in                          │
+   │                          │───────────────────────────→│
+   │                          │  ← authenticated           │
+   │                          │                            │
+   │  (polling)               │                            │
+   │──────────────────────────────────────────────────────→│
+   │  ← access token + refresh token                      │
+   │                          │                            │
+   │  ✔ Authenticated as user@example.com                  │
+```
+
+<Steps>
+1. You run `eai login`
+2. The CLI requests a device code from Entra CIAM
+3. A message appears with a URL and a one-time code
+4. You open the URL in your browser, enter the code, and sign in
+5. The CLI polls for the token and stores it locally
+</Steps>
+
+### Running login
+
+```bash
+eai login
+```
+
+Output:
+
+```
+Authenticating with Entra CIAM
+  Tenant: eaidevmyentepriseai
+  Client: abc123...
+
+To sign in, use a web browser to open the page
+https://microsoft.com/devicelogin and enter the code ABCD-EFGH
+to authenticate.
+
+✔ Authenticated as user@example.com
+  Token expires: 1/15/2025, 11:30:00 AM
+```
+
+### Configuration
+
+The login command uses defaults that can be overridden:
+
+| Flag               | Default                                | Description                |
+|--------------------|----------------------------------------|----------------------------|
+| `--tenant-name`    | `eaidevmyentepriseai`                 | Entra CIAM tenant name     |
+| `--tenant-id`      | (platform default)                     | Entra CIAM tenant ID       |
+| `--client-id`      | from `ENTRA_CLIENT_ID` in `.env.local` | App registration client ID |
+| `--scope`          | `openid profile email offline_access`  | OAuth scopes               |
+
+```bash
+eai login --client-id your-client-id --scope "openid profile email offline_access"
+```
+
+### Logging out
+
+Clear stored authentication tokens:
+
+```bash
+eai logout
+```
+
+```
+✔ Logged out. Stored tokens cleared.
+```
+
+## Token management
+
+Tokens are stored locally at `~/.eai/tokens.json`. The file is encrypted using AES-256-CBC with a machine-specific key.
+
+### Token lifecycle
+
+```
+Login  ──→  Access Token (valid ~1 hour)
+               │
+               │  (auto-refresh with 5 min buffer)
+               │
+               ▼
+          Refresh Token  ──→  New Access Token
+               │
+               │  (if refresh fails)
+               │
+               ▼
+          Re-login required
+```
+
+- **Access tokens** expire after approximately 1 hour
+- The CLI automatically refreshes the access token using the refresh token when it is within 5 minutes of expiry
+- If the refresh token is also expired or invalid, you need to run `eai login` again
+
+### Checking authentication status
+
+```bash
+eai whoami
+```
+
+This shows your current identity and token status. You can also check programmatically:
+
+```bash
+eai verify
+```
+
+The verify command includes an authentication check among its connectivity tests.
+
+<Aside type="note">
+  Token storage at `~/.eai/tokens.json` uses filesystem encryption. The encryption key is derived from the user's home directory path. This protects against casual access but is not a substitute for full-disk encryption on shared machines.
+</Aside>
+
+## Roles
+
+The platform uses three roles within each tenant. Roles control which actions a user can execute on resources.
+
+| Role            | Description                                           | Typical use                        |
+|-----------------|-------------------------------------------------------|------------------------------------|
+| `tenant-user`   | Standard user within the tenant                       | Submit forms, view own records     |
+| `tenant-staff`  | Elevated permissions within the tenant                | Review submissions, approve records |
+| `tenant-admin`  | Full administrative access within the tenant          | Manage users, configure settings   |
+
+### Roles in Object Type actions
+
+When you define an [action on an Object Type](/eai-cli/guides/object-types/#actions-business-operations), you specify the minimum role required:
+
+```typescript
+actions: [
+  {
+    name: 'submit',
+    displayName: 'Submit',
+    requiredRole: 'tenant-user',     // Any tenant member can submit
+    // ...
+  },
+  {
+    name: 'approve',
+    displayName: 'Approve',
+    requiredRole: 'tenant-staff',    // Only staff or admin can approve
+    // ...
+  },
+  {
+    name: 'configure',
+    displayName: 'Configure Settings',
+    requiredRole: 'tenant-admin',    // Only admin can configure
+    // ...
+  },
+]
+```
+
+Roles are hierarchical: `tenant-admin` can perform any action that `tenant-staff` or `tenant-user` can perform.
+
+## Access control patterns
+
+### Tenant isolation
+
+Every API request is scoped to a tenant. The CLI includes the tenant ID in the request path:
+
+```
+/v3/resources/{tenantId}/{objectType}
+```
+
+A user authenticated in Tenant A cannot access resources in Tenant B, even if they know the resource ID. The platform enforces this at the API level.
+
+### Token-based authorization
+
+Every CLI request includes a Bearer token in the `Authorization` header:
+
+```
+Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
+```
+
+The Platform API validates the token, checks the user's tenant membership, and verifies their role before processing the request.
+
+### Action validation
+
+When executing an action on a resource, the platform checks:
+
+<Steps>
+1. The user has a valid authentication token
+2. The user belongs to the resource's tenant
+3. The user's role meets or exceeds the action's `requiredRole`
+4. The resource meets the action's `validationRules` (required fields, required status)
+5. The action's side effects are applied
+</Steps>
+
+If any check fails, the action is rejected with an appropriate error code.
+
+## Best practices for secrets
+
+### Environment variables
+
+<Aside type="danger">
+  Never commit `.env.local` to version control. It contains secrets like `AUTH_SECRET` and `ENTRA_CLIENT_ID`.
+</Aside>
+
+- Store secrets in Azure Key Vault, not in App Config directly
+- Use `eai env pull --include-secrets` only on development machines
+- Add `.env.local` to `.gitignore` (done automatically by `eai init`)
+
+### CI/CD secrets
+
+In GitHub Actions, use repository secrets or environment secrets:
+
+```bash
+# Set secrets via GitHub CLI
+gh secret set AZUREAPPSERVICE_CLIENTID --repo your-org/your-repo
+gh secret set AUTH_SECRET --repo your-org/your-repo
+```
+
+Reference them in workflows:
+
+```yaml
+env:
+  AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+```
+
+Never log or print secret values in CI/CD output.
+
+### Token storage
+
+- Tokens are stored in `~/.eai/tokens.json` (encrypted)
+- Run `eai logout` when you are done working to clear tokens
+- On shared machines, always log out before leaving
+- Consider full-disk encryption for additional protection
+
+### API key rotation
+
+When rotating API keys or secrets:
+
+<Steps>
+1. Update the secret in Azure Key Vault
+2. Pull the new configuration: `eai env pull --include-secrets`
+3. Verify connectivity: `eai verify`
+4. Update CI/CD secrets if applicable
+</Steps>
+
+## Security checklist
+
+| Check                                         | Command                    |
+|-----------------------------------------------|----------------------------|
+| Authenticated with valid token                | `eai verify`               |
+| All required env vars set                     | `eai doctor`               |
+| `.env.local` not committed                    | `git status`               |
+| Tokens cleared after session                  | `eai logout`               |
+| Secrets in Key Vault, not plaintext           | `eai env list`             |
+| CI/CD uses GitHub secrets, not hardcoded      | Check workflow YAML        |
+
+## Command reference
+
+| Command         | Description                            |
+|-----------------|----------------------------------------|
+| `eai login`     | Authenticate with Entra CIAM           |
+| `eai logout`    | Clear stored tokens                    |
+| `eai whoami`    | Show current identity                  |
+| `eai verify`    | Check authentication and connectivity  |
+| `eai doctor`    | Diagnose security configuration issues |
+
+## Next steps
+
+- [Environment](/eai-cli/guides/environment/) -- manage API keys and secrets with `eai env`
+- [Multi-Tenant](/eai-cli/guides/multi-tenant/) -- understand tenant-level data isolation
+- [Troubleshooting](/eai-cli/guides/troubleshooting/) -- resolve authentication and token issues

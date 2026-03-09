@@ -1,0 +1,144 @@
+---
+title: Environment Variables
+description: Complete reference of all environment variables used by the EAI CLI and vertical applications, including descriptions, defaults, and examples.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Overview
+
+Environment variables are stored in `.env.local` at the project root. The CLI reads this file automatically for all commands. You can pull environment variables from the platform with:
+
+```bash
+eai env pull --include-secrets
+```
+
+<Aside type="caution">
+  Never commit `.env.local` to version control. Ensure it is listed in your `.gitignore` file.
+</Aside>
+
+## Platform API
+
+| Variable | Description | Required | Default | Example |
+|---|---|---|---|---|
+| `BASE_URL_PUBLIC_API` | Base URL of the Platform API | Yes | -- | `https://api.example.com` |
+| `EAI_ENV` | Current environment name | No | `dev` | `dev`, `staging`, `production` |
+
+## Authentication (Entra CIAM)
+
+| Variable | Description | Required | Default | Example |
+|---|---|---|---|---|
+| `ENTRA_TENANT_ID` | Entra CIAM tenant ID (GUID) | Yes | -- | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
+| `ENTRA_TENANT_NAME` | Entra CIAM tenant name (used to build the authority URL) | Yes | -- | `myorg` |
+| `ENTRA_CLIENT_ID` | Application (client) ID registered in Entra | Yes | -- | `f1e2d3c4-b5a6-7890-abcd-ef1234567890` |
+| `AUTH_SECRET` | Secret used for session encryption in Next.js applications | Yes (web) | -- | `a-random-32-character-secret-key` |
+
+The authority URL is constructed as: `https://{ENTRA_TENANT_NAME}.ciamlogin.com/{ENTRA_TENANT_ID}`
+
+## Tenant Configuration
+
+| Variable | Description | Required | Default | Example |
+|---|---|---|---|---|
+| `TENANT_DEFAULT_ID` | Default tenant ID used when no specific tenant is specified | Yes | -- | `abc-123-def-456` |
+| `TENANT_{KEY}_ID` | Tenant ID for a named tenant key (matches keys in `object-types.ts`) | No | -- | `TENANT_PATIENT_INTAKE_ID=abc-123` |
+
+### Tenant Key Mapping
+
+The CLI maps tenant keys from your `object-types.ts` file to environment variables using the pattern `TENANT_{KEY}_ID`. The key is converted to uppercase with hyphens replaced by underscores.
+
+```typescript
+// object-types.ts
+export const objectTypes = {
+  'patient-intake': [ /* ... */ ],    // → TENANT_PATIENT_INTAKE_ID
+  'loan-processing': [ /* ... */ ],   // → TENANT_LOAN_PROCESSING_ID
+};
+```
+
+```bash
+# .env.local
+TENANT_PATIENT_INTAKE_ID=abc-123-def
+TENANT_LOAN_PROCESSING_ID=def-456-ghi
+TENANT_DEFAULT_ID=abc-123-def
+```
+
+If a specific `TENANT_{KEY}_ID` is not found, the CLI falls back to `TENANT_DEFAULT_ID`.
+
+## Workflow Configuration
+
+| Variable | Description | Required | Default | Example |
+|---|---|---|---|---|
+| `WORKFLOW_DEFAULT_ID` | Default AI workflow ID | No | -- | `wf-abc-123` |
+| `WORKFLOW_{KEY}_ID` | Workflow ID for a named workflow | No | -- | `WORKFLOW_TRIAGE_ID=wf-def-456` |
+
+## Next.js Public Variables
+
+These variables are exposed to the browser in Next.js applications. They must be prefixed with `NEXT_PUBLIC_`.
+
+| Variable | Description | Required | Default | Example |
+|---|---|---|---|---|
+| `NEXT_PUBLIC_APP_NAME` | Application name (used for display and config resolution) | Yes (web) | -- | `patient-intake` |
+| `NEXT_PUBLIC_BASE_URL` | Public URL of the Next.js application | No | -- | `https://myapp.example.com` |
+| `NEXT_PUBLIC_ENTRA_TENANT_NAME` | Entra tenant name (for client-side auth redirects) | Yes (web) | -- | `myorg` |
+| `NEXT_PUBLIC_ENTRA_CLIENT_ID` | Entra client ID (for client-side auth redirects) | Yes (web) | -- | `f1e2d3c4-b5a6-7890-abcd-ef1234567890` |
+
+<Aside type="note">
+  `NEXT_PUBLIC_*` variables are embedded in the client bundle at build time. Do not use this prefix for secrets or sensitive values.
+</Aside>
+
+## Example .env.local
+
+```bash
+# Platform API
+BASE_URL_PUBLIC_API=https://api.example.com
+EAI_ENV=dev
+
+# Authentication
+ENTRA_TENANT_ID=a1b2c3d4-e5f6-7890-abcd-ef1234567890
+ENTRA_TENANT_NAME=myorg
+ENTRA_CLIENT_ID=f1e2d3c4-b5a6-7890-abcd-ef1234567890
+AUTH_SECRET=replace-with-a-random-32-char-key
+
+# Tenants
+TENANT_DEFAULT_ID=abc-123-def-456
+TENANT_PATIENT_INTAKE_ID=abc-123-def-456
+
+# Workflows
+WORKFLOW_DEFAULT_ID=wf-abc-123
+
+# Next.js (web apps only)
+NEXT_PUBLIC_APP_NAME=patient-intake
+NEXT_PUBLIC_BASE_URL=http://localhost:3000
+NEXT_PUBLIC_ENTRA_TENANT_NAME=myorg
+NEXT_PUBLIC_ENTRA_CLIENT_ID=f1e2d3c4-b5a6-7890-abcd-ef1234567890
+```
+
+## Variable Resolution Order
+
+The CLI resolves environment variables in this order (later sources take precedence):
+
+1. `.env.local` file in the project root
+2. System environment variables (`process.env`)
+
+This means you can override any `.env.local` value by setting a system environment variable:
+
+```bash
+# Override the default tenant for a single command
+TENANT_DEFAULT_ID=different-tenant eai resources list Patient
+```
+
+## CI/CD Considerations
+
+In CI/CD pipelines, set environment variables through your platform's secret management instead of `.env.local`:
+
+- **GitHub Actions**: Use repository secrets and reference them as `${{ secrets.BASE_URL_PUBLIC_API }}`
+- **Azure Pipelines**: Use variable groups or pipeline variables
+- **Docker**: Pass variables via `--env-file` or individual `--env` flags
+
+```yaml
+# GitHub Actions example
+env:
+  BASE_URL_PUBLIC_API: ${{ secrets.BASE_URL_PUBLIC_API }}
+  ENTRA_TENANT_ID: ${{ secrets.ENTRA_TENANT_ID }}
+  ENTRA_CLIENT_ID: ${{ secrets.ENTRA_CLIENT_ID }}
+  TENANT_DEFAULT_ID: ${{ secrets.TENANT_DEFAULT_ID }}
+```

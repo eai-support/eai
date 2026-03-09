@@ -1,0 +1,200 @@
+---
+title: Research Grants
+description: Manage research proposals, track awards, and monitor budget spending for university research administration using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role:** Research Administration Officer at a research university.
+
+You support faculty across 12 departments in preparing grant proposals, managing awarded funds, and ensuring compliance with sponsor requirements. The university submits over 300 proposals per year to federal agencies, foundations, and industry partners. Each awarded grant comes with its own budget structure, reporting requirements, and spending rules.
+
+## Business Problem
+
+Proposal tracking is fragmented -- principal investigators (PIs) manage their own submissions in personal spreadsheets, and the grants office learns about awards only when PIs forward notification emails. Budget tracking for active awards is done in a separate financial system that is not linked to the original proposal. Spending overruns on individual budget categories go undetected until quarterly reconciliation. You need:
+
+- A centralized proposal registry with PI, agency, and status tracking.
+- Award records linked to funded proposals with start and end dates.
+- Budget items that track allocated versus spent amounts by category.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Proposal** | title, pi, agency, amount, status | has one Award | submit, revise, withdraw |
+| **Award** | proposal, amount, startDate, endDate | belongs to Proposal, has many BudgetItems | activate, extend, close |
+| **BudgetItem** | award, category, allocated, spent | belongs to Award | allocate, spend, reallocate |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the vertical**
+
+   ```bash
+   eai init research-grants
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define Object Types**
+
+   Add Proposal, Award, and BudgetItem to `src/eai.config/object-types.ts`.
+
+4. **Validate and seed**
+
+   ```bash
+   eai types validate
+   eai types seed
+   ```
+
+   ```
+   Tenant: research-grants
+   ✔ Proposal — 5 props, 1 link, 3 actions
+   ✔ Award — 4 props, 2 links, 3 actions
+   ✔ BudgetItem — 4 props, 1 link, 3 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Create a proposal**
+
+   ```bash
+   eai resources create Proposal \
+     --data '{"title": "Machine Learning for Climate Modeling", "pi": "Dr. Elena Vasquez", "agency": "nsf", "amount": 450000, "status": "submitted"}'
+   ```
+
+6. **Record an award**
+
+   ```bash
+   eai resources create Award \
+     --data '{"proposal": "prop-001", "amount": 450000, "startDate": "2026-09-01", "endDate": "2029-08-31"}'
+   ```
+
+7. **Add a budget item**
+
+   ```bash
+   eai resources create BudgetItem \
+     --data '{"award": "award-001", "category": "personnel", "allocated": 280000, "spent": 0}'
+   ```
+
+8. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'research-grants': [
+    {
+      name: 'Proposal',
+      displayName: 'Proposal',
+      description: 'A research grant proposal submitted by a principal investigator to a funding agency',
+      properties: [
+        { name: 'title', type: 'text' as const, required: true, indexed: true },
+        { name: 'pi', type: 'text' as const, required: true, indexed: true },
+        { name: 'agency', type: 'select' as const, required: true,
+          options: [
+            { label: 'NSF', value: 'nsf' },
+            { label: 'NIH', value: 'nih' },
+            { label: 'DOE', value: 'doe' },
+            { label: 'DARPA', value: 'darpa' },
+            { label: 'Foundation', value: 'foundation' },
+            { label: 'Industry', value: 'industry' },
+          ],
+        },
+        { name: 'amount', type: 'number' as const, required: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'draft',
+          options: [
+            { label: 'Draft', value: 'draft' },
+            { label: 'Internal Review', value: 'internal-review' },
+            { label: 'Submitted', value: 'submitted' },
+            { label: 'Under Review', value: 'under-review' },
+            { label: 'Funded', value: 'funded' },
+            { label: 'Declined', value: 'declined' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'award', target: 'Award', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'submit', displayName: 'Submit Proposal' },
+        { name: 'revise', displayName: 'Revise Proposal' },
+        { name: 'withdraw', displayName: 'Withdraw Proposal' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Award',
+      displayName: 'Award',
+      description: 'A funded research award linked to an approved proposal with a defined project period',
+      properties: [
+        { name: 'proposal', type: 'text' as const, required: true },
+        { name: 'amount', type: 'number' as const, required: true },
+        { name: 'startDate', type: 'date' as const, required: true },
+        { name: 'endDate', type: 'date' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'proposal', target: 'Proposal', cardinality: 'one' as const },
+        { name: 'budgetItems', target: 'BudgetItem', cardinality: 'many' as const },
+      ],
+      actions: [
+        { name: 'activate', displayName: 'Activate Award' },
+        { name: 'extend', displayName: 'Extend Award' },
+        { name: 'close', displayName: 'Close Award' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'BudgetItem',
+      displayName: 'Budget Item',
+      description: 'A budget line item within a research award tracking allocated versus spent funds',
+      properties: [
+        { name: 'award', type: 'text' as const, required: true },
+        { name: 'category', type: 'select' as const, required: true,
+          options: [
+            { label: 'Personnel', value: 'personnel' },
+            { label: 'Equipment', value: 'equipment' },
+            { label: 'Travel', value: 'travel' },
+            { label: 'Supplies', value: 'supplies' },
+            { label: 'Subcontracts', value: 'subcontracts' },
+            { label: 'Indirect Costs', value: 'indirect-costs' },
+          ],
+        },
+        { name: 'allocated', type: 'number' as const, required: true },
+        { name: 'spent', type: 'number' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'award', target: 'Award', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'allocate', displayName: 'Allocate Budget' },
+        { name: 'spend', displayName: 'Record Spending' },
+        { name: 'reallocate', displayName: 'Reallocate Funds' },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Centralized proposal tracking improves institutional visibility.** The grants office can see all proposals across departments, enabling better resource allocation and avoiding duplicate submissions to the same program.
+- **Award-to-proposal linking maintains the funding trail.** Every Award traces back to its originating Proposal, making it easy to compile success rates by PI, department, or funding agency.
+- **Category-level budget monitoring catches overruns early.** Tracking allocated versus spent amounts on each BudgetItem allows administrators to flag spending issues before they escalate to sponsor audit findings.
+- **Agency-based filtering supports compliance.** Different funding agencies have different reporting and spending rules; filtering by agency helps the grants office apply the correct compliance framework to each award.

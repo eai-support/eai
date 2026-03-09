@@ -1,0 +1,281 @@
+---
+title: eai resources
+description: CRUD operations on platform resources -- list, get, create, update, delete, query, and schema
+---
+
+## Synopsis
+
+```
+eai resources <subcommand> [options]
+```
+
+## Description
+
+`eai resources` provides full CRUD (Create, Read, Update, Delete) operations on platform resources. Resources are instances of Object Types -- the data records that your vertical application manages.
+
+All subcommands require `BASE_URL_PUBLIC_API` and at least one `TENANT_*_ID` to be set in `.env.local` or the environment. The tenant ID is resolved from environment variables automatically.
+
+This command must be run from within an EAI project directory.
+
+## Subcommands
+
+### eai resources list
+
+List resources of a given Object Type with pagination and sorting.
+
+```
+eai resources list <type> [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<type>` | Object Type name (e.g., `Patient`, `Document`) | Required |
+| `--page <n>` | Page number | `1` |
+| `--limit <n>` | Items per page | `20` |
+| `--sort <field>` | Sort field. Prefix with `-` for descending. | `-created_at` |
+| `--json` | Output raw JSON | `false` |
+
+### eai resources get
+
+Retrieve a single resource by type and ID.
+
+```
+eai resources get <type> <id> [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<type>` | Object Type name | Required |
+| `<id>` | Resource ID | Required |
+| `--json` | Output raw JSON | `false` |
+
+### eai resources create
+
+Create a new resource. Provide data as an inline JSON string or from a file.
+
+```
+eai resources create <type> [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<type>` | Object Type name | Required |
+| `--data <json>` | Resource data as a JSON string | -- |
+| `--file <path>` | Read resource data from a JSON file | -- |
+
+One of `--data` or `--file` is required.
+
+### eai resources update
+
+Update an existing resource. The CLI automatically fetches the current version for optimistic locking if `--version` is not provided.
+
+```
+eai resources update <type> <id> [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<type>` | Object Type name | Required |
+| `<id>` | Resource ID | Required |
+| `--data <json>` | Updated fields as a JSON string | Required |
+| `--version <n>` | Resource version for optimistic locking. Auto-fetched if omitted. | Auto |
+
+### eai resources delete
+
+Delete a resource. Prompts for confirmation unless `--force` is set.
+
+```
+eai resources delete <type> <id> [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<type>` | Object Type name | Required |
+| `<id>` | Resource ID | Required |
+| `--force` | Skip confirmation prompt | `false` |
+
+### eai resources query
+
+Run a cross-type query across multiple Object Types with filter conditions.
+
+```
+eai resources query [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--types <types>` | Comma-separated Object Type names | Required |
+| `--where <json>` | Filter conditions as a JSON string | -- |
+| `--limit <n>` | Maximum number of results | `20` |
+| `--json` | Output raw JSON | `false` |
+
+### eai resources schema
+
+Show the published Object Types for the current tenant. Displays property, link, and action counts for each type.
+
+```
+eai resources schema
+```
+
+## Examples
+
+### List resources
+
+```bash
+eai resources list Patient
+```
+
+```
+⠋ Listing Patient...
+✔ 42 total — page 1/3
+  8f3a1b2c title=Jane Doe, status=in-progress, priority=2
+  a7c9e4d1 title=John Smith, status=draft, priority=0
+  b2d8f6e3 title=Maria Garcia, status=complete, priority=1
+  ...
+```
+
+### List with pagination and sorting
+
+```bash
+eai resources list Patient --page 2 --limit 10 --sort -priority
+```
+
+### List as JSON
+
+```bash
+eai resources list Patient --json
+```
+
+```json
+{
+  "docs": [
+    {
+      "id": "8f3a1b2c-d4e5-6789-abcd-ef0123456789",
+      "data": {
+        "title": "Jane Doe",
+        "status": "in-progress",
+        "priority": 2
+      },
+      "created_at": "2026-03-01T10:30:00Z",
+      "version": 3
+    }
+  ],
+  "totalDocs": 42,
+  "page": 1,
+  "totalPages": 3
+}
+```
+
+### Get a single resource
+
+```bash
+eai resources get Patient 8f3a1b2c-d4e5-6789-abcd-ef0123456789
+```
+
+```json
+{
+  "id": "8f3a1b2c-d4e5-6789-abcd-ef0123456789",
+  "data": {
+    "title": "Jane Doe",
+    "status": "in-progress",
+    "priority": 2,
+    "isActive": true,
+    "assignedTo": "user-abc-123"
+  },
+  "version": 3,
+  "created_at": "2026-03-01T10:30:00Z",
+  "updated_at": "2026-03-05T14:15:00Z"
+}
+```
+
+### Create a resource with inline data
+
+```bash
+eai resources create Patient --data '{"title": "New Patient", "status": "draft", "isActive": true}'
+```
+
+```
+⠋ Creating Patient...
+✔ Created Patient c3d4e5f6-...
+```
+
+### Create a resource from a file
+
+```bash
+eai resources create Patient --file ./data/patient.json
+```
+
+### Update a resource
+
+```bash
+eai resources update Patient 8f3a1b2c --data '{"priority": 3, "status": "in-progress"}'
+```
+
+```
+⠋ Updating Patient 8f3a1b2c...
+✔ Updated Patient 8f3a1b2c-...
+```
+
+### Update with explicit version
+
+```bash
+eai resources update Patient 8f3a1b2c --data '{"priority": 3}' --version 3
+```
+
+### Delete a resource
+
+```bash
+eai resources delete Patient 8f3a1b2c
+```
+
+```
+? Delete Patient 8f3a1b2c? No
+ℹ Cancelled.
+```
+
+### Delete without confirmation
+
+```bash
+eai resources delete Patient 8f3a1b2c --force
+```
+
+```
+⠋ Deleting Patient 8f3a1b2c...
+✔ Deleted Patient 8f3a1b2c-...
+```
+
+### Cross-type query
+
+```bash
+eai resources query --types Patient,Document --where '{"status": {"equals": "in-progress"}}' --limit 50
+```
+
+```
+⠋ Querying Patient, Document...
+✔ Query complete
+{
+  "results": [
+    ...
+  ]
+}
+```
+
+### View published schema
+
+```bash
+eai resources schema
+```
+
+```
+⠋ Fetching schema...
+✔ 3 published types
+  Patient — 8 props, 1 links, 2 actions
+  Document — 4 props, 0 links, 0 actions
+  Appointment — 5 props, 2 links, 1 actions
+```
+
+## Related Commands
+
+- [`eai types`](/eai-cli/reference/commands/types/) -- manage Object Type definitions (schema)
+- [`eai chat`](/eai-cli/reference/commands/chat/) -- interact with AI workflows
+- [`eai docs`](/eai-cli/reference/commands/docs/) -- upload and manage documents

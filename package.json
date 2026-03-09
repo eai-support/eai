@@ -11,21 +11,35 @@
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm run lint"
   },
   "files": [
-    "dist",
-    "templates"
+    "dist"
   ],
   "keywords": [
-    "eai",
-    "enterprise-ai",
     "cli",
+    "enterprise",
+    "ai",
     "vertical",
-    "platform"
+    "platform",
+    "eai",
+    "typescript",
+    "commander"
   ],
-  "author": "Enterprise AI Group",
-  "license": "UNLICENSED",
+  "author": "EAI Tools",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eai-tools/eai-cli.git"
+  },
+  "homepage": "https://eai-tools.github.io/eai-cli",
+  "bugs": {
+    "url": "https://github.com/eai-tools/eai-cli/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
@@ -37,7 +51,10 @@
     "ora": "^8.1.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.13.0",
-    "typescript": "^5.7.3"
+    "eslint": "^10.0.3",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.56.1"
   }
 }

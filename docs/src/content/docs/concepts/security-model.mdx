@@ -1,0 +1,190 @@
+---
+title: Security Model
+description: Roles, multi-tenant data isolation, Entra CIAM authentication, and token management in the EnterpriseAI platform.
+---
+
+import { Aside, Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## Overview
+
+Security in EnterpriseAI is built around three pillars:
+
+1. **Authentication** -- Who is making the request? Handled by Microsoft Entra CIAM.
+2. **Authorization** -- What are they allowed to do? Enforced through roles.
+3. **Tenant isolation** -- Which data can they see? Enforced at the platform level.
+
+These three mechanisms work together at every API call. There is no way to bypass tenant isolation from application code, and roles are checked on every action execution.
+
+## Roles
+
+Every authenticated user has a role scoped to a tenant. The platform defines three roles:
+
+| Role | Access Level | Typical Use |
+|---|---|---|
+| `tenant-user` | Can create and read their own resources. Can execute actions that require `tenant-user` role. | End users, customers, applicants |
+| `tenant-staff` | All `tenant-user` permissions, plus can read and modify resources created by other users in the same tenant. Can execute `tenant-staff` actions. | Case workers, support agents, reviewers |
+| `tenant-admin` | All `tenant-staff` permissions, plus can manage Object Types, tenant configuration, and user provisioning. Can execute `tenant-admin` actions. | Administrators, system owners |
+
+### Role Enforcement
+
+Roles are enforced in two places:
+
+1. **API level** -- The Platform API checks the user's role before allowing resource operations. A `tenant-user` cannot access another user's resources unless the Object Type explicitly allows it.
+
+2. **Action level** -- Each action declares a `requiredRole`. The platform rejects action execution if the user's role is insufficient.
+
+```typescript
+// This action requires at least tenant-staff to execute
+{
+  name: 'approve_application',
+  displayName: 'Approve Application',
+  requiredRole: 'tenant-staff',
+  validationRules: { requiredStatus: 'submitted' },
+  sideEffects: [
+    { type: 'set_field', field: 'status', value: 'approved' },
+    { type: 'set_timestamp', field: 'approvedAt' },
+    { type: 'set_user', field: 'approvedBy' },
+  ],
+}
+```
+
+<Aside type="caution">
+  Role names in Object Type definitions must match exactly: `tenant-user`, `tenant-staff`, or `tenant-admin`. The CLI's `eai types validate` command checks for invalid role names.
+</Aside>
+
+## Multi-Tenant Data Isolation
+
+Every resource, conversation, and document in the platform is scoped to a **tenant**. Tenant isolation is enforced at the platform level -- not in application code.
+
+### How It Works
+
+- The tenant ID is part of every API URL: `/v3/resources/{tenantId}/{objectType}`
+- The platform verifies that the authenticated user belongs to the target tenant before processing any request.
+- Resources created in tenant A are invisible to users in tenant B, even if they share the same Object Type definitions.
+- Cross-tenant queries are not possible through the public API.
+
+### Tenant Hierarchy
+
+Tenants can be organized in a parent-child hierarchy:
+
+```
+Root Tenant
+├── Healthcare Division
+│   ├── Hospital A
+│   └── Hospital B
+└── Finance Division
+    ├── Branch Office 1
+    └── Branch Office 2
+```
+
+Parent tenants can manage child tenants. Users are scoped to a specific tenant in the hierarchy and can only access resources within that tenant.
+
+### Tenant Identification in the CLI
+
+The CLI resolves tenant IDs from environment variables:
+
+```bash
+# Default tenant (used when no specific tenant is specified)
+TENANT_DEFAULT_ID=abc-123-def
+
+# Named tenants (matched by key in object-types.ts)
+TENANT_PATIENT_INTAKE_ID=abc-123-def
+TENANT_LOAN_PROCESSING_ID=def-456-ghi
+```
+
+The `eai types seed` command maps tenant keys in your `object-types.ts` file to these environment variables automatically.
+
+## Authentication
+
+EnterpriseAI uses **Microsoft Entra CIAM** (Customer Identity and Access Management) for authentication. Entra CIAM provides:
+
+- Social and enterprise identity provider federation
+- Self-service sign-up and sign-in flows
+- Multi-factor authentication (MFA)
+- Customizable branding for login pages
+
+### CLI Authentication (Device Code Flow)
+
+The CLI uses the **OAuth 2.0 device code flow**, which works on machines without a browser:
+
+1. Run `eai login`.
+2. The CLI requests a device code from Entra CIAM.
+3. A user code and verification URL are displayed.
+4. Open the URL in any browser (on any device), enter the code, and sign in.
+5. The CLI polls Entra until the sign-in completes and receives an access token.
+
+```bash
+$ eai login
+
+To sign in, open https://microsoft.com/devicelogin
+and enter the code: ABCD-EFGH
+```
+
+### Web Application Authentication
+
+Next.js applications use a **session-based flow** through the BFF proxy:
+
+1. The user is redirected to the Entra CIAM login page.
+2. After sign-in, Entra redirects back with an authorization code.
+3. The Next.js server exchanges the code for tokens and creates a session.
+4. The session cookie is used for subsequent requests; tokens stay server-side.
+
+## Token Management
+
+### Token Storage
+
+The CLI stores tokens locally at `~/.eai/tokens.json`. The file is encrypted using AES-256-CBC with a key derived from the user's home directory path.
+
+<Aside type="note">
+  Token storage uses local encryption as a defense-in-depth measure. For production CI/CD pipelines, use environment variables or secret management systems instead of stored tokens.
+</Aside>
+
+### Token Lifecycle
+
+| Event | Behavior |
+|---|---|
+| **Login** | Access token and refresh token are stored. |
+| **API call** | Access token is included as `Authorization: Bearer {token}`. |
+| **Token expiry (approaching)** | If the token will expire within 5 minutes, the CLI refreshes it automatically using the refresh token. |
+| **Refresh token expired** | The CLI prompts the user to run `eai login` again. |
+| **Logout** | `~/.eai/tokens.json` is deleted. |
+
+### Checking Authentication Status
+
+```bash
+# See who you are logged in as
+eai whoami
+
+# Verify your token is valid and check your role
+eai verify
+```
+
+## Environment Variables for Authentication
+
+| Variable | Description | Required |
+|---|---|---|
+| `ENTRA_TENANT_ID` | Your Entra CIAM tenant ID | Yes |
+| `ENTRA_TENANT_NAME` | Your Entra CIAM tenant name (used to construct the authority URL) | Yes |
+| `ENTRA_CLIENT_ID` | The application (client) ID registered in Entra | Yes |
+| `AUTH_SECRET` | Secret used for session encryption in Next.js applications | Yes (web apps) |
+
+These are typically set in `.env.local` and pulled with `eai env pull`.
+
+## Security Checklist
+
+When building a vertical application, verify the following:
+
+- [ ] All actions declare the correct `requiredRole` (do not default to `tenant-user` for administrative operations).
+- [ ] Sensitive fields are not exposed to roles that should not see them.
+- [ ] `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, and `AUTH_SECRET` are set and not committed to version control.
+- [ ] `.env.local` is in `.gitignore`.
+- [ ] Tokens are not logged or exposed in error messages.
+- [ ] The BFF proxy is used for all web application API calls (no direct browser-to-Platform-API calls with tokens).
+
+## Next Steps
+
+<CardGrid>
+  <LinkCard title="Authentication Guide" href="/eai-cli/getting-started/authentication/" description="Step-by-step authentication setup for the CLI and web applications." />
+  <LinkCard title="Environment Variables" href="/eai-cli/reference/environment-vars/" description="Complete reference of all environment variables." />
+  <LinkCard title="Architecture" href="/eai-cli/concepts/architecture/" description="How the security model fits into the platform architecture." />
+</CardGrid>
