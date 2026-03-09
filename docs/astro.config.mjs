@@ -8,6 +8,11 @@ export default defineConfig({
     starlight({
       title: 'EAI CLI',
       description: 'Build vertical business applications with the EnterpriseAI platform',
+      logo: {
+        src: './src/assets/logo.svg',
+        replacesTitle: false,
+      },
+      favicon: '/favicon.svg',
       social: {
         github: 'https://github.com/eai-tools/eai-cli',
       },
@@ -87,7 +92,10 @@ export default defineConfig({
           ],
         },
       ],
-      customCss: [],
+      customCss: [
+        '@fontsource-variable/inter',
+        './src/styles/custom.css',
+      ],
     }),
   ],
 });
