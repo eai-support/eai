@@ -7,17 +7,13 @@ Every command wraps platform API calls — developers work with **resources, typ
 ## Install
 
 ```bash
-npm install -g @eai-tools/cli
+npm install -g github:eai-tools/eai-cli
 ```
 
-Or run from source:
+Or pin to a specific version:
 
 ```bash
-git clone https://github.com/eai-tools/eai-cli.git
-cd eai-cli
-npm install
-npm run build
-npm link
+npm install -g github:eai-tools/eai-cli#v0.1.0
 ```
 
 ## Quick Start
@@ -143,20 +139,57 @@ The CLI authenticates via device code flow, stores tokens locally in `~/.eai/`, 
 ## Development
 
 ```bash
+git clone https://github.com/eai-tools/eai-cli.git
+cd eai-cli
 npm install
 npm run build        # Compile TypeScript
 npm run dev          # Watch mode
 npm run typecheck    # Type check without emitting
+npm run lint         # Run ESLint
 ```
+
+## Releasing
+
+Releases are managed with `release.sh`, which runs a full validation pipeline before publishing.
+
+```bash
+./release.sh <patch|minor|major> "Release message"
+```
+
+Examples:
+
+```bash
+./release.sh patch "Fix auth token refresh bug"
+./release.sh minor "Add bulk resource import command"
+./release.sh major "New config format, breaking changes to types CLI"
+```
+
+The script runs these checks before releasing:
+
+1. Verifies you're on `main` with a clean working tree
+2. Pulls latest and installs dependencies (`npm ci`)
+3. Typecheck (`tsc --noEmit`)
+4. Lint (`eslint`)
+5. Build (`tsc`)
+6. Smoke tests — `eai --version`, `eai --help`, all 12 command groups present
+7. Docs site build
+8. IP leak scan (ensures no internal terms in source)
+
+If all checks pass, it:
+
+- Bumps the version in `package.json`
+- Commits, creates an annotated git tag, and pushes
+- Creates a GitHub release with your message
 
 ## Documentation
 
-- [Research & Design](docs/research.md) — 10 developer scenarios, competitive analysis, CLI design principles, IP protection strategy
+Full documentation: https://eai-tools.github.io/eai-cli/
+
+93 pages covering getting started, guides, concepts, command reference, 50 industry scenarios, and examples in 7 languages.
 
 ## Roadmap
 
 - [ ] `eai types define` — interactive Object Type builder
 - [ ] `eai dev --offline` — local mock gateway for offline development
-- [ ] Developer portal (Docusaurus) with guides and API reference
 - [ ] `eai tunnel` — Cloudflare tunnel for webhook testing
-- [ ] npm publish to `@eai-tools/cli`
+- [ ] npm registry publish (`npm install -g @eai-tools/cli`)
