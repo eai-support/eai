@@ -31,7 +31,31 @@ node --version
 Choose the installation method that works best for your workflow.
 
 <Tabs>
-  <TabItem label="npm from GitHub (recommended)">
+  <TabItem label="npm (recommended)">
+    Configure npm to use the EAI registry by adding one line to your `~/.npmrc`:
+
+    ```bash
+    echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
+    ```
+
+    Then install globally:
+
+    ```bash
+    npm install -g @eai-tools/cli
+    ```
+
+    This downloads the pre-built CLI and puts the `eai` binary on your `PATH`. To pin a specific version:
+
+    ```bash
+    npm install -g @eai-tools/cli@0.1.0
+    ```
+
+    <Aside type="tip">
+      You only need to configure `.npmrc` once. After that, `npm install`, `npm update`, and semver ranges all work as normal.
+    </Aside>
+  </TabItem>
+
+  <TabItem label="npm from GitHub">
     Install the CLI globally directly from GitHub:
 
     ```bash
@@ -43,23 +67,10 @@ Choose the installation method that works best for your workflow.
     ```bash
     npm install -g github:eai-tools/eai-cli#v0.1.0
     ```
-  </TabItem>
 
-  <TabItem label="Homebrew">
-    Install with Homebrew on macOS or Linux:
-
-    ```bash
-    brew tap eai-tools/tap
-    brew install eai
-    ```
-
-    This installs the `eai` command and manages updates through Homebrew. Requires Node.js 20+ to be installed (Homebrew will install it as a dependency if needed).
-
-    To upgrade later:
-
-    ```bash
-    brew upgrade eai
-    ```
+    <Aside type="note">
+      This method builds from source on your machine. The npm registry method above is faster since it downloads a pre-built package.
+    </Aside>
   </TabItem>
 
   <TabItem label="From source">
@@ -143,15 +154,15 @@ Commands:
 To update to the latest version:
 
 <Tabs>
-  <TabItem label="npm from GitHub">
+  <TabItem label="npm">
     ```bash
-    npm install -g github:eai-tools/eai-cli
+    npm install -g @eai-tools/cli@latest
     ```
   </TabItem>
 
-  <TabItem label="Homebrew">
+  <TabItem label="npm from GitHub">
     ```bash
-    brew upgrade eai
+    npm install -g github:eai-tools/eai-cli
     ```
   </TabItem>
 
@@ -167,20 +178,9 @@ To update to the latest version:
 
 ## Uninstall
 
-<Tabs>
-  <TabItem label="npm">
-    ```bash
-    npm uninstall -g @eai-tools/cli
-    ```
-  </TabItem>
-
-  <TabItem label="Homebrew">
-    ```bash
-    brew uninstall eai
-    brew untap eai-tools/tap
-    ```
-  </TabItem>
-</Tabs>
+```bash
+npm uninstall -g @eai-tools/cli
+```
 
 Your project files and local configuration (`~/.eai/`) are not deleted when you uninstall.
 

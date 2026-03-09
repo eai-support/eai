@@ -38,9 +38,6 @@
   "bugs": {
     "url": "https://github.com/eai-tools/eai-cli/issues"
   },
-  "publishConfig": {
-    "access": "public"
-  },
   "engines": {
     "node": ">=20.0.0"
   },
