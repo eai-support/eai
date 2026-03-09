@@ -1,0 +1,136 @@
+/* EAI CLI — Brand Theme
+   Teal/slate palette for enterprise credibility */
+
+/* ── Font ── */
+:root {
+  --sl-font: 'Inter Variable', var(--sl-font-system);
+}
+
+/* ── Dark mode (default) ── */
+:root {
+  --sl-color-accent-low: hsl(168, 50%, 14%);
+  --sl-color-accent: hsl(168, 76%, 36%);
+  --sl-color-accent-high: hsl(168, 60%, 80%);
+
+  --sl-hue-blue: 168;
+  --sl-color-blue-low: hsl(168, 50%, 14%);
+  --sl-color-blue: hsl(168, 76%, 36%);
+  --sl-color-blue-high: hsl(168, 60%, 80%);
+
+  /* Slate-tinted grays */
+  --sl-color-gray-1: hsl(200, 14%, 93%);
+  --sl-color-gray-2: hsl(200, 8%, 74%);
+  --sl-color-gray-3: hsl(200, 6%, 52%);
+  --sl-color-gray-4: hsl(200, 8%, 34%);
+  --sl-color-gray-5: hsl(200, 12%, 20%);
+  --sl-color-gray-6: hsl(200, 16%, 14%);
+  --sl-color-black: hsl(200, 14%, 8%);
+}
+
+/* ── Light mode ── */
+:root[data-theme='light'] {
+  --sl-color-accent-low: hsl(168, 70%, 92%);
+  --sl-color-accent: hsl(168, 76%, 30%);
+  --sl-color-accent-high: hsl(168, 80%, 18%);
+
+  --sl-color-blue-low: hsl(168, 70%, 92%);
+  --sl-color-blue: hsl(168, 76%, 30%);
+  --sl-color-blue-high: hsl(168, 80%, 18%);
+
+  --sl-color-gray-1: hsl(200, 16%, 14%);
+  --sl-color-gray-2: hsl(200, 12%, 20%);
+  --sl-color-gray-3: hsl(200, 8%, 34%);
+  --sl-color-gray-4: hsl(200, 6%, 52%);
+  --sl-color-gray-5: hsl(200, 8%, 74%);
+  --sl-color-gray-6: hsl(200, 14%, 93%);
+  --sl-color-gray-7: hsl(200, 16%, 96%);
+  --sl-color-black: hsl(0, 0%, 100%);
+}
+
+/* ── Hero (splash page) ── */
+.hero {
+  background: linear-gradient(
+    170deg,
+    hsl(200, 14%, 8%) 0%,
+    hsl(168, 40%, 10%) 50%,
+    hsl(200, 14%, 8%) 100%
+  );
+  padding-block: 3rem;
+  border-bottom: 1px solid var(--sl-color-gray-5);
+}
+
+:root[data-theme='light'] .hero {
+  background: linear-gradient(
+    170deg,
+    hsl(168, 50%, 97%) 0%,
+    hsl(168, 50%, 92%) 50%,
+    hsl(200, 16%, 96%) 100%
+  );
+  border-bottom-color: var(--sl-color-gray-6);
+}
+
+.hero .tagline {
+  font-size: var(--sl-text-xl) !important;
+  max-width: 38ch;
+}
+
+@media (min-width: 50em) {
+  .hero .tagline {
+    font-size: var(--sl-text-2xl) !important;
+  }
+}
+
+/* ── Cards ── */
+.sl-link-card,
+.card {
+  border-radius: 0.75rem;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sl-link-card:hover,
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sl-shadow-md);
+}
+
+/* ── Code blocks ── */
+.expressive-code pre {
+  border-radius: 0.625rem !important;
+}
+
+/* ── Sidebar refinement ── */
+nav.sidebar .top-level > li + li {
+  border-top: 1px solid var(--sl-color-hairline-light);
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+/* ── Stats row (homepage) ── */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1.5rem;
+  margin-block: 2rem;
+  text-align: center;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-value {
+  font-size: var(--sl-text-3xl);
+  font-weight: 700;
+  color: var(--sl-color-accent-high);
+}
+
+:root[data-theme='light'] .stat-value {
+  color: var(--sl-color-accent);
+}
+
+.stat-label {
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-gray-3);
+}
