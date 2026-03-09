@@ -1,0 +1,328 @@
+---
+title: Deployment
+description: Set up CI/CD pipelines, deploy to Azure App Service, and manage deployment workflows with the EAI CLI.
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+The `eai deploy` command automates your CI/CD pipeline. It generates a GitHub Actions workflow, configures the required secrets, triggers deployments, and checks their status -- all from the terminal.
+
+## How it works
+
+```
+eai deploy setup     Generate workflow + list secrets
+       │
+       ▼
+.github/workflows/deploy-demo.yml
+       │
+  git push / eai deploy trigger
+       │
+       ▼
+GitHub Actions  ──→  Build  ──→  Azure App Service
+```
+
+The generated workflow:
+1. Checks out your code
+2. Installs dependencies and builds your application
+3. Packages the Next.js standalone output
+4. Authenticates with Azure using federated credentials (OIDC)
+5. Deploys to Azure App Service via `az webapp deploy`
+
+## Setting up deployment
+
+<Steps>
+1. **Generate the workflow file:**
+
+   ```bash
+   eai deploy setup
+   ```
+
+   This creates `.github/workflows/deploy-demo.yml` in your project. If the file already exists, it is skipped.
+
+2. **Configure GitHub secrets:**
+
+   Pass your GitHub repository to configure secrets interactively:
+
+   ```bash
+   eai deploy setup --repo your-org/your-repo
+   ```
+
+   The CLI lists the required secrets:
+
+   | Secret                            | Description                           |
+   |-----------------------------------|---------------------------------------|
+   | `AZUREAPPSERVICE_CLIENTID`        | Azure AD app client ID for deployment |
+   | `AZUREAPPSERVICE_TENANTID`        | Azure AD tenant ID                    |
+   | `AZUREAPPSERVICE_SUBSCRIPTIONID`  | Azure subscription ID                 |
+   | `AZURE_RESOURCE_GROUP`            | Azure resource group name             |
+   | `AZURE_WEBAPP_NAME`              | Azure App Service name                |
+
+3. **Set each secret using the GitHub CLI:**
+
+   ```bash
+   gh secret set AZUREAPPSERVICE_CLIENTID --repo your-org/your-repo
+   gh secret set AZUREAPPSERVICE_TENANTID --repo your-org/your-repo
+   gh secret set AZUREAPPSERVICE_SUBSCRIPTIONID --repo your-org/your-repo
+   gh secret set AZURE_RESOURCE_GROUP --repo your-org/your-repo
+   gh secret set AZURE_WEBAPP_NAME --repo your-org/your-repo
+   ```
+
+4. **Commit and push the workflow:**
+
+   ```bash
+   git add .github/workflows/deploy-demo.yml
+   git commit -m "chore: add deployment workflow"
+   git push
+   ```
+</Steps>
+
+## The generated workflow
+
+The workflow file deploys on every push to `main` and supports manual triggers via `workflow_dispatch`:
+
+```yaml title=".github/workflows/deploy-demo.yml"
+name: Deploy my-vertical
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  APP_NAME: my-vertical
+  NODE_VERSION: '20.x'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: demo
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Object Types JSON
+        run: npm run build:object-types
+
+      - name: Build
+        run: npm run build
+
+      - name: Package standalone output
+        run: |
+          mkdir -p deploy/${{ env.APP_NAME }}
+          cp -r .next/standalone/. deploy/${{ env.APP_NAME }}/
+          cp -r .next/static deploy/${{ env.APP_NAME }}/.next/
+          cp -r public deploy/${{ env.APP_NAME }}/ 2>/dev/null || true
+          cd deploy && zip -r ../app-content.zip ${{ env.APP_NAME }}
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID }}
+
+      - name: Deploy to Azure
+        run: |
+          az webapp deploy \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AZURE_WEBAPP_NAME }} \
+            --src-path app-content.zip \
+            --type zip \
+            --target-path /home/site/wwwroot/${{ env.APP_NAME }}
+
+      - name: Restart App Service
+        run: |
+          az webapp restart \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AZURE_WEBAPP_NAME }}
+```
+
+<Aside type="note">
+  The workflow uses Azure OIDC (federated credentials) for authentication, not service principal secrets. This is more secure because no long-lived credentials are stored.
+</Aside>
+
+## Triggering a deployment
+
+Trigger the deployment workflow manually from the command line:
+
+```bash
+eai deploy trigger
+```
+
+The CLI auto-detects your GitHub repository from the `origin` remote. You can also specify it explicitly:
+
+```bash
+eai deploy trigger --repo your-org/your-repo
+```
+
+### Deploy a specific branch
+
+```bash
+eai deploy trigger --branch feature/new-types
+```
+
+### Use a different workflow file
+
+```bash
+eai deploy trigger --workflow deploy-production.yml
+```
+
+## Checking deployment status
+
+View recent deployment runs:
+
+```bash
+eai deploy status
+```
+
+Output:
+
+```
+✔ Recent deployments for your-org/your-repo
+  ✔ Deploy my-vertical (main) — 1/15/2025, 10:30:00 AM
+  ✔ Deploy my-vertical (main) — 1/14/2025, 3:15:00 PM
+  ✗ Deploy my-vertical (feature/types) — 1/14/2025, 11:00:00 AM
+  ⟳ Deploy my-vertical (main) — 1/15/2025, 10:45:00 AM
+```
+
+Status icons:
+- **checkmark** -- successful deployment
+- **cross** -- failed deployment
+- **arrow** -- deployment in progress
+- **dot** -- pending/queued
+
+Specify a repository explicitly:
+
+```bash
+eai deploy status --repo your-org/your-repo
+```
+
+## CI/CD integration patterns
+
+### Deployment after Object Type seeding
+
+A common pattern is to seed Object Types before deploying:
+
+```yaml
+steps:
+  - name: Seed Object Types
+    run: npx @eai-tools/cli types seed
+    env:
+      BASE_URL_PUBLIC_API: ${{ secrets.BASE_URL_PUBLIC_API }}
+      TENANT_DEFAULT_ID: ${{ secrets.TENANT_DEFAULT_ID }}
+
+  - name: Build and Deploy
+    run: npm run build
+```
+
+### Multi-environment deployment
+
+Create separate workflow files for each environment:
+
+<Tabs>
+  <TabItem label="Development">
+    ```yaml title=".github/workflows/deploy-dev.yml"
+    name: Deploy (Dev)
+    on:
+      push:
+        branches: [develop]
+    jobs:
+      deploy:
+        environment: dev
+        # ... same steps, different secrets
+    ```
+  </TabItem>
+  <TabItem label="Staging">
+    ```yaml title=".github/workflows/deploy-staging.yml"
+    name: Deploy (Staging)
+    on:
+      push:
+        branches: [staging]
+    jobs:
+      deploy:
+        environment: staging
+        # ... same steps, different secrets
+    ```
+  </TabItem>
+  <TabItem label="Production">
+    ```yaml title=".github/workflows/deploy-prod.yml"
+    name: Deploy (Production)
+    on:
+      push:
+        branches: [main]
+    jobs:
+      deploy:
+        environment: production
+        # ... same steps, different secrets
+    ```
+  </TabItem>
+</Tabs>
+
+### Validate before deploy
+
+Add validation as a prerequisite job:
+
+```yaml
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx @eai-tools/cli types validate
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    # ... deployment steps
+```
+
+## Prerequisites
+
+The deployment commands require:
+
+- **GitHub CLI (`gh`)** -- for triggering workflows and checking status. Install with `brew install gh` or from [cli.github.com](https://cli.github.com/).
+- **Azure CLI (`az`)** -- used inside the workflow for deployment. Not required on your local machine unless you push environment variables.
+- **Azure OIDC federated credential** -- configured on your Azure AD app registration to trust GitHub Actions tokens.
+
+<Aside type="tip">
+  If the CLI cannot detect your GitHub repository automatically, it will prompt you to use `--repo your-org/your-repo`.
+</Aside>
+
+## Command reference
+
+| Command                | Description                                      |
+|------------------------|--------------------------------------------------|
+| `eai deploy setup`     | Generate workflow and list required secrets       |
+| `eai deploy trigger`   | Trigger the deployment workflow                  |
+| `eai deploy status`    | Check recent deployment run status               |
+
+### Flags
+
+| Flag                   | Command         | Description                            |
+|------------------------|-----------------|----------------------------------------|
+| `--repo <org/name>`    | all             | GitHub repository (auto-detected)      |
+| `--branch <name>`      | `trigger`       | Branch to deploy (default: `main`)     |
+| `--workflow <file>`    | `trigger`       | Workflow filename (default: `deploy-demo.yml`) |
+
+## Next steps
+
+- [Environment](/eai-cli/guides/environment/) -- configure environment variables for each deployment target
+- [Troubleshooting](/eai-cli/guides/troubleshooting/) -- diagnose deployment and CI/CD issues
+- [Security](/eai-cli/guides/security/) -- understand credential management in CI/CD

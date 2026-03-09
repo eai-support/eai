@@ -1,0 +1,335 @@
+---
+title: API Surface
+description: Complete reference of public Platform API endpoints including methods, paths, authentication requirements, and error response format.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Base URL
+
+All API endpoints are relative to the Platform API base URL, configured via the `BASE_URL_PUBLIC_API` environment variable.
+
+```
+https://your-platform.example.com/v3/...
+```
+
+## Authentication
+
+All endpoints require authentication unless otherwise noted. Include an access token in the `Authorization` header:
+
+```
+Authorization: Bearer {access_token}
+```
+
+Tokens are obtained through the Entra CIAM device code flow (CLI) or session-based authentication (web applications via BFF proxy).
+
+## Resource Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/v3/resources/{tenantId}/{objectType}` | Required | List resources of a given Object Type. Supports pagination and sorting. |
+| `GET` | `/v3/resources/{tenantId}/{objectType}/{id}` | Required | Get a single resource by ID. |
+| `POST` | `/v3/resources/{tenantId}/{objectType}` | Required | Create a new resource. |
+| `PUT` | `/v3/resources/{tenantId}/{objectType}/{id}` | Required | Update an existing resource. Requires `version` for optimistic locking. |
+| `DELETE` | `/v3/resources/{tenantId}/{objectType}/{id}` | Required | Delete a resource by ID. |
+| `POST` | `/v3/resources/{tenantId}/{objectType}/{id}/actions/{action}` | Required | Execute a named action on a resource. |
+| `POST` | `/v3/resources/{tenantId}/query` | Required | Cross-type query across multiple Object Types. |
+| `GET` | `/v3/resources/schema/{tenantId}` | Required | Get published Object Type definitions for a tenant. |
+| `GET` | `/v3/resources/{tenantId}/{objectType}/{id}/history` | Required | Get the change history for a resource. |
+
+### List Resources
+
+```
+GET /v3/resources/{tenantId}/{objectType}?page=1&limit=20&sort=-created_at
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `page` | integer | `1` | Page number (1-indexed) |
+| `limit` | integer | `20` | Items per page (max 100) |
+| `sort` | string | `-created_at` | Sort field. Prefix with `-` for descending order. |
+
+**Response:**
+
+```json
+{
+  "docs": [
+    {
+      "id": "abc-123",
+      "data": { "firstName": "Jane", "status": "active" },
+      "created_at": "2025-03-15T10:30:00Z",
+      "updated_at": "2025-03-15T10:30:00Z",
+      "version": 1
+    }
+  ],
+  "totalDocs": 42,
+  "page": 1,
+  "totalPages": 3,
+  "limit": 20
+}
+```
+
+### Create Resource
+
+```
+POST /v3/resources/{tenantId}/{objectType}
+Content-Type: application/json
+
+{
+  "data": {
+    "firstName": "Jane",
+    "lastName": "Doe",
+    "status": "draft"
+  }
+}
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "id": "abc-123",
+  "data": { "firstName": "Jane", "lastName": "Doe", "status": "draft" },
+  "created_at": "2025-03-15T10:30:00Z",
+  "version": 1
+}
+```
+
+### Update Resource
+
+```
+PUT /v3/resources/{tenantId}/{objectType}/{id}
+Content-Type: application/json
+
+{
+  "data": {
+    "firstName": "Janet"
+  },
+  "version": 1
+}
+```
+
+The `version` field is required for optimistic locking. If the resource has been modified since you last read it, the update will return `409 Conflict`.
+
+### Execute Action
+
+```
+POST /v3/resources/{tenantId}/{objectType}/{id}/actions/{action}
+Content-Type: application/json
+
+{
+  "params": {}
+}
+```
+
+The `params` object is passed to the action handler. Most actions do not require additional parameters -- the side effects are defined in the Object Type schema.
+
+### Cross-Type Query
+
+```
+POST /v3/resources/{tenantId}/query
+Content-Type: application/json
+
+{
+  "object_types": ["Patient", "Encounter"],
+  "where": {
+    "status": { "equals": "active" }
+  },
+  "limit": 50
+}
+```
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `object_types` | string[] | Yes | Object Type names to query across |
+| `where` | object | No | Filter conditions |
+| `join` | object | No | Join conditions for linked types |
+| `limit` | integer | No | Max results (default 20) |
+
+## Chat Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/v3/chat/{tenantId}/{workflowId}/{stage}` | Required | Send a chat message and receive a complete response. |
+| `POST` | `/v3/chat/stream/{tenantId}/{workflowId}/{stage}` | Required | Stream a chat response using Server-Sent Events (SSE). |
+
+### Send Chat Message
+
+```
+POST /v3/chat/{tenantId}/{workflowId}/{stage}
+Content-Type: application/json
+
+{
+  "message": "What is the status of application ABC-123?",
+  "conversation_id": "conv-uuid",
+  "params": {}
+}
+```
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `message` | string | Yes | The user's message |
+| `conversation_id` | string | Yes | Unique conversation identifier (UUID recommended) |
+| `params` | object | No | Additional parameters passed to the workflow |
+
+### Stream Chat (SSE)
+
+```
+POST /v3/chat/stream/{tenantId}/{workflowId}/{stage}
+Content-Type: application/json
+
+{
+  "message": "Summarize the patient's history.",
+  "conversation_id": "conv-uuid",
+  "params": {}
+}
+```
+
+The response is a Server-Sent Events stream:
+
+```
+data: {"content": "Based on "}
+data: {"content": "the patient's "}
+data: {"content": "records..."}
+data: [DONE]
+```
+
+Each `data` event contains a JSON object with a `content` or `text` field. The stream ends with `data: [DONE]`.
+
+## Document Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/v3/documents/classify` | Required | Upload and classify a document. |
+| `POST` | `/v3/documents/rag-index` | Required | Index a document for retrieval-augmented generation. |
+
+### Classify Document
+
+```
+POST /v3/documents/classify
+Content-Type: multipart/form-data
+
+files: <binary file data>
+```
+
+Upload a file as `multipart/form-data`. The platform returns classification results.
+
+### Index Document for RAG
+
+```
+POST /v3/documents/rag-index
+Content-Type: application/json
+
+{
+  "document_id": "doc-abc-123"
+}
+```
+
+Indexes a previously uploaded document so its content can be retrieved during AI chat workflows.
+
+## Auth Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/v3/auth/me` | Required | Get the current authenticated user's profile. |
+
+### Get Current User
+
+```
+GET /v3/auth/me
+Authorization: Bearer {access_token}
+```
+
+**Response:**
+
+```json
+{
+  "id": "user-abc-123",
+  "email": "jane@example.com",
+  "role": "tenant-staff",
+  "tenantId": "tenant-abc"
+}
+```
+
+## User Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/v3/users/provisionme` | Required | Self-provision the authenticated user into a tenant. |
+
+### Provision User
+
+```
+POST /v3/users/provisionme
+Content-Type: application/json
+
+{
+  "tenant_id": "tenant-abc-123"
+}
+```
+
+Creates a user record in the specified tenant for the currently authenticated user. This is typically called once after the user's first sign-in.
+
+## Error Response Format
+
+All error responses follow a consistent JSON structure:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Property 'firstName' is required",
+    "details": [
+      {
+        "field": "firstName",
+        "rule": "required",
+        "message": "This field is required"
+      }
+    ]
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `error.code` | string | Machine-readable error code |
+| `error.message` | string | Human-readable error description |
+| `error.details` | array | Optional array of field-level error details |
+
+See the [Error Codes](/eai-cli/reference/error-codes/) reference for a complete list.
+
+## Rate Limits
+
+<Aside type="note">
+  Rate limits are applied per tenant, not per user. All users within a tenant share the same rate limit budget.
+</Aside>
+
+| Endpoint Category | Rate Limit | Window |
+|---|---|---|
+| Resource CRUD | 1000 requests | Per minute |
+| Resource queries | 200 requests | Per minute |
+| Chat (send) | 60 requests | Per minute |
+| Chat (stream) | 30 requests | Per minute |
+| Document upload | 30 requests | Per minute |
+| Document indexing | 10 requests | Per minute |
+
+When a rate limit is exceeded, the API returns `429 Too Many Requests` with a `Retry-After` header indicating how many seconds to wait.
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 30
+Content-Type: application/json
+
+{
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "message": "Rate limit exceeded. Retry after 30 seconds."
+  }
+}
+```

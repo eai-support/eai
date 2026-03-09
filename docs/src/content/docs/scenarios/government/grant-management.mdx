@@ -1,0 +1,181 @@
+---
+title: Grant Management
+description: Manage grant applications, disbursements, and impact reporting for government funding programs using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role:** Grants Program Manager at a state economic development agency.
+
+You administer multiple grant programs that fund community development, small business growth, and workforce training. Each program receives hundreds of applications per cycle. Once grants are awarded, your team must track milestone-based disbursements and collect impact reports from grantees. The current system is a patchwork of forms, email, and manual ledger entries.
+
+## Business Problem
+
+Grant applications arrive through different channels with no standardized format. Disbursement tracking is done in spreadsheets that are not linked to the original applications, making it difficult to verify that funds are released against completed milestones. Impact reports are submitted as unstructured documents with no consistent metrics. You need:
+
+- A unified application intake tied to specific grant programs.
+- Milestone-based disbursement tracking linked to awarded grants.
+- Structured impact reporting with quantifiable metrics and narrative context.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **GrantApplication** | program, applicant, amount, status | has many Disbursements, has many ImpactReports | submit, review, award, reject |
+| **Disbursement** | grant, amount, milestone, date | belongs to GrantApplication | request, approve, release |
+| **ImpactReport** | grant, period, metrics, narrative | belongs to GrantApplication | submit, review, accept |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the vertical**
+
+   ```bash
+   eai init grant-management
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define Object Types**
+
+   Add GrantApplication, Disbursement, and ImpactReport to `src/eai.config/object-types.ts`.
+
+4. **Validate and seed**
+
+   ```bash
+   eai types validate
+   eai types seed
+   ```
+
+   ```
+   Tenant: grant-management
+   ✔ GrantApplication — 4 props, 2 links, 4 actions
+   ✔ Disbursement — 4 props, 1 link, 3 actions
+   ✔ ImpactReport — 4 props, 1 link, 3 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Create a grant application**
+
+   ```bash
+   eai resources create GrantApplication \
+     --data '{"program": "Small Business Growth Fund", "applicant": "Downtown Bakery LLC", "amount": 25000, "status": "submitted"}'
+   ```
+
+6. **Track a disbursement**
+
+   ```bash
+   eai resources create Disbursement \
+     --data '{"grant": "app-001", "amount": 10000, "milestone": "Equipment Purchase", "date": "2026-04-15"}'
+   ```
+
+7. **List awarded grants**
+
+   ```bash
+   eai resources list GrantApplication --filter 'status=awarded'
+   ```
+
+8. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'grant-management': [
+    {
+      name: 'GrantApplication',
+      displayName: 'Grant Application',
+      description: 'An application submitted by an organization for a specific grant program',
+      properties: [
+        { name: 'program', type: 'text' as const, required: true, indexed: true },
+        { name: 'applicant', type: 'text' as const, required: true, indexed: true },
+        { name: 'amount', type: 'number' as const, required: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'draft',
+          options: [
+            { label: 'Draft', value: 'draft' },
+            { label: 'Submitted', value: 'submitted' },
+            { label: 'Under Review', value: 'under-review' },
+            { label: 'Awarded', value: 'awarded' },
+            { label: 'Rejected', value: 'rejected' },
+            { label: 'Completed', value: 'completed' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'disbursements', target: 'Disbursement', cardinality: 'many' as const },
+        { name: 'impactReports', target: 'ImpactReport', cardinality: 'many' as const },
+      ],
+      actions: [
+        { name: 'submit', displayName: 'Submit Application' },
+        { name: 'review', displayName: 'Begin Review' },
+        { name: 'award', displayName: 'Award Grant' },
+        { name: 'reject', displayName: 'Reject Application' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Disbursement',
+      displayName: 'Disbursement',
+      description: 'A payment released to a grantee upon completion of a defined milestone',
+      properties: [
+        { name: 'grant', type: 'text' as const, required: true },
+        { name: 'amount', type: 'number' as const, required: true },
+        { name: 'milestone', type: 'text' as const, required: true },
+        { name: 'date', type: 'date' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'grantApplication', target: 'GrantApplication', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'request', displayName: 'Request Disbursement' },
+        { name: 'approve', displayName: 'Approve Disbursement' },
+        { name: 'release', displayName: 'Release Funds' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'ImpactReport',
+      displayName: 'Impact Report',
+      description: 'A periodic report submitted by a grantee documenting outcomes and metrics',
+      properties: [
+        { name: 'grant', type: 'text' as const, required: true },
+        { name: 'period', type: 'text' as const, required: true },
+        { name: 'metrics', type: 'text' as const, required: true },
+        { name: 'narrative', type: 'text' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'grantApplication', target: 'GrantApplication', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'submit', displayName: 'Submit Report' },
+        { name: 'review', displayName: 'Review Report' },
+        { name: 'accept', displayName: 'Accept Report' },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Milestone-based disbursements prevent premature payouts.** Each Disbursement is tied to a specific milestone, ensuring funds are released only when deliverables are verified.
+- **Structured impact reporting enables program evaluation.** Standardized metrics fields make it possible to compare outcomes across grantees and programs.
+- **End-to-end grant lifecycle tracking.** From application through disbursement to impact reporting, every stage is captured in a single system with clear status transitions.
+- **Program-level visibility.** Filtering applications by program and status gives program managers an at-a-glance view of portfolio health across all active grant cycles.

@@ -1,0 +1,189 @@
+---
+title: Product Compliance
+description: Track product certifications, regulatory standards, and audit history for retail compliance teams using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role:** Compliance Manager at a multi-national retail company.
+
+You are responsible for ensuring that every product sold across multiple markets meets local regulatory standards. Your catalog includes thousands of SKUs, each requiring certifications that vary by market -- safety labels, environmental ratings, import approvals. Expired certifications mean products must be pulled from shelves, costing the business revenue and reputation.
+
+## Business Problem
+
+Certification tracking is spread across vendor-provided PDFs, internal spreadsheets, and email threads with testing labs. When a certification expires, the team often discovers it only after a regulatory audit. There is no centralized view of which products are compliant in which markets. You need:
+
+- A product catalog enriched with market-specific compliance metadata.
+- Certification tracking with expiry dates and renewal alerts.
+- An audit log that records every compliance-related event for each product.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Product** | name, sku, category, market | has many Certifications, has many AuditLogs | register, update-market, discontinue |
+| **Certification** | product, standard, status, expiryDate | belongs to Product | issue, renew, revoke |
+| **AuditLog** | product, event, user, timestamp | belongs to Product | (system-generated) |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the vertical**
+
+   ```bash
+   eai init product-compliance
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define Object Types**
+
+   Add Product, Certification, and AuditLog to `src/eai.config/object-types.ts`.
+
+4. **Validate and seed**
+
+   ```bash
+   eai types validate
+   eai types seed
+   ```
+
+   ```
+   Tenant: product-compliance
+   ✔ Product — 4 props, 2 links, 3 actions
+   ✔ Certification — 4 props, 1 link, 3 actions
+   ✔ AuditLog — 4 props, 1 link, 0 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Register a product**
+
+   ```bash
+   eai resources create Product \
+     --data '{"name": "EcoBlend Detergent", "sku": "ECO-DET-500", "category": "household", "market": "EU"}'
+   ```
+
+6. **Add a certification**
+
+   ```bash
+   eai resources create Certification \
+     --data '{"product": "ECO-DET-500", "standard": "EU-Ecolabel", "status": "active", "expiryDate": "2027-06-30"}'
+   ```
+
+7. **List certifications expiring soon**
+
+   ```bash
+   eai resources list Certification --filter 'status=active'
+   ```
+
+8. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'product-compliance': [
+    {
+      name: 'Product',
+      displayName: 'Product',
+      description: 'A retail product tracked for regulatory compliance across markets',
+      properties: [
+        { name: 'name', type: 'text' as const, required: true, indexed: true },
+        { name: 'sku', type: 'text' as const, required: true, indexed: true },
+        { name: 'category', type: 'select' as const, required: true,
+          options: [
+            { label: 'Household', value: 'household' },
+            { label: 'Electronics', value: 'electronics' },
+            { label: 'Food & Beverage', value: 'food-beverage' },
+            { label: 'Apparel', value: 'apparel' },
+            { label: 'Health & Beauty', value: 'health-beauty' },
+          ],
+        },
+        { name: 'market', type: 'select' as const, required: true,
+          options: [
+            { label: 'US', value: 'US' },
+            { label: 'EU', value: 'EU' },
+            { label: 'UK', value: 'UK' },
+            { label: 'APAC', value: 'APAC' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'certifications', target: 'Certification', cardinality: 'many' as const },
+        { name: 'auditLogs', target: 'AuditLog', cardinality: 'many' as const },
+      ],
+      actions: [
+        { name: 'register', displayName: 'Register Product' },
+        { name: 'update-market', displayName: 'Update Market' },
+        { name: 'discontinue', displayName: 'Discontinue Product' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Certification',
+      displayName: 'Certification',
+      description: 'A regulatory certification issued for a product against a specific standard',
+      properties: [
+        { name: 'product', type: 'text' as const, required: true },
+        { name: 'standard', type: 'text' as const, required: true, indexed: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'pending',
+          options: [
+            { label: 'Pending', value: 'pending' },
+            { label: 'Active', value: 'active' },
+            { label: 'Expired', value: 'expired' },
+            { label: 'Revoked', value: 'revoked' },
+          ],
+        },
+        { name: 'expiryDate', type: 'date' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'product', target: 'Product', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'issue', displayName: 'Issue Certification' },
+        { name: 'renew', displayName: 'Renew Certification' },
+        { name: 'revoke', displayName: 'Revoke Certification' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'AuditLog',
+      displayName: 'Audit Log',
+      description: 'A system-generated record of compliance-related events for a product',
+      properties: [
+        { name: 'product', type: 'text' as const, required: true },
+        { name: 'event', type: 'text' as const, required: true },
+        { name: 'user', type: 'text' as const, required: true },
+        { name: 'timestamp', type: 'date' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'product', target: 'Product', cardinality: 'one' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Market-specific compliance tracking.** Each product is tied to a market, enabling compliance teams to filter by region and see exactly which certifications apply.
+- **Expiry-driven renewal workflows.** The expiryDate on Certifications enables automated alerts so that renewals happen before products fall out of compliance.
+- **Immutable audit history.** AuditLog entries have no actions, ensuring the compliance event history is tamper-resistant and audit-ready.
+- **SKU-level granularity.** Indexed SKU fields allow fast lookups across large catalogs, connecting certification status directly to inventory and sales systems.

@@ -1,0 +1,274 @@
+---
+title: Environment
+description: Manage environment variables, secrets, and configuration across environments using the EAI CLI.
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+EAI projects use environment variables to configure API endpoints, tenant IDs, authentication credentials, and feature flags. The `eai env` command syncs these values between Azure App Configuration (with Key Vault for secrets) and your local `.env.local` file.
+
+## How it works
+
+```
+Azure App Config + Key Vault
+         │
+    eai env pull
+         │
+         ▼
+     .env.local  ←  Your local development config
+         │
+    eai env push
+         │
+         ▼
+Azure App Config (admin only)
+```
+
+Configuration is stored centrally in Azure App Configuration. Secrets (API keys, connection strings, auth credentials) are stored in Azure Key Vault and referenced from App Config. The CLI resolves both in a single `pull` operation.
+
+## Pulling configuration
+
+Sync cloud configuration to your local `.env.local`:
+
+```bash
+eai env pull
+```
+
+This connects to Azure App Configuration, fetches all key-value pairs for your application label, and writes them to `.env.local` at your project root.
+
+Output:
+
+```
+✔ Found 12 config values
+✔ BASE_URL_PUBLIC_API = https://api.example.com
+✔ NEXT_PUBLIC_APP_NAME = trial-portal
+✔ TENANT_DEFAULT_ID = abc123...
+ℹ AUTH_SECRET = [Key Vault ref — skipped]
+ℹ ENTRA_CLIENT_ID = [Key Vault ref — skipped]
+
+✔ Written to .env.local (12 variables)
+⚠ 2 Key Vault references skipped. Use --include-secrets to resolve them.
+```
+
+### Including secrets
+
+By default, Key Vault references are written as comments. To resolve the actual secret values:
+
+```bash
+eai env pull --include-secrets
+```
+
+<Aside type="caution">
+  This requires Azure Key Vault access. You must be logged into the Azure CLI (`az login`) and have the appropriate Key Vault access policy.
+</Aside>
+
+### Specifying the environment
+
+Pull configuration for a specific environment:
+
+```bash
+eai env pull --env test
+eai env pull --env prod
+```
+
+### Custom labels
+
+Azure App Config uses labels to scope configuration per application. The CLI detects the label from your `NEXT_PUBLIC_APP_NAME` variable, but you can override it:
+
+```bash
+eai env pull --label my-custom-app
+```
+
+## Listing current variables
+
+View what is in your local `.env.local`:
+
+```bash
+eai env list
+```
+
+Output:
+
+```
+Environment (12 variables)
+  AUTH_SECRET = [hidden — use --show-secrets]
+  BASE_URL_PUBLIC_API = https://api.example.com
+  ENTRA_CLIENT_ID = [hidden — use --show-secrets]
+  ENTRA_TENANT_ID = 50808ce0-...
+  NEXT_PUBLIC_APP_NAME = trial-portal
+  TENANT_DEFAULT_ID = abc123...
+```
+
+Secret-like variables (those containing `SECRET`, `PASSWORD`, `KEY`, `TOKEN`, or `CREDENTIAL` in their name) are masked by default. Reveal them with:
+
+```bash
+eai env list --show-secrets
+```
+
+## Pushing configuration (admin only)
+
+Push local configuration overrides back to Azure App Config:
+
+```bash
+eai env push
+```
+
+This updates all values in your `.env.local` in the remote App Config store.
+
+### Push a single key
+
+```bash
+eai env push --key BASE_URL_PUBLIC_API
+```
+
+### Push with a specific label
+
+```bash
+eai env push --label my-custom-app
+```
+
+<Aside type="note">
+  The push command is intended for administrators. It updates the central configuration that all team members pull from. Coordinate with your team before pushing changes.
+</Aside>
+
+## Variable precedence
+
+Variables are resolved in this order, with later sources overriding earlier ones:
+
+<Steps>
+1. **Azure App Config** -- the central source of truth, pulled into `.env.local`
+2. **`.env.local`** -- your local development overrides
+3. **`process.env`** -- system environment variables and shell exports
+</Steps>
+
+This means you can override any pulled value by setting it in your shell:
+
+```bash
+export BASE_URL_PUBLIC_API=http://localhost:3001
+eai resources list Patient  # uses localhost instead of cloud URL
+```
+
+## Required variables
+
+These variables must be present for most CLI commands to work:
+
+| Variable                | Purpose                                    | Source          |
+|-------------------------|--------------------------------------------|-----------------|
+| `BASE_URL_PUBLIC_API`   | Platform API base URL                      | App Config      |
+| `TENANT_DEFAULT_ID`     | Default tenant ID for resource operations  | App Config      |
+| `ENTRA_TENANT_ID`       | Entra CIAM tenant ID for authentication    | App Config      |
+| `ENTRA_CLIENT_ID`       | Entra app registration client ID           | Key Vault       |
+| `AUTH_SECRET`           | Session encryption secret                  | Key Vault       |
+| `NEXT_PUBLIC_APP_NAME`  | Application name (used as App Config label)| App Config      |
+
+<Aside type="tip">
+  Run `eai doctor` to check which required variables are missing or misconfigured.
+</Aside>
+
+## Multiple environments
+
+You can maintain separate configurations for development, testing, and production. Each environment uses a different label in Azure App Config.
+
+<Tabs>
+  <TabItem label="Development">
+    ```bash
+    eai env pull --env dev --include-secrets
+    ```
+    Pulls from the default (dev) label.
+  </TabItem>
+  <TabItem label="Testing">
+    ```bash
+    eai env pull --env test --label trial-portal-test --include-secrets
+    ```
+    Pulls from a test-specific label.
+  </TabItem>
+  <TabItem label="Production">
+    ```bash
+    eai env pull --env prod --label trial-portal-prod --include-secrets
+    ```
+    Pulls from a production-specific label.
+  </TabItem>
+</Tabs>
+
+## Multiple tenants
+
+If your project works with multiple tenants, each tenant ID is stored as a separate variable using the pattern `TENANT_<KEY>_ID`:
+
+```bash title=".env.local"
+TENANT_DEFAULT_ID=abc123-def456
+TENANT_QUALITY_CONTROL_ID=789abc-012def
+TENANT_TRIAL_PORTAL_ID=345ghi-678jkl
+```
+
+These map directly to the tenant keys in your `object-types.ts`:
+
+```typescript title="src/eai.config/object-types.ts"
+export const objectTypes = {
+  'quality-control': [ /* types */ ],  // uses TENANT_QUALITY_CONTROL_ID
+  'trial-portal': [ /* types */ ],     // uses TENANT_TRIAL_PORTAL_ID
+};
+```
+
+## The .env.local file
+
+The generated `.env.local` file includes metadata comments:
+
+```bash title=".env.local"
+# Auto-generated by `eai env pull`
+# Source: appcs-demo-eai-dev (label: trial-portal)
+# Generated: 2025-01-15T10:30:00.000Z
+#
+# WARNING: Do NOT commit this file.
+
+BASE_URL_PUBLIC_API=https://api.example.com
+NEXT_PUBLIC_APP_NAME=trial-portal
+TENANT_DEFAULT_ID=abc123-def456
+# AUTH_SECRET= # Key Vault reference — use --include-secrets to resolve
+```
+
+<Aside type="danger">
+  Never commit `.env.local` to version control. It may contain secrets. The `eai init` command adds it to `.gitignore` automatically.
+</Aside>
+
+## Prerequisites
+
+The `eai env pull` and `eai env push` commands require the Azure CLI:
+
+```bash
+# Install Azure CLI
+brew install azure-cli    # macOS
+# or
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash  # Linux
+
+# Log in to Azure
+az login
+```
+
+If the Azure CLI is not installed or not authenticated, the CLI will display:
+
+```
+✗ Azure CLI not found or not logged in. Run `az login` first.
+```
+
+## Command reference
+
+| Command              | Description                                  |
+|----------------------|----------------------------------------------|
+| `eai env pull`       | Sync cloud config to `.env.local`            |
+| `eai env list`       | Show current environment variables           |
+| `eai env push`       | Push local overrides to cloud (admin)        |
+
+### Flags
+
+| Flag                 | Command   | Description                              |
+|----------------------|-----------|------------------------------------------|
+| `--env <name>`       | `pull`    | Target environment (dev, test, prod)     |
+| `--label <label>`    | `pull`, `push` | App Config label override           |
+| `--include-secrets`  | `pull`    | Resolve Key Vault secret references     |
+| `--show-secrets`     | `list`    | Show secret values (default: masked)     |
+| `--key <key>`        | `push`    | Push a single key instead of all         |
+
+## Next steps
+
+- [Troubleshooting](/eai-cli/guides/troubleshooting/) -- diagnose environment variable issues with `eai doctor`
+- [Deployment](/eai-cli/guides/deployment/) -- configure CI/CD with environment-specific settings
+- [Security](/eai-cli/guides/security/) -- manage API keys and secrets securely

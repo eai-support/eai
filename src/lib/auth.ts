@@ -70,7 +70,7 @@ function decrypt(data: string): string {
 export async function storeTokens(tokens: StoredTokens): Promise<void> {
   await ensureDir();
   const encrypted = encrypt(JSON.stringify(tokens));
-  await writeFile(TOKENS_FILE, encrypted, 'utf-8');
+  await writeFile(TOKENS_FILE, encrypted, { encoding: 'utf-8', mode: 0o600 });
 }
 
 export async function loadTokens(): Promise<StoredTokens | null> {

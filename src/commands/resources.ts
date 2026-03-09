@@ -3,7 +3,6 @@
  */
 
 import { Command } from 'commander';
-import { randomUUID } from 'node:crypto';
 import ora from 'ora';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';

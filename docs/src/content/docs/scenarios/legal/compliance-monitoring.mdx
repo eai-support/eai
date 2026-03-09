@@ -1,0 +1,169 @@
+---
+title: Compliance Monitoring
+description: Build a regulatory obligation tracking, filing management, and audit trail workflow for legal teams using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Compliance technology developer at a financial services company subject to oversight from multiple regulatory bodies.
+
+The compliance team tracks filing deadlines in spreadsheets, sends reminder emails manually, and maintains audit logs in shared documents. When regulators request proof of compliance, assembling the evidence is a multi-day effort. The company needs a system that tracks every obligation, automates deadline awareness, and maintains an immutable audit trail.
+
+## Business Problem
+
+Missed regulatory filings result in fines, enforcement actions, and reputational damage. The compliance team manages hundreds of recurring obligations across different regulations and entities, each with unique frequencies and deadlines. Without a structured system, obligations fall through the cracks, filings are submitted late, and there is no reliable audit trail showing when actions were taken and by whom. This scenario builds a compliance monitoring workflow that catalogs obligations, tracks filings against deadlines, and records every action in an audit trail.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Obligation** | `regulation` (text), `entity` (text), `description` (text), `frequency` (select: monthly, quarterly, semi-annual, annual, ad-hoc) | one-to-many → Filing | -- |
+| **Filing** | `period` (text), `dueDate` (date), `submittedDate` (date), `status` (select: upcoming, in-progress, submitted, overdue) | many-to-one → Obligation, one-to-many → AuditTrail | `submitFiling` |
+| **AuditTrail** | `action` (text), `user` (text), `timestamp` (date), `details` (text) | many-to-one → Filing | -- |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init compliance-monitoring
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the Obligation, Filing, and AuditTrail types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: compliance-monitoring
+   ✔ Obligation — 4 props, 1 link, 0 actions
+   ✔ Filing — 4 props, 2 links, 1 action
+   ✔ AuditTrail — 4 props, 1 link, 0 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create Obligation --data '{"regulation": "SEC Rule 17a-4", "entity": "US Broker-Dealer Division", "description": "Quarterly electronic records retention report", "frequency": "quarterly"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'compliance-monitoring': [
+    {
+      name: 'Obligation',
+      displayName: 'Obligation',
+      description: 'A regulatory obligation that requires periodic filings',
+      properties: [
+        { name: 'regulation', type: 'text' as const, required: true, indexed: true },
+        { name: 'entity', type: 'text' as const, required: true, indexed: true },
+        { name: 'description', type: 'text' as const, required: true },
+        { name: 'frequency', type: 'select' as const, required: true, options: [
+          { label: 'Monthly', value: 'monthly' },
+          { label: 'Quarterly', value: 'quarterly' },
+          { label: 'Semi-Annual', value: 'semi-annual' },
+          { label: 'Annual', value: 'annual' },
+          { label: 'Ad-Hoc', value: 'ad-hoc' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'filings', targetObjectType: 'Filing', cardinality: 'one-to-many' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+    {
+      name: 'Filing',
+      displayName: 'Filing',
+      description: 'A specific filing instance for a regulatory obligation',
+      properties: [
+        { name: 'period', type: 'text' as const, required: true },
+        { name: 'dueDate', type: 'date' as const, required: true, indexed: true },
+        { name: 'submittedDate', type: 'date' as const, required: false },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'upcoming', options: [
+          { label: 'Upcoming', value: 'upcoming' },
+          { label: 'In Progress', value: 'in-progress' },
+          { label: 'Submitted', value: 'submitted' },
+          { label: 'Overdue', value: 'overdue' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'obligation', targetObjectType: 'Obligation', cardinality: 'many-to-one' as const },
+        { name: 'auditTrail', targetObjectType: 'AuditTrail', cardinality: 'one-to-many' as const, cascadeDelete: true },
+      ],
+      actions: [
+        {
+          name: 'submitFiling',
+          displayName: 'Submit Filing',
+          description: 'Mark a filing as submitted to the regulatory body',
+          requiredRole: 'tenant-staff',
+          validationRules: { requiredStatus: 'in-progress' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'submitted' },
+            { type: 'set_timestamp', field: 'submittedDate' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'AuditTrail',
+      displayName: 'Audit Trail',
+      description: 'An immutable record of an action taken on a filing',
+      properties: [
+        { name: 'action', type: 'text' as const, required: true },
+        { name: 'user', type: 'text' as const, required: true },
+        { name: 'timestamp', type: 'date' as const, required: true, indexed: true },
+        { name: 'details', type: 'text' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'filing', targetObjectType: 'Filing', cardinality: 'many-to-one' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Obligation catalog**: Every regulatory requirement is cataloged with its frequency and responsible entity, providing a complete compliance inventory.
+- **Deadline-driven workflow**: Filings are indexed by due date, enabling dashboards that surface upcoming deadlines and overdue items at a glance.
+- **Immutable audit trail**: Every action on a filing is recorded with the user and timestamp, creating regulator-ready evidence of compliance activities.
+- **Multi-regulation support**: The obligation model supports different regulations and frequencies, scaling from a single filing requirement to hundreds across multiple regulatory frameworks.

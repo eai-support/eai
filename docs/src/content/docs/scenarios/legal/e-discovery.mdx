@@ -1,0 +1,199 @@
+---
+title: E-Discovery
+description: Build a document collection, review, and production workflow for legal e-discovery using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Litigation support developer at a law firm managing e-discovery for complex commercial disputes.
+
+The firm handles discovery requests involving thousands of documents from multiple custodians. Collection tracking is done through email chains, document review happens in spreadsheets with inconsistent tagging, and production logs are maintained in word processors. The firm needs a structured e-discovery workflow that tracks documents from collection through review to production.
+
+## Business Problem
+
+E-discovery is one of the most expensive phases of litigation. Without structured workflows, documents are collected redundantly, review assignments overlap, and production sets are assembled manually from inconsistent review records. Defensibility requires demonstrating that every responsive document was reviewed and that privilege calls were made consistently. This scenario builds an e-discovery platform that manages collections by custodian, assigns documents for review with structured tagging, and tracks productions with delivery confirmation.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Collection** | `case` (text), `custodian` (text), `dateRange` (text), `documentCount` (number), `status` (select: pending, in-progress, completed, verified) | one-to-many → ReviewItem | `completeCollection` |
+| **ReviewItem** | `document` (text), `reviewer` (text), `tags` (text), `decision` (select: responsive, non-responsive, privileged, needs-redaction), `reviewedDate` (date) | many-to-one → Collection | `makeDecision` |
+| **Production** | `case` (text), `itemCount` (number), `format` (select: native, tiff, pdf), `deliveredDate` (date), `status` (select: preparing, delivered, acknowledged) | -- | `markDelivered` |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init e-discovery
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the Collection, ReviewItem, and Production types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: e-discovery
+   ✔ Collection — 5 props, 1 link, 1 action
+   ✔ ReviewItem — 5 props, 1 link, 1 action
+   ✔ Production — 5 props, 0 links, 1 action
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create Collection --data '{"case": "Smith v. Acme Industries", "custodian": "J. Anderson", "dateRange": "2023-01-01 to 2025-06-30", "documentCount": 1250, "status": "pending"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'e-discovery': [
+    {
+      name: 'Collection',
+      displayName: 'Collection',
+      description: 'A document collection from a specific custodian for a case',
+      properties: [
+        { name: 'case', type: 'text' as const, required: true, indexed: true },
+        { name: 'custodian', type: 'text' as const, required: true, indexed: true },
+        { name: 'dateRange', type: 'text' as const, required: true },
+        { name: 'documentCount', type: 'number' as const, required: false },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'pending', options: [
+          { label: 'Pending', value: 'pending' },
+          { label: 'In Progress', value: 'in-progress' },
+          { label: 'Completed', value: 'completed' },
+          { label: 'Verified', value: 'verified' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'reviewItems', targetObjectType: 'ReviewItem', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'completeCollection',
+          displayName: 'Complete Collection',
+          description: 'Mark a document collection as completed',
+          requiredRole: 'tenant-staff',
+          validationRules: { requiredFields: ['custodian', 'documentCount'], requiredStatus: 'in-progress' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'completed' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'ReviewItem',
+      displayName: 'Review Item',
+      description: 'A document assigned for review within a collection',
+      properties: [
+        { name: 'document', type: 'text' as const, required: true, indexed: true },
+        { name: 'reviewer', type: 'text' as const, required: true },
+        { name: 'tags', type: 'text' as const, required: false },
+        { name: 'decision', type: 'select' as const, required: false, options: [
+          { label: 'Responsive', value: 'responsive' },
+          { label: 'Non-Responsive', value: 'non-responsive' },
+          { label: 'Privileged', value: 'privileged' },
+          { label: 'Needs Redaction', value: 'needs-redaction' },
+        ]},
+        { name: 'reviewedDate', type: 'date' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'collection', targetObjectType: 'Collection', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'makeDecision',
+          displayName: 'Make Decision',
+          description: 'Record a review decision on a document',
+          requiredRole: 'tenant-user',
+          validationRules: { requiredFields: ['document', 'reviewer'] },
+          sideEffects: [
+            { type: 'set_timestamp', field: 'reviewedDate' },
+            { type: 'set_user', field: 'reviewer' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Production',
+      displayName: 'Production',
+      description: 'A set of documents produced to opposing counsel',
+      properties: [
+        { name: 'case', type: 'text' as const, required: true, indexed: true },
+        { name: 'itemCount', type: 'number' as const, required: true },
+        { name: 'format', type: 'select' as const, required: true, options: [
+          { label: 'Native', value: 'native' },
+          { label: 'TIFF', value: 'tiff' },
+          { label: 'PDF', value: 'pdf' },
+        ]},
+        { name: 'deliveredDate', type: 'date' as const, required: false },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'preparing', options: [
+          { label: 'Preparing', value: 'preparing' },
+          { label: 'Delivered', value: 'delivered' },
+          { label: 'Acknowledged', value: 'acknowledged' },
+        ]},
+      ],
+      linkTypes: [],
+      actions: [
+        {
+          name: 'markDelivered',
+          displayName: 'Mark Delivered',
+          description: 'Record that a production has been delivered to opposing counsel',
+          requiredRole: 'tenant-staff',
+          validationRules: { requiredFields: ['itemCount', 'format'], requiredStatus: 'preparing' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'delivered' },
+            { type: 'set_timestamp', field: 'deliveredDate' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Custodian-based collections**: Documents are organized by custodian and date range, providing clear provenance for every collected item.
+- **Structured review decisions**: Standardized decision categories (responsive, non-responsive, privileged, needs-redaction) ensure consistent review across multiple reviewers.
+- **Production tracking**: Each production set records its format, item count, and delivery date, creating a defensible record of what was produced and when.
+- **Defensibility by design**: The complete chain from collection through review to production with timestamped decisions demonstrates a reasonable and proportional discovery process.

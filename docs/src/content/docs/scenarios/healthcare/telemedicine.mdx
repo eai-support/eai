@@ -1,0 +1,177 @@
+---
+title: Telemedicine
+description: Build a virtual consultation platform with provider scheduling and patient record management using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Full-stack developer at a telehealth startup (50 employees) building a white-label virtual care platform for hospital systems.
+
+Each hospital system is onboarded as a separate tenant, keeping their provider rosters, patient records, and consultation history fully isolated. The development team needs to ship a working consultation booking flow quickly while maintaining the flexibility to customize per customer.
+
+## Business Problem
+
+Patients struggle to access specialists, especially in rural areas. Phone-based scheduling is slow, and providers lack a unified view of patient history before a virtual visit. This scenario builds a telemedicine platform where patients can book consultations with available providers, and providers see relevant medical history before joining a video session.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Consultation** | `scheduledTime` (datetime), `status` (select: requested, confirmed, in-progress, completed, cancelled), `notes` (text), `duration` (number) | many-to-one → Provider, many-to-one → PatientRecord | `startConsultation` |
+| **Provider** | `name` (text), `specialty` (text), `licenseNumber` (text), `availability` (text) | one-to-many → Consultation | `updateAvailability` |
+| **PatientRecord** | `patientName` (text), `history` (text), `medications` (text), `allergies` (text), `lastVisitDate` (date) | one-to-many → Consultation | -- |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init telemedicine
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the Consultation, Provider, and PatientRecord types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: telemedicine
+   ✔ Consultation — 4 props, 2 links, 1 action
+   ✔ Provider — 4 props, 1 link, 1 action
+   ✔ PatientRecord — 5 props, 1 link, 0 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample providers and a patient record**
+
+   ```bash
+   eai resources create Provider --data '{"name": "Dr. Sarah Chen", "specialty": "Cardiology", "licenseNumber": "MD-204819", "availability": "Mon-Fri 9am-5pm EST"}'
+
+   eai resources create PatientRecord --data '{"patientName": "Robert Martinez", "history": "Hypertension diagnosed 2022, managed with medication", "medications": "Lisinopril 10mg daily", "allergies": "Penicillin", "lastVisitDate": "2026-01-10"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'telemedicine': [
+    {
+      name: 'Consultation',
+      displayName: 'Consultation',
+      description: 'A virtual care session between a provider and patient',
+      properties: [
+        { name: 'scheduledTime', type: 'datetime' as const, required: true },
+        {
+          name: 'status', type: 'select' as const, required: true,
+          defaultValue: 'requested',
+          options: [
+            { label: 'Requested', value: 'requested' },
+            { label: 'Confirmed', value: 'confirmed' },
+            { label: 'In Progress', value: 'in-progress' },
+            { label: 'Completed', value: 'completed' },
+            { label: 'Cancelled', value: 'cancelled' },
+          ],
+        },
+        { name: 'notes', type: 'text' as const, required: false },
+        { name: 'duration', type: 'number' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'provider', targetObjectType: 'Provider', cardinality: 'many-to-one' as const },
+        { name: 'patientRecord', targetObjectType: 'PatientRecord', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'startConsultation',
+          displayName: 'Start Consultation',
+          description: 'Transition consultation to in-progress and notify both parties',
+          inputs: [
+            { name: 'notes', type: 'text' as const, required: false },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Provider',
+      displayName: 'Provider',
+      description: 'A licensed healthcare provider offering virtual consultations',
+      properties: [
+        { name: 'name', type: 'text' as const, required: true, indexed: true },
+        { name: 'specialty', type: 'text' as const, required: true, indexed: true },
+        { name: 'licenseNumber', type: 'text' as const, required: true },
+        { name: 'availability', type: 'text' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'consultations', targetObjectType: 'Consultation', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'updateAvailability',
+          displayName: 'Update Availability',
+          description: 'Set the provider availability schedule for booking',
+          inputs: [
+            { name: 'availability', type: 'text' as const, required: true },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'PatientRecord',
+      displayName: 'Patient Record',
+      description: 'Consolidated patient medical history for provider review',
+      properties: [
+        { name: 'patientName', type: 'text' as const, required: true, indexed: true },
+        { name: 'history', type: 'text' as const, required: false },
+        { name: 'medications', type: 'text' as const, required: false },
+        { name: 'allergies', type: 'text' as const, required: false },
+        { name: 'lastVisitDate', type: 'date' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'consultations', targetObjectType: 'Consultation', cardinality: 'one-to-many' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Pre-visit context**: Consultations link directly to PatientRecord, giving providers immediate access to medical history, medications, and allergies before the session starts.
+- **Provider availability management**: The `updateAvailability` action lets providers set their own schedules, reducing administrative overhead for booking coordinators.
+- **White-label multi-tenancy**: Each hospital system is a separate tenant, allowing the startup to onboard new customers without code changes -- only a new tenant scope.
+- **Status-driven workflow**: The Consultation status field drives the entire session lifecycle from request through completion, enabling real-time dashboards and notification triggers.

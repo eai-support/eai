@@ -1,0 +1,216 @@
+---
+title: Installation
+description: Install the EAI CLI on your machine
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+The EAI CLI (`eai`) is a command-line tool for building vertical business applications on the EnterpriseAI platform. It handles everything from scaffolding new projects to managing data models, deploying to the cloud, and interacting with AI services.
+
+Before you install, make sure your machine meets the prerequisites below.
+
+## Prerequisites
+
+- **Node.js 20 or later** -- the CLI uses modern Node.js features that require version 20+
+- **npm** -- included with Node.js
+- **Git** -- required for scaffolding new projects from the Vertical Template
+
+Check your Node.js version:
+
+```bash
+node --version
+# v20.11.0 or higher
+```
+
+<Aside type="caution">
+  If you are running Node.js 18 or earlier, the CLI will not work. Use [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm) to install Node.js 20+.
+</Aside>
+
+## Install
+
+Choose the installation method that works best for your workflow.
+
+<Tabs>
+  <TabItem label="npm (recommended)">
+    Install the CLI globally so the `eai` command is available everywhere:
+
+    ```bash
+    npm install -g @eai-tools/cli
+    ```
+
+    This is the recommended approach for most developers. It puts the `eai` binary on your `PATH` so you can use it from any directory.
+  </TabItem>
+
+  <TabItem label="npx (zero-install)">
+    Run the CLI without installing it globally:
+
+    ```bash
+    npx @eai-tools/cli init my-vertical
+    ```
+
+    This downloads and runs the latest version on the fly. Useful for one-off commands or if you prefer not to install global packages. You can use `npx @eai-tools/cli` in place of `eai` for any command.
+  </TabItem>
+
+  <TabItem label="Homebrew">
+    Install with Homebrew on macOS or Linux:
+
+    ```bash
+    brew tap eai-tools/tap
+    brew install eai
+    ```
+
+    This installs the `eai` command and manages updates through Homebrew. Requires Node.js 20+ to be installed (Homebrew will install it as a dependency if needed).
+
+    To upgrade later:
+
+    ```bash
+    brew upgrade eai
+    ```
+  </TabItem>
+
+  <TabItem label="GitHub Release">
+    Download the npm tarball directly from a GitHub Release:
+
+    ```bash
+    # Download the latest release tarball
+    curl -LO https://github.com/eai-tools/eai-cli/releases/latest/download/eai-tools-cli-0.1.0.tgz
+
+    # Install it globally
+    npm install -g ./eai-tools-cli-0.1.0.tgz
+    ```
+
+    Browse all releases at [github.com/eai-tools/eai-cli/releases](https://github.com/eai-tools/eai-cli/releases).
+  </TabItem>
+
+  <TabItem label="From source">
+    Clone the repository and build from source:
+
+    ```bash
+    git clone https://github.com/eai-tools/eai-cli.git
+    cd eai-cli
+    npm install
+    npm run build
+    npm link
+    ```
+
+    This registers the local build as a global `eai` command. Useful for contributors or if you need the latest unreleased features.
+  </TabItem>
+</Tabs>
+
+## Platform compatibility
+
+| Platform | Supported | Notes |
+|----------|-----------|-------|
+| macOS (Apple Silicon) | Yes | Tested on macOS 13+ |
+| macOS (Intel) | Yes | Tested on macOS 13+ |
+| Linux (x64) | Yes | Ubuntu 20.04+, Debian 11+, Fedora 38+ |
+| Linux (ARM64) | Yes | Raspberry Pi OS, Amazon Linux 2023 |
+| Windows (x64) | Yes | Windows 10+, PowerShell or WSL recommended |
+| Windows (ARM64) | Yes | Windows 11 on ARM |
+
+**Required runtime**: Node.js 20.0.0 or later.
+
+## Verify the installation
+
+After installing, confirm the CLI is available:
+
+```bash
+eai --version
+```
+
+You should see output like:
+
+```
+0.1.0
+```
+
+You can also run `eai --help` to see all available commands:
+
+```bash
+eai --help
+```
+
+Expected output:
+
+```
+Usage: eai [options] [command]
+
+Enterprise AI Platform CLI — scaffold, seed, deploy, and manage vertical applications
+
+Options:
+  -V, --version   output the version number
+  -h, --help      display help for command
+
+Commands:
+  init [name]     Scaffold a new vertical application
+  dev             Start local development server
+  login           Authenticate with Entra CIAM
+  logout          Clear stored authentication tokens
+  env             Manage environment variables
+  types           Manage Object Type definitions
+  tenant          Manage tenants
+  resources       CRUD operations on platform resources
+  chat            AI chat operations
+  docs            Document management
+  deploy          Deployment operations
+  verify          Verify platform connectivity
+  doctor          Diagnose common issues
+  whoami          Show auth status and tenant info
+```
+
+## Update
+
+To update to the latest version:
+
+<Tabs>
+  <TabItem label="npm">
+    ```bash
+    npm update -g @eai-tools/cli
+    ```
+  </TabItem>
+
+  <TabItem label="npx">
+    npx always uses the latest version. No update needed -- just run your command and it fetches the newest release automatically.
+  </TabItem>
+
+  <TabItem label="Homebrew">
+    ```bash
+    brew upgrade eai
+    ```
+  </TabItem>
+
+  <TabItem label="From source">
+    ```bash
+    cd eai-cli
+    git pull
+    npm install
+    npm run build
+    ```
+  </TabItem>
+</Tabs>
+
+## Uninstall
+
+<Tabs>
+  <TabItem label="npm">
+    ```bash
+    npm uninstall -g @eai-tools/cli
+    ```
+  </TabItem>
+
+  <TabItem label="Homebrew">
+    ```bash
+    brew uninstall eai
+    brew untap eai-tools/tap
+    ```
+  </TabItem>
+</Tabs>
+
+Your project files and local configuration (`~/.eai/`) are not deleted when you uninstall.
+
+## Next steps
+
+With the CLI installed, you are ready to authenticate and create your first project:
+
+- [Quick Start](/eai-cli/getting-started/quickstart/) -- get up and running in 5 minutes
+- [Authentication](/eai-cli/getting-started/authentication/) -- learn how the login flow works

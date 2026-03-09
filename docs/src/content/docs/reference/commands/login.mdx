@@ -1,0 +1,98 @@
+---
+title: eai login / eai logout
+description: Authenticate with Entra CIAM using the device code flow
+---
+
+## Synopsis
+
+```
+eai login [options]
+eai logout
+```
+
+## Description
+
+`eai login` authenticates you with Microsoft Entra CIAM using the device code flow. The CLI displays a URL and a code, then opens your default browser. After you sign in and enter the code, the CLI stores tokens locally in `~/.eai/` for subsequent commands.
+
+The client ID is resolved in the following order:
+
+1. `--client-id` flag
+2. `ENTRA_CLIENT_ID` in the project's `.env.local`
+3. `ENTRA_CLIENT_ID` environment variable
+
+`eai logout` clears all stored authentication tokens from `~/.eai/`.
+
+## Options
+
+### eai login
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--tenant-name <name>` | CIAM tenant name | `eaidevmyentepriseai` |
+| `--tenant-id <id>` | CIAM tenant ID | `50808ce0-f31b-4fd0-9861-74b83b8c112a` |
+| `--client-id <id>` | App registration client ID. Required if not set in `.env.local` or environment. | -- |
+| `--scope <scope>` | OAuth scopes | `openid profile email offline_access` |
+| `-h, --help` | Display help for the command. | -- |
+
+### eai logout
+
+No options. Clears all stored tokens from `~/.eai/`.
+
+## Examples
+
+### Log in (client ID from .env.local)
+
+```bash
+eai login
+```
+
+```
+Authenticating with Entra CIAM
+  Tenant: eaidevmyentepriseai
+  Client: a1b2c3d4-...
+
+To sign in, use a web browser to open https://microsoft.com/devicelogin
+and enter the code ABCD-EFGH to authenticate.
+
+✔ Authenticated as jane.doe@example.com
+  Token expires: 3/10/2026, 2:30:00 PM
+```
+
+### Log in with explicit client ID
+
+```bash
+eai login --client-id a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+### Log in to a different tenant
+
+```bash
+eai login --tenant-name myorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
+```
+
+### Log out
+
+```bash
+eai logout
+```
+
+```
+✔ Logged out. Stored tokens cleared.
+```
+
+## Token Storage
+
+Tokens are stored in `~/.eai/` and include:
+
+- Access token (for API calls)
+- Refresh token (for automatic renewal)
+- User principal name (UPN)
+- Expiration timestamp
+
+Tokens are automatically used by other commands like `eai resources`, `eai chat`, and `eai verify`.
+
+## Related Commands
+
+- [`eai whoami`](/eai-cli/reference/commands/whoami/) -- check current auth status
+- [`eai verify`](/eai-cli/reference/commands/verify/) -- verify platform connectivity including auth
+- [`eai env pull`](/eai-cli/reference/commands/env/) -- sync environment (often run after login)

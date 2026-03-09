@@ -1,0 +1,165 @@
+---
+title: Beneficiary Tracking
+description: Build a beneficiary enrollment, service delivery, and outcome measurement workflow for non-profits using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Developer at a social services non-profit serving 2,000+ beneficiaries across multiple programs.
+
+Case managers track beneficiary information in filing cabinets and spreadsheets. Service delivery is logged in daily reports that are never aggregated, and outcome data is compiled manually at grant reporting time. The organization needs a digital system to track beneficiaries from enrollment through service delivery to measurable outcomes.
+
+## Business Problem
+
+Funders increasingly require evidence of impact, but the organization cannot answer basic questions: How many beneficiaries were served last quarter? What services did a specific beneficiary receive? Are outcomes improving over time? Without structured data, grant reports are based on estimates rather than actual counts, and case managers have no visibility into a beneficiary's complete service history. This scenario builds a beneficiary tracking workflow that captures enrollment, logs every service interaction, and measures outcomes against defined targets.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Beneficiary** | `name` (text), `demographics` (text), `needs` (text), `enrollmentDate` (date), `status` (select: enrolled, active, graduated, inactive) | one-to-many → Service, one-to-many → Outcome | `activateBeneficiary` |
+| **Service** | `type` (text), `provider` (text), `date` (date), `outcome` (text), `duration` (number) | many-to-one → Beneficiary | -- |
+| **Outcome** | `metric` (text), `baseline` (number), `current` (number), `target` (number), `measuredDate` (date) | many-to-one → Beneficiary | -- |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init beneficiary-tracking
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the Beneficiary, Service, and Outcome types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: beneficiary-tracking
+   ✔ Beneficiary — 5 props, 2 links, 1 action
+   ✔ Service — 5 props, 1 link, 0 actions
+   ✔ Outcome — 5 props, 1 link, 0 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create Beneficiary --data '{"name": "Maria Santos", "demographics": "Age 34, single parent, two children", "needs": "Job training, childcare assistance", "enrollmentDate": "2025-05-01", "status": "enrolled"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'beneficiary-tracking': [
+    {
+      name: 'Beneficiary',
+      displayName: 'Beneficiary',
+      description: 'An individual enrolled in the organization programs',
+      properties: [
+        { name: 'name', type: 'text' as const, required: true, indexed: true },
+        { name: 'demographics', type: 'text' as const, required: false },
+        { name: 'needs', type: 'text' as const, required: false },
+        { name: 'enrollmentDate', type: 'date' as const, required: true, indexed: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'enrolled', options: [
+          { label: 'Enrolled', value: 'enrolled' },
+          { label: 'Active', value: 'active' },
+          { label: 'Graduated', value: 'graduated' },
+          { label: 'Inactive', value: 'inactive' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'services', targetObjectType: 'Service', cardinality: 'one-to-many' as const },
+        { name: 'outcomes', targetObjectType: 'Outcome', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'activateBeneficiary',
+          displayName: 'Activate Beneficiary',
+          description: 'Move an enrolled beneficiary to active status after intake assessment',
+          requiredRole: 'tenant-user',
+          validationRules: { requiredFields: ['name', 'enrollmentDate'], requiredStatus: 'enrolled' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'active' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Service',
+      displayName: 'Service',
+      description: 'A service delivered to a beneficiary',
+      properties: [
+        { name: 'type', type: 'text' as const, required: true, indexed: true },
+        { name: 'provider', type: 'text' as const, required: true },
+        { name: 'date', type: 'date' as const, required: true, indexed: true },
+        { name: 'outcome', type: 'text' as const, required: false },
+        { name: 'duration', type: 'number' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'beneficiary', targetObjectType: 'Beneficiary', cardinality: 'many-to-one' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+    {
+      name: 'Outcome',
+      displayName: 'Outcome',
+      description: 'A measurable outcome tracked for a beneficiary',
+      properties: [
+        { name: 'metric', type: 'text' as const, required: true, indexed: true },
+        { name: 'baseline', type: 'number' as const, required: true },
+        { name: 'current', type: 'number' as const, required: true },
+        { name: 'target', type: 'number' as const, required: true },
+        { name: 'measuredDate', type: 'date' as const, required: true, indexed: true },
+      ],
+      linkTypes: [
+        { name: 'beneficiary', targetObjectType: 'Beneficiary', cardinality: 'many-to-one' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Complete beneficiary profiles**: Enrollment, demographics, and needs are captured in a single record, giving case managers a holistic view of each individual.
+- **Service history**: Every service interaction is logged with date, provider, and duration, enabling accurate counts for grant reporting.
+- **Outcome measurement**: Tracking baseline, current, and target values for each metric demonstrates progress and impact to funders with real data.
+- **Enrollment lifecycle**: The structured status flow from enrolled through active to graduated tracks each beneficiary's journey through the program.

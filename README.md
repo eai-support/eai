@@ -2,7 +2,7 @@
 
 Scaffold, seed, deploy, and manage vertical applications on the EAI platform.
 
-Every command wraps PublicAPI calls — developers never need to know about OBO tokens, OPA policies, single-table JSONB, or the orchestrator. They see **resources, types, tenants, and chat**.
+Every command wraps platform API calls — developers work with **resources, types, tenants, and chat** using simple, intuitive commands.
 
 ## Install
 
@@ -75,7 +75,7 @@ eai dev
 | Command | Description |
 |---------|-------------|
 | `eai types validate` | Check types against platform schema rules |
-| `eai types seed` | Push Object Types to Configurator via PublicAPI |
+| `eai types seed` | Push Object Types to platform via PublicAPI |
 | `eai types diff` | Compare local definitions with remote state |
 | `eai types pull` | Download remote types to local TypeScript |
 
@@ -131,14 +131,14 @@ Developer Terminal                    EAI Platform
 ──────────────────                    ────────────
 eai login ──────────────────────────→ Entra CIAM (device code flow)
 eai env pull ───────────────────────→ Azure App Config + Key Vault
-eai types seed ─────────────────────→ PublicAPI /v3/orchestrate → Configurator
-eai resources list ─────────────────→ PublicAPI /v3/resources → ResourceAPI
-eai chat stream ────────────────────→ PublicAPI /v3/chat/stream → AICore
-eai docs classify ──────────────────→ PublicAPI /v3/documents → AICore
+eai types seed ─────────────────────→ Platform API → Type Registry
+eai resources list ─────────────────→ Platform API → Data Service
+eai chat stream ────────────────────→ Platform API → AI Service
+eai docs classify ──────────────────→ Platform API → AI Service
 eai deploy trigger ─────────────────→ GitHub Actions → Azure App Service
 ```
 
-The CLI authenticates via device code flow, stores tokens locally in `~/.eai/`, and calls PublicAPI directly with a Bearer token. All platform internals (OBO exchanges, OPA policies, JSONB storage, orchestrator routing) are abstracted away.
+The CLI authenticates via device code flow, stores tokens locally in `~/.eai/`, and calls the platform API directly with a Bearer token. All platform internals are abstracted away.
 
 ## Development
 

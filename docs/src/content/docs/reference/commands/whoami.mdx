@@ -1,0 +1,119 @@
+---
+title: eai whoami
+description: Show current authentication status, user info, and project context
+---
+
+## Synopsis
+
+```
+eai whoami
+```
+
+## Description
+
+`eai whoami` displays your current authentication status and project context. It shows the authenticated user, tenant information, token expiration, and -- if run from within an EAI project -- the project's app name, environment, API endpoint, and configured tenant and workflow IDs.
+
+This command is useful for verifying which account you are logged in as, confirming your project configuration, and debugging authentication issues.
+
+## Options
+
+| Option | Description |
+|--------|-------------|
+| `-h, --help` | Display help for the command. |
+
+## Examples
+
+### Authenticated with project context
+
+```bash
+eai whoami
+```
+
+```
+Authentication
+✔ Logged in as jane.doe@example.com
+
+  Tenant          eaidevmyentepriseai
+  Tenant ID       50808ce0-f31b-4fd0-9861-74b83b8c112a
+  Expires         3/10/2026, 2:30:00 PM
+  Status          Active
+
+Project
+  App Name        patient-intake
+  Environment     dev
+  PublicAPI        https://test-api.myenterprise.ai
+  Config Tenant   8f3a1b2c-d4e5-6789-abcd-ef0123456789
+  Workflow        wf-abc-123-def-456
+```
+
+### Authenticated without project context
+
+When run outside of an EAI project directory, only the authentication section is shown.
+
+```bash
+eai whoami
+```
+
+```
+Authentication
+✔ Logged in as jane.doe@example.com
+
+  Tenant          eaidevmyentepriseai
+  Tenant ID       50808ce0-f31b-4fd0-9861-74b83b8c112a
+  Expires         3/10/2026, 2:30:00 PM
+  Status          Active
+```
+
+### Expired token
+
+```bash
+eai whoami
+```
+
+```
+Authentication
+⚠ Token expired. Run `eai login` to re-authenticate.
+
+  Tenant          eaidevmyentepriseai
+  Tenant ID       50808ce0-f31b-4fd0-9861-74b83b8c112a
+  Expires         3/8/2026, 10:00:00 AM
+  Status          Expired
+```
+
+### Not logged in
+
+```bash
+eai whoami
+```
+
+```
+Authentication
+✖ Not logged in. Run `eai login` to authenticate.
+```
+
+## Output Fields
+
+### Authentication section
+
+| Field | Description |
+|-------|-------------|
+| Tenant | The Entra CIAM tenant name |
+| Tenant ID | The Entra CIAM tenant ID |
+| Expires | Token expiration date and time |
+| Status | `Active` if the token is valid, `Expired` if it has expired |
+
+### Project section (shown when inside an EAI project)
+
+| Field | Description |
+|-------|-------------|
+| App Name | The vertical application name from `NEXT_PUBLIC_APP_NAME` |
+| Environment | Current environment (dev, test, prod) |
+| PublicAPI | The platform API gateway URL |
+| Config Tenant | The platform tenant ID for this project |
+| Workflow | The configured workflow ID |
+
+## Related Commands
+
+- [`eai login`](/eai-cli/reference/commands/login/) -- authenticate or re-authenticate
+- [`eai verify`](/eai-cli/reference/commands/verify/) -- run full connectivity checks
+- [`eai env list`](/eai-cli/reference/commands/env/) -- view all environment variables

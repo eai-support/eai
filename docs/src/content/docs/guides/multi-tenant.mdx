@@ -1,0 +1,301 @@
+---
+title: Multi-Tenant
+description: Manage tenants, configure data isolation, and work with tenant hierarchies using the EAI CLI.
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+The EAI platform is multi-tenant by design. Every resource, Object Type, and user belongs to a tenant. Data is fully isolated between tenants -- a user in Tenant A never sees resources from Tenant B. The `eai tenant` command lets you create, list, and inspect tenants from the terminal.
+
+## How it works
+
+```
+Tenant (parent)
+  ├── Tenant (child A)
+  │     ├── Object Types
+  │     ├── Resources
+  │     └── Users
+  └── Tenant (child B)
+        ├── Object Types
+        ├── Resources
+        └── Users
+```
+
+Tenants form a hierarchy. A parent tenant can have child tenants, each with their own isolated data. This supports scenarios like a franchise model (parent company with regional tenants) or a SaaS platform (each customer gets their own tenant).
+
+## Listing tenants
+
+View all tenants you have access to:
+
+```bash
+eai tenant list
+```
+
+Output:
+
+```
+✔ 4 tenants
+  acme-corp abc12345-def6-7890-abcd-ef0123456789
+    domains: acme.example.com
+  acme-west 111aaaa-222b-333c-444d-555eee666fff
+  acme-east 777ggg-888h-999i-000j-111kkk222lll
+  acme-south 333mmm-444n-555o-666p-777qqq888rrr
+```
+
+### Filter by parent
+
+List only child tenants of a specific parent:
+
+```bash
+eai tenant list --parent abc12345-def6-7890-abcd-ef0123456789
+```
+
+### JSON output
+
+```bash
+eai tenant list --json
+```
+
+```json
+{
+  "docs": [
+    {
+      "id": "abc12345-def6-7890-abcd-ef0123456789",
+      "name": "Acme Corp",
+      "slug": "acme-corp",
+      "domain": ["acme.example.com"]
+    }
+  ]
+}
+```
+
+## Getting tenant details
+
+View full details for a specific tenant:
+
+```bash
+eai tenant info abc12345-def6-7890-abcd-ef0123456789
+```
+
+Output:
+
+```
+✔ Tenant: Acme Corp
+{
+  "id": "abc12345-def6-7890-abcd-ef0123456789",
+  "name": "Acme Corp",
+  "slug": "acme-corp",
+  "domain": ["acme.example.com"],
+  "parent": null,
+  "created_at": "2025-01-01T00:00:00Z"
+}
+```
+
+## Creating a tenant
+
+Create a new tenant with a name and slug:
+
+```bash
+eai tenant create --name "Acme West Region" --slug acme-west
+```
+
+Output:
+
+```
+✔ Created tenant acme-west (111aaaa-222b-333c-444d-555eee666fff)
+```
+
+### Child tenants
+
+Create a tenant as a child of an existing parent:
+
+```bash
+eai tenant create \
+  --name "Acme West Region" \
+  --slug acme-west \
+  --parent abc12345-def6-7890-abcd-ef0123456789
+```
+
+### Domains
+
+Associate one or more domains with a tenant:
+
+```bash
+eai tenant create \
+  --name "Acme Corp" \
+  --slug acme-corp \
+  --domain "acme.example.com,acme-portal.example.com"
+```
+
+Domains are used for routing -- the platform can determine which tenant a request belongs to based on the domain of the incoming request.
+
+<Aside type="note">
+  Tenant slugs must be kebab-case (lowercase with hyphens). The slug is used as an identifier in URLs and configuration.
+</Aside>
+
+## Data isolation
+
+Every API call is scoped to a tenant. When you run CLI commands, the tenant ID is resolved from your `.env.local`:
+
+```bash title=".env.local"
+TENANT_DEFAULT_ID=abc12345-def6-7890-abcd-ef0123456789
+```
+
+All resource operations (create, list, get, update, delete) are automatically scoped to this tenant. Resources created under one tenant are invisible to other tenants.
+
+```
+Tenant A                    Tenant B
+┌─────────────────┐        ┌─────────────────┐
+│ Patient: Jane   │        │ Patient: Bob    │
+│ Patient: John   │        │ Patient: Alice  │
+│                 │        │                 │
+│ (invisible to B)│        │ (invisible to A)│
+└─────────────────┘        └─────────────────┘
+```
+
+## Tenant hierarchy
+
+Parent-child tenant relationships support organizational structures:
+
+```
+Enterprise (root tenant)
+  ├── Division A
+  │     ├── Team A1
+  │     └── Team A2
+  └── Division B
+        ├── Team B1
+        └── Team B2
+```
+
+Each level in the hierarchy has its own isolated data. A parent tenant administrator can manage child tenants, but a child tenant user cannot access sibling tenant data.
+
+### Creating a hierarchy
+
+<Steps>
+1. **Create the parent tenant:**
+
+   ```bash
+   eai tenant create --name "Enterprise" --slug enterprise
+   ```
+
+2. **Create child tenants under the parent:**
+
+   ```bash
+   eai tenant create \
+     --name "Division A" \
+     --slug division-a \
+     --parent <enterprise-tenant-id>
+
+   eai tenant create \
+     --name "Division B" \
+     --slug division-b \
+     --parent <enterprise-tenant-id>
+   ```
+
+3. **Create further nested children:**
+
+   ```bash
+   eai tenant create \
+     --name "Team A1" \
+     --slug team-a1 \
+     --parent <division-a-tenant-id>
+   ```
+</Steps>
+
+## Tenant-specific configuration
+
+When your project works with multiple tenants, define a tenant ID variable for each one in `.env.local`:
+
+```bash title=".env.local"
+TENANT_DEFAULT_ID=abc12345-def6-7890-abcd-ef0123456789
+TENANT_DIVISION_A_ID=111aaaa-222b-333c-444d-555eee666fff
+TENANT_DIVISION_B_ID=777ggg-888h-999i-000j-111kkk222lll
+```
+
+These variables map to the tenant keys in your `object-types.ts`:
+
+```typescript title="src/eai.config/object-types.ts"
+export const objectTypes: Record<string, ObjectTypeDefinition[]> = {
+  'division-a': [
+    // Object Types for Division A
+    { name: 'Project', /* ... */ },
+  ],
+  'division-b': [
+    // Object Types for Division B
+    { name: 'WorkOrder', /* ... */ },
+  ],
+};
+```
+
+When you run `eai types seed`, the CLI resolves each tenant key to its corresponding `TENANT_<KEY>_ID` environment variable:
+
+- `division-a` maps to `TENANT_DIVISION_A_ID`
+- `division-b` maps to `TENANT_DIVISION_B_ID`
+
+<Aside type="tip">
+  The key-to-variable mapping converts hyphens to underscores and uppercases the result. So `my-tenant` becomes `TENANT_MY_TENANT_ID`.
+</Aside>
+
+## Domains
+
+Domains are used for request routing in multi-tenant applications. When a user visits `acme.example.com`, the platform routes the request to the Acme tenant.
+
+### Associating domains during creation
+
+```bash
+eai tenant create \
+  --name "Acme Corp" \
+  --slug acme-corp \
+  --domain "acme.example.com,portal.acme.com"
+```
+
+### Viewing tenant domains
+
+```bash
+eai tenant list
+```
+
+```
+  acme-corp abc12345-def6-7890-abcd-ef0123456789
+    domains: acme.example.com, portal.acme.com
+```
+
+## Working with multiple tenants in the CLI
+
+You can switch between tenants by changing the `TENANT_DEFAULT_ID` in your `.env.local`, or by setting it as an environment variable:
+
+```bash
+# Temporarily work with a different tenant
+TENANT_DEFAULT_ID=111aaaa-222b-333c-444d-555eee666fff eai resources list Patient
+```
+
+For Object Type operations, use the `--tenant-key` flag:
+
+```bash
+# Seed types for a specific tenant only
+eai types seed --tenant-key division-a
+```
+
+## Command reference
+
+| Command                  | Description                              |
+|--------------------------|------------------------------------------|
+| `eai tenant list`        | List all accessible tenants              |
+| `eai tenant info <id>`   | Show details for a specific tenant       |
+| `eai tenant create`      | Create a new tenant                      |
+
+### Flags
+
+| Flag               | Command   | Description                              |
+|--------------------|-----------|------------------------------------------|
+| `--parent <id>`    | `list`, `create` | Parent tenant ID for filtering or hierarchy |
+| `--json`           | `list`    | Output raw JSON                          |
+| `--name <name>`    | `create`  | **(required)** Tenant display name       |
+| `--slug <slug>`    | `create`  | **(required)** Tenant slug (kebab-case)  |
+| `--domain <list>`  | `create`  | Comma-separated list of domains          |
+
+## Next steps
+
+- [Security](/eai-cli/guides/security/) -- understand how roles work within tenants
+- [Object Types](/eai-cli/guides/object-types/) -- define data models scoped to specific tenants
+- [Environment](/eai-cli/guides/environment/) -- configure tenant IDs in your environment

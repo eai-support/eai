@@ -1,0 +1,59 @@
+# LLM Council Configuration
+#
+# This file controls the multi-provider LLM Council feature.
+# Place in: .specify/memory/council-config.yaml
+#
+# The council pattern enables parallel execution across multiple AI providers,
+# with the requesting LLM (e.g., Claude Code) acting as Chairman to synthesize
+# diverse perspectives into unified outputs.
+
+council:
+  # Global enable/disable for council mode
+  # When false, all stages use single-provider mode
+  enabled: false
+
+  # Enable optional peer review stage where each AI evaluates others' responses
+  # Requires at least 3 enabled providers
+  peer_review: false
+
+  # Minimum number of providers that must respond for a valid council session
+  # Valid range: 2-4 (at least 2 for diversity, max 4 providers)
+  min_quorum: 2
+
+  # Per-provider timeout in milliseconds
+  # Valid range: 5000-120000 (5 seconds to 2 minutes)
+  timeout: 30000
+
+  # Provider configuration
+  # API keys are stored in VSCode settings:
+  #   - gofer.anthropicApiKey
+  #   - gofer.googleApiKey
+  #   - gofer.openaiApiKey
+  providers:
+    anthropic:
+      enabled: true
+      model: claude-opus-4-5-20251101
+    google:
+      enabled: false
+      model: gemini-3-flash-preview
+    openai:
+      enabled: false
+      model: gpt-5.2
+
+  # Per-stage council mode configuration
+  # Options: 'council' (multi-provider) or 'single' (primary provider only)
+  stages:
+    # Planning workflows benefit from diverse perspectives
+    gofer_plan: council
+
+    # Analysis benefits from multiple viewpoints
+    gofer_analyze: council
+
+    # Research benefits from diverse interpretations
+    research_codebase: council
+
+    # Validation benefits from multiple reviewers
+    validate_plan: council
+
+    # Implementation should use single provider for consistency
+    implement: single

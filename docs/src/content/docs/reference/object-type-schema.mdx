@@ -1,0 +1,359 @@
+---
+title: Object Type Schema
+description: Complete schema specification for Object Types including all field types, validation rules, link types, action definitions, and side effect patterns.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## TypeScript Interfaces
+
+The following interfaces define the complete Object Type schema. These are exported from `src/lib/config.ts` in the CLI and used in `src/eai.config/object-types.ts` in vertical applications.
+
+### ObjectTypeDefinition
+
+```typescript
+interface ObjectTypeDefinition {
+  /** PascalCase name (e.g., "Patient", "LoanApplication") */
+  name: string;
+
+  /** Human-readable label */
+  displayName: string;
+
+  /** Optional documentation */
+  description?: string;
+
+  /** Field definitions */
+  properties: ObjectTypeProperty[];
+
+  /** Relationships to other Object Types */
+  linkTypes: ObjectTypeLinkType[];
+
+  /** Business operations */
+  actions: ObjectTypeAction[];
+
+  /** Storage backend identifier (optional, platform-managed) */
+  storageBackend?: string;
+
+  /** Lifecycle status */
+  status: 'draft' | 'published' | 'deprecated';
+}
+```
+
+### ObjectTypeProperty
+
+```typescript
+interface ObjectTypeProperty {
+  /** Field name (camelCase recommended) */
+  name: string;
+
+  /** Field type */
+  type: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'json' | 'file' | 'relationship';
+
+  /** Whether the field must be present when creating a resource */
+  required: boolean;
+
+  /** Whether the field is indexed for faster queries */
+  indexed?: boolean;
+
+  /** Default value applied when the field is not provided */
+  defaultValue?: string | number | boolean;
+
+  /** Required for "select" type. List of allowed values. */
+  options?: Array<{ label: string; value: string }>;
+
+  /** Optional documentation for the field */
+  description?: string;
+}
+```
+
+### ObjectTypeLinkType
+
+```typescript
+interface ObjectTypeLinkType {
+  /** Relationship name (camelCase recommended) */
+  name: string;
+
+  /** The Object Type this link points to (PascalCase) */
+  targetObjectType: string;
+
+  /** Relationship cardinality */
+  cardinality: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
+
+  /** If true, deleting the source also deletes linked targets */
+  cascadeDelete?: boolean;
+}
+```
+
+### ObjectTypeAction
+
+```typescript
+interface ObjectTypeAction {
+  /** Action identifier (snake_case recommended) */
+  name: string;
+
+  /** Human-readable label */
+  displayName: string;
+
+  /** Minimum role required to execute this action */
+  requiredRole: 'tenant-user' | 'tenant-staff' | 'tenant-admin';
+
+  /** Pre-conditions that must be met before execution */
+  validationRules: {
+    /** Fields that must have non-empty values */
+    requiredFields?: string[];
+
+    /** The resource must be in this status */
+    requiredStatus?: string;
+  };
+
+  /** Automated field changes applied on successful execution */
+  sideEffects: Array<{
+    /** Side effect type */
+    type: 'set_field' | 'set_timestamp' | 'set_user';
+
+    /** Target field name (must exist in properties) */
+    field: string;
+
+    /** Static value (required for "set_field", ignored for others) */
+    value?: string | number | boolean;
+  }>;
+}
+```
+
+## Field Type Reference
+
+### text
+
+Free-form string values.
+
+```typescript
+{ name: 'firstName', type: 'text', required: true }
+{ name: 'notes', type: 'text', required: false, description: 'Free-form notes' }
+```
+
+**Validation**: No maximum length enforced by default. Empty strings are treated as missing when `required: true`.
+
+### number
+
+Numeric values (integer or decimal).
+
+```typescript
+{ name: 'age', type: 'number', required: true }
+{ name: 'score', type: 'number', required: false, defaultValue: 0 }
+```
+
+**Validation**: Must be a valid JSON number. No range constraints at the schema level.
+
+### boolean
+
+True or false.
+
+```typescript
+{ name: 'isActive', type: 'boolean', required: true, defaultValue: true }
+```
+
+**Validation**: Must be `true` or `false`. String values like `"true"` are not accepted.
+
+### date
+
+ISO 8601 date strings.
+
+```typescript
+{ name: 'dateOfBirth', type: 'date', required: true }
+{ name: 'submittedAt', type: 'date', required: false }
+```
+
+**Validation**: Must be a valid ISO 8601 string (e.g., `"2025-03-15"` or `"2025-03-15T10:30:00Z"`).
+
+### select
+
+One of a predefined set of options.
+
+```typescript
+{
+  name: 'status',
+  type: 'select',
+  required: true,
+  defaultValue: 'draft',
+  options: [
+    { label: 'Draft', value: 'draft' },
+    { label: 'Submitted', value: 'submitted' },
+    { label: 'Approved', value: 'approved' },
+    { label: 'Rejected', value: 'rejected' },
+  ],
+}
+```
+
+**Validation**: The value must match one of the defined `options[].value` strings. The `options` array is required and must contain at least one entry.
+
+### json
+
+Arbitrary JSON objects.
+
+```typescript
+{ name: 'metadata', type: 'json', required: false }
+```
+
+**Validation**: Must be a valid JSON object, array, or primitive. No schema validation is applied to the contents.
+
+### file
+
+File references (typically a path or URL).
+
+```typescript
+{ name: 'attachment', type: 'file', required: false }
+```
+
+**Validation**: Must be a string. File upload and storage are handled by the document service.
+
+### relationship
+
+Reference to another resource by ID.
+
+```typescript
+{ name: 'assignedTo', type: 'relationship', required: false }
+```
+
+**Validation**: Must be a valid resource ID string. The platform does not enforce referential integrity at the property level -- use link types for managed relationships.
+
+<Aside type="tip">
+  For managed relationships with cardinality and cascade behavior, use **link types** instead of `relationship` properties. The `relationship` property type is for lightweight, unmanaged references.
+</Aside>
+
+## Link Type Reference
+
+### Cardinality Rules
+
+| Cardinality | Source Side | Target Side | Example |
+|---|---|---|---|
+| `one-to-one` | At most one target | At most one source | Patient -> InsurancePolicy |
+| `one-to-many` | Many targets | At most one source | Doctor -> Patients |
+| `many-to-one` | At most one target | Many sources | Patients -> PrimaryCareProvider |
+| `many-to-many` | Many targets | Many sources | Students -> Courses |
+
+### Cascade Delete
+
+When `cascadeDelete: true`, deleting the source resource will also delete all linked target resources. Use with caution.
+
+```typescript
+{
+  name: 'attachments',
+  targetObjectType: 'Attachment',
+  cardinality: 'one-to-many',
+  cascadeDelete: true,  // Deleting the parent deletes all attachments
+}
+```
+
+<Aside type="caution">
+  Cascade deletes are **not reversible**. The platform does not support soft-delete for cascaded resources. Use `cascadeDelete: false` (the default) unless you are certain that linked resources should not exist independently.
+</Aside>
+
+## Action Reference
+
+### Validation Rules
+
+Actions support two pre-condition checks:
+
+| Rule | Behavior |
+|---|---|
+| `requiredFields` | The specified fields must have non-empty, non-null values on the resource. |
+| `requiredStatus` | The resource's `status` field (if it has one) must equal this value. |
+
+Both rules are checked before execution. If either fails, the action is rejected with a `422 Unprocessable Entity` response.
+
+### Side Effect Execution Order
+
+Side effects are applied in the order they are defined in the array:
+
+```typescript
+sideEffects: [
+  { type: 'set_field', field: 'status', value: 'approved' },   // 1st
+  { type: 'set_timestamp', field: 'approvedAt' },              // 2nd
+  { type: 'set_user', field: 'approvedBy' },                   // 3rd
+]
+```
+
+All side effects are applied atomically. If any side effect fails (e.g., the target field does not exist), the entire action is rolled back.
+
+### Side Effect Type Details
+
+#### set_field
+
+Sets a field to a static value.
+
+```typescript
+{ type: 'set_field', field: 'status', value: 'approved' }
+```
+
+- `field` must be a valid property name on the Object Type.
+- `value` is required and must match the property's type.
+
+#### set_timestamp
+
+Sets a field to the current UTC timestamp in ISO 8601 format.
+
+```typescript
+{ type: 'set_timestamp', field: 'approvedAt' }
+```
+
+- `field` should be a `date`-type property (though `text` is also accepted).
+- `value` is ignored; the platform injects the current timestamp.
+
+#### set_user
+
+Sets a field to the authenticated user's ID.
+
+```typescript
+{ type: 'set_user', field: 'approvedBy' }
+```
+
+- `field` should be a `text`-type or `relationship`-type property.
+- `value` is ignored; the platform injects the user ID from the Bearer token.
+
+## Schema Validation Rules
+
+The `eai types validate` command checks the following rules:
+
+| Rule | Severity | Description |
+|---|---|---|
+| PascalCase name | Error | Object Type `name` must match `/^[A-Z][a-zA-Z0-9]*$/` |
+| Display name required | Error | `displayName` must be non-empty |
+| Valid status | Error | `status` must be `draft`, `published`, or `deprecated` |
+| No duplicate properties | Error | Property names must be unique within an Object Type |
+| Valid property type | Error | Property `type` must be one of the eight valid types |
+| Select options required | Error | `select`-type properties must have a non-empty `options` array |
+| Options on non-select | Warning | Properties with `options` but a type other than `select` |
+| Link target required | Error | Link types must have a `targetObjectType` |
+| Valid cardinality | Error | Must be `one-to-one`, `one-to-many`, `many-to-one`, or `many-to-many` |
+| Action name required | Error | Actions must have a `name` |
+| Valid required role | Error | Must be `tenant-user`, `tenant-staff`, or `tenant-admin` |
+| Valid side effect type | Error | Must be `set_field`, `set_timestamp`, or `set_user` |
+| Side effect field exists | Warning | Side effect `field` should reference an existing property |
+
+## File Structure
+
+Object Types are defined in your project at:
+
+```
+my-vertical/
+├── src/
+│   └── eai.config/
+│       └── object-types.ts    ← Define Object Types here
+├── .env.local                 ← Tenant IDs and API URLs
+└── package.json
+```
+
+The file must export an `objectTypes` variable:
+
+```typescript
+// src/eai.config/object-types.ts
+
+export const objectTypes: Record<string, ObjectTypeDefinition[]> = {
+  'my-tenant-key': [
+    { /* Object Type 1 */ },
+    { /* Object Type 2 */ },
+  ],
+};
+```
+
+The keys in the record (`'my-tenant-key'`) are mapped to tenant IDs via environment variables (`TENANT_MY_TENANT_KEY_ID`).

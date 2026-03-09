@@ -1,0 +1,196 @@
+---
+title: KYC Verification
+description: Build a customer identity verification workflow with document upload and risk assessment using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Backend developer at a fintech company (150 employees) building a compliance platform for digital banking partners.
+
+Each banking partner is onboarded as a separate tenant, ensuring that customer identity data, verification documents, and risk assessments are strictly isolated. The platform must support regulatory requirements across multiple jurisdictions.
+
+## Business Problem
+
+Financial institutions spend significant resources on Know Your Customer (KYC) compliance. Manual identity verification involves reviewing uploaded documents, cross-referencing customer data, and assigning risk scores -- all across disconnected systems. This scenario builds a unified KYC workflow where customer onboarding, document verification, and risk assessment happen in a single, auditable pipeline.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Customer** | `name` (text), `address` (text), `dateOfBirth` (date), `status` (select: pending, verified, rejected, review-required), `jurisdiction` (text) | one-to-many → IdentityDocument, one-to-many → RiskAssessment | -- |
+| **IdentityDocument** | `type` (select: passport, drivers-license, national-id, utility-bill), `fileUrl` (text), `verified` (boolean), `verifiedBy` (text), `uploadedDate` (date) | many-to-one → Customer | `verifyDocument` |
+| **RiskAssessment** | `score` (number), `factors` (text), `decision` (select: approve, reject, escalate), `reviewer` (text), `assessmentDate` (date) | many-to-one → Customer | `submitAssessment` |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init kyc-verification
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the Customer, IdentityDocument, and RiskAssessment types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: kyc-verification
+   ✔ Customer — 5 props, 2 links, 0 actions
+   ✔ IdentityDocument — 5 props, 1 link, 1 action
+   ✔ RiskAssessment — 5 props, 1 link, 1 action
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create a sample customer and document**
+
+   ```bash
+   eai resources create Customer --data '{"name": "Alex Johnson", "address": "123 Main St, New York, NY 10001", "dateOfBirth": "1990-07-22", "status": "pending", "jurisdiction": "US"}'
+
+   eai resources create IdentityDocument --data '{"type": "drivers-license", "fileUrl": "/documents/dl-aj-001.pdf", "verified": false, "verifiedBy": "", "uploadedDate": "2026-03-05"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'kyc-verification': [
+    {
+      name: 'Customer',
+      displayName: 'Customer',
+      description: 'A customer undergoing identity verification for account onboarding',
+      properties: [
+        { name: 'name', type: 'text' as const, required: true, indexed: true },
+        { name: 'address', type: 'text' as const, required: true },
+        { name: 'dateOfBirth', type: 'date' as const, required: true },
+        {
+          name: 'status', type: 'select' as const, required: true,
+          defaultValue: 'pending',
+          options: [
+            { label: 'Pending', value: 'pending' },
+            { label: 'Verified', value: 'verified' },
+            { label: 'Rejected', value: 'rejected' },
+            { label: 'Review Required', value: 'review-required' },
+          ],
+        },
+        { name: 'jurisdiction', type: 'text' as const, required: true, indexed: true },
+      ],
+      linkTypes: [
+        { name: 'identityDocuments', targetObjectType: 'IdentityDocument', cardinality: 'one-to-many' as const },
+        { name: 'riskAssessments', targetObjectType: 'RiskAssessment', cardinality: 'one-to-many' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+    {
+      name: 'IdentityDocument',
+      displayName: 'Identity Document',
+      description: 'An uploaded identity document submitted for verification',
+      properties: [
+        {
+          name: 'type', type: 'select' as const, required: true,
+          options: [
+            { label: 'Passport', value: 'passport' },
+            { label: 'Drivers License', value: 'drivers-license' },
+            { label: 'National ID', value: 'national-id' },
+            { label: 'Utility Bill', value: 'utility-bill' },
+          ],
+        },
+        { name: 'fileUrl', type: 'text' as const, required: true },
+        { name: 'verified', type: 'boolean' as const, required: true },
+        { name: 'verifiedBy', type: 'text' as const, required: false },
+        { name: 'uploadedDate', type: 'date' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'customer', targetObjectType: 'Customer', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'verifyDocument',
+          displayName: 'Verify Document',
+          description: 'Mark the identity document as verified after manual or automated review',
+          inputs: [
+            { name: 'verified', type: 'boolean' as const, required: true },
+            { name: 'verifiedBy', type: 'text' as const, required: true },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'RiskAssessment',
+      displayName: 'Risk Assessment',
+      description: 'A compliance risk evaluation for a customer based on identity and transaction data',
+      properties: [
+        { name: 'score', type: 'number' as const, required: true },
+        { name: 'factors', type: 'text' as const, required: true },
+        {
+          name: 'decision', type: 'select' as const, required: true,
+          options: [
+            { label: 'Approve', value: 'approve' },
+            { label: 'Reject', value: 'reject' },
+            { label: 'Escalate', value: 'escalate' },
+          ],
+        },
+        { name: 'reviewer', type: 'text' as const, required: true },
+        { name: 'assessmentDate', type: 'date' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'customer', targetObjectType: 'Customer', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'submitAssessment',
+          displayName: 'Submit Assessment',
+          description: 'Record the risk assessment decision and update customer verification status',
+          inputs: [
+            { name: 'score', type: 'number' as const, required: true },
+            { name: 'factors', type: 'text' as const, required: true },
+            { name: 'decision', type: 'select' as const, required: true },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **End-to-end verification pipeline**: The Customer, IdentityDocument, and RiskAssessment types model the full KYC lifecycle, from document submission through risk scoring to final decision.
+- **Audit trail by design**: Every document verification and risk assessment records who performed the review and when, satisfying regulatory audit requirements without additional tooling.
+- **Jurisdiction-aware processing**: The `jurisdiction` field on Customer enables location-specific compliance rules, supporting multi-market operations within a single platform instance.
+- **Partner isolation**: Each banking partner operates in a separate tenant, ensuring that customer PII and verification decisions are never accessible across institutional boundaries.

@@ -1,0 +1,187 @@
+---
+title: Route Optimization
+description: Build a route planning, driver assignment, and delivery window management workflow using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Logistics software engineer at a regional delivery company operating 40 vehicles across a metro area.
+
+Dispatchers plan routes manually each morning by printing orders and grouping them by area on a physical map. Drivers receive paper route sheets, time windows are frequently missed because routes are not optimized for traffic or delivery priorities, and there is no real-time visibility into route progress. The company needs a digital route planning system.
+
+## Business Problem
+
+Manual route planning wastes driver time, fuel, and customer goodwill. Dispatchers spend two hours each morning building routes that an algorithm could generate in seconds. High-priority deliveries are not always scheduled first, time windows are violated because stop sequencing ignores travel time, and drivers have no way to report completion or delays digitally. This scenario builds a route optimization workflow that assigns stops to routes with time windows and priorities, tracks driver assignments, and monitors stop completion in real time.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Route** | `date` (date), `driver` (text), `vehicle` (text), `totalStops` (number), `distance` (number), `status` (select: planned, in-progress, completed) | one-to-many → Stop | `startRoute` |
+| **Stop** | `address` (text), `timeWindow` (text), `priority` (select: standard, express, critical), `sequence` (number), `status` (select: pending, completed, failed, skipped) | many-to-one → Route | `completeStop` |
+| **Driver** | `name` (text), `license` (text), `vehicle` (text), `availability` (select: available, on-route, off-duty) | one-to-many → Route | -- |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init route-optimization
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the Route, Stop, and Driver types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: route-optimization
+   ✔ Route — 6 props, 1 link, 1 action
+   ✔ Stop — 5 props, 1 link, 1 action
+   ✔ Driver — 4 props, 1 link, 0 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create Route --data '{"date": "2025-08-01", "driver": "Mike Torres", "vehicle": "Van-12", "totalStops": 18, "distance": 47.5, "status": "planned"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'route-optimization': [
+    {
+      name: 'Route',
+      displayName: 'Route',
+      description: 'A planned delivery route for a driver and vehicle',
+      properties: [
+        { name: 'date', type: 'date' as const, required: true, indexed: true },
+        { name: 'driver', type: 'text' as const, required: true, indexed: true },
+        { name: 'vehicle', type: 'text' as const, required: true },
+        { name: 'totalStops', type: 'number' as const, required: true },
+        { name: 'distance', type: 'number' as const, required: false },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'planned', options: [
+          { label: 'Planned', value: 'planned' },
+          { label: 'In Progress', value: 'in-progress' },
+          { label: 'Completed', value: 'completed' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'stops', targetObjectType: 'Stop', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'startRoute',
+          displayName: 'Start Route',
+          description: 'Begin executing a planned route',
+          requiredRole: 'tenant-user',
+          validationRules: { requiredFields: ['driver', 'vehicle'], requiredStatus: 'planned' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'in-progress' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Stop',
+      displayName: 'Stop',
+      description: 'A delivery stop on a route',
+      properties: [
+        { name: 'address', type: 'text' as const, required: true },
+        { name: 'timeWindow', type: 'text' as const, required: false },
+        { name: 'priority', type: 'select' as const, required: true, defaultValue: 'standard', options: [
+          { label: 'Standard', value: 'standard' },
+          { label: 'Express', value: 'express' },
+          { label: 'Critical', value: 'critical' },
+        ]},
+        { name: 'sequence', type: 'number' as const, required: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'pending', options: [
+          { label: 'Pending', value: 'pending' },
+          { label: 'Completed', value: 'completed' },
+          { label: 'Failed', value: 'failed' },
+          { label: 'Skipped', value: 'skipped' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'route', targetObjectType: 'Route', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'completeStop',
+          displayName: 'Complete Stop',
+          description: 'Mark a delivery stop as completed',
+          requiredRole: 'tenant-user',
+          validationRules: { requiredStatus: 'pending' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'completed' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Driver',
+      displayName: 'Driver',
+      description: 'A delivery driver in the fleet',
+      properties: [
+        { name: 'name', type: 'text' as const, required: true, indexed: true },
+        { name: 'license', type: 'text' as const, required: true },
+        { name: 'vehicle', type: 'text' as const, required: false },
+        { name: 'availability', type: 'select' as const, required: true, defaultValue: 'available', options: [
+          { label: 'Available', value: 'available' },
+          { label: 'On Route', value: 'on-route' },
+          { label: 'Off Duty', value: 'off-duty' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'routes', targetObjectType: 'Route', cardinality: 'one-to-many' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Structured stop sequencing**: Every stop has a sequence number and priority level, ensuring critical deliveries are handled first and routes are executed in order.
+- **Real-time route progress**: Drivers complete stops digitally, giving dispatchers live visibility into which stops are done, pending, or failed.
+- **Driver availability tracking**: Driver status (available, on-route, off-duty) enables dispatchers to assign routes based on current availability rather than guesswork.
+- **Time window compliance**: Recording time windows on stops enables post-route analysis of on-time delivery performance for service level agreements.

@@ -1,0 +1,189 @@
+---
+title: Course Management
+description: Build a course catalog with enrollment tracking and grade management for academic institutions using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role:** Registrar Systems Administrator at a mid-sized university.
+
+You maintain the systems that power course registration, enrollment management, and grade recording for 8,000 students across six academic departments. The current system is a decades-old platform that requires vendor support for even minor catalog changes. Faculty submit grades via email, and enrollment conflicts are resolved manually.
+
+## Business Problem
+
+Course catalog updates require a multi-week change request process with the legacy vendor. Faculty have no self-service access to enrollment rosters, and grade submission is a manual data entry process that introduces transcription errors. Students cannot see real-time enrollment availability. You need:
+
+- A self-managed course catalog with department, credits, and instructor metadata.
+- Enrollment tracking with semester-based status management.
+- Grade recording linked to specific enrollments with feedback support.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Course** | name, code, department, credits, instructor | has many Enrollments | create, update, archive |
+| **Enrollment** | student, course, semester, status | belongs to Course, has many Grades | enroll, drop, complete |
+| **Grade** | enrollment, assignment, score, feedback | belongs to Enrollment | submit, update, finalize |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the vertical**
+
+   ```bash
+   eai init course-management
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define Object Types**
+
+   Add Course, Enrollment, and Grade to `src/eai.config/object-types.ts`.
+
+4. **Validate and seed**
+
+   ```bash
+   eai types validate
+   eai types seed
+   ```
+
+   ```
+   Tenant: course-management
+   ✔ Course — 5 props, 1 link, 3 actions
+   ✔ Enrollment — 4 props, 2 links, 3 actions
+   ✔ Grade — 4 props, 1 link, 3 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Create a course**
+
+   ```bash
+   eai resources create Course \
+     --data '{"name": "Introduction to Data Science", "code": "CS-201", "department": "computer-science", "credits": 3, "instructor": "Dr. Sarah Chen"}'
+   ```
+
+6. **Enroll a student**
+
+   ```bash
+   eai resources create Enrollment \
+     --data '{"student": "alex.rivera@university.edu", "course": "CS-201", "semester": "Fall 2026", "status": "enrolled"}'
+   ```
+
+7. **List enrollments for a semester**
+
+   ```bash
+   eai resources list Enrollment --filter 'semester=Fall 2026'
+   ```
+
+8. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'course-management': [
+    {
+      name: 'Course',
+      displayName: 'Course',
+      description: 'An academic course offered by a department with credit hours and instructor assignment',
+      properties: [
+        { name: 'name', type: 'text' as const, required: true, indexed: true },
+        { name: 'code', type: 'text' as const, required: true, indexed: true },
+        { name: 'department', type: 'select' as const, required: true,
+          options: [
+            { label: 'Computer Science', value: 'computer-science' },
+            { label: 'Mathematics', value: 'mathematics' },
+            { label: 'English', value: 'english' },
+            { label: 'Biology', value: 'biology' },
+            { label: 'Business', value: 'business' },
+            { label: 'Engineering', value: 'engineering' },
+          ],
+        },
+        { name: 'credits', type: 'number' as const, required: true },
+        { name: 'instructor', type: 'text' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'enrollments', target: 'Enrollment', cardinality: 'many' as const },
+      ],
+      actions: [
+        { name: 'create', displayName: 'Create Course' },
+        { name: 'update', displayName: 'Update Course' },
+        { name: 'archive', displayName: 'Archive Course' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Enrollment',
+      displayName: 'Enrollment',
+      description: 'A student enrollment in a specific course for a given semester',
+      properties: [
+        { name: 'student', type: 'text' as const, required: true, indexed: true },
+        { name: 'course', type: 'text' as const, required: true },
+        { name: 'semester', type: 'text' as const, required: true, indexed: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'enrolled',
+          options: [
+            { label: 'Enrolled', value: 'enrolled' },
+            { label: 'Waitlisted', value: 'waitlisted' },
+            { label: 'Dropped', value: 'dropped' },
+            { label: 'Completed', value: 'completed' },
+            { label: 'Withdrawn', value: 'withdrawn' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'course', target: 'Course', cardinality: 'one' as const },
+        { name: 'grades', target: 'Grade', cardinality: 'many' as const },
+      ],
+      actions: [
+        { name: 'enroll', displayName: 'Enroll Student' },
+        { name: 'drop', displayName: 'Drop Course' },
+        { name: 'complete', displayName: 'Mark Complete' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Grade',
+      displayName: 'Grade',
+      description: 'A grade recorded for a specific assignment within an enrollment',
+      properties: [
+        { name: 'enrollment', type: 'text' as const, required: true },
+        { name: 'assignment', type: 'text' as const, required: true },
+        { name: 'score', type: 'number' as const, required: true },
+        { name: 'feedback', type: 'text' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'enrollment', target: 'Enrollment', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'submit', displayName: 'Submit Grade' },
+        { name: 'update', displayName: 'Update Grade' },
+        { name: 'finalize', displayName: 'Finalize Grade' },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Self-managed course catalog eliminates vendor dependency.** Adding, updating, or archiving courses is a direct CLI operation, not a multi-week vendor change request.
+- **Semester-scoped enrollments prevent data conflicts.** Tracking enrollments by semester ensures that historical records remain intact while new terms are managed independently.
+- **Assignment-level grade recording reduces errors.** Capturing grades per assignment with feedback fields replaces bulk email submissions and manual data entry.
+- **Department-based filtering supports academic reporting.** The department property on Courses enables registrar reports broken down by academic unit for accreditation and planning.

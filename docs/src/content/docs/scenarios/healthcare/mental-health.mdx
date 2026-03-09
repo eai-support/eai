@@ -1,0 +1,198 @@
+---
+title: Mental Health
+description: Build a mental health platform with assessment workflows, treatment plans, and session management using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Full-stack developer at a behavioral health practice management company (80 employees) serving independent clinicians and group practices.
+
+Each practice is onboarded as a separate tenant, keeping patient assessment data, treatment plans, and clinical notes fully isolated. The platform must support multiple assessment instruments (PHQ-9, GAD-7, etc.) and track treatment progress over time.
+
+## Business Problem
+
+Mental health clinicians spend excessive time on administrative tasks -- hand-scoring assessments, manually updating treatment plans, and transcribing session notes into disconnected systems. This scenario builds a clinical workflow platform where standardized assessments feed directly into treatment plans, and session documentation captures progress against treatment goals in a structured format.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Assessment** | `type` (select: PHQ-9, GAD-7, PCL-5, AUDIT, custom), `score` (number), `date` (date), `clinician` (text), `interpretation` (text) | one-to-many → TreatmentPlan | `scoreAssessment` |
+| **TreatmentPlan** | `goals` (text), `interventions` (text), `reviewDate` (date), `status` (select: draft, active, completed, revised) | many-to-one → Assessment, one-to-many → Session | `activatePlan` |
+| **Session** | `date` (date), `duration` (number), `notes` (text), `nextSteps` (text), `moodRating` (number) | many-to-one → TreatmentPlan | `completeSession` |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init mental-health
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the Assessment, TreatmentPlan, and Session types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: mental-health
+   ✔ Assessment — 5 props, 1 link, 1 action
+   ✔ TreatmentPlan — 4 props, 2 links, 1 action
+   ✔ Session — 5 props, 1 link, 1 action
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create a sample assessment and treatment plan**
+
+   ```bash
+   eai resources create Assessment --data '{"type": "PHQ-9", "score": 14, "date": "2026-03-01", "clinician": "Dr. Emily Park", "interpretation": "Moderately severe depression"}'
+
+   eai resources create TreatmentPlan --data '{"goals": "Reduce PHQ-9 score below 10 within 8 weeks; establish consistent sleep hygiene", "interventions": "CBT weekly sessions; behavioral activation; sleep diary", "reviewDate": "2026-04-26", "status": "draft"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'mental-health': [
+    {
+      name: 'Assessment',
+      displayName: 'Assessment',
+      description: 'A standardized clinical assessment instrument with scored results',
+      properties: [
+        {
+          name: 'type', type: 'select' as const, required: true,
+          options: [
+            { label: 'PHQ-9 (Depression)', value: 'PHQ-9' },
+            { label: 'GAD-7 (Anxiety)', value: 'GAD-7' },
+            { label: 'PCL-5 (PTSD)', value: 'PCL-5' },
+            { label: 'AUDIT (Alcohol Use)', value: 'AUDIT' },
+            { label: 'Custom', value: 'custom' },
+          ],
+        },
+        { name: 'score', type: 'number' as const, required: true },
+        { name: 'date', type: 'date' as const, required: true },
+        { name: 'clinician', type: 'text' as const, required: true, indexed: true },
+        { name: 'interpretation', type: 'text' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'treatmentPlans', targetObjectType: 'TreatmentPlan', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'scoreAssessment',
+          displayName: 'Score Assessment',
+          description: 'Calculate the total score and generate clinical interpretation',
+          inputs: [
+            { name: 'responses', type: 'text' as const, required: true },
+            { name: 'type', type: 'select' as const, required: true },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'TreatmentPlan',
+      displayName: 'Treatment Plan',
+      description: 'A structured treatment plan with goals and intervention strategies',
+      properties: [
+        { name: 'goals', type: 'text' as const, required: true },
+        { name: 'interventions', type: 'text' as const, required: true },
+        { name: 'reviewDate', type: 'date' as const, required: true },
+        {
+          name: 'status', type: 'select' as const, required: true,
+          defaultValue: 'draft',
+          options: [
+            { label: 'Draft', value: 'draft' },
+            { label: 'Active', value: 'active' },
+            { label: 'Completed', value: 'completed' },
+            { label: 'Revised', value: 'revised' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'assessment', targetObjectType: 'Assessment', cardinality: 'many-to-one' as const },
+        { name: 'sessions', targetObjectType: 'Session', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'activatePlan',
+          displayName: 'Activate Plan',
+          description: 'Move the treatment plan from draft to active status after clinical review',
+          inputs: [
+            { name: 'reviewNotes', type: 'text' as const, required: false },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Session',
+      displayName: 'Session',
+      description: 'A therapy session record with clinical notes and progress tracking',
+      properties: [
+        { name: 'date', type: 'date' as const, required: true },
+        { name: 'duration', type: 'number' as const, required: true },
+        { name: 'notes', type: 'text' as const, required: true },
+        { name: 'nextSteps', type: 'text' as const, required: false },
+        { name: 'moodRating', type: 'number' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'treatmentPlan', targetObjectType: 'TreatmentPlan', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'completeSession',
+          displayName: 'Complete Session',
+          description: 'Finalize session notes and record next steps for the patient',
+          inputs: [
+            { name: 'notes', type: 'text' as const, required: true },
+            { name: 'nextSteps', type: 'text' as const, required: false },
+            { name: 'moodRating', type: 'number' as const, required: false },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Assessment-driven treatment**: Assessments link directly to treatment plans, ensuring that clinical goals are grounded in validated measurement instruments like PHQ-9 and GAD-7.
+- **Progress tracking**: The `moodRating` field on Session combined with periodic reassessment scores enables clinicians to visualize treatment effectiveness over time.
+- **Practice-level isolation**: Each practice operates in its own tenant, so a solo clinician and a 20-provider group practice both use the same codebase with complete data separation.
+- **Structured clinical workflow**: The progression from Assessment to TreatmentPlan to Session mirrors the real clinical workflow, reducing the gap between how clinicians think and how the software works.

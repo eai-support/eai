@@ -1,0 +1,185 @@
+---
+title: Maintenance Requests
+description: Build a tenant maintenance request, work order, and vendor management workflow using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Software engineer at a property management company overseeing 50+ residential buildings.
+
+The maintenance team currently tracks requests through a shared email inbox. Work orders are assigned by phone, and there is no systematic way to evaluate vendor performance. The team needs a structured system to capture tenant requests, dispatch work orders, and track vendor reliability.
+
+## Business Problem
+
+Maintenance requests get lost in email threads, tenants receive no status updates, and property managers lack data on response times and vendor quality. Emergency repairs compete with routine maintenance for attention without any priority system. This scenario builds a maintenance workflow that captures requests with priority levels, generates trackable work orders, and links vendors to their performance history.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **MaintenanceRequest** | `property` (text), `tenant` (text), `description` (text), `priority` (select: emergency, high, medium, low), `status` (select: open, assigned, completed) | one-to-many → WorkOrder | `assignRequest` |
+| **WorkOrder** | `scheduledDate` (date), `completedDate` (date), `cost` (number), `status` (select: pending, in-progress, completed, cancelled) | many-to-one → MaintenanceRequest, many-to-one → Vendor | `completeWork` |
+| **Vendor** | `name` (text), `specialty` (text), `rating` (number), `contact` (text), `hourlyRate` (number) | one-to-many → WorkOrder | -- |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init maintenance-requests
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the MaintenanceRequest, WorkOrder, and Vendor types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: maintenance-requests
+   ✔ MaintenanceRequest — 5 props, 1 link, 1 action
+   ✔ WorkOrder — 4 props, 2 links, 1 action
+   ✔ Vendor — 5 props, 1 link, 0 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create MaintenanceRequest --data '{"property": "Building A, Unit 12", "tenant": "John Smith", "description": "Leaking kitchen faucet", "priority": "medium", "status": "open"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'maintenance-requests': [
+    {
+      name: 'MaintenanceRequest',
+      displayName: 'Maintenance Request',
+      description: 'A tenant-submitted maintenance request for a property',
+      properties: [
+        { name: 'property', type: 'text' as const, required: true, indexed: true },
+        { name: 'tenant', type: 'text' as const, required: true },
+        { name: 'description', type: 'text' as const, required: true },
+        { name: 'priority', type: 'select' as const, required: true, options: [
+          { label: 'Emergency', value: 'emergency' },
+          { label: 'High', value: 'high' },
+          { label: 'Medium', value: 'medium' },
+          { label: 'Low', value: 'low' },
+        ]},
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'open', options: [
+          { label: 'Open', value: 'open' },
+          { label: 'Assigned', value: 'assigned' },
+          { label: 'Completed', value: 'completed' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'workOrders', targetObjectType: 'WorkOrder', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'assignRequest',
+          displayName: 'Assign Request',
+          description: 'Assign a maintenance request to a vendor via work order',
+          requiredRole: 'tenant-staff',
+          validationRules: { requiredStatus: 'open' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'assigned' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'WorkOrder',
+      displayName: 'Work Order',
+      description: 'A dispatched work order assigned to a vendor',
+      properties: [
+        { name: 'scheduledDate', type: 'date' as const, required: true, indexed: true },
+        { name: 'completedDate', type: 'date' as const, required: false },
+        { name: 'cost', type: 'number' as const, required: false },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'pending', options: [
+          { label: 'Pending', value: 'pending' },
+          { label: 'In Progress', value: 'in-progress' },
+          { label: 'Completed', value: 'completed' },
+          { label: 'Cancelled', value: 'cancelled' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'request', targetObjectType: 'MaintenanceRequest', cardinality: 'many-to-one' as const },
+        { name: 'vendor', targetObjectType: 'Vendor', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'completeWork',
+          displayName: 'Complete Work',
+          description: 'Mark a work order as completed by the vendor',
+          requiredRole: 'tenant-user',
+          validationRules: { requiredStatus: 'in-progress' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'completed' },
+            { type: 'set_timestamp', field: 'completedDate' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Vendor',
+      displayName: 'Vendor',
+      description: 'A maintenance vendor or contractor',
+      properties: [
+        { name: 'name', type: 'text' as const, required: true, indexed: true },
+        { name: 'specialty', type: 'text' as const, required: true },
+        { name: 'rating', type: 'number' as const, required: false },
+        { name: 'contact', type: 'text' as const, required: true },
+        { name: 'hourlyRate', type: 'number' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'workOrders', targetObjectType: 'WorkOrder', cardinality: 'one-to-many' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Priority-based triage**: Maintenance requests are categorized by severity, ensuring emergency issues are routed ahead of routine repairs.
+- **Vendor accountability**: Linking work orders to vendors with ratings and cost tracking enables data-driven vendor selection over time.
+- **End-to-end traceability**: Every request flows from tenant submission through assignment to completion, with timestamped status transitions at each step.
+- **Cost visibility**: Recording costs on work orders gives property managers real-time insight into maintenance spend per building and vendor.

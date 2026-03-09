@@ -1,0 +1,158 @@
+---
+title: eai tenant
+description: Manage tenants on the platform -- list, inspect, and create tenants
+---
+
+## Synopsis
+
+```
+eai tenant <subcommand> [options]
+```
+
+## Description
+
+`eai tenant` manages tenants on the EAI platform. Tenants are organizational boundaries that isolate data and configuration. A vertical application is scoped to one or more tenants, and all resources, Object Types, and workflows operate within a tenant context.
+
+Tenants can be organized hierarchically with parent-child relationships. The `list` subcommand is scoped to a parent tenant when specified.
+
+This command must be run from within an EAI project directory and requires `BASE_URL_PUBLIC_API` to be set.
+
+## Subcommands
+
+### eai tenant list
+
+List tenants, optionally scoped to a parent tenant.
+
+```
+eai tenant list [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--parent <id>` | Parent tenant ID to scope the listing | -- (lists all accessible) |
+| `--json` | Output raw JSON | `false` |
+
+### eai tenant info
+
+Show detailed information about a specific tenant.
+
+```
+eai tenant info <id>
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<id>` | Tenant ID to inspect | Required |
+
+### eai tenant create
+
+Create a new tenant on the platform.
+
+```
+eai tenant create [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--name <name>` | Tenant name (required) | Required |
+| `--slug <slug>` | Tenant slug in kebab-case (required) | Required |
+| `--parent <id>` | Parent tenant ID for hierarchical tenants | -- |
+| `--domain <domains>` | Comma-separated list of associated domains | -- |
+
+## Examples
+
+### List all tenants
+
+```bash
+eai tenant list
+```
+
+```
+⠋ Fetching tenants...
+✔ 3 tenants
+  patient-intake 8f3a1b2c-d4e5-6789-abcd-ef0123456789
+    domains: intake.myenterprise.ai
+  claims-portal a7c9e4d1-b2c3-4567-89ab-cdef01234567
+    domains: claims.myenterprise.ai
+  admin-hub b2d8f6e3-c4d5-6789-abcd-ef0123456789
+```
+
+### List tenants under a parent
+
+```bash
+eai tenant list --parent 8f3a1b2c-d4e5-6789-abcd-ef0123456789
+```
+
+### List as JSON
+
+```bash
+eai tenant list --json
+```
+
+```json
+{
+  "docs": [
+    {
+      "id": "8f3a1b2c-d4e5-6789-abcd-ef0123456789",
+      "name": "Patient Intake",
+      "slug": "patient-intake",
+      "domain": ["intake.myenterprise.ai"]
+    }
+  ]
+}
+```
+
+### Inspect a tenant
+
+```bash
+eai tenant info 8f3a1b2c-d4e5-6789-abcd-ef0123456789
+```
+
+```
+⠋ Fetching tenant...
+✔ Tenant: Patient Intake
+{
+  "id": "8f3a1b2c-d4e5-6789-abcd-ef0123456789",
+  "name": "Patient Intake",
+  "slug": "patient-intake",
+  "domain": ["intake.myenterprise.ai"],
+  "parent": null,
+  "createdAt": "2026-01-15T08:00:00Z",
+  "updatedAt": "2026-02-20T12:30:00Z"
+}
+```
+
+### Create a tenant
+
+```bash
+eai tenant create --name "Claims Portal" --slug claims-portal --domain claims.myenterprise.ai
+```
+
+```
+⠋ Creating tenant "Claims Portal"...
+✔ Created tenant claims-portal (a7c9e4d1-...)
+```
+
+### Create a child tenant
+
+```bash
+eai tenant create \
+  --name "Claims Staff" \
+  --slug claims-staff \
+  --parent a7c9e4d1-b2c3-4567-89ab-cdef01234567
+```
+
+### Create a tenant with multiple domains
+
+```bash
+eai tenant create \
+  --name "Multi-Region Portal" \
+  --slug multi-region \
+  --domain portal-us.example.com,portal-eu.example.com
+```
+
+## Related Commands
+
+- [`eai whoami`](/eai-cli/reference/commands/whoami/) -- show current tenant context
+- [`eai types seed`](/eai-cli/reference/commands/types/) -- seed Object Types to a specific tenant
+- [`eai resources`](/eai-cli/reference/commands/resources/) -- manage resources within a tenant

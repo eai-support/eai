@@ -1,0 +1,238 @@
+---
+title: Quick Start
+description: Get up and running with the EAI CLI in 5 minutes
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This guide walks you through the complete workflow of creating a vertical application, from scaffolding to running a local development server. By the end, you will have a working project connected to the EnterpriseAI platform.
+
+<Aside>
+  Make sure you have the CLI installed before starting. See the [Installation](/eai-cli/getting-started/installation/) guide if you have not set it up yet.
+</Aside>
+
+## The full workflow
+
+<Steps>
+
+1. **Scaffold a new vertical**
+
+   Run `eai init` with a name for your project. The name must be lowercase kebab-case (letters, numbers, and hyphens).
+
+   ```bash
+   eai init my-vertical
+   ```
+
+   The CLI prompts you for configuration options:
+
+   ```
+   ? Vertical name (kebab-case): my-vertical
+   ? Display name: My Vertical
+   ? Description: My Vertical vertical application
+   ? Tenant structure: Single tenant (most common)
+   ? Include AI chat? Yes
+   ? Include document management? Yes
+   ? Auth provider: Entra ID CIAM (recommended)
+   ```
+
+   Once you answer the prompts, the CLI clones the Vertical Template, customizes it, and initializes a git repository:
+
+   ```
+   Creating My Vertical
+
+   ✔ Cloned from eai-tools/Vertical-Template
+   ✔ Updated package.json
+   ✔ Generated .env.local
+   ✔ Created Object Types scaffold
+   ✔ Created deploy-demo.yml
+   ✔ Generated CLAUDE.md
+   ✔ Initialized git repository
+
+   ✔ Created My Vertical at /Users/you/my-vertical
+
+   Next steps:
+     1. cd my-vertical
+     2. npm install
+     3. eai login — authenticate with Entra CIAM
+     4. eai env pull — sync environment from cloud
+     5. Edit src/eai.config/object-types.ts — define your data model
+     6. eai types validate — check your types
+     7. eai types seed — push types to platform
+     8. eai dev — start local development
+   ```
+
+2. **Install dependencies**
+
+   ```bash
+   cd my-vertical
+   npm install
+   ```
+
+3. **Authenticate**
+
+   Log in to the EnterpriseAI platform using your Microsoft Entra ID credentials:
+
+   ```bash
+   eai login
+   ```
+
+   The CLI starts a device code flow. You will see a message like:
+
+   ```
+   Authenticating with Entra CIAM
+   Tenant: eaidevmyentepriseai
+   Client: your-client-id
+
+   To sign in, use a web browser to open https://microsoft.com/devicelogin
+   and enter the code ABCD-EFGH to authenticate.
+   ```
+
+   Open the URL in your browser, enter the code, and sign in with your Microsoft account. The CLI detects the completed login automatically.
+
+   ```
+   ✔ Authenticated as you@example.com
+   Token expires: 3/10/2026, 2:30:00 PM
+   ```
+
+4. **Pull environment configuration**
+
+   Sync your project's environment variables from Azure App Configuration and Key Vault:
+
+   ```bash
+   eai env pull --include-secrets
+   ```
+
+   ```
+   ✔ Found 12 config values
+   ✔ BASE_URL_PUBLIC_API = https://test-api.myenterprise.ai
+   ✔ TENANT_MY_VERTICAL_ID = [from Key Vault]
+   ✔ ENTRA_CLIENT_ID = [from Key Vault]
+   ...
+   ✔ Written to .env.local (12 variables)
+   ```
+
+   <Aside type="caution">
+     The `--include-secrets` flag resolves Key Vault references into actual values. Without it, secret values are left as placeholders. You need Azure CLI (`az login`) access to resolve secrets.
+   </Aside>
+
+5. **Edit your Object Types**
+
+   Open `src/eai.config/object-types.ts` and define the data model for your vertical. The scaffold includes a sample `Record` type to get you started. Replace it with your domain model:
+
+   ```typescript
+   // src/eai.config/object-types.ts
+   export const objectTypes = {
+     'my-vertical': [
+       {
+         name: 'Task',
+         displayName: 'Task',
+         description: 'A work item to be completed',
+         properties: [
+           { name: 'title', type: 'text' as const, required: true, indexed: true },
+           { name: 'status', type: 'select' as const, required: true,
+             defaultValue: 'open',
+             options: [
+               { label: 'Open', value: 'open' },
+               { label: 'In Progress', value: 'in-progress' },
+               { label: 'Done', value: 'done' },
+             ],
+           },
+         ],
+         linkTypes: [],
+         actions: [],
+         status: 'published' as const,
+       },
+     ],
+   };
+   ```
+
+6. **Validate your types**
+
+   Check that your Object Type definitions follow the platform schema rules:
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: my-vertical
+   ✔ Task — 2 props, 0 links, 0 actions
+
+   ✔ All Object Types are valid
+   ```
+
+   If there are errors, the CLI tells you exactly what to fix -- for example, a property with an invalid type or a missing `displayName`.
+
+7. **Seed types to the platform**
+
+   Push your Object Type definitions to the platform:
+
+   ```bash
+   eai types seed
+   ```
+
+   ```
+   ✔ Found 1 types across 1 tenant scope(s): my-vertical
+
+   Tenant: my-vertical → abc123-def456
+     ✔ Task (created)
+
+   Result: 1 created, 0 updated, 0 failed
+   ```
+
+8. **Start development**
+
+   Launch the local development server:
+
+   ```bash
+   eai dev
+   ```
+
+   Your application is now running locally and connected to the platform. Open the URL shown in the terminal to see your vertical in the browser.
+
+</Steps>
+
+## What just happened
+
+Here is a summary of what each step accomplished:
+
+| Step | Command | What it does |
+|------|---------|-------------|
+| 1 | `eai init my-vertical` | Clones the Vertical Template and customizes it for your project |
+| 2 | `npm install` | Installs Node.js dependencies |
+| 3 | `eai login` | Authenticates you with Entra CIAM via device code flow |
+| 4 | `eai env pull` | Syncs configuration from Azure App Config and Key Vault |
+| 5 | Edit `object-types.ts` | Defines the data model for your vertical |
+| 6 | `eai types validate` | Validates your types against platform schema rules |
+| 7 | `eai types seed` | Publishes your types to the platform |
+| 8 | `eai dev` | Starts the local dev server |
+
+## Useful commands while developing
+
+Once your project is running, these commands help you iterate:
+
+```bash
+# Check what has changed between local and remote types
+eai types diff
+
+# List resources of a given type
+eai resources list Task
+
+# Create a resource from the command line
+eai resources create Task --data '{"title": "My first task", "status": "open"}'
+
+# Verify platform connectivity
+eai verify
+
+# Diagnose common issues
+eai doctor
+
+# Check who you are logged in as
+eai whoami
+```
+
+## Next steps
+
+- [Authentication](/eai-cli/getting-started/authentication/) -- understand the login flow and token management in detail
+- [Your First Vertical](/eai-cli/getting-started/first-vertical/) -- build a complete Task Manager with multiple Object Types, relationships, and actions
+- [Object Types](/eai-cli/guides/object-types/) -- deep dive into properties, links, actions, and side effects

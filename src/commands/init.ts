@@ -144,7 +144,7 @@ export const initCommand = new Command('init')
       pkg.version = '0.1.0';
       await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
       pkgSpinner.succeed('Updated package.json');
-    } catch (err) {
+    } catch (_err) {
       pkgSpinner.fail('Failed to update package.json');
     }
 
@@ -154,7 +154,7 @@ export const initCommand = new Command('init')
       const envContent = generateEnvFile(initOptions);
       await writeFile(join(targetDir, '.env.local'), envContent, 'utf-8');
       envSpinner.succeed('Generated .env.local');
-    } catch (err) {
+    } catch (_err) {
       envSpinner.fail('Failed to generate .env.local');
     }
 
@@ -164,7 +164,7 @@ export const initCommand = new Command('init')
       const typesContent = generateObjectTypesScaffold(initOptions);
       await writeFile(join(targetDir, 'src', 'eai.config', 'object-types.ts'), typesContent, 'utf-8');
       typesSpinner.succeed('Created Object Types scaffold');
-    } catch (err) {
+    } catch (_err) {
       typesSpinner.fail('Failed to create Object Types scaffold');
     }
 
@@ -176,7 +176,7 @@ export const initCommand = new Command('init')
       const workflowContent = generateDeployWorkflow(initOptions);
       await writeFile(join(workflowDir, 'deploy-demo.yml'), workflowContent, 'utf-8');
       deploySpinner.succeed('Created deploy-demo.yml');
-    } catch (err) {
+    } catch (_err) {
       deploySpinner.fail('Failed to create deployment workflow');
     }
 
@@ -186,7 +186,7 @@ export const initCommand = new Command('init')
       const claudeContent = generateClaudeMd(initOptions);
       await writeFile(join(targetDir, 'CLAUDE.md'), claudeContent, 'utf-8');
       claudeSpinner.succeed('Generated CLAUDE.md');
-    } catch (err) {
+    } catch (_err) {
       claudeSpinner.fail('Failed to generate CLAUDE.md');
     }
 
@@ -197,7 +197,7 @@ export const initCommand = new Command('init')
       await exec('git', ['add', '.'], { cwd: targetDir });
       await exec('git', ['commit', '-m', `Initial scaffold from Vertical-Template\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${GITHUB_ORG}/Vertical-Template`], { cwd: targetDir });
       gitSpinner.succeed('Initialized git repository');
-    } catch (err) {
+    } catch (_err) {
       gitSpinner.fail('Failed to initialize git');
     }
 
@@ -211,7 +211,7 @@ export const initCommand = new Command('init')
     console.log(`  4. ${chalk.cyan('eai env pull')} — sync environment from cloud`);
     console.log(`  5. Edit ${chalk.cyan('src/eai.config/object-types.ts')} — define your data model`);
     console.log(`  6. ${chalk.cyan('eai types validate')} — check your types`);
-    console.log(`  7. ${chalk.cyan('eai types seed')} — push types to Configurator`);
+    console.log(`  7. ${chalk.cyan('eai types seed')} — push types to platform`);
     console.log(`  8. ${chalk.cyan('eai dev')} — start local development`);
     console.log(`  9. Review ${chalk.cyan('CLAUDE.md')} — platform architecture reference`);
     out.blank();
@@ -237,16 +237,16 @@ function generateEnvFile(opts: InitOptions): string {
     tenantSection = `# Tenant & Workflow
 # Dual-tenant: two tenant scopes served by one app
 TENANT_KEYS=${opts.name}-customer,${opts.name}-staff
-TENANT_${envKey}_CUSTOMER_ID=<configurator-tenant-id>
-TENANT_${envKey}_STAFF_ID=<configurator-tenant-id>
-WORKFLOW_${envKey}_CUSTOMER_ID=<configurator-workflow-id>
-WORKFLOW_${envKey}_STAFF_ID=<configurator-workflow-id>`;
+TENANT_${envKey}_CUSTOMER_ID=<platform-tenant-id>
+TENANT_${envKey}_STAFF_ID=<platform-tenant-id>
+WORKFLOW_${envKey}_CUSTOMER_ID=<platform-workflow-id>
+WORKFLOW_${envKey}_STAFF_ID=<platform-workflow-id>`;
   } else {
     tenantSection = `# Tenant & Workflow
-# Replace IDs with actual values from Configurator after provisioning
+# Replace IDs with actual values from platform after provisioning
 TENANT_KEYS=${opts.name}
-TENANT_${envKey}_ID=<configurator-tenant-id>
-WORKFLOW_${envKey}_ID=<configurator-workflow-id>`;
+TENANT_${envKey}_ID=<platform-tenant-id>
+WORKFLOW_${envKey}_ID=<platform-workflow-id>`;
   }
 
   return `# =============================================================================
@@ -294,12 +294,11 @@ function generateObjectTypesScaffold(opts: InitOptions): string {
   return `/**
  * Object Type definitions for ${opts.displayName}
  *
- * Each object type maps to a resource in ResourceAPI (PostgreSQL JSONB)
- * with typed validation, actions, and relationship links.
+ * Each object type maps to a platform resource with typed validation, actions, and relationship links.
  *
  * Commands:
  *   eai types validate    Check definitions against platform schema
- *   eai types seed        Push to Configurator via PublicAPI
+ *   eai types seed        Push to platform via PublicAPI
  *   eai types diff        Compare local vs remote state
  *
  * ┌──────────────────────────────────────────────────────────────┐
@@ -438,7 +437,6 @@ export const objectTypes = {
           ],
         },
       ],
-      storageBackend: 'postgresql' as const,
       status: 'published' as const,
     },
     {
@@ -478,7 +476,6 @@ export const objectTypes = {
       ],
       linkTypes: [],
       actions: [],
-      storageBackend: 'postgresql' as const,
       status: 'published' as const,
     },
   ],
@@ -583,24 +580,20 @@ A vertical application built on the Enterprise AI platform.
 - **Language**: TypeScript (strict mode)
 - **UI**: React 18+, Tailwind CSS, Shadcn/ui
 - **Auth**: Auth.js with Microsoft Entra ID (CIAM)
-- **Data**: Platform SDK → PublicAPI → ResourceAPI (PostgreSQL JSONB)
-- **AI**: Platform SDK → PublicAPI → AICore (RAG chat, document classification)
+- **Data**: Platform SDK → data service (typed resource storage)
+- **AI**: Platform SDK → AI service (RAG chat, document classification)
 
 ## Platform Architecture
 
 \`\`\`
-Browser → Next.js App → BFF Proxy (/api/eai/*) → PublicAPI /v3
-                                                      ├─→ Configurator (tenants, workflows, object types)
-                                                      ├─→ ResourceAPI (CRUD on typed resources)
-                                                      ├─→ AICore (chat streaming, document classification)
-                                                      └─→ Authz/OPA (tenant-scoped RBAC)
+Browser → Next.js App → BFF Proxy (/api/eai/*) → EAI Platform API
 \`\`\`
 
 Tokens are injected server-side by the BFF proxy. Never exposed to the browser.
 
 ## Object Types
 
-Defined in \`src/eai.config/object-types.ts\`. Each type maps to a resource in ResourceAPI.
+Defined in \`src/eai.config/object-types.ts\`. Each type maps to a platform resource with typed validation, actions, and relationship links.
 
 **Field types**: text, number, boolean, date, select, json, file, relationship
 **Link cardinality**: one-to-one, one-to-many, many-to-one, many-to-many
@@ -615,7 +608,7 @@ import { useResources } from '@/hooks/useResources';
 const { list, get, create, update, delete: remove } = useResources<MyData>('MyType');
 
 // Platform SDK (server-side)
-import { EAIPlatformClient } from '@enterpriseaigroup/platform-sdk';
+import { EAIPlatformClient } from '@eai-tools/platform-sdk';
 const client = new EAIPlatformClient({ tenantId: 'my-tenant' });
 await client.resources.create('MyType', { title: 'Hello' });
 \`\`\`
@@ -626,7 +619,7 @@ await client.resources.create('MyType', { title: 'Hello' });
 |---------|---------|
 | \`eai dev\` | Start local dev server |
 | \`eai types validate\` | Validate Object Types |
-| \`eai types seed\` | Push types to Configurator |
+| \`eai types seed\` | Push types to platform |
 | \`eai types diff\` | Compare local vs remote |
 | \`eai resources list <type>\` | List resources |
 | \`eai chat stream <msg>\` | Test AI chat |
@@ -654,8 +647,8 @@ await client.resources.create('MyType', { title: 'Hello' });
 See \`.env.local\` for required variables. Use \`eai env pull\` to sync from Azure App Config.
 
 Key variables:
-- \`BASE_URL_PUBLIC_API\` — PublicAPI gateway URL
-- \`TENANT_*_ID\` / \`WORKFLOW_*_ID\` — Configurator record IDs
+- \`BASE_URL_PUBLIC_API\` — Platform API gateway URL
+- \`TENANT_*_ID\` / \`WORKFLOW_*_ID\` — Platform record IDs
 - \`ENTRA_*\` — Microsoft Entra ID (CIAM) auth config
 - \`AUTH_SECRET\` — Auth.js session encryption key
 

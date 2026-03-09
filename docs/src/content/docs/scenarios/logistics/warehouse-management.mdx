@@ -1,0 +1,170 @@
+---
+title: Warehouse Management
+description: Build an inventory tracking, pick order, and stock adjustment workflow for warehouse operations using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Warehouse systems developer at an e-commerce fulfillment center processing 2,000+ orders per day.
+
+The warehouse team tracks inventory on whiteboards and in spreadsheets that are updated once per shift. Pick lists are printed on paper, and stock discrepancies are discovered only during quarterly physical counts. The company needs a digital inventory management system that provides real-time stock levels, manages pick orders, and records adjustments with audit trails.
+
+## Business Problem
+
+Overselling is the most costly problem: orders are accepted for items that are out of stock because inventory counts are stale. Pick errors occur because paper-based pick lists do not update in real time as other pickers complete orders. Stock adjustments from damage, returns, and shrinkage are recorded inconsistently, making it impossible to identify the source of inventory discrepancies. This scenario builds a warehouse management workflow that maintains real-time inventory by location, assigns pick orders to workers, and records every stock adjustment with a reason and audit trail.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **InventoryItem** | `product` (text), `location` (text), `quantity` (number), `lastCounted` (date), `sku` (text) | one-to-many → StockAdjustment | -- |
+| **PickOrder** | `items` (text), `priority` (select: standard, express, same-day), `assignedTo` (text), `status` (select: queued, picking, packed, shipped) | -- | `completePicking` |
+| **StockAdjustment** | `reason` (select: received, damaged, returned, shrinkage, correction), `quantity` (number), `adjustedBy` (text), `adjustedDate` (date) | many-to-one → InventoryItem | -- |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init warehouse-management
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the InventoryItem, PickOrder, and StockAdjustment types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: warehouse-management
+   ✔ InventoryItem — 5 props, 1 link, 0 actions
+   ✔ PickOrder — 4 props, 0 links, 1 action
+   ✔ StockAdjustment — 4 props, 1 link, 0 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create InventoryItem --data '{"product": "Wireless Mouse WM-500", "location": "Aisle 3, Shelf B, Bin 7", "quantity": 145, "lastCounted": "2025-07-01", "sku": "WM-500-BLK"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'warehouse-management': [
+    {
+      name: 'InventoryItem',
+      displayName: 'Inventory Item',
+      description: 'A product stored at a specific warehouse location',
+      properties: [
+        { name: 'product', type: 'text' as const, required: true, indexed: true },
+        { name: 'location', type: 'text' as const, required: true, indexed: true },
+        { name: 'quantity', type: 'number' as const, required: true },
+        { name: 'lastCounted', type: 'date' as const, required: false },
+        { name: 'sku', type: 'text' as const, required: true, indexed: true },
+      ],
+      linkTypes: [
+        { name: 'adjustments', targetObjectType: 'StockAdjustment', cardinality: 'one-to-many' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+    {
+      name: 'PickOrder',
+      displayName: 'Pick Order',
+      description: 'An order to be picked from warehouse inventory',
+      properties: [
+        { name: 'items', type: 'text' as const, required: true },
+        { name: 'priority', type: 'select' as const, required: true, defaultValue: 'standard', options: [
+          { label: 'Standard', value: 'standard' },
+          { label: 'Express', value: 'express' },
+          { label: 'Same-Day', value: 'same-day' },
+        ]},
+        { name: 'assignedTo', type: 'text' as const, required: false },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'queued', options: [
+          { label: 'Queued', value: 'queued' },
+          { label: 'Picking', value: 'picking' },
+          { label: 'Packed', value: 'packed' },
+          { label: 'Shipped', value: 'shipped' },
+        ]},
+      ],
+      linkTypes: [],
+      actions: [
+        {
+          name: 'completePicking',
+          displayName: 'Complete Picking',
+          description: 'Mark a pick order as fully picked and ready for packing',
+          requiredRole: 'tenant-user',
+          validationRules: { requiredFields: ['assignedTo'], requiredStatus: 'picking' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'packed' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'StockAdjustment',
+      displayName: 'Stock Adjustment',
+      description: 'A change to inventory quantity with reason and audit trail',
+      properties: [
+        { name: 'reason', type: 'select' as const, required: true, options: [
+          { label: 'Received', value: 'received' },
+          { label: 'Damaged', value: 'damaged' },
+          { label: 'Returned', value: 'returned' },
+          { label: 'Shrinkage', value: 'shrinkage' },
+          { label: 'Correction', value: 'correction' },
+        ]},
+        { name: 'quantity', type: 'number' as const, required: true },
+        { name: 'adjustedBy', type: 'text' as const, required: true },
+        { name: 'adjustedDate', type: 'date' as const, required: true, indexed: true },
+      ],
+      linkTypes: [
+        { name: 'inventoryItem', targetObjectType: 'InventoryItem', cardinality: 'many-to-one' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Location-level tracking**: Inventory is tracked by specific warehouse location (aisle, shelf, bin), enabling efficient pick path routing and cycle counting.
+- **Priority-based picking**: Pick orders with priority levels ensure same-day and express orders are processed before standard orders.
+- **Auditable adjustments**: Every stock change records the reason, person, and date, creating a complete audit trail that explains inventory discrepancies.
+- **SKU-indexed search**: Products are indexed by SKU for fast lookups, supporting barcode scanning workflows on the warehouse floor.

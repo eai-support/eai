@@ -1,0 +1,210 @@
+---
+title: eai types
+description: Manage Object Type definitions -- validate, seed, diff, and pull
+---
+
+## Synopsis
+
+```
+eai types <subcommand> [options]
+```
+
+## Description
+
+`eai types` manages Object Type definitions for your vertical application. Object Types are the schema definitions that describe your data model -- they define properties, relationship links, actions, side effects, and access roles.
+
+Type definitions live in `src/eai.config/object-types.ts` and are organized by tenant key. Each tenant key maps to an array of Object Type definitions.
+
+This command must be run from within an EAI project directory.
+
+## Subcommands
+
+### eai types validate
+
+Check Object Type definitions against platform schema rules. Validates naming conventions, property types, link cardinality, action roles, and side effect references.
+
+```
+eai types validate
+```
+
+Validation rules include:
+
+- Type names must be PascalCase
+- A `displayName` is required
+- Status must be `draft`, `published`, or `deprecated`
+- Property names must be unique within a type
+- Property types must be one of: `text`, `number`, `boolean`, `date`, `select`, `json`, `file`, `relationship`
+- Select properties must have an `options` array
+- Link cardinality must be: `one-to-one`, `one-to-many`, `many-to-one`, or `many-to-many`
+- Action roles must be: `tenant-user`, `tenant-staff`, or `tenant-admin`
+- Side effect types must be: `set_field`, `set_timestamp`, or `set_user`
+
+### eai types seed
+
+Push local Object Type definitions to the platform. Creates new types or updates existing ones based on name matching within each tenant scope.
+
+```
+eai types seed [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--env <environment>` | Target environment | `dev` |
+| `--tenant-key <key>` | Seed a specific tenant key only (from object-types.ts) | All tenant keys |
+| `--dry-run` | Show what would be seeded without making changes | `false` |
+
+### eai types diff
+
+Compare local Object Type definitions with what is currently published on the platform. Shows which types and properties are local-only, remote-only, or changed.
+
+```
+eai types diff
+```
+
+### eai types pull
+
+Download remote Object Types from the platform and generate a local TypeScript file. Useful for syncing changes made through other tools back to your local definitions.
+
+```
+eai types pull [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--tenant-id <id>` | Platform tenant ID to pull from | Resolved from environment |
+| `--output <path>` | Output file path | `src/eai.config/object-types.generated.ts` |
+
+### eai types define
+
+Interactive Object Type builder (planned for a future release).
+
+```
+eai types define
+```
+
+## Examples
+
+### Validate Object Types
+
+```bash
+eai types validate
+```
+
+```
+⠋ Loading Object Types...
+✔ Loaded Object Types
+
+Tenant: patient-intake
+✔ Patient — 8 props, 1 links, 2 actions
+✔ Document — 4 props, 0 links, 0 actions
+
+✔ All Object Types are valid
+```
+
+### Validate with errors
+
+```bash
+eai types validate
+```
+
+```
+⠋ Loading Object Types...
+✔ Loaded Object Types
+
+Tenant: patient-intake
+✖ patient
+    error: name "patient" must be PascalCase
+    error: select property "status" must have options
+⚠ Document
+    warn: property "tags" has options but type is "text" (not select)
+
+✖ 2 error(s), 1 warning(s)
+```
+
+### Seed types to platform
+
+```bash
+eai types seed
+```
+
+```
+⠋ Loading Object Types...
+✔ Found 3 types across 1 tenant scope(s): patient-intake
+
+Tenant: patient-intake → 8f3a1b2c-...
+  ✔ Patient (created)
+  ✔ Document (created)
+  ✔ Appointment (updated)
+
+ℹ Result: 2 created, 1 updated, 0 failed
+```
+
+### Dry-run seed
+
+```bash
+eai types seed --dry-run
+```
+
+```
+⠋ Loading Object Types...
+✔ Found 3 types across 1 tenant scope(s): patient-intake
+
+Tenant: patient-intake → 8f3a1b2c-...
+  Patient — 8 props, 1 links, 2 actions
+  Document — 4 props, 0 links, 0 actions
+  Appointment — 5 props, 2 links, 1 actions
+ℹ Dry run — no changes made
+```
+
+### Seed a specific tenant key
+
+```bash
+eai types seed --tenant-key patient-intake-staff
+```
+
+### Diff local vs remote
+
+```bash
+eai types diff
+```
+
+```
+⠋ Loading local Object Types...
+✔ Loaded local types
+
+Tenant: patient-intake
+  ⠋ Fetching remote types...
+  ✔ 2 remote types
+  + Patient — LOCAL ONLY
+  = Document — no differences
+  ~ Appointment
+    + property: notes (local only)
+    - property: legacyField (remote only)
+    = 4 properties unchanged
+```
+
+### Pull remote types to local
+
+```bash
+eai types pull
+```
+
+```
+⠋ Fetching remote Object Types...
+✔ Found 3 remote types
+
+✔ Written to src/eai.config/object-types.generated.ts
+ℹ Review the generated file and merge into object-types.ts
+```
+
+### Pull to a custom output path
+
+```bash
+eai types pull --output src/eai.config/remote-types.ts
+```
+
+## Related Commands
+
+- [`eai resources schema`](/eai-cli/reference/commands/resources/) -- view published Object Types for the current tenant
+- [`eai verify`](/eai-cli/reference/commands/verify/) -- check that local Object Types are loadable
+- [`eai init`](/eai-cli/reference/commands/init/) -- generates the initial Object Types scaffold

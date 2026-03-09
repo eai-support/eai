@@ -1,0 +1,218 @@
+---
+title: Loan Processing
+description: Build a loan application and approval workflow with credit checks and disbursement tracking using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Solutions architect at a community credit union consortium (12 credit unions, 300 employees total) building a shared loan origination platform.
+
+Each credit union operates as a separate tenant with its own underwriting criteria and member data. The shared platform reduces development costs while maintaining complete data isolation between institutions.
+
+## Business Problem
+
+Loan applications move through multiple stages -- intake, credit evaluation, underwriting, and disbursement -- often across disconnected spreadsheets and email threads. Loan officers lack real-time visibility into application status, and credit check results are manually copied between systems. This scenario builds a structured loan processing pipeline where applications flow from submission through approval to disbursement with full traceability.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **LoanApplication** | `applicant` (text), `amount` (number), `term` (number), `purpose` (select: home, auto, personal, business), `status` (select: submitted, under-review, approved, denied, disbursed) | one-to-many → CreditCheck, one-to-many → Disbursement | `reviewApplication` |
+| **CreditCheck** | `score` (number), `report` (text), `date` (date), `bureau` (text), `debtToIncomeRatio` (number) | many-to-one → LoanApplication | `runCreditCheck` |
+| **Disbursement** | `amount` (number), `method` (select: ach, wire, check), `date` (date), `status` (select: pending, processed, failed), `referenceNumber` (text) | many-to-one → LoanApplication | `processDisbursement` |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init loan-processing
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the LoanApplication, CreditCheck, and Disbursement types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: loan-processing
+   ✔ LoanApplication — 5 props, 2 links, 1 action
+   ✔ CreditCheck — 5 props, 1 link, 1 action
+   ✔ Disbursement — 5 props, 1 link, 1 action
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create a sample loan application**
+
+   ```bash
+   eai resources create LoanApplication --data '{"applicant": "Maria Gonzalez", "amount": 25000, "term": 60, "purpose": "auto", "status": "submitted"}'
+   ```
+
+7. **Query applications by status**
+
+   ```bash
+   eai resources list LoanApplication
+   ```
+
+8. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'loan-processing': [
+    {
+      name: 'LoanApplication',
+      displayName: 'Loan Application',
+      description: 'A loan application submitted by a member for underwriting review',
+      properties: [
+        { name: 'applicant', type: 'text' as const, required: true, indexed: true },
+        { name: 'amount', type: 'number' as const, required: true },
+        { name: 'term', type: 'number' as const, required: true },
+        {
+          name: 'purpose', type: 'select' as const, required: true,
+          options: [
+            { label: 'Home', value: 'home' },
+            { label: 'Auto', value: 'auto' },
+            { label: 'Personal', value: 'personal' },
+            { label: 'Business', value: 'business' },
+          ],
+        },
+        {
+          name: 'status', type: 'select' as const, required: true,
+          defaultValue: 'submitted',
+          options: [
+            { label: 'Submitted', value: 'submitted' },
+            { label: 'Under Review', value: 'under-review' },
+            { label: 'Approved', value: 'approved' },
+            { label: 'Denied', value: 'denied' },
+            { label: 'Disbursed', value: 'disbursed' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'creditChecks', targetObjectType: 'CreditCheck', cardinality: 'one-to-many' as const },
+        { name: 'disbursements', targetObjectType: 'Disbursement', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'reviewApplication',
+          displayName: 'Review Application',
+          description: 'Advance the application to the next stage of the underwriting pipeline',
+          inputs: [
+            { name: 'decision', type: 'select' as const, required: true },
+            { name: 'notes', type: 'text' as const, required: false },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'CreditCheck',
+      displayName: 'Credit Check',
+      description: 'A credit bureau inquiry associated with a loan application',
+      properties: [
+        { name: 'score', type: 'number' as const, required: true },
+        { name: 'report', type: 'text' as const, required: true },
+        { name: 'date', type: 'date' as const, required: true },
+        { name: 'bureau', type: 'text' as const, required: true },
+        { name: 'debtToIncomeRatio', type: 'number' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'loanApplication', targetObjectType: 'LoanApplication', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'runCreditCheck',
+          displayName: 'Run Credit Check',
+          description: 'Initiate a credit bureau inquiry and record the results',
+          inputs: [
+            { name: 'bureau', type: 'text' as const, required: true },
+            { name: 'applicantId', type: 'text' as const, required: true },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Disbursement',
+      displayName: 'Disbursement',
+      description: 'A funds disbursement for an approved loan application',
+      properties: [
+        { name: 'amount', type: 'number' as const, required: true },
+        {
+          name: 'method', type: 'select' as const, required: true,
+          options: [
+            { label: 'ACH Transfer', value: 'ach' },
+            { label: 'Wire Transfer', value: 'wire' },
+            { label: 'Check', value: 'check' },
+          ],
+        },
+        { name: 'date', type: 'date' as const, required: true },
+        {
+          name: 'status', type: 'select' as const, required: true,
+          defaultValue: 'pending',
+          options: [
+            { label: 'Pending', value: 'pending' },
+            { label: 'Processed', value: 'processed' },
+            { label: 'Failed', value: 'failed' },
+          ],
+        },
+        { name: 'referenceNumber', type: 'text' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'loanApplication', targetObjectType: 'LoanApplication', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'processDisbursement',
+          displayName: 'Process Disbursement',
+          description: 'Execute the funds transfer and record the reference number',
+          inputs: [
+            { name: 'method', type: 'select' as const, required: true },
+            { name: 'amount', type: 'number' as const, required: true },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Full origination pipeline**: The LoanApplication, CreditCheck, and Disbursement types model the complete loan lifecycle from submission through funds transfer, replacing fragmented spreadsheet workflows.
+- **Credit check integration**: The `runCreditCheck` action captures bureau-specific scores and debt-to-income ratios, giving underwriters structured data for consistent decision-making.
+- **Consortium model**: Each credit union operates in its own tenant with independent underwriting criteria, while sharing the same platform infrastructure and codebase to reduce costs.
+- **Disbursement traceability**: Every fund transfer is recorded with method, reference number, and status, providing a complete audit trail from approval to payment.

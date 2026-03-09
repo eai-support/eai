@@ -1,0 +1,71 @@
+---
+title: Platform Overview
+description: What is EnterpriseAI, who it is for, and when to use it to build secure vertical business applications.
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## What is EnterpriseAI?
+
+EnterpriseAI is a platform for building **secure vertical business applications**. It provides a unified set of services -- resource management, AI chat, document processing, and multi-tenant data isolation -- so that enterprise developers can focus on domain logic instead of infrastructure.
+
+Rather than assembling dozens of tools and writing glue code, you define your data model as **Object Types**, connect AI workflows, and deploy. The platform handles authentication, tenant isolation, access control, and API routing.
+
+## Core Capabilities
+
+<CardGrid>
+  <Card title="Resource Management" icon="pencil">
+    Define Object Types with properties, relationships, actions, and side effects. Create, read, update, delete, and query resources through a single API surface.
+  </Card>
+  <Card title="AI Chat" icon="star">
+    Send and stream messages through configurable AI workflows. Conversations are scoped per tenant and per workflow stage for fine-grained control.
+  </Card>
+  <Card title="Document Processing" icon="document">
+    Upload files for classification, extract structured data, and index documents for retrieval-augmented generation (RAG).
+  </Card>
+  <Card title="Multi-Tenant Data Isolation" icon="setting">
+    Every resource, conversation, and document is scoped to a tenant. Tenant boundaries are enforced at the platform level -- not in application code.
+  </Card>
+</CardGrid>
+
+## Who Is It For?
+
+EnterpriseAI targets **enterprise developers** who need to ship domain-specific applications quickly and securely. Typical users include:
+
+- **Full-stack developers** building Next.js applications on top of the Platform API.
+- **Solutions architects** designing multi-tenant SaaS products for regulated industries.
+- **DevOps engineers** managing deployment pipelines and environment configuration.
+- **AI engineers** integrating chat and document intelligence into business workflows.
+
+## When to Use EnterpriseAI
+
+Use EnterpriseAI when your project requires:
+
+| Requirement | How the Platform Helps |
+|---|---|
+| **Domain-specific data model** | Define Object Types declaratively -- no hand-written migrations. |
+| **Multi-tenant isolation** | Tenant scoping is built into every API call. |
+| **AI-assisted workflows** | Chat and document services are first-class citizens, not bolt-ons. |
+| **Enterprise authentication** | Entra CIAM integration with role-based access control out of the box. |
+| **Rapid iteration** | The CLI scaffolds, validates, seeds, and deploys in minutes. |
+
+If you are building a horizontal tool (a generic CRUD app with no industry-specific logic), a simpler framework may be a better fit. EnterpriseAI is purpose-built for **vertical** applications where data model design, compliance, and tenant isolation are central concerns.
+
+## The CLI's Role
+
+The EAI CLI is the primary developer interface to the platform. It handles:
+
+- **Scaffolding** new vertical applications (`eai init`).
+- **Authentication** via device code flow (`eai login`).
+- **Object Type management** -- validate, seed, diff, and pull definitions (`eai types`).
+- **Resource operations** -- list, get, create, update, delete, and query (`eai resources`).
+- **Environment management** -- pull and sync environment variables (`eai env`).
+- **Deployment** -- push to production with a single command (`eai deploy`).
+
+## Next Steps
+
+<CardGrid>
+  <LinkCard title="Verticals" href="/eai-cli/concepts/verticals/" description="Understand why vertical applications are the core unit of development." />
+  <LinkCard title="Architecture" href="/eai-cli/concepts/architecture/" description="See how the CLI, Platform API, and services fit together." />
+  <LinkCard title="Quick Start" href="/eai-cli/getting-started/quickstart/" description="Build and deploy your first vertical in 5 minutes." />
+</CardGrid>

@@ -3,10 +3,9 @@
  */
 
 import { Command } from 'commander';
-import ora from 'ora';
 import chalk from 'chalk';
 import { deviceCodeLogin, clearTokens } from '../lib/auth.js';
-import { findProjectRoot, resolveProjectConfig, loadEnvFile } from '../lib/config.js';
+import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import * as out from '../lib/output.js';
 
 // Default CIAM tenant for EAI platform

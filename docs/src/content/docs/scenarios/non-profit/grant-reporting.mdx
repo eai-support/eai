@@ -1,0 +1,184 @@
+---
+title: Grant Reporting
+description: Build a grant milestone tracking, compliance checking, and funder reporting workflow for non-profits using the EAI CLI.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Persona
+
+**Role**: Grants management developer at a non-profit managing 25 active grants totaling $4M in annual funding.
+
+The grants team tracks deliverables in individual spreadsheets per funder, stores compliance documentation in shared folders organized by grant name, and compiles reports manually before each deadline. When a funder changes reporting requirements, the team scrambles to adapt because there is no centralized view of what is owed, to whom, and by when.
+
+## Business Problem
+
+Missing a grant reporting deadline or failing a compliance check can result in funding clawbacks and damaged funder relationships. Each grant has unique milestones, reporting frequencies, and compliance requirements that are tracked in isolation. The grants team cannot see which milestones are coming due across all grants, and compliance evidence is scattered. This scenario builds a grant reporting workflow that tracks milestones with evidence, monitors compliance requirements, and provides a unified view of reporting obligations across all funders.
+
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Grant** | `funder` (text), `amount` (number), `purpose` (text), `startDate` (date), `endDate` (date), `status` (select: pending, active, closed, suspended) | one-to-many → Milestone, one-to-many → ComplianceCheck | `activateGrant` |
+| **Milestone** | `description` (text), `dueDate` (date), `evidence` (text), `status` (select: upcoming, in-progress, completed, overdue) | many-to-one → Grant | `completeMilestone` |
+| **ComplianceCheck** | `requirement` (text), `notes` (text), `checkedDate` (date), `status` (select: compliant, non-compliant, pending-review) | many-to-one → Grant | -- |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init grant-reporting
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+3. **Define your Object Types**
+
+   Create the Grant, Milestone, and ComplianceCheck types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: grant-reporting
+   ✔ Grant — 6 props, 2 links, 1 action
+   ✔ Milestone — 4 props, 1 link, 1 action
+   ✔ ComplianceCheck — 4 props, 1 link, 0 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create Grant --data '{"funder": "Ford Foundation", "amount": 500000, "purpose": "Community health worker training program", "startDate": "2025-01-01", "endDate": "2027-12-31", "status": "active"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'grant-reporting': [
+    {
+      name: 'Grant',
+      displayName: 'Grant',
+      description: 'A funding grant from a foundation or government entity',
+      properties: [
+        { name: 'funder', type: 'text' as const, required: true, indexed: true },
+        { name: 'amount', type: 'number' as const, required: true },
+        { name: 'purpose', type: 'text' as const, required: true },
+        { name: 'startDate', type: 'date' as const, required: true, indexed: true },
+        { name: 'endDate', type: 'date' as const, required: true, indexed: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'pending', options: [
+          { label: 'Pending', value: 'pending' },
+          { label: 'Active', value: 'active' },
+          { label: 'Closed', value: 'closed' },
+          { label: 'Suspended', value: 'suspended' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'milestones', targetObjectType: 'Milestone', cardinality: 'one-to-many' as const },
+        { name: 'complianceChecks', targetObjectType: 'ComplianceCheck', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'activateGrant',
+          displayName: 'Activate Grant',
+          description: 'Mark a pending grant as active after agreement execution',
+          requiredRole: 'tenant-staff',
+          validationRules: { requiredFields: ['funder', 'amount', 'startDate', 'endDate'], requiredStatus: 'pending' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'active' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Milestone',
+      displayName: 'Milestone',
+      description: 'A deliverable or reporting milestone for a grant',
+      properties: [
+        { name: 'description', type: 'text' as const, required: true },
+        { name: 'dueDate', type: 'date' as const, required: true, indexed: true },
+        { name: 'evidence', type: 'text' as const, required: false },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'upcoming', options: [
+          { label: 'Upcoming', value: 'upcoming' },
+          { label: 'In Progress', value: 'in-progress' },
+          { label: 'Completed', value: 'completed' },
+          { label: 'Overdue', value: 'overdue' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'grant', targetObjectType: 'Grant', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'completeMilestone',
+          displayName: 'Complete Milestone',
+          description: 'Mark a milestone as completed with supporting evidence',
+          requiredRole: 'tenant-user',
+          validationRules: { requiredFields: ['evidence'], requiredStatus: 'in-progress' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'completed' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'ComplianceCheck',
+      displayName: 'Compliance Check',
+      description: 'A compliance verification for a grant requirement',
+      properties: [
+        { name: 'requirement', type: 'text' as const, required: true },
+        { name: 'notes', type: 'text' as const, required: false },
+        { name: 'checkedDate', type: 'date' as const, required: false, indexed: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'pending-review', options: [
+          { label: 'Compliant', value: 'compliant' },
+          { label: 'Non-Compliant', value: 'non-compliant' },
+          { label: 'Pending Review', value: 'pending-review' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'grant', targetObjectType: 'Grant', cardinality: 'many-to-one' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Cross-grant visibility**: All milestones across all grants are indexed by due date, providing a single view of upcoming deliverables regardless of funder.
+- **Evidence-based completion**: Milestones require evidence documentation before they can be marked complete, ensuring the grants team has supporting materials ready for funder review.
+- **Compliance monitoring**: Ongoing compliance checks are linked to their grant, making it easy to demonstrate adherence to funder requirements during audits.
+- **Grant lifecycle management**: The structured status flow from pending through active to closed tracks each grant from award notification through closeout.
