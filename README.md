@@ -6,14 +6,16 @@ Every command wraps platform API calls — developers work with **resources, typ
 
 ## Install
 
+Configure npm to use the EAI registry:
+
 ```bash
-npm install -g github:eai-tools/eai-cli
+echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
 ```
 
-Or pin to a specific version:
+Then install globally:
 
 ```bash
-npm install -g github:eai-tools/eai-cli#v0.1.0
+npm install -g @eai-tools/cli
 ```
 
 ## Quick Start
@@ -173,12 +175,13 @@ The script runs these checks before releasing:
 5. Build (`tsc`)
 6. Smoke tests — `eai --version`, `eai --help`, all 12 command groups present
 7. Docs site build
-8. IP leak scan (ensures no internal terms in source)
+8. Registry generation (`npm pack` + `generate-registry.cjs`)
+9. IP leak scan (ensures no internal terms in source)
 
 If all checks pass, it:
 
 - Bumps the version in `package.json`
-- Commits, creates an annotated git tag, and pushes
+- Commits (including registry files), creates an annotated git tag, and pushes
 - Creates a GitHub release with your message
 
 ## Documentation
@@ -192,4 +195,4 @@ Full documentation: https://eai-tools.github.io/eai-cli/
 - [ ] `eai types define` — interactive Object Type builder
 - [ ] `eai dev --offline` — local mock gateway for offline development
 - [ ] `eai tunnel` — Cloudflare tunnel for webhook testing
-- [ ] npm registry publish (`npm install -g @eai-tools/cli`)
+- [x] Static npm registry on GitHub Pages (`npm install -g @eai-tools/cli`)

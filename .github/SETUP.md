@@ -10,15 +10,9 @@ To enable documentation deployment:
 2. Under **Build and deployment**, set **Source** to **GitHub Actions**.
 3. The docs workflow will automatically deploy when files in `docs/` change on `main`, or when triggered manually via **Actions > Deploy Docs > Run workflow**.
 
-## NPM Publish Token
+## Package Registry
 
-To enable automated npm publishing on release:
-
-1. Generate an npm access token at [npmjs.com](https://www.npmjs.com/) under **Access Tokens**.
-   - Use a **Granular Access Token** with read/write permissions for the package.
-2. Go to **Settings > Secrets and variables > Actions** in the repository.
-3. Click **New repository secret**.
-4. Set the name to `NPM_TOKEN` and paste the token value.
+This project uses a **static npm registry** hosted on GitHub Pages instead of npmjs.com. No `NPM_TOKEN` secret is needed. The release workflow runs `npm pack` and `scripts/generate-registry.cjs` to produce registry metadata, which is committed to `main` and served via GitHub Pages at `https://eai-tools.github.io/eai-cli/registry`.
 
 ## Branch Protection Rules
 
@@ -47,7 +41,7 @@ git push --tags
 This will:
 
 1. Run the full build and lint pipeline.
-2. Publish the package to npm with provenance.
+2. Generate static registry metadata and commit to `main`.
 3. Create a GitHub Release with auto-generated release notes.
 
 ### Version Conventions

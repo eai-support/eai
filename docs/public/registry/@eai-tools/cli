@@ -1,0 +1,32 @@
+{
+  "name": "@eai-tools/cli",
+  "dist-tags": {
+    "latest": "0.1.0"
+  },
+  "versions": {
+    "0.1.0": {
+      "name": "@eai-tools/cli",
+      "version": "0.1.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.0.tgz",
+        "shasum": "7ed5cad1a85577542c51c877e05089c8221d2056",
+        "integrity": "sha512-v2zQsL8BUZsUkCuFrs9HUg9jqXlSqsrEl8tAFzYrUyjszbJR5cG19dhYy0T76JIJA0FLHMHE2eCgGHxTBk5prA=="
+      }
+    }
+  },
+  "modified": "2026-03-09T07:55:20.781Z"
+}

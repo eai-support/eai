@@ -100,6 +100,12 @@ echo "▸ Building docs site..."
 (cd docs && npm ci --silent && npm run build 2>&1 | tail -1)
 echo "  ✓ Docs build succeeded"
 
+# ── Generate registry ──
+echo "▸ Generating registry..."
+npm pack --silent
+node scripts/generate-registry.cjs
+echo "  ✓ Registry generated"
+
 # ── IP scan ──
 echo "▸ Scanning for IP leaks..."
 IP_TERMS="Configurator|ResourceAPI|AICore|PayloadCMS|OPA|Rego|HyPE|OBO"
@@ -127,7 +133,7 @@ NEW_VERSION="${NEW_VERSION#v}"
 echo "▸ Version: $OLD_VERSION → $NEW_VERSION"
 
 # ── Commit, tag, push ──
-git add package.json package-lock.json
+git add package.json package-lock.json docs/public/registry/
 git commit -m "chore: release v$NEW_VERSION — $MESSAGE"
 git tag -a "v$NEW_VERSION" -m "$MESSAGE"
 git push origin main --tags
@@ -142,8 +148,15 @@ gh release create "v$NEW_VERSION" \
 ## $MESSAGE
 
 **Install:**
+
+Configure \`.npmrc\`:
+\`\`\`
+@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
+\`\`\`
+
+Then:
 \`\`\`bash
-npm install -g github:eai-tools/eai-cli#v$NEW_VERSION
+npm install -g @eai-tools/cli
 \`\`\`
 
 **Full changelog:** https://github.com/eai-tools/eai-cli/compare/v$OLD_VERSION...v$NEW_VERSION
@@ -159,5 +172,6 @@ echo "  Released v$NEW_VERSION — $MESSAGE"
 echo "══════════════════════════════════════════"
 echo ""
 echo "Install:"
-echo "  npm install -g github:eai-tools/eai-cli#v$NEW_VERSION"
+echo "  echo '@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry' >> ~/.npmrc"
+echo "  npm install -g @eai-tools/cli"
 echo ""
