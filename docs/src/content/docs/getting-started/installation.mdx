@@ -31,24 +31,18 @@ node --version
 Choose the installation method that works best for your workflow.
 
 <Tabs>
-  <TabItem label="npm (recommended)">
-    Install the CLI globally so the `eai` command is available everywhere:
+  <TabItem label="npm from GitHub (recommended)">
+    Install the CLI globally directly from GitHub:
 
     ```bash
-    npm install -g @eai-tools/cli
+    npm install -g github:eai-tools/eai-cli
     ```
 
-    This is the recommended approach for most developers. It puts the `eai` binary on your `PATH` so you can use it from any directory.
-  </TabItem>
-
-  <TabItem label="npx (zero-install)">
-    Run the CLI without installing it globally:
+    This clones the repo, builds from source, and puts the `eai` binary on your `PATH`. To pin a specific version:
 
     ```bash
-    npx @eai-tools/cli init my-vertical
+    npm install -g github:eai-tools/eai-cli#v0.1.0
     ```
-
-    This downloads and runs the latest version on the fly. Useful for one-off commands or if you prefer not to install global packages. You can use `npx @eai-tools/cli` in place of `eai` for any command.
   </TabItem>
 
   <TabItem label="Homebrew">
@@ -68,20 +62,6 @@ Choose the installation method that works best for your workflow.
     ```
   </TabItem>
 
-  <TabItem label="GitHub Release">
-    Download the npm tarball directly from a GitHub Release:
-
-    ```bash
-    # Download the latest release tarball
-    curl -LO https://github.com/eai-tools/eai-cli/releases/latest/download/eai-tools-cli-0.1.0.tgz
-
-    # Install it globally
-    npm install -g ./eai-tools-cli-0.1.0.tgz
-    ```
-
-    Browse all releases at [github.com/eai-tools/eai-cli/releases](https://github.com/eai-tools/eai-cli/releases).
-  </TabItem>
-
   <TabItem label="From source">
     Clone the repository and build from source:
 
@@ -93,7 +73,7 @@ Choose the installation method that works best for your workflow.
     npm link
     ```
 
-    This registers the local build as a global `eai` command. Useful for contributors or if you need the latest unreleased features.
+    This registers the local build as a global `eai` command. Useful for contributors or if you want a symlink that reflects builds immediately (just run `npm run build` after changes).
   </TabItem>
 </Tabs>
 
@@ -163,14 +143,10 @@ Commands:
 To update to the latest version:
 
 <Tabs>
-  <TabItem label="npm">
+  <TabItem label="npm from GitHub">
     ```bash
-    npm update -g @eai-tools/cli
+    npm install -g github:eai-tools/eai-cli
     ```
-  </TabItem>
-
-  <TabItem label="npx">
-    npx always uses the latest version. No update needed -- just run your command and it fetches the newest release automatically.
   </TabItem>
 
   <TabItem label="Homebrew">
@@ -210,7 +186,8 @@ Your project files and local configuration (`~/.eai/`) are not deleted when you 
 
 ## Next steps
 
-With the CLI installed, you are ready to authenticate and create your first project:
+With the CLI installed, make sure your platform environment is ready:
 
+- [Prerequisites](/eai-cli/getting-started/prerequisites/) -- what your platform admin needs to set up before you can onboard verticals
 - [Quick Start](/eai-cli/getting-started/quickstart/) -- get up and running in 5 minutes
 - [Authentication](/eai-cli/getting-started/authentication/) -- learn how the login flow works
