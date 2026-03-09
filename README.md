@@ -7,7 +7,7 @@ Every command wraps PublicAPI calls — developers never need to know about OBO 
 ## Install
 
 ```bash
-npm install -g @enterpriseaigroup/cli
+npm install -g @eai-tools/cli
 ```
 
 Or run from source:
@@ -159,4 +159,4 @@ npm run typecheck    # Type check without emitting
 - [ ] `eai dev --offline` — local mock gateway for offline development
 - [ ] Developer portal (Docusaurus) with guides and API reference
 - [ ] `eai tunnel` — Cloudflare tunnel for webhook testing
-- [ ] npm publish to `@enterpriseaigroup/cli`
+- [ ] npm publish to `@eai-tools/cli`

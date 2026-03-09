@@ -232,10 +232,13 @@ jobs:
           subscription-id: \${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID }}
 
       - name: Deploy to Azure
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: \${{ secrets.AZURE_WEBAPP_NAME }}
-          package: app-content.zip
+        run: |
+          az webapp deploy \\
+            --resource-group \${{ secrets.AZURE_RESOURCE_GROUP }} \\
+            --name \${{ secrets.AZURE_WEBAPP_NAME }} \\
+            --src-path app-content.zip \\
+            --type zip \\
+            --target-path /home/site/wwwroot/\${{ env.APP_NAME }}
 
       - name: Restart App Service
         run: |
