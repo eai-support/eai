@@ -1,0 +1,146 @@
+---
+title: Prerequisites
+description: What you need before using the EAI CLI to onboard verticals
+---
+
+import { Aside, Steps, Card, CardGrid } from '@astrojs/starlight/components';
+
+The EAI CLI requires a bootstrapped platform environment before you can onboard verticals. This page explains what must be in place and who is responsible for each step.
+
+## Two layers of setup
+
+| Layer | Who | When | What |
+|-------|-----|------|------|
+| **Platform bootstrap** | Platform administrator | Once per environment | Tenant, users, auth configuration |
+| **Vertical onboarding** | Vertical developer | Once per vertical | Authenticate, create tenant, seed types |
+
+The quickstart guide covers the second layer. This page covers the first.
+
+## Platform bootstrap (done once per environment)
+
+Before any developer can use `eai-cli`, a platform administrator must complete these one-time setup steps for each environment (dev, test, prod).
+
+<Steps>
+
+1. **Create a parent tenant**
+
+   A parent tenant represents your organization on the platform. It is the top-level boundary under which all vertical applications are scoped.
+
+   The parent tenant is created during customer onboarding, either through the platform admin API or the Trial Portal admin UI. You will receive a tenant slug (e.g., `demo-dev`) and a tenant ID.
+
+   <Aside>
+     The parent tenant ID is stored in your environment configuration. All child tenants (verticals) inherit their organizational boundary from it.
+   </Aside>
+
+2. **Provision a tenant admin user**
+
+   A user account must exist in your organization's identity provider (Microsoft Entra ID CIAM) with admin access to the parent tenant. This user must be a member of the appropriate security group for your organization.
+
+   This account is what developers use when running `eai login`. The platform maps the authenticated user to a provisioner role that allows creating child tenants and seeding data.
+
+3. **Configure authentication**
+
+   The platform uses a chained authentication flow to securely pass credentials from the CLI through to backend services:
+
+   - **CLI app registration** — the app the user authenticates against when running `eai login`
+   - **API app registration** — the platform API that receives and validates tokens
+   - **Backend app registration** — the service that stores tenant and type data
+
+   Each hop in the chain must be pre-authorized so tokens can be exchanged securely. This is standard Microsoft Entra ID configuration, performed once per environment.
+
+   <Aside type="tip">
+     Your platform administrator will provide you with the **Client ID** for the CLI app registration. You'll need this for `eai login` — it goes in your `.env.local` file as `ENTRA_CLIENT_ID` or can be passed with `eai login --client-id`.
+   </Aside>
+
+</Steps>
+
+### Checklist
+
+Before handing off to a vertical developer, confirm:
+
+- [ ] Parent tenant exists with a known slug and ID
+- [ ] Admin user is provisioned in the identity provider
+- [ ] Admin user is a member of the correct security group
+- [ ] Authentication chain is configured and pre-authorized
+- [ ] Client ID for the CLI app registration is available
+- [ ] Environment configuration (API URLs, tenant IDs) is seeded in App Configuration
+
+## Vertical onboarding (done per vertical)
+
+Once the platform is bootstrapped, a vertical developer can onboard a new vertical entirely from the CLI:
+
+<Steps>
+
+1. **Authenticate**
+
+   ```bash
+   eai login
+   ```
+
+   Sign in with the admin user credentials. The CLI obtains a token that flows through the authentication chain to the platform backend.
+
+2. **Create a child tenant**
+
+   ```bash
+   eai tenant create
+   ```
+
+   Create a tenant record under the parent for your new vertical. You'll provide a slug (e.g., `councildash`, `ad-compliance`) and it will be linked to the parent tenant.
+
+3. **Scaffold your vertical**
+
+   ```bash
+   eai init my-vertical
+   cd my-vertical && npm install
+   ```
+
+4. **Seed Object Types**
+
+   ```bash
+   eai types seed
+   ```
+
+   This reads your Object Type definitions from `src/eai.config/object-types.ts` and publishes them to the platform. The vertical's codebase is the source of truth for its data model — the platform stores a copy for runtime use.
+
+5. **Additional setup** (optional)
+
+   These can also be done through the Trial Portal web UI:
+
+   - App registration for the vertical itself
+   - GitHub repository from the Vertical Template
+   - Environment configuration seeding
+   - Infrastructure registration
+   - Deployment workflow setup
+
+</Steps>
+
+## Key principles
+
+<CardGrid>
+  <Card title="Vertical owns the data model" icon="pencil">
+    Object Type definitions live in `src/eai.config/object-types.ts` inside each vertical's codebase. The platform is a runtime store — the vertical is the source of truth.
+  </Card>
+  <Card title="Two paths to onboard" icon="random">
+    Trial Portal (web UI, guided flow) and eai-cli (command line, developer-friendly) both use the same underlying platform APIs.
+  </Card>
+  <Card title="Parent tenant is the boundary" icon="approve-check">
+    All child tenants (verticals) are scoped under a parent. The parent tenant ID is set in environment configuration and controls organizational isolation.
+  </Card>
+  <Card title="Auth chain is transparent" icon="open-book">
+    Developers just run `eai login`. The token exchange chain happens automatically — no manual token management required.
+  </Card>
+</CardGrid>
+
+## What you need from your platform admin
+
+Before you can follow the [Quick Start](/eai-cli/getting-started/quickstart/), collect these from your platform administrator:
+
+| Item | Example | Used by |
+|------|---------|---------|
+| **CLI Client ID** | `a1b2c3d4-...` | `eai login --client-id` or `ENTRA_CLIENT_ID` in `.env.local` |
+| **Identity provider tenant** | `yourorg.ciamlogin.com` | `eai login --tenant` or `ENTRA_TENANT_NAME` in `.env.local` |
+| **Parent tenant slug** | `demo-dev` | `eai tenant create` (links child to parent) |
+| **Platform API URL** | `https://api.yourorg.ai` | `BASE_URL_PUBLIC_API` in `.env.local` |
+| **Admin user credentials** | Your email + password | `eai login` (device code flow in browser) |
+
+Once you have these, proceed to the [Quick Start](/eai-cli/getting-started/quickstart/).

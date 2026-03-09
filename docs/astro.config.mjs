@@ -27,6 +27,7 @@ export default defineConfig({
           label: 'Getting Started',
           items: [
             { label: 'Installation', slug: 'getting-started/installation' },
+            { label: 'Prerequisites', slug: 'getting-started/prerequisites' },
             { label: 'Quick Start', slug: 'getting-started/quickstart' },
             { label: 'Authentication', slug: 'getting-started/authentication' },
             { label: 'Your First Vertical', slug: 'getting-started/first-vertical' },
