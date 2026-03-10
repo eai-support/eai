@@ -239,16 +239,14 @@ export class PlatformAPIClient {
     });
   }
 
-  async inviteUserToTenant(data: {
-    email: string;
-    firstName: string;
-    lastName: string;
-    currentTenantId: string;
-    role?: string;
-    message?: string;
-    redirectUri?: string;
-  }): Promise<Response> {
-    return this._route('payload', '/entra/users/invite', 'POST', data);
+  async lookupUserByEmail(email: string): Promise<Response> {
+    return this._route('payload', '/custom-users/by-email', 'GET', undefined, { email });
+  }
+
+  async provisionUserToTenant(tenantId: string, userOid?: string): Promise<Response> {
+    const body: Record<string, string> = { tenant_id: tenantId };
+    if (userOid) body.user_oid = userOid;
+    return this._route('payload', '/custom-users/provisionme', 'POST', body);
   }
 
   async getCurrentUser(): Promise<Response> {
