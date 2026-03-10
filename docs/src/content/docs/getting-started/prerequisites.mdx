@@ -65,6 +65,28 @@ Before handing off to a vertical developer, confirm:
 - [ ] Client ID for the CLI app registration is available
 - [ ] Environment configuration (API URLs, tenant IDs) is seeded in App Configuration
 
+### External developer onboarding
+
+If you are onboarding developers from **outside your organization** (partner engineers, contractors, external teams), there is an additional path. These developers typically do not have Azure subscription access, so they cannot run `eai env pull`. Instead:
+
+1. **Provision a user** for the external developer in your Entra CIAM tenant
+2. **Share credentials** — provide the developer with: CIAM tenant name, tenant ID, client ID, platform API URL, and their developer tenant ID
+3. **The developer creates `.env.local` manually** using the values you provide
+
+External developers authenticate with:
+
+```bash
+eai login --tenant-name <ciam-tenant> --tenant-id <tenant-id> --client-id <client-id>
+```
+
+#### Platform admin checklist for external developers
+
+- [ ] External developer user provisioned in Entra CIAM
+- [ ] Client ID and tenant details shared with external developer
+- [ ] Localhost redirect URIs added to the vertical's app registration (see [Local Development](/eai-cli/guides/local-development/))
+
+See the [External Developer Setup](/eai-cli/guides/external-developers/) guide for the full walkthrough.
+
 ## Vertical onboarding (done per vertical)
 
 Once the platform is bootstrapped, a vertical developer can onboard a new vertical entirely from the CLI:

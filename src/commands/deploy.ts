@@ -89,6 +89,7 @@ deployCommand
   .option('--repo <repo>', 'GitHub repo (org/name)')
   .option('--branch <branch>', 'Branch to deploy', 'main')
   .option('--workflow <name>', 'Workflow filename', 'deploy-demo.yml')
+  .option('--json', 'Output raw JSON', false)
   .action(async (options) => {
     let repo = options.repo;
 
@@ -114,7 +115,12 @@ deployCommand
         '--ref', options.branch,
       ]);
       spinner.succeed(`Triggered deployment on ${chalk.cyan(repo)}@${options.branch}`);
-      out.info(`Check status: ${chalk.dim(`eai deploy status --repo ${repo}`)}`);
+
+      if (options.json) {
+        console.log(JSON.stringify({ repo, branch: options.branch, workflow: options.workflow, triggered: true }, null, 2));
+      } else {
+        out.info(`Check status: ${chalk.dim(`eai deploy status --repo ${repo}`)}`);
+      }
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -127,6 +133,7 @@ deployCommand
   .command('status')
   .description('Check deployment status')
   .option('--repo <repo>', 'GitHub repo (org/name)')
+  .option('--json', 'Output raw JSON', false)
   .action(async (options) => {
     let repo = options.repo;
 
@@ -162,13 +169,17 @@ deployCommand
 
       spinner.succeed(`Recent deployments for ${chalk.cyan(repo)}`);
 
-      for (const run of runs) {
-        const icon = run.conclusion === 'success' ? out.symbols.success
-          : run.conclusion === 'failure' ? out.symbols.error
-          : run.status === 'in_progress' ? chalk.blue('⟳')
-          : out.symbols.pending;
-        const time = new Date(run.createdAt).toLocaleString();
-        console.log(`  ${icon} ${run.name} (${run.headBranch}) — ${chalk.dim(time)}`);
+      if (options.json) {
+        console.log(JSON.stringify(runs, null, 2));
+      } else {
+        for (const run of runs) {
+          const icon = run.conclusion === 'success' ? out.symbols.success
+            : run.conclusion === 'failure' ? out.symbols.error
+            : run.status === 'in_progress' ? chalk.blue('⟳')
+            : out.symbols.pending;
+          const time = new Date(run.createdAt).toLocaleString();
+          console.log(`  ${icon} ${run.name} (${run.headBranch}) — ${chalk.dim(time)}`);
+        }
       }
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));

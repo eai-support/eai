@@ -1,0 +1,191 @@
+---
+title: External Developer Setup
+description: How to authenticate and configure the EAI CLI when you are outside the platform organization.
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This guide is for developers who are **not** part of the organization that hosts the EAI platform — for example, partner engineers, contractors, or external teams building verticals on a shared platform instance.
+
+<Aside type="tip">
+  If you are an internal developer with Azure subscription access and can run `eai env pull`, you do not need this guide. Follow the standard [Quick Start](/eai-cli/getting-started/quickstart/) instead.
+</Aside>
+
+## What makes external developers different
+
+The default CLI workflow assumes you have:
+1. An account in the platform's Entra CIAM tenant
+2. Azure CLI access to pull environment configuration from App Configuration and Key Vault
+
+External developers typically have **item 1** (your platform admin creates an account for you) but **not item 2**. This means:
+
+- `eai login` needs extra flags to point at the correct CIAM tenant
+- `eai env pull` will not work — you must create `.env.local` manually
+
+Everything else works the same once those two steps are covered.
+
+## What you need from your platform admin
+
+Before you can use the CLI, your platform administrator must provide:
+
+| Item | Example | Used for |
+|------|---------|----------|
+| **CIAM tenant name** | `yourorg.ciamlogin.com` | `--tenant-name` flag |
+| **CIAM tenant ID** | `a1b2c3d4-e5f6-...` | `--tenant-id` flag |
+| **CLI client ID** | `f7g8h9i0-j1k2-...` | `--client-id` flag |
+| **Platform API URL** | `https://api.yourorg.ai` | `BASE_URL_PUBLIC_API` in `.env.local` |
+| **Your tenant ID** | `d4e5f6g7-h8i9-...` | `TENANT_*_ID` in `.env.local` |
+| **Workflow ID** | `w1x2y3z4-...` | `WORKFLOW_ID` in `.env.local` (if using AI chat) |
+| **Your credentials** | Email + password | Device code flow in browser |
+
+Your admin must also have provisioned your user account in the CIAM tenant. If you receive an "account not found" error during login, contact your admin to verify your account exists.
+
+## Authenticate
+
+<Steps>
+
+1. **Log in with explicit tenant and client flags**
+
+   ```bash
+   eai login \
+     --tenant-name yourorg.ciamlogin.com \
+     --tenant-id a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+     --client-id f7g8h9i0-j1k2-3456-lmno-pq7890123456
+   ```
+
+   The CLI starts a device code flow. Open the URL in your browser and sign in with the credentials your platform admin provided.
+
+2. **Verify authentication**
+
+   ```bash
+   eai whoami
+   ```
+
+   You should see your email address and token expiry.
+
+</Steps>
+
+<Aside>
+  You can avoid typing the flags every time by setting the values in your project's `.env.local` file (see next section). Once set, plain `eai login` will use them automatically.
+</Aside>
+
+## Create `.env.local` manually
+
+Since you cannot run `eai env pull`, create the file yourself in your project root:
+
+```bash title=".env.local"
+# Platform API
+BASE_URL_PUBLIC_API=https://api.yourorg.ai
+
+# Authentication
+ENTRA_CLIENT_ID=f7g8h9i0-j1k2-3456-lmno-pq7890123456
+ENTRA_TENANT_ID=a1b2c3d4-e5f6-7890-abcd-ef1234567890
+ENTRA_TENANT_NAME=yourorg.ciamlogin.com
+
+# Your developer tenant
+TENANT_MY_VERTICAL_ID=d4e5f6g7-h8i9-0123-jklm-no4567890123
+
+# Auth secret for Next.js (generate with: openssl rand -base64 32)
+AUTH_SECRET=your-generated-secret-here
+
+# AI chat (if applicable)
+WORKFLOW_ID=w1x2y3z4-a5b6-7890-cdef-gh1234567890
+```
+
+Replace every value with the actual values from your platform admin.
+
+<Aside type="caution">
+  Do not commit `.env.local` to version control. It is already in `.gitignore` by default in EAI projects.
+</Aside>
+
+## Command compatibility
+
+Once authenticated and configured, most CLI commands work identically for external developers. The table below notes the exceptions.
+
+| Command | Works? | Notes |
+|---------|--------|-------|
+| `eai login` | Yes | Use `--tenant-name`, `--tenant-id`, `--client-id` flags (or set in `.env.local`) |
+| `eai whoami` | Yes | |
+| `eai init` | Yes | |
+| `eai types validate` | Yes | Local-only, no auth needed |
+| `eai types seed` | Yes | Requires valid token |
+| `eai types diff` | Yes | Requires valid token |
+| `eai resources list/create/get/update/delete` | Yes | Requires valid token |
+| `eai chat` | Yes | Requires `WORKFLOW_ID` in `.env.local` |
+| `eai dev` | Yes | See [Local Development](/eai-cli/guides/local-development/) for redirect URI setup |
+| `eai verify` | Yes | |
+| `eai doctor` | Yes | |
+| `eai env pull` | No | Requires Azure CLI + subscription access |
+| `eai env push` | No | Requires Azure CLI + subscription access |
+| `eai env list` | Yes | Shows values from local `.env.local` |
+| `eai deploy` | Partial | Works if you have GitHub repo access; Azure deployment may require additional permissions |
+| `eai tenant create` | Yes | Requires admin-level token |
+
+## Full workflow example
+
+<Steps>
+
+1. **Scaffold a project**
+
+   ```bash
+   eai init my-vertical
+   cd my-vertical && npm install
+   ```
+
+2. **Create `.env.local`** with the values from your platform admin (see template above).
+
+3. **Authenticate**
+
+   ```bash
+   eai login
+   ```
+
+   With `ENTRA_CLIENT_ID`, `ENTRA_TENANT_ID`, and `ENTRA_TENANT_NAME` set in `.env.local`, you do not need the `--tenant-name`, `--tenant-id`, or `--client-id` flags.
+
+4. **Define and seed your types**
+
+   ```bash
+   eai types validate
+   eai types seed
+   ```
+
+5. **Start developing**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Troubleshooting
+
+### "No client ID provided"
+
+```
+✗ No client ID provided. Use --client-id or set ENTRA_CLIENT_ID in .env.local
+```
+
+You did not pass `--client-id` and `ENTRA_CLIENT_ID` is not set in `.env.local`. Add it to your `.env.local` or pass it as a flag.
+
+### "Account not found" during device code flow
+
+Your user account has not been provisioned in the CIAM tenant. Contact your platform administrator to create your account.
+
+### "Azure CLI not found" on `eai env pull`
+
+This is expected for external developers. You cannot use `eai env pull` — create `.env.local` manually as described above.
+
+### Token expires and refresh fails
+
+If your refresh token is also expired, log in again:
+
+```bash
+eai logout
+eai login
+```
+
+## Next steps
+
+- [Local Development](/eai-cli/guides/local-development/) — set up redirect URIs for the web app
+- [Troubleshooting](/eai-cli/guides/troubleshooting/) — diagnose common issues
+- [Security](/eai-cli/guides/security/) — understand the authentication flow in detail

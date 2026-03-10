@@ -21,6 +21,7 @@ interface StoredTokens {
   expiresAt: number;
   tenantId: string;
   tenantName: string;
+  clientId: string;
   upn?: string;
 }
 
@@ -94,6 +95,7 @@ export async function clearTokens(): Promise<void> {
  * Check if we have a valid (non-expired) access token.
  */
 export async function isAuthenticated(): Promise<boolean> {
+  if (process.env.EAI_ACCESS_TOKEN) return true;
   const tokens = await loadTokens();
   if (!tokens) return false;
   return tokens.expiresAt > Date.now();
@@ -101,8 +103,12 @@ export async function isAuthenticated(): Promise<boolean> {
 
 /**
  * Get the current access token, refreshing if expired.
+ * Supports EAI_ACCESS_TOKEN env var for headless/server use.
  */
 export async function getAccessToken(): Promise<string | null> {
+  const envToken = process.env.EAI_ACCESS_TOKEN;
+  if (envToken) return envToken;
+
   const tokens = await loadTokens();
   if (!tokens) return null;
 
@@ -185,6 +191,7 @@ export async function deviceCodeLogin(
         expiresAt: Date.now() + token.expires_in * 1000,
         tenantId,
         tenantName,
+        clientId,
         upn: parseJwtClaim(token.access_token, 'preferred_username') || undefined,
       };
       await storeTokens(stored);
@@ -213,7 +220,7 @@ export async function deviceCodeLogin(
  * Refresh an access token using the refresh token.
  */
 async function refreshAccessToken(tokens: StoredTokens): Promise<StoredTokens | null> {
-  if (!tokens.refreshToken) return null;
+  if (!tokens.refreshToken || !tokens.clientId) return null;
 
   const authority = `https://${tokens.tenantName}.ciamlogin.com/${tokens.tenantId}`;
 
@@ -221,6 +228,7 @@ async function refreshAccessToken(tokens: StoredTokens): Promise<StoredTokens | 
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
+      client_id: tokens.clientId,
       grant_type: 'refresh_token',
       refresh_token: tokens.refreshToken,
     }),
@@ -235,6 +243,7 @@ async function refreshAccessToken(tokens: StoredTokens): Promise<StoredTokens | 
     expiresAt: Date.now() + data.expires_in * 1000,
     tenantId: tokens.tenantId,
     tenantName: tokens.tenantName,
+    clientId: tokens.clientId,
     upn: parseJwtClaim(data.access_token, 'preferred_username') || tokens.upn,
   };
 }

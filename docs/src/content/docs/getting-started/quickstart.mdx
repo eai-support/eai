@@ -96,6 +96,10 @@ This guide walks you through the complete workflow of creating a vertical applic
    Token expires: 3/10/2026, 2:30:00 PM
    ```
 
+   <Aside type="note">
+     **External developers**: If you are outside the platform organization, you need to pass `--tenant-name`, `--tenant-id`, and `--client-id` flags. See [External Developer Setup](/eai-cli/guides/external-developers/) for details.
+   </Aside>
+
 4. **Pull environment configuration**
 
    Sync your project's environment variables from Azure App Configuration and Key Vault:
@@ -115,6 +119,10 @@ This guide walks you through the complete workflow of creating a vertical applic
 
    <Aside type="caution">
      The `--include-secrets` flag resolves Key Vault references into actual values. Without it, secret values are left as placeholders. You need Azure CLI (`az login`) access to resolve secrets.
+   </Aside>
+
+   <Aside type="note">
+     **External developers**: If you do not have Azure subscription access, you cannot use `eai env pull`. Create `.env.local` manually with the values your platform admin provides. See [External Developer Setup](/eai-cli/guides/external-developers/#create-envlocal-manually) for the template.
    </Aside>
 
 5. **Edit your Object Types**

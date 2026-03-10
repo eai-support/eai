@@ -100,6 +100,7 @@ tenantCommand
   .requiredOption('--slug <slug>', 'Tenant slug (kebab-case)')
   .option('--parent <id>', 'Parent tenant ID')
   .option('--domain <domains>', 'Comma-separated domain list')
+  .option('--json', 'Output raw JSON', false)
   .action(async (options) => {
     const root = await findProjectRoot();
     if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
@@ -126,8 +127,12 @@ tenantCommand
         process.exit(1);
       }
 
-      const tenant = await res.json() as { id: string; slug: string };
-      spinner.succeed(`Created tenant ${chalk.cyan(tenant.slug)} (${chalk.dim(tenant.id)})`);
+      const tenant = await res.json() as Record<string, unknown>;
+      spinner.succeed(`Created tenant ${chalk.cyan(String(tenant.slug))} (${chalk.dim(String(tenant.id))})`);
+
+      if (options.json) {
+        console.log(JSON.stringify(tenant, null, 2));
+      }
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
