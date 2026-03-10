@@ -1,0 +1,90 @@
+---
+title: eai update
+description: Check for and install CLI updates
+---
+
+## Synopsis
+
+```
+eai update [--check]
+```
+
+## Description
+
+`eai update` checks the EAI package registry for the latest version and installs it globally. It performs a live registry check (not cached) and runs `npm install -g @eai-tools/cli@latest` using the EAI GitHub Pages registry.
+
+The CLI also performs automatic background update checks on every invocation. When a newer version is detected, a notification banner is printed after the command output. This background check is cached for 24 hours and is skipped in CI environments, when `NO_UPDATE_NOTIFIER=1` is set, or when output is not a TTY.
+
+## Options
+
+| Option | Description |
+|--------|-------------|
+| `--check` | Only check for updates without installing. Shows current vs latest version. |
+| `-h, --help` | Display help for the command. |
+
+## Examples
+
+### Check for updates without installing
+
+```bash
+eai update --check
+```
+
+```
+✔ Update available: 0.1.2 → 0.2.0
+→ Run eai update to install.
+```
+
+### Install the latest version
+
+```bash
+eai update
+```
+
+```
+✔ Update available: 0.1.2 → 0.2.0
+✔ Updated to 0.2.0
+```
+
+### Already on the latest version
+
+```bash
+eai update
+```
+
+```
+✔ Already on the latest version (0.2.0)
+```
+
+### Permission error
+
+If installation fails due to permissions:
+
+```bash
+eai update
+```
+
+```
+✔ Update available: 0.1.2 → 0.2.0
+✖ Update failed.
+→ Try with sudo: sudo npm install -g @eai-tools/cli@0.2.0 --registry https://eai-tools.github.io/eai-cli/registry
+```
+
+## Automatic update notifications
+
+The CLI checks for updates in the background on every run and caches the result for 24 hours at `~/.eai/update-check.json`. If a newer version is available, a banner is printed to stderr after the command finishes:
+
+```
+  Update available: 0.1.2 → 0.2.0
+  Run eai update to update
+```
+
+The automatic check is disabled when:
+- `CI` environment variable is set
+- `NO_UPDATE_NOTIFIER=1` is set
+- Output is not a TTY (e.g., piped to another command)
+
+## Related Commands
+
+- [`eai --version`](/eai-cli/reference/commands/verify/) -- check current CLI version
+- [`eai verify`](/eai-cli/reference/commands/verify/) -- verify platform connectivity
