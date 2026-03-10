@@ -16,13 +16,9 @@ export const userCommand = new Command('user')
 
 userCommand
   .command('invite')
-  .description('Invite a user to a tenant (creates CIAM account, adds to security group, assigns role)')
-  .requiredOption('--email <email>', 'Email address to invite')
-  .requiredOption('--tenant <id>', 'Tenant ID to invite the user to')
-  .requiredOption('--first-name <name>', 'First name')
-  .requiredOption('--last-name <name>', 'Last name')
-  .option('--role <role>', 'Role to assign (default: tenant-viewer)', 'tenant-viewer')
-  .option('--message <message>', 'Custom invitation message')
+  .description('Add an existing user to a tenant (lookup by email, then provision)')
+  .requiredOption('--email <email>', 'Email address of the user to add')
+  .requiredOption('--tenant <id>', 'Tenant ID to add the user to')
   .action(async (options) => {
     const root = await findProjectRoot();
     if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
@@ -33,35 +29,59 @@ userCommand
     if (!publicApiUrl) { out.error('BASE_URL_PUBLIC_API not set.'); process.exit(1); }
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
-    const spinner = ora(`Inviting ${options.email}...`).start();
+
+    // Step 1: Look up user by email
+    const lookupSpinner = ora(`Looking up ${options.email}...`).start();
+
+    let lookupResult: { user: { id: string; email: string; username?: string } | null };
+    try {
+      const lookupRes = await client.lookupUserByEmail(options.email);
+      if (!lookupRes.ok) {
+        const body = await lookupRes.text();
+        lookupSpinner.fail(`Lookup failed: ${lookupRes.status}: ${body}`);
+        process.exit(1);
+      }
+      lookupResult = await lookupRes.json() as typeof lookupResult;
+    } catch (err) {
+      lookupSpinner.fail(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+
+    if (!lookupResult.user) {
+      lookupSpinner.fail(`User ${chalk.cyan(options.email)} not found.`);
+      console.log();
+      console.log(`  ${chalk.yellow('The user must sign up first.')} Direct them to:`);
+      console.log(`  ${chalk.dim('https://enterpriseaigroup.com/signup')}`);
+      console.log();
+      console.log(`  Once they've signed up, re-run:`);
+      console.log(`  ${chalk.dim(`eai user invite --email ${options.email} --tenant ${options.tenant}`)}`);
+      process.exit(1);
+    }
+
+    const user = lookupResult.user;
+    lookupSpinner.succeed(`Found user ${chalk.cyan(user.email)} (${chalk.dim(user.id)})`);
+
+    // Step 2: Provision user to tenant
+    const provisionSpinner = ora(`Adding ${user.email} to tenant ${options.tenant}...`).start();
 
     try {
-      const res = await client.inviteUserToTenant({
-        email: options.email,
-        firstName: options.firstName,
-        lastName: options.lastName,
-        currentTenantId: options.tenant,
-        role: options.role,
-        message: options.message,
-      });
-
-      if (!res.ok) {
-        const body = await res.text();
-        spinner.fail(`${res.status}: ${body}`);
+      const provisionRes = await client.provisionUserToTenant(options.tenant, user.id);
+      if (!provisionRes.ok) {
+        const body = await provisionRes.text();
+        provisionSpinner.fail(`Provisioning failed: ${provisionRes.status}: ${body}`);
         process.exit(1);
       }
 
-      const result = await res.json() as { user?: { email?: string }; message?: string };
-      spinner.succeed(
-        `Invited ${chalk.cyan(options.email)} to tenant ${chalk.dim(options.tenant)}` +
-        (options.role !== 'tenant-viewer' ? ` as ${chalk.yellow(options.role)}` : ''),
+      const result = await provisionRes.json() as { success?: boolean; message?: string };
+      provisionSpinner.succeed(
+        `Added ${chalk.cyan(user.email)} to tenant ${chalk.dim(options.tenant)}`,
       );
 
       if (result.message) {
         console.log(`  ${chalk.dim(result.message)}`);
       }
     } catch (err) {
-      spinner.fail(err instanceof Error ? err.message : String(err));
+      provisionSpinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
