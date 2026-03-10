@@ -119,6 +119,19 @@ The dev server still starts even when warnings are present, but API-dependent fe
 | PublicAPI | Endpoint does not respond within 5 seconds | Check `BASE_URL_PUBLIC_API`, run `eai verify` |
 | Auth config | `ENTRA_CLIENT_ID` or `ENTRA_TENANT_ID` not set | Run `eai env pull --include-secrets` |
 
+## Local authentication setup
+
+The CLI authenticates via device code flow, which does not require a redirect URI. However, the **web application** started by `eai dev` uses a browser-based redirect flow. For users to sign in to the app in the browser, `http://localhost:3000` (or your custom port) must be registered as a **Single-page application** redirect URI in the vertical's Azure app registration.
+
+If you see this error when signing in from the browser:
+
+```
+AADSTS50011: The redirect URI 'http://localhost:3000' specified in the request
+does not match the redirect URIs configured for the application.
+```
+
+Add the localhost URI to your app registration, or ask your platform admin to do so. See [Local Development](/eai-cli/guides/local-development/) for step-by-step instructions.
+
 ## Related Commands
 
 - [`eai verify`](/eai-cli/reference/commands/verify/) -- run the full set of platform connectivity checks

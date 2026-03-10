@@ -26,6 +26,7 @@ typesCommand
   .option('--env <environment>', 'Target environment', 'dev')
   .option('--tenant-key <key>', 'Specific tenant key from object-types.ts')
   .option('--dry-run', 'Show what would be seeded without making changes', false)
+  .option('--json', 'Output raw JSON', false)
   .action(async (options) => {
     const root = await findProjectRoot();
     if (!root) {
@@ -63,6 +64,8 @@ typesCommand
       : Object.keys(objectTypes);
 
     out.blank();
+
+    const jsonResults: Array<{ tenantKey: string; tenantId: string; created: number; updated: number; failed: number }> = [];
 
     for (const tenantKey of keysToSeed) {
       const types = objectTypes[tenantKey];
@@ -156,6 +159,11 @@ typesCommand
 
       out.blank();
       out.info(`Result: ${chalk.green(`${created} created`)}, ${chalk.cyan(`${updated} updated`)}, ${chalk.red(`${failed} failed`)}`);
+      jsonResults.push({ tenantKey, tenantId: tenantId!, created, updated, failed });
+    }
+
+    if (options.json) {
+      console.log(JSON.stringify(jsonResults, null, 2));
     }
   });
 

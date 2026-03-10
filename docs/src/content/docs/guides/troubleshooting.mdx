@@ -183,6 +183,17 @@ eai env list
     echo "ENTRA_CLIENT_ID=your-client-id" >> .env.local
     ```
   </TabItem>
+  <TabItem label="Redirect URI mismatch">
+    **Error:**
+    ```
+    AADSTS50011: The redirect URI 'http://localhost:3000' specified in the request
+    does not match the redirect URIs configured for the application.
+    ```
+
+    **Cause:** The web application's app registration does not have `http://localhost:3000` (or your custom port) listed as a redirect URI. This only affects the browser login in the web app — the CLI's device code flow is not affected.
+
+    **Fix:** Add the localhost URI to your app registration. See [Local Development](/eai-cli/guides/local-development/) for step-by-step instructions. If you do not have Azure Portal access, ask your platform admin to add the redirect URI.
+  </TabItem>
   <TabItem label="Device code timeout">
     **Error:**
     ```
@@ -357,6 +368,7 @@ This shows additional request/response details for debugging API calls.
 | Object Type name must be PascalCase          | Invalid naming                     | Rename to `PascalCase`               |
 | PublicAPI not reachable                       | Network or URL issue               | Check VPN, verify URL                |
 | 409 Conflict                                 | Optimistic locking version mismatch| Refetch and retry with correct version |
+| AADSTS50011 redirect URI mismatch            | Localhost not registered           | Add redirect URI ([guide](/eai-cli/guides/local-development/)) |
 | Device code flow timed out                   | Browser auth not completed in time | Re-run `eai login`                   |
 | deploy-demo.yml not found                    | Workflow not generated             | `eai deploy setup`                   |
 | node_modules not found                       | Dependencies not installed         | `npm install`                        |
