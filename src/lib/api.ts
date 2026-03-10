@@ -239,6 +239,18 @@ export class PlatformAPIClient {
     });
   }
 
+  async inviteUserToTenant(data: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    currentTenantId: string;
+    role?: string;
+    message?: string;
+    redirectUri?: string;
+  }): Promise<Response> {
+    return this._route('payload', '/entra/users/invite', 'POST', data);
+  }
+
   async getCurrentUser(): Promise<Response> {
     return fetch(`${this.baseUrl}/v3/auth/me`, {
       headers: await this.headers(),
