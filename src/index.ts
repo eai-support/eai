@@ -29,6 +29,8 @@ import { docsCommand } from './commands/docs.js';
 import { deployCommand } from './commands/deploy.js';
 import { verifyCommand, doctorCommand } from './commands/verify.js';
 import { whoamiCommand } from './commands/whoami.js';
+import { updateCommand } from './commands/update.js';
+import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
 
 const program = new Command();
 
@@ -53,6 +55,7 @@ program.addCommand(deployCommand);
 program.addCommand(verifyCommand);
 program.addCommand(doctorCommand);
 program.addCommand(whoamiCommand);
+program.addCommand(updateCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -74,4 +77,6 @@ ${chalk.bold('Common Workflows:')}
   ${chalk.cyan('eai deploy trigger')}
 `);
 
-program.parse();
+checkForUpdate(pkg.version);
+await program.parseAsync();
+await notifyIfUpdateAvailable(pkg.version);

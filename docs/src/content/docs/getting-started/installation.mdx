@@ -147,11 +147,20 @@ Commands:
   verify          Verify platform connectivity
   doctor          Diagnose common issues
   whoami          Show auth status and tenant info
+  update          Check for and install CLI updates
 ```
 
 ## Update
 
-To update to the latest version:
+The easiest way to update is the built-in update command:
+
+```bash
+eai update
+```
+
+The CLI also checks for updates automatically in the background. When a newer version is available, you will see a notification after command output.
+
+Alternatively, you can update manually:
 
 <Tabs>
   <TabItem label="npm">
