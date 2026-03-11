@@ -1,6 +1,6 @@
 ---
-generated: "2026-03-11T17:36:00Z"
-source_commit: "4d789698b3212952b667903d893918fc322fbc86"
+generated: "2026-03-11T18:45:00Z"
+source_commit: "584ed1afb8257ec89c81a6e0515007e9491fa008"
 ---
 
 # EAI CLI — Deployment
