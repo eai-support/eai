@@ -58,8 +58,8 @@ docsCommand
         process.exit(1);
       }
 
-      const data = await res.json();
-      spinner.succeed(`Uploaded ${chalk.cyan(basename(file))}`);
+      const data = await res.json() as { id?: string; message?: string };
+      spinner.succeed(`Uploaded ${chalk.cyan(basename(file))}${data.id ? ` (${chalk.dim(data.id)})` : ''}`);
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -96,8 +96,8 @@ docsCommand
         process.exit(1);
       }
 
-      const data = await res.json();
-      spinner.succeed(`Classified ${chalk.cyan(basename(file))}`);
+      const data = await res.json() as { category?: string; confidence?: number };
+      spinner.succeed(`Classified ${chalk.cyan(basename(file))}${data.category ? ` as ${chalk.dim(data.category)}` : ''}`);
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);

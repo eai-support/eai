@@ -96,6 +96,7 @@ Examples:
           .slice(0, 3)
           .map(([k, v]) => `${k}=${chalk.dim(String(v).slice(0, 30))}`)
           .join(', ');
+        out.info(`${chalk.cyan(doc.id)} — ${preview}`);
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
@@ -373,6 +374,7 @@ resourcesCommand
       } else {
         spinner!.succeed(`${types.length} published types`);
         for (const t of types) {
+          out.info(`${chalk.cyan(t.name)} — ${t.properties.length} properties, ${t.linkTypes.length} links`);
         }
       }
     } catch (err) {

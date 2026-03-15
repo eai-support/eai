@@ -116,6 +116,107 @@ These errors are raised by the CLI itself, not the Platform API.
 | `duplicate property name "{name}"` | Two properties share the same name | Rename one of the duplicate properties |
 | `select property "{name}" must have options` | A `select`-type property has an empty or missing `options` array | Add at least one option to the `options` array |
 
+### Structured Error Codes
+
+The CLI uses structured error codes (E001-E399) for programmatic error handling. Each error includes:
+- **Code**: Machine-readable error code
+- **Message**: Human-readable error description (with context interpolation)
+- **Suggestion**: Actionable resolution steps
+- **Exit Code**: Always `1` for errors
+
+#### Error Code Categories
+
+| Range | Category | Description |
+|-------|----------|-------------|
+| E001-E099 | Project Errors | Configuration, project structure, file not found |
+| E100-E199 | Authentication Errors | Login, token expiry, credentials |
+| E200-E299 | Platform Errors | API connectivity, resources, permissions |
+| E300-E399 | Validation Errors | Schema validation, required fields, format errors |
+
+#### Project Errors (E001-E099)
+
+| Code | Message | Suggestion |
+|------|---------|------------|
+| `E001` | Not in an EAI project | Run `eai init` to create a new project or navigate to an existing EAI project directory |
+| `E002` | `{var}` environment variable not set | Run `eai env pull` to sync configuration from the platform, or set `{var}` manually in `.env.local` |
+| `E003` | Configuration file not found: `{file}` | Ensure `{file}` exists in your project. Run `eai init` if this is a new project |
+| `E004` | Object Types file not found or invalid | Create `src/eai.config/object-types.ts` with your type definitions |
+| `E005` | Invalid project structure | Run `eai verify` to check your project setup |
+| `E006` | Failed to load configuration: `{details}` | Check your `.env.local` and `eai.config.ts` files for syntax errors |
+
+#### Authentication Errors (E100-E199)
+
+| Code | Message | Suggestion |
+|------|---------|------------|
+| `E101` | Not logged in | Run `eai login` to authenticate with the platform |
+| `E102` | Access token expired | Run `eai login` to refresh your authentication |
+| `E103` | Invalid credentials | Verify your credentials and try `eai login` again |
+| `E104` | Authentication failed: `{details}` | Contact your administrator or try `eai login` again |
+
+#### Platform Errors (E200-E299)
+
+| Code | Message | Suggestion |
+|------|---------|------------|
+| `E201` | Platform API unreachable: `{url}` | Check your network connection and verify `BASE_URL_PUBLIC_API` is correct |
+| `E202` | `{resource}` not found | Verify the `{resource}` ID or name and try again |
+| `E203` | Platform API error: `{details}` | Check the error details above. If the issue persists, contact support |
+| `E204` | Permission denied | You do not have permission to perform this action. Contact your administrator |
+| `E205` | Resource conflict: `{details}` | The resource already exists or conflicts with existing data |
+
+#### Validation Errors (E300-E399)
+
+| Code | Message | Suggestion |
+|------|---------|------------|
+| `E301` | Invalid schema: `{details}` | Fix the schema errors listed above |
+| `E302` | Validation failed: `{details}` | Correct the validation errors and try again |
+| `E303` | Required field missing: `{field}` | Provide a value for `{field}` |
+| `E304` | Invalid format: `{details}` | Valid formats are: `{validFormats}` |
+| `E305` | Invalid input: `{details}` | Check your input and try again |
+
+#### Text Error Format
+
+By default, errors are displayed in human-readable format:
+
+```
+✗ Not in an EAI project
+
+Run `eai init` to create a new project or navigate to an existing EAI project directory
+
+Error code: E001
+```
+
+#### JSON Error Format
+
+When using `--format json`, errors are returned in structured format:
+
+```json
+{
+  "error": {
+    "code": "E302",
+    "message": "Validation failed: name must be PascalCase",
+    "suggestion": "Correct the validation errors and try again",
+    "exitCode": 1
+  }
+}
+```
+
+This format enables programmatic error handling in scripts and automation tools.
+
+**Example:**
+
+```bash
+# Catch and parse error in shell script
+if ! output=$(eai resources get User invalid-id --format json 2>&1); then
+  error_code=$(echo "$output" | jq -r '.error.code')
+  if [ "$error_code" = "E202" ]; then
+    echo "Resource not found - creating instead..."
+    eai resources create User --data '{"firstName":"New","lastName":"User"}'
+  fi
+fi
+```
+
+See [Global Options](/reference/global-options/) for details on `--format json`.
+
 ## Error Response Structure
 
 All Platform API errors follow this structure:
@@ -139,5 +240,5 @@ All Platform API errors follow this structure:
 The `details` array is optional and only present for validation errors that affect specific fields.
 
 <Aside type="tip">
-  When debugging errors, use `--json` flag on CLI commands (e.g., `eai resources list Patient --json`) to see the full API response including error details.
+  When debugging errors, use `--format json` flag on CLI commands (e.g., `eai resources list Patient --format json`) to see the full API response including error details.
 </Aside>

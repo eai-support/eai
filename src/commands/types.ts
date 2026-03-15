@@ -102,6 +102,7 @@ Examples:
 
       if (options.dryRun) {
         for (const type of types) {
+          out.info(`Would publish: ${chalk.cyan(type.name)}`);
         }
         out.info('Dry run — no changes made');
         continue;
@@ -291,12 +292,14 @@ Examples:
           if (issues.length > 0) {
             out.error(`${type.name}`);
             for (const issue of issues) {
+              out.error(`  ${issue}`);
             }
             errors += issues.length;
           }
           if (warns.length > 0) {
             if (issues.length === 0) out.warn(`${type.name}`);
             for (const w of warns) {
+              out.warn(`  ${w}`);
             }
             warnings += warns.length;
           }
@@ -390,12 +393,17 @@ Examples:
           const unchanged = [...localPropNames].filter(p => remotePropNames.has(p));
 
           if (added.length === 0 && removed.length === 0) {
+            out.info(`  ${out.symbols.unchanged} ${localType.name} — no changes`);
           } else {
+            out.info(`  ${out.symbols.changed} ${localType.name}`);
             for (const p of added) {
+              out.info(`    ${out.symbols.added} ${p}`);
             }
             for (const p of removed) {
+              out.info(`    ${out.symbols.removed} ${p}`);
             }
             if (unchanged.length > 0) {
+              out.dim(`    ${unchanged.length} unchanged`);
             }
           }
         }
@@ -403,6 +411,7 @@ Examples:
         // Remote-only types
         for (const [name] of remoteByName) {
           if (!localByName.has(name)) {
+            out.warn(`  ${out.symbols.warning} ${name} — exists remotely but not locally`);
           }
         }
       } catch (err) {

@@ -58,6 +58,7 @@ Examples:
 
       for (const tenant of data.docs) {
         const domains = tenant.domain?.length ? chalk.dim(` [${tenant.domain.join(', ')}]`) : '';
+        out.info(`${chalk.cyan(tenant.slug)} — ${tenant.name}${domains}`);
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
