@@ -90,7 +90,6 @@ resourcesCommand
           .slice(0, 3)
           .map(([k, v]) => `${k}=${chalk.dim(String(v).slice(0, 30))}`)
           .join(', ');
-        console.log(`  ${chalk.cyan(doc.id)} ${chalk.dim(preview)}`);
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
@@ -125,7 +124,6 @@ resourcesCommand
         out.json(data);
       } else {
         out.heading(`${type}: ${id}`);
-        console.log(JSON.stringify(data, null, 2));
       }
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
@@ -329,7 +327,6 @@ resourcesCommand
         out.json(data);
       } else {
         spinner!.succeed('Query complete');
-        console.log(JSON.stringify(data, null, 2));
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
@@ -367,7 +364,6 @@ resourcesCommand
       } else {
         spinner!.succeed(`${types.length} published types`);
         for (const t of types) {
-          console.log(`  ${chalk.cyan(t.name)} — ${t.properties.length} properties, ${t.linkTypes.length} links, ${t.actions.length} actions`);
         }
       }
     } catch (err) {

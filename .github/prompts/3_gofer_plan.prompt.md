@@ -31,11 +31,12 @@ If missing, prompt user to run the prerequisite stage.
 ## Outline
 
 1. Context health check
-2. Load research and spec context
-3. Design technical architecture
-4. Generate data models and API contracts
-5. Create implementation plan with phases
-6. Output: `plan.md`, `data-model.md`, `contracts/`, `quickstart.md`
+2. Load context (lightweight)
+3. Dispatch parallel planning agents (sub-agents handle heavy generation)
+4. Review agent outputs
+5. Optional multi-perspective review
+6. Spec coverage validation
+7. Output: `plan.md`, `data-model.md`, `contracts/`, `quickstart.md`
 
 ---
 
@@ -51,11 +52,11 @@ Before starting planning, assess context window health:
 - If **50-70%**: Consider `/compact` - planning loads multiple documents
 - If **> 70%**: Start new session with handoff summary
 
-Planning loads research.md, spec.md, and constitution.md - monitor context.
+Planning dispatches multiple agents — keep main context lightweight.
 
 ---
 
-## Step 1: Load Context
+## Step 1: Load Context (Lightweight)
 
 1. **Run setup script**:
 
@@ -65,345 +66,239 @@ Planning loads research.md, spec.md, and constitution.md - monitor context.
 
    Parse JSON for FEATURE_DIR, FEATURE_SPEC, BRANCH
 
-2. **Load existing documents**:
-   - `research.md` - Technology decisions, integration points, patterns
-   - `spec.md` - User stories, requirements, success criteria
-   - `.specify/memory/constitution.md` - Project principles (if exists)
+2. **Scan existing documents** (do NOT load full content — agents read
+   directly):
+   - Note feature name from FEATURE_DIR
+   - Note whether `discovery.md`, `.specify/memory/constitution.md` exist
+   - Note whether `{FEATURE_DIR}/sequence-diagrams/selected-option.md` exists
 
-3. **Load plan template**: `.specify/templates/plan-template.md`
-
-4. **Load sequence diagram option** (if exists):
-
-   ```bash
-   ls -la {FEATURE_DIR}/sequence-diagrams/selected-option.md 2>/dev/null
-   ```
-
-   If selected-option.md exists:
-   - Load the selected implementation option
-   - Extract: option number, efficiency/innovation scores, complexity target
-   - Note Gen AI touchpoints for integration planning
-   - Use effort estimate to calibrate phase planning
+3. **Note template path**: `.specify/templates/plan-template.md`
 
 ---
 
-## Step 2: Technical Context Analysis
+## Step 2: Dispatch Planning Agents
 
-Fill out the Technical Context section:
+Launch planning agents **in parallel** using the Task tool. Each agent reads
+source documents independently and writes its output artifact. This keeps main
+context clean while agents handle heavy content generation.
 
-### 2.1 From Research
-
-Extract from research.md:
-
-- **Integration Points**: Where new code connects to existing
-- **Patterns to Follow**: Architectural patterns from codebase
-- **Technology Decisions**: Libraries, frameworks chosen
-- **Constraints**: Limitations identified
-
-### 2.2 Identify Unknowns
-
-For any gaps, mark as "NEEDS CLARIFICATION" then research:
+### Agent 1: Implementation Plan Writer
 
 ```
-For each unknown:
-  Task: "Research {unknown} for {feature context}"
-For each technology choice:
-  Task: "Find best practices for {tech} in {domain}"
+Task: subagent_type="general-purpose", model="sonnet"
+Prompt: "Generate a complete technical implementation plan for [FEATURE_NAME].
+
+Feature directory: {FEATURE_DIR}
+
+Read these files for full context:
+- {FEATURE_DIR}/research.md — Technology decisions, integration points, patterns, constraints
+- {FEATURE_DIR}/spec.md — User stories, requirements, success criteria
+- .specify/templates/plan-template.md — Plan template structure
+- .specify/memory/constitution.md — Project principles (read if exists)
+- {FEATURE_DIR}/sequence-diagrams/selected-option.md — Selected approach (read if exists)
+
+Generate the COMPLETE plan.md with these sections:
+
+1. YAML frontmatter: feature, spec, research, status: ready, created (ISO date)
+2. Technical Context:
+   - Tech Stack (language, framework, database, testing — from research)
+   - Architecture (how components fit together, with diagram description)
+   - Integration Points table (Component | File | Integration Type)
+   - Key Dependencies (existing modules, libraries)
+3. Selected Implementation Approach (if selected-option.md exists):
+   - Option number, scores, Gen AI touchpoints
+4. Constitution Check (if constitution.md exists):
+   - Verify alignment with each project principle
+5. Implementation Phases (5 phases):
+   - Phase 1: Setup & Foundation (directory structure, config, deps, base types)
+   - Phase 2: Data Layer (entities, persistence, validation)
+   - Phase 3: Business Logic (services per user story, business rules, integrations)
+   - Phase 4: API/Interface Layer (endpoints per contracts, validation, auth)
+   - Phase 5: Polish & Integration (logging, docs, performance, final testing)
+   Each phase must have: Goal, Tasks (checkboxed), Verification criteria
+6. File Structure (tree diagram of all new/modified files)
+7. Risk Assessment table (Risk | Impact | Mitigation)
+8. Spec Traceability:
+   - User Story Coverage (Story | Status | Plan References)
+   - Requirement Coverage (FR-ID | Status | Plan Reference)
+   Verify 100% coverage of all user stories and functional requirements.
+
+Rules:
+- Every user story from spec.md MUST have plan coverage
+- Every acceptance criterion MUST map to a plan component
+- Every functional requirement MUST be addressed
+- Reference specific file paths for all components
+- Plan must be specific enough for task generation
+- Resolve all unknowns — no NEEDS CLARIFICATION in the plan
+
+Write the complete plan to {FEATURE_DIR}/plan.md.
+
+Return a structured summary:
+- Phase count and task count per phase
+- User story coverage: N/N covered
+- FR coverage: N/N covered
+- Key architecture decisions made
+- Any risks flagged as HIGH"
 ```
 
-### 2.3 Resolve All Unknowns
-
-All NEEDS CLARIFICATION must be resolved before proceeding. Document in
-research.md (update it) with:
-
-- Decision: [what was chosen]
-- Rationale: [why]
-- Alternatives considered: [what else evaluated]
-
----
-
-## Step 3: Design Data Model
-
-If the feature involves data entities, create `{FEATURE_DIR}/data-model.md`:
-
-````markdown
-# Data Model: [Feature Name]
-
-## Entities
-
-### [Entity 1]
-
-| Field   | Type        | Required | Description       |
-| ------- | ----------- | -------- | ----------------- |
-| id      | string/uuid | Yes      | Unique identifier |
-| [field] | [type]      | [Yes/No] | [Description]     |
-
-**Validation Rules**:
-
-- [Rule 1]
-- [Rule 2]
-
-**Relationships**:
-
-- [Relationship to other entities]
-
-### [Entity 2]
-
-...
-
-## State Transitions
-
-```mermaid
-stateDiagram-v2
-    [*] --> Draft
-    Draft --> Active
-    Active --> Completed
-    Active --> Cancelled
-```
-````
-
-## Database Considerations
-
-- [Indexing strategy]
-- [Migration approach]
-
-````
-
----
-
-## Step 4: Design API Contracts
-
-If the feature has APIs, create contracts in `{FEATURE_DIR}/contracts/`:
-
-### For REST APIs
-
-Create `{FEATURE_DIR}/contracts/api.md`:
-
-```markdown
-# API Contract: [Feature Name]
-
-## Endpoints
-
-### POST /api/[resource]
-
-**Description**: [What it does]
-
-**Request**:
-
-```json
-{
-  "field1": "string",
-  "field2": 123
-}
-````
-
-**Response** (201 Created):
-
-```json
-{
-  "id": "uuid",
-  "field1": "string",
-  "createdAt": "ISO-8601"
-}
-```
-
-**Errors**:
-
-| Code | Description             |
-| ---- | ----------------------- |
-| 400  | Invalid request body    |
-| 401  | Unauthorized            |
-| 409  | Resource already exists |
-
-### GET /api/[resource]/{id}
-
-...
-
-````
-
-### For Internal APIs
-
-Create `{FEATURE_DIR}/contracts/internal-api.md` for service-to-service
-contracts.
-
----
-
-## Step 5: Generate Implementation Plan
-
-Write `{FEATURE_DIR}/plan.md`:
-
-```markdown
----
-feature: [Feature Name]
-spec: spec.md
-research: research.md
-status: ready
-created: [ISO date]
----
-
-# Implementation Plan: [Feature Name]
-
-## Technical Context
-
-### Tech Stack
-
-- **Language**: [From research/codebase analysis]
-- **Framework**: [Framework used]
-- **Database**: [If applicable]
-- **Testing**: [Test framework]
-
-### Architecture
-
-[Diagram or description of how components fit together]
-
-### Integration Points
-
-| Component | File | Integration Type |
-|-----------|------|------------------|
-| [Component] | `path/to/file.ts` | [Type] |
-
-### Key Dependencies
-
-- [Existing module to use]
-- [Library to integrate]
-
-## Selected Implementation Approach
-
-{If selected-option.md exists, include this section:}
-
-This plan implements **Option {N}: {Name}** as selected during specification.
-
-| Metric | Value |
-|--------|-------|
-| Efficiency Score | {score}% |
-| Innovation Score | {score}% |
-| Complexity Target | {low/medium/high} |
-| Estimated Effort | {from option} |
-
-### Gen AI Touchpoints
-
-{List Gen AI integration points from selected option, or "None" for Minimal option}
-
-- **{Touchpoint 1}**: {Implementation approach}
-- **{Touchpoint 2}**: {Implementation approach}
-
-### Approach Rationale
-
-{Brief explanation of why this option was selected and how it shapes the plan}
-
----
-
-## Constitution Check
-
-[If constitution.md exists, verify alignment with project principles]
-
-- [ ] Principle 1: [How this aligns]
-- [ ] Principle 2: [How this aligns]
-
-## Implementation Phases
-
-### Phase 1: Setup & Foundation
-
-**Goal**: Establish project structure and base configuration
-
-**Tasks**:
-
-- [ ] Create directory structure per architecture
-- [ ] Set up configuration files
-- [ ] Install dependencies
-- [ ] Create base types/interfaces
-
-**Verification**:
-
-- [ ] Project builds successfully
-- [ ] Linting passes
-
-### Phase 2: Data Layer
-
-**Goal**: Implement data models and persistence
-
-**Tasks**:
-
-- [ ] Implement entities from data-model.md
-- [ ] Set up database migrations (if applicable)
-- [ ] Create repository/data access layer
-- [ ] Add validation logic
-
-**Verification**:
-
-- [ ] Unit tests for models pass
-- [ ] Database operations work
-
-### Phase 3: Business Logic
-
-**Goal**: Implement core feature functionality
-
-**Tasks**:
-
-- [ ] Implement services for each user story
-- [ ] Add business validation rules
-- [ ] Implement integration with existing code
-
-**Verification**:
-
-- [ ] Unit tests for services pass
-- [ ] Integration tests pass
-
-### Phase 4: API/Interface Layer
-
-**Goal**: Expose functionality through APIs or UI
-
-**Tasks**:
-
-- [ ] Implement API endpoints per contracts
-- [ ] Add request validation
-- [ ] Implement error handling
-- [ ] Add authentication/authorization
-
-**Verification**:
-
-- [ ] API contract tests pass
-- [ ] Manual endpoint testing works
-
-### Phase 5: Polish & Integration
-
-**Goal**: Finalize and integrate with rest of system
-
-**Tasks**:
-
-- [ ] Add logging and monitoring
-- [ ] Update documentation
-- [ ] Performance optimization
-- [ ] Final integration testing
-
-**Verification**:
-
-- [ ] All tests pass
-- [ ] Code coverage meets target
-- [ ] Performance meets criteria
-
-## File Structure
-
-````
-
-src/ ├── [component]/ │ ├── [file].ts │ └── [file].test.ts ├── ...
+### Agent 2: Data Model Designer
 
 ```
+Task: subagent_type="general-purpose", model="sonnet"
+Prompt: "Design the data model for feature [FEATURE_NAME].
 
-## Risk Assessment
+Feature directory: {FEATURE_DIR}
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| [Risk 1] | [High/Med/Low] | [How to mitigate] |
+Read these files:
+- {FEATURE_DIR}/spec.md — User stories, requirements, key entities
+- {FEATURE_DIR}/research.md — Existing data patterns, database context
 
-## Notes
+If spec.md defines Key Entities or the feature involves data:
 
-- [Implementation note 1]
-- [Implementation note 2]
+Generate {FEATURE_DIR}/data-model.md with:
+1. Entity definitions with field tables (Field | Type | Required | Description)
+2. Validation rules for each entity
+3. Relationships between entities
+4. State transition diagrams (Mermaid stateDiagram-v2) where applicable
+5. Database considerations (indexing, migration approach)
+6. Entity-to-UserStory mapping (which stories need which entities)
+
+If the feature does NOT involve data entities:
+Write a minimal data-model.md noting 'No data entities required for this feature.'
+
+Return: entity count, relationship count, entities with state machines"
 ```
+
+### Agent 3: API Contract Designer
+
+```
+Task: subagent_type="general-purpose", model="sonnet"
+Prompt: "Design API contracts for feature [FEATURE_NAME].
+
+Feature directory: {FEATURE_DIR}
+
+Read these files:
+- {FEATURE_DIR}/spec.md — Functional requirements implying API endpoints
+- {FEATURE_DIR}/research.md — Existing API patterns, conventions
+
+If spec.md implies API endpoints (REST, internal, events):
+
+Create contract files in {FEATURE_DIR}/contracts/:
+- api.md — For REST/HTTP endpoints
+- internal-api.md — For service-to-service contracts
+- events.md — For event-based contracts
+
+Each endpoint must include:
+- Method and path
+- Description
+- Request schema (JSON example)
+- Response schema (JSON example with status code)
+- Error codes table (Code | Description)
+- Which user story/FR it serves
+
+If the feature has NO APIs:
+Create {FEATURE_DIR}/contracts/api.md noting 'No API endpoints required.'
+
+Return: endpoint count, contract files created, user stories served"
+```
+
+### Agent 4: Quickstart Guide Writer
+
+```
+Task: subagent_type="general-purpose", model="haiku"
+Prompt: "Generate a quickstart testing guide for feature [FEATURE_NAME].
+
+Feature directory: {FEATURE_DIR}
+
+Read these files:
+- {FEATURE_DIR}/spec.md — What to test (acceptance criteria)
+- {FEATURE_DIR}/research.md — Tech stack and testing framework info
+
+Write {FEATURE_DIR}/quickstart.md with:
+1. Prerequisites (what needs to be installed/configured)
+2. Setup steps (how to get the feature running)
+3. Manual Testing section (step-by-step test scenarios from acceptance criteria)
+4. Automated Tests section (test commands)
+5. Key Files table (File | Purpose)
+6. Common Issues section (anticipated problems and solutions)
+
+Return: scenario count, prerequisite count"
+```
+
+**Run all 4 agents in parallel.** Agents 2-4 read spec.md independently while
+Agent 1 generates the plan.
 
 ---
 
-## Step 5.3: Multi-Perspective Plan Review (Optional)
+## Step 3: Review Agent Outputs
+
+After all agents complete:
+
+1. **Review plan.md** — Verify from Agent 1:
+   - All user stories have plan coverage (check Spec Traceability section)
+   - All functional requirements are addressed
+   - Implementation phases are specific enough for task generation
+   - File structure is consistent with existing codebase patterns
+
+2. **Review data-model.md** — Verify from Agent 2:
+   - All spec entities are covered
+   - Relationships make sense
+   - Validation rules are complete
+
+3. **Review contracts** — Verify from Agent 3:
+   - All implied API endpoints are defined
+   - Request/response schemas are realistic
+   - Error codes are appropriate
+
+4. **Review quickstart.md** — Verify from Agent 4:
+   - Test scenarios cover key acceptance criteria
+   - Setup steps are realistic
+
+5. **Fix any gaps** — Make targeted edits to any artifact with missing coverage
+
+---
+
+## Step 4: Spec Coverage Validation (GAP-01)
+
+Dispatch a validator agent to cross-check plan against spec:
+
+```
+Task: subagent_type="general-purpose", model="haiku"
+Prompt: "Validate plan coverage of specification for feature at {FEATURE_DIR}.
+
+Read:
+- {FEATURE_DIR}/spec.md — Source of truth for requirements
+- {FEATURE_DIR}/plan.md — Implementation plan to validate
+- {FEATURE_DIR}/data-model.md — Data model to validate
+- {FEATURE_DIR}/contracts/ — API contracts to validate (read all .md files)
+
+Check these coverage dimensions:
+
+1. USER STORY COVERAGE: Every user story in spec.md has at least one plan phase
+2. ACCEPTANCE CRITERIA MAPPING: Every AC maps to a plan component
+3. FUNCTIONAL REQUIREMENT COVERAGE: Every FR-XXX is addressed in plan
+4. DATA MODEL COMPLETENESS: All Key Entities from spec appear in data-model.md
+5. API CONTRACT COMPLETENESS: All implied APIs from spec have contracts
+
+For each dimension, report:
+- COVERED items with references
+- MISSING items (ERROR — must be fixed)
+
+Return:
+- Coverage percentage per dimension
+- List of MISSING items
+- Overall PASS/FAIL status"
+```
+
+If validator reports MISSING items:
+
+- Add missing components to the appropriate artifact
+- Re-validate (max 3 iterations)
+- **Proceed only when ALL spec items are traced to plan components**
+
+---
+
+## Step 5: Multi-Perspective Plan Review (Optional)
 
 After generating the initial plan, optionally run multi-perspective strategies
 to stress-test architectural decisions. **Skip this step if the plan is
@@ -512,165 +407,19 @@ Incorporate judge recommendations into the plan before proceeding to validation.
 
 ---
 
-## Step 5.5: Spec Coverage Validation (GAP-01)
-
-**CRITICAL**: Before completing plan.md, validate that the plan covers ALL user
-stories and requirements from spec.md. This prevents partial implementations.
-
-### 5.5.1 User Story Coverage Matrix
-
-For EACH user story in spec.md, verify plan coverage:
-
-| User Story | Priority | Plan Phase(s) | Components       | Data Entities     | APIs             |
-| ---------- | -------- | ------------- | ---------------- | ----------------- | ---------------- |
-| US1        | P1       | Phase 3       | [list from plan] | [from data-model] | [from contracts] |
-| US2        | P2       | Phase 3       | [list from plan] | [from data-model] | [from contracts] |
-
-**Validation Rules**:
-
-1. Every user story MUST have at least one plan phase covering it
-2. Every acceptance criterion MUST map to a plan component
-3. ERROR if any user story has NO plan coverage
-
-If validation fails:
-
-- ERROR: "User story '[USx]' has no implementation coverage in plan"
-- Add missing components/phases before proceeding
-
-### 5.5.2 Acceptance Criteria Mapping
-
-For EACH acceptance criterion in spec.md user stories:
-
-| User Story | Acceptance Criterion | Plan Component        | Implementation Approach      |
-| ---------- | -------------------- | --------------------- | ---------------------------- |
-| US1        | [AC1 text]           | [Component from plan] | [How it will be implemented] |
-| US1        | [AC2 text]           | [Component from plan] | [How it will be implemented] |
-
-**Validation Rule**: Every acceptance criterion MUST have a corresponding plan
-component. If not, add the missing component to the plan.
-
-### 5.5.3 Functional Requirement Coverage
-
-For EACH functional requirement (FR-XXX) in spec.md:
-
-| FR-ID  | Plan Component | Phase   | Implementation Approach |
-| ------ | -------------- | ------- | ----------------------- |
-| FR-001 | [component]    | Phase X | [how addressed]         |
-| FR-002 | [component]    | Phase X | [how addressed]         |
-
-**Validation Rule**: Every FR MUST have plan coverage. ERROR if any FR is
-unaddressed.
-
-### 5.5.4 Data Model Completeness
-
-If spec.md defines Key Entities, verify data-model.md covers them:
-
-| Spec Entity | In data-model.md? | Fields Complete? |
-| ----------- | ----------------- | ---------------- |
-| [Entity 1]  | Yes/No            | Yes/No           |
-
-**Validation Rule**: All Key Entities from spec MUST appear in data-model.md
-with appropriate fields.
-
-### 5.5.5 API Contract Completeness
-
-If spec.md implies API endpoints (from FRs or user stories):
-
-| Implied API     | In contracts/? | Matches Requirement? |
-| --------------- | -------------- | -------------------- |
-| [GET /resource] | Yes/No         | Yes/No               |
-
-**Validation Rule**: All implied APIs MUST have corresponding contracts.
-
-### 5.5.6 Generate Spec Coverage Report
-
-Add to end of plan.md:
-
-```markdown
-## Spec Traceability
-
-### User Story Coverage
-
-| Story    | Status  | Plan References          |
-| -------- | ------- | ------------------------ |
-| US1 (P1) | COVERED | Phase 3, Components X, Y |
-| US2 (P2) | COVERED | Phase 4, Components Z    |
-
-### Requirement Coverage
-
-| Requirement | Status  | Plan Reference        |
-| ----------- | ------- | --------------------- |
-| FR-001      | COVERED | Phase 3, Task group A |
-| FR-002      | COVERED | Phase 4, Task group B |
-
-Coverage: 100% of user stories, 100% of functional requirements
-```
-
-**Proceed only when ALL spec items are traced to plan components.**
-
----
-
-## Step 6: Create Quickstart Guide
-
-Write `{FEATURE_DIR}/quickstart.md`:
-
-````markdown
-# Quickstart: [Feature Name]
-
-## Prerequisites
-
-- [Prerequisite 1]
-- [Prerequisite 2]
-
-## Setup
-
-1. [Setup step 1]
-2. [Setup step 2]
-
-## Testing the Feature
-
-### Manual Testing
-
-1. [How to test manually]
-2. [Expected result]
-
-### Automated Tests
-
-```bash
-npm test -- path/to/tests
-```
-````
-
-## Key Files
-
-| File                 | Purpose     |
-| -------------------- | ----------- |
-| `path/to/main.ts`    | Entry point |
-| `path/to/service.ts` | Core logic  |
-
-## Common Issues
-
-### Issue 1
-
-**Problem**: [Description] **Solution**: [How to fix]
-
-````
-
----
-
-## Step 7: Update Agent Context
+## Step 6: Update Agent Context
 
 Run the agent context update script:
 
 ```bash
 .specify/scripts/bash/update-agent-context.sh claude
-````
+```
 
 This updates AI agent context files with new technology from this plan.
 
 ---
 
-## Step 8: Report and Continue
+## Step 7: Report and Continue
 
 After all artifacts are created:
 

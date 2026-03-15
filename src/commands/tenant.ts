@@ -52,7 +52,6 @@ tenantCommand
 
       for (const tenant of data.docs) {
         const domains = tenant.domain?.length ? chalk.dim(` [${tenant.domain.join(', ')}]`) : '';
-        console.log(`  ${chalk.cyan(tenant.slug)} (${tenant.id})${domains} — ${tenant.name}`);
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
@@ -94,7 +93,6 @@ tenantCommand
         out.json(tenant);
       } else {
         spinner!.succeed(`Tenant: ${chalk.cyan(String(tenant.name))}`);
-        console.log(JSON.stringify(tenant, null, 2));
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));

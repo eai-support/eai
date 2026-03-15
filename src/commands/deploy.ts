@@ -188,7 +188,6 @@ deployCommand
             : run.status === 'in_progress' ? chalk.blue('⟳')
             : out.symbols.pending;
           const time = new Date(run.createdAt).toLocaleString();
-          console.log(`  ${icon} ${run.name} (${run.headBranch}) — ${time}`);
         }
       }
     } catch (err) {
