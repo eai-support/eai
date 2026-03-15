@@ -130,6 +130,8 @@ envCommand
   .command('list')
   .description('Show current environment variables')
   .option('--show-secrets', 'Show secret values (default: masked)', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     const root = await findProjectRoot();
     if (!root) {
@@ -137,23 +139,39 @@ envCommand
       process.exit(1);
     }
 
+    if (options.json) options.format = 'json';
+
     const env = await loadEnvFile(root);
     const keys = Object.keys(env).sort();
 
     if (keys.length === 0) {
-      out.warn('No .env.local found. Run `eai env pull` to sync from cloud.');
+      if (options.format === 'json') {
+        out.json({ variables: {}, count: 0 });
+      } else {
+        out.warn('No .env.local found. Run `eai env pull` to sync from cloud.');
+      }
       return;
     }
 
-    out.heading(`Environment (${keys.length} variables)`);
-
     const secretKeys = ['SECRET', 'PASSWORD', 'KEY', 'TOKEN', 'CREDENTIAL'];
+    const variables: Record<string, string> = {};
 
     for (const key of keys) {
       const isSecret = secretKeys.some(s => key.toUpperCase().includes(s));
-      const value = isSecret && !options.showSecrets
-        ? chalk.dim('[hidden — use --show-secrets]')
-        : env[key];
+      const value = isSecret && !options.showSecrets ? '[hidden]' : env[key];
+      variables[key] = value;
+    }
+
+    if (options.format === 'json') {
+      out.json({ variables, count: keys.length });
+    } else {
+      out.heading(`Environment (${keys.length} variables)`);
+      for (const key of keys) {
+        const displayValue = variables[key] === '[hidden]'
+          ? chalk.dim('[hidden — use --show-secrets]')
+          : variables[key];
+        console.log(`  ${chalk.cyan(key)} = ${displayValue}`);
+      }
     }
   });
 

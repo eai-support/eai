@@ -48,7 +48,9 @@ export const symbols = {
 
 export function success(msg: string): void {
   if (simpleMode) {
+    console.log(`SUCCESS: ${msg}`);
   } else {
+    console.log(`${symbols.success} ${msg}`);
   }
 }
 
@@ -70,19 +72,25 @@ export function warn(msg: string): void {
 
 export function info(msg: string): void {
   if (simpleMode) {
+    console.log(`INFO: ${msg}`);
   } else {
+    console.log(`${symbols.info} ${msg}`);
   }
 }
 
 export function heading(msg: string): void {
   if (useColor && !simpleMode) {
+    console.log(chalk.bold.cyan(`\n${msg}`));
   } else {
+    console.log(`\n${msg.toUpperCase()}`);
   }
 }
 
 export function dim(msg: string): void {
   if (useColor && !simpleMode) {
+    console.log(chalk.dim(msg));
   } else {
+    console.log(msg);
   }
 }
 
@@ -90,13 +98,16 @@ export function table(rows: Array<[string, string]>): void {
   const maxLabel = Math.max(...rows.map(([label]) => label.length));
   for (const [label, value] of rows) {
     const paddedLabel = label.padEnd(maxLabel);
+    console.log(`  ${paddedLabel}  ${value}`);
   }
 }
 
 export function blank(): void {
+  console.log();
 }
 
 export function json(data: unknown): void {
+  console.log(JSON.stringify(data, null, 2));
 }
 
 export function formatOutput(data: unknown, format: 'text' | 'json' | 'yaml'): void {

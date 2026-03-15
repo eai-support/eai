@@ -32,6 +32,7 @@ import { whoamiCommand } from './commands/whoami.js';
 import { updateCommand } from './commands/update.js';
 import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
+import { describeProgram } from './lib/schema-builder.js';
 
 const program = new Command();
 
@@ -42,8 +43,15 @@ program
   .option('--simple', 'Plain text output without colors or symbols (for screen readers)')
   .option('--no-color', 'Disable colored output')
   .option('--color', 'Force colored output')
+  .option('--describe', 'Output JSON schema of all commands')
   .hook('preAction', (thisCommand) => {
     const opts = thisCommand.opts();
+
+    // Handle --describe flag (output schema and exit)
+    if (opts.describe) {
+      const schema = describeProgram(program);
+      process.exit(0);
+    }
 
     // Handle --simple flag
     if (opts.simple) {
@@ -88,16 +96,45 @@ ${chalk.bold('Getting Started:')}
   ${chalk.cyan('eai types seed')}           Publish Object Types to the platform
   ${chalk.cyan('eai dev')}                  Start local development server
 
-${chalk.bold('Common Workflows:')}
+${chalk.bold('Development Workflows:')}
   ${chalk.dim('# Define your data model, validate, and seed')}
   ${chalk.cyan('eai types validate && eai types seed')}
 
-  ${chalk.dim('# Check platform health')}
-  ${chalk.cyan('eai verify')}
+  ${chalk.dim('# Query resources and view data')}
+  ${chalk.cyan('eai resources list User --limit 10')}
+  ${chalk.cyan('eai resources get User <id>')}
 
-  ${chalk.dim('# Deploy to Azure')}
-  ${chalk.cyan('eai deploy trigger')}
+  ${chalk.dim('# Check platform health and connectivity')}
+  ${chalk.cyan('eai verify && eai doctor')}
+
+${chalk.bold('Deployment:')}
+  ${chalk.dim('# Set up GitHub Actions deployment')}
+  ${chalk.cyan('eai deploy setup --repo org/name')}
+
+  ${chalk.dim('# Trigger deployment and check status')}
+  ${chalk.cyan('eai deploy trigger && eai deploy status')}
+
+${chalk.bold('Machine-Readable Output:')}
+  ${chalk.dim('# Get structured JSON output for automation')}
+  ${chalk.cyan('eai resources list User --format json')}
+  ${chalk.cyan('eai tenant list --format json | jq')}
+  ${chalk.cyan('eai deploy status --format json')}
+
+  ${chalk.dim('# Discover CLI structure for AI agents')}
+  ${chalk.cyan('eai --describe')}
+
+${chalk.bold('Accessibility:')}
+  ${chalk.dim('# Screen reader friendly output')}
+  ${chalk.cyan('eai --simple <command>')}
+  ${chalk.cyan('eai --no-color <command>')}
 `);
+
+// Handle --describe before parsing (needs to work without command)
+if (process.argv.includes('--describe')) {
+  const schema = describeProgram(program);
+  console.log(JSON.stringify(schema, null, 2));
+  process.exit(0);
+}
 
 checkForUpdate(pkg.version);
 await program.parseAsync();
