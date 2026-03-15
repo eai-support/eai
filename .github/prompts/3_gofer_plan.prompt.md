@@ -78,9 +78,10 @@ Planning dispatches multiple agents — keep main context lightweight.
 
 ## Step 2: Dispatch Planning Agents
 
-Launch planning agents **in parallel** using the Task tool. Each agent reads
-source documents independently and writes its output artifact. This keeps main
-context clean while agents handle heavy content generation.
+**Claude Code only**: Launch planning agents **in parallel** using the Task
+tool. In Copilot Chat, perform plan generation inline by reading source
+documents and writing plan artifacts directly. Each agent task below describes
+what content to generate.
 
 ### Agent 1: Implementation Plan Writer
 
@@ -419,9 +420,40 @@ This updates AI agent context files with new technology from this plan.
 
 ---
 
-## Step 7: Report and Continue
+## Step 7: Engineering Review Gate (Up to 5 cycles)
 
-After all artifacts are created:
+Before proceeding to the next stage, run an iterative engineering review to
+catch misalignment early.
+
+### Review Cycle (repeat up to 5 times)
+
+**Claude Code only**: Dispatch 3 review agents in parallel using the Task tool
+(engineer-review, codebase-analyzer, validation-correctness). In Copilot Chat,
+perform these 3 reviews inline sequentially:
+
+**Review 1: Spec↔Plan Alignment** — Cross-check that every user story and
+acceptance criterion in spec.md has coverage in plan.md. List any gaps.
+
+**Review 2: Codebase Pattern Verification** — Verify that plan.md references
+correct file paths and follows existing codebase patterns from research.md.
+
+**Review 3: Acceptance Criteria Coverage** — Verify that every acceptance
+criterion in spec.md is addressed by the implementation plan.
+
+**After reviews:**
+
+1. Classify findings: Red (blocking) / Yellow (should fix) / Gray
+   (informational)
+2. If NO Red or Yellow findings → PASS → proceed to next stage
+3. If Red or Yellow findings exist: a. Fix findings directly in plan artifacts
+   (Red first, then Yellow) b. Increment cycle counter c. If cycle <= 5 → re-run
+   reviews d. If cycle > 5 → log remaining findings, proceed with warnings
+
+---
+
+## Step 8: Report and Continue
+
+After all artifacts are created and review gate passes:
 
 ```
 ✓ Plan complete: {FEATURE_DIR}/plan.md
@@ -432,11 +464,16 @@ Artifacts created:
 - contracts/: API specifications
 - quickstart.md: Testing guide
 
-Ready for next stage: /4_gofer_tasks
+Engineering Review: PASSED (cycle [N] of 5)
 ```
 
-If orchestrated by `/0_business_scenario`, the orchestrator will automatically
-invoke `/4_gofer_tasks` next.
+## Next Steps (Manual Chaining — Copilot Chat)
+
+Plan is complete. To continue the pipeline, run the next stage:
+
+```
+/4_gofer_tasks
+```
 
 ---
 

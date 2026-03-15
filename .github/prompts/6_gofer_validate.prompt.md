@@ -134,8 +134,10 @@ Validation loads all artifacts and spawns 6 agents — context pressure is high.
 
 ## Step 2: Spawn 6 Specialist Validation Agents
 
-Launch all 6 agents **in parallel** using the Task tool. Each agent receives the
-feature context and returns structured findings.
+**Claude Code only**: Launch all 6 agents **in parallel** using the Task tool.
+In Copilot Chat, perform these validations inline sequentially — run each
+validation check one at a time and collect findings. Each agent description
+below explains what to check.
 
 ### Agent 1: Correctness Validator
 
