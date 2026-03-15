@@ -132,7 +132,6 @@ ${chalk.bold('Accessibility:')}
 // Handle --describe before parsing (needs to work without command)
 if (process.argv.includes('--describe')) {
   const schema = describeProgram(program);
-  console.log(JSON.stringify(schema, null, 2));
   process.exit(0);
 }
 

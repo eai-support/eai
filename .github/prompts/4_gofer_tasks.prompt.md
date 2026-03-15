@@ -30,11 +30,13 @@ If missing, prompt user to run the prerequisite stage.
 ## Outline
 
 1. Context health check
-2. Load plan and spec context
-3. Extract task structure from all artifacts
-4. Generate dependency-ordered tasks by user story
-5. Create parallel execution opportunities
-6. Output: `tasks.md`, `issues.md`
+2. Load context (lightweight)
+3. Dispatch task generation agents (sub-agents handle heavy generation)
+4. Review agent outputs
+5. Engineer review gate
+6. Optional multi-perspective review
+7. Approval gate
+8. Output: `tasks.md`, `traceability.md`, `issues.md`
 
 ---
 
@@ -50,11 +52,11 @@ Before generating tasks, assess context window health:
 - If **50-70%**: Consider `/compact` before loading all artifacts
 - If **> 70%**: Start new session with handoff summary
 
-Task generation loads plan.md, spec.md, data-model.md, and contracts/.
+Task generation dispatches agents — keep main context lightweight.
 
 ---
 
-## Step 1: Load Context
+## Step 1: Load Context (Lightweight)
 
 1. **Run setup script**:
 
@@ -64,350 +66,156 @@ Task generation loads plan.md, spec.md, data-model.md, and contracts/.
 
    Parse JSON for FEATURE_DIR, AVAILABLE_DOCS
 
-2. **Load design documents** from FEATURE_DIR:
-   - **Required**: plan.md (tech stack, architecture, file structure)
-   - **Required**: spec.md (user stories with priorities)
-   - **Optional**: data-model.md (entities)
-   - **Optional**: contracts/ (API endpoints)
-   - **Optional**: research.md (technology decisions)
-   - **Optional**: quickstart.md (test scenarios)
-
-3. **Load tasks template**: `.specify/templates/tasks-template.md`
+2. **Scan available documents** (do NOT load full content — agents read
+   directly):
+   - Note feature name from FEATURE_DIR
+   - Note which optional docs exist: data-model.md, contracts/, quickstart.md
+   - Note the tasks template path: `.specify/templates/tasks-template.md`
 
 ---
 
-## Step 2: Extract Task Sources
+## Step 2: Dispatch Task Generation Agents
 
-### 2.1 From Spec (User Stories)
+Launch task generation agents using the Task tool. The main context stays
+lightweight while agents handle heavy document generation in their own context
+windows.
 
-Extract from spec.md:
+### Agent 1: Task Breakdown Generator
 
-- User stories with priorities (P1, P2, P3...)
-- Acceptance criteria for each story
-- These become the PRIMARY organization structure
+```
+Task: subagent_type="general-purpose", model="sonnet"
+Prompt: "Generate a complete, dependency-ordered task breakdown for [FEATURE_NAME].
 
-### 2.2 From Plan (Architecture)
+Feature directory: {FEATURE_DIR}
 
-Extract from plan.md:
+Read these files for full context:
+- {FEATURE_DIR}/plan.md — Implementation phases, architecture, file structure
+- {FEATURE_DIR}/spec.md — User stories with priorities and acceptance criteria
+- {FEATURE_DIR}/data-model.md — Entity definitions (read if exists)
+- {FEATURE_DIR}/contracts/ — API contracts (read all .md files if exists)
+- {FEATURE_DIR}/research.md — Technology decisions (read if exists)
+- .specify/templates/tasks-template.md — Task template structure
 
-- Tech stack and libraries
-- File structure and components
-- Integration points
-- Implementation phases
+Generate tasks.md organized by user story to enable independent implementation:
 
-### 2.3 From Data Model (if exists)
+Task Organization (REQUIRED structure):
+1. Phase 1: Setup — Project initialization, shared infrastructure
+2. Phase 2: Foundational — Blocking prerequisites for all user stories
+3. Phase 3+: User Stories — One phase per story in priority order (P1 first)
+4. Final Phase: Polish — Cross-cutting concerns, documentation
 
-Extract from data-model.md:
+Task Format (REQUIRED for every task):
+- [ ] [TaskID] [P?] [Story?] Description with exact file path
+Where:
+- TaskID: Sequential (T001, T002...)
+- [P]: Only if parallelizable with other tasks in same phase
+- [Story]: [US1], [US2] etc. for user story phases only
+- Description: Clear action with the exact file path to create/modify
 
-- Entities and fields
-- Relationships
-- Validation rules
-- Map each entity to user story(ies) that need it
+Each phase MUST include:
+- Goal statement
+- Independent Test Criteria (for user story phases)
+- Verification checklist at the end
 
-### 2.4 From Contracts (if exists)
+Include these sections:
+1. YAML frontmatter: feature, spec, plan, status: ready, created (ISO date)
+2. Overview: Total tasks, parallel opportunities, user story count
+3. Dependencies: Mermaid graph showing phase dependencies
+4. All phases with tasks
+5. Parallel Execution Guide: Which [P] tasks can run concurrently
+6. Implementation Strategy: MVP first, incremental delivery, polish last
 
-Extract from contracts/:
+Validation checks before writing:
+- Every plan phase has at least one task (GAP-02)
+- Every plan task item has a corresponding task
+- Every acceptance criterion maps to at least one task (GAP-03)
+- Every data model entity has implementing tasks
+- Every API contract endpoint has implementing tasks
+- Task file paths match plan.md File Structure section
 
-- API endpoints
-- Request/response schemas
-- Map each endpoint to user story it serves
+Write the complete task breakdown to {FEATURE_DIR}/tasks.md.
 
----
-
-## Step 3: Generate Task Breakdown
-
-### Task Organization Rules
-
-Tasks MUST be organized by user story to enable independent implementation:
-
-1. **Phase 1: Setup** - Project initialization, shared infrastructure
-2. **Phase 2: Foundational** - Blocking prerequisites for all user stories
-3. **Phase 3+: User Stories** - One phase per story in priority order
-4. **Final Phase: Polish** - Cross-cutting concerns, documentation
-
-### Task Format (REQUIRED)
-
-Every task MUST follow this format:
-
-```text
-- [ ] [TaskID] [P?] [Story?] Description with file path
+Return a structured summary:
+- Total task count
+- Tasks per phase
+- Parallel opportunity count
+- Plan phase coverage: N/N phases covered
+- Acceptance criteria coverage: N/N criteria covered
+- Any coverage gaps found"
 ```
 
-**Components**:
+### Agent 2: Traceability Analyzer
 
-1. **Checkbox**: Always `- [ ]`
-2. **Task ID**: Sequential (T001, T002...)
-3. **[P] marker**: Only if parallelizable
-4. **[Story] label**: [US1], [US2] etc. for user story phases only
-5. **Description**: Clear action with exact file path
-
-**Examples**:
-
-- `- [ ] T001 Create project structure per implementation plan`
-- `- [ ] T005 [P] Implement auth middleware in src/middleware/auth.ts`
-- `- [ ] T012 [P] [US1] Create User model in src/models/user.ts`
-
----
-
-## Step 4: Write Tasks Document
-
-Write to `{FEATURE_DIR}/tasks.md`:
-
-````markdown
----
-feature: [Feature Name]
-spec: spec.md
-plan: plan.md
-status: ready
-created: [ISO date]
----
-
-# Tasks: [Feature Name]
-
-## Overview
-
-- **Total Tasks**: [N]
-- **Parallel Opportunities**: [N] tasks marked [P]
-- **User Stories**: [N] phases (US1-USn)
-
-## Dependencies
-
-```mermaid
-graph LR
-    Setup --> Foundational
-    Foundational --> US1
-    US1 --> US2
-    US2 --> Polish
 ```
-````
+Task: subagent_type="general-purpose", model="haiku"
+Prompt: "Generate a requirement traceability artifact for [FEATURE_NAME].
 
-## Phase 1: Setup
+Feature directory: {FEATURE_DIR}
 
-**Goal**: Initialize project structure and configuration
+Read these files:
+- {FEATURE_DIR}/spec.md — User stories, acceptance criteria, functional requirements
+- {FEATURE_DIR}/plan.md — Implementation phases, components
+- {FEATURE_DIR}/tasks.md — Task breakdown (read after Agent 1 writes it)
+- {FEATURE_DIR}/data-model.md — Entity definitions (read if exists)
+- {FEATURE_DIR}/contracts/ — API contracts (read if exists)
 
-- [ ] T001 Create directory structure per plan.md
-- [ ] T002 [P] Set up configuration files
-- [ ] T003 [P] Install dependencies
-- [ ] T004 Create base types/interfaces
+Generate {FEATURE_DIR}/traceability.md with:
 
-**Verification**: Project builds successfully
+1. Spec → Plan → Tasks Mapping:
+   | User Story | Priority | Plan Phase | Tasks | AC Status |
 
-## Phase 2: Foundational
+2. Acceptance Criteria Detail:
+   | ID | Criterion | Task(s) | Phase |
 
-**Goal**: Complete blocking prerequisites
+3. Plan Phase Coverage:
+   | Phase | Task Count | Coverage % |
 
-- [ ] T005 [Shared component needed by all stories]
-- [ ] T006 [P] [Another shared component]
+4. Data Entity Coverage (if data-model.md exists):
+   | Entity | Implementing Task(s) | Fields Covered? |
 
-**Verification**: Foundation ready for user stories
+5. API Contract Coverage (if contracts/ exists):
+   | Endpoint | Contract File | Implementing Task(s) |
 
-## Phase 3: User Story 1 (P1)
+6. Coverage Summary:
+   - Plan Phases: N/N covered
+   - User Stories: N/N covered
+   - Acceptance Criteria: N/N covered
+   - Data Entities: N/N covered
+   - API Endpoints: N/N covered
+   - Status: VALIDATION PASSED or VALIDATION FAILED
 
-**Goal**: [US1 description from spec]
-
-**Story**: As a [user], I want to [action] so that [benefit]
-
-**Independent Test Criteria**:
-
-- [How to verify this story works independently]
-
-### Implementation
-
-- [ ] T010 [US1] Implement [component] in path/to/file.ts
-- [ ] T011 [P] [US1] Create [service] in path/to/service.ts
-- [ ] T012 [US1] Add [endpoint] in path/to/routes.ts
-
-**Verification**:
-
-- [ ] Acceptance criteria 1 met
-- [ ] Acceptance criteria 2 met
-
-## Phase 4: User Story 2 (P2)
-
-**Goal**: [US2 description from spec]
-
-[Similar structure...]
-
-## Phase N: Polish & Integration
-
-**Goal**: Finalize and prepare for deployment
-
-- [ ] T050 Add logging and monitoring
-- [ ] T051 [P] Update documentation
-- [ ] T052 [P] Performance optimization
-- [ ] T053 Final integration testing
-
-**Verification**: All tests pass, ready for deployment
-
-## Parallel Execution Guide
-
-Tasks marked [P] can run concurrently if they:
-
-- Modify different files
-- Have no dependencies on incomplete tasks
-
-**Example parallel groups**:
-
-- T002, T003 (config and deps)
-- T010, T011 (independent US1 components)
-
-## Implementation Strategy
-
-1. **MVP First**: Complete Phase 1-3 (Setup + Foundation + US1)
-2. **Incremental Delivery**: Each user story is a deployable increment
-3. **Polish Last**: Save optimization for final phase
-
-````
-
----
-
-## Step 4.5: Plan & Spec Coverage Validation (GAP-02 & GAP-03)
-
-**CRITICAL**: Before presenting tasks for approval, validate that tasks cover ALL
-plan phases AND ALL spec acceptance criteria. This prevents incomplete implementations.
-
-### 4.5.1 Plan Phase Coverage (GAP-02)
-
-Cross-reference tasks against plan.md phases:
-
-| Plan Phase | Task Count | Task IDs | Status |
-|------------|------------|----------|--------|
-| Phase 1: Setup | [N] | T001, T002... | COVERED/MISSING |
-| Phase 2: Foundational | [N] | T005, T006... | COVERED/MISSING |
-| Phase 3: Business Logic | [N] | T010... | COVERED/MISSING |
-| Phase 4: API Layer | [N] | T020... | COVERED/MISSING |
-| Phase 5: Polish | [N] | T050... | COVERED/MISSING |
-
-**Validation Rules**:
-1. Every plan phase MUST have at least one task
-2. Tasks MUST cover ALL items listed in each phase
-3. ERROR and HALT if any plan phase has NO tasks
-
-If validation fails:
-- ERROR: "Plan phase '[Phase X]' has no implementing tasks"
-- Add missing tasks before proceeding
-
-### 4.5.2 Plan Task Item Coverage
-
-For EACH task item listed in plan.md phases:
-
-| Plan Task Item | Implementing Task(s) | Status |
-|----------------|---------------------|--------|
-| "Create directory structure" | T001 | COVERED |
-| "Set up configuration files" | T002 | COVERED |
-| "Implement services for each user story" | T010, T011, T012 | COVERED |
-
-**Validation Rule**: Every plan task item MUST have a corresponding task in
-tasks.md.
-
-### 4.5.3 Acceptance Criteria Traceability (GAP-03)
-
-For EACH acceptance criterion in spec.md user stories:
-
-| User Story | Acceptance Criterion | Task(s) Implementing | Status |
-|------------|---------------------|---------------------|--------|
-| US1 | "User can login with email" | T012, T015 | COVERED |
-| US1 | "Error shown on invalid credentials" | T016 | COVERED |
-| US2 | "User can view dashboard" | T020, T021 | COVERED |
-
-**Validation Rules**:
-1. Every acceptance criterion MUST map to at least one task
-2. Tasks implementing criteria MUST be in the correct user story phase
-3. ERROR if any criterion has NO implementing task
-
-If validation fails:
-- ERROR: "Acceptance criterion '[AC text]' from [USx] has no implementing task"
-- Add task to implement the missing criterion
-
-### 4.5.4 File Structure Alignment
-
-Cross-reference task file paths against plan.md file structure:
-
-For each task with a file path:
-- [ ] Path exists in plan.md "File Structure" section OR
-- [ ] Path follows project structure conventions
-
-| Task | File Path | In Plan Structure? |
-|------|-----------|-------------------|
-| T010 | src/models/user.ts | Yes |
-| T012 | src/services/auth.ts | Yes |
-
-**If mismatch found**:
-- Either update task paths to match plan
-- Or update plan structure (requires re-approval of plan)
-
-### 4.5.5 Data Model Task Coverage
-
-If data-model.md exists, verify tasks implement all entities:
-
-| Entity | Implementing Task(s) | Fields Covered? |
-|--------|---------------------|-----------------|
-| User | T010 | Yes |
-| Session | T011 | Yes |
-
-**Validation Rule**: Every data model entity MUST have implementing task(s).
-
-### 4.5.6 API Contract Task Coverage
-
-If contracts/ exist, verify tasks implement all endpoints:
-
-| Endpoint | Contract File | Implementing Task(s) |
-|----------|--------------|---------------------|
-| POST /api/auth/login | contracts/api.md | T015 |
-| GET /api/users/:id | contracts/api.md | T020 |
-
-**Validation Rule**: Every API contract endpoint MUST have implementing task(s).
-
-### 4.5.7 Generate Traceability Artifact
-
-Write `{FEATURE_DIR}/traceability.md`:
-
-```markdown
-# Requirement Traceability: [Feature Name]
-
-Generated: [ISO timestamp]
-
-## Spec → Plan → Tasks Mapping
-
-### User Story Coverage
-| User Story | Priority | Plan Phase | Tasks | Acceptance Criteria Status |
-|------------|----------|------------|-------|---------------------------|
-| US1 | P1 | Phase 3 | T010-T015 | 5/5 covered |
-| US2 | P2 | Phase 4 | T020-T025 | 3/3 covered |
-
-### Acceptance Criteria Detail
-| ID | Criterion | Task(s) | Phase |
-|----|-----------|---------|-------|
-| US1-AC1 | User can login | T012 | Phase 3 |
-| US1-AC2 | Error on failure | T016 | Phase 3 |
-
-### Plan Phase Coverage
-| Phase | Task Count | Coverage |
-|-------|------------|----------|
-| Setup | 4 | 100% |
-| Foundational | 3 | 100% |
-| US1 (P1) | 6 | 100% |
-| US2 (P2) | 5 | 100% |
-| Polish | 4 | 100% |
-
-## Coverage Summary
-
-- Plan Phases: [N]/[N] covered (100%)
-- User Stories: [N]/[N] covered (100%)
-- Acceptance Criteria: [N]/[N] covered (100%)
-- Data Entities: [N]/[N] covered (100%)
-- API Endpoints: [N]/[N] covered (100%)
-
-**Status**: VALIDATION PASSED ✓
+Return: overall coverage percentages and any MISSING items"
 ```
 
-**Proceed to approval gate ONLY when ALL validations pass.**
+**Run Agent 1 first**, then Agent 2 after tasks.md is written.
 
 ---
 
-## Step 4.7: Engineer Review Gate
+## Step 3: Review Agent Outputs
 
-Run the engineer-review agent to cross-reference spec, plan, and tasks for alignment gaps:
+After both agents complete:
+
+1. **Review tasks.md** — Verify from Agent 1:
+   - Tasks are specific enough for LLM execution
+   - File paths reference real locations in the codebase
+   - Phase dependencies make sense
+   - Every user story phase is independently testable
+   - Parallel markers [P] are correct (no dependency conflicts)
+
+2. **Review traceability.md** — Check from Agent 2:
+   - If VALIDATION FAILED: identify which coverage gaps exist
+   - Add missing tasks for uncovered acceptance criteria
+   - Add missing tasks for uncovered plan phases
+   - Re-run Agent 2 if tasks.md was modified
+
+3. **Fix coverage gaps** — Max 3 correction iterations
+
+---
+
+## Step 4: Engineer Review Gate
+
+Run the engineer-review agent to cross-reference spec, plan, and tasks for
+alignment gaps:
 
 ```
 Task: subagent_type="engineer-review", model="sonnet"
@@ -416,17 +224,21 @@ Find every gap, inconsistency, and misalignment. Report Red/Yellow/Gray findings
 ```
 
 **If Red findings exist** (blocking):
+
 1. Apply fixes to tasks.md (max 3 correction iterations)
 2. Re-run engineer-review after each fix
-3. If issues persist after 3 iterations, generate escalation report and halt for human review
+3. If issues persist after 3 iterations, generate escalation report and halt for
+   human review
 
-**If only Yellow/Gray findings**: Proceed. Note recommendations for future improvement.
+**If only Yellow/Gray findings**: Proceed. Note recommendations for future
+improvement.
 
 ---
 
-## Step 4.8: Multi-Perspective Task Review (Optional)
+## Step 5: Multi-Perspective Task Review (Optional)
 
-After task validation, optionally run multi-perspective strategies. **Skip if time-constrained.**
+After task validation, optionally run multi-perspective strategies. **Skip if
+time-constrained.**
 
 ### Strategy #14: Cross-Cutting Concern Scanner
 
@@ -466,23 +278,23 @@ Include rollback notes in the task document's "Implementation Strategy" section.
 
 ---
 
-## Step 5: Generate GitHub Issues
+## Step 6: Generate GitHub Issues
 
 Run the issues generator:
 
 ```bash
 node .specify/scripts/node/generate-issues.js "$FEATURE_DIR"
-````
+```
 
 This creates `{FEATURE_DIR}/issues.md` with GitHub-ready issue definitions.
 
 ---
 
-## Step 6: Approval Gate
+## Step 7: Approval Gate
 
 **IMPORTANT**: Tasks MUST be reviewed and approved before implementation begins.
 
-### 6.1 Update Task Status
+### 7.1 Update Task Status
 
 Set the frontmatter status to `review`:
 
@@ -496,7 +308,7 @@ created: [ISO date]
 ---
 ```
 
-### 6.2 Present for Approval
+### 7.2 Present for Approval
 
 Display the task summary and request explicit approval:
 
@@ -505,7 +317,7 @@ Display the task summary and request explicit approval:
   TASKS READY FOR REVIEW: [Feature Name]
 ════════════════════════════════════════════════════════════════
 
-  📋 Task Summary:
+  Task Summary:
   - Total tasks: [N]
   - Tasks by story:
     - US1 (P1): [N] tasks
@@ -514,12 +326,13 @@ Display the task summary and request explicit approval:
   - Parallel opportunities: [N] tasks
   - MVP scope: Phase 1-3 (Setup + Foundation + US1)
 
-  📁 Files created:
+  Files created:
   - {FEATURE_DIR}/tasks.md
+  - {FEATURE_DIR}/traceability.md
   - {FEATURE_DIR}/issues.md ([N] GitHub issues)
 
 ════════════════════════════════════════════════════════════════
-  ⚠️  APPROVAL REQUIRED BEFORE IMPLEMENTATION
+  APPROVAL REQUIRED BEFORE IMPLEMENTATION
 ════════════════════════════════════════════════════════════════
 
   Please review tasks.md and confirm:
@@ -536,7 +349,7 @@ Display the task summary and request explicit approval:
 ════════════════════════════════════════════════════════════════
 ```
 
-### 6.3 Handle Approval Response
+### 7.3 Handle Approval Response
 
 | Response                    | Action                                                       |
 | --------------------------- | ------------------------------------------------------------ |
@@ -544,7 +357,7 @@ Display the task summary and request explicit approval:
 | `modify [feedback]`         | Update tasks based on feedback, re-present for approval      |
 | `stop`                      | Halt pipeline, document reason in tasks.md                   |
 
-### 6.4 Record Approval
+### 7.4 Record Approval
 
 When approved, update frontmatter:
 
@@ -562,7 +375,7 @@ created: [ISO date]
 
 ---
 
-## Step 7: Continue to Implementation
+## Step 8: Continue to Implementation
 
 After approval received:
 
