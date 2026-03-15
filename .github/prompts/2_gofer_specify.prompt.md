@@ -98,9 +98,9 @@ and user input.
 
 ## Step 2: Dispatch Specification Agents
 
-Delegate heavy document generation to sub-agents. The main context stays
-lightweight as an orchestrator while agents do the content generation in their
-own context windows.
+**Claude Code only**: Delegate heavy document generation to sub-agents using the
+Task tool. In Copilot Chat, perform specification writing inline by reading the
+research and generating the spec directly.
 
 ### Agent 1: Specification Writer
 
@@ -460,12 +460,15 @@ Checklist: {FEATURE_DIR}/checklists/requirements.md
 {If sequence diagrams generated:}
 Sequence Diagrams: {FEATURE_DIR}/sequence-diagrams/
 Selected Option: Option {N} - {Name}
-
-Ready for next stage: /3_gofer_plan
 ```
 
-If orchestrated by `/0_business_scenario`, the orchestrator will automatically
-invoke `/3_gofer_plan` next.
+## Next Steps (Manual Chaining — Copilot Chat)
+
+Specification is complete. To continue the pipeline, run the next stage:
+
+```
+/3_gofer_plan
+```
 
 ---
 

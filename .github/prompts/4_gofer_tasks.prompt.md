@@ -76,9 +76,9 @@ Task generation dispatches agents — keep main context lightweight.
 
 ## Step 2: Dispatch Task Generation Agents
 
-Launch task generation agents using the Task tool. The main context stays
-lightweight while agents handle heavy document generation in their own context
-windows.
+**Claude Code only**: Launch task generation agents using the Task tool. In
+Copilot Chat, perform task generation inline by reading source documents and
+writing task artifacts directly.
 
 ### Agent 1: Task Breakdown Generator
 
@@ -212,26 +212,34 @@ After both agents complete:
 
 ---
 
-## Step 4: Engineer Review Gate
+## Step 4: Engineering Review Gate (Up to 5 cycles)
 
-Run the engineer-review agent to cross-reference spec, plan, and tasks for
-alignment gaps:
+Before proceeding to the approval gate, run an iterative engineering review to
+catch misalignment early.
 
-```
-Task: subagent_type="engineer-review", model="sonnet"
-Prompt: "Review alignment between spec.md, plan.md, and tasks.md in [FEATURE_DIR].
-Find every gap, inconsistency, and misalignment. Report Red/Yellow/Gray findings."
-```
+### Review Cycle (repeat up to 5 times)
 
-**If Red findings exist** (blocking):
+**Claude Code only**: Dispatch 3 review agents in parallel using the Task tool
+(engineer-review, codebase-analyzer, validation-correctness). In Copilot Chat,
+perform these 3 reviews inline sequentially:
 
-1. Apply fixes to tasks.md (max 3 correction iterations)
-2. Re-run engineer-review after each fix
-3. If issues persist after 3 iterations, generate escalation report and halt for
-   human review
+**Review 1: Spec↔Plan↔Tasks Alignment** — Cross-check that every user story,
+acceptance criterion, and plan phase is covered by tasks in tasks.md. List gaps.
 
-**If only Yellow/Gray findings**: Proceed. Note recommendations for future
-improvement.
+**Review 2: Codebase Pattern Verification** — Verify that tasks.md references
+correct file paths and follows existing codebase patterns from research.md.
+
+**Review 3: Acceptance Criteria Coverage** — Verify that every acceptance
+criterion in spec.md is covered by at least one task in tasks.md.
+
+**After reviews:**
+
+1. Classify findings: Red (blocking) / Yellow (should fix) / Gray
+   (informational)
+2. If NO Red or Yellow findings → PASS → proceed to approval gate
+3. If Red or Yellow findings exist: a. Fix findings directly in tasks.md (Red
+   first, then Yellow) b. Increment cycle counter c. If cycle <= 5 → re-run
+   reviews d. If cycle > 5 → log remaining findings, proceed with warnings
 
 ---
 
@@ -382,11 +390,16 @@ After approval received:
 ```
 ✓ Tasks APPROVED: {FEATURE_DIR}/tasks.md
 
-Ready for next stage: /5_gofer_implement
+Engineering Review: PASSED (cycle [N] of 5)
 ```
 
-If orchestrated by `/0_business_scenario`, the orchestrator will automatically
-invoke `/5_gofer_implement` next.
+## Next Steps (Manual Chaining — Copilot Chat)
+
+Tasks are approved. To continue the pipeline, run the next stage:
+
+```
+/5_gofer_implement
+```
 
 ---
 

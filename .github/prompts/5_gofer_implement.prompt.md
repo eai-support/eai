@@ -445,9 +445,43 @@ After all tasks complete:
 
 ---
 
-## Step 11: Report and Continue
+## Step 11: Engineering Review Gate (Up to 5 cycles)
 
-After implementation complete:
+Before proceeding to validation, run an iterative engineering review to catch
+implementation issues early.
+
+### Review Cycle (repeat up to 5 times)
+
+**CRITICAL** — **Claude Code only**: Dispatch 3 review agents in parallel using
+the Task tool (engineer-review, codebase-analyzer, validation-correctness). Do
+NOT perform this review work inline. In Copilot Chat, perform these 3 reviews
+inline sequentially:
+
+**Review 1: Spec↔Implementation Alignment** — Cross-check that every acceptance
+criterion in spec.md has been implemented and that the code matches the plan.
+
+**Review 2: Codebase Pattern Verification** — Verify that the implemented code
+follows existing codebase patterns from research.md and matches the architecture
+in plan.md.
+
+**Review 3: Acceptance Criteria Coverage** — Verify that every acceptance
+criterion in spec.md has been implemented and has corresponding test coverage.
+
+**After reviews:**
+
+1. Classify findings: Red (blocking) / Yellow (should fix) / Gray
+   (informational)
+2. If NO Red or Yellow findings → PASS → proceed to next stage
+3. If Red or Yellow findings exist: a. Fix findings directly in implementation
+   code (Red first, then Yellow) b. Re-run build/test/lint to verify fixes c.
+   Increment cycle counter d. If cycle <= 5 → re-run reviews e. If cycle > 5 →
+   log remaining findings, proceed with warnings
+
+---
+
+## Step 12: Report and Continue
+
+After implementation complete and review gate passes:
 
 ```
 ════════════════════════════════════════════════════════════════
@@ -463,19 +497,24 @@ After implementation complete:
   - Phase 4: US2 ✓
   - Phase 5: Polish ✓
 
+  Engineering Review: PASSED (cycle [N] of 5)
+
   Files created/modified:
   - src/models/user.ts (new)
   - src/services/userService.ts (new)
   - src/routes/users.ts (new)
   - src/index.ts (modified)
 
-  Ready for next stage: /6_gofer_validate
-
 ════════════════════════════════════════════════════════════════
 ```
 
-If orchestrated by `/0_business_scenario`, the orchestrator will automatically
-invoke `/6_gofer_validate` next.
+## Next Steps (Manual Chaining — Copilot Chat)
+
+Implementation is complete. To continue the pipeline, run the next stage:
+
+```
+/6_gofer_validate
+```
 
 ---
 

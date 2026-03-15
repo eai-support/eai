@@ -95,7 +95,9 @@ Once you have the feature description:
 
 ## Step 2: Spawn Parallel Research Agents
 
-Launch these specialized agents **in parallel** using the Task tool:
+**Claude Code only**: Launch these specialized agents **in parallel** using the
+Task tool. In Copilot Chat, perform this research inline by searching the
+codebase directly using the available tools.
 
 ### Agent 1: Codebase Locator
 
@@ -328,12 +330,15 @@ Key findings:
 - [Finding 1]
 - [Finding 2]
 
-Ready for next stage: /2_gofer_specify
-
 ````
 
-3. **If orchestrated by /0_business_scenario**: The orchestrator will
-automatically invoke `/2_gofer_specify` next.
+## Next Steps (Manual Chaining — Copilot Chat)
+
+Research is complete. To continue the pipeline, run the next stage:
+
+```
+/2_gofer_specify
+```
 
 ---
 
