@@ -26,24 +26,31 @@ typesCommand
   .option('--env <environment>', 'Target environment', 'dev')
   .option('--tenant-key <key>', 'Specific tenant key from object-types.ts')
   .option('--dry-run', 'Show what would be seeded without making changes', false)
-  .option('--json', 'Output raw JSON', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
+    // Backward compatibility: --json maps to --format json
+    if (options.json) {
+      options.format = 'json';
+    }
     const root = await findProjectRoot();
     if (!root) {
       out.error('Not in an EAI project.');
       process.exit(1);
     }
 
-    const spinner = ora('Loading Object Types...').start();
+    const spinner = options.format === 'json' ? null : ora('Loading Object Types...').start();
 
     let objectTypes: Record<string, ObjectTypeDefinition[]>;
     try {
       objectTypes = await loadObjectTypes(root);
       const totalTypes = Object.values(objectTypes).reduce((sum, types) => sum + types.length, 0);
       const tenantKeys = Object.keys(objectTypes);
-      spinner.succeed(`Found ${totalTypes} types across ${tenantKeys.length} tenant scope(s): ${tenantKeys.join(', ')}`);
+      if (spinner) {
+        spinner.succeed(`Found ${totalTypes} types across ${tenantKeys.length} tenant scope(s): ${tenantKeys.join(', ')}`);
+      }
     } catch (err) {
-      spinner.fail('Failed to load Object Types');
+      if (spinner) spinner.fail('Failed to load Object Types');
       out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
@@ -157,11 +164,14 @@ typesCommand
       }
 
       out.blank();
-      out.info(`Result: ${chalk.green(`${created} created`)}, ${chalk.cyan(`${updated} updated`)}, ${chalk.red(`${failed} failed`)}`);
+      if (options.format !== 'json') {
+        out.info(`Result: ${chalk.green(`${created} created`)}, ${chalk.cyan(`${updated} updated`)}, ${chalk.red(`${failed} failed`)}`);
+      }
       jsonResults.push({ tenantKey, tenantId: tenantId!, created, updated, failed });
     }
 
-    if (options.json) {
+    if (options.format === 'json') {
+      out.json({ tenants: jsonResults });
     }
   });
 

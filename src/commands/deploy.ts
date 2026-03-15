@@ -89,9 +89,12 @@ deployCommand
   .option('--repo <repo>', 'GitHub repo (org/name)')
   .option('--branch <branch>', 'Branch to deploy', 'main')
   .option('--workflow <name>', 'Workflow filename', 'deploy-demo.yml')
-  .option('--json', 'Output raw JSON', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     let repo = options.repo;
+
+    if (options.json) options.format = 'json';
 
     if (!repo) {
       // Try to detect from git remote
@@ -107,21 +110,27 @@ deployCommand
       process.exit(1);
     }
 
-    const spinner = ora(`Triggering ${options.workflow} on ${repo}...`).start();
+    const spinner = options.format === 'json' ? null : ora(`Triggering ${options.workflow} on ${repo}...`).start();
     try {
       await exec('gh', [
         'workflow', 'run', options.workflow,
         '--repo', repo,
         '--ref', options.branch,
       ]);
-      spinner.succeed(`Triggered deployment on ${chalk.cyan(repo)}@${options.branch}`);
 
-      if (options.json) {
+      if (options.format === 'json') {
+        out.json({
+          triggered: true,
+          repo,
+          branch: options.branch,
+          workflow: options.workflow
+        });
       } else {
+        spinner!.succeed(`Triggered deployment on ${chalk.cyan(repo)}@${options.branch}`);
         out.info(`Check status: ${chalk.dim(`eai deploy status --repo ${repo}`)}`);
       }
     } catch (err) {
-      spinner.fail(err instanceof Error ? err.message : String(err));
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -132,9 +141,12 @@ deployCommand
   .command('status')
   .description('Check deployment status')
   .option('--repo <repo>', 'GitHub repo (org/name)')
-  .option('--json', 'Output raw JSON', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     let repo = options.repo;
+
+    if (options.json) options.format = 'json';
 
     if (!repo) {
       try {
@@ -149,7 +161,7 @@ deployCommand
       process.exit(1);
     }
 
-    const spinner = ora('Checking deployment status...').start();
+    const spinner = options.format === 'json' ? null : ora('Checking deployment status...').start();
     try {
       const { stdout } = await exec('gh', [
         'run', 'list',
@@ -166,20 +178,21 @@ deployCommand
         headBranch: string;
       }>;
 
-      spinner.succeed(`Recent deployments for ${chalk.cyan(repo)}`);
-
-      if (options.json) {
+      if (options.format === 'json') {
+        out.json({ repo, runs });
       } else {
+        spinner!.succeed(`Recent deployments for ${chalk.cyan(repo)}`);
         for (const run of runs) {
           const icon = run.conclusion === 'success' ? out.symbols.success
             : run.conclusion === 'failure' ? out.symbols.error
             : run.status === 'in_progress' ? chalk.blue('⟳')
             : out.symbols.pending;
           const time = new Date(run.createdAt).toLocaleString();
+          console.log(`  ${icon} ${run.name} (${run.headBranch}) — ${time}`);
         }
       }
     } catch (err) {
-      spinner.fail(err instanceof Error ? err.message : String(err));
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });

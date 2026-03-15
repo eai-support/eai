@@ -39,13 +39,15 @@ resourcesCommand
   .option('--page <n>', 'Page number', '1')
   .option('--limit <n>', 'Items per page', '20')
   .option('--sort <field>', 'Sort field (prefix with - for descending)', '-created_at')
-  .option('--json', 'Output raw JSON', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, options) => {
     const env = await getEnv();
     const ctx = createClient(env);
     if (!ctx) { out.error('Missing BASE_URL_PUBLIC_API or tenant ID.'); process.exit(1); }
 
-    const spinner = ora(`Listing ${type}...`).start();
+    if (options.json) options.format = 'json';
+    const spinner = options.format === 'json' ? null : ora(`Listing ${type}...`).start();
     try {
       const res = await ctx.client.listResources(type, {
         page: parseInt(options.page),
@@ -54,7 +56,7 @@ resourcesCommand
       });
 
       if (!res.ok) {
-        spinner.fail(`Failed: ${res.status} ${res.statusText}`);
+        if (spinner) spinner.fail(`Failed: ${res.status} ${res.statusText}`);
         process.exit(1);
       }
 
@@ -65,11 +67,18 @@ resourcesCommand
         totalPages: number;
       };
 
-      spinner.succeed(`${data.totalDocs} total — page ${data.page}/${data.totalPages}`);
-
-      if (options.json) {
+      if (options.format === 'json') {
+        out.json({
+          type,
+          resources: data.docs,
+          totalDocs: data.totalDocs,
+          page: data.page,
+          totalPages: data.totalPages
+        });
         return;
       }
+
+      spinner!.succeed(`${data.totalDocs} total — page ${data.page}/${data.totalPages}`);
 
       if (data.docs.length === 0) {
         out.info('No resources found.');
@@ -81,9 +90,10 @@ resourcesCommand
           .slice(0, 3)
           .map(([k, v]) => `${k}=${chalk.dim(String(v).slice(0, 30))}`)
           .join(', ');
+        console.log(`  ${chalk.cyan(doc.id)} ${chalk.dim(preview)}`);
       }
     } catch (err) {
-      spinner.fail(err instanceof Error ? err.message : String(err));
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -93,11 +103,14 @@ resourcesCommand
 resourcesCommand
   .command('get <type> <id>')
   .description('Get a single resource')
-  .option('--json', 'Output raw JSON', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
     const env = await getEnv();
     const ctx = createClient(env);
     if (!ctx) { out.error('Missing config.'); process.exit(1); }
+
+    if (options.json) options.format = 'json';
 
     try {
       const res = await ctx.client.getResource(type, id);
@@ -108,8 +121,11 @@ resourcesCommand
 
       const data = await res.json();
 
-      if (options.json) {
+      if (options.format === 'json') {
+        out.json(data);
       } else {
+        out.heading(`${type}: ${id}`);
+        console.log(JSON.stringify(data, null, 2));
       }
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
@@ -124,10 +140,14 @@ resourcesCommand
   .description('Create a new resource')
   .option('--data <json>', 'Resource data as JSON string')
   .option('--file <path>', 'Read data from JSON file')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, options) => {
     const env = await getEnv();
     const ctx = createClient(env);
     if (!ctx) { out.error('Missing config.'); process.exit(1); }
+
+    if (options.json) options.format = 'json';
 
     let data: Record<string, unknown>;
     if (options.data) {
@@ -140,20 +160,25 @@ resourcesCommand
       process.exit(1);
     }
 
-    const spinner = ora(`Creating ${type}...`).start();
+    const spinner = options.format === 'json' ? null : ora(`Creating ${type}...`).start();
     try {
       const res = await ctx.client.createResource(type, data);
       if (!res.ok) {
-        spinner.fail(`${res.status} ${res.statusText}`);
+        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
         const body = await res.text();
         out.error(body);
         process.exit(1);
       }
 
       const created = await res.json() as { id: string };
-      spinner.succeed(`Created ${type} ${chalk.dim(created.id)}`);
+
+      if (options.format === 'json') {
+        out.json({ type, id: created.id, data });
+      } else {
+        spinner!.succeed(`Created ${type} ${chalk.dim(created.id)}`);
+      }
     } catch (err) {
-      spinner.fail(err instanceof Error ? err.message : String(err));
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -165,10 +190,14 @@ resourcesCommand
   .description('Update a resource')
   .option('--data <json>', 'Updated data as JSON string')
   .option('--version <n>', 'Resource version (for optimistic locking)')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
     const env = await getEnv();
     const ctx = createClient(env);
     if (!ctx) { out.error('Missing config.'); process.exit(1); }
+
+    if (options.json) options.format = 'json';
 
     if (!options.data) {
       out.error('Provide --data with the updated fields');
@@ -190,16 +219,21 @@ resourcesCommand
       }
     }
 
-    const spinner = ora(`Updating ${type} ${id}...`).start();
+    const spinner = options.format === 'json' ? null : ora(`Updating ${type} ${id}...`).start();
     try {
       const res = await ctx.client.updateResource(type, id, data, version!);
       if (!res.ok) {
-        spinner.fail(`${res.status} ${res.statusText}`);
+        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
         process.exit(1);
       }
-      spinner.succeed(`Updated ${type} ${chalk.dim(id)}`);
+
+      if (options.format === 'json') {
+        out.json({ type, id, data, version });
+      } else {
+        spinner!.succeed(`Updated ${type} ${chalk.dim(id)}`);
+      }
     } catch (err) {
-      spinner.fail(err instanceof Error ? err.message : String(err));
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -210,10 +244,14 @@ resourcesCommand
   .command('delete <type> <id>')
   .description('Delete a resource')
   .option('--force', 'Skip confirmation', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
     const env = await getEnv();
     const ctx = createClient(env);
     if (!ctx) { out.error('Missing config.'); process.exit(1); }
+
+    if (options.json) options.format = 'json';
 
     if (!options.force) {
       const inquirer = await import('inquirer');
@@ -224,21 +262,30 @@ resourcesCommand
         default: false,
       }]);
       if (!confirm) {
-        out.info('Cancelled.');
+        if (options.format === 'json') {
+          out.json({ cancelled: true });
+        } else {
+          out.info('Cancelled.');
+        }
         return;
       }
     }
 
-    const spinner = ora(`Deleting ${type} ${id}...`).start();
+    const spinner = options.format === 'json' ? null : ora(`Deleting ${type} ${id}...`).start();
     try {
       const res = await ctx.client.deleteResource(type, id);
       if (!res.ok) {
-        spinner.fail(`${res.status} ${res.statusText}`);
+        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
         process.exit(1);
       }
-      spinner.succeed(`Deleted ${type} ${chalk.dim(id)}`);
+
+      if (options.format === 'json') {
+        out.json({ type, id, deleted: true });
+      } else {
+        spinner!.succeed(`Deleted ${type} ${chalk.dim(id)}`);
+      }
     } catch (err) {
-      spinner.fail(err instanceof Error ? err.message : String(err));
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -251,16 +298,19 @@ resourcesCommand
   .requiredOption('--types <types>', 'Comma-separated object type names')
   .option('--where <json>', 'Filter conditions as JSON')
   .option('--limit <n>', 'Max results', '20')
-  .option('--json', 'Output raw JSON', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     const env = await getEnv();
     const ctx = createClient(env);
     if (!ctx) { out.error('Missing config.'); process.exit(1); }
 
+    if (options.json) options.format = 'json';
+
     const objectTypes = options.types.split(',').map((t: string) => t.trim());
     const where = options.where ? JSON.parse(options.where) : undefined;
 
-    const spinner = ora(`Querying ${objectTypes.join(', ')}...`).start();
+    const spinner = options.format === 'json' ? null : ora(`Querying ${objectTypes.join(', ')}...`).start();
     try {
       const res = await ctx.client.queryResources({
         object_types: objectTypes,
@@ -269,14 +319,20 @@ resourcesCommand
       });
 
       if (!res.ok) {
-        spinner.fail(`${res.status} ${res.statusText}`);
+        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
         process.exit(1);
       }
 
       const data = await res.json();
-      spinner.succeed('Query complete');
+
+      if (options.format === 'json') {
+        out.json(data);
+      } else {
+        spinner!.succeed('Query complete');
+        console.log(JSON.stringify(data, null, 2));
+      }
     } catch (err) {
-      spinner.fail(err instanceof Error ? err.message : String(err));
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -286,27 +342,36 @@ resourcesCommand
 resourcesCommand
   .command('schema')
   .description('Show published Object Types for tenant')
-  .action(async () => {
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (options) => {
     const env = await getEnv();
     const ctx = createClient(env);
     if (!ctx) { out.error('Missing config.'); process.exit(1); }
 
-    const spinner = ora('Fetching schema...').start();
+    if (options.json) options.format = 'json';
+
+    const spinner = options.format === 'json' ? null : ora('Fetching schema...').start();
     try {
       const res = await ctx.client.getSchema();
       if (!res.ok) {
-        spinner.fail(`${res.status} ${res.statusText}`);
+        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
         process.exit(1);
       }
 
       const schema = await res.json() as { objectTypes?: Array<{ name: string; properties: unknown[]; linkTypes: unknown[]; actions: unknown[] }> };
       const types = schema?.objectTypes || [];
-      spinner.succeed(`${types.length} published types`);
 
-      for (const t of types) {
+      if (options.format === 'json') {
+        out.json({ objectTypes: types, count: types.length });
+      } else {
+        spinner!.succeed(`${types.length} published types`);
+        for (const t of types) {
+          console.log(`  ${chalk.cyan(t.name)} — ${t.properties.length} properties, ${t.linkTypes.length} links, ${t.actions.length} actions`);
+        }
       }
     } catch (err) {
-      spinner.fail(err instanceof Error ? err.message : String(err));
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });

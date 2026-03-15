@@ -18,10 +18,13 @@ tenantCommand
   .command('list')
   .description('List tenants (scoped to parent)')
   .option('--parent <id>', 'Parent tenant ID')
-  .option('--json', 'Output raw JSON', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     const root = await findProjectRoot();
     if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+
+    if (options.json) options.format = 'json';
 
     const envVars = await loadEnvFile(root);
     const env = { ...envVars, ...process.env };
@@ -29,28 +32,30 @@ tenantCommand
     if (!publicApiUrl) { out.error('BASE_URL_PUBLIC_API not set.'); process.exit(1); }
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
-    const spinner = ora('Fetching tenants...').start();
+    const spinner = options.format === 'json' ? null : ora('Fetching tenants...').start();
 
     try {
       const res = await client.listTenants(options.parent);
       if (!res.ok) {
-        spinner.fail(`${res.status} ${res.statusText}`);
+        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
         process.exit(1);
       }
 
       const data = await res.json() as { docs: Array<{ id: string; name: string; slug: string; domain?: string[] }> };
-      spinner.succeed(`${data.docs.length} tenants`);
 
-      if (options.json) {
+      if (options.format === 'json') {
+        out.json({ tenants: data.docs, count: data.docs.length });
         return;
       }
 
+      spinner!.succeed(`${data.docs.length} tenants`);
+
       for (const tenant of data.docs) {
-        if (tenant.domain?.length) {
-        }
+        const domains = tenant.domain?.length ? chalk.dim(` [${tenant.domain.join(', ')}]`) : '';
+        console.log(`  ${chalk.cyan(tenant.slug)} (${tenant.id})${domains} — ${tenant.name}`);
       }
     } catch (err) {
-      spinner.fail(err instanceof Error ? err.message : String(err));
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -60,9 +65,13 @@ tenantCommand
 tenantCommand
   .command('info <id>')
   .description('Show tenant details')
-  .action(async (id) => {
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (id, options) => {
     const root = await findProjectRoot();
     if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+
+    if (options.json) options.format = 'json';
 
     const envVars = await loadEnvFile(root);
     const env = { ...envVars, ...process.env };
@@ -70,19 +79,25 @@ tenantCommand
     if (!publicApiUrl) { out.error('BASE_URL_PUBLIC_API not set.'); process.exit(1); }
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
-    const spinner = ora('Fetching tenant...').start();
+    const spinner = options.format === 'json' ? null : ora('Fetching tenant...').start();
 
     try {
       const res = await client.getTenant(id);
       if (!res.ok) {
-        spinner.fail(`${res.status} ${res.statusText}`);
+        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
         process.exit(1);
       }
 
       const tenant = await res.json() as Record<string, unknown>;
-      spinner.succeed(`Tenant: ${chalk.cyan(String(tenant.name))}`);
+
+      if (options.format === 'json') {
+        out.json(tenant);
+      } else {
+        spinner!.succeed(`Tenant: ${chalk.cyan(String(tenant.name))}`);
+        console.log(JSON.stringify(tenant, null, 2));
+      }
     } catch (err) {
-      spinner.fail(err instanceof Error ? err.message : String(err));
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -96,10 +111,13 @@ tenantCommand
   .requiredOption('--slug <slug>', 'Tenant slug (kebab-case)')
   .option('--parent <id>', 'Parent tenant ID')
   .option('--domain <domains>', 'Comma-separated domain list')
-  .option('--json', 'Output raw JSON', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     const root = await findProjectRoot();
     if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+
+    if (options.json) options.format = 'json';
 
     const envVars = await loadEnvFile(root);
     const env = { ...envVars, ...process.env };
@@ -107,7 +125,7 @@ tenantCommand
     if (!publicApiUrl) { out.error('BASE_URL_PUBLIC_API not set.'); process.exit(1); }
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
-    const spinner = ora(`Creating tenant "${options.name}"...`).start();
+    const spinner = options.format === 'json' ? null : ora(`Creating tenant "${options.name}"...`).start();
 
     try {
       const res = await client.createTenant({
@@ -119,17 +137,19 @@ tenantCommand
 
       if (!res.ok) {
         const body = await res.text();
-        spinner.fail(`${res.status}: ${body}`);
+        if (spinner) spinner.fail(`${res.status}: ${body}`);
         process.exit(1);
       }
 
       const tenant = await res.json() as Record<string, unknown>;
-      spinner.succeed(`Created tenant ${chalk.cyan(String(tenant.slug))} (${chalk.dim(String(tenant.id))})`);
 
-      if (options.json) {
+      if (options.format === 'json') {
+        out.json(tenant);
+      } else {
+        spinner!.succeed(`Created tenant ${chalk.cyan(String(tenant.slug))} (${chalk.dim(String(tenant.id))})`);
       }
     } catch (err) {
-      spinner.fail(err instanceof Error ? err.message : String(err));
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
