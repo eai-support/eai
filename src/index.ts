@@ -31,13 +31,35 @@ import { verifyCommand, doctorCommand } from './commands/verify.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { updateCommand } from './commands/update.js';
 import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
+import { setSimpleMode } from './lib/output.js';
 
 const program = new Command();
 
 program
   .name('eai')
   .description('Enterprise AI Platform CLI — scaffold, seed, deploy, and manage vertical applications')
-  .version(pkg.version);
+  .version(pkg.version)
+  .option('--simple', 'Plain text output without colors or symbols (for screen readers)')
+  .option('--no-color', 'Disable colored output')
+  .option('--color', 'Force colored output')
+  .hook('preAction', (thisCommand) => {
+    const opts = thisCommand.opts();
+
+    // Handle --simple flag
+    if (opts.simple) {
+      setSimpleMode(true);
+    }
+
+    // Handle --no-color flag
+    if (opts.noColor) {
+      process.env.NO_COLOR = '1';
+    }
+
+    // Handle --color flag (force colors)
+    if (opts.color) {
+      process.env.FORCE_COLOR = '1';
+    }
+  });
 
 // Register all commands
 program.addCommand(initCommand);

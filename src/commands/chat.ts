@@ -58,7 +58,6 @@ chatCommand
       }
 
       const data = await res.json();
-      console.log(JSON.stringify(data, null, 2));
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);

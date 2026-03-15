@@ -42,14 +42,11 @@ tenantCommand
       spinner.succeed(`${data.docs.length} tenants`);
 
       if (options.json) {
-        console.log(JSON.stringify(data, null, 2));
         return;
       }
 
       for (const tenant of data.docs) {
-        console.log(`  ${chalk.cyan(tenant.slug || tenant.name)} ${chalk.dim(tenant.id)}`);
         if (tenant.domain?.length) {
-          console.log(`    domains: ${tenant.domain.join(', ')}`);
         }
       }
     } catch (err) {
@@ -84,7 +81,6 @@ tenantCommand
 
       const tenant = await res.json() as Record<string, unknown>;
       spinner.succeed(`Tenant: ${chalk.cyan(String(tenant.name))}`);
-      console.log(JSON.stringify(tenant, null, 2));
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -131,7 +127,6 @@ tenantCommand
       spinner.succeed(`Created tenant ${chalk.cyan(String(tenant.slug))} (${chalk.dim(String(tenant.id))})`);
 
       if (options.json) {
-        console.log(JSON.stringify(tenant, null, 2));
       }
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));

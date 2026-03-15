@@ -205,15 +205,6 @@ export const initCommand = new Command('init')
     out.success(`Created ${chalk.bold(initOptions.displayName)} at ${chalk.cyan(targetDir)}`);
     out.blank();
     out.heading('Next steps:');
-    console.log(`  1. ${chalk.cyan(`cd ${initOptions.name}`)}`);
-    console.log(`  2. ${chalk.cyan('npm install')}`);
-    console.log(`  3. ${chalk.cyan('eai login')} — authenticate with Entra CIAM`);
-    console.log(`  4. ${chalk.cyan('eai env pull')} — sync environment from cloud`);
-    console.log(`  5. Edit ${chalk.cyan('src/eai.config/object-types.ts')} — define your data model`);
-    console.log(`  6. ${chalk.cyan('eai types validate')} — check your types`);
-    console.log(`  7. ${chalk.cyan('eai types seed')} — push types to platform`);
-    console.log(`  8. ${chalk.cyan('eai dev')} — start local development`);
-    console.log(`  9. Review ${chalk.cyan('CLAUDE.md')} — platform architecture reference`);
     out.blank();
     out.dim(`Template: https://github.com/${GITHUB_ORG}/Vertical-Template`);
     out.dim(`CLI docs: https://github.com/${GITHUB_ORG}/eai-cli`);

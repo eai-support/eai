@@ -89,7 +89,6 @@ typesCommand
 
       if (options.dryRun) {
         for (const type of types) {
-          console.log(`  ${chalk.cyan(type.name)} — ${type.properties.length} props, ${type.linkTypes.length} links, ${type.actions.length} actions`);
         }
         out.info('Dry run — no changes made');
         continue;
@@ -163,7 +162,6 @@ typesCommand
     }
 
     if (options.json) {
-      console.log(JSON.stringify(jsonResults, null, 2));
     }
   });
 
@@ -274,14 +272,12 @@ typesCommand
           if (issues.length > 0) {
             out.error(`${type.name}`);
             for (const issue of issues) {
-              console.log(`    ${chalk.red('error')}: ${issue}`);
             }
             errors += issues.length;
           }
           if (warns.length > 0) {
             if (issues.length === 0) out.warn(`${type.name}`);
             for (const w of warns) {
-              console.log(`    ${chalk.yellow('warn')}: ${w}`);
             }
             warnings += warns.length;
           }
@@ -362,7 +358,6 @@ typesCommand
         // Local-only types
         for (const [name, localType] of localByName) {
           if (!remoteByName.has(name)) {
-            console.log(`  ${out.symbols.added} ${chalk.green(name)} — ${chalk.green('LOCAL ONLY')}`);
             continue;
           }
 
@@ -375,17 +370,12 @@ typesCommand
           const unchanged = [...localPropNames].filter(p => remotePropNames.has(p));
 
           if (added.length === 0 && removed.length === 0) {
-            console.log(`  ${out.symbols.unchanged} ${name} — no differences`);
           } else {
-            console.log(`  ${out.symbols.changed} ${chalk.yellow(name)}`);
             for (const p of added) {
-              console.log(`    ${out.symbols.added} property: ${chalk.green(p)} (local only)`);
             }
             for (const p of removed) {
-              console.log(`    ${out.symbols.removed} property: ${chalk.red(p)} (remote only)`);
             }
             if (unchanged.length > 0) {
-              console.log(`    ${out.symbols.unchanged} ${unchanged.length} properties unchanged`);
             }
           }
         }
@@ -393,7 +383,6 @@ typesCommand
         // Remote-only types
         for (const [name] of remoteByName) {
           if (!localByName.has(name)) {
-            console.log(`  ${out.symbols.removed} ${chalk.red(name)} — ${chalk.red('REMOTE ONLY (not in local definition)')}`);
           }
         }
       } catch (err) {
