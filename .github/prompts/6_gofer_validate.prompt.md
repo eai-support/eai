@@ -6,8 +6,8 @@ description:
 # Gofer Validate
 
 You are validating that the implementation meets engineering quality standards
-using a **10-category rubric scored out of 100 points**. This is the **sixth and
-final stage** of the unified Gofer pipeline.
+using a **10-category rubric scored out of 100 points**. This is the **sixth
+stage** of the unified Gofer pipeline.
 
 A score of **100/100 is required to pass**. Any category scoring 0 triggers
 failure and a brownfield restart loop.
@@ -640,22 +640,20 @@ has_ui: [true/false]
   Report: {FEATURE_DIR}/validation-report.md
 
 ════════════════════════════════════════════════════════════════
-  FEATURE PIPELINE COMPLETE!
-
-  All Gofer stages finished:
-  1. /1_gofer_research ✓
-  2. /2_gofer_specify ✓
-  3. /3_gofer_plan ✓
-  4. /4_gofer_tasks ✓
-  5. /5_gofer_implement ✓
-  6. /6_gofer_validate ✓
-
-  The feature is ready for review and merge.
-════════════════════════════════════════════════════════════════
 ```
 
 Proceed to **Step 12: Attribution Logging** then **Step 13: Memory Update
 Check**.
+
+## Next Steps (Manual Chaining — Copilot Chat)
+
+After completing validation with a PASS, run the engineering review stage:
+
+```
+/6a_gofer_engineering_review
+```
+
+This performs post-implementation cross-checking with iterative fix cycles.
 
 ### If TOTAL < 100: FAIL
 

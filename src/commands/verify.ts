@@ -267,9 +267,7 @@ export const doctorCommand = new Command('doctor')
         const icon = issue.severity === 'error' ? out.symbols.error
           : issue.severity === 'warn' ? out.symbols.warning
           : out.symbols.info;
-        console.log(`${icon} ${issue.message}`);
         if (issue.fix) {
-          console.log(`  ${chalk.dim('Fix:')} ${issue.fix}`);
         }
       }
     }

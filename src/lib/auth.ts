@@ -160,9 +160,6 @@ export async function deviceCodeLogin(
   const deviceCode: DeviceCodeResponse = await deviceCodeRes.json();
 
   // Display message to user
-  console.log();
-  console.log(deviceCode.message);
-  console.log();
 
   // Step 2: Poll for token
   const pollInterval = (deviceCode.interval || 5) * 1000;

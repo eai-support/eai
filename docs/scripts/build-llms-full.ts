@@ -83,7 +83,6 @@ async function main(): Promise<void> {
   }
 
   await writeFile(OUTPUT, sections.join('\n'), 'utf-8');
-  console.log(`Written ${files.length} pages to ${OUTPUT}`);
 }
 
 main().catch(console.error);

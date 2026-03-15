@@ -1,0 +1,36 @@
+{
+  "timestamp": 1773537194952,
+  "specId": "",
+  "taskId": "current",
+  "sections": {},
+  "memoryCoverage": {
+    "coveredKeywords": [],
+    "uncoveredKeywords": [
+      "act",
+      "ses"
+    ],
+    "coveragePercent": 0,
+    "memoriesLoaded": 0,
+    "researchLoadedForGaps": false,
+    "researchTriggers": []
+  },
+  "budgetUsage": {
+    "stage": "implement",
+    "usage": {
+      "research": 0,
+      "memory": 0,
+      "constitution": 0,
+      "code": 0,
+      "conversation": 119,
+      "total": 119
+    },
+    "limits": {
+      "research": 12000,
+      "memory": 18000,
+      "code": 54000,
+      "conversation": 36000
+    },
+    "exceededCategories": [],
+    "totalExceeded": false
+  }
+}

@@ -117,7 +117,6 @@ deployCommand
       spinner.succeed(`Triggered deployment on ${chalk.cyan(repo)}@${options.branch}`);
 
       if (options.json) {
-        console.log(JSON.stringify({ repo, branch: options.branch, workflow: options.workflow, triggered: true }, null, 2));
       } else {
         out.info(`Check status: ${chalk.dim(`eai deploy status --repo ${repo}`)}`);
       }
@@ -170,7 +169,6 @@ deployCommand
       spinner.succeed(`Recent deployments for ${chalk.cyan(repo)}`);
 
       if (options.json) {
-        console.log(JSON.stringify(runs, null, 2));
       } else {
         for (const run of runs) {
           const icon = run.conclusion === 'success' ? out.symbols.success
@@ -178,7 +176,6 @@ deployCommand
             : run.status === 'in_progress' ? chalk.blue('⟳')
             : out.symbols.pending;
           const time = new Date(run.createdAt).toLocaleString();
-          console.log(`  ${icon} ${run.name} (${run.headBranch}) — ${chalk.dim(time)}`);
         }
       }
     } catch (err) {

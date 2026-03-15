@@ -59,7 +59,6 @@ docsCommand
 
       const data = await res.json();
       spinner.succeed(`Uploaded ${chalk.cyan(basename(file))}`);
-      console.log(JSON.stringify(data, null, 2));
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -98,7 +97,6 @@ docsCommand
 
       const data = await res.json();
       spinner.succeed(`Classified ${chalk.cyan(basename(file))}`);
-      console.log(JSON.stringify(data, null, 2));
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);

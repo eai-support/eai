@@ -68,7 +68,6 @@ resourcesCommand
       spinner.succeed(`${data.totalDocs} total — page ${data.page}/${data.totalPages}`);
 
       if (options.json) {
-        console.log(JSON.stringify(data, null, 2));
         return;
       }
 
@@ -82,7 +81,6 @@ resourcesCommand
           .slice(0, 3)
           .map(([k, v]) => `${k}=${chalk.dim(String(v).slice(0, 30))}`)
           .join(', ');
-        console.log(`  ${chalk.dim(doc.id.slice(0, 8))} ${preview}`);
       }
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));
@@ -111,9 +109,7 @@ resourcesCommand
       const data = await res.json();
 
       if (options.json) {
-        console.log(JSON.stringify(data, null, 2));
       } else {
-        console.log(JSON.stringify(data, null, 2));
       }
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
@@ -279,7 +275,6 @@ resourcesCommand
 
       const data = await res.json();
       spinner.succeed('Query complete');
-      console.log(JSON.stringify(data, null, 2));
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -309,7 +304,6 @@ resourcesCommand
       spinner.succeed(`${types.length} published types`);
 
       for (const t of types) {
-        console.log(`  ${chalk.cyan(t.name)} — ${t.properties?.length || 0} props, ${t.linkTypes?.length || 0} links, ${t.actions?.length || 0} actions`);
       }
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));

@@ -49,11 +49,6 @@ userCommand
 
     if (!lookupResult.user) {
       lookupSpinner.fail(`User ${chalk.cyan(options.email)} not found.`);
-      console.log();
-      console.log(`  ${chalk.yellow('The user must sign up first.')} Direct them to your platform's signup page.`);
-      console.log();
-      console.log(`  Once they've signed up, re-run:`);
-      console.log(`  ${chalk.dim(`eai user invite --email ${options.email} --tenant ${options.tenant}`)}`);
       process.exit(1);
     }
 
@@ -77,7 +72,6 @@ userCommand
       );
 
       if (result.message) {
-        console.log(`  ${chalk.dim(result.message)}`);
       }
     } catch (err) {
       provisionSpinner.fail(err instanceof Error ? err.message : String(err));

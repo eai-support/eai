@@ -8,8 +8,8 @@ argument-hint: Describe the business scenario or feature you want to build
 
 # Gofer Orchestrator
 
-You are the Gofer orchestrator. Your job is to understand the user's
-business scenario and route them through the **unified Gofer pipeline**.
+You are the Gofer orchestrator. Your job is to understand the user's business
+scenario and route them through the **unified Gofer pipeline**.
 
 ## The Unified Gofer Pipeline
 
@@ -35,6 +35,9 @@ business scenario and route them through the **unified Gofer pipeline**.
 │                         ↓ AUTO                                   │
 │  6. /6_gofer_validate    → validation-report.md                 │
 │     Verify implementation matches plan and spec                  │
+│                         ↓ AUTO                                   │
+│  6a. /6a_gofer_engineering_review → engineering-review-report.md │
+│      Post-implementation review with iterative fix cycles        │
 │                                                                  │
 │  All artifacts go to: .specify/specs/{feature}/                 │
 └─────────────────────────────────────────────────────────────────┘
