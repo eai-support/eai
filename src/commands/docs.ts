@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 export const docsCommand = new Command('docs')
   .description('Document upload, classification, and indexing');
@@ -19,7 +20,7 @@ docsCommand
   .description('Upload a document')
   .action(async (file) => {
     const root = await findProjectRoot();
-    if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+    if (!root) { exitWithError(ErrorCode.E001); }
 
     const envVars = await loadEnvFile(root);
     const env = { ...envVars, ...process.env };
@@ -72,7 +73,7 @@ docsCommand
   .description('Classify a document')
   .action(async (file) => {
     const root = await findProjectRoot();
-    if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+    if (!root) { exitWithError(ErrorCode.E001); }
 
     const envVars = await loadEnvFile(root);
     const env = { ...envVars, ...process.env };
@@ -110,7 +111,7 @@ docsCommand
   .description('Index a document for RAG')
   .action(async (documentId) => {
     const root = await findProjectRoot();
-    if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+    if (!root) { exitWithError(ErrorCode.E001); }
 
     const envVars = await loadEnvFile(root);
     const env = { ...envVars, ...process.env };

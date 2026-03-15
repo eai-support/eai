@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 export const tenantCommand = new Command('tenant')
   .description('Manage tenants on the platform');
@@ -20,16 +21,21 @@ tenantCommand
   .option('--parent <id>', 'Parent tenant ID')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+Examples:
+  $ eai tenant list
+  $ eai tenant list --format json | jq '.tenants[] | .name'
+  `)
   .action(async (options) => {
     const root = await findProjectRoot();
-    if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+    if (!root) { exitWithError(ErrorCode.E001); }
 
     if (options.json) options.format = 'json';
 
     const envVars = await loadEnvFile(root);
     const env = { ...envVars, ...process.env };
     const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    if (!publicApiUrl) { out.error('BASE_URL_PUBLIC_API not set.'); process.exit(1); }
+    if (!publicApiUrl) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' }); }
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
     const spinner = options.format === 'json' ? null : ora('Fetching tenants...').start();
@@ -68,14 +74,14 @@ tenantCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (id, options) => {
     const root = await findProjectRoot();
-    if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+    if (!root) { exitWithError(ErrorCode.E001); }
 
     if (options.json) options.format = 'json';
 
     const envVars = await loadEnvFile(root);
     const env = { ...envVars, ...process.env };
     const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    if (!publicApiUrl) { out.error('BASE_URL_PUBLIC_API not set.'); process.exit(1); }
+    if (!publicApiUrl) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' }); }
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
     const spinner = options.format === 'json' ? null : ora('Fetching tenant...').start();
@@ -113,14 +119,14 @@ tenantCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     const root = await findProjectRoot();
-    if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+    if (!root) { exitWithError(ErrorCode.E001); }
 
     if (options.json) options.format = 'json';
 
     const envVars = await loadEnvFile(root);
     const env = { ...envVars, ...process.env };
     const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    if (!publicApiUrl) { out.error('BASE_URL_PUBLIC_API not set.'); process.exit(1); }
+    if (!publicApiUrl) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' }); }
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
     const spinner = options.format === 'json' ? null : ora(`Creating tenant "${options.name}"...`).start();

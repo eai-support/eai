@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 export const userCommand = new Command('user')
   .description('Manage users on the platform');
@@ -21,12 +22,12 @@ userCommand
   .requiredOption('--tenant <id>', 'Tenant ID to add the user to')
   .action(async (options) => {
     const root = await findProjectRoot();
-    if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+    if (!root) { exitWithError(ErrorCode.E001); }
 
     const envVars = await loadEnvFile(root);
     const env = { ...envVars, ...process.env };
     const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    if (!publicApiUrl) { out.error('BASE_URL_PUBLIC_API not set.'); process.exit(1); }
+    if (!publicApiUrl) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' }); }
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
 

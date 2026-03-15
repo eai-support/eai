@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 function createClient(env: Record<string, string>): { client: PlatformAPIClient; tenantId: string } | null {
   const publicApiUrl = env.BASE_URL_PUBLIC_API;
@@ -21,8 +22,7 @@ function createClient(env: Record<string, string>): { client: PlatformAPIClient;
 async function getEnv(): Promise<Record<string, string>> {
   const root = await findProjectRoot();
   if (!root) {
-    out.error('Not in an EAI project.');
-    process.exit(1);
+    exitWithError(ErrorCode.E001);
   }
   const envVars = await loadEnvFile(root);
   return { ...envVars, ...process.env } as Record<string, string>;
@@ -41,10 +41,16 @@ resourcesCommand
   .option('--sort <field>', 'Sort field (prefix with - for descending)', '-created_at')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+Examples:
+  $ eai resources list User
+  $ eai resources list Project --limit 10
+  $ eai resources list User --format json | jq '.resources[] | .id'
+  `)
   .action(async (type, options) => {
     const env = await getEnv();
     const ctx = createClient(env);
-    if (!ctx) { out.error('Missing BASE_URL_PUBLIC_API or tenant ID.'); process.exit(1); }
+    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
 
     if (options.json) options.format = 'json';
     const spinner = options.format === 'json' ? null : ora(`Listing ${type}...`).start();
@@ -107,7 +113,7 @@ resourcesCommand
   .action(async (type, id, options) => {
     const env = await getEnv();
     const ctx = createClient(env);
-    if (!ctx) { out.error('Missing config.'); process.exit(1); }
+    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
 
     if (options.json) options.format = 'json';
 
@@ -140,10 +146,16 @@ resourcesCommand
   .option('--file <path>', 'Read data from JSON file')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+Examples:
+  $ eai resources create Project --data '{"name":"Demo","description":"Test project"}'
+  $ eai resources create User --file user.json
+  $ eai resources create Project --data '{"name":"Demo"}' --format json
+  `)
   .action(async (type, options) => {
     const env = await getEnv();
     const ctx = createClient(env);
-    if (!ctx) { out.error('Missing config.'); process.exit(1); }
+    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
 
     if (options.json) options.format = 'json';
 
@@ -154,8 +166,7 @@ resourcesCommand
       const { readFile } = await import('node:fs/promises');
       data = JSON.parse(await readFile(options.file, 'utf-8'));
     } else {
-      out.error('Provide --data or --file');
-      process.exit(1);
+      exitWithError(ErrorCode.E303, { field: '--data or --file' }, options.format);
     }
 
     const spinner = options.format === 'json' ? null : ora(`Creating ${type}...`).start();
@@ -193,13 +204,12 @@ resourcesCommand
   .action(async (type, id, options) => {
     const env = await getEnv();
     const ctx = createClient(env);
-    if (!ctx) { out.error('Missing config.'); process.exit(1); }
+    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
 
     if (options.json) options.format = 'json';
 
     if (!options.data) {
-      out.error('Provide --data with the updated fields');
-      process.exit(1);
+      exitWithError(ErrorCode.E303, { field: '--data' }, options.format);
     }
 
     const data = JSON.parse(options.data);
@@ -212,8 +222,7 @@ resourcesCommand
         const existing = await getRes.json() as { version: number };
         version = existing.version;
       } else {
-        out.error('Could not fetch current version. Use --version explicitly.');
-        process.exit(1);
+        exitWithError(ErrorCode.E203, { details: 'Could not fetch current resource version. Use --version explicitly.' }, options.format);
       }
     }
 
@@ -247,7 +256,7 @@ resourcesCommand
   .action(async (type, id, options) => {
     const env = await getEnv();
     const ctx = createClient(env);
-    if (!ctx) { out.error('Missing config.'); process.exit(1); }
+    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
 
     if (options.json) options.format = 'json';
 
@@ -301,7 +310,7 @@ resourcesCommand
   .action(async (options) => {
     const env = await getEnv();
     const ctx = createClient(env);
-    if (!ctx) { out.error('Missing config.'); process.exit(1); }
+    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
 
     if (options.json) options.format = 'json';
 
@@ -344,7 +353,7 @@ resourcesCommand
   .action(async (options) => {
     const env = await getEnv();
     const ctx = createClient(env);
-    if (!ctx) { out.error('Missing config.'); process.exit(1); }
+    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
 
     if (options.json) options.format = 'json';
 

@@ -15,6 +15,7 @@ import ora from 'ora';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import * as out from '../lib/output.js';
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 const exec = promisify(execFile);
 
@@ -29,7 +30,7 @@ deployCommand
   .option('--repo <repo>', 'GitHub repo (org/name)')
   .action(async (options) => {
     const root = await findProjectRoot();
-    if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+    if (!root) { exitWithError(ErrorCode.E001); }
 
     const envVars = await loadEnvFile(root);
     const appName = envVars.NEXT_PUBLIC_APP_NAME || 'my-vertical';
@@ -91,6 +92,12 @@ deployCommand
   .option('--workflow <name>', 'Workflow filename', 'deploy-demo.yml')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+Examples:
+  $ eai deploy trigger
+  $ eai deploy trigger --branch develop
+  $ eai deploy trigger --repo eai-tools/my-app --format json
+  `)
   .action(async (options) => {
     let repo = options.repo;
 
@@ -106,8 +113,7 @@ deployCommand
     }
 
     if (!repo) {
-      out.error('Could not detect GitHub repo. Use --repo org/name');
-      process.exit(1);
+      exitWithError(ErrorCode.E305, { details: 'Could not detect GitHub repository. Use --repo org/name' }, options.format);
     }
 
     const spinner = options.format === 'json' ? null : ora(`Triggering ${options.workflow} on ${repo}...`).start();
@@ -157,8 +163,7 @@ deployCommand
     }
 
     if (!repo) {
-      out.error('Could not detect GitHub repo. Use --repo org/name');
-      process.exit(1);
+      exitWithError(ErrorCode.E305, { details: 'Could not detect GitHub repository. Use --repo org/name' }, options.format);
     }
 
     const spinner = options.format === 'json' ? null : ora('Checking deployment status...').start();

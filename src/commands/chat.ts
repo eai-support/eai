@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 export const chatCommand = new Command('chat')
   .description('Chat with AI workflows');
@@ -23,7 +24,7 @@ chatCommand
   .option('--conversation <id>', 'Conversation ID (auto-generated if omitted)')
   .action(async (message, options) => {
     const root = await findProjectRoot();
-    if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+    if (!root) { exitWithError(ErrorCode.E001); }
 
     const envVars = await loadEnvFile(root);
     const env = { ...envVars, ...process.env };
@@ -75,7 +76,7 @@ chatCommand
   .option('--conversation <id>', 'Conversation ID (auto-generated if omitted)')
   .action(async (message, options) => {
     const root = await findProjectRoot();
-    if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
+    if (!root) { exitWithError(ErrorCode.E001); }
 
     const envVars = await loadEnvFile(root);
     const env = { ...envVars, ...process.env };
