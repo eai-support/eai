@@ -12,14 +12,14 @@ import { findProjectRoot, loadEnvFile, loadObjectTypes } from '../lib/config.js'
 import { isAuthenticated, loadTokens } from '../lib/auth.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 export const verifyCommand = new Command('verify')
   .description('Run platform connectivity checks')
   .action(async () => {
     const root = await findProjectRoot();
     if (!root) {
-      out.error('Not in an EAI project.');
-      process.exit(1);
+      exitWithError(ErrorCode.E001);
     }
 
     const envVars = await loadEnvFile(root);
@@ -30,8 +30,7 @@ export const verifyCommand = new Command('verify')
       .map(k => env[k])[0];
 
     if (!publicApiUrl) {
-      out.error('BASE_URL_PUBLIC_API not set. Run `eai env pull` first.');
-      process.exit(1);
+      exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' });
     }
 
     out.heading('Platform Connectivity Checks');
@@ -149,8 +148,7 @@ export const doctorCommand = new Command('doctor')
     const root = await findProjectRoot();
     if (!root) {
       out.error('Not in an EAI project directory.');
-      out.info('Run `eai init <name>` to create a new vertical, or cd into an existing project.');
-      process.exit(1);
+      exitWithError(ErrorCode.E001);
     }
     out.success(`Project root: ${chalk.dim(root)}`);
 

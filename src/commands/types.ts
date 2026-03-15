@@ -14,6 +14,7 @@ import chalk from 'chalk';
 import { findProjectRoot, loadObjectTypes, loadEnvFile, type ObjectTypeDefinition } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 export const typesCommand = new Command('types')
   .description('Manage Object Type definitions');
@@ -28,6 +29,13 @@ typesCommand
   .option('--dry-run', 'Show what would be seeded without making changes', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+Examples:
+  $ eai types seed
+  $ eai types seed --dry-run
+  $ eai types seed --tenant-key trial-portal
+  $ eai types seed --format json | jq
+  `)
   .action(async (options) => {
     // Backward compatibility: --json maps to --format json
     if (options.json) {
@@ -35,8 +43,7 @@ typesCommand
     }
     const root = await findProjectRoot();
     if (!root) {
-      out.error('Not in an EAI project.');
-      process.exit(1);
+      exitWithError(ErrorCode.E001, undefined, options.format);
     }
 
     const spinner = options.format === 'json' ? null : ora('Loading Object Types...').start();
@@ -61,8 +68,7 @@ typesCommand
     const publicApiUrl = env.BASE_URL_PUBLIC_API;
 
     if (!publicApiUrl) {
-      out.error('BASE_URL_PUBLIC_API not set. Run `eai env pull` or set it in .env.local');
-      process.exit(1);
+      exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' }, options.format);
     }
 
     // Filter to specific tenant key if requested
@@ -180,11 +186,14 @@ typesCommand
 typesCommand
   .command('validate')
   .description('Validate Object Types against platform schema rules')
+  .addHelpText('after', `
+Examples:
+  $ eai types validate
+  `)
   .action(async () => {
     const root = await findProjectRoot();
     if (!root) {
-      out.error('Not in an EAI project.');
-      process.exit(1);
+      exitWithError(ErrorCode.E001);
     }
 
     const spinner = ora('Loading Object Types...').start();
@@ -297,8 +306,7 @@ typesCommand
 
     out.blank();
     if (errors > 0) {
-      out.error(`${errors} error(s), ${warnings} warning(s)`);
-      process.exit(1);
+      exitWithError(ErrorCode.E302, { details: `${errors} validation error(s), ${warnings} warning(s)` });
     } else if (warnings > 0) {
       out.warn(`${warnings} warning(s), 0 errors`);
     } else {
@@ -311,11 +319,14 @@ typesCommand
 typesCommand
   .command('diff')
   .description('Compare local Object Types with remote platform')
+  .addHelpText('after', `
+Examples:
+  $ eai types diff
+  `)
   .action(async () => {
     const root = await findProjectRoot();
     if (!root) {
-      out.error('Not in an EAI project.');
-      process.exit(1);
+      exitWithError(ErrorCode.E001);
     }
 
     const spinner = ora('Loading local Object Types...').start();
@@ -335,8 +346,7 @@ typesCommand
     const publicApiUrl = env.BASE_URL_PUBLIC_API;
 
     if (!publicApiUrl) {
-      out.error('BASE_URL_PUBLIC_API not set.');
-      process.exit(1);
+      exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' });
     }
 
     for (const [tenantKey, localTypes] of Object.entries(objectTypes)) {
@@ -409,11 +419,15 @@ typesCommand
   .description('Download remote Object Types to local TypeScript')
   .option('--tenant-id <id>', 'platform tenant ID')
   .option('--output <path>', 'Output file path', 'src/eai.config/object-types.generated.ts')
+  .addHelpText('after', `
+Examples:
+  $ eai types pull
+  $ eai types pull --output src/types/generated.ts
+  `)
   .action(async (options) => {
     const root = await findProjectRoot();
     if (!root) {
-      out.error('Not in an EAI project.');
-      process.exit(1);
+      exitWithError(ErrorCode.E001, undefined, options.format);
     }
 
     const envVars = await loadEnvFile(root);
@@ -422,8 +436,7 @@ typesCommand
     const tenantId = options.tenantId || env.TENANT_DEFAULT_ID;
 
     if (!publicApiUrl || !tenantId) {
-      out.error('BASE_URL_PUBLIC_API and tenant ID required.');
-      process.exit(1);
+      exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format);
     }
 
     const spinner = ora('Fetching remote Object Types...').start();

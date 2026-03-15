@@ -15,6 +15,7 @@ import ora from 'ora';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import * as out from '../lib/output.js';
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 const exec = promisify(execFile);
 
@@ -31,11 +32,16 @@ envCommand
   .option('--env <environment>', 'Environment (dev, test, prod)', 'dev')
   .option('--label <label>', 'App Config label (defaults to app name)')
   .option('--include-secrets', 'Resolve Key Vault references', false)
+  .addHelpText('after', `
+Examples:
+  $ eai env pull
+  $ eai env pull --env prod --include-secrets
+  $ eai env pull --label trial-portal
+  `)
   .action(async (options) => {
     const root = await findProjectRoot();
     if (!root) {
-      out.error('Not in an EAI project. Run from a directory with src/eai.config/');
-      process.exit(1);
+      exitWithError(ErrorCode.E001);
     }
 
     // Determine label from existing env or flag
@@ -135,8 +141,7 @@ envCommand
   .action(async (options) => {
     const root = await findProjectRoot();
     if (!root) {
-      out.error('Not in an EAI project.');
-      process.exit(1);
+      exitWithError(ErrorCode.E001);
     }
 
     if (options.json) options.format = 'json';
@@ -184,16 +189,14 @@ envCommand
   .action(async (options) => {
     const root = await findProjectRoot();
     if (!root) {
-      out.error('Not in an EAI project.');
-      process.exit(1);
+      exitWithError(ErrorCode.E001);
     }
 
     const env = await loadEnvFile(root);
     const label = options.label || env.NEXT_PUBLIC_APP_NAME;
 
     if (!label) {
-      out.error('No label specified. Use --label or set NEXT_PUBLIC_APP_NAME in .env.local');
-      process.exit(1);
+      exitWithError(ErrorCode.E303, { field: '--label or NEXT_PUBLIC_APP_NAME' });
     }
 
     const keysToSync = options.key ? [options.key] : Object.keys(env);
