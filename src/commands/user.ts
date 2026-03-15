@@ -73,6 +73,7 @@ userCommand
       );
 
       if (result.message) {
+        out.info(result.message);
       }
     } catch (err) {
       provisionSpinner.fail(err instanceof Error ? err.message : String(err));

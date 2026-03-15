@@ -58,7 +58,8 @@ chatCommand
         process.exit(1);
       }
 
-      const data = await res.json();
+      const data = await res.json() as { response?: string; message?: string };
+      out.success(data.response || data.message || 'Chat completed');
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);

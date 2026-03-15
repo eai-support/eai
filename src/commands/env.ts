@@ -175,6 +175,7 @@ envCommand
         const displayValue = variables[key] === '[hidden]'
           ? chalk.dim('[hidden — use --show-secrets]')
           : variables[key];
+        out.info(`${chalk.cyan(key)} = ${displayValue}`);
       }
     }
   });

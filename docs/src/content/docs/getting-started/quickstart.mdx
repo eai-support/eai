@@ -241,6 +241,52 @@ eai doctor
 eai whoami
 ```
 
+## CLI Help System
+
+The EAI CLI provides comprehensive help at multiple levels:
+
+### Top-Level Help
+
+```bash
+eai --help
+```
+
+Shows all available commands with examples grouped by workflow:
+- **Getting Started** workflow (init, login, env pull, types seed, dev)
+- **Development Workflows** (types validate/seed, resources list/get)
+- **Deployment** workflow (deploy setup/trigger/status)
+- **Machine-Readable Output** examples (--format json, --describe)
+- **Accessibility** options (--simple, --no-color)
+
+### Command Help
+
+```bash
+eai resources --help
+eai resources list --help
+```
+
+Shows command-specific options and examples.
+
+### Programmatic Help
+
+For AI coding agents and automation:
+
+```bash
+eai --describe > cli-schema.json
+```
+
+Outputs complete JSON schema of CLI structure including all commands, options, and subcommands.
+
+### Global Options
+
+All commands support [global options](/reference/global-options/):
+- `--format json` — Machine-readable JSON output
+- `--simple` — Accessible plain text for screen readers
+- `--no-color` — Disable colored output
+- `--color` — Force colored output
+
+See [Global Options](/reference/global-options/) for details.
+
 ## Next steps
 
 - [Authentication](/eai-cli/getting-started/authentication/) -- understand the login flow and token management in detail

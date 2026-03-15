@@ -74,11 +74,11 @@ graph TB
 - [X] T019 Create `formatOutput(data: unknown, format: 'text' | 'json' | 'yaml')` helper in src/lib/output.ts
 
 **Verification**:
-- [ ] All output utility functions work correctly
-- [ ] TTY detection disables colors when piped
-- [ ] `NO_COLOR=1 eai types seed` shows no colors
-- [ ] `eai types seed --simple` shows text-only output
-- [ ] Unit tests for all output functions
+- [X] All output utility functions work correctly
+- [X] TTY detection disables colors when piped
+- [X] `NO_COLOR=1 eai types seed` shows no colors
+- [X] `eai types seed --simple` shows text-only output
+- [X] Unit tests for all output functions
 
 ---
 
@@ -105,27 +105,27 @@ graph TB
 
 ### Error Migration
 
-- [ ] T029 Catalog all existing error messages in src/commands/types.ts
-- [ ] T030 [P] Catalog all existing error messages in src/commands/resources.ts
-- [ ] T031 [P] Catalog all existing error messages in src/commands/tenant.ts
-- [ ] T032 [P] Catalog all existing error messages in src/commands/deploy.ts
-- [ ] T033 [P] Catalog all existing error messages in src/commands/env.ts
-- [ ] T034 [P] Catalog all existing error messages in src/commands/user.ts
-- [ ] T035 Replace error messages with error codes in src/commands/types.ts
-- [ ] T036 [P] Replace error messages with error codes in src/commands/resources.ts
-- [ ] T037 [P] Replace error messages with error codes in src/commands/tenant.ts
-- [ ] T038 [P] Replace error messages with error codes in src/commands/deploy.ts
-- [ ] T039 [P] Replace error messages with error codes in src/commands/env.ts
-- [ ] T040 [P] Replace error messages with error codes in src/commands/user.ts
-- [ ] T041 [P] Replace error messages with error codes in src/commands/chat.ts
-- [ ] T042 [P] Replace error messages with error codes in src/commands/docs.ts
-- [ ] T043 [P] Replace error messages with error codes in src/commands/verify.ts
+- [X] T029 Catalog all existing error messages in src/commands/types.ts
+- [X] T030 [P] Catalog all existing error messages in src/commands/resources.ts
+- [X] T031 [P] Catalog all existing error messages in src/commands/tenant.ts
+- [X] T032 [P] Catalog all existing error messages in src/commands/deploy.ts
+- [X] T033 [P] Catalog all existing error messages in src/commands/env.ts
+- [X] T034 [P] Catalog all existing error messages in src/commands/user.ts
+- [X] T035 Replace error messages with error codes in src/commands/types.ts
+- [X] T036 [P] Replace error messages with error codes in src/commands/resources.ts
+- [X] T037 [P] Replace error messages with error codes in src/commands/tenant.ts
+- [X] T038 [P] Replace error messages with error codes in src/commands/deploy.ts
+- [X] T039 [P] Replace error messages with error codes in src/commands/env.ts
+- [X] T040 [P] Replace error messages with error codes in src/commands/user.ts
+- [X] T041 [P] Replace error messages with error codes in src/commands/chat.ts
+- [X] T042 [P] Replace error messages with error codes in src/commands/docs.ts
+- [X] T043 [P] Replace error messages with error codes in src/commands/verify.ts
 
 **Verification**:
-- [ ] All error codes are unique and documented
-- [ ] Text errors show "Error code: EXXX" at the end
-- [ ] JSON errors include structured error object
-- [ ] Exit codes consistent (0=success, 1=error)
+- [X] All error codes are unique and documented
+- [X] Text errors show "Error code: EXXX" at the end
+- [X] JSON errors include structured error object
+- [X] Exit codes consistent (0=success, 1=error)
 
 ---
 
@@ -144,55 +144,55 @@ graph TB
 
 ### Types Commands JSON Output
 
-- [ ] T044 [US1] Implement `types seed --format json` output in src/commands/types.ts:164-165
-- [ ] T045 [P] [US1] Implement `types diff --format json` output in src/commands/types.ts
-- [ ] T046 [P] [US1] Implement `types pull --format json` output in src/commands/types.ts
+- [X] T044 [US1] Implement `types seed --format json` output in src/commands/types.ts:164-165
+- [X] T045 [P] [US1] Implement `types diff --format json` output in src/commands/types.ts
+- [X] T046 [P] [US1] Implement `types pull --format json` output in src/commands/types.ts
 
 ### Resources Commands JSON Output
 
-- [ ] T047 [P] [US1] Implement `resources list --format json` output in src/commands/resources.ts:70-71
-- [ ] T048 [P] [US1] Implement `resources get --format json` output in src/commands/resources.ts:111-113
-- [ ] T049 [P] [US1] Implement `resources query --format json` output in src/commands/resources.ts
-- [ ] T050 [P] [US1] Implement `resources schema --format json` output in src/commands/resources.ts:276
+- [X] T047 [P] [US1] Implement `resources list --format json` output in src/commands/resources.ts:70-71
+- [X] T048 [P] [US1] Implement `resources get --format json` output in src/commands/resources.ts:111-113
+- [X] T049 [P] [US1] Implement `resources query --format json` output in src/commands/resources.ts
+- [X] T050 [P] [US1] Implement `resources schema --format json` output in src/commands/resources.ts:276
 
 ### Deploy Commands JSON Output
 
-- [ ] T051 [P] [US1] Implement `deploy trigger --format json` output in src/commands/deploy.ts:119-120
-- [ ] T052 [P] [US1] Implement `deploy status --format json` output in src/commands/deploy.ts:171-180
+- [X] T051 [P] [US1] Implement `deploy trigger --format json` output in src/commands/deploy.ts:119-120
+- [X] T052 [P] [US1] Implement `deploy status --format json` output in src/commands/deploy.ts:171-180
 
 ### Tenant Commands JSON Output
 
-- [ ] T053 [P] [US1] Implement `tenant list --format json` output in src/commands/tenant.ts:44-45
-- [ ] T054 [P] [US1] Implement `tenant create --format json` output in src/commands/tenant.ts
-- [ ] T055 [P] [US1] Implement `tenant info --format json` output in src/commands/tenant.ts:129-130
+- [X] T053 [P] [US1] Implement `tenant list --format json` output in src/commands/tenant.ts:44-45
+- [X] T054 [P] [US1] Implement `tenant create --format json` output in src/commands/tenant.ts
+- [X] T055 [P] [US1] Implement `tenant info --format json` output in src/commands/tenant.ts:129-130
 
 ### Env Commands JSON Output
 
-- [ ] T056 [P] [US1] Implement `env list --format json` output in src/commands/env.ts
+- [X] T056 [P] [US1] Implement `env list --format json` output in src/commands/env.ts
 
 ### Format Flag Implementation (FR003)
 
-- [ ] T057 [US1] Add `--format <format>` option to all `types` commands in src/commands/types.ts
-- [ ] T058 [P] [US1] Add `--format <format>` option to all `resources` commands in src/commands/resources.ts
-- [ ] T059 [P] [US1] Add `--format <format>` option to all `deploy` commands in src/commands/deploy.ts
-- [ ] T060 [P] [US1] Add `--format <format>` option to all `tenant` commands in src/commands/tenant.ts
-- [ ] T061 [P] [US1] Add `--format <format>` option to all `env` commands in src/commands/env.ts
-- [ ] T062 [US1] Implement format validation (accept text/json/yaml, reject invalid) in src/lib/output.ts
-- [ ] T063 [US1] Alias existing `--json` flags to `--format json` for backward compatibility in all commands
+- [X] T057 [US1] Add `--format <format>` option to all `types` commands in src/commands/types.ts
+- [X] T058 [P] [US1] Add `--format <format>` option to all `resources` commands in src/commands/resources.ts
+- [X] T059 [P] [US1] Add `--format <format>` option to all `deploy` commands in src/commands/deploy.ts
+- [X] T060 [P] [US1] Add `--format <format>` option to all `tenant` commands in src/commands/tenant.ts
+- [X] T061 [P] [US1] Add `--format <format>` option to all `env` commands in src/commands/env.ts
+- [X] T062 [US1] Implement format validation (accept text/json/yaml, reject invalid) in src/lib/output.ts
+- [X] T063 [US1] Alias existing `--json` flags to `--format json` for backward compatibility in all commands
 
 ### JSON Mode Spinner Handling
 
-- [ ] T064 [US1] Disable `ora` spinners when `format === 'json'` in src/commands/types.ts
-- [ ] T065 [P] [US1] Disable `ora` spinners when `format === 'json'` in src/commands/resources.ts
-- [ ] T066 [P] [US1] Disable `ora` spinners when `format === 'json'` in src/commands/deploy.ts
-- [ ] T067 [P] [US1] Disable `ora` spinners when `format === 'json'` in src/commands/tenant.ts
+- [X] T064 [US1] Disable `ora` spinners when `format === 'json'` in src/commands/types.ts
+- [X] T065 [P] [US1] Disable `ora` spinners when `format === 'json'` in src/commands/resources.ts
+- [X] T066 [P] [US1] Disable `ora` spinners when `format === 'json'` in src/commands/deploy.ts
+- [X] T067 [P] [US1] Disable `ora` spinners when `format === 'json'` in src/commands/tenant.ts
 
 **Verification**:
-- [ ] US1-AC1: All commands support `--format json` flag
-- [ ] US1-AC2: JSON output is valid, parseable JSON with consistent schema
-- [ ] US1-AC3: Errors in JSON mode include error codes and structured details
-- [ ] US1-AC4: JSON output excludes progress indicators and ANSI codes
-- [ ] US1-AC5: Exit codes reliably indicate success (0) vs failure (1)
+- [X] US1-AC1: All commands support `--format json` flag
+- [X] US1-AC2: JSON output is valid, parseable JSON with consistent schema
+- [X] US1-AC3: Errors in JSON mode include error codes and structured details
+- [X] US1-AC4: JSON output excludes progress indicators and ANSI codes
+- [X] US1-AC5: Exit codes reliably indicate success (0) vs failure (1)
 
 ---
 
@@ -211,24 +211,24 @@ graph TB
 
 ### Schema Builder Infrastructure
 
-- [ ] T068 [US2] Create src/lib/schema-builder.ts with basic structure
-- [ ] T069 [US2] Implement `buildCommandSchema(command: Command): object` in src/lib/schema-builder.ts
-- [ ] T070 [P] [US2] Implement option type detection in src/lib/schema-builder.ts
-- [ ] T071 [P] [US2] Implement subcommand recursion in src/lib/schema-builder.ts
-- [ ] T072 [P] [US2] Add JSON Schema format output in src/lib/schema-builder.ts
+- [X] T068 [US2] Create src/lib/schema-builder.ts with basic structure
+- [X] T069 [US2] Implement `buildCommandSchema(command: Command): object` in src/lib/schema-builder.ts
+- [X] T070 [P] [US2] Implement option type detection in src/lib/schema-builder.ts
+- [X] T071 [P] [US2] Implement subcommand recursion in src/lib/schema-builder.ts
+- [X] T072 [P] [US2] Add JSON Schema format output in src/lib/schema-builder.ts
 
 ### Global Describe Flag
 
-- [ ] T073 [US2] Add global `--describe` flag handler to src/index.ts
-- [ ] T074 [US2] Hook `--describe` to intercept command execution in src/index.ts
-- [ ] T075 [US2] Output schema instead of executing when `--describe` is present in src/index.ts
+- [X] T073 [US2] Add global `--describe` flag handler to src/index.ts
+- [X] T074 [US2] Hook `--describe` to intercept command execution in src/index.ts
+- [X] T075 [US2] Output schema instead of executing when `--describe` is present in src/index.ts
 
 **Verification**:
-- [ ] US2-AC1: `--describe` flag outputs JSON schema for any command
-- [ ] US2-AC2: Schema includes parameter types, constraints, and defaults
-- [ ] US2-AC3: Help text is structured and machine-parseable
-- [ ] US2-AC4: Error messages include error codes for programmatic handling
-- [ ] US2-AC5: Commands are deterministic (same input → same output)
+- [X] US2-AC1: `--describe` flag outputs JSON schema for any command
+- [X] US2-AC2: Schema includes parameter types, constraints, and defaults
+- [X] US2-AC3: Help text is structured and machine-parseable
+- [X] US2-AC4: Error messages include error codes for programmatic handling
+- [X] US2-AC5: Commands are deterministic (same input → same output)
 
 ---
 
@@ -247,17 +247,17 @@ graph TB
 
 ### Accessibility Verification
 
-- [ ] T076 [US3] Verify all output utilities respect `--simple` flag in src/lib/output.ts
-- [ ] T077 [P] [US3] Verify TTY detection works correctly in piped scenarios
-- [ ] T078 [P] [US3] Test NO_COLOR environment variable support
-- [ ] T079 [P] [US3] Ensure all commands work without colors/symbols
+- [X] T076 [US3] Verify all output utilities respect `--simple` flag in src/lib/output.ts
+- [X] T077 [P] [US3] Verify TTY detection works correctly in piped scenarios
+- [X] T078 [P] [US3] Test NO_COLOR environment variable support
+- [X] T079 [P] [US3] Ensure all commands work without colors/symbols
 
 **Verification**:
-- [ ] US3-AC1: `--simple` mode provides plain text without colors/symbols
-- [ ] US3-AC2: Help text uses structural elements (headings, lists)
-- [ ] US3-AC3: Information is not conveyed by color alone
-- [ ] US3-AC4: Output utilities check for TTY and color support
-- [ ] US3-AC5: All commands work in text-only mode
+- [X] US3-AC1: `--simple` mode provides plain text without colors/symbols
+- [X] US3-AC2: Help text uses structural elements (headings, lists)
+- [X] US3-AC3: Information is not conveyed by color alone
+- [X] US3-AC4: Output utilities check for TTY and color support
+- [X] US3-AC5: All commands work in text-only mode
 
 ---
 
@@ -276,28 +276,28 @@ graph TB
 
 ### Examples Implementation
 
-- [ ] T080 [US4] Add examples to `types` commands using `.addHelpText('after', ...)` in src/commands/types.ts
-- [ ] T081 [P] [US4] Add examples to `resources` commands in src/commands/resources.ts
-- [ ] T082 [P] [US4] Add examples to `tenant` commands in src/commands/tenant.ts
-- [ ] T083 [P] [US4] Add examples to `deploy` commands in src/commands/deploy.ts
-- [ ] T084 [P] [US4] Add examples to `env` commands in src/commands/env.ts
-- [ ] T085 [P] [US4] Add examples to `user` commands in src/commands/user.ts
-- [ ] T086 [P] [US4] Add examples to `chat` commands in src/commands/chat.ts
-- [ ] T087 [P] [US4] Add examples to `docs` commands in src/commands/docs.ts
-- [ ] T088 [P] [US4] Add examples to `verify` commands in src/commands/verify.ts
+- [X] T080 [US4] Add examples to `types` commands using `.addHelpText('after', ...)` in src/commands/types.ts
+- [X] T081 [P] [US4] Add examples to `resources` commands in src/commands/resources.ts
+- [X] T082 [P] [US4] Add examples to `tenant` commands in src/commands/tenant.ts
+- [X] T083 [P] [US4] Add examples to `deploy` commands in src/commands/deploy.ts
+- [X] T084 [P] [US4] Add examples to `env` commands in src/commands/env.ts
+- [X] T085 [P] [US4] Add examples to `user` commands in src/commands/user.ts
+- [X] T086 [P] [US4] Add examples to `chat` commands in src/commands/chat.ts
+- [X] T087 [P] [US4] Add examples to `docs` commands in src/commands/docs.ts
+- [X] T088 [P] [US4] Add examples to `verify` commands in src/commands/verify.ts
 
 ### Help Footer Enhancement
 
-- [ ] T089 [US4] Create enhanced root help footer with "Getting Started" section in src/index.ts
-- [ ] T090 [P] [US4] Add "Development Workflow" section to help footer in src/index.ts
-- [ ] T091 [P] [US4] Add "Deployment" section to help footer in src/index.ts
-- [ ] T092 [P] [US4] Add pointers to `--examples` and `--describe` in help footer in src/index.ts
+- [X] T089 [US4] Create enhanced root help footer with "Getting Started" section in src/index.ts
+- [X] T090 [P] [US4] Add "Development Workflow" section to help footer in src/index.ts
+- [X] T091 [P] [US4] Add "Deployment" section to help footer in src/index.ts
+- [X] T092 [P] [US4] Add pointers to `--examples` and `--describe` in help footer in src/index.ts
 
 **Verification**:
-- [ ] US4-AC1: `--help` shows brief, scannable information
-- [ ] US4-AC2: `--examples` flag shows 2-5 practical usage examples
-- [ ] US4-AC3: Help footer includes common workflow patterns
-- [ ] US4-AC4: Error messages suggest related commands
+- [X] US4-AC1: `--help` shows brief, scannable information
+- [X] US4-AC2: `--examples` flag shows 2-5 practical usage examples
+- [X] US4-AC3: Help footer includes common workflow patterns
+- [X] US4-AC4: Error messages suggest related commands
 
 ---
 
@@ -316,16 +316,16 @@ graph TB
 
 ### Error Enhancement
 
-- [ ] T093 [US5] Verify all error codes include suggestions in src/lib/error-codes.ts
-- [ ] T094 [P] [US5] Add context interpolation to error messages in src/lib/error-codes.ts
-- [ ] T095 [P] [US5] Add related command suggestions to errors in src/lib/error-codes.ts
+- [X] T093 [US5] Verify all error codes include suggestions in src/lib/error-codes.ts
+- [X] T094 [P] [US5] Add context interpolation to error messages in src/lib/error-codes.ts
+- [X] T095 [P] [US5] Add related command suggestions to errors in src/lib/error-codes.ts
 
 **Verification**:
-- [ ] US5-AC1: All errors include structured error codes (E001-E399)
-- [ ] US5-AC2: Error messages state the problem and provide a solution
-- [ ] US5-AC3: Errors show the failing input when relevant
-- [ ] US5-AC4: Error codes are categorized (Project, Auth, Platform, Validation)
-- [ ] US5-AC5: Errors link to docs/troubleshooting when appropriate
+- [X] US5-AC1: All errors include structured error codes (E001-E399)
+- [X] US5-AC2: Error messages state the problem and provide a solution
+- [X] US5-AC3: Errors show the failing input when relevant
+- [X] US5-AC4: Error codes are categorized (Project, Auth, Platform, Validation)
+- [X] US5-AC5: Errors link to docs/troubleshooting when appropriate
 
 ---
 
@@ -335,58 +335,58 @@ graph TB
 
 ### Unit Tests
 
-- [ ] T096 Create tests/unit/output.test.ts with tests for all output functions
-- [ ] T097 [P] Test TTY detection logic in tests/unit/output.test.ts
-- [ ] T098 [P] Test color mode detection in tests/unit/output.test.ts
-- [ ] T099 [P] Test `--simple` mode in tests/unit/output.test.ts
-- [ ] T100 [P] Test table formatting and alignment in tests/unit/output.test.ts
+- [X] T096 Create tests/unit/output.test.ts with tests for all output functions
+- [X] T097 [P] Test TTY detection logic in tests/unit/output.test.ts
+- [X] T098 [P] Test color mode detection in tests/unit/output.test.ts
+- [X] T099 [P] Test `--simple` mode in tests/unit/output.test.ts
+- [X] T100 [P] Test table formatting and alignment in tests/unit/output.test.ts
 
-- [ ] T101 Create tests/unit/error-codes.test.ts with error formatting tests
-- [ ] T102 [P] Test error code uniqueness in tests/unit/error-codes.test.ts
-- [ ] T103 [P] Test error context interpolation in tests/unit/error-codes.test.ts
-- [ ] T104 [P] Test exit code consistency in tests/unit/error-codes.test.ts
+- [X] T101 Create tests/unit/error-codes.test.ts with error formatting tests
+- [X] T102 [P] Test error code uniqueness in tests/unit/error-codes.test.ts
+- [X] T103 [P] Test error context interpolation in tests/unit/error-codes.test.ts
+- [X] T104 [P] Test exit code consistency in tests/unit/error-codes.test.ts
 
-- [ ] T105 Create tests/unit/schema-builder.test.ts with schema generation tests
-- [ ] T106 [P] Test option type detection in tests/unit/schema-builder.test.ts
-- [ ] T107 [P] Test subcommand recursion in tests/unit/schema-builder.test.ts
-- [ ] T108 [P] Test JSON Schema validity in tests/unit/schema-builder.test.ts
+- [X] T105 Create tests/unit/schema-builder.test.ts with schema generation tests
+- [X] T106 [P] Test option type detection in tests/unit/schema-builder.test.ts
+- [X] T107 [P] Test subcommand recursion in tests/unit/schema-builder.test.ts
+- [X] T108 [P] Test JSON Schema validity in tests/unit/schema-builder.test.ts
 
 ### Integration Tests
 
-- [ ] T109 Create tests/integration/json-output.test.ts
-- [ ] T110 [P] Test `types seed --format json` in tests/integration/json-output.test.ts
-- [ ] T111 [P] Test `resources list --format json` in tests/integration/json-output.test.ts
-- [ ] T112 [P] Test `tenant list --format json` in tests/integration/json-output.test.ts
-- [ ] T113 [P] Verify JSON parseability in tests/integration/json-output.test.ts
-- [ ] T114 [P] Verify no ANSI codes in JSON output in tests/integration/json-output.test.ts
+- [X] T109 Create tests/integration/json-output.test.ts
+- [X] T110 [P] Test `types seed --format json` in tests/integration/json-output.test.ts
+- [X] T111 [P] Test `resources list --format json` in tests/integration/json-output.test.ts
+- [X] T112 [P] Test `tenant list --format json` in tests/integration/json-output.test.ts
+- [X] T113 [P] Verify JSON parseability in tests/integration/json-output.test.ts
+- [X] T114 [P] Verify no ANSI codes in JSON output in tests/integration/json-output.test.ts
 
-- [ ] T115 Create tests/integration/format-flag.test.ts
-- [ ] T116 [P] Test `--format text` vs `--format json` in tests/integration/format-flag.test.ts
-- [ ] T117 [P] Test invalid format values in tests/integration/format-flag.test.ts
-- [ ] T118 [P] Test backward compatibility with `--json` in tests/integration/format-flag.test.ts
+- [X] T115 Create tests/integration/format-flag.test.ts
+- [X] T116 [P] Test `--format text` vs `--format json` in tests/integration/format-flag.test.ts
+- [X] T117 [P] Test invalid format values in tests/integration/format-flag.test.ts
+- [X] T118 [P] Test backward compatibility with `--json` in tests/integration/format-flag.test.ts
 
-- [ ] T119 Create tests/integration/describe-flag.test.ts
-- [ ] T120 [P] Test `eai --describe` output in tests/integration/describe-flag.test.ts
-- [ ] T121 [P] Test `eai types seed --describe` output in tests/integration/describe-flag.test.ts
-- [ ] T122 [P] Verify schema accuracy in tests/integration/describe-flag.test.ts
+- [X] T119 Create tests/integration/describe-flag.test.ts
+- [X] T120 [P] Test `eai --describe` output in tests/integration/describe-flag.test.ts
+- [X] T121 [P] Test `eai types seed --describe` output in tests/integration/describe-flag.test.ts
+- [X] T122 [P] Verify schema accuracy in tests/integration/describe-flag.test.ts
 
-- [ ] T123 Create tests/integration/examples.test.ts
-- [ ] T124 [P] Verify examples are shown with `--examples` in tests/integration/examples.test.ts
-- [ ] T125 [P] Verify examples are valid commands in tests/integration/examples.test.ts
+- [X] T123 Create tests/integration/examples.test.ts
+- [X] T124 [P] Verify examples are shown with `--examples` in tests/integration/examples.test.ts
+- [X] T125 [P] Verify examples are valid commands in tests/integration/examples.test.ts
 
 ### Performance Testing
 
-- [ ] T126 Measure help text generation time (baseline vs. enhanced)
-- [ ] T127 [P] Measure JSON formatting overhead
-- [ ] T128 [P] Measure schema introspection time
-- [ ] T129 [P] Verify no performance regression
+- [X] T126 Measure help text generation time (baseline vs. enhanced)
+- [X] T127 [P] Measure JSON formatting overhead
+- [X] T128 [P] Measure schema introspection time
+- [X] T129 [P] Verify no performance regression
 
 **Verification**:
-- [ ] All unit tests pass
-- [ ] All integration tests pass
-- [ ] Test coverage ≥ 80% for new code
-- [ ] No performance regression
-- [ ] All user stories have test coverage
+- [X] All unit tests pass
+- [X] All integration tests pass
+- [X] Test coverage ≥ 80% for new code
+- [X] No performance regression
+- [X] All user stories have test coverage
 
 ---
 
@@ -396,33 +396,33 @@ graph TB
 
 ### Documentation Updates
 
-- [ ] T130 Update CLI documentation for `--format` flag in docs/
-- [ ] T131 [P] Document `--describe` flag usage in docs/
-- [ ] T132 [P] Document `--examples` flag usage in docs/
-- [ ] T133 [P] Document `--simple` mode for accessibility in docs/
-- [ ] T134 Create error codes reference page at docs/reference/error-codes.md
-- [ ] T135 [P] Create machine-readable output guide at docs/guides/machine-readable-output.md
-- [ ] T136 [P] Create accessibility features guide at docs/guides/accessibility.md
-- [ ] T137 Update README.md with new features section
+- [X] T130 Update CLI documentation for `--format` flag in docs/
+- [X] T131 [P] Document `--describe` flag usage in docs/
+- [X] T132 [P] Document `--examples` flag usage in docs/
+- [X] T133 [P] Document `--simple` mode for accessibility in docs/
+- [X] T134 Create error codes reference page at docs/reference/error-codes.md
+- [X] T135 [P] Create machine-readable output guide at docs/guides/machine-readable-output.md
+- [X] T136 [P] Create accessibility features guide at docs/guides/accessibility.md
+- [X] T137 Update README.md with new features section
 
 ### Code Comments
 
-- [ ] T138 Add inline comments to output formatting logic in src/lib/output.ts
-- [ ] T139 [P] Add comments to error code catalog in src/lib/error-codes.ts
-- [ ] T140 [P] Add comments to schema builder algorithm in src/lib/schema-builder.ts
+- [X] T138 Add inline comments to output formatting logic in src/lib/output.ts
+- [X] T139 [P] Add comments to error code catalog in src/lib/error-codes.ts
+- [X] T140 [P] Add comments to schema builder algorithm in src/lib/schema-builder.ts
 
 ### Final Polish
 
-- [ ] T141 Review all error messages for clarity
-- [ ] T142 [P] Review all help text for consistency
-- [ ] T143 [P] Review all examples for accuracy
-- [ ] T144 [P] Fix any formatting inconsistencies
+- [X] T141 Review all error messages for clarity
+- [X] T142 [P] Review all help text for consistency
+- [X] T143 [P] Review all examples for accuracy
+- [X] T144 [P] Fix any formatting inconsistencies
 
 **Verification**:
-- [ ] Documentation is complete and accurate
-- [ ] All examples in docs are tested and work
-- [ ] Error codes are fully documented
-- [ ] Code comments are helpful
+- [X] Documentation is complete and accurate
+- [X] All examples in docs are tested and work
+- [X] Error codes are fully documented
+- [X] Code comments are helpful
 
 ---
 
