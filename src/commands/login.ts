@@ -11,7 +11,7 @@ import * as out from '../lib/output.js';
 // Default CIAM tenant for EAI platform
 const DEFAULT_TENANT_NAME = 'eaidevmyentepriseai';
 const DEFAULT_TENANT_ID = '50808ce0-f31b-4fd0-9861-74b83b8c112a';
-const DEFAULT_SCOPE = 'openid profile email offline_access';
+const DEFAULT_SCOPE = 'openid profile email offline_access api://32191e63-e253-48de-9ea1-a5337e236fe6/access_as_user';
 
 export const loginCommand = new Command('login')
   .description('Authenticate with Entra CIAM')
