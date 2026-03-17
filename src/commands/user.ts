@@ -80,3 +80,44 @@ userCommand
       process.exit(1);
     }
   });
+
+// ─── eai user provision-me ────────────────────────────────────────────────────
+
+userCommand
+  .command('provision-me')
+  .description('Provision yourself to a tenant (for first-time setup)')
+  .requiredOption('--tenant <id>', 'Tenant ID to provision yourself to')
+  .action(async (options) => {
+    const root = await findProjectRoot();
+    if (!root) { exitWithError(ErrorCode.E001); }
+
+    const envVars = await loadEnvFile(root);
+    const env = { ...envVars, ...process.env };
+    const publicApiUrl = env.BASE_URL_PUBLIC_API;
+    if (!publicApiUrl) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' }); }
+
+    const client = new PlatformAPIClient(publicApiUrl, options.tenant);
+
+    const provisionSpinner = ora(`Provisioning you to tenant ${options.tenant}...`).start();
+
+    try {
+      const provisionRes = await client.provisionMe();
+      if (!provisionRes.ok) {
+        const body = await provisionRes.text();
+        provisionSpinner.fail(`Provisioning failed: ${provisionRes.status}: ${body}`);
+        process.exit(1);
+      }
+
+      const result = await provisionRes.json() as { success?: boolean; message?: string; user?: unknown };
+      provisionSpinner.succeed(
+        `Successfully provisioned to tenant ${chalk.cyan(options.tenant)}`,
+      );
+
+      if (result.message) {
+        out.info(result.message);
+      }
+    } catch (err) {
+      provisionSpinner.fail(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });

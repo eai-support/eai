@@ -3,7 +3,7 @@ id: "cli-help-enhancement"
 title: "CLI Help System Enhancement"
 status: "draft"
 created: "2026-03-15T11:35:00Z"
-updated: "2026-03-15"
+updated: "2026-03-16"
 priority: "medium"
 assignee: "engineer-agent"
 ---

@@ -1,9 +1,9 @@
 {
-  "timestamp": 1773555862541,
+  "timestamp": 1773631552056,
   "specId": "",
   "taskId": "current",
   "sections": {
-    "memories": "# Relevant Memories\n\n## General Memories\n\n### auto_decision\n**Tags**: #auto, #stage-unknown, #loading_decision\n\n[loading_decision] Loading decision: memory loaded — Loaded 0 memories by priority (0 considered)\n\n### auto_decision\n**Tags**: #auto, #stage-unknown, #loading_decision\n\n[loading_decision] Loading decision: memory loaded — Loaded 1 memories by priority (1 considered) (53 tokens)\n"
+    "memories": "# Relevant Memories\n\n## General Memories\n\n### auto_decision\n**Tags**: #auto, #stage-unknown, #loading_decision\n\n[loading_decision] Loading decision: memory loaded — Loaded 0 memories by priority (0 considered)\n\n### auto_decision\n**Tags**: #auto, #stage-unknown, #loading_decision\n\n[loading_decision] Loading decision: memory loaded — Loaded 1 memories by priority (1 considered) (53 tokens)\n\n### auto_decision\n**Tags**: #auto, #stage-unknown, #loading_decision\n\n[loading_decision] Loading decision: memory loaded — Loaded 2 memories by priority (2 considered) (98 tokens)\n\n### auto_decision\n**Tags**: #auto, #stage-unknown, #loading_decision\n\n[loading_decision] Loading decision: memory loaded — Loaded 3 memories by priority (3 considered) (143 tokens)\n\n### auto_decision\n**Tags**: #auto, #stage-unknown, #loading_decision\n\n[loading_decision] Loading decision: memory loaded — Loaded 4 memories by priority (4 considered) (189 tokens)\n\n### auto_decision\n**Tags**: #auto, #stage-unknown, #loading_decision\n\n[loading_decision] Loading decision: memory loaded — Loaded 5 memories by priority (5 considered) (234 tokens)\n\n### auto_decision\n**Tags**: #auto, #stage-unknown, #loading_decision\n\n[loading_decision] Loading decision: memory loaded — Loaded 6 memories by priority (6 considered) (280 tokens)\n\n### auto_decision\n**Tags**: #auto, #stage-unknown, #loading_decision\n\n[loading_decision] Loading decision: memory loaded — Loaded 7 memories by priority (7 considered) (325 tokens)\n"
   },
   "memoryCoverage": {
     "coveredKeywords": [],
@@ -12,7 +12,7 @@
       "ses"
     ],
     "coveragePercent": 0,
-    "memoriesLoaded": 2,
+    "memoriesLoaded": 8,
     "researchLoadedForGaps": false,
     "researchTriggers": []
   },
@@ -20,11 +20,11 @@
     "stage": "implement",
     "usage": {
       "research": 0,
-      "memory": 98,
+      "memory": 371,
       "constitution": 0,
       "code": 0,
-      "conversation": 0,
-      "total": 98
+      "conversation": 143,
+      "total": 514
     },
     "limits": {
       "research": 12000,
