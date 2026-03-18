@@ -43,6 +43,18 @@ eai types seed
 eai dev
 ```
 
+## Global Flags
+
+All commands support these global flags:
+
+| Flag | Description |
+|------|-------------|
+| `--simple` | Plain text output without colors or symbols (for screen readers) |
+| `--no-color` | Disable colored output |
+| `--color` | Force colored output (for testing) |
+| `--describe` | Output JSON schema of command structure (for AI agents) |
+| `--format <format>` | Output format: `text` (default), `json`, or `yaml` |
+
 ## Commands
 
 ### Scaffolding
@@ -59,6 +71,8 @@ eai dev
 | `eai login` | Authenticate with Entra CIAM (device code flow) |
 | `eai logout` | Clear stored tokens |
 | `eai whoami` | Show auth status and project context |
+| `eai user list` | List users in current tenant |
+| `eai user info <id>` | Show user details |
 
 ### Environment
 
@@ -137,6 +151,62 @@ eai deploy trigger ─────────────────→ GitHub
 ```
 
 The CLI authenticates via device code flow, stores tokens locally in `~/.eai/`, and calls the platform API directly with a Bearer token. All platform internals are abstracted away.
+
+## Error Codes
+
+The CLI uses structured error codes for consistent error handling:
+
+- **E001-E099**: Project errors (not in EAI project, config missing)
+- **E100-E199**: Auth errors (not logged in, token expired)
+- **E200-E299**: Platform errors (API unreachable, resource not found)
+- **E300-E399**: Validation errors (invalid schema, missing field)
+
+Example error output:
+
+```
+✗ Not logged in
+
+Run `eai login` to authenticate with the platform
+
+Error code: E101
+```
+
+JSON format (for automation):
+
+```json
+{
+  "error": {
+    "code": "E101",
+    "message": "Not logged in",
+    "suggestion": "Run `eai login` to authenticate with the platform",
+    "exitCode": 1
+  }
+}
+```
+
+## Machine-Readable Output
+
+All commands that return structured data support `--format json` for automation:
+
+```bash
+# Get JSON output
+eai resources list User --format json
+
+# Parse with jq
+eai tenant list --format json | jq '.[] | .name'
+
+# Use in scripts
+if eai verify --format json | jq -e '.healthy' > /dev/null; then
+  echo "Platform is healthy"
+fi
+```
+
+The `--describe` flag outputs the CLI command structure as JSON Schema, enabling AI agents and automation tools to discover capabilities at runtime:
+
+```bash
+eai --describe        # Describe all commands
+eai types --describe  # Describe types subcommands
+```
 
 ## Development
 
