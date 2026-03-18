@@ -13,7 +13,42 @@
 
 ## Project Structure
 
-Standard Node.js project layout. Source in `src/`, tests alongside or in `tests/`.
+```
+eai-cli/
+├── src/
+│   ├── index.ts                 # Entry point, Commander.js program
+│   ├── commands/                # 14 command files
+│   │   ├── init.ts              # Scaffold new vertical
+│   │   ├── dev.ts               # Local dev server
+│   │   ├── login.ts             # Auth (login/logout)
+│   │   ├── whoami.ts            # Auth status
+│   │   ├── user.ts              # User management
+│   │   ├── env.ts               # Environment config
+│   │   ├── types.ts             # Object Type management
+│   │   ├── resources.ts         # CRUD operations
+│   │   ├── tenant.ts            # Tenant management
+│   │   ├── chat.ts              # AI chat workflows
+│   │   ├── docs.ts              # Document operations
+│   │   ├── deploy.ts            # Deployment
+│   │   ├── verify.ts            # Platform checks (verify/doctor)
+│   │   └── update.ts            # CLI updates
+│   └── lib/                     # 9 library modules
+│       ├── api.ts               # PlatformAPIClient
+│       ├── auth.ts              # Entra CIAM auth
+│       ├── config.ts            # Config loader
+│       ├── error-codes.ts       # Error code system
+│       ├── output.ts            # Output utilities
+│       ├── schema-builder.ts    # CLI schema introspection
+│       └── update-check.ts      # Update checker
+├── docs/                        # Astro/Starlight docs site (93 pages)
+├── .specify/                    # Gofer pipeline specs
+│   └── specs/
+│       └── cli-help-enhancement/
+├── package.json                 # @eai-tools/cli
+├── tsconfig.json                # TypeScript strict ESM
+├── CLAUDE.md                    # Workflow instructions
+└── AGENTS.md                    # This file
+```
 
 ## Code Style
 
@@ -25,6 +60,67 @@ Standard Node.js project layout. Source in `src/`, tests alongside or in `tests/
 - Prefer `unknown` over `any`; use proper type narrowing
 - Use `readonly` for properties that should not be reassigned
 - Prefer interfaces over type aliases for object shapes
+
+### CLI Patterns
+
+**Command Structure** (Commander.js):
+```typescript
+import { Command } from 'commander';
+
+export const myCommand = new Command('my-command')
+  .description('Brief description')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--simple', 'Plain text output for screen readers')
+  .action(async (options) => {
+    // Command logic
+  });
+```
+
+**Error Handling**:
+```typescript
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
+
+// Exit with structured error
+exitWithError(ErrorCode.E101); // Not logged in
+
+// Exit with context interpolation
+exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' });
+
+// Exit with format awareness
+exitWithError(ErrorCode.E201, { url: apiUrl }, options.format);
+```
+
+**Output Utilities**:
+```typescript
+import { success, error, warn, info, symbols } from '../lib/output.js';
+
+success('Operation completed');           // ✓ Operation completed
+error('Something went wrong');            // ✗ Something went wrong
+warn('Deprecation warning');              // ⚠ Deprecation warning
+info('Additional context');               // → Additional context
+
+// Respects --simple flag (ERROR: Something went wrong)
+// Respects --no-color flag (no ANSI codes)
+// Detects TTY automatically
+```
+
+**API Calls**:
+```typescript
+import { createAPIClient } from '../lib/api.js';
+import { getToken } from '../lib/auth.js';
+
+const token = await getToken();
+const client = createAPIClient(token);
+const result = await client.get('/v3/object-types');
+```
+
+**Config Loading**:
+```typescript
+import { loadConfig } from '../lib/config.js';
+
+const config = await loadConfig();
+// Returns: { env vars from .env.local, eai.config.ts exports }
+```
 
 ## Testing
 
