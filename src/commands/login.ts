@@ -11,8 +11,8 @@ import * as out from '../lib/output.js';
 const DEFAULT_TENANT_NAME = 'eaidevmyentepriseai';
 const DEFAULT_TENANT_ID = '50808ce0-f31b-4fd0-9861-74b83b8c112a';
 const DEFAULT_SCOPE = 'openid profile email offline_access api://32191e63-e253-48de-9ea1-a5337e236fe6/access_as_user';
-// EAI CLI first-party App Registration (public client — replace placeholder before shipping)
-const DEFAULT_CLIENT_ID = 'EAI_CLI_CLIENT_ID_PLACEHOLDER';
+// EAI CLI first-party App Registration (public client — 'EAI CLI - Developer Tools')
+const DEFAULT_CLIENT_ID = 'c3c10ee2-aeeb-4a64-8eea-5ca43a3252af';
 
 export const loginCommand = new Command('login')
   .description('Authenticate with Entra CIAM')
