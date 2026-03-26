@@ -23,6 +23,7 @@ interface StoredTokens {
   tenantName: string;
   clientId: string;
   upn?: string;
+  oid?: string;
 }
 
 interface DeviceCodeResponse {
@@ -78,7 +79,12 @@ export async function loadTokens(): Promise<StoredTokens | null> {
   try {
     const encrypted = await readFile(TOKENS_FILE, 'utf-8');
     const decrypted = decrypt(encrypted);
-    return JSON.parse(decrypted);
+    const tokens: StoredTokens = JSON.parse(decrypted);
+    // Backfill oid from JWT if missing (tokens stored before this field was added)
+    if (!tokens.oid && tokens.accessToken) {
+      tokens.oid = parseJwtClaim(tokens.accessToken, 'oid') || undefined;
+    }
+    return tokens;
   } catch {
     return null;
   }
@@ -190,6 +196,7 @@ export async function deviceCodeLogin(
         tenantName,
         clientId,
         upn: parseJwtClaim(token.access_token, 'preferred_username') || undefined,
+        oid: parseJwtClaim(token.access_token, 'oid') || undefined,
       };
       await storeTokens(stored);
       return stored;
@@ -242,6 +249,7 @@ async function refreshAccessToken(tokens: StoredTokens): Promise<StoredTokens | 
     tenantName: tokens.tenantName,
     clientId: tokens.clientId,
     upn: parseJwtClaim(data.access_token, 'preferred_username') || tokens.upn,
+    oid: parseJwtClaim(data.access_token, 'oid') || tokens.oid,
   };
 }
 
