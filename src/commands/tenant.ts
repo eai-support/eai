@@ -6,6 +6,12 @@ import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
+
+const DEFAULT_API_URL = 'https://dev-api.myenterprise.ai/public';
+
+function resolveApiUrl(env: Record<string, string | undefined>): string {
+  return env.BASE_URL_PUBLIC_API || DEFAULT_API_URL;
+}
 import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
@@ -27,15 +33,12 @@ Examples:
   $ eai tenant list --format json | jq '.tenants[] | .name'
   `)
   .action(async (options) => {
-    const root = await findProjectRoot();
-    if (!root) { exitWithError(ErrorCode.E001); }
-
     if (options.json) options.format = 'json';
 
-    const envVars = await loadEnvFile(root);
+    const root = await findProjectRoot();
+    const envVars = root ? await loadEnvFile(root) : {};
     const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    if (!publicApiUrl) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' }); }
+    const publicApiUrl = resolveApiUrl(env);
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
     const spinner = options.format === 'json' ? null : ora('Fetching tenants...').start();
@@ -74,15 +77,12 @@ tenantCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (id, options) => {
-    const root = await findProjectRoot();
-    if (!root) { exitWithError(ErrorCode.E001); }
-
     if (options.json) options.format = 'json';
 
-    const envVars = await loadEnvFile(root);
+    const root = await findProjectRoot();
+    const envVars = root ? await loadEnvFile(root) : {};
     const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    if (!publicApiUrl) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' }); }
+    const publicApiUrl = resolveApiUrl(env);
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
     const spinner = options.format === 'json' ? null : ora('Fetching tenant...').start();
@@ -119,15 +119,12 @@ tenantCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
-    const root = await findProjectRoot();
-    if (!root) { exitWithError(ErrorCode.E001); }
-
     if (options.json) options.format = 'json';
 
-    const envVars = await loadEnvFile(root);
+    const root = await findProjectRoot();
+    const envVars = root ? await loadEnvFile(root) : {};
     const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    if (!publicApiUrl) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' }); }
+    const publicApiUrl = resolveApiUrl(env);
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
     const spinner = options.format === 'json' ? null : ora(`Creating tenant "${options.name}"...`).start();
