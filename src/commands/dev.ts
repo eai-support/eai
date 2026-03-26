@@ -60,13 +60,6 @@ export const devCommand = new Command('dev')
         out.warn('BASE_URL_PUBLIC_API not set. API calls will fail.');
       }
 
-      // Check auth config
-      if (env.ENTRA_CLIENT_ID && env.ENTRA_TENANT_ID) {
-        out.success(`Auth configured for tenant ${chalk.dim(env.ENTRA_TENANT_ID)}`);
-      } else {
-        out.warn('Entra auth not configured. Login will not work.');
-      }
-
       out.blank();
     }
 

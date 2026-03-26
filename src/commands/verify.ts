@@ -167,7 +167,7 @@ export const doctorCommand = new Command('doctor')
 
     // 3. Required env vars
     const envVars = await loadEnvFile(root);
-    const required = ['BASE_URL_PUBLIC_API', 'ENTRA_TENANT_ID', 'ENTRA_CLIENT_ID', 'AUTH_SECRET'];
+    const required = ['BASE_URL_PUBLIC_API', 'ENTRA_TENANT_ID', 'AUTH_SECRET'];
     for (const key of required) {
       const value = envVars[key] || process.env[key];
       if (!value || value.startsWith('<')) {

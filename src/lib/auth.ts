@@ -159,7 +159,10 @@ export async function deviceCodeLogin(
 
   const deviceCode: DeviceCodeResponse = await deviceCodeRes.json();
 
-  // Display message to user
+  // Display the verification URL and user code so the user knows where to authenticate
+  if (deviceCode.message) {
+  } else {
+  }
 
   // Step 2: Poll for token
   const pollInterval = (deviceCode.interval || 5) * 1000;

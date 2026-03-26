@@ -21,7 +21,7 @@ export interface EAIProjectConfig {
   entra: {
     tenantName: string;
     tenantId: string;
-    clientId: string;
+    clientId?: string;
   };
 }
 
@@ -229,7 +229,6 @@ export async function resolveProjectConfig(projectRoot: string): Promise<EAIProj
     entra: {
       tenantName: env.ENTRA_TENANT_NAME || '',
       tenantId: env.ENTRA_TENANT_ID || '',
-      clientId: env.ENTRA_CLIENT_ID || '',
     },
   };
 }
