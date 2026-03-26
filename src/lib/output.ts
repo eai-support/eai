@@ -90,6 +90,9 @@ export function table(rows: Array<[string, string]>): void {
   const maxLabel = Math.max(...rows.map(([label]) => label.length));
   for (const [label, value] of rows) {
     const paddedLabel = label.padEnd(maxLabel);
+    if (useColor && !simpleMode) {
+    } else {
+    }
   }
 }
 
