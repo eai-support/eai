@@ -6,15 +6,16 @@ import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
+import { PlatformAPIClient } from '../lib/api.js';
+import { loadTokens } from '../lib/auth.js';
+import * as out from '../lib/output.js';
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 const DEFAULT_API_URL = 'https://dev-api.myenterprise.ai/public';
 
 function resolveApiUrl(env: Record<string, string | undefined>): string {
   return env.BASE_URL_PUBLIC_API || DEFAULT_API_URL;
 }
-import { PlatformAPIClient } from '../lib/api.js';
-import * as out from '../lib/output.js';
-import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 export const tenantCommand = new Command('tenant')
   .description('Manage tenants on the platform');
@@ -35,6 +36,9 @@ Examples:
   .action(async (options) => {
     if (options.json) options.format = 'json';
 
+    const tokens = await loadTokens();
+    if (!tokens?.oid) { exitWithError(ErrorCode.E101); return; }
+
     const root = await findProjectRoot();
     const envVars = root ? await loadEnvFile(root) : {};
     const env = { ...envVars, ...process.env };
@@ -44,24 +48,36 @@ Examples:
     const spinner = options.format === 'json' ? null : ora('Fetching tenants...').start();
 
     try {
-      const res = await client.listTenants(options.parent);
+      const res = await client.getCurrentUser(tokens.oid);
       if (!res.ok) {
         if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
         process.exit(1);
       }
 
-      const data = await res.json() as { docs: Array<{ id: string; name: string; slug: string; domain?: string[] }> };
+      interface TenantEntry {
+        tenant: { id: string; displayName: string; slug: string; domain?: string; isActive: boolean };
+        roleAssignments: Array<{ baseRole: string; displayName: string }>;
+      }
+      const user = await res.json() as { tenants?: TenantEntry[] };
+      const tenants = (user.tenants || []).filter(t => t.tenant?.isActive !== false);
+
+      // Filter by parent if requested
+      const filtered = options.parent
+        ? tenants.filter(t => t.tenant.id === options.parent)
+        : tenants;
 
       if (options.format === 'json') {
-        out.json({ tenants: data.docs, count: data.docs.length });
+        out.json({ tenants: filtered.map(t => ({ ...t.tenant, roles: t.roleAssignments.map(r => r.baseRole) })), count: filtered.length });
         return;
       }
 
-      spinner!.succeed(`${data.docs.length} tenants`);
+      spinner!.succeed(`${filtered.length} tenant${filtered.length !== 1 ? 's' : ''}`);
 
-      for (const tenant of data.docs) {
-        const domains = tenant.domain?.length ? chalk.dim(` [${tenant.domain.join(', ')}]`) : '';
-        out.info(`${chalk.cyan(tenant.slug)} — ${tenant.name}${domains}`);
+      for (const entry of filtered) {
+        const { tenant, roleAssignments } = entry;
+        const roles = roleAssignments.length ? chalk.dim(` [${roleAssignments.map(r => r.baseRole).join(', ')}]`) : '';
+        const domain = tenant.domain ? chalk.dim(` (${tenant.domain})`) : '';
+        out.info(`${chalk.cyan(tenant.slug)} — ${tenant.displayName}${domain}${roles}`);
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));

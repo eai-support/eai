@@ -231,6 +231,10 @@ export class PlatformAPIClient {
 
   // --------------- Users ---------------
 
+  async getCurrentUser(_oid?: string): Promise<Response> {
+    return this._route('payload', '/custom-users/me', 'GET');
+  }
+
   async provisionMe(): Promise<Response> {
     return fetch(`${this.baseUrl}/v3/users/provisionme`, {
       method: 'POST',
@@ -248,10 +252,5 @@ export class PlatformAPIClient {
     if (userOid) body.user_oid = userOid;
     return this._route('payload', '/custom-users/provisionme', 'POST', body);
   }
-
-  async getCurrentUser(): Promise<Response> {
-    return fetch(`${this.baseUrl}/v3/auth/me`, {
-      headers: await this.headers(),
-    });
-  }
 }
+
