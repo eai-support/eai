@@ -264,8 +264,6 @@ BASE_URL_PUBLIC_API=https://test-api.myenterprise.ai
 # =============================================================================
 ENTRA_TENANT_NAME=eaidevmyentepriseai
 ENTRA_TENANT_ID=50808ce0-f31b-4fd0-9861-74b83b8c112a
-ENTRA_CLIENT_ID=<your-app-client-id>
-ENTRA_CLIENT_SECRET=<your-app-client-secret>
 ENTRA_SCOPES="email offline_access openid profile"
 
 # =============================================================================

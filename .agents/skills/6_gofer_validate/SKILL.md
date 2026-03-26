@@ -1,7 +1,23 @@
 ---
-description:
-  Validate implementation with 10-category engineering rubric (100 points)
+name: 6_gofer_validate
+description: Validate implementation with 10-category engineering rubric (100 points)
+arguments:
+  - name: feature
+    description: Feature name or description
+    required: false
+result_schema:
+  type: object
+  properties:
+    output:
+      type: string
+      description: Path to generated artifact or execution summary
+    status:
+      type: string
+      enum:
+        - success
+        - error
 ---
+
 
 # Gofer Validate
 
@@ -24,11 +40,11 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 This command expects in `.specify/specs/{feature}/`:
 
-- `research.md` - Codebase analysis (from /1_gofer_research)
-- `spec.md` - Feature specification (from /2_gofer_specify)
-- `plan.md` - Implementation plan (from /3_gofer_plan)
-- `tasks.md` - Task breakdown (from /4_gofer_tasks)
-- Implemented code (from /5_gofer_implement)
+- `research.md` - Codebase analysis (from $ $1)
+- `spec.md` - Feature specification (from $ $1)
+- `plan.md` - Implementation plan (from $ $1)
+- `tasks.md` - Task breakdown (from $ $1)
+- Implemented code (from $ $1)
 
 ---
 
@@ -98,7 +114,7 @@ Before starting validation, assess context window health:
 
 - If **< 50%**: Proceed normally
 - If **50-70%**: Use sub-agents heavily, minimize main context
-- If **> 70%**: Run `/7_gofer_save`, start new session, run `/8_gofer_resume`
+- If **> 70%**: Run `$ $1`, start new session, run `$ $1`
 
 Validation loads all artifacts and spawns 6 agents — context pressure is high.
 
@@ -134,24 +150,15 @@ Validation loads all artifacts and spawns 6 agents — context pressure is high.
 
 ## Step 2: Spawn 6 Specialist Validation Agents
 
-### Execution Strategy by Platform
-
-**Claude Code CLI**: Launch all 6 agents **in parallel** using the Task tool.
-Fastest execution (~45-60s total).
-
-**GitHub Copilot Chat (2026+)**: If multi-agent delegation is available, spawn 6
-parallel validation tasks. Check Copilot release notes for this capability.
-
-**GitHub Copilot Chat (2025 and earlier)**: Perform validations inline
-sequentially — run each validation check one at a time and collect findings
-(~90s+ total). See "Legacy Workflow" section for detailed sequential process.
-
-Each agent description below explains what to check.
+**CRITICAL**: You **MUST** launch all 6 agents **in parallel** using the Task
+tool. Do NOT perform validation work inline in the main context. The main
+context should only orchestrate, score the rubric, and review agent outputs.
+Each agent receives the feature context and returns structured findings.
 
 ### Agent 1: Correctness Validator
 
 ```
-Task: subagent_type="validation-correctness", model="sonnet"
+**Note**: Codex CLI does not support the Task tool. For parallel agent work, open multiple Codex CLI sessions and run the validation-correctness analysis in each., model="sonnet"
 Prompt: "Validate functional correctness for feature [FEATURE_NAME].
 
 Feature directory: {FEATURE_DIR}
@@ -166,7 +173,7 @@ Return findings in your standard report format (<2000 tokens)."
 ### Agent 2: Security Validator
 
 ```
-Task: subagent_type="validation-security", model="sonnet"
+**Note**: Codex CLI does not support the Task tool. For parallel agent work, open multiple Codex CLI sessions and run the validation-security analysis in each., model="sonnet"
 Prompt: "Validate security posture for feature [FEATURE_NAME].
 
 Scan all new/modified files (from tasks.md file paths).
@@ -177,7 +184,7 @@ Return findings with Red/Yellow/Gray severity (<2000 tokens)."
 ### Agent 3: Performance Validator
 
 ```
-Task: subagent_type="validation-performance", model="haiku"
+**Note**: Codex CLI does not support the Task tool. For parallel agent work, open multiple Codex CLI sessions and run the validation-performance analysis in each., model="haiku"
 Prompt: "Validate performance characteristics for feature [FEATURE_NAME].
 
 Scan all new/modified source files (from tasks.md file paths).
@@ -189,7 +196,7 @@ Return findings with complexity scores (<2000 tokens)."
 ### Agent 4: Test Quality Validator
 
 ```
-Task: subagent_type="validation-test-quality", model="haiku"
+**Note**: Codex CLI does not support the Task tool. For parallel agent work, open multiple Codex CLI sessions and run the validation-test-quality analysis in each., model="haiku"
 Prompt: "Validate test quality for feature [FEATURE_NAME].
 
 Scan test files related to the feature.
@@ -201,7 +208,7 @@ Return findings with mock ratio calculation (<2000 tokens)."
 ### Agent 5: Integration Validator
 
 ```
-Task: subagent_type="validation-integration", model="sonnet"
+**Note**: Codex CLI does not support the Task tool. For parallel agent work, open multiple Codex CLI sessions and run the validation-integration analysis in each., model="sonnet"
 Prompt: "Validate integration contracts for feature [FEATURE_NAME].
 
 Feature directory: {FEATURE_DIR}
@@ -213,7 +220,7 @@ Return findings with contract compliance status (<2000 tokens)."
 ### Agent 6: Standards Validator
 
 ```
-Task: subagent_type="validation-standards", model="sonnet"
+**Note**: Codex CLI does not support the Task tool. For parallel agent work, open multiple Codex CLI sessions and run the validation-standards analysis in each., model="sonnet"
 Prompt: "Validate standards compliance for feature [FEATURE_NAME].
 
 Feature directory: {FEATURE_DIR}
@@ -231,23 +238,23 @@ strategy (#13):
 
 ```
 # Diverge: 3 attack perspectives
-Task: subagent_type="validate-security-red-team", model="sonnet"
+**Note**: Codex CLI does not support the Task tool. For parallel agent work, open multiple Codex CLI sessions and run the validate-security-red-team analysis in each., model="sonnet"
 Prompt: "Perspective 1: OWASP Top 10 attack analysis for feature [FEATURE_NAME].
 Scan all new/modified files from tasks.md. Attack from OWASP perspective.
 Return findings with exploit steps (<2000 tokens)."
 
-Task: subagent_type="validate-security-red-team", model="sonnet"
+**Note**: Codex CLI does not support the Task tool. For parallel agent work, open multiple Codex CLI sessions and run the validate-security-red-team analysis in each., model="sonnet"
 Prompt: "Perspective 2: Business logic abuse analysis for feature [FEATURE_NAME].
 Scan all new/modified files from tasks.md. Attack business logic.
 Return findings with exploit steps (<2000 tokens)."
 
-Task: subagent_type="validate-security-red-team", model="sonnet"
+**Note**: Codex CLI does not support the Task tool. For parallel agent work, open multiple Codex CLI sessions and run the validate-security-red-team analysis in each., model="sonnet"
 Prompt: "Perspective 3: CVE search for feature [FEATURE_NAME].
 Check package.json dependencies for known CVEs.
 Return findings with advisory references (<2000 tokens)."
 
 # Converge: Judge synthesizes attack findings
-Task: subagent_type="multi-perspective-judge", model="opus"
+**Note**: Codex CLI does not support the Task tool. For parallel agent work, open multiple Codex CLI sessions and run the multi-perspective-judge analysis in each., model="opus"
 Prompt: "Synthesize 3 security red team perspectives for [FEATURE_NAME].
 Perspective 1 (OWASP): [result]. Perspective 2 (Business Logic): [result].
 Perspective 3 (CVE): [result].
@@ -656,15 +663,6 @@ has_ui: [true/false]
 Proceed to **Step 12: Attribution Logging** then **Step 13: Memory Update
 Check**.
 
-## Next Steps (Manual Chaining — Copilot Chat)
-
-After completing validation with a PASS, run the engineering review stage:
-
-```
-/6a_gofer_engineering_review
-```
-
-This performs post-implementation cross-checking with iterative fix cycles.
 
 ### If TOTAL < 100: FAIL
 
@@ -758,7 +756,7 @@ Output the routing instruction:
   REMEDIATION REQUIRED: [feature-name]
   Failed categories: [list]
   Iteration: [N] of 3
-  Route: /5_gofer_implement → focused on [failed areas]
+  Route: $ $1 → focused on [failed areas]
 
 ════════════════════════════════════════════════════════════════
 ```
@@ -963,6 +961,18 @@ This also logs quality metrics (rubric scores, finding counts) to:
 `.specify/logs/quality-metrics.jsonl`
 
 ---
+
+
+
+## Pipeline Continuation
+
+This completes the 6_gofer_validate stage. To continue the Gofer pipeline:
+
+**Next Command:** `$ $6a_gofer_engineering_review`
+
+The next stage will use the artifacts generated by this command and continue the implementation workflow.
+
+**Note:** Codex CLI does not support automatic command chaining. You must manually run each stage command to progress through the pipeline.
 
 ## Key Rules
 
