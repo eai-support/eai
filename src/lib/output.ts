@@ -6,21 +6,11 @@ import chalk from 'chalk';
 
 // TTY and color detection
 function shouldUseColor(): boolean {
-  // Check NO_COLOR environment variable
-  if (process.env.NO_COLOR) {
-    return false;
-  }
-
-  // Check FORCE_COLOR environment variable
-  if (process.env.FORCE_COLOR) {
-    return true;
-  }
-
-  // Check if stdout is a TTY
+  if (process.env.NO_COLOR) return false;
+  if (process.env.FORCE_COLOR) return true;
   return process.stdout.isTTY ?? false;
 }
 
-// Simple mode detection (will be set by global flag)
 let simpleMode = false;
 
 export function setSimpleMode(enabled: boolean): void {
@@ -48,9 +38,7 @@ export const symbols = {
 
 export function success(msg: string): void {
   if (simpleMode) {
-    console.log(`SUCCESS: ${msg}`);
   } else {
-    console.log(`${symbols.success} ${msg}`);
   }
 }
 
@@ -72,25 +60,19 @@ export function warn(msg: string): void {
 
 export function info(msg: string): void {
   if (simpleMode) {
-    console.log(`-> ${msg}`);
   } else {
-    console.log(`${symbols.info} ${chalk.dim(msg)}`);
   }
 }
 
 export function heading(msg: string): void {
   if (useColor && !simpleMode) {
-    console.log(chalk.bold(msg));
   } else {
-    console.log(msg);
   }
 }
 
 export function dim(msg: string): void {
   if (useColor && !simpleMode) {
-    console.log(chalk.dim(msg));
   } else {
-    console.log(msg);
   }
 }
 
@@ -99,29 +81,23 @@ export function table(rows: Array<[string, string]>): void {
   for (const [label, value] of rows) {
     const paddedLabel = label.padEnd(maxLabel);
     if (useColor && !simpleMode) {
-      console.log(`  ${chalk.dim(paddedLabel)}  ${value}`);
     } else {
-      console.log(`  ${paddedLabel}  ${value}`);
     }
   }
 }
 
 export function blank(): void {
-  console.log('');
 }
 
 export function json(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
 }
 
 export function formatOutput(data: unknown, format: 'text' | 'json' | 'yaml'): void {
   if (format === 'json') {
     json(data);
   } else if (format === 'yaml') {
-    // YAML support is P2 - not implemented yet
     throw new Error('YAML format not yet supported. Use --format json or --format text');
   } else {
-    // text format - caller handles formatting
     throw new Error('formatOutput with text format should not be called - caller handles text formatting');
   }
 }

@@ -10,7 +10,7 @@ import * as out from '../lib/output.js';
 // Default CIAM tenant for EAI platform
 const DEFAULT_TENANT_NAME = 'eaidevmyentepriseai';
 const DEFAULT_TENANT_ID = '50808ce0-f31b-4fd0-9861-74b83b8c112a';
-const DEFAULT_SCOPE = 'openid profile email offline_access api://32191e63-e253-48de-9ea1-a5337e236fe6/access_as_user';
+const DEFAULT_SCOPE = 'openid profile email offline_access api://32191e63-e253-48de-9ea1-a5337e236fe6/access_token';
 // EAI CLI first-party App Registration (public client — 'EAI CLI - Developer Tools')
 const DEFAULT_CLIENT_ID = 'c3c10ee2-aeeb-4a64-8eea-5ca43a3252af';
 
