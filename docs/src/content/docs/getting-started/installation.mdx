@@ -53,6 +53,14 @@ Choose the installation method that works best for your workflow.
     <Aside type="tip">
       You only need to configure `.npmrc` once. After that, `npm install`, `npm update`, and semver ranges all work as normal.
     </Aside>
+
+    If you are validating the generated registry from a local checkout of this repo, install the tarball directly:
+
+    ```bash
+    npm install -g ./docs/public/registry/-/@eai-tools/cli-latest.tgz
+    ```
+
+    `docs/public/registry/@eai-tools/cli` is the registry metadata file used by npm clients. It is not an installable package directory.
   </TabItem>
 
   <TabItem label="npm from GitHub">

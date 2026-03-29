@@ -102,9 +102,12 @@ function main() {
   // 8. Copy tarball to registry
   const registryTarballDir = path.join(REGISTRY_DIR, '-', SCOPE);
   const registryTarballPath = path.join(registryTarballDir, `cli-${version}.tgz`);
+  const registryLatestTarballPath = path.join(registryTarballDir, 'cli-latest.tgz');
   fs.mkdirSync(registryTarballDir, { recursive: true });
   fs.copyFileSync(tarballPath, registryTarballPath);
+  fs.copyFileSync(tarballPath, registryLatestTarballPath);
   console.log(`  ✓ Copied tarball: ${registryTarballPath}`);
+  console.log(`  ✓ Updated latest tarball alias: ${registryLatestTarballPath}`);
 
   // 9. Generate version listing HTML
   generateVersionListing(packument);
@@ -210,7 +213,10 @@ function generateVersionListing(packument) {
 echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
 
 # 2. Install the CLI globally
-npm install -g @eai-tools/cli</code></pre>
+npm install -g @eai-tools/cli
+
+# Local repo checkout smoke test
+npm install -g ./docs/public/registry/-/@eai-tools/cli-latest.tgz</code></pre>
 
   <h2>Versions</h2>
   <table>

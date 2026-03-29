@@ -19,6 +19,16 @@ const require = createRequire(import.meta.url);
 const pkg = require('../../package.json') as { version: string };
 
 const REGISTRY_URL = 'https://eai-tools.github.io/eai-cli/registry';
+const REGISTRY_FLAG = `--@eai-tools:registry=${REGISTRY_URL}`;
+
+export function buildUpdateInstallArgs(version: string): string[] {
+  return [
+    'install',
+    '-g',
+    `@eai-tools/cli@${version}`,
+    REGISTRY_FLAG,
+  ];
+}
 
 export const updateCommand = new Command('update')
   .description('Check for and install CLI updates')
@@ -49,20 +59,16 @@ export const updateCommand = new Command('update')
 
     const installSpinner = ora(`Installing @eai-tools/cli@${latest}...`).start();
     try {
-      await exec('npm', [
-        'install', '-g',
-        `@eai-tools/cli@${latest}`,
-        '--registry', REGISTRY_URL,
-      ]);
+      await exec('npm', buildUpdateInstallArgs(latest));
       installSpinner.succeed(`Updated to ${chalk.green(latest)}`);
     } catch (err) {
       installSpinner.fail('Update failed.');
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes('EACCES') || message.includes('permission')) {
-        out.info(`Try with sudo: ${chalk.cyan(`sudo npm install -g @eai-tools/cli@${latest} --registry ${REGISTRY_URL}`)}`);
+        out.info(`Try with sudo: ${chalk.cyan(`sudo npm ${buildUpdateInstallArgs(latest).join(' ')}`)}`);
       } else {
         out.error(message);
-        out.info(`Manual install: ${chalk.cyan(`npm install -g @eai-tools/cli@${latest} --registry ${REGISTRY_URL}`)}`);
+        out.info(`Manual install: ${chalk.cyan(`npm ${buildUpdateInstallArgs(latest).join(' ')}`)}`);
       }
       process.exit(1);
     }

@@ -4,12 +4,23 @@
 
 import chalk from 'chalk';
 
+// TTY and color detection
 function shouldUseColor(): boolean {
-  if (process.env.NO_COLOR) return false;
-  if (process.env.FORCE_COLOR) return true;
+  // Check NO_COLOR environment variable
+  if (process.env.NO_COLOR) {
+    return false;
+  }
+
+  // Check FORCE_COLOR environment variable
+  if (process.env.FORCE_COLOR) {
+    return true;
+  }
+
+  // Check if stdout is a TTY
   return process.stdout.isTTY ?? false;
 }
 
+// Simple mode detection (will be set by global flag)
 let simpleMode = false;
 
 export function setSimpleMode(enabled: boolean): void {
@@ -37,52 +48,46 @@ export const symbols = {
 
 export function success(msg: string): void {
   if (simpleMode) {
-    return;
+  } else {
   }
-
 }
 
 export function error(msg: string): void {
   if (simpleMode) {
     console.error(`ERROR: ${msg}`);
-    return;
+  } else {
+    console.error(`${symbols.error} ${msg}`);
   }
-
-  console.error(`${symbols.error} ${msg}`);
 }
 
 export function warn(msg: string): void {
   if (simpleMode) {
     console.warn(`WARNING: ${msg}`);
-    return;
+  } else {
+    console.warn(`${symbols.warning} ${msg}`);
   }
-
-  console.warn(`${symbols.warning} ${msg}`);
 }
 
 export function info(msg: string): void {
   if (simpleMode) {
-    return;
+  } else {
   }
-
 }
 
 export function heading(msg: string): void {
   if (useColor && !simpleMode) {
-    return;
+  } else {
   }
-
 }
 
 export function dim(msg: string): void {
   if (useColor && !simpleMode) {
-    return;
+  } else {
   }
-
 }
 
 export function table(rows: Array<[string, string]>): void {
-  const maxLabel = Math.max(...rows.map(([label]) => label.length), 0);
+  const maxLabel = Math.max(...rows.map(([label]) => label.length));
   for (const [label, value] of rows) {
     const paddedLabel = label.padEnd(maxLabel);
     if (useColor && !simpleMode) {
@@ -100,12 +105,9 @@ export function json(data: unknown): void {
 export function formatOutput(data: unknown, format: 'text' | 'json' | 'yaml'): void {
   if (format === 'json') {
     json(data);
-    return;
-  }
-
-  if (format === 'yaml') {
+  } else if (format === 'yaml') {
     throw new Error('YAML format not yet supported. Use --format json or --format text');
+  } else {
+    throw new Error('formatOutput with text format should not be called - caller handles text formatting');
   }
-
-  throw new Error('formatOutput with text format should not be called - caller handles text formatting');
 }
