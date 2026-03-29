@@ -18,6 +18,14 @@ Then install globally:
 npm install -g @eai-tools/cli
 ```
 
+If you are validating the generated registry from a local checkout of this repo, install the tarball instead of the packument file:
+
+```bash
+npm install -g ./docs/public/registry/-/@eai-tools/cli-latest.tgz
+```
+
+`docs/public/registry/@eai-tools/cli` is the registry metadata file. It is not an installable package directory.
+
 ## Quick Start
 
 ```bash

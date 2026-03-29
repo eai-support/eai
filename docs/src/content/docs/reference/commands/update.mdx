@@ -11,7 +11,7 @@ eai update [--check]
 
 ## Description
 
-`eai update` checks the EAI package registry for the latest version and installs it globally. It performs a live registry check (not cached) and runs `npm install -g @eai-tools/cli@latest` using the EAI GitHub Pages registry.
+`eai update` checks the EAI package registry for the latest version and installs it globally. It performs a live registry check (not cached) and runs `npm install -g @eai-tools/cli@latest --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry`.
 
 The CLI also performs automatic background update checks on every invocation. When a newer version is detected, a notification banner is printed after the command output. This background check is cached for 24 hours and is skipped in CI environments, when `NO_UPDATE_NOTIFIER=1` is set, or when output is not a TTY.
 
@@ -67,7 +67,7 @@ eai update
 ```
 ✔ Update available: 0.1.2 → 0.2.0
 ✖ Update failed.
-→ Try with sudo: sudo npm install -g @eai-tools/cli@0.2.0 --registry https://eai-tools.github.io/eai-cli/registry
+→ Try with sudo: sudo npm install -g @eai-tools/cli@0.2.0 --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
 ```
 
 ## Automatic update notifications
@@ -99,4 +99,3 @@ This command supports all [global CLI options](/reference/global-options/):
 - `--color` — Force colors
 
 See [Global Options](/reference/global-options/) for details.
-
