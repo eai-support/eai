@@ -27,7 +27,7 @@ eai update --check                     # Check without installing
 ```bash
 eai init my-app                        # Scaffold new vertical
 cd my-app
-eai login                              # Authenticate (device code flow)
+eai login                              # Authenticate (browser PKCE flow)
 eai env pull                           # Sync cloud config → .env.local
 eai types validate                     # Check Object Types
 eai types seed                         # Push types to platform
@@ -58,7 +58,7 @@ eai deploy status                      # Last 5 deployment runs
 ## Auth
 
 ```bash
-eai login                              # Login (device code)
+eai login                              # Login (browser sign-in)
 eai logout                             # Clear stored tokens
 eai whoami                             # Show current user + token expiry
 ```

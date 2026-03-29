@@ -49,7 +49,7 @@ program
 
     // Handle --describe flag (output schema and exit)
     if (opts.describe) {
-      const schema = describeProgram(program);
+      describeProgram(program);
       process.exit(0);
     }
 
@@ -131,7 +131,7 @@ ${chalk.bold('Accessibility:')}
 
 // Handle --describe before parsing (needs to work without command)
 if (process.argv.includes('--describe')) {
-  const schema = describeProgram(program);
+  describeProgram(program);
   process.exit(0);
 }
 

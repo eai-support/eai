@@ -1,6 +1,6 @@
 ---
 title: eai login / eai logout
-description: Authenticate with Entra CIAM using the device code flow
+description: Authenticate with Entra CIAM using browser-based authorization code flow with PKCE
 ---
 
 ## Synopsis
@@ -12,13 +12,7 @@ eai logout
 
 ## Description
 
-`eai login` authenticates you with Microsoft Entra CIAM using the device code flow. The CLI displays a URL and a code, then opens your default browser. After you sign in and enter the code, the CLI stores tokens locally in `~/.eai/` for subsequent commands.
-
-The client ID is resolved in the following order:
-
-1. `--client-id` flag
-2. `ENTRA_CLIENT_ID` in the project's `.env.local`
-3. `ENTRA_CLIENT_ID` environment variable
+`eai login` authenticates you with Microsoft Entra CIAM using browser-based authorization code flow with PKCE. The CLI opens your default browser, waits for the localhost callback, and stores tokens locally in `~/.eai/` for subsequent commands.
 
 `eai logout` clears all stored authentication tokens from `~/.eai/`.
 
@@ -30,7 +24,6 @@ The client ID is resolved in the following order:
 |--------|-------------|---------|
 | `--tenant-name <name>` | CIAM tenant name | `eaidevmyentepriseai` |
 | `--tenant-id <id>` | CIAM tenant ID | `50808ce0-f31b-4fd0-9861-74b83b8c112a` |
-| `--client-id <id>` | App registration client ID. Required if not set in `.env.local` or environment. | -- |
 | `--scope <scope>` | OAuth scopes | `openid profile email offline_access` |
 | `-h, --help` | Display help for the command. | -- |
 
@@ -40,7 +33,7 @@ No options. Clears all stored tokens from `~/.eai/`.
 
 ## Examples
 
-### Log in (client ID from .env.local)
+### Log in
 
 ```bash
 eai login
@@ -49,19 +42,10 @@ eai login
 ```
 Authenticating with Entra CIAM
   Tenant: eaidevmyentepriseai
-  Client: a1b2c3d4-...
-
-To sign in, use a web browser to open https://microsoft.com/devicelogin
-and enter the code ABCD-EFGH to authenticate.
+  Opening your browser to complete sign-in...
 
 ✔ Authenticated as jane.doe@example.com
   Token expires: 3/10/2026, 2:30:00 PM
-```
-
-### Log in with explicit client ID
-
-```bash
-eai login --client-id a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
 ### Log in to a different tenant
@@ -107,4 +91,3 @@ This command supports all [global CLI options](/reference/global-options/):
 - `--color` — Force colors
 
 See [Global Options](/reference/global-options/) for details.
-

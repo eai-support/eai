@@ -1,5 +1,6 @@
 /**
- * Authentication module — Entra CIAM device code flow + token storage.
+ * Authentication module — Entra CIAM browser auth (authorization code + PKCE)
+ * plus token storage/refresh.
  *
  * Tokens are stored in a local file (~/.eai/tokens.json) with encryption.
  * For production, this would use OS keychain via keytar, but we avoid
@@ -9,7 +10,10 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { createServer } from 'node:http';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
+import { URL } from 'node:url';
+import type { AddressInfo } from 'node:net';
 
 const EAI_DIR = join(homedir(), '.eai');
 const TOKENS_FILE = join(EAI_DIR, 'tokens.json');
@@ -26,20 +30,27 @@ interface StoredTokens {
   oid?: string;
 }
 
-interface DeviceCodeResponse {
-  device_code: string;
-  user_code: string;
-  verification_uri: string;
-  expires_in: number;
-  interval: number;
-  message: string;
-}
-
 interface TokenResponse {
   access_token: string;
   refresh_token?: string;
   expires_in: number;
   token_type: string;
+}
+
+interface BrowserLoginResult {
+  code: string;
+  state: string;
+}
+
+interface PkceValues {
+  codeVerifier: string;
+  codeChallenge: string;
+}
+
+interface CallbackServer {
+  redirectUri: string;
+  waitForResult: Promise<BrowserLoginResult>;
+  close: () => Promise<void>;
 }
 
 function getEncryptionKey(): Buffer {
@@ -137,87 +148,225 @@ export async function getAccessToken(): Promise<string | null> {
   return null;
 }
 
+function buildStoredTokens(
+  token: TokenResponse,
+  tenantId: string,
+  tenantName: string,
+  clientId: string,
+): StoredTokens {
+  return {
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token,
+    expiresAt: Date.now() + token.expires_in * 1000,
+    tenantId,
+    tenantName,
+    clientId,
+    upn: parseJwtClaim(token.access_token, 'preferred_username') || undefined,
+    oid: parseJwtClaim(token.access_token, 'oid') || undefined,
+  };
+}
+
+function base64UrlEncode(buffer: Buffer): string {
+  return buffer
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function generatePkce(): PkceValues {
+  const codeVerifier = base64UrlEncode(randomBytes(32));
+  const codeChallenge = base64UrlEncode(createHash('sha256').update(codeVerifier).digest());
+  return { codeVerifier, codeChallenge };
+}
+
+function pickOpenCommand(url: string): { command: string; args: string[] } {
+  if (process.platform === 'darwin') return { command: 'open', args: [url] };
+  if (process.platform === 'win32') return { command: 'cmd', args: ['/c', 'start', '', url] };
+  return { command: 'xdg-open', args: [url] };
+}
+
+async function openBrowser(url: string): Promise<void> {
+  const { spawn } = await import('node:child_process');
+  const opener = pickOpenCommand(url);
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(opener.command, opener.args, { stdio: 'ignore' });
+    child.on('error', reject);
+    child.on('close', code => {
+      if (code === 0) resolve();
+      else reject(new Error(`Failed to open browser (exit code ${code ?? 'unknown'})`));
+    });
+  });
+}
+
+async function startBrowserCallbackServer(timeoutMs: number): Promise<CallbackServer> {
+  const server = createServer();
+  let closed = false;
+  let settled = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  let resolveResult!: (value: BrowserLoginResult) => void;
+  let rejectResult!: (reason?: Error) => void;
+
+  const waitForResult = new Promise<BrowserLoginResult>((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
+  });
+
+  const close = async (): Promise<void> => {
+    if (closed) return;
+    closed = true;
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      server.close(err => {
+        if (err) reject(err);
+        else resolve();
+      });
+    }).catch(() => undefined);
+  };
+
+  server.on('request', (req, res) => {
+    const baseUrl = 'http://localhost';
+    const reqUrl = new URL(req.url || '/', baseUrl);
+    const code = reqUrl.searchParams.get('code');
+    const state = reqUrl.searchParams.get('state');
+    const error = reqUrl.searchParams.get('error');
+    const errorDescription = reqUrl.searchParams.get('error_description');
+
+    if (error) {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Login failed. Return to the terminal.');
+      if (!settled) {
+        settled = true;
+        rejectResult(new Error(`Authorization failed: ${error} — ${errorDescription || 'no description'}`));
+        void close();
+      }
+      return;
+    }
+
+    if (!code || !state) {
+      res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Missing code/state in callback. Please retry login.');
+      return;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Login successful. Return to the terminal.');
+
+    if (!settled) {
+      settled = true;
+      resolveResult({ code, state });
+      void close();
+    }
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, 'localhost', () => {
+      server.off('error', reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    await close();
+    throw new Error('Unable to determine local callback port.');
+  }
+
+  timer = setTimeout(() => {
+    if (!settled) {
+      settled = true;
+      rejectResult(new Error('Timed out waiting for browser authentication callback.'));
+      void close();
+    }
+  }, timeoutMs);
+
+  server.on('error', err => {
+    if (!settled) {
+      settled = true;
+      rejectResult(err instanceof Error ? err : new Error(String(err)));
+      void close();
+    }
+  });
+
+  return {
+    redirectUri: `http://localhost:${(address as AddressInfo).port}`,
+    waitForResult,
+    close,
+  };
+}
+
 /**
- * Initiate device code flow for Entra CIAM authentication.
+ * Initiate browser-based authorization code flow with PKCE for Entra CIAM.
  */
-export async function deviceCodeLogin(
+export async function browserLogin(
   tenantName: string,
   tenantId: string,
   clientId: string,
   scope: string,
 ): Promise<StoredTokens> {
   const authority = `https://${tenantName}.ciamlogin.com/${tenantId}`;
+  const state = base64UrlEncode(randomBytes(16));
+  const { codeVerifier, codeChallenge } = generatePkce();
 
-  // Step 1: Request device code
-  const deviceCodeRes = await fetch(`${authority}/oauth2/v2.0/devicecode`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: clientId,
-      scope,
-    }),
-  });
+  const callbackServer = await startBrowserCallbackServer(300_000);
+  try {
+    const authorizeUrl = new URL(`${authority}/oauth2/v2.0/authorize`);
+    authorizeUrl.searchParams.set('client_id', clientId);
+    authorizeUrl.searchParams.set('response_type', 'code');
+    authorizeUrl.searchParams.set('redirect_uri', callbackServer.redirectUri);
+    authorizeUrl.searchParams.set('response_mode', 'query');
+    authorizeUrl.searchParams.set('scope', scope);
+    authorizeUrl.searchParams.set('state', state);
+    authorizeUrl.searchParams.set('code_challenge', codeChallenge);
+    authorizeUrl.searchParams.set('code_challenge_method', 'S256');
 
-  if (!deviceCodeRes.ok) {
-    const text = await deviceCodeRes.text();
-    throw new Error(`Device code request failed: ${deviceCodeRes.status} ${text}`);
-  }
+    try {
+      await openBrowser(authorizeUrl.toString());
+    } catch (err) {
+      throw new Error(
+        `Failed to open browser automatically. Open this URL manually: ${authorizeUrl.toString()}`,
+        { cause: err },
+      );
+    }
 
-  const deviceCode: DeviceCodeResponse = await deviceCodeRes.json();
-
-  // Display the verification URL and user code so the user knows where to authenticate
-
-  // Step 2: Poll for token
-  const pollInterval = (deviceCode.interval || 5) * 1000;
-  const deadline = Date.now() + deviceCode.expires_in * 1000;
-
-  while (Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, pollInterval));
+    const result = await callbackServer.waitForResult;
+    if (result.state !== state) {
+      throw new Error('State mismatch in authentication callback. Please retry login.');
+    }
 
     const tokenRes = await fetch(`${authority}/oauth2/v2.0/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         client_id: clientId,
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-        device_code: deviceCode.device_code,
+        grant_type: 'authorization_code',
+        code: result.code,
+        redirect_uri: callbackServer.redirectUri,
+        code_verifier: codeVerifier,
+        scope,
       }),
     });
 
     const tokenData = await tokenRes.json();
-
-    if (tokenRes.ok) {
-      const token = tokenData as TokenResponse;
-      const stored: StoredTokens = {
-        accessToken: token.access_token,
-        refreshToken: token.refresh_token,
-        expiresAt: Date.now() + token.expires_in * 1000,
-        tenantId,
-        tenantName,
-        clientId,
-        upn: parseJwtClaim(token.access_token, 'preferred_username') || undefined,
-        oid: parseJwtClaim(token.access_token, 'oid') || undefined,
-      };
-      await storeTokens(stored);
-      return stored;
+    if (!tokenRes.ok) {
+      const error = tokenData?.error || 'token_exchange_failed';
+      const description = tokenData?.error_description || 'No description provided';
+      throw new Error(`Token exchange failed: ${error} — ${description}`);
     }
 
-    // authorization_pending means keep polling
-    if (tokenData.error === 'authorization_pending') {
-      continue;
-    }
-
-    // slow_down means increase interval
-    if (tokenData.error === 'slow_down') {
-      await new Promise(r => setTimeout(r, 5000));
-      continue;
-    }
-
-    // Any other error is fatal
-    throw new Error(`Token request failed: ${tokenData.error} — ${tokenData.error_description}`);
+    const stored = buildStoredTokens(tokenData as TokenResponse, tenantId, tenantName, clientId);
+    await storeTokens(stored);
+    return stored;
+  } finally {
+    await callbackServer.close();
   }
-
-  throw new Error('Device code flow timed out. Please try again.');
 }
 
 /**

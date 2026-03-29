@@ -5,7 +5,7 @@ description: Configure redirect URIs and authentication for local development wi
 
 import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
 
-When you run `eai dev`, the CLI starts a local Next.js development server. The CLI itself authenticates via device code flow (no redirect URI needed), but the **web application** running in the browser uses a redirect-based authentication flow that requires localhost to be registered as a redirect URI in your Azure app registration.
+When you run `eai dev`, the CLI starts a local Next.js development server. Both the CLI and the **web application** running in the browser rely on redirect-based authentication, so localhost callback URLs must be registered correctly in your Azure app registration.
 
 ## Two authentication flows
 

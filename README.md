@@ -68,7 +68,7 @@ All commands support these global flags:
 
 | Command | Description |
 |---------|-------------|
-| `eai login` | Authenticate with Entra CIAM (device code flow) |
+| `eai login` | Authenticate with Entra CIAM (browser-based PKCE flow) |
 | `eai logout` | Clear stored tokens |
 | `eai whoami` | Show auth status and project context |
 | `eai user list` | List users in current tenant |
@@ -134,6 +134,7 @@ All commands support these global flags:
 | Command | Description |
 |---------|-------------|
 | `eai verify` | Run platform connectivity checks |
+| `eai verify calls` | Audit platform API contracts used by the CLI |
 | `eai doctor` | Comprehensive diagnostics with fix suggestions |
 
 ## Architecture
@@ -141,7 +142,7 @@ All commands support these global flags:
 ```
 Developer Terminal                    EAI Platform
 ──────────────────                    ────────────
-eai login ──────────────────────────→ Entra CIAM (device code flow)
+eai login ──────────────────────────→ Entra CIAM (browser PKCE + localhost callback)
 eai env pull ───────────────────────→ Azure App Config + Key Vault
 eai types seed ─────────────────────→ Platform API → Type Registry
 eai resources list ─────────────────→ Platform API → Data Service
@@ -150,7 +151,7 @@ eai docs classify ──────────────────→ Plat
 eai deploy trigger ─────────────────→ GitHub Actions → Azure App Service
 ```
 
-The CLI authenticates via device code flow, stores tokens locally in `~/.eai/`, and calls the platform API directly with a Bearer token. All platform internals are abstracted away.
+The CLI authenticates via browser-based authorization code flow with PKCE, stores tokens locally in `~/.eai/`, and calls the platform API directly with a Bearer token. All platform internals are abstracted away.
 
 ## Error Codes
 

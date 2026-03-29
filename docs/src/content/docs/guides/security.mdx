@@ -5,41 +5,38 @@ description: Authentication flows, role-based access control, token management, 
 
 import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
 
-Security on the EAI platform covers authentication (proving who you are), authorization (what you are allowed to do), and credential management (keeping secrets safe). The CLI uses Entra CIAM with the device code flow for authentication and passes Bearer tokens to the Platform API for every request.
+Security on the EAI platform covers authentication (proving who you are), authorization (what you are allowed to do), and credential management (keeping secrets safe). The CLI uses Entra CIAM with browser-based authorization code flow with PKCE and passes Bearer tokens to the Platform API for every request.
 
 ## Authentication flow
 
-The CLI uses the **OAuth 2.0 device code flow**, designed for CLI and device applications where a browser is available but the application itself cannot handle redirects.
+The CLI uses **OAuth 2.0 authorization code flow with PKCE**. The CLI opens a browser window, validates the returned `state`, and exchanges the authorization code for tokens only after the browser returns to a temporary localhost callback.
 
 ```
 Terminal                    Browser                     Entra CIAM
    │                          │                            │
    │  eai login               │                            │
    │──────────────────────────────────────────────────────→│
-   │  ← device code + URL     │                            │
    │                          │                            │
-   │  "Go to https://...      │                            │
-   │   and enter code: ABCD"  │                            │
-   │                          │                            │
-   │                     User opens URL                    │
-   │                     Enters code                       │
-   │                     Signs in                          │
+   │                     Browser opens authorize URL       │
    │                          │───────────────────────────→│
-   │                          │  ← authenticated           │
+   │                          │  ← sign-in + consent       │
    │                          │                            │
-   │  (polling)               │                            │
+   │                     Redirect to localhost callback    │
+   │                          │───────────────────────────→│
+   │  Wait for callback       │                            │
+   │  Exchange code + PKCE verifier                       │
    │──────────────────────────────────────────────────────→│
    │  ← access token + refresh token                      │
    │                          │                            │
-   │  ✔ Authenticated as user@example.com                  │
+   │  ✔ Authenticated as user@example.com                 │
 ```
 
 <Steps>
 1. You run `eai login`
-2. The CLI requests a device code from Entra CIAM
-3. A message appears with a URL and a one-time code
-4. You open the URL in your browser, enter the code, and sign in
-5. The CLI polls for the token and stores it locally
+2. The CLI opens the Entra authorization URL in your browser
+3. You sign in and complete any required MFA or consent
+4. The browser returns to the CLI's localhost callback
+5. The CLI exchanges the authorization code and PKCE verifier for tokens and stores them locally
 </Steps>
 
 ### Running login
@@ -53,11 +50,7 @@ Output:
 ```
 Authenticating with Entra CIAM
   Tenant: eaidevmyentepriseai
-  Client: abc123...
-
-To sign in, use a web browser to open the page
-https://microsoft.com/devicelogin and enter the code ABCD-EFGH
-to authenticate.
+  Opening your browser to complete sign-in...
 
 ✔ Authenticated as user@example.com
   Token expires: 1/15/2025, 11:30:00 AM
@@ -71,11 +64,10 @@ The login command uses defaults that can be overridden:
 |--------------------|----------------------------------------|----------------------------|
 | `--tenant-name`    | `eaidevmyentepriseai`                 | Entra CIAM tenant name     |
 | `--tenant-id`      | (platform default)                     | Entra CIAM tenant ID       |
-| `--client-id`      | from `ENTRA_CLIENT_ID` in `.env.local` | App registration client ID |
-| `--scope`          | `openid profile email offline_access`  | OAuth scopes               |
+| `--scope`          | `openid profile email offline_access api://.../access_token` | OAuth scopes |
 
 ```bash
-eai login --client-id your-client-id --scope "openid profile email offline_access"
+eai login --tenant-name yourorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
 ```
 
 ### Logging out
@@ -212,7 +204,7 @@ If any check fails, the action is rejected with an appropriate error code.
 ### Environment variables
 
 <Aside type="danger">
-  Never commit `.env.local` to version control. It contains secrets like `AUTH_SECRET` and `ENTRA_CLIENT_ID`.
+  Never commit `.env.local` to version control. It contains secrets like `AUTH_SECRET` and platform-specific application configuration.
 </Aside>
 
 - Store secrets in Azure Key Vault, not in App Config directly

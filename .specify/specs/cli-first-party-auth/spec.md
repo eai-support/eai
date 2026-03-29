@@ -1,10 +1,11 @@
 ---
-id: cli-first-party-auth
-title: 'CLI First-Party Authentication'
-status: ready-for-plan
-created: '2026-03-26T00:00:00.000Z'
-updated: '2026-03-26T00:00:00.000Z'
-author: Claude
+id: "cli-first-party-auth"
+title: "CLI First-Party Authentication"
+status: "ready-for-plan"
+created: "2026-03-26T00:00:00.000Z"
+updated: "2026-03-29"
+priority: "medium"
+assignee: "engineer-agent"
 ---
 
 # Specification: CLI First-Party Authentication

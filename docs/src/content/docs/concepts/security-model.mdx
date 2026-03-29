@@ -105,10 +105,10 @@ EnterpriseAI uses **Microsoft Entra CIAM** (Customer Identity and Access Managem
 
 ### CLI Authentication (Device Code Flow)
 
-The CLI uses the **OAuth 2.0 device code flow**, which works on machines without a browser:
+The CLI uses **OAuth 2.0 authorization code flow with PKCE**, opening a browser window and completing the token exchange after a localhost callback:
 
 1. Run `eai login`.
-2. The CLI requests a device code from Entra CIAM.
+2. The CLI opens the Entra authorization URL and waits for the callback.
 3. A user code and verification URL are displayed.
 4. Open the URL in any browser (on any device), enter the code, and sign in.
 5. The CLI polls Entra until the sign-in completes and receives an access token.
@@ -116,7 +116,7 @@ The CLI uses the **OAuth 2.0 device code flow**, which works on machines without
 ```bash
 $ eai login
 
-To sign in, open https://microsoft.com/devicelogin
+If automatic browser launch fails, open the authorization URL printed by the CLI
 and enter the code: ABCD-EFGH
 ```
 

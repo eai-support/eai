@@ -1,10 +1,10 @@
 /**
- * eai login — authenticate with Entra CIAM via device code flow.
+ * eai login — authenticate with Entra CIAM via browser auth (PKCE).
  */
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { deviceCodeLogin, clearTokens } from '../lib/auth.js';
+import { browserLogin, clearTokens } from '../lib/auth.js';
 import * as out from '../lib/output.js';
 
 // Default CIAM tenant for EAI platform
@@ -22,9 +22,10 @@ export const loginCommand = new Command('login')
   .action(async (options) => {
     out.heading('Authenticating with Entra CIAM');
     out.info(`Tenant: ${chalk.cyan(options.tenantName)}`);
+    out.info('Opening your browser to complete sign-in...');
 
     try {
-      const tokens = await deviceCodeLogin(
+      const tokens = await browserLogin(
         options.tenantName,
         options.tenantId,
         DEFAULT_CLIENT_ID,
