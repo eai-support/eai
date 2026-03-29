@@ -26,29 +26,51 @@ tenantCommand
   .command('list')
   .description('List tenants (scoped to parent)')
   .option('--parent <id>', 'Parent tenant ID')
+  .option('--debug', 'Show debug diagnostics for tenant lookup', false)
+  .option('--raw-user', 'Print raw current-user payload in debug mode', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', `
 Examples:
   $ eai tenant list
+  $ eai tenant list --debug
+  $ eai tenant list --debug --raw-user
   $ eai tenant list --format json | jq '.tenants[] | .name'
   `)
   .action(async (options) => {
     if (options.json) options.format = 'json';
+    const debugEnabled = Boolean(options.debug);
+    const debug = (message: string, data?: unknown): void => {
+      if (!debugEnabled) return;
+      if (data === undefined) {
+        console.error(`[debug] ${message}`);
+        return;
+      }
+      const value = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+      console.error(`[debug] ${message}: ${value}`);
+    };
 
     const tokens = await loadTokens();
     if (!tokens?.oid) { exitWithError(ErrorCode.E101); return; }
+    debug('Authenticated token loaded', {
+      oid: tokens.oid,
+      upn: tokens.upn,
+      expiresAt: new Date(tokens.expiresAt).toISOString(),
+    });
 
     const root = await findProjectRoot();
     const envVars = root ? await loadEnvFile(root) : {};
     const env = { ...envVars, ...process.env };
     const publicApiUrl = resolveApiUrl(env);
+    debug('Project root', root || '(none)');
+    debug('Using Public API URL', publicApiUrl);
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
     const spinner = options.format === 'json' ? null : ora('Fetching tenants...').start();
 
     try {
       const res = await client.getCurrentUser(tokens.oid);
+      debug('Current user endpoint status', `${res.status} ${res.statusText}`);
       if (!res.ok) {
         if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
         process.exit(1);
@@ -58,13 +80,37 @@ Examples:
         tenant: { id: string; displayName: string; slug: string; domain?: string; isActive: boolean };
         roleAssignments: Array<{ baseRole: string; displayName: string }>;
       }
-      const user = await res.json() as { tenants?: TenantEntry[] };
-      const tenants = (user.tenants || []).filter(t => t.tenant?.isActive !== false);
+      interface UserTenantPayload {
+        tenants?: TenantEntry[];
+        user?: {
+          id?: string;
+          email?: string;
+          username?: string;
+          tenants?: TenantEntry[];
+        };
+      }
+      const payload = await res.json() as UserTenantPayload;
+      debug('Current user response keys', Object.keys(payload as Record<string, unknown>));
+      if (payload.user) {
+        debug('Current user summary', {
+          id: payload.user.id,
+          email: payload.user.email,
+          username: payload.user.username,
+        });
+      }
+      if (debugEnabled && options.rawUser) {
+        debug('Raw current user payload', payload);
+      }
+
+      const tenantEntries = payload.tenants ?? payload.user?.tenants ?? [];
+      debug('Tenant entries before filtering', tenantEntries.length);
+      const tenants = tenantEntries.filter(t => t.tenant?.isActive !== false);
 
       // Filter by parent if requested
       const filtered = options.parent
         ? tenants.filter(t => t.tenant.id === options.parent)
         : tenants;
+      debug('Tenant entries after filtering', filtered.length);
 
       if (options.format === 'json') {
         out.json({ tenants: filtered.map(t => ({ ...t.tenant, roles: t.roleAssignments.map(r => r.baseRole) })), count: filtered.length });

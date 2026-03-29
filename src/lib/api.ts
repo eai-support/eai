@@ -2,7 +2,8 @@
  * Platform API client for CLI — wraps PublicAPI calls with auth.
  *
  * Unlike the Platform SDK (which goes through the BFF proxy),
- * the CLI calls PublicAPI directly with a Bearer token from device code flow.
+ * the CLI calls PublicAPI directly with a Bearer token from browser-based
+ * authorization code flow with PKCE.
  */
 
 import { getAccessToken } from './auth.js';
@@ -253,4 +254,3 @@ export class PlatformAPIClient {
     return this._route('payload', '/custom-users/provisionme', 'POST', body);
   }
 }
-

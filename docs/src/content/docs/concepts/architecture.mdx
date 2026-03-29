@@ -43,7 +43,7 @@ The EnterpriseAI platform follows a layered architecture. Developer tools (the C
 
 ### CLI and Platform SDK
 
-The **EAI CLI** calls the Platform API directly using a Bearer token obtained through the Entra CIAM device code flow. It is the primary tool for development-time operations: scaffolding, seeding Object Types, managing resources, and deploying.
+The **EAI CLI** calls the Platform API directly using a Bearer token obtained through Entra CIAM browser-based authorization code flow with PKCE. It is the primary tool for development-time operations: scaffolding, seeding Object Types, managing resources, and deploying.
 
 The **Platform SDK** (`@eai-tools/platform-sdk`) is a TypeScript library used inside Next.js applications. It calls the Platform API through the BFF proxy (see below) and provides typed helpers for resource operations, chat, and document uploads.
 
@@ -111,7 +111,7 @@ Authentication uses **Microsoft Entra CIAM** (Customer Identity and Access Manag
 ```
 ┌──────────┐                ┌──────────────┐           ┌──────────────┐
 │  CLI /   │  1. Request    │   Entra      │           │  Platform    │
-│  Browser │  device code   │   CIAM       │           │  API         │
+│  Browser │  auth code     │   CIAM       │           │  API         │
 │          │───────────────▶│              │           │              │
 │          │◀───────────────│  2. Return   │           │              │
 │          │  user code +   │  code + URL  │           │              │
@@ -135,7 +135,7 @@ Authentication uses **Microsoft Entra CIAM** (Customer Identity and Access Manag
 └──────────┘                └──────────────┘           └──────────────┘
 ```
 
-1. The CLI requests a device code from Entra CIAM.
+1. The CLI starts an authorization request with PKCE and opens the browser.
 2. Entra returns a user code and a verification URL.
 3. The user opens the URL in a browser and enters the code to sign in.
 4. The CLI polls Entra for the access token.

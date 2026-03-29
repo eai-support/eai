@@ -36,7 +36,6 @@ EAI Platform Health Check
 ✔ .env.local exists
 ✔ BASE_URL_PUBLIC_API — set
 ✔ ENTRA_TENANT_ID — set
-✗ ENTRA_CLIENT_ID — not set
 ✗ AUTH_SECRET — not set
 ✔ Authenticated as user@example.com
 ✔ Object Types: 5 defined
@@ -46,8 +45,6 @@ EAI Platform Health Check
 
 3 issue(s) found
 
-✗ ENTRA_CLIENT_ID not set or has placeholder value
-  Fix: Set ENTRA_CLIENT_ID in .env.local or run `eai env pull --include-secrets`
 ✗ AUTH_SECRET not set or has placeholder value
   Fix: Set AUTH_SECRET in .env.local or run `eai env pull --include-secrets`
 ⚠ deploy-demo.yml not found
@@ -60,7 +57,7 @@ EAI Platform Health Check
 |-----------------------------|------------------------------------------------------|
 | Project root                | An EAI project is detected in the current directory  |
 | `.env.local` exists         | The environment file is present                      |
-| Required environment vars   | `BASE_URL_PUBLIC_API`, `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `AUTH_SECRET` |
+| Required environment vars   | `BASE_URL_PUBLIC_API`, `ENTRA_TENANT_ID`, `AUTH_SECRET` |
 | Authentication              | A valid (non-expired) token exists                   |
 | Object Types                | `object-types.ts` loads without errors               |
 | Deployment workflow         | `.github/workflows/deploy-demo.yml` exists           |
@@ -168,19 +165,19 @@ eai env list
     eai login
     ```
   </TabItem>
-  <TabItem label="Wrong client ID">
+  <TabItem label="Tenant mismatch">
     **Error:**
     ```
-    ✗ No client ID provided. Use --client-id or set ENTRA_CLIENT_ID in .env.local
+    Authentication failed: ...
     ```
 
     **Fix:**
     ```bash
-    # Pull the correct client ID from Azure
-    eai env pull --include-secrets
+    # Verify the target tenant values
+    eai env list
 
-    # Or set it manually
-    echo "ENTRA_CLIENT_ID=your-client-id" >> .env.local
+    # Or login explicitly against the correct tenant
+    eai login --tenant-name yourorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
     ```
   </TabItem>
   <TabItem label="Redirect URI mismatch">
@@ -190,17 +187,17 @@ eai env list
     does not match the redirect URIs configured for the application.
     ```
 
-    **Cause:** The web application's app registration does not have `http://localhost:3000` (or your custom port) listed as a redirect URI. This only affects the browser login in the web app — the CLI's device code flow is not affected.
+    **Cause:** The app registration does not have `http://localhost:3000` (or your custom port) listed as a redirect URI. This affects both the browser login in the web app and the CLI's localhost callback during `eai login`.
 
     **Fix:** Add the localhost URI to your app registration. See [Local Development](/eai-cli/guides/local-development/) for step-by-step instructions. If you do not have Azure Portal access, ask your platform admin to add the redirect URI.
   </TabItem>
-  <TabItem label="Device code timeout">
+  <TabItem label="Browser callback timeout">
     **Error:**
     ```
-    ✗ Device code flow timed out. Please try again.
+    ✗ Timed out waiting for browser authentication callback.
     ```
 
-    **Cause:** You did not complete the browser authentication within the time limit.
+    **Cause:** You did not complete the browser authentication within the time limit, or the browser could not return to the CLI's localhost callback.
 
     **Fix:** Run `eai login` again and complete the browser step promptly.
   </TabItem>

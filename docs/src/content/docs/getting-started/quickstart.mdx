@@ -78,18 +78,16 @@ This guide walks you through the complete workflow of creating a vertical applic
    eai login
    ```
 
-   The CLI starts a device code flow. You will see a message like:
+   The CLI starts a browser-based sign-in flow. You will see a message like:
 
    ```
    Authenticating with Entra CIAM
    Tenant: eaidevmyentepriseai
-   Client: your-client-id
 
-   To sign in, use a web browser to open https://microsoft.com/devicelogin
-   and enter the code ABCD-EFGH to authenticate.
+   Opening your browser to complete sign-in
    ```
 
-   Open the URL in your browser, enter the code, and sign in with your Microsoft account. The CLI detects the completed login automatically.
+   Complete sign-in in the browser. The CLI detects the localhost callback automatically.
 
    ```
    ✔ Authenticated as you@example.com
@@ -97,7 +95,7 @@ This guide walks you through the complete workflow of creating a vertical applic
    ```
 
    <Aside type="note">
-     **External developers**: If you are outside the platform organization, you need to pass `--tenant-name`, `--tenant-id`, and `--client-id` flags. See [External Developer Setup](/eai-cli/guides/external-developers/) for details.
+     **External developers**: If you are outside the platform organization, you may need to pass `--tenant-name` and `--tenant-id`. See [External Developer Setup](/eai-cli/guides/external-developers/) for details.
    </Aside>
 
 4. **Pull environment configuration**
@@ -210,7 +208,7 @@ Here is a summary of what each step accomplished:
 |------|---------|-------------|
 | 1 | `eai init my-vertical` | Clones the Vertical Template and customizes it for your project |
 | 2 | `npm install` | Installs Node.js dependencies |
-| 3 | `eai login` | Authenticates you with Entra CIAM via device code flow |
+| 3 | `eai login` | Authenticates you with Entra CIAM via browser PKCE flow |
 | 4 | `eai env pull` | Syncs configuration from Azure App Config and Key Vault |
 | 5 | Edit `object-types.ts` | Defines the data model for your vertical |
 | 6 | `eai types validate` | Validates your types against platform schema rules |

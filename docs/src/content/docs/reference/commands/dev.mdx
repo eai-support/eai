@@ -121,7 +121,7 @@ The dev server still starts even when warnings are present, but API-dependent fe
 
 ## Local authentication setup
 
-The CLI authenticates via device code flow, which does not require a redirect URI. However, the **web application** started by `eai dev` uses a browser-based redirect flow. For users to sign in to the app in the browser, `http://localhost:3000` (or your custom port) must be registered as a **Single-page application** redirect URI in the vertical's Azure app registration.
+The CLI authenticates with browser-based authorization code flow and a localhost callback. The **web application** started by `eai dev` also uses a browser-based redirect flow. For users to sign in successfully, `http://localhost:3000` (or your custom port) must be registered as a redirect URI in the vertical's Azure app registration.
 
 If you see this error when signing in from the browser:
 
@@ -149,4 +149,3 @@ This command supports all [global CLI options](/reference/global-options/):
 - `--color` — Force colors
 
 See [Global Options](/reference/global-options/) for details.
-

@@ -236,10 +236,10 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 
 ### Scenario 11: Login with Device Code Flow
 **Priority**: P0
-**User Story**: As a developer, I want to authenticate via device code
+**User Story**: As a developer, I want to authenticate via browser-based PKCE flow
 
 ```javascript
-// TC011: Successful login with device code
+// TC011: Successful login with browser PKCE flow
 // Traces to: Auth-US1-AC1
 //
 // entraDeviceCodeEndpointResponds({ device_code: 'DEV123', user_code: 'ABCD-1234' })
@@ -247,7 +247,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai login')
 //
-// expectDisplayedMessage('Visit https://microsoft.com/devicelogin')
+// expectDisplayedMessage('Opening your browser to complete sign-in')
 // expectDisplayedMessage('Enter code: ABCD-1234')
 // waitForUserAuth()
 // expectTokenStored('~/.eai/tokens.json')
@@ -276,7 +276,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 **User Story**: As a developer, I should see clear error on timeout
 
 ```javascript
-// TC013: Login fails on device code timeout
+// TC013: Login fails when browser callback times out
 // Traces to: Auth-US1-ERR1
 //
 // entraDeviceCodeEndpointResponds({ expires_in: 5 })
@@ -2005,7 +2005,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 |----------|---------|----------|
 | `runCommand(cmd)` | Execute CLI command | P0 |
 | `respondToPrompt(question, answer)` | Mock user input | P0 |
-| `waitForUserAuth()` | Simulate device code auth | P1 |
+| `waitForUserAuth()` | Simulate browser sign-in completion | P1 |
 | `waitSeconds(n)` | Advance time | P2 |
 
 ### Assertion Functions (Assert)

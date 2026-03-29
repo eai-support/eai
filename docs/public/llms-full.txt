@@ -344,14 +344,14 @@ This guide walks you through the complete workflow of creating a vertical applic
    eai login
    ```
 
-   The CLI starts a device code flow. You will see a message like:
+   The CLI starts a browser-based sign-in flow. You will see a message like:
 
    ```
    Authenticating with Entra CIAM
    Tenant: eaidevmyentepriseai
    Client: your-client-id
 
-   To sign in, use a web browser to open https://microsoft.com/devicelogin
+   Opening your browser to complete sign-in
    and enter the code ABCD-EFGH to authenticate.
    ```
 
@@ -466,7 +466,7 @@ Here is a summary of what each step accomplished:
 |------|---------|-------------|
 | 1 | `eai init my-vertical` | Clones the Vertical Template and customizes it for your project |
 | 2 | `npm install` | Installs Node.js dependencies |
-| 3 | `eai login` | Authenticates you with Entra CIAM via device code flow |
+| 3 | `eai login` | Authenticates you with Entra CIAM via browser PKCE flow |
 | 4 | `eai env pull` | Syncs configuration from Azure App Config and Key Vault |
 | 5 | Edit `object-types.ts` | Defines the data model for your vertical |
 | 6 | `eai types validate` | Validates your types against platform schema rules |
@@ -513,18 +513,18 @@ This page explains how the authentication flow works, where tokens are stored, a
 
 ## How it works
 
-The CLI uses the **device code flow**, an OAuth 2.0 pattern designed for command-line tools and devices without a browser. Instead of opening a browser window directly, it gives you a short code to enter on a separate device or browser tab.
+The CLI uses browser-based authorization code flow with PKCE. It opens a browser window, waits for the localhost callback, and exchanges the returned authorization code for tokens.
 
 1. **You run `eai login`**
 
-   The CLI contacts Entra CIAM and requests a device code.
+   The CLI creates a PKCE challenge and starts the Entra authorization request.
 
 2. **The CLI displays a code and a URL**
 
    You see a message like:
 
    ```
-   To sign in, use a web browser to open https://microsoft.com/devicelogin
+   Opening your browser to complete sign-in
    and enter the code ABCD-EFGH to authenticate.
    ```
 
@@ -540,7 +540,7 @@ The CLI uses the **device code flow**, an OAuth 2.0 pattern designed for command
 
    Your tokens are encrypted and saved to `~/.eai/tokens.json`. All subsequent CLI commands use these tokens.
 
-  The device code flow is secure because the code is short-lived and single-use. Even if someone sees the code, they cannot use it after you have already authenticated.
+  The CLI now relies on browser-based authorization code flow with PKCE, tying the redirect, state, and code verifier to the current sign-in session.
 
 ## Logging in
 
@@ -553,14 +553,14 @@ eai login
 If you are inside an EAI project (a directory with `src/eai.config/`), the CLI automatically picks up your Entra client ID from `.env.local`. Otherwise, you can provide it explicitly:
 
 ```bash
-eai login --client-id your-app-client-id
+eai login --tenant-name yourorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
 ```
 
 The full set of login options:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--client-id <id>` | From `.env.local` | App registration client ID |
+| `--tenant-id <id>` | Platform default | CIAM tenant ID |
 | `--tenant-name <name>` | `eaidevmyentepriseai` | CIAM tenant name |
 | `--tenant-id <id>` | Platform default | CIAM tenant ID |
 | `--scope <scope>` | `openid profile email offline_access` | OAuth scopes |
@@ -572,7 +572,7 @@ Authenticating with Entra CIAM
 Tenant: eaidevmyentepriseai
 Client: a1b2c3d4-...
 
-To sign in, use a web browser to open https://microsoft.com/devicelogin
+Opening your browser to complete sign-in
 and enter the code ABCD-EFGH to authenticate.
 
 ✔ Authenticated as you@example.com
@@ -671,11 +671,11 @@ If you frequently switch between accounts, consider using different client IDs f
 
 ## Troubleshooting
 
-### "No client ID provided"
+### "Timed out waiting for browser authentication callback"
 
 The CLI could not find your Entra client ID. Either:
 - Run the command from inside an EAI project directory (one with `src/eai.config/`)
-- Pass it explicitly: `eai login --client-id your-id`
+- Run `eai login` again and complete sign-in on the same machine
 - Set `ENTRA_CLIENT_ID` in your project's `.env.local`
 
 ### "Device code flow timed out"
@@ -687,7 +687,7 @@ You did not complete the browser sign-in before the code expired. The code is va
 The Entra CIAM tenant rejected the authentication. Common causes:
 - The client ID is incorrect or does not exist in the Entra tenant
 - Your account does not have permission to use this application
-- The Entra tenant has conditional access policies that block device code flow
+- The Entra tenant has conditional access policies that block browser-based sign-in or the localhost callback
 
 ### Token file cannot be read
 
@@ -3130,18 +3130,18 @@ eai types seed --tenant-key division-a
 
 # Security
 
-Security on the EAI platform covers authentication (proving who you are), authorization (what you are allowed to do), and credential management (keeping secrets safe). The CLI uses Entra CIAM with the device code flow for authentication and passes Bearer tokens to the Platform API for every request.
+Security on the EAI platform covers authentication (proving who you are), authorization (what you are allowed to do), and credential management (keeping secrets safe). The CLI uses Entra CIAM with browser-based authorization code flow with PKCE and passes Bearer tokens to the Platform API for every request.
 
 ## Authentication flow
 
-The CLI uses the **OAuth 2.0 device code flow**, designed for CLI and device applications where a browser is available but the application itself cannot handle redirects.
+The CLI uses OAuth 2.0 authorization code flow with PKCE, opening a browser and completing the token exchange after a localhost callback.
 
 ```
 Terminal                    Browser                     Entra CIAM
    │                          │                            │
    │  eai login               │                            │
    │──────────────────────────────────────────────────────→│
-   │  ← device code + URL     │                            │
+   │  ← auth code + callback   │                            │
    │                          │                            │
    │  "Go to https://...      │                            │
    │   and enter code: ABCD"  │                            │
@@ -3160,7 +3160,7 @@ Terminal                    Browser                     Entra CIAM
 ```
 
 1. You run `eai login`
-2. The CLI requests a device code from Entra CIAM
+2. The CLI opens the Entra authorization URL and waits for the callback
 3. A message appears with a URL and a one-time code
 4. You open the URL in your browser, enter the code, and sign in
 5. The CLI polls for the token and stores it locally
@@ -3179,7 +3179,7 @@ Authenticating with Entra CIAM
   Client: abc123...
 
 To sign in, use a web browser to open the page
-https://microsoft.com/devicelogin and enter the code ABCD-EFGH
+the browser-based sign-in flow and complete authentication
 to authenticate.
 
 ✔ Authenticated as user@example.com
@@ -3194,11 +3194,11 @@ The login command uses defaults that can be overridden:
 |--------------------|----------------------------------------|----------------------------|
 | `--tenant-name`    | `eaidevmyentepriseai`                 | Entra CIAM tenant name     |
 | `--tenant-id`      | (platform default)                     | Entra CIAM tenant ID       |
-| `--client-id`      | from `ENTRA_CLIENT_ID` in `.env.local` | App registration client ID |
+| `--scope`          | `openid profile email offline_access api://.../access_token` | OAuth scopes |
 | `--scope`          | `openid profile email offline_access`  | OAuth scopes               |
 
 ```bash
-eai login --client-id your-client-id --scope "openid profile email offline_access"
+eai login --tenant-name yourorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
 ```
 
 ### Logging out
@@ -3567,7 +3567,7 @@ eai env list
   
     **Error:**
     ```
-    ✗ No client ID provided. Use --client-id or set ENTRA_CLIENT_ID in .env.local
+    ✗ Timed out waiting for browser authentication callback.
     ```
 
     **Fix:**
@@ -3836,7 +3836,7 @@ If you are building a horizontal tool (a generic CRUD app with no industry-speci
 The EAI CLI is the primary developer interface to the platform. It handles:
 
 - **Scaffolding** new vertical applications (`eai init`).
-- **Authentication** via device code flow (`eai login`).
+- **Authentication** via browser-based authorization code flow with PKCE (`eai login`).
 - **Object Type management** -- validate, seed, diff, and pull definitions (`eai types`).
 - **Resource operations** -- list, get, create, update, delete, and query (`eai resources`).
 - **Environment management** -- pull and sync environment variables (`eai env`).
@@ -3995,7 +3995,7 @@ The EnterpriseAI platform follows a layered architecture. Developer tools (the C
 
 ### CLI and Platform SDK
 
-The **EAI CLI** calls the Platform API directly using a Bearer token obtained through the Entra CIAM device code flow. It is the primary tool for development-time operations: scaffolding, seeding Object Types, managing resources, and deploying.
+The **EAI CLI** calls the Platform API directly using a Bearer token obtained through Entra CIAM browser-based authorization code flow with PKCE. It is the primary tool for development-time operations: scaffolding, seeding Object Types, managing resources, and deploying.
 
 The **Platform SDK** (`@eai-tools/platform-sdk`) is a TypeScript library used inside Next.js applications. It calls the Platform API through the BFF proxy (see below) and provides typed helpers for resource operations, chat, and document uploads.
 
@@ -4061,7 +4061,7 @@ Authentication uses **Microsoft Entra CIAM** (Customer Identity and Access Manag
 ```
 ┌──────────┐                ┌──────────────┐           ┌──────────────┐
 │  CLI /   │  1. Request    │   Entra      │           │  Platform    │
-│  Browser │  device code   │   CIAM       │           │  API         │
+│  Browser │  auth code     │   CIAM       │           │  API         │
 │          │───────────────▶│              │           │              │
 │          │◀───────────────│  2. Return   │           │              │
 │          │  user code +   │  code + URL  │           │              │
@@ -4085,7 +4085,7 @@ Authentication uses **Microsoft Entra CIAM** (Customer Identity and Access Manag
 └──────────┘                └──────────────┘           └──────────────┘
 ```
 
-1. The CLI requests a device code from Entra CIAM.
+1. The CLI starts an authorization request with PKCE and opens the browser.
 2. Entra returns a user code and a verification URL.
 3. The user opens the URL in a browser and enters the code to sign in.
 4. The CLI polls Entra for the access token.
@@ -4444,10 +4444,10 @@ EnterpriseAI uses **Microsoft Entra CIAM** (Customer Identity and Access Managem
 
 ### CLI Authentication (Device Code Flow)
 
-The CLI uses the **OAuth 2.0 device code flow**, which works on machines without a browser:
+The CLI uses OAuth 2.0 authorization code flow with PKCE, opening a browser and finishing the token exchange after a localhost callback:
 
 1. Run `eai login`.
-2. The CLI requests a device code from Entra CIAM.
+2. The CLI opens the Entra authorization URL and waits for the callback.
 3. A user code and verification URL are displayed.
 4. Open the URL in any browser (on any device), enter the code, and sign in.
 5. The CLI polls Entra until the sign-in completes and receives an access token.
@@ -4455,7 +4455,7 @@ The CLI uses the **OAuth 2.0 device code flow**, which works on machines without
 ```bash
 $ eai login
 
-To sign in, open https://microsoft.com/devicelogin
+If automatic browser launch fails, open the authorization URL printed by the CLI
 and enter the code: ABCD-EFGH
 ```
 
@@ -4662,13 +4662,10 @@ eai logout
 
 ## Description
 
-`eai login` authenticates you with Microsoft Entra CIAM using the device code flow. The CLI displays a URL and a code, then opens your default browser. After you sign in and enter the code, the CLI stores tokens locally in `~/.eai/` for subsequent commands.
+`eai login` authenticates you with Microsoft Entra CIAM using browser-based authorization code flow with PKCE. The CLI opens your default browser, waits for the localhost callback, and stores tokens locally in `~/.eai/` for subsequent commands.
 
 The client ID is resolved in the following order:
 
-1. `--client-id` flag
-2. `ENTRA_CLIENT_ID` in the project's `.env.local`
-3. `ENTRA_CLIENT_ID` environment variable
 
 `eai logout` clears all stored authentication tokens from `~/.eai/`.
 
@@ -4680,7 +4677,7 @@ The client ID is resolved in the following order:
 |--------|-------------|---------|
 | `--tenant-name <name>` | CIAM tenant name | `eaidevmyentepriseai` |
 | `--tenant-id <id>` | CIAM tenant ID | `50808ce0-f31b-4fd0-9861-74b83b8c112a` |
-| `--client-id <id>` | App registration client ID. Required if not set in `.env.local` or environment. | -- |
+
 | `--scope <scope>` | OAuth scopes | `openid profile email offline_access` |
 | `-h, --help` | Display help for the command. | -- |
 
@@ -4701,7 +4698,7 @@ Authenticating with Entra CIAM
   Tenant: eaidevmyentepriseai
   Client: a1b2c3d4-...
 
-To sign in, use a web browser to open https://microsoft.com/devicelogin
+Opening your browser to complete sign-in
 and enter the code ABCD-EFGH to authenticate.
 
 ✔ Authenticated as jane.doe@example.com
@@ -4711,7 +4708,7 @@ and enter the code ABCD-EFGH to authenticate.
 ### Log in with explicit client ID
 
 ```bash
-eai login --client-id a1b2c3d4-e5f6-7890-abcd-ef1234567890
+eai login --tenant-name myorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
 ```
 
 ### Log in to a different tenant
@@ -6376,7 +6373,7 @@ All endpoints require authentication unless otherwise noted. Include an access t
 Authorization: Bearer {access_token}
 ```
 
-Tokens are obtained through the Entra CIAM device code flow (CLI) or session-based authentication (web applications via BFF proxy).
+Tokens are obtained through Entra CIAM browser-based authorization code flow with PKCE (CLI) or session-based authentication (web applications via BFF proxy).
 
 ## Resource Endpoints
 
@@ -9406,7 +9403,7 @@ eai_safe_request GET "/v3/resources/${TENANT_ID}/Task/nonexistent-id"
 
 # TypeScript Examples
 
-These examples show how to interact with the EAI Platform API from TypeScript using the native `fetch` API. Every request requires a Bearer token obtained through the Entra CIAM device code flow.
+These examples show how to interact with the EAI Platform API from TypeScript using the native `fetch` API. Every request requires a Bearer token obtained through Entra CIAM browser-based authorization code flow with PKCE.
 
   All examples assume you have `BASE_URL_PUBLIC_API` set in your environment. Run `eai env pull` to populate your `.env.local` file.
 

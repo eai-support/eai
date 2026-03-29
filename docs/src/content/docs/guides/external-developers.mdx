@@ -32,11 +32,10 @@ Before you can use the CLI, your platform administrator must provide:
 |------|---------|----------|
 | **CIAM tenant name** | `yourorg.ciamlogin.com` | `--tenant-name` flag |
 | **CIAM tenant ID** | `a1b2c3d4-e5f6-...` | `--tenant-id` flag |
-| **CLI client ID** | `f7g8h9i0-j1k2-...` | `--client-id` flag |
 | **Platform API URL** | `https://api.yourorg.ai` | `BASE_URL_PUBLIC_API` in `.env.local` |
 | **Your tenant ID** | `d4e5f6g7-h8i9-...` | `TENANT_*_ID` in `.env.local` |
 | **Workflow ID** | `w1x2y3z4-...` | `WORKFLOW_ID` in `.env.local` (if using AI chat) |
-| **Your credentials** | Email + password | Device code flow in browser |
+| **Your credentials** | Email + password | Browser-based sign-in |
 
 Your admin must also have provisioned your user account in the CIAM tenant. If you receive an "account not found" error during login, contact your admin to verify your account exists.
 
@@ -44,16 +43,15 @@ Your admin must also have provisioned your user account in the CIAM tenant. If y
 
 <Steps>
 
-1. **Log in with explicit tenant and client flags**
+1. **Log in with explicit tenant flags**
 
    ```bash
    eai login \
      --tenant-name yourorg.ciamlogin.com \
-     --tenant-id a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
-     --client-id f7g8h9i0-j1k2-3456-lmno-pq7890123456
+     --tenant-id a1b2c3d4-e5f6-7890-abcd-ef1234567890
    ```
 
-   The CLI starts a device code flow. Open the URL in your browser and sign in with the credentials your platform admin provided.
+   The CLI opens a browser-based sign-in flow. Sign in with the credentials your platform admin provided.
 
 2. **Verify authentication**
 
@@ -66,7 +64,7 @@ Your admin must also have provisioned your user account in the CIAM tenant. If y
 </Steps>
 
 <Aside>
-  You can avoid typing the flags every time by setting the values in your project's `.env.local` file (see next section). Once set, plain `eai login` will use them automatically.
+  You can avoid typing the flags every time by setting the tenant values in your project's `.env.local` file (see next section). Once set, plain `eai login` will use them automatically.
 </Aside>
 
 ## Create `.env.local` manually
@@ -78,7 +76,6 @@ Since you cannot run `eai env pull`, create the file yourself in your project ro
 BASE_URL_PUBLIC_API=https://api.yourorg.ai
 
 # Authentication
-ENTRA_CLIENT_ID=f7g8h9i0-j1k2-3456-lmno-pq7890123456
 ENTRA_TENANT_ID=a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ENTRA_TENANT_NAME=yourorg.ciamlogin.com
 
@@ -104,7 +101,7 @@ Once authenticated and configured, most CLI commands work identically for extern
 
 | Command | Works? | Notes |
 |---------|--------|-------|
-| `eai login` | Yes | Use `--tenant-name`, `--tenant-id`, `--client-id` flags (or set in `.env.local`) |
+| `eai login` | Yes | Use `--tenant-name` and `--tenant-id` flags (or set them in `.env.local`) |
 | `eai whoami` | Yes | |
 | `eai init` | Yes | |
 | `eai types validate` | Yes | Local-only, no auth needed |
@@ -140,7 +137,7 @@ Once authenticated and configured, most CLI commands work identically for extern
    eai login
    ```
 
-   With `ENTRA_CLIENT_ID`, `ENTRA_TENANT_ID`, and `ENTRA_TENANT_NAME` set in `.env.local`, you do not need the `--tenant-name`, `--tenant-id`, or `--client-id` flags.
+   With `ENTRA_TENANT_ID` and `ENTRA_TENANT_NAME` set in `.env.local`, you do not need the `--tenant-name` or `--tenant-id` flags.
 
 4. **Define and seed your types**
 
@@ -159,15 +156,11 @@ Once authenticated and configured, most CLI commands work identically for extern
 
 ## Troubleshooting
 
-### "No client ID provided"
+### "Unknown tenant" or login redirects to the wrong place
 
-```
-✗ No client ID provided. Use --client-id or set ENTRA_CLIENT_ID in .env.local
-```
+Verify `ENTRA_TENANT_ID` and `ENTRA_TENANT_NAME` in `.env.local`, or pass `--tenant-name` and `--tenant-id` explicitly when running `eai login`.
 
-You did not pass `--client-id` and `ENTRA_CLIENT_ID` is not set in `.env.local`. Add it to your `.env.local` or pass it as a flag.
-
-### "Account not found" during device code flow
+### "Account not found" during browser sign-in
 
 Your user account has not been provisioned in the CIAM tenant. Contact your platform administrator to create your account.
 

@@ -66,10 +66,10 @@ export function respondToPrompt(ctx: TestContext, question: string, answer: stri
 }
 
 /**
- * Simulate device code authentication
+ * Simulate browser-based authentication
  */
 export async function waitForUserAuth(ctx: TestContext): Promise<void> {
-  // Simulate user completing device code flow
+  // Simulate user completing browser sign-in
   await new Promise(resolve => setTimeout(resolve, 100));
   ctx.env.__AUTH_COMPLETED = 'true';
 }

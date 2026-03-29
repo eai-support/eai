@@ -4,6 +4,7 @@
  */
 
 import { Command } from 'commander';
+import { randomUUID } from 'node:crypto';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import ora from 'ora';
@@ -14,24 +15,657 @@ import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
+interface VerifyEnvironment {
+  root: string;
+  env: Record<string, string>;
+  publicApiUrl: string;
+  tenantId?: string;
+  workflowId?: string;
+}
+
+export interface ContractAuditOptions {
+  resourceType?: string;
+  resourceId?: string;
+  workflowId?: string;
+  stage?: string;
+  tenantRecordId?: string;
+  userEmail?: string;
+  includeChat?: boolean;
+  chatMessage?: string;
+}
+
+export interface ContractCheckResult {
+  id: string;
+  label: string;
+  method: string;
+  endpoint: string;
+  status: 'passed' | 'failed' | 'skipped';
+  details: string;
+}
+
+export interface ContractAuditReport {
+  generatedAt: string;
+  publicApiUrl: string;
+  tenantId?: string;
+  workflowId?: string;
+  checks: ContractCheckResult[];
+  summary: {
+    passed: number;
+    failed: number;
+    skipped: number;
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function resolveScopedId(
+  env: Record<string, string>,
+  prefix: string,
+  fallbackKey: string,
+): string | undefined {
+  return env[fallbackKey] || Object.keys(env)
+    .filter((key) => key.startsWith(prefix) && key.endsWith('_ID'))
+    .map((key) => env[key])
+    .find(Boolean);
+}
+
+async function loadVerifyEnvironment(): Promise<VerifyEnvironment> {
+  const root = await findProjectRoot();
+  if (!root) {
+    exitWithError(ErrorCode.E001);
+  }
+
+  const envVars = await loadEnvFile(root);
+  const env = { ...envVars, ...process.env } as Record<string, string>;
+  const publicApiUrl = env.BASE_URL_PUBLIC_API;
+
+  if (!publicApiUrl) {
+    exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' });
+  }
+
+  return {
+    root,
+    env,
+    publicApiUrl,
+    tenantId: resolveScopedId(env, 'TENANT_', 'TENANT_DEFAULT_ID'),
+    workflowId: resolveScopedId(env, 'WORKFLOW_', 'WORKFLOW_DEFAULT_ID'),
+  };
+}
+
+async function parseJsonBody(res: Response): Promise<unknown> {
+  const text = await res.text();
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(`Expected JSON response but received: ${text.slice(0, 120)}`);
+  }
+}
+
+function addCheck(
+  checks: ContractCheckResult[],
+  check: ContractCheckResult,
+): void {
+  checks.push(check);
+}
+
+function summarizeChecks(checks: ContractCheckResult[]): ContractAuditReport['summary'] {
+  return checks.reduce<ContractAuditReport['summary']>((summary, check) => {
+    summary[check.status]++;
+    return summary;
+  }, {
+    passed: 0,
+    failed: 0,
+    skipped: 0,
+  });
+}
+
+function describeShape(value: unknown): string {
+  if (Array.isArray(value)) {
+    return 'array';
+  }
+  if (isRecord(value)) {
+    return `object keys: ${Object.keys(value).join(', ') || '(none)'}`;
+  }
+  if (value === null) {
+    return 'null';
+  }
+  return typeof value;
+}
+
+function renderContractAudit(report: ContractAuditReport): void {
+  out.heading('Platform Call Audit');
+  out.info(`PublicAPI: ${report.publicApiUrl}`);
+  if (report.tenantId) {
+    out.info(`Tenant: ${report.tenantId}`);
+  }
+  if (report.workflowId) {
+    out.info(`Workflow: ${report.workflowId}`);
+  }
+  out.blank();
+
+  for (const check of report.checks) {
+    const icon = check.status === 'passed'
+      ? out.symbols.success
+      : check.status === 'failed'
+        ? out.symbols.error
+        : out.symbols.warning;
+    out.info(`${icon} ${check.label}`);
+    out.dim(`  ${check.method} ${check.endpoint}`);
+    out.dim(`  ${check.details}`);
+  }
+
+  out.blank();
+  if (report.summary.failed === 0) {
+    out.success(`${report.summary.passed} passed, ${report.summary.skipped} skipped`);
+  } else {
+    out.warn(`${report.summary.passed} passed, ${report.summary.failed} failed, ${report.summary.skipped} skipped`);
+  }
+}
+
+export async function runContractAudit(
+  options: ContractAuditOptions,
+): Promise<ContractAuditReport> {
+  const context = await loadVerifyEnvironment();
+  const checks: ContractCheckResult[] = [];
+  const workflowId = options.workflowId || context.workflowId;
+  const stage = options.stage || 'chat';
+  const client = context.tenantId
+    ? new PlatformAPIClient(context.publicApiUrl, context.tenantId)
+    : null;
+  const systemClient = new PlatformAPIClient(context.publicApiUrl, 'system');
+
+  // Public API health
+  try {
+    const start = Date.now();
+    const res = await fetch(`${context.publicApiUrl}/health`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    const latency = Date.now() - start;
+    if (res.ok || res.status === 404) {
+      addCheck(checks, {
+        id: 'health',
+        label: 'PublicAPI health',
+        method: 'GET',
+        endpoint: '/health',
+        status: 'passed',
+        details: `Reachable in ${latency}ms (status ${res.status})`,
+      });
+    } else {
+      addCheck(checks, {
+        id: 'health',
+        label: 'PublicAPI health',
+        method: 'GET',
+        endpoint: '/health',
+        status: 'failed',
+        details: `Unexpected status ${res.status}`,
+      });
+    }
+  } catch (err) {
+    addCheck(checks, {
+      id: 'health',
+      label: 'PublicAPI health',
+      method: 'GET',
+      endpoint: '/health',
+      status: 'failed',
+      details: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  const authenticated = await isAuthenticated();
+  const tokens = await loadTokens();
+  addCheck(checks, {
+    id: 'auth',
+    label: 'Authentication token',
+    method: 'LOCAL',
+    endpoint: '~/.eai/tokens.json or EAI_ACCESS_TOKEN',
+    status: authenticated ? 'passed' : 'failed',
+    details: authenticated
+      ? `Authenticated as ${tokens?.upn || (process.env.EAI_ACCESS_TOKEN ? 'injected access token' : 'user')}`
+      : 'Not authenticated. Run `eai login` or set EAI_ACCESS_TOKEN.',
+  });
+
+  if (!authenticated) {
+    const skippedDueToAuth = [
+      ['current-user', 'Current user contract', 'POST', '/v3/orchestrate -> payload:/custom-users/me'],
+      ['object-types', 'Object Types list contract', 'POST', '/v3/orchestrate -> payload:/object-types'],
+      ['schema', 'Schema contract', 'GET', '/v3/resources/schema/{tenantId}'],
+    ] as const;
+
+    for (const [id, label, method, endpoint] of skippedDueToAuth) {
+      addCheck(checks, {
+        id,
+        label,
+        method,
+        endpoint,
+        status: 'skipped',
+        details: 'Skipped because authentication is required.',
+      });
+    }
+  } else if (!context.tenantId || !client) {
+    const skippedDueToTenant = [
+      ['current-user', 'Current user contract', 'POST', '/v3/orchestrate -> payload:/custom-users/me'],
+      ['object-types', 'Object Types list contract', 'POST', '/v3/orchestrate -> payload:/object-types'],
+      ['schema', 'Schema contract', 'GET', '/v3/resources/schema/{tenantId}'],
+    ] as const;
+
+    for (const [id, label, method, endpoint] of skippedDueToTenant) {
+      addCheck(checks, {
+        id,
+        label,
+        method,
+        endpoint,
+        status: 'skipped',
+        details: 'Skipped because no tenant ID was resolved from environment.',
+      });
+    }
+  } else {
+    try {
+      const res = await systemClient.getCurrentUser(tokens?.oid);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const payload = await parseJsonBody(res);
+      if (!isRecord(payload)) {
+        throw new Error(`Expected object, received ${describeShape(payload)}`);
+      }
+      const tenantEntries = payload.tenants ?? (isRecord(payload.user) ? payload.user.tenants : undefined);
+      if (!Array.isArray(tenantEntries)) {
+        throw new Error('Expected payload.tenants[] or payload.user.tenants[]');
+      }
+      addCheck(checks, {
+        id: 'current-user',
+        label: 'Current user contract',
+        method: 'POST',
+        endpoint: '/v3/orchestrate -> payload:/custom-users/me',
+        status: 'passed',
+        details: `Tenant entries: ${tenantEntries.length}`,
+      });
+    } catch (err) {
+      addCheck(checks, {
+        id: 'current-user',
+        label: 'Current user contract',
+        method: 'POST',
+        endpoint: '/v3/orchestrate -> payload:/custom-users/me',
+        status: 'failed',
+        details: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    try {
+      const res = await client.platformRequest('/object-types', 'GET', undefined, {
+        where: { tenant: { equals: context.tenantId } },
+        limit: 1,
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const payload = await parseJsonBody(res);
+      if (!isRecord(payload) || !Array.isArray(payload.docs)) {
+        throw new Error('Expected docs[] in Object Types response');
+      }
+      addCheck(checks, {
+        id: 'object-types',
+        label: 'Object Types list contract',
+        method: 'POST',
+        endpoint: '/v3/orchestrate -> payload:/object-types',
+        status: 'passed',
+        details: `Response includes docs[] (${payload.docs.length} item(s) in sample)`,
+      });
+    } catch (err) {
+      addCheck(checks, {
+        id: 'object-types',
+        label: 'Object Types list contract',
+        method: 'POST',
+        endpoint: '/v3/orchestrate -> payload:/object-types',
+        status: 'failed',
+        details: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    try {
+      const res = await client.getSchema();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const payload = await parseJsonBody(res);
+      if (!isRecord(payload) || !Array.isArray(payload.objectTypes)) {
+        throw new Error('Expected objectTypes[] in schema response');
+      }
+      addCheck(checks, {
+        id: 'schema',
+        label: 'Schema contract',
+        method: 'GET',
+        endpoint: `/v3/resources/schema/${context.tenantId}`,
+        status: 'passed',
+        details: `objectTypes[] present (${payload.objectTypes.length} item(s))`,
+      });
+    } catch (err) {
+      addCheck(checks, {
+        id: 'schema',
+        label: 'Schema contract',
+        method: 'GET',
+        endpoint: `/v3/resources/schema/${context.tenantId}`,
+        status: 'failed',
+        details: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (authenticated && client && options.resourceType) {
+    try {
+      const res = await client.listResources(options.resourceType, { limit: 1, page: 1 });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const payload = await parseJsonBody(res);
+      if (!isRecord(payload) || !Array.isArray(payload.docs)) {
+        throw new Error('Expected docs[] in list response');
+      }
+      addCheck(checks, {
+        id: 'resource-list',
+        label: 'Resource list contract',
+        method: 'GET',
+        endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}`,
+        status: 'passed',
+        details: `docs[] present (${payload.docs.length} item(s) in sample)`,
+      });
+    } catch (err) {
+      addCheck(checks, {
+        id: 'resource-list',
+        label: 'Resource list contract',
+        method: 'GET',
+        endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}`,
+        status: 'failed',
+        details: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    try {
+      const res = await client.queryResources({
+        object_types: [options.resourceType],
+        limit: 1,
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const payload = await parseJsonBody(res);
+      if (!isRecord(payload)) {
+        throw new Error(`Expected object, received ${describeShape(payload)}`);
+      }
+      addCheck(checks, {
+        id: 'resource-query',
+        label: 'Resource query contract',
+        method: 'POST',
+        endpoint: `/v3/resources/${context.tenantId}/query`,
+        status: 'passed',
+        details: describeShape(payload),
+      });
+    } catch (err) {
+      addCheck(checks, {
+        id: 'resource-query',
+        label: 'Resource query contract',
+        method: 'POST',
+        endpoint: `/v3/resources/${context.tenantId}/query`,
+        status: 'failed',
+        details: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else {
+    addCheck(checks, {
+      id: 'resource-list',
+      label: 'Resource list contract',
+      method: 'GET',
+      endpoint: '/v3/resources/{tenantId}/{objectType}',
+      status: 'skipped',
+      details: 'Provide --resource-type to exercise list/query contracts.',
+    });
+    addCheck(checks, {
+      id: 'resource-query',
+      label: 'Resource query contract',
+      method: 'POST',
+      endpoint: '/v3/resources/{tenantId}/query',
+      status: 'skipped',
+      details: 'Provide --resource-type to exercise query contract.',
+    });
+  }
+
+  if (authenticated && client && options.resourceType && options.resourceId) {
+    try {
+      const res = await client.getResource(options.resourceType, options.resourceId);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const payload = await parseJsonBody(res);
+      if (!isRecord(payload) || !('id' in payload) || !('data' in payload) || typeof payload.version !== 'number') {
+        throw new Error('Expected id, data, and numeric version in resource payload');
+      }
+      addCheck(checks, {
+        id: 'resource-get',
+        label: 'Resource get contract',
+        method: 'GET',
+        endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}/${options.resourceId}`,
+        status: 'passed',
+        details: 'Resource payload includes id, data, and version',
+      });
+    } catch (err) {
+      addCheck(checks, {
+        id: 'resource-get',
+        label: 'Resource get contract',
+        method: 'GET',
+        endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}/${options.resourceId}`,
+        status: 'failed',
+        details: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else {
+    addCheck(checks, {
+      id: 'resource-get',
+      label: 'Resource get contract',
+      method: 'GET',
+      endpoint: '/v3/resources/{tenantId}/{objectType}/{id}',
+      status: 'skipped',
+      details: 'Provide both --resource-type and --resource-id to exercise get/update version contract.',
+    });
+  }
+
+  if (authenticated && options.tenantRecordId) {
+    try {
+      const res = await systemClient.getTenant(options.tenantRecordId);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const payload = await parseJsonBody(res);
+      if (!isRecord(payload)) {
+        throw new Error(`Expected object, received ${describeShape(payload)}`);
+      }
+      addCheck(checks, {
+        id: 'tenant-info',
+        label: 'Tenant info contract',
+        method: 'POST',
+        endpoint: `/v3/orchestrate -> payload:/tenants/${options.tenantRecordId}`,
+        status: 'passed',
+        details: describeShape(payload),
+      });
+    } catch (err) {
+      addCheck(checks, {
+        id: 'tenant-info',
+        label: 'Tenant info contract',
+        method: 'POST',
+        endpoint: `/v3/orchestrate -> payload:/tenants/${options.tenantRecordId}`,
+        status: 'failed',
+        details: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else {
+    addCheck(checks, {
+      id: 'tenant-info',
+      label: 'Tenant info contract',
+      method: 'POST',
+      endpoint: '/v3/orchestrate -> payload:/tenants/{id}',
+      status: 'skipped',
+      details: 'Provide --tenant-record to exercise tenant info lookup.',
+    });
+  }
+
+  if (authenticated && options.userEmail) {
+    try {
+      const res = await systemClient.lookupUserByEmail(options.userEmail);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const payload = await parseJsonBody(res);
+      if (!isRecord(payload) || !('user' in payload)) {
+        throw new Error('Expected top-level user property in lookup response');
+      }
+      addCheck(checks, {
+        id: 'user-lookup',
+        label: 'User lookup contract',
+        method: 'POST',
+        endpoint: '/v3/orchestrate -> payload:/custom-users/by-email',
+        status: 'passed',
+        details: describeShape(payload),
+      });
+    } catch (err) {
+      addCheck(checks, {
+        id: 'user-lookup',
+        label: 'User lookup contract',
+        method: 'POST',
+        endpoint: '/v3/orchestrate -> payload:/custom-users/by-email',
+        status: 'failed',
+        details: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else {
+    addCheck(checks, {
+      id: 'user-lookup',
+      label: 'User lookup contract',
+      method: 'POST',
+      endpoint: '/v3/orchestrate -> payload:/custom-users/by-email',
+      status: 'skipped',
+      details: 'Provide --user-email to exercise user lookup.',
+    });
+  }
+
+  if (authenticated && client && options.includeChat) {
+    if (!workflowId) {
+      addCheck(checks, {
+        id: 'chat-send',
+        label: 'Chat send contract',
+        method: 'POST',
+        endpoint: '/v3/chat/{tenantId}/{workflowId}/{stage}',
+        status: 'skipped',
+        details: 'Provide --workflow or WORKFLOW_*_ID to exercise chat.',
+      });
+    } else {
+      try {
+        const res = await client.sendChat(
+          workflowId,
+          stage,
+          options.chatMessage || 'Smoke test from `eai verify calls`',
+          randomUUID(),
+        );
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const payload = await parseJsonBody(res);
+        if (!isRecord(payload) || (typeof payload.response !== 'string' && typeof payload.message !== 'string')) {
+          throw new Error('Expected response or message string in chat payload');
+        }
+        addCheck(checks, {
+          id: 'chat-send',
+          label: 'Chat send contract',
+          method: 'POST',
+          endpoint: `/v3/chat/${context.tenantId}/${workflowId}/${stage}`,
+          status: 'passed',
+          details: 'Chat response payload includes response/message text',
+        });
+      } catch (err) {
+        addCheck(checks, {
+          id: 'chat-send',
+          label: 'Chat send contract',
+          method: 'POST',
+          endpoint: `/v3/chat/${context.tenantId || '{tenantId}'}/${workflowId}/${stage}`,
+          status: 'failed',
+          details: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  } else {
+    addCheck(checks, {
+      id: 'chat-send',
+      label: 'Chat send contract',
+      method: 'POST',
+      endpoint: '/v3/chat/{tenantId}/{workflowId}/{stage}',
+      status: 'skipped',
+      details: 'Opt in with --include-chat. This creates a conversation record.',
+    });
+  }
+
+  const intentionallySkipped: Array<Omit<ContractCheckResult, 'status'>> = [
+    {
+      id: 'resource-mutations',
+      label: 'Resource create/update/delete contracts',
+      method: 'POST/PUT/DELETE',
+      endpoint: '/v3/resources/{tenantId}/{objectType}[/{id}]',
+      details: 'Not auto-executed because they mutate data.',
+    },
+    {
+      id: 'document-contracts',
+      label: 'Document upload/classify/index contracts',
+      method: 'POST',
+      endpoint: '/v3/documents/*',
+      details: 'Not auto-executed because they upload files or trigger indexing.',
+    },
+    {
+      id: 'user-provisioning',
+      label: 'User provisioning contracts',
+      method: 'POST',
+      endpoint: '/v3/users/provisionme and /v3/orchestrate -> payload:/custom-users/provisionme',
+      details: 'Not auto-executed because they change tenant membership.',
+    },
+    {
+      id: 'tenant-create',
+      label: 'Tenant create contract',
+      method: 'POST',
+      endpoint: '/v3/orchestrate -> payload:/tenants',
+      details: 'Not auto-executed because it creates tenants.',
+    },
+    {
+      id: 'chat-stream',
+      label: 'Chat stream contract',
+      method: 'POST',
+      endpoint: '/v3/chat/stream/{tenantId}/{workflowId}/{stage}',
+      details: 'Not auto-executed because it requires streaming response handling.',
+    },
+  ];
+
+  for (const check of intentionallySkipped) {
+    addCheck(checks, {
+      ...check,
+      status: 'skipped',
+    });
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    publicApiUrl: context.publicApiUrl,
+    tenantId: context.tenantId,
+    workflowId,
+    checks,
+    summary: summarizeChecks(checks),
+  };
+}
+
 export const verifyCommand = new Command('verify')
   .description('Run platform connectivity checks')
   .action(async () => {
-    const root = await findProjectRoot();
-    if (!root) {
-      exitWithError(ErrorCode.E001);
-    }
-
-    const envVars = await loadEnvFile(root);
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    const tenantId = env.TENANT_DEFAULT_ID || Object.keys(env)
-      .filter(k => k.startsWith('TENANT_') && k.endsWith('_ID'))
-      .map(k => env[k])[0];
-
-    if (!publicApiUrl) {
-      exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' });
-    }
+    const { root, publicApiUrl, tenantId } = await loadVerifyEnvironment();
 
     out.heading('Platform Connectivity Checks');
     out.blank();
@@ -130,6 +764,46 @@ export const verifyCommand = new Command('verify')
       out.success(`All ${passed} checks passed`);
     } else {
       out.warn(`${passed} passed, ${failed} failed`);
+    }
+  });
+
+verifyCommand
+  .command('calls')
+  .description('Audit platform-facing API call contracts used by the CLI')
+  .option('--resource-type <type>', 'Resource type to probe with list/query/get checks')
+  .option('--resource-id <id>', 'Specific resource ID to fetch during contract audit')
+  .option('--workflow <id>', 'Workflow ID to use for chat smoke test')
+  .option('--stage <stage>', 'Chat stage to use when --include-chat is enabled', 'chat')
+  .option('--tenant-record <id>', 'Tenant record ID to use for tenant info lookup')
+  .option('--user-email <email>', 'Email address to use for user lookup contract check')
+  .option('--include-chat', 'Execute a non-streaming chat request (creates a conversation)', false)
+  .option('--chat-message <message>', 'Message to send when probing chat', 'Smoke test from `eai verify calls`')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (options) => {
+    if (options.json) {
+      options.format = 'json';
+    }
+
+    const report = await runContractAudit({
+      resourceType: options.resourceType,
+      resourceId: options.resourceId,
+      workflowId: options.workflow,
+      stage: options.stage,
+      tenantRecordId: options.tenantRecord,
+      userEmail: options.userEmail,
+      includeChat: options.includeChat,
+      chatMessage: options.chatMessage,
+    });
+
+    if (options.format === 'json') {
+      out.json(report);
+      return;
+    }
+
+    renderContractAudit(report);
+    if (report.summary.failed > 0) {
+      process.exit(1);
     }
   });
 

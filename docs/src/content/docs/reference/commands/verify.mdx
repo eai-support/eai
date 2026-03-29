@@ -7,6 +7,7 @@ description: Run platform connectivity checks to ensure your environment is prop
 
 ```
 eai verify
+eai verify calls [options]
 ```
 
 ## Description
@@ -16,6 +17,8 @@ eai verify
 This command is useful after initial setup, when debugging connectivity issues, or before deploying to confirm your environment is healthy.
 
 The command must be run from within an EAI project directory and requires `BASE_URL_PUBLIC_API` to be set in `.env.local` or the environment.
+
+`eai verify calls` performs a contract audit of the platform-facing API routes the CLI depends on. It safely exercises read-only endpoints by default, reports mutation-heavy routes as intentionally skipped, and can optionally probe resource, tenant, user, and chat routes when you provide IDs or opt in.
 
 ## Checks Performed
 
@@ -105,6 +108,39 @@ Platform Connectivity Checks
 ⚠ 4 passed, 1 failed
 ```
 
+### Contract audit
+
+```bash
+eai verify calls --resource-type Customer --resource-id cust-123 --tenant-record tenant-123 --user-email jane@example.com
+```
+
+```
+Platform Call Audit
+→ PublicAPI: https://test-api.myenterprise.ai
+→ Tenant: tenant-123
+
+→ ✓ PublicAPI health
+  GET /health
+  Reachable in 87ms (status 200)
+→ ✓ Authentication token
+  LOCAL ~/.eai/tokens.json or EAI_ACCESS_TOKEN
+  Authenticated as jane@example.com
+→ ✓ Schema contract
+  GET /v3/resources/schema/tenant-123
+  objectTypes[] present (3 item(s))
+→ ⚠ Resource create/update/delete contracts
+  POST/PUT/DELETE /v3/resources/{tenantId}/{objectType}[/{id}]
+  Not auto-executed because they mutate data.
+
+✓ 7 passed, 6 skipped
+```
+
+### Contract audit as JSON
+
+```bash
+eai verify calls --format json
+```
+
 ## Troubleshooting
 
 | Failure | Resolution |
@@ -114,6 +150,7 @@ Platform Connectivity Checks
 | Platform service not reachable | Confirm your tenant ID is correct. Check `TENANT_*_ID` in `.env.local`. |
 | Data service returned error | The tenant may not have published types yet. Run `eai types seed` to publish. |
 | No Object Types found | Create or fix `src/eai.config/object-types.ts`. Run `eai init` for a scaffold. |
+| Contract audit route failed | The backend route or response shape changed. Compare the failing endpoint in `eai verify calls` with the corresponding command implementation before shipping. |
 
 ## Related Commands
 
@@ -121,6 +158,7 @@ Platform Connectivity Checks
 - [`eai env pull`](/eai-cli/reference/commands/env/) -- sync environment variables to resolve config issues
 - [`eai types validate`](/eai-cli/reference/commands/types/) -- validate Object Types before seeding
 - [`eai dev`](/eai-cli/reference/commands/dev/) -- runs a subset of these checks before starting the dev server
+- [`eai resources`](/eai-cli/reference/commands/resources/) -- many of the audited routes are exercised through resource commands
 
 ## Global Options
 
@@ -132,4 +170,3 @@ This command supports all [global CLI options](/reference/global-options/):
 - `--color` — Force colors
 
 See [Global Options](/reference/global-options/) for details.
-

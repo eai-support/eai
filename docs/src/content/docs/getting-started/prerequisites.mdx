@@ -49,7 +49,7 @@ Before any developer can use `eai-cli`, a platform administrator must complete t
    Each hop in the chain must be pre-authorized so tokens can be exchanged securely. This is standard Microsoft Entra ID configuration, performed once per environment.
 
    <Aside type="tip">
-     Your platform administrator will provide you with the **Client ID** for the CLI app registration. You'll need this for `eai login` — it goes in your `.env.local` file as `ENTRA_CLIENT_ID` or can be passed with `eai login --client-id`.
+     Your platform administrator should confirm that the first-party EAI CLI app registration is approved in the target Entra tenant. Developers normally only need the tenant name and tenant ID for `eai login`.
    </Aside>
 
 </Steps>
@@ -62,7 +62,7 @@ Before handing off to a vertical developer, confirm:
 - [ ] Admin user is provisioned in the identity provider
 - [ ] Admin user is a member of the correct security group
 - [ ] Authentication chain is configured and pre-authorized
-- [ ] Client ID for the CLI app registration is available
+- [ ] The first-party EAI CLI app registration is approved in the tenant
 - [ ] Environment configuration (API URLs, tenant IDs) is seeded in App Configuration
 
 ### External developer onboarding
@@ -70,19 +70,19 @@ Before handing off to a vertical developer, confirm:
 If you are onboarding developers from **outside your organization** (partner engineers, contractors, external teams), there is an additional path. These developers typically do not have Azure subscription access, so they cannot run `eai env pull`. Instead:
 
 1. **Provision a user** for the external developer in your Entra CIAM tenant
-2. **Share credentials** — provide the developer with: CIAM tenant name, tenant ID, client ID, platform API URL, and their developer tenant ID
+2. **Share credentials** — provide the developer with: CIAM tenant name, tenant ID, platform API URL, and their developer tenant ID
 3. **The developer creates `.env.local` manually** using the values you provide
 
 External developers authenticate with:
 
 ```bash
-eai login --tenant-name <ciam-tenant> --tenant-id <tenant-id> --client-id <client-id>
+eai login --tenant-name <ciam-tenant> --tenant-id <tenant-id>
 ```
 
 #### Platform admin checklist for external developers
 
 - [ ] External developer user provisioned in Entra CIAM
-- [ ] Client ID and tenant details shared with external developer
+- [ ] Tenant details shared with external developer
 - [ ] Localhost redirect URIs added to the vertical's app registration (see [Local Development](/eai-cli/guides/local-development/))
 
 See the [External Developer Setup](/eai-cli/guides/external-developers/) guide for the full walkthrough.
@@ -159,10 +159,10 @@ Before you can follow the [Quick Start](/eai-cli/getting-started/quickstart/), c
 
 | Item | Example | Used by |
 |------|---------|---------|
-| **CLI Client ID** | `a1b2c3d4-...` | `eai login --client-id` or `ENTRA_CLIENT_ID` in `.env.local` |
+| **Identity provider tenant ID** | `a1b2c3d4-...` | `eai login --tenant-id` or `ENTRA_TENANT_ID` in `.env.local` |
 | **Identity provider tenant** | `yourorg.ciamlogin.com` | `eai login --tenant` or `ENTRA_TENANT_NAME` in `.env.local` |
 | **Parent tenant slug** | `demo-dev` | `eai tenant create` (links child to parent) |
 | **Platform API URL** | `https://api.yourorg.ai` | `BASE_URL_PUBLIC_API` in `.env.local` |
-| **Admin user credentials** | Your email + password | `eai login` (device code flow in browser) |
+| **Admin user credentials** | Your email + password | `eai login` (browser-based sign-in) |
 
 Once you have these, proceed to the [Quick Start](/eai-cli/getting-started/quickstart/).

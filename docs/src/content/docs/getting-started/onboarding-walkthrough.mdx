@@ -103,7 +103,7 @@ Once the platform is bootstrapped, Jimmy can create vertical apps. He has two op
 <Tabs>
   <TabItem label="eai-cli (Terminal)">
     ```bash
-    # 1. Authenticate — Jimmy signs in via device code flow
+    # 1. Authenticate — Jimmy signs in via browser PKCE flow
     eai login
 
     # 2. Create a child tenant for the vertical
@@ -152,8 +152,8 @@ When Jimmy authenticates, here's what happens under the hood:
 Jimmy's terminal
     │
     ▼
-eai login — starts device code flow
-    │  Jimmy signs in via browser at microsoft.com/devicelogin
+eai login — starts browser sign-in
+    │  Jimmy signs in in the browser and returns to the CLI callback
     │  ← Gets Token A (audience: CLI app registration)
     ▼
 CLI sends request to Platform API
@@ -198,5 +198,5 @@ The chained token exchange ensures that every service in the chain knows **who**
 ## Next steps
 
 - [Quick Start](/eai-cli/getting-started/quickstart/) — follow the step-by-step workflow to scaffold and seed a vertical
-- [Authentication](/eai-cli/getting-started/authentication/) — understand device code flow and token management
+- [Authentication](/eai-cli/getting-started/authentication/) — understand browser PKCE flow and token management
 - [Multi-Tenant](/eai-cli/guides/multi-tenant/) — learn about tenant hierarchies and data isolation

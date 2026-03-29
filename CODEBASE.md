@@ -42,7 +42,7 @@ src/
 │   └── update.ts            # eai update - CLI updates
 └── lib/                     # 9 shared library modules
     ├── api.ts               # PlatformAPIClient (fetch wrapper)
-    ├── auth.ts              # Entra CIAM device code flow
+    ├── auth.ts              # Entra CIAM browser auth (authorization code + PKCE)
     ├── config.ts            # Load .env.local + eai.config.ts
     ├── error-codes.ts       # Structured error codes (E001-E399)
     ├── output.ts            # Output utilities (symbols, colors, TTY)
@@ -148,7 +148,7 @@ await clearToken();
 ```
 
 **Token storage**: `~/.eai/tokens.json`
-**Flow**: Entra CIAM device code flow
+**Flow**: Entra CIAM browser auth (authorization code + PKCE)
 
 ### config.ts - Configuration Loader
 

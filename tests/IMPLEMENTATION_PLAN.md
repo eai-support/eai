@@ -60,7 +60,7 @@ npm test -- --version
    - [ ] TC010: Init creates initial git commit
 
 2. **tests/integration/auth.test.ts** (4 scenarios: TC011, TC015, TC019, TC020)
-   - [ ] TC011: Login with device code
+   - [ ] TC011: Login with browser PKCE flow
    - [ ] TC015: Logout clears tokens
    - [ ] TC019: Auto token refresh on API call
 
