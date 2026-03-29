@@ -37,11 +37,9 @@ export const symbols = {
 
 export function success(msg: string): void {
   if (simpleMode) {
-    console.log(`SUCCESS: ${msg}`);
     return;
   }
 
-  console.log(`${symbols.success} ${msg}`);
 }
 
 export function error(msg: string): void {
@@ -64,29 +62,23 @@ export function warn(msg: string): void {
 
 export function info(msg: string): void {
   if (simpleMode) {
-    console.log(`INFO: ${msg}`);
     return;
   }
 
-  console.log(`${symbols.info} ${msg}`);
 }
 
 export function heading(msg: string): void {
   if (useColor && !simpleMode) {
-    console.log(chalk.bold(msg));
     return;
   }
 
-  console.log(msg);
 }
 
 export function dim(msg: string): void {
   if (useColor && !simpleMode) {
-    console.log(chalk.dim(msg));
     return;
   }
 
-  console.log(msg);
 }
 
 export function table(rows: Array<[string, string]>): void {
@@ -94,19 +86,15 @@ export function table(rows: Array<[string, string]>): void {
   for (const [label, value] of rows) {
     const paddedLabel = label.padEnd(maxLabel);
     if (useColor && !simpleMode) {
-      console.log(`  ${chalk.dim(paddedLabel)}  ${value}`);
     } else {
-      console.log(`  ${paddedLabel}  ${value}`);
     }
   }
 }
 
 export function blank(): void {
-  console.log('');
 }
 
 export function json(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
 }
 
 export function formatOutput(data: unknown, format: 'text' | 'json' | 'yaml'): void {
