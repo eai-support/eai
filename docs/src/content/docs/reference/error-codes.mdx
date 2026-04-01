@@ -42,7 +42,7 @@ All error responses include a machine-readable `code` field. Use this value for 
 |---|---|---|---|---|
 | `FORBIDDEN_ROLE` | 403 | Insufficient role for this operation | The user's role is lower than the action's `requiredRole` | Contact a tenant admin to upgrade the user's role |
 | `FORBIDDEN_TENANT` | 403 | User does not belong to this tenant | The authenticated user is not provisioned in the target tenant | Run `eai verify` or provision the user into the tenant |
-| `FORBIDDEN_RESOURCE` | 403 | Access denied to this resource | A `tenant-user` is trying to access another user's resource | Use a `tenant-staff` or `tenant-admin` account |
+| `FORBIDDEN_RESOURCE` | 403 | Access denied to this resource | A `tenant-viewer` is trying to access another user's resource | Use a `tenant-builder` or `tenant-admin` account |
 
 ### Resource Errors
 
