@@ -45,7 +45,7 @@ export interface ObjectTypeLinkType {
 export interface ObjectTypeAction {
   name: string;
   displayName: string;
-  requiredRole: 'tenant-user' | 'tenant-staff' | 'tenant-admin';
+  requiredRole: 'tenant-viewer' | 'tenant-builder' | 'tenant-admin';
   validationRules: {
     requiredFields?: string[];
     requiredStatus?: string;

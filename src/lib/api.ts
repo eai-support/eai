@@ -249,8 +249,10 @@ export class PlatformAPIClient {
   }
 
   async provisionUserToTenant(tenantId: string, userOid?: string): Promise<Response> {
+    if (!userOid) {
+      throw new Error('userOid is required for delegated provisioning');
+    }
     const body: Record<string, string> = { tenant_id: tenantId };
-    if (userOid) body.user_oid = userOid;
-    return this._route('payload', '/custom-users/provisionme', 'POST', body);
+    return this._route('admin', `/v1/users/${userOid}/provision`, 'POST', body);
   }
 }

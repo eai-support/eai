@@ -95,7 +95,7 @@ interface ObjectTypeAction {
   displayName: string;
 
   /** Minimum role required to execute this action */
-  requiredRole: 'tenant-user' | 'tenant-staff' | 'tenant-admin';
+  requiredRole: 'tenant-viewer' | 'tenant-builder' | 'tenant-admin';
 
   /** Pre-conditions that must be met before execution */
   validationRules: {
@@ -326,7 +326,7 @@ The `eai types validate` command checks the following rules:
 | Link target required | Error | Link types must have a `targetObjectType` |
 | Valid cardinality | Error | Must be `one-to-one`, `one-to-many`, `many-to-one`, or `many-to-many` |
 | Action name required | Error | Actions must have a `name` |
-| Valid required role | Error | Must be `tenant-user`, `tenant-staff`, or `tenant-admin` |
+| Valid required role | Error | Must be `tenant-viewer`, `tenant-builder`, or `tenant-admin` |
 | Valid side effect type | Error | Must be `set_field`, `set_timestamp`, or `set_user` |
 | Side effect field exists | Warning | Side effect `field` should reference an existing property |
 
