@@ -272,7 +272,7 @@ Examples:
           if (!action.name) {
             issues.push('action missing name');
           }
-          if (!['tenant-user', 'tenant-staff', 'tenant-admin'].includes(action.requiredRole)) {
+          if (!['tenant-viewer', 'tenant-builder', 'tenant-admin'].includes(action.requiredRole)) {
             issues.push(`action "${action.name}" has invalid requiredRole "${action.requiredRole}"`);
           }
           for (const effect of action.sideEffects) {

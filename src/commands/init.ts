@@ -317,8 +317,8 @@ function generateObjectTypesScaffold(opts: InitOptions): string {
  * ├────────────┼─────────────────────────────────────────────────┤
  * │ Roles                                                        │
  * ├────────────┼─────────────────────────────────────────────────┤
- * │ tenant-user│ Basic access (view own, create)                  │
- * │ tenant-staff│ Extended access (view all, edit, actions)       │
+ * │ tenant-viewer│ Basic access (read and lightweight submit)     │
+ * │ tenant-builder│ Extended access (view all, edit, actions)     │
  * │ tenant-admin│ Full access (delete, configure)                │
  * └────────────┴─────────────────────────────────────────────────┘
  */
@@ -402,7 +402,7 @@ export const objectTypes = {
         {
           name: 'submit',
           displayName: 'Submit',
-          requiredRole: 'tenant-user' as const,
+          requiredRole: 'tenant-viewer' as const,
           validationRules: {
             requiredFields: ['title'],
             requiredStatus: 'draft',
@@ -416,7 +416,7 @@ export const objectTypes = {
         {
           name: 'complete',
           displayName: 'Mark Complete',
-          requiredRole: 'tenant-staff' as const,
+          requiredRole: 'tenant-builder' as const,
           validationRules: {
             requiredStatus: 'in-progress',
           },
@@ -586,7 +586,7 @@ Defined in \`src/eai.config/object-types.ts\`. Each type maps to a platform reso
 
 **Field types**: text, number, boolean, date, select, json, file, relationship
 **Link cardinality**: one-to-one, one-to-many, many-to-one, many-to-many
-**Action roles**: tenant-user, tenant-staff, tenant-admin
+**Action roles**: tenant-viewer, tenant-builder, tenant-admin
 **Side effects**: set_field, set_timestamp, set_user
 
 ## Data Access
