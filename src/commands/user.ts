@@ -17,7 +17,7 @@ export const userCommand = new Command('user')
 
 userCommand
   .command('invite')
-  .description('Add an existing user to a tenant (lookup by email, then provision)')
+  .description('Add an existing user to a tenant using the tenant-admin provisioning flow')
   .requiredOption('--email <email>', 'Email address of the user to add')
   .requiredOption('--tenant <id>', 'Tenant ID to add the user to')
   .action(async (options) => {
