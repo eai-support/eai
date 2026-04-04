@@ -6,16 +6,23 @@ import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
 import { findProjectRoot } from '../lib/config.js';
-import { PlatformAPIClient } from '../lib/api.js';
+import {
+  PlatformAPIClient,
+  parseApiError,
+  type ChildTenantBootstrapResult,
+  type ParsedApiError,
+} from '../lib/api.js';
 import { loadTokens } from '../lib/auth.js';
 import {
   fetchTenantAdminMemberships,
   filterTenantAdminEntries,
   getTenantRoles,
   normalizeTenantEntries,
+  refreshTenantUsabilityStatus,
   resolveActiveTenantContext,
   resolvePublicApiUrl,
   type TenantEntry,
+  type TenantUsabilityStatus,
 } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
@@ -36,6 +43,13 @@ export interface TenantListZeroState {
   hint: string;
 }
 
+export interface TenantCreateOutcome {
+  tenant: Record<string, unknown>;
+  bootstrap?: ChildTenantBootstrapResult;
+  bootstrapError?: ParsedApiError;
+  usability: TenantUsabilityStatus;
+}
+
 export function buildTenantListZeroState(tokens: {
   tenantName?: string;
   tenantId?: string;
@@ -52,6 +66,33 @@ export function buildTenantListZeroState(tokens: {
   }
 
   return zeroState;
+}
+
+export function buildTenantCreateStatusMessages(outcome: TenantCreateOutcome): string[] {
+  const messages: string[] = [];
+
+  if (outcome.bootstrap) {
+    if (outcome.bootstrap.status === 'bootstrapped') {
+      messages.push('Bootstrap: first tenant admin was provisioned for the current login.');
+    } else if (outcome.bootstrap.status === 'already-usable') {
+      messages.push('Bootstrap: the current login already had direct tenant-admin on the child tenant.');
+    }
+  } else if (outcome.bootstrapError) {
+    const prefix = outcome.bootstrapError.code ? `${outcome.bootstrapError.code}: ` : '';
+    messages.push(`Bootstrap not confirmed: ${prefix}${outcome.bootstrapError.message}`);
+  }
+
+  if (outcome.usability.usable) {
+    messages.push(
+      outcome.usability.autoSelected
+        ? 'Usable: direct tenant-admin confirmed and the new tenant was selected.'
+        : 'Usable: direct tenant-admin confirmed.',
+    );
+  } else {
+    messages.push('Usable: not yet confirmed. The tenant exists, but direct tenant-admin membership is not visible yet.');
+  }
+
+  return messages;
 }
 
 export const tenantCommand = new Command('tenant')
@@ -210,23 +251,23 @@ tenantCommand
 
     const root = await findProjectRoot();
     const publicApiUrl = await resolvePublicApiUrl(root || undefined);
-
-    const client = new PlatformAPIClient(publicApiUrl, 'system');
     const spinner = options.format === 'json' ? null : ora('Fetching tenant...').start();
 
     try {
-      const res = await client.getTenant(id);
-      if (!res.ok) {
-        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
+      const memberships = await fetchTenantAdminMemberships(publicApiUrl);
+      const tenant = memberships.memberships.find((entry) => (
+        entry.id === id || entry.slug === id
+      ));
+
+      if (!tenant) {
+        if (spinner) spinner.fail('404 Not Found');
         process.exit(1);
       }
-
-      const tenant = await res.json() as Record<string, unknown>;
 
       if (options.format === 'json') {
         out.json(tenant);
       } else {
-        spinner!.succeed(`Tenant: ${chalk.cyan(String(tenant.name))}`);
+        spinner!.succeed(`Tenant: ${chalk.cyan(tenant.displayName)}`);
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
@@ -269,11 +310,101 @@ tenantCommand
       }
 
       const tenant = await res.json() as Record<string, unknown>;
+      const tenantId = String(tenant.id || '');
+      let bootstrap: ChildTenantBootstrapResult | undefined;
+      let bootstrapError: ParsedApiError | undefined;
+      let bootstrapped = false;
+
+      if (options.parent && tenantId) {
+        const tokens = await loadTokens();
+        if (tokens?.oid) {
+          const bootstrapResponse = await client.bootstrapChildTenantAdmin(options.parent, tenantId, {
+            userOid: tokens.oid,
+            userEmail: tokens.upn,
+          });
+
+          if (bootstrapResponse.ok) {
+            bootstrap = await bootstrapResponse.json() as ChildTenantBootstrapResult;
+            bootstrapped = bootstrap.status === 'bootstrapped' || bootstrap.status === 'already-usable';
+          } else {
+            bootstrapError = await parseApiError(bootstrapResponse);
+          }
+        } else {
+          bootstrapError = {
+            status: 0,
+            code: 'OID_MISSING',
+            message: 'The current login is missing an oid claim, so child bootstrap was not attempted.',
+          };
+        }
+      }
+
+      let refreshed: { status: TenantUsabilityStatus };
+      if (tenantId) {
+        try {
+          refreshed = await refreshTenantUsabilityStatus(tenantId, {
+            publicApiUrl,
+            created: true,
+            bootstrapped,
+            autoSelect: Boolean(options.parent),
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          bootstrapError ??= {
+            status: 0,
+            code: 'MEMBERSHIP_REFRESH_FAILED',
+            message,
+          };
+          refreshed = {
+            status: {
+              tenantId,
+              created: true,
+              bootstrapped,
+              membershipConfirmed: false,
+              adminConfirmed: false,
+              usable: false,
+              autoSelected: false,
+            },
+          };
+        }
+      } else {
+        refreshed = {
+          status: {
+            tenantId,
+            created: true,
+            bootstrapped,
+            membershipConfirmed: false,
+            adminConfirmed: false,
+            usable: false,
+            autoSelected: false,
+          },
+        };
+      }
+
+      const outcome: TenantCreateOutcome = {
+        tenant,
+        bootstrap,
+        bootstrapError,
+        usability: refreshed.status,
+      };
 
       if (options.format === 'json') {
-        out.json(tenant);
+        out.json({
+          tenant,
+          bootstrap: bootstrap || null,
+          bootstrapError: bootstrapError || null,
+          usability: outcome.usability,
+        });
       } else {
         spinner!.succeed(`Created tenant ${chalk.cyan(String(tenant.slug))} (${chalk.dim(String(tenant.id))})`);
+        for (const message of buildTenantCreateStatusMessages(outcome)) {
+          if (message.startsWith('Usable: not yet confirmed') || message.startsWith('Bootstrap not confirmed')) {
+            out.warn(message);
+          } else if (message.startsWith('Usable:')) {
+            out.success(message);
+          } else {
+            out.info(message);
+          }
+        }
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));

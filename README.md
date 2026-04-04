@@ -40,17 +40,22 @@ eai login
 # 3. Choose the tenant to work with
 eai tenant select
 
-# 4. Sync project environment if your app needs local config/secrets
+# 4. Create child tenants only when you need them
+#    `eai tenant create --parent <id>` now creates the tenant record,
+#    attempts first-admin bootstrap for the current login, and only marks
+#    the tenant usable after direct tenant-admin membership is confirmed.
+
+# 5. Sync project environment if your app needs local config/secrets
 eai env pull --include-secrets
 
-# 5. Define your data model
+# 6. Define your data model
 #    Edit src/eai.config/object-types.ts
 
-# 6. Validate and seed
+# 7. Validate and seed
 eai types validate
 eai types seed
 
-# 7. Start developing
+# 8. Start developing
 eai dev
 ```
 
@@ -98,7 +103,7 @@ All commands support these global flags:
 | Command | Description |
 |---------|-------------|
 | `eai types validate` | Check types against platform schema rules |
-| `eai types seed` | Push Object Types to platform via PublicAPI |
+| `eai types seed` | Push Object Types to platform and verify remote convergence |
 | `eai types diff` | Compare local definitions with remote state |
 | `eai types pull` | Download remote types to local TypeScript |
 
@@ -106,13 +111,13 @@ All commands support these global flags:
 
 | Command | Description |
 |---------|-------------|
-| `eai resources list <type>` | List resources (paginated) |
-| `eai resources get <type> <id>` | Get a single resource |
+| `eai resources list <type>` | List resources (paginated, supports `--tenant-id`) |
+| `eai resources get <type> <id>` | Get a single resource (supports `--tenant-id`) |
 | `eai resources create <type>` | Create with `--data` JSON or `--file` |
 | `eai resources update <type> <id>` | Update (auto-fetches version) |
 | `eai resources delete <type> <id>` | Delete (with confirmation) |
-| `eai resources query` | Cross-type query with `--types` and `--where` |
-| `eai resources schema` | Show published Object Types for tenant |
+| `eai resources query` | Cross-type query with `--types`, `--where`, and optional `--tenant-id` |
+| `eai resources schema` | Show published Object Types for tenant (supports `--tenant-id`) |
 
 ### Tenants
 
@@ -121,7 +126,7 @@ All commands support these global flags:
 | `eai tenant list` | List active tenants where you are a `tenant-admin` |
 | `eai tenant select [tenant]` | Choose the active tenant for platform operations |
 | `eai tenant info <id>` | Show tenant details |
-| `eai tenant create` | Create a new tenant |
+| `eai tenant create` | Create a new tenant and verify child usability truthfully |
 
 ### AI & Documents
 
@@ -145,9 +150,26 @@ All commands support these global flags:
 
 | Command | Description |
 |---------|-------------|
-| `eai verify` | Run platform connectivity checks |
-| `eai verify calls` | Audit platform API contracts used by the CLI |
+| `eai verify` | Run platform connectivity checks (supports read-only `--tenant-id`) |
+| `eai verify calls` | Audit platform API contracts used by the CLI (supports read-only `--tenant-id`) |
 | `eai doctor` | Comprehensive diagnostics with fix suggestions |
+
+## Tenant Lifecycle Truth
+
+`eai tenant create` now distinguishes these states:
+
+- `created`: the tenant document exists
+- `bootstrapped`: the CLI successfully called the constrained first-admin bootstrap flow for a child tenant
+- `usable`: a refreshed membership check confirmed the current login now holds direct `tenant-admin` on that tenant
+
+For child tenants, the CLI only auto-selects the new tenant when `usable` is true. If bootstrap is blocked or downstream membership confirmation has not landed yet, the command leaves the active tenant unchanged and reports that explicitly.
+
+The first-admin bootstrap path is intentionally narrow:
+
+- the caller must already be `tenant-admin` on the direct parent tenant
+- the target must be an immediate child of that parent
+- the child must not already have a tenant admin
+- parent child allowance is enforced from `limits.tenants`
 
 ## Architecture
 

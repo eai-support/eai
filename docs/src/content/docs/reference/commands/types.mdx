@@ -25,7 +25,7 @@ Typical workflow:
 4. Run `eai tenant select`
 5. Run `eai types diff` to preview changes
 6. Run `eai types seed` to publish
-7. Run `eai resources schema` to verify what is published for the active tenant
+7. Run `eai resources schema` to verify what is published for the active tenant or a deliberate `--tenant-id` override
 
 ## Subcommands
 
@@ -51,7 +51,7 @@ Validation rules include:
 
 ### eai types seed
 
-Push local Object Type definitions to the platform. Creates new types or updates existing ones based on name matching within each tenant scope.
+Push local Object Type definitions to the platform. Creates new types or updates existing ones based on name matching within each tenant scope, then re-fetches the remote schema to confirm whether the requested types actually converged.
 
 ```
 eai types seed [options]
@@ -153,6 +153,7 @@ Tenant: patient-intake → 8f3a1b2c-...
   ✔ Appointment (updated)
 
 ℹ Result: 2 created, 1 updated, 0 failed
+✔ Verification: converged (3/3 published remotely)
 ```
 
 ### Dry-run seed
@@ -206,6 +207,12 @@ Tenant: patient-intake
 ```
 
 Remote tenant selection comes from your active login context. Local object-type scope selection comes from `--tenant-key`, an active-tenant slug match, `template`, `default`, or an interactive prompt. Use `--tenant-id` only when you want a deliberate one-off override of the active tenant.
+
+If the remote schema does not fully converge, the command now says so explicitly instead of inferring success from write counts alone. Typical follow-up states are:
+
+- `converged`: every requested type is published remotely
+- `partial`: one or more requested types are still missing or drifted
+- `drifted`: the type exists remotely but has not reached the expected published state
 
 ### Pull remote types to local
 

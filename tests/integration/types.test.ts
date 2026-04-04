@@ -3,7 +3,11 @@
  */
 
 import { describe, expect, test } from 'vitest';
-import { resolveDefaultTenantKey, resolveTenantIdForKey } from '../../src/commands/types.js';
+import {
+  resolveDefaultTenantKey,
+  resolveTenantIdForKey,
+  verifyTypeSeedConvergence,
+} from '../../src/commands/types.js';
 
 describe('resolveTenantIdForKey', () => {
   test('uses the explicit CLI tenant override when present', () => {
@@ -60,5 +64,90 @@ describe('resolveDefaultTenantKey', () => {
       template: [],
       default: [],
     })).toBe('template');
+  });
+});
+
+describe('verifyTypeSeedConvergence', () => {
+  test('reports converged when all requested types are published remotely', () => {
+    expect(verifyTypeSeedConvergence(
+      'tenant-1',
+      ['Customer', 'Project'],
+      {
+        docs: [
+          { name: 'Customer', slug: 'customer', status: 'published' },
+          { name: 'Project', slug: 'project', status: 'published' },
+        ],
+      },
+      {
+        createdCount: 1,
+        updatedCount: 1,
+        failedCount: 0,
+      },
+    )).toEqual({
+      tenantId: 'tenant-1',
+      requestedTypes: ['Customer', 'Project'],
+      matchedTypes: ['Customer', 'Project'],
+      missingTypes: [],
+      driftedTypes: [],
+      createdCount: 1,
+      updatedCount: 1,
+      failedCount: 0,
+      converged: true,
+    });
+  });
+
+  test('reports partial when some requested types are still drafts remotely', () => {
+    expect(verifyTypeSeedConvergence(
+      'tenant-1',
+      ['Customer', 'Project'],
+      {
+        docs: [
+          { name: 'Customer', slug: 'customer', status: 'published' },
+          { name: 'Project', slug: 'project', status: 'draft' },
+        ],
+      },
+      {
+        createdCount: 0,
+        updatedCount: 1,
+        failedCount: 0,
+      },
+    )).toEqual({
+      tenantId: 'tenant-1',
+      requestedTypes: ['Customer', 'Project'],
+      matchedTypes: ['Customer'],
+      missingTypes: [],
+      driftedTypes: ['Project'],
+      createdCount: 0,
+      updatedCount: 1,
+      failedCount: 0,
+      converged: false,
+    });
+  });
+
+  test('reports partial when requested types are missing or writes failed', () => {
+    expect(verifyTypeSeedConvergence(
+      'tenant-1',
+      ['Customer', 'Project'],
+      {
+        docs: [
+          { name: 'Customer', slug: 'customer', status: 'published' },
+        ],
+      },
+      {
+        createdCount: 1,
+        updatedCount: 0,
+        failedCount: 1,
+      },
+    )).toEqual({
+      tenantId: 'tenant-1',
+      requestedTypes: ['Customer', 'Project'],
+      matchedTypes: ['Customer'],
+      missingTypes: ['Project'],
+      driftedTypes: [],
+      createdCount: 1,
+      updatedCount: 0,
+      failedCount: 1,
+      converged: false,
+    });
   });
 });
