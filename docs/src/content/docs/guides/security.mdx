@@ -39,6 +39,8 @@ Terminal                    Browser                     Entra CIAM
 5. The CLI exchanges the authorization code and PKCE verifier for tokens and stores them locally
 </Steps>
 
+The CLI opens one authorization request. If users see two access prompts, Entra is usually asking separately for basic identity scopes and the delegated PublicAPI permission requested by the CLI.
+
 ### Running login
 
 ```bash
@@ -64,7 +66,7 @@ The login command uses defaults that can be overridden:
 |--------------------|----------------------------------------|----------------------------|
 | `--tenant-name`    | `eaidevmyentepriseai`                 | Entra CIAM tenant name     |
 | `--tenant-id`      | (platform default)                     | Entra CIAM tenant ID       |
-| `--scope`          | `openid profile email offline_access api://.../access_token` | OAuth scopes |
+| `--scope`          | `openid profile email offline_access api://32191e63-e253-48de-9ea1-a5337e236fe6/access_token` | OAuth scopes |
 
 ```bash
 eai login --tenant-name yourorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
@@ -105,6 +107,15 @@ Login  ──→  Access Token (valid ~1 hour)
 - **Access tokens** expire after approximately 1 hour
 - The CLI automatically refreshes the access token using the refresh token when it is within 5 minutes of expiry
 - If the refresh token is also expired or invalid, you need to run `eai login` again
+
+## Consent and Pre-Authorization
+
+The default CLI scope includes the delegated PublicAPI permission. To avoid repeated user-facing consent prompts, the tenant should have:
+
+- the first-party EAI CLI app approved for use
+- the PublicAPI delegated scope pre-authorized or admin-consented for that app
+
+If that configuration is missing, users can see an extra access prompt even though the CLI only initiated one login flow.
 
 ### Checking authentication status
 

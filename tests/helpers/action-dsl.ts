@@ -24,10 +24,16 @@ export async function runCommand(ctx: TestContext, cmd: string): Promise<Command
     const cliEntry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
     const executable = command === 'eai' ? process.execPath : command;
     const executableArgs = command === 'eai' ? [cliEntry, ...args] : args;
+    const childEnv = {
+      ...process.env,
+      HOME: ctx.env.HOME || ctx.workingDir,
+      USERPROFILE: ctx.env.USERPROFILE || ctx.workingDir,
+      ...ctx.env,
+    };
 
     const child = spawn(executable, executableArgs, {
       cwd: ctx.workingDir,
-      env: { ...process.env, ...ctx.env },
+      env: childEnv,
       shell: false,
     });
 

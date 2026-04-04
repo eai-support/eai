@@ -49,7 +49,7 @@ Before any developer can use `eai-cli`, a platform administrator must complete t
    Each hop in the chain must be pre-authorized so tokens can be exchanged securely. This is standard Microsoft Entra ID configuration, performed once per environment.
 
    <Aside type="tip">
-     Your platform administrator should confirm that the first-party EAI CLI app registration is approved in the target Entra tenant. Developers normally only need the tenant name and tenant ID for `eai login`.
+     Your platform administrator should confirm that the first-party EAI CLI app registration is approved in the target Entra tenant and that the PublicAPI delegated scope is pre-authorized for it. Developers normally only need the tenant name and tenant ID for `eai login`.
    </Aside>
 
 </Steps>
@@ -63,6 +63,7 @@ Before handing off to a vertical developer, confirm:
 - [ ] Admin user is a member of the correct security group
 - [ ] Authentication chain is configured and pre-authorized
 - [ ] The first-party EAI CLI app registration is approved in the tenant
+- [ ] The PublicAPI delegated scope is pre-authorized or admin-consented for the CLI app
 - [ ] Environment configuration (API URLs, tenant IDs) is seeded in App Configuration
 
 ### External developer onboarding

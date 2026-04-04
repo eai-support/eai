@@ -61,7 +61,7 @@ The full set of login options:
 |------|---------|-------------|
 | `--tenant-name <name>` | `eaidevmyentepriseai` | CIAM tenant name |
 | `--tenant-id <id>` | Platform default | CIAM tenant ID |
-| `--scope <scope>` | `openid profile email offline_access api://.../access_token` | OAuth scopes |
+| `--scope <scope>` | `openid profile email offline_access api://32191e63-e253-48de-9ea1-a5337e236fe6/access_token` | OAuth scopes |
 
 A successful login looks like this:
 
@@ -73,6 +73,15 @@ Opening your browser to complete sign-in...
 ✔ Authenticated as you@example.com
 Token expires: 3/10/2026, 2:30:00 PM
 ```
+
+## Why you might see two access prompts
+
+`eai login` starts one browser authorization flow, not two separate logins. If Entra shows two access or consent screens, it is usually because the tenant is evaluating both:
+
+- the standard sign-in scopes: `openid profile email offline_access`
+- the delegated PublicAPI permission: `api://32191e63-e253-48de-9ea1-a5337e236fe6/access_token`
+
+That extra screen is normally a tenant or app-registration configuration issue, not a CLI bug. The correct fix is to have the platform administrator pre-authorize or admin-consent the first-party EAI CLI app for the PublicAPI delegated scope in that tenant.
 
 ## Token storage
 
@@ -184,6 +193,7 @@ You did not complete sign-in before the localhost callback timed out, or the bro
 
 The Entra CIAM tenant rejected the authentication. Common causes:
 - The CLI app registration is not available or not approved in the Entra tenant
+- The PublicAPI delegated scope is not pre-authorized for the CLI app in the tenant
 - Your account does not have permission to use this application
 - The Entra tenant has conditional access policies that block browser-based sign-in or the localhost callback
 
