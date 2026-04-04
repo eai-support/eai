@@ -14,7 +14,6 @@ import { randomUUID } from 'node:crypto';
 export interface EAIProjectConfig {
   appName: string;
   displayName: string;
-  tenantId: string;
   workflowId: string;
   environment: string;
   publicApiUrl: string;
@@ -222,7 +221,6 @@ export async function resolveProjectConfig(projectRoot: string): Promise<EAIProj
   return {
     appName,
     displayName: appName,
-    tenantId: env[`TENANT_${appName.toUpperCase()}_ID`] || env.TENANT_DEFAULT_ID || '',
     workflowId: env[`WORKFLOW_${appName.toUpperCase()}_ID`] || env.WORKFLOW_DEFAULT_ID || '',
     environment: env.EAI_ENV || 'dev',
     publicApiUrl: env.BASE_URL_PUBLIC_API || '',

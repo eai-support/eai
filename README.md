@@ -37,17 +37,20 @@ npm install
 # 2. Authenticate
 eai login
 
-# 3. Sync environment from cloud
+# 3. Choose the tenant to work with
+eai tenant select
+
+# 4. Sync project environment if your app needs local config/secrets
 eai env pull --include-secrets
 
-# 4. Define your data model
+# 5. Define your data model
 #    Edit src/eai.config/object-types.ts
 
-# 5. Validate and seed
+# 6. Validate and seed
 eai types validate
 eai types seed
 
-# 6. Start developing
+# 7. Start developing
 eai dev
 ```
 
@@ -79,8 +82,8 @@ All commands support these global flags:
 | `eai login` | Authenticate with Entra CIAM (browser-based PKCE flow) |
 | `eai logout` | Clear stored tokens |
 | `eai whoami` | Show auth status and project context |
-| `eai user list` | List users in current tenant |
-| `eai user info <id>` | Show user details |
+| `eai user invite --email <email>` | Add an existing user to the active tenant or an explicit tenant |
+| `eai user provision-me` | Provision yourself to the active tenant or an explicit tenant |
 
 ### Environment
 
@@ -115,7 +118,8 @@ All commands support these global flags:
 
 | Command | Description |
 |---------|-------------|
-| `eai tenant list` | List tenants (scoped to parent) |
+| `eai tenant list` | List active tenants where you are a `tenant-admin` |
+| `eai tenant select [tenant]` | Choose the active tenant for platform operations |
 | `eai tenant info <id>` | Show tenant details |
 | `eai tenant create` | Create a new tenant |
 
@@ -151,6 +155,7 @@ All commands support these global flags:
 Developer Terminal                    EAI Platform
 ──────────────────                    ────────────
 eai login ──────────────────────────→ Entra CIAM (browser PKCE + localhost callback)
+eai tenant select ──────────────────→ Current-user memberships → active tenant context
 eai env pull ───────────────────────→ Azure App Config + Key Vault
 eai types seed ─────────────────────→ Platform API → Type Registry
 eai resources list ─────────────────→ Platform API → Data Service
@@ -159,7 +164,7 @@ eai docs classify ──────────────────→ Plat
 eai deploy trigger ─────────────────→ GitHub Actions → Azure App Service
 ```
 
-The CLI authenticates via browser-based authorization code flow with PKCE, stores tokens locally in `~/.eai/`, and calls the platform API directly with a Bearer token. All platform internals are abstracted away.
+The CLI authenticates via browser-based authorization code flow with PKCE, stores tokens locally in `~/.eai/`, persists the active working tenant from your tenant-admin memberships, and calls the platform API directly with a Bearer token. `.env.local` is still available for project runtime configuration, but tenant selection for CLI platform commands comes from `eai login` and `eai tenant select`.
 
 ## Error Codes
 
@@ -202,7 +207,7 @@ All commands that return structured data support `--format json` for automation:
 eai resources list User --format json
 
 # Parse with jq
-eai tenant list --format json | jq '.[] | .name'
+eai tenant list --format json | jq '.tenants[] | .slug'
 
 # Use in scripts
 if eai verify --format json | jq -e '.healthy' > /dev/null; then

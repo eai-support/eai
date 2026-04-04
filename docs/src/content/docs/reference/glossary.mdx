@@ -39,11 +39,13 @@ See: [Installation](/eai-cli/getting-started/installation/), [Quick Start](/eai-
 
 A backend service that manages data storage and retrieval for [resources](#resource). Part of the [platform service](#platform-service) layer. Not accessed directly -- all operations go through the [Platform API](#platform-api).
 
-### Device Code Flow
+### Browser PKCE Flow
 
-An OAuth 2.0 authentication flow that allows the CLI to authenticate without requiring a browser on the same machine. The CLI displays a code and URL; the user opens the URL in any browser, enters the code, and signs in. Used by `eai login`.
+The OAuth 2.0 authorization code flow with PKCE used by `eai login`. The CLI
+opens the Entra sign-in page in the browser, receives the authorization code on
+a localhost callback, and exchanges it for tokens.
 
-See: [Architecture - Authentication Flow](/eai-cli/concepts/architecture/#authentication-flow), [Security Model - CLI Authentication](/eai-cli/concepts/security-model/#cli-authentication-device-code-flow)
+See: [Architecture - Authentication Flow](/eai-cli/concepts/architecture/#authentication-flow), [Security Model - CLI Authentication](/eai-cli/concepts/security-model/#cli-authentication)
 
 ## E
 

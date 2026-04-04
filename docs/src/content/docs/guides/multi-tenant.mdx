@@ -25,7 +25,7 @@ Tenants form a hierarchy. A parent tenant can have child tenants, each with thei
 
 ## Listing tenants
 
-View all tenants you have access to:
+View all active tenants where you are a `tenant-admin`:
 
 ```bash
 eai tenant list
@@ -34,17 +34,29 @@ eai tenant list
 Output:
 
 ```
-✔ 4 tenants
-  acme-corp abc12345-def6-7890-abcd-ef0123456789
-    domains: acme.example.com
-  acme-west 111aaaa-222b-333c-444d-555eee666fff
-  acme-east 777ggg-888h-999i-000j-111kkk222lll
-  acme-south 333mmm-444n-555o-666p-777qqq888rrr
+✔ 4 tenant-admin memberships
+→ acme-corp — Acme Corp (acme.example.com) [tenant-admin]
+→ acme-west — Acme West [tenant-admin]
+→ acme-east — Acme East [tenant-admin]
+→ acme-south — Acme South [tenant-admin]
 ```
+
+`eai tenant list` is intentionally filtered. It does not return every tenant membership for the logged-in user; it only returns tenants where that user has the `tenant-admin` role.
+
+## Selecting the active tenant
+
+Platform commands use the active tenant stored in your CLI login context, not a tenant ID from `.env.local`.
+
+```bash
+eai login
+eai tenant select
+```
+
+If you have a single active tenant-admin membership, the CLI selects it automatically after login. If you have multiple memberships, `eai tenant select` lets you choose the tenant to work with now, similar to selecting a subscription in Azure CLI.
 
 ### Filter by parent
 
-List only child tenants of a specific parent:
+List only child tenants of a specific parent, still restricted to your tenant-admin memberships:
 
 ```bash
 eai tenant list --parent abc12345-def6-7890-abcd-ef0123456789
@@ -58,14 +70,17 @@ eai tenant list --json
 
 ```json
 {
-  "docs": [
+  "tenants": [
     {
       "id": "abc12345-def6-7890-abcd-ef0123456789",
-      "name": "Acme Corp",
+      "displayName": "Acme Corp",
       "slug": "acme-corp",
-      "domain": ["acme.example.com"]
+      "domain": "acme.example.com",
+      "isActive": true,
+      "roles": ["tenant-admin"]
     }
-  ]
+  ],
+  "count": 1
 }
 ```
 
@@ -135,13 +150,16 @@ Domains are used for routing -- the platform can determine which tenant a reques
 
 ## Data isolation
 
-Every API call is scoped to a tenant. When you run CLI commands, the tenant ID is resolved from your `.env.local`:
+Every API call is scoped to a tenant. When you run CLI commands, the tenant comes from your active login selection:
 
-```bash title=".env.local"
-TENANT_DEFAULT_ID=abc12345-def6-7890-abcd-ef0123456789
-```
+- `eai resources *`
+- `eai docs *`
+- `eai chat *`
+- `eai types diff`
+- `eai types seed`
+- `eai verify`
 
-All resource operations (create, list, get, update, delete) are automatically scoped to this tenant. Resources created under one tenant are invisible to other tenants.
+Resources created under one tenant are invisible to other tenants.
 
 ```
 Tenant A                    Tenant B
@@ -202,17 +220,9 @@ Each level in the hierarchy has its own isolated data. A parent tenant administr
    ```
 </Steps>
 
-## Tenant-specific configuration
+## Local object-type scopes
 
-When your project works with multiple tenants, define a tenant ID variable for each one in `.env.local`:
-
-```bash title=".env.local"
-TENANT_DEFAULT_ID=abc12345-def6-7890-abcd-ef0123456789
-TENANT_DIVISION_A_ID=111aaaa-222b-333c-444d-555eee666fff
-TENANT_DIVISION_B_ID=777ggg-888h-999i-000j-111kkk222lll
-```
-
-These variables map to the tenant keys in your `object-types.ts`:
+Your project can still define multiple local scopes in `object-types.ts`:
 
 ```typescript title="src/eai.config/object-types.ts"
 export const objectTypes: Record<string, ObjectTypeDefinition[]> = {
@@ -227,14 +237,12 @@ export const objectTypes: Record<string, ObjectTypeDefinition[]> = {
 };
 ```
 
-When you run `eai types seed`, the CLI resolves each tenant key to its corresponding `TENANT_<KEY>_ID` environment variable:
+When you run `eai types seed` or `eai types diff`, the CLI:
 
-- `division-a` maps to `TENANT_DIVISION_A_ID`
-- `division-b` maps to `TENANT_DIVISION_B_ID`
+- chooses the remote platform tenant from your active login selection
+- chooses the local object-type scope from `--tenant-key`, an active-tenant slug match, `template`, `default`, or an interactive prompt
 
-<Aside type="tip">
-  The key-to-variable mapping converts hyphens to underscores and uppercases the result. So `my-tenant` becomes `TENANT_MY_TENANT_ID`.
-</Aside>
+Use `--tenant-id <uuid>` only when you intentionally want to override the active tenant for a one-off publish or diff run.
 
 ## Domains
 
@@ -262,11 +270,10 @@ eai tenant list
 
 ## Working with multiple tenants in the CLI
 
-You can switch between tenants by changing the `TENANT_DEFAULT_ID` in your `.env.local`, or by setting it as an environment variable:
+You can switch between tenants with:
 
 ```bash
-# Temporarily work with a different tenant
-TENANT_DEFAULT_ID=111aaaa-222b-333c-444d-555eee666fff eai resources list Patient
+eai tenant select
 ```
 
 For Object Type operations, use the `--tenant-key` flag:
@@ -298,4 +305,4 @@ eai types seed --tenant-key division-a
 
 - [Security](/eai-cli/guides/security/) -- understand how roles work within tenants
 - [Object Types](/eai-cli/guides/object-types/) -- define data models scoped to specific tenants
-- [Environment](/eai-cli/guides/environment/) -- configure tenant IDs in your environment
+- [Environment](/eai-cli/guides/environment/) -- manage project runtime configuration and secrets

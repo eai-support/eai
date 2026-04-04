@@ -8,6 +8,9 @@
 
 import { getAccessToken } from './auth.js';
 
+type PlatformBackend = 'payload' | 'admin' | 'mid';
+type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+
 export class PlatformAPIClient {
   constructor(
     private readonly baseUrl: string,
@@ -28,7 +31,13 @@ export class PlatformAPIClient {
   // --------------- Internal routing ---------------
 
   /** @internal — do not use directly; use typed methods below. */
-  private async _route(backend: string, endpoint: string, method = 'GET', body?: unknown, params?: Record<string, unknown>): Promise<Response> {
+  private async _route(
+    backend: PlatformBackend,
+    endpoint: string,
+    method: PlatformMethod = 'GET',
+    body?: unknown,
+    params?: Record<string, unknown>,
+  ): Promise<Response> {
     return fetch(`${this.baseUrl}/v3/orchestrate`, {
       method: 'POST',
       headers: await this.headers(),
@@ -203,8 +212,23 @@ export class PlatformAPIClient {
   // --------------- Platform requests ---------------
 
   /** Route a request through the platform gateway. */
-  async platformRequest(endpoint: string, method = 'GET', body?: unknown, params?: Record<string, unknown>): Promise<Response> {
+  async platformRequest(
+    endpoint: string,
+    method: PlatformMethod = 'GET',
+    body?: unknown,
+    params?: Record<string, unknown>,
+  ): Promise<Response> {
     return this._route('payload', endpoint, method, body, params);
+  }
+
+  /** Route a request through the AdminAPI gateway. */
+  async adminRequest(
+    endpoint: string,
+    method: PlatformMethod = 'GET',
+    body?: unknown,
+    params?: Record<string, unknown>,
+  ): Promise<Response> {
+    return this._route('admin', endpoint, method, body, params);
   }
 
   // --------------- Tenants ---------------
@@ -232,8 +256,8 @@ export class PlatformAPIClient {
 
   // --------------- Users ---------------
 
-  async getCurrentUser(_oid?: string): Promise<Response> {
-    return this._route('payload', '/custom-users/me', 'GET');
+  async getUserMemberships(oid: string): Promise<Response> {
+    return this.adminRequest(`/v1/users/${oid}/memberships`, 'GET');
   }
 
   async provisionMe(): Promise<Response> {
@@ -245,14 +269,21 @@ export class PlatformAPIClient {
   }
 
   async lookupUserByEmail(email: string): Promise<Response> {
-    return this._route('payload', '/custom-users/by-email', 'GET', undefined, { email });
+    return this.adminRequest(`/v1/users/by-email?email=${encodeURIComponent(email)}`, 'GET');
   }
 
   async provisionUserToTenant(tenantId: string, userOid?: string): Promise<Response> {
-    if (!userOid) {
-      throw new Error('userOid is required for delegated provisioning');
+    if (userOid) {
+      return this.adminRequest(`/v1/users/${userOid}/provision`, 'POST', {
+        tenant_id: tenantId,
+      });
     }
+
     const body: Record<string, string> = { tenant_id: tenantId };
-    return this._route('admin', `/v1/users/${userOid}/provision`, 'POST', body);
+    return fetch(`${this.baseUrl}/v3/users/provisionme`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify(body),
+    });
   }
 }

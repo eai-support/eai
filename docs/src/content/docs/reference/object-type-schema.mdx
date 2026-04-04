@@ -339,7 +339,7 @@ my-vertical/
 ├── src/
 │   └── eai.config/
 │       └── object-types.ts    ← Define Object Types here
-├── .env.local                 ← Tenant IDs and API URLs
+├── .env.local                 ← App/runtime config such as API URLs and workflow IDs
 └── package.json
 ```
 
@@ -356,4 +356,4 @@ export const objectTypes: Record<string, ObjectTypeDefinition[]> = {
 };
 ```
 
-The keys in the record (`'my-tenant-key'`) are mapped to tenant IDs via environment variables (`TENANT_MY_TENANT_KEY_ID`).
+The keys in the record (`'my-tenant-key'`) identify local object-type scopes. The CLI chooses the remote platform tenant from your active login selection, or from an explicit `--tenant-id` override when you provide one.

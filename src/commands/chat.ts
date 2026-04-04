@@ -5,8 +5,9 @@
 import { Command } from 'commander';
 import { randomUUID } from 'node:crypto';
 import chalk from 'chalk';
-import { findProjectRoot, loadEnvFile } from '../lib/config.js';
+import { findProjectRoot } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
+import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
@@ -26,18 +27,13 @@ chatCommand
     const root = await findProjectRoot();
     if (!root) { exitWithError(ErrorCode.E001); }
 
-    const envVars = await loadEnvFile(root);
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    const tenantId = env.TENANT_DEFAULT_ID ||
-      Object.keys(env).filter(k => k.startsWith('TENANT_') && k.endsWith('_ID')).map(k => env[k])[0];
-
-    if (!publicApiUrl || !tenantId) {
-      out.error('Missing BASE_URL_PUBLIC_API or tenant ID.');
-      process.exit(1);
-    }
-
-    const client = new PlatformAPIClient(publicApiUrl, tenantId);
+    const publicApiUrl = await resolvePublicApiUrl(root);
+    const context = await resolveActiveTenantContext({
+      projectRoot: root,
+      publicApiUrl,
+      interactive: true,
+    });
+    const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
     const conversationId = options.conversation || randomUUID();
 
     out.info(`Conversation: ${chalk.dim(conversationId)}`);
@@ -79,18 +75,13 @@ chatCommand
     const root = await findProjectRoot();
     if (!root) { exitWithError(ErrorCode.E001); }
 
-    const envVars = await loadEnvFile(root);
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    const tenantId = env.TENANT_DEFAULT_ID ||
-      Object.keys(env).filter(k => k.startsWith('TENANT_') && k.endsWith('_ID')).map(k => env[k])[0];
-
-    if (!publicApiUrl || !tenantId) {
-      out.error('Missing BASE_URL_PUBLIC_API or tenant ID.');
-      process.exit(1);
-    }
-
-    const client = new PlatformAPIClient(publicApiUrl, tenantId);
+    const publicApiUrl = await resolvePublicApiUrl(root);
+    const context = await resolveActiveTenantContext({
+      projectRoot: root,
+      publicApiUrl,
+      interactive: true,
+    });
+    const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
     const conversationId = options.conversation || randomUUID();
 
     out.info(`Streaming conversation: ${chalk.dim(conversationId)}`);

@@ -33,7 +33,7 @@ Before you can use the CLI, your platform administrator must provide:
 | **CIAM tenant name** | `yourorg.ciamlogin.com` | `--tenant-name` flag |
 | **CIAM tenant ID** | `a1b2c3d4-e5f6-...` | `--tenant-id` flag |
 | **Platform API URL** | `https://api.yourorg.ai` | `BASE_URL_PUBLIC_API` in `.env.local` |
-| **Your tenant ID** | `d4e5f6g7-h8i9-...` | `TENANT_*_ID` in `.env.local` |
+| **Your tenant-admin membership** | `my-vertical` | Becomes selectable with `eai tenant select` after login |
 | **Workflow ID** | `w1x2y3z4-...` | `WORKFLOW_ID` in `.env.local` (if using AI chat) |
 | **Your credentials** | Email + password | Browser-based sign-in |
 
@@ -64,7 +64,7 @@ Your admin must also have provisioned your user account in the CIAM tenant. If y
 </Steps>
 
 <Aside>
-  You can avoid typing the flags every time by setting the tenant values in your project's `.env.local` file (see next section). Once set, plain `eai login` will use them automatically.
+  You can avoid typing the flags every time by scripting them or exporting `ENTRA_TENANT_ID` and `ENTRA_TENANT_NAME` in your shell. Tenant selection for platform commands still comes from `eai tenant select`, not from tenant IDs in `.env.local`.
 </Aside>
 
 ## Create `.env.local` manually
@@ -78,9 +78,6 @@ BASE_URL_PUBLIC_API=https://api.yourorg.ai
 # Authentication
 ENTRA_TENANT_ID=a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ENTRA_TENANT_NAME=yourorg.ciamlogin.com
-
-# Your developer tenant
-TENANT_MY_VERTICAL_ID=d4e5f6g7-h8i9-0123-jklm-no4567890123
 
 # Auth secret for Next.js (generate with: openssl rand -base64 32)
 AUTH_SECRET=your-generated-secret-here
@@ -101,8 +98,9 @@ Once authenticated and configured, most CLI commands work identically for extern
 
 | Command | Works? | Notes |
 |---------|--------|-------|
-| `eai login` | Yes | Use `--tenant-name` and `--tenant-id` flags (or set them in `.env.local`) |
+| `eai login` | Yes | Use `--tenant-name` and `--tenant-id` flags (or export them in your shell) |
 | `eai whoami` | Yes | |
+| `eai tenant select` | Yes | Choose the active tenant after login |
 | `eai init` | Yes | |
 | `eai types validate` | Yes | Local-only, no auth needed |
 | `eai types seed` | Yes | Requires valid token |

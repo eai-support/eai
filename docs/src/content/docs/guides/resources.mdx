@@ -19,7 +19,7 @@ eai resources create Patient --data '{...}'
        Resource stored with tenant isolation
 ```
 
-The CLI reads your `BASE_URL_PUBLIC_API` and tenant ID from `.env.local`, attaches your Bearer token, and calls the Platform API. Every resource is scoped to a tenant -- you never see resources from other tenants.
+The CLI reads your `BASE_URL_PUBLIC_API` from project config or stored login context, attaches your Bearer token, and uses the active tenant selected with `eai tenant select`. Every resource is scoped to a tenant -- you never see resources from other tenants.
 
 ## Creating resources
 

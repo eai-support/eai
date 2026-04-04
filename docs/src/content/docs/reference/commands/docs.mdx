@@ -13,7 +13,7 @@ eai docs <subcommand> <argument> [options]
 
 `eai docs` manages documents on the EAI platform. You can upload files, run AI-powered classification to automatically categorize documents, and index them for retrieval-augmented generation (RAG) so they become searchable by AI chat workflows.
 
-This command requires `BASE_URL_PUBLIC_API` and a tenant ID to be set in `.env.local` or the environment. The `upload` subcommand also requires valid authentication tokens (run `eai login` first).
+This command uses the active tenant selected through `eai login` and `eai tenant select`. `BASE_URL_PUBLIC_API` can still come from `.env.local` or the environment when needed. The `upload` subcommand also requires valid authentication tokens.
 
 ## Subcommands
 
@@ -123,7 +123,7 @@ eai chat stream "What do the lab results show?" --workflow wf-medical-789
 ## Prerequisites
 
 - **Authentication**: Run `eai login` before uploading documents. Upload requires a valid access token.
-- **Environment**: `BASE_URL_PUBLIC_API` and a tenant ID must be configured.
+- **Tenant context**: Run `eai login` and `eai tenant select` before `classify` or `index`.
 - **File access**: The file path must be accessible from the current working directory.
 
 ## Related Commands
@@ -142,4 +142,3 @@ This command supports all [global CLI options](/reference/global-options/):
 - `--color` — Force colors
 
 See [Global Options](/reference/global-options/) for details.
-

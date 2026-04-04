@@ -280,9 +280,18 @@ line you write.
 5. Follow existing codebase patterns (from research.md)
 6. **MINIMAL CHANGE CHECK**: Verify every modification against the 7-point
    checklist above
-7. **RUN FEEDBACK LOOP** (see below)
-8. Mark task complete: Change `- [ ]` to `- [X]` in tasks.md
-9. Report progress
+7. Mark the task `in_progress` before editing:
+
+   ```bash
+   # Use the Gofer task status tool if available
+   gofer_update_task_status <spec-id> <task-id> in_progress
+   ```
+
+8. **RUN FEEDBACK LOOP** (see below)
+9. After the task passes its feedback loop, immediately mark it complete in
+   `tasks.md` using `gofer_update_task_status <spec-id> <task-id> completed` or
+   `.specify/scripts/bash/mark-task-complete.sh <feature-dir> <task-id>`
+10. Report progress
 
 ### Feedback Loop (After EACH Task)
 
@@ -304,6 +313,7 @@ npm run typecheck  # or tsc --noEmit
 - If tests fail → **FIX BEFORE** proceeding to next task
 - If lint errors → **FIX BEFORE** proceeding
 - If type errors → **FIX BEFORE** proceeding
+- **DO NOT** mark a task complete until the feedback loop passes
 - **DO NOT** accumulate failures across tasks
 
 ### After Each Phase

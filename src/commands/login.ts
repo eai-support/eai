@@ -5,6 +5,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { browserLogin, clearTokens } from '../lib/auth.js';
+import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 
 // Default CIAM tenant for EAI platform
@@ -35,6 +36,18 @@ export const loginCommand = new Command('login')
       out.blank();
       out.success(`Authenticated as ${chalk.bold(tokens.upn || 'user')}`);
       out.info(`Token expires: ${new Date(tokens.expiresAt).toLocaleString()}`);
+
+      try {
+        const publicApiUrl = await resolvePublicApiUrl();
+        const context = await resolveActiveTenantContext({
+          publicApiUrl,
+          interactive: true,
+        });
+        out.info(`Active tenant: ${chalk.cyan(context.activeTenant.displayName)} ${chalk.dim(`(${context.activeTenant.slug})`)}`);
+      } catch (selectionError) {
+        out.warn(selectionError instanceof Error ? selectionError.message : String(selectionError));
+        out.info(`Run ${chalk.cyan('eai tenant select')} after login to choose the tenant to work with.`);
+      }
     } catch (err) {
       out.error(`Login failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);

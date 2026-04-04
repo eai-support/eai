@@ -12,6 +12,7 @@ import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile, loadObjectTypes } from '../lib/config.js';
 import { isAuthenticated, loadTokens } from '../lib/auth.js';
 import { PlatformAPIClient } from '../lib/api.js';
+import { normalizeTenantEntries, resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
@@ -60,17 +61,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function resolveScopedId(
-  env: Record<string, string>,
-  prefix: string,
-  fallbackKey: string,
-): string | undefined {
-  return env[fallbackKey] || Object.keys(env)
-    .filter((key) => key.startsWith(prefix) && key.endsWith('_ID'))
-    .map((key) => env[key])
-    .find(Boolean);
-}
-
 async function loadVerifyEnvironment(): Promise<VerifyEnvironment> {
   const root = await findProjectRoot();
   if (!root) {
@@ -79,18 +69,29 @@ async function loadVerifyEnvironment(): Promise<VerifyEnvironment> {
 
   const envVars = await loadEnvFile(root);
   const env = { ...envVars, ...process.env } as Record<string, string>;
-  const publicApiUrl = env.BASE_URL_PUBLIC_API;
+  const publicApiUrl = await resolvePublicApiUrl(root);
 
-  if (!publicApiUrl) {
-    exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' });
+  let tenantId: string | undefined;
+  try {
+    const activeContext = await resolveActiveTenantContext({
+      projectRoot: root,
+      publicApiUrl,
+      interactive: false,
+    });
+    tenantId = activeContext.activeTenant.id;
+  } catch {
+    tenantId = undefined;
   }
 
   return {
     root,
     env,
     publicApiUrl,
-    tenantId: resolveScopedId(env, 'TENANT_', 'TENANT_DEFAULT_ID'),
-    workflowId: resolveScopedId(env, 'WORKFLOW_', 'WORKFLOW_DEFAULT_ID'),
+    tenantId,
+    workflowId: env.WORKFLOW_DEFAULT_ID || Object.keys(env)
+      .filter((key) => key.startsWith('WORKFLOW_') && key.endsWith('_ID'))
+      .map((key) => env[key])
+      .find(Boolean),
   };
 }
 
@@ -232,7 +233,7 @@ export async function runContractAudit(
 
   if (!authenticated) {
     const skippedDueToAuth = [
-      ['current-user', 'Current user contract', 'POST', '/v3/orchestrate -> payload:/custom-users/me'],
+      ['current-user', 'Tenant membership contract', 'POST', '/v3/orchestrate -> admin:/v1/users/{oid}/memberships'],
       ['object-types', 'Object Types list contract', 'POST', '/v3/orchestrate -> payload:/object-types'],
       ['schema', 'Schema contract', 'GET', '/v3/resources/schema/{tenantId}'],
     ] as const;
@@ -249,7 +250,7 @@ export async function runContractAudit(
     }
   } else if (!context.tenantId || !client) {
     const skippedDueToTenant = [
-      ['current-user', 'Current user contract', 'POST', '/v3/orchestrate -> payload:/custom-users/me'],
+      ['current-user', 'Tenant membership contract', 'POST', '/v3/orchestrate -> admin:/v1/users/{oid}/memberships'],
       ['object-types', 'Object Types list contract', 'POST', '/v3/orchestrate -> payload:/object-types'],
       ['schema', 'Schema contract', 'GET', '/v3/resources/schema/{tenantId}'],
     ] as const;
@@ -261,37 +262,34 @@ export async function runContractAudit(
         method,
         endpoint,
         status: 'skipped',
-        details: 'Skipped because no tenant ID was resolved from environment.',
+        details: 'Skipped because no active tenant is selected. Run `eai tenant select`.',
       });
     }
   } else {
     try {
-      const res = await systemClient.getCurrentUser(tokens?.oid);
+      const res = await systemClient.getUserMemberships(tokens?.oid || '');
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
       const payload = await parseJsonBody(res);
-      if (!isRecord(payload)) {
-        throw new Error(`Expected object, received ${describeShape(payload)}`);
-      }
-      const tenantEntries = payload.tenants ?? (isRecord(payload.user) ? payload.user.tenants : undefined);
-      if (!Array.isArray(tenantEntries)) {
-        throw new Error('Expected payload.tenants[] or payload.user.tenants[]');
+      const tenantEntries = normalizeTenantEntries(payload);
+      if (tenantEntries.length === 0) {
+        throw new Error('Expected tenant membership entries in response');
       }
       addCheck(checks, {
         id: 'current-user',
-        label: 'Current user contract',
+        label: 'Tenant membership contract',
         method: 'POST',
-        endpoint: '/v3/orchestrate -> payload:/custom-users/me',
+        endpoint: '/v3/orchestrate -> admin:/v1/users/{oid}/memberships',
         status: 'passed',
         details: `Tenant entries: ${tenantEntries.length}`,
       });
     } catch (err) {
       addCheck(checks, {
         id: 'current-user',
-        label: 'Current user contract',
+        label: 'Tenant membership contract',
         method: 'POST',
-        endpoint: '/v3/orchestrate -> payload:/custom-users/me',
+        endpoint: '/v3/orchestrate -> admin:/v1/users/{oid}/memberships',
         status: 'failed',
         details: err instanceof Error ? err.message : String(err),
       });
@@ -520,23 +518,31 @@ export async function runContractAudit(
         throw new Error(`HTTP ${res.status}`);
       }
       const payload = await parseJsonBody(res);
-      if (!isRecord(payload) || !('user' in payload)) {
-        throw new Error('Expected top-level user property in lookup response');
+      if (!isRecord(payload)) {
+        throw new Error(`Expected object, received ${describeShape(payload)}`);
+      }
+      const userId = typeof payload.id === 'string'
+        ? payload.id
+        : isRecord(payload.user) && typeof payload.user.id === 'string'
+          ? payload.user.id
+          : null;
+      if (!userId) {
+        throw new Error('Expected direct id or payload.user.id in lookup response');
       }
       addCheck(checks, {
         id: 'user-lookup',
         label: 'User lookup contract',
         method: 'POST',
-        endpoint: '/v3/orchestrate -> payload:/custom-users/by-email',
+        endpoint: '/v3/orchestrate -> admin:/v1/users/by-email?email=...',
         status: 'passed',
-        details: describeShape(payload),
+        details: `${describeShape(payload)} (resolved user id ${userId})`,
       });
     } catch (err) {
       addCheck(checks, {
         id: 'user-lookup',
         label: 'User lookup contract',
         method: 'POST',
-        endpoint: '/v3/orchestrate -> payload:/custom-users/by-email',
+        endpoint: '/v3/orchestrate -> admin:/v1/users/by-email?email=...',
         status: 'failed',
         details: err instanceof Error ? err.message : String(err),
       });
@@ -546,7 +552,7 @@ export async function runContractAudit(
       id: 'user-lookup',
       label: 'User lookup contract',
       method: 'POST',
-      endpoint: '/v3/orchestrate -> payload:/custom-users/by-email',
+      endpoint: '/v3/orchestrate -> admin:/v1/users/by-email?email=...',
       status: 'skipped',
       details: 'Provide --user-email to exercise user lookup.',
     });
@@ -826,35 +832,21 @@ export const doctorCommand = new Command('doctor')
     }
     out.success(`Project root: ${chalk.dim(root)}`);
 
-    // 2. .env.local exists
+    // 2. Local app env file (optional for CLI platform operations)
     try {
       await access(join(root, '.env.local'));
-      out.success('.env.local exists');
+      out.success('.env.local found for local app runtime');
     } catch {
-      issues.push({
-        severity: 'error',
-        message: '.env.local not found',
-        fix: 'Run `eai env pull` to sync from Azure App Config',
-      });
-      out.error('.env.local not found');
+      out.info('.env.local not found — CLI auth and tenant selection use stored login context');
     }
 
-    // 3. Required env vars
+    // 3. PublicAPI resolution
     const envVars = await loadEnvFile(root);
-    const required = ['BASE_URL_PUBLIC_API', 'ENTRA_TENANT_ID', 'AUTH_SECRET'];
-    for (const key of required) {
-      const value = envVars[key] || process.env[key];
-      if (!value || value.startsWith('<')) {
-        issues.push({
-          severity: 'error',
-          message: `${key} not set or has placeholder value`,
-          fix: `Set ${key} in .env.local or run \`eai env pull --include-secrets\``,
-        });
-        out.error(`${key} — not set`);
-      } else {
-        out.success(`${key} — set`);
-      }
-    }
+    const publicApiUrl = await resolvePublicApiUrl(root);
+    const publicApiSource = envVars.BASE_URL_PUBLIC_API || process.env.BASE_URL_PUBLIC_API
+      ? 'environment'
+      : 'stored login/default';
+    out.success(`PublicAPI URL resolved (${publicApiSource}): ${chalk.dim(publicApiUrl)}`);
 
     // 4. Auth status
     const authenticated = await isAuthenticated();
@@ -870,7 +862,26 @@ export const doctorCommand = new Command('doctor')
       out.warn('Not authenticated');
     }
 
-    // 5. Object types loadable
+    // 5. Active tenant selection
+    if (authenticated) {
+      try {
+        const tenantContext = await resolveActiveTenantContext({
+          projectRoot: root,
+          publicApiUrl,
+          interactive: false,
+        });
+        out.success(`Active tenant selected: ${tenantContext.activeTenant.displayName} ${chalk.dim(`(${tenantContext.activeTenant.id})`)}`);
+      } catch (err) {
+        issues.push({
+          severity: 'warn',
+          message: err instanceof Error ? err.message : String(err),
+          fix: 'Run `eai tenant list` to inspect memberships, then `eai tenant select` to choose one',
+        });
+        out.warn(err instanceof Error ? err.message : String(err));
+      }
+    }
+
+    // 6. Object types loadable
     try {
       const types = await loadObjectTypes(root);
       const totalTypes = Object.values(types).reduce((sum, t) => sum + t.length, 0);
@@ -884,7 +895,7 @@ export const doctorCommand = new Command('doctor')
       out.warn('Object Types not loadable');
     }
 
-    // 6. Deployment workflow exists
+    // 7. Deployment workflow exists
     try {
       await access(join(root, '.github', 'workflows', 'deploy-demo.yml'));
       out.success('Deployment workflow exists');
@@ -897,7 +908,7 @@ export const doctorCommand = new Command('doctor')
       out.warn('deploy-demo.yml not found');
     }
 
-    // 7. node_modules exists
+    // 8. node_modules exists
     try {
       await access(join(root, 'node_modules'));
       out.success('Dependencies installed');
@@ -910,7 +921,7 @@ export const doctorCommand = new Command('doctor')
       out.error('Dependencies not installed');
     }
 
-    // 8. Platform SDK available
+    // 9. Platform SDK available
     try {
       await access(join(root, 'packages', 'platform-sdk'));
       out.success('Platform SDK present');

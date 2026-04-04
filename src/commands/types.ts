@@ -11,13 +11,118 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { findProjectRoot, loadObjectTypes, loadEnvFile, type ObjectTypeDefinition } from '../lib/config.js';
+import inquirer from 'inquirer';
+import { findProjectRoot, loadObjectTypes, type ObjectTypeDefinition } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
+import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
+export interface TenantResolution {
+  tenantId?: string;
+  source: 'option' | 'active:tenant' | 'unresolved';
+}
+
+export function resolveTenantIdForKey(
+  tenantKey: string,
+  explicitTenantId?: string,
+  activeTenantId?: string,
+): TenantResolution {
+  if (explicitTenantId) {
+    return { tenantId: explicitTenantId, source: 'option' };
+  }
+
+  if (activeTenantId) {
+    return { tenantId: activeTenantId, source: 'active:tenant' };
+  }
+
+  return { source: 'unresolved' };
+}
+
+function describeTenantResolutionSource(source: TenantResolution['source']): string {
+  switch (source) {
+    case 'option':
+      return 'CLI override';
+    case 'active:tenant':
+      return 'active tenant';
+    default:
+      return 'unresolved';
+  }
+}
+
+function explainMissingTenantId(tenantKey: string): void {
+  out.warn(`No active tenant is available for "${tenantKey}"`);
+  out.info(`Run ${chalk.cyan('eai login')} and ${chalk.cyan('eai tenant select')} to choose the tenant to work with, or use ${chalk.cyan(`--tenant-key ${tenantKey} --tenant-id <uuid>`)}`);
+}
+
+export function resolveDefaultTenantKey(
+  objectTypes: Record<string, ObjectTypeDefinition[]>,
+  activeTenantSlug?: string,
+): string | null {
+  const keys = Object.keys(objectTypes);
+  if (keys.length === 1) {
+    return keys[0];
+  }
+  if (activeTenantSlug && objectTypes[activeTenantSlug]) {
+    return activeTenantSlug;
+  }
+  if (objectTypes.template) {
+    return 'template';
+  }
+  if (objectTypes.default) {
+    return 'default';
+  }
+  return null;
+}
+
+async function selectTenantKey(
+  objectTypes: Record<string, ObjectTypeDefinition[]>,
+  explicitTenantKey?: string,
+  activeTenantSlug?: string,
+): Promise<string[]> {
+  if (explicitTenantKey) {
+    return [explicitTenantKey];
+  }
+
+  const defaultKey = resolveDefaultTenantKey(objectTypes, activeTenantSlug);
+  if (defaultKey) {
+    return [defaultKey];
+  }
+
+  const keys = Object.keys(objectTypes);
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    exitWithError(ErrorCode.E303, { field: '--tenant-key' });
+  }
+
+  const { tenantKey } = await inquirer.prompt([{
+    type: 'list',
+    name: 'tenantKey',
+    message: 'Select the local object-type scope to publish or diff',
+    choices: keys.map((key) => ({
+      name: key,
+      value: key,
+    })),
+  }]);
+
+  return [tenantKey as string];
+}
+
 export const typesCommand = new Command('types')
-  .description('Manage Object Type definitions');
+  .description('Manage Object Type definitions')
+  .addHelpText('after', `
+Workflow:
+  1. Validate local definitions:
+       eai types validate
+  2. Login and select the active tenant:
+       eai login
+       eai tenant select
+  3. Preview remote differences:
+       eai types diff --tenant-key <key>
+  4. Publish:
+       eai types seed --tenant-key <key>
+  5. Verify published schema:
+       eai resources schema
+  `);
 
 // ─── eai types seed ────────────────────────────────────────────────────────
 
@@ -26,6 +131,7 @@ typesCommand
   .description('Push Object Types to platform')
   .option('--env <environment>', 'Target environment', 'dev')
   .option('--tenant-key <key>', 'Specific tenant key from object-types.ts')
+  .option('--tenant-id <id>', 'Override the resolved tenant ID (use with --tenant-key)')
   .option('--dry-run', 'Show what would be seeded without making changes', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -34,6 +140,7 @@ Examples:
   $ eai types seed
   $ eai types seed --dry-run
   $ eai types seed --tenant-key trial-portal
+  $ eai types seed --tenant-key template --tenant-id 50808ce0-f31b-4fd0-9861-74b83b8c112a
   $ eai types seed --format json | jq
   `)
   .action(async (options) => {
@@ -62,19 +169,19 @@ Examples:
       process.exit(1);
     }
 
-    // Resolve tenant IDs from env vars
-    const envVars = await loadEnvFile(root);
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-
-    if (!publicApiUrl) {
-      exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' }, options.format);
+    if (options.tenantId && !options.tenantKey && Object.keys(objectTypes).length > 1) {
+      exitWithError(ErrorCode.E303, { field: '--tenant-key when using --tenant-id with multiple tenant scopes' }, options.format);
     }
 
+    const publicApiUrl = await resolvePublicApiUrl(root);
+    const activeContext = await resolveActiveTenantContext({
+      projectRoot: root,
+      publicApiUrl,
+      interactive: true,
+    });
+
     // Filter to specific tenant key if requested
-    const keysToSeed = options.tenantKey
-      ? [options.tenantKey]
-      : Object.keys(objectTypes);
+    const keysToSeed = await selectTenantKey(objectTypes, options.tenantKey, activeContext.activeTenant.slug);
 
     out.blank();
 
@@ -88,17 +195,15 @@ Examples:
       }
 
       // Resolve tenant ID
-      const normalizedKey = tenantKey.replace(/-/g, '_').toUpperCase();
-      const tenantId = env[`TENANT_${normalizedKey}_ID`] ||
-                       env[`TENANT_${tenantKey.toUpperCase()}_ID`] ||
-                       env.TENANT_DEFAULT_ID;
+      const resolution = resolveTenantIdForKey(tenantKey, options.tenantId, activeContext.activeTenant.id);
+      const tenantId = resolution.tenantId;
 
       if (!tenantId) {
-        out.error(`No tenant ID found for "${tenantKey}". Set TENANT_${normalizedKey}_ID in .env.local`);
+        explainMissingTenantId(tenantKey);
         continue;
       }
 
-      out.heading(`Tenant: ${tenantKey} → ${chalk.dim(tenantId)}`);
+      out.heading(`Tenant: ${tenantKey} → ${chalk.dim(tenantId)} ${chalk.dim(`(${describeTenantResolutionSource(resolution.source)})`)}`);
 
       if (options.dryRun) {
         for (const type of types) {
@@ -322,11 +427,14 @@ Examples:
 typesCommand
   .command('diff')
   .description('Compare local Object Types with remote platform')
+  .option('--tenant-key <key>', 'Specific tenant key from object-types.ts')
+  .option('--tenant-id <id>', 'Override the resolved tenant ID (use with --tenant-key)')
   .addHelpText('after', `
 Examples:
   $ eai types diff
+  $ eai types diff --tenant-key council --tenant-id 423b7e9c-9a69-4763-5b9a-69570218f65d
   `)
-  .action(async () => {
+  .action(async (options) => {
     const root = await findProjectRoot();
     if (!root) {
       exitWithError(ErrorCode.E001);
@@ -344,24 +452,34 @@ Examples:
       process.exit(1);
     }
 
-    const envVars = await loadEnvFile(root);
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
+    const publicApiUrl = await resolvePublicApiUrl(root);
+    const activeContext = await resolveActiveTenantContext({
+      projectRoot: root,
+      publicApiUrl,
+      interactive: true,
+    });
+    const keysToDiff = await selectTenantKey(objectTypes, options.tenantKey, activeContext.activeTenant.slug);
+    const entries = keysToDiff
+      .map((key) => [key, objectTypes[key] as ObjectTypeDefinition[] | undefined] as const);
 
-    if (!publicApiUrl) {
-      exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' });
+    if (options.tenantId && !options.tenantKey && Object.keys(objectTypes).length > 1) {
+      exitWithError(ErrorCode.E303, { field: '--tenant-key when using --tenant-id with multiple tenant scopes' });
     }
 
-    for (const [tenantKey, localTypes] of Object.entries(objectTypes)) {
-      const normalizedKey = tenantKey.replace(/-/g, '_').toUpperCase();
-      const tenantId = env[`TENANT_${normalizedKey}_ID`] || env.TENANT_DEFAULT_ID;
-
-      if (!tenantId) {
-        out.warn(`No tenant ID for "${tenantKey}" — skipping`);
+    for (const [tenantKey, localTypes] of entries) {
+      if (!localTypes || localTypes.length === 0) {
+        out.warn(`No local Object Types found for "${tenantKey}"`);
         continue;
       }
 
-      out.heading(`Tenant: ${tenantKey}`);
+      const resolution = resolveTenantIdForKey(tenantKey, options.tenantId, activeContext.activeTenant.id);
+      const tenantId = resolution.tenantId;
+      if (!tenantId) {
+        explainMissingTenantId(tenantKey);
+        continue;
+      }
+
+      out.heading(`Tenant: ${tenantKey} → ${chalk.dim(tenantId)} ${chalk.dim(`(${describeTenantResolutionSource(resolution.source)})`)}`);
 
       const client = new PlatformAPIClient(publicApiUrl, tenantId);
       const remoteSpinner = ora('  Fetching remote types...').start();
@@ -381,6 +499,7 @@ Examples:
         // Local-only types
         for (const [name, localType] of localByName) {
           if (!remoteByName.has(name)) {
+            out.info(`  ${out.symbols.added} ${localType.name} — local only`);
             continue;
           }
 
@@ -439,14 +558,14 @@ Examples:
       exitWithError(ErrorCode.E001, undefined, options.format);
     }
 
-    const envVars = await loadEnvFile(root);
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    const tenantId = options.tenantId || env.TENANT_DEFAULT_ID;
-
-    if (!publicApiUrl || !tenantId) {
-      exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format);
-    }
+    const publicApiUrl = await resolvePublicApiUrl(root);
+    const activeContext = await resolveActiveTenantContext({
+      projectRoot: root,
+      publicApiUrl,
+      interactive: true,
+      tenantId: options.tenantId,
+    });
+    const tenantId = options.tenantId || activeContext.activeTenant.id;
 
     const spinner = ora('Fetching remote Object Types...').start();
 

@@ -7,7 +7,14 @@ import { Aside } from '@astrojs/starlight/components';
 
 ## Overview
 
-Environment variables are stored in `.env.local` at the project root. The CLI reads this file automatically for all commands. You can pull environment variables from the platform with:
+Environment variables are stored in `.env.local` at the project root when your vertical app needs local runtime configuration. The CLI reads this file automatically for project-level settings such as `BASE_URL_PUBLIC_API`, workflow IDs, and web-app secrets. Tenant selection for CLI platform commands does not come from `.env.local`; it comes from:
+
+```bash
+eai login
+eai tenant select
+```
+
+You can still pull project environment variables from the platform with:
 
 ```bash
 eai env pull --include-secrets
@@ -35,33 +42,16 @@ eai env pull --include-secrets
 
 The authority URL is constructed as: `https://{ENTRA_TENANT_NAME}.ciamlogin.com/{ENTRA_TENANT_ID}`
 
-## Tenant Configuration
+## Tenant Selection
 
-| Variable | Description | Required | Default | Example |
-|---|---|---|---|---|
-| `TENANT_DEFAULT_ID` | Default tenant ID used when no specific tenant is specified | Yes | -- | `abc-123-def-456` |
-| `TENANT_{KEY}_ID` | Tenant ID for a named tenant key (matches keys in `object-types.ts`) | No | -- | `TENANT_PATIENT_INTAKE_ID=abc-123` |
+The current CLI no longer reads tenant IDs from `TENANT_DEFAULT_ID` or `TENANT_{KEY}_ID` for platform operations.
 
-### Tenant Key Mapping
+- `eai resources`, `eai docs`, `eai chat`, `eai types seed`, `eai types diff`, and `eai verify` use the active tenant selected at login time.
+- `eai tenant list` shows only active tenant-admin memberships for the logged-in user.
+- `eai tenant select` stores the active tenant in `~/.eai/tokens.json`.
+- `eai types seed --tenant-id <uuid>` and `eai types diff --tenant-id <uuid>` remain available for explicit one-off overrides.
 
-The CLI maps tenant keys from your `object-types.ts` file to environment variables using the pattern `TENANT_{KEY}_ID`. The key is converted to uppercase with hyphens replaced by underscores.
-
-```typescript
-// object-types.ts
-export const objectTypes = {
-  'patient-intake': [ /* ... */ ],    // → TENANT_PATIENT_INTAKE_ID
-  'loan-processing': [ /* ... */ ],   // → TENANT_LOAN_PROCESSING_ID
-};
-```
-
-```bash
-# .env.local
-TENANT_PATIENT_INTAKE_ID=abc-123-def
-TENANT_LOAN_PROCESSING_ID=def-456-ghi
-TENANT_DEFAULT_ID=abc-123-def
-```
-
-If a specific `TENANT_{KEY}_ID` is not found, the CLI falls back to `TENANT_DEFAULT_ID`.
+Local object-type scopes in `src/eai.config/object-types.ts` still use tenant keys such as `default`, `template`, or `claims-portal`, but those keys are no longer mapped to tenant ID environment variables.
 
 ## Workflow Configuration
 
@@ -98,10 +88,6 @@ ENTRA_TENANT_NAME=myorg
 ENTRA_CLIENT_ID=f1e2d3c4-b5a6-7890-abcd-ef1234567890
 AUTH_SECRET=replace-with-a-random-32-char-key
 
-# Tenants
-TENANT_DEFAULT_ID=abc-123-def-456
-TENANT_PATIENT_INTAKE_ID=abc-123-def-456
-
 # Workflows
 WORKFLOW_DEFAULT_ID=wf-abc-123
 
@@ -122,8 +108,8 @@ The CLI resolves environment variables in this order (later sources take precede
 This means you can override any `.env.local` value by setting a system environment variable:
 
 ```bash
-# Override the default tenant for a single command
-TENANT_DEFAULT_ID=different-tenant eai resources list Patient
+# Override the PublicAPI URL for a single command
+BASE_URL_PUBLIC_API=https://api.example.com eai resources list Patient
 ```
 
 ## CI/CD Considerations
@@ -140,5 +126,5 @@ env:
   BASE_URL_PUBLIC_API: ${{ secrets.BASE_URL_PUBLIC_API }}
   ENTRA_TENANT_ID: ${{ secrets.ENTRA_TENANT_ID }}
   ENTRA_CLIENT_ID: ${{ secrets.ENTRA_CLIENT_ID }}
-  TENANT_DEFAULT_ID: ${{ secrets.TENANT_DEFAULT_ID }}
+  WORKFLOW_DEFAULT_ID: ${{ secrets.WORKFLOW_DEFAULT_ID }}
 ```

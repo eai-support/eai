@@ -14,6 +14,8 @@ eai logout
 
 `eai login` authenticates you with Microsoft Entra CIAM using browser-based authorization code flow with PKCE. The CLI opens your default browser, waits for the localhost callback, and stores tokens locally in `~/.eai/` for subsequent commands.
 
+After login, the CLI also resolves your tenant-admin memberships and selects an active working tenant automatically when possible. If multiple active tenant-admin memberships are available, run `eai tenant select` to choose which tenant to work with.
+
 `eai logout` clears all stored authentication tokens from `~/.eai/`.
 
 ## Options
@@ -78,6 +80,7 @@ Tokens are automatically used by other commands like `eai resources`, `eai chat`
 ## Related Commands
 
 - [`eai whoami`](/eai-cli/reference/commands/whoami/) -- check current auth status
+- [`eai tenant select`](/eai-cli/reference/commands/tenant/) -- choose the active working tenant
 - [`eai verify`](/eai-cli/reference/commands/verify/) -- verify platform connectivity including auth
 - [`eai env pull`](/eai-cli/reference/commands/env/) -- sync environment (often run after login)
 

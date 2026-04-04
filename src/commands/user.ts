@@ -5,10 +5,10 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { findProjectRoot, loadEnvFile } from '../lib/config.js';
+import { findProjectRoot } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
+import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
-import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 export const userCommand = new Command('user')
   .description('Manage users on the platform');
@@ -19,22 +19,23 @@ userCommand
   .command('invite')
   .description('Add an existing user to a tenant using the tenant-admin provisioning flow')
   .requiredOption('--email <email>', 'Email address of the user to add')
-  .requiredOption('--tenant <id>', 'Tenant ID to add the user to')
+  .option('--tenant <id>', 'Tenant ID to add the user to (defaults to the active tenant)')
   .action(async (options) => {
     const root = await findProjectRoot();
-    if (!root) { exitWithError(ErrorCode.E001); }
-
-    const envVars = await loadEnvFile(root);
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    if (!publicApiUrl) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' }); }
+    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
+    const activeContext = await resolveActiveTenantContext({
+      projectRoot: root || undefined,
+      publicApiUrl,
+      interactive: false,
+    });
+    const tenantId = options.tenant || activeContext.activeTenant.id;
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
 
     // Step 1: Look up user by email
     const lookupSpinner = ora(`Looking up ${options.email}...`).start();
 
-    let lookupResult: { user: { id: string; email: string; username?: string } | null };
+    let lookupResult: { id?: string; email?: string; user?: { id?: string; email?: string; username?: string } | null };
     try {
       const lookupRes = await client.lookupUserByEmail(options.email);
       if (!lookupRes.ok) {
@@ -48,19 +49,26 @@ userCommand
       process.exit(1);
     }
 
-    if (!lookupResult.user) {
+    const resolvedUser = lookupResult.user?.id
+      ? lookupResult.user
+      : lookupResult.id
+        ? { id: lookupResult.id, email: lookupResult.email || options.email }
+        : null;
+
+    if (!resolvedUser) {
       lookupSpinner.fail(`User ${chalk.cyan(options.email)} not found.`);
       process.exit(1);
     }
 
-    const user = lookupResult.user;
-    lookupSpinner.succeed(`Found user ${chalk.cyan(user.email)} (${chalk.dim(user.id)})`);
+    const user = resolvedUser;
+    const userEmail = user.email || options.email;
+    lookupSpinner.succeed(`Found user ${chalk.cyan(userEmail)} (${chalk.dim(user.id)})`);
 
     // Step 2: Provision user to tenant
-    const provisionSpinner = ora(`Adding ${user.email} to tenant ${options.tenant}...`).start();
+    const provisionSpinner = ora(`Adding ${userEmail} to tenant ${tenantId}...`).start();
 
     try {
-      const provisionRes = await client.provisionUserToTenant(options.tenant, user.id);
+      const provisionRes = await client.provisionUserToTenant(tenantId, user.id);
       if (!provisionRes.ok) {
         const body = await provisionRes.text();
         provisionSpinner.fail(`Provisioning failed: ${provisionRes.status}: ${body}`);
@@ -69,7 +77,7 @@ userCommand
 
       const result = await provisionRes.json() as { success?: boolean; message?: string };
       provisionSpinner.succeed(
-        `Added ${chalk.cyan(user.email)} to tenant ${chalk.dim(options.tenant)}`,
+        `Added ${chalk.cyan(userEmail)} to tenant ${chalk.dim(tenantId)}`,
       );
 
       if (result.message) {
@@ -86,19 +94,19 @@ userCommand
 userCommand
   .command('provision-me')
   .description('Provision yourself to a tenant (for first-time setup)')
-  .requiredOption('--tenant <id>', 'Tenant ID to provision yourself to')
+  .option('--tenant <id>', 'Tenant ID to provision yourself to (defaults to the active tenant)')
   .action(async (options) => {
     const root = await findProjectRoot();
-    if (!root) { exitWithError(ErrorCode.E001); }
+    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
+    const activeContext = await resolveActiveTenantContext({
+      projectRoot: root || undefined,
+      publicApiUrl,
+      interactive: false,
+    });
+    const tenantId = options.tenant || activeContext.activeTenant.id;
+    const client = new PlatformAPIClient(publicApiUrl, tenantId);
 
-    const envVars = await loadEnvFile(root);
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    if (!publicApiUrl) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' }); }
-
-    const client = new PlatformAPIClient(publicApiUrl, options.tenant);
-
-    const provisionSpinner = ora(`Provisioning you to tenant ${options.tenant}...`).start();
+    const provisionSpinner = ora(`Provisioning you to tenant ${tenantId}...`).start();
 
     try {
       const provisionRes = await client.provisionMe();
@@ -110,7 +118,7 @@ userCommand
 
       const result = await provisionRes.json() as { success?: boolean; message?: string; user?: unknown };
       provisionSpinner.succeed(
-        `Successfully provisioned to tenant ${chalk.cyan(options.tenant)}`,
+        `Successfully provisioned to tenant ${chalk.cyan(tenantId)}`,
       );
 
       if (result.message) {

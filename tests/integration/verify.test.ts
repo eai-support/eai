@@ -38,7 +38,7 @@ describe('eai verify', () => {
 
   afterEach(async () => {
     mockServer.stop();
-    await cleanupTestTokens();
+    await cleanupTestTokens(ctx);
     await env.cleanup();
   });
 

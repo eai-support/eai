@@ -5,6 +5,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import type { TestContext } from './setup-dsl.js';
 
 export interface CommandResult {
@@ -20,11 +21,14 @@ export interface CommandResult {
 export async function runCommand(ctx: TestContext, cmd: string): Promise<CommandResult> {
   return new Promise((resolve) => {
     const [command, ...args] = cmd.split(' ');
+    const cliEntry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
+    const executable = command === 'eai' ? process.execPath : command;
+    const executableArgs = command === 'eai' ? [cliEntry, ...args] : args;
 
-    const child = spawn(command, args, {
+    const child = spawn(executable, executableArgs, {
       cwd: ctx.workingDir,
       env: { ...process.env, ...ctx.env },
-      shell: true,
+      shell: false,
     });
 
     let stdout = '';
@@ -48,12 +52,15 @@ export async function runCommand(ctx: TestContext, cmd: string): Promise<Command
 
     // Handle prompts
     if (ctx.prompts.length > 0) {
-      const prompt = ctx.prompts.shift();
-      if (prompt && child.stdin) {
-        setTimeout(() => {
-          child.stdin?.write(prompt.answer + '\n');
-        }, 100);
-      }
+      const prompts = [...ctx.prompts];
+      ctx.prompts.length = 0;
+      prompts.forEach((prompt, index) => {
+        if (child.stdin) {
+          setTimeout(() => {
+            child.stdin?.write(prompt.answer + '\n');
+          }, 100 * (index + 1));
+        }
+      });
     }
   });
 }

@@ -16,7 +16,7 @@ eai verify calls [options]
 
 This command is useful after initial setup, when debugging connectivity issues, or before deploying to confirm your environment is healthy.
 
-The command must be run from within an EAI project directory and requires `BASE_URL_PUBLIC_API` to be set in `.env.local` or the environment.
+The command must be run from within an EAI project directory. `BASE_URL_PUBLIC_API` can come from `.env.local`, the environment, or the stored login context.
 
 `eai verify calls` performs a contract audit of the platform-facing API routes the CLI depends on. It safely exercises read-only endpoints by default, reports mutation-heavy routes as intentionally skipped, and can optionally probe resource, tenant, user, and chat routes when you provide IDs or opt in.
 
@@ -26,11 +26,11 @@ The command must be run from within an EAI project directory and requires `BASE_
 |-------|-----------------|
 | **API gateway** | The PublicAPI endpoint is reachable (HTTP request to `/health`). Reports latency. |
 | **Authentication** | A valid authentication token exists in `~/.eai/`. Shows the authenticated user. |
-| **Platform service** | The platform service responds to Object Type queries (requires auth + tenant ID). |
-| **Data service** | The data service schema endpoint is reachable. Reports the number of published types. |
+| **Platform service** | The platform service responds to Object Type queries (requires auth + an active selected tenant). |
+| **Data service** | The data service schema endpoint is reachable. Reports the number of published types for the active tenant. |
 | **Local Object Types** | `src/eai.config/object-types.ts` is loadable and reports type/tenant counts. |
 
-Checks 3 and 4 (platform service and data service) are only run if authentication is valid and a tenant ID is available.
+Checks 3 and 4 (platform service and data service) are only run if authentication is valid and an active tenant is selected.
 
 ## Options
 
@@ -145,9 +145,9 @@ eai verify calls --format json
 
 | Failure | Resolution |
 |---------|------------|
-| PublicAPI not reachable | Check `BASE_URL_PUBLIC_API` in `.env.local`. Run `eai env pull` to sync. Verify network connectivity. |
+| PublicAPI not reachable | Check `BASE_URL_PUBLIC_API` or the stored login context. Verify network connectivity. |
 | Not authenticated | Run `eai login` to authenticate with Entra CIAM. |
-| Platform service not reachable | Confirm your tenant ID is correct. Check `TENANT_*_ID` in `.env.local`. |
+| Platform service not reachable | Confirm the correct tenant is selected. Run `eai tenant list` and `eai tenant select`. |
 | Data service returned error | The tenant may not have published types yet. Run `eai types seed` to publish. |
 | No Object Types found | Create or fix `src/eai.config/object-types.ts`. Run `eai init` for a scaffold. |
 | Contract audit route failed | The backend route or response shape changed. Compare the failing endpoint in `eai verify calls` with the corresponding command implementation before shipping. |
@@ -155,7 +155,7 @@ eai verify calls --format json
 ## Related Commands
 
 - [`eai login`](/eai-cli/reference/commands/login/) -- authenticate to resolve auth check failures
-- [`eai env pull`](/eai-cli/reference/commands/env/) -- sync environment variables to resolve config issues
+- [`eai tenant select`](/eai-cli/reference/commands/tenant/) -- choose the active tenant for platform checks
 - [`eai types validate`](/eai-cli/reference/commands/types/) -- validate Object Types before seeding
 - [`eai dev`](/eai-cli/reference/commands/dev/) -- runs a subset of these checks before starting the dev server
 - [`eai resources`](/eai-cli/reference/commands/resources/) -- many of the audited routes are exercised through resource commands

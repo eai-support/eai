@@ -1,6 +1,6 @@
 ---
 title: eai tenant
-description: Manage tenants on the platform -- list, inspect, and create tenants
+description: Manage tenants on the platform -- list tenant-admin memberships, select the active tenant, inspect tenants, and create tenants
 ---
 
 ## Synopsis
@@ -13,7 +13,7 @@ eai tenant <subcommand> [options]
 
 `eai tenant` manages tenants on the EAI platform. Tenants are organizational boundaries that isolate data and configuration. A vertical application is scoped to one or more tenants, and all resources, Object Types, and workflows operate within a tenant context.
 
-Tenants can be organized hierarchically with parent-child relationships. The `list` subcommand is scoped to a parent tenant when specified.
+Tenants can be organized hierarchically with parent-child relationships. The `list` subcommand only returns active tenants where the logged-in user has the `tenant-admin` role. When parent metadata is present in the platform membership payload, `--parent` scopes the result to child tenants under that parent.
 
 This command must be run from within an EAI project directory and requires `BASE_URL_PUBLIC_API` to be set.
 
@@ -21,7 +21,7 @@ This command must be run from within an EAI project directory and requires `BASE
 
 ### eai tenant list
 
-List tenants, optionally scoped to a parent tenant.
+List active tenants where the logged-in user is a `tenant-admin`, optionally scoped to a parent tenant.
 
 ```
 eai tenant list [options]
@@ -29,7 +29,7 @@ eai tenant list [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--parent <id>` | Parent tenant ID to scope the listing | -- (lists all accessible) |
+| `--parent <id>` | Parent tenant ID to scope the listing | -- (lists all tenant-admin memberships) |
 | `--json` | Output raw JSON | `false` |
 
 ### eai tenant info
@@ -43,6 +43,18 @@ eai tenant info <id>
 | Option | Description | Default |
 |--------|-------------|---------|
 | `<id>` | Tenant ID to inspect | Required |
+
+### eai tenant select
+
+Choose the active tenant to work with for platform commands.
+
+```
+eai tenant select [tenant]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `[tenant]` | Tenant ID or slug to select without prompting | Interactive prompt when omitted |
 
 ### eai tenant create
 
@@ -61,7 +73,7 @@ eai tenant create [options]
 
 ## Examples
 
-### List all tenants
+### List tenant-admin memberships
 
 ```bash
 eai tenant list
@@ -69,13 +81,15 @@ eai tenant list
 
 ```
 ⠋ Fetching tenants...
-✔ 3 tenants
-  patient-intake 8f3a1b2c-d4e5-6789-abcd-ef0123456789
-    domains: intake.myenterprise.ai
-  claims-portal a7c9e4d1-b2c3-4567-89ab-cdef01234567
-    domains: claims.myenterprise.ai
-  admin-hub b2d8f6e3-c4d5-6789-abcd-ef0123456789
+✔ 3 tenant-admin memberships
+→ patient-intake — Patient Intake (intake.myenterprise.ai) [tenant-admin]
+→ claims-portal — Claims Portal (claims.myenterprise.ai) [tenant-admin]
+→ admin-hub — Admin Hub [tenant-admin]
 ```
+
+Only tenants where the current user has a `tenant-admin` membership are returned.
+
+If none are returned, the command explains that no active tenant-admin memberships were found and points you to `eai whoami` for the authenticated tenant context. This avoids conflating authentication with tenant-administration access.
 
 ### List tenants under a parent
 
@@ -91,15 +105,33 @@ eai tenant list --json
 
 ```json
 {
-  "docs": [
+  "tenants": [
     {
       "id": "8f3a1b2c-d4e5-6789-abcd-ef0123456789",
-      "name": "Patient Intake",
+      "displayName": "Patient Intake",
       "slug": "patient-intake",
-      "domain": ["intake.myenterprise.ai"]
+      "domain": "intake.myenterprise.ai",
+      "isActive": true,
+      "roles": ["tenant-admin"]
     }
-  ]
+  ],
+  "count": 1
 }
+```
+
+### Select the active tenant
+
+```bash
+eai tenant select
+```
+
+```
+? Select the tenant to work with now
+❯ patient-intake (patient-intake)
+  claims-portal (claims-portal)
+  admin-hub (admin-hub)
+
+✔ Active tenant set to patient-intake (8f3a1b2c-d4e5-6789-abcd-ef0123456789)
 ```
 
 ### Inspect a tenant
@@ -167,4 +199,3 @@ This command supports all [global CLI options](/reference/global-options/):
 - `--color` — Force colors
 
 See [Global Options](/reference/global-options/) for details.
-
