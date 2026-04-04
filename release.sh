@@ -100,12 +100,6 @@ echo "▸ Building docs site..."
 (cd docs && npm ci --silent && npm run build 2>&1 | tail -1)
 echo "  ✓ Docs build succeeded"
 
-# ── Generate registry ──
-echo "▸ Generating registry..."
-npm pack --silent
-node scripts/generate-registry.cjs
-echo "  ✓ Registry generated"
-
 # ── IP scan ──
 echo "▸ Scanning for IP leaks..."
 IP_TERMS="Configurator|ResourceAPI|AICore|PayloadCMS|OPA|Rego|HyPE|OBO"
@@ -131,6 +125,13 @@ OLD_VERSION=$(node -p "require('./package.json').version")
 NEW_VERSION=$(npm version "$BUMP" --no-git-tag-version)
 NEW_VERSION="${NEW_VERSION#v}"
 echo "▸ Version: $OLD_VERSION → $NEW_VERSION"
+
+# ── Generate registry ──
+echo "▸ Generating registry..."
+TARBALL=$(npm pack --silent)
+node scripts/generate-registry.cjs
+rm -f "$TARBALL"
+echo "  ✓ Registry generated"
 
 # ── Commit, tag, push ──
 git add package.json package-lock.json docs/public/registry/
