@@ -15,6 +15,14 @@ eai tenant <subcommand> [options]
 
 Tenants can be organized hierarchically with parent-child relationships. The `list` subcommand only returns active tenants where the logged-in user has the `tenant-admin` role. When parent metadata is present in the platform membership payload, `--parent` scopes the result to child tenants under that parent.
 
+`eai tenant create` is intentionally truthful about lifecycle state:
+
+- `created` means the tenant record exists
+- `bootstrapped` means the CLI successfully called the constrained first-admin bootstrap flow for a child tenant
+- `usable` means a refreshed membership check confirmed the current login now has direct `tenant-admin` on that tenant
+
+For child tenants, the CLI only auto-selects the new tenant when `usable` is confirmed.
+
 This command must be run from within an EAI project directory and requires `BASE_URL_PUBLIC_API` to be set.
 
 ## Subcommands
@@ -58,7 +66,7 @@ eai tenant select [tenant]
 
 ### eai tenant create
 
-Create a new tenant on the platform.
+Create a new tenant on the platform. When `--parent` is used, the CLI also attempts the safe first-admin bootstrap flow for the current login and then refreshes memberships before deciding whether the tenant is usable.
 
 ```
 eai tenant create [options]
@@ -70,6 +78,13 @@ eai tenant create [options]
 | `--slug <slug>` | Tenant slug in kebab-case (required) | Required |
 | `--parent <id>` | Parent tenant ID for hierarchical tenants | -- |
 | `--domain <domains>` | Comma-separated list of associated domains | -- |
+
+Child bootstrap guardrails:
+
+- The caller must already be direct `tenant-admin` on the parent tenant.
+- The target must be an immediate child of that parent.
+- The child must not already have a tenant admin.
+- Parent child allowance is enforced from `limits.tenants`.
 
 ## Examples
 
@@ -172,6 +187,24 @@ eai tenant create \
   --name "Claims Staff" \
   --slug claims-staff \
   --parent a7c9e4d1-b2c3-4567-89ab-cdef01234567
+```
+
+Example outcome when bootstrap succeeds:
+
+```
+⠋ Creating tenant "Claims Staff"...
+✔ Created tenant claims-staff (a7c9e4d1-...)
+ℹ Bootstrap: first tenant admin was provisioned for the current login.
+✔ Usable: direct tenant-admin confirmed and the new tenant was selected.
+```
+
+Example outcome when the tenant record exists but direct admin is not yet confirmed:
+
+```
+⠋ Creating tenant "Claims Staff"...
+✔ Created tenant claims-staff (a7c9e4d1-...)
+⚠ Bootstrap not confirmed: TENANT_ADMIN_REQUIRED: Tenant admin role required for parent tenant 8f3a...
+⚠ Usable: not yet confirmed. The tenant exists, but direct tenant-admin membership is not visible yet.
 ```
 
 ### Create a tenant with multiple domains

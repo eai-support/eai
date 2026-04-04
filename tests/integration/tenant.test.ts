@@ -3,11 +3,18 @@
  */
 
 import { describe, expect, test } from 'vitest';
-import { buildTenantListZeroState, tenantMatchesParent } from '../../src/commands/tenant.js';
 import {
+  buildTenantCreateStatusMessages,
+  buildTenantListZeroState,
+  tenantMatchesParent,
+  type TenantCreateOutcome,
+} from '../../src/commands/tenant.js';
+import {
+  evaluateTenantUsability,
   filterTenantAdminEntries,
   normalizeTenantEntries,
   tenantEntryHasTenantAdminRole,
+  type TenantMembership,
   type TenantEntry,
 } from '../../src/lib/tenant-context.js';
 
@@ -132,5 +139,95 @@ describe('tenant list filtering', () => {
       isTenantAdmin: true,
       roles: ['tenant-admin'],
     }]);
+  });
+
+  test('evaluates a created-only tenant as not yet usable', () => {
+    expect(evaluateTenantUsability('tenant-1', [])).toEqual({
+      tenantId: 'tenant-1',
+      created: true,
+      bootstrapped: false,
+      membershipConfirmed: false,
+      adminConfirmed: false,
+      usable: false,
+      autoSelected: false,
+    });
+  });
+
+  test('evaluates a direct tenant-admin membership as usable', () => {
+    const memberships: TenantMembership[] = [{
+      id: 'tenant-1',
+      displayName: 'Tenant One',
+      slug: 'tenant-one',
+      isActive: true,
+      roles: ['tenant-admin'],
+    }];
+
+    expect(evaluateTenantUsability('tenant-1', memberships, {
+      bootstrapped: true,
+      autoSelected: true,
+    })).toEqual({
+      tenantId: 'tenant-1',
+      created: true,
+      bootstrapped: true,
+      membershipConfirmed: true,
+      adminConfirmed: true,
+      usable: true,
+      autoSelected: true,
+    });
+  });
+
+  test('describes a bootstrapped and auto-selected child tenant truthfully', () => {
+    const outcome: TenantCreateOutcome = {
+      tenant: { id: 'tenant-1', slug: 'tenant-one' },
+      bootstrap: {
+        parentTenantId: 'parent-1',
+        childTenantId: 'tenant-1',
+        userOid: 'user-1',
+        membershipCreated: true,
+        adminAssigned: true,
+        usable: true,
+        status: 'bootstrapped',
+        reason: null,
+      },
+      usability: {
+        tenantId: 'tenant-1',
+        created: true,
+        bootstrapped: true,
+        membershipConfirmed: true,
+        adminConfirmed: true,
+        usable: true,
+        autoSelected: true,
+      },
+    };
+
+    expect(buildTenantCreateStatusMessages(outcome)).toEqual([
+      'Bootstrap: first tenant admin was provisioned for the current login.',
+      'Usable: direct tenant-admin confirmed and the new tenant was selected.',
+    ]);
+  });
+
+  test('describes missing bootstrap confirmation without overstating readiness', () => {
+    const outcome: TenantCreateOutcome = {
+      tenant: { id: 'tenant-1', slug: 'tenant-one' },
+      bootstrapError: {
+        status: 409,
+        code: 'CHILD_ALREADY_HAS_ADMIN',
+        message: 'Tenant tenant-1 already has a tenant admin',
+      },
+      usability: {
+        tenantId: 'tenant-1',
+        created: true,
+        bootstrapped: false,
+        membershipConfirmed: false,
+        adminConfirmed: false,
+        usable: false,
+        autoSelected: false,
+      },
+    };
+
+    expect(buildTenantCreateStatusMessages(outcome)).toEqual([
+      'Bootstrap not confirmed: CHILD_ALREADY_HAS_ADMIN: Tenant tenant-1 already has a tenant admin',
+      'Usable: not yet confirmed. The tenant exists, but direct tenant-admin membership is not visible yet.',
+    ]);
   });
 });

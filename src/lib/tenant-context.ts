@@ -53,6 +53,16 @@ export interface ActiveTenantContext {
   memberships: TenantMembership[];
 }
 
+export interface TenantUsabilityStatus {
+  tenantId: string;
+  created: boolean;
+  bootstrapped: boolean;
+  membershipConfirmed: boolean;
+  adminConfirmed: boolean;
+  usable: boolean;
+  autoSelected: boolean;
+}
+
 function unique(values: Array<string | undefined>): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
 }
@@ -131,6 +141,36 @@ export function toTenantMembership(entry: TenantEntry): TenantMembership {
     domain: entry.tenant.domain,
     isActive: entry.tenant.isActive,
     roles: getTenantRoles(entry),
+  };
+}
+
+export function findTenantMembership(
+  memberships: TenantMembership[],
+  tenantId: string,
+): TenantMembership | undefined {
+  return memberships.find((membership) => membership.id === tenantId || membership.slug === tenantId);
+}
+
+export function evaluateTenantUsability(
+  tenantId: string,
+  memberships: TenantMembership[],
+  options?: {
+    created?: boolean;
+    bootstrapped?: boolean;
+    autoSelected?: boolean;
+  },
+): TenantUsabilityStatus {
+  const membership = findTenantMembership(memberships, tenantId);
+  const adminConfirmed = Boolean(membership?.roles.includes('tenant-admin'));
+
+  return {
+    tenantId,
+    created: options?.created ?? true,
+    bootstrapped: options?.bootstrapped ?? false,
+    membershipConfirmed: Boolean(membership),
+    adminConfirmed,
+    usable: Boolean(membership) && adminConfirmed,
+    autoSelected: options?.autoSelected ?? false,
   };
 }
 
@@ -218,6 +258,47 @@ export async function saveActiveTenantSelection(
 
   await storeTokens(next);
   return next;
+}
+
+export async function refreshTenantUsabilityStatus(
+  tenantId: string,
+  options?: {
+    publicApiUrl?: string;
+    created?: boolean;
+    bootstrapped?: boolean;
+    autoSelect?: boolean;
+  },
+): Promise<{
+  publicApiUrl: string;
+  tokens: StoredTokens;
+  memberships: TenantMembership[];
+  membership?: TenantMembership;
+  status: TenantUsabilityStatus;
+}> {
+  const fetched = await fetchTenantAdminMemberships(options?.publicApiUrl);
+  const membership = findTenantMembership(fetched.memberships, tenantId);
+  let status = evaluateTenantUsability(tenantId, fetched.memberships, {
+    created: options?.created,
+    bootstrapped: options?.bootstrapped,
+    autoSelected: false,
+  });
+  let tokens = fetched.tokens;
+
+  if (options?.autoSelect && membership && status.usable) {
+    tokens = await saveActiveTenantSelection(membership, fetched.publicApiUrl);
+    status = {
+      ...status,
+      autoSelected: true,
+    };
+  }
+
+  return {
+    publicApiUrl: fetched.publicApiUrl,
+    tokens,
+    memberships: fetched.memberships,
+    membership,
+    status,
+  };
 }
 
 async function promptForTenantSelection(memberships: TenantMembership[]): Promise<TenantMembership> {

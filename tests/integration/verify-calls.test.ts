@@ -75,12 +75,7 @@ describe('runContractAudit', () => {
       http.get('https://test-api.example.com/health', () => {
         return HttpResponse.json({ status: 'ok' });
       }),
-      http.get('https://test-api.example.com/v3/resources/schema/tenant-1', () => {
-        return HttpResponse.json({
-          objectTypes: [{ name: 'Customer', properties: [], linkTypes: [], actions: [] }],
-        });
-      }),
-      http.get('https://test-api.example.com/v3/resources/tenant-1/Customer', () => {
+      http.get('https://test-api.example.com/v3/resources/tenant-1/customer', () => {
         return HttpResponse.json({
           docs: [],
           totalDocs: 0,
@@ -88,7 +83,7 @@ describe('runContractAudit', () => {
           totalPages: 1,
         });
       }),
-      http.get('https://test-api.example.com/v3/resources/tenant-1/Customer/cust-1', () => {
+      http.get('https://test-api.example.com/v3/resources/tenant-1/customer/cust-1', () => {
         return HttpResponse.json({
           id: 'cust-1',
           data: { name: 'Example Customer' },
@@ -119,30 +114,14 @@ describe('runContractAudit', () => {
         }
 
         switch (body.endpoint) {
-          case '/custom-users/me':
-            return HttpResponse.json({
-              tenants: [
-                {
-                  tenant: {
-                    id: 'tenant-1',
-                    displayName: 'Tenant One',
-                    slug: 'tenant-one',
-                    isActive: true,
-                  },
-                  roleAssignments: [
-                    { baseRole: 'tenant-admin', displayName: 'Admin' },
-                  ],
-                },
-              ],
-            });
           case '/object-types':
             return HttpResponse.json({
-              docs: [{ id: 'ot-1', name: 'Customer' }],
+              docs: [{ id: 'ot-1', name: 'Customer', status: 'published', properties: [], linkTypes: [], actions: [] }],
             });
-          case '/tenants/tenant-1':
+          case '/api/custom-tenants/tenant-1':
             return HttpResponse.json({
               id: 'tenant-1',
-              name: 'Tenant One',
+              displayName: 'Tenant One',
               slug: 'tenant-one',
             });
           case '/v1/users/by-email?email=jane%40example.com':
@@ -184,5 +163,51 @@ describe('runContractAudit', () => {
     expect(report.checks.find((check) => check.id === 'auth')?.status).toBe('failed');
     expect(report.checks.find((check) => check.id === 'current-user')?.status).toBe('skipped');
     expect(report.checks.find((check) => check.id === 'schema')?.status).toBe('skipped');
+  });
+
+  test('uses an explicit tenant-id override for read-only contract checks', async () => {
+    await userIsLoggedIn(ctx, { email: 'jane@example.com' });
+
+    mockServer.server.use(
+      http.get('https://test-api.example.com/health', () => {
+        return HttpResponse.json({ status: 'ok' });
+      }),
+      http.post('https://test-api.example.com/v3/orchestrate', async ({ request }) => {
+        const body = await request.json() as {
+          endpoint?: string;
+          target_backend?: string;
+          params?: Record<string, unknown>;
+        };
+
+        if (body.target_backend === 'admin' && body.endpoint === '/v1/users/test-user-oid/memberships') {
+          return HttpResponse.json({
+            tenants: [
+              {
+                id: 'tenant-1',
+                displayName: 'Tenant One',
+                slug: 'tenant-one',
+                isTenantAdmin: true,
+                roles: ['tenant-admin'],
+              },
+            ],
+          });
+        }
+
+        if (body.endpoint === '/object-types' && body.params?.where && JSON.stringify(body.params.where).includes('tenant-override')) {
+          return HttpResponse.json({
+            docs: [{ id: 'ot-1', name: 'Customer', status: 'published', properties: [], linkTypes: [], actions: [] }],
+          });
+        }
+
+        return HttpResponse.json({ error: 'unexpected endpoint' }, { status: 404 });
+      }),
+    );
+
+    const report = await runContractAudit({
+      tenantId: 'tenant-override',
+    });
+
+    expect(report.tenantId).toBe('tenant-override');
+    expect(report.checks.find((check) => check.id === 'schema')?.status).toBe('passed');
   });
 });

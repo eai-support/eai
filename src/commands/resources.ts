@@ -4,6 +4,7 @@
 
 import { Command } from 'commander';
 import ora from 'ora';
+import type { Ora } from 'ora';
 import chalk from 'chalk';
 import { findProjectRoot } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
@@ -11,7 +12,148 @@ import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-c
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
-async function createClient(): Promise<{ client: PlatformAPIClient; tenantId: string }> {
+interface SchemaTypeSummary {
+  name: string;
+  slug?: string;
+  properties: unknown[];
+  linkTypes: unknown[];
+  actions: unknown[];
+  status?: string;
+  publishedAt?: string | null;
+}
+
+interface PublishedTypeMatch {
+  requestedType: string;
+  requestedSlug: string;
+  publishedTypeNames: string[];
+  matchedType?: SchemaTypeSummary;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function extractPublishedSchemaTypes(payload: unknown): SchemaTypeSummary[] {
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  if (Array.isArray(payload.objectTypes)) {
+    return payload.objectTypes
+      .filter((value): value is SchemaTypeSummary => isRecord(value) && typeof value.name === 'string')
+      .map((value) => ({
+        name: value.name,
+        slug: typeof value.slug === 'string' ? value.slug : undefined,
+        properties: Array.isArray(value.properties) ? value.properties : [],
+        linkTypes: Array.isArray(value.linkTypes) ? value.linkTypes : [],
+        actions: Array.isArray(value.actions) ? value.actions : [],
+      }));
+  }
+
+  if (Array.isArray(payload.object_types)) {
+    return payload.object_types
+      .filter((value): value is SchemaTypeSummary => isRecord(value) && typeof value.name === 'string')
+      .map((value) => ({
+        name: value.name,
+        slug: typeof value.slug === 'string' ? value.slug : undefined,
+        properties: Array.isArray(value.properties) ? value.properties : [],
+        linkTypes: Array.isArray(value.linkTypes) ? value.linkTypes : [],
+        actions: Array.isArray(value.actions) ? value.actions : [],
+      }));
+  }
+
+  if (!Array.isArray(payload.docs)) {
+    return [];
+  }
+
+  return payload.docs
+    .filter((value): value is SchemaTypeSummary => {
+      if (!isRecord(value) || typeof value.name !== 'string') {
+        return false;
+      }
+      if (value.status === 'published') {
+        return true;
+      }
+      return value.publishedAt !== null && value.publishedAt !== undefined;
+    })
+    .map((value) => ({
+      name: value.name,
+      slug: typeof value.slug === 'string' ? value.slug : undefined,
+      properties: Array.isArray(value.properties) ? value.properties : [],
+      linkTypes: Array.isArray(value.linkTypes) ? value.linkTypes : [],
+      actions: Array.isArray(value.actions) ? value.actions : [],
+      status: typeof value.status === 'string' ? value.status : undefined,
+      publishedAt: typeof value.publishedAt === 'string' ? value.publishedAt : null,
+    }));
+}
+
+function failCommand(spinner: Ora | null, message: string): void {
+  if (spinner) {
+    spinner.fail(message);
+  } else {
+    out.error(message);
+  }
+}
+
+function toObjectTypeSlug(objectType: string): string {
+  return objectType
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+    .replace(/[_\s]+/g, '-')
+    .replace(/-+/g, '-')
+    .toLowerCase();
+}
+
+export function matchPublishedType(
+  requestedType: string,
+  schemaTypes: SchemaTypeSummary[],
+): PublishedTypeMatch {
+  const requestedSlug = toObjectTypeSlug(requestedType);
+  const matchedType = schemaTypes.find((schemaType) => (
+    schemaType.name === requestedType
+    || schemaType.slug === requestedSlug
+    || toObjectTypeSlug(schemaType.name) === requestedSlug
+  ));
+
+  return {
+    requestedType,
+    requestedSlug,
+    matchedType,
+    publishedTypeNames: schemaTypes.map((schemaType) => schemaType.name),
+  };
+}
+
+export function buildMissingPublishedTypeMessage(match: PublishedTypeMatch): string {
+  if (match.publishedTypeNames.length === 0) {
+    return `No published object types were found for the active tenant. ${match.requestedType} cannot be listed until types are published remotely.`;
+  }
+
+  return `Object type "${match.requestedType}" is not published for the active tenant. Published types: ${match.publishedTypeNames.join(', ')}.`;
+}
+
+async function describeMissingPublishedType(
+  client: PlatformAPIClient,
+  requestedType: string,
+): Promise<string | null> {
+  const schemaResponse = await client.getSchema();
+  if (!schemaResponse.ok) {
+    return null;
+  }
+
+  const schemaPayload = await schemaResponse.json();
+  const match = matchPublishedType(requestedType, extractPublishedSchemaTypes(schemaPayload));
+  if (match.matchedType) {
+    return null;
+  }
+
+  return buildMissingPublishedTypeMessage(match);
+}
+
+async function createClient(options?: {
+  tenantId?: string;
+  interactive?: boolean;
+}): Promise<{ client: PlatformAPIClient; tenantId: string }> {
   const root = await findProjectRoot();
   if (!root) {
     exitWithError(ErrorCode.E001);
@@ -21,7 +163,8 @@ async function createClient(): Promise<{ client: PlatformAPIClient; tenantId: st
   const context = await resolveActiveTenantContext({
     projectRoot: root,
     publicApiUrl,
-    interactive: true,
+    interactive: options?.interactive ?? true,
+    tenantId: options?.tenantId,
   });
 
   return {
@@ -38,6 +181,7 @@ export const resourcesCommand = new Command('resources')
 resourcesCommand
   .command('list <type>')
   .description('List resources of a given type')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
   .option('--page <n>', 'Page number', '1')
   .option('--limit <n>', 'Items per page', '20')
   .option('--sort <field>', 'Sort field (prefix with - for descending)', '-created_at')
@@ -47,10 +191,11 @@ resourcesCommand
 Examples:
   $ eai resources list User
   $ eai resources list Project --limit 10
+  $ eai resources list User --tenant-id 50808ce0-f31b-4fd0-9861-74b83b8c112a
   $ eai resources list User --format json | jq '.resources[] | .id'
   `)
   .action(async (type, options) => {
-    const ctx = await createClient();
+    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
 
     if (options.json) options.format = 'json';
     const spinner = options.format === 'json' ? null : ora(`Listing ${type}...`).start();
@@ -62,7 +207,14 @@ Examples:
       });
 
       if (!res.ok) {
-        if (spinner) spinner.fail(`Failed: ${res.status} ${res.statusText}`);
+        let message = `Failed: ${res.status} ${res.statusText}`;
+        if (res.status === 404) {
+          const publishedTypeMessage = await describeMissingPublishedType(ctx.client, type);
+          if (publishedTypeMessage) {
+            message = publishedTypeMessage;
+          }
+        }
+        failCommand(spinner, message);
         process.exit(1);
       }
 
@@ -99,7 +251,7 @@ Examples:
         out.info(`${chalk.cyan(doc.id)} — ${preview}`);
       }
     } catch (err) {
-      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
+      failCommand(spinner, err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -109,10 +261,11 @@ Examples:
 resourcesCommand
   .command('get <type> <id>')
   .description('Get a single resource')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
-    const ctx = await createClient();
+    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
 
     if (options.json) options.format = 'json';
 
@@ -170,7 +323,7 @@ Examples:
     try {
       const res = await ctx.client.createResource(type, data);
       if (!res.ok) {
-        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
+        failCommand(spinner, `${res.status} ${res.statusText}`);
         const body = await res.text();
         out.error(body);
         process.exit(1);
@@ -184,7 +337,7 @@ Examples:
         spinner!.succeed(`Created ${type} ${chalk.dim(created.id)}`);
       }
     } catch (err) {
-      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
+      failCommand(spinner, err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -225,7 +378,7 @@ resourcesCommand
     try {
       const res = await ctx.client.updateResource(type, id, data, version!);
       if (!res.ok) {
-        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
+        failCommand(spinner, `${res.status} ${res.statusText}`);
         process.exit(1);
       }
 
@@ -235,7 +388,7 @@ resourcesCommand
         spinner!.succeed(`Updated ${type} ${chalk.dim(id)}`);
       }
     } catch (err) {
-      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
+      failCommand(spinner, err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -275,7 +428,7 @@ resourcesCommand
     try {
       const res = await ctx.client.deleteResource(type, id);
       if (!res.ok) {
-        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
+        failCommand(spinner, `${res.status} ${res.statusText}`);
         process.exit(1);
       }
 
@@ -285,7 +438,7 @@ resourcesCommand
         spinner!.succeed(`Deleted ${type} ${chalk.dim(id)}`);
       }
     } catch (err) {
-      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
+      failCommand(spinner, err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -295,13 +448,14 @@ resourcesCommand
 resourcesCommand
   .command('query')
   .description('Cross-type query')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
   .requiredOption('--types <types>', 'Comma-separated object type names')
   .option('--where <json>', 'Filter conditions as JSON')
   .option('--limit <n>', 'Max results', '20')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
-    const ctx = await createClient();
+    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
 
     if (options.json) options.format = 'json';
 
@@ -317,7 +471,7 @@ resourcesCommand
       });
 
       if (!res.ok) {
-        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
+        failCommand(spinner, `${res.status} ${res.statusText}`);
         process.exit(1);
       }
 
@@ -329,7 +483,7 @@ resourcesCommand
         spinner!.succeed('Query complete');
       }
     } catch (err) {
-      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
+      failCommand(spinner, err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -339,10 +493,11 @@ resourcesCommand
 resourcesCommand
   .command('schema')
   .description('Show published Object Types for tenant')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
-    const ctx = await createClient();
+    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
 
     if (options.json) options.format = 'json';
 
@@ -350,23 +505,24 @@ resourcesCommand
     try {
       const res = await ctx.client.getSchema();
       if (!res.ok) {
-        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
+        failCommand(spinner, `${res.status} ${res.statusText}`);
         process.exit(1);
       }
 
-      const schema = await res.json() as { objectTypes?: Array<{ name: string; properties: unknown[]; linkTypes: unknown[]; actions: unknown[] }> };
-      const types = schema?.objectTypes || [];
+      const payload = await res.json() as unknown;
+      const types = extractPublishedSchemaTypes(payload);
 
       if (options.format === 'json') {
         out.json({ objectTypes: types, count: types.length });
       } else {
         spinner!.succeed(`${types.length} published types`);
         for (const t of types) {
-          out.info(`${chalk.cyan(t.name)} — ${t.properties.length} properties, ${t.linkTypes.length} links`);
+          const slug = t.slug ? chalk.dim(` (${t.slug})`) : '';
+          out.info(`${chalk.cyan(t.name)}${slug} — ${t.properties.length} properties, ${t.linkTypes.length} links`);
         }
       }
     } catch (err) {
-      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
+      failCommand(spinner, err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });

@@ -95,4 +95,19 @@ describe('eai verify', () => {
     // Should show connectivity checks (even if they fail)
     expectDisplayedMessage(result, 'Connectivity Checks');
   }, { timeout: 10000 });
+
+  test('TC094: Verify accepts an explicit tenant-id for read-only checks', async () => {
+    workingDirectoryIs(ctx, env.dir);
+    await userIsLoggedIn(ctx);
+    await projectHasEnvFile(ctx, {
+      BASE_URL_PUBLIC_API: 'https://test-api.example.com',
+    });
+    await projectHasValidObjectTypes(ctx, [
+      { name: 'Customer', displayName: 'Customer', status: 'published' },
+    ]);
+
+    const result = await runCommand(ctx, 'eai verify --tenant-id tenant-override');
+
+    expectDisplayedMessage(result, 'Platform Connectivity Checks');
+  }, { timeout: 10000 });
 });

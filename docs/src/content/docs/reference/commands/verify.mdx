@@ -36,7 +36,10 @@ Checks 3 and 4 (platform service and data service) are only run if authenticatio
 
 | Option | Description |
 |--------|-------------|
+| `--tenant-id <id>` | Override the active tenant for read-only checks without changing the stored active tenant |
 | `-h, --help` | Display help for the command. |
+
+`eai verify calls` also supports `--tenant-id <id>` so contract audits can target a specific tenant explicitly after create or during drift investigations.
 
 ## Examples
 
@@ -57,6 +60,14 @@ Platform Connectivity Checks
 
 ✔ All 5 checks passed
 ```
+
+### Read-only checks against an explicit tenant
+
+```bash
+eai verify --tenant-id 50808ce0-f31b-4fd0-9861-74b83b8c112a
+```
+
+Use this when you want to verify a newly created tenant or a child tenant without switching the stored active tenant first.
 
 ### Partial failures
 
@@ -111,7 +122,7 @@ Platform Connectivity Checks
 ### Contract audit
 
 ```bash
-eai verify calls --resource-type Customer --resource-id cust-123 --tenant-record tenant-123 --user-email jane@example.com
+eai verify calls --tenant-id tenant-123 --resource-type Customer --resource-id cust-123 --tenant-record tenant-123 --user-email jane@example.com
 ```
 
 ```
