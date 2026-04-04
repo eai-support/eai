@@ -50,6 +50,15 @@ export interface TenantCreateOutcome {
   usability: TenantUsabilityStatus;
 }
 
+export function extractCreatedTenantRecord(payload: Record<string, unknown>): Record<string, unknown> {
+  const nestedDoc = payload.doc;
+  if (nestedDoc && typeof nestedDoc === 'object' && !Array.isArray(nestedDoc)) {
+    return nestedDoc as Record<string, unknown>;
+  }
+
+  return payload;
+}
+
 export function buildTenantListZeroState(tokens: {
   tenantName?: string;
   tenantId?: string;
@@ -310,7 +319,8 @@ tenantCommand
       }
 
       const tenant = await res.json() as Record<string, unknown>;
-      const tenantId = String(tenant.id || '');
+      const createdTenant = extractCreatedTenantRecord(tenant);
+      const tenantId = String(createdTenant.id || '');
       let bootstrap: ChildTenantBootstrapResult | undefined;
       let bootstrapError: ParsedApiError | undefined;
       let bootstrapped = false;
@@ -395,7 +405,9 @@ tenantCommand
           usability: outcome.usability,
         });
       } else {
-        spinner!.succeed(`Created tenant ${chalk.cyan(String(tenant.slug))} (${chalk.dim(String(tenant.id))})`);
+        spinner!.succeed(
+          `Created tenant ${chalk.cyan(String(createdTenant.slug || options.slug))} (${chalk.dim(String(createdTenant.id || tenantId))})`,
+        );
         for (const message of buildTenantCreateStatusMessages(outcome)) {
           if (message.startsWith('Usable: not yet confirmed') || message.startsWith('Bootstrap not confirmed')) {
             out.warn(message);

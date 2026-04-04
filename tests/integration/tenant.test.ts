@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vitest';
 import {
   buildTenantCreateStatusMessages,
   buildTenantListZeroState,
+  extractCreatedTenantRecord,
   tenantMatchesParent,
   type TenantCreateOutcome,
 } from '../../src/commands/tenant.js';
@@ -229,5 +230,26 @@ describe('tenant list filtering', () => {
       'Bootstrap not confirmed: CHILD_ALREADY_HAS_ADMIN: Tenant tenant-1 already has a tenant admin',
       'Usable: not yet confirmed. The tenant exists, but direct tenant-admin membership is not visible yet.',
     ]);
+  });
+
+  test('extracts the created tenant record from nested create responses', () => {
+    expect(extractCreatedTenantRecord({
+      doc: {
+        id: 'tenant-2',
+        slug: 'tenant-two',
+      },
+      message: 'Tenant successfully created.',
+    })).toEqual({
+      id: 'tenant-2',
+      slug: 'tenant-two',
+    });
+
+    expect(extractCreatedTenantRecord({
+      id: 'tenant-1',
+      slug: 'tenant-one',
+    })).toEqual({
+      id: 'tenant-1',
+      slug: 'tenant-one',
+    });
   });
 });
