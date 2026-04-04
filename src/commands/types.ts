@@ -23,6 +23,18 @@ export interface TenantResolution {
   source: 'option' | 'active:tenant' | 'unresolved';
 }
 
+export interface TypeSeedVerificationResult {
+  tenantId: string;
+  requestedTypes: string[];
+  matchedTypes: string[];
+  missingTypes: string[];
+  driftedTypes: string[];
+  createdCount: number;
+  updatedCount: number;
+  failedCount: number;
+  converged: boolean;
+}
+
 export function resolveTenantIdForKey(
   tenantKey: string,
   explicitTenantId?: string,
@@ -73,6 +85,101 @@ export function resolveDefaultTenantKey(
     return 'default';
   }
   return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toObjectTypeSlug(name: string): string {
+  return name
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+    .replace(/[_\s]+/g, '-')
+    .replace(/-+/g, '-')
+    .toLowerCase();
+}
+
+function extractRemoteTypeState(payload: unknown): {
+  published: Set<string>;
+  available: Set<string>;
+} {
+  const published = new Set<string>();
+  const available = new Set<string>();
+
+  const mark = (value: unknown, isPublished: boolean): void => {
+    if (!isRecord(value) || typeof value.name !== 'string') {
+      return;
+    }
+
+    const slug = typeof value.slug === 'string' ? value.slug : toObjectTypeSlug(value.name);
+    available.add(slug);
+    if (isPublished) {
+      published.add(slug);
+    }
+  };
+
+  if (isRecord(payload) && Array.isArray(payload.objectTypes)) {
+    payload.objectTypes.forEach((value) => mark(value, true));
+    return { published, available };
+  }
+
+  if (isRecord(payload) && Array.isArray(payload.object_types)) {
+    payload.object_types.forEach((value) => mark(value, true));
+    return { published, available };
+  }
+
+  if (isRecord(payload) && Array.isArray(payload.docs)) {
+    payload.docs.forEach((value) => {
+      const publishedState = isRecord(value) && (
+        value.status === 'published'
+        || value.publishedAt !== null && value.publishedAt !== undefined
+      );
+      mark(value, publishedState);
+    });
+  }
+
+  return { published, available };
+}
+
+export function verifyTypeSeedConvergence(
+  tenantId: string,
+  requestedTypes: string[],
+  payload: unknown,
+  counts: {
+    createdCount: number;
+    updatedCount: number;
+    failedCount: number;
+  },
+): TypeSeedVerificationResult {
+  const remote = extractRemoteTypeState(payload);
+  const matchedTypes: string[] = [];
+  const missingTypes: string[] = [];
+  const driftedTypes: string[] = [];
+
+  for (const requestedType of requestedTypes) {
+    const slug = toObjectTypeSlug(requestedType);
+    if (remote.published.has(slug)) {
+      matchedTypes.push(requestedType);
+    } else if (remote.available.has(slug)) {
+      driftedTypes.push(requestedType);
+    } else {
+      missingTypes.push(requestedType);
+    }
+  }
+
+  return {
+    tenantId,
+    requestedTypes,
+    matchedTypes,
+    missingTypes,
+    driftedTypes,
+    createdCount: counts.createdCount,
+    updatedCount: counts.updatedCount,
+    failedCount: counts.failedCount,
+    converged: counts.failedCount === 0 && missingTypes.length === 0 && driftedTypes.length === 0,
+  };
 }
 
 async function selectTenantKey(
@@ -185,7 +292,14 @@ Examples:
 
     out.blank();
 
-    const jsonResults: Array<{ tenantKey: string; tenantId: string; created: number; updated: number; failed: number }> = [];
+    const jsonResults: Array<{
+      tenantKey: string;
+      tenantId: string;
+      created: number;
+      updated: number;
+      failed: number;
+      verification?: TypeSeedVerificationResult;
+    }> = [];
 
     for (const tenantKey of keysToSeed) {
       const types = objectTypes[tenantKey];
@@ -276,10 +390,55 @@ Examples:
       }
 
       out.blank();
+      let verification: TypeSeedVerificationResult | undefined;
+      try {
+        const schemaResponse = await client.getSchema();
+        if (!schemaResponse.ok) {
+          throw new Error(`schema re-fetch failed: ${schemaResponse.status} ${schemaResponse.statusText}`);
+        }
+        const schemaPayload = await schemaResponse.json() as unknown;
+        verification = verifyTypeSeedConvergence(
+          tenantId,
+          types.map((type) => type.name),
+          schemaPayload,
+          {
+            createdCount: created,
+            updatedCount: updated,
+            failedCount: failed,
+          },
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        verification = {
+          tenantId,
+          requestedTypes: types.map((type) => type.name),
+          matchedTypes: [],
+          missingTypes: types.map((type) => type.name),
+          driftedTypes: [],
+          createdCount: created,
+          updatedCount: updated,
+          failedCount: failed,
+          converged: false,
+        };
+        if (options.format !== 'json') {
+          out.warn(`Verification: ${message}`);
+        }
+      }
+
       if (options.format !== 'json') {
         out.info(`Result: ${chalk.green(`${created} created`)}, ${chalk.cyan(`${updated} updated`)}, ${chalk.red(`${failed} failed`)}`);
+        if (verification.converged) {
+          out.success(`Verification: converged (${verification.matchedTypes.length}/${verification.requestedTypes.length} published remotely)`);
+        } else {
+          const issues = [
+            verification.missingTypes.length > 0 ? `${verification.missingTypes.length} missing` : null,
+            verification.driftedTypes.length > 0 ? `${verification.driftedTypes.length} drifted` : null,
+            verification.failedCount > 0 ? `${verification.failedCount} failed writes` : null,
+          ].filter(Boolean).join(', ');
+          out.warn(`Verification: partial (${issues || 'remote schema did not converge'})`);
+        }
       }
-      jsonResults.push({ tenantKey, tenantId: tenantId!, created, updated, failed });
+      jsonResults.push({ tenantKey, tenantId: tenantId!, created, updated, failed, verification });
     }
 
     if (options.format === 'json') {
