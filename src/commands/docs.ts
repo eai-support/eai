@@ -5,9 +5,9 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { findProjectRoot, loadEnvFile } from '../lib/config.js';
+import { findProjectRoot } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
-import * as out from '../lib/output.js';
+import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 export const docsCommand = new Command('docs')
@@ -22,16 +22,7 @@ docsCommand
     const root = await findProjectRoot();
     if (!root) { exitWithError(ErrorCode.E001); }
 
-    const envVars = await loadEnvFile(root);
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    const tenantId = env.TENANT_DEFAULT_ID ||
-      Object.keys(env).filter(k => k.startsWith('TENANT_') && k.endsWith('_ID')).map(k => env[k])[0];
-
-    if (!publicApiUrl || !tenantId) {
-      out.error('Missing BASE_URL_PUBLIC_API or tenant ID.');
-      process.exit(1);
-    }
+    const publicApiUrl = await resolvePublicApiUrl(root);
 
     const { readFile } = await import('node:fs/promises');
     const { basename } = await import('node:path');
@@ -75,17 +66,13 @@ docsCommand
     const root = await findProjectRoot();
     if (!root) { exitWithError(ErrorCode.E001); }
 
-    const envVars = await loadEnvFile(root);
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    const tenantId = env.TENANT_DEFAULT_ID ||
-      Object.keys(env).filter(k => k.startsWith('TENANT_') && k.endsWith('_ID')).map(k => env[k])[0];
-
-    if (!publicApiUrl || !tenantId) {
-      out.error('Missing config.'); process.exit(1);
-    }
-
-    const client = new PlatformAPIClient(publicApiUrl, tenantId);
+    const publicApiUrl = await resolvePublicApiUrl(root);
+    const context = await resolveActiveTenantContext({
+      projectRoot: root,
+      publicApiUrl,
+      interactive: true,
+    });
+    const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
     const { basename } = await import('node:path');
 
     const spinner = ora(`Classifying ${basename(file)}...`).start();
@@ -113,17 +100,13 @@ docsCommand
     const root = await findProjectRoot();
     if (!root) { exitWithError(ErrorCode.E001); }
 
-    const envVars = await loadEnvFile(root);
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = env.BASE_URL_PUBLIC_API;
-    const tenantId = env.TENANT_DEFAULT_ID ||
-      Object.keys(env).filter(k => k.startsWith('TENANT_') && k.endsWith('_ID')).map(k => env[k])[0];
-
-    if (!publicApiUrl || !tenantId) {
-      out.error('Missing config.'); process.exit(1);
-    }
-
-    const client = new PlatformAPIClient(publicApiUrl, tenantId);
+    const publicApiUrl = await resolvePublicApiUrl(root);
+    const context = await resolveActiveTenantContext({
+      projectRoot: root,
+      publicApiUrl,
+      interactive: true,
+    });
+    const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
 
     const spinner = ora(`Indexing document ${documentId}...`).start();
     try {

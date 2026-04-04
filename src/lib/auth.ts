@@ -15,11 +15,19 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:
 import { URL } from 'node:url';
 import type { AddressInfo } from 'node:net';
 
-const EAI_DIR = join(homedir(), '.eai');
-const TOKENS_FILE = join(EAI_DIR, 'tokens.json');
-const ENCRYPTION_KEY_SOURCE = `eai-cli-${homedir()}-token-store`;
+function getEaiDir(): string {
+  return join(homedir(), '.eai');
+}
 
-interface StoredTokens {
+function getTokensFile(): string {
+  return join(getEaiDir(), 'tokens.json');
+}
+
+function getEncryptionKeySource(): string {
+  return `eai-cli-${homedir()}-token-store`;
+}
+
+export interface StoredTokens {
   accessToken: string;
   refreshToken?: string;
   expiresAt: number;
@@ -28,6 +36,11 @@ interface StoredTokens {
   clientId: string;
   upn?: string;
   oid?: string;
+  activeTenantId?: string;
+  activeTenantName?: string;
+  activeTenantSlug?: string;
+  activeTenantDomain?: string;
+  publicApiUrl?: string;
 }
 
 interface TokenResponse {
@@ -54,11 +67,11 @@ interface CallbackServer {
 }
 
 function getEncryptionKey(): Buffer {
-  return createHash('sha256').update(ENCRYPTION_KEY_SOURCE).digest();
+  return createHash('sha256').update(getEncryptionKeySource()).digest();
 }
 
 async function ensureDir(): Promise<void> {
-  await mkdir(EAI_DIR, { recursive: true });
+  await mkdir(getEaiDir(), { recursive: true });
 }
 
 function encrypt(data: string): string {
@@ -83,12 +96,12 @@ function decrypt(data: string): string {
 export async function storeTokens(tokens: StoredTokens): Promise<void> {
   await ensureDir();
   const encrypted = encrypt(JSON.stringify(tokens));
-  await writeFile(TOKENS_FILE, encrypted, { encoding: 'utf-8', mode: 0o600 });
+  await writeFile(getTokensFile(), encrypted, { encoding: 'utf-8', mode: 0o600 });
 }
 
 export async function loadTokens(): Promise<StoredTokens | null> {
   try {
-    const encrypted = await readFile(TOKENS_FILE, 'utf-8');
+    const encrypted = await readFile(getTokensFile(), 'utf-8');
     const decrypted = decrypt(encrypted);
     const tokens: StoredTokens = JSON.parse(decrypted);
     // Backfill oid from JWT if missing (tokens stored before this field was added)
@@ -104,8 +117,12 @@ export async function loadTokens(): Promise<StoredTokens | null> {
 export async function clearTokens(): Promise<void> {
   try {
     const { unlink } = await import('node:fs/promises');
-    await unlink(TOKENS_FILE);
-  } catch { /* file may not exist */ }
+    await unlink(getTokensFile());
+  } catch (err) {
+    if (!(err instanceof Error) || !('code' in err) || err.code !== 'ENOENT') {
+      throw err;
+    }
+  }
 }
 
 /**
@@ -142,7 +159,9 @@ export async function getAccessToken(): Promise<string | null> {
         await storeTokens(refreshed);
         return refreshed.accessToken;
       }
-    } catch { /* refresh failed, re-login needed */ }
+    } catch (_err) {
+      return null;
+    }
   }
 
   return null;

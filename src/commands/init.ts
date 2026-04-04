@@ -223,20 +223,15 @@ function toDisplayName(name: string): string {
 function generateEnvFile(opts: InitOptions): string {
   const envKey = opts.name.replace(/-/g, '_').toUpperCase();
 
-  let tenantSection: string;
+  let workflowSection: string;
   if (opts.tenantStructure === 'dual') {
-    tenantSection = `# Tenant & Workflow
-# Dual-tenant: two tenant scopes served by one app
-TENANT_KEYS=${opts.name}-customer,${opts.name}-staff
-TENANT_${envKey}_CUSTOMER_ID=<platform-tenant-id>
-TENANT_${envKey}_STAFF_ID=<platform-tenant-id>
+    workflowSection = `# Workflow IDs
+# Dual-tenant apps can keep separate workflows per local object-type scope
 WORKFLOW_${envKey}_CUSTOMER_ID=<platform-workflow-id>
 WORKFLOW_${envKey}_STAFF_ID=<platform-workflow-id>`;
   } else {
-    tenantSection = `# Tenant & Workflow
+    workflowSection = `# Workflow IDs
 # Replace IDs with actual values from platform after provisioning
-TENANT_KEYS=${opts.name}
-TENANT_${envKey}_ID=<platform-tenant-id>
 WORKFLOW_${envKey}_ID=<platform-workflow-id>`;
   }
 
@@ -256,7 +251,10 @@ APP_BASE_PATH=/${opts.name}
 BASE_URL_PUBLIC_API=https://test-api.myenterprise.ai
 
 # =============================================================================
-# ${tenantSection}
+# Active tenant selection for CLI commands comes from:
+#   eai login
+#   eai tenant select
+# ${workflowSection}
 # =============================================================================
 
 # =============================================================================
@@ -607,6 +605,7 @@ await client.resources.create('MyType', { title: 'Hello' });
 | Command | Purpose |
 |---------|---------|
 | \`eai dev\` | Start local dev server |
+| \`eai tenant select\` | Choose the active tenant for platform commands |
 | \`eai types validate\` | Validate Object Types |
 | \`eai types seed\` | Push types to platform |
 | \`eai types diff\` | Compare local vs remote |
@@ -637,7 +636,7 @@ See \`.env.local\` for required variables. Use \`eai env pull\` to sync from Azu
 
 Key variables:
 - \`BASE_URL_PUBLIC_API\` — Platform API gateway URL
-- \`TENANT_*_ID\` / \`WORKFLOW_*_ID\` — Platform record IDs
+- \`WORKFLOW_*_ID\` — Platform workflow IDs
 - \`ENTRA_*\` — Microsoft Entra ID (CIAM) auth config
 - \`AUTH_SECRET\` — Auth.js session encryption key
 

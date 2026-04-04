@@ -52,7 +52,7 @@ export const errorCatalog: Record<ErrorCode, Omit<ErrorDefinition, 'code'>> = {
   },
   [ErrorCode.E002]: {
     message: '{var} environment variable not set',
-    suggestion: 'Run `eai env pull` to sync configuration from the platform, or set {var} manually in .env.local',
+    suggestion: 'Set {var} in your environment or project config. Tenant selection comes from `eai login` and `eai tenant select`, not tenant IDs in .env.local',
   },
   [ErrorCode.E003]: {
     message: 'Configuration file not found: {file}',

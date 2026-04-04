@@ -5,16 +5,53 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { findProjectRoot, loadEnvFile } from '../lib/config.js';
+import { findProjectRoot } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import { loadTokens } from '../lib/auth.js';
+import {
+  fetchTenantAdminMemberships,
+  filterTenantAdminEntries,
+  getTenantRoles,
+  normalizeTenantEntries,
+  resolveActiveTenantContext,
+  resolvePublicApiUrl,
+  type TenantEntry,
+} from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
-const DEFAULT_API_URL = 'https://dev-api.myenterprise.ai/public';
+export { filterTenantAdminEntries, tenantEntryHasTenantAdminRole, type TenantEntry, type TenantRoleAssignment } from '../lib/tenant-context.js';
 
-function resolveApiUrl(env: Record<string, string | undefined>): string {
-  return env.BASE_URL_PUBLIC_API || DEFAULT_API_URL;
+export function tenantMatchesParent(entry: TenantEntry, parentId: string): boolean {
+  const parent = entry.tenant.parent;
+  const resolvedParentId = typeof parent === 'string'
+    ? parent
+    : parent?.id ?? entry.tenant.parentId;
+  return resolvedParentId === parentId || entry.tenant.id === parentId;
+}
+
+export interface TenantListZeroState {
+  headline: string;
+  tenantContext?: string;
+  hint: string;
+}
+
+export function buildTenantListZeroState(tokens: {
+  tenantName?: string;
+  tenantId?: string;
+}): TenantListZeroState {
+  const zeroState: TenantListZeroState = {
+    headline: 'No active tenant-admin memberships found for the current login.',
+    hint: 'Use `eai whoami` to inspect the authenticated tenant context.',
+  };
+
+  if (tokens.tenantName || tokens.tenantId) {
+    const tenantName = tokens.tenantName || 'current authenticated tenant';
+    const tenantId = tokens.tenantId ? ` (${tokens.tenantId})` : '';
+    zeroState.tenantContext = `Authenticated tenant context: ${tenantName}${tenantId}`;
+  }
+
+  return zeroState;
 }
 
 export const tenantCommand = new Command('tenant')
@@ -24,10 +61,10 @@ export const tenantCommand = new Command('tenant')
 
 tenantCommand
   .command('list')
-  .description('List tenants (scoped to parent)')
+  .description('List active tenants where the current user is a tenant admin')
   .option('--parent <id>', 'Parent tenant ID')
   .option('--debug', 'Show debug diagnostics for tenant lookup', false)
-  .option('--raw-user', 'Print raw current-user payload in debug mode', false)
+  .option('--raw-user', 'Print raw membership payload in debug mode', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', `
@@ -59,74 +96,104 @@ Examples:
     });
 
     const root = await findProjectRoot();
-    const envVars = root ? await loadEnvFile(root) : {};
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = resolveApiUrl(env);
+    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
     debug('Project root', root || '(none)');
     debug('Using Public API URL', publicApiUrl);
 
-    const client = new PlatformAPIClient(publicApiUrl, 'system');
     const spinner = options.format === 'json' ? null : ora('Fetching tenants...').start();
 
     try {
-      const res = await client.getCurrentUser(tokens.oid);
-      debug('Current user endpoint status', `${res.status} ${res.statusText}`);
-      if (!res.ok) {
-        if (spinner) spinner.fail(`${res.status} ${res.statusText}`);
-        process.exit(1);
-      }
+      const membershipsResponse = await fetchTenantAdminMemberships(publicApiUrl);
+      debug('Membership lookup status', 'ok');
 
-      interface TenantEntry {
-        tenant: { id: string; displayName: string; slug: string; domain?: string; isActive: boolean };
-        roleAssignments: Array<{ baseRole: string; displayName: string }>;
-      }
-      interface UserTenantPayload {
-        tenants?: TenantEntry[];
-        user?: {
-          id?: string;
-          email?: string;
-          username?: string;
-          tenants?: TenantEntry[];
-        };
-      }
-      const payload = await res.json() as UserTenantPayload;
-      debug('Current user response keys', Object.keys(payload as Record<string, unknown>));
-      if (payload.user) {
-        debug('Current user summary', {
-          id: payload.user.id,
-          email: payload.user.email,
-          username: payload.user.username,
-        });
-      }
+      const payload = {
+        tenants: membershipsResponse.memberships.map((membership) => ({
+          tenant: {
+            id: membership.id,
+            displayName: membership.displayName,
+            slug: membership.slug,
+            domain: membership.domain,
+            isActive: membership.isActive,
+          },
+          roles: membership.roles,
+        })),
+      } satisfies { tenants: TenantEntry[] };
+
       if (debugEnabled && options.rawUser) {
-        debug('Raw current user payload', payload);
+        debug('Raw membership payload', payload);
       }
 
-      const tenantEntries = payload.tenants ?? payload.user?.tenants ?? [];
+      const tenantEntries = normalizeTenantEntries(payload);
       debug('Tenant entries before filtering', tenantEntries.length);
-      const tenants = tenantEntries.filter(t => t.tenant?.isActive !== false);
+      const tenants = filterTenantAdminEntries(tenantEntries);
+      debug('Tenant entries after tenant-admin filtering', tenants.length);
 
       // Filter by parent if requested
       const filtered = options.parent
-        ? tenants.filter(t => t.tenant.id === options.parent)
+        ? tenants.filter(t => tenantMatchesParent(t, options.parent))
         : tenants;
       debug('Tenant entries after filtering', filtered.length);
 
       if (options.format === 'json') {
-        out.json({ tenants: filtered.map(t => ({ ...t.tenant, roles: t.roleAssignments.map(r => r.baseRole) })), count: filtered.length });
+        out.json({
+          tenants: filtered.map((t) => ({
+            ...t.tenant,
+            roles: getTenantRoles(t),
+            active: tokens.activeTenantId === t.tenant.id,
+          })),
+          count: filtered.length,
+        });
         return;
       }
 
-      spinner!.succeed(`${filtered.length} tenant${filtered.length !== 1 ? 's' : ''}`);
+      const countLabel = `${filtered.length} tenant-admin membership${filtered.length !== 1 ? 's' : ''}`;
+      spinner!.succeed(countLabel);
+
+      if (filtered.length === 0) {
+        const zeroState = buildTenantListZeroState(tokens);
+        out.info(zeroState.headline);
+        if (zeroState.tenantContext) {
+          out.info(`Authenticated tenant context: ${chalk.cyan(tokens.tenantName || 'current authenticated tenant')}${tokens.tenantId ? chalk.dim(` (${tokens.tenantId})`) : ''}`);
+        }
+        out.info(`Use ${chalk.cyan('eai whoami')} to inspect the authenticated tenant context.`);
+        return;
+      }
 
       for (const entry of filtered) {
-        const { tenant, roleAssignments } = entry;
-        const roles = roleAssignments.length ? chalk.dim(` [${roleAssignments.map(r => r.baseRole).join(', ')}]`) : '';
+        const { tenant } = entry;
+        const roleNames = getTenantRoles(entry);
+        const roles = roleNames.length ? chalk.dim(` [${roleNames.join(', ')}]`) : '';
         const domain = tenant.domain ? chalk.dim(` (${tenant.domain})`) : '';
-        out.info(`${chalk.cyan(tenant.slug)} — ${tenant.displayName}${domain}${roles}`);
+        const active = tokens.activeTenantId === tenant.id ? chalk.green(' (active)') : '';
+        out.info(`${chalk.cyan(tenant.slug)} — ${tenant.displayName}${domain}${roles}${active}`);
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+// ─── eai tenant select ───────────────────────────────────────────────────
+
+tenantCommand
+  .command('select [tenant]')
+  .description('Select the active tenant to work with')
+  .action(async (tenant) => {
+    const root = await findProjectRoot();
+    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
+
+    try {
+      const context = await resolveActiveTenantContext({
+        projectRoot: root || undefined,
+        publicApiUrl,
+        interactive: true,
+        forcePrompt: !tenant,
+        tenantId: tenant,
+      });
+
+      out.success(`Active tenant set to ${chalk.cyan(context.activeTenant.slug)} (${chalk.dim(context.activeTenant.id)})`);
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -142,9 +209,7 @@ tenantCommand
     if (options.json) options.format = 'json';
 
     const root = await findProjectRoot();
-    const envVars = root ? await loadEnvFile(root) : {};
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = resolveApiUrl(env);
+    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
     const spinner = options.format === 'json' ? null : ora('Fetching tenant...').start();
@@ -184,9 +249,7 @@ tenantCommand
     if (options.json) options.format = 'json';
 
     const root = await findProjectRoot();
-    const envVars = root ? await loadEnvFile(root) : {};
-    const env = { ...envVars, ...process.env };
-    const publicApiUrl = resolveApiUrl(env);
+    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
 
     const client = new PlatformAPIClient(publicApiUrl, 'system');
     const spinner = options.format === 'json' ? null : ora(`Creating tenant "${options.name}"...`).start();

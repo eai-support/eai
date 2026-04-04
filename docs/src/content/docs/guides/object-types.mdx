@@ -56,7 +56,7 @@ export const objectTypes: Record<string, ObjectTypeDefinition[]> = {
 ```
 
 <Aside type="tip">
-  The tenant key (e.g. `'my-tenant'`) maps to the environment variable `TENANT_MY_TENANT_ID` in your `.env.local`. The CLI resolves this automatically when seeding.
+  The tenant key (e.g. `'my-tenant'`) identifies a local object-type scope. The CLI chooses the remote platform tenant from your active login selection, and you can still use `eai types seed --tenant-key my-tenant --tenant-id <uuid>` for a deliberate one-off override.
 </Aside>
 
 ## Properties (field types)

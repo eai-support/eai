@@ -221,10 +221,10 @@ steps:
     run: echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
 
   - name: Seed Object Types
-    run: npx @eai-tools/cli types seed
+    run: npx @eai-tools/cli types seed --tenant-id ${{ secrets.PLATFORM_TENANT_ID }}
     env:
       BASE_URL_PUBLIC_API: ${{ secrets.BASE_URL_PUBLIC_API }}
-      TENANT_DEFAULT_ID: ${{ secrets.TENANT_DEFAULT_ID }}
+      EAI_ACCESS_TOKEN: ${{ secrets.EAI_ACCESS_TOKEN }}
 
   - name: Build and Deploy
     run: npm run build

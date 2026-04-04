@@ -92,7 +92,7 @@ program.addHelpText('after', `
 ${chalk.bold('Getting Started:')}
   ${chalk.cyan('eai init my-vertical')}     Scaffold a new vertical app
   ${chalk.cyan('eai login')}                Authenticate with Entra CIAM
-  ${chalk.cyan('eai env pull')}             Sync cloud config to local .env
+  ${chalk.cyan('eai tenant select')}        Choose the active tenant to work with
   ${chalk.cyan('eai types seed')}           Publish Object Types to the platform
   ${chalk.cyan('eai dev')}                  Start local development server
 

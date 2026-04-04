@@ -4,8 +4,14 @@
  * Tests for: eai init [name] [--from <repo>] [--skip-prompts]
  */
 
-import { describe, test, beforeEach, afterEach, expect } from 'vitest';
-import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
+import { execFile } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+import inquirer from 'inquirer';
+import { describe, test, beforeEach, afterEach, expect, vi } from 'vitest';
+import { initCommand } from '../../src/commands/init.js';
+import { createTestEnvironment, captureConsole, type TestEnvironment } from '../helpers/test-env.js';
 import { createMockServer, PublicAPIMock } from '../helpers/mock-server.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
 import {
@@ -27,10 +33,33 @@ import {
   expectExitCode,
 } from '../helpers/assert-dsl.js';
 
+const exec = promisify(execFile);
+
+async function createLocalTemplateRepo(baseDir: string): Promise<string> {
+  const templateDir = join(baseDir, 'vertical-template');
+  await mkdir(join(templateDir, 'src', 'eai.config'), { recursive: true });
+  await writeFile(
+    join(templateDir, 'package.json'),
+    JSON.stringify({
+      name: 'vertical-template',
+      version: '0.0.1',
+      type: 'module',
+    }, null, 2) + '\n',
+  );
+  await writeFile(join(templateDir, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
+  await exec('git', ['init'], { cwd: templateDir });
+  await exec('git', ['config', 'user.email', 'tests@example.com'], { cwd: templateDir });
+  await exec('git', ['config', 'user.name', 'EAI CLI Tests'], { cwd: templateDir });
+  await exec('git', ['add', '.'], { cwd: templateDir });
+  await exec('git', ['commit', '-m', 'Initial template'], { cwd: templateDir });
+  return templateDir;
+}
+
 describe('eai init', () => {
   let env: TestEnvironment;
   let mockServer: ReturnType<typeof createMockServer>;
   let ctx: TestContext;
+  let templateRepo: string;
 
   beforeEach(async () => {
     env = await createTestEnvironment();
@@ -43,6 +72,15 @@ describe('eai init', () => {
       env: {},
       prompts: [],
     };
+
+    Object.assign(ctx.env, {
+      GIT_AUTHOR_NAME: 'EAI CLI Tests',
+      GIT_AUTHOR_EMAIL: 'tests@example.com',
+      GIT_COMMITTER_NAME: 'EAI CLI Tests',
+      GIT_COMMITTER_EMAIL: 'tests@example.com',
+    });
+
+    templateRepo = await createLocalTemplateRepo(env.dir);
   });
 
   afterEach(async () => {
@@ -50,7 +88,7 @@ describe('eai init', () => {
     await env.cleanup();
   });
 
-  test.skip('TC001: Initialize new vertical interactively (E2E - requires network)', async () => {
+  test('TC001: Initialize new vertical interactively', async () => {
     // TC001: Initialize new vertical interactively
     // Traces to: Init-US1-AC1
     //
@@ -77,24 +115,33 @@ describe('eai init', () => {
     gitIsInstalled(ctx);
     networkIsAvailable(ctx);
 
-    respondToPrompt(ctx, 'Display Name', 'My Vertical');
-    respondToPrompt(ctx, 'Description', 'Test vertical app');
-    respondToPrompt(ctx, 'Tenant Structure', 'single');
-    respondToPrompt(ctx, 'Include AI Chat', 'yes');
-    respondToPrompt(ctx, 'Include Docs', 'yes');
-    respondToPrompt(ctx, 'Auth Provider', 'ciam');
+    const promptSpy = vi.spyOn(inquirer, 'prompt').mockResolvedValue({
+      name: 'my-vertical',
+      displayName: 'My Vertical',
+      description: 'My Vertical vertical application',
+      tenantStructure: 'single',
+      includeChat: true,
+      includeDocs: true,
+      authProvider: 'ciam',
+    });
+    const consoleCapture = captureConsole();
 
-    const result = await runCommand(ctx, 'eai init my-vertical');
+    try {
+      await initCommand.parseAsync(['my-vertical', '--from', templateRepo], { from: 'user' });
+    } finally {
+      consoleCapture.restore();
+      promptSpy.mockRestore();
+    }
 
     await expectDirectoryCreated(ctx, 'my-vertical');
     await expectFileExists(ctx, 'my-vertical/package.json');
-    await expectFileContains(ctx, 'my-vertical/package.json', '"name": "my-vertical"');
+    await expectFileContains(ctx, 'my-vertical/package.json', '"name": "@eai-tools/my-vertical"');
     await expectFileExists(ctx, 'my-vertical/.env.local');
     await expectFileExists(ctx, 'my-vertical/src/eai.config/object-types.ts');
-    expectSuccessMessage(result, 'Vertical "My Vertical" initialized');
+    expect(consoleCapture.stdout.join('\n')).toContain('Created My Vertical');
   });
 
-  test.skip('TC002: Initialize with --skip-prompts flag (E2E - requires network)', async () => {
+  test('TC002: Initialize with --skip-prompts flag', async () => {
     // TC002: Initialize with --skip-prompts flag
     // Traces to: Init-US1-AC2
     //
@@ -109,15 +156,15 @@ describe('eai init', () => {
 
     workingDirectoryIs(ctx, env.dir);
 
-    const result = await runCommand(ctx, 'eai init quick-app --skip-prompts');
+    const result = await runCommand(ctx, `eai init quick-app --skip-prompts --from ${templateRepo}`);
 
     await expectDirectoryCreated(ctx, 'quick-app');
-    await expectFileContains(ctx, 'quick-app/package.json', '"name": "quick-app"');
+    await expectFileContains(ctx, 'quick-app/package.json', '"name": "@eai-tools/quick-app"');
     expectNoPrompts(ctx);
     expectCommandSucceeded(result);
   });
 
-  test.skip('TC004: Init fails when directory exists (E2E - requires network)', async () => {
+  test('TC004: Init fails when directory exists', async () => {
     // TC004: Init fails when directory exists
     // Traces to: Init-US1-ERR1
     //
@@ -132,10 +179,10 @@ describe('eai init', () => {
     workingDirectoryIs(ctx, env.dir);
     await directoryExists(ctx, 'existing-app');
 
-    const result = await runCommand(ctx, 'eai init existing-app');
+    const result = await runCommand(ctx, `eai init existing-app --skip-prompts --from ${templateRepo}`);
 
     expectCommandFailed(result);
-    expectErrorMessage(result, 'Directory "existing-app" already exists');
+    expectErrorMessage(result, 'Directory "existing-app" already exists.');
     expectExitCode(result, 1);
   });
 

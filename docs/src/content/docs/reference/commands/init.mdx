@@ -79,12 +79,13 @@ Next steps:
   1. cd patient-intake
   2. npm install
   3. eai login — authenticate with Entra CIAM
-  4. eai env pull — sync environment from cloud
-  5. Edit src/eai.config/object-types.ts — define your data model
-  6. eai types validate — check your types
-  7. eai types seed — push types to platform
-  8. eai dev — start local development
-  9. Review CLAUDE.md — platform architecture reference
+  4. eai tenant select — choose the tenant to work with
+  5. eai env pull — sync app config from cloud if needed
+  6. Edit src/eai.config/object-types.ts — define your data model
+  7. eai types validate — check your types
+  8. eai types seed — push types to platform
+  9. eai dev — start local development
+  10. Review CLAUDE.md — platform architecture reference
 ```
 
 ### Scaffold with name argument
@@ -138,4 +139,3 @@ This command supports all [global CLI options](/reference/global-options/):
 - `--color` — Force colors
 
 See [Global Options](/reference/global-options/) for details.
-

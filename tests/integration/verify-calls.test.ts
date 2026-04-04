@@ -21,9 +21,13 @@ describe('runContractAudit', () => {
   let mockServer: ReturnType<typeof createMockServer>;
   let ctx: TestContext;
   let originalCwd: string;
+  let originalHome: string | undefined;
+  let originalAccessToken: string | undefined;
 
   beforeEach(async () => {
     originalCwd = process.cwd();
+    originalHome = process.env.HOME;
+    originalAccessToken = process.env.EAI_ACCESS_TOKEN;
     env = await createTestEnvironment();
     mockServer = createMockServer();
     mockServer.start();
@@ -36,20 +40,31 @@ describe('runContractAudit', () => {
     };
 
     workingDirectoryIs(ctx, env.dir);
+    process.env.HOME = env.dir;
+    delete process.env.EAI_ACCESS_TOKEN;
     await projectHasValidObjectTypes(ctx, [
       { name: 'Customer', displayName: 'Customer', status: 'published' },
     ]);
     await projectHasEnvFile(ctx, {
       BASE_URL_PUBLIC_API: 'https://test-api.example.com',
-      TENANT_DEFAULT_ID: 'test-tenant-id',
       WORKFLOW_DEFAULT_ID: 'workflow-123',
     });
   });
 
   afterEach(async () => {
     process.chdir(originalCwd);
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+    if (originalAccessToken === undefined) {
+      delete process.env.EAI_ACCESS_TOKEN;
+    } else {
+      process.env.EAI_ACCESS_TOKEN = originalAccessToken;
+    }
     mockServer.stop();
-    await cleanupTestTokens();
+    await cleanupTestTokens(ctx);
     await env.cleanup();
   });
 
@@ -60,12 +75,12 @@ describe('runContractAudit', () => {
       http.get('https://test-api.example.com/health', () => {
         return HttpResponse.json({ status: 'ok' });
       }),
-      http.get('https://test-api.example.com/v3/resources/schema/test-tenant-id', () => {
+      http.get('https://test-api.example.com/v3/resources/schema/tenant-1', () => {
         return HttpResponse.json({
           objectTypes: [{ name: 'Customer', properties: [], linkTypes: [], actions: [] }],
         });
       }),
-      http.get('https://test-api.example.com/v3/resources/test-tenant-id/Customer', () => {
+      http.get('https://test-api.example.com/v3/resources/tenant-1/Customer', () => {
         return HttpResponse.json({
           docs: [],
           totalDocs: 0,
@@ -73,20 +88,35 @@ describe('runContractAudit', () => {
           totalPages: 1,
         });
       }),
-      http.get('https://test-api.example.com/v3/resources/test-tenant-id/Customer/cust-1', () => {
+      http.get('https://test-api.example.com/v3/resources/tenant-1/Customer/cust-1', () => {
         return HttpResponse.json({
           id: 'cust-1',
           data: { name: 'Example Customer' },
           version: 1,
         });
       }),
-      http.post('https://test-api.example.com/v3/resources/test-tenant-id/query', () => {
+      http.post('https://test-api.example.com/v3/resources/tenant-1/query', () => {
         return HttpResponse.json({ docs: [] });
       }),
       http.post('https://test-api.example.com/v3/orchestrate', async ({ request }) => {
         const body = await request.json() as {
           endpoint?: string;
+          target_backend?: string;
         };
+
+        if (body.target_backend === 'admin' && body.endpoint === '/v1/users/test-user-oid/memberships') {
+          return HttpResponse.json({
+            tenants: [
+              {
+                id: 'tenant-1',
+                displayName: 'Tenant One',
+                slug: 'tenant-one',
+                isTenantAdmin: true,
+                roles: ['tenant-admin'],
+              },
+            ],
+          });
+        }
 
         switch (body.endpoint) {
           case '/custom-users/me':
@@ -115,9 +145,10 @@ describe('runContractAudit', () => {
               name: 'Tenant One',
               slug: 'tenant-one',
             });
-          case '/custom-users/by-email':
+          case '/v1/users/by-email?email=jane%40example.com':
             return HttpResponse.json({
-              user: { id: 'user-1', email: 'jane@example.com' },
+              id: 'user-1',
+              email: 'jane@example.com',
             });
           default:
             return HttpResponse.json({ error: 'unexpected endpoint' }, { status: 404 });

@@ -5,27 +5,29 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { findProjectRoot, loadEnvFile } from '../lib/config.js';
+import { findProjectRoot } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
+import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
-function createClient(env: Record<string, string>): { client: PlatformAPIClient; tenantId: string } | null {
-  const publicApiUrl = env.BASE_URL_PUBLIC_API;
-  const tenantId = env.TENANT_DEFAULT_ID ||
-    Object.keys(env).filter(k => k.startsWith('TENANT_') && k.endsWith('_ID')).map(k => env[k])[0];
-
-  if (!publicApiUrl || !tenantId) return null;
-  return { client: new PlatformAPIClient(publicApiUrl, tenantId), tenantId };
-}
-
-async function getEnv(): Promise<Record<string, string>> {
+async function createClient(): Promise<{ client: PlatformAPIClient; tenantId: string }> {
   const root = await findProjectRoot();
   if (!root) {
     exitWithError(ErrorCode.E001);
   }
-  const envVars = await loadEnvFile(root);
-  return { ...envVars, ...process.env } as Record<string, string>;
+
+  const publicApiUrl = await resolvePublicApiUrl(root);
+  const context = await resolveActiveTenantContext({
+    projectRoot: root,
+    publicApiUrl,
+    interactive: true,
+  });
+
+  return {
+    client: new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id),
+    tenantId: context.activeTenant.id,
+  };
 }
 
 export const resourcesCommand = new Command('resources')
@@ -48,9 +50,7 @@ Examples:
   $ eai resources list User --format json | jq '.resources[] | .id'
   `)
   .action(async (type, options) => {
-    const env = await getEnv();
-    const ctx = createClient(env);
-    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
+    const ctx = await createClient();
 
     if (options.json) options.format = 'json';
     const spinner = options.format === 'json' ? null : ora(`Listing ${type}...`).start();
@@ -112,9 +112,7 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
-    const env = await getEnv();
-    const ctx = createClient(env);
-    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
+    const ctx = await createClient();
 
     if (options.json) options.format = 'json';
 
@@ -154,9 +152,7 @@ Examples:
   $ eai resources create Project --data '{"name":"Demo"}' --format json
   `)
   .action(async (type, options) => {
-    const env = await getEnv();
-    const ctx = createClient(env);
-    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
+    const ctx = await createClient();
 
     if (options.json) options.format = 'json';
 
@@ -203,9 +199,7 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
-    const env = await getEnv();
-    const ctx = createClient(env);
-    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
+    const ctx = await createClient();
 
     if (options.json) options.format = 'json';
 
@@ -255,9 +249,7 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
-    const env = await getEnv();
-    const ctx = createClient(env);
-    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
+    const ctx = await createClient();
 
     if (options.json) options.format = 'json';
 
@@ -309,9 +301,7 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
-    const env = await getEnv();
-    const ctx = createClient(env);
-    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
+    const ctx = await createClient();
 
     if (options.json) options.format = 'json';
 
@@ -352,9 +342,7 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
-    const env = await getEnv();
-    const ctx = createClient(env);
-    if (!ctx) { exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API or TENANT_*_ID' }, options.format); }
+    const ctx = await createClient();
 
     if (options.json) options.format = 'json';
 

@@ -110,24 +110,24 @@ Authentication uses **Microsoft Entra CIAM** (Customer Identity and Access Manag
 
 ```
 ┌──────────┐                ┌──────────────┐           ┌──────────────┐
-│  CLI /   │  1. Request    │   Entra      │           │  Platform    │
-│  Browser │  auth code     │   CIAM       │           │  API         │
-│          │───────────────▶│              │           │              │
-│          │◀───────────────│  2. Return   │           │              │
-│          │  user code +   │  code + URL  │           │              │
-│          │  verify URL    │              │           │              │
-│          │                │              │           │              │
-│  User    │  3. User opens │              │           │              │
-│  browser │  URL, enters   │              │           │              │
-│          │  code, signs in│              │           │              │
+│   CLI    │  1. Open auth  │   Entra      │           │  Platform    │
+│          │  URL with      │   CIAM       │           │  API         │
+│          │  PKCE          │              │           │              │
 │          │───────────────▶│              │           │              │
 │          │                │              │           │              │
-│  CLI     │  4. Poll for   │              │           │              │
-│  polls   │  token         │              │           │              │
+│ Browser  │  2. User signs │              │           │              │
+│ window   │  in            │              │           │              │
 │          │───────────────▶│              │           │              │
-│          │◀───────────────│  5. Return   │           │              │
-│          │  access token  │  tokens      │           │              │
-│          │  + refresh     │              │           │              │
+│          │                │              │           │              │
+│ Browser  │  3. Redirect   │              │           │              │
+│ -> CLI   │  to localhost  │              │           │              │
+│ callback │  callback      │              │           │              │
+│          │◀───────────────│              │           │              │
+│          │                │              │           │              │
+│   CLI    │  4. Exchange   │              │           │              │
+│          │  code for      │              │           │              │
+│          │  tokens        │─────────────▶│           │              │
+│          │◀───────────────│  5. Tokens   │           │              │
 │          │                │              │           │              │
 │          │  6. API calls with Bearer token            │              │
 │          │──────────────────────────────────────────▶│              │
@@ -136,11 +136,11 @@ Authentication uses **Microsoft Entra CIAM** (Customer Identity and Access Manag
 ```
 
 1. The CLI starts an authorization request with PKCE and opens the browser.
-2. Entra returns a user code and a verification URL.
-3. The user opens the URL in a browser and enters the code to sign in.
-4. The CLI polls Entra for the access token.
+2. The user signs in with Entra CIAM in the browser.
+3. Entra redirects back to the CLI's temporary localhost callback.
+4. The CLI exchanges the authorization code for tokens.
 5. Entra returns an access token and refresh token.
-6. The CLI uses the access token as a Bearer token for all Platform API calls.
+6. The CLI uses the access token as a Bearer token for Platform API calls.
 7. Tokens are stored locally at `~/.eai/tokens.json` and refreshed automatically.
 
 ## Key Design Decisions
@@ -150,7 +150,7 @@ Authentication uses **Microsoft Entra CIAM** (Customer Identity and Access Manag
 | **Single API gateway** | All traffic goes through `/v3/*`. Clients never call backend services directly. |
 | **Tenant-scoped URLs** | The tenant ID is part of the URL path (`/v3/resources/{tenantId}/...`), making tenant isolation explicit and auditable. |
 | **BFF proxy for web apps** | Keeps tokens server-side. The browser never holds an access token. |
-| **Device code flow for CLI** | No browser required on the machine running the CLI. The user can authenticate from any device. |
+| **Browser PKCE for CLI** | Uses a first-party public client, browser sign-in, and localhost callback without exposing a CLI `--client-id` override. |
 | **Schema-driven resources** | Object Types define the schema. The platform validates all resource operations against the published schema. |
 
 ## Next Steps

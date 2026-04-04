@@ -17,6 +17,16 @@ Type definitions live in `src/eai.config/object-types.ts` and are organized by t
 
 This command must be run from within an EAI project directory.
 
+Typical workflow:
+
+1. Define or update types in `src/eai.config/object-types.ts`
+2. Run `eai types validate`
+3. Run `eai login`
+4. Run `eai tenant select`
+5. Run `eai types diff` to preview changes
+6. Run `eai types seed` to publish
+7. Run `eai resources schema` to verify what is published for the active tenant
+
 ## Subcommands
 
 ### eai types validate
@@ -51,6 +61,7 @@ eai types seed [options]
 |--------|-------------|---------|
 | `--env <environment>` | Target environment | `dev` |
 | `--tenant-key <key>` | Seed a specific tenant key only (from object-types.ts) | All tenant keys |
+| `--tenant-id <id>` | Override the resolved tenant ID. Use with `--tenant-key`. | Resolved automatically |
 | `--dry-run` | Show what would be seeded without making changes | `false` |
 
 ### eai types diff
@@ -58,8 +69,13 @@ eai types seed [options]
 Compare local Object Type definitions with what is currently published on the platform. Shows which types and properties are local-only, remote-only, or changed.
 
 ```
-eai types diff
+eai types diff [options]
 ```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--tenant-key <key>` | Diff a specific tenant key only (from object-types.ts) | All tenant keys |
+| `--tenant-id <id>` | Override the resolved tenant ID. Use with `--tenant-key`. | Resolved automatically |
 
 ### eai types pull
 
@@ -71,7 +87,7 @@ eai types pull [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--tenant-id <id>` | Platform tenant ID to pull from | Resolved from environment |
+| `--tenant-id <id>` | Platform tenant ID to pull from | Active tenant |
 | `--output <path>` | Output file path | `src/eai.config/object-types.generated.ts` |
 
 ### eai types define
@@ -162,6 +178,12 @@ Tenant: patient-intake → 8f3a1b2c-...
 eai types seed --tenant-key patient-intake-staff
 ```
 
+### Seed a tenant key with an explicit tenant ID
+
+```bash
+eai types seed --tenant-key template --tenant-id 50808ce0-f31b-4fd0-9861-74b83b8c112a
+```
+
 ### Diff local vs remote
 
 ```bash
@@ -182,6 +204,8 @@ Tenant: patient-intake
     - property: legacyField (remote only)
     = 4 properties unchanged
 ```
+
+Remote tenant selection comes from your active login context. Local object-type scope selection comes from `--tenant-key`, an active-tenant slug match, `template`, `default`, or an interactive prompt. Use `--tenant-id` only when you want a deliberate one-off override of the active tenant.
 
 ### Pull remote types to local
 

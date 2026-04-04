@@ -103,21 +103,22 @@ EnterpriseAI uses **Microsoft Entra CIAM** (Customer Identity and Access Managem
 - Multi-factor authentication (MFA)
 - Customizable branding for login pages
 
-### CLI Authentication (Device Code Flow)
+### CLI Authentication
 
-The CLI uses **OAuth 2.0 authorization code flow with PKCE**, opening a browser window and completing the token exchange after a localhost callback:
+The CLI uses **OAuth 2.0 authorization code flow with PKCE**, opening a
+browser window and completing the token exchange after a localhost callback:
 
 1. Run `eai login`.
-2. The CLI opens the Entra authorization URL and waits for the callback.
-3. A user code and verification URL are displayed.
-4. Open the URL in any browser (on any device), enter the code, and sign in.
-5. The CLI polls Entra until the sign-in completes and receives an access token.
+2. The CLI opens the Entra authorization URL in your browser.
+3. After sign-in, Entra redirects back to the CLI's temporary localhost callback.
+4. The CLI exchanges the authorization code for tokens.
+5. The access token is used for Platform API calls and refreshed automatically when possible.
 
 ```bash
 $ eai login
 
 If automatic browser launch fails, open the authorization URL printed by the CLI
-and enter the code: ABCD-EFGH
+in your browser.
 ```
 
 ### Web Application Authentication
@@ -165,7 +166,7 @@ eai verify
 |---|---|---|
 | `ENTRA_TENANT_ID` | Your Entra CIAM tenant ID | Yes |
 | `ENTRA_TENANT_NAME` | Your Entra CIAM tenant name (used to construct the authority URL) | Yes |
-| `ENTRA_CLIENT_ID` | The application (client) ID registered in Entra | Yes |
+| `ENTRA_CLIENT_ID` | Application client ID used by a web application login flow | Yes (web apps) |
 | `AUTH_SECRET` | Secret used for session encryption in Next.js applications | Yes (web apps) |
 
 These are typically set in `.env.local` and pulled with `eai env pull`.
@@ -176,7 +177,8 @@ When building a vertical application, verify the following:
 
 - [ ] All actions declare the correct `requiredRole` (do not default to `tenant-user` for administrative operations).
 - [ ] Sensitive fields are not exposed to roles that should not see them.
-- [ ] `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, and `AUTH_SECRET` are set and not committed to version control.
+- [ ] `ENTRA_TENANT_ID` and `AUTH_SECRET` are set and not committed to version control.
+- [ ] If your web app handles browser sign-in directly, its Entra client configuration is set correctly.
 - [ ] `.env.local` is in `.gitignore`.
 - [ ] Tokens are not logged or exposed in error messages.
 - [ ] The BFF proxy is used for all web application API calls (no direct browser-to-Platform-API calls with tokens).

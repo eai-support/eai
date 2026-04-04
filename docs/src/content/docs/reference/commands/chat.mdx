@@ -15,7 +15,7 @@ eai chat <subcommand> <message> [options]
 
 Each chat message is associated with a workflow, a stage within that workflow, and a conversation ID. The conversation ID allows you to continue a multi-turn conversation across multiple commands.
 
-This command requires `BASE_URL_PUBLIC_API` and a tenant ID to be set in `.env.local` or the environment.
+This command uses the active tenant selected through `eai login` and `eai tenant select`. `BASE_URL_PUBLIC_API` can still come from `.env.local` or the environment when needed.
 
 ## Subcommands
 
@@ -119,7 +119,7 @@ eai chat send "List all overdue tasks as JSON" \
 
 ## Workflow and Stage
 
-- **Workflow**: Identifies the AI configuration to use (model, system prompt, tools, RAG settings). Workflow IDs are provisioned on the platform and stored in your `.env.local` as `WORKFLOW_*_ID`.
+- **Workflow**: Identifies the AI configuration to use (model, system prompt, tools, RAG settings). Pass it explicitly with `--workflow` or source it from your project config/scripts.
 - **Stage**: A named phase within a workflow. The default stage is `chat`. Other stages might include `triage`, `classification`, `report-generation`, etc.
 - **Conversation ID**: Groups messages into a single conversation context. The AI retains memory of previous messages within the same conversation ID.
 
@@ -139,4 +139,3 @@ This command supports all [global CLI options](/reference/global-options/):
 - `--color` — Force colors
 
 See [Global Options](/reference/global-options/) for details.
-

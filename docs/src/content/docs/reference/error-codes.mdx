@@ -103,8 +103,8 @@ These errors are raised by the CLI itself, not the Platform API.
 | Error Message | Cause | Resolution |
 |---|---|---|
 | `BASE_URL_PUBLIC_API not set.` | The Platform API URL is not configured | Run `eai env pull` or set `BASE_URL_PUBLIC_API` in `.env.local` |
-| `Missing BASE_URL_PUBLIC_API or tenant ID.` | Either the API URL or a tenant ID is missing | Set both `BASE_URL_PUBLIC_API` and `TENANT_DEFAULT_ID` in `.env.local` |
-| `No tenant ID found for "{key}".` | No `TENANT_{KEY}_ID` environment variable matches the tenant key in `object-types.ts` | Add the matching `TENANT_{KEY}_ID` to `.env.local` |
+| `Missing BASE_URL_PUBLIC_API or tenant ID.` | Either the API URL is missing or no active tenant is selected | Set `BASE_URL_PUBLIC_API` if needed, then run `eai login` and `eai tenant select` |
+| `No tenant ID found for "{key}".` | No active tenant is available and no explicit override was supplied | Run `eai tenant select` or use `--tenant-id <uuid>` for a one-off override |
 
 ### Validation Errors
 

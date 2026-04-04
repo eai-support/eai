@@ -16,6 +16,14 @@ export interface TestContext {
   prompts: Array<{ question: string; answer: string }>;
 }
 
+function resolveTestHome(ctx?: TestContext): string {
+  return ctx?.env.HOME || ctx?.workingDir || requireCurrentHome();
+}
+
+function requireCurrentHome(): string {
+  return process.env.HOME || process.env.USERPROFILE || (process.platform === 'win32' ? 'C:\\Users\\Default' : '/tmp');
+}
+
 /**
  * Set working directory for test
  */
@@ -34,9 +42,10 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
 }): Promise<void> {
   // Use environment variable approach for testing - CLI checks this first
   ctx.env.EAI_ACCESS_TOKEN = 'test-access-token';
+  ctx.env.HOME ||= ctx.workingDir;
 
   // Also write tokens file to home directory for full integration
-  const homedir = (await import('node:os')).homedir();
+  const homedir = resolveTestHome(ctx);
   const tokensDir = join(homedir, '.eai');
   await mkdir(tokensDir, { recursive: true });
 
@@ -45,9 +54,14 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
     refreshToken: 'test-refresh-token',
     expiresAt: opts?.expired ? Date.now() - 1000 : Date.now() + 3600000,
     upn: opts?.email || 'test@example.com',
+    oid: 'test-user-oid',
     tenantId: opts?.tenant || 'test-tenant-id',
     tenantName: opts?.tenant || 'test-tenant',
     clientId: 'test-client-id',
+    activeTenantId: opts?.tenant || 'test-tenant-id',
+    activeTenantName: opts?.tenant || 'test-tenant',
+    activeTenantSlug: opts?.tenant || 'test-tenant',
+    publicApiUrl: 'https://test-api.example.com',
   };
 
   // Encrypt and write (mimicking the CLI's storeTokens function)
@@ -72,9 +86,10 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
 export async function userIsNotLoggedIn(ctx: TestContext): Promise<void> {
   // Clear environment variable
   delete ctx.env.EAI_ACCESS_TOKEN;
+  ctx.env.HOME ||= ctx.workingDir;
 
   // Remove tokens file if it exists
-  const homedir = (await import('node:os')).homedir();
+  const homedir = resolveTestHome(ctx);
   const tokensFile = join(homedir, '.eai', 'tokens.json');
   try {
     const { unlink } = await import('node:fs/promises');
@@ -87,8 +102,8 @@ export async function userIsNotLoggedIn(ctx: TestContext): Promise<void> {
 /**
  * Clean up test tokens (call in afterEach)
  */
-export async function cleanupTestTokens(): Promise<void> {
-  const homedir = (await import('node:os')).homedir();
+export async function cleanupTestTokens(ctx?: TestContext): Promise<void> {
+  const homedir = resolveTestHome(ctx);
   const tokensFile = join(homedir, '.eai', 'tokens.json');
   try {
     const { unlink } = await import('node:fs/promises');

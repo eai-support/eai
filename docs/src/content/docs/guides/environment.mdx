@@ -5,7 +5,11 @@ description: Manage environment variables, secrets, and configuration across env
 
 import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
 
-EAI projects use environment variables to configure API endpoints, tenant IDs, authentication credentials, and feature flags. The `eai env` command syncs these values between Azure App Configuration (with Key Vault for secrets) and your local `.env.local` file.
+EAI projects use environment variables to configure API endpoints, authentication credentials, workflow IDs, feature flags, and other app runtime settings. The `eai env` command syncs these values between Azure App Configuration (with Key Vault for secrets) and your local `.env.local` file.
+
+<Aside type="note">
+  Tenant selection for CLI platform commands no longer comes from `.env.local`. Use `eai login` and `eai tenant select` to choose the active tenant to work with.
+</Aside>
 
 ## How it works
 
@@ -41,7 +45,7 @@ Output:
 ✔ Found 12 config values
 ✔ BASE_URL_PUBLIC_API = https://api.example.com
 ✔ NEXT_PUBLIC_APP_NAME = trial-portal
-✔ TENANT_DEFAULT_ID = abc123...
+✔ WORKFLOW_DEFAULT_ID = wf-abc123...
 ℹ AUTH_SECRET = [Key Vault ref — skipped]
 ℹ ENTRA_CLIENT_ID = [Key Vault ref — skipped]
 
@@ -95,7 +99,7 @@ Environment (12 variables)
   ENTRA_CLIENT_ID = [hidden — use --show-secrets]
   ENTRA_TENANT_ID = 50808ce0-...
   NEXT_PUBLIC_APP_NAME = trial-portal
-  TENANT_DEFAULT_ID = abc123...
+  WORKFLOW_DEFAULT_ID = wf-abc123...
 ```
 
 Secret-like variables (those containing `SECRET`, `PASSWORD`, `KEY`, `TOKEN`, or `CREDENTIAL` in their name) are masked by default. Reveal them with:
@@ -154,7 +158,6 @@ These variables must be present for most CLI commands to work:
 | Variable                | Purpose                                    | Source          |
 |-------------------------|--------------------------------------------|-----------------|
 | `BASE_URL_PUBLIC_API`   | Platform API base URL                      | App Config      |
-| `TENANT_DEFAULT_ID`     | Default tenant ID for resource operations  | App Config      |
 | `ENTRA_TENANT_ID`       | Entra CIAM tenant ID for authentication    | App Config      |
 | `ENTRA_CLIENT_ID`       | Entra app registration client ID           | Key Vault       |
 | `AUTH_SECRET`           | Session encryption secret                  | Key Vault       |
@@ -191,22 +194,14 @@ You can maintain separate configurations for development, testing, and productio
 
 ## Multiple tenants
 
-If your project works with multiple tenants, each tenant ID is stored as a separate variable using the pattern `TENANT_<KEY>_ID`:
+For current CLI platform operations, tenant selection comes from:
 
-```bash title=".env.local"
-TENANT_DEFAULT_ID=abc123-def456
-TENANT_QUALITY_CONTROL_ID=789abc-012def
-TENANT_TRIAL_PORTAL_ID=345ghi-678jkl
+```bash
+eai login
+eai tenant select
 ```
 
-These map directly to the tenant keys in your `object-types.ts`:
-
-```typescript title="src/eai.config/object-types.ts"
-export const objectTypes = {
-  'quality-control': [ /* types */ ],  // uses TENANT_QUALITY_CONTROL_ID
-  'trial-portal': [ /* types */ ],     // uses TENANT_TRIAL_PORTAL_ID
-};
-```
+Your `object-types.ts` file can still define multiple local scopes such as `quality-control` or `trial-portal`, but those keys are no longer mapped to tenant ID environment variables.
 
 ## The .env.local file
 
@@ -221,7 +216,7 @@ The generated `.env.local` file includes metadata comments:
 
 BASE_URL_PUBLIC_API=https://api.example.com
 NEXT_PUBLIC_APP_NAME=trial-portal
-TENANT_DEFAULT_ID=abc123-def456
+WORKFLOW_DEFAULT_ID=wf-abc123
 # AUTH_SECRET= # Key Vault reference — use --include-secrets to resolve
 ```
 

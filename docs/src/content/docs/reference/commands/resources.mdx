@@ -13,7 +13,7 @@ eai resources <subcommand> [options]
 
 `eai resources` provides full CRUD (Create, Read, Update, Delete) operations on platform resources. Resources are instances of Object Types -- the data records that your vertical application manages.
 
-All subcommands require `BASE_URL_PUBLIC_API` and at least one `TENANT_*_ID` to be set in `.env.local` or the environment. The tenant ID is resolved from environment variables automatically.
+All subcommands use the active tenant selected through `eai login` and `eai tenant select`. `BASE_URL_PUBLIC_API` can still come from `.env.local` or the environment, but resource tenant selection no longer comes from tenant ID environment variables.
 
 This command must be run from within an EAI project directory.
 
@@ -111,7 +111,7 @@ eai resources query [options]
 
 ### eai resources schema
 
-Show the published Object Types for the current tenant. Displays property, link, and action counts for each type.
+Show the published Object Types for the resolved resource tenant. Displays property, link, and action counts for each type.
 
 ```
 eai resources schema
@@ -122,6 +122,7 @@ eai resources schema
 ### List resources
 
 ```bash
+eai tenant select
 eai resources list Patient
 ```
 
@@ -290,4 +291,3 @@ This command supports all [global CLI options](/reference/global-options/):
 - `--color` — Force colors
 
 See [Global Options](/reference/global-options/) for details.
-
