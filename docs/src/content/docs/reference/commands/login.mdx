@@ -18,6 +18,8 @@ After login, the CLI also resolves your tenant-admin memberships and selects an 
 
 `eai logout` clears all stored authentication tokens from `~/.eai/`.
 
+The login request includes both standard OpenID Connect scopes and the delegated PublicAPI scope the CLI needs for authenticated platform calls. In some Entra tenants this can appear as a second consent screen during the same browser flow.
+
 ## Options
 
 ### eai login
@@ -26,7 +28,7 @@ After login, the CLI also resolves your tenant-admin memberships and selects an 
 |--------|-------------|---------|
 | `--tenant-name <name>` | CIAM tenant name | `eaidevmyentepriseai` |
 | `--tenant-id <id>` | CIAM tenant ID | `50808ce0-f31b-4fd0-9861-74b83b8c112a` |
-| `--scope <scope>` | OAuth scopes | `openid profile email offline_access` |
+| `--scope <scope>` | OAuth scopes | `openid profile email offline_access api://32191e63-e253-48de-9ea1-a5337e236fe6/access_token` |
 | `-h, --help` | Display help for the command. | -- |
 
 ### eai logout
@@ -76,6 +78,16 @@ Tokens are stored in `~/.eai/` and include:
 - Expiration timestamp
 
 Tokens are automatically used by other commands like `eai resources`, `eai chat`, and `eai verify`.
+
+## Consent Behavior
+
+The CLI starts one browser authorization flow. If Entra shows more than one access or consent screen, it is usually evaluating:
+
+- identity scopes: `openid profile email`
+- refresh-token scope: `offline_access`
+- delegated PublicAPI access: `api://32191e63-e253-48de-9ea1-a5337e236fe6/access_token`
+
+The proper fix is tenant-side pre-authorization or admin consent for the first-party EAI CLI app against the PublicAPI delegated scope.
 
 ## Related Commands
 

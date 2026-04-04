@@ -10,6 +10,57 @@ import { PlatformAPIClient } from '../lib/api.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
+interface BatchDocumentSummary {
+  document_id?: string;
+  documentId?: string;
+  filename?: string;
+  status?: string;
+}
+
+interface BatchJobResponse {
+  success?: boolean;
+  status?: string;
+  job_id?: string;
+  jobId?: string;
+  classificationPending?: boolean;
+  processing_mode?: string;
+  processingMode?: string;
+  total_files?: number;
+  totalFiles?: number;
+  documents?: BatchDocumentSummary[];
+  documentId?: string;
+  recordId?: string;
+  publicDocumentId?: string;
+  classification?: {
+    type?: string;
+    confidence?: number;
+    category?: string;
+  };
+}
+
+async function readResponseError(response: Response): Promise<string> {
+  const text = await response.text();
+  if (!text) {
+    return `${response.status} ${response.statusText}`;
+  }
+
+  try {
+    const payload = JSON.parse(text) as {
+      error?: string;
+      message?: string;
+      details?: string | { message?: string };
+    };
+    const detail = typeof payload.details === 'string'
+      ? payload.details
+      : payload.details?.message;
+    return [payload.error, payload.message, detail]
+      .filter((value): value is string => Boolean(value))
+      .join(': ');
+  } catch {
+    return text;
+  }
+}
+
 export const docsCommand = new Command('docs')
   .description('Document upload, classification, and indexing');
 
@@ -23,34 +74,29 @@ docsCommand
     if (!root) { exitWithError(ErrorCode.E001); }
 
     const publicApiUrl = await resolvePublicApiUrl(root);
-
-    const { readFile } = await import('node:fs/promises');
+    const context = await resolveActiveTenantContext({
+      projectRoot: root,
+      publicApiUrl,
+      interactive: true,
+    });
+    const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
     const { basename } = await import('node:path');
-    const { getAccessToken } = await import('../lib/auth.js');
 
     const spinner = ora(`Uploading ${basename(file)}...`).start();
     try {
-      const content = await readFile(file);
-      const form = new FormData();
-      form.append('file', new Blob([content]), basename(file));
-
-      const token = await getAccessToken();
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch(`${publicApiUrl}/v3/documents/upload`, {
-        method: 'POST',
-        headers,
-        body: form,
-      });
+      const res = await client.uploadDocument(file);
 
       if (!res.ok) {
-        spinner.fail(`${res.status} ${res.statusText}`);
+        spinner.fail(await readResponseError(res));
         process.exit(1);
       }
 
-      const data = await res.json() as { id?: string; message?: string };
-      spinner.succeed(`Uploaded ${chalk.cyan(basename(file))}${data.id ? ` (${chalk.dim(data.id)})` : ''}`);
+      const data = await res.json() as BatchJobResponse;
+      const jobId = data.jobId || data.job_id;
+      const documentId = data.documents?.[0]?.documentId || data.documents?.[0]?.document_id;
+      spinner.succeed(
+        `Queued ${chalk.cyan(basename(file))} for upload${jobId ? ` (${chalk.dim(`job ${jobId}`)})` : ''}${documentId ? ` — ${chalk.dim(documentId)}` : ''}`,
+      );
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -79,12 +125,32 @@ docsCommand
     try {
       const res = await client.classifyDocument(file);
       if (!res.ok) {
-        spinner.fail(`${res.status} ${res.statusText}`);
+        spinner.fail(await readResponseError(res));
         process.exit(1);
       }
 
-      const data = await res.json() as { category?: string; confidence?: number };
-      spinner.succeed(`Classified ${chalk.cyan(basename(file))}${data.category ? ` as ${chalk.dim(data.category)}` : ''}`);
+      const data = await res.json() as BatchJobResponse;
+      const jobId = data.jobId || data.job_id;
+      const documentId =
+        data.documentId
+        || data.recordId
+        || data.publicDocumentId
+        || data.documents?.[0]?.documentId
+        || data.documents?.[0]?.document_id;
+
+      if (data.classification?.type) {
+        const confidence = typeof data.classification.confidence === 'number'
+          ? ` ${chalk.dim(`(${Math.round(data.classification.confidence * 100)}%)`)}`
+          : '';
+        spinner.succeed(
+          `Classified ${chalk.cyan(basename(file))} as ${chalk.cyan(data.classification.type)}${confidence}${documentId ? ` — ${chalk.dim(documentId)}` : ''}${jobId ? ` ${chalk.dim(`job ${jobId}`)}` : ''}`,
+        );
+        return;
+      }
+
+      spinner.succeed(
+        `Queued ${chalk.cyan(basename(file))} for classification${jobId ? ` (${chalk.dim(`job ${jobId}`)})` : ''}${documentId ? ` — ${chalk.dim(documentId)}` : ''}`,
+      );
     } catch (err) {
       spinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
