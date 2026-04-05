@@ -35,6 +35,23 @@ export interface TypeSeedVerificationResult {
   converged: boolean;
 }
 
+interface RemoteObjectTypeDocument {
+  id?: string;
+  name: string;
+  slug?: string;
+  properties: unknown[];
+  linkTypes: unknown[];
+  actions: unknown[];
+  status?: string;
+  publishedAt?: string | null;
+}
+
+export function shouldFailTypeSeedRun(
+  results: Array<{ verification?: TypeSeedVerificationResult }>,
+): boolean {
+  return results.some((result) => !result.verification?.converged);
+}
+
 export function resolveTenantIdForKey(
   tenantKey: string,
   explicitTenantId?: string,
@@ -101,6 +118,59 @@ function toObjectTypeSlug(name: string): string {
     .toLowerCase();
 }
 
+function toTimestamp(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function compareRemoteDocs(a: RemoteObjectTypeDocument, b: RemoteObjectTypeDocument): number {
+  const publishedDelta = toTimestamp(b.publishedAt) - toTimestamp(a.publishedAt);
+  if (publishedDelta !== 0) {
+    return publishedDelta;
+  }
+
+  const aSlug = typeof a.slug === 'string' ? a.slug : toObjectTypeSlug(a.name);
+  const bSlug = typeof b.slug === 'string' ? b.slug : toObjectTypeSlug(b.name);
+  return aSlug.localeCompare(bSlug) || a.name.localeCompare(b.name);
+}
+
+function matchesRequestedType(doc: RemoteObjectTypeDocument, requestedType: string): boolean {
+  const requestedSlug = toObjectTypeSlug(requestedType);
+  return (
+    doc.name === requestedType
+    || doc.slug === requestedSlug
+    || toObjectTypeSlug(doc.name) === requestedSlug
+  );
+}
+
+export function findMatchingRemoteTypes(
+  remoteDocs: RemoteObjectTypeDocument[],
+  requestedType: string,
+): RemoteObjectTypeDocument[] {
+  return remoteDocs
+    .filter((doc) => matchesRequestedType(doc, requestedType))
+    .sort(compareRemoteDocs);
+}
+
+function dedupeRemoteObjectTypeDocs(
+  remoteDocs: RemoteObjectTypeDocument[],
+): RemoteObjectTypeDocument[] {
+  const bySlug = new Map<string, RemoteObjectTypeDocument>();
+
+  for (const doc of remoteDocs) {
+    const slug = typeof doc.slug === 'string' ? doc.slug : toObjectTypeSlug(doc.name);
+    const existing = bySlug.get(slug);
+    if (!existing || compareRemoteDocs(doc, existing) < 0) {
+      bySlug.set(slug, doc);
+    }
+  }
+
+  return Array.from(bySlug.values()).sort(compareRemoteDocs);
+}
+
 function extractRemoteTypeState(payload: unknown): {
   published: Set<string>;
   available: Set<string>;
@@ -131,16 +201,66 @@ function extractRemoteTypeState(payload: unknown): {
   }
 
   if (isRecord(payload) && Array.isArray(payload.docs)) {
-    payload.docs.forEach((value) => {
-      const publishedState = isRecord(value) && (
-        value.status === 'published'
-        || value.publishedAt !== null && value.publishedAt !== undefined
-      );
+    dedupeRemoteObjectTypeDocs(extractRemoteObjectTypeDocs(payload)).forEach((value) => {
+      const publishedState = value.status === 'published'
+        || value.publishedAt !== null && value.publishedAt !== undefined;
       mark(value, publishedState);
     });
   }
 
   return { published, available };
+}
+
+function extractRemoteObjectTypeDocs(payload: unknown): RemoteObjectTypeDocument[] {
+  if (!isRecord(payload) || !Array.isArray(payload.docs)) {
+    return [];
+  }
+
+  return payload.docs
+    .filter((value): value is RemoteObjectTypeDocument => isRecord(value) && typeof value.name === 'string')
+    .map((value) => ({
+      id: typeof value.id === 'string' ? value.id : undefined,
+      name: value.name,
+      slug: typeof value.slug === 'string' ? value.slug : undefined,
+      properties: Array.isArray(value.properties) ? value.properties : [],
+      linkTypes: Array.isArray(value.linkTypes) ? value.linkTypes : [],
+      actions: Array.isArray(value.actions) ? value.actions : [],
+      status: typeof value.status === 'string' ? value.status : undefined,
+      publishedAt: typeof value.publishedAt === 'string' ? value.publishedAt : null,
+    }))
+    .sort(compareRemoteDocs);
+}
+
+function findMatchingRemoteType(
+  remoteDocs: RemoteObjectTypeDocument[],
+  requestedType: string,
+): RemoteObjectTypeDocument | undefined {
+  return findMatchingRemoteTypes(remoteDocs, requestedType)[0];
+}
+
+async function archiveDuplicateRemoteTypes(
+  client: PlatformAPIClient,
+  duplicates: RemoteObjectTypeDocument[],
+): Promise<number> {
+  let archived = 0;
+
+  for (const duplicate of duplicates) {
+    if (!duplicate.id) {
+      continue;
+    }
+
+    const response = await client.platformRequest(`/object-types/${duplicate.id}`, 'PATCH', {
+      status: 'draft',
+    });
+
+    if (!response.ok) {
+      throw new Error(`archive failed: ${response.status} ${response.statusText}`);
+    }
+
+    archived++;
+  }
+
+  return archived;
 }
 
 export function verifyTypeSeedConvergence(
@@ -329,22 +449,42 @@ Examples:
 
       const client = new PlatformAPIClient(publicApiUrl, tenantId);
       let created = 0, updated = 0, failed = 0;
+      let remoteDocs: RemoteObjectTypeDocument[] = [];
+
+      try {
+        const remoteRes = await client.getPublishedObjectTypes({ limit: 200 });
+        if (!remoteRes.ok) {
+          throw new Error(`remote lookup failed: ${remoteRes.status} ${remoteRes.statusText}`);
+        }
+        remoteDocs = extractRemoteObjectTypeDocs(await remoteRes.json());
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (options.format !== 'json') {
+          out.warn(`Pre-flight lookup failed: ${message}`);
+        }
+      }
 
       for (const type of types) {
         const typeSpinner = ora(`  ${type.name}`).start();
 
         try {
-          // Check if type exists
-          const checkRes = await client.platformRequest('/object-types', 'GET', undefined, {
-            where: { name: { equals: type.name }, tenant: { equals: tenantId } },
-          });
+          const matches = findMatchingRemoteTypes(remoteDocs, type.name);
+          const existing = matches[0];
+          const duplicates = matches.slice(1).filter((doc) => doc.id);
 
-          const checkData = await checkRes.json() as { docs?: Array<{ id: string }> };
-          const existing = checkData?.docs?.[0];
+          if (duplicates.length > 0) {
+            const archivedCount = await archiveDuplicateRemoteTypes(client, duplicates);
+            if (archivedCount > 0) {
+              remoteDocs = remoteDocs.filter((doc) => !duplicates.some((duplicate) => duplicate.id === doc.id));
+            }
+          }
 
-          if (existing) {
+          if (existing?.id) {
             // Update
             const updateRes = await client.platformRequest(`/object-types/${existing.id}`, 'PATCH', {
+              name: type.name,
+              slug: toObjectTypeSlug(type.name),
+              tenant: tenantId,
               displayName: type.displayName,
               description: type.description,
               properties: type.properties,
@@ -355,8 +495,24 @@ Examples:
             });
 
             if (updateRes.ok) {
-              typeSpinner.succeed(`  ${type.name} ${chalk.cyan('(updated)')}`);
+              const archivedSuffix = duplicates.length > 0
+                ? chalk.dim(` + archived ${duplicates.length} duplicate${duplicates.length === 1 ? '' : 's'}`)
+                : '';
+              typeSpinner.succeed(`  ${type.name} ${chalk.cyan('(updated)')}${archivedSuffix}`);
               updated++;
+              remoteDocs = remoteDocs.map((doc) => (
+                doc.id === existing.id
+                  ? {
+                      ...doc,
+                      name: type.name,
+                      slug: toObjectTypeSlug(type.name),
+                      properties: type.properties,
+                      linkTypes: type.linkTypes,
+                      actions: type.actions,
+                      status: type.status,
+                    }
+                  : doc
+              ));
             } else {
               typeSpinner.fail(`  ${type.name} — update failed: ${updateRes.status}`);
               failed++;
@@ -365,6 +521,7 @@ Examples:
             // Create
             const createRes = await client.platformRequest('/object-types', 'POST', {
               name: type.name,
+              slug: toObjectTypeSlug(type.name),
               displayName: type.displayName,
               description: type.description,
               properties: type.properties,
@@ -376,8 +533,19 @@ Examples:
             });
 
             if (createRes.ok) {
-              typeSpinner.succeed(`  ${type.name} ${chalk.green('(created)')}`);
+              const archivedSuffix = duplicates.length > 0
+                ? chalk.dim(` + archived ${duplicates.length} duplicate${duplicates.length === 1 ? '' : 's'}`)
+                : '';
+              typeSpinner.succeed(`  ${type.name} ${chalk.green('(created)')}${archivedSuffix}`);
               created++;
+              remoteDocs.push({
+                name: type.name,
+                slug: toObjectTypeSlug(type.name),
+                properties: type.properties,
+                linkTypes: type.linkTypes,
+                actions: type.actions,
+                status: type.status,
+              });
             } else {
               typeSpinner.fail(`  ${type.name} — create failed: ${createRes.status}`);
               failed++;
@@ -443,6 +611,10 @@ Examples:
 
     if (options.format === 'json') {
       out.json({ tenants: jsonResults });
+    }
+
+    if (shouldFailTypeSeedRun(jsonResults)) {
+      process.exitCode = 1;
     }
   });
 
@@ -612,12 +784,18 @@ Examples:
     }
 
     const publicApiUrl = await resolvePublicApiUrl(root);
-    const activeContext = await resolveActiveTenantContext({
-      projectRoot: root,
-      publicApiUrl,
-      interactive: true,
-    });
-    const keysToDiff = await selectTenantKey(objectTypes, options.tenantKey, activeContext.activeTenant.slug);
+    const activeContext = options.tenantId
+      ? null
+      : await resolveActiveTenantContext({
+          projectRoot: root,
+          publicApiUrl,
+          interactive: true,
+        });
+    const keysToDiff = await selectTenantKey(
+      objectTypes,
+      options.tenantKey,
+      activeContext?.activeTenant.slug,
+    );
     const entries = keysToDiff
       .map((key) => [key, objectTypes[key] as ObjectTypeDefinition[] | undefined] as const);
 
@@ -631,7 +809,11 @@ Examples:
         continue;
       }
 
-      const resolution = resolveTenantIdForKey(tenantKey, options.tenantId, activeContext.activeTenant.id);
+      const resolution = resolveTenantIdForKey(
+        tenantKey,
+        options.tenantId,
+        activeContext?.activeTenant.id,
+      );
       const tenantId = resolution.tenantId;
       if (!tenantId) {
         explainMissingTenantId(tenantKey);
@@ -644,25 +826,22 @@ Examples:
       const remoteSpinner = ora('  Fetching remote types...').start();
 
       try {
-        const res = await client.platformRequest('/object-types', 'GET', undefined, {
-          where: { tenant: { equals: tenantId } }, limit: 100,
-        });
+        const res = await client.getPublishedObjectTypes({ limit: 100 });
 
-        const data = await res.json() as { docs?: Array<{ name: string; properties: unknown[]; linkTypes: unknown[]; actions: unknown[] }> };
-        const remoteDocs = data?.docs || [];
+        const remoteDocs = extractRemoteObjectTypeDocs(await res.json());
         remoteSpinner.succeed(`  ${remoteDocs.length} remote types`);
 
-        const remoteByName = new Map(remoteDocs.map(d => [d.name, d]));
-        const localByName = new Map(localTypes.map(t => [t.name, t]));
+        const matchedRemoteNames = new Set<string>();
 
         // Local-only types
-        for (const [name, localType] of localByName) {
-          if (!remoteByName.has(name)) {
+        for (const localType of localTypes) {
+          const remote = findMatchingRemoteType(remoteDocs, localType.name);
+          if (!remote) {
             out.info(`  ${out.symbols.added} ${localType.name} — local only`);
             continue;
           }
 
-          const remote = remoteByName.get(name)!;
+          matchedRemoteNames.add(remote.name);
           const localPropNames = new Set(localType.properties.map(p => p.name));
           const remotePropNames = new Set((remote.properties as Array<{ name: string }>).map(p => p.name));
 
@@ -687,9 +866,9 @@ Examples:
         }
 
         // Remote-only types
-        for (const [name] of remoteByName) {
-          if (!localByName.has(name)) {
-            out.warn(`  ${out.symbols.warning} ${name} — exists remotely but not locally`);
+        for (const remote of remoteDocs) {
+          if (!matchedRemoteNames.has(remote.name)) {
+            out.warn(`  ${out.symbols.warning} ${remote.name} — exists remotely but not locally`);
           }
         }
       } catch (err) {
@@ -730,9 +909,7 @@ Examples:
 
     try {
       const client = new PlatformAPIClient(publicApiUrl, tenantId);
-      const res = await client.platformRequest('/object-types', 'GET', undefined, {
-        where: { tenant: { equals: tenantId } }, limit: 100,
-      });
+      const res = await client.getPublishedObjectTypes({ limit: 100 });
 
       const data = await res.json() as { docs?: ObjectTypeDefinition[] };
       const types = data?.docs || [];

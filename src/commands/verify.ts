@@ -264,7 +264,7 @@ export async function runContractAudit(
     const skippedDueToAuth = [
       ['current-user', 'Tenant membership contract', 'POST', '/v3/orchestrate -> admin:/v1/users/{oid}/memberships'],
       ['object-types', 'Object Types list contract', 'POST', '/v3/orchestrate -> payload:/object-types'],
-      ['schema', 'Schema contract', 'POST', '/v3/orchestrate -> payload:/object-types'],
+      ['schema', 'Schema contract', 'GET', '/v3/resources/schema/{tenantId}'],
     ] as const;
 
     for (const [id, label, method, endpoint] of skippedDueToAuth) {
@@ -281,7 +281,7 @@ export async function runContractAudit(
     const skippedDueToTenant = [
       ['current-user', 'Tenant membership contract', 'POST', '/v3/orchestrate -> admin:/v1/users/{oid}/memberships'],
       ['object-types', 'Object Types list contract', 'POST', '/v3/orchestrate -> payload:/object-types'],
-      ['schema', 'Schema contract', 'POST', '/v3/orchestrate -> payload:/object-types'],
+      ['schema', 'Schema contract', 'GET', '/v3/resources/schema/{tenantId}'],
     ] as const;
 
     for (const [id, label, method, endpoint] of skippedDueToTenant) {
@@ -325,10 +325,7 @@ export async function runContractAudit(
     }
 
     try {
-      const res = await client.platformRequest('/object-types', 'GET', undefined, {
-        where: { tenant: { equals: context.tenantId } },
-        limit: 1,
-      });
+      const res = await client.getPublishedObjectTypes({ limit: 1 });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -370,17 +367,17 @@ export async function runContractAudit(
       addCheck(checks, {
         id: 'schema',
         label: 'Schema contract',
-        method: 'POST',
-        endpoint: '/v3/orchestrate -> payload:/object-types',
+        method: 'GET',
+        endpoint: `/v3/resources/schema/${context.tenantId}`,
         status: 'passed',
-        details: `Published Object Types present (${typeCount} item(s))`,
+        details: `ResourceAPI schema present (${typeCount} published type(s))`,
       });
     } catch (err) {
       addCheck(checks, {
         id: 'schema',
         label: 'Schema contract',
-        method: 'POST',
-        endpoint: '/v3/orchestrate -> payload:/object-types',
+        method: 'GET',
+        endpoint: `/v3/resources/schema/${context.tenantId}`,
         status: 'failed',
         details: err instanceof Error ? err.message : String(err),
       });
@@ -784,7 +781,7 @@ export const verifyCommand = new Command('verify')
     if (authenticated && tenantId) {
       const cfgSpinner = ora('Platform service').start();
       try {
-        const res = await client.platformRequest('/object-types', 'GET', undefined, { limit: 1 });
+        const res = await client.getPublishedObjectTypes({ limit: 1 });
         if (res.ok) {
           cfgSpinner.succeed('Platform service reachable');
           passed++;
@@ -804,8 +801,10 @@ export const verifyCommand = new Command('verify')
       try {
         const res = await client.getSchema();
         if (res.ok) {
-          const schema = await res.json() as { objectTypes?: unknown[] };
-          const typeCount = (schema?.objectTypes as unknown[])?.length || 0;
+          const schema = await res.json() as { objectTypes?: unknown[]; object_types?: unknown[] };
+          const typeCount = Array.isArray(schema?.object_types)
+            ? schema.object_types.length
+            : (schema?.objectTypes as unknown[])?.length || 0;
           resSpinner.succeed(`Data service reachable — ${typeCount} published types`);
           passed++;
         } else {
