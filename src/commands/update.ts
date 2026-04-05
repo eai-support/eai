@@ -33,6 +33,16 @@ export function buildUpdateInstallArgs(version: string): string[] {
 export const updateCommand = new Command('update')
   .description('Check for and install CLI updates')
   .option('--check', 'Only check for updates without installing')
+  .addHelpText('after', `
+Examples:
+  $ eai update --check
+  $ eai update
+
+Notes:
+  - The CLI installs from the EAI scoped registry.
+  - Public npm dependencies still come from the normal npm registry.
+  - If npm needs elevated permissions, the CLI prints the exact sudo command to run.
+  `)
   .action(async (options: { check?: boolean }) => {
     const current = pkg.version;
 

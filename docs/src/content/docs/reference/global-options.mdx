@@ -1,237 +1,125 @@
 ---
 title: Global Options
-description: Global flags available on all eai commands
+description: Shared flags that work across the eai CLI
 ---
 
 ## Synopsis
 
-All `eai` commands support these global options:
+All commands start with the same CLI shell:
 
 ```bash
 eai [global-options] <command> [command-options]
 ```
 
-## Global Options
+Global options apply before the command name. They change how the CLI behaves overall, not what a specific command does.
 
-### `--describe`
+## Shared Global Flags
 
-Output a complete JSON schema of the CLI structure for programmatic consumption.
+| Flag | What it does |
+|------|---------------|
+| `--describe` | Print the full CLI schema as JSON for automation or AI tools |
+| `--simple` | Use plain text output without symbols or styling |
+| `--no-color` | Disable ANSI colors |
+| `--color` | Force ANSI colors |
+| `-V, --version` | Print the installed CLI version |
+| `-h, --help` | Show help |
+
+## Examples
+
+### Show the installed version
+
+```bash
+eai --version
+```
+
+Example output:
+
+```text
+0.3.0
+```
+
+### Show help
+
+```bash
+eai --help
+```
+
+Use this when you want a quick overview of the available commands and common workflows.
+
+### Output the CLI schema as JSON
 
 ```bash
 eai --describe
 ```
 
-**Output:** JSON object with:
-- `command`: CLI name
-- `version`: CLI version
-- `description`: CLI description
-- `globalOptions`: Array of global option definitions
-- `commands`: Array of all commands with their options and subcommands
+This is useful for:
 
-**Use cases:**
-- AI coding agents parsing CLI capabilities
-- Automated tooling generation
-- CLI structure validation
+- AI coding agents that need to discover the command surface
+- automation that validates the CLI structure
+- scripts that want to inspect commands and options programmatically
 
-**Example output:**
-
-```json
-{
-  "command": "eai",
-  "version": "0.1.4",
-  "description": "Enterprise AI Platform CLI",
-  "globalOptions": [
-    {
-      "flags": "--simple",
-      "description": "Plain text output without colors or symbols"
-    },
-    {
-      "flags": "--describe",
-      "description": "Output JSON schema of all commands"
-    }
-  ],
-  "commands": [
-    {
-      "name": "init",
-      "description": "Create a new vertical application",
-      "options": [...]
-    }
-  ]
-}
-```
-
----
-
-### `--format <format>`
-
-Control output format for data-returning commands.
+### Use simple output
 
 ```bash
-eai resources list User --format json
-eai tenant list --format json | jq '.tenants[] | .slug'
-eai deploy status --format json
+eai --simple verify
 ```
 
-**Valid formats:**
-- `text` (default) — Human-readable formatted output
-- `json` — Machine-readable JSON
-- `yaml` — YAML format (planned, not yet implemented)
+This replaces symbols and styling with plain text, which is easier for:
 
-**Supported commands:** `resources list`, `resources get`, `tenant list`, `deploy status`, and all commands returning data
+- screen readers
+- pasted logs
+- terminals where styling gets in the way
 
-**Example:**
-
-```bash
-# Text format (default)
-eai resources list User --limit 3
-
-# → User-123 — John Doe (john@example.com)
-# → User-456 — Jane Smith (jane@example.com)
-# → User-789 — Bob Johnson (bob@example.com)
-
-# JSON format
-eai resources list User --limit 3 --format json
-
-# {
-#   "docs": [
-#     { "id": "User-123", "firstName": "John", "lastName": "Doe" },
-#     { "id": "User-456", "firstName": "Jane", "lastName": "Smith" },
-#     { "id": "User-789", "firstName": "Bob", "lastName": "Johnson" }
-#   ],
-#   "totalDocs": 42,
-#   "hasNextPage": true
-# }
-```
-
----
-
-### `--simple`
-
-Plain text output without colors or symbols for screen readers and accessibility.
-
-```bash
-eai --simple resources list User
-```
-
-**Output changes:**
-- No ANSI color codes
-- Symbols replaced with text:
-  - ✓ → `SUCCESS:`
-  - ✗ → `ERROR:`
-  - ⚠ → `WARNING:`
-  - → → `INFO:`
-- Compatible with screen readers
-- Suitable for log files and non-TTY environments
-
-**Example:**
-
-```bash
-# Normal output
-eai login
-# → ✓ Login successful
-# → User: john@example.com
-
-# Simple mode
-eai --simple login
-# → SUCCESS: Login successful
-# → INFO: User: john@example.com
-```
-
----
-
-### `--no-color`
-
-Disable colored output (respects `NO_COLOR` environment variable).
+### Control color output
 
 ```bash
 eai --no-color resources list User
+eai --color resources list User
 ```
 
-**Alternative:** Set `NO_COLOR=1` environment variable
+Use `--no-color` when saving logs or piping to tools that do not handle ANSI escapes well. Use `--color` when piping to a pager like `less -R`.
 
-**When to use:**
-- Piping output to files
-- CI/CD environments
-- Terminals that don't support ANSI colors
-- When colors interfere with readability
+## Common Command-Specific Output Flags
 
----
+`--format json` is **not** a global option. It is provided by many data-returning commands such as:
 
-### `--color`
+- `eai tenant list`
+- `eai resources list`
+- `eai resources get`
+- `eai deploy status`
+- `eai verify calls`
 
-Force colored output even when stdout is not a TTY.
+Example:
 
 ```bash
-eai --color resources list User | less -R
+eai resources list User --format json
 ```
 
-**Alternative:** Set `FORCE_COLOR=1` environment variable
-
-**When to use:**
-- Piping to pagers that support colors (`less -R`)
-- Logging with color preservation
-- Debugging output formatting
-
----
+Some commands also still accept `--json` as a legacy alias for `--format json`.
 
 ## Environment Variables
 
-The CLI respects standard color control environment variables:
+The CLI respects the standard color-control environment variables:
 
-| Variable | Effect | Equivalent Flag |
-|----------|--------|-----------------|
-| `NO_COLOR=1` | Disable colors globally | `--no-color` |
-| `FORCE_COLOR=1` | Enable colors globally | `--color` |
+| Variable | Effect |
+|----------|--------|
+| `NO_COLOR=1` | Disable colors globally |
+| `FORCE_COLOR=1` | Force colors globally |
 
-**Precedence:** Command-line flags override environment variables.
+Command-line flags take precedence over the environment variables.
 
-**Example:**
+## Combining Flags
 
-```bash
-# Disable colors via environment
-export NO_COLOR=1
-eai resources list User  # No colors
-
-# Override with flag
-eai --color resources list User  # Forces colors despite NO_COLOR
-```
-
----
-
-## Combining Options
-
-Global options can be combined with command-specific options:
+You can combine global flags with command-specific options:
 
 ```bash
-# Accessible JSON output
-eai --simple --format json resources list User
-
-# Describe with forced colors
-eai --color --describe
-
-# Simple mode with no colors (redundant but allowed)
-eai --simple --no-color tenant list
+eai --simple resources list User --format json
+eai --no-color verify
+eai --color docs classify ./contract.pdf
 ```
 
----
+## Related Pages
 
-## AI Coding Agent Integration
-
-The `--describe` and `--format json` options are designed for AI coding agents and automation tools:
-
-```bash
-# Agent discovers CLI structure
-eai --describe > cli-schema.json
-
-# Agent parses capabilities
-cat cli-schema.json | jq '.commands[] | .name'
-
-# Agent executes commands with JSON output
-eai resources list User --format json | jq '.docs[] | {id, name: (.firstName + " " + .lastName)}'
-
-# Agent handles errors programmatically
-eai resources get User invalid-id --format json 2>&1 | jq '.error.code'
-# → "E202"
-```
-
-See [Error Codes](/reference/error-codes/#structured-error-codes) for structured error handling.
+- [Installation](/eai-cli/getting-started/installation/) for first-time setup
+- [Error Codes](/eai-cli/reference/error-codes/) for structured failures
+- [Authentication](/eai-cli/getting-started/authentication/) for login and tenant selection

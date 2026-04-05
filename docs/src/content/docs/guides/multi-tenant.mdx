@@ -65,7 +65,7 @@ eai tenant list --parent abc12345-def6-7890-abcd-ef0123456789
 ### JSON output
 
 ```bash
-eai tenant list --json
+eai tenant list --format json
 ```
 
 ```json
@@ -287,7 +287,7 @@ eai types seed --tenant-key division-a
 
 | Command                  | Description                              |
 |--------------------------|------------------------------------------|
-| `eai tenant list`        | List all accessible tenants              |
+| `eai tenant list`        | List active tenant-admin memberships     |
 | `eai tenant info <id>`   | Show details for a specific tenant       |
 | `eai tenant create`      | Create a new tenant                      |
 
@@ -296,7 +296,8 @@ eai types seed --tenant-key division-a
 | Flag               | Command   | Description                              |
 |--------------------|-----------|------------------------------------------|
 | `--parent <id>`    | `list`, `create` | Parent tenant ID for filtering or hierarchy |
-| `--json`           | `list`    | Output raw JSON                          |
+| `--format <format>` | `list`   | Output format (`text` or `json`)         |
+| `--json`           | `list`    | Legacy alias for `--format json`         |
 | `--name <name>`    | `create`  | **(required)** Tenant display name       |
 | `--slug <slug>`    | `create`  | **(required)** Tenant slug (kebab-case)  |
 | `--domain <list>`  | `create`  | Comma-separated list of domains          |

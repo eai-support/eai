@@ -734,6 +734,15 @@ export async function runContractAudit(
 export const verifyCommand = new Command('verify')
   .description('Run platform connectivity checks')
   .option('--tenant-id <id>', 'Run read-only connectivity checks against a specific tenant ID')
+  .addHelpText('after', `
+Examples:
+  $ eai verify
+  $ eai verify --tenant-id <tenantId>
+  $ eai verify calls --format json
+
+Use 'eai verify' for a quick health check.
+Use 'eai verify calls' when you need to inspect the exact API contracts the CLI depends on.
+  `)
   .action(async (options) => {
     const { root, publicApiUrl, tenantId } = await loadVerifyEnvironment({ tenantId: options.tenantId });
 

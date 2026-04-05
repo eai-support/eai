@@ -33,7 +33,8 @@ eai resources list <type> [options]
 | `--page <n>` | Page number | `1` |
 | `--limit <n>` | Items per page | `20` |
 | `--sort <field>` | Sort field. Prefix with `-` for descending. | `-created_at` |
-| `--json` | Output raw JSON | `false` |
+| `--format <format>` | Output format (`text` or `json`) | `text` |
+| `--json` | Legacy alias for `--format json` | `false` |
 
 ### eai resources get
 
@@ -47,7 +48,8 @@ eai resources get <type> <id> [options]
 |--------|-------------|---------|
 | `<type>` | Object Type name | Required |
 | `<id>` | Resource ID | Required |
-| `--json` | Output raw JSON | `false` |
+| `--format <format>` | Output format (`text` or `json`) | `text` |
+| `--json` | Legacy alias for `--format json` | `false` |
 
 ### eai resources create
 
@@ -62,6 +64,8 @@ eai resources create <type> [options]
 | `<type>` | Object Type name | Required |
 | `--data <json>` | Resource data as a JSON string | -- |
 | `--file <path>` | Read resource data from a JSON file | -- |
+| `--format <format>` | Output format (`text` or `json`) | `text` |
+| `--json` | Legacy alias for `--format json` | `false` |
 
 One of `--data` or `--file` is required.
 
@@ -79,6 +83,8 @@ eai resources update <type> <id> [options]
 | `<id>` | Resource ID | Required |
 | `--data <json>` | Updated fields as a JSON string | Required |
 | `--version <n>` | Resource version for optimistic locking. Auto-fetched if omitted. | Auto |
+| `--format <format>` | Output format (`text` or `json`) | `text` |
+| `--json` | Legacy alias for `--format json` | `false` |
 
 ### eai resources delete
 
@@ -93,6 +99,8 @@ eai resources delete <type> <id> [options]
 | `<type>` | Object Type name | Required |
 | `<id>` | Resource ID | Required |
 | `--force` | Skip confirmation prompt | `false` |
+| `--format <format>` | Output format (`text` or `json`) | `text` |
+| `--json` | Legacy alias for `--format json` | `false` |
 
 ### eai resources query
 
@@ -107,7 +115,8 @@ eai resources query [options]
 | `--types <types>` | Comma-separated Object Type names | Required |
 | `--where <json>` | Filter conditions as a JSON string | -- |
 | `--limit <n>` | Maximum number of results | `20` |
-| `--json` | Output raw JSON | `false` |
+| `--format <format>` | Output format (`text` or `json`) | `text` |
+| `--json` | Legacy alias for `--format json` | `false` |
 
 ### eai resources schema
 
@@ -116,6 +125,8 @@ Show the published Object Types for the resolved resource tenant. Displays prope
 ```
 eai resources schema
 ```
+
+`eai resources schema` also supports `--tenant-id <id>`, `--format <format>`, and the legacy `--json` alias.
 
 ## Examples
 
@@ -144,7 +155,7 @@ eai resources list Patient --page 2 --limit 10 --sort -priority
 ### List as JSON
 
 ```bash
-eai resources list Patient --json
+eai resources list Patient --format json
 ```
 
 ```json
@@ -283,11 +294,11 @@ eai resources schema
 
 ## Global Options
 
-This command supports all [global CLI options](/reference/global-options/):
-- `--describe` — Output CLI schema
-- `--format <format>` — Control output format (text, json, yaml)
-- `--simple` — Accessible plain text output
-- `--no-color` — Disable colors
-- `--color` — Force colors
+This command also supports the shared flags described in [Global Options](/eai-cli/reference/global-options/):
 
-See [Global Options](/reference/global-options/) for details.
+- `--describe`
+- `--simple`
+- `--no-color`
+- `--color`
+- `-V, --version`
+- `-h, --help`

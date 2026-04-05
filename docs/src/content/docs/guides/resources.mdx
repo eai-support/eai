@@ -106,7 +106,7 @@ eai resources list Patient --sort -status
 Get raw JSON for piping to other tools:
 
 ```bash
-eai resources list Patient --json
+eai resources list Patient --format json
 ```
 
 ```json
@@ -130,7 +130,7 @@ eai resources list Patient --json
 ```
 
 <Aside type="tip">
-  Combine `--json` with tools like `jq` for powerful filtering: `eai resources list Patient --json | jq '.docs[] | .data.email'`
+  Combine `--format json` with tools like `jq` for powerful filtering: `eai resources list Patient --format json | jq '.docs[] | .data.email'`
 </Aside>
 
 ## Getting a single resource
@@ -141,10 +141,10 @@ Fetch a resource by its type and ID:
 eai resources get Patient 3f8a2b1c-1234-5678-abcd-ef0123456789
 ```
 
-Add `--json` for raw output:
+Add `--format json` for raw output:
 
 ```bash
-eai resources get Patient 3f8a2b1c-1234-5678-abcd-ef0123456789 --json
+eai resources get Patient 3f8a2b1c-1234-5678-abcd-ef0123456789 --format json
 ```
 
 ## Updating resources
@@ -271,7 +271,7 @@ done
 ### Export all resources to a file
 
 ```bash
-eai resources list Patient --limit 1000 --json > patients-export.json
+eai resources list Patient --limit 1000 --format json > patients-export.json
 ```
 
 ### Filter and count
@@ -280,7 +280,7 @@ eai resources list Patient --limit 1000 --json > patients-export.json
 eai resources query \
   --types Patient \
   --where '{"status": {"equals": "active"}}' \
-  --json | jq '.docs | length'
+  --format json | jq '.docs | length'
 ```
 
 ## Command reference

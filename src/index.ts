@@ -93,18 +93,22 @@ ${chalk.bold('Getting Started:')}
   ${chalk.cyan('eai init my-vertical')}     Scaffold a new vertical app
   ${chalk.cyan('eai login')}                Authenticate with Entra CIAM
   ${chalk.cyan('eai tenant select')}        Choose the active tenant to work with
+  ${chalk.cyan('eai env pull')}             Sync app config if your project needs it
   ${chalk.cyan('eai types seed')}           Publish Object Types to the platform
   ${chalk.cyan('eai dev')}                  Start local development server
 
 ${chalk.bold('Development Workflows:')}
-  ${chalk.dim('# Define your data model, validate, and seed')}
+  ${chalk.dim('# Define your types, validate them, then publish them')}
   ${chalk.cyan('eai types validate && eai types seed')}
 
-  ${chalk.dim('# Query resources and view data')}
+  ${chalk.dim('# See what is published for the active tenant')}
+  ${chalk.cyan('eai resources schema')}
+
+  ${chalk.dim('# Query resources and inspect data')}
   ${chalk.cyan('eai resources list User --limit 10')}
   ${chalk.cyan('eai resources get User <id>')}
 
-  ${chalk.dim('# Check platform health and connectivity')}
+  ${chalk.dim('# Check login, tenant, and API connectivity')}
   ${chalk.cyan('eai verify && eai doctor')}
 
 ${chalk.bold('Deployment:')}
@@ -118,7 +122,7 @@ ${chalk.bold('Machine-Readable Output:')}
   ${chalk.dim('# Get structured JSON output for automation')}
   ${chalk.cyan('eai resources list User --format json')}
   ${chalk.cyan('eai tenant list --format json | jq')}
-  ${chalk.cyan('eai deploy status --format json')}
+  ${chalk.cyan('eai verify calls --format json')}
 
   ${chalk.dim('# Discover CLI structure for AI agents')}
   ${chalk.cyan('eai --describe')}

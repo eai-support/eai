@@ -20,6 +20,17 @@ export const loginCommand = new Command('login')
   .option('--tenant-name <name>', 'CIAM tenant name', DEFAULT_TENANT_NAME)
   .option('--tenant-id <id>', 'CIAM tenant ID', DEFAULT_TENANT_ID)
   .option('--scope <scope>', 'OAuth scopes', DEFAULT_SCOPE)
+  .addHelpText('after', `
+Examples:
+  $ eai login
+  $ eai login --tenant-name myorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
+  $ eai whoami
+
+What happens next:
+  - The CLI opens your browser to sign you in.
+  - If you only have one tenant-admin membership, it becomes active automatically.
+  - If you have more than one, run 'eai tenant select' to choose the tenant to work with.
+  `)
   .action(async (options) => {
     out.heading('Authenticating with Entra CIAM');
     out.info(`Tenant: ${chalk.cyan(options.tenantName)}`);

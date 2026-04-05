@@ -10,7 +10,7 @@ This guide walks you through the complete workflow of creating a vertical applic
 <Aside>
   Before starting, make sure you have:
   1. The CLI [installed](/eai-cli/getting-started/installation/)
-  2. The [platform prerequisites](/eai-cli/getting-started/prerequisites/) in place (parent tenant, admin user, Client ID from your platform administrator)
+  2. The [platform prerequisites](/eai-cli/getting-started/prerequisites/) in place (tenant access, approved login, and platform configuration from your administrator)
 </Aside>
 
 ## The full workflow
@@ -97,7 +97,7 @@ This guide walks you through the complete workflow of creating a vertical applic
    ```
 
    <Aside type="note">
-     **External developers**: If you are outside the platform organization, you may need to pass `--tenant-name` and `--tenant-id`. See [External Developer Setup](/eai-cli/guides/external-developers/) for details.
+     **External developers**: If you are outside the platform organization, you may need to pass `--tenant-name` and `--tenant-id`. You do not need a custom CLI client ID. See [External Developer Setup](/eai-cli/guides/external-developers/) for details.
    </Aside>
 
 4. **Select the active tenant**
@@ -290,13 +290,15 @@ Outputs complete JSON schema of CLI structure including all commands, options, a
 
 ### Global Options
 
-All commands support [global options](/reference/global-options/):
-- `--format json` — Machine-readable JSON output
+All commands support [global options](/eai-cli/reference/global-options/):
+- `--describe` — Machine-readable CLI schema
 - `--simple` — Accessible plain text for screen readers
 - `--no-color` — Disable colored output
 - `--color` — Force colored output
 
-See [Global Options](/reference/global-options/) for details.
+Many data-returning commands also support `--format json`.
+
+See [Global Options](/eai-cli/reference/global-options/) for details.
 
 ## Next steps
 

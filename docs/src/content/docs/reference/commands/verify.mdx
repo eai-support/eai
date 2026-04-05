@@ -6,7 +6,7 @@ description: Run platform connectivity checks to ensure your environment is prop
 ## Synopsis
 
 ```
-eai verify
+eai verify [options]
 eai verify calls [options]
 ```
 
@@ -39,7 +39,11 @@ Checks 3 and 4 (platform service and data service) are only run if authenticatio
 | `--tenant-id <id>` | Override the active tenant for read-only checks without changing the stored active tenant |
 | `-h, --help` | Display help for the command. |
 
-`eai verify calls` also supports `--tenant-id <id>` so contract audits can target a specific tenant explicitly after create or during drift investigations.
+`eai verify calls` also supports:
+
+- `--tenant-id <id>` to target a specific tenant
+- `--format <format>` to return `text` or `json`
+- `--json` as a legacy alias for `--format json`
 
 ## Examples
 
@@ -173,11 +177,11 @@ eai verify calls --format json
 
 ## Global Options
 
-This command supports all [global CLI options](/reference/global-options/):
-- `--describe` — Output CLI schema
-- `--format <format>` — Control output format (text, json, yaml)
-- `--simple` — Accessible plain text output
-- `--no-color` — Disable colors
-- `--color` — Force colors
+This command also supports the shared flags described in [Global Options](/eai-cli/reference/global-options/):
 
-See [Global Options](/reference/global-options/) for details.
+- `--describe`
+- `--simple`
+- `--no-color`
+- `--color`
+- `-V, --version`
+- `-h, --help`

@@ -62,7 +62,18 @@ async function readResponseError(response: Response): Promise<string> {
 }
 
 export const docsCommand = new Command('docs')
-  .description('Document upload, classification, and indexing');
+  .description('Document upload, classification, and indexing')
+  .addHelpText('after', `
+Examples:
+  $ eai docs upload ./reports/contract.pdf
+  $ eai docs classify ./reports/contract.pdf
+  $ eai docs index <documentId>
+
+Typical workflow:
+  1. Upload a file
+  2. Classify it if your platform uses document classification
+  3. Index the document ID if you want it available to RAG or chat workflows
+  `);
 
 // ─── eai docs upload ─────────────────────────────────────────────────────
 
