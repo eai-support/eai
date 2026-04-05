@@ -37,7 +37,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-This stage sits BEFORE `$ $1` in the pipeline. Your job is to:
+This stage sits BEFORE `$ $1_gofer_research` in the pipeline. Your job is to:
 
 1. Deconstruct the problem statement
 2. Run 5 Whys root cause analysis
@@ -318,9 +318,9 @@ so they include plain-English companion sections in their outputs.
 ```text
   /0a_problem_validation  ← YOU ARE HERE
        ↓ AUTO
-  $ $1
+  $ $1_gofer_research
        ↓ AUTO
-  $ $1
+  $ $2_gofer_specify
        ↓ AUTO
   ... (rest of pipeline)
        ↓ AUTO

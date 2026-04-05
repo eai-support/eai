@@ -352,7 +352,7 @@ resolved_findings: [N]
   4. $ $4_gofer_tasks ✓
   5. $ $5_gofer_implement ✓
   6. $ $6_gofer_validate ✓
-  6a. /6a_gofer_engineering_review ✓
+  6a. $ $6a_gofer_engineering_review ✓
 
   The feature is ready for review and merge.
 ════════════════════════════════════════════════════════════════
@@ -381,7 +381,7 @@ resolved_findings: [N]
   4. $ $4_gofer_tasks ✓
   5. $ $5_gofer_implement ✓
   6. $ $6_gofer_validate ✓
-  6a. /6a_gofer_engineering_review ✓ (warnings)
+  6a. $ $6a_gofer_engineering_review ✓ (warnings)
 
   The feature is ready for review and merge (review Gray findings).
 ════════════════════════════════════════════════════════════════

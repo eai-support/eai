@@ -1,6 +1,15 @@
 ---
+name: 3_gofer_plan
 description:
   Generate technical implementation plan with architecture and contracts
+agent: copilot-workspace
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - WebSearch
+argument-hint: feature-name-or-description
 ---
 
 # Gofer Plan
@@ -21,8 +30,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 This command expects in `.specify/specs/{feature}/`:
 
-- `research.md` - Codebase analysis (from /1_gofer_research)
-- `spec.md` - Feature specification (from /2_gofer_specify)
+- `research.md` - Codebase analysis (from #1_gofer_research)
+- `spec.md` - Feature specification (from #2_gofer_specify)
 
 If missing, prompt user to run the prerequisite stage.
 
@@ -78,10 +87,10 @@ Planning dispatches multiple agents — keep main context lightweight.
 
 ## Step 2: Dispatch Planning Agents
 
-**Claude Code only**: Launch planning agents **in parallel** using the Task
-tool. In Copilot Chat, perform plan generation inline by reading source
-documents and writing plan artifacts directly. Each agent task below describes
-what content to generate.
+**CRITICAL**: You **MUST** launch these agents using the Task tool. Do NOT
+perform this work inline in the main context. The main context should only
+orchestrate and review agent outputs. Each agent reads source documents
+independently and writes its output artifact.
 
 ### Agent 1: Implementation Plan Writer
 
@@ -427,27 +436,44 @@ catch misalignment early.
 
 ### Review Cycle (repeat up to 5 times)
 
-**Claude Code only**: Dispatch 3 review agents in parallel using the Task tool
-(engineer-review, codebase-analyzer, validation-correctness). In Copilot Chat,
-perform these 3 reviews inline sequentially:
+**You MUST dispatch 3 review agents in parallel** using the Task tool:
 
-**Review 1: Spec↔Plan Alignment** — Cross-check that every user story and
-acceptance criterion in spec.md has coverage in plan.md. List any gaps.
+**Agent 1**: engineer-review (sonnet) — cross-check spec↔plan alignment
 
-**Review 2: Codebase Pattern Verification** — Verify that plan.md references
-correct file paths and follows existing codebase patterns from research.md.
+```
+Task: subagent_type="engineer-review", model="sonnet"
+Prompt: "Review alignment between spec.md and plan.md in {FEATURE_DIR}.
+Find every gap, inconsistency, and misalignment between the specification
+and the implementation plan. Report Red/Yellow/Gray findings."
+```
 
-**Review 3: Acceptance Criteria Coverage** — Verify that every acceptance
-criterion in spec.md is addressed by the implementation plan.
+**Agent 2**: codebase-analyzer (sonnet) — verify file paths and code patterns
 
-**After reviews:**
+```
+Task: subagent_type="codebase-analyzer", model="sonnet"
+Prompt: "Verify that the plan at {FEATURE_DIR}/plan.md references correct
+file paths and follows existing codebase patterns from {FEATURE_DIR}/research.md.
+Report Red/Yellow/Gray findings."
+```
+
+**Agent 3**: validation-correctness (sonnet) — verify acceptance criteria
+coverage
+
+```
+Task: subagent_type="validation-correctness", model="sonnet"
+Prompt: "Verify that every acceptance criterion in {FEATURE_DIR}/spec.md
+is addressed by the plan at {FEATURE_DIR}/plan.md.
+Report Red/Yellow/Gray findings with coverage gaps."
+```
+
+**After agents return:**
 
 1. Classify findings: Red (blocking) / Yellow (should fix) / Gray
    (informational)
-2. If NO Red or Yellow findings → PASS → proceed to next stage
+2. If NO Red or Yellow findings → PASS → proceed to auto-chain
 3. If Red or Yellow findings exist: a. Fix findings directly in plan artifacts
    (Red first, then Yellow) b. Increment cycle counter c. If cycle <= 5 → re-run
-   reviews d. If cycle > 5 → log remaining findings, proceed with warnings
+   review agents d. If cycle > 5 → log remaining findings, proceed with warnings
 
 ---
 
@@ -465,14 +491,6 @@ Artifacts created:
 - quickstart.md: Testing guide
 
 Engineering Review: PASSED (cycle [N] of 5)
-```
-
-## Next Steps (Manual Chaining — Copilot Chat)
-
-Plan is complete. To continue the pipeline, run the next stage:
-
-```
-/4_gofer_tasks
 ```
 
 ---
@@ -499,6 +517,18 @@ At stage completion, log metrics:
 Logs to: `.specify/logs/pipeline.jsonl`
 
 ---
+
+## Pipeline Continuation
+
+This completes the 3_gofer_plan stage. To continue the Gofer pipeline:
+
+**Next Command:** `#4_gofer_tasks`
+
+The next stage will read the artifacts from this stage and continue the workflow
+automatically.
+
+**Note:** Copilot Chat supports context preservation. Your conversation history
+will be maintained as you progress through pipeline stages.
 
 ## Key Rules
 

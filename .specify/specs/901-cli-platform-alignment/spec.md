@@ -3,7 +3,7 @@ id: "901-cli-platform-alignment"
 title: "Feature Spec: CLI Platform Alignment"
 status: "implemented"
 created: "2026-04-04"
-updated: "2026-04-04"
+updated: "2026-04-05"
 priority: "high"
 assignee: "engineer-agent"
 ---

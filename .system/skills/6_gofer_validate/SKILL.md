@@ -66,6 +66,19 @@ This command expects in `.specify/specs/{feature}/`:
 
 ---
 
+## Execution Strategy by Platform
+
+| Platform                               | Validation Execution Strategy                                                                 |
+| -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Claude Code CLI                        | Run all validation agents in parallel using the Task tool                                     |
+| GitHub Copilot Chat (2026+)            | Use multi-agent delegation to run validation in parallel                                      |
+| GitHub Copilot Chat (2025 and earlier) | Run validation checks sequentially using the **Legacy Workflow** in `docs/legacy-workflow.md` |
+
+For pre-2026 Copilot environments, execute the validation phases
+**sequentially** instead of parallel spawning.
+
+---
+
 ## The Engineering Quality Rubric
 
 ### 10-Category Scoring (100 Points)

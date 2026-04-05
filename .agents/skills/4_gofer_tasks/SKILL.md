@@ -36,9 +36,9 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 This command expects in `.specify/specs/{feature}/`:
 
-- `research.md` - Codebase analysis (from $ $1)
-- `spec.md` - Feature specification (from $ $1)
-- `plan.md` - Implementation plan (from $ $1)
+- `research.md` - Codebase analysis (from $ $1_gofer_research)
+- `spec.md` - Feature specification (from $ $2_gofer_specify)
+- `plan.md` - Implementation plan (from $ $3_gofer_plan)
 
 If missing, prompt user to run the prerequisite stage.
 
@@ -394,7 +394,7 @@ Display the task summary and request explicit approval:
 
 | Response                    | Action                                                       |
 | --------------------------- | ------------------------------------------------------------ |
-| `approved` / `lgtm` / `yes` | Update status to `approved`, proceed to `$ $1` |
+| `approved` / `lgtm` / `yes` | Update status to `approved`, proceed to `$ $5_gofer_implement` |
 | `modify [feedback]`         | Update tasks based on feedback, re-present for approval      |
 | `stop`                      | Halt pipeline, document reason in tasks.md                   |
 

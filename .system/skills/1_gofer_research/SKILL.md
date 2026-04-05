@@ -41,9 +41,13 @@ This is the **first stage** of the unified Gofer pipeline. Your job is to:
 2. Understand what the user wants to build
 3. Research the codebase to find where it should be implemented
 4. Identify patterns, existing code, and integration points
-5. Document technology decisions and constraints
+5. Document technology decisions, business scenarios, and architecture options
+6. Prepare a user-facing review before specification begins
 
-**Output**: `.specify/specs/{feature}/research.md`
+**Output**:
+
+- `.specify/specs/{feature}/research.md`
+- `.specify/specs/{feature}/proposal-review.md`
 
 ---
 
@@ -240,6 +244,8 @@ Once all agents complete:
 2. **Identify key integration points** in the codebase
 3. **Document patterns to follow** from existing code
 4. **Note constraints and considerations**
+5. **Distill business scenario options and architecture recommendations** for
+   user review before specification
 
 ---
 
@@ -260,6 +266,19 @@ status: complete
 ## Feature Summary
 
 [Brief description of what we're building]
+
+## Business Scenario Analysis
+
+### Scenario Options Considered
+
+| Scenario   | User/Business Fit | Delivery Trade-off | Recommendation |
+| ---------- | ----------------- | ------------------ | -------------- |
+| [Option 1] | [Why it fits]     | [Cost/complexity]  | [Adopt/defer]  |
+| [Option 2] | [Why it fits]     | [Cost/complexity]  | [Adopt/defer]  |
+
+### Recommended Scenario
+
+[Which scenario should move forward into specification and why]
 
 ## Codebase Analysis
 
@@ -309,6 +328,19 @@ Why relevant: [Explanation]
 
 ...
 
+## Recommended Architecture Direction
+
+### Recommended Architecture
+
+[Plain-language summary of the architecture direction this feature should use]
+
+### Architecture Options Considered
+
+| Option     | Why choose it | Why not choose it now |
+| ---------- | ------------- | --------------------- |
+| [Option 1] | [Benefit]     | [Trade-off]           |
+| [Option 2] | [Benefit]     | [Trade-off]           |
+
 ## Constraints & Considerations
 
 - [Constraint 1]: [Impact on implementation]
@@ -324,30 +356,143 @@ Why relevant: [Explanation]
 1. [Key recommendation for implementation]
 2. [Another recommendation]
 
-```
+`````
 
 ---
 
-## Step 6: Report and Continue
+## Step 5.5: Generate Proposal Review Document
 
-After saving research.md:
+Write to `{FEATURE_DIR}/proposal-review.md`:
+
+````markdown
+---
+feature: '[Feature Name]'
+created: [ISO timestamp]
+status: pending_review
+recommendedScenario: '[short label]'
+recommendedArchitecture: '[short label]'
+selectedOption: ''
+approvedBy: ''
+approvedAt: ''
+---
+
+# Proposal Review: [Feature Name]
+
+## What We Found
+
+[Short, evidence-backed summary of the research findings]
+
+## Business Scenarios Considered
+
+| Scenario | User Value | Delivery Trade-off | Recommendation |
+| -------- | ---------- | ------------------ | -------------- |
+| [Option 1] | [Value] | [Trade-off] | [Adopt/defer] |
+| [Option 2] | [Value] | [Trade-off] | [Adopt/defer] |
+
+## Recommended Business Scenario
+
+[What should be specified next and why]
+
+## Technology Architecture Recommendation
+
+### Recommended Architecture
+
+[Plain-language architecture direction]
+
+### Architecture Options
+
+| Option | Why choose it | Why not choose it now |
+| ------ | ------------- | --------------------- |
+| [Option 1] | [Benefit] | [Trade-off] |
+| [Option 2] | [Benefit] | [Trade-off] |
+
+## Key Decisions and Why
+
+- [Decision]: [Rationale]
+- [Decision]: [Rationale]
+
+## What Can Change Before Specification
+
+- Scope changes the user may request
+- Architecture changes the user may request
+- Options that can be revisited before writing spec.md
+
+## Open Questions
+
+- [ ] [Question needing user input]
+- [ ] [Another question]
+
+## User Feedback and Overrides
+
+- Pending user review
+
+## Approval
+
+- Status: pending_review
+- Next action: user approves or requests changes before `$ $2_gofer_specify`
+`````
+
+---
+
+## Step 6: Review, Discuss, and Gate Specification
+
+After saving `research.md` and `proposal-review.md`:
 
 1. **Present summary** to user:
-   - Key findings
-   - Integration points identified
+   - What was found
+   - Business scenarios considered
+   - Recommended business scenario
+   - Recommended architecture direction
+   - Options and trade-offs
    - Any open questions needing input
 
-2. **Signal completion**:
+2. **Ask the user to choose one path**:
+   - Approve and continue to specification
+   - Revise the business scenario
+   - Revise the architecture recommendation
+   - Explore an alternative option
+   - Stop after research
+
+3. **Run architecture questions one-by-one (MANDATORY when architecture options
+   exist)**:
+   - Ask exactly ONE architecture question at a time using AskUserQuestion
+   - After each answer, ask whether the user wants to discuss that question
+     before locking the answer
+   - If the user asks clarifying questions, answer them first, then re-ask the
+     same question for a final decision
+   - Record the final answer in `proposal-review.md` before moving to the next
+     question
+   - Never bundle multiple architecture decisions into a single prompt
+
+   Suggested order:
+   1. Confirm preferred architecture option
+   2. Confirm the key trade-off priority (speed, flexibility, reliability, cost)
+   3. Confirm non-negotiable constraints/integration boundaries
+
+4. **If the user approves**:
+   - Update `proposal-review.md` with `status: approved`
+   - Record `approvedBy`, `approvedAt`, and any selected option or override
+   - Immediately invoke `$ $2_gofer_specify`
+
+5. **If the user requests changes**:
+   - Update `proposal-review.md` with the feedback in
+     `User Feedback and Overrides`
+   - Set `status: needs_revision` if the recommendation must change
+   - Revise the recommendation and stop until the user approves
+
+6. **Signal completion**:
+
 ```
 
 ✓ Research complete: {FEATURE_DIR}/research.md
+✓ Proposal review ready: {FEATURE_DIR}/proposal-review.md
 
 Key findings:
 
 - [Finding 1]
 - [Finding 2]
 
-````
+```
 
 
 ---
@@ -373,20 +518,20 @@ When working in an existing codebase, add this section to research.md:
 
 ### Constraints & Limitations
 
-| Constraint Type | Description | Impact on Implementation |
-|-----------------|-------------|--------------------------|
-| Framework | [e.g., React 17 - no concurrent features] | [How this limits our approach] |
-| Database | [e.g., PostgreSQL 12, existing schema] | [Schema constraints] |
-| API Compatibility | [e.g., Must maintain v1 endpoints] | [Backward compatibility needs] |
-| Performance | [e.g., Response time < 200ms] | [Optimization requirements] |
+| Constraint Type   | Description                               | Impact on Implementation       |
+| ----------------- | ----------------------------------------- | ------------------------------ |
+| Framework         | [e.g., React 17 - no concurrent features] | [How this limits our approach] |
+| Database          | [e.g., PostgreSQL 12, existing schema]    | [Schema constraints]           |
+| API Compatibility | [e.g., Must maintain v1 endpoints]        | [Backward compatibility needs] |
+| Performance       | [e.g., Response time < 200ms]             | [Optimization requirements]    |
 
 ### Technical Debt to Avoid
 
 The following patterns are deprecated or problematic - do NOT use:
 
-| Pattern | Found In | Why Avoid | Use Instead |
-|---------|----------|-----------|-------------|
-| [Old pattern] | `path/to/file.ts` | [Reason] | [Preferred approach] |
+| Pattern       | Found In          | Why Avoid | Use Instead          |
+| ------------- | ----------------- | --------- | -------------------- |
+| [Old pattern] | `path/to/file.ts` | [Reason]  | [Preferred approach] |
 
 ### Areas Requiring Extra Caution
 
@@ -395,9 +540,9 @@ The following patterns are deprecated or problematic - do NOT use:
 
 ### Integration Requirements
 
-| Existing Service | Integration Method | Notes |
-|------------------|-------------------|-------|
-| [Service 1] | [API/Import/Event] | [Authentication, format, etc.] |
+| Existing Service | Integration Method | Notes                          |
+| ---------------- | ------------------ | ------------------------------ |
+| [Service 1]      | [API/Import/Event] | [Authentication, format, etc.] |
 
 ### Downstream Dependencies
 
@@ -405,7 +550,7 @@ Code that depends on areas we're modifying:
 
 - `path/to/dependent.ts:45` - [What it depends on]
 - `path/to/consumer.ts:123` - [What it expects]
-````
+```
 
 ### Brownfield Checklist
 
@@ -564,9 +709,11 @@ Logs to: `.specify/logs/pipeline.jsonl`
 - **All output goes to `.specify/specs/{feature}/`** - not thoughts/shared/
 - **Run agents in parallel** for efficiency
 - **Include specific file paths and line numbers** for all references
-- **Research should inform the specification** - focus on what helps write a
-  good spec
+- **Research should inform the proposal review and specification** - focus on
+  what helps users discuss the business scenario and architecture before
+  `spec.md` is written
 - **Maximum 5 open questions** - make informed decisions for the rest
+- **Do not continue to specification until `proposal-review.md` is approved**
 - **Log stage completion** for observability tracking
 
 

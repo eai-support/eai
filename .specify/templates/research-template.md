@@ -10,6 +10,7 @@ codebase_type: '[greenfield | brownfield]'
   This template is filled in by /1_gofer_research (or legacy /1_research_codebase).
   Recommended: Use /0_business_scenario to auto-chain the entire pipeline.
   Location: .specify/specs/[###-feature-name]/research.md
+  Pair this with proposal-review.md before /2_gofer_specify runs.
 -->
 
 # Research: [Feature Name]
@@ -17,6 +18,19 @@ codebase_type: '[greenfield | brownfield]'
 ## Feature Summary
 
 [Brief description of what we're building]
+
+## Business Scenario Analysis
+
+### Scenario Options Considered
+
+| Scenario   | User/Business Fit | Delivery Trade-off | Recommendation |
+| ---------- | ----------------- | ------------------ | -------------- |
+| [Option 1] | [Why it fits]     | [Cost/complexity]  | [Adopt/defer]  |
+| [Option 2] | [Why it fits]     | [Cost/complexity]  | [Adopt/defer]  |
+
+### Recommended Scenario
+
+[Which scenario should move forward into specification and why]
 
 ## Codebase Analysis
 
@@ -64,6 +78,19 @@ Why relevant: [Explanation]
 ### Decision 2: [Topic]
 
 ...
+
+## Recommended Architecture Direction
+
+### Recommended Architecture
+
+[Plain-language summary of the architecture direction this feature should use]
+
+### Architecture Options Considered
+
+| Option     | Why choose it | Why not choose it now |
+| ---------- | ------------- | --------------------- |
+| [Option 1] | [Benefit]     | [Trade-off]           |
+| [Option 2] | [Benefit]     | [Trade-off]           |
 
 ## Constraints & Considerations
 
