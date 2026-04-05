@@ -337,7 +337,7 @@ eai deploy status --repo your-org/your-repo
 
 ```bash
 # Get the current version
-eai resources get Patient <id> --json | jq '.version'
+eai resources get Patient <id> --format json | jq '.version'
 
 # Update with the correct version
 eai resources update Patient <id> --data '{"status": "active"}' --version <current-version>
@@ -366,7 +366,7 @@ This shows additional request/response details for debugging API calls.
 | PublicAPI not reachable                       | Network or URL issue               | Check VPN, verify URL                |
 | 409 Conflict                                 | Optimistic locking version mismatch| Refetch and retry with correct version |
 | AADSTS50011 redirect URI mismatch            | Localhost not registered           | Add redirect URI ([guide](/eai-cli/guides/local-development/)) |
-| Device code flow timed out                   | Browser auth not completed in time | Re-run `eai login`                   |
+| Browser sign-in timed out                    | Browser auth not completed in time | Re-run `eai login`                   |
 | deploy-demo.yml not found                    | Workflow not generated             | `eai deploy setup`                   |
 | node_modules not found                       | Dependencies not installed         | `npm install`                        |
 

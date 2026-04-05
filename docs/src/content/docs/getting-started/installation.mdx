@@ -47,7 +47,7 @@ Choose the installation method that works best for your workflow.
     This downloads the pre-built CLI and puts the `eai` binary on your `PATH`. To pin a specific version:
 
     ```bash
-    npm install -g @eai-tools/cli@0.1.0
+    npm install -g @eai-tools/cli@0.3.0
     ```
 
     <Aside type="tip">
@@ -73,7 +73,7 @@ Choose the installation method that works best for your workflow.
     This clones the repo, builds from source, and puts the `eai` binary on your `PATH`. To pin a specific version:
 
     ```bash
-    npm install -g github:eai-tools/eai-cli#v0.1.0
+    npm install -g github:eai-tools/eai-cli#v0.3.0
     ```
 
     <Aside type="note">
@@ -120,7 +120,7 @@ eai --version
 You should see output like:
 
 ```
-0.1.0
+0.3.0
 ```
 
 You can also run `eai --help` to see all available commands:
@@ -137,25 +137,30 @@ Usage: eai [options] [command]
 Enterprise AI Platform CLI — scaffold, seed, deploy, and manage vertical applications
 
 Options:
-  -V, --version   output the version number
-  -h, --help      display help for command
+  -V, --version          output the version number
+  --simple               Plain text output without colors or symbols
+  --no-color             Disable colored output
+  --color                Force colored output
+  --describe             Output JSON schema of all commands
+  -h, --help             display help for command
 
 Commands:
-  init [name]     Scaffold a new vertical application
-  dev             Start local development server
-  login           Authenticate with Entra CIAM
-  logout          Clear stored authentication tokens
-  env             Manage environment variables
-  types           Manage Object Type definitions
-  tenant          Manage tenants
-  resources       CRUD operations on platform resources
-  chat            AI chat operations
-  docs            Document management
-  deploy          Deployment operations
-  verify          Verify platform connectivity
-  doctor          Diagnose common issues
-  whoami          Show auth status and tenant info
-  update          Check for and install CLI updates
+  init [options] [name]  Scaffold a new vertical application
+  dev [options]          Start local development server
+  login [options]        Authenticate with Entra CIAM
+  logout                 Clear stored authentication tokens
+  env                    Manage environment variables
+  types                  Manage Object Type definitions
+  tenant                 Manage tenants on the platform
+  user                   Manage users on the platform
+  resources              CRUD operations on platform resources
+  chat                   Chat with AI workflows
+  docs                   Document upload, classification, and indexing
+  deploy                 Deployment management
+  verify [options]       Run platform connectivity checks
+  doctor [options]       Diagnose common issues and suggest fixes
+  whoami                 Show auth status and tenant info
+  update [options]       Check for and install CLI updates
 ```
 
 ## Update
@@ -175,6 +180,8 @@ Alternatively, you can update manually:
     ```bash
     npm install -g @eai-tools/cli@latest
     ```
+
+    The scoped `.npmrc` entry from the install step is still required. Do not replace it with a global `--registry` flag, because public dependencies still come from npmjs.org.
   </TabItem>
 
   <TabItem label="npm from GitHub">

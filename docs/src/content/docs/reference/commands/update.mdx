@@ -5,33 +5,37 @@ description: Check for and install CLI updates
 
 ## Synopsis
 
-```
+```bash
 eai update [--check]
 ```
 
 ## Description
 
-`eai update` checks the EAI package registry for the latest version and installs it globally. It performs a live registry check (not cached) and runs `npm install -g @eai-tools/cli@latest --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry`.
+`eai update` checks the EAI registry for the latest CLI release and installs it globally for you.
 
-The CLI also performs automatic background update checks on every invocation. When a newer version is detected, a notification banner is printed after the command output. This background check is cached for 24 hours and is skipped in CI environments, when `NO_UPDATE_NOTIFIER=1` is set, or when output is not a TTY.
+It uses the scoped EAI registry only for `@eai-tools/cli`. Public dependencies such as `chalk` still come from the normal npm registry, which is why the command uses a scoped registry override instead of a full `--registry` replacement.
+
+The CLI also checks for updates in the background during normal use. If a newer version is available, it prints a short reminder after your command finishes.
 
 ## Options
 
 | Option | Description |
 |--------|-------------|
-| `--check` | Only check for updates without installing. Shows current vs latest version. |
-| `-h, --help` | Display help for the command. |
+| `--check` | Check whether a newer version exists, but do not install it |
+| `-h, --help` | Show help |
 
 ## Examples
 
-### Check for updates without installing
+### Check without installing
 
 ```bash
 eai update --check
 ```
 
-```
-✔ Update available: 0.1.2 → 0.2.0
+Example output:
+
+```text
+✔ Update available: 0.2.0 → 0.3.0
 → Run eai update to install.
 ```
 
@@ -41,9 +45,11 @@ eai update --check
 eai update
 ```
 
-```
-✔ Update available: 0.1.2 → 0.2.0
-✔ Updated to 0.2.0
+Example output:
+
+```text
+✔ Update available: 0.2.0 → 0.3.0
+✔ Updated to 0.3.0
 ```
 
 ### Already on the latest version
@@ -52,50 +58,50 @@ eai update
 eai update
 ```
 
-```
-✔ Already on the latest version (0.2.0)
+Example output:
+
+```text
+✔ Already on the latest version (0.3.0)
 ```
 
 ### Permission error
 
-If installation fails due to permissions:
+If npm needs elevated permissions, the CLI prints the exact fallback command:
 
-```bash
-eai update
-```
-
-```
-✔ Update available: 0.1.2 → 0.2.0
+```text
 ✖ Update failed.
-→ Try with sudo: sudo npm install -g @eai-tools/cli@0.2.0 --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
+→ Try with sudo: sudo npm install -g @eai-tools/cli@0.3.0 --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
 ```
 
-## Automatic update notifications
+## Automatic Update Checks
 
-The CLI checks for updates in the background on every run and caches the result for 24 hours at `~/.eai/update-check.json`. If a newer version is available, a banner is printed to stderr after the command finishes:
+Automatic checks are:
 
-```
-  Update available: 0.1.2 → 0.2.0
+- cached for 24 hours in `~/.eai/update-check.json`
+- skipped in CI
+- skipped when `NO_UPDATE_NOTIFIER=1` is set
+- skipped when stderr is not a TTY
+
+Example reminder:
+
+```text
+  Update available: 0.2.0 → 0.3.0
   Run eai update to update
 ```
 
-The automatic check is disabled when:
-- `CI` environment variable is set
-- `NO_UPDATE_NOTIFIER=1` is set
-- Output is not a TTY (e.g., piped to another command)
-
 ## Related Commands
 
-- [`eai --version`](/eai-cli/reference/commands/verify/) -- check current CLI version
-- [`eai verify`](/eai-cli/reference/commands/verify/) -- verify platform connectivity
+- `eai --version` to see the currently installed version
+- [`eai verify`](/eai-cli/reference/commands/verify/) to confirm the updated CLI can still reach the platform
+- [Installation](/eai-cli/getting-started/installation/) for manual install and upgrade paths
 
-## Global Options
+## Shared CLI Flags
 
-This command supports all [global CLI options](/reference/global-options/):
-- `--describe` — Output CLI schema
-- `--format <format>` — Control output format (text, json, yaml)
-- `--simple` — Accessible plain text output
-- `--no-color` — Disable colors
-- `--color` — Force colors
+This command also supports the shared flags described in [Global Options](/eai-cli/reference/global-options/):
 
-See [Global Options](/reference/global-options/) for details.
+- `--describe`
+- `--simple`
+- `--no-color`
+- `--color`
+- `-V, --version`
+- `-h, --help`

@@ -38,7 +38,8 @@ eai tenant list [options]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--parent <id>` | Parent tenant ID to scope the listing | -- (lists all tenant-admin memberships) |
-| `--json` | Output raw JSON | `false` |
+| `--format <format>` | Output format (`text` or `json`) | `text` |
+| `--json` | Legacy alias for `--format json` | `false` |
 
 ### eai tenant info
 
@@ -51,6 +52,8 @@ eai tenant info <id>
 | Option | Description | Default |
 |--------|-------------|---------|
 | `<id>` | Tenant ID to inspect | Required |
+| `--format <format>` | Output format (`text` or `json`) | `text` |
+| `--json` | Legacy alias for `--format json` | `false` |
 
 ### eai tenant select
 
@@ -78,6 +81,8 @@ eai tenant create [options]
 | `--slug <slug>` | Tenant slug in kebab-case (required) | Required |
 | `--parent <id>` | Parent tenant ID for hierarchical tenants | -- |
 | `--domain <domains>` | Comma-separated list of associated domains | -- |
+| `--format <format>` | Output format (`text` or `json`) | `text` |
+| `--json` | Legacy alias for `--format json` | `false` |
 
 Child bootstrap guardrails:
 
@@ -115,7 +120,7 @@ eai tenant list --parent 8f3a1b2c-d4e5-6789-abcd-ef0123456789
 ### List as JSON
 
 ```bash
-eai tenant list --json
+eai tenant list --format json
 ```
 
 ```json
@@ -224,11 +229,11 @@ eai tenant create \
 
 ## Global Options
 
-This command supports all [global CLI options](/reference/global-options/):
-- `--describe` — Output CLI schema
-- `--format <format>` — Control output format (text, json, yaml)
-- `--simple` — Accessible plain text output
-- `--no-color` — Disable colors
-- `--color` — Force colors
+This command also supports the shared flags described in [Global Options](/eai-cli/reference/global-options/):
 
-See [Global Options](/reference/global-options/) for details.
+- `--describe`
+- `--simple`
+- `--no-color`
+- `--color`
+- `-V, --version`
+- `-h, --help`

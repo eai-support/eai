@@ -96,7 +96,7 @@ These errors are raised by the CLI itself, not the Platform API.
 |---|---|---|
 | `Not authenticated.` | No stored token found at `~/.eai/tokens.json` | Run `eai login` |
 | `Token expired. Please run eai login.` | Both the access token and refresh token have expired | Run `eai login` |
-| `Device code flow timed out.` | The user did not complete sign-in within the timeout period | Run `eai login` again and complete the browser sign-in promptly |
+| `Browser sign-in timed out.` | The user did not complete the browser-based sign-in within the timeout period | Run `eai login` again and complete the browser sign-in promptly |
 
 ### Environment Errors
 
@@ -215,7 +215,7 @@ if ! output=$(eai resources get User invalid-id --format json 2>&1); then
 fi
 ```
 
-See [Global Options](/reference/global-options/) for details on `--format json`.
+See [Global Options](/eai-cli/reference/global-options/) for details on shared flags and command-specific JSON output.
 
 ## Error Response Structure
 
