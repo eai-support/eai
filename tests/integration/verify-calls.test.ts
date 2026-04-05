@@ -83,6 +83,13 @@ describe('runContractAudit', () => {
           totalPages: 1,
         });
       }),
+      http.get('https://test-api.example.com/v3/resources/schema/tenant-1', () => {
+        return HttpResponse.json({
+          tenant_id: 'tenant-1',
+          object_types: [{ id: 'ot-1', name: 'Customer', slug: 'customer', properties: [], linkTypes: [], actions: [] }],
+          generated_at: '2026-04-05T00:00:00Z',
+        });
+      }),
       http.get('https://test-api.example.com/v3/resources/tenant-1/customer/cust-1', () => {
         return HttpResponse.json({
           id: 'cust-1',
@@ -171,6 +178,13 @@ describe('runContractAudit', () => {
     mockServer.server.use(
       http.get('https://test-api.example.com/health', () => {
         return HttpResponse.json({ status: 'ok' });
+      }),
+      http.get('https://test-api.example.com/v3/resources/schema/tenant-override', () => {
+        return HttpResponse.json({
+          tenant_id: 'tenant-override',
+          object_types: [{ id: 'ot-1', name: 'Customer', slug: 'customer', properties: [], linkTypes: [], actions: [] }],
+          generated_at: '2026-04-05T00:00:00Z',
+        });
       }),
       http.post('https://test-api.example.com/v3/orchestrate', async ({ request }) => {
         const body = await request.json() as {

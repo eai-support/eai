@@ -44,6 +44,17 @@ function toObjectTypeSlug(objectType: string): string {
     .toLowerCase();
 }
 
+export function buildPayloadEqualsParams(
+  filters: Record<string, string>,
+  extras?: Record<string, unknown>,
+): Record<string, unknown> {
+  const params: Record<string, unknown> = { ...(extras || {}) };
+  for (const [field, value] of Object.entries(filters)) {
+    params[`where[${field}][equals]`] = value;
+  }
+  return params;
+}
+
 export async function parseApiError(response: Response): Promise<ParsedApiError> {
   const bodyText = await response.text();
 
@@ -215,11 +226,33 @@ export class PlatformAPIClient {
     });
   }
 
+  async getPublishedObjectTypes(options?: {
+    name?: string;
+    limit?: number;
+    sort?: string;
+  }): Promise<Response> {
+    const filters: Record<string, string> = {
+      tenant: this.tenantId,
+    };
+    if (options?.name) {
+      filters.name = options.name;
+    }
+
+    return this.platformRequest(
+      '/object-types',
+      'GET',
+      undefined,
+      buildPayloadEqualsParams(filters, {
+        limit: options?.limit ?? 200,
+        sort: options?.sort ?? 'name',
+      }),
+    );
+  }
+
   async getSchema(): Promise<Response> {
-    return this.platformRequest('/object-types', 'GET', undefined, {
-      where: { tenant: { equals: this.tenantId } },
-      limit: 200,
-      sort: 'name',
+    return fetch(`${this.baseUrl}/v3/resources/schema/${this.tenantId}`, {
+      method: 'GET',
+      headers: await this.headers(),
     });
   }
 

@@ -136,7 +136,7 @@ async function describeMissingPublishedType(
   client: PlatformAPIClient,
   requestedType: string,
 ): Promise<string | null> {
-  const schemaResponse = await client.getSchema();
+  const schemaResponse = await client.getPublishedObjectTypes();
   if (!schemaResponse.ok) {
     return null;
   }
@@ -294,6 +294,7 @@ resourcesCommand
 resourcesCommand
   .command('create <type>')
   .description('Create a new resource')
+  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
   .option('--data <json>', 'Resource data as JSON string')
   .option('--file <path>', 'Read data from JSON file')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -302,10 +303,11 @@ resourcesCommand
 Examples:
   $ eai resources create Project --data '{"name":"Demo","description":"Test project"}'
   $ eai resources create User --file user.json
+  $ eai resources create Project --tenant-id 50808ce0-f31b-4fd0-9861-74b83b8c112a --data '{"name":"Demo"}'
   $ eai resources create Project --data '{"name":"Demo"}' --format json
   `)
   .action(async (type, options) => {
-    const ctx = await createClient();
+    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
 
     if (options.json) options.format = 'json';
 
@@ -347,12 +349,13 @@ Examples:
 resourcesCommand
   .command('update <type> <id>')
   .description('Update a resource')
+  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
   .option('--data <json>', 'Updated data as JSON string')
   .option('--version <n>', 'Resource version (for optimistic locking)')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
-    const ctx = await createClient();
+    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
 
     if (options.json) options.format = 'json';
 
@@ -398,11 +401,12 @@ resourcesCommand
 resourcesCommand
   .command('delete <type> <id>')
   .description('Delete a resource')
+  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
   .option('--force', 'Skip confirmation', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
-    const ctx = await createClient();
+    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
 
     if (options.json) options.format = 'json';
 
