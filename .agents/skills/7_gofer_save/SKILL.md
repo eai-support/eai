@@ -106,7 +106,7 @@ git diff --stat
 git add [specific files]
 git commit -m "WIP: [Feature] - [Current state description]
 
-Checkpoint created by $ $1
+Checkpoint created by $ $7_gofer_save
 Stage: [current pipeline stage]
 Next: [what needs to happen next]"
 ```
@@ -213,7 +213,7 @@ From tasks.md Protected Files section:
 ```bash
 cd [repo path]
 git checkout [branch]
-$ $1
+$ $8_gofer_resume
 ```
 
 ### Manual Resume Steps
@@ -221,7 +221,7 @@ $ $1
 1. Read this checkpoint file
 2. Check `tasks.md` for current task
 3. Review `plan.md` for architecture context
-4. Continue with `$ $1`
+4. Continue with `$ $5_gofer_implement`
 
 ### Context to Load First
 
@@ -249,7 +249,7 @@ Add checkpoint marker to tasks.md:
 ```markdown
 ## Checkpoint: [ISO timestamp]
 
-Progress saved at task [TaskID]. Resume with `$ $1`.
+Progress saved at task [TaskID]. Resume with `$ $8_gofer_resume`.
 ```
 
 ---
@@ -273,12 +273,12 @@ Progress saved at task [TaskID]. Resume with `$ $1`.
   - Tests: [passing/failing/not run]
 
   To resume:
-  $ $1
+  $ $8_gofer_resume
 
   Or manually:
   cd [repo] && git checkout [branch]
   Read: {FEATURE_DIR}/session-checkpoint.md
-  Continue: $ $1
+  Continue: $ $5_gofer_implement
 
 ================================================================
 ```
@@ -356,8 +356,8 @@ This ensures the resume session starts with clean context.
 
 This command works with:
 
-- `$ $1` - Paired resume command
-- `$ $1` - Can resume implementation
-- `$ $1` - Can validate partial progress
+- `$ $8_gofer_resume` - Paired resume command
+- `$ $5_gofer_implement` - Can resume implementation
+- `$ $6_gofer_validate` - Can validate partial progress
 - `/0_business_scenario` - Detects saved sessions
 - `check-context-health.sh` - Triggers save at thresholds

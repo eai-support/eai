@@ -468,16 +468,16 @@ Add test implementation tasks to tasks.md:
 ### Before Implementation
 
 ```
-$ $1  →  $ $1  →  $ $1
+$ $1_gofer_research  →  $ $2_gofer_specify  →  $ $3_gofer_plan
                                                  ↓
-                                          $ $1  ← Define tests here
+                                          $ $9_gofer_tests  ← Define tests here
                                                  ↓
-                                          $ $1  →  $ $1
+                                          $ $4_gofer_tasks  →  $ $5_gofer_implement
 ```
 
 ### During Implementation
 
-After each task in `$ $1`:
+After each task in `$ $5_gofer_implement`:
 
 1. Run relevant tests
 2. Verify behavior matches test expectations

@@ -1,5 +1,14 @@
 ---
+name: 2_gofer_specify
 description: Create feature specification informed by codebase research
+agent: copilot-workspace
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - WebSearch
+argument-hint: feature-name-or-description
 ---
 
 # Gofer Specify
@@ -20,16 +29,17 @@ You **MUST** consider the user input before proceeding (if not empty).
 This command expects:
 
 - Feature directory already created at `.specify/specs/{feature}/`
-- `research.md` completed from `/1_gofer_research`
+- `research.md` completed from `#1_gofer_research`
+- `proposal-review.md` approved from `#1_gofer_research`
 
-If these don't exist, prompt user to run `/1_gofer_research` first.
+If these don't exist, prompt user to run `#1_gofer_research` first.
 
 ---
 
 ## Outline
 
 1. Context health check
-2. Load existing research findings (lightweight)
+2. Validate approved proposal review and load existing findings
 3. Dispatch specification agents (sub-agents handle heavy generation)
 4. Review agent output, handle clarifications
 5. Optional multi-perspective review
@@ -56,26 +66,47 @@ Before starting specification, assess context window health:
 1. **Run setup script**:
 
    ```bash
-   .specify/scripts/bash/check-prerequisites.sh --json
+   .specify/scripts/bash/check-prerequisites.sh --json --paths-only
    ```
 
-   Parse JSON for FEATURE_DIR
+   Parse JSON for FEATURE_DIR. Use `--paths-only` because specification runs
+   before planning, so `plan.md` must NOT be required at this stage.
 
 2. **Scan research.md** from FEATURE_DIR (do NOT load full content into main
    context — agents will read it directly):
    - Note the feature name and description
    - Note whether discovery.md exists
+   - Note whether proposal-review.md exists
 
 3. **Note template path**: `.specify/templates/spec-template.md`
 
 4. **Check for discovery.md**:
+
    ```bash
    ls -la {FEATURE_DIR}/discovery.md 2>/dev/null
    ```
 
+5. **Check for proposal-review.md**:
+   ```bash
+   ls -la {FEATURE_DIR}/proposal-review.md 2>/dev/null
+   ```
+
 ---
 
-## Step 1.5: Discovery Context Reference
+## Step 1.25: Proposal Approval Gate
+
+`proposal-review.md` is the approval gate between research and specification.
+
+- If `proposal-review.md` is missing: STOP and tell the user to run
+  `#1_gofer_research` so the review can be created.
+- If `proposal-review.md` exists but `status` is not `approved`: STOP and tell
+  the user to finish the review conversation before writing `spec.md`.
+- If `proposal-review.md` is approved: capture the approved business scenario,
+  architecture direction, selected option, and any user overrides.
+
+---
+
+## Step 1.5: Discovery and Proposal Context Reference
 
 If discovery.md exists, pass this mapping to the spec writer agent:
 
@@ -94,13 +125,25 @@ If discovery.md exists, pass this mapping to the spec writer agent:
 discovery.md doesn't exist, the agent generates spec content from research.md
 and user input.
 
+If proposal-review.md exists and is approved, also pass this mapping:
+
+### Proposal Review → Spec Mapping
+
+| Proposal Section              | Spec Section                  | How to Use                                         |
+| ----------------------------- | ----------------------------- | -------------------------------------------------- |
+| Recommended Business Scenario | Overview, Stories, Scope      | Use as the approved scope and user value lens      |
+| Recommended Architecture      | Assumptions, Dependencies     | Carry forward the approved architecture direction  |
+| Architecture Options          | Out of Scope, Assumptions     | Record rejected options and why they were deferred |
+| Key Decisions and Why         | Requirements, NFRs            | Preserve decision rationale in business terms      |
+| User Feedback and Overrides   | Requirements, Scope, Glossary | Apply approved user changes before finalizing spec |
+
 ---
 
 ## Step 2: Dispatch Specification Agents
 
-**Claude Code only**: Delegate heavy document generation to sub-agents using the
-Task tool. In Copilot Chat, perform specification writing inline by reading the
-research and generating the spec directly.
+**CRITICAL**: You **MUST** delegate document generation to sub-agents using the
+Task tool. Do NOT perform this work inline in the main context. The main context
+should only orchestrate and review agent outputs.
 
 ### Agent 1: Specification Writer
 
@@ -112,6 +155,7 @@ Feature directory: {FEATURE_DIR}
 
 Read these files for full context:
 - {FEATURE_DIR}/research.md — Codebase analysis, integration points, patterns, constraints
+- {FEATURE_DIR}/proposal-review.md — Approved business scenario, architecture direction, options, overrides
 - .specify/templates/spec-template.md — Template structure to follow
 - {FEATURE_DIR}/discovery.md — Business discovery findings (read if exists, skip if not)
 
@@ -136,12 +180,19 @@ If discovery.md exists, use it to:
 - Use Success Metrics as targets in Success Criteria
 - Use Value Proposition for primary value framing
 
+If proposal-review.md exists and status is approved, use it to:
+- Treat Recommended Business Scenario as the authoritative scope for the spec
+- Reflect the approved architecture direction in Assumptions, Dependencies, and NFR framing
+- Carry forward any approved user overrides before finalizing requirements
+- Place non-selected options in Out of Scope or Assumptions where appropriate
+
 Rules:
 - Focus on WHAT and WHY, never HOW to implement
 - Written for business stakeholders, not developers
 - Maximum 3 [NEEDS CLARIFICATION] markers for genuinely ambiguous items
 - Acknowledge ALL constraints from research.md in Assumptions or NFRs
 - Reference ALL integration points from research.md in Dependencies
+- Honor the approved direction in proposal-review.md over unapproved alternatives
 - Each functional requirement must include Validation and Integration references
 
 Write the complete specification to {FEATURE_DIR}/spec.md.
@@ -165,6 +216,7 @@ findings and generate a quality checklist.
 Read:
 - {FEATURE_DIR}/spec.md — The specification to validate
 - {FEATURE_DIR}/research.md — Research findings to cross-reference
+- {FEATURE_DIR}/proposal-review.md — Approved review decisions to cross-reference
 
 Part 1: Research Integration Validation (GAP-04)
 For EACH integration point in research.md, check if it's addressed in spec:
@@ -172,6 +224,8 @@ For EACH integration point in research.md, check if it's addressed in spec:
 For EACH constraint from research.md, check if acknowledged in spec:
 - In Assumptions or Non-Functional Requirements
 For EACH technology decision, check if reflected in Dependencies.
+For EACH approved decision or override in proposal-review.md, check if it is
+represented in Overview, Requirements, Assumptions, Dependencies, or Out of Scope.
 
 Build a coverage matrix:
 | Research Finding | Type | Spec Section | Status (COVERED/MISSING) |
@@ -204,6 +258,8 @@ After both agents complete:
    - All user stories have acceptance criteria
    - Success criteria are measurable and technology-agnostic
    - Dependencies reference correct codebase components from research
+   - Approved scenario and architecture choices from proposal-review.md are
+     reflected
    - Research traceability matrix is complete
 
 2. **Check research coverage** — From the validator agent:
@@ -462,14 +518,6 @@ Sequence Diagrams: {FEATURE_DIR}/sequence-diagrams/
 Selected Option: Option {N} - {Name}
 ```
 
-## Next Steps (Manual Chaining — Copilot Chat)
-
-Specification is complete. To continue the pipeline, run the next stage:
-
-```
-/3_gofer_plan
-```
-
 ---
 
 ## Guidelines
@@ -477,7 +525,7 @@ Specification is complete. To continue the pipeline, run the next stage:
 ### Quick Guidelines
 
 - Focus on **WHAT** users need and **WHY**
-- Avoid HOW to implement (that's for /3_gofer_plan)
+- Avoid HOW to implement (that's for #3_gofer_plan)
 - Written for business stakeholders, not developers
 - **Use research findings** to inform requirements
 
@@ -508,3 +556,15 @@ At stage completion, log metrics:
 ```
 
 Logs to: `.specify/logs/pipeline.jsonl`
+
+## Pipeline Continuation
+
+This completes the 2_gofer_specify stage. To continue the Gofer pipeline:
+
+**Next Command:** `#3_gofer_plan`
+
+The next stage will read the artifacts from this stage and continue the workflow
+automatically.
+
+**Note:** Copilot Chat supports context preservation. Your conversation history
+will be maintained as you progress through pipeline stages.

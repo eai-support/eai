@@ -1,5 +1,14 @@
 ---
+name: gofer_hydrate
 description: Reverse-engineer specification from existing code (Hydration)
+agent: copilot-workspace
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - WebSearch
+argument-hint: feature-name-or-description
 ---
 
 # Gofer Hydrate
@@ -163,7 +172,7 @@ source_files:
 # [Feature Title]
 
 > This specification was reverse-engineered from existing code using
-> `/gofer_hydrate`. It reflects the **current implementation**, not necessarily
+> `#gofer_hydrate`. It reflects the **current implementation**, not necessarily
 > the original requirements.
 
 ## Overview

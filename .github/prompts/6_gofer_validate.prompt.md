@@ -1,6 +1,15 @@
 ---
+name: 6_gofer_validate
 description:
   Validate implementation with 10-category engineering rubric (100 points)
+agent: copilot-workspace
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - WebSearch
+argument-hint: feature-name-or-description
 ---
 
 # Gofer Validate
@@ -24,11 +33,11 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 This command expects in `.specify/specs/{feature}/`:
 
-- `research.md` - Codebase analysis (from /1_gofer_research)
-- `spec.md` - Feature specification (from /2_gofer_specify)
-- `plan.md` - Implementation plan (from /3_gofer_plan)
-- `tasks.md` - Task breakdown (from /4_gofer_tasks)
-- Implemented code (from /5_gofer_implement)
+- `research.md` - Codebase analysis (from #1_gofer_research)
+- `spec.md` - Feature specification (from #2_gofer_specify)
+- `plan.md` - Implementation plan (from #3_gofer_plan)
+- `tasks.md` - Task breakdown (from #4_gofer_tasks)
+- Implemented code (from #5_gofer_implement)
 
 ---
 
@@ -47,6 +56,19 @@ This command expects in `.specify/specs/{feature}/`:
 11. Brownfield restart on failure
 12. Attribution logging to JSONL
 13. Memory update check
+
+---
+
+## Execution Strategy by Platform
+
+| Platform                               | Validation Execution Strategy                                                                 |
+| -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Claude Code CLI                        | Run all validation agents in parallel using the Task tool                                     |
+| GitHub Copilot Chat (2026+)            | Use multi-agent delegation to run validation in parallel                                      |
+| GitHub Copilot Chat (2025 and earlier) | Run validation checks sequentially using the **Legacy Workflow** in `docs/legacy-workflow.md` |
+
+For pre-2026 Copilot environments, execute the validation phases
+**sequentially** instead of parallel spawning.
 
 ---
 
@@ -98,7 +120,7 @@ Before starting validation, assess context window health:
 
 - If **< 50%**: Proceed normally
 - If **50-70%**: Use sub-agents heavily, minimize main context
-- If **> 70%**: Run `/7_gofer_save`, start new session, run `/8_gofer_resume`
+- If **> 70%**: Run `#7_gofer_save`, start new session, run `#8_gofer_resume`
 
 Validation loads all artifacts and spawns 6 agents — context pressure is high.
 
@@ -134,19 +156,10 @@ Validation loads all artifacts and spawns 6 agents — context pressure is high.
 
 ## Step 2: Spawn 6 Specialist Validation Agents
 
-### Execution Strategy by Platform
-
-**Claude Code CLI**: Launch all 6 agents **in parallel** using the Task tool.
-Fastest execution (~45-60s total).
-
-**GitHub Copilot Chat (2026+)**: If multi-agent delegation is available, spawn 6
-parallel validation tasks. Check Copilot release notes for this capability.
-
-**GitHub Copilot Chat (2025 and earlier)**: Perform validations inline
-sequentially — run each validation check one at a time and collect findings
-(~90s+ total). See "Legacy Workflow" section for detailed sequential process.
-
-Each agent description below explains what to check.
+**CRITICAL**: You **MUST** launch all 6 agents **in parallel** using the Task
+tool. Do NOT perform validation work inline in the main context. The main
+context should only orchestrate, score the rubric, and review agent outputs.
+Each agent receives the feature context and returns structured findings.
 
 ### Agent 1: Correctness Validator
 
@@ -656,16 +669,6 @@ has_ui: [true/false]
 Proceed to **Step 12: Attribution Logging** then **Step 13: Memory Update
 Check**.
 
-## Next Steps (Manual Chaining — Copilot Chat)
-
-After completing validation with a PASS, run the engineering review stage:
-
-```
-/6a_gofer_engineering_review
-```
-
-This performs post-implementation cross-checking with iterative fix cycles.
-
 ### If TOTAL < 100: FAIL
 
 Proceed to **Step 10: Brownfield Restart**.
@@ -758,7 +761,7 @@ Output the routing instruction:
   REMEDIATION REQUIRED: [feature-name]
   Failed categories: [list]
   Iteration: [N] of 3
-  Route: /5_gofer_implement → focused on [failed areas]
+  Route: #5_gofer_implement → focused on [failed areas]
 
 ════════════════════════════════════════════════════════════════
 ```
@@ -963,6 +966,18 @@ This also logs quality metrics (rubric scores, finding counts) to:
 `.specify/logs/quality-metrics.jsonl`
 
 ---
+
+## Pipeline Continuation
+
+This completes the 6_gofer_validate stage. To continue the Gofer pipeline:
+
+**Next Command:** `#6a_gofer_engineering_review`
+
+The next stage will read the artifacts from this stage and continue the workflow
+automatically.
+
+**Note:** Copilot Chat supports context preservation. Your conversation history
+will be maintained as you progress through pipeline stages.
 
 ## Key Rules
 

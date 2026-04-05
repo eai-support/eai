@@ -31,25 +31,28 @@ scenario and route them through the **unified Gofer pipeline**.
 │                    UNIFIED GOFER PIPELINE                        │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  1. $ $1    → research.md                          │
-│     Deep codebase exploration + technology research              │
-│                         ↓ AUTO                                   │
-│  2. $ $1     → spec.md                              │
+│  1. $ $1_gofer_research    → research.md, proposal-review.md      │
+│     Deep codebase exploration + business/technology synthesis    │
+│                         ↓ REVIEW                                 │
+│  1a. User approval gate   → approved proposal-review.md          │
+│      Confirm scenarios, architecture, options, and changes       │
+│                         ↓ AUTO AFTER APPROVAL                    │
+│  2. $ $2_gofer_specify     → spec.md                              │
 │     Feature specification informed by research                   │
 │                         ↓ AUTO                                   │
-│  3. $ $1        → plan.md, data-model.md, contracts/   │
+│  3. $ $3_gofer_plan        → plan.md, data-model.md, contracts/   │
 │     Technical architecture and design                            │
 │                         ↓ AUTO                                   │
-│  4. $ $1       → tasks.md, issues.md                  │
+│  4. $ $4_gofer_tasks       → tasks.md, issues.md                  │
 │     Dependency-ordered task breakdown                            │
 │                         ↓ AUTO                                   │
-│  5. $ $1   → [source code]                        │
+│  5. $ $5_gofer_implement   → [source code]                        │
 │     Execute tasks phase by phase                                 │
 │                         ↓ AUTO                                   │
-│  6. $ $1    → validation-report.md                 │
+│  6. $ $6_gofer_validate    → validation-report.md                 │
 │     Verify implementation matches plan and spec                  │
 │                         ↓ AUTO                                   │
-│  6a. /6a_gofer_engineering_review → engineering-review-report.md │
+│  6a. $ $6a_gofer_engineering_review → engineering-review-report.md │
 │      Post-implementation review with iterative fix cycles        │
 │                                                                  │
 │  All artifacts go to: .specify/specs/{feature}/                 │
@@ -60,12 +63,12 @@ scenario and route them through the **unified Gofer pipeline**.
 
 | Command               | Purpose                                    |
 | --------------------- | ------------------------------------------ |
-| `$ $1`       | Save session checkpoint mid-implementation |
-| `$ $1`     | Resume work from saved checkpoint          |
-| `$ $1`      | Define acceptance test cases using DSL     |
-| `$ $1`     | READ-ONLY cloud infrastructure analysis    |
-| `$ $1`      | Reverse-engineer spec from existing code   |
-| `$ $1` | Create/update project constitution         |
+| `$ $7_gofer_save`       | Save session checkpoint mid-implementation |
+| `$ $8_gofer_resume`     | Resume work from saved checkpoint          |
+| `$ $9_gofer_tests`      | Define acceptance test cases using DSL     |
+| `$ $10_gofer_cloud`     | READ-ONLY cloud infrastructure analysis    |
+| `$ $gofer_hydrate`      | Reverse-engineer spec from existing code   |
+| `$ $gofer_constitution` | Create/update project constitution         |
 
 ---
 
@@ -86,15 +89,16 @@ ls -la .specify/memory/constitution.md 2>/dev/null
 
 ### What to Look For
 
-| Artifact                | Location                    | Indicates               |
-| ----------------------- | --------------------------- | ----------------------- |
-| `spec.md`               | `.specify/specs/{feature}/` | Feature specified       |
-| `research.md`           | `.specify/specs/{feature}/` | Research complete       |
-| `plan.md`               | `.specify/specs/{feature}/` | Planning complete       |
-| `tasks.md`              | `.specify/specs/{feature}/` | Ready for implement     |
-| `session-checkpoint.md` | `.specify/specs/{feature}/` | Work paused (resumable) |
-| `validation-report.md`  | `.specify/specs/{feature}/` | Feature validated       |
-| `constitution.md`       | `.specify/memory/`          | Project principles set  |
+| Artifact                | Location                    | Indicates                    |
+| ----------------------- | --------------------------- | ---------------------------- |
+| `spec.md`               | `.specify/specs/{feature}/` | Feature specified            |
+| `research.md`           | `.specify/specs/{feature}/` | Research complete            |
+| `proposal-review.md`    | `.specify/specs/{feature}/` | Research reviewed / approved |
+| `plan.md`               | `.specify/specs/{feature}/` | Planning complete            |
+| `tasks.md`              | `.specify/specs/{feature}/` | Ready for implement          |
+| `session-checkpoint.md` | `.specify/specs/{feature}/` | Work paused (resumable)      |
+| `validation-report.md`  | `.specify/specs/{feature}/` | Feature validated            |
+| `constitution.md`       | `.specify/memory/`          | Project principles set       |
 
 Report what you found before proceeding.
 
@@ -496,27 +500,29 @@ pipeline-state.json is updated atomically by each stage on completion.
 **Fallback — File-existence heuristics** (used when no pipeline-state.json
 exists):
 
-| Has This             | Missing This | Start At             |
-| -------------------- | ------------ | -------------------- |
-| tasks.md (unchecked) | -            | `$ $1` |
-| plan.md              | tasks.md     | `$ $1`     |
-| spec.md              | plan.md      | `$ $1`      |
-| research.md          | spec.md      | `$ $1`   |
-| Nothing              | Everything   | `$ $1`  |
+| Has This                                  | Missing This                | Start At             |
+| ----------------------------------------- | --------------------------- | -------------------- |
+| tasks.md (unchecked)                      | -                           | `$ $5_gofer_implement` |
+| plan.md                                   | tasks.md                    | `$ $4_gofer_tasks`     |
+| spec.md                                   | plan.md                     | `$ $3_gofer_plan`      |
+| research.md + approved proposal-review.md | spec.md                     | `$ $2_gofer_specify`   |
+| research.md                               | approved proposal-review.md | `$ $1_gofer_research`  |
+| Nothing                                   | Everything                  | `$ $1_gofer_research`  |
 
 #### For New Features
 
 1. Ask: **"What would you like to call this feature?"** (use AskUserQuestion)
 2. Create the spec directory: `.specify/specs/{feature-name}/`
-3. Invoke `$ $1` to start the pipeline
+3. Invoke `$ $1_gofer_research` to start the pipeline
 
 Output:
 
 ```
 ROUTING: GOFER PIPELINE
 FEATURE: {feature-name}
-STARTING: $ $1
-AUTO-CHAIN: research → specify → plan → tasks → implement → validate → engineering-review
+STARTING: $ $1_gofer_research
+AUTO-CHAIN: research → proposal review → specify → plan → tasks → implement → validate → engineering-review
+APPROVAL GATE: proposal-review.md must be approved before `$ $2_gofer_specify`
 REASON: [explanation]
 ```
 
@@ -540,12 +546,12 @@ REASON: Continuing from existing artifacts
 
 ### Route D: Explore/Research
 
-Start with `$ $1` without auto-chaining:
+Start with `$ $1_gofer_research` without auto-chaining:
 
 ```
 ROUTING: GOFER RESEARCH (STANDALONE)
-COMMAND: $ $1
-AUTO-CHAIN: disabled (ask to continue after research)
+COMMAND: $ $1_gofer_research
+AUTO-CHAIN: disabled until proposal-review.md is approved
 REASON: User wants to explore the codebase first
 ```
 
@@ -557,20 +563,20 @@ Check for session checkpoints:
 find .specify/specs -name "session-checkpoint.md" -type f 2>/dev/null
 ```
 
-If checkpoint found → Invoke `$ $1`
+If checkpoint found → Invoke `$ $8_gofer_resume`
 
 If no checkpoint but unchecked tasks exist:
 
 1. Find features with `- [ ]` in tasks.md
 2. Present options to user
-3. Resume with `$ $1`
+3. Resume with `$ $5_gofer_implement`
 
 Output:
 
 ```
 ROUTING: GOFER RESUME
 FEATURE: {feature-name}
-COMMAND: $ $1
+COMMAND: $ $8_gofer_resume
 CHECKPOINT: {path to checkpoint}
 REASON: Resuming from saved session
 ```
@@ -581,7 +587,7 @@ For new projects or establishing guidelines:
 
 ```
 ROUTING: GOFER CONSTITUTION
-COMMAND: $ $1
+COMMAND: $ $gofer_constitution
 REASON: User wants to establish project principles
 ```
 
@@ -600,12 +606,13 @@ After determining the route:
 The unified Gofer pipeline automatically chains commands:
 
 ```text
-$ $1 completes → auto-invokes $ $1
-$ $1 completes  → auto-invokes $ $1
-$ $1 completes     → auto-invokes $ $1
-$ $1 completes    → auto-invokes $ $1
-$ $1 completes→ auto-invokes $ $1
-$ $1 completes → auto-invokes /6a_gofer_engineering_review
+$ $1_gofer_research completes → stops for proposal review and approval
+Approved proposal-review.md → auto-invokes $ $2_gofer_specify
+$ $2_gofer_specify completes  → auto-invokes $ $3_gofer_plan
+$ $3_gofer_plan completes     → auto-invokes $ $4_gofer_tasks
+$ $4_gofer_tasks completes    → auto-invokes $ $5_gofer_implement
+$ $5_gofer_implement completes→ auto-invokes $ $6_gofer_validate
+$ $6_gofer_validate completes → auto-invokes $ $6a_gofer_engineering_review
 ```
 
 **The user only needs to run `/0_business_scenario` once** - the orchestrator
@@ -617,15 +624,15 @@ handles everything else automatically.
 
 If the user needs to pause:
 
-1. Invoke `$ $1` to create checkpoint
+1. Invoke `$ $7_gofer_save` to create checkpoint
 2. Document current state
-3. User can resume later with `$ $1`
+3. User can resume later with `$ $8_gofer_resume`
 
 If context window is filling up:
 
-1. Save progress with `$ $1`
+1. Save progress with `$ $7_gofer_save`
 2. Recommend user start new conversation
-3. User runs `$ $1` in new session
+3. User runs `$ $8_gofer_resume` in new session
 
 ---
 
@@ -635,6 +642,9 @@ If context window is filling up:
 - **ALWAYS ask what the user wants to do** - don't assume existing artifacts are
   relevant
 - Show existing features and let user choose to continue OR start new
+- Technology architecture decisions must be asked **one-by-one** with a
+  discussion loop so users can ask clarifying questions before finalizing each
+  answer
 - Document the routing decision for debugging
 - If user seems confused, default to research first
 
@@ -642,28 +652,29 @@ If context window is filling up:
 
 ## Quick Reference: All Gofer Commands
 
-### Core Pipeline (Auto-Chaining)
+### Core Pipeline (Approval-Gated)
 
-| #   | Command                        | Output                       | Description              |
-| --- | ------------------------------ | ---------------------------- | ------------------------ |
-| 1   | `$ $1`            | research.md                  | Codebase + tech research |
-| 2   | `$ $1`             | spec.md                      | Feature specification    |
-| 3   | `$ $1`                | plan.md, data-model.md       | Technical architecture   |
-| 4   | `$ $1`               | tasks.md                     | Task breakdown           |
-| 5   | `$ $1`           | [source code]                | Implementation           |
-| 6   | `$ $1`            | validation-report.md         | Verification             |
-| 6a  | `/6a_gofer_engineering_review` | engineering-review-report.md | Post-impl review + fixes |
+| #   | Command                        | Output                          | Description                         |
+| --- | ------------------------------ | ------------------------------- | ----------------------------------- |
+| 1   | `$ $1_gofer_research`            | research.md, proposal-review.md | Research + review prep              |
+| 1a  | User approval gate             | approved proposal-review.md     | Business and architecture alignment |
+| 2   | `$ $2_gofer_specify`             | spec.md                         | Feature specification               |
+| 3   | `$ $3_gofer_plan`                | plan.md, data-model.md          | Technical architecture              |
+| 4   | `$ $4_gofer_tasks`               | tasks.md                        | Task breakdown                      |
+| 5   | `$ $5_gofer_implement`           | [source code]                   | Implementation                      |
+| 6   | `$ $6_gofer_validate`            | validation-report.md            | Verification                        |
+| 6a  | `$ $6a_gofer_engineering_review` | engineering-review-report.md    | Post-impl review + fixes            |
 
 ### Auxiliary Commands
 
 | Command               | Purpose                                   |
 | --------------------- | ----------------------------------------- |
-| `$ $1`       | Save session checkpoint                   |
-| `$ $1`     | Resume from checkpoint                    |
-| `$ $1`      | Define test cases (DSL approach)          |
-| `$ $1`     | Cloud infrastructure analysis (READ-ONLY) |
-| `$ $1`      | Reverse-engineer spec from code           |
-| `$ $1` | Project principles and standards          |
+| `$ $7_gofer_save`       | Save session checkpoint                   |
+| `$ $8_gofer_resume`     | Resume from checkpoint                    |
+| `$ $9_gofer_tests`      | Define test cases (DSL approach)          |
+| `$ $10_gofer_cloud`     | Cloud infrastructure analysis (READ-ONLY) |
+| `$ $gofer_hydrate`      | Reverse-engineer spec from code           |
+| `$ $gofer_constitution` | Project principles and standards          |
 
 ---
 

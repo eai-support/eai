@@ -180,7 +180,7 @@ source_files:
 # [Feature Title]
 
 > This specification was reverse-engineered from existing code using
-> `$ $1`. It reflects the **current implementation**, not necessarily
+> `$ $gofer_hydrate`. It reflects the **current implementation**, not necessarily
 > the original requirements.
 
 ## Overview

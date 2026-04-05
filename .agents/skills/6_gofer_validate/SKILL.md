@@ -40,11 +40,11 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 This command expects in `.specify/specs/{feature}/`:
 
-- `research.md` - Codebase analysis (from $ $1)
-- `spec.md` - Feature specification (from $ $1)
-- `plan.md` - Implementation plan (from $ $1)
-- `tasks.md` - Task breakdown (from $ $1)
-- Implemented code (from $ $1)
+- `research.md` - Codebase analysis (from $ $1_gofer_research)
+- `spec.md` - Feature specification (from $ $2_gofer_specify)
+- `plan.md` - Implementation plan (from $ $3_gofer_plan)
+- `tasks.md` - Task breakdown (from $ $4_gofer_tasks)
+- Implemented code (from $ $5_gofer_implement)
 
 ---
 
@@ -63,6 +63,19 @@ This command expects in `.specify/specs/{feature}/`:
 11. Brownfield restart on failure
 12. Attribution logging to JSONL
 13. Memory update check
+
+---
+
+## Execution Strategy by Platform
+
+| Platform                               | Validation Execution Strategy                                                                 |
+| -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Claude Code CLI                        | Run all validation agents in parallel using the Task tool                                     |
+| GitHub Copilot Chat (2026+)            | Use multi-agent delegation to run validation in parallel                                      |
+| GitHub Copilot Chat (2025 and earlier) | Run validation checks sequentially using the **Legacy Workflow** in `docs/legacy-workflow.md` |
+
+For pre-2026 Copilot environments, execute the validation phases
+**sequentially** instead of parallel spawning.
 
 ---
 
@@ -114,7 +127,7 @@ Before starting validation, assess context window health:
 
 - If **< 50%**: Proceed normally
 - If **50-70%**: Use sub-agents heavily, minimize main context
-- If **> 70%**: Run `$ $1`, start new session, run `$ $1`
+- If **> 70%**: Run `$ $7_gofer_save`, start new session, run `$ $8_gofer_resume`
 
 Validation loads all artifacts and spawns 6 agents — context pressure is high.
 
@@ -756,7 +769,7 @@ Output the routing instruction:
   REMEDIATION REQUIRED: [feature-name]
   Failed categories: [list]
   Iteration: [N] of 3
-  Route: $ $1 → focused on [failed areas]
+  Route: $ $5_gofer_implement → focused on [failed areas]
 
 ════════════════════════════════════════════════════════════════
 ```

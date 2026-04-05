@@ -36,10 +36,10 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 This command expects in `.specify/specs/{feature}/`:
 
-- `research.md` - Codebase analysis (from $ $1)
-- `spec.md` - Feature specification (from $ $1)
-- `plan.md` - Implementation plan (from $ $1)
-- `tasks.md` - Task breakdown (from $ $1)
+- `research.md` - Codebase analysis (from $ $1_gofer_research)
+- `spec.md` - Feature specification (from $ $2_gofer_specify)
+- `plan.md` - Implementation plan (from $ $3_gofer_plan)
+- `tasks.md` - Task breakdown (from $ $4_gofer_tasks)
 
 If missing, prompt user to run the prerequisite stage.
 
@@ -72,7 +72,7 @@ Before starting implementation, assess context window health:
 | -------- | ----------- | ---------------------------------------- |
 | Healthy  | < 50%       | Proceed normally                         |
 | Warning  | 50-70%      | Use sub-agents, checkpoint every 5 tasks |
-| Critical | > 70%       | Run `$ $1`, start new session   |
+| Critical | > 70%       | Run `$ $7_gofer_save`, start new session   |
 
 ### Context Management Techniques
 
@@ -90,15 +90,15 @@ During implementation, use these techniques to preserve context quality:
 
 3. **Periodic Checkpoints**
    - Every 5 completed tasks, check context health
-   - If Warning status: Run `$ $1`
+   - If Warning status: Run `$ $7_gofer_save`
    - This enables resumption with fresh context
 
 **If compaction needed**:
 
 ```bash
-$ $1  # Creates comprehensive checkpoint
+$ $7_gofer_save  # Creates comprehensive checkpoint
 # Start new Claude Code session
-$ $1  # Restores state with clean context
+$ $8_gofer_resume  # Restores state with clean context
 ```
 
 ---
@@ -297,9 +297,18 @@ line you write.
 5. Follow existing codebase patterns (from research.md)
 6. **MINIMAL CHANGE CHECK**: Verify every modification against the 7-point
    checklist above
-7. **RUN FEEDBACK LOOP** (see below)
-8. Mark task complete: Change `- [ ]` to `- [X]` in tasks.md
-9. Report progress
+7. Mark the task `in_progress` before editing:
+
+   ```bash
+   # Use the Gofer task status tool if available
+   gofer_update_task_status <spec-id> <task-id> in_progress
+   ```
+
+8. **RUN FEEDBACK LOOP** (see below)
+9. After the task passes its feedback loop, immediately mark it complete in
+   `tasks.md` using `gofer_update_task_status <spec-id> <task-id> completed` or
+   `.specify/scripts/bash/mark-task-complete.sh <feature-dir> <task-id>`
+10. Report progress
 
 ### Feedback Loop (After EACH Task)
 
@@ -321,6 +330,7 @@ npm run typecheck  # or tsc --noEmit
 - If tests fail → **FIX BEFORE** proceeding to next task
 - If lint errors → **FIX BEFORE** proceeding
 - If type errors → **FIX BEFORE** proceeding
+- **DO NOT** mark a task complete until the feedback loop passes
 - **DO NOT** accumulate failures across tasks
 
 ### After Each Phase

@@ -1,5 +1,14 @@
 ---
+name: 5_gofer_implement
 description: Execute tasks from tasks.md to implement the feature
+agent: copilot-workspace
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - WebSearch
+argument-hint: feature-name-or-description
 ---
 
 # Gofer Implement
@@ -19,10 +28,10 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 This command expects in `.specify/specs/{feature}/`:
 
-- `research.md` - Codebase analysis (from /1_gofer_research)
-- `spec.md` - Feature specification (from /2_gofer_specify)
-- `plan.md` - Implementation plan (from /3_gofer_plan)
-- `tasks.md` - Task breakdown (from /4_gofer_tasks)
+- `research.md` - Codebase analysis (from #1_gofer_research)
+- `spec.md` - Feature specification (from #2_gofer_specify)
+- `plan.md` - Implementation plan (from #3_gofer_plan)
+- `tasks.md` - Task breakdown (from #4_gofer_tasks)
 
 If missing, prompt user to run the prerequisite stage.
 
@@ -55,7 +64,7 @@ Before starting implementation, assess context window health:
 | -------- | ----------- | ---------------------------------------- |
 | Healthy  | < 50%       | Proceed normally                         |
 | Warning  | 50-70%      | Use sub-agents, checkpoint every 5 tasks |
-| Critical | > 70%       | Run `/7_gofer_save`, start new session   |
+| Critical | > 70%       | Run `#7_gofer_save`, start new session   |
 
 ### Context Management Techniques
 
@@ -73,15 +82,15 @@ During implementation, use these techniques to preserve context quality:
 
 3. **Periodic Checkpoints**
    - Every 5 completed tasks, check context health
-   - If Warning status: Run `/7_gofer_save`
+   - If Warning status: Run `#7_gofer_save`
    - This enables resumption with fresh context
 
 **If compaction needed**:
 
 ```bash
-/7_gofer_save  # Creates comprehensive checkpoint
+#7_gofer_save  # Creates comprehensive checkpoint
 # Start new Claude Code session
-/8_gofer_resume  # Restores state with clean context
+#8_gofer_resume  # Restores state with clean context
 ```
 
 ---
@@ -462,30 +471,47 @@ implementation issues early.
 
 ### Review Cycle (repeat up to 5 times)
 
-**CRITICAL** — **Claude Code only**: Dispatch 3 review agents in parallel using
-the Task tool (engineer-review, codebase-analyzer, validation-correctness). Do
-NOT perform this review work inline. In Copilot Chat, perform these 3 reviews
-inline sequentially:
+**CRITICAL**: You **MUST** dispatch 3 review agents in parallel using the Task
+tool. Do NOT perform this review work inline in the main context.
 
-**Review 1: Spec↔Implementation Alignment** — Cross-check that every acceptance
-criterion in spec.md has been implemented and that the code matches the plan.
+**Agent 1**: engineer-review (sonnet) — cross-check spec↔plan↔implementation
+alignment
 
-**Review 2: Codebase Pattern Verification** — Verify that the implemented code
-follows existing codebase patterns from research.md and matches the architecture
-in plan.md.
+```
+Task: subagent_type="engineer-review", model="sonnet"
+Prompt: "Review alignment between spec.md, plan.md, tasks.md, and the
+implemented code in {FEATURE_DIR}. Check that all acceptance criteria are
+implemented. Report Red/Yellow/Gray findings."
+```
 
-**Review 3: Acceptance Criteria Coverage** — Verify that every acceptance
-criterion in spec.md has been implemented and has corresponding test coverage.
+**Agent 2**: codebase-analyzer (sonnet) — verify implementation patterns
 
-**After reviews:**
+```
+Task: subagent_type="codebase-analyzer", model="sonnet"
+Prompt: "Verify that the implemented code follows existing codebase patterns
+from {FEATURE_DIR}/research.md and matches the architecture in
+{FEATURE_DIR}/plan.md. Report Red/Yellow/Gray findings."
+```
+
+**Agent 3**: validation-correctness (sonnet) — verify acceptance criteria
+coverage
+
+```
+Task: subagent_type="validation-correctness", model="sonnet"
+Prompt: "Verify that every acceptance criterion in {FEATURE_DIR}/spec.md
+has been implemented and has corresponding test coverage.
+Report Red/Yellow/Gray findings with coverage gaps."
+```
+
+**After agents return:**
 
 1. Classify findings: Red (blocking) / Yellow (should fix) / Gray
    (informational)
-2. If NO Red or Yellow findings → PASS → proceed to next stage
+2. If NO Red or Yellow findings → PASS → proceed to auto-chain
 3. If Red or Yellow findings exist: a. Fix findings directly in implementation
    code (Red first, then Yellow) b. Re-run build/test/lint to verify fixes c.
-   Increment cycle counter d. If cycle <= 5 → re-run reviews e. If cycle > 5 →
-   log remaining findings, proceed with warnings
+   Increment cycle counter d. If cycle <= 5 → re-run review agents e. If cycle >
+   5 → log remaining findings, proceed with warnings
 
 ---
 
@@ -516,14 +542,6 @@ After implementation complete and review gate passes:
   - src/index.ts (modified)
 
 ════════════════════════════════════════════════════════════════
-```
-
-## Next Steps (Manual Chaining — Copilot Chat)
-
-Implementation is complete. To continue the pipeline, run the next stage:
-
-```
-/6_gofer_validate
 ```
 
 ---
@@ -563,6 +581,18 @@ At stage completion, log metrics:
 Logs to: `.specify/logs/pipeline.jsonl`
 
 ---
+
+## Pipeline Continuation
+
+This completes the 5_gofer_implement stage. To continue the Gofer pipeline:
+
+**Next Command:** `#6_gofer_validate`
+
+The next stage will read the artifacts from this stage and continue the workflow
+automatically.
+
+**Note:** Copilot Chat supports context preservation. Your conversation history
+will be maintained as you progress through pipeline stages.
 
 ## Key Rules
 

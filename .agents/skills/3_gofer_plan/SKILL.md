@@ -37,8 +37,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 This command expects in `.specify/specs/{feature}/`:
 
-- `research.md` - Codebase analysis (from $ $1)
-- `spec.md` - Feature specification (from $ $1)
+- `research.md` - Codebase analysis (from $ $1_gofer_research)
+- `spec.md` - Feature specification (from $ $2_gofer_specify)
 
 If missing, prompt user to run the prerequisite stage.
 

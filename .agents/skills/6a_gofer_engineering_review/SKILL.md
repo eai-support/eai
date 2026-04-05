@@ -23,7 +23,7 @@ result_schema:
 
 You are performing a **post-implementation engineering review** that
 cross-checks the actual code against spec, research, tasks, and validation
-artifacts. This stage runs **after** `$ $1` passes and performs 1-5
+artifacts. This stage runs **after** `$ $6_gofer_validate` passes and performs 1-5
 iterative "review → fix → re-review" cycles until all findings are resolved or 5
 cycles complete.
 
@@ -39,12 +39,12 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 This command expects in `.specify/specs/{feature}/`:
 
-- `research.md` - Codebase analysis (from $ $1)
-- `spec.md` - Feature specification (from $ $1)
-- `plan.md` - Implementation plan (from $ $1)
-- `tasks.md` - Task breakdown (from $ $1)
-- `validation-report.md` - Validation results (from $ $1, PASS)
-- Implemented code (from $ $1)
+- `research.md` - Codebase analysis (from $ $1_gofer_research)
+- `spec.md` - Feature specification (from $ $2_gofer_specify)
+- `plan.md` - Implementation plan (from $ $3_gofer_plan)
+- `tasks.md` - Task breakdown (from $ $4_gofer_tasks)
+- `validation-report.md` - Validation results (from $ $6_gofer_validate, PASS)
+- Implemented code (from $ $5_gofer_implement)
 
 ---
 
@@ -346,13 +346,13 @@ resolved_findings: [N]
   FEATURE PIPELINE COMPLETE!
 
   All Gofer stages finished:
-  1. $ $1 ✓
-  2. $ $1 ✓
-  3. $ $1 ✓
-  4. $ $1 ✓
-  5. $ $1 ✓
-  6. $ $1 ✓
-  6a. /6a_gofer_engineering_review ✓
+  1. $ $1_gofer_research ✓
+  2. $ $2_gofer_specify ✓
+  3. $ $3_gofer_plan ✓
+  4. $ $4_gofer_tasks ✓
+  5. $ $5_gofer_implement ✓
+  6. $ $6_gofer_validate ✓
+  6a. $ $6a_gofer_engineering_review ✓
 
   The feature is ready for review and merge.
 ════════════════════════════════════════════════════════════════
@@ -375,13 +375,13 @@ resolved_findings: [N]
   FEATURE PIPELINE COMPLETE!
 
   All Gofer stages finished:
-  1. $ $1 ✓
-  2. $ $1 ✓
-  3. $ $1 ✓
-  4. $ $1 ✓
-  5. $ $1 ✓
-  6. $ $1 ✓
-  6a. /6a_gofer_engineering_review ✓ (warnings)
+  1. $ $1_gofer_research ✓
+  2. $ $2_gofer_specify ✓
+  3. $ $3_gofer_plan ✓
+  4. $ $4_gofer_tasks ✓
+  5. $ $5_gofer_implement ✓
+  6. $ $6_gofer_validate ✓
+  6a. $ $6a_gofer_engineering_review ✓ (warnings)
 
   The feature is ready for review and merge (review Gray findings).
 ════════════════════════════════════════════════════════════════
