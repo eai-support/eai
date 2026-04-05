@@ -3,9 +3,12 @@
  */
 
 import { describe, expect, test } from 'vitest';
+import { buildPayloadEqualsParams } from '../../src/lib/api.js';
 import {
+  findMatchingRemoteTypes,
   resolveDefaultTenantKey,
   resolveTenantIdForKey,
+  shouldFailTypeSeedRun,
   verifyTypeSeedConvergence,
 } from '../../src/commands/types.js';
 
@@ -148,6 +151,136 @@ describe('verifyTypeSeedConvergence', () => {
       updatedCount: 0,
       failedCount: 1,
       converged: false,
+    });
+  });
+
+  test('dedupes duplicate remote slugs by newest published type before comparing convergence', () => {
+    expect(verifyTypeSeedConvergence(
+      'tenant-1',
+      ['ConversationMessage'],
+      {
+        docs: [
+          {
+            name: 'ConversationMessage',
+            slug: 'conversation-message',
+            status: 'published',
+            publishedAt: '2026-04-04T00:00:00.000Z',
+            properties: [{ name: 'councilName' }],
+          },
+          {
+            name: 'ConversationMessage',
+            slug: 'conversation-message',
+            status: 'published',
+            publishedAt: '2026-04-05T00:00:00.000Z',
+            properties: [{ name: 'messageId' }],
+          },
+        ],
+      },
+      {
+        createdCount: 0,
+        updatedCount: 1,
+        failedCount: 0,
+      },
+    )).toEqual({
+      tenantId: 'tenant-1',
+      requestedTypes: ['ConversationMessage'],
+      matchedTypes: ['ConversationMessage'],
+      missingTypes: [],
+      driftedTypes: [],
+      createdCount: 0,
+      updatedCount: 1,
+      failedCount: 0,
+      converged: true,
+    });
+  });
+});
+
+describe('findMatchingRemoteTypes', () => {
+  test('prefers the most recently published duplicate when multiple docs share a slug', () => {
+    const matches = findMatchingRemoteTypes(
+      [
+        {
+          id: 'older',
+          name: 'ConversationMessage',
+          slug: 'conversation-message',
+          properties: [],
+          linkTypes: [],
+          actions: [],
+          status: 'published',
+          publishedAt: '2026-04-04T00:00:00.000Z',
+        },
+        {
+          id: 'newer',
+          name: 'ConversationMessage',
+          slug: 'conversation-message',
+          properties: [],
+          linkTypes: [],
+          actions: [],
+          status: 'published',
+          publishedAt: '2026-04-05T00:00:00.000Z',
+        },
+      ],
+      'ConversationMessage',
+    );
+
+    expect(matches.map((doc) => doc.id)).toEqual(['newer', 'older']);
+  });
+});
+
+describe('shouldFailTypeSeedRun', () => {
+  test('returns false when every tenant verification converged', () => {
+    expect(shouldFailTypeSeedRun([
+      {
+        verification: {
+          tenantId: 'tenant-1',
+          requestedTypes: ['Customer'],
+          matchedTypes: ['Customer'],
+          missingTypes: [],
+          driftedTypes: [],
+          createdCount: 1,
+          updatedCount: 0,
+          failedCount: 0,
+          converged: true,
+        },
+      },
+    ])).toBe(false);
+  });
+
+  test('returns true when any tenant verification did not converge', () => {
+    expect(shouldFailTypeSeedRun([
+      {
+        verification: {
+          tenantId: 'tenant-1',
+          requestedTypes: ['Customer'],
+          matchedTypes: [],
+          missingTypes: ['Customer'],
+          driftedTypes: [],
+          createdCount: 0,
+          updatedCount: 0,
+          failedCount: 0,
+          converged: false,
+        },
+      },
+    ])).toBe(true);
+  });
+});
+
+describe('buildPayloadEqualsParams', () => {
+  test('serializes Payload filters using flat query parameter keys', () => {
+    expect(buildPayloadEqualsParams(
+      {
+        tenant: 'tenant-1',
+        name: 'ConversationMessage',
+      },
+      {
+        limit: 1,
+        sort: 'name',
+      },
+    )).toEqual({
+      'where[tenant][equals]': 'tenant-1',
+      'where[name][equals]': 'ConversationMessage',
+      limit: 1,
+      sort: 'name',
     });
   });
 });
