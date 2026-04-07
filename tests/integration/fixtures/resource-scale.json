@@ -1,0 +1,56 @@
+{
+  "resourceType": "conversation-message",
+  "where": {
+    "date": {
+      "gte": "2026-01-01",
+      "lte": "2026-01-31"
+    },
+    "organization": {
+      "not_equals": null
+    }
+  },
+  "aggregate": {
+    "groupBy": ["organization", "date"],
+    "metrics": {
+      "messageCount": { "function": "count" },
+      "uniqueConversations": {
+        "function": "count_distinct",
+        "field": "conversationId"
+      }
+    },
+    "limit": 100
+  },
+  "batchCreate": {
+    "items": [
+      {
+        "data": {
+          "messageId": "fixture-msg-1",
+          "conversationId": "fixture-conv-1",
+          "organization": "Wingecarribee",
+          "messageType": "Q&A",
+          "date": "2026-01-10",
+          "hour": 10
+        }
+      }
+    ]
+  },
+  "batchUpdate": {
+    "items": [
+      {
+        "id": "fixture-resource-1",
+        "version": 2,
+        "data": {
+          "messageId": "fixture-msg-1",
+          "conversationId": "fixture-conv-1",
+          "organization": "Blacktown",
+          "messageType": "Q&A",
+          "date": "2026-01-10",
+          "hour": 10
+        }
+      }
+    ]
+  },
+  "batchDelete": {
+    "ids": ["fixture-resource-1"]
+  }
+}
