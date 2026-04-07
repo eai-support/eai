@@ -1,0 +1,79 @@
+---
+title: Corporate Training Operations
+description: Manage program requests, curricula, cohorts, attendance, assessments, and compliance renewals.
+---
+
+## Business Problem
+
+Training teams need to coordinate demand intake, curriculum design, sessions, learners, assessments, certifications, and renewal cycles. A workflow model makes delivery, measurement, and compliance easier to manage at scale.
+
+## Required Object Model (22 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Program and Cohort Setup
+
+- `Program` — training program
+- `Curriculum` — curriculum structure
+- `Learner` — learner record
+- `Cohort` — cohort record
+- `Instructor` — instructor record
+- `Session` — training session
+- `Assessment` — assessment
+- `Certification` — certification result
+
+### Delivery Workflow
+
+- `LearningPath` — assigned learning path
+- `Enrollment` — program enrolment
+- `Attendance` — session attendance
+- `ContentAsset` — training asset
+- `Prerequisite` — prerequisite rule
+- `SkillsGap` — identified skills gap
+- `FeedbackSurvey` — feedback survey
+- `BudgetLine` — program budget line
+
+### Governance and Continuity
+
+- `VendorTrainer` — external trainer
+- `TrainingRequest` — training request
+- `Approval` — approval step
+- `ComplianceRequirement` — compliance requirement
+- `RenewalCycle` — renewal cycle
+- `CompletionDashboard` — completion dashboard
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Classify training requests into the right program, learner segment, and urgency level.
+- Summarise assessment and feedback results for program owners after each cohort.
+- Generate renewal and remediation worklists from compliance requirements and completion gaps.
+
+## Why This Scenario Is High-Value
+
+Training operations become strategic when they are measurable and repeatable. This scenario helps organisations turn one-off delivery into a managed service with clear outcomes.

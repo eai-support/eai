@@ -1,0 +1,80 @@
+---
+title: Real Estate Closing Operations
+description: Run offers, escrow, title, inspections, settlement, recording, and post-close tasks in one workflow.
+---
+
+## Business Problem
+
+Real estate closing work spans buyers, sellers, lenders, title, inspections, escrow, settlement statements, signatures, recording, and post-close follow-up. A dedicated vertical keeps every dependency visible before funds move.
+
+## Required Object Model (23 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Deal Intake and Contracting
+
+- `Buyer` — buyer party
+- `Seller` — seller party
+- `Property` — property record
+- `Listing` — listing record
+- `Offer` — offer record
+- `PurchaseContract` — executed purchase contract
+- `Amendment` — contract amendment
+- `EscrowAccount` — escrow account
+
+### Due Diligence and Closing Prep
+
+- `EarnestMoneyReceipt` — earnest money receipt
+- `Lender` — financing party
+- `LoanPackage` — loan file
+- `Appraisal` — appraisal record
+- `TitleOrder` — title order
+- `TitleCommitment` — title commitment
+- `Survey` — survey record
+- `InspectionReport` — inspection report
+
+### Settlement and Post-Close
+
+- `RepairRequest` — repair negotiation item
+- `SettlementStatement` — settlement statement
+- `ClosingCondition` — closing prerequisite
+- `SignaturePacket` — signing package
+- `RecordingPackage` — recording set
+- `DisbursementInstruction` — funds disbursement instruction
+- `PostCloseTask` — post-close follow-up
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Classify closing documents and surface missing title, inspection, or lender artefacts before settlement.
+- Summarise closing blockers across escrow, title, financing, and repair negotiations.
+- Generate post-close task lists from settlement statements, recording packages, and lender conditions.
+
+## Why This Scenario Is High-Value
+
+Closing teams win by reducing surprises and compressing the time from contract to settlement. This scenario provides a shared operating model for every participant in the closing process.

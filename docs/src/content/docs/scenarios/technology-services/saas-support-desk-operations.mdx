@@ -1,0 +1,79 @@
+---
+title: SaaS Support Desk Operations
+description: Manage tenant health, support tickets, bug reports, billing issues, adoption work, and renewal risk.
+---
+
+## Business Problem
+
+SaaS support teams need to connect customer health, entitlements, tickets, incidents, bug reports, billing issues, adoption work, and renewals. The workflow spans support, product, and customer success teams.
+
+## Required Object Model (22 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Customer and Subscription Context
+
+- `Tenant` — customer tenant
+- `User` — customer user
+- `Subscription` — subscription record
+- `Entitlement` — entitlement set
+- `SupportTicket` — support ticket
+- `Incident` — service incident
+- `FeatureRequest` — feature request
+- `KnowledgeArticle` — support article
+
+### Issue and Product Workflow
+
+- `Escalation` — escalation
+- `BugReport` — product bug
+- `ReleaseNote` — release note
+- `Sandbox` — sandbox environment
+- `BillingIssue` — billing issue
+- `RefundRequest` — refund request
+- `UsageSignal` — usage signal
+- `HealthScore` — customer health score
+
+### Success and Renewal
+
+- `AdoptionTask` — adoption task
+- `CSMNote` — customer success note
+- `RenewalRisk` — renewal risk
+- `QBR` — quarterly business review
+- `FeedbackItem` — customer feedback
+- `WorkflowRule` — automation rule
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Classify tickets, billing messages, and feedback into the right support and product queues.
+- Summarise tenant health and escalation history before QBRs and renewal reviews.
+- Generate adoption and proactive-support worklists from usage patterns and issue recurrence.
+
+## Why This Scenario Is High-Value
+
+SaaS support quality directly affects expansion and retention. This scenario helps vendors operate support and success as one coordinated service system.

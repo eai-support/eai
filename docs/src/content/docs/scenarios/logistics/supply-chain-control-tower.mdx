@@ -1,0 +1,79 @@
+---
+title: Supply Chain Control Tower
+description: Track orders, inventory nodes, milestones, shortages, reallocations, and recovery playbooks.
+---
+
+## Business Problem
+
+Control-tower teams need to see demand, orders, inventory, shipments, delays, shortages, and recovery plans in one operating view. The workflow must connect planning signals to exception response actions.
+
+## Required Object Model (22 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Order and Inventory Context
+
+- `Order` — customer or replenishment order
+- `Shipment` — shipment record
+- `InventoryNode` — warehouse or node
+- `SKU` — stock-keeping unit
+- `DemandSignal` — demand signal
+- `PurchaseOrder` — upstream purchase order
+- `ASN` — advanced shipping notice
+- `Carrier` — transport carrier
+
+### Tracking and Exceptions
+
+- `TrackingMilestone` — shipment milestone
+- `ExceptionAlert` — exception alert
+- `DelayReason` — delay cause
+- `ReallocationPlan` — inventory reallocation plan
+- `SupplierPromise` — supplier commit date
+- `WarehouseTask` — warehouse action
+- `RoutePlan` — route plan
+- `CapacityConstraint` — capacity limit
+
+### Recovery and Reporting
+
+- `ShortageCase` — shortage case
+- `CustomerCommitment` — customer commitment
+- `ETAUpdate` — updated ETA
+- `KPISnapshot` — operational KPI snapshot
+- `RootCauseRecord` — root-cause record
+- `RecoveryPlaybook` — recovery playbook
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Summarise exception queues and tie them to shortage, ETA, and customer-commitment impact.
+- Classify supplier and carrier updates so planners do not need to read every message manually.
+- Generate recovery suggestions from prior root-cause records and playbook outcomes.
+
+## Why This Scenario Is High-Value
+
+Control towers create value by turning fragmented signals into fast decisions. This scenario gives supply-chain leaders a structured way to manage disruptions instead of just reporting them.

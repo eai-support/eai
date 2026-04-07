@@ -1,0 +1,79 @@
+---
+title: Capital Project Bidding
+description: Run tender intake, clarifications, pricing versions, interviews, award decisions, and handover workflows.
+---
+
+## Business Problem
+
+Capital project bidding teams coordinate bid packages, clarifications, addenda, pricing versions, risk reviews, interviews, and award handovers. Each bid cycle involves many approvals and a large evidence trail.
+
+## Required Object Model (22 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Tender Setup
+
+- `Opportunity` — bid opportunity
+- `Client` — client organisation
+- `Site` — project site
+- `RequirementSet` — client requirements
+- `BidPackage` — bid package
+- `ScopeSection` — scope section
+- `Estimator` — assigned estimator
+- `SupplierBid` — supplier bid
+
+### Commercial Assembly
+
+- `SubcontractorBid` — subcontractor bid
+- `ClarificationLog` — clarification log
+- `Addendum` — issued addendum
+- `ScheduleOption` — schedule option
+- `RiskRegister` — bid risk register
+- `PricingVersion` — pricing version
+- `ValueEngineeringIdea` — value-engineering item
+- `ApprovalGate` — internal approval gate
+
+### Award and Mobilisation
+
+- `TenderSubmission` — submitted tender
+- `InterviewRound` — post-submission interview
+- `AwardNotice` — award notice
+- `ContractDraft` — contract draft
+- `MobilizationPlan` — mobilisation plan
+- `HandoverChecklist` — handover checklist
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Classify tender documents and clarifications into the right bid package and scope section.
+- Summarise pricing changes and top bid risks before executive approval gates.
+- Generate mobilisation checklists from the final bid, contract draft, and award terms.
+
+## Why This Scenario Is High-Value
+
+Winning capital projects depends on bid discipline, not just pricing. This scenario helps teams manage the full commercial and operational lifecycle from tender to handover.

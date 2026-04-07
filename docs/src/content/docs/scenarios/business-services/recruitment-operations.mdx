@@ -1,0 +1,79 @@
+---
+title: Recruitment Operations
+description: Manage requisitions, sourcing, interviews, offers, agency support, and onboarding handoff.
+---
+
+## Business Problem
+
+Recruitment teams coordinate requisitions, sourcing, screening, interview scheduling, offer approvals, agency support, and onboarding handoff. A dedicated workflow platform gives them one view of both candidate progress and service performance.
+
+## Required Object Model (22 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Demand and Pipeline Intake
+
+- `JobRequisition` — open hiring demand
+- `HiringManager` — hiring manager record
+- `Recruiter` — recruiter record
+- `Candidate` — candidate profile
+- `TalentPool` — talent pool segment
+- `ScreeningCall` — screening interaction
+- `InterviewStage` — interview stage
+- `InterviewPanel` — interview panel
+
+### Decision and Offer Workflow
+
+- `FeedbackForm` — structured interview feedback
+- `Offer` — candidate offer
+- `BackgroundCheck` — background screening
+- `ReferenceCheck` — reference review
+- `CompensationBand` — approved pay band
+- `ApprovalStep` — approval step
+- `AgencyPartner` — recruitment agency
+- `SourceChannel` — source channel
+
+### Performance and Handover
+
+- `PipelineMetric` — pipeline metric snapshot
+- `RejectionReason` — rejection reason
+- `OnboardingTask` — onboarding handoff task
+- `StartDate` — agreed start date
+- `SLAClock` — service level timer
+- `CandidateNurture` — talent nurture activity
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Classify inbound CVs and job briefs into the right requisition and talent pool.
+- Summarise interview feedback and highlight inconsistent signals before offer approval.
+- Generate recruiter worklists from SLA clocks, missing feedback, and aging candidates.
+
+## Why This Scenario Is High-Value
+
+Recruitment performance depends on speed, coordination, and candidate experience. This scenario creates a shared operating system across recruiters, hiring managers, and agencies.

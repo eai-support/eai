@@ -1,0 +1,79 @@
+---
+title: IT Managed Services Operations
+description: Run service contracts, tickets, changes, patching, backups, vendor cases, and QBRs.
+---
+
+## Business Problem
+
+Managed service providers operate across tickets, incidents, changes, patch cycles, backups, asset assignments, vendor escalations, invoicing, and renewals. A dedicated operating model is essential for reliable service delivery.
+
+## Required Object Model (22 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Client and Service Context
+
+- `ClientAccount` — client account
+- `Site` — client site
+- `ServiceContract` — service contract
+- `Asset` — managed asset
+- `User` — end user
+- `Ticket` — support ticket
+- `Incident` — major incident
+- `ProblemRecord` — problem record
+
+### Service Execution
+
+- `ChangeRequest` — change request
+- `MaintenanceWindow` — maintenance window
+- `KnowledgeArticle` — knowledge article
+- `MonitoringAlert` — monitoring alert
+- `PatchCycle` — patch cycle
+- `BackupJob` — backup job
+- `LicenseAssignment` — license assignment
+- `VendorCase` — vendor escalation
+
+### Governance and Growth
+
+- `SLAReport` — SLA report
+- `OnCallRoster` — on-call roster
+- `RootCauseReview` — root cause review
+- `Invoice` — service invoice
+- `QBRDeck` — quarterly review deck
+- `RenewalTask` — renewal task
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Classify incoming tickets and monitoring alerts into the right service, asset, and urgency levels.
+- Summarise incident histories and root-cause reviews before QBRs and renewal discussions.
+- Generate proactive service tasks from patching, backups, knowledge gaps, and SLA trends.
+
+## Why This Scenario Is High-Value
+
+MSPs need one operational view across support, preventative work, governance, and commercial follow-up. This scenario creates that shared model.

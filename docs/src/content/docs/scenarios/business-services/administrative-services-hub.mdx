@@ -1,0 +1,79 @@
+---
+title: Administrative Services Hub
+description: Coordinate intake tickets, approvals, scheduling, document packs, travel, signatures, and recurring client services.
+---
+
+## Business Problem
+
+Administrative service teams handle many different request types, each with deadlines, approvals, documents, and client updates. A service hub gives teams one operating model rather than a patchwork of inboxes and trackers.
+
+## Required Object Model (22 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Service Intake and Coordination
+
+- `ClientRequest` — incoming service request
+- `ServiceCatalogItem` — catalogued service
+- `IntakeTicket` — work intake ticket
+- `SLA` — service level rule
+- `Assignment` — task assignment
+- `ResourcePool` — available resource pool
+- `DocumentPacket` — supporting document set
+- `Approval` — approval record
+
+### Execution Workflow
+
+- `CalendarEvent` — scheduled event
+- `MeetingNote` — meeting note
+- `TravelRequest` — travel request
+- `ExpenseItem` — expense record
+- `VendorTask` — vendor-supported task
+- `MailroomItem` — mail or physical item
+- `SignatureRequest` — signature request
+- `AccessProvisioning` — access-provisioning request
+
+### Support and Reporting
+
+- `Issue` — service issue
+- `Escalation` — escalated issue
+- `KnowledgeArticle` — reusable service article
+- `AutomationRule` — service automation rule
+- `SatisfactionSurvey` — service feedback
+- `MonthlyStatement` — monthly service statement
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Classify incoming requests by service type, urgency, and required approvals.
+- Summarise open work across deadlines, escalations, and vendor dependencies.
+- Generate candidate automation opportunities from repeated request patterns and knowledge articles.
+
+## Why This Scenario Is High-Value
+
+Administrative work is often hidden but highly leveraged. This scenario gives service teams a way to standardise delivery and improve utilisation without losing flexibility.
