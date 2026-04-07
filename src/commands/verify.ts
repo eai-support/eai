@@ -197,6 +197,34 @@ function renderContractAudit(report: ContractAuditReport): void {
   }
 }
 
+function collectPublishedStorageBackends(
+  objectTypesByScope: Record<string, Array<{ status?: string; storageBackend?: string }>>,
+): { backends: string[]; invalid: string[] } {
+  const backends = new Set<string>();
+  const invalid = new Set<string>();
+  const allowed = new Set(['postgresql', 'documentdb', 'blob', 'search']);
+
+  for (const types of Object.values(objectTypesByScope)) {
+    for (const objectType of types) {
+      if (objectType.status && objectType.status !== 'published') {
+        continue;
+      }
+      if (!objectType.storageBackend) {
+        continue;
+      }
+      backends.add(objectType.storageBackend);
+      if (!allowed.has(objectType.storageBackend)) {
+        invalid.add(objectType.storageBackend);
+      }
+    }
+  }
+
+  return {
+    backends: [...backends].sort(),
+    invalid: [...invalid].sort(),
+  };
+}
+
 export async function runContractAudit(
   options: ContractAuditOptions,
 ): Promise<ContractAuditReport> {
@@ -259,6 +287,35 @@ export async function runContractAudit(
       ? `Authenticated as ${tokens?.upn || (process.env.EAI_ACCESS_TOKEN ? 'injected access token' : 'user')}`
       : 'Not authenticated. Run `eai login` or set EAI_ACCESS_TOKEN.',
   });
+
+  try {
+    const localTypes = await loadObjectTypes(context.root);
+    const backendSummary = collectPublishedStorageBackends(localTypes);
+    if (backendSummary.invalid.length > 0) {
+      throw new Error(
+        `Unsupported storageBackend value(s): ${backendSummary.invalid.join(', ')}. Use postgresql, documentdb, blob, or search.`,
+      );
+    }
+    addCheck(checks, {
+      id: 'backend-config',
+      label: 'Local backend contract',
+      method: 'LOCAL',
+      endpoint: 'src/eai.config/object-types.ts',
+      status: 'passed',
+      details: backendSummary.backends.length > 0
+        ? `Published local backends: ${backendSummary.backends.join(', ')}`
+        : 'No explicit storageBackend declarations found; default PostgreSQL routing remains valid.',
+    });
+  } catch (err) {
+    addCheck(checks, {
+      id: 'backend-config',
+      label: 'Local backend contract',
+      method: 'LOCAL',
+      endpoint: 'src/eai.config/object-types.ts',
+      status: 'failed',
+      details: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   if (!authenticated) {
     const skippedDueToAuth = [
@@ -402,6 +459,22 @@ export async function runContractAudit(
         status: 'skipped',
         details: 'Skipped because the active tenant has no published Object Types remotely.',
       });
+      addCheck(checks, {
+        id: 'resource-cursor',
+        label: 'Resource cursor contract',
+        method: 'GET',
+        endpoint: '/v3/resources/{tenantId}/{objectType}?cursor=...',
+        status: 'skipped',
+        details: 'Skipped because the active tenant has no published Object Types remotely.',
+      });
+      addCheck(checks, {
+        id: 'resource-aggregate',
+        label: 'Resource aggregate contract',
+        method: 'POST',
+        endpoint: '/v3/resources/{tenantId}/{objectType}/aggregate',
+        status: 'skipped',
+        details: 'Skipped because the active tenant has no published Object Types remotely.',
+      });
     } else {
       try {
         const res = await client.listResources(options.resourceType, { limit: 1, page: 1 });
@@ -426,6 +499,37 @@ export async function runContractAudit(
           label: 'Resource list contract',
           method: 'GET',
           endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}`,
+          status: 'failed',
+          details: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      try {
+        const res = await client.listResources(options.resourceType, {
+          limit: 1,
+          cursor: 'opaque-test-cursor',
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const payload = await parseJsonBody(res);
+        if (!isRecord(payload) || (!('nextCursor' in payload) && !('docs' in payload))) {
+          throw new Error('Expected docs[] and optional nextCursor in cursor list response');
+        }
+        addCheck(checks, {
+          id: 'resource-cursor',
+          label: 'Resource cursor contract',
+          method: 'GET',
+          endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}?cursor=...`,
+          status: 'passed',
+          details: `Cursor-aware list response shape: ${describeShape(payload)}`,
+        });
+      } catch (err) {
+        addCheck(checks, {
+          id: 'resource-cursor',
+          label: 'Resource cursor contract',
+          method: 'GET',
+          endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}?cursor=...`,
           status: 'failed',
           details: err instanceof Error ? err.message : String(err),
         });
@@ -461,6 +565,40 @@ export async function runContractAudit(
           details: err instanceof Error ? err.message : String(err),
         });
       }
+
+      try {
+        const res = await client.aggregateResources(options.resourceType, {
+          groupBy: ['id'],
+          metrics: {
+            count: { function: 'count' },
+          },
+          limit: 1,
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const payload = await parseJsonBody(res);
+        if (!isRecord(payload) || !Array.isArray(payload.rows)) {
+          throw new Error('Expected rows[] in aggregate response');
+        }
+        addCheck(checks, {
+          id: 'resource-aggregate',
+          label: 'Resource aggregate contract',
+          method: 'POST',
+          endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}/aggregate`,
+          status: 'passed',
+          details: `rows[] present (${payload.rows.length} row(s) in sample)`,
+        });
+      } catch (err) {
+        addCheck(checks, {
+          id: 'resource-aggregate',
+          label: 'Resource aggregate contract',
+          method: 'POST',
+          endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}/aggregate`,
+          status: 'failed',
+          details: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   } else {
     addCheck(checks, {
@@ -478,6 +616,22 @@ export async function runContractAudit(
       endpoint: '/v3/resources/{tenantId}/query',
       status: 'skipped',
       details: 'Provide --resource-type to exercise query contract.',
+    });
+    addCheck(checks, {
+      id: 'resource-cursor',
+      label: 'Resource cursor contract',
+      method: 'GET',
+      endpoint: '/v3/resources/{tenantId}/{objectType}?cursor=...',
+      status: 'skipped',
+      details: 'Provide --resource-type to exercise cursor contract.',
+    });
+    addCheck(checks, {
+      id: 'resource-aggregate',
+      label: 'Resource aggregate contract',
+      method: 'POST',
+      endpoint: '/v3/resources/{tenantId}/{objectType}/aggregate',
+      status: 'skipped',
+      details: 'Provide --resource-type to exercise aggregate contract.',
     });
   }
 
