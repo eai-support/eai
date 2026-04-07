@@ -50,7 +50,7 @@ program
 
     // Handle --describe flag (output schema and exit)
     if (opts.describe) {
-      describeProgram(program);
+      process.stdout.write(JSON.stringify(describeProgram(program), null, 2) + '\n');
       process.exit(0);
     }
 
@@ -137,7 +137,7 @@ ${chalk.bold('Accessibility:')}
 
 // Handle --describe before parsing (needs to work without command)
 if (process.argv.includes('--describe')) {
-  describeProgram(program);
+  process.stdout.write(JSON.stringify(describeProgram(program), null, 2) + '\n');
   process.exit(0);
 }
 
