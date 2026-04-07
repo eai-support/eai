@@ -2,6 +2,7 @@ import inquirer from 'inquirer';
 import { findProjectRoot, loadEnvFile } from './config.js';
 import { loadTokens, storeTokens, type StoredTokens } from './auth.js';
 import { PlatformAPIClient } from './api.js';
+import { isRecord } from './utils.js';
 
 export const DEFAULT_PUBLIC_API_URL = 'https://dev-api.myenterprise.ai/public';
 
@@ -83,10 +84,6 @@ export function filterTenantAdminEntries(entries: TenantEntry[]): TenantEntry[] 
   return entries.filter((entry) => (
     entry.tenant?.isActive !== false && tenantEntryHasTenantAdminRole(entry)
   ));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isAdminTenantMembership(value: unknown): value is AdminTenantMembership {
@@ -241,8 +238,9 @@ export async function fetchTenantAdminMemberships(publicApiUrl?: string): Promis
 export async function saveActiveTenantSelection(
   tenant: TenantMembership,
   publicApiUrl?: string,
+  existingTokens?: StoredTokens,
 ): Promise<StoredTokens> {
-  const tokens = await loadTokens();
+  const tokens = existingTokens ?? await loadTokens();
   if (!tokens) {
     throw new Error('Not logged in. Run `eai login` to authenticate.');
   }
@@ -254,6 +252,7 @@ export async function saveActiveTenantSelection(
     activeTenantSlug: tenant.slug,
     activeTenantDomain: tenant.domain,
     publicApiUrl: publicApiUrl || tokens.publicApiUrl,
+    membershipsCachedAt: Date.now(),
   };
 
   await storeTokens(next);
@@ -320,13 +319,38 @@ async function promptForTenantSelection(memberships: TenantMembership[]): Promis
   return selected;
 }
 
+const MEMBERSHIP_CACHE_TTL_MS = 15 * 60_000;
+
 export async function resolveActiveTenantContext(options?: {
   projectRoot?: string;
   publicApiUrl?: string;
   interactive?: boolean;
   forcePrompt?: boolean;
+  forceRefresh?: boolean;
   tenantId?: string;
 }): Promise<ActiveTenantContext> {
+  // Short-circuit: if tenant context is cached and TTL is valid, skip Admin API call
+  if (!options?.forceRefresh && !options?.forcePrompt && !options?.tenantId) {
+    const cached = await loadTokens();
+    if (
+      cached?.activeTenantId &&
+      cached.activeTenantName &&
+      cached.membershipsCachedAt &&
+      Date.now() - cached.membershipsCachedAt < MEMBERSHIP_CACHE_TTL_MS
+    ) {
+      const activeTenant: TenantMembership = {
+        id: cached.activeTenantId,
+        displayName: cached.activeTenantName,
+        slug: cached.activeTenantSlug || cached.activeTenantName,
+        domain: cached.activeTenantDomain,
+        isActive: true,
+        roles: ['tenant-admin'],
+      };
+      const publicApiUrl = options?.publicApiUrl || cached.publicApiUrl || DEFAULT_PUBLIC_API_URL;
+      return { publicApiUrl, tokens: cached, activeTenant, memberships: [activeTenant] };
+    }
+  }
+
   const fetched = await fetchTenantAdminMemberships(options?.publicApiUrl || await resolvePublicApiUrl(options?.projectRoot));
   const { tokens, memberships } = fetched;
 
@@ -354,7 +378,7 @@ export async function resolveActiveTenantContext(options?: {
     }
   }
 
-  const updatedTokens = await saveActiveTenantSelection(selected, fetched.publicApiUrl);
+  const updatedTokens = await saveActiveTenantSelection(selected, fetched.publicApiUrl, tokens);
   return {
     publicApiUrl: fetched.publicApiUrl,
     tokens: updatedTokens,
