@@ -5,21 +5,26 @@ description: Example logistics applications you can build with the EAI CLI.
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Logistics systems need visibility across shipments, routes, warehouses, fleets, and delivery exceptions. These scenarios show how to model those operations with the EAI CLI.
+Logistics and supply-chain teams manage requests, suppliers, shipments, exceptions, and service commitments across many participants. This expanded library covers procurement and brokered-service operations as well as core logistics workflows.
 
 ## Scenario Library
 
 <CardGrid>
-  <LinkCard title="Shipment Tracking" href="/eai-cli/scenarios/logistics/shipment-tracking/" description="Track shipments, milestones, delays, and customer updates." />
-  <LinkCard title="Route Optimization" href="/eai-cli/scenarios/logistics/route-optimization/" description="Model route plans, assignments, and delivery changes." />
-  <LinkCard title="Warehouse Management" href="/eai-cli/scenarios/logistics/warehouse-management/" description="Track stock movement, tasks, and warehouse workflows." />
-  <LinkCard title="Fleet Management" href="/eai-cli/scenarios/logistics/fleet-management/" description="Manage vehicles, drivers, maintenance, and availability." />
-  <LinkCard title="Last Mile Delivery" href="/eai-cli/scenarios/logistics/last-mile-delivery/" description="Handle final delivery events, proof, and exceptions." />
+  <LinkCard title="Fleet Management" href="/eai-cli/scenarios/logistics/fleet-management/" description="Build a vehicle tracking, maintenance scheduling, and fuel logging workflow for fleet operations using the EAI CLI." />
+  <LinkCard title="Freight Brokerage Operations" href="/eai-cli/scenarios/logistics/freight-brokerage-operations/" description="Coordinate quotes, load tenders, dispatch, tracking, accessorials, claims, and margin reporting." />
+  <LinkCard title="Last Mile Delivery" href="/eai-cli/scenarios/logistics/last-mile-delivery/" description="Build a delivery assignment, customer notification, and proof of delivery workflow using the EAI CLI." />
+  <LinkCard title="Procurement Operations" href="/eai-cli/scenarios/logistics/procurement-operations/" description="Manage requisitions, RFx events, contracts, purchase orders, supplier reviews, and disputes." />
+  <LinkCard title="Route Optimization" href="/eai-cli/scenarios/logistics/route-optimization/" description="Build a route planning, driver assignment, and delivery window management workflow using the EAI CLI." />
+  <LinkCard title="Shipment Tracking" href="/eai-cli/scenarios/logistics/shipment-tracking/" description="Build a shipment lifecycle, status tracking, and delivery confirmation workflow using the EAI CLI." />
+  <LinkCard title="Supplier Risk Management" href="/eai-cli/scenarios/logistics/supplier-risk-management/" description="Manage supplier assessments, evidence, incidents, remediation, and review cycles." />
+  <LinkCard title="Supply Chain Control Tower" href="/eai-cli/scenarios/logistics/supply-chain-control-tower/" description="Track orders, inventory nodes, milestones, shortages, reallocations, and recovery playbooks." />
+  <LinkCard title="Travel Management Operations" href="/eai-cli/scenarios/logistics/travel-management-operations/" description="Handle trip requests, bookings, approvals, duty-of-care alerts, disruptions, and expense workflows." />
+  <LinkCard title="Warehouse Management" href="/eai-cli/scenarios/logistics/warehouse-management/" description="Build an inventory tracking, pick order, and stock adjustment workflow for warehouse operations using the EAI CLI." />
 </CardGrid>
 
-## Typical Logistics Building Blocks
+## Typical Building Blocks
 
-- Shipments, routes, vehicles, warehouses, and delivery events
-- Region, depot, or client-level tenant separation
-- Document workflows for manifests, proofs, and exception records
-- AI support for summaries, classification, and operational assistance
+- Requisitions, suppliers, orders, shipments, routes, exceptions, and compliance records
+- Operational workflows across procurement, transport, warehousing, and service recovery
+- Document workflows for manifests, RFx packs, proofs, and supplier evidence
+- AI support for triage, ETA reasoning, summarisation, and exception resolution

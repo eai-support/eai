@@ -5,21 +5,26 @@ description: Example finance applications you can build with the EAI CLI.
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Finance applications usually combine strict review workflows, auditable decisions, and document-heavy operations. These scenarios show how to model those flows with clear object types and actions.
+Finance teams combine regulated operations, document-heavy workflows, and approval-driven service delivery. This library now covers both the original finance use cases and the service-operation opportunities from the opportunity map.
 
 ## Scenario Library
 
 <CardGrid>
-  <LinkCard title="KYC Verification" href="/eai-cli/scenarios/finance/kyc-verification/" description="Capture identity checks, approvals, and supporting evidence." />
-  <LinkCard title="Loan Processing" href="/eai-cli/scenarios/finance/loan-processing/" description="Manage applications, reviews, risk checks, and approvals." />
-  <LinkCard title="Transaction Monitoring" href="/eai-cli/scenarios/finance/transaction-monitoring/" description="Track suspicious activity, escalations, and investigation workflows." />
-  <LinkCard title="Insurance Claims" href="/eai-cli/scenarios/finance/insurance-claims/" description="Handle claims intake, review, and payout decisions." />
-  <LinkCard title="Portfolio Management" href="/eai-cli/scenarios/finance/portfolio-management/" description="Model portfolios, holdings, and review workflows." />
+  <LinkCard title="Accounting & Audit Delivery" href="/eai-cli/scenarios/finance/accounting-audit-delivery/" description="Run engagement intake, workpapers, evidence requests, findings, review notes, and reporting in one model." />
+  <LinkCard title="Claims Adjusting Operations" href="/eai-cli/scenarios/finance/claims-adjusting-operations/" description="Coordinate first notice of loss, investigation, reserve management, settlement, and recovery workflows." />
+  <LinkCard title="Fund Administration Operations" href="/eai-cli/scenarios/finance/fund-administration-operations/" description="Coordinate subscriptions, redemptions, NAV production, holdings, fees, and investor servicing." />
+  <LinkCard title="Insurance Brokerage Operations" href="/eai-cli/scenarios/finance/insurance-brokerage-operations/" description="Run client onboarding, market placement, binding, servicing, and renewals from one workflow model." />
+  <LinkCard title="Insurance Claims" href="/eai-cli/scenarios/finance/insurance-claims/" description="Build an insurance claims processing system with adjudication and payment workflows using the EAI CLI." />
+  <LinkCard title="KYC Verification" href="/eai-cli/scenarios/finance/kyc-verification/" description="Build a customer identity verification workflow with document upload and risk assessment using the EAI CLI." />
+  <LinkCard title="Loan Processing" href="/eai-cli/scenarios/finance/loan-processing/" description="Build a loan application and approval workflow with credit checks and disbursement tracking using the EAI CLI." />
+  <LinkCard title="Mortgage Origination Operations" href="/eai-cli/scenarios/finance/mortgage-origination-operations/" description="Manage lead intake, application processing, underwriting, closing, and post-close controls." />
+  <LinkCard title="Portfolio Management" href="/eai-cli/scenarios/finance/portfolio-management/" description="Build an investment portfolio management platform with rebalancing and performance tracking using the EAI CLI." />
+  <LinkCard title="Transaction Monitoring" href="/eai-cli/scenarios/finance/transaction-monitoring/" description="Build a real-time transaction monitoring system with fraud detection and alert management using the EAI CLI." />
 </CardGrid>
 
-## Typical Finance Building Blocks
+## Typical Building Blocks
 
-- Applicants, customers, claims, accounts, transactions, and portfolios
-- Approval states, review actions, and audit-friendly status changes
-- Document intake for statements, evidence, and compliance records
-- AI support for classification, summarisation, and risk triage
+- Applicants, clients, policies, claims, funds, transactions, and audit work products
+- Approval-driven workflows with compliance, reporting, and financial controls
+- Document workflows for statements, claims packs, closing packs, and audit evidence
+- AI support for intake, classification, summarisation, and exception handling

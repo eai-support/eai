@@ -1,0 +1,81 @@
+---
+title: Accounting & Audit Delivery
+description: Run engagement intake, workpapers, evidence requests, findings, review notes, and reporting in one model.
+---
+
+## Business Problem
+
+Accounting and audit teams need visibility across client entities, fiscal periods, evidence requests, workpapers, findings, review notes, and sign-offs. When those records are fragmented, engagements become slow, expensive, and difficult to supervise.
+
+## Required Object Model (24 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Engagement and Entity Context
+
+- `ClientEngagement` — engagement master record
+- `Entity` — audited entity
+- `FiscalPeriod` — period under review
+- `ChartOfAccounts` — account structure
+- `TrialBalance` — trial balance snapshot
+- `JournalEntryBatch` — journal population
+- `ControlMatrix` — documented control set
+- `RiskRegister` — engagement risk log
+
+### Fieldwork and Evidence
+
+- `Workpaper` — audit working paper
+- `PBCRequest` — prepared-by-client request
+- `PBCResponse` — client evidence submission
+- `SamplingPlan` — sample design
+- `ExceptionFinding` — identified exception
+- `MaterialityThreshold` — materiality rule
+- `RevenueSchedule` — revenue support schedule
+- `ExpenseSchedule` — expense support schedule
+
+### Review and Reporting
+
+- `BalanceSheetLine` — line-item testing unit
+- `AuditIssue` — issue requiring resolution
+- `ReviewNote` — reviewer feedback
+- `Signoff` — formal sign-off
+- `ReportDraft` — draft deliverable
+- `ManagementRepresentationLetter` — representation evidence
+- `FinalOpinion` — issued opinion
+- `EngagementInvoice` — billing milestone
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Summarise PBC responses and map evidence to the relevant workpaper or account balance.
+- Highlight repeated findings, unresolved review notes, and accounts with weak supporting evidence.
+- Generate first-pass issue summaries and partner-ready engagement status reports.
+
+## Why This Scenario Is High-Value
+
+A structured audit-delivery platform reduces fieldwork friction and improves review discipline. It also creates a reusable knowledge base for recurring engagements and cross-entity controls work.

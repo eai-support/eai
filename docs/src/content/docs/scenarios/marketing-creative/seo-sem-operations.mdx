@@ -1,0 +1,79 @@
+---
+title: SEO / SEM Operations
+description: Manage keyword strategy, technical issues, content briefs, ad groups, experiments, and reporting.
+---
+
+## Business Problem
+
+Search marketing teams balance keyword planning, technical SEO, content operations, paid search, experiments, and performance reporting. The workflow spans many recurring tasks that are easy to lose in generic project tools.
+
+## Required Object Model (22 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Strategy and Content Planning
+
+- `ClientSite` — client site
+- `KeywordCluster` — keyword cluster
+- `ContentBrief` — content brief
+- `LandingPage` — landing page
+- `TechnicalIssue` — technical SEO issue
+- `BacklinkOpportunity` — backlink opportunity
+- `SearchCampaign` — paid search campaign
+- `AdGroup` — ad group
+
+### Execution and Experimentation
+
+- `Keyword` — search keyword
+- `AdVariant` — ad variation
+- `BidRule` — bidding rule
+- `Budget` — search budget
+- `ConversionGoal` — conversion goal
+- `Experiment` — SEO or SEM experiment
+- `SERPReport` — SERP tracking report
+- `CompetitorSnapshot` — competitor snapshot
+
+### Governance and Reporting
+
+- `ContentCalendar` — content calendar
+- `Approval` — approval step
+- `PerformanceDashboard` — dashboard snapshot
+- `OptimizationTask` — optimisation task
+- `TrackingTag` — tracking implementation
+- `QAResult` — quality assurance result
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Classify technical issues, briefs, and search terms into the right optimization queues.
+- Summarise experiment outcomes and competitor changes before budget decisions.
+- Generate next-best-action recommendations from rankings, spend, and conversion patterns.
+
+## Why This Scenario Is High-Value
+
+Search teams need a repeatable operating rhythm across planning, execution, and reporting. This scenario makes SEO and SEM work measurable and easier to scale.

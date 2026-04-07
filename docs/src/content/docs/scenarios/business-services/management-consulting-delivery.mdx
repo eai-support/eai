@@ -1,0 +1,79 @@
+---
+title: Management Consulting Delivery
+description: Manage engagements, workstreams, interviews, analysis, recommendations, milestones, and benefit cases.
+---
+
+## Business Problem
+
+Consulting teams need to coordinate hypotheses, interviews, data requests, analyses, findings, steering committees, recommendations, and benefit tracking across many workstreams. The workflow is structured enough to model but too complex for generic project tools alone.
+
+## Required Object Model (22 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Engagement and Workstream Setup
+
+- `ClientEngagement` — consulting engagement
+- `Workstream` — workstream record
+- `Hypothesis` — working hypothesis
+- `InterviewPlan` — planned interview program
+- `InterviewNote` — interview note
+- `DataRequest` — client data request
+- `DataSet` — received data set
+- `AnalysisModel` — analysis model
+
+### Insight and Decision Workflow
+
+- `Finding` — insight finding
+- `Recommendation` — recommended action
+- `SteerCoMeeting` — steering committee meeting
+- `DecisionLog` — decision record
+- `Deliverable` — client deliverable
+- `RiskIssue` — engagement risk
+- `Dependency` — delivery dependency
+- `ActionTracker` — action item
+
+### Commercial and Staffing Control
+
+- `BenefitCase` — expected value case
+- `Milestone` — delivery milestone
+- `StaffingPlan` — staffing plan
+- `Consultant` — consultant record
+- `Proposal` — proposal record
+- `ChangeRequest` — scope change request
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Summarise interview notes and client data findings into structured hypotheses and recommendations.
+- Classify deliverables and working papers by workstream, milestone, and steering committee relevance.
+- Generate action trackers and risk summaries from steering committee decisions and scope changes.
+
+## Why This Scenario Is High-Value
+
+Consulting firms scale by making delivery repeatable without making it rigid. This scenario creates a reusable operating model for complex advisory work.

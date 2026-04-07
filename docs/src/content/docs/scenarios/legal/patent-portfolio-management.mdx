@@ -1,0 +1,80 @@
+---
+title: Patent Portfolio Management
+description: Track invention intake, prosecution, renewals, licensing, and competitive watch workflows.
+---
+
+## Business Problem
+
+Patent teams need a model that covers disclosures, prior-art work, filings, office actions, jurisdictions, maintenance fees, licenses, and portfolio reviews. Those workflows span many years and many external parties.
+
+## Required Object Model (23 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Invention and Filing Intake
+
+- `PatentFamily` — family record
+- `InventionDisclosure` — disclosure intake
+- `Inventor` — inventor record
+- `PriorArtSearch` — search assignment
+- `PatentabilityOpinion` — opinion record
+- `FilingStrategy` — filing strategy
+- `Application` — application filing
+- `ClaimSet` — claim version
+
+### Prosecution Workflow
+
+- `OfficeAction` — office action
+- `ResponseDraft` — response draft
+- `ExaminerInterview` — interview record
+- `Jurisdiction` — country or office
+- `MaintenanceFee` — maintenance obligation
+- `DocketItem` — docket event
+- `OppositionProceeding` — opposition or challenge
+- `LicenseAgreement` — licensing record
+
+### Portfolio Governance
+
+- `AssignmentRecord` — ownership assignment
+- `RenewalDecision` — renew or abandon decision
+- `BudgetLine` — budget item
+- `OutsideCounsel` — outside counsel record
+- `EvidenceArtifact` — supporting evidence
+- `PortfolioReview` — portfolio review cycle
+- `CompetitiveWatch` — competitor monitoring record
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Classify incoming office actions and surface deadlines, claim issues, and jurisdiction-specific tasks.
+- Summarise family status, maintenance exposure, and licensing relevance for portfolio reviews.
+- Generate competitive watch notes from new filings and assigned inventor or competitor patterns.
+
+## Why This Scenario Is High-Value
+
+Patent operations require disciplined tracking across long time horizons. This scenario helps IP teams keep prosecution, renewal, and licensing work connected instead of scattered across docket systems and email threads.

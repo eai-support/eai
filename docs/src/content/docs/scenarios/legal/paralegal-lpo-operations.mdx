@@ -1,0 +1,80 @@
+---
+title: Paralegal / LPO Operations
+description: Handle matter intake, document review, deadlines, filings, quality checks, and billing support.
+---
+
+## Business Problem
+
+Paralegal and legal-process outsourcing teams manage high-volume document work, matter coordination, deadlines, filings, review decisions, and billing support. Their value depends on throughput, consistency, and a defensible audit trail.
+
+## Required Object Model (23 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Matter Intake and Planning
+
+- `ClientMatter` — matter record
+- `MatterType` — matter category
+- `IntakeRequest` — incoming work request
+- `ConflictCheck` — conflict review
+- `Party` — client or counterparty
+- `DocumentCollection` — document set
+- `ReviewBatch` — assigned review batch
+- `ReviewDecision` — review disposition
+
+### Filing and Delivery Workflow
+
+- `PrivilegeLog` — privilege entry
+- `ResearchMemo` — research output
+- `Deadline` — critical deadline
+- `CourtFiling` — filing record
+- `ServicePacket` — service package
+- `HearingEvent` — hearing or appearance
+- `VendorAssignment` — outsourced task
+- `BillingEntry` — billable entry
+
+### Quality and Oversight
+
+- `SpendBudget` — budget tracker
+- `QAReview` — quality review
+- `KnowledgeArticle` — reusable knowledge note
+- `TaskQueue` — operational queue
+- `Escalation` — escalated matter issue
+- `CommunicationLog` — matter communications
+- `ClosureChecklist` — close-out checklist
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Classify incoming legal documents into the right matter and review batch.
+- Summarise review progress, filing deadlines, and unresolved escalations for supervisors.
+- Generate first-pass privilege or issue labels for QA review rather than final determination.
+
+## Why This Scenario Is High-Value
+
+LPO-style work succeeds when tasks are standardised and quality is measurable. This scenario gives legal teams an operating backbone for high-volume delivery without losing matter context.

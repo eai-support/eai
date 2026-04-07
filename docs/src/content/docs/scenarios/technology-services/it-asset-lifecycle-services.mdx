@@ -1,0 +1,79 @@
+---
+title: IT Asset Lifecycle Services
+description: Manage requests, procurement, assignment, maintenance, refresh, compliance, and disposal workflows.
+---
+
+## Business Problem
+
+Asset service teams need a model that spans requests, procurement, stock, assignment, warranties, maintenance, repairs, refresh planning, and disposal. Those workflows cross finance, IT operations, and security.
+
+## Required Object Model (22 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Request and Inventory Setup
+
+- `Client` — client organisation
+- `AssetRequest` — asset request
+- `AssetModel` — asset model
+- `Supplier` — supplier
+- `PurchaseOrder` — purchase order
+- `Delivery` — delivery event
+- `InventoryItem` — inventory item
+- `ConfigurationProfile` — configuration profile
+
+### Assignment and Support Workflow
+
+- `Assignment` — asset assignment
+- `License` — software license
+- `Warranty` — warranty record
+- `MaintenanceContract` — maintenance contract
+- `Incident` — asset incident
+- `RepairOrder` — repair order
+- `ReplacementPlan` — replacement plan
+- `DisposalRecord` — asset disposal record
+
+### Governance and Cost Control
+
+- `SecurityCheck` — security check
+- `ComplianceAudit` — compliance audit
+- `CostCenter` — cost center
+- `StockLocation` — stock location
+- `UtilizationMetric` — utilisation metric
+- `RefreshCycle` — refresh cycle
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Classify requests and inventory updates by asset class, urgency, and approval path.
+- Summarise refresh and repair demand before procurement cycles.
+- Generate compliance and disposal worklists from asset age, utilisation, and security checks.
+
+## Why This Scenario Is High-Value
+
+Asset services become expensive when the lifecycle is fragmented. This scenario gives service teams a reusable model from request to retirement.
