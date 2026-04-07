@@ -81,6 +81,7 @@ export default defineConfig({
           label: 'Scenarios',
           collapsed: true,
           items: [
+            { label: 'All Scenarios', slug: 'scenarios' },
             { label: 'Healthcare', autogenerate: { directory: 'scenarios/healthcare' } },
             { label: 'Finance', autogenerate: { directory: 'scenarios/finance' } },
             { label: 'Government', autogenerate: { directory: 'scenarios/government' } },
