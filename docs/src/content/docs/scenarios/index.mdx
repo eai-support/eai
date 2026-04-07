@@ -1,0 +1,43 @@
+---
+title: Scenarios
+description: Browse industry-specific example applications you can build with the EAI CLI.
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+The scenario library shows how the EAI CLI can be used to build vertical applications across industries. Each industry page gives you a simple starting point, highlights the main use cases, and links to the full scenario walkthroughs.
+
+## Browse by Industry
+
+<CardGrid>
+  <LinkCard title="Healthcare" href="/eai-cli/scenarios/healthcare/" description="Patient intake, clinical trials, telemedicine, pharmacy inventory, and mental health." />
+  <LinkCard title="Finance" href="/eai-cli/scenarios/finance/" description="KYC, loan processing, transaction monitoring, claims, and portfolio workflows." />
+  <LinkCard title="Government" href="/eai-cli/scenarios/government/" description="Citizen services, permits, records, grants, and regulatory compliance." />
+  <LinkCard title="Retail" href="/eai-cli/scenarios/retail/" description="Product compliance, loyalty, inventory, returns, and supplier onboarding." />
+  <LinkCard title="Education" href="/eai-cli/scenarios/education/" description="Admissions, course management, accreditation, analytics, and research grants." />
+  <LinkCard title="Real Estate" href="/eai-cli/scenarios/real-estate/" description="Property management, leasing, inspections, maintenance, and CRM workflows." />
+  <LinkCard title="Manufacturing" href="/eai-cli/scenarios/manufacturing/" description="Quality control, production, defects, supply chain, and equipment maintenance." />
+  <LinkCard title="Legal" href="/eai-cli/scenarios/legal/" description="Case management, contract review, compliance, e-discovery, and billing workflows." />
+  <LinkCard title="Non-Profit" href="/eai-cli/scenarios/non-profit/" description="Donors, beneficiaries, volunteer coordination, impact measurement, and grant reporting." />
+  <LinkCard title="Logistics" href="/eai-cli/scenarios/logistics/" description="Shipment tracking, route optimisation, warehousing, fleet, and last-mile delivery." />
+</CardGrid>
+
+## How to Use These Pages
+
+1. Pick an industry that matches the kind of application you are building.
+2. Open the industry landing page to see the main scenario categories.
+3. Choose a scenario page for a more detailed walkthrough with object types, CLI steps, and example commands.
+
+## Common Pattern Across All Scenarios
+
+Most scenario walkthroughs follow the same CLI path:
+
+```bash
+eai login
+eai env pull --include-secrets
+eai types validate
+eai types seed
+eai dev
+```
+
+You can adapt the object types, workflows, and integrations to fit your own domain while keeping the same overall development flow.
