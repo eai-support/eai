@@ -75,12 +75,15 @@ describe('runContractAudit', () => {
       http.get('https://test-api.example.com/health', () => {
         return HttpResponse.json({ status: 'ok' });
       }),
-      http.get('https://test-api.example.com/v3/resources/tenant-1/customer', () => {
+      http.get('https://test-api.example.com/v3/resources/tenant-1/customer', ({ request }) => {
+        const url = new URL(request.url);
+        const cursor = url.searchParams.get('cursor');
         return HttpResponse.json({
           docs: [],
           totalDocs: 0,
           page: 1,
           totalPages: 1,
+          nextCursor: cursor ? null : null,
         });
       }),
       http.get('https://test-api.example.com/v3/resources/schema/tenant-1', () => {
@@ -99,6 +102,9 @@ describe('runContractAudit', () => {
       }),
       http.post('https://test-api.example.com/v3/resources/tenant-1/query', () => {
         return HttpResponse.json({ docs: [] });
+      }),
+      http.post('https://test-api.example.com/v3/resources/tenant-1/customer/aggregate', () => {
+        return HttpResponse.json({ rows: [], totalRows: 0 });
       }),
       http.post('https://test-api.example.com/v3/orchestrate', async ({ request }) => {
         const body = await request.json() as {
@@ -150,10 +156,13 @@ describe('runContractAudit', () => {
     });
 
     expect(report.summary.failed).toBe(0);
-    expect(report.summary.passed).toBeGreaterThanOrEqual(8);
+    expect(report.summary.passed).toBeGreaterThanOrEqual(11);
     expect(report.summary.skipped).toBeGreaterThan(0);
+    expect(report.checks.find((check) => check.id === 'backend-config')?.status).toBe('passed');
     expect(report.checks.find((check) => check.id === 'schema')?.status).toBe('passed');
     expect(report.checks.find((check) => check.id === 'resource-get')?.status).toBe('passed');
+    expect(report.checks.find((check) => check.id === 'resource-cursor')?.status).toBe('passed');
+    expect(report.checks.find((check) => check.id === 'resource-aggregate')?.status).toBe('passed');
     expect(report.checks.find((check) => check.id === 'resource-mutations')?.status).toBe('skipped');
   });
 
@@ -167,6 +176,7 @@ describe('runContractAudit', () => {
     const report = await runContractAudit({});
 
     expect(report.summary.failed).toBe(1);
+    expect(report.checks.find((check) => check.id === 'backend-config')?.status).toBe('passed');
     expect(report.checks.find((check) => check.id === 'auth')?.status).toBe('failed');
     expect(report.checks.find((check) => check.id === 'current-user')?.status).toBe('skipped');
     expect(report.checks.find((check) => check.id === 'schema')?.status).toBe('skipped');
