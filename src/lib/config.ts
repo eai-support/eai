@@ -11,19 +11,6 @@ import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 
-export interface EAIProjectConfig {
-  appName: string;
-  displayName: string;
-  workflowId: string;
-  environment: string;
-  publicApiUrl: string;
-  entra: {
-    tenantName: string;
-    tenantId: string;
-    clientId?: string;
-  };
-}
-
 export interface ObjectTypeProperty {
   name: string;
   type: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'json' | 'file' | 'relationship';
@@ -206,27 +193,3 @@ function stripTypeScript(source: string): string {
   return js;
 }
 
-/**
- * Resolve environment-specific config by reading .env.local and env vars.
- */
-export async function resolveProjectConfig(projectRoot: string): Promise<EAIProjectConfig | null> {
-  const envVars = await loadEnvFile(projectRoot);
-
-  // Merge with process.env (process.env takes precedence)
-  const env = { ...envVars, ...process.env };
-
-  const appName = env.NEXT_PUBLIC_APP_NAME;
-  if (!appName) return null;
-
-  return {
-    appName,
-    displayName: appName,
-    workflowId: env[`WORKFLOW_${appName.toUpperCase()}_ID`] || env.WORKFLOW_DEFAULT_ID || '',
-    environment: env.EAI_ENV || 'dev',
-    publicApiUrl: env.BASE_URL_PUBLIC_API || '',
-    entra: {
-      tenantName: env.ENTRA_TENANT_NAME || '',
-      tenantId: env.ENTRA_TENANT_ID || '',
-    },
-  };
-}

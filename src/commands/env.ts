@@ -19,7 +19,7 @@ import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 const exec = promisify(execFile);
 
-const APP_CONFIG_STORE = 'appcs-demo-eai-dev';
+const APP_CONFIG_STORE = process.env.EAI_APP_CONFIG_STORE ?? 'appcs-demo-eai-dev';
 
 export const envCommand = new Command('env')
   .description('Manage environment variables');
@@ -36,7 +36,6 @@ envCommand
 Examples:
   $ eai env pull
   $ eai env pull --env prod --include-secrets
-  $ eai env pull --label trial-portal
   `)
   .action(async (options) => {
     const root = await findProjectRoot();
@@ -46,7 +45,10 @@ Examples:
 
     // Determine label from existing env or flag
     const existingEnv = await loadEnvFile(root);
-    const label = options.label || existingEnv.NEXT_PUBLIC_APP_NAME || 'trial-portal';
+    const label = options.label || existingEnv.NEXT_PUBLIC_APP_NAME;
+    if (!label) {
+      exitWithError(ErrorCode.E001);
+    }
 
     const spinner = ora(`Pulling config from ${APP_CONFIG_STORE} (label: ${label})`).start();
 

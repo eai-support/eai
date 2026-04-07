@@ -5,7 +5,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { loadTokens, isAuthenticated } from '../lib/auth.js';
-import { findProjectRoot, resolveProjectConfig } from '../lib/config.js';
+import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import { fetchTenantAdminMemberships, getStoredActiveTenant } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 
@@ -52,15 +52,14 @@ export const whoamiCommand = new Command('whoami')
     // Show project context if in a vertical project
     const root = await findProjectRoot();
     if (root) {
-      const config = await resolveProjectConfig(root);
-      if (config) {
+      const env = await loadEnvFile(root);
+      const appName = env.NEXT_PUBLIC_APP_NAME;
+      if (appName) {
         out.blank();
         out.heading('Project');
         out.table([
-          ['App Name', chalk.cyan(config.appName)],
-          ['Environment', config.environment],
-          ['PublicAPI', config.publicApiUrl || chalk.dim('not set')],
-          ['Workflow', config.workflowId || chalk.dim('not set')],
+          ['App Name', chalk.cyan(appName)],
+          ['PublicAPI', env.BASE_URL_PUBLIC_API || chalk.dim('not set')],
         ]);
       }
     }

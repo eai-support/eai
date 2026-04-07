@@ -13,6 +13,7 @@ import { findProjectRoot, loadEnvFile, loadObjectTypes } from '../lib/config.js'
 import { isAuthenticated, loadTokens } from '../lib/auth.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import { normalizeTenantEntries, resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { isRecord } from '../lib/utils.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
@@ -56,10 +57,6 @@ export interface ContractAuditReport {
     failed: number;
     skipped: number;
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 async function loadVerifyEnvironment(options?: { tenantId?: string }): Promise<VerifyEnvironment> {

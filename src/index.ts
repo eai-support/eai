@@ -30,6 +30,7 @@ import { deployCommand } from './commands/deploy.js';
 import { verifyCommand, doctorCommand } from './commands/verify.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { updateCommand } from './commands/update.js';
+import { provisionCommand } from './commands/provision.js';
 import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
 import { describeProgram } from './lib/schema-builder.js';
@@ -86,6 +87,7 @@ program.addCommand(verifyCommand);
 program.addCommand(doctorCommand);
 program.addCommand(whoamiCommand);
 program.addCommand(updateCommand);
+program.addCommand(provisionCommand);
 
 // Custom help footer
 program.addHelpText('after', `

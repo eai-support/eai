@@ -4,7 +4,7 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { browserLogin, clearTokens } from '../lib/auth.js';
+import { browserLogin, clearTokens, storeTokens } from '../lib/auth.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 
@@ -43,6 +43,9 @@ What happens next:
         DEFAULT_CLIENT_ID,
         options.scope,
       );
+
+      // Store bare tokens now so the cache is populated for the tenant resolution call
+      await storeTokens(tokens);
 
       out.blank();
       out.success(`Authenticated as ${chalk.bold(tokens.upn || 'user')}`);

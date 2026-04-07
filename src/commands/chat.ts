@@ -5,11 +5,8 @@
 import { Command } from 'commander';
 import { randomUUID } from 'node:crypto';
 import chalk from 'chalk';
-import { findProjectRoot } from '../lib/config.js';
-import { PlatformAPIClient } from '../lib/api.js';
-import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { resolveCommandContext } from '../lib/context.js';
 import * as out from '../lib/output.js';
-import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 export const chatCommand = new Command('chat')
   .description('Chat with AI workflows');
@@ -24,16 +21,7 @@ chatCommand
   .option('--stage <stage>', 'Chat stage', 'chat')
   .option('--conversation <id>', 'Conversation ID (auto-generated if omitted)')
   .action(async (message, options) => {
-    const root = await findProjectRoot();
-    if (!root) { exitWithError(ErrorCode.E001); }
-
-    const publicApiUrl = await resolvePublicApiUrl(root);
-    const context = await resolveActiveTenantContext({
-      projectRoot: root,
-      publicApiUrl,
-      interactive: true,
-    });
-    const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
+    const { client } = await resolveCommandContext();
     const conversationId = options.conversation || randomUUID();
 
     out.info(`Conversation: ${chalk.dim(conversationId)}`);
@@ -72,16 +60,7 @@ chatCommand
   .option('--stage <stage>', 'Chat stage', 'chat')
   .option('--conversation <id>', 'Conversation ID (auto-generated if omitted)')
   .action(async (message, options) => {
-    const root = await findProjectRoot();
-    if (!root) { exitWithError(ErrorCode.E001); }
-
-    const publicApiUrl = await resolvePublicApiUrl(root);
-    const context = await resolveActiveTenantContext({
-      projectRoot: root,
-      publicApiUrl,
-      interactive: true,
-    });
-    const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
+    const { client } = await resolveCommandContext();
     const conversationId = options.conversation || randomUUID();
 
     out.info(`Streaming conversation: ${chalk.dim(conversationId)}`);
