@@ -173,6 +173,63 @@ async function createClient(options?: {
   };
 }
 
+export async function loadJsonInput(options: { data?: string; file?: string }, fieldHint = '--data or --file'): Promise<unknown> {
+  if (options.data) {
+    return JSON.parse(options.data);
+  }
+  if (options.file) {
+    const { readFile } = await import('node:fs/promises');
+    return JSON.parse(await readFile(options.file, 'utf-8'));
+  }
+  throw new Error(`Missing ${fieldHint}`);
+}
+
+export function normalizeBatchCreateItems(payload: unknown): Array<{ data: Record<string, unknown> }> {
+  if (Array.isArray(payload)) {
+    return payload.map((item) => ({ data: item as Record<string, unknown> }));
+  }
+  if (isRecord(payload) && Array.isArray(payload.items)) {
+    return payload.items.map((item) => (
+      isRecord(item) && isRecord(item.data) ? { data: item.data } : { data: item as Record<string, unknown> }
+    ));
+  }
+  if (isRecord(payload)) {
+    return [{ data: payload }];
+  }
+  throw new Error('Batch create payload must be an object, array, or { items } wrapper');
+}
+
+export function normalizeBatchUpdateItems(payload: unknown): Array<{ id: string; data: Record<string, unknown>; version: number }> {
+  const items = Array.isArray(payload)
+    ? payload
+    : isRecord(payload) && Array.isArray(payload.items)
+      ? payload.items
+      : null;
+  if (!items) {
+    throw new Error('Batch update payload must be an array or { items } wrapper');
+  }
+  return items.map((item) => {
+    if (!isRecord(item) || typeof item.id !== 'string' || !isRecord(item.data) || typeof item.version !== 'number') {
+      throw new Error('Batch update items require { id, data, version }');
+    }
+    return {
+      id: item.id,
+      data: item.data,
+      version: item.version,
+    };
+  });
+}
+
+export function normalizeBatchDeleteIds(payload: unknown): string[] {
+  if (Array.isArray(payload)) {
+    return payload.map(String);
+  }
+  if (isRecord(payload) && Array.isArray(payload.ids)) {
+    return payload.ids.map(String);
+  }
+  throw new Error('Batch delete payload must be an array of ids or { ids }');
+}
+
 export const resourcesCommand = new Command('resources')
   .description('CRUD operations on platform resources');
 
@@ -185,6 +242,8 @@ resourcesCommand
   .option('--page <n>', 'Page number', '1')
   .option('--limit <n>', 'Items per page', '20')
   .option('--sort <field>', 'Sort field (prefix with - for descending)', '-created_at')
+  .option('--where <json>', 'Structured where filter as JSON')
+  .option('--cursor <cursor>', 'Opaque cursor from a previous response')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', `
@@ -204,6 +263,8 @@ Examples:
         page: parseInt(options.page),
         limit: parseInt(options.limit),
         sort: options.sort,
+        where: options.where ? JSON.parse(options.where) : undefined,
+        cursor: options.cursor,
       });
 
       if (!res.ok) {
@@ -223,6 +284,7 @@ Examples:
         totalDocs: number;
         page: number;
         totalPages: number;
+        nextCursor?: string | null;
       };
 
       if (options.format === 'json') {
@@ -231,7 +293,8 @@ Examples:
           resources: data.docs,
           totalDocs: data.totalDocs,
           page: data.page,
-          totalPages: data.totalPages
+          totalPages: data.totalPages,
+          nextCursor: data.nextCursor ?? null,
         });
         return;
       }
@@ -250,8 +313,152 @@ Examples:
           .join(', ');
         out.info(`${chalk.cyan(doc.id)} — ${preview}`);
       }
+      if (data.nextCursor) {
+        out.dim(`nextCursor=${data.nextCursor}`);
+      }
     } catch (err) {
       failCommand(spinner, err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+resourcesCommand
+  .command('batch-create <type>')
+  .description('Create resources in bulk')
+  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--data <json>', 'Batch payload as JSON array or object')
+  .option('--file <path>', 'Read batch payload from JSON file')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (type, options) => {
+    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
+    if (options.json) options.format = 'json';
+
+    try {
+      const payload = await loadJsonInput(options);
+      const items = normalizeBatchCreateItems(payload);
+      const spinner = options.format === 'json' ? null : ora(`Batch creating ${type}...`).start();
+      const res = await ctx.client.batchCreateResources(type, items);
+      if (!res.ok) {
+        failCommand(spinner, `${res.status} ${res.statusText}`);
+        process.exit(1);
+      }
+      const data = await res.json();
+      if (options.format === 'json') {
+        out.json(data);
+      } else {
+        spinner!.succeed(`Batch create complete (${data.succeeded} succeeded, ${data.failed} failed)`);
+      }
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+resourcesCommand
+  .command('batch-update <type>')
+  .description('Update resources in bulk')
+  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--data <json>', 'Batch payload as JSON array or object')
+  .option('--file <path>', 'Read batch payload from JSON file')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (type, options) => {
+    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
+    if (options.json) options.format = 'json';
+
+    try {
+      const payload = await loadJsonInput(options);
+      const items = normalizeBatchUpdateItems(payload);
+      const spinner = options.format === 'json' ? null : ora(`Batch updating ${type}...`).start();
+      const res = await ctx.client.batchUpdateResources(type, items);
+      if (!res.ok) {
+        failCommand(spinner, `${res.status} ${res.statusText}`);
+        process.exit(1);
+      }
+      const data = await res.json();
+      if (options.format === 'json') {
+        out.json(data);
+      } else {
+        spinner!.succeed(`Batch update complete (${data.succeeded} succeeded, ${data.failed} failed)`);
+      }
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+resourcesCommand
+  .command('batch-delete <type>')
+  .description('Delete resources in bulk')
+  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--ids <csv>', 'Comma-separated ids to delete')
+  .option('--data <json>', 'Batch payload as JSON array or object')
+  .option('--file <path>', 'Read batch payload from JSON file')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (type, options) => {
+    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
+    if (options.json) options.format = 'json';
+
+    try {
+      const ids = options.ids
+        ? String(options.ids).split(',').map((value) => value.trim()).filter(Boolean)
+        : normalizeBatchDeleteIds(await loadJsonInput(options));
+      const spinner = options.format === 'json' ? null : ora(`Batch deleting ${type}...`).start();
+      const res = await ctx.client.batchDeleteResources(type, ids);
+      if (!res.ok) {
+        failCommand(spinner, `${res.status} ${res.statusText}`);
+        process.exit(1);
+      }
+      const data = await res.json();
+      if (options.format === 'json') {
+        out.json(data);
+      } else {
+        spinner!.succeed(`Batch delete complete (${data.succeeded} succeeded, ${data.failed} failed)`);
+      }
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+resourcesCommand
+  .command('aggregate <type>')
+  .description('Run a server-side aggregate query')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .requiredOption('--group-by <fields>', 'Comma-separated groupBy fields')
+  .requiredOption('--metrics <json>', 'Aggregate metrics JSON')
+  .option('--where <json>', 'Structured where filter as JSON')
+  .option('--limit <n>', 'Max summary rows', '1000')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (type, options) => {
+    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
+    if (options.json) options.format = 'json';
+
+    try {
+      const res = await ctx.client.aggregateResources(type, {
+        groupBy: String(options.groupBy).split(',').map((value) => value.trim()).filter(Boolean),
+        metrics: JSON.parse(options.metrics),
+        where: options.where ? JSON.parse(options.where) : undefined,
+        limit: parseInt(options.limit),
+      });
+      if (!res.ok) {
+        out.error(`${res.status} ${res.statusText}`);
+        process.exit(1);
+      }
+      const data = await res.json() as { rows: Array<Record<string, unknown>>; totalRows: number };
+      if (options.format === 'json') {
+        out.json(data);
+      } else {
+        out.success(`${data.totalRows} aggregate rows`);
+        for (const row of data.rows.slice(0, 20)) {
+          out.info(JSON.stringify(row));
+        }
+      }
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });

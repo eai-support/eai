@@ -10,6 +10,7 @@ import { getAccessToken } from './auth.js';
 
 type PlatformBackend = 'payload' | 'admin' | 'mid';
 type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+type ResourceWhere = Record<string, unknown>;
 
 export interface ChildTenantBootstrapRequest {
   userOid: string;
@@ -142,15 +143,38 @@ export class PlatformAPIClient {
 
   async listResources(
     objectType: string,
-    options?: { page?: number; limit?: number; sort?: string },
+    options?: {
+      page?: number;
+      limit?: number;
+      sort?: string;
+      where?: ResourceWhere;
+      cursor?: string;
+    },
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
     const params = new URLSearchParams();
     if (options?.page) params.set('page', String(options.page));
     if (options?.limit) params.set('limit', String(options.limit));
     if (options?.sort) params.set('sort', options.sort);
+    if (options?.where) params.set('where', JSON.stringify(options.where));
+    if (options?.cursor) params.set('cursor', options.cursor);
     const qs = params.toString();
     const url = `${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}${qs ? `?${qs}` : ''}`;
+    return fetch(url, { headers: await this.headers() });
+  }
+
+  async streamResources(
+    objectType: string,
+    options?: { limit?: number; sort?: string; where?: ResourceWhere; cursor?: string },
+  ): Promise<Response> {
+    const normalizedObjectType = toObjectTypeSlug(objectType);
+    const params = new URLSearchParams();
+    if (options?.limit) params.set('limit', String(options.limit));
+    if (options?.sort) params.set('sort', options.sort);
+    if (options?.where) params.set('where', JSON.stringify(options.where));
+    if (options?.cursor) params.set('cursor', options.cursor);
+    const qs = params.toString();
+    const url = `${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/stream${qs ? `?${qs}` : ''}`;
     return fetch(url, { headers: await this.headers() });
   }
 
@@ -190,6 +214,56 @@ export class PlatformAPIClient {
     return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/${id}`, {
       method: 'DELETE',
       headers: await this.headers(),
+    });
+  }
+
+  async batchCreateResources(
+    objectType: string,
+    items: Array<{ data: Record<string, unknown> }>,
+  ): Promise<Response> {
+    const normalizedObjectType = toObjectTypeSlug(objectType);
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/batch/create`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({ items }),
+    });
+  }
+
+  async batchUpdateResources(
+    objectType: string,
+    items: Array<{ id: string; data: Record<string, unknown>; version: number }>,
+  ): Promise<Response> {
+    const normalizedObjectType = toObjectTypeSlug(objectType);
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/batch/update`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({ items }),
+    });
+  }
+
+  async batchDeleteResources(objectType: string, ids: string[]): Promise<Response> {
+    const normalizedObjectType = toObjectTypeSlug(objectType);
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/batch/delete`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({ ids }),
+    });
+  }
+
+  async aggregateResources(
+    objectType: string,
+    request: {
+      groupBy: string[];
+      metrics: Record<string, unknown>;
+      where?: ResourceWhere;
+      limit?: number;
+    },
+  ): Promise<Response> {
+    const normalizedObjectType = toObjectTypeSlug(objectType);
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/aggregate`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify(request),
     });
   }
 
