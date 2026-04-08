@@ -3,12 +3,11 @@
  */
 
 import { Command } from 'commander';
-import ora from 'ora';
 import type { Ora } from 'ora';
 import chalk from 'chalk';
-import { findProjectRoot } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
-import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
+import { isRecord, toObjectTypeSlug } from '../lib/utils.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
@@ -27,10 +26,6 @@ interface PublishedTypeMatch {
   requestedSlug: string;
   publishedTypeNames: string[];
   matchedType?: SchemaTypeSummary;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function extractPublishedSchemaTypes(payload: unknown): SchemaTypeSummary[] {
@@ -95,16 +90,6 @@ function failCommand(spinner: Ora | null, message: string): void {
   }
 }
 
-function toObjectTypeSlug(objectType: string): string {
-  return objectType
-    .trim()
-    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
-    .replace(/[_\s]+/g, '-')
-    .replace(/-+/g, '-')
-    .toLowerCase();
-}
-
 export function matchPublishedType(
   requestedType: string,
   schemaTypes: SchemaTypeSummary[],
@@ -148,29 +133,6 @@ async function describeMissingPublishedType(
   }
 
   return buildMissingPublishedTypeMessage(match);
-}
-
-async function createClient(options?: {
-  tenantId?: string;
-  interactive?: boolean;
-}): Promise<{ client: PlatformAPIClient; tenantId: string }> {
-  const root = await findProjectRoot();
-  if (!root) {
-    exitWithError(ErrorCode.E001);
-  }
-
-  const publicApiUrl = await resolvePublicApiUrl(root);
-  const context = await resolveActiveTenantContext({
-    projectRoot: root,
-    publicApiUrl,
-    interactive: options?.interactive ?? true,
-    tenantId: options?.tenantId,
-  });
-
-  return {
-    client: new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id),
-    tenantId: context.activeTenant.id,
-  };
 }
 
 export async function loadJsonInput(options: { data?: string; file?: string }, fieldHint = '--data or --file'): Promise<unknown> {
@@ -254,10 +216,10 @@ Examples:
   $ eai resources list User --format json | jq '.resources[] | .id'
   `)
   .action(async (type, options) => {
-    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
 
-    if (options.json) options.format = 'json';
-    const spinner = options.format === 'json' ? null : ora(`Listing ${type}...`).start();
+    options.format = normalizeFormat(options);
+    const spinner = makeSpinner(options.format, `Listing ${type}...`);
     try {
       const res = await ctx.client.listResources(type, {
         page: parseInt(options.page),
@@ -331,13 +293,13 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, options) => {
-    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
-    if (options.json) options.format = 'json';
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
 
     try {
       const payload = await loadJsonInput(options);
       const items = normalizeBatchCreateItems(payload);
-      const spinner = options.format === 'json' ? null : ora(`Batch creating ${type}...`).start();
+      const spinner = makeSpinner(options.format, `Batch creating ${type}...`);
       const res = await ctx.client.batchCreateResources(type, items);
       if (!res.ok) {
         failCommand(spinner, `${res.status} ${res.statusText}`);
@@ -364,13 +326,13 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, options) => {
-    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
-    if (options.json) options.format = 'json';
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
 
     try {
       const payload = await loadJsonInput(options);
       const items = normalizeBatchUpdateItems(payload);
-      const spinner = options.format === 'json' ? null : ora(`Batch updating ${type}...`).start();
+      const spinner = makeSpinner(options.format, `Batch updating ${type}...`);
       const res = await ctx.client.batchUpdateResources(type, items);
       if (!res.ok) {
         failCommand(spinner, `${res.status} ${res.statusText}`);
@@ -398,14 +360,14 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, options) => {
-    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
-    if (options.json) options.format = 'json';
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
 
     try {
       const ids = options.ids
         ? String(options.ids).split(',').map((value) => value.trim()).filter(Boolean)
         : normalizeBatchDeleteIds(await loadJsonInput(options));
-      const spinner = options.format === 'json' ? null : ora(`Batch deleting ${type}...`).start();
+      const spinner = makeSpinner(options.format, `Batch deleting ${type}...`);
       const res = await ctx.client.batchDeleteResources(type, ids);
       if (!res.ok) {
         failCommand(spinner, `${res.status} ${res.statusText}`);
@@ -434,8 +396,8 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, options) => {
-    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
-    if (options.json) options.format = 'json';
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
 
     try {
       const res = await ctx.client.aggregateResources(type, {
@@ -472,9 +434,9 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
-    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
 
-    if (options.json) options.format = 'json';
+    options.format = normalizeFormat(options);
 
     try {
       const res = await ctx.client.getResource(type, id);
@@ -514,9 +476,9 @@ Examples:
   $ eai resources create Project --data '{"name":"Demo"}' --format json
   `)
   .action(async (type, options) => {
-    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
 
-    if (options.json) options.format = 'json';
+    options.format = normalizeFormat(options);
 
     let data: Record<string, unknown>;
     if (options.data) {
@@ -528,7 +490,7 @@ Examples:
       exitWithError(ErrorCode.E303, { field: '--data or --file' }, options.format);
     }
 
-    const spinner = options.format === 'json' ? null : ora(`Creating ${type}...`).start();
+    const spinner = makeSpinner(options.format, `Creating ${type}...`);
     try {
       const res = await ctx.client.createResource(type, data);
       if (!res.ok) {
@@ -562,9 +524,9 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
-    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
 
-    if (options.json) options.format = 'json';
+    options.format = normalizeFormat(options);
 
     if (!options.data) {
       exitWithError(ErrorCode.E303, { field: '--data' }, options.format);
@@ -584,7 +546,7 @@ resourcesCommand
       }
     }
 
-    const spinner = options.format === 'json' ? null : ora(`Updating ${type} ${id}...`).start();
+    const spinner = makeSpinner(options.format, `Updating ${type} ${id}...`);
     try {
       const res = await ctx.client.updateResource(type, id, data, version!);
       if (!res.ok) {
@@ -613,9 +575,9 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
-    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
 
-    if (options.json) options.format = 'json';
+    options.format = normalizeFormat(options);
 
     if (!options.force) {
       const inquirer = await import('inquirer');
@@ -635,7 +597,7 @@ resourcesCommand
       }
     }
 
-    const spinner = options.format === 'json' ? null : ora(`Deleting ${type} ${id}...`).start();
+    const spinner = makeSpinner(options.format, `Deleting ${type} ${id}...`);
     try {
       const res = await ctx.client.deleteResource(type, id);
       if (!res.ok) {
@@ -666,14 +628,14 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
-    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
 
-    if (options.json) options.format = 'json';
+    options.format = normalizeFormat(options);
 
     const objectTypes = options.types.split(',').map((t: string) => t.trim());
     const where = options.where ? JSON.parse(options.where) : undefined;
 
-    const spinner = options.format === 'json' ? null : ora(`Querying ${objectTypes.join(', ')}...`).start();
+    const spinner = makeSpinner(options.format, `Querying ${objectTypes.join(', ')}...`);
     try {
       const res = await ctx.client.queryResources({
         object_types: objectTypes,
@@ -708,11 +670,11 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
-    const ctx = await createClient({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
 
-    if (options.json) options.format = 'json';
+    options.format = normalizeFormat(options);
 
-    const spinner = options.format === 'json' ? null : ora('Fetching schema...').start();
+    const spinner = makeSpinner(options.format, 'Fetching schema...');
     try {
       const res = await ctx.client.getSchema();
       if (!res.ok) {

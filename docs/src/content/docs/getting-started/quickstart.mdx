@@ -56,12 +56,13 @@ This guide walks you through the complete workflow of creating a vertical applic
      1. cd my-vertical
      2. npm install
      3. eai login — authenticate with Entra CIAM
-     4. eai tenant select — choose the tenant to work with
-     5. eai env pull — sync app config from cloud if needed
-     6. Edit src/eai.config/object-types.ts — define your data model
-     7. eai types validate — check your types
-     8. eai types seed — push types to platform
-     9. eai dev — start local development
+     4. eai tenant select — only needed if you have multiple tenant-admin memberships
+     5. eai provision entra — create Entra app registration for end-user auth
+     6. eai env pull — sync app config from cloud
+     7. Edit src/eai.config/object-types.ts — define your data model
+     8. eai types validate — check your types
+     9. eai types seed — push types to platform
+    10. eai dev — start local development
    ```
 
 2. **Install dependencies**
@@ -102,29 +103,52 @@ This guide walks you through the complete workflow of creating a vertical applic
 
 4. **Select the active tenant**
 
-   Choose the tenant to work with for platform commands:
+   <Aside type="note">
+     Skip this step if you only have one tenant-admin membership — `eai login` selects it automatically.
+   </Aside>
+
+   If your account has multiple tenant-admin memberships, choose which one to work with:
 
    ```bash
    eai tenant select
    ```
 
-   If your account has only one active tenant-admin membership, the CLI selects it automatically after login. If you have multiple memberships, this command prompts you to pick one.
+5. **Provision Entra app registration**
 
-5. **Pull environment configuration (if your app needs local config/secrets)**
+   Create an isolated Entra app registration for this vertical's end-user authentication:
 
-   Sync your project's environment variables from Azure App Configuration and Key Vault:
+   ```bash
+   eai provision entra
+   ```
+
+   ```
+   → Provisioning Entra app registration for my-vertical on tenant abc123...
+   ✔ Entra app registration created for my-vertical
+     Client ID      [written to .env.local]
+     Client Secret  [written to .env.local]
+   ⚠ The client secret has been written to .env.local and cannot be retrieved again.
+   ```
+
+   This writes `ENTRA_CLIENT_ID` and `ENTRA_CLIENT_SECRET` directly to `.env.local`. If the registration already exists, the command detects it and preserves your existing secret.
+
+   <Aside type="note">
+     **External developers or manual setup**: If you cannot run this command, your platform admin can provide `ENTRA_CLIENT_ID` and `ENTRA_CLIENT_SECRET` directly. Set them in `.env.local` by hand.
+   </Aside>
+
+6. **Pull environment configuration**
+
+   Sync the remaining environment variables from Azure App Configuration and Key Vault:
 
    ```bash
    eai env pull --include-secrets
    ```
 
    ```
-   ✔ Found 12 config values
+   ✔ Found 10 config values
    ✔ BASE_URL_PUBLIC_API = https://test-api.myenterprise.ai
    ✔ WORKFLOW_MY_VERTICAL_ID = [from Key Vault]
-   ✔ ENTRA_CLIENT_ID = [from Key Vault]
    ...
-   ✔ Written to .env.local (12 variables)
+   ✔ Written to .env.local (10 variables)
    ```
 
    <Aside type="caution">
@@ -135,7 +159,7 @@ This guide walks you through the complete workflow of creating a vertical applic
      **External developers**: If you do not have Azure subscription access, you cannot use `eai env pull`. Create `.env.local` manually with the values your platform admin provides. See [External Developer Setup](/eai-cli/guides/external-developers/#create-envlocal-manually) for the template.
    </Aside>
 
-6. **Edit your Object Types**
+7. **Edit your Object Types**
 
    Open `src/eai.config/object-types.ts` and define the data model for your vertical. The scaffold includes a sample `Record` type to get you started. Replace it with your domain model:
 
@@ -166,7 +190,7 @@ This guide walks you through the complete workflow of creating a vertical applic
    };
    ```
 
-7. **Validate your types**
+8. **Validate your types**
 
    Check that your Object Type definitions follow the platform schema rules:
 
@@ -183,7 +207,7 @@ This guide walks you through the complete workflow of creating a vertical applic
 
    If there are errors, the CLI tells you exactly what to fix -- for example, a property with an invalid type or a missing `displayName`.
 
-8. **Seed types to the platform**
+9. **Seed types to the platform**
 
    Push your Object Type definitions to the platform:
 
@@ -200,7 +224,7 @@ This guide walks you through the complete workflow of creating a vertical applic
    Result: 1 created, 0 updated, 0 failed
    ```
 
-9. **Start development**
+10. **Start development**
 
    Launch the local development server:
 
@@ -221,12 +245,13 @@ Here is a summary of what each step accomplished:
 | 1 | `eai init my-vertical` | Clones the Vertical Template and customizes it for your project |
 | 2 | `npm install` | Installs Node.js dependencies |
 | 3 | `eai login` | Authenticates you with Entra CIAM via browser PKCE flow |
-| 4 | `eai tenant select` | Chooses the active working tenant for platform operations |
-| 5 | `eai env pull` | Syncs app configuration from Azure App Config and Key Vault when needed |
-| 6 | Edit `object-types.ts` | Defines the data model for your vertical |
-| 7 | `eai types validate` | Validates your types against platform schema rules |
-| 8 | `eai types seed` | Publishes your types to the platform |
-| 9 | `eai dev` | Starts the local dev server |
+| 4 | `eai tenant select` | Chooses the active working tenant (only needed with multiple memberships) |
+| 5 | `eai provision entra` | Creates an isolated Entra app registration for end-user auth |
+| 6 | `eai env pull` | Syncs remaining app configuration from Azure App Config and Key Vault |
+| 7 | Edit `object-types.ts` | Defines the data model for your vertical |
+| 8 | `eai types validate` | Validates your types against platform schema rules |
+| 9 | `eai types seed` | Publishes your types to the platform |
+| 10 | `eai dev` | Starts the local dev server |
 
 ## Useful commands while developing
 

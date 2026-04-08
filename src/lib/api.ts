@@ -7,6 +7,7 @@
  */
 
 import { getAccessToken } from './auth.js';
+import { toObjectTypeSlug } from './utils.js';
 
 type PlatformBackend = 'payload' | 'admin' | 'mid';
 type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
@@ -33,16 +34,6 @@ export interface ParsedApiError {
   code?: string;
   message: string;
   bodyText?: string;
-}
-
-function toObjectTypeSlug(objectType: string): string {
-  return objectType
-    .trim()
-    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
-    .replace(/[_\s]+/g, '-')
-    .replace(/-+/g, '-')
-    .toLowerCase();
 }
 
 export function buildPayloadEqualsParams(
@@ -576,5 +567,47 @@ export class PlatformAPIClient {
       headers: await this.headers(),
       body: JSON.stringify(body),
     });
+  }
+
+  // --------------- Provisioning ---------------
+
+  async provisionEntraApp(request: {
+    tenantId: string;
+    verticalName: string;
+    redirectUris: string[];
+    idempotent?: boolean;
+  }): Promise<{ clientId: string; clientSecret: string | null; existing: boolean }> {
+    const body = {
+      tenant_id: request.tenantId,
+      vertical_name: request.verticalName,
+      redirect_uris: request.redirectUris,
+      idempotent: request.idempotent ?? false,
+    };
+
+    const res = await fetch(`${this.baseUrl}/v3/provision/entra-app`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      throw Object.assign(new Error(`Provisioning request failed: ${res.status} ${res.statusText}`), {
+        status: res.status,
+      });
+    }
+
+    const data = await res.json() as {
+      client_id?: string;
+      client_secret?: string | null;
+      clientId?: string;
+      clientSecret?: string | null;
+      existing?: boolean;
+    };
+
+    return {
+      clientId: data.clientId ?? data.client_id ?? '',
+      clientSecret: data.clientSecret ?? data.client_secret ?? null,
+      existing: Boolean(data.existing),
+    };
   }
 }

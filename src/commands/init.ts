@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import ora from 'ora';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
@@ -222,17 +223,14 @@ function toDisplayName(name: string): string {
 
 function generateEnvFile(opts: InitOptions): string {
   const envKey = opts.name.replace(/-/g, '_').toUpperCase();
+  const authSecret = randomBytes(32).toString('base64');
 
   let workflowSection: string;
   if (opts.tenantStructure === 'dual') {
-    workflowSection = `# Workflow IDs
-# Dual-tenant apps can keep separate workflows per local object-type scope
-WORKFLOW_${envKey}_CUSTOMER_ID=<platform-workflow-id>
-WORKFLOW_${envKey}_STAFF_ID=<platform-workflow-id>`;
+    workflowSection = `WORKFLOW_${envKey}_CUSTOMER_ID=
+WORKFLOW_${envKey}_STAFF_ID=`;
   } else {
-    workflowSection = `# Workflow IDs
-# Replace IDs with actual values from platform after provisioning
-WORKFLOW_${envKey}_ID=<platform-workflow-id>`;
+    workflowSection = `WORKFLOW_${envKey}_ID=`;
   }
 
   return `# =============================================================================
@@ -247,27 +245,35 @@ APP_BASE_PATH=/${opts.name}
 
 # =============================================================================
 # Platform API
+# Run 'eai env pull' to populate from Azure App Config
 # =============================================================================
-BASE_URL_PUBLIC_API=https://test-api.myenterprise.ai
+BASE_URL_PUBLIC_API=
 
 # =============================================================================
-# Active tenant selection for CLI commands comes from:
-#   eai login
-#   eai tenant select
-# ${workflowSection}
+# Tenant configuration
 # =============================================================================
+TENANT_KEYS=${opts.name}
+TENANT_${envKey}_ID=
 
 # =============================================================================
-# Microsoft Entra ID (CIAM)
+# Workflow IDs — populate after provisioning via platform dashboard
 # =============================================================================
-ENTRA_TENANT_NAME=eaidevmyentepriseai
-ENTRA_TENANT_ID=50808ce0-f31b-4fd0-9861-74b83b8c112a
+${workflowSection}
+
+# =============================================================================
+# Microsoft Entra ID (CIAM) — end-user auth for this vertical
+# Run 'eai provision entra' to populate ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET
+# =============================================================================
+ENTRA_TENANT_NAME=
+ENTRA_TENANT_ID=
 ENTRA_SCOPES="email offline_access openid profile"
+ENTRA_CLIENT_ID=
+ENTRA_CLIENT_SECRET=
 
 # =============================================================================
-# Auth.js — generate with: openssl rand -base64 32
+# Auth.js — auto-generated secret
 # =============================================================================
-AUTH_SECRET=<generate-with-openssl>
+AUTH_SECRET=${authSecret}
 
 # =============================================================================
 # IMPORTANT: Do NOT commit this file. Use 'eai env pull' to sync from cloud.

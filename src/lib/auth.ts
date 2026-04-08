@@ -41,7 +41,11 @@ export interface StoredTokens {
   activeTenantSlug?: string;
   activeTenantDomain?: string;
   publicApiUrl?: string;
+  membershipsCachedAt?: number;
 }
+
+// Module-level cache — eliminates repeated disk decrypt per process lifetime
+let _cache: StoredTokens | null = null;
 
 interface TokenResponse {
   access_token: string;
@@ -97,9 +101,11 @@ export async function storeTokens(tokens: StoredTokens): Promise<void> {
   await ensureDir();
   const encrypted = encrypt(JSON.stringify(tokens));
   await writeFile(getTokensFile(), encrypted, { encoding: 'utf-8', mode: 0o600 });
+  _cache = tokens;
 }
 
 export async function loadTokens(): Promise<StoredTokens | null> {
+  if (_cache) return _cache;
   try {
     const encrypted = await readFile(getTokensFile(), 'utf-8');
     const decrypted = decrypt(encrypted);
@@ -108,6 +114,7 @@ export async function loadTokens(): Promise<StoredTokens | null> {
     if (!tokens.oid && tokens.accessToken) {
       tokens.oid = parseJwtClaim(tokens.accessToken, 'oid') || undefined;
     }
+    _cache = tokens;
     return tokens;
   } catch {
     return null;
@@ -115,6 +122,7 @@ export async function loadTokens(): Promise<StoredTokens | null> {
 }
 
 export async function clearTokens(): Promise<void> {
+  _cache = null;
   try {
     const { unlink } = await import('node:fs/promises');
     await unlink(getTokensFile());
@@ -159,7 +167,8 @@ export async function getAccessToken(): Promise<string | null> {
         await storeTokens(refreshed);
         return refreshed.accessToken;
       }
-    } catch (_err) {
+    } catch {
+      // Refresh failed (network error or server rejection) — caller treats user as unauthenticated
       return null;
     }
   }
@@ -380,9 +389,8 @@ export async function browserLogin(
       throw new Error(`Token exchange failed: ${error} — ${description}`);
     }
 
-    const stored = buildStoredTokens(tokenData as TokenResponse, tenantId, tenantName, clientId);
-    await storeTokens(stored);
-    return stored;
+    // Return tokens without writing — caller writes once after tenant context is resolved
+    return buildStoredTokens(tokenData as TokenResponse, tenantId, tenantName, clientId);
   } finally {
     await callbackServer.close();
   }
@@ -409,13 +417,12 @@ async function refreshAccessToken(tokens: StoredTokens): Promise<StoredTokens | 
   if (!res.ok) return null;
 
   const data: TokenResponse = await res.json();
+  // Spread existing tokens as base to preserve activeTenant* and publicApiUrl fields
   return {
+    ...tokens,
     accessToken: data.access_token,
     refreshToken: data.refresh_token || tokens.refreshToken,
     expiresAt: Date.now() + data.expires_in * 1000,
-    tenantId: tokens.tenantId,
-    tenantName: tokens.tenantName,
-    clientId: tokens.clientId,
     upn: parseJwtClaim(data.access_token, 'preferred_username') || tokens.upn,
     oid: parseJwtClaim(data.access_token, 'oid') || tokens.oid,
   };
