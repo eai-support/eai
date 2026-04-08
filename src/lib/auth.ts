@@ -167,7 +167,8 @@ export async function getAccessToken(): Promise<string | null> {
         await storeTokens(refreshed);
         return refreshed.accessToken;
       }
-    } catch (_err) {
+    } catch {
+      // Refresh failed (network error or server rejection) — caller treats user as unauthenticated
       return null;
     }
   }
