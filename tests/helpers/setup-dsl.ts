@@ -111,6 +111,9 @@ export async function cleanupTestTokens(ctx?: TestContext): Promise<void> {
   } catch {
     // File may not exist, that's fine
   }
+  // Clear the module-level token cache so it doesn't leak between tests
+  const { clearTokens } = await import('../../src/lib/auth.js');
+  await clearTokens();
 }
 
 /**

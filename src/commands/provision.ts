@@ -10,6 +10,27 @@ import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
+function handleProvisionError(err: unknown): never {
+  const status = (err as { status?: number }).status;
+  if (status === 404 || status === 501) {
+    out.warn('Provisioning endpoint is not yet available on this platform instance.');
+    out.info('Set ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET in .env.local manually,');
+    out.info('or contact your platform administrator.');
+    process.exit(1);
+  }
+  if (status === 403) {
+    out.error('Permission denied. You must be a tenant-admin to provision an Entra app registration.');
+    process.exit(1);
+  }
+  if (status === 409) {
+    out.error('Maximum app registrations per tenant exceeded. Contact your platform administrator.');
+    process.exit(1);
+  }
+  const statusMsg = status ? ` (HTTP ${status})` : '';
+  out.error(`Provisioning failed${statusMsg}: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
+
 export const provisionCommand = new Command('provision')
   .description('Provision platform resources for this vertical');
 
@@ -75,24 +96,7 @@ What happens:
         force: options.force,
       });
     } catch (err) {
-      const status = (err as { status?: number }).status;
-      if (status === 404 || status === 501) {
-        out.warn('Provisioning endpoint is not yet available on this platform instance.');
-        out.info('Set ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET in .env.local manually,');
-        out.info('or contact your platform administrator.');
-        process.exit(1);
-      }
-      if (status === 403) {
-        out.error('Permission denied. You must be a tenant-admin to provision an Entra app registration.');
-        process.exit(1);
-      }
-      if (status === 409) {
-        out.error('Maximum app registrations per tenant exceeded. Contact your platform administrator.');
-        process.exit(1);
-      }
-      const statusMsg = status ? ` (HTTP ${status})` : '';
-      out.error(`Provisioning failed${statusMsg}: ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
+      handleProvisionError(err);
     }
 
     if (result.existing && !result.clientSecret) {

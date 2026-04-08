@@ -4,7 +4,10 @@
  * Tests for: eai env list, eai env pull, eai env push
  */
 
-import { describe, test, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { patchEnvFile } from '../../src/lib/config.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { createMockServer, PublicAPIMock } from '../helpers/mock-server.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
@@ -67,6 +70,20 @@ describe('eai env', () => {
     expectDisplayedMessage(result, 'Environment (');
     expectDisplayedMessage(result, 'BASE_URL_PUBLIC_API');
   }, { timeout: 5000 });
+
+  test('patchEnvFile merges new keys without overwriting existing ones', async () => {
+    await projectHasEnvFile(ctx, {
+      AUTH_SECRET: 'existing-secret',
+      OTHER_KEY: 'keep-me',
+    });
+
+    await patchEnvFile(env.dir, { NEW_KEY: 'new-value' });
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('AUTH_SECRET=existing-secret');
+    expect(content).toContain('OTHER_KEY=keep-me');
+    expect(content).toContain('NEW_KEY=new-value');
+  });
 
   test('TC028: Pull requires EAI project', async () => {
     // TC028: Pull fails when not in EAI project
