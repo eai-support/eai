@@ -163,6 +163,49 @@ export async function loadEnvFile(projectRoot: string): Promise<Record<string, s
 }
 
 /**
+ * Merge key=value pairs into an existing .env.local, updating existing keys
+ * in-place and appending new ones. All other lines (comments, blanks) are
+ * preserved unchanged.
+ */
+export async function patchEnvFile(
+  projectRoot: string,
+  patches: Record<string, string>,
+): Promise<void> {
+  const envPath = join(projectRoot, '.env.local');
+  let content: string;
+
+  try {
+    content = await readFile(envPath, 'utf-8');
+  } catch {
+    // File doesn't exist — create it from the patches alone
+    const lines = Object.entries(patches).map(([k, v]) => `${k}=${v}`);
+    await writeFile(envPath, lines.join('\n') + '\n', 'utf-8');
+    return;
+  }
+
+  const patchKeys = Object.keys(patches);
+  const patched = new Set<string>();
+
+  const updatedLines = content.split('\n').map((line) => {
+    for (const key of patchKeys) {
+      if (line.startsWith(`${key}=`) || line === key) {
+        patched.add(key);
+        return `${key}=${patches[key]}`;
+      }
+    }
+    return line;
+  });
+
+  for (const key of patchKeys) {
+    if (!patched.has(key)) {
+      updatedLines.push(`${key}=${patches[key]}`);
+    }
+  }
+
+  await writeFile(envPath, updatedLines.join('\n'), 'utf-8');
+}
+
+/**
  * Strip TypeScript-specific syntax to produce evaluable JS.
  * Based on Vertical-Template's generate-object-types-json.mjs approach.
  */

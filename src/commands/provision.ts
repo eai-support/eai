@@ -3,10 +3,8 @@
  */
 
 import { Command } from 'commander';
-import { readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import chalk from 'chalk';
-import { findProjectRoot, loadEnvFile } from '../lib/config.js';
+import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
@@ -124,42 +122,3 @@ What happens:
     out.warn('Do NOT commit .env.local to source control.');
   });
 
-/**
- * Update specific key=value lines in .env.local in-place.
- * All other lines are preserved unchanged.
- */
-async function patchEnvFile(root: string, patches: Record<string, string>): Promise<void> {
-  const envPath = join(root, '.env.local');
-  let content: string;
-
-  try {
-    content = await readFile(envPath, 'utf-8');
-  } catch {
-    // File doesn't exist yet — create it from scratch
-    const lines = Object.entries(patches).map(([k, v]) => `${k}=${v}`);
-    await writeFile(envPath, lines.join('\n') + '\n', 'utf-8');
-    return;
-  }
-
-  const patchKeys = Object.keys(patches);
-  const patched = new Set<string>();
-
-  const updatedLines = content.split('\n').map((line) => {
-    for (const key of patchKeys) {
-      if (line.startsWith(`${key}=`) || line === key) {
-        patched.add(key);
-        return `${key}=${patches[key]}`;
-      }
-    }
-    return line;
-  });
-
-  // Append any keys that weren't already present
-  for (const key of patchKeys) {
-    if (!patched.has(key)) {
-      updatedLines.push(`${key}=${patches[key]}`);
-    }
-  }
-
-  await writeFile(envPath, updatedLines.join('\n'), 'utf-8');
-}
