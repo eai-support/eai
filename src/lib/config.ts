@@ -188,7 +188,7 @@ export async function patchEnvFile(
 
   const updatedLines = content.split('\n').map((line) => {
     for (const key of patchKeys) {
-      if (line.startsWith(`${key}=`) || line === key) {
+      if (line.startsWith(`${key}=`)) {
         patched.add(key);
         return `${key}=${patches[key]}`;
       }
@@ -202,7 +202,8 @@ export async function patchEnvFile(
     }
   }
 
-  await writeFile(envPath, updatedLines.join('\n'), 'utf-8');
+  const trailingNewline = content.endsWith('\n') ? '\n' : '';
+  await writeFile(envPath, updatedLines.join('\n') + trailingNewline, 'utf-8');
 }
 
 /**
