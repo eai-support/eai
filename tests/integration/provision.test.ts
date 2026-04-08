@@ -85,13 +85,23 @@ describe('eai provision entra', () => {
   });
 
   test('happy path: writes ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET to .env.local', async () => {
+    let requestBody: unknown;
+
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
-        HttpResponse.json({ clientId: 'cid-1', clientSecret: 'secret-1', existing: false }),
-      ),
+      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({ client_id: 'cid-1', client_secret: 'secret-1', existing: false });
+      }),
     );
 
     await provisionCommand.parseAsync(['entra'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'my-vertical',
+      redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=cid-1');
@@ -107,7 +117,7 @@ describe('eai provision entra', () => {
 
     mockServer.server.use(
       http.post(`${API_BASE}/v3/provision/entra-app`, () =>
-        HttpResponse.json({ clientId: 'cid-1', clientSecret: null, existing: true }),
+        HttpResponse.json({ client_id: 'cid-1', client_secret: null, existing: true }),
       ),
     );
 
@@ -116,6 +126,34 @@ describe('eai provision entra', () => {
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=cid-1');
     expect(content).toContain('EXISTING_KEY=keep-me');
+  }, { timeout: 10000 });
+
+  test('force re-checks an existing local ENTRA_CLIENT_ID without expecting a new secret', async () => {
+    let requestBody: unknown;
+
+    await writeFile(
+      join(env.dir, '.env.local'),
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_ID=local-client\n`,
+    );
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({ client_id: 'remote-client', client_secret: null, existing: true });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra', '--force'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'my-vertical',
+      redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('ENTRA_CLIENT_ID=remote-client');
   }, { timeout: 10000 });
 
   test('HTTP 403: exits with code 1 and reports permission denied', async () => {

@@ -575,13 +575,19 @@ export class PlatformAPIClient {
     tenantId: string;
     verticalName: string;
     redirectUris: string[];
-    force?: boolean;
     idempotent?: boolean;
   }): Promise<{ clientId: string; clientSecret: string | null; existing: boolean }> {
+    const body = {
+      tenant_id: request.tenantId,
+      vertical_name: request.verticalName,
+      redirect_uris: request.redirectUris,
+      idempotent: request.idempotent ?? false,
+    };
+
     const res = await fetch(`${this.baseUrl}/v3/provision/entra-app`, {
       method: 'POST',
       headers: await this.headers(),
-      body: JSON.stringify(request),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -590,6 +596,18 @@ export class PlatformAPIClient {
       });
     }
 
-    return res.json() as Promise<{ clientId: string; clientSecret: string | null; existing: boolean }>;
+    const data = await res.json() as {
+      client_id?: string;
+      client_secret?: string | null;
+      clientId?: string;
+      clientSecret?: string | null;
+      existing?: boolean;
+    };
+
+    return {
+      clientId: data.clientId ?? data.client_id ?? '',
+      clientSecret: data.clientSecret ?? data.client_secret ?? null,
+      existing: Boolean(data.existing),
+    };
   }
 }
