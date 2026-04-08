@@ -39,7 +39,7 @@ export const provisionCommand = new Command('provision')
 provisionCommand
   .command('entra')
   .description('Create an Entra app registration for end-user auth (Auth.js)')
-  .option('--force', 'Overwrite existing ENTRA_CLIENT_ID in .env.local', false)
+  .option('--force', 'Re-check the remote app registration even if ENTRA_CLIENT_ID already exists locally', false)
   .addHelpText('after', `
 Examples:
   $ eai provision entra
@@ -48,7 +48,7 @@ Examples:
 What happens:
   - Calls the platform provisioning API to create an Entra app registration
   - Writes ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET to .env.local
-  - The secret is returned once and cannot be retrieved again
+  - If the registration already exists, confirms ENTRA_CLIENT_ID without rotating the secret
   `)
   .action(async (options) => {
     const root = await findProjectRoot();
@@ -67,7 +67,7 @@ What happens:
     // Check if ENTRA_CLIENT_ID already exists
     if (env.ENTRA_CLIENT_ID && !options.force) {
       out.warn(`ENTRA_CLIENT_ID is already set for ${chalk.cyan(verticalName)}.`);
-      out.info(`Use ${chalk.cyan('eai provision entra --force')} to create a new client secret on the existing registration.`);
+      out.info(`Use ${chalk.cyan('eai provision entra --force')} to re-check the remote registration and confirm ENTRA_CLIENT_ID.`);
       process.exit(0);
     }
 
@@ -93,7 +93,9 @@ What happens:
         tenantId,
         verticalName,
         redirectUris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
-        force: options.force,
+        // The PublicAPI route is intentionally idempotent: it creates on first run and
+        // returns the existing app ID on later runs without attempting secret rotation.
+        idempotent: true,
       });
     } catch (err) {
       handleProvisionError(err);
@@ -101,7 +103,12 @@ What happens:
 
     if (result.existing && !result.clientSecret) {
       out.info(`App registration already exists for ${chalk.cyan(verticalName)}.`);
-      out.info('Your existing ENTRA_CLIENT_SECRET in .env.local remains valid.');
+      if (env.ENTRA_CLIENT_SECRET) {
+        out.info('Your existing ENTRA_CLIENT_SECRET in .env.local remains valid.');
+      } else {
+        out.warn('No new ENTRA_CLIENT_SECRET was returned for the existing registration.');
+        out.warn('Set ENTRA_CLIENT_SECRET in .env.local manually if it is missing locally.');
+      }
       // Still write clientId in case it was missing
       await patchEnvFile(root, { ENTRA_CLIENT_ID: result.clientId });
       out.success(`ENTRA_CLIENT_ID confirmed: ${chalk.dim(result.clientId)}`);
@@ -126,4 +133,3 @@ What happens:
     out.warn('The client secret has been written to .env.local and cannot be retrieved again.');
     out.warn('Do NOT commit .env.local to source control.');
   });
-
