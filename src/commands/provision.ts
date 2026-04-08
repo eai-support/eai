@@ -90,7 +90,8 @@ What happens:
         out.error('Maximum app registrations per tenant exceeded. Contact your platform administrator.');
         process.exit(1);
       }
-      out.error(`Provisioning failed: ${err instanceof Error ? err.message : String(err)}`);
+      const statusMsg = status ? ` (HTTP ${status})` : '';
+      out.error(`Provisioning failed${statusMsg}: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
 

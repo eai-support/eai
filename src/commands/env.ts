@@ -45,7 +45,7 @@ Examples:
     const existingEnv = await loadEnvFile(root);
     const label = options.label || existingEnv.NEXT_PUBLIC_APP_NAME;
     if (!label) {
-      exitWithError(ErrorCode.E001);
+      exitWithError(ErrorCode.E303, { field: '--label or NEXT_PUBLIC_APP_NAME in .env.local' });
     }
 
     const spinner = ora(`Pulling config from ${APP_CONFIG_STORE} (label: ${label})`).start();
@@ -103,7 +103,7 @@ Examples:
       }
 
       out.blank();
-      out.success(`Written to ${chalk.bold('.env.local')} (${kvPairs.length} variables)`);
+      out.success(`Written to ${chalk.bold('.env.local')} (${Object.keys(patches).length} variables)`);
 
       if (secretRefs.length > 0 && !options.includeSecrets) {
         out.blank();
