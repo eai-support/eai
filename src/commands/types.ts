@@ -14,7 +14,8 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { findProjectRoot, loadObjectTypes, type ObjectTypeDefinition } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
-import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { resolveCommandContext } from '../lib/context.js';
+import { isRecord, toObjectTypeSlug } from '../lib/utils.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
@@ -102,20 +103,6 @@ export function resolveDefaultTenantKey(
     return 'default';
   }
   return null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function toObjectTypeSlug(name: string): string {
-  return name
-    .trim()
-    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
-    .replace(/[_\s]+/g, '-')
-    .replace(/-+/g, '-')
-    .toLowerCase();
 }
 
 function toTimestamp(value: string | null | undefined): number {
@@ -375,10 +362,11 @@ Examples:
     if (options.json) {
       options.format = 'json';
     }
-    const root = await findProjectRoot();
-    if (!root) {
-      exitWithError(ErrorCode.E001, undefined, options.format);
-    }
+
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId });
+    const { root, publicApiUrl, activeTenant: activeContextTenant } = ctx;
+    // Wrap in shape expected by downstream helpers
+    const activeContext = { activeTenant: activeContextTenant };
 
     const spinner = options.format === 'json' ? null : ora('Loading Object Types...').start();
 
@@ -399,13 +387,6 @@ Examples:
     if (options.tenantId && !options.tenantKey && Object.keys(objectTypes).length > 1) {
       exitWithError(ErrorCode.E303, { field: '--tenant-key when using --tenant-id with multiple tenant scopes' }, options.format);
     }
-
-    const publicApiUrl = await resolvePublicApiUrl(root);
-    const activeContext = await resolveActiveTenantContext({
-      projectRoot: root,
-      publicApiUrl,
-      interactive: true,
-    });
 
     // Filter to specific tenant key if requested
     const keysToSeed = await selectTenantKey(objectTypes, options.tenantKey, activeContext.activeTenant.slug);
@@ -766,10 +747,9 @@ Examples:
   $ eai types diff --tenant-key council --tenant-id 423b7e9c-9a69-4763-5b9a-69570218f65d
   `)
   .action(async (options) => {
-    const root = await findProjectRoot();
-    if (!root) {
-      exitWithError(ErrorCode.E001);
-    }
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId });
+    const { root, publicApiUrl } = ctx;
+    const activeContext = options.tenantId ? null : ctx;
 
     const spinner = ora('Loading local Object Types...').start();
 
@@ -783,14 +763,6 @@ Examples:
       process.exit(1);
     }
 
-    const publicApiUrl = await resolvePublicApiUrl(root);
-    const activeContext = options.tenantId
-      ? null
-      : await resolveActiveTenantContext({
-          projectRoot: root,
-          publicApiUrl,
-          interactive: true,
-        });
     const keysToDiff = await selectTenantKey(
       objectTypes,
       options.tenantKey,
@@ -891,24 +863,12 @@ Examples:
   $ eai types pull --output src/types/generated.ts
   `)
   .action(async (options) => {
-    const root = await findProjectRoot();
-    if (!root) {
-      exitWithError(ErrorCode.E001, undefined, options.format);
-    }
-
-    const publicApiUrl = await resolvePublicApiUrl(root);
-    const activeContext = await resolveActiveTenantContext({
-      projectRoot: root,
-      publicApiUrl,
-      interactive: true,
-      tenantId: options.tenantId,
-    });
-    const tenantId = options.tenantId || activeContext.activeTenant.id;
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId });
 
     const spinner = ora('Fetching remote Object Types...').start();
 
     try {
-      const client = new PlatformAPIClient(publicApiUrl, tenantId);
+      const { client, tenantId, root } = ctx;
       const res = await client.getPublishedObjectTypes({ limit: 100 });
 
       const data = await res.json() as { docs?: ObjectTypeDefinition[] };

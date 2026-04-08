@@ -4,16 +4,17 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { browserLogin, clearTokens } from '../lib/auth.js';
+import { browserLogin, clearTokens, storeTokens } from '../lib/auth.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 
-// Default CIAM tenant for EAI platform
-const DEFAULT_TENANT_NAME = 'eaidevmyentepriseai';
-const DEFAULT_TENANT_ID = '50808ce0-f31b-4fd0-9861-74b83b8c112a';
-const DEFAULT_SCOPE = 'openid profile email offline_access api://32191e63-e253-48de-9ea1-a5337e236fe6/access_token';
+// CIAM identifiers — must be set via environment variables.
+// EAI_CIAM_TENANT_NAME, EAI_CIAM_TENANT_ID, EAI_CIAM_CLIENT_ID, EAI_CIAM_SCOPE
+const DEFAULT_TENANT_NAME = process.env.EAI_CIAM_TENANT_NAME ?? '';
+const DEFAULT_TENANT_ID = process.env.EAI_CIAM_TENANT_ID ?? '';
+const DEFAULT_SCOPE = process.env.EAI_CIAM_SCOPE ?? 'openid profile email offline_access';
 // EAI CLI first-party App Registration (public client — 'EAI CLI - Developer Tools')
-const DEFAULT_CLIENT_ID = 'c3c10ee2-aeeb-4a64-8eea-5ca43a3252af';
+const DEFAULT_CLIENT_ID = process.env.EAI_CIAM_CLIENT_ID ?? '';
 
 export const loginCommand = new Command('login')
   .description('Authenticate with Entra CIAM')
@@ -43,6 +44,9 @@ What happens next:
         DEFAULT_CLIENT_ID,
         options.scope,
       );
+
+      // Store bare tokens now so the cache is populated for the tenant resolution call
+      await storeTokens(tokens);
 
       out.blank();
       out.success(`Authenticated as ${chalk.bold(tokens.upn || 'user')}`);

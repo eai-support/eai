@@ -11,19 +11,6 @@ import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 
-export interface EAIProjectConfig {
-  appName: string;
-  displayName: string;
-  workflowId: string;
-  environment: string;
-  publicApiUrl: string;
-  entra: {
-    tenantName: string;
-    tenantId: string;
-    clientId?: string;
-  };
-}
-
 export interface ObjectTypeProperty {
   name: string;
   type: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'json' | 'file' | 'relationship';
@@ -176,6 +163,50 @@ export async function loadEnvFile(projectRoot: string): Promise<Record<string, s
 }
 
 /**
+ * Merge key=value pairs into an existing .env.local, updating existing keys
+ * in-place and appending new ones. All other lines (comments, blanks) are
+ * preserved unchanged.
+ */
+export async function patchEnvFile(
+  projectRoot: string,
+  patches: Record<string, string>,
+): Promise<void> {
+  const envPath = join(projectRoot, '.env.local');
+  let content: string;
+
+  try {
+    content = await readFile(envPath, 'utf-8');
+  } catch {
+    // File doesn't exist — create it from the patches alone
+    const lines = Object.entries(patches).map(([k, v]) => `${k}=${v}`);
+    await writeFile(envPath, lines.join('\n') + '\n', 'utf-8');
+    return;
+  }
+
+  const patchKeys = Object.keys(patches);
+  const patched = new Set<string>();
+
+  const updatedLines = content.split('\n').map((line) => {
+    for (const key of patchKeys) {
+      if (line.startsWith(`${key}=`)) {
+        patched.add(key);
+        return `${key}=${patches[key]}`;
+      }
+    }
+    return line;
+  });
+
+  for (const key of patchKeys) {
+    if (!patched.has(key)) {
+      updatedLines.push(`${key}=${patches[key]}`);
+    }
+  }
+
+  const trailingNewline = content.endsWith('\n') ? '\n' : '';
+  await writeFile(envPath, updatedLines.join('\n') + trailingNewline, 'utf-8');
+}
+
+/**
  * Strip TypeScript-specific syntax to produce evaluable JS.
  * Based on Vertical-Template's generate-object-types-json.mjs approach.
  */
@@ -206,27 +237,3 @@ function stripTypeScript(source: string): string {
   return js;
 }
 
-/**
- * Resolve environment-specific config by reading .env.local and env vars.
- */
-export async function resolveProjectConfig(projectRoot: string): Promise<EAIProjectConfig | null> {
-  const envVars = await loadEnvFile(projectRoot);
-
-  // Merge with process.env (process.env takes precedence)
-  const env = { ...envVars, ...process.env };
-
-  const appName = env.NEXT_PUBLIC_APP_NAME;
-  if (!appName) return null;
-
-  return {
-    appName,
-    displayName: appName,
-    workflowId: env[`WORKFLOW_${appName.toUpperCase()}_ID`] || env.WORKFLOW_DEFAULT_ID || '',
-    environment: env.EAI_ENV || 'dev',
-    publicApiUrl: env.BASE_URL_PUBLIC_API || '',
-    entra: {
-      tenantName: env.ENTRA_TENANT_NAME || '',
-      tenantId: env.ENTRA_TENANT_ID || '',
-    },
-  };
-}

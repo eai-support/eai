@@ -5,9 +5,8 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { findProjectRoot } from '../lib/config.js';
 import { PlatformAPIClient } from '../lib/api.js';
-import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { resolveCommandContext } from '../lib/context.js';
 import * as out from '../lib/output.js';
 
 export const userCommand = new Command('user')
@@ -21,16 +20,11 @@ userCommand
   .requiredOption('--email <email>', 'Email address of the user to add')
   .option('--tenant <id>', 'Tenant ID to add the user to (defaults to the active tenant)')
   .action(async (options) => {
-    const root = await findProjectRoot();
-    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
-    const activeContext = await resolveActiveTenantContext({
-      projectRoot: root || undefined,
-      publicApiUrl,
-      interactive: false,
-    });
-    const tenantId = options.tenant || activeContext.activeTenant.id;
+    const ctx = await resolveCommandContext({ interactive: false });
+    const tenantId = options.tenant || ctx.tenantId;
 
-    const client = new PlatformAPIClient(publicApiUrl, 'system');
+    // Use 'system' scope for admin user lookup
+    const client = new PlatformAPIClient(ctx.publicApiUrl, 'system');
 
     // Step 1: Look up user by email
     const lookupSpinner = ora(`Looking up ${options.email}...`).start();
@@ -96,15 +90,9 @@ userCommand
   .description('Provision yourself to a tenant (for first-time setup)')
   .option('--tenant <id>', 'Tenant ID to provision yourself to (defaults to the active tenant)')
   .action(async (options) => {
-    const root = await findProjectRoot();
-    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
-    const activeContext = await resolveActiveTenantContext({
-      projectRoot: root || undefined,
-      publicApiUrl,
-      interactive: false,
-    });
-    const tenantId = options.tenant || activeContext.activeTenant.id;
-    const client = new PlatformAPIClient(publicApiUrl, tenantId);
+    const ctx = await resolveCommandContext({ interactive: false });
+    const tenantId = options.tenant || ctx.tenantId;
+    const client = new PlatformAPIClient(ctx.publicApiUrl, tenantId);
 
     const provisionSpinner = ora(`Provisioning you to tenant ${tenantId}...`).start();
 

@@ -30,6 +30,7 @@ import { deployCommand } from './commands/deploy.js';
 import { verifyCommand, doctorCommand } from './commands/verify.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { updateCommand } from './commands/update.js';
+import { provisionCommand } from './commands/provision.js';
 import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
 import { describeProgram } from './lib/schema-builder.js';
@@ -49,7 +50,7 @@ program
 
     // Handle --describe flag (output schema and exit)
     if (opts.describe) {
-      describeProgram(program);
+      process.stdout.write(JSON.stringify(describeProgram(program), null, 2) + '\n');
       process.exit(0);
     }
 
@@ -86,14 +87,15 @@ program.addCommand(verifyCommand);
 program.addCommand(doctorCommand);
 program.addCommand(whoamiCommand);
 program.addCommand(updateCommand);
+program.addCommand(provisionCommand);
 
 // Custom help footer
 program.addHelpText('after', `
 ${chalk.bold('Getting Started:')}
   ${chalk.cyan('eai init my-vertical')}     Scaffold a new vertical app
   ${chalk.cyan('eai login')}                Authenticate with Entra CIAM
-  ${chalk.cyan('eai tenant select')}        Choose the active tenant to work with
-  ${chalk.cyan('eai env pull')}             Sync app config if your project needs it
+  ${chalk.cyan('eai provision entra')}      Create Entra app registration for end-user auth
+  ${chalk.cyan('eai env pull')}             Sync app config from cloud
   ${chalk.cyan('eai types seed')}           Publish Object Types to the platform
   ${chalk.cyan('eai dev')}                  Start local development server
 
@@ -135,7 +137,7 @@ ${chalk.bold('Accessibility:')}
 
 // Handle --describe before parsing (needs to work without command)
 if (process.argv.includes('--describe')) {
-  describeProgram(program);
+  process.stdout.write(JSON.stringify(describeProgram(program), null, 2) + '\n');
   process.exit(0);
 }
 

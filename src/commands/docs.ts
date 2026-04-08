@@ -5,10 +5,7 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { findProjectRoot } from '../lib/config.js';
-import { PlatformAPIClient } from '../lib/api.js';
-import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
-import { ErrorCode, exitWithError } from '../lib/error-codes.js';
+import { resolveCommandContext } from '../lib/context.js';
 
 interface BatchDocumentSummary {
   document_id?: string;
@@ -81,16 +78,7 @@ docsCommand
   .command('upload <file>')
   .description('Upload a document')
   .action(async (file) => {
-    const root = await findProjectRoot();
-    if (!root) { exitWithError(ErrorCode.E001); }
-
-    const publicApiUrl = await resolvePublicApiUrl(root);
-    const context = await resolveActiveTenantContext({
-      projectRoot: root,
-      publicApiUrl,
-      interactive: true,
-    });
-    const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
+    const { client } = await resolveCommandContext();
     const { basename } = await import('node:path');
 
     const spinner = ora(`Uploading ${basename(file)}...`).start();
@@ -120,16 +108,7 @@ docsCommand
   .command('classify <file>')
   .description('Classify a document')
   .action(async (file) => {
-    const root = await findProjectRoot();
-    if (!root) { exitWithError(ErrorCode.E001); }
-
-    const publicApiUrl = await resolvePublicApiUrl(root);
-    const context = await resolveActiveTenantContext({
-      projectRoot: root,
-      publicApiUrl,
-      interactive: true,
-    });
-    const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
+    const { client } = await resolveCommandContext();
     const { basename } = await import('node:path');
 
     const spinner = ora(`Classifying ${basename(file)}...`).start();
@@ -174,16 +153,7 @@ docsCommand
   .command('index <documentId>')
   .description('Index a document for RAG')
   .action(async (documentId) => {
-    const root = await findProjectRoot();
-    if (!root) { exitWithError(ErrorCode.E001); }
-
-    const publicApiUrl = await resolvePublicApiUrl(root);
-    const context = await resolveActiveTenantContext({
-      projectRoot: root,
-      publicApiUrl,
-      interactive: true,
-    });
-    const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
+    const { client } = await resolveCommandContext();
 
     const spinner = ora(`Indexing document ${documentId}...`).start();
     try {

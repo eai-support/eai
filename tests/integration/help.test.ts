@@ -48,6 +48,15 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain('eai docs index <documentId>');
   });
 
+  test('--describe outputs valid parseable JSON', async () => {
+    const result = await runCommand(ctx, 'eai --describe');
+
+    expect(result.exitCode).toBe(0);
+    expect(() => JSON.parse(result.stdout)).not.toThrow();
+    const schema = JSON.parse(result.stdout);
+    expect(typeof schema).toBe('object');
+  });
+
   test('verify and update help include concrete examples', async () => {
     const verifyResult = await runCommand(ctx, 'eai verify --help');
     const updateResult = await runCommand(ctx, 'eai update --help');

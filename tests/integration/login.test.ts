@@ -89,7 +89,7 @@ describe('eai login', () => {
     }));
 
     vi.resetModules();
-    const { browserLogin, loadTokens } = await import('../../src/lib/auth.js');
+    const { browserLogin, loadTokens, storeTokens } = await import('../../src/lib/auth.js');
 
     const tokens = await browserLogin(
       'eaidevmyentepriseai',
@@ -102,6 +102,8 @@ describe('eai login', () => {
     expect(tokens.oid).toBe('oid-123');
     expect(tokens.clientId).toBe('client-id-123');
 
+    // browserLogin no longer stores tokens — caller is responsible (matches login.ts flow)
+    await storeTokens(tokens);
     const stored = await loadTokens();
     expect(stored?.upn).toBe('browser@example.com');
     await access(join(tempHome, '.eai', 'tokens.json'));
