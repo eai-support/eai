@@ -197,15 +197,15 @@ describe('eai init', () => {
 });
 
 describe('describeCloneFailure', () => {
-  test('explains private default template repository failures', () => {
+  test('explains default template reachability failures', () => {
     const message = describeCloneFailure(
-      'https://github.com/eai-tools/Vertical-Template.git',
+      'https://github.com/eai-tools/eai-vertical-template.git',
       new Error('Command failed: git clone ...\nremote: Repository not found.\nfatal: repository not found'),
     );
 
     expect(message).toContain('default template source');
     expect(message).toContain('--from <repo-or-path>');
-    expect(message).toContain('request access');
+    expect(message).toContain('could not be reached');
   });
 
   test('passes through unrelated clone errors', () => {
