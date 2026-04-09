@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import inquirer from 'inquirer';
 import { describe, test, beforeEach, afterEach, expect, vi } from 'vitest';
-import { initCommand } from '../../src/commands/init.js';
+import { describeCloneFailure, initCommand } from '../../src/commands/init.js';
 import { createTestEnvironment, captureConsole, type TestEnvironment } from '../helpers/test-env.js';
 import { createMockServer, PublicAPIMock } from '../helpers/mock-server.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
@@ -194,4 +194,23 @@ describe('eai init', () => {
   // TC008: Generated object-types.ts is valid
   // TC009: Generated deployment workflow is valid
   // TC010: Init creates initial git commit
+});
+
+describe('describeCloneFailure', () => {
+  test('explains private default template repository failures', () => {
+    const message = describeCloneFailure(
+      'https://github.com/eai-tools/Vertical-Template.git',
+      new Error('Command failed: git clone ...\nremote: Repository not found.\nfatal: repository not found'),
+    );
+
+    expect(message).toContain('default template source');
+    expect(message).toContain('--from <repo-or-path>');
+    expect(message).toContain('request access');
+  });
+
+  test('passes through unrelated clone errors', () => {
+    expect(describeCloneFailure('/tmp/template', new Error('fatal: unable to access repository'))).toBe(
+      'fatal: unable to access repository',
+    );
+  });
 });
