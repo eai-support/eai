@@ -15,8 +15,9 @@ import * as out from '../lib/output.js';
 
 const exec = promisify(execFile);
 
-const TEMPLATE_REPO = 'https://github.com/eai-tools/Vertical-Template.git';
+const TEMPLATE_REPO = 'https://github.com/eai-tools/eai-vertical-template.git';
 const GITHUB_ORG = 'eai-tools';
+const TEMPLATE_REPO_NAME = 'eai-vertical-template';
 
 interface InitOptions {
   name: string;
@@ -35,8 +36,8 @@ export function describeCloneFailure(templateSource: string, error: unknown): st
     templateSource === TEMPLATE_REPO
     && /repository .* not found|repository not found|fatal: .* not found/i.test(message)
   ) {
-    return `${message}\n\nThe default template source (${TEMPLATE_REPO}) is private.\n` +
-      `Use ${'`'}eai init <name> --from <repo-or-path>${'`'} with an accessible template source, or request access to ${GITHUB_ORG}/Vertical-Template.`;
+    return `${message}\n\nThe default template source (${TEMPLATE_REPO}) could not be reached.\n` +
+      `Use ${'`'}eai init <name> --from <repo-or-path>${'`'} with another accessible template source if GitHub is blocked from this machine.`;
   }
 
   return message;
@@ -137,12 +138,12 @@ export const initCommand = new Command('init')
     out.blank();
 
     // Step 1: Clone template
-    const cloneSpinner = ora('Cloning Vertical-Template...').start();
+    const cloneSpinner = ora(`Cloning ${TEMPLATE_REPO_NAME}...`).start();
     try {
       await exec('git', ['clone', '--depth', '1', options.from, targetDir]);
       // Remove .git to start fresh
       await rm(join(targetDir, '.git'), { recursive: true, force: true });
-      cloneSpinner.succeed(`Cloned from ${chalk.dim(GITHUB_ORG + '/Vertical-Template')}`);
+      cloneSpinner.succeed(`Cloned from ${chalk.dim(`${GITHUB_ORG}/${TEMPLATE_REPO_NAME}`)}`);
     } catch (err) {
       cloneSpinner.fail('Failed to clone template');
       out.error(describeCloneFailure(options.from, err));
@@ -210,7 +211,7 @@ export const initCommand = new Command('init')
     try {
       await exec('git', ['init'], { cwd: targetDir });
       await exec('git', ['add', '.'], { cwd: targetDir });
-      await exec('git', ['commit', '-m', `Initial scaffold from Vertical-Template\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${GITHUB_ORG}/Vertical-Template`], { cwd: targetDir });
+      await exec('git', ['commit', '-m', `Initial scaffold from ${TEMPLATE_REPO_NAME}\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${GITHUB_ORG}/${TEMPLATE_REPO_NAME}`], { cwd: targetDir });
       gitSpinner.succeed('Initialized git repository');
     } catch (_err) {
       gitSpinner.fail('Failed to initialize git');
@@ -221,7 +222,7 @@ export const initCommand = new Command('init')
     out.blank();
     out.heading('Next steps:');
     out.blank();
-    out.dim(`Template: https://github.com/${GITHUB_ORG}/Vertical-Template`);
+    out.dim(`Template: https://github.com/${GITHUB_ORG}/${TEMPLATE_REPO_NAME}`);
     out.dim(`CLI docs: https://github.com/${GITHUB_ORG}/eai-cli`);
     out.blank();
   });

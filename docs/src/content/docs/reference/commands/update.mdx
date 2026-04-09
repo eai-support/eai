@@ -35,7 +35,7 @@ eai update --check
 Example output:
 
 ```text
-✔ Update available: 0.3.2 → 0.3.3
+✔ Update available: 0.3.3 → 0.3.4
 → Run eai update to install.
 ```
 
@@ -48,8 +48,8 @@ eai update
 Example output:
 
 ```text
-✔ Update available: 0.3.2 → 0.3.3
-✔ Updated to 0.3.3
+✔ Update available: 0.3.3 → 0.3.4
+✔ Updated to 0.3.4
 ```
 
 ### Already on the latest version
@@ -61,16 +61,18 @@ eai update
 Example output:
 
 ```text
-✔ Already on the latest version (0.3.3)
+✔ Already on the latest version (0.3.4)
 ```
 
 ### Permission error
 
-If npm needs elevated permissions, the CLI prints the exact fallback command:
+If npm cannot write to the global install location, the CLI prints platform-specific recovery guidance:
 
 ```text
 ✖ Update failed.
-→ Try with sudo: sudo npm install -g @eai-tools/cli@0.3.3 --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
+→ Your global npm install location is not writable from this shell.
+→ Retry from a shell that can write to your global npm directory: npm install -g @eai-tools/cli@0.3.4 --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
+→ If you use nvm, Homebrew, or Volta, prefer their user-writable install path instead of sudo.
 ```
 
 ## Automatic Update Checks
@@ -85,7 +87,7 @@ Automatic checks are:
 Example reminder:
 
 ```text
-  Update available: 0.3.2 → 0.3.3
+  Update available: 0.3.3 → 0.3.4
   Run eai update to update
 ```
 
