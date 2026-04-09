@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import { spawn } from 'node:child_process';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
+import { getNpmExecutable } from '../lib/npm.js';
 import * as out from '../lib/output.js';
 
 export const devCommand = new Command('dev')
@@ -72,7 +73,7 @@ export const devCommand = new Command('dev')
     out.info(`Starting Next.js at ${chalk.cyan(`http://localhost:${options.port}/${appName}`)}`);
     out.blank();
 
-    const child = spawn('npm', args, {
+    const child = spawn(getNpmExecutable(), args, {
       cwd: root,
       stdio: 'inherit',
       env: { ...process.env, ...envVars },

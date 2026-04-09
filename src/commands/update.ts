@@ -12,6 +12,7 @@ import { promisify } from 'node:util';
 import ora from 'ora';
 import chalk from 'chalk';
 import { fetchLatestVersion, isNewerVersion } from '../lib/update-check.js';
+import { getNpmExecutable } from '../lib/npm.js';
 import * as out from '../lib/output.js';
 
 const exec = promisify(execFile);
@@ -69,7 +70,7 @@ Notes:
 
     const installSpinner = ora(`Installing @eai-tools/cli@${latest}...`).start();
     try {
-      await exec('npm', buildUpdateInstallArgs(latest));
+      await exec(getNpmExecutable(), buildUpdateInstallArgs(latest));
       installSpinner.succeed(`Updated to ${chalk.green(latest)}`);
     } catch (err) {
       installSpinner.fail('Update failed.');
