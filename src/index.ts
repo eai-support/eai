@@ -33,6 +33,7 @@ import { updateCommand } from './commands/update.js';
 import { provisionCommand } from './commands/provision.js';
 import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
+import { setActiveProfile, loadActiveProfileFromConfig } from './lib/profile.js';
 import { describeProgram } from './lib/schema-builder.js';
 
 const program = new Command();
@@ -44,15 +45,10 @@ program
   .option('--simple', 'Plain text output without colors or symbols (for screen readers)')
   .option('--no-color', 'Disable colored output')
   .option('--color', 'Force colored output')
+  .option('--profile <name>', 'Use a named environment profile (e.g. dev, test)')
   .option('--describe', 'Output JSON schema of all commands')
-  .hook('preAction', (thisCommand) => {
+  .hook('preAction', async (thisCommand) => {
     const opts = thisCommand.opts();
-
-    // Handle --describe flag (output schema and exit)
-    if (opts.describe) {
-      process.stdout.write(JSON.stringify(describeProgram(program), null, 2) + '\n');
-      process.exit(0);
-    }
 
     // Handle --simple flag
     if (opts.simple) {
@@ -67,6 +63,17 @@ program
     // Handle --color flag (force colors)
     if (opts.color) {
       process.env.FORCE_COLOR = '1';
+    }
+
+    // Handle --profile flag, EAI_PROFILE env var, or persisted activeProfile
+    const profileName = opts.profile || process.env.EAI_PROFILE;
+    if (profileName) {
+      setActiveProfile(profileName);
+    } else {
+      const persisted = await loadActiveProfileFromConfig();
+      if (persisted !== 'default') {
+        setActiveProfile(persisted);
+      }
     }
   });
 
@@ -137,10 +144,9 @@ ${chalk.bold('Accessibility:')}
 
 // Handle --describe before parsing (needs to work without command)
 if (process.argv.includes('--describe')) {
-  process.stdout.write(JSON.stringify(describeProgram(program), null, 2) + '\n');
-  process.exit(0);
+  console.log(JSON.stringify(describeProgram(program), null, 2));
+} else {
+  checkForUpdate(pkg.version);
+  await program.parseAsync();
+  await notifyIfUpdateAvailable(pkg.version);
 }
-
-checkForUpdate(pkg.version);
-await program.parseAsync();
-await notifyIfUpdateAvailable(pkg.version);

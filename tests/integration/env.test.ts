@@ -44,7 +44,7 @@ describe('eai env', () => {
     await env.cleanup();
   });
 
-  test('TC024: List loaded environment variables', async () => {
+  test('TC024: List loaded environment variables', { timeout: 5000 }, async () => {
     // TC024: List loaded environment variables
     // Traces to: Env-US2-AC1
     //
@@ -69,7 +69,7 @@ describe('eai env', () => {
     expectCommandSucceeded(result);
     expectDisplayedMessage(result, 'Environment (');
     expectDisplayedMessage(result, 'BASE_URL_PUBLIC_API');
-  }, { timeout: 5000 });
+  });
 
   test('patchEnvFile merges new keys without overwriting existing ones', async () => {
     await projectHasEnvFile(ctx, {
@@ -85,7 +85,7 @@ describe('eai env', () => {
     expect(content).toContain('NEW_KEY=new-value');
   });
 
-  test('TC028: Pull requires EAI project', async () => {
+  test('TC028: Pull requires EAI project', { timeout: 5000 }, async () => {
     // TC028: Pull fails when not in EAI project
     // Traces to: Env-US1-ERR1
     //
@@ -101,5 +101,5 @@ describe('eai env', () => {
 
     // Should detect not in EAI project
     expectDisplayedMessage(result, 'Not in an EAI project');
-  }, { timeout: 5000 });
+  });
 });

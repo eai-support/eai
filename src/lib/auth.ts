@@ -2,25 +2,23 @@
  * Authentication module — Entra CIAM browser auth (authorization code + PKCE)
  * plus token storage/refresh.
  *
- * Tokens are stored in a local file (~/.eai/tokens.json) with encryption.
+ * Tokens are stored per-profile: ~/.eai/tokens.json (default) or
+ * ~/.eai/tokens/{profile}.json (named profiles). Encrypted with AES-256-CBC.
  * For production, this would use OS keychain via keytar, but we avoid
  * the native dependency for now.
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { createServer } from 'node:http';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import type { AddressInfo } from 'node:net';
+import { getActiveProfile, getProfileTokensFile } from './profile.js';
 
-function getEaiDir(): string {
-  return join(homedir(), '.eai');
-}
-
-function getTokensFile(): string {
-  return join(getEaiDir(), 'tokens.json');
+function getTokensFile(profile = getActiveProfile()): string {
+  return getProfileTokensFile(profile);
 }
 
 function getEncryptionKeySource(): string {
@@ -44,8 +42,8 @@ export interface StoredTokens {
   membershipsCachedAt?: number;
 }
 
-// Module-level cache — eliminates repeated disk decrypt per process lifetime
-let _cache: StoredTokens | null = null;
+// Module-level cache — keyed by profile name so concurrent profile reads don't collide
+const _cache: Map<string, StoredTokens> = new Map();
 
 interface TokenResponse {
   access_token: string;
@@ -74,8 +72,8 @@ function getEncryptionKey(): Buffer {
   return createHash('sha256').update(getEncryptionKeySource()).digest();
 }
 
-async function ensureDir(): Promise<void> {
-  await mkdir(getEaiDir(), { recursive: true });
+async function ensureDir(tokensFile: string): Promise<void> {
+  await mkdir(dirname(tokensFile), { recursive: true });
 }
 
 function encrypt(data: string): string {
@@ -98,23 +96,28 @@ function decrypt(data: string): string {
 }
 
 export async function storeTokens(tokens: StoredTokens): Promise<void> {
-  await ensureDir();
+  const profile = getActiveProfile();
+  const tokensFile = getTokensFile(profile);
+  await ensureDir(tokensFile);
   const encrypted = encrypt(JSON.stringify(tokens));
-  await writeFile(getTokensFile(), encrypted, { encoding: 'utf-8', mode: 0o600 });
-  _cache = tokens;
+  await writeFile(tokensFile, encrypted, { encoding: 'utf-8', mode: 0o600 });
+  _cache.set(profile, tokens);
 }
 
 export async function loadTokens(): Promise<StoredTokens | null> {
-  if (_cache) return _cache;
+  const profile = getActiveProfile();
+  const cached = _cache.get(profile);
+  if (cached) return cached;
+  const tokensFile = getTokensFile(profile);
   try {
-    const encrypted = await readFile(getTokensFile(), 'utf-8');
+    const encrypted = await readFile(tokensFile, 'utf-8');
     const decrypted = decrypt(encrypted);
     const tokens: StoredTokens = JSON.parse(decrypted);
     // Backfill oid from JWT if missing (tokens stored before this field was added)
     if (!tokens.oid && tokens.accessToken) {
       tokens.oid = parseJwtClaim(tokens.accessToken, 'oid') || undefined;
     }
-    _cache = tokens;
+    _cache.set(profile, tokens);
     return tokens;
   } catch {
     return null;
@@ -122,12 +125,14 @@ export async function loadTokens(): Promise<StoredTokens | null> {
 }
 
 export async function clearTokens(): Promise<void> {
-  _cache = null;
+  const profile = getActiveProfile();
+  const tokensFile = getTokensFile(profile);
+  _cache.delete(profile);
   try {
     const { unlink } = await import('node:fs/promises');
-    await unlink(getTokensFile());
+    await unlink(tokensFile);
   } catch (err) {
-    if (!(err instanceof Error) || !('code' in err) || err.code !== 'ENOENT') {
+    if (!(err instanceof Error) || !('code' in err) || (err as NodeJS.ErrnoException).code !== 'ENOENT') {
       throw err;
     }
   }

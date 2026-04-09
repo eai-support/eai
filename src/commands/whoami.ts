@@ -6,7 +6,8 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { loadTokens, isAuthenticated } from '../lib/auth.js';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
-import { fetchTenantAdminMemberships, getStoredActiveTenant } from '../lib/tenant-context.js';
+import { fetchTenantAdminMemberships, getStoredActiveTenant, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { getActiveProfile } from '../lib/profile.js';
 import * as out from '../lib/output.js';
 
 export const whoamiCommand = new Command('whoami')
@@ -14,6 +15,8 @@ export const whoamiCommand = new Command('whoami')
   .action(async () => {
     const tokens = await loadTokens();
     const authenticated = await isAuthenticated();
+
+    const profileName = getActiveProfile();
 
     out.heading('Authentication');
 
@@ -29,11 +32,14 @@ export const whoamiCommand = new Command('whoami')
     }
 
     const activeTenant = getStoredActiveTenant(tokens);
+    const publicApiUrl = await resolvePublicApiUrl();
     out.table([
+      ['Profile', profileName === 'default' ? chalk.dim('default') : chalk.cyan(profileName)],
       ['Authority Tenant', tokens.tenantName],
       ['Authority Tenant ID', chalk.dim(tokens.tenantId)],
       ['Active Tenant', activeTenant ? activeTenant.displayName : chalk.dim('not selected')],
       ['Active Tenant ID', activeTenant ? chalk.dim(activeTenant.id) : chalk.dim('not selected')],
+      ['PublicAPI', publicApiUrl],
       ['Expires', new Date(tokens.expiresAt).toLocaleString()],
       ['Status', authenticated ? chalk.green('Active') : chalk.red('Expired')],
     ]);
@@ -59,7 +65,6 @@ export const whoamiCommand = new Command('whoami')
         out.heading('Project');
         out.table([
           ['App Name', chalk.cyan(appName)],
-          ['PublicAPI', env.BASE_URL_PUBLIC_API || chalk.dim('not set')],
         ]);
       }
     }

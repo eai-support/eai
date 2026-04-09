@@ -3,8 +3,9 @@ import { findProjectRoot, loadEnvFile } from './config.js';
 import { loadTokens, storeTokens, type StoredTokens } from './auth.js';
 import { PlatformAPIClient } from './api.js';
 import { isRecord } from './utils.js';
+import { getActiveProfile, loadProfileConfig } from './profile.js';
 
-export const DEFAULT_PUBLIC_API_URL = 'https://dev-api.myenterprise.ai/public';
+export const DEFAULT_PUBLIC_API_URL = 'https://api.au.myenterprise.ai/public';
 
 export interface TenantRoleAssignment {
   baseRole?: string;
@@ -171,6 +172,15 @@ export function evaluateTenantUsability(
   };
 }
 
+/**
+ * Resolve the Public API URL for the CLI to call.
+ *
+ * Priority:
+ *  1. Profile config (non-default profiles only)
+ *  2. BASE_URL_PUBLIC_API from project .env.local or process env
+ *  3. Stored tokens (cached from last login)
+ *  4. DEFAULT_PUBLIC_API_URL fallback
+ */
 async function loadContextEnv(projectRoot?: string): Promise<Record<string, string>> {
   const root = projectRoot ?? await findProjectRoot() ?? undefined;
   const envVars = root ? await loadEnvFile(root) : {};
@@ -178,16 +188,28 @@ async function loadContextEnv(projectRoot?: string): Promise<Record<string, stri
 }
 
 export async function resolvePublicApiUrl(projectRoot?: string): Promise<string> {
+  // 1. Profile config (named profiles carry their own API URL)
+  const profile = getActiveProfile();
+  if (profile !== 'default') {
+    const config = await loadProfileConfig(profile);
+    if (config?.publicApiUrl) {
+      return config.publicApiUrl;
+    }
+  }
+
+  // 2. Preserve the existing project-aware override path for default profile usage.
   const env = await loadContextEnv(projectRoot);
   if (env.BASE_URL_PUBLIC_API) {
     return env.BASE_URL_PUBLIC_API;
   }
 
+  // 3. Stored tokens (persisted from last login/tenant selection)
   const tokens = await loadTokens();
   if (tokens?.publicApiUrl) {
     return tokens.publicApiUrl;
   }
 
+  // 4. Fallback
   return DEFAULT_PUBLIC_API_URL;
 }
 

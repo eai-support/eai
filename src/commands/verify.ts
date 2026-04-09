@@ -424,7 +424,7 @@ export async function runContractAudit(
         method: 'GET',
         endpoint: `/v3/resources/schema/${context.tenantId}`,
         status: 'passed',
-        details: `ResourceAPI schema present (${typeCount} published type(s))`,
+        details: `Published schema present (${typeCount} published type(s))`,
       });
     } catch (err) {
       addCheck(checks, {

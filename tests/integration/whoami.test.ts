@@ -40,7 +40,7 @@ describe('eai whoami', () => {
     await env.cleanup();
   });
 
-  test('TC016: Whoami shows current user info', async () => {
+  test('TC016: Whoami shows current user info', { timeout: 5000 }, async () => {
     // TC016: Whoami displays current user info
     // Traces to: Auth-US3-AC1
     //
@@ -59,9 +59,9 @@ describe('eai whoami', () => {
 
     expectCommandSucceeded(result);
     expectDisplayedMessage(result, 'test@example.com');
-  }, { timeout: 5000 });
+  });
 
-  test('TC018: Whoami when not logged in', async () => {
+  test('TC018: Whoami when not logged in', { timeout: 5000 }, async () => {
     // TC018: Whoami when not logged in
     // Traces to: Auth-US3-ERR1
     //
@@ -78,5 +78,5 @@ describe('eai whoami', () => {
 
     // CLI outputs: "✗ Not logged in. Run `eai login` to authenticate."
     expectDisplayedMessage(result, 'Not logged in');
-  }, { timeout: 5000 });
+  });
 });
