@@ -197,7 +197,7 @@ describe('eai init', () => {
 });
 
 describe('describeCloneFailure', () => {
-  test('explains default template reachability failures', () => {
+  test('explains unreachable default template repository failures', () => {
     const message = describeCloneFailure(
       'https://github.com/eai-tools/eai-vertical-template.git',
       new Error('Command failed: git clone ...\nremote: Repository not found.\nfatal: repository not found'),
@@ -205,7 +205,19 @@ describe('describeCloneFailure', () => {
 
     expect(message).toContain('default template source');
     expect(message).toContain('--from <repo-or-path>');
-    expect(message).toContain('could not be reached');
+    expect(message).toContain('not reachable');
+  });
+
+  test('explains when git is not installed', () => {
+    const message = describeCloneFailure(
+      'https://github.com/eai-tools/eai-vertical-template.git',
+      new Error('spawn git ENOENT'),
+    );
+
+    expect(message).toContain('`git` is required');
+    expect(message).toContain('winget install --id Git.Git -e');
+    expect(message).toContain('eai-tools/eai-vertical-template.git');
+  });
   });
 
   test('passes through unrelated clone errors', () => {

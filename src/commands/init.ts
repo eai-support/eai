@@ -17,7 +17,7 @@ const exec = promisify(execFile);
 
 const TEMPLATE_REPO = 'https://github.com/eai-tools/eai-vertical-template.git';
 const GITHUB_ORG = 'eai-tools';
-const TEMPLATE_REPO_NAME = 'eai-vertical-template';
+const TEMPLATE_REPO_LABEL = `${GITHUB_ORG}/eai-vertical-template`;
 
 interface InitOptions {
   name: string;
@@ -31,6 +31,25 @@ interface InitOptions {
 
 export function describeCloneFailure(templateSource: string, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+
+  if (
+    /spawn git enoent/i.test(message)
+    || normalized.includes('git is not recognized')
+    || normalized.includes('no such file or directory')
+    && normalized.includes('git')
+  ) {
+    return [
+      '`git` is required to scaffold from a repository source, but it is not installed or not on your PATH.',
+      'Install Git, reopen your terminal, and run the command again.',
+      '',
+      'Windows: winget install --id Git.Git -e',
+      'Download: https://git-scm.com/download/win',
+      '',
+      `Default public template: ${TEMPLATE_REPO}`,
+      `Custom source: eai init <name> --from <repo-or-path>`,
+    ].join('\n');
+  }
 
   if (
     templateSource === TEMPLATE_REPO
@@ -138,12 +157,12 @@ export const initCommand = new Command('init')
     out.blank();
 
     // Step 1: Clone template
-    const cloneSpinner = ora(`Cloning ${TEMPLATE_REPO_NAME}...`).start();
+    const cloneSpinner = ora('Cloning template...').start();
     try {
       await exec('git', ['clone', '--depth', '1', options.from, targetDir]);
       // Remove .git to start fresh
       await rm(join(targetDir, '.git'), { recursive: true, force: true });
-      cloneSpinner.succeed(`Cloned from ${chalk.dim(`${GITHUB_ORG}/${TEMPLATE_REPO_NAME}`)}`);
+      cloneSpinner.succeed(`Cloned from ${chalk.dim(describeTemplateSource(options.from))}`);
     } catch (err) {
       cloneSpinner.fail('Failed to clone template');
       out.error(describeCloneFailure(options.from, err));
@@ -211,10 +230,11 @@ export const initCommand = new Command('init')
     try {
       await exec('git', ['init'], { cwd: targetDir });
       await exec('git', ['add', '.'], { cwd: targetDir });
-      await exec('git', ['commit', '-m', `Initial scaffold from ${TEMPLATE_REPO_NAME}\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${GITHUB_ORG}/${TEMPLATE_REPO_NAME}`], { cwd: targetDir });
+      await exec('git', ['commit', '-m', `Initial scaffold from template\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${describeTemplateSource(options.from)}`], { cwd: targetDir });
       gitSpinner.succeed('Initialized git repository');
-    } catch (_err) {
+    } catch (err) {
       gitSpinner.fail('Failed to initialize git');
+      out.warn(describeGitInitFailure(err));
     }
 
     out.blank();
@@ -222,7 +242,7 @@ export const initCommand = new Command('init')
     out.blank();
     out.heading('Next steps:');
     out.blank();
-    out.dim(`Template: https://github.com/${GITHUB_ORG}/${TEMPLATE_REPO_NAME}`);
+    out.dim(`Template: ${options.from}`);
     out.dim(`CLI docs: https://github.com/${GITHUB_ORG}/eai-cli`);
     out.blank();
   });
@@ -232,6 +252,27 @@ function toDisplayName(name: string): string {
     .split('-')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
+}
+
+function describeTemplateSource(templateSource: string): string {
+  if (templateSource === TEMPLATE_REPO) {
+    return TEMPLATE_REPO_LABEL;
+  }
+
+  const githubMatch = templateSource.match(/github\.com[:/](.+?)(?:\.git)?$/i);
+  if (githubMatch?.[1]) {
+    return githubMatch[1].replace(/\/+$/, '');
+  }
+
+  return templateSource;
+}
+
+function describeGitInitFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/spawn git enoent/i.test(message)) {
+    return '`git` was not found on your PATH, so the project was created without an initialized repository. Install Git and run `git init` inside the new project if you want version control.';
+  }
+  return message;
 }
 
 // ─── Generators ────────────────────────────────────────────────────────────
