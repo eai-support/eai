@@ -5,7 +5,7 @@
 import { Command } from 'commander';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, access, mkdir, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import ora from 'ora';
@@ -26,6 +26,20 @@ interface InitOptions {
   includeChat: boolean;
   includeDocs: boolean;
   authProvider: 'ciam' | 'b2b' | 'dual';
+}
+
+export function describeCloneFailure(templateSource: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (
+    templateSource === TEMPLATE_REPO
+    && /repository .* not found|repository not found|fatal: .* not found/i.test(message)
+  ) {
+    return `${message}\n\nThe default template source (${TEMPLATE_REPO}) is private.\n` +
+      `Use ${'`'}eai init <name> --from <repo-or-path>${'`'} with an accessible template source, or request access to ${GITHUB_ORG}/Vertical-Template.`;
+  }
+
+  return message;
 }
 
 export const initCommand = new Command('init')
@@ -127,11 +141,11 @@ export const initCommand = new Command('init')
     try {
       await exec('git', ['clone', '--depth', '1', options.from, targetDir]);
       // Remove .git to start fresh
-      await exec('rm', ['-rf', join(targetDir, '.git')]);
+      await rm(join(targetDir, '.git'), { recursive: true, force: true });
       cloneSpinner.succeed(`Cloned from ${chalk.dim(GITHUB_ORG + '/Vertical-Template')}`);
     } catch (err) {
       cloneSpinner.fail('Failed to clone template');
-      out.error(err instanceof Error ? err.message : String(err));
+      out.error(describeCloneFailure(options.from, err));
       process.exit(1);
     }
 
