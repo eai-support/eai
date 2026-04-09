@@ -1,6 +1,6 @@
 ---
 title: eai init
-description: Scaffold a new vertical application from the Vertical-Template
+description: Scaffold a new vertical application from the public EAI vertical template
 ---
 
 ## Synopsis
@@ -11,7 +11,7 @@ eai init [name] [options]
 
 ## Description
 
-`eai init` scaffolds a new vertical application from the [Vertical-Template](https://github.com/eai-tools/Vertical-Template). It clones the template, customizes configuration files, generates an Object Types scaffold, sets up a deployment workflow, and initializes a fresh git repository.
+`eai init` scaffolds a new vertical application from the public template repo [eai-vertical-template](https://github.com/eai-tools/eai-vertical-template). It clones the template, customizes configuration files, generates an Object Types scaffold, sets up a deployment workflow, and initializes a fresh git repository.
 
 If `name` is not provided on the command line, the CLI will prompt for it interactively along with other configuration options such as display name, tenant structure, and feature selection.
 
@@ -28,7 +28,7 @@ The generated project is a Next.js 15 application with EAI platform integration,
 | Option | Description | Default |
 |--------|-------------|---------|
 | `[name]` | Name for the vertical (kebab-case). Prompted interactively if omitted. | -- |
-| `--from <repo>` | GitHub repo URL or local path for the template. | `https://github.com/eai-tools/Vertical-Template.git` |
+| `--from <repo>` | GitHub repo URL or local path for the template. | `https://github.com/eai-tools/eai-vertical-template.git` |
 | `--skip-prompts` | Use defaults without interactive prompts. Requires `name` argument. | `false` |
 | `-h, --help` | Display help for the command. | -- |
 
@@ -65,7 +65,7 @@ eai init
 
 Creating Patient Intake
 
-✔ Cloned from eai-tools/Vertical-Template
+✔ Cloned from eai-tools/eai-vertical-template
 ✔ Updated package.json
 ✔ Generated .env.local
 ✔ Created Object Types scaffold
@@ -105,7 +105,7 @@ eai init claims-processing --skip-prompts
 ```
 Creating Claims Processing
 
-✔ Cloned from eai-tools/Vertical-Template
+✔ Cloned from eai-tools/eai-vertical-template
 ✔ Updated package.json
 ✔ Generated .env.local
 ✔ Created Object Types scaffold
@@ -120,6 +120,23 @@ Creating Claims Processing
 
 ```bash
 eai init my-vertical --from https://github.com/my-org/my-template.git
+```
+
+### If Git is not installed
+
+`eai init` clones the template repository, so Git must be installed and available on your `PATH`.
+
+Typical Windows error:
+
+```text
+✖ Failed to clone template
+✗ `git` is required to scaffold from a repository source, but it is not installed or not on your PATH.
+```
+
+Install Git, reopen the terminal, and run `eai init` again:
+
+```powershell
+winget install --id Git.Git -e
 ```
 
 ## Related Commands

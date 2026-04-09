@@ -78,7 +78,7 @@ All commands support these global flags:
 
 | Command | Description |
 |---------|-------------|
-| `eai init [name]` | Interactive scaffold from Vertical-Template |
+| `eai init [name]` | Interactive scaffold from the public EAI vertical template |
 | `eai dev` | Start local dev server with connectivity checks |
 
 ### Authentication
