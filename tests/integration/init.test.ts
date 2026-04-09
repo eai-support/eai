@@ -205,7 +205,7 @@ describe('describeCloneFailure', () => {
 
     expect(message).toContain('default template source');
     expect(message).toContain('--from <repo-or-path>');
-    expect(message).toContain('not reachable');
+    expect(message).toContain('could not be reached');
   });
 
   test('explains when git is not installed', () => {
@@ -217,7 +217,6 @@ describe('describeCloneFailure', () => {
     expect(message).toContain('`git` is required');
     expect(message).toContain('winget install --id Git.Git -e');
     expect(message).toContain('eai-tools/eai-vertical-template.git');
-  });
   });
 
   test('passes through unrelated clone errors', () => {
