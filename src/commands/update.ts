@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import { createRequire } from 'node:module';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import process from 'node:process';
 import ora from 'ora';
 import chalk from 'chalk';
 import { fetchLatestVersion, isNewerVersion } from '../lib/update-check.js';
@@ -31,6 +32,30 @@ export function buildUpdateInstallArgs(version: string): string[] {
   ];
 }
 
+export function isUpdatePermissionError(message: string): boolean {
+  return /EACCES|permission/i.test(message);
+}
+
+export function buildUpdatePermissionGuidance(
+  version: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  const installCommand = `npm ${buildUpdateInstallArgs(version).join(' ')}`;
+
+  if (platform === 'win32') {
+    return [
+      'Your global npm install location is not writable from this shell.',
+      `Retry from an elevated PowerShell or Command Prompt: ${installCommand}`,
+    ];
+  }
+
+  return [
+    'Your global npm install location is not writable from this shell.',
+    `Retry from a shell that can write to your global npm directory: ${installCommand}`,
+    'If you use nvm, Homebrew, or Volta, prefer their user-writable install path instead of sudo.',
+  ];
+}
+
 export const updateCommand = new Command('update')
   .description('Check for and install CLI updates')
   .option('--check', 'Only check for updates without installing')
@@ -42,7 +67,7 @@ Examples:
 Notes:
   - The CLI installs from the EAI scoped registry.
   - Public npm dependencies still come from the normal npm registry.
-  - If npm needs elevated permissions, the CLI prints the exact sudo command to run.
+  - If npm hits a permissions error, the CLI explains how to retry on your platform.
   `)
   .action(async (options: { check?: boolean }) => {
     const current = pkg.version;
@@ -75,8 +100,15 @@ Notes:
     } catch (err) {
       installSpinner.fail('Update failed.');
       const message = err instanceof Error ? err.message : String(err);
-      if (message.includes('EACCES') || message.includes('permission')) {
-        out.info(`Try with sudo: ${chalk.cyan(`sudo npm ${buildUpdateInstallArgs(latest).join(' ')}`)}`);
+      if (isUpdatePermissionError(message)) {
+        for (const line of buildUpdatePermissionGuidance(latest)) {
+          if (line.includes(': ')) {
+            const [prefix, ...rest] = line.split(': ');
+            out.info(`${prefix}: ${chalk.cyan(rest.join(': '))}`);
+          } else {
+            out.info(line);
+          }
+        }
       } else {
         out.error(message);
         out.info(`Manual install: ${chalk.cyan(`npm ${buildUpdateInstallArgs(latest).join(' ')}`)}`);
