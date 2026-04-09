@@ -84,7 +84,7 @@ describe('eai provision entra', () => {
     await env.cleanup();
   });
 
-  test('happy path: writes ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET to .env.local', async () => {
+  test('happy path: writes ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET to .env.local', { timeout: 10000 }, async () => {
     let requestBody: unknown;
 
     mockServer.server.use(
@@ -107,9 +107,9 @@ describe('eai provision entra', () => {
     expect(content).toContain('ENTRA_CLIENT_ID=cid-1');
     expect(content).toContain('ENTRA_CLIENT_SECRET=secret-1');
     expect(content).toContain('NEXT_PUBLIC_APP_NAME=my-vertical');
-  }, { timeout: 10000 });
+  });
 
-  test('existing registration: preserves .env.local keys and confirms ENTRA_CLIENT_ID', async () => {
+  test('existing registration: preserves .env.local keys and confirms ENTRA_CLIENT_ID', { timeout: 10000 }, async () => {
     await writeFile(
       join(env.dir, '.env.local'),
       `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nEXISTING_KEY=keep-me\n`,
@@ -126,9 +126,9 @@ describe('eai provision entra', () => {
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=cid-1');
     expect(content).toContain('EXISTING_KEY=keep-me');
-  }, { timeout: 10000 });
+  });
 
-  test('force re-checks an existing local ENTRA_CLIENT_ID without expecting a new secret', async () => {
+  test('force re-checks an existing local ENTRA_CLIENT_ID without expecting a new secret', { timeout: 10000 }, async () => {
     let requestBody: unknown;
 
     await writeFile(
@@ -154,9 +154,9 @@ describe('eai provision entra', () => {
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=remote-client');
-  }, { timeout: 10000 });
+  });
 
-  test('HTTP 403: exits with code 1 and reports permission denied', async () => {
+  test('HTTP 403: exits with code 1 and reports permission denied', { timeout: 10000 }, async () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v3/provision/entra-app`, () =>
         HttpResponse.json({ error: 'forbidden' }, { status: 403 }),
@@ -174,9 +174,9 @@ describe('eai provision entra', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errSpy.mock.calls.flat().join(' ')).toContain('Permission denied');
-  }, { timeout: 10000 });
+  });
 
-  test('HTTP 409: exits with code 1 and reports quota exceeded', async () => {
+  test('HTTP 409: exits with code 1 and reports quota exceeded', { timeout: 10000 }, async () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v3/provision/entra-app`, () =>
         HttpResponse.json({ error: 'conflict' }, { status: 409 }),
@@ -194,9 +194,9 @@ describe('eai provision entra', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errSpy.mock.calls.flat().join(' ')).toContain('Maximum app registrations');
-  }, { timeout: 10000 });
+  });
 
-  test('HTTP 404: exits with code 1 and reports endpoint not yet available', async () => {
+  test('HTTP 404: exits with code 1 and reports endpoint not yet available', { timeout: 10000 }, async () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v3/provision/entra-app`, () =>
         HttpResponse.json({ error: 'not found' }, { status: 404 }),
@@ -214,5 +214,5 @@ describe('eai provision entra', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(warnSpy.mock.calls.flat().join(' ')).toContain('not yet available');
-  }, { timeout: 10000 });
+  });
 });

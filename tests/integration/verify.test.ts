@@ -42,7 +42,7 @@ describe('eai verify', () => {
     await env.cleanup();
   });
 
-  test('TC092: Verify shows system checks', async () => {
+  test('TC092: Verify shows system checks', { timeout: 10000 }, async () => {
     // TC092: Verify all checks pass
     // Traces to: Verify-US1-AC1
     //
@@ -69,9 +69,9 @@ describe('eai verify', () => {
 
     // Should show check results
     expectDisplayedMessage(result, 'Platform Connectivity Checks');
-  }, { timeout: 10000 });
+  });
 
-  test('TC093: Verify detects issues', async () => {
+  test('TC093: Verify detects issues', { timeout: 10000 }, async () => {
     // TC093: Verify fails on API unreachable
     // Traces to: Verify-US1-ERR1
     //
@@ -94,9 +94,9 @@ describe('eai verify', () => {
 
     // Should show connectivity checks (even if they fail)
     expectDisplayedMessage(result, 'Connectivity Checks');
-  }, { timeout: 10000 });
+  });
 
-  test('TC094: Verify accepts an explicit tenant-id for read-only checks', async () => {
+  test('TC094: Verify accepts an explicit tenant-id for read-only checks', { timeout: 10000 }, async () => {
     workingDirectoryIs(ctx, env.dir);
     await userIsLoggedIn(ctx);
     await projectHasEnvFile(ctx, {
@@ -109,5 +109,5 @@ describe('eai verify', () => {
     const result = await runCommand(ctx, 'eai verify --tenant-id tenant-override');
 
     expectDisplayedMessage(result, 'Platform Connectivity Checks');
-  }, { timeout: 10000 });
+  });
 });

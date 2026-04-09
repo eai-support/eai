@@ -74,6 +74,11 @@ echo "▸ Building..."
 npm run build
 echo "  ✓ Build succeeded"
 
+# ── Tests ──
+echo "▸ Running tests..."
+npm run test
+echo "  ✓ Tests passed"
+
 # ── Smoke test: CLI runs ──
 echo "▸ Smoke testing CLI..."
 CLI_VERSION=$(node dist/index.js --version 2>&1)
@@ -135,7 +140,9 @@ echo "  ✓ Registry generated"
 
 # ── Commit, tag, push ──
 git add package.json package-lock.json docs/public/registry/
-git commit -m "chore: release v$NEW_VERSION — $MESSAGE"
+git commit \
+  -m "chore: release v$NEW_VERSION — $MESSAGE" \
+  -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 git tag -a "v$NEW_VERSION" -m "$MESSAGE"
 git push origin main --tags
 

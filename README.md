@@ -65,6 +65,7 @@ All commands support these global flags:
 
 | Flag | Description |
 |------|-------------|
+| `--profile <name>` | Use a named environment profile (e.g. dev, test) |
 | `--simple` | Plain text output without colors or symbols (for screen readers) |
 | `--no-color` | Disable colored output |
 | `--color` | Force colored output (for testing) |

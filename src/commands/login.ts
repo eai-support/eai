@@ -6,25 +6,25 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { browserLogin, clearTokens, storeTokens } from '../lib/auth.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { getActiveProfile, loadProfileConfig, saveActiveProfileToConfig, DEFAULT_AUTH_SCOPE } from '../lib/profile.js';
 import * as out from '../lib/output.js';
 
-// CIAM identifiers — must be set via environment variables.
-// EAI_CIAM_TENANT_NAME, EAI_CIAM_TENANT_ID, EAI_CIAM_CLIENT_ID, EAI_CIAM_SCOPE
-const DEFAULT_TENANT_NAME = process.env.EAI_CIAM_TENANT_NAME ?? '';
-const DEFAULT_TENANT_ID = process.env.EAI_CIAM_TENANT_ID ?? '';
-const DEFAULT_SCOPE = process.env.EAI_CIAM_SCOPE ?? 'openid profile email offline_access';
-// EAI CLI first-party App Registration (public client — 'EAI CLI - Developer Tools')
-const DEFAULT_CLIENT_ID = process.env.EAI_CIAM_CLIENT_ID ?? '';
+// Production CIAM defaults — hardcoded so `eai login` works without config files
+const PROD_TENANT_NAME = 'enterpriseaiplatform';
+const PROD_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
+const PROD_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
+const DEFAULT_SCOPE = DEFAULT_AUTH_SCOPE;
 
 export const loginCommand = new Command('login')
   .description('Authenticate with Entra CIAM')
-  .option('--tenant-name <name>', 'CIAM tenant name', DEFAULT_TENANT_NAME)
-  .option('--tenant-id <id>', 'CIAM tenant ID', DEFAULT_TENANT_ID)
-  .option('--scope <scope>', 'OAuth scopes', DEFAULT_SCOPE)
+  .option('--tenant-name <name>', 'CIAM tenant name')
+  .option('--tenant-id <id>', 'CIAM tenant ID')
+  .option('--scope <scope>', 'OAuth scopes')
   .addHelpText('after', `
 Examples:
   $ eai login
   $ eai login --tenant-name myorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
+  $ eai --profile dev login
   $ eai whoami
 
 What happens next:
@@ -33,20 +33,41 @@ What happens next:
   - If you have more than one, run 'eai tenant select' to choose the tenant to work with.
   `)
   .action(async (options) => {
+    const profile = getActiveProfile();
+    const profileConfig = await loadProfileConfig(profile);
+
+    // Resolve auth config: command flags → profile config → prod defaults
+    const tenantName = options.tenantName || profileConfig?.authTenantName || PROD_TENANT_NAME;
+    const tenantId = options.tenantId || profileConfig?.authTenantId || PROD_TENANT_ID;
+    const clientId = profileConfig?.authClientId || PROD_CLIENT_ID;
+    const scope = options.scope || profileConfig?.authScope || DEFAULT_SCOPE;
+
+    if (!tenantName || !tenantId || !clientId) {
+      out.error(`Profile "${profile}" is missing authTenantName, authTenantId, or authClientId.`);
+      out.info('Check ~/.eai/config.json and ensure all required fields are set.');
+      process.exit(1);
+    }
+
     out.heading('Authenticating with Entra CIAM');
-    out.info(`Tenant: ${chalk.cyan(options.tenantName)}`);
+    if (profile !== 'default') {
+      out.info(`Profile: ${chalk.cyan(profile)}`);
+    }
+    out.info(`Tenant: ${chalk.cyan(tenantName)}`);
     out.info('Opening your browser to complete sign-in...');
 
     try {
       const tokens = await browserLogin(
-        options.tenantName,
-        options.tenantId,
-        DEFAULT_CLIENT_ID,
-        options.scope,
+        tenantName,
+        tenantId,
+        clientId,
+        scope,
       );
 
       // Store bare tokens now so the cache is populated for the tenant resolution call
       await storeTokens(tokens);
+
+      // Persist this profile as the active one so subsequent commands use it
+      await saveActiveProfileToConfig(profile);
 
       out.blank();
       out.success(`Authenticated as ${chalk.bold(tokens.upn || 'user')}`);
@@ -72,6 +93,13 @@ What happens next:
 export const logoutCommand = new Command('logout')
   .description('Clear stored authentication tokens')
   .action(async () => {
+    const profile = getActiveProfile();
     await clearTokens();
-    out.success('Logged out. Stored tokens cleared.');
+    // Reset active profile to default on logout
+    if (profile !== 'default') {
+      await saveActiveProfileToConfig('default');
+      out.success(`Logged out from profile "${profile}". Stored tokens cleared.`);
+    } else {
+      out.success('Logged out. Stored tokens cleared.');
+    }
   });

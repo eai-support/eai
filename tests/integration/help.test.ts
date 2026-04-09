@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
 import { runCommand } from '../helpers/action-dsl.js';
+
+const execFileAsync = promisify(execFile);
 
 describe('CLI help output', () => {
   let env: TestEnvironment;
@@ -49,11 +54,19 @@ describe('CLI help output', () => {
   });
 
   test('--describe outputs valid parseable JSON', async () => {
-    const result = await runCommand(ctx, 'eai --describe');
+    const cliEntry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
+    const { stdout } = await execFileAsync(process.execPath, [cliEntry, '--describe'], {
+      cwd: ctx.workingDir,
+      env: {
+        ...process.env,
+        HOME: ctx.env.HOME || ctx.workingDir,
+        USERPROFILE: ctx.env.USERPROFILE || ctx.workingDir,
+        ...ctx.env,
+      },
+    });
 
-    expect(result.exitCode).toBe(0);
-    expect(() => JSON.parse(result.stdout)).not.toThrow();
-    const schema = JSON.parse(result.stdout);
+    expect(() => JSON.parse(stdout)).not.toThrow();
+    const schema = JSON.parse(stdout);
     expect(typeof schema).toBe('object');
   });
 
