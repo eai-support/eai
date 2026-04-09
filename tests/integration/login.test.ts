@@ -62,6 +62,25 @@ describe('eai login', () => {
     expect(result.stderr).toContain("unknown option '--client-id'");
   });
 
+  test('getBrowserOpenCommand preserves query params on supported platforms', async () => {
+    vi.resetModules();
+    const { getBrowserOpenCommand } = await import('../../src/lib/auth.js');
+    const authUrl = 'https://example.ciamlogin.com/tenant/oauth2/v2.0/authorize?client_id=test-client&scope=openid+profile+email+offline_access&state=test-state';
+
+    expect(getBrowserOpenCommand(authUrl, 'darwin')).toEqual({
+      command: 'open',
+      args: [authUrl],
+    });
+    expect(getBrowserOpenCommand(authUrl, 'linux')).toEqual({
+      command: 'xdg-open',
+      args: [authUrl],
+    });
+    expect(getBrowserOpenCommand(authUrl, 'win32')).toEqual({
+      command: 'rundll32.exe',
+      args: ['url.dll,FileProtocolHandler', authUrl],
+    });
+  });
+
   test('browserLogin completes callback flow and stores tokens', async () => {
     const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
     const tempBin = await mkdtemp(join(tmpdir(), 'eai-auth-bin-'));
@@ -151,5 +170,57 @@ describe('eai login', () => {
     process.env.PATH = originalPath;
     await rm(tempHome, { recursive: true, force: true });
     await rm(tempBin, { recursive: true, force: true });
+  });
+
+  test('refresh flow includes the stored auth scope', async () => {
+    const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempHome;
+
+    const authScope = 'openid profile email offline_access api://97f59e40-0d86-4c6d-8ac6-80659fea1a4e/access_token';
+    const refreshedAccessToken = createJwt({
+      preferred_username: 'browser@example.com',
+      oid: 'oid-123',
+    });
+
+    vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
+      expect(init?.body).toBeInstanceOf(URLSearchParams);
+      const body = init?.body as URLSearchParams;
+      expect(body.get('grant_type')).toBe('refresh_token');
+      expect(body.get('scope')).toBe(authScope);
+
+      return new Response(JSON.stringify({
+        access_token: refreshedAccessToken,
+        refresh_token: 'new-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    vi.resetModules();
+    const { storeTokens, getAccessToken, loadTokens } = await import('../../src/lib/auth.js');
+
+    await storeTokens({
+      accessToken: 'expired-access-token',
+      refreshToken: 'refresh-token',
+      expiresAt: Date.now() - 1000,
+      tenantId: 'dffacd2b-7705-43f2-86ae-75d1ef003a71',
+      tenantName: 'enterpriseaitestplatform',
+      clientId: '861ad00a-aba1-47e4-baf2-3e3f6ef4a69e',
+      authScope,
+    });
+
+    const nextToken = await getAccessToken();
+    expect(nextToken).toBe(refreshedAccessToken);
+
+    const stored = await loadTokens();
+    expect(stored?.refreshToken).toBe('new-refresh-token');
+    expect(stored?.authScope).toBe(authScope);
+
+    process.env.HOME = originalHome;
+    await rm(tempHome, { recursive: true, force: true });
   });
 });

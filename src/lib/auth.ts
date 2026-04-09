@@ -15,7 +15,7 @@ import { createServer } from 'node:http';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import type { AddressInfo } from 'node:net';
-import { getActiveProfile, getProfileTokensFile } from './profile.js';
+import { getActiveProfile, getProfileTokensFile, loadProfileConfig, DEFAULT_AUTH_SCOPE } from './profile.js';
 
 function getTokensFile(profile = getActiveProfile()): string {
   return getProfileTokensFile(profile);
@@ -32,6 +32,7 @@ export interface StoredTokens {
   tenantId: string;
   tenantName: string;
   clientId: string;
+  authScope?: string;
   upn?: string;
   oid?: string;
   activeTenantId?: string;
@@ -70,6 +71,19 @@ interface CallbackServer {
 
 function getEncryptionKey(): Buffer {
   return createHash('sha256').update(getEncryptionKeySource()).digest();
+}
+
+async function resolveAuthScope(profile: string): Promise<string> {
+  if (profile === 'default') {
+    return DEFAULT_AUTH_SCOPE;
+  }
+
+  try {
+    const config = await loadProfileConfig(profile);
+    return config?.authScope || DEFAULT_AUTH_SCOPE;
+  } catch {
+    return DEFAULT_AUTH_SCOPE;
+  }
 }
 
 async function ensureDir(tokensFile: string): Promise<void> {
@@ -116,6 +130,9 @@ export async function loadTokens(): Promise<StoredTokens | null> {
     // Backfill oid from JWT if missing (tokens stored before this field was added)
     if (!tokens.oid && tokens.accessToken) {
       tokens.oid = parseJwtClaim(tokens.accessToken, 'oid') || undefined;
+    }
+    if (!tokens.authScope) {
+      tokens.authScope = await resolveAuthScope(profile);
     }
     _cache.set(profile, tokens);
     return tokens;
@@ -186,6 +203,7 @@ function buildStoredTokens(
   tenantId: string,
   tenantName: string,
   clientId: string,
+  authScope: string,
 ): StoredTokens {
   return {
     accessToken: token.access_token,
@@ -194,6 +212,7 @@ function buildStoredTokens(
     tenantId,
     tenantName,
     clientId,
+    authScope,
     upn: parseJwtClaim(token.access_token, 'preferred_username') || undefined,
     oid: parseJwtClaim(token.access_token, 'oid') || undefined,
   };
@@ -213,15 +232,21 @@ function generatePkce(): PkceValues {
   return { codeVerifier, codeChallenge };
 }
 
-function pickOpenCommand(url: string): { command: string; args: string[] } {
-  if (process.platform === 'darwin') return { command: 'open', args: [url] };
-  if (process.platform === 'win32') return { command: 'cmd', args: ['/c', 'start', '', url] };
+export function getBrowserOpenCommand(
+  url: string,
+  platform: NodeJS.Platform = process.platform,
+): { command: string; args: string[] } {
+  if (platform === 'darwin') return { command: 'open', args: [url] };
+  if (platform === 'win32') {
+    // Use the URL protocol handler directly so cmd.exe does not strip query params like "&scope=...".
+    return { command: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', url] };
+  }
   return { command: 'xdg-open', args: [url] };
 }
 
 async function openBrowser(url: string): Promise<void> {
   const { spawn } = await import('node:child_process');
-  const opener = pickOpenCommand(url);
+  const opener = getBrowserOpenCommand(url);
 
   await new Promise<void>((resolve, reject) => {
     const child = spawn(opener.command, opener.args, { stdio: 'ignore' });
@@ -395,7 +420,7 @@ export async function browserLogin(
     }
 
     // Return tokens without writing — caller writes once after tenant context is resolved
-    return buildStoredTokens(tokenData as TokenResponse, tenantId, tenantName, clientId);
+    return buildStoredTokens(tokenData as TokenResponse, tenantId, tenantName, clientId, scope);
   } finally {
     await callbackServer.close();
   }
@@ -408,6 +433,7 @@ async function refreshAccessToken(tokens: StoredTokens): Promise<StoredTokens | 
   if (!tokens.refreshToken || !tokens.clientId) return null;
 
   const authority = `https://${tokens.tenantName}.ciamlogin.com/${tokens.tenantId}`;
+  const scope = tokens.authScope || await resolveAuthScope(getActiveProfile());
 
   const res = await fetch(`${authority}/oauth2/v2.0/token`, {
     method: 'POST',
@@ -416,6 +442,7 @@ async function refreshAccessToken(tokens: StoredTokens): Promise<StoredTokens | 
       client_id: tokens.clientId,
       grant_type: 'refresh_token',
       refresh_token: tokens.refreshToken,
+      scope,
     }),
   });
 
@@ -428,6 +455,7 @@ async function refreshAccessToken(tokens: StoredTokens): Promise<StoredTokens | 
     accessToken: data.access_token,
     refreshToken: data.refresh_token || tokens.refreshToken,
     expiresAt: Date.now() + data.expires_in * 1000,
+    authScope: scope,
     upn: parseJwtClaim(data.access_token, 'preferred_username') || tokens.upn,
     oid: parseJwtClaim(data.access_token, 'oid') || tokens.oid,
   };
