@@ -37,10 +37,11 @@ Then add:
       "authScope": "openid profile email offline_access"
     },
     "test": {
-      "publicApiUrl": "https://test-api.au.myenterprise.ai/public",
+      "publicApiUrl": "https://test-api.ae.myenterprise.ai/public",
       "authTenantName": "enterpriseaitestplatform",
       "authTenantId": "dffacd2b-7705-43f2-86ae-75d1ef003a71",
-      "authClientId": "861ad00a-aba1-47e4-baf2-3e3f6ef4a69e"
+      "authClientId": "861ad00a-aba1-47e4-baf2-3e3f6ef4a69e",
+      "authScope": "openid profile email offline_access api://97f59e40-0d86-4c6d-8ac6-80659fea1a4e/access_token"
     }
   }
 }
@@ -63,6 +64,12 @@ No profile is needed for prod — `eai login` works out of the box.
 | Field       | Default                               |
 | ----------- | ------------------------------------- |
 | `authScope` | `openid profile email offline_access` |
+
+For environments where the CLI calls PublicAPI directly, set `authScope` to include that environment's Public API scope. For the current test tenant:
+
+```json
+"authScope": "openid profile email offline_access api://97f59e40-0d86-4c6d-8ac6-80659fea1a4e/access_token"
+```
 
 ## Usage
 
