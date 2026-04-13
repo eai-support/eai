@@ -67,6 +67,7 @@ Examples:
 
 Notes:
   - The CLI installs from the EAI scoped registry.
+  - npm is asked to revalidate registry metadata before installing.
   - Public npm dependencies still come from the normal npm registry.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
   `)
