@@ -13,8 +13,12 @@ import { createMockServer } from '../helpers/mock-server.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { storeTokens, clearTokens } from '../../src/lib/auth.js';
 import { provisionCommand } from '../../src/commands/provision.js';
+import { getActiveProfile, setActiveProfile } from '../../src/lib/profile.js';
+import { DEFAULT_PUBLIC_API_URL } from '../../src/lib/tenant-context.js';
 
 const API_BASE = 'https://test-api.example.com';
+const PROFILE_API_BASE = 'https://test-api.ae.myenterprise.ai/public';
+const DEV_PROFILE_API_BASE = 'https://dev-api.ae.myenterprise.ai/public';
 
 async function setupProject(dir: string): Promise<void> {
   await mkdir(join(dir, 'src', 'eai.config'), { recursive: true });
@@ -44,17 +48,35 @@ async function storeTestTokens(dir: string): Promise<void> {
   });
 }
 
+function joinedConsoleOutput(...spies: Array<{ mock: { calls: unknown[][] } }>): string {
+  return spies.flatMap((spy) => spy.mock.calls.flat()).join(' ');
+}
+
+function expectNoProvisionInternals(output: string): void {
+  expect(output).not.toContain(API_BASE);
+  expect(output).not.toContain('/v3/provision/entra-app');
+  expect(output).not.toContain('POST ');
+  expect(output).not.toContain('PublicAPI');
+  expect(output).not.toContain('AdminAPI');
+  expect(output).not.toContain('tenant_not_found');
+  expect(output).not.toContain('test-tenant-id');
+  expect(output).not.toContain('Tenant test-tenant-id was not found');
+  expect(output).not.toContain('not implemented');
+}
+
 describe('eai provision entra', () => {
   let env: TestEnvironment;
   let mockServer: ReturnType<typeof createMockServer>;
   let originalCwd: string;
   let originalHome: string | undefined;
   let originalAccessToken: string | undefined;
+  let originalProfile: string;
 
   beforeEach(async () => {
     originalCwd = process.cwd();
     originalHome = process.env.HOME;
     originalAccessToken = process.env.EAI_ACCESS_TOKEN;
+    originalProfile = getActiveProfile();
 
     env = await createTestEnvironment();
     mockServer = createMockServer();
@@ -69,6 +91,9 @@ describe('eai provision entra', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     process.chdir(originalCwd);
+    mockServer.stop();
+    await clearTokens();
+    setActiveProfile(originalProfile);
     if (originalHome === undefined) {
       delete process.env.HOME;
     } else {
@@ -79,8 +104,6 @@ describe('eai provision entra', () => {
     } else {
       process.env.EAI_ACCESS_TOKEN = originalAccessToken;
     }
-    mockServer.stop();
-    await clearTokens();
     await env.cleanup();
   });
 
@@ -107,6 +130,54 @@ describe('eai provision entra', () => {
     expect(content).toContain('ENTRA_CLIENT_ID=cid-1');
     expect(content).toContain('ENTRA_CLIENT_SECRET=secret-1');
     expect(content).toContain('NEXT_PUBLIC_APP_NAME=my-vertical');
+  });
+
+  test('default profile provisions through the prod PublicAPI when no local API URL is configured', { timeout: 10000 }, async () => {
+    await clearTokens();
+    await storeTokens({
+      accessToken: 'test-access-token',
+      refreshToken: 'test-refresh-token',
+      expiresAt: Date.now() + 3600000,
+      upn: 'test@example.com',
+      oid: 'test-oid',
+      tenantId: 'test-tenant-id',
+      tenantName: 'test-tenant',
+      clientId: 'test-client-id',
+      activeTenantId: 'test-tenant-id',
+      activeTenantName: 'Test Tenant',
+      activeTenantSlug: 'test-tenant',
+      publicApiUrl: API_BASE,
+      membershipsCachedAt: Date.now(),
+    });
+    await writeFile(join(env.dir, '.env.local'), 'NEXT_PUBLIC_APP_NAME=my-vertical\n');
+
+    let requestBody: unknown;
+    let staleTokenApiHit = false;
+
+    mockServer.server.use(
+      http.post(`${DEFAULT_PUBLIC_API_URL}/v3/provision/entra-app`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({ client_id: 'prod-client-id', client_secret: 'prod-secret', existing: false });
+      }),
+      http.post(`${API_BASE}/v3/provision/entra-app`, () => {
+        staleTokenApiHit = true;
+        return HttpResponse.json({ detail: 'stale token URL used' }, { status: 500 });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'my-vertical',
+      redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
+    expect(staleTokenApiHit).toBe(false);
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('ENTRA_CLIENT_ID=prod-client-id');
+    expect(content).toContain('ENTRA_CLIENT_SECRET=prod-secret');
   });
 
   test('existing registration: preserves .env.local keys and confirms ENTRA_CLIENT_ID', { timeout: 10000 }, async () => {
@@ -156,6 +227,119 @@ describe('eai provision entra', () => {
     expect(content).toContain('ENTRA_CLIENT_ID=remote-client');
   });
 
+  test('named profile API URL overrides local env when provisioning', { timeout: 10000 }, async () => {
+    setActiveProfile('test');
+    await mkdir(join(env.dir, '.eai'), { recursive: true });
+    await writeFile(
+      join(env.dir, '.eai', 'config.json'),
+      JSON.stringify({
+        profiles: {
+          test: {
+            publicApiUrl: PROFILE_API_BASE,
+            authTenantName: 'enterpriseaitestplatform',
+            authTenantId: 'test-ciam-tenant-id',
+            authClientId: 'test-cli-client-id',
+          },
+        },
+      }, null, 2),
+    );
+    await storeTestTokens(env.dir);
+
+    let requestBody: unknown;
+
+    mockServer.server.use(
+      http.post(`${PROFILE_API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({ client_id: 'profile-client-id', client_secret: 'profile-secret', existing: false });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'my-vertical',
+      redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
+  });
+
+  test('dev profile provisions through the dev PublicAPI and ignores local env API URL', { timeout: 10000 }, async () => {
+    setActiveProfile('dev');
+    await mkdir(join(env.dir, '.eai'), { recursive: true });
+    await writeFile(
+      join(env.dir, '.eai', 'config.json'),
+      JSON.stringify({
+        profiles: {
+          dev: {
+            publicApiUrl: DEV_PROFILE_API_BASE,
+            authTenantName: 'enterpriseaidevplatform',
+            authTenantId: 'dev-ciam-tenant-id',
+            authClientId: 'dev-cli-client-id',
+          },
+        },
+      }, null, 2),
+    );
+    await storeTestTokens(env.dir);
+
+    let requestBody: unknown;
+
+    mockServer.server.use(
+      http.post(`${DEV_PROFILE_API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({ client_id: 'dev-client-id', client_secret: 'dev-secret', existing: false });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'my-vertical',
+      redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
+  });
+
+  test('tenant-context failures do not expose platform response details', { timeout: 10000 }, async () => {
+    await storeTokens({
+      accessToken: 'test-access-token',
+      refreshToken: 'test-refresh-token',
+      expiresAt: Date.now() + 3600000,
+      upn: 'test@example.com',
+      oid: 'test-oid',
+      tenantId: 'test-tenant-id',
+      tenantName: 'test-tenant',
+      clientId: 'test-client-id',
+      publicApiUrl: API_BASE,
+    });
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v3/orchestrate`, () =>
+        HttpResponse.json(
+          { detail: 'AdminAPI /v1/users/test-oid/memberships failed for tenant test-tenant-id' },
+          { status: 500 },
+        ),
+      ),
+    );
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      provisionCommand.parseAsync(['entra'], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).toContain('Failed to resolve active tenant.');
+    expectNoProvisionInternals(output);
+    expect(output).not.toContain('/v1/users/test-oid/memberships');
+  });
+
   test('HTTP 403: exits with code 1 and reports permission denied', { timeout: 10000 }, async () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v3/provision/entra-app`, () =>
@@ -193,26 +377,88 @@ describe('eai provision entra', () => {
     ).rejects.toThrow('process.exit called');
 
     expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(errSpy.mock.calls.flat().join(' ')).toContain('Maximum app registrations');
+    expect(errSpy.mock.calls.flat().join(' ')).toContain('maximum number of app registrations');
   });
 
-  test('HTTP 404: exits with code 1 and reports endpoint not yet available', { timeout: 10000 }, async () => {
+  test('HTTP 404: exits with code 1 and reports product-safe diagnostics', { timeout: 10000 }, async () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v3/provision/entra-app`, () =>
-        HttpResponse.json({ error: 'not found' }, { status: 404 }),
+        HttpResponse.json(
+          { error: { code: 'tenant_not_found', message: 'Tenant test-tenant-id was not found' } },
+          { status: 404 },
+        ),
       ),
     );
 
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
       throw new Error('process.exit called');
     }) as never);
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     await expect(
       provisionCommand.parseAsync(['entra'], { from: 'user' }),
     ).rejects.toThrow('process.exit called');
 
     expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(warnSpy.mock.calls.flat().join(' ')).toContain('not yet available');
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).toContain('Entra provisioning is not available');
+    expect(output).toContain('EAI-PROVISION-UNAVAILABLE');
+    expect(output).toContain('Manual fallback');
+    expectNoProvisionInternals(output);
   });
+
+  test('HTTP 501: exits with code 1 and does not expose implementation details', { timeout: 10000 }, async () => {
+    mockServer.server.use(
+      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+        HttpResponse.text('not implemented', { status: 501 }),
+      ),
+    );
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      provisionCommand.parseAsync(['entra'], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).toContain('Entra provisioning is not available');
+    expect(output).toContain('EAI-PROVISION-UNAVAILABLE');
+    expectNoProvisionInternals(output);
+  });
+
+  test.each([
+    ['missing client id', { client_secret: 'secret-without-client-id', existing: false }],
+    ['empty client id', { client_id: '', client_secret: 'secret-with-empty-client-id', existing: false }],
+  ])('malformed success response with %s exits safely without writing credentials', async (_case, responseBody) => {
+    mockServer.server.use(
+      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+        HttpResponse.json(responseBody),
+      ),
+    );
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      provisionCommand.parseAsync(['entra'], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).toContain('Entra provisioning failed.');
+    expectNoProvisionInternals(output);
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).not.toContain('ENTRA_CLIENT_ID=');
+    expect(content).not.toContain('ENTRA_CLIENT_SECRET=');
+  }, 10000);
 });

@@ -36,6 +36,30 @@ export interface ParsedApiError {
   bodyText?: string;
 }
 
+export interface PlatformAPIRequestErrorOptions {
+  operation: string;
+  status: number;
+  statusText: string;
+}
+
+function formatApiRequestErrorMessage(options: PlatformAPIRequestErrorOptions): string {
+  return `${options.operation} failed`;
+}
+
+export class PlatformAPIRequestError extends Error {
+  readonly operation: string;
+  readonly status: number;
+  readonly statusText: string;
+
+  constructor(options: PlatformAPIRequestErrorOptions) {
+    super(formatApiRequestErrorMessage(options));
+    this.name = 'PlatformAPIRequestError';
+    this.operation = options.operation;
+    this.status = options.status;
+    this.statusText = options.statusText;
+  }
+}
+
 export function buildPayloadEqualsParams(
   filters: Record<string, string>,
   extras?: Record<string, unknown>,
@@ -592,15 +616,19 @@ export class PlatformAPIClient {
       idempotent: request.idempotent ?? false,
     };
 
-    const res = await fetch(`${this.baseUrl}/v3/provision/entra-app`, {
+    const endpoint = '/v3/provision/entra-app';
+    const url = `${this.baseUrl}${endpoint}`;
+    const res = await fetch(url, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify(body),
     });
 
     if (!res.ok) {
-      throw Object.assign(new Error(`Provisioning request failed: ${res.status} ${res.statusText}`), {
+      throw new PlatformAPIRequestError({
+        operation: 'Entra app provisioning',
         status: res.status,
+        statusText: res.statusText,
       });
     }
 
@@ -611,9 +639,18 @@ export class PlatformAPIClient {
       clientSecret?: string | null;
       existing?: boolean;
     };
+    const clientId = data.clientId ?? data.client_id;
+
+    if (typeof clientId !== 'string' || clientId.trim() === '') {
+      throw new PlatformAPIRequestError({
+        operation: 'Entra app provisioning',
+        status: res.status,
+        statusText: 'Invalid provisioning response',
+      });
+    }
 
     return {
-      clientId: data.clientId ?? data.client_id ?? '',
+      clientId,
       clientSecret: data.clientSecret ?? data.client_secret ?? null,
       existing: Boolean(data.existing),
     };

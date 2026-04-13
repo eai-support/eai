@@ -30,14 +30,14 @@ Then add:
 {
   "profiles": {
     "dev": {
-      "publicApiUrl": "https://dev-api.au.myenterprise.ai/public",
+      "publicApiUrl": "https://dev-api.ae.myenterprise.ai/public",
       "authTenantName": "eaidevmyentepriseai",
       "authTenantId": "50808ce0-f31b-4fd0-9861-74b83b8c112a",
       "authClientId": "c3c10ee2-aeeb-4a64-8eea-5ca43a3252af",
       "authScope": "openid profile email offline_access"
     },
     "test": {
-      "publicApiUrl": "https://test-api.myenterprise.ai/public",
+      "publicApiUrl": "https://test-api.ae.myenterprise.ai/public",
       "authTenantName": "enterpriseaitestplatform",
       "authTenantId": "dffacd2b-7705-43f2-86ae-75d1ef003a71",
       "authClientId": "861ad00a-aba1-47e4-baf2-3e3f6ef4a69e",
@@ -49,6 +49,8 @@ Then add:
 
 Production values are hardcoded in the CLI source (`src/commands/login.ts` and `src/lib/tenant-context.ts`).
 No profile is needed for prod — `eai login` works out of the box.
+
+`eai provision entra` follows the same model. Default/no profile routes to the production platform API and the production CIAM selected by that deployment. `--profile test` and `--profile dev` route to their configured platform APIs, and those services choose the matching test or dev CIAM from deployment configuration. Do not add a CLI request field for CIAM or environment selection.
 
 ### Required Fields
 
