@@ -36,7 +36,7 @@ returned to public `eai` users.
 | PublicAPI | `uv run pytest` | PASS, 756 passed, 4 skipped |
 | PublicAPI | Targeted ruff checks on changed files | PASS |
 | AdminAPI | `uv run pytest` | PASS, 343 passed |
-| AdminAPI | Targeted provisioning/config tests and ruff checks on changed files | PASS |
+| AdminAPI | Targeted provisioning/config tests, ruff checks, and `pre-commit run --all-files` | PASS |
 
 ## Compatibility Review
 

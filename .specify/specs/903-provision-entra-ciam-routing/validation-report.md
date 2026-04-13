@@ -64,6 +64,7 @@ from being returned to public CLI users.
 | AdminAPI | Full tests | `uv run pytest` | PASS, 343 passed |
 | AdminAPI | Targeted provisioning/config tests | `uv run pytest tests/test_fixes.py tests/test_ciam.py tests/test_azure_config.py tests/test_services/test_entra_service.py` | PASS, 61 tests |
 | AdminAPI | Lint | `uv run ruff check src/api/routes/ciam.py src/core/exceptions.py src/core/config.py src/core/security.py src/core/azure_config.py src/services/entra_service.py tests/test_azure_config.py tests/test_ciam.py tests/test_fixes.py tests/test_services/test_entra_service.py` | PASS |
+| AdminAPI | Pre-commit | `pre-commit run --all-files` | PASS after formatting remediation |
 
 ## Rubric
 
