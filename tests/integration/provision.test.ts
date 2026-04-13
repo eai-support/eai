@@ -20,6 +20,11 @@ const API_BASE = 'https://test-api.example.com';
 const PROFILE_API_BASE = 'https://test-api.ae.myenterprise.ai/public';
 const DEV_PROFILE_API_BASE = 'https://dev-api.ae.myenterprise.ai/public';
 
+function setTestHome(dir: string): void {
+  process.env.HOME = dir;
+  process.env.USERPROFILE = dir;
+}
+
 async function setupProject(dir: string): Promise<void> {
   await mkdir(join(dir, 'src', 'eai.config'), { recursive: true });
   await writeFile(join(dir, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
@@ -30,7 +35,7 @@ async function setupProject(dir: string): Promise<void> {
 }
 
 async function storeTestTokens(dir: string): Promise<void> {
-  process.env.HOME = dir;
+  setTestHome(dir);
   await storeTokens({
     accessToken: 'test-access-token',
     refreshToken: 'test-refresh-token',
@@ -69,12 +74,14 @@ describe('eai provision entra', () => {
   let mockServer: ReturnType<typeof createMockServer>;
   let originalCwd: string;
   let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
   let originalAccessToken: string | undefined;
   let originalProfile: string;
 
   beforeEach(async () => {
     originalCwd = process.cwd();
     originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
     originalAccessToken = process.env.EAI_ACCESS_TOKEN;
     originalProfile = getActiveProfile();
 
@@ -98,6 +105,11 @@ describe('eai provision entra', () => {
       delete process.env.HOME;
     } else {
       process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
     }
     if (originalAccessToken === undefined) {
       delete process.env.EAI_ACCESS_TOKEN;

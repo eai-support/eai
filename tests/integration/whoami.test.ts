@@ -33,10 +33,12 @@ describe('eai whoami', () => {
   let mockServer: ReturnType<typeof createMockServer>;
   let ctx: TestContext;
   let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
   let originalAccessToken: string | undefined;
 
   beforeEach(async () => {
     originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
     originalAccessToken = process.env.EAI_ACCESS_TOKEN;
     env = await createTestEnvironment();
     mockServer = createMockServer();
@@ -59,6 +61,11 @@ describe('eai whoami', () => {
       delete process.env.HOME;
     } else {
       process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
     }
     if (originalAccessToken === undefined) {
       delete process.env.EAI_ACCESS_TOKEN;
@@ -94,6 +101,7 @@ describe('eai whoami', () => {
     await projectHasValidObjectTypes(ctx, [{ name: 'case', displayName: 'Case' }]);
     await projectHasEnvFile(ctx, { BASE_URL_PUBLIC_API: RESOLVED_API_BASE });
     process.env.HOME = env.dir;
+    process.env.USERPROFILE = env.dir;
     process.env.EAI_ACCESS_TOKEN = 'test-access-token';
     await storeTokens({
       accessToken: 'test-access-token',
