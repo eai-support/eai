@@ -10,24 +10,48 @@ import { PlatformAPIClient } from '../lib/api.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
+function getProvisionStatus(err: unknown): number | undefined {
+  if (typeof err !== 'object' || err === null || !('status' in err)) {
+    return undefined;
+  }
+
+  const status = (err as { status?: unknown }).status;
+  return typeof status === 'number' ? status : undefined;
+}
+
+function printProvisionFallback(reference: string): void {
+  out.info(`Reference: ${reference}`);
+  out.info('Retry after confirming you are logged in and have selected the correct tenant.');
+  out.info('If this continues, contact your platform administrator.');
+  out.info('Manual fallback: set ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET in .env.local.');
+}
+
 function handleProvisionError(err: unknown): never {
-  const status = (err as { status?: number }).status;
-  if (status === 404 || status === 501) {
-    out.warn('Provisioning endpoint is not yet available on this platform instance.');
-    out.info('Set ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET in .env.local manually,');
-    out.info('or contact your platform administrator.');
+  const status = getProvisionStatus(err);
+
+  if (status === 404) {
+    out.error('Entra provisioning is not available for this tenant or platform instance.');
+    printProvisionFallback('EAI-PROVISION-UNAVAILABLE');
+    process.exit(1);
+  }
+  if (status === 501) {
+    out.error('Entra provisioning is not available on this platform instance.');
+    printProvisionFallback('EAI-PROVISION-UNAVAILABLE');
     process.exit(1);
   }
   if (status === 403) {
     out.error('Permission denied. You must be a tenant-admin to provision an Entra app registration.');
+    out.info('Reference: EAI-PROVISION-FORBIDDEN');
     process.exit(1);
   }
   if (status === 409) {
-    out.error('Maximum app registrations per tenant exceeded. Contact your platform administrator.');
+    out.error('The maximum number of app registrations for this tenant has been reached.');
+    out.info('Reference: EAI-PROVISION-LIMIT');
+    out.info('Contact your platform administrator.');
     process.exit(1);
   }
-  const statusMsg = status ? ` (HTTP ${status})` : '';
-  out.error(`Provisioning failed${statusMsg}: ${err instanceof Error ? err.message : String(err)}`);
+  out.error('Entra provisioning failed.');
+  printProvisionFallback('EAI-PROVISION-FAILED');
   process.exit(1);
 }
 
@@ -49,6 +73,12 @@ What happens:
   - Calls the platform provisioning API to create an Entra app registration
   - Writes ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET to .env.local
   - If the registration already exists, confirms ENTRA_CLIENT_ID without rotating the secret
+
+Diagnostics:
+  - Uses the PublicAPI URL from the active profile, .env.local BASE_URL_PUBLIC_API, environment, or the default API
+  - Default/no profile targets production; --profile test and --profile dev target their configured platform APIs
+  - The platform chooses the matching CIAM from its deployment configuration; the CLI never sends a CIAM selector
+  - Errors are product-safe and include a support reference without exposing platform internals
   `)
   .action(async (options) => {
     const root = await findProjectRoot();
@@ -77,13 +107,13 @@ What happens:
     try {
       const context = await resolveActiveTenantContext({ projectRoot: root, publicApiUrl, interactive: true });
       tenantId = context.activeTenant.id;
-    } catch (err) {
-      out.error(`Failed to resolve active tenant: ${err instanceof Error ? err.message : String(err)}`);
+    } catch {
+      out.error('Failed to resolve active tenant.');
       out.info(`Run ${chalk.cyan('eai login')} and ${chalk.cyan('eai tenant select')} first.`);
       process.exit(1);
     }
 
-    out.info(`Provisioning Entra app registration for ${chalk.cyan(verticalName)} on tenant ${chalk.dim(tenantId)}...`);
+    out.info(`Provisioning Entra app registration for ${chalk.cyan(verticalName)}...`);
 
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
 
@@ -93,7 +123,7 @@ What happens:
         tenantId,
         verticalName,
         redirectUris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
-        // The PublicAPI route is intentionally idempotent: it creates on first run and
+        // The platform route is intentionally idempotent: it creates on first run and
         // returns the existing app ID on later runs without attempting secret rotation.
         idempotent: true,
       });

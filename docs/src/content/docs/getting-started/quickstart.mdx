@@ -134,6 +134,10 @@ This guide walks you through the complete workflow of creating a vertical applic
 
    This writes `ENTRA_CLIENT_ID` and `ENTRA_CLIENT_SECRET` directly to `.env.local`. If the registration already exists, the command detects it and preserves your existing secret.
 
+   By default, provisioning runs against production. Internal named profiles route to their own platform environment: `--profile test` targets test, and `--profile dev` targets dev. The matching CIAM tenant is selected by the platform environment, not by a CLI request field.
+
+   If provisioning fails, the CLI returns a product-safe message and support reference. It does not expose backend routes, implementation details, or raw platform errors.
+
    <Aside type="note">
      **External developers or manual setup**: If you cannot run this command, your platform admin can provide `ENTRA_CLIENT_ID` and `ENTRA_CLIENT_SECRET` directly. Set them in `.env.local` by hand.
    </Aside>
@@ -148,7 +152,7 @@ This guide walks you through the complete workflow of creating a vertical applic
 
    ```
    ✔ Found 10 config values
-   ✔ BASE_URL_PUBLIC_API = https://test-api.myenterprise.ai
+   ✔ BASE_URL_PUBLIC_API = https://test-api.ae.myenterprise.ai/public
    ✔ WORKFLOW_MY_VERTICAL_ID = [from Key Vault]
    ...
    ✔ Written to .env.local (10 variables)

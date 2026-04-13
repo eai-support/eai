@@ -93,6 +93,7 @@ All commands support these global flags:
 | `eai login` | Authenticate with Entra CIAM (browser-based PKCE flow) |
 | `eai logout` | Clear stored tokens |
 | `eai whoami` | Show auth status and project context |
+| `eai provision entra` | Create or confirm the vertical's Entra app registration in the CIAM for the active platform environment |
 | `eai user invite --email <email>` | Add an existing user to the active tenant or an explicit tenant |
 | `eai user provision-me` | Provision yourself to the active tenant or an explicit tenant |
 
