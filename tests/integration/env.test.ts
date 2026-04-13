@@ -8,6 +8,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { patchEnvFile } from '../../src/lib/config.js';
+import { getAzureCliInvocation } from '../../src/lib/azure-cli.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { createMockServer, PublicAPIMock } from '../helpers/mock-server.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
@@ -101,5 +102,25 @@ describe('eai env', () => {
 
     // Should detect not in EAI project
     expectDisplayedMessage(result, 'Not in an EAI project');
+  });
+});
+
+describe('getAzureCliInvocation', () => {
+  test('uses az directly on macOS and Linux', () => {
+    expect(getAzureCliInvocation(['group', 'list'], 'darwin')).toEqual({
+      file: 'az',
+      args: ['group', 'list'],
+    });
+    expect(getAzureCliInvocation(['group', 'list'], 'linux')).toEqual({
+      file: 'az',
+      args: ['group', 'list'],
+    });
+  });
+
+  test('uses cmd.exe on Windows', () => {
+    expect(getAzureCliInvocation(['group', 'list'], 'win32')).toEqual({
+      file: 'cmd.exe',
+      args: ['/c', 'az', 'group', 'list'],
+    });
   });
 });

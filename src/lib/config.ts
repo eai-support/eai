@@ -10,6 +10,7 @@ import { readFile, writeFile, unlink, access } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 
 export interface ObjectTypeProperty {
   name: string;
@@ -127,7 +128,7 @@ export async function loadObjectTypes(
   const tempFile = join(tmpdir(), `eai-object-types-${randomUUID()}.mjs`);
   try {
     await writeFile(tempFile, jsSource, 'utf-8');
-    const module = await import(tempFile);
+    const module = await import(pathToFileURL(tempFile).href);
     return module.objectTypes || module.default?.objectTypes || {};
   } finally {
     try { await unlink(tempFile); } catch { /* cleanup best-effort */ }
@@ -236,4 +237,3 @@ function stripTypeScript(source: string): string {
 
   return js;
 }
-

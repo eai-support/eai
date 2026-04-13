@@ -1,6 +1,11 @@
 ---
 name: 6a_gofer_engineering_review
 description: Post-implementation engineering review with iterative fix cycles (up to 5)
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/6a_gofer_engineering_review.md
+  canonicalChecksum: 2939e3cdca072653df75dddc19cb4d158dab078f0e76889c5808ff30cb981368
+  metadataSource: extension/src/services/migration/ResourceSyncer.ts
 arguments:
   - name: feature
     description: Feature name or description

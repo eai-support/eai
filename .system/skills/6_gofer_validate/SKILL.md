@@ -1,6 +1,11 @@
 ---
 name: 6_gofer_validate
 description: Validate implementation with 10-category engineering rubric (100 points)
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/6_gofer_validate.md
+  canonicalChecksum: 73bcdcff6385d45f174574c76f707fe551173b5c031b81cbfea7a193f8f47ca6
+  metadataSource: extension/src/services/migration/ResourceSyncer.ts
 arguments:
   - name: feature
     description: Feature name or description

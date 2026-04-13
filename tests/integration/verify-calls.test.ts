@@ -83,7 +83,7 @@ describe('runContractAudit', () => {
           totalDocs: 0,
           page: 1,
           totalPages: 1,
-          nextCursor: cursor ? null : null,
+          nextCursor: cursor ? null : 'cursor-1',
         });
       }),
       http.get('https://test-api.example.com/v3/resources/schema/tenant-1', () => {

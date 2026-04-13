@@ -2,8 +2,11 @@
  * Tenant resolution tests for eai types.
  */
 
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { buildPayloadEqualsParams } from '../../src/lib/api.js';
+import { loadObjectTypes } from '../../src/lib/config.js';
 import {
   findMatchingRemoteTypes,
   resolveDefaultTenantKey,
@@ -11,6 +14,7 @@ import {
   shouldFailTypeSeedRun,
   verifyTypeSeedConvergence,
 } from '../../src/commands/types.js';
+import { createTestEnvironment } from '../helpers/test-env.js';
 
 describe('resolveTenantIdForKey', () => {
   test('uses the explicit CLI tenant override when present', () => {
@@ -262,6 +266,37 @@ describe('shouldFailTypeSeedRun', () => {
         },
       },
     ])).toBe(true);
+  });
+});
+
+describe('loadObjectTypes', () => {
+  test('loads object types through a file URL compatible temp import path', async () => {
+    const env = await createTestEnvironment();
+    const objectTypesDir = join(env.dir, 'src', 'eai.config');
+
+    try {
+      await mkdir(objectTypesDir, { recursive: true });
+      await writeFile(
+        join(objectTypesDir, 'object-types.ts'),
+        'export const objectTypes = { template: [{ name: "TestType", displayName: "Test Type", properties: [], linkTypes: [], actions: [], status: "draft" }] };\n',
+        'utf-8',
+      );
+
+      await expect(loadObjectTypes(env.dir)).resolves.toEqual({
+        template: [
+          {
+            name: 'TestType',
+            displayName: 'Test Type',
+            properties: [],
+            linkTypes: [],
+            actions: [],
+            status: 'draft',
+          },
+        ],
+      });
+    } finally {
+      await env.cleanup();
+    }
   });
 });
 

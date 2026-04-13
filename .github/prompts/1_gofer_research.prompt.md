@@ -9,6 +9,11 @@ tools:
   - Bash
   - WebSearch
 argument-hint: feature-name-or-description
+gofer:
+  workflowProfile: enterpriseai
+  canonicalSource: .claude/commands/1_gofer_research.md
+  canonicalChecksum: 4c058002221b12933a472cb6d33babb9b1645d6a793590048c724a28a9ae3f1a
+  metadataSource: scripts/generate-commands.ts
 ---
 
 # Gofer Research
@@ -228,6 +233,32 @@ While waiting for agents, research any technology questions:
 
 ---
 
+## Step 3.5: Competitive Analysis Stage Flag (Optional, Run-Level)
+
+Before drafting `research.md`, resolve competitive-analysis behavior for the
+run:
+
+- Treat competitive analysis as an explicit stage flag:
+  `includeCompetitiveAnalysis` (alias: `competitiveAnalysisEnabled`).
+- Default for `workflowProfile=enterpriseai`: `includeCompetitiveAnalysis=true`.
+- Allow per-run override to disable competitive analysis without blocking the
+  rest of the pipeline.
+- Always generate `business-analysis.md` for EnterpriseAI runs.
+- Always generate `market-analysis.md` for EnterpriseAI runs.
+- When competitive analysis is disabled:
+  - Record `competitiveAnalysisEnabled=false` in research outputs.
+  - Keep `market-analysis.md` as a baseline traceability artifact with
+    disabled-state messaging (no comparative metrics).
+  - Continue to `#2_gofer_specify` normally (no stage failure).
+
+When enabled, `market-analysis.md` must include:
+
+- At least 3 alternatives.
+- Explicit EnterpriseAI-selected direction rationale.
+- Traceability indicators for downstream `spec.md` and `plan.md` references.
+
+---
+
 ## Step 4: Synthesize Findings
 
 Once all agents complete:
@@ -238,6 +269,30 @@ Once all agents complete:
 4. **Note constraints and considerations**
 5. **Distill business scenario options and architecture recommendations** for
    user review before specification
+
+### Structured Discovery Outputs (MANDATORY)
+
+`research.md` MUST include all of the following in explicit sections:
+
+1. **Structured Problem Statement**
+   - Problem summary
+   - Current state friction
+   - Desired EnterpriseAI-oriented outcome
+2. **Structured Target Persona**
+   - Primary persona name/role
+   - Skill level (novice/intermediate/advanced)
+   - Primary needs and constraints
+3. **Structured Value Proposition**
+   - Primary value delivered
+   - Quantified or measurable goal
+   - Why this should be EnterpriseAI-first
+
+### Novice Walkthrough Guardrail (MANDATORY)
+
+Assume a novice user can read only in-repo/generated artifacts.
+
+- Do not require external docs to understand or act on research output.
+- Explain terms and recommendations in plain language before advanced details.
 
 ---
 
@@ -258,6 +313,27 @@ status: complete
 ## Feature Summary
 
 [Brief description of what we're building]
+
+## Structured Discovery Output
+
+### Problem Statement
+
+- **Problem**: [What is not working today]
+- **Current State Friction**: [Where users lose time/quality]
+- **Desired EnterpriseAI Outcome**: [What success looks like in EAI terms]
+
+### Target Persona
+
+- **Primary Persona**: [Name/role]
+- **Skill Level**: [novice/intermediate/advanced]
+- **Top Needs**: [Need 1, Need 2, Need 3]
+- **Constraints**: [Constraints that shape delivery]
+
+### Value Proposition
+
+- **Primary Value**: [Core value delivered]
+- **Measurable Goal**: [Quantified target]
+- **EnterpriseAI-First Rationale**: [Why EAI is the primary fit]
 
 ## Business Scenario Analysis
 
@@ -700,6 +776,9 @@ Logs to: `.specify/logs/pipeline.jsonl`
 - **All output goes to `.specify/specs/{feature}/`** - not thoughts/shared/
 - **Run agents in parallel** for efficiency
 - **Include specific file paths and line numbers** for all references
+- **Structured Problem Statement + Persona + Value Proposition are required** in
+  `research.md`
+- **Research must remain usable by novices without external docs**
 - **Research should inform the proposal review and specification** - focus on
   what helps users discuss the business scenario and architecture before
   `spec.md` is written
