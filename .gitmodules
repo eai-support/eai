@@ -1,0 +1,3 @@
+[submodule "gofer"]
+	path = gofer
+	url = git@github.com:eai-tools/gofer.git
