@@ -48,7 +48,7 @@ export const whoamiCommand = new Command('whoami')
       out.info(`Run ${chalk.cyan('eai tenant select')} to choose the tenant to work with.`);
     } else {
       try {
-        const memberships = await fetchTenantAdminMemberships(tokens.publicApiUrl);
+        const memberships = await fetchTenantAdminMemberships(publicApiUrl);
         out.info(`Tenant-admin memberships: ${memberships.memberships.length}`);
       } catch {
         // whoami should still work even if the membership lookup fails

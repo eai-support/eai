@@ -5,7 +5,7 @@ import { PlatformAPIClient } from './api.js';
 import { isRecord } from './utils.js';
 import { getActiveProfile, loadProfileConfig } from './profile.js';
 
-export const DEFAULT_PUBLIC_API_URL = 'https://api.au.myenterprise.ai/public';
+export const DEFAULT_PUBLIC_API_URL = 'https://api.ae.myenterprise.ai/public';
 
 export interface TenantRoleAssignment {
   baseRole?: string;
@@ -178,8 +178,7 @@ export function evaluateTenantUsability(
  * Priority:
  *  1. Profile config (non-default profiles only)
  *  2. BASE_URL_PUBLIC_API from project .env.local or process env
- *  3. Stored tokens (cached from last login)
- *  4. DEFAULT_PUBLIC_API_URL fallback
+ *  3. DEFAULT_PUBLIC_API_URL fallback
  */
 async function loadContextEnv(projectRoot?: string): Promise<Record<string, string>> {
   const root = projectRoot ?? await findProjectRoot() ?? undefined;
@@ -203,13 +202,8 @@ export async function resolvePublicApiUrl(projectRoot?: string): Promise<string>
     return env.BASE_URL_PUBLIC_API;
   }
 
-  // 3. Stored tokens (persisted from last login/tenant selection)
-  const tokens = await loadTokens();
-  if (tokens?.publicApiUrl) {
-    return tokens.publicApiUrl;
-  }
-
-  // 4. Fallback
+  // 3. Default/no profile must target production. Do not let stale login metadata
+  // override the current environment selection.
   return DEFAULT_PUBLIC_API_URL;
 }
 
@@ -238,7 +232,7 @@ export async function fetchTenantAdminMemberships(publicApiUrl?: string): Promis
     throw new Error('Not logged in. Run `eai login` to authenticate.');
   }
 
-  const resolvedPublicApiUrl = publicApiUrl || tokens.publicApiUrl || await resolvePublicApiUrl();
+  const resolvedPublicApiUrl = publicApiUrl || await resolvePublicApiUrl();
   const client = new PlatformAPIClient(resolvedPublicApiUrl, 'system');
   const response = await client.getUserMemberships(tokens.oid);
 
@@ -368,7 +362,7 @@ export async function resolveActiveTenantContext(options?: {
         isActive: true,
         roles: ['tenant-admin'],
       };
-      const publicApiUrl = options?.publicApiUrl || cached.publicApiUrl || DEFAULT_PUBLIC_API_URL;
+      const publicApiUrl = options?.publicApiUrl || await resolvePublicApiUrl(options?.projectRoot);
       return { publicApiUrl, tokens: cached, activeTenant, memberships: [activeTenant] };
     }
   }

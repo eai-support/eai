@@ -262,6 +262,7 @@ Authorization: Bearer {access_token}
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `POST` | `/v3/users/provisionme` | Required | Self-provision the authenticated user into a tenant. |
+| `POST` | `/v3/provision/entra-app` | Required tenant-admin | Create or confirm an Entra app registration for a vertical. |
 
 ### Provision User
 
@@ -275,6 +276,30 @@ Content-Type: application/json
 ```
 
 Creates a user record in the specified tenant for the currently authenticated user. This is typically called once after the user's first sign-in.
+
+### Provision Entra App
+
+```
+POST /v3/provision/entra-app
+Content-Type: application/json
+
+{
+  "tenant_id": "tenant-abc-123",
+  "vertical_name": "my-vertical",
+  "redirect_uris": ["http://localhost:3000/api/auth/callback/microsoft-entra-id"],
+  "idempotent": true
+}
+```
+
+Creates an Entra app registration for the vertical's end-user authentication. When `idempotent` is `true`, the platform can return an existing app registration without rotating its secret.
+
+```json
+{
+  "client_id": "00000000-0000-0000-0000-000000000000",
+  "client_secret": "secret-value-or-null",
+  "existing": false
+}
+```
 
 ## Error Response Format
 
