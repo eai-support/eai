@@ -12,9 +12,9 @@ PASS=0
 FAIL=0
 SKIP=0
 
-pass() { ((PASS++)); echo "  ✓ $1"; }
-fail() { ((FAIL++)); echo "  ✗ $1"; }
-skip() { ((SKIP++)); echo "  ○ $1 (skipped — $2)"; }
+pass() { ((PASS+=1)); echo "  ✓ $1"; }
+fail() { ((FAIL+=1)); echo "  ✗ $1"; }
+skip() { ((SKIP+=1)); echo "  ○ $1 (skipped — $2)"; }
 section() { echo ""; echo "▸ $1"; }
 
 # ══════════════════════════════════════════
@@ -122,8 +122,8 @@ else
 fi
 
 section "TC025: Tarball integrity — registry copy matches source"
-SOURCE_TGZ=$(ls "$ROOT"/eai-tools-cli-*.tgz 2>/dev/null | head -1 || true)
-if [[ -n "$SOURCE_TGZ" ]] && [[ -f "$TARBALL_FILE" ]]; then
+SOURCE_TGZ="$ROOT/eai-tools-cli-${PKG_VERSION}.tgz"
+if [[ -f "$SOURCE_TGZ" ]] && [[ -f "$TARBALL_FILE" ]]; then
   SRC_HASH=$(shasum "$SOURCE_TGZ" | cut -d' ' -f1)
   REG_HASH=$(shasum "$TARBALL_FILE" | cut -d' ' -f1)
   if [[ "$SRC_HASH" == "$REG_HASH" ]]; then
@@ -392,7 +392,7 @@ for tab in 'label="npm (recommended)"' 'label="npm from GitHub"' 'label="From so
 done
 
 section "TC015: Installation page has version pinning"
-if grep -q "npm install -g @eai-tools/cli@0.1.0" "$INSTALL_MDX" 2>/dev/null; then
+if grep -Eq "npm install -g @eai-tools/cli@[0-9]+\\.[0-9]+\\.[0-9]+" "$INSTALL_MDX" 2>/dev/null; then
   pass "Version pinning example present"
 else
   fail "Version pinning example missing"
