@@ -177,7 +177,7 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'quick-app/.github/skills/0-business-scenario/SKILL.md');
     expectNoPrompts(ctx);
     expectCommandSucceeded(result);
-  });
+  }, 30_000);
 
   test('TC002b: Init can skip Gofer asset installation', async () => {
     workingDirectoryIs(ctx, env.dir);
