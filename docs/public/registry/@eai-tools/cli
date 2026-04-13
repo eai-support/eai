@@ -437,14 +437,14 @@
       },
       "dist": {
         "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.0.7.tgz",
-        "shasum": "3eaa412cc19b3881edbdefbde79e4b7e7e6bd4ad",
-        "integrity": "sha512-Et4i5ylM5TNK+PdNw5b4+ZLgb/6z2ou2546avKzXR1RlJhCfys9eBvRfkoacYTV1I8xjAaCt+MsAEB0HmBn9bw=="
+        "shasum": "5b3f8bac57ef212201fa67fb3a173621f910c5cc",
+        "integrity": "sha512-TjtCSH2KcxtWYeWu9hQ/YhVbDd3YoJOy3ZCSojYhe/vBn1JoupoTDYB4W1PJp2/ROhJeOyIPAlSjEdkH77z5KA=="
       }
     }
   },
   "time": {
     "0.1.0": "2026-03-09T07:55:20.781Z",
-    "modified": "2026-04-13T07:17:42.119Z",
+    "modified": "2026-04-13T07:18:15.525Z",
     "0.1.1": "2026-03-10T01:18:22.994Z",
     "0.1.2": "2026-03-10T01:52:22.136Z",
     "0.1.3": "2026-03-10T02:10:02.992Z",
@@ -464,5 +464,5 @@
     "2.0.6": "2026-04-13T07:08:38.861Z",
     "2.0.7": "2026-04-13T07:17:42.119Z"
   },
-  "modified": "2026-04-13T07:17:42.119Z"
+  "modified": "2026-04-13T07:18:15.525Z"
 }
