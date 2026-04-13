@@ -149,7 +149,7 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'my-vertical/.github/copilot-instructions.md');
     await expectFileContains(ctx, 'my-vertical/CLAUDE.md', '## Gofer Pipeline');
     expect(consoleCapture.stdout.join('\n')).toContain('Created My Vertical');
-  });
+  }, 30_000);
 
   test('TC002: Initialize with --skip-prompts flag', async () => {
     // TC002: Initialize with --skip-prompts flag

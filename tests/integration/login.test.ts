@@ -48,6 +48,27 @@ function mockBrowserLauncher(): void {
   }));
 }
 
+function setTestHome(path: string): () => void {
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  process.env.HOME = path;
+  process.env.USERPROFILE = path;
+
+  return () => {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
+    }
+  };
+}
+
 describe('eai login', () => {
   let env: TestEnvironment;
   let ctx: TestContext;
@@ -106,9 +127,8 @@ describe('eai login', () => {
 
   test('browserLogin completes callback flow and stores tokens', async () => {
     const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
-    const originalHome = process.env.HOME;
+    const restoreHome = setTestHome(tempHome);
 
-    process.env.HOME = tempHome;
     mockBrowserLauncher();
 
     vi.stubGlobal('fetch', vi.fn(async () => {
@@ -146,15 +166,14 @@ describe('eai login', () => {
     expect(stored?.upn).toBe('browser@example.com');
     await access(join(tempHome, '.eai', 'tokens.json'));
 
-    process.env.HOME = originalHome;
+    restoreHome();
     await rm(tempHome, { recursive: true, force: true });
   });
 
   test('browserLogin surfaces token exchange failures', async () => {
     const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
-    const originalHome = process.env.HOME;
+    const restoreHome = setTestHome(tempHome);
 
-    process.env.HOME = tempHome;
     mockBrowserLauncher();
 
     vi.stubGlobal('fetch', vi.fn(async () => {
@@ -179,14 +198,13 @@ describe('eai login', () => {
 
     await expect(readFile(join(tempHome, '.eai', 'tokens.json'), 'utf-8')).rejects.toThrow();
 
-    process.env.HOME = originalHome;
+    restoreHome();
     await rm(tempHome, { recursive: true, force: true });
   });
 
   test('refresh flow includes the stored auth scope', async () => {
     const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
-    const originalHome = process.env.HOME;
-    process.env.HOME = tempHome;
+    const restoreHome = setTestHome(tempHome);
 
     const authScope = 'openid profile email offline_access api://97f59e40-0d86-4c6d-8ac6-80659fea1a4e/access_token';
     const refreshedAccessToken = createJwt({
@@ -231,7 +249,7 @@ describe('eai login', () => {
     expect(stored?.refreshToken).toBe('new-refresh-token');
     expect(stored?.authScope).toBe(authScope);
 
-    process.env.HOME = originalHome;
+    restoreHome();
     await rm(tempHome, { recursive: true, force: true });
   });
 });

@@ -11,6 +11,7 @@ describe('PlatformAPIClient.classifyDocument', () => {
   let env: TestEnvironment;
   let mockServer: ReturnType<typeof createMockServer>;
   let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
   let originalAccessToken: string | undefined;
   let ctx: TestContext;
 
@@ -19,8 +20,10 @@ describe('PlatformAPIClient.classifyDocument', () => {
     mockServer = createMockServer();
     mockServer.start();
     originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
     originalAccessToken = process.env.EAI_ACCESS_TOKEN;
     process.env.HOME = env.dir;
+    process.env.USERPROFILE = env.dir;
     delete process.env.EAI_ACCESS_TOKEN;
 
     ctx = {
@@ -41,6 +44,11 @@ describe('PlatformAPIClient.classifyDocument', () => {
       delete process.env.HOME;
     } else {
       process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
     }
     if (originalAccessToken === undefined) {
       delete process.env.EAI_ACCESS_TOKEN;
