@@ -15,6 +15,8 @@ eai update [--check]
 
 It uses the scoped EAI registry only for `@eai-tools/cli`. Public dependencies such as `chalk` still come from the normal npm registry, which is why the command uses a scoped registry override instead of a full `--registry` replacement.
 
+The install step also asks npm to revalidate registry metadata before installing. This avoids stale local npm cache entries immediately after a new static registry release is deployed.
+
 The CLI also checks for updates in the background during normal use. If a newer version is available, it prints a short reminder after your command finishes.
 
 ## Options
@@ -71,7 +73,7 @@ If npm cannot write to the global install location, the CLI prints platform-spec
 ```text
 ✖ Update failed.
 → Your global npm install location is not writable from this shell.
-→ Retry from a shell that can write to your global npm directory: npm install -g @eai-tools/cli@0.3.4 --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
+→ Retry from a shell that can write to your global npm directory: npm install -g @eai-tools/cli@0.3.4 --prefer-online --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
 → If you use nvm, Homebrew, or Volta, prefer their user-writable install path instead of sudo.
 ```
 
