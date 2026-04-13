@@ -1,6 +1,11 @@
 ---
 name: 3_gofer_plan
 description: Generate technical implementation plan with architecture and contracts
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/3_gofer_plan.md
+  canonicalChecksum: 1e56ac804b94eab0aeac0e173a75cd5ddf8361bab1f272acbc93c3142ab148a3
+  metadataSource: extension/src/services/migration/ResourceSyncer.ts
 arguments:
   - name: feature
     description: Feature name or description

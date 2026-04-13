@@ -1,6 +1,11 @@
 ---
 name: 2_gofer_specify
 description: Create feature specification informed by codebase research
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/2_gofer_specify.md
+  canonicalChecksum: e5ae82a0665424e10079e7c6a581f03f1250fa31837eb1c039e50ab1295f7ed4
+  metadataSource: extension/src/services/migration/ResourceSyncer.ts
 arguments:
   - name: feature
     description: Feature name or description

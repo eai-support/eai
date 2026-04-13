@@ -1,6 +1,11 @@
 ---
 name: 4_gofer_tasks
 description: Generate actionable task breakdown from implementation plan
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/4_gofer_tasks.md
+  canonicalChecksum: 336101728b47917524fcb92f47f30c2f56c843d0efc374d66dd7088020423465
+  metadataSource: extension/src/services/migration/ResourceSyncer.ts
 arguments:
   - name: feature
     description: Feature name or description

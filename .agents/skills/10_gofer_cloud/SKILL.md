@@ -1,6 +1,11 @@
 ---
 name: 10_gofer_cloud
 description: READ-ONLY cloud infrastructure analysis for Azure, AWS, GCP deployments
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/10_gofer_cloud.md
+  canonicalChecksum: 661ddaad1f8a722e05ff3fd3556649321848124ef0f7cddc59cb0706b949c46d
+  metadataSource: extension/src/services/migration/ResourceSyncer.ts
 arguments:
   - name: feature
     description: Feature name or description

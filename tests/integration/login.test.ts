@@ -1,4 +1,5 @@
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
@@ -12,18 +13,39 @@ function createJwt(payload: Record<string, string>): string {
   return `${header}.${body}.signature`;
 }
 
-async function createFakeOpen(binDir: string): Promise<void> {
-  const script = `#!/bin/sh
-node -e '
-const authUrl = new URL(process.argv[1]);
-const redirect = new URL(authUrl.searchParams.get("redirect_uri"));
-redirect.searchParams.set("code", "test-auth-code");
-redirect.searchParams.set("state", authUrl.searchParams.get("state"));
-fetch(redirect).then(() => process.exit(0)).catch((err) => { console.error(err); process.exit(1); });
-' "$1"
-`;
+async function completeBrowserCallback(url: string): Promise<void> {
+  const { get } = await import('node:http');
 
-  await writeFile(join(binDir, 'open'), script, { mode: 0o755 });
+  await new Promise<void>((resolve, reject) => {
+    const request = get(url, (response) => {
+      response.resume();
+      response.on('end', resolve);
+    });
+    request.on('error', reject);
+  });
+}
+
+function mockBrowserLauncher(): void {
+  vi.doMock('node:child_process', () => ({
+    spawn: (_command: string, args: string[]) => {
+      const child = new EventEmitter();
+
+      queueMicrotask(async () => {
+        try {
+          const authUrl = new URL(args[args.length - 1]);
+          const redirect = new URL(authUrl.searchParams.get('redirect_uri') || '');
+          redirect.searchParams.set('code', 'test-auth-code');
+          redirect.searchParams.set('state', authUrl.searchParams.get('state') || '');
+          await completeBrowserCallback(redirect.toString());
+          child.emit('close', 0);
+        } catch (error) {
+          child.emit('error', error);
+        }
+      });
+
+      return child;
+    },
+  }));
 }
 
 describe('eai login', () => {
@@ -43,6 +65,7 @@ describe('eai login', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.doUnmock('node:child_process');
     await env.cleanup();
   });
 
@@ -83,14 +106,10 @@ describe('eai login', () => {
 
   test('browserLogin completes callback flow and stores tokens', async () => {
     const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
-    const tempBin = await mkdtemp(join(tmpdir(), 'eai-auth-bin-'));
     const originalHome = process.env.HOME;
-    const originalPath = process.env.PATH;
 
     process.env.HOME = tempHome;
-    process.env.PATH = `${tempBin}:${originalPath ?? ''}`;
-
-    await createFakeOpen(tempBin);
+    mockBrowserLauncher();
 
     vi.stubGlobal('fetch', vi.fn(async () => {
       return new Response(JSON.stringify({
@@ -128,21 +147,15 @@ describe('eai login', () => {
     await access(join(tempHome, '.eai', 'tokens.json'));
 
     process.env.HOME = originalHome;
-    process.env.PATH = originalPath;
     await rm(tempHome, { recursive: true, force: true });
-    await rm(tempBin, { recursive: true, force: true });
   });
 
   test('browserLogin surfaces token exchange failures', async () => {
     const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
-    const tempBin = await mkdtemp(join(tmpdir(), 'eai-auth-bin-'));
     const originalHome = process.env.HOME;
-    const originalPath = process.env.PATH;
 
     process.env.HOME = tempHome;
-    process.env.PATH = `${tempBin}:${originalPath ?? ''}`;
-
-    await createFakeOpen(tempBin);
+    mockBrowserLauncher();
 
     vi.stubGlobal('fetch', vi.fn(async () => {
       return new Response(JSON.stringify({
@@ -167,9 +180,7 @@ describe('eai login', () => {
     await expect(readFile(join(tempHome, '.eai', 'tokens.json'), 'utf-8')).rejects.toThrow();
 
     process.env.HOME = originalHome;
-    process.env.PATH = originalPath;
     await rm(tempHome, { recursive: true, force: true });
-    await rm(tempBin, { recursive: true, force: true });
   });
 
   test('refresh flow includes the stored auth scope', async () => {

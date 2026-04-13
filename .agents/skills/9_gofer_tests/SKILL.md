@@ -3,6 +3,11 @@ name: 9_gofer_tests
 description: >-
   Define acceptance test cases using DSL approach before or during
   implementation
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/9_gofer_tests.md
+  canonicalChecksum: 0a6baf44d5add8fccc5ee6deb6aed559ef42d0e19aa6f4afc2733335e42ef744
+  metadataSource: extension/src/services/migration/ResourceSyncer.ts
 arguments:
   - name: feature
     description: Feature name or description

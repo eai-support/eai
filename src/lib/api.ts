@@ -508,6 +508,14 @@ export class PlatformAPIClient {
     parent?: string;
     domain?: string[];
   }): Promise<Response> {
+    if (data.parent) {
+      return this.adminRequest(`/v1/tenants/${data.parent}/children`, 'POST', {
+        displayName: data.name,
+        slug: data.slug,
+        usecase: 'generic',
+      });
+    }
+
     return this._route('payload', '/custom-tenants', 'POST', {
       displayName: data.name,
       name: data.name,

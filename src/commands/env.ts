@@ -12,12 +12,18 @@ import { promisify } from 'node:util';
 import ora from 'ora';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
+import { getAzureCliInvocation } from '../lib/azure-cli.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 const exec = promisify(execFile);
 
 const APP_CONFIG_STORE = process.env.EAI_APP_CONFIG_STORE ?? 'appcs-demo-eai-dev';
+
+async function execAzureCli(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  const invocation = getAzureCliInvocation(args);
+  return exec(invocation.file, invocation.args);
+}
 
 export const envCommand = new Command('env')
   .description('Manage environment variables');
@@ -52,7 +58,7 @@ Examples:
 
     try {
       // Pull all key-values for this label
-      const { stdout } = await exec('az', [
+      const { stdout } = await execAzureCli([
         'appconfig', 'kv', 'list',
         '--name', APP_CONFIG_STORE,
         '--label', label,
@@ -74,7 +80,7 @@ Examples:
 
             if (options.includeSecrets) {
               try {
-                const { stdout: secretValue } = await exec('az', [
+                const { stdout: secretValue } = await execAzureCli([
                   'keyvault', 'secret', 'show',
                   '--id', ref.uri,
                   '--query', 'value',
@@ -200,7 +206,7 @@ envCommand
       if (key.startsWith('#')) continue;
 
       try {
-        await exec('az', [
+        await execAzureCli([
           'appconfig', 'kv', 'set',
           '--name', APP_CONFIG_STORE,
           '--key', key,

@@ -1,6 +1,11 @@
 ---
 name: 0_business_scenario
 description: Triage business scenario and orchestrate the unified Gofer pipeline
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/0_business_scenario.md
+  canonicalChecksum: d0aaa314730e62ff6070ee7b544272f43f09468f47a0131f33de584a64d697b4
+  metadataSource: extension/src/services/migration/ResourceSyncer.ts
 arguments:
   - name: feature
     description: Feature name or description

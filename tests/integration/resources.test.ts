@@ -87,4 +87,66 @@ describe('resource type diagnostics', () => {
       }),
     );
   });
+
+  test('creates root tenants through payload custom-tenants', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new PlatformAPIClient('https://test-api.example.com', 'system');
+    await client.createTenant({
+      name: 'Root Tenant',
+      slug: 'root-tenant',
+      domain: ['root.example.com'],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://test-api.example.com/v3/orchestrate',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          target_backend: 'payload',
+          endpoint: '/custom-tenants',
+          method: 'POST',
+          body: {
+            displayName: 'Root Tenant',
+            name: 'Root Tenant',
+            slug: 'root-tenant',
+            parentTenant: undefined,
+            domain: ['root.example.com'],
+          },
+          params: undefined,
+        }),
+      }),
+    );
+  });
+
+  test('creates child tenants through the admin child-tenant route', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new PlatformAPIClient('https://test-api.example.com', 'system');
+    await client.createTenant({
+      name: 'Child Tenant',
+      slug: 'child-tenant',
+      parent: 'parent-tenant',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://test-api.example.com/v3/orchestrate',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          target_backend: 'admin',
+          endpoint: '/v1/tenants/parent-tenant/children',
+          method: 'POST',
+          body: {
+            displayName: 'Child Tenant',
+            slug: 'child-tenant',
+            usecase: 'generic',
+          },
+          params: undefined,
+        }),
+      }),
+    );
+  });
 });

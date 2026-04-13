@@ -1,6 +1,11 @@
 ---
 name: 5_gofer_implement
 description: Execute tasks from tasks.md to implement the feature
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/5_gofer_implement.md
+  canonicalChecksum: 6e3e02ae6012bf26c6200e9512dd90c8d16ab3e0ec1f1284f576e4af376a64a7
+  metadataSource: extension/src/services/migration/ResourceSyncer.ts
 arguments:
   - name: feature
     description: Feature name or description

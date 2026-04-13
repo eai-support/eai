@@ -3,6 +3,11 @@ name: 7a_stakeholder_comms
 description: >-
   Generate stakeholder communications package including release notes, demo
   script, change management brief, and success metrics
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/7a_stakeholder_comms.md
+  canonicalChecksum: 95c24b86665cdf2bb7cd78aa2fbfdbb6f795cae9ec3984907f0032bc4bfb5a54
+  metadataSource: extension/src/services/migration/ResourceSyncer.ts
 arguments:
   - name: feature
     description: Feature name or description

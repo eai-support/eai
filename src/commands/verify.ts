@@ -473,6 +473,8 @@ export async function runContractAudit(
         details: 'Skipped because the active tenant has no published Object Types remotely.',
       });
     } else {
+      let resourceListPayload: Record<string, unknown> | null = null;
+
       try {
         const res = await client.listResources(options.resourceType, { limit: 1, page: 1 });
         if (!res.ok) {
@@ -482,6 +484,7 @@ export async function runContractAudit(
         if (!isRecord(payload) || !Array.isArray(payload.docs)) {
           throw new Error('Expected docs[] in list response');
         }
+        resourceListPayload = payload;
         addCheck(checks, {
           id: 'resource-list',
           label: 'Resource list contract',
@@ -501,35 +504,47 @@ export async function runContractAudit(
         });
       }
 
-      try {
-        const res = await client.listResources(options.resourceType, {
-          limit: 1,
-          cursor: 'opaque-test-cursor',
-        });
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const payload = await parseJsonBody(res);
-        if (!isRecord(payload) || (!('nextCursor' in payload) && !('docs' in payload))) {
-          throw new Error('Expected docs[] and optional nextCursor in cursor list response');
-        }
+      const nextCursor = typeof resourceListPayload?.nextCursor === 'string' ? resourceListPayload.nextCursor : null;
+      if (!nextCursor) {
         addCheck(checks, {
           id: 'resource-cursor',
           label: 'Resource cursor contract',
           method: 'GET',
           endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}?cursor=...`,
-          status: 'passed',
-          details: `Cursor-aware list response shape: ${describeShape(payload)}`,
+          status: 'skipped',
+          details: 'Skipped because the sample list response did not return a nextCursor.',
         });
-      } catch (err) {
-        addCheck(checks, {
-          id: 'resource-cursor',
-          label: 'Resource cursor contract',
-          method: 'GET',
-          endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}?cursor=...`,
-          status: 'failed',
-          details: err instanceof Error ? err.message : String(err),
-        });
+      } else {
+        try {
+          const res = await client.listResources(options.resourceType, {
+            limit: 1,
+            cursor: nextCursor,
+          });
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          const payload = await parseJsonBody(res);
+          if (!isRecord(payload) || (!('nextCursor' in payload) && !('docs' in payload))) {
+            throw new Error('Expected docs[] and optional nextCursor in cursor list response');
+          }
+          addCheck(checks, {
+            id: 'resource-cursor',
+            label: 'Resource cursor contract',
+            method: 'GET',
+            endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}?cursor=...`,
+            status: 'passed',
+            details: `Cursor-aware list response shape: ${describeShape(payload)}`,
+          });
+        } catch (err) {
+          addCheck(checks, {
+            id: 'resource-cursor',
+            label: 'Resource cursor contract',
+            method: 'GET',
+            endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}?cursor=...`,
+            status: 'failed',
+            details: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
 
       try {

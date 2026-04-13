@@ -3,6 +3,11 @@ name: 0a_problem_validation
 description: >-
   Validate business problem using 5 Whys analysis, stakeholder impact mapping,
   and market landscape research before any solution design
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/0a_problem_validation.md
+  canonicalChecksum: a7dcf9393c34e13c5ec99c01a7f279e9e533130357166906e508d1a1907b0010
+  metadataSource: extension/src/services/migration/ResourceSyncer.ts
 arguments:
   - name: feature
     description: Feature name or description
