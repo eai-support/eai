@@ -99,7 +99,7 @@ program.addCommand(provisionCommand);
 // Custom help footer
 program.addHelpText('after', `
 ${chalk.bold('Getting Started:')}
-  ${chalk.cyan('eai init my-vertical')}     Scaffold a new vertical app
+  ${chalk.cyan('eai init my-vertical')}     Scaffold a vertical app with Gofer AI CLI assets
   ${chalk.cyan('eai login')}                Authenticate with Entra CIAM
   ${chalk.cyan('eai provision entra')}      Create Entra app registration for end-user auth
   ${chalk.cyan('eai env pull')}             Sync app config from cloud
@@ -135,6 +135,13 @@ ${chalk.bold('Machine-Readable Output:')}
 
   ${chalk.dim('# Discover CLI structure for AI agents')}
   ${chalk.cyan('eai --describe')}
+
+${chalk.bold('AI Terminal Workflows:')}
+  ${chalk.dim('# New projects include Gofer commands, agents, scripts, hooks, and skills')}
+  ${chalk.cyan('claude')}                   ${chalk.dim('then run /0_business_scenario')}
+  ${chalk.cyan('codex')}                    ${chalk.dim('then run $0_business_scenario')}
+  ${chalk.cyan('gemini skills list --all')} ${chalk.dim('from the generated repo')}
+  ${chalk.cyan('copilot')}                  ${chalk.dim('uses .github/prompts and .github/skills')}
 
 ${chalk.bold('Accessibility:')}
   ${chalk.dim('# Screen reader friendly output')}

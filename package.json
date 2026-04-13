@@ -1,6 +1,6 @@
 {
   "name": "@eai-tools/cli",
-  "version": "0.3.5",
+  "version": "2.0.5",
   "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
   "type": "module",
   "bin": {
@@ -21,7 +21,8 @@
     "prepublishOnly": "npm run lint:no-placeholder && npm run build && npm run lint"
   },
   "files": [
-    "dist"
+    "dist",
+    "resources"
   ],
   "keywords": [
     "cli",

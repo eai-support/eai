@@ -26,6 +26,7 @@ import {
   expectCommandFailed,
   expectDirectoryCreated,
   expectFileExists,
+  expectFileNotExists,
   expectFileContains,
   expectErrorMessage,
   expectSuccessMessage,
@@ -138,6 +139,15 @@ describe('eai init', () => {
     await expectFileContains(ctx, 'my-vertical/package.json', '"name": "@eai-tools/my-vertical"');
     await expectFileExists(ctx, 'my-vertical/.env.local');
     await expectFileExists(ctx, 'my-vertical/src/eai.config/object-types.ts');
+    await expectFileExists(ctx, 'my-vertical/.claude/commands/0_business_scenario.md');
+    await expectFileExists(ctx, 'my-vertical/.claude/agents/codebase-analyzer.md');
+    await expectFileExists(ctx, 'my-vertical/.specify/scripts/bash/pipeline-state.sh');
+    await expectFileExists(ctx, 'my-vertical/.system/skills/0_business_scenario/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.agents/skills/0_business_scenario/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.github/prompts/0_business_scenario.prompt.md');
+    await expectFileExists(ctx, 'my-vertical/.github/skills/0-business-scenario/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.github/copilot-instructions.md');
+    await expectFileContains(ctx, 'my-vertical/CLAUDE.md', '## Gofer Pipeline');
     expect(consoleCapture.stdout.join('\n')).toContain('Created My Vertical');
   });
 
@@ -160,7 +170,24 @@ describe('eai init', () => {
 
     await expectDirectoryCreated(ctx, 'quick-app');
     await expectFileContains(ctx, 'quick-app/package.json', '"name": "@eai-tools/quick-app"');
+    await expectFileExists(ctx, 'quick-app/.claude/commands/0_business_scenario.md');
+    await expectFileExists(ctx, 'quick-app/.claude/agents/codebase-analyzer.md');
+    await expectFileExists(ctx, 'quick-app/.specify/scripts/hooks/post-tool-use.mjs');
+    await expectFileExists(ctx, 'quick-app/.agents/skills/0_business_scenario/SKILL.md');
+    await expectFileExists(ctx, 'quick-app/.github/skills/0-business-scenario/SKILL.md');
     expectNoPrompts(ctx);
+    expectCommandSucceeded(result);
+  });
+
+  test('TC002b: Init can skip Gofer asset installation', async () => {
+    workingDirectoryIs(ctx, env.dir);
+
+    const result = await runCommand(ctx, `eai init plain-app --skip-prompts --no-gofer --from ${templateRepo}`);
+
+    await expectDirectoryCreated(ctx, 'plain-app');
+    await expectFileContains(ctx, 'plain-app/package.json', '"name": "@eai-tools/plain-app"');
+    await expectFileNotExists(ctx, 'plain-app/.claude/commands/0_business_scenario.md');
+    await expectFileNotExists(ctx, 'plain-app/.agents/skills/0_business_scenario/SKILL.md');
     expectCommandSucceeded(result);
   });
 

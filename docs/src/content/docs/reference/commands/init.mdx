@@ -11,7 +11,7 @@ eai init [name] [options]
 
 ## Description
 
-`eai init` scaffolds a new vertical application from the public template repo [eai-vertical-template](https://github.com/eai-tools/eai-vertical-template). It clones the template, customizes configuration files, generates an Object Types scaffold, sets up a deployment workflow, and initializes a fresh git repository.
+`eai init` scaffolds a new vertical application from the public template repo [eai-vertical-template](https://github.com/eai-tools/eai-vertical-template). It clones the template, customizes configuration files, generates an Object Types scaffold, installs Gofer AI terminal assets, sets up a deployment workflow, and initializes a fresh git repository.
 
 If `name` is not provided on the command line, the CLI will prompt for it interactively along with other configuration options such as display name, tenant structure, and feature selection.
 
@@ -21,7 +21,22 @@ The generated project is a Next.js 15 application with EAI platform integration,
 - An Object Types scaffold in `src/eai.config/object-types.ts`
 - A GitHub Actions deployment workflow in `.github/workflows/deploy-demo.yml`
 - A `CLAUDE.md` project reference file
+- Gofer assets for Claude CLI, Codex CLI, Gemini CLI, and GitHub Copilot
 - An initial git commit
+
+## Gofer assets
+
+Gofer installation is on by default. The generated repo includes:
+
+| CLI or workflow | Installed files |
+|-----------------|-----------------|
+| Shared Gofer pipeline | `.specify/scripts`, `.specify/templates`, `.specify/scripts/hooks`, `.specify/README.md` |
+| Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` |
+| Codex CLI | `.system/skills` and `.agents/skills` |
+| Gemini CLI | `.agents/skills` |
+| GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/copilot-instructions.md`, `.github/skills` |
+
+Start with `/0_business_scenario` in Claude CLI, `$0_business_scenario` in Codex CLI, `gemini skills list --all` in Gemini CLI, or the Gofer prompt/skill surfaces in GitHub Copilot.
 
 ## Options
 
@@ -30,6 +45,7 @@ The generated project is a Next.js 15 application with EAI platform integration,
 | `[name]` | Name for the vertical (kebab-case). Prompted interactively if omitted. | -- |
 | `--from <repo>` | GitHub repo URL or local path for the template. | `https://github.com/eai-tools/eai-vertical-template.git` |
 | `--skip-prompts` | Use defaults without interactive prompts. Requires `name` argument. | `false` |
+| `--no-gofer` | Skip installing Gofer AI terminal assets. | `false` |
 | `-h, --help` | Display help for the command. | -- |
 
 ### Interactive Prompts
@@ -71,6 +87,7 @@ Creating Patient Intake
 ✔ Created Object Types scaffold
 ✔ Created deploy-demo.yml
 ✔ Generated CLAUDE.md
+✔ Installed Gofer assets (16 commands, 37 agents, 16 skills)
 ✔ Initialized git repository
 
 ✔ Created Patient Intake at /Users/you/projects/patient-intake
@@ -85,7 +102,7 @@ Next steps:
   7. eai types validate — check your types
   8. eai types seed — push types to platform
   9. eai dev — start local development
-  10. Review CLAUDE.md — platform architecture reference
+  10. Start Gofer — run /0_business_scenario in Claude CLI
 ```
 
 ### Scaffold with name argument
@@ -111,6 +128,7 @@ Creating Claims Processing
 ✔ Created Object Types scaffold
 ✔ Created deploy-demo.yml
 ✔ Generated CLAUDE.md
+✔ Installed Gofer assets (16 commands, 37 agents, 16 skills)
 ✔ Initialized git repository
 
 ✔ Created Claims Processing at /Users/you/projects/claims-processing
@@ -121,6 +139,14 @@ Creating Claims Processing
 ```bash
 eai init my-vertical --from https://github.com/my-org/my-template.git
 ```
+
+### Scaffold without Gofer
+
+```bash
+eai init my-vertical --no-gofer
+```
+
+Use this only for a bare vertical scaffold. Most EAI verticals should keep the default Gofer assets so AI terminals can run the same delivery workflow from the repo.
 
 ### If Git is not installed
 

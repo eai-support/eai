@@ -47,7 +47,7 @@ Choose the installation method that works best for your workflow.
     This downloads the pre-built CLI and puts the `eai` binary on your `PATH`. To pin a specific version:
 
     ```bash
-    npm install -g @eai-tools/cli@0.3.4
+    npm install -g @eai-tools/cli@2.0.5
     ```
 
     <Aside type="tip">
@@ -73,7 +73,7 @@ Choose the installation method that works best for your workflow.
     This clones the repo, builds from source, and puts the `eai` binary on your `PATH`. To pin a specific version:
 
     ```bash
-    npm install -g github:eai-tools/eai-cli#v0.3.4
+    npm install -g github:eai-tools/eai-cli#v2.0.5
     ```
 
     <Aside type="note">
@@ -120,7 +120,7 @@ eai --version
 You should see output like:
 
 ```
-0.3.4
+2.0.5
 ```
 
 You can also run `eai --help` to see all available commands:
@@ -141,6 +141,7 @@ Options:
   --simple               Plain text output without colors or symbols
   --no-color             Disable colored output
   --color                Force colored output
+  --profile <name>       Use a named environment profile
   --describe             Output JSON schema of all commands
   -h, --help             display help for command
 
@@ -161,6 +162,13 @@ Commands:
   doctor [options]       Diagnose common issues and suggest fixes
   whoami                 Show auth status and tenant info
   update [options]       Check for and install CLI updates
+  provision              Provision platform resources for this vertical
+
+AI Terminal Workflows:
+  claude                   then run /0_business_scenario
+  codex                    then run $0_business_scenario
+  gemini skills list --all from the generated repo
+  copilot                  uses .github/prompts and .github/skills
 ```
 
 ## Update

@@ -59,6 +59,11 @@ eai types seed
 eai dev
 ```
 
+`eai init` installs Gofer AI terminal assets by default. New vertical repos include
+Claude commands and agents, Codex/Gemini skills, Copilot prompts and CLI skills,
+and the `.specify` scripts/templates/hooks required to run the Gofer pipeline.
+Use `eai init my-vertical --no-gofer` only when you need a bare scaffold.
+
 ## Global Flags
 
 All commands support these global flags:
@@ -78,7 +83,7 @@ All commands support these global flags:
 
 | Command | Description |
 |---------|-------------|
-| `eai init [name]` | Interactive scaffold from the public EAI vertical template |
+| `eai init [name]` | Interactive scaffold from the public EAI vertical template with Gofer AI CLI assets |
 | `eai dev` | Start local dev server with connectivity checks |
 
 ### Authentication
@@ -244,6 +249,22 @@ The `--describe` flag outputs the CLI command structure as JSON Schema, enabling
 eai --describe        # Describe all commands
 eai types --describe  # Describe types subcommands
 ```
+
+## Gofer AI Terminal Assets
+
+Every `eai init` project includes the repo-local Gofer assets needed by the AI
+terminals used in this workspace:
+
+| CLI | Installed surface | First command |
+|-----|-------------------|---------------|
+| Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` hooks | `/0_business_scenario` |
+| Codex CLI | `.system/skills` and `.agents/skills` | `$0_business_scenario` |
+| Gemini CLI | `.agents/skills` | `gemini skills list --all` |
+| GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | Use the Gofer prompt or matching local skill |
+
+The shared workflow artifacts live under `.specify/`: scripts, templates,
+hooks, memory, logs, and generated feature specs. Runtime state is added to
+`.gitignore`; command definitions and templates are committed with the vertical.
 
 ## Development
 

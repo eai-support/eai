@@ -12,6 +12,7 @@ import ora from 'ora';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import * as out from '../lib/output.js';
+import { installGoferResources } from '../lib/gofer-installer.js';
 
 const exec = promisify(execFile);
 
@@ -67,6 +68,16 @@ export const initCommand = new Command('init')
   .argument('[name]', 'Name for the vertical (kebab-case)')
   .option('--from <repo>', 'GitHub repo URL or local path for template', TEMPLATE_REPO)
   .option('--skip-prompts', 'Use defaults without interactive prompts', false)
+  .option('--no-gofer', 'Skip installing Gofer AI CLI assets')
+  .addHelpText('after', `
+Gofer AI CLI assets are installed by default:
+  .specify/ scripts, templates, hooks, and memory folders
+  .claude/ commands and agents for Claude CLI
+  .system/skills and .agents/skills for Codex and Gemini CLI
+  .github/prompts, .github/instructions, and .github/skills for GitHub Copilot
+
+Use --no-gofer only when you need a bare vertical scaffold.
+`)
   .action(async (nameArg, options) => {
     let initOptions: InitOptions;
 
@@ -225,7 +236,24 @@ export const initCommand = new Command('init')
       claudeSpinner.fail('Failed to generate CLAUDE.md');
     }
 
-    // Step 7: Initialize git
+    // Step 7: Install Gofer AI CLI assets
+    if (options.gofer) {
+      const goferSpinner = ora('Installing Gofer AI CLI assets...').start();
+      try {
+        const summary = await installGoferResources(targetDir, {
+          workflowProfile: 'enterpriseai',
+        });
+        goferSpinner.succeed(
+          `Installed Gofer assets (${summary.commands} commands, ${summary.agents} agents, ${summary.skills} skills)`,
+        );
+      } catch (err) {
+        goferSpinner.fail('Failed to install Gofer AI CLI assets');
+        out.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    }
+
+    // Step 8: Initialize git
     const gitSpinner = ora('Initializing git...').start();
     try {
       await exec('git', ['init'], { cwd: targetDir });
@@ -243,6 +271,9 @@ export const initCommand = new Command('init')
     out.heading('Next steps:');
     out.blank();
     out.dim(`Template: ${options.from}`);
+    if (options.gofer) {
+      out.dim('Gofer: run /0_business_scenario in Claude CLI, $0_business_scenario in Codex CLI, gemini skills list --all, or use Copilot prompts/skills in .github/.');
+    }
     out.dim(`CLI docs: https://github.com/${GITHUB_ORG}/eai-cli`);
     out.blank();
   });

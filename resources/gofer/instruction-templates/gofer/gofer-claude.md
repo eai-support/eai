@@ -1,0 +1,1 @@
+Run `/0_business_scenario` to start the full pipeline: research -> specify -> plan -> tasks -> implement -> validate. Use `/7_gofer_save` and `/8_gofer_resume` for session continuity. Artifacts go to `.specify/specs/{feature}/`.
