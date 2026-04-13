@@ -22,6 +22,7 @@ describe('runContractAudit', () => {
   let ctx: TestContext;
   let originalCwd: string;
   let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
   let originalAccessToken: string | undefined;
 
   beforeEach(async () => {
@@ -31,6 +32,7 @@ describe('runContractAudit', () => {
     env = await createTestEnvironment();
     mockServer = createMockServer();
     mockServer.start();
+    originalUserProfile = process.env.USERPROFILE;
 
     ctx = {
       workingDir: env.dir,
@@ -41,6 +43,7 @@ describe('runContractAudit', () => {
 
     workingDirectoryIs(ctx, env.dir);
     process.env.HOME = env.dir;
+    process.env.USERPROFILE = env.dir;
     delete process.env.EAI_ACCESS_TOKEN;
     await projectHasValidObjectTypes(ctx, [
       { name: 'Customer', displayName: 'Customer', status: 'published' },
@@ -57,6 +60,11 @@ describe('runContractAudit', () => {
       delete process.env.HOME;
     } else {
       process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
     }
     if (originalAccessToken === undefined) {
       delete process.env.EAI_ACCESS_TOKEN;

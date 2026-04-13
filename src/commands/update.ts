@@ -28,6 +28,7 @@ export function buildUpdateInstallArgs(version: string): string[] {
     'install',
     '-g',
     `@eai-tools/cli@${version}`,
+    '--prefer-online',
     REGISTRY_FLAG,
   ];
 }
