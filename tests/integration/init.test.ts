@@ -205,7 +205,7 @@ describe('describeCloneFailure', () => {
 
     expect(message).toContain('default template source');
     expect(message).toContain('--from <repo-or-path>');
-    expect(message).toContain('not reachable');
+    expect(message).toContain('could not be reached');
   });
 
   test('explains when git is not installed', () => {
