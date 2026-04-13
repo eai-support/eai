@@ -55,8 +55,8 @@ export function describeCloneFailure(templateSource: string, error: unknown): st
     templateSource === TEMPLATE_REPO
     && /repository .* not found|repository not found|fatal: .* not found/i.test(message)
   ) {
-    return `${message}\n\nThe default template source (${TEMPLATE_REPO}) was not reachable.\n` +
-      `Use ${'`'}eai init <name> --from <repo-or-path>${'`'} with an accessible template source.`;
+    return `${message}\n\nThe default template source (${TEMPLATE_REPO}) could not be reached.\n` +
+      `Use ${'`'}eai init <name> --from <repo-or-path>${'`'} with another accessible template source if GitHub is blocked from this machine.`;
   }
 
   return message;
