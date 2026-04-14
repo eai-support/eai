@@ -13,6 +13,10 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import * as out from '../lib/output.js';
 import { installGoferResources } from '../lib/gofer-installer.js';
+import { isAuthenticated } from '../lib/auth.js';
+import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { PlatformAPIClient } from '../lib/api.js';
+import { patchEnvFile } from '../lib/config.js';
 
 const exec = promisify(execFile);
 
@@ -265,11 +269,32 @@ Use --no-gofer only when you need a bare vertical scaffold.
       out.warn(describeGitInitFailure(err));
     }
 
+    // Step 9: Optionally provision Entra app registration inline
+    let entraProvisioned = false;
+    if (!options.skipPrompts) {
+      const loggedIn = await isAuthenticated();
+      if (loggedIn) {
+        out.blank();
+        const { provision } = await inquirer.prompt([{
+          type: 'confirm',
+          name: 'provision',
+          message: 'Provision Entra app registration now?',
+          default: true,
+        }]);
+        if (provision) {
+          entraProvisioned = await provisionEntraInline(targetDir, initOptions.name);
+        }
+      }
+    }
+
     out.blank();
     out.success(`Created ${chalk.bold(initOptions.displayName)} at ${chalk.cyan(targetDir)}`);
     out.blank();
     out.heading('Next steps:');
     out.blank();
+    if (!entraProvisioned) {
+      out.dim(`Run ${chalk.cyan('eai provision entra')} inside the project to set up Entra authentication.`);
+    }
     out.dim(`Template: ${options.from}`);
     if (options.gofer) {
       out.dim('Gofer: run /0_business_scenario in Claude CLI, $0_business_scenario in Codex CLI, gemini skills list --all, or use Copilot prompts/skills in .github/.');
@@ -277,6 +302,60 @@ Use --no-gofer only when you need a bare vertical scaffold.
     out.dim(`CLI docs: https://github.com/${GITHUB_ORG}/eai-cli`);
     out.blank();
   });
+
+/**
+ * Attempt inline Entra app provisioning at the end of `eai init`.
+ * Returns true if provisioning succeeded and wrote credentials to .env.local.
+ * Non-fatal: logs a warning and returns false on any failure.
+ */
+async function provisionEntraInline(targetDir: string, verticalName: string): Promise<boolean> {
+  const spinner = ora('Provisioning Entra app registration...').start();
+  try {
+    const publicApiUrl = await resolvePublicApiUrl(targetDir);
+    const context = await resolveActiveTenantContext({
+      projectRoot: targetDir,
+      publicApiUrl,
+      interactive: true,
+    });
+    const { activeTenant } = context;
+
+    const client = new PlatformAPIClient(publicApiUrl, activeTenant.id);
+    const result = await client.provisionEntraApp({
+      tenantId: activeTenant.id,
+      verticalName,
+      redirectUris: [`http://localhost:3000/${verticalName}/api/auth/callback/microsoft-entra-id`],
+      idempotent: true,
+    });
+
+    if (result.clientSecret) {
+      await patchEnvFile(targetDir, {
+        ENTRA_CLIENT_ID: result.clientId,
+        ENTRA_CLIENT_SECRET: result.clientSecret,
+      });
+      spinner.succeed(`Entra app registration ${result.existing ? 'confirmed' : 'created'}: ${chalk.dim(result.clientId)}`);
+      out.warn('The client secret has been written to .env.local and cannot be retrieved again.');
+      return true;
+    }
+
+    if (result.existing) {
+      await patchEnvFile(targetDir, { ENTRA_CLIENT_ID: result.clientId });
+      spinner.succeed(`Entra app registration confirmed: ${chalk.dim(result.clientId)}`);
+      out.warn('An existing registration was found. Set ENTRA_CLIENT_SECRET in .env.local if it is missing locally.');
+      return true;
+    }
+
+    spinner.fail('Provisioning returned no credentials.');
+    out.warn('Run `eai provision entra` after setup to complete Entra registration.');
+    return false;
+  } catch (err) {
+    if (process.env.DEBUG) {
+      console.error('[eai:provision]', err);
+    }
+    spinner.fail('Entra provisioning failed — skipping.');
+    out.warn('Run `eai provision entra` inside the project to complete Entra registration.');
+    return false;
+  }
+}
 
 function toDisplayName(name: string): string {
   return name
