@@ -13,10 +13,12 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import * as out from '../lib/output.js';
 import { installGoferResources } from '../lib/gofer-installer.js';
-import { isAuthenticated } from '../lib/auth.js';
+import { isAuthenticated, loadTokens } from '../lib/auth.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import { patchEnvFile } from '../lib/config.js';
+import { pullCloudEnvValues } from '../lib/cloud-env.js';
+import { getActiveProfile, loadProfileConfig } from '../lib/profile.js';
 
 const exec = promisify(execFile);
 
@@ -203,6 +205,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
     try {
       const envContent = generateEnvFile(initOptions);
       await writeFile(join(targetDir, '.env.local'), envContent, 'utf-8');
+      await hydrateEnvFromLoginContext(targetDir, initOptions.name);
       envSpinner.succeed('Generated .env.local');
     } catch (_err) {
       envSpinner.fail('Failed to generate .env.local');
@@ -339,8 +342,13 @@ async function provisionEntraInline(targetDir: string, verticalName: string): Pr
 
     if (result.existing) {
       await patchEnvFile(targetDir, { ENTRA_CLIENT_ID: result.clientId });
+      const hydratedSecret = await hydrateCloudSecret(targetDir, verticalName);
       spinner.succeed(`Entra app registration confirmed: ${chalk.dim(result.clientId)}`);
-      out.warn('An existing registration was found. Set ENTRA_CLIENT_SECRET in .env.local if it is missing locally.');
+      if (hydratedSecret) {
+        out.success('ENTRA_CLIENT_SECRET hydrated from cloud config.');
+      } else {
+        out.warn('An existing registration was found. Run `eai env pull --include-secrets` if ENTRA_CLIENT_SECRET is missing locally.');
+      }
       return true;
     }
 
@@ -353,6 +361,75 @@ async function provisionEntraInline(targetDir: string, verticalName: string): Pr
     }
     spinner.fail('Entra provisioning failed — skipping.');
     out.warn('Run `eai provision entra` inside the project to complete Entra registration.');
+    return false;
+  }
+}
+
+async function hydrateEnvFromLoginContext(targetDir: string, verticalName: string): Promise<void> {
+  const patches: Record<string, string> = {};
+  const envKey = verticalName.replace(/-/g, '_').toUpperCase();
+
+  try {
+    patches.BASE_URL_PUBLIC_API = await resolvePublicApiUrl(targetDir);
+  } catch {
+    // Best-effort bootstrap only.
+  }
+
+  try {
+    const profileName = getActiveProfile();
+    const profileConfig = await loadProfileConfig(profileName);
+    if (profileConfig?.authTenantName) {
+      patches.ENTRA_TENANT_NAME = profileConfig.authTenantName;
+    }
+    if (profileConfig?.authTenantId) {
+      patches.ENTRA_TENANT_ID = profileConfig.authTenantId;
+    }
+  } catch {
+    // Default profile has no config file.
+  }
+
+  try {
+    const tokens = await loadTokens();
+    if (tokens?.tenantName) {
+      patches.ENTRA_TENANT_NAME = tokens.tenantName;
+    }
+    if (tokens?.tenantId) {
+      patches.ENTRA_TENANT_ID = tokens.tenantId;
+    }
+  } catch {
+    // Best-effort bootstrap only.
+  }
+
+  try {
+    const publicApiUrl = patches.BASE_URL_PUBLIC_API || await resolvePublicApiUrl(targetDir);
+    const context = await resolveActiveTenantContext({
+      projectRoot: targetDir,
+      publicApiUrl,
+      interactive: false,
+    });
+    patches[`TENANT_${envKey}_ID`] = context.activeTenant.id;
+  } catch {
+    // Best-effort bootstrap only.
+  }
+
+  if (Object.keys(patches).length > 0) {
+    await patchEnvFile(targetDir, patches);
+  }
+}
+
+async function hydrateCloudSecret(targetDir: string, verticalName: string): Promise<boolean> {
+  try {
+    const { patches } = await pullCloudEnvValues({
+      label: verticalName,
+      includeSecrets: true,
+    });
+    const secret = patches.ENTRA_CLIENT_SECRET;
+    if (!secret) {
+      return false;
+    }
+    await patchEnvFile(targetDir, { ENTRA_CLIENT_SECRET: secret });
+    return true;
+  } catch {
     return false;
   }
 }
