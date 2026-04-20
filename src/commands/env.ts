@@ -13,12 +13,11 @@ import ora from 'ora';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { getAzureCliInvocation } from '../lib/azure-cli.js';
+import { pullCloudEnvValues, resolveAppConfigStore } from '../lib/cloud-env.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
 const exec = promisify(execFile);
-
-const APP_CONFIG_STORE = process.env.EAI_APP_CONFIG_STORE ?? 'appcs-demo-eai-dev';
 
 async function execAzureCli(args: string[]): Promise<{ stdout: string; stderr: string }> {
   const invocation = getAzureCliInvocation(args);
@@ -54,52 +53,30 @@ Examples:
       exitWithError(ErrorCode.E303, { field: '--label or NEXT_PUBLIC_APP_NAME in .env.local' });
     }
 
-    const spinner = ora(`Pulling config from ${APP_CONFIG_STORE} (label: ${label})`).start();
+    const store = resolveAppConfigStore(options.env);
+    const spinner = ora(`Pulling config from ${store} (label: ${label})`).start();
 
     try {
-      // Pull all key-values for this label
-      const { stdout } = await execAzureCli([
-        'appconfig', 'kv', 'list',
-        '--name', APP_CONFIG_STORE,
-        '--label', label,
-        '--output', 'json',
-      ]);
+      const { patches, secretRefs } = await pullCloudEnvValues({
+        environment: options.env,
+        label,
+        includeSecrets: options.includeSecrets,
+      });
+      spinner.succeed(`Found ${Object.keys(patches).length + (!options.includeSecrets ? secretRefs.length : 0)} config values`);
 
-      const kvPairs: Array<{ key: string; value: string; contentType?: string }> = JSON.parse(stdout);
-      spinner.succeed(`Found ${kvPairs.length} config values`);
-
-      const patches: Record<string, string> = {};
-      const secretRefs: Array<{ key: string; vaultUri: string }> = [];
-
-      for (const kv of kvPairs) {
-        // Check for Key Vault references
-        if (kv.contentType === 'application/vnd.microsoft.appconfig.keyvaultref+json;charset=utf-8') {
-          try {
-            const ref = JSON.parse(kv.value);
-            secretRefs.push({ key: kv.key, vaultUri: ref.uri });
-
-            if (options.includeSecrets) {
-              try {
-                const { stdout: secretValue } = await execAzureCli([
-                  'keyvault', 'secret', 'show',
-                  '--id', ref.uri,
-                  '--query', 'value',
-                  '--output', 'tsv',
-                ]);
-                patches[kv.key] = secretValue.trim();
-                out.success(`${kv.key} = ${chalk.dim('[from Key Vault]')}`);
-              } catch {
-                out.warn(`${kv.key} — Key Vault access denied`);
-              }
-            } else {
-              out.info(`${kv.key} = ${chalk.dim('[Key Vault ref — skipped]')}`);
-            }
-          } catch {
-            patches[kv.key] = kv.value;
-          }
+      for (const [key, value] of Object.entries(patches)) {
+        if (secretRefs.some((ref) => ref.key === key)) {
+          out.success(`${key} = ${chalk.dim('[from Key Vault]')}`);
         } else {
-          patches[kv.key] = kv.value;
-          out.success(`${kv.key} = ${chalk.dim(truncate(kv.value, 60))}`);
+          out.success(`${key} = ${chalk.dim(truncate(value, 60))}`);
+        }
+      }
+
+      if (!options.includeSecrets) {
+        for (const ref of secretRefs) {
+          if (!(ref.key in patches)) {
+            out.info(`${ref.key} = ${chalk.dim('[Key Vault ref — skipped]')}`);
+          }
         }
       }
 
@@ -197,7 +174,8 @@ envCommand
     }
 
     const keysToSync = options.key ? [options.key] : Object.keys(env);
-    const spinner = ora(`Pushing ${keysToSync.length} values to ${APP_CONFIG_STORE} (label: ${label})`).start();
+    const store = resolveAppConfigStore('dev');
+    const spinner = ora(`Pushing ${keysToSync.length} values to ${store} (label: ${label})`).start();
 
     let pushed = 0;
     for (const key of keysToSync) {
@@ -208,7 +186,7 @@ envCommand
       try {
         await execAzureCli([
           'appconfig', 'kv', 'set',
-          '--name', APP_CONFIG_STORE,
+          '--name', store,
           '--key', key,
           '--value', env[key],
           '--label', label,
@@ -220,7 +198,7 @@ envCommand
       }
     }
 
-    spinner.succeed(`Pushed ${pushed} values to ${APP_CONFIG_STORE} (label: ${label})`);
+    spinner.succeed(`Pushed ${pushed} values to ${store} (label: ${label})`);
   });
 
 function truncate(s: string, max: number): string {

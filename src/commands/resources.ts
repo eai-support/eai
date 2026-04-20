@@ -90,6 +90,14 @@ function failCommand(spinner: Ora | null, message: string): void {
   }
 }
 
+function succeedCommand(spinner: Ora | null, message: string): void {
+  if (spinner) {
+    spinner.succeed(message);
+  } else {
+    out.success(message);
+  }
+}
+
 export function matchPublishedType(
   requestedType: string,
   schemaTypes: SchemaTypeSummary[],
@@ -261,7 +269,7 @@ Examples:
         return;
       }
 
-      spinner!.succeed(`${data.totalDocs} total — page ${data.page}/${data.totalPages}`);
+      succeedCommand(spinner,`${data.totalDocs} total — page ${data.page}/${data.totalPages}`);
 
       if (data.docs.length === 0) {
         out.info('No resources found.');
@@ -309,7 +317,7 @@ resourcesCommand
       if (options.format === 'json') {
         out.json(data);
       } else {
-        spinner!.succeed(`Batch create complete (${data.succeeded} succeeded, ${data.failed} failed)`);
+        succeedCommand(spinner,`Batch create complete (${data.succeeded} succeeded, ${data.failed} failed)`);
       }
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
@@ -342,7 +350,7 @@ resourcesCommand
       if (options.format === 'json') {
         out.json(data);
       } else {
-        spinner!.succeed(`Batch update complete (${data.succeeded} succeeded, ${data.failed} failed)`);
+        succeedCommand(spinner,`Batch update complete (${data.succeeded} succeeded, ${data.failed} failed)`);
       }
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
@@ -377,7 +385,7 @@ resourcesCommand
       if (options.format === 'json') {
         out.json(data);
       } else {
-        spinner!.succeed(`Batch delete complete (${data.succeeded} succeeded, ${data.failed} failed)`);
+        succeedCommand(spinner,`Batch delete complete (${data.succeeded} succeeded, ${data.failed} failed)`);
       }
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
@@ -505,7 +513,7 @@ Examples:
       if (options.format === 'json') {
         out.json({ type, id: created.id, data });
       } else {
-        spinner!.succeed(`Created ${type} ${chalk.dim(created.id)}`);
+        succeedCommand(spinner,`Created ${type} ${chalk.dim(created.id)}`);
       }
     } catch (err) {
       failCommand(spinner, err instanceof Error ? err.message : String(err));
@@ -557,7 +565,7 @@ resourcesCommand
       if (options.format === 'json') {
         out.json({ type, id, data, version });
       } else {
-        spinner!.succeed(`Updated ${type} ${chalk.dim(id)}`);
+        succeedCommand(spinner,`Updated ${type} ${chalk.dim(id)}`);
       }
     } catch (err) {
       failCommand(spinner, err instanceof Error ? err.message : String(err));
@@ -608,7 +616,7 @@ resourcesCommand
       if (options.format === 'json') {
         out.json({ type, id, deleted: true });
       } else {
-        spinner!.succeed(`Deleted ${type} ${chalk.dim(id)}`);
+        succeedCommand(spinner,`Deleted ${type} ${chalk.dim(id)}`);
       }
     } catch (err) {
       failCommand(spinner, err instanceof Error ? err.message : String(err));
@@ -653,7 +661,7 @@ resourcesCommand
       if (options.format === 'json') {
         out.json(data);
       } else {
-        spinner!.succeed('Query complete');
+        succeedCommand(spinner,'Query complete');
       }
     } catch (err) {
       failCommand(spinner, err instanceof Error ? err.message : String(err));
@@ -688,7 +696,7 @@ resourcesCommand
       if (options.format === 'json') {
         out.json({ objectTypes: types, count: types.length });
       } else {
-        spinner!.succeed(`${types.length} published types`);
+        succeedCommand(spinner,`${types.length} published types`);
         for (const t of types) {
           const slug = t.slug ? chalk.dim(` (${t.slug})`) : '';
           out.info(`${chalk.cyan(t.name)}${slug} — ${t.properties.length} properties, ${t.linkTypes.length} links`);

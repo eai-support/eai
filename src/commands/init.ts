@@ -13,6 +13,12 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import * as out from '../lib/output.js';
 import { installGoferResources } from '../lib/gofer-installer.js';
+import { isAuthenticated, loadTokens } from '../lib/auth.js';
+import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { PlatformAPIClient } from '../lib/api.js';
+import { patchEnvFile } from '../lib/config.js';
+import { pullCloudEnvValues } from '../lib/cloud-env.js';
+import { getActiveProfile, loadProfileConfig } from '../lib/profile.js';
 
 const exec = promisify(execFile);
 
@@ -199,6 +205,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
     try {
       const envContent = generateEnvFile(initOptions);
       await writeFile(join(targetDir, '.env.local'), envContent, 'utf-8');
+      await hydrateEnvFromLoginContext(targetDir, initOptions.name);
       envSpinner.succeed('Generated .env.local');
     } catch (_err) {
       envSpinner.fail('Failed to generate .env.local');
@@ -265,11 +272,32 @@ Use --no-gofer only when you need a bare vertical scaffold.
       out.warn(describeGitInitFailure(err));
     }
 
+    // Step 9: Optionally provision Entra app registration inline
+    let entraProvisioned = false;
+    if (!options.skipPrompts) {
+      const loggedIn = await isAuthenticated();
+      if (loggedIn) {
+        out.blank();
+        const { provision } = await inquirer.prompt([{
+          type: 'confirm',
+          name: 'provision',
+          message: 'Provision Entra app registration now?',
+          default: true,
+        }]);
+        if (provision) {
+          entraProvisioned = await provisionEntraInline(targetDir, initOptions.name);
+        }
+      }
+    }
+
     out.blank();
     out.success(`Created ${chalk.bold(initOptions.displayName)} at ${chalk.cyan(targetDir)}`);
     out.blank();
     out.heading('Next steps:');
     out.blank();
+    if (!entraProvisioned) {
+      out.dim(`Run ${chalk.cyan('eai provision entra')} inside the project to set up Entra authentication.`);
+    }
     out.dim(`Template: ${options.from}`);
     if (options.gofer) {
       out.dim('Gofer: run /0_business_scenario in Claude CLI, $0_business_scenario in Codex CLI, gemini skills list --all, or use Copilot prompts/skills in .github/.');
@@ -277,6 +305,134 @@ Use --no-gofer only when you need a bare vertical scaffold.
     out.dim(`CLI docs: https://github.com/${GITHUB_ORG}/eai-cli`);
     out.blank();
   });
+
+/**
+ * Attempt inline Entra app provisioning at the end of `eai init`.
+ * Returns true if provisioning succeeded and wrote credentials to .env.local.
+ * Non-fatal: logs a warning and returns false on any failure.
+ */
+async function provisionEntraInline(targetDir: string, verticalName: string): Promise<boolean> {
+  const spinner = ora('Provisioning Entra app registration...').start();
+  try {
+    const publicApiUrl = await resolvePublicApiUrl(targetDir);
+    const context = await resolveActiveTenantContext({
+      projectRoot: targetDir,
+      publicApiUrl,
+      interactive: true,
+    });
+    const { activeTenant } = context;
+
+    const client = new PlatformAPIClient(publicApiUrl, activeTenant.id);
+    const result = await client.provisionEntraApp({
+      tenantId: activeTenant.id,
+      verticalName,
+      redirectUris: [`http://localhost:3000/${verticalName}/api/auth/callback/microsoft-entra-id`],
+      idempotent: true,
+    });
+
+    if (result.clientSecret) {
+      await patchEnvFile(targetDir, {
+        ENTRA_CLIENT_ID: result.clientId,
+        ENTRA_CLIENT_SECRET: result.clientSecret,
+      });
+      spinner.succeed(`Entra app registration ${result.existing ? 'confirmed' : 'created'}: ${chalk.dim(result.clientId)}`);
+      out.warn('The client secret has been written to .env.local and cannot be retrieved again.');
+      return true;
+    }
+
+    if (result.existing) {
+      await patchEnvFile(targetDir, { ENTRA_CLIENT_ID: result.clientId });
+      const hydratedSecret = await hydrateCloudSecret(targetDir, verticalName);
+      spinner.succeed(`Entra app registration confirmed: ${chalk.dim(result.clientId)}`);
+      if (hydratedSecret) {
+        out.success('ENTRA_CLIENT_SECRET hydrated from cloud config.');
+      } else {
+        out.warn('An existing registration was found. Run `eai env pull --include-secrets` if ENTRA_CLIENT_SECRET is missing locally.');
+      }
+      return true;
+    }
+
+    spinner.fail('Provisioning returned no credentials.');
+    out.warn('Run `eai provision entra` after setup to complete Entra registration.');
+    return false;
+  } catch (err) {
+    if (process.env.DEBUG) {
+      console.error('[eai:provision]', err);
+    }
+    spinner.fail('Entra provisioning failed — skipping.');
+    out.warn('Run `eai provision entra` inside the project to complete Entra registration.');
+    return false;
+  }
+}
+
+async function hydrateEnvFromLoginContext(targetDir: string, verticalName: string): Promise<void> {
+  const patches: Record<string, string> = {};
+  const envKey = verticalName.replace(/-/g, '_').toUpperCase();
+
+  try {
+    patches.BASE_URL_PUBLIC_API = await resolvePublicApiUrl(targetDir);
+  } catch {
+    // Best-effort bootstrap only.
+  }
+
+  try {
+    const profileName = getActiveProfile();
+    const profileConfig = await loadProfileConfig(profileName);
+    if (profileConfig?.authTenantName) {
+      patches.ENTRA_TENANT_NAME = profileConfig.authTenantName;
+    }
+    if (profileConfig?.authTenantId) {
+      patches.ENTRA_TENANT_ID = profileConfig.authTenantId;
+    }
+  } catch {
+    // Default profile has no config file.
+  }
+
+  try {
+    const tokens = await loadTokens();
+    if (tokens?.tenantName) {
+      patches.ENTRA_TENANT_NAME = tokens.tenantName;
+    }
+    if (tokens?.tenantId) {
+      patches.ENTRA_TENANT_ID = tokens.tenantId;
+    }
+  } catch {
+    // Best-effort bootstrap only.
+  }
+
+  try {
+    const publicApiUrl = patches.BASE_URL_PUBLIC_API || await resolvePublicApiUrl(targetDir);
+    const context = await resolveActiveTenantContext({
+      projectRoot: targetDir,
+      publicApiUrl,
+      interactive: false,
+    });
+    patches[`TENANT_${envKey}_ID`] = context.activeTenant.id;
+  } catch {
+    // Best-effort bootstrap only.
+  }
+
+  if (Object.keys(patches).length > 0) {
+    await patchEnvFile(targetDir, patches);
+  }
+}
+
+async function hydrateCloudSecret(targetDir: string, verticalName: string): Promise<boolean> {
+  try {
+    const { patches } = await pullCloudEnvValues({
+      label: verticalName,
+      includeSecrets: true,
+    });
+    const secret = patches.ENTRA_CLIENT_SECRET;
+    if (!secret) {
+      return false;
+    }
+    await patchEnvFile(targetDir, { ENTRA_CLIENT_SECRET: secret });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function toDisplayName(name: string): string {
   return name
