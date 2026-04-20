@@ -10,6 +10,11 @@ tools:
   - Bash
   - WebSearch
 argument-hint: feature-name-or-description
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/10_gofer_cloud.md
+  canonicalChecksum: 661ddaad1f8a722e05ff3fd3556649321848124ef0f7cddc59cb0706b949c46d
+  metadataSource: scripts/generate-commands.ts
 ---
 
 # Gofer Cloud

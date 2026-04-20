@@ -1,0 +1,178 @@
+# Sequence Diagram Option Spectrum Templates
+#
+# Defines the 5 implementation options spanning efficiency to innovation.
+# Each option has predefined characteristics for consistent generation.
+#
+# @see spec.md FR-021 through FR-025
+
+options:
+  1_minimal:
+    number: 1
+    name: Minimal
+    description: >
+      Bare minimum implementation. Maximum efficiency, minimal complexity.
+      Uses existing patterns and infrastructure with no new dependencies.
+    efficiency_score: 95
+    innovation_score: 10
+    complexity_target: low
+    estimated_effort: '1-2 days'
+    characteristics:
+      - Direct implementation with existing tools
+      - No new dependencies
+      - Minimal error handling (happy path only)
+      - Basic logging only
+      - No AI/ML components
+    risk_profile:
+      - May need significant expansion later
+      - Limited scalability
+      - Minimal user experience polish
+    gen_ai_touchpoints: [] # None for minimal
+
+  2_efficient:
+    number: 2
+    name: Efficient
+    description: >
+      Pragmatic implementation balancing speed and quality.
+      Follows established patterns with reasonable error handling.
+    efficiency_score: 80
+    innovation_score: 30
+    complexity_target: low-medium
+    estimated_effort: '3-5 days'
+    characteristics:
+      - Established patterns and best practices
+      - Standard error handling
+      - Basic validation
+      - One or two strategic improvements
+      - Consider caching where obvious
+    risk_profile:
+      - Moderate technical debt if requirements grow
+      - May miss opportunities for user delight
+    gen_ai_touchpoints:
+      - Optional: AI-assisted input validation
+
+  3_standard:
+    number: 3
+    name: Standard
+    description: >
+      Balanced approach with good architecture foundations.
+      Comprehensive implementation ready for production.
+    efficiency_score: 60
+    innovation_score: 50
+    complexity_target: medium
+    estimated_effort: '1-2 weeks'
+    characteristics:
+      - Full test coverage
+      - Comprehensive error handling
+      - Proper logging and monitoring
+      - Documentation
+      - Extension points for future features
+    risk_profile:
+      - Balanced trade-offs
+      - May be overbuilt for simple use cases
+    gen_ai_touchpoints:
+      - AI-powered suggestions
+      - Smart defaults based on user history
+
+  4_enhanced:
+    number: 4
+    name: Enhanced
+    description: >
+      Feature-rich implementation with modern capabilities.
+      Includes proactive features that anticipate user needs.
+    efficiency_score: 40
+    innovation_score: 70
+    complexity_target: medium-high
+    estimated_effort: '2-3 weeks'
+    characteristics:
+      - Advanced UX patterns
+      - Real-time features
+      - Personalization capabilities
+      - Analytics integration
+      - A/B testing ready
+    risk_profile:
+      - Higher development cost
+      - More maintenance burden
+      - Potential over-engineering
+    gen_ai_touchpoints:
+      - AI-powered recommendations
+      - Predictive user assistance
+      - Natural language processing
+
+  5_innovative:
+    number: 5
+    name: Innovative
+    description: >
+      Cutting-edge implementation pushing boundaries.
+      Maximum innovation with breakthrough user experience.
+    efficiency_score: 20
+    innovation_score: 95
+    complexity_target: high
+    estimated_effort: '1-2 months'
+    characteristics:
+      - Novel interaction patterns
+      - Heavy AI/ML integration
+      - Autonomous features
+      - Adaptive interfaces
+      - Research-level capabilities
+    risk_profile:
+      - Significant investment required
+      - Technology risk (bleeding edge)
+      - May require specialist skills
+      - User adoption uncertainty
+    gen_ai_touchpoints:
+      - AI-driven autonomous agents
+      - Multi-modal AI (text, voice, vision)
+      - Generative AI for content
+      - AI copilot experience
+      - Continuous learning from user behavior
+
+# Scoring guidance
+scoring_formulas:
+  efficiency:
+    description: 'How quickly can this be implemented and maintained?'
+    factors:
+      - Development time
+      - Maintenance burden
+      - Resource usage
+      - Team skill match
+
+  complexity:
+    description: 'How complex is the implementation?'
+    levels:
+      low: 'Few components, simple data flow'
+      medium: 'Multiple components, some async operations'
+      high: 'Many components, complex state management, distributed concerns'
+
+  innovation:
+    description: 'How novel and differentiated is the approach?'
+    factors:
+      - New patterns introduced
+      - User experience differentiation
+      - AI/ML sophistication
+      - Industry-leading features
+
+# Template for Mermaid diagram generation
+mermaid_template: |
+  sequenceDiagram
+      autonumber
+      {{#each actors}}
+      participant {{id}} as {{name}}
+      {{/each}}
+
+      Note over {{first_actor}}: {{option_name}} Option
+
+      {{#each interactions}}
+      {{from}}->>{{to}}: {{action}}
+      {{#if response}}
+      {{to}}-->>{{from}}: {{response}}
+      {{/if}}
+      {{/each}}
+
+      {{#if gen_ai_touchpoints}}
+      Note over AI: Gen AI Integration Points
+      {{#each gen_ai_touchpoints}}
+      rect rgb(200, 220, 255)
+          Note over AI: {{this}}
+      end
+      {{/each}}
+      {{/if}}

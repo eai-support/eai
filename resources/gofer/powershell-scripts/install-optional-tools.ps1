@@ -177,13 +177,13 @@ foreach ($tool in $toolList) {
       Install-NpmGlobalPackage -PackageName '@anthropic-ai/claude-code'
     }
     'codex' {
-      Install-NpmGlobalPackage -PackageName '@openai/codex'
-    }
-    'gemini' {
-      Install-NpmGlobalPackage -PackageName '@google/gemini-cli'
+      Install-NpmGlobalPackage -PackageName '@openai/codex-cli'
     }
     'copilot' {
       Install-NpmGlobalPackage -PackageName '@github/copilot'
+    }
+    'gemini' {
+      Install-NpmGlobalPackage -PackageName '@google/gemini-cli'
     }
     'gh' {
       Install-GitHubCli
@@ -201,8 +201,8 @@ foreach ($tool in $toolList) {
 Write-Info 'Suggested next steps:'
 Write-Info '  claude login'
 Write-Info '  codex login'
-Write-Info '  gemini auth login'
 Write-Info '  copilot login'
+Write-Info '  gemini auth login'
 Write-Info '  gh auth login'
 Write-Info '  az login'
 

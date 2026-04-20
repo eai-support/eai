@@ -18,7 +18,8 @@
     "test:coverage": "vitest run --coverage",
     "prepare": "tsc",
     "lint:no-placeholder": "! grep -r EAI_CLI_CLIENT_ID_PLACEHOLDER src/",
-    "prepublishOnly": "npm run lint:no-placeholder && npm run build && npm run lint"
+    "sync:gofer": "node scripts/sync-gofer-resources.cjs",
+    "prepublishOnly": "npm run sync:gofer && npm run lint:no-placeholder && npm run build && npm run lint"
   },
   "files": [
     "dist",
