@@ -1,0 +1,74 @@
+# Context Profiles Configuration
+#
+# Defines context budget allocation for each Gofer pipeline stage.
+# Each stage has different priorities for research, memories, and code.
+#
+# Budget fractions must sum to <= 1.0 (remaining is for conversation)
+# observationWindow: number of turns to keep tool outputs before masking
+#
+# @see .specify/specs/011-context-health-recursive-memory/data-model.md
+
+version: '1.0'
+
+# Default profile used when stage is not specified
+default: implement
+
+profiles:
+  # /1_gofer_research - Deep codebase exploration
+  research:
+    stage: research
+    description: 'Research phase prioritizes broad codebase exploration'
+    researchBudget: 0.15 # Lower - we're generating research, not consuming it
+    memoryBudget: 0.20 # Medium - leverage prior knowledge
+    codeBudget: 0.40 # High - need to read lots of code
+    observationWindow: 15 # Keep more observations for exploration
+
+  # /2_gofer_specify - Feature specification creation
+  specify:
+    stage: specify
+    description: 'Specification phase balances research and requirements'
+    researchBudget: 0.30 # High - reference research.md
+    memoryBudget: 0.20 # Medium - prior decisions matter
+    codeBudget: 0.20 # Lower - focused on spec writing
+    observationWindow: 12
+
+  # /3_gofer_plan - Technical architecture design
+  plan:
+    stage: plan
+    description: 'Planning phase emphasizes architecture and contracts'
+    researchBudget: 0.25 # Medium-high - reference research
+    memoryBudget: 0.25 # High - architectural decisions
+    codeBudget: 0.25 # Medium - reference existing patterns
+    observationWindow: 10
+
+  # /4_gofer_tasks - Task breakdown generation
+  tasks:
+    stage: tasks
+    description: 'Task generation needs plan and spec context'
+    researchBudget: 0.20 # Medium - reference research
+    memoryBudget: 0.15 # Lower - focused on plan decomposition
+    codeBudget: 0.30 # High - understand implementation scope
+    observationWindow: 8
+
+  # /5_gofer_implement - Code implementation
+  implement:
+    stage: implement
+    description: 'Implementation maximizes code context for accuracy'
+    researchBudget: 0.10 # Lower - less exploration needed
+    memoryBudget: 0.15 # Medium - coding conventions
+    codeBudget: 0.45 # Maximum - active coding needs code context
+    observationWindow: 10 # Balance between context and recency
+
+  # /6_gofer_validate - Implementation verification
+  validate:
+    stage: validate
+    description: 'Validation compares implementation against spec'
+    researchBudget: 0.20 # Medium - reference requirements
+    memoryBudget: 0.15 # Lower - focused on verification
+    codeBudget: 0.35 # High - verify actual implementation
+    observationWindow: 12 # Keep test outputs longer
+
+# Budget allocation notes:
+# - Conversation takes remaining budget (1.0 - sum of budgets)
+# - Typical conversation allocation: 0.20-0.35 depending on stage
+# - Budgets can be adjusted per project in local config

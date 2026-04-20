@@ -1,7 +1,8 @@
 ---
 name: 6_gofer_validate
-description:
-  Validate implementation with 10-category engineering rubric (100 points)
+description: >-
+  Unified validation, blast-radius analysis, and engineering review (3 phases,
+  110-point rubric)
 agent: copilot-workspace
 tools:
   - Read
@@ -10,16 +11,34 @@ tools:
   - Bash
   - WebSearch
 argument-hint: feature-name-or-description
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/6_gofer_validate.md
+  canonicalChecksum: 0bdf42e79df7bcc97c2523cade8194b6899bf12f4e3090c5f3f23aa3f97efb93
+  metadataSource: scripts/generate-commands.ts
 ---
 
 # Gofer Validate
 
 You are validating that the implementation meets engineering quality standards
-using a **10-category rubric scored out of 100 points**. This is the **sixth
-stage** of the unified Gofer pipeline.
+across **three phases**:
 
-A score of **100/100 is required to pass**. Any category scoring 0 triggers
-failure and a brownfield restart loop.
+- **Phase A — Rubric Validation**: 10-category engineering rubric (100 points)
+- **Phase B — Blast Radius Analysis**: risk to other code, interface contracts,
+  error logging/observability, submodule and repo-wide impact, dependency risk,
+  rollback readiness, release-checklist compliance (Category 11, 10 points)
+- **Phase C — Engineering Review Loop**: iterative review-fix cycles (up to 5)
+  to catch issues rubric-based validation might miss
+
+This is the **sixth stage** of the unified Gofer pipeline. It consolidates the
+former `#6_gofer_validate` and `#6a_gofer_engineering_review` stages into a
+single command; `#6a_gofer_engineering_review` is retained as a
+backwards-compatibility stub that delegates here.
+
+A score of **110/110 on the rubric (Phases A + B) is required to pass**. Any
+rubric category scoring 0 triggers failure and a brownfield restart loop. Phase
+C then runs 1-5 iterative review-fix cycles until all Red/Yellow findings are
+resolved or 5 cycles complete.
 
 ## User Input
 
@@ -45,17 +64,23 @@ This command expects in `.specify/specs/{feature}/`:
 
 1. Context health check
 2. Load implementation context
-3. Spawn 6 specialist validation agents in parallel
+3. **Phase A** — Spawn 6 specialist rubric validation agents in parallel
 4. Run automated checks (build, test, lint, typecheck)
 5. Mutation testing gate
 6. Mock ratio analysis
 7. Semantic slop detection
-8. Score the 10-category rubric
-9. Generate enhanced validation report
-10. Determine PASS/FAIL outcome
-11. Brownfield restart on failure
-12. Attribution logging to JSONL
-13. Memory update check
+8. **Phase B** — Spawn 5 blast-radius analysis agents in parallel
+9. Blast-radius synthesis (change graph, interface diff, observability,
+   dependency/submodule impact, rollback readiness, release checklist)
+10. Score the 11-category rubric (110 points)
+11. Generate enhanced validation report + blast-radius report
+12. Determine rubric PASS/FAIL outcome
+13. Brownfield restart on failure
+14. **Phase C** — Engineering review loop (3 agents × up to 5 cycles with
+    auto-fix)
+15. Generate engineering review report
+16. Attribution logging to JSONL
+17. Memory update check
 
 ---
 
@@ -74,20 +99,21 @@ For pre-2026 Copilot environments, execute the validation phases
 
 ## The Engineering Quality Rubric
 
-### 10-Category Scoring (100 Points)
+### 11-Category Scoring (110 Points)
 
-| #   | Category                   | Points | Pass Criteria                                                                                        | Agent                                         |
-| --- | -------------------------- | ------ | ---------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| 1   | Functional Correctness     | 15     | Every acceptance criterion in spec.md has a passing test exercising real code                        | validation-correctness                        |
-| 2   | Test Authenticity          | 15     | Zero skips, zero placeholders, zero mock-only assertions. Mutation score >= 60% if Stryker available | validation-test-quality                       |
-| 3   | UI/E2E Verification        | 10     | If feature has UI: real rendering tests pass. If no UI: points redistribute                          | N/A (automated check)                         |
-| 4   | Security Posture           | 10     | Zero hardcoded secrets, no disabled security features, no client-side keys                           | validation-security                           |
-| 5   | Integration Reality        | 10     | Integration tests use real dependencies where possible. Contract tests validate boundaries           | validation-integration                        |
-| 6   | Error Path Coverage        | 10     | Public functions tested for failure modes. No empty catch blocks                                     | validation-correctness + validation-standards |
-| 7   | Architecture Compliance    | 10     | File structure and patterns match plan.md and research.md                                            | validation-standards                          |
-| 8   | Performance Baseline       | 5      | No synchronous I/O in async paths, no unbounded loops, no N+1 patterns                               | validation-performance                        |
-| 9   | Code Hygiene               | 10     | Zero AI slop: no TODO placeholders, no redundant comments, no magic numbers                          | validation-standards                          |
-| 10  | Specification Traceability | 5      | Every user story maps to tests, every test maps to code                                              | validation-correctness                        |
+| #   | Category                     | Points | Pass Criteria                                                                                                                                                                          | Agent                                                                                                                      |
+| --- | ---------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Functional Correctness       | 15     | Every acceptance criterion in spec.md has a passing test exercising real code                                                                                                          | validation-correctness                                                                                                     |
+| 2   | Test Authenticity            | 15     | Zero skips, zero placeholders, zero mock-only assertions. Mutation score >= 60% if Stryker available                                                                                   | validation-test-quality                                                                                                    |
+| 3   | UI/E2E Verification          | 10     | If feature has UI: real rendering tests pass. If no UI: points redistribute                                                                                                            | N/A (automated check)                                                                                                      |
+| 4   | Security Posture             | 10     | Zero hardcoded secrets, no disabled security features, no client-side keys                                                                                                             | validation-security                                                                                                        |
+| 5   | Integration Reality          | 10     | Integration tests use real dependencies where possible. Contract tests validate boundaries                                                                                             | validation-integration                                                                                                     |
+| 6   | Error Path Coverage          | 10     | Public functions tested for failure modes. No empty catch blocks                                                                                                                       | validation-correctness + validation-standards                                                                              |
+| 7   | Architecture Compliance      | 10     | File structure and patterns match plan.md and research.md                                                                                                                              | validation-standards                                                                                                       |
+| 8   | Performance Baseline         | 5      | No synchronous I/O in async paths, no unbounded loops, no N+1 patterns                                                                                                                 | validation-performance                                                                                                     |
+| 9   | Code Hygiene                 | 10     | Zero AI slop: no TODO placeholders, no redundant comments, no magic numbers                                                                                                            | validation-standards                                                                                                       |
+| 10  | Specification Traceability   | 5      | Every user story maps to tests, every test maps to code                                                                                                                                | validation-correctness                                                                                                     |
+| 11  | **Blast Radius Containment** | 10     | No unmitigated breaking API changes, full-surface consumer/import audit, new error paths log, no new High/Critical CVEs, rollback/feature-flag path exists, release checklist complete | codebase-analyzer + validation-integration + validation-standards + research-dependency-evaluator + tasks-rollback-planner |
 
 ### Point Redistribution (No-UI Features)
 
@@ -97,6 +123,8 @@ interface), the 10 points from UI/E2E Verification are redistributed:
 - **+5 to Functional Correctness** (total: 20 points)
 - **+5 to Test Authenticity** (total: 20 points)
 
+Total remains **110/110** across all 11 categories.
+
 **Detection**: Check plan.md tech stack. If no UI framework (React, Vue,
 Angular, Svelte) and no Playwright/Cypress tests exist, this is a no-UI feature.
 
@@ -105,8 +133,11 @@ Angular, Svelte) and no Playwright/Cypress tests exist, this is a no-UI feature.
 - Each category scores **full points** or **0**. There is no partial credit.
 - A category scores 0 if its agent reports any **Red (blocking)** finding.
 - A category scores 0 if its automated check fails.
-- **Total score** = sum of all category scores.
-- **PASS** = 100/100. Anything less = FAIL.
+- **Total score** = sum of all category scores (max **110**, was 100).
+- **PASS** = 110/110. Anything less = FAIL.
+- Legacy consumers reading `status: PASS` / `score: 100` from historical reports
+  should migrate to the 110-point scale. The report keeps the `score` field as
+  the numerator and `score_max` to disambiguate.
 
 ---
 
@@ -153,6 +184,10 @@ Validation loads all artifacts and spawns 6 agents — context pressure is high.
    - Otherwise: `HAS_UI = false` → apply point redistribution
 
 ---
+
+# Phase A — Rubric Validation
+
+Phase A runs the 10-category engineering rubric (Categories 1-10, 100 points).
 
 ## Step 2: Spawn 6 Specialist Validation Agents
 
@@ -269,6 +304,348 @@ Identify confirmed vulnerabilities vs false positives. Prioritize by exploitabil
 
 **Run all 6 core agents in parallel.** Run Agent 7 (if applicable) in parallel
 with the core agents. Collect all results before proceeding.
+
+---
+
+# Phase B — Blast Radius Analysis
+
+Phase B quantifies the **ripple effect** of the implementation. It assesses risk
+to code outside the feature boundary, interface-contract stability,
+observability preservation, dependency / submodule impact, rollback readiness,
+and release-checklist compliance. Phase B results score **Category 11 (10
+points)** and produce a separate `blast-radius-report.md` artifact.
+
+Phase B runs **after** Phase A agents have returned (Step 2 complete) and
+**before** automated checks in Step 3, because breaking-change detection informs
+how to interpret failing tests/types.
+
+## Step 2.5: Pre-Flight Change Surface Discovery
+
+Before spawning Phase B agents, build a **change manifest** the agents can
+reference. This is a cheap main-context pass, not an agent task.
+
+1. **Modified file list** — from `tasks.md` completed tasks and git:
+
+   ```bash
+   git diff --name-only $(git merge-base HEAD main 2>/dev/null || echo HEAD~1) HEAD
+   ```
+
+2. **Submodule inventory** — detect repo submodules and workspace packages:
+
+   ```bash
+   git submodule status 2>/dev/null
+   cat package.json 2>/dev/null | grep -E '"workspaces"' -A 20
+   ls -d */package.json 2>/dev/null | xargs -I {} dirname {}
+   ```
+
+   Record which submodules/workspaces contain modified files. For this repo the
+   canonical submodules are `extension/`, `language-server/`, `docs/`.
+
+3. **Public-surface detection** — identify exported symbols at risk:
+   - `index.ts` / `index.js` files in modified directories
+   - `*.d.ts` files in modified directories
+   - Entries in the `exports` / `main` / `types` fields of modified
+     `package.json` files
+   - Files under `contracts/` or `.specify/specs/{feature}/contracts/`
+
+4. **Dependency manifest diff** — capture dependency churn:
+
+   ```bash
+   git diff $(git merge-base HEAD main 2>/dev/null || echo HEAD~1) HEAD -- package.json package-lock.json extension/package.json language-server/package.json 2>/dev/null
+   ```
+
+5. **Rollback-relevant assets** — flag anything that needs a reverse path:
+   - Files under `migrations/`, `db/migrations/`, `prisma/migrations/`
+   - Files named `*.sql`, `schema.*`
+   - Feature-flag definitions (search for `featureFlag`, `growthbook`,
+     `launchdarkly`, `flags.`)
+   - `CHANGELOG.md`, `RELEASES.md`, version fields in `package.json`
+
+Record these into `CHANGE_MANIFEST` for the Phase B prompts.
+
+---
+
+## Step 2.6: Spawn 5 Blast-Radius Analysis Agents
+
+Launch all 5 agents **in parallel** using the Task tool. Pass the
+`CHANGE_MANIFEST` from Step 2.5 into each prompt so agents see the same ground
+truth.
+
+### Agent 8: Change Graph / Ripple Analyzer
+
+```
+Task: subagent_type="codebase-analyzer", model="sonnet"
+Prompt: "Blast-radius change-graph analysis for feature [FEATURE_NAME].
+
+Feature directory: {FEATURE_DIR}
+Change manifest (modified files): {CHANGE_MANIFEST.modifiedFiles}
+Submodules: {CHANGE_MANIFEST.submodules}
+
+Build a change-graph table for EVERY modified symbol (function, class, type,
+const) in the modified files:
+1. List every direct importer/caller (file:line references).
+2. Classify each as Direct (imports the symbol) or Transitive (imports a
+   re-export of it) or Runtime (dynamic require / reflection).
+3. Flag any cross-submodule ripple (symbol defined in submodule A, consumed
+   in submodule B) — this is Red if unplanned.
+4. Flag any consumer whose tests do NOT exercise the changed code path —
+   Yellow.
+5. Count orphan changes (modified code with zero importers) — Gray.
+
+Return findings with Red/Yellow/Gray severity and a concise ripple summary
+(<2500 tokens). Output sections: 'Ripple Summary', 'Cross-submodule Crossings',
+'Consumer Coverage Gaps', 'Orphans'."
+```
+
+### Agent 9: Interface Contract Diff
+
+```
+Task: subagent_type="validation-integration", model="sonnet"
+Prompt: "Interface contract blast-radius analysis for feature [FEATURE_NAME].
+
+Feature directory: {FEATURE_DIR}
+Public-surface manifest: {CHANGE_MANIFEST.publicSurface}
+Contracts directory: {FEATURE_DIR}/contracts (if present)
+
+For every public export, package.json exports field entry, contract file,
+and .d.ts symbol that was modified, deleted, or added:
+1. Diff old signature vs new signature (parameters, return types, generics,
+   optional vs required, default values).
+2. Classify each change:
+   - BREAKING: removed export, renamed export, narrowed return type, widened
+     required-param set, removed optional param callers rely on.
+   - ADDITIVE: new export, new optional param, widened return type.
+   - NEUTRAL: implementation change with identical signature.
+3. Red = any BREAKING change without a corresponding entry in CHANGELOG.md
+   or a migration note in the spec.
+4. Yellow = BREAKING change with CHANGELOG entry but no migration guide.
+5. Gray = ADDITIVE changes for informational tracking.
+
+Verify contract tests still cover all pre-existing contract clauses (no
+silent coverage regression). Return findings (<2000 tokens) with sections:
+'Breaking Changes', 'Additive Changes', 'Contract Coverage Regression'."
+```
+
+### Agent 10: Error Logging & Observability Integrity
+
+```
+Task: subagent_type="validation-standards", model="sonnet"
+Prompt: "Observability blast-radius analysis for feature [FEATURE_NAME].
+
+Feature directory: {FEATURE_DIR}
+Modified files: {CHANGE_MANIFEST.modifiedFiles}
+
+Assess whether observability was preserved, degraded, or improved:
+1. For every new/modified catch block: does it log? Use the same structured
+   logger used elsewhere in the repo (detect the logger by scanning for
+   common imports: winston, pino, bunyan, console, vscode.window.showError,
+   telemetry module). Red if any catch swallows silently in production code.
+2. For every removed log statement: is removal justified by a comment or
+   spec? Red if production-relevant logs disappeared without justification.
+3. Log-level hygiene: no `console.log` in production code (test files
+   exempt); no debug-level logs left at info/warn level.
+4. PII / secrets leakage in new log messages — Red if detected.
+5. Telemetry/metrics coverage: if the feature touched hot paths that
+   previously emitted metrics, verify emission is preserved.
+6. Correlation IDs / trace context propagation: if the repo uses them,
+   verify new code paths propagate them.
+
+Return findings (<2000 tokens) with sections: 'Silent Failures', 'Removed
+Logs', 'PII Risk', 'Metric Coverage Delta', 'Trace Propagation'."
+```
+
+### Agent 11: Dependency & Submodule Impact (with npm audit delta)
+
+```
+Task: subagent_type="research-dependency-evaluator", model="sonnet"
+Prompt: "Dependency and submodule blast-radius analysis for feature
+[FEATURE_NAME].
+
+Dependency manifest diff: {CHANGE_MANIFEST.dependencyDiff}
+Submodules affected: {CHANGE_MANIFEST.submodules}
+
+1. New dependencies: list each with source (npm / git / local), license, and
+   bundle-size impact (approx). Red if license is incompatible (GPL/AGPL in
+   a permissive-licensed repo), or if the package is unmaintained (>2 years
+   since last release, <1000 weekly downloads).
+2. Version bumps: classify as major / minor / patch. Red for major bumps
+   without migration notes.
+3. Lockfile churn: if package.json is unchanged but package-lock.json
+   changed materially (>20 lines), flag as Yellow (indirect dep drift).
+4. npm audit delta: run `npm audit --json 2>/dev/null` on the current branch
+   and compare vulnerability counts vs baseline (main). Red if the branch
+   adds any new High or Critical CVE. Yellow for new Moderate. Gray for new
+   Low.
+5. Submodule boundary crossings: if the feature modifies code in multiple
+   submodules (extension/, language-server/, docs/), verify each submodule
+   independently builds and tests. Red if a cross-submodule change breaks
+   any submodule's standalone build.
+
+Return findings (<2500 tokens) with sections: 'New Dependencies', 'Version
+Bumps', 'Lockfile Drift', 'CVE Delta', 'Submodule Boundary Crossings'."
+```
+
+### Agent 12: Rollback Readiness & Release Checklist
+
+```
+Task: subagent_type="tasks-rollback-planner", model="sonnet"
+Prompt: "Rollback readiness + release-checklist review for feature
+[FEATURE_NAME].
+
+Feature directory: {FEATURE_DIR}
+Rollback assets: {CHANGE_MANIFEST.rollbackAssets}
+
+Assess reversibility and release readiness:
+1. DB migrations: is every forward migration paired with a down/reverse
+   migration? Red if any irreversible migration lacks explicit justification
+   in the spec or plan.
+2. Feature flags: if the feature is risky, is it gated behind a flag? Is the
+   flag default-off? Is the pre-flag code path preserved so disabling the
+   flag restores prior behavior? Red if a risky change is unflagged and
+   irreversible.
+3. Data-shape changes: detect schema changes that cannot be rolled back
+   without data loss (column drops, type narrowings). Red if no backfill or
+   dual-write strategy.
+4. Release checklist for user-visible changes:
+   - CHANGELOG.md updated for this feature — Red if missing and feature is
+     user-visible.
+   - Version bump planned (semver correct for breaking/additive/patch) — Red
+     if breaking change present without major bump plan.
+   - Migration guide present for breaking changes — Red if missing.
+   - Documentation updated (docs/ or README.md) for new user-facing
+     capabilities — Yellow if missing.
+5. Rollback runbook: is there a documented 'how to revert' path? Yellow if
+   absent for non-trivial changes.
+
+Return findings (<2000 tokens) with sections: 'Migration Reversibility',
+'Feature Flag Coverage', 'Data-Shape Rollback Risk', 'Release Checklist',
+'Rollback Runbook'."
+```
+
+**Run all 5 Phase B agents in parallel.** Collect results before synthesis.
+
+---
+
+## Step 2.7: Blast Radius Synthesis
+
+Aggregate Phase B agent findings into a single blast-radius verdict.
+
+### Consolidated Finding Table
+
+```
+| # | Dimension | Finding | Severity | Agent | File | Line |
+|---|-----------|---------|----------|-------|------|------|
+| 1 | Change graph | [desc] | Red | codebase-analyzer | [file] | [line] |
+| 2 | Interface contract | [desc] | Red | validation-integration | [file] | [line] |
+| 3 | Observability | [desc] | Yellow | validation-standards | [file] | [line] |
+| 4 | Dependency | [desc] | Yellow | research-dependency-evaluator | [file] | [line] |
+| 5 | Rollback | [desc] | Red | tasks-rollback-planner | [file] | [line] |
+```
+
+### Severity Rollup
+
+```
+BLAST_RADIUS_RED = count of Red findings across all 5 agents
+BLAST_RADIUS_YELLOW = count of Yellow findings
+BLAST_RADIUS_GRAY = count of Gray findings
+```
+
+### Write `blast-radius-report.md`
+
+Write to `{FEATURE_DIR}/blast-radius-report.md`:
+
+```markdown
+---
+feature: [Feature Name]
+generated: [ISO timestamp]
+reviewer: Claude
+dimensions_checked:
+  [
+    change_graph,
+    interface_contract,
+    observability,
+    dependency_submodule,
+    rollback_release,
+  ]
+red_count: [N]
+yellow_count: [N]
+gray_count: [N]
+verdict: [CONTAINED | BREACHED]
+---
+
+# Blast Radius Report: [Feature Name]
+
+## Change Surface
+
+- Modified files: [N]
+- Submodules touched: [list]
+- Public-surface symbols affected: [N]
+- New dependencies: [N]
+- Version bumps: [list]
+- Migration files: [list]
+- Feature flags introduced/modified: [list]
+
+## Dimension Findings
+
+### 1. Change Graph / Ripple (Agent: codebase-analyzer)
+
+- Cross-submodule crossings: [list or "none"]
+- Consumer coverage gaps: [N]
+- Orphan changes: [N]
+- Red findings: [table]
+
+### 2. Interface Contracts (Agent: validation-integration)
+
+- Breaking changes: [N] ([list])
+- Additive changes: [N]
+- Contract coverage regressions: [list]
+- Red findings: [table]
+
+### 3. Error Logging & Observability (Agent: validation-standards)
+
+- Silent failures introduced: [N]
+- Logs removed without justification: [N]
+- PII/secret leakage risk: [list]
+- Metric/trace coverage delta: [summary]
+- Red findings: [table]
+
+### 4. Dependencies & Submodules (Agent: research-dependency-evaluator)
+
+- New dependencies: [table with license/size/maintenance]
+- Version bumps: [list]
+- Lockfile drift: [summary]
+- CVE delta: Critical +[N], High +[N], Moderate +[N], Low +[N]
+- Submodule boundary crossings: [list]
+- Red findings: [table]
+
+### 5. Rollback Readiness & Release Checklist (Agent: tasks-rollback-planner)
+
+- Migration reversibility: [OK / BREACHED]
+- Feature flag coverage: [OK / BREACHED / N/A]
+- Data-shape rollback risk: [OK / BREACHED]
+- Release checklist:
+  - CHANGELOG updated: [Yes / No / N/A]
+  - Version bump planned: [patch / minor / major / N/A]
+  - Migration guide: [Yes / No / N/A]
+  - Docs updated: [Yes / No / N/A]
+- Rollback runbook: [Present / Absent / N/A]
+- Red findings: [table]
+
+## Verdict
+
+- **CONTAINED** if `BLAST_RADIUS_RED == 0` — Category 11 scores full 10 pts.
+- **BREACHED** if `BLAST_RADIUS_RED > 0` — Category 11 scores 0.
+
+Yellow findings do NOT fail Category 11 but are reported to the engineering
+review loop (Phase C) for mandatory attention.
+```
+
+Proceed to Step 3 (automated checks) with blast-radius results attached to the
+context.
+
+---
+
+# End of Phase B
 
 ---
 
@@ -512,13 +889,28 @@ category:
 - Score 0 if: User stories cannot be traced to tests and code
 - Score full if: Every US has tests, every test maps to implementing code
 
+**Category 11: Blast Radius Containment** (10 pts) — NEW
+
+- Input: Phase B blast-radius-report.md (Agents 8-12)
+- Score 0 if **any** of:
+  - `BLAST_RADIUS_RED > 0` (verdict BREACHED in blast-radius-report.md), OR
+  - Interface Contract Diff found a BREAKING change without CHANGELOG entry, OR
+  - Observability agent found a silent failure in production code, OR
+  - Dependency agent reports a new High or Critical CVE, OR
+  - Rollback agent reports an irreversible migration without justification, OR
+  - Cross-submodule ripple detected that was not planned in plan.md
+- Score full (10) if: `BLAST_RADIUS_RED == 0` — verdict CONTAINED in
+  blast-radius-report.md. Yellow/Gray findings do not block the category but are
+  forwarded to Phase C for attention.
+
 ### Calculate Total Score
 
 ```
-TOTAL = Cat1 + Cat2 + Cat3 + ... + Cat10
+TOTAL = Cat1 + Cat2 + Cat3 + ... + Cat10 + Cat11
 ```
 
-Must equal 100 to PASS.
+Must equal **110** to PASS (no-UI features: Cat3 redistributes +5 to Cat1 and +5
+to Cat2; total is still 110).
 
 ---
 
@@ -532,9 +924,12 @@ feature: [Feature Name]
 validated: [ISO timestamp]
 validator: Claude
 status: [PASS/FAIL]
-score: [N]/100
+score: [N]
+score_max: 110
 iteration: [N]
 has_ui: [true/false]
+blast_radius_verdict: [CONTAINED | BREACHED]
+blast_radius_report: blast-radius-report.md
 ---
 
 # Validation Report: [Feature Name]
@@ -553,7 +948,8 @@ has_ui: [true/false]
 | 8   | Performance Baseline       | 5       | [0/5]      | PASS/FAIL       | [summary] |
 | 9   | Code Hygiene               | 10      | [0/10]     | PASS/FAIL       | [summary] |
 | 10  | Specification Traceability | 5       | [0/5]      | PASS/FAIL       | [summary] |
-|     | **TOTAL**                  | **100** | **[N]**    | **[PASS/FAIL]** |           |
+| 11  | Blast Radius Containment   | 10      | [0/10]     | PASS/FAIL       | [summary] |
+|     | **TOTAL**                  | **110** | **[N]**    | **[PASS/FAIL]** |           |
 
 ## Automated Check Results
 
@@ -614,6 +1010,32 @@ has_ui: [true/false]
 | Over-engineered abstractions | [N]   | Gray     |
 | Magic numbers                | [N]   | Gray     |
 
+## Blast Radius Summary (Phase B)
+
+See `{FEATURE_DIR}/blast-radius-report.md` for the full dimension report.
+
+| Dimension                           | Agent                         | Red | Yellow | Gray | Verdict                  |
+| ----------------------------------- | ----------------------------- | --- | ------ | ---- | ------------------------ |
+| Change graph / ripple               | codebase-analyzer             | [N] | [N]    | [N]  | [OK/BREACHED]            |
+| Interface contracts                 | validation-integration        | [N] | [N]    | [N]  | [OK/BREACHED]            |
+| Error logging & observability       | validation-standards          | [N] | [N]    | [N]  | [OK/BREACHED]            |
+| Dependency & submodule impact       | research-dependency-evaluator | [N] | [N]    | [N]  | [OK/BREACHED]            |
+| Rollback readiness & release chklst | tasks-rollback-planner        | [N] | [N]    | [N]  | [OK/BREACHED]            |
+|                                     | **TOTAL**                     | [N] | [N]    | [N]  | **[CONTAINED/BREACHED]** |
+
+**Change Surface Summary**
+
+- Modified files: [N]
+- Submodules touched: [list]
+- Public-surface symbols modified: [N]
+- Breaking API changes: [N]
+- New dependencies: [N]
+- New High/Critical CVEs: [N]
+- Irreversible migrations: [N]
+- CHANGELOG updated: [Yes/No/N/A]
+
+**Phase B Gate**: Cat 11 scores 10 only if verdict is **CONTAINED**.
+
 ## Spec Compliance
 
 ### [US1 Name]
@@ -640,17 +1062,17 @@ has_ui: [true/false]
 
 ## Step 9: Determine Outcome
 
-### If TOTAL = 100: PASS
+### If TOTAL = 110: PASS (Phase A + B)
 
 ```
 ════════════════════════════════════════════════════════════════
-  VALIDATION PASSED: [Feature Name]
+  RUBRIC PASSED: [Feature Name]
 ════════════════════════════════════════════════════════════════
 
-  Score: 100/100
+  Score: 110/110
 
   Rubric:
-  ✓ Functional Correctness    [15/20]/[15/20]
+  ✓ Functional Correctness     [15/20]/[15/20]
   ✓ Test Authenticity          [15/20]/[15/20]
   ✓ UI/E2E Verification        [10/10 or N/A]
   ✓ Security Posture           10/10
@@ -660,18 +1082,27 @@ has_ui: [true/false]
   ✓ Performance Baseline       5/5
   ✓ Code Hygiene               10/10
   ✓ Specification Traceability 5/5
+  ✓ Blast Radius Containment   10/10
 
-  Report: {FEATURE_DIR}/validation-report.md
+  Reports:
+    {FEATURE_DIR}/validation-report.md
+    {FEATURE_DIR}/blast-radius-report.md
 
 ════════════════════════════════════════════════════════════════
 ```
 
-Proceed to **Step 12: Attribution Logging** then **Step 13: Memory Update
-Check**.
+Proceed to **Phase C: Engineering Review Loop** (inline, Step 10a below), then
+**Step 11: Attribution Logging** and **Step 12: Memory Update Check**.
 
-### If TOTAL < 100: FAIL
+**No external auto-chain is needed** — Phase C runs inline in this command.
+After Phase C completes, the feature pipeline is complete. The legacy
+`#6a_gofer_engineering_review` stub will detect the
+`engineering-review-report.md` artifact and no-op if invoked.
 
-Proceed to **Step 10: Brownfield Restart**.
+### If TOTAL < 110: FAIL
+
+Proceed to **Step 10: Brownfield Restart** (Phase C does not run when the rubric
+fails — fix the rubric first).
 
 ---
 
@@ -801,11 +1232,11 @@ After 3 remediation attempts, the following categories still fail:
 
 ## Full Score History
 
-| Iteration | Total | Cat1 | Cat2 | Cat3 | Cat4 | Cat5 | Cat6 | Cat7 | Cat8 | Cat9 | Cat10 |
-| --------- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ----- |
-| 1         | [N]   | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]   |
-| 2         | [N]   | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]   |
-| 3         | [N]   | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]   |
+| Iteration | Total | Cat1 | Cat2 | Cat3 | Cat4 | Cat5 | Cat6 | Cat7 | Cat8 | Cat9 | Cat10 | Cat11 |
+| --------- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ----- | ----- |
+| 1         | [N]   | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]   | [N]   |
+| 2         | [N]   | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]   | [N]   |
+| 3         | [N]   | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]  | [N]   | [N]   |
 ```
 
 Output:
@@ -825,6 +1256,352 @@ Output:
 
 ════════════════════════════════════════════════════════════════
 ```
+
+---
+
+# Phase C — Engineering Review Loop
+
+Phase C runs **only when the rubric passes** (110/110). It performs 1-5
+iterative review→fix→re-review cycles using 3 additional review agents per
+cycle, catching issues that the rubric-based validation might miss (edge cases,
+race conditions, API-contract drift against the as-implemented code, spec spirit
+violations).
+
+Phase C is the terminal stage of `#6_gofer_validate`. After Phase C completes,
+the feature pipeline is complete.
+
+## Step 10a: Initialize Phase C
+
+1. **Guard**: only proceed if rubric `status == PASS` (Step 9 TOTAL = 110). If
+   FAIL, skip Phase C entirely — brownfield restart (Step 10) already triggered.
+
+2. **Initialize cycle counter**: `CYCLE = 1`
+
+3. **Initialize findings history**: Empty array to accumulate across cycles.
+
+4. **Seed findings from Phase B Yellow/Gray**: All Yellow findings from the
+   blast-radius report are added to the Phase C finding list for mandatory
+   attention. Gray findings are logged but not auto-fixed.
+
+## Step 10b: Spawn 3 Parallel Review Agents (Cycle N of 5)
+
+Launch all 3 agents **in parallel** using the Task tool. Each agent receives the
+feature context and returns structured findings.
+
+### Agent 13: Engineer Review (Spec↔Plan↔Tasks↔Research Alignment)
+
+```
+Task: subagent_type="engineer-review", model="sonnet"
+Prompt: "Post-implementation engineering review for feature [FEATURE_NAME].
+
+Feature directory: {FEATURE_DIR}
+Spec: {FEATURE_DIR}/spec.md
+Plan: {FEATURE_DIR}/plan.md
+Tasks: {FEATURE_DIR}/tasks.md
+Research: {FEATURE_DIR}/research.md
+
+This is a POST-IMPLEMENTATION review (code is already written).
+In addition to your standard spec↔plan↔tasks alignment checks:
+1. Verify spec completeness against research.md — are all research findings addressed?
+2. Check all acceptance criteria are addressed in the actual code (not just tasks)
+3. Verify research.md patterns were followed in implementation
+
+Return findings in your standard report format (<2000 tokens)."
+```
+
+### Agent 14: Codebase Analyzer (Code↔Tasks Verification)
+
+```
+Task: subagent_type="codebase-analyzer", model="sonnet"
+Prompt: "Post-implementation code verification for feature [FEATURE_NAME].
+
+Feature directory: {FEATURE_DIR}
+Tasks: {FEATURE_DIR}/tasks.md
+
+Verify the following:
+1. Every task marked [x] in tasks.md has corresponding code changes — check file paths
+2. Search for TODO/FIXME/HACK comments in files listed in tasks.md
+3. Check for dead code or unused imports in changed files
+4. Verify any API contracts/interfaces match their actual implementations
+5. Check for inconsistencies between task descriptions and what was implemented
+
+Return findings with Red/Yellow/Gray severity (<2000 tokens).
+Red = task marked complete but no code found, or API contract mismatch
+Yellow = TODO/FIXME comments, unused imports, minor inconsistencies
+Gray = style suggestions, optional improvements"
+```
+
+### Agent 15: Correctness Re-verification
+
+```
+Task: subagent_type="validation-correctness", model="sonnet"
+Prompt: "Post-implementation correctness re-verification for feature [FEATURE_NAME].
+
+Feature directory: {FEATURE_DIR}
+Spec: {FEATURE_DIR}/spec.md
+Plan: {FEATURE_DIR}/plan.md
+
+This is a focused re-check after validation passed. Look for issues that
+rubric-based validation might miss:
+1. Edge cases from spec that may not have explicit tests
+2. Error handling completeness — are all failure modes covered?
+3. Race conditions or concurrency issues in async code
+4. Input validation at system boundaries
+5. Any acceptance criteria that are technically 'covered' by tests but
+   the implementation doesn't fully satisfy the spirit of the requirement
+
+Return findings with Red/Yellow/Gray severity (<2000 tokens).
+Red = acceptance criterion not genuinely satisfied, critical error path missing
+Yellow = edge case not covered, partial error handling
+Gray = potential improvement, defensive coding suggestion"
+```
+
+**Run all 3 agents in parallel.** Collect all results before proceeding.
+
+## Step 10c: Run Build/Test/Lint Verification
+
+Execute verification commands and capture results:
+
+### Build Check
+
+```bash
+cd extension && npm run compile
+```
+
+### Test Check
+
+```bash
+cd extension && npm test
+```
+
+### Lint Check
+
+```bash
+cd extension && npm run lint
+```
+
+Record results:
+
+```
+| Check  | Command              | Result      |
+|--------|----------------------|-------------|
+| Build  | npm run compile      | PASS / FAIL |
+| Tests  | npm test             | PASS / FAIL |
+| Lint   | npm run lint         | PASS / FAIL |
+```
+
+**If any check FAILS**: Record as a Red finding.
+
+## Step 10d: Synthesize Findings
+
+Collect all agent reports and build/test/lint results. Merge with Phase B
+Yellow/Gray carryovers. Classify each finding:
+
+- **Red** (blocking): Task marked complete but no code, API contract mismatch,
+  acceptance criterion not genuinely satisfied, build/test/lint failure,
+  critical error path missing
+- **Yellow** (should fix): TODO/FIXME comments, unused imports, edge cases not
+  covered, partial error handling, minor inconsistencies, Phase B Yellows
+- **Gray** (informational): Style suggestions, optional improvements, defensive
+  coding suggestions, Phase B Grays
+
+### Compile Finding Table
+
+```
+| # | Finding | Severity | Source                    | File   | Line   | Status |
+|---|---------|----------|---------------------------|--------|--------|--------|
+| 1 | [desc]  | Red      | engineer-review           | [file] | [line] | OPEN   |
+| 2 | [desc]  | Yellow   | codebase-analyzer         | [file] | [line] | OPEN   |
+| 3 | [desc]  | Yellow   | phase-b:observability     | [file] | [line] | OPEN   |
+```
+
+### Decision Logic
+
+- If **NO Red or Yellow findings** → PASS → proceed to Step 10g (Report)
+- If **Red or Yellow findings exist** → proceed to Step 10e (Fix)
+
+## Step 10e: Fix Findings
+
+For each Red and Yellow finding from the current cycle:
+
+1. **Read the affected file** at the specified line
+2. **Apply the fix** directly using Edit tool
+3. **Mark the finding as FIXED** in the finding table
+
+### Fix Priority
+
+1. Red findings first (blocking issues)
+2. Yellow findings second (should fix)
+3. Gray findings are logged but NOT auto-fixed
+
+### After Fixing
+
+Re-run build/test/lint to verify fixes don't introduce regressions:
+
+```bash
+cd extension && npm run compile && npm test && npm run lint
+```
+
+If the verification fails after fixes, record new failures as Red findings for
+the next cycle.
+
+## Step 10f: Loop or Complete
+
+### Increment Cycle
+
+```
+CYCLE = CYCLE + 1
+```
+
+### Decision
+
+- If `CYCLE <= 5` AND findings were fixed in the previous cycle → **Go to Step
+  10b** (re-review with fresh agent runs to verify fixes and catch any new
+  issues)
+- If `CYCLE > 5` AND Red/Yellow findings still remain → **Generate escalation
+  section** in the report, declare pipeline complete with warnings
+- If **all findings resolved** (no Red or Yellow) → **Declare pipeline
+  complete** (proceed to Step 10g)
+
+## Step 10g: Generate Engineering Review Report
+
+Write to `{FEATURE_DIR}/engineering-review-report.md`:
+
+```markdown
+---
+feature: [Feature Name]
+reviewed: [ISO timestamp]
+reviewer: Claude
+status: [PASS/PASS_WITH_WARNINGS/ESCALATED]
+cycles: [N]
+total_findings: [N]
+resolved_findings: [N]
+blast_radius_carryovers: [N]
+---
+
+# Engineering Review Report: [Feature Name]
+
+## Summary
+
+- **Status**: [PASS / PASS_WITH_WARNINGS / ESCALATED]
+- **Review cycles**: [N] of 5 max
+- **Total findings**: [N] (Red: [N], Yellow: [N], Gray: [N])
+- **Resolved**: [N] findings fixed across [N] cycles
+- **Remaining**: [N] findings (if any)
+- **Phase B carryovers addressed**: [N] of [N]
+
+## Cycle History
+
+### Cycle 1
+
+**Agents**: engineer-review, codebase-analyzer, validation-correctness
+**Build/Test/Lint**: [PASS/FAIL details]
+
+| #   | Finding | Severity | Source | File   | Line   | Resolution   |
+| --- | ------- | -------- | ------ | ------ | ------ | ------------ |
+| 1   | [desc]  | [sev]    | [src]  | [file] | [line] | [FIXED/OPEN] |
+
+### Cycle 2 (if applicable)
+
+...
+
+## Remaining Findings (if any)
+
+| #   | Finding | Severity | Source | File   | Line   | Reason Not Fixed |
+| --- | ------- | -------- | ------ | ------ | ------ | ---------------- |
+| 1   | [desc]  | [sev]    | [src]  | [file] | [line] | [why]            |
+
+## Recommendations
+
+### Must Address Before Merge
+
+- [Any remaining Red/Yellow findings]
+
+### Future Improvements
+
+- [Gray findings and suggestions]
+```
+
+## Step 10h: Output Completion Banner
+
+### If PASS (all findings resolved or no findings):
+
+```
+════════════════════════════════════════════════════════════════
+  ENGINEERING REVIEW PASSED: [Feature Name]
+════════════════════════════════════════════════════════════════
+
+  Cycles: [N] of 5 max
+  Findings: [N] found, [N] resolved
+  Report: {FEATURE_DIR}/engineering-review-report.md
+
+════════════════════════════════════════════════════════════════
+  FEATURE PIPELINE COMPLETE!
+
+  All Gofer stages finished:
+  1. #1_gofer_research ✓
+  2. #2_gofer_specify ✓
+  3. #3_gofer_plan ✓
+  4. #4_gofer_tasks ✓
+  5. #5_gofer_implement ✓
+  6. #6_gofer_validate ✓ (Phase A ✓, Phase B ✓, Phase C ✓)
+
+  The feature is ready for review and merge.
+════════════════════════════════════════════════════════════════
+```
+
+### If PASS_WITH_WARNINGS (5 cycles exhausted, only Gray remaining):
+
+```
+════════════════════════════════════════════════════════════════
+  ENGINEERING REVIEW PASSED (WITH WARNINGS): [Feature Name]
+════════════════════════════════════════════════════════════════
+
+  Cycles: 5 of 5 max
+  Findings: [N] found, [N] resolved, [N] Gray remaining
+  Report: {FEATURE_DIR}/engineering-review-report.md
+
+  ⚠ Gray findings remain — see report for details.
+
+════════════════════════════════════════════════════════════════
+  FEATURE PIPELINE COMPLETE!
+
+  All Gofer stages finished:
+  1. #1_gofer_research ✓
+  2. #2_gofer_specify ✓
+  3. #3_gofer_plan ✓
+  4. #4_gofer_tasks ✓
+  5. #5_gofer_implement ✓
+  6. #6_gofer_validate ✓ (Phase A ✓, Phase B ✓, Phase C ⚠)
+
+  The feature is ready for review and merge (review Gray findings).
+════════════════════════════════════════════════════════════════
+```
+
+### If ESCALATED (5 cycles exhausted, Red/Yellow remain):
+
+```
+════════════════════════════════════════════════════════════════
+  ENGINEERING REVIEW ESCALATED: [Feature Name]
+════════════════════════════════════════════════════════════════
+
+  Cycles: 5 of 5 max (exhausted)
+  Findings: [N] found, [N] resolved, [N] Red/Yellow remaining
+
+  Remaining issues:
+  ✗ [Finding] — [severity]: [brief reason]
+
+  Report: {FEATURE_DIR}/engineering-review-report.md
+
+  This feature requires human review of remaining findings
+  before merging.
+
+════════════════════════════════════════════════════════════════
+```
+
+---
+
+# End of Phase C
 
 ---
 
@@ -864,6 +1641,12 @@ For each finding from all agents and automated checks, append a JSON line:
 - `performance_baseline`
 - `code_hygiene`
 - `specification_traceability`
+- `blast_radius_containment` — **NEW** (Cat 11, Phase B)
+  - Sub-dimensions for the `dimension` sub-field: `change_graph`,
+    `interface_contract`, `observability`, `dependency_submodule`,
+    `rollback_release`
+- `engineering_review` — Phase C findings (agent-specific sub-dimensions:
+  `spec_alignment`, `code_verification`, `correctness_reverify`)
 
 ### Log Summary Entry
 
@@ -981,14 +1764,50 @@ will be maintained as you progress through pipeline stages.
 
 ## Key Rules
 
-- **100/100 is the only passing score** — there is no "close enough"
-- **Agents run in parallel** — spawn all 6 at once, do not serialize
+### Phase A (Rubric)
+
+- **110/110 is the only passing score** — there is no "close enough"
+- **Agents run in parallel** — spawn all 6 (or 7 with red team) at once, do not
+  serialize
 - **Red findings block** — any Red finding in any agent zeroes that category
 - **Mutation testing is optional** — gracefully degrade when Stryker absent
 - **Mock ratio excludes justified mocks** — mark with `// mock-justified:`
   comment
-- **Attribution logging is mandatory** — every finding gets logged to JSONL
 - **Maximum 3 remediation iterations** — then escalate to human
+
+### Phase B (Blast Radius)
+
+- **5 blast-radius agents run in parallel** — do not serialize across dimensions
+- **The change manifest is ground truth** — build it once in Step 2.5, pass the
+  same manifest to every Phase B agent
+- **Breaking change + no CHANGELOG entry = Red** — always. Release-checklist
+  compliance is mandatory for user-visible changes.
+- **New High/Critical CVE = Red** — block before merge; Moderate is Yellow; Low
+  is Gray
+- **Cross-submodule ripple requires explicit plan.md approval** — otherwise Red
+- **Blast-radius verdict CONTAINED gives Cat 11 = 10**; BREACHED gives Cat 11 =
+  0 — this is the only way Cat 11 scores
+- **Phase B writes `blast-radius-report.md`** alongside `validation-report.md`
+- **Phase B Yellows seed Phase C** — Phase C must address them
+
+### Phase C (Engineering Review Loop)
+
+- **3 review agents per cycle** — spawn all in parallel, do not serialize
+- **5 cycles maximum** — hard cap to prevent infinite loops
+- **Fix Red before Yellow** — priority ordering matters
+- **Re-verify after fixes** — always re-run build/test/lint after changes
+- **Gray findings are logged, not auto-fixed** — they go in the report
+- **Phase C only runs if the rubric passes** — a failing rubric triggers
+  brownfield restart instead
+- **This stage is the pipeline terminal** — "PIPELINE COMPLETE" only appears at
+  the end of Phase C
+- **Legacy `/6a` is a stub** — it detects `engineering-review-report.md` and
+  no-ops if Phase C already ran
+
+### Across All Phases
+
+- **Attribution logging is mandatory** — every finding (A, B, C) gets logged to
+  JSONL with its phase and sub-dimension
 - **Be specific** — cite file paths and line numbers for all findings
 - **Score the rubric honestly** — the goal is to catch real problems, not to
   pass

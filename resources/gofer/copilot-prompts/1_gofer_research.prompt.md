@@ -16,6 +16,7 @@ gofer:
   metadataSource: scripts/generate-commands.ts
 ---
 
+
 # Gofer Research
 
 You are conducting comprehensive research to understand the codebase before
@@ -562,6 +563,7 @@ Key findings:
 
 ```
 
+
 ---
 
 ## LLM Council Integration (Optional)
@@ -786,14 +788,13 @@ Logs to: `.specify/logs/pipeline.jsonl`
 - **Do not continue to specification until `proposal-review.md` is approved**
 - **Log stage completion** for observability tracking
 
+
 ## Pipeline Continuation
 
 This completes the 1_gofer_research stage. To continue the Gofer pipeline:
 
 **Next Command:** `#2_gofer_specify`
 
-The next stage will read the artifacts from this stage and continue the workflow
-automatically.
+The next stage will read the artifacts from this stage and continue the workflow automatically.
 
-**Note:** Copilot Chat supports context preservation. Your conversation history
-will be maintained as you progress through pipeline stages.
+**Note:** Copilot Chat supports context preservation. Your conversation history will be maintained as you progress through pipeline stages.

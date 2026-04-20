@@ -501,6 +501,35 @@ When council mode is enabled for `gofer_plan` stage:
 
 ---
 
+## EnterpriseAI Deployment Convention and EAI CLI Pinning Requirements
+
+> When `gofer.workflowProfile=enterpriseai`, the following conventions apply.
+> standard profile outputs remain unchanged.
+
+When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
+
+1. **EAI CLI version pin** — record the installed `eai-cli` version as a
+   `major.minor` pin (for example `2.0`). The plan stage resolves the local
+   version via `eai-cli --version`, strips the patch component, and writes the
+   pin to the `EnterpriseAI Profile Metadata` block of `plan-template.md` so
+   every downstream task is reproducible. Plans MUST apply
+   `pin guidance to `major.minor`` and never to a specific patch release.
+2. **Deployment convention** — reference
+   `.specify/references/eai/deployment-repo.md` for the canonical deployment
+   pipeline and note which environment (dev/staging/prod) each deliverable
+   targets.
+3. **Integration map handoff** — restate the Vertical App → EAI Services →
+   Deployment Target chain from `spec.md` and bind each link to a task
+   identifier in `tasks.md`.
+
+### Competitive / market analysis reference
+
+When `includeCompetitiveAnalysis=true`, `plan.md` MUST link to
+`market-analysis.md`. When disabled, the competitive-analysis section is omitted
+and standard profile outputs remain unchanged.
+
+---
+
 ## Observability Logging
 
 At stage completion, log metrics:

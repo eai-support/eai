@@ -1,7 +1,6 @@
 ---
 name: 10_gofer_cloud
-description:
-  READ-ONLY cloud infrastructure analysis for Azure, AWS, GCP deployments
+description: READ-ONLY cloud infrastructure analysis for Azure, AWS, GCP deployments
 agent: copilot-workspace
 tools:
   - Read
@@ -10,7 +9,13 @@ tools:
   - Bash
   - WebSearch
 argument-hint: feature-name-or-description
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/10_gofer_cloud.md
+  canonicalChecksum: 661ddaad1f8a722e05ff3fd3556649321848124ef0f7cddc59cb0706b949c46d
+  metadataSource: scripts/generate-commands.ts
 ---
+
 
 # Gofer Cloud
 
@@ -124,8 +129,7 @@ If not authenticated, guide user through login process.
 
 ### Forbidden Operations (NEVER EXECUTE)
 
-- Any command with: `create`, `delete`, `update`, `set`, `put`, `post`, `patch`,
-  `remove`
+- Any command with: `create`, `delete`, `update`, `set`, `put`, `post`, `patch`, `remove`
 - Starting/stopping services or resources
 - Scaling operations
 - Backup or restore operations
@@ -328,10 +332,10 @@ graph TB
 
 ### Compute Infrastructure
 
-| Resource      | Type     | Size        | State   | Notes         |
-| ------------- | -------- | ----------- | ------- | ------------- |
-| prod-web-01   | VM       | Standard_D4 | Running | Web server    |
-| prod-api-func | Function | Consumption | Active  | API endpoints |
+| Resource        | Type     | Size       | State   | Notes               |
+| --------------- | -------- | ---------- | ------- | ------------------- |
+| prod-web-01     | VM       | Standard_D4| Running | Web server          |
+| prod-api-func   | Function | Consumption| Active  | API endpoints       |
 
 **Observations**:
 
@@ -340,10 +344,10 @@ graph TB
 
 ### Data Layer
 
-| Resource  | Type    | Size  | Tier     | Backup Status |
-| --------- | ------- | ----- | -------- | ------------- |
-| prod-sql  | SQL DB  | 50GB  | Standard | Daily         |
-| prod-blob | Storage | 200GB | Hot      | GRS enabled   |
+| Resource   | Type    | Size | Tier     | Backup Status |
+| ---------- | ------- | ---- | -------- | ------------- |
+| prod-sql   | SQL DB  | 50GB | Standard | Daily         |
+| prod-blob  | Storage | 200GB| Hot      | GRS enabled   |
 
 **Observations**:
 
@@ -352,10 +356,10 @@ graph TB
 
 ### Networking
 
-| Resource  | Type | Configuration        | Security     |
-| --------- | ---- | -------------------- | ------------ |
-| prod-vnet | VNet | 10.0.0.0/16          | NSG attached |
-| prod-lb   | LB   | Standard, Zone-aware | HTTPS only   |
+| Resource  | Type | Configuration        | Security          |
+| --------- | ---- | -------------------- | ----------------- |
+| prod-vnet | VNet | 10.0.0.0/16         | NSG attached      |
+| prod-lb   | LB   | Standard, Zone-aware | HTTPS only        |
 
 **Observations**:
 
@@ -366,18 +370,18 @@ graph TB
 
 ### IAM Review
 
-| Principal | Role        | Scope        | Risk Level |
-| --------- | ----------- | ------------ | ---------- |
-| dev-team  | Contributor | Subscription | Medium     |
-| ci-cd-sp  | Owner       | Resource Grp | High       |
+| Principal | Role             | Scope        | Risk Level |
+| --------- | ---------------- | ------------ | ---------- |
+| dev-team  | Contributor      | Subscription | Medium     |
+| ci-cd-sp  | Owner            | Resource Grp | High       |
 
 ### Security Findings
 
-| Finding               | Severity | Resource        | Recommendation  |
-| --------------------- | -------- | --------------- | --------------- |
-| Public blob container | High     | storage-account | Enable private  |
-| Open SSH port         | Medium   | prod-web-01     | Restrict to VPN |
-| Missing encryption    | Medium   | prod-sql        | Enable TDE      |
+| Finding                    | Severity | Resource         | Recommendation    |
+| -------------------------- | -------- | ---------------- | ----------------- |
+| Public blob container      | High     | storage-account  | Enable private    |
+| Open SSH port              | Medium   | prod-web-01      | Restrict to VPN   |
+| Missing encryption         | Medium   | prod-sql         | Enable TDE        |
 
 ### Compliance Status
 
@@ -391,20 +395,20 @@ graph TB
 
 ### Current Monthly Cost: $X,XXX
 
-| Category   | Cost   | % of Total |
-| ---------- | ------ | ---------- |
-| Compute    | $1,250 | 50%        |
-| Storage    | $200   | 8%         |
-| Database   | $800   | 32%        |
-| Networking | $250   | 10%        |
+| Category   | Cost    | % of Total |
+| ---------- | ------- | ---------- |
+| Compute    | $1,250  | 50%        |
+| Storage    | $200    | 8%         |
+| Database   | $800    | 32%        |
+| Networking | $250    | 10%        |
 
 ### Optimization Opportunities
 
-| Opportunity           | Current   | Recommended | Savings |
-| --------------------- | --------- | ----------- | ------- |
-| Right-size VMs        | D4 x 2    | D2 x 2      | $400/mo |
-| Reserved instances    | On-demand | 1-year RI   | $300/mo |
-| Delete unused storage | 50GB      | 0GB         | $25/mo  |
+| Opportunity               | Current   | Recommended | Savings   |
+| ------------------------- | --------- | ----------- | --------- |
+| Right-size VMs            | D4 x 2    | D2 x 2      | $400/mo   |
+| Reserved instances        | On-demand | 1-year RI   | $300/mo   |
+| Delete unused storage     | 50GB      | 0GB         | $25/mo    |
 
 **Potential Monthly Savings**: $725
 
@@ -475,12 +479,12 @@ If analyzing for a specific feature:
 
 ```
 
-================================================================ CLOUD ANALYSIS
-COMPLETE: [Environment Name]
+================================================================
+CLOUD ANALYSIS COMPLETE: [Environment Name]
 ================================================================
 
-Platform: [Azure/AWS/GCP] Resources Analyzed: [N] resources across [N]
-categories
+Platform: [Azure/AWS/GCP]
+Resources Analyzed: [N] resources across [N] categories
 
 Key Findings:
 
@@ -520,8 +524,9 @@ Recommended Actions:
 
 [Platform] CLI not found. Please install:
 
-Azure: https://docs.microsoft.com/cli/azure/install-azure-cli AWS:
-https://aws.amazon.com/cli/ GCP: https://cloud.google.com/sdk/docs/install
+Azure: https://docs.microsoft.com/cli/azure/install-azure-cli
+AWS: https://aws.amazon.com/cli/
+GCP: https://cloud.google.com/sdk/docs/install
 
 ```
 
@@ -531,7 +536,9 @@ https://aws.amazon.com/cli/ GCP: https://cloud.google.com/sdk/docs/install
 
 Not authenticated to [Platform]. Please run:
 
-Azure: az login AWS: aws configure GCP: gcloud auth login
+Azure: az login
+AWS: aws configure
+GCP: gcloud auth login
 
 ```
 
@@ -539,13 +546,13 @@ Azure: az login AWS: aws configure GCP: gcloud auth login
 
 ```
 
-Warning: Insufficient permissions for some operations. Missing permissions:
-[list]
+Warning: Insufficient permissions for some operations.
+Missing permissions: [list]
 
-Analysis will continue with available access. Results may be incomplete for:
-[affected areas]
+Analysis will continue with available access.
+Results may be incomplete for: [affected areas]
 
-````
+```
 
 ### Rate Limited
 
@@ -557,7 +564,7 @@ If rate limited, implement exponential backoff and continue with available data.
 
 ```bash
 .specify/scripts/bash/log-stage.sh 10_cloud --complete --tokens [N] --compactions [N]
-````
+```
 
 ---
 

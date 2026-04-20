@@ -257,6 +257,59 @@ stakeholder communications explaining what changed and why.
 
 ---
 
+## Marp Presentation Deck (EnterpriseAI Profile Extension)
+
+> Active only when `gofer.workflowProfile=enterpriseai` and Marp output is
+> enabled for the run. Standard-profile runs skip this step; Release Notes and
+> the Demo Script (5-minute walkthrough) remain the core deliverables.
+
+When enabled, generate `{FEATURE_DIR}/presentation.marp.md`. The file MUST use
+Marp frontmatter and the canonical EnterpriseAI slide deck structure:
+
+```markdown
+---
+marp: true
+theme: default
+paginate: true
+---
+
+# Problem Statement
+
+{{problem-statement}}
+
+---
+
+# EnterpriseAI Solution Overview
+
+{{enterpriseai-fit}}
+
+---
+
+# Architecture Diagram Reference
+
+See `plan.md` → architecture section.
+
+---
+
+# Demo Script Summary
+
+See Release Notes and the Demo Script (5-minute walkthrough) above.
+
+---
+
+# Success Metrics
+
+{{success-metrics}}
+```
+
+Every section title above (`Problem Statement`,
+`EnterpriseAI Solution Overview`, `Architecture Diagram Reference`,
+`Demo Script Summary`, `Success Metrics`) is mandatory in both the generated
+`presentation.marp.md` and the corresponding
+`.specify/templates/stakeholder-comms-template.md`.
+
+---
+
 ## Step 8: Observability Logging
 
 ```bash

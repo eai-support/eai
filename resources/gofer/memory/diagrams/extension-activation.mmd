@@ -1,0 +1,184 @@
+```mermaid
+sequenceDiagram
+    autonumber
+    participant VSCode as VSCode Extension Host
+    participant Extension as extension.ts
+    participant Container as DI Container
+    participant Logger as Logger Service
+    participant Init as InitializationService
+    participant Commands as CommandRegistry
+    participant Events as EventHandlers
+    participant State as StateManager
+    participant Disposal as DisposalService
+
+    Note over VSCode,Disposal: Extension Activation Flow
+
+    VSCode->>Extension: activate(context)
+    activate Extension
+
+    Note over Extension: Phase 1: DI Container Setup
+    Extension->>Container: registerServices()
+    activate Container
+    Container->>Container: registerSingleton(Logger)
+    Container->>Container: registerSingleton(DisposalService)
+    Container->>Container: registerSingleton(EventHandlers)
+    Container->>Container: registerSingleton(InitializationService)
+    Container->>Container: registerSingleton(CommandRegistry)
+    Container->>Container: registerSingleton(StateManager)
+    Container->>Container: registerSingleton(VersionDetector)
+    Container->>Container: registerSingleton(UpgradeService)
+    Container->>Container: registerSingleton(ResourceSyncer)
+    Container->>Container: registerSingleton(PathMigrator)
+    Container-->>Extension: Services registered
+    deactivate Container
+
+    Note over Extension: Phase 2: Resolve Core Services
+    Extension->>Container: resolve(Logger)
+    Container-->>Extension: Logger instance
+    Extension->>Container: resolve(StateManager)
+    Container-->>Extension: StateManager instance
+
+    Extension->>Logger: info('Extension', 'Activating Gofer')
+    Logger-->>Extension: Logged
+
+    Note over Extension: Phase 3: Global Commands Registration
+    Extension->>Extension: registerGlobalCommands(context)
+    Extension->>VSCode: registerCommand('gofer.initializeWorkspace')
+    Extension->>VSCode: registerCommand('gofer.showConstitution')
+    Extension->>VSCode: registerCommand('gofer.checkForUpdates')
+    VSCode-->>Extension: Commands registered
+
+    Note over Extension: Phase 4: Workspace Initialization
+    Extension->>Container: resolve(InitializationService)
+    Container-->>Extension: InitializationService instance
+
+    Extension->>Init: initializeForWorkspace(context)
+    activate Init
+
+    Init->>Init: checkWorkspace()
+    alt No workspace folder
+        Init->>VSCode: showInformationMessage('No workspace')
+        Init-->>Extension: Initialization skipped
+    else Workspace exists
+        Init->>Init: setupWorkspaceResources()
+        Init->>Init: setupMemoryManager()
+        Init->>Init: setupProgressProvider()
+        Init->>Init: setupBranchSpecManager()
+
+        Note over Init,Commands: Phase 5: Register Workspace Commands
+        Init->>Container: resolve(CommandRegistry)
+        Container-->>Init: CommandRegistry instance
+
+        Init->>Commands: registerCommands(context)
+        activate Commands
+        Commands->>VSCode: registerCommand('gofer.viewProgress')
+        Commands->>VSCode: registerCommand('gofer.createSpec')
+        Commands->>VSCode: registerCommand('gofer.showMemory')
+        Commands->>VSCode: registerCommand('gofer.council.showStatus')
+        VSCode-->>Commands: Commands registered
+        Commands-->>Init: Commands registered
+        deactivate Commands
+
+        Note over Init,Events: Phase 6: Register Event Handlers
+        Init->>Container: resolve(EventHandlers)
+        Container-->>Init: EventHandlers instance
+
+        Init->>Events: registerHandlers(context)
+        activate Events
+        Events->>VSCode: onDidChangeWorkspaceFolders(handler)
+        Events->>VSCode: onDidChangeActiveTextEditor(handler)
+        Events->>VSCode: onDidSaveTextDocument(handler)
+        VSCode-->>Events: Handlers registered
+        Events-->>Init: Handlers registered
+        deactivate Events
+
+        Init-->>Extension: Workspace initialized
+    end
+    deactivate Init
+
+    Note over Extension: Phase 7: Language Server (Optional)
+    alt Language Server enabled
+        Extension->>Extension: startLanguageServer()
+        Extension->>VSCode: LanguageClient.start()
+        VSCode-->>Extension: LSP started
+    end
+
+    Note over Extension: Phase 8: Auto-Updater
+    Extension->>Extension: setupAutoUpdater()
+    Extension->>VSCode: Check for updates (24hr interval)
+
+    Extension->>Logger: info('Extension', 'Activation complete')
+    Logger-->>Extension: Logged
+
+    Extension-->>VSCode: Extension activated
+    deactivate Extension
+
+    Note over VSCode,Disposal: Extension Ready - Listening for commands and events
+```
+
+# Extension Activation Diagram
+
+This diagram shows the complete activation flow of the Gofer VSCode extension
+from the initial `activate()` call through service registration, initialization,
+and readiness.
+
+## Key Phases
+
+### Phase 1: DI Container Setup
+
+All injectable services are registered as singletons in the TSyringe container.
+This happens synchronously before any service resolution.
+
+### Phase 2: Resolve Core Services
+
+The `Logger` and `StateManager` are resolved first as they're needed throughout
+activation.
+
+### Phase 3: Global Commands Registration
+
+Commands that must be available immediately (before workspace initialization)
+are registered directly in `extension.ts`.
+
+### Phase 4: Workspace Initialization
+
+`InitializationService` handles workspace-specific setup including resource
+discovery and component initialization.
+
+### Phase 5: Register Workspace Commands
+
+Commands that depend on workspace resources (specs, memories) are registered
+after initialization.
+
+### Phase 6: Register Event Handlers
+
+`EventHandlers` sets up listeners for workspace changes, file saves, and editor
+changes.
+
+### Phase 7: Language Server (Optional)
+
+If enabled, the Language Server Protocol client is started for advanced features
+(go-to-definition, autocomplete).
+
+### Phase 8: Auto-Updater
+
+Background updater is configured to check for extension updates every 24 hours.
+
+## Service Resolution Order
+
+Services are resolved in this order to satisfy dependencies:
+
+1. **Logger** - No dependencies (except VSCode API)
+2. **StateManager** - Depends on Logger
+3. **InitializationService** - Depends on Logger, StateManager
+4. **CommandRegistry** - Depends on Logger, StateManager
+5. **EventHandlers** - Depends on Logger, StateManager
+
+## Error Handling
+
+All operations log via `Logger.error()` to ensure visibility. Critical failures
+during activation are surfaced to users via `vscode.window.showErrorMessage()`.
+
+## Deactivation
+
+When the extension deactivates, `deactivate()` resolves `DisposalService` to
+properly clean up all resources (file watchers, timers, LSP client, etc.).

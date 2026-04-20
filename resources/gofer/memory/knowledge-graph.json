@@ -1,0 +1,1294 @@
+{
+  "options": {
+    "directed": true,
+    "multigraph": false,
+    "compound": false
+  },
+  "nodes": [
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/ui/ContextContentPanel.ts",
+      "value": {
+        "type": "file",
+        "name": "ContextContentPanel.ts",
+        "path": "/Users/douglaswross/Code/gofer/extension/src/ui/ContextContentPanel.ts",
+        "lastSeen": 1770849757045,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:os",
+      "value": {
+        "type": "file",
+        "name": "os",
+        "path": "os",
+        "lastSeen": 1770849711325
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/contextWindowProvider.ts",
+      "value": {
+        "type": "file",
+        "name": "contextWindowProvider.ts",
+        "path": "/Users/douglaswross/Code/gofer/extension/src/contextWindowProvider.ts",
+        "lastSeen": 1770849767715,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:vscode",
+      "value": {
+        "type": "file",
+        "name": "vscode",
+        "path": "vscode",
+        "lastSeen": 1770850518112,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/HookBridgeWatcher",
+      "value": {
+        "type": "file",
+        "name": "HookBridgeWatcher",
+        "path": "./autonomous/HookBridgeWatcher",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/MultiSessionBridgeWatcher",
+      "value": {
+        "type": "file",
+        "name": "MultiSessionBridgeWatcher",
+        "path": "./autonomous/MultiSessionBridgeWatcher",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/config.ts",
+      "value": {
+        "type": "file",
+        "name": "config.ts",
+        "path": "/Users/douglaswross/Code/gofer/extension/src/config.ts",
+        "lastSeen": 1770850245679,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:../../package.json",
+      "value": {
+        "type": "file",
+        "name": "package.json",
+        "path": "../../package.json",
+        "lastSeen": 1770850225894,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:path",
+      "value": {
+        "type": "file",
+        "name": "path",
+        "path": "path",
+        "lastSeen": 1770850543012,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/SlopDetector.ts",
+      "value": {
+        "type": "file",
+        "name": "SlopDetector.ts",
+        "path": "/Users/douglaswross/Code/gofer/extension/src/autonomous/SlopDetector.ts",
+        "lastSeen": 1770850242914,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:fs",
+      "value": {
+        "type": "file",
+        "name": "fs",
+        "path": "fs",
+        "lastSeen": 1770850543012,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/package.json",
+      "value": {
+        "type": "file",
+        "name": "package.json",
+        "path": "/Users/douglaswross/Code/gofer/extension/package.json",
+        "lastSeen": 1770850242679,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "value": {
+        "type": "file",
+        "name": "extension.ts",
+        "path": "/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/KnowledgeGraph",
+      "value": {
+        "type": "file",
+        "name": "KnowledgeGraph",
+        "path": "./autonomous/KnowledgeGraph",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/CitationVerifier",
+      "value": {
+        "type": "file",
+        "name": "CitationVerifier",
+        "path": "./autonomous/CitationVerifier",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/ScopeGuard",
+      "value": {
+        "type": "file",
+        "name": "ScopeGuard",
+        "path": "./autonomous/ScopeGuard",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/SlopDetector",
+      "value": {
+        "type": "file",
+        "name": "SlopDetector",
+        "path": "./autonomous/SlopDetector",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/LLMProvider",
+      "value": {
+        "type": "file",
+        "name": "LLMProvider",
+        "path": "./autonomous/LLMProvider",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/ResearchSummarizer",
+      "value": {
+        "type": "file",
+        "name": "ResearchSummarizer",
+        "path": "./autonomous/ResearchSummarizer",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/ContextCompactor",
+      "value": {
+        "type": "file",
+        "name": "ContextCompactor",
+        "path": "./autonomous/ContextCompactor",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/SubAgentDispatcher",
+      "value": {
+        "type": "file",
+        "name": "SubAgentDispatcher",
+        "path": "./autonomous/SubAgentDispatcher",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./goferMigrator",
+      "value": {
+        "type": "file",
+        "name": "goferMigrator",
+        "path": "./goferMigrator",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./progressProvider",
+      "value": {
+        "type": "file",
+        "name": "progressProvider",
+        "path": "./progressProvider",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./constitutionProvider",
+      "value": {
+        "type": "file",
+        "name": "constitutionProvider",
+        "path": "./constitutionProvider",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./memoryProvider",
+      "value": {
+        "type": "file",
+        "name": "memoryProvider",
+        "path": "./memoryProvider",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./contextWindowProvider",
+      "value": {
+        "type": "file",
+        "name": "contextWindowProvider",
+        "path": "./contextWindowProvider",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./branchSpecManager",
+      "value": {
+        "type": "file",
+        "name": "branchSpecManager",
+        "path": "./branchSpecManager",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autoUpdater",
+      "value": {
+        "type": "file",
+        "name": "autoUpdater",
+        "path": "./autoUpdater",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./lspClient",
+      "value": {
+        "type": "file",
+        "name": "lspClient",
+        "path": "./lspClient",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./mcpConfig",
+      "value": {
+        "type": "file",
+        "name": "mcpConfig",
+        "path": "./mcpConfig",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/MemoryManager",
+      "value": {
+        "type": "file",
+        "name": "MemoryManager",
+        "path": "./autonomous/MemoryManager",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/ContextBuilder",
+      "value": {
+        "type": "file",
+        "name": "ContextBuilder",
+        "path": "./autonomous/ContextBuilder",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./commands/memoryCommands",
+      "value": {
+        "type": "file",
+        "name": "memoryCommands",
+        "path": "./commands/memoryCommands",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./commands/specCommands",
+      "value": {
+        "type": "file",
+        "name": "specCommands",
+        "path": "./commands/specCommands",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./commands/councilCommands",
+      "value": {
+        "type": "file",
+        "name": "councilCommands",
+        "path": "./commands/councilCommands",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/ContextHealthMonitor",
+      "value": {
+        "type": "file",
+        "name": "ContextHealthMonitor",
+        "path": "./autonomous/ContextHealthMonitor",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/AutoHandoffTrigger",
+      "value": {
+        "type": "file",
+        "name": "AutoHandoffTrigger",
+        "path": "./autonomous/AutoHandoffTrigger",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/ContextUsageLogger",
+      "value": {
+        "type": "file",
+        "name": "ContextUsageLogger",
+        "path": "./autonomous/ContextUsageLogger",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/WorkspaceContextProvider",
+      "value": {
+        "type": "file",
+        "name": "WorkspaceContextProvider",
+        "path": "./autonomous/WorkspaceContextProvider",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/ResearchChunker",
+      "value": {
+        "type": "file",
+        "name": "ResearchChunker",
+        "path": "./autonomous/ResearchChunker",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./ui/ContextHealthStatusBar",
+      "value": {
+        "type": "file",
+        "name": "ContextHealthStatusBar",
+        "path": "./ui/ContextHealthStatusBar",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/ClaudeSessionReader",
+      "value": {
+        "type": "file",
+        "name": "ClaudeSessionReader",
+        "path": "./autonomous/ClaudeSessionReader",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/.specify/specs/001-yolo-slop-reduction/tasks.md",
+      "value": {
+        "type": "file",
+        "name": "tasks.md",
+        "path": "/Users/douglaswross/Code/gofer/.specify/specs/001-yolo-slop-reduction/tasks.md",
+        "lastSeen": 1770850735359,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/.claude/projects/-Users-douglaswross-Code-gofer/memory/MEMORY.md",
+      "value": {
+        "type": "file",
+        "name": "MEMORY.md",
+        "path": "/Users/douglaswross/.claude/projects/-Users-douglaswross-Code-gofer/memory/MEMORY.md",
+        "lastSeen": 1770850152781
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/.specify/specs/001-yolo-slop-reduction/spec.md",
+      "value": {
+        "type": "file",
+        "name": "spec.md",
+        "path": "/Users/douglaswross/Code/gofer/.specify/specs/001-yolo-slop-reduction/spec.md",
+        "lastSeen": 1770850693261,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/SlopReducer.ts",
+      "value": {
+        "type": "file",
+        "name": "SlopReducer.ts",
+        "path": "/Users/douglaswross/Code/gofer/extension/src/autonomous/SlopReducer.ts",
+        "lastSeen": 1770850518112,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:../utils/logger",
+      "value": {
+        "type": "file",
+        "name": "logger",
+        "path": "../utils/logger",
+        "lastSeen": 1770850518112,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:../config",
+      "value": {
+        "type": "file",
+        "name": "config",
+        "path": "../config",
+        "lastSeen": 1770850518112,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/.specify/specs/001-yolo-slop-reduction/plan.md",
+      "value": {
+        "type": "file",
+        "name": "plan.md",
+        "path": "/Users/douglaswross/Code/gofer/.specify/specs/001-yolo-slop-reduction/plan.md",
+        "lastSeen": 1770850221018,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/.specify/memory/constitution.md",
+      "value": {
+        "type": "file",
+        "name": "constitution.md",
+        "path": "/Users/douglaswross/Code/gofer/.specify/memory/constitution.md",
+        "lastSeen": 1770850219647
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/.specify/specs/001-yolo-slop-reduction/research.md",
+      "value": {
+        "type": "file",
+        "name": "research.md",
+        "path": "/Users/douglaswross/Code/gofer/.specify/specs/001-yolo-slop-reduction/research.md",
+        "lastSeen": 1770850220276,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/ContinuousMemoryWriter",
+      "value": {
+        "type": "file",
+        "name": "ContinuousMemoryWriter",
+        "path": "./autonomous/ContinuousMemoryWriter",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/MemoryHookManager",
+      "value": {
+        "type": "file",
+        "name": "MemoryHookManager",
+        "path": "./autonomous/MemoryHookManager",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./autonomous/SlopReducer",
+      "value": {
+        "type": "file",
+        "name": "SlopReducer",
+        "path": "./autonomous/SlopReducer",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./config",
+      "value": {
+        "type": "file",
+        "name": "config",
+        "path": "./config",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./ui/GoferActivityStatusBar",
+      "value": {
+        "type": "file",
+        "name": "GoferActivityStatusBar",
+        "path": "./ui/GoferActivityStatusBar",
+        "lastSeen": 1770850241196,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/utils/logger.ts",
+      "value": {
+        "type": "file",
+        "name": "logger.ts",
+        "path": "/Users/douglaswross/Code/gofer/extension/src/utils/logger.ts",
+        "lastSeen": 1770850243597,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/AutoHandoffTrigger.ts",
+      "value": {
+        "type": "file",
+        "name": "AutoHandoffTrigger.ts",
+        "path": "/Users/douglaswross/Code/gofer/extension/src/autonomous/AutoHandoffTrigger.ts",
+        "lastSeen": 1770850249733,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./ContextHealthMonitor",
+      "value": {
+        "type": "file",
+        "name": "ContextHealthMonitor",
+        "path": "./ContextHealthMonitor",
+        "lastSeen": 1770850249733
+      }
+    },
+    {
+      "v": "file:./ContextUsageLogger",
+      "value": {
+        "type": "file",
+        "name": "ContextUsageLogger",
+        "path": "./ContextUsageLogger",
+        "lastSeen": 1770850249733
+      }
+    },
+    {
+      "v": "file:./ContextBuilder",
+      "value": {
+        "type": "file",
+        "name": "ContextBuilder",
+        "path": "./ContextBuilder",
+        "lastSeen": 1770850249733,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:./CheckpointValidator",
+      "value": {
+        "type": "file",
+        "name": "CheckpointValidator",
+        "path": "./CheckpointValidator",
+        "lastSeen": 1770850249733
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/tests/unit/autonomous/ContextHealthMonitor.test.ts",
+      "value": {
+        "type": "file",
+        "name": "ContextHealthMonitor.test.ts",
+        "path": "/Users/douglaswross/Code/gofer/tests/unit/autonomous/ContextHealthMonitor.test.ts",
+        "lastSeen": 1770850531377,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:vitest",
+      "value": {
+        "type": "file",
+        "name": "vitest",
+        "path": "vitest",
+        "lastSeen": 1770850543012,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:../../../extension/src/autonomous/ContextHealthMonitor",
+      "value": {
+        "type": "file",
+        "name": "ContextHealthMonitor",
+        "path": "../../../extension/src/autonomous/ContextHealthMonitor",
+        "lastSeen": 1770850531377
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/tests/unit/council/ConfigLoader.test.ts",
+      "value": {
+        "type": "file",
+        "name": "ConfigLoader.test.ts",
+        "path": "/Users/douglaswross/Code/gofer/tests/unit/council/ConfigLoader.test.ts",
+        "lastSeen": 1770850543012,
+        "metadata": {}
+      }
+    },
+    {
+      "v": "file:../../../extension/src/council/ConfigLoader",
+      "value": {
+        "type": "file",
+        "name": "ConfigLoader",
+        "path": "../../../extension/src/council/ConfigLoader",
+        "lastSeen": 1770850543012
+      }
+    },
+    {
+      "v": "file:../../../extension/src/council/types",
+      "value": {
+        "type": "file",
+        "name": "types",
+        "path": "../../../extension/src/council/types",
+        "lastSeen": 1770850543012
+      }
+    }
+  ],
+  "edges": [
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/ui/ContextContentPanel.ts",
+      "w": "file:os",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770849711325
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/contextWindowProvider.ts",
+      "w": "file:vscode",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770849767715
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/contextWindowProvider.ts",
+      "w": "file:./autonomous/HookBridgeWatcher",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770849767715
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/contextWindowProvider.ts",
+      "w": "file:./autonomous/MultiSessionBridgeWatcher",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770849767715
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/config.ts",
+      "w": "file:vscode",
+      "value": {
+        "type": "imports",
+        "weight": 6,
+        "lastSeen": 1770850225894
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/config.ts",
+      "w": "file:../../package.json",
+      "value": {
+        "type": "imports",
+        "weight": 6,
+        "lastSeen": 1770850225894
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/config.ts",
+      "w": "file:path",
+      "value": {
+        "type": "imports",
+        "weight": 10,
+        "lastSeen": 1770850212262
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/SlopDetector.ts",
+      "w": "file:fs",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850242914
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/SlopDetector.ts",
+      "w": "file:path",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850242914
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/KnowledgeGraph",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/CitationVerifier",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/ScopeGuard",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/SlopDetector",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/LLMProvider",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/ResearchSummarizer",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/ContextCompactor",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/SubAgentDispatcher",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/HookBridgeWatcher",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:vscode",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:path",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./goferMigrator",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./progressProvider",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./constitutionProvider",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./memoryProvider",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./contextWindowProvider",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./branchSpecManager",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autoUpdater",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./lspClient",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./mcpConfig",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/MemoryManager",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/ContextBuilder",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./commands/memoryCommands",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./commands/specCommands",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./commands/councilCommands",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/ContextHealthMonitor",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/AutoHandoffTrigger",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/ContextUsageLogger",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/WorkspaceContextProvider",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/ResearchChunker",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./ui/ContextHealthStatusBar",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/ClaudeSessionReader",
+      "value": {
+        "type": "imports",
+        "weight": 3,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/SlopReducer.ts",
+      "w": "file:fs",
+      "value": {
+        "type": "imports",
+        "weight": 6,
+        "lastSeen": 1770850518112
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/SlopReducer.ts",
+      "w": "file:path",
+      "value": {
+        "type": "imports",
+        "weight": 6,
+        "lastSeen": 1770850518112
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/SlopReducer.ts",
+      "w": "file:vscode",
+      "value": {
+        "type": "imports",
+        "weight": 6,
+        "lastSeen": 1770850518112
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/SlopReducer.ts",
+      "w": "file:../utils/logger",
+      "value": {
+        "type": "imports",
+        "weight": 6,
+        "lastSeen": 1770850518112
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/SlopReducer.ts",
+      "w": "file:../config",
+      "value": {
+        "type": "imports",
+        "weight": 6,
+        "lastSeen": 1770850518112
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/.specify/specs/001-yolo-slop-reduction/research.md",
+      "w": "file:fs",
+      "value": {
+        "type": "imports",
+        "weight": 2,
+        "lastSeen": 1770850220276
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/ContinuousMemoryWriter",
+      "value": {
+        "type": "imports",
+        "weight": 2,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/MemoryHookManager",
+      "value": {
+        "type": "imports",
+        "weight": 2,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/SlopReducer",
+      "value": {
+        "type": "imports",
+        "weight": 2,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./config",
+      "value": {
+        "type": "imports",
+        "weight": 2,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./autonomous/MultiSessionBridgeWatcher",
+      "value": {
+        "type": "imports",
+        "weight": 2,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/extension.ts",
+      "w": "file:./ui/GoferActivityStatusBar",
+      "value": {
+        "type": "imports",
+        "weight": 2,
+        "lastSeen": 1770850241196
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/utils/logger.ts",
+      "w": "file:vscode",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850243597
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/utils/logger.ts",
+      "w": "file:../config",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850243597
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/AutoHandoffTrigger.ts",
+      "w": "file:vscode",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850249733
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/AutoHandoffTrigger.ts",
+      "w": "file:./ContextHealthMonitor",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850249733
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/AutoHandoffTrigger.ts",
+      "w": "file:./ContextUsageLogger",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850249733
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/AutoHandoffTrigger.ts",
+      "w": "file:./ContextBuilder",
+      "value": {
+        "type": "imports",
+        "weight": 2,
+        "lastSeen": 1770850249733
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/AutoHandoffTrigger.ts",
+      "w": "file:../utils/logger",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850249733
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/extension/src/autonomous/AutoHandoffTrigger.ts",
+      "w": "file:./CheckpointValidator",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850249733
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/tests/unit/autonomous/ContextHealthMonitor.test.ts",
+      "w": "file:vitest",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850531377
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/tests/unit/autonomous/ContextHealthMonitor.test.ts",
+      "w": "file:../../../extension/src/autonomous/ContextHealthMonitor",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850531377
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/tests/unit/council/ConfigLoader.test.ts",
+      "w": "file:vitest",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850543012
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/tests/unit/council/ConfigLoader.test.ts",
+      "w": "file:fs",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850543012
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/tests/unit/council/ConfigLoader.test.ts",
+      "w": "file:path",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850543012
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/tests/unit/council/ConfigLoader.test.ts",
+      "w": "file:../../../extension/src/council/ConfigLoader",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850543012
+      }
+    },
+    {
+      "v": "file:/Users/douglaswross/Code/gofer/tests/unit/council/ConfigLoader.test.ts",
+      "w": "file:../../../extension/src/council/types",
+      "value": {
+        "type": "imports",
+        "weight": 1,
+        "lastSeen": 1770850543012
+      }
+    }
+  ]
+}
