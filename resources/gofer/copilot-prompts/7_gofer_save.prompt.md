@@ -9,6 +9,11 @@ tools:
   - Bash
   - WebSearch
 argument-hint: feature-name-or-description
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/7_gofer_save.md
+  canonicalChecksum: fa3a4ee17cf9877c93ed35a22bf17be79f1e8fb24353eadab87bbd25c5671ce0
+  metadataSource: scripts/generate-commands.ts
 ---
 
 # Gofer Save

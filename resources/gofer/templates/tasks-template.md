@@ -13,6 +13,11 @@ research.md, data-model.md, contracts/
 `/4_gofer_tasks`). Recommended: Use `/0_business_scenario` to auto-chain the
 entire pipeline.
 
+> **EAI CLI Version Pin** (enterpriseai profile only): deployment tasks in this
+> list inherit the `major.minor` pin recorded in `plan.md` so builds in CI and
+> on developer machines use the same `eai-cli` toolchain. Standard-profile runs
+> ignore this section.
+
 **Tests**: The examples below include test tasks. Tests are OPTIONAL - only
 include them if explicitly requested in the feature specification.
 

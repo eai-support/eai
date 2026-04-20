@@ -566,6 +566,33 @@ When council mode is enabled:
 
 ---
 
+## EnterpriseAI Deployment Preflight Gate (Manifest/Config)
+
+> Active only when `gofer.workflowProfile=enterpriseai`. Standard profile runs
+> skip this gate entirely.
+
+Before any deployment task emitted by `/4_gofer_tasks` completes, this stage
+MUST execute deployment preflight checks (manifest/config gate). A task that
+invokes `eai-cli deploy` is not marked complete until all of the following files
+are present at the workspace root and pass their readiness checks:
+
+| Required File  | Purpose                                                 |
+| -------------- | ------------------------------------------------------- |
+| `manifest.yml` | Vertical application manifest (from `eai-cli scaffold`) |
+| `config.json`  | Runtime configuration bundle (environment-specific)     |
+
+### Gate behaviour
+
+- If any required file is missing, the stage emits `EVT-012` via the
+  deployment-readiness event bus and blocks task completion.
+- Paths are resolved relative to the workspace root. Any attempt to resolve a
+  required file outside the workspace (for example `/etc/passwd`) throws
+  `IMPL_DEPLOYMENT_PATH_INVALID`.
+- When the gate passes, `readinessPassed=true` is recorded in the emitted event
+  and the deployment task is allowed to continue.
+
+---
+
 ## Observability Logging
 
 At stage completion, log metrics:

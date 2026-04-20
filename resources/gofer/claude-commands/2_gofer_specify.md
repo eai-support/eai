@@ -542,6 +542,35 @@ Success criteria must be:
 
 ---
 
+## EnterpriseAI Integration Map Requirements
+
+> Active only when `gofer.workflowProfile=enterpriseai`. Standard profile
+> outputs remain unchanged.
+
+When the workflow profile is `enterpriseai`, `spec.md` MUST include an explicit
+**Integration Map** section that traces the flow from end-user interaction to
+the deployed EnterpriseAI vertical application and back. The map must be
+expressed as an ordered dependency chain following the pattern:
+
+```
+Vertical App -> EAI Services -> Deployment Target
+```
+
+At minimum the map must name:
+
+1. **Vertical App**: the student-facing or business-facing vertical being
+   delivered (maps to the `vertical-template` reference).
+2. **EAI Services**: the EnterpriseAI platform services the vertical consumes
+   (maps to entries in `.specify/references/eai/eai-cli.md`).
+3. **Deployment Target**: the deployment environment and pipeline that will host
+   the running vertical (maps to `.specify/references/eai/deployment-repo.md`).
+
+Each link in the chain must reference the internal API contract that carries the
+integration payload (for example `IAP-001` → `IAP-002` → `IAP-003`) so the plan
+stage can bind implementation tasks directly to specification clauses.
+
+---
+
 ## Observability Logging
 
 At stage completion, log metrics:
