@@ -11,6 +11,11 @@ tools:
   - Bash
   - WebSearch
 argument-hint: feature-name-or-description
+gofer:
+  workflowProfile: enterpriseai
+  canonicalSource: .claude/commands/7a_stakeholder_comms.md
+  canonicalChecksum: ce7bd521522ce2a240890295ebcfcd9b5b27aed6a991fa1e7e702c45caafe00d
+  metadataSource: scripts/generate-commands.ts
 ---
 
 # Gofer Stakeholder Communications
@@ -263,6 +268,59 @@ stakeholder communications explaining what changed and why.
   The feature is ready for stakeholder review and deployment.
 ════════════════════════════════════════════════════════════════
 ```
+
+---
+
+## Marp Presentation Deck (EnterpriseAI Profile Extension)
+
+> Active only when `gofer.workflowProfile=enterpriseai` and Marp output is
+> enabled for the run. Standard-profile runs skip this step; Release Notes and
+> the Demo Script (5-minute walkthrough) remain the core deliverables.
+
+When enabled, generate `{FEATURE_DIR}/presentation.marp.md`. The file MUST use
+Marp frontmatter and the canonical EnterpriseAI slide deck structure:
+
+```markdown
+---
+marp: true
+theme: default
+paginate: true
+---
+
+# Problem Statement
+
+{{problem-statement}}
+
+---
+
+# EnterpriseAI Solution Overview
+
+{{enterpriseai-fit}}
+
+---
+
+# Architecture Diagram Reference
+
+See `plan.md` → architecture section.
+
+---
+
+# Demo Script Summary
+
+See Release Notes and the Demo Script (5-minute walkthrough) above.
+
+---
+
+# Success Metrics
+
+{{success-metrics}}
+```
+
+Every section title above (`Problem Statement`,
+`EnterpriseAI Solution Overview`, `Architecture Diagram Reference`,
+`Demo Script Summary`, `Success Metrics`) is mandatory in both the generated
+`presentation.marp.md` and the corresponding
+`.specify/templates/stakeholder-comms-template.md`.
 
 ---
 

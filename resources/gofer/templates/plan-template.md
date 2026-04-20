@@ -113,3 +113,14 @@ directories captured above]
 | -------------------------- | ------------------ | ------------------------------------ |
 | [e.g., 4th project]        | [current need]     | [why 3 projects insufficient]        |
 | [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient]  |
+
+## EnterpriseAI Profile Metadata
+
+> Populated only when `gofer.workflowProfile=enterpriseai`. Standard-profile
+> runs leave this section empty and unchanged.
+
+- **EAI CLI Version Pin**: `[major.minor, e.g. 2.0]` — the installed `eai-cli`
+  version is recorded here at plan generation time. Deployment tasks reference
+  this pin to prevent drift between local and CI environments.
+- **Vertical Template Reference**: `[vertical-template tag or SHA]`
+- **Deployment Repo Reference**: `[deployment-repo tag or SHA]`

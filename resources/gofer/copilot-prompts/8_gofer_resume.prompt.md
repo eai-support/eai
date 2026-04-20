@@ -10,6 +10,11 @@ tools:
   - Bash
   - WebSearch
 argument-hint: feature-name-or-description
+gofer:
+  workflowProfile: standard
+  canonicalSource: .claude/commands/8_gofer_resume.md
+  canonicalChecksum: b33ba9dfb2dbdccff6f1f80af38d8af64d8935208087d1c3c6a30b8615ccbcc7
+  metadataSource: scripts/generate-commands.ts
 ---
 
 # Gofer Resume

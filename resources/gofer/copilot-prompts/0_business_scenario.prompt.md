@@ -9,6 +9,11 @@ tools:
   - Bash
   - WebSearch
 argument-hint: feature-name-or-description
+gofer:
+  workflowProfile: enterpriseai
+  canonicalSource: .claude/commands/0_business_scenario.md
+  canonicalChecksum: d10ac037fcf5ea155d6cb0c5581293a1aa622b64b079363f0a5f81d30c30d6a7
+  metadataSource: scripts/generate-commands.ts
 ---
 
 # Gofer Orchestrator
@@ -667,6 +672,39 @@ If context window is filling up:
 | `#10_gofer_cloud`     | Cloud infrastructure analysis (READ-ONLY) |
 | `#gofer_hydrate`      | Reverse-engineer spec from code           |
 | `#gofer_constitution` | Project principles and standards          |
+
+---
+
+## EnterpriseAI Profile Extensions
+
+> Active only when `gofer.workflowProfile=enterpriseai`. The sections below add
+> guardrails on top of the standard orchestrator; standard profile outputs
+> remain unchanged.
+
+### EnterpriseAI-First Discovery Framing (MANDATORY)
+
+When the workflow profile is `enterpriseai`:
+
+- Frame every discovery option as an EnterpriseAI platform delivery outcome.
+- Do **not** present non-EAI platforms as primary recommendations.
+- Non-EAI platforms must never be presented as primary recommendations during
+  discovery. They may only appear as optional reference material in the research
+  stage, clearly labelled as non-primary.
+- All recommended scenarios must map to an EnterpriseAI vertical application
+  (business analysis → EAI services → deployment target).
+
+### Novice Walkthrough Guardrail (MANDATORY)
+
+Assume the user is a first-time student or business learner with no prior
+platform experience.
+
+- Do not require external documentation to complete discovery.
+- Provide recommended options and plain-language implications for every
+  question. Each recommendation must explain, in one sentence, what choosing it
+  means for the next stage.
+- Pipeline auto-chains from there: once discovery inputs are confirmed, the
+  orchestrator progresses through research → specify → plan → tasks → implement
+  → validate without requiring the user to invoke each stage by hand.
 
 ---
 
