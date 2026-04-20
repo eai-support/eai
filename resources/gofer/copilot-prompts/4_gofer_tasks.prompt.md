@@ -9,6 +9,11 @@ tools:
   - Bash
   - WebSearch
 argument-hint: feature-name-or-description
+gofer:
+  workflowProfile: enterpriseai
+  canonicalSource: .claude/commands/4_gofer_tasks.md
+  canonicalChecksum: c95e60d02fff74a7afb2874e67d8f1e0147716c36442b6d5a0387b1294d7993c
+  metadataSource: scripts/generate-commands.ts
 ---
 
 # Gofer Tasks
@@ -428,6 +433,32 @@ When council mode is enabled for task generation:
 2. Different perspectives on dependency ordering
 3. Chairman synthesizes optimal task breakdown
 4. Usage logged to `.specify/logs/council-usage.jsonl`
+
+---
+
+## Ordered Runnable Task-Generation Guidance
+
+> Active only when `gofer.workflowProfile=enterpriseai`. Standard profile task
+> generation is unaffected.
+
+When the workflow profile is `enterpriseai`, `tasks.md` MUST emit deployment
+tasks in the following ordered chain. Each task is independently runnable and
+the ordering enforces scaffold before deployment so that configuration and
+manifest artifacts exist before any deploy command runs.
+
+1. **Vertical Template scaffolding -> `eai-cli scaffold`**
+   - Command: `eai-cli scaffold --template vertical --name <app-name>`
+   - Produces the working directory, `manifest.yml`, and `config.json` expected
+     by subsequent tasks.
+2. **Local validation -> `eai-cli validate`**
+   - Command: `eai-cli validate`
+   - Confirms manifest/config correctness before any deploy attempt.
+3. **Pinned `eai-cli major.minor` deployment tasks -> `eai-cli deploy`**
+   - Command: `eai-cli deploy --env <environment>`
+   - Inherits the `major.minor` pin recorded in `plan.md`.
+
+<!-- prettier-ignore -->
+The ordering above is non-negotiable: tasks.md MUST instruct the pipeline to scaffold before deployment, validate before deploy, and only then invoke pinned `eai-cli major.minor` deployment tasks. Breaking the order causes deployment preflight gating in `#5_gofer_implement` to fail.
 
 ---
 
