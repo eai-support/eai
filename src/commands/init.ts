@@ -14,7 +14,7 @@ import inquirer from 'inquirer';
 import * as out from '../lib/output.js';
 import { installGoferResources } from '../lib/gofer-installer.js';
 import { isAuthenticated, loadTokens } from '../lib/auth.js';
-import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { resolveActiveTenantContext, resolvePublicApiUrl, type TenantMembership } from '../lib/tenant-context.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import { patchEnvFile } from '../lib/config.js';
 import { pullCloudEnvValues } from '../lib/cloud-env.js';
@@ -30,7 +30,7 @@ interface InitOptions {
   name: string;
   displayName: string;
   description: string;
-  tenantStructure: 'single' | 'dual' | 'multi';
+  tenantId: string;
   includeChat: boolean;
   includeDocs: boolean;
   authProvider: 'ciam' | 'b2b' | 'dual';
@@ -74,6 +74,8 @@ export const initCommand = new Command('init')
   .argument('[name]', 'Name for the vertical (kebab-case)')
   .option('--from <repo>', 'GitHub repo URL or local path for template', TEMPLATE_REPO)
   .option('--skip-prompts', 'Use defaults without interactive prompts', false)
+  .option('--tenant <id>', 'Bind this vertical to the given platform tenant ID (non-interactive)')
+  .option('--create-child-tenant', '[not implemented] Create a child tenant under the default and bind to it')
   .option('--no-gofer', 'Skip installing Gofer AI CLI assets')
   .addHelpText('after', `
 Gofer AI CLI assets are installed by default:
@@ -85,21 +87,38 @@ Gofer AI CLI assets are installed by default:
 Use --no-gofer only when you need a bare vertical scaffold.
 `)
   .action(async (nameArg, options) => {
+    if (options.createChildTenant) {
+      out.error('`--create-child-tenant` is not implemented yet. Re-run without this flag, or use `--tenant <id>` to bind an existing tenant.');
+      process.exit(1);
+    }
+
+    const publicApiUrl = await resolvePublicApiUrl();
+    const activeTenant = await loadActiveTenantForInit(publicApiUrl);
+
+    let tenantId: string;
     let initOptions: InitOptions;
 
     if (options.skipPrompts && nameArg) {
+      if (options.tenant) {
+        await assertTenantExists(publicApiUrl, options.tenant);
+        tenantId = options.tenant;
+      } else if (activeTenant) {
+        tenantId = activeTenant.id;
+      } else {
+        tenantId = '';
+        out.warn('No active tenant and `--tenant <id>` not supplied — TENANT_<KEY>_ID will be left blank. Bind later by editing .env.local.');
+      }
       initOptions = {
         name: nameArg,
         displayName: toDisplayName(nameArg),
         description: `${toDisplayName(nameArg)} vertical application`,
-        tenantStructure: 'single',
+        tenantId,
         includeChat: true,
         includeDocs: true,
         authProvider: 'ciam',
       };
     } else {
-      // Interactive prompts
-      const answers = await inquirer.prompt([
+      const baseAnswers = await inquirer.prompt([
         {
           type: 'input',
           name: 'name',
@@ -124,26 +143,21 @@ Use --no-gofer only when you need a bare vertical scaffold.
           message: 'Description:',
           default: (answers: { displayName: string }) => `${answers.displayName} vertical application`,
         },
-        {
-          type: 'list',
-          name: 'tenantStructure',
-          message: 'Tenant structure:',
-          choices: [
-            { name: 'Single tenant (most common)', value: 'single' },
-            { name: 'Dual tenant (e.g., customer + staff portals)', value: 'dual' },
-            { name: 'Multi-tenant hierarchy', value: 'multi' },
-          ],
-        },
+      ]);
+
+      tenantId = await promptTenantBinding(publicApiUrl, activeTenant, options.tenant);
+
+      const featureAnswers = await inquirer.prompt([
         {
           type: 'confirm',
           name: 'includeChat',
-          message: 'Include AI chat?',
+          message: 'Include AI chat? [not implemented — flag only]',
           default: true,
         },
         {
           type: 'confirm',
           name: 'includeDocs',
-          message: 'Include document management?',
+          message: 'Include document management? [not implemented — flag only]',
           default: true,
         },
         {
@@ -151,14 +165,18 @@ Use --no-gofer only when you need a bare vertical scaffold.
           name: 'authProvider',
           message: 'Auth provider:',
           choices: [
-            { name: 'Entra ID CIAM (recommended)', value: 'ciam' },
-            { name: 'Entra ID B2B (corporate SSO)', value: 'b2b' },
-            { name: 'Dual (CIAM + B2B)', value: 'dual' },
+            { name: 'Entra ID CIAM (default, implemented)', value: 'ciam' },
+            { name: 'Entra ID B2B (corporate SSO) [not implemented]', value: 'b2b' },
+            { name: 'Dual (CIAM + B2B) [not implemented]', value: 'dual' },
           ],
         },
       ]);
 
-      initOptions = answers as InitOptions;
+      initOptions = {
+        ...(baseAnswers as { name: string; displayName: string; description: string }),
+        tenantId,
+        ...(featureAnswers as { includeChat: boolean; includeDocs: boolean; authProvider: 'ciam' | 'b2b' | 'dual' }),
+      };
     }
 
     const targetDir = resolve(process.cwd(), initOptions.name);
@@ -205,7 +223,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
     try {
       const envContent = generateEnvFile(initOptions);
       await writeFile(join(targetDir, '.env.local'), envContent, 'utf-8');
-      await hydrateEnvFromLoginContext(targetDir, initOptions.name);
+      await hydrateEnvFromLoginContext(targetDir, initOptions.name, initOptions.tenantId);
       envSpinner.succeed('Generated .env.local');
     } catch (_err) {
       envSpinner.fail('Failed to generate .env.local');
@@ -272,9 +290,12 @@ Use --no-gofer only when you need a bare vertical scaffold.
       out.warn(describeGitInitFailure(err));
     }
 
-    // Step 9: Optionally provision Entra app registration inline
+    // Step 9: Optionally provision Entra app registration inline against the
+    // tenant the user selected in the tenant-binding prompt (not the active
+    // tenant blindly). Only runs in interactive mode when logged in and a
+    // tenant is bound.
     let entraProvisioned = false;
-    if (!options.skipPrompts) {
+    if (!options.skipPrompts && initOptions.tenantId) {
       const loggedIn = await isAuthenticated();
       if (loggedIn) {
         out.blank();
@@ -285,7 +306,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
           default: true,
         }]);
         if (provision) {
-          entraProvisioned = await provisionEntraInline(targetDir, initOptions.name);
+          entraProvisioned = await provisionEntraInline(targetDir, initOptions.name, initOptions.tenantId, publicApiUrl);
         }
       }
     }
@@ -295,6 +316,9 @@ Use --no-gofer only when you need a bare vertical scaffold.
     out.blank();
     out.heading('Next steps:');
     out.blank();
+    if (initOptions.tenantId) {
+      out.dim(`Bound to tenant: ${chalk.cyan(initOptions.tenantId)}`);
+    }
     if (!entraProvisioned) {
       out.dim(`Run ${chalk.cyan('eai provision entra')} inside the project to set up Entra authentication.`);
     }
@@ -307,24 +331,21 @@ Use --no-gofer only when you need a bare vertical scaffold.
   });
 
 /**
- * Attempt inline Entra app provisioning at the end of `eai init`.
- * Returns true if provisioning succeeded and wrote credentials to .env.local.
- * Non-fatal: logs a warning and returns false on any failure.
+ * Provision an Entra app registration inline at the end of `eai init`, bound
+ * to the tenant the user selected in the tenant-binding prompt. Returns true
+ * on success. Non-fatal: logs a warning and returns false on any failure.
  */
-async function provisionEntraInline(targetDir: string, verticalName: string): Promise<boolean> {
+async function provisionEntraInline(
+  targetDir: string,
+  verticalName: string,
+  tenantId: string,
+  publicApiUrl: string,
+): Promise<boolean> {
   const spinner = ora('Provisioning Entra app registration...').start();
   try {
-    const publicApiUrl = await resolvePublicApiUrl(targetDir);
-    const context = await resolveActiveTenantContext({
-      projectRoot: targetDir,
-      publicApiUrl,
-      interactive: true,
-    });
-    const { activeTenant } = context;
-
-    const client = new PlatformAPIClient(publicApiUrl, activeTenant.id);
+    const client = new PlatformAPIClient(publicApiUrl, tenantId);
     const result = await client.provisionEntraApp({
-      tenantId: activeTenant.id,
+      tenantId,
       verticalName,
       redirectUris: [`http://localhost:3000/${verticalName}/api/auth/callback/microsoft-entra-id`],
       idempotent: true,
@@ -365,7 +386,121 @@ async function provisionEntraInline(targetDir: string, verticalName: string): Pr
   }
 }
 
-async function hydrateEnvFromLoginContext(targetDir: string, verticalName: string): Promise<void> {
+async function hydrateCloudSecret(targetDir: string, verticalName: string): Promise<boolean> {
+  try {
+    const { patches } = await pullCloudEnvValues({
+      label: verticalName,
+      includeSecrets: true,
+    });
+    const secret = patches.ENTRA_CLIENT_SECRET;
+    if (!secret) {
+      return false;
+    }
+    await patchEnvFile(targetDir, { ENTRA_CLIENT_SECRET: secret });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function loadActiveTenantForInit(publicApiUrl: string): Promise<TenantMembership | null> {
+  try {
+    const ctx = await resolveActiveTenantContext({ publicApiUrl, interactive: false });
+    return ctx.activeTenant;
+  } catch {
+    return null;
+  }
+}
+
+async function assertTenantExists(publicApiUrl: string, tenantId: string): Promise<void> {
+  const client = new PlatformAPIClient(publicApiUrl, tenantId);
+  const res = await client.getTenant(tenantId);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    out.error(`Tenant ${tenantId} could not be resolved (${res.status}). ${body}`.trim());
+    process.exit(1);
+  }
+}
+
+async function promptTenantBinding(
+  publicApiUrl: string,
+  activeTenant: TenantMembership | null,
+  tenantFlag: string | undefined,
+): Promise<string> {
+  if (tenantFlag) {
+    await assertTenantExists(publicApiUrl, tenantFlag);
+    return tenantFlag;
+  }
+
+  const choices: Array<{ name: string; value: 'default' | 'child' | 'other'; disabled?: string }> = [];
+
+  if (activeTenant) {
+    choices.push({
+      name: `Default (currently selected): ${activeTenant.displayName} · ${chalk.dim(activeTenant.id)}`,
+      value: 'default',
+    });
+  } else {
+    choices.push({
+      name: 'Default (currently selected)',
+      value: 'default',
+      disabled: 'no active tenant — run `eai login` and `eai tenant select` first',
+    });
+  }
+
+  choices.push({
+    name: 'Create a child tenant under the default  [not implemented]',
+    value: 'child',
+  });
+
+  choices.push({
+    name: 'Other tenant (enter ID)',
+    value: 'other',
+  });
+
+  const { mode } = await inquirer.prompt([{
+    type: 'list',
+    name: 'mode',
+    message: 'Which platform tenant should this vertical bind to?',
+    choices,
+  }]);
+
+  if (mode === 'default') {
+    return activeTenant!.id;
+  }
+
+  if (mode === 'child') {
+    // Stub: child-tenant creation from `eai init` is intentionally not wired up
+    // yet. The underlying API (`PlatformAPIClient.createTenant({ parent })` plus
+    // `bootstrapChildTenantAdmin`) is exercised by `eai tenant create --parent`,
+    // which currently has a known bootstrap-admin-assignment failure mode. Until
+    // that is resolved, `init` fails hard rather than leaving a half-provisioned
+    // child tenant bound to a brand-new vertical.
+    //
+    // When ready, the implementation is roughly:
+    //   const { childName, childSlug } = await inquirer.prompt([...]);
+    //   const client = new PlatformAPIClient(publicApiUrl, activeTenant!.id);
+    //   const res = await client.createTenant({ name: childName, slug: childSlug, parent: activeTenant!.id });
+    //   ... parse response, run bootstrapChildTenantAdmin, return new tenant id.
+    out.error('Creating a child tenant from `eai init` is not implemented yet. Create the child via `eai tenant create --parent <id>` and re-run `eai init` with `--tenant <child-id>` or the "Other tenant" option.');
+    process.exit(1);
+  }
+
+  const { otherId } = await inquirer.prompt([{
+    type: 'input',
+    name: 'otherId',
+    message: 'Tenant ID:',
+    validate: (input: string) => input.trim().length > 0 || 'Tenant ID is required',
+  }]);
+  const trimmed = String(otherId).trim();
+  await assertTenantExists(publicApiUrl, trimmed);
+  return trimmed;
+}
+
+async function hydrateEnvFromLoginContext(
+  targetDir: string,
+  verticalName: string,
+  platformTenantId: string,
+): Promise<void> {
   const patches: Record<string, string> = {};
   const envKey = verticalName.replace(/-/g, '_').toUpperCase();
 
@@ -400,37 +535,13 @@ async function hydrateEnvFromLoginContext(targetDir: string, verticalName: strin
     // Best-effort bootstrap only.
   }
 
-  try {
-    const publicApiUrl = patches.BASE_URL_PUBLIC_API || await resolvePublicApiUrl(targetDir);
-    const context = await resolveActiveTenantContext({
-      projectRoot: targetDir,
-      publicApiUrl,
-      interactive: false,
-    });
-    patches[`TENANT_${envKey}_ID`] = context.activeTenant.id;
-  } catch {
-    // Best-effort bootstrap only.
+  if (platformTenantId) {
+    patches.EAI_TENANT_ID = platformTenantId;
+    patches[`TENANT_${envKey}_ID`] = platformTenantId;
   }
 
   if (Object.keys(patches).length > 0) {
     await patchEnvFile(targetDir, patches);
-  }
-}
-
-async function hydrateCloudSecret(targetDir: string, verticalName: string): Promise<boolean> {
-  try {
-    const { patches } = await pullCloudEnvValues({
-      label: verticalName,
-      includeSecrets: true,
-    });
-    const secret = patches.ENTRA_CLIENT_SECRET;
-    if (!secret) {
-      return false;
-    }
-    await patchEnvFile(targetDir, { ENTRA_CLIENT_SECRET: secret });
-    return true;
-  } catch {
-    return false;
   }
 }
 
@@ -467,14 +578,7 @@ function describeGitInitFailure(error: unknown): string {
 function generateEnvFile(opts: InitOptions): string {
   const envKey = opts.name.replace(/-/g, '_').toUpperCase();
   const authSecret = randomBytes(32).toString('base64');
-
-  let workflowSection: string;
-  if (opts.tenantStructure === 'dual') {
-    workflowSection = `WORKFLOW_${envKey}_CUSTOMER_ID=
-WORKFLOW_${envKey}_STAFF_ID=`;
-  } else {
-    workflowSection = `WORKFLOW_${envKey}_ID=`;
-  }
+  const workflowSection = `WORKFLOW_${envKey}_ID=`;
 
   return `# =============================================================================
 # EAI Vertical: ${opts.displayName}
@@ -494,7 +598,12 @@ BASE_URL_PUBLIC_API=
 
 # =============================================================================
 # Tenant configuration
+# EAI_TENANT_ID is the server-side tenant this vertical binds to — read by
+# the template in src/app/page.tsx and src/app/api/eai/[[...rest]]/route.ts.
+# TENANT_KEYS + TENANT_<KEY>_ID support the multi-tenant config resolver at
+# src/app/api/eai/config/route.ts. Both keys are kept in sync by eai init.
 # =============================================================================
+EAI_TENANT_ID=
 TENANT_KEYS=${opts.name}
 TENANT_${envKey}_ID=
 
