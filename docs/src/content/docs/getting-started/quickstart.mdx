@@ -31,11 +31,16 @@ This guide walks you through the complete workflow of creating a vertical applic
    ? Vertical name (kebab-case): my-vertical
    ? Display name: My Vertical
    ? Description: My Vertical vertical application
-   ? Tenant structure: Single tenant (most common)
-   ? Include AI chat? Yes
-   ? Include document management? Yes
-   ? Auth provider: Entra ID CIAM (recommended)
+   ? Which platform tenant should this vertical bind to?
+     ❯ Default (currently selected): Acme Health · 7a3e1c4b-...-b2d9
+       Create a child tenant under the default  [not implemented]
+       Other tenant (enter ID)
+   ? Include AI chat? [not implemented — flag only] Yes
+   ? Include document management? [not implemented — flag only] Yes
+   ? Auth provider: Entra ID CIAM (default, implemented)
    ```
+
+   The "Which platform tenant..." prompt binds the vertical to a tenant. **Default (currently selected)** is the right choice if you've already run `eai tenant select`. See the [`eai init` reference](/eai-cli/reference/commands/init/#tenant-binding) for the other two options.
 
    Once you answer the prompts, the CLI clones the public EAI vertical template, customizes it, installs Gofer AI terminal assets, and initializes a git repository:
 

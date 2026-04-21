@@ -39,11 +39,17 @@ These types are connected through relationships: a Project has many Tasks, and a
    ? Vertical name (kebab-case): task-manager
    ? Display name: Task Manager
    ? Description: Task management vertical application
-   ? Tenant structure: Single tenant (most common)
-   ? Include AI chat? Yes
-   ? Include document management? Yes
-   ? Auth provider: Entra ID CIAM (recommended)
+   ? Which platform tenant should this vertical bind to?
+     ❯ Default (currently selected): Acme Health · 7a3e1c4b-...-b2d9
+       Create a child tenant under the default  [not implemented]
+       Other tenant (enter ID)
+   ? Include AI chat? [not implemented — flag only] Yes
+   ? Include document management? [not implemented — flag only] Yes
+   ? Auth provider: Entra ID CIAM (default, implemented)
+   ? Provision Entra app registration now? Yes
    ```
+
+   The tenant-binding prompt controls which platform tenant the new vertical attaches to. Most users pick **Default (currently selected)**, which uses the tenant set by the most recent `eai tenant select`. See the [tenant binding reference](/eai-cli/reference/commands/init/#tenant-binding) for the full behavior of each option.
 
 2. **Install dependencies and authenticate**
 

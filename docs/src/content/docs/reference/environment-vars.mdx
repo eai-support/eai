@@ -44,14 +44,30 @@ The authority URL is constructed as: `https://{ENTRA_TENANT_NAME}.ciamlogin.com/
 
 ## Tenant Selection
 
-The current CLI no longer reads tenant IDs from `TENANT_DEFAULT_ID` or `TENANT_{KEY}_ID` for platform operations.
+CLI commands and vertical-runtime code resolve the tenant in different ways.
+
+### CLI-side (platform operations)
+
+The CLI does **not** read tenant IDs from `.env.local`. It uses the active tenant stored in `~/.eai/tokens.json`.
 
 - `eai resources`, `eai docs`, `eai chat`, `eai types seed`, `eai types diff`, and `eai verify` use the active tenant selected at login time.
 - `eai tenant list` shows only active tenant-admin memberships for the logged-in user.
 - `eai tenant select` stores the active tenant in `~/.eai/tokens.json`.
 - `eai types seed --tenant-id <uuid>` and `eai types diff --tenant-id <uuid>` remain available for explicit one-off overrides.
 
-Local object-type scopes in `src/eai.config/object-types.ts` still use tenant keys such as `default`, `template`, or `claims-portal`, but those keys are no longer mapped to tenant ID environment variables.
+### Vertical-runtime side (what the scaffolded app reads)
+
+`eai init` writes tenant binding into the generated `.env.local` so the Vertical-Template can resolve a tenant without a logged-in CLI user.
+
+| Variable | Description | Written by | Read by |
+|---|---|---|---|
+| `EAI_TENANT_ID` | Server-side tenant ID this vertical binds to. | `eai init` (from the tenant-binding prompt) | `Vertical-Template/src/app/page.tsx`, `src/app/api/eai/[[...rest]]/route.ts` |
+| `TENANT_KEYS` | Comma-separated list of tenant keys declared by this vertical. | `eai init` | `Vertical-Template/src/app/api/eai/config/route.ts` (multi-tenant resolver) |
+| `TENANT_<KEY>_ID` | Tenant ID for a named key in `TENANT_KEYS`. | `eai init` (kept in sync with `EAI_TENANT_ID`) | Multi-tenant config resolver |
+
+`EAI_TENANT_ID` and `TENANT_<KEY>_ID` hold the same tenant ID — they serve different consumers inside the template. Do not edit them independently.
+
+Local object-type scopes in `src/eai.config/object-types.ts` still use tenant keys such as `default`, `template`, or `claims-portal`. Those keys map to the `TENANT_<KEY>_ID` variables above.
 
 ## Workflow Configuration
 

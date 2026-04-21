@@ -13,7 +13,7 @@ eai init [name] [options]
 
 `eai init` scaffolds a new vertical application from the public template repo [eai-vertical-template](https://github.com/eai-tools/eai-vertical-template). It clones the template, customizes configuration files, generates an Object Types scaffold, installs Gofer AI terminal assets, sets up a deployment workflow, and initializes a fresh git repository.
 
-If `name` is not provided on the command line, the CLI will prompt for it interactively along with other configuration options such as display name, tenant structure, and feature selection.
+If `name` is not provided on the command line, the CLI will prompt for it interactively along with other configuration options: display name, description, the platform tenant this vertical should bind to, and feature flags.
 
 The generated project is a Next.js 15 application with EAI platform integration, including:
 
@@ -45,6 +45,8 @@ Start with `/0_business_scenario` in Claude CLI, `$0_business_scenario` in Codex
 | `[name]` | Name for the vertical (kebab-case). Prompted interactively if omitted. | -- |
 | `--from <repo>` | GitHub repo URL or local path for the template. | `https://github.com/eai-tools/eai-vertical-template.git` |
 | `--skip-prompts` | Use defaults without interactive prompts. Requires `name` argument. | `false` |
+| `--tenant <id>` | Bind this vertical to the given platform tenant ID. Validated against PublicAPI before scaffolding. Useful for non-interactive runs. | active tenant from `~/.eai/tokens.json`, or blank if none |
+| `--create-child-tenant` | **Not implemented.** Refuses with a pointer to `eai tenant create --parent` as a workaround. | `false` |
 | `--no-gofer` | Skip installing Gofer AI terminal assets. | `false` |
 | `-h, --help` | Display help for the command. | -- |
 
@@ -57,10 +59,30 @@ When running without `--skip-prompts`, the CLI will ask:
 | Vertical name | kebab-case identifier (e.g., `patient-intake`) | Value of `[name]` argument |
 | Display name | Human-readable name (e.g., `Patient Intake`) | Derived from vertical name |
 | Description | Short description of the application | `<Display Name> vertical application` |
-| Tenant structure | Single tenant, dual tenant, or multi-tenant hierarchy | Single tenant |
-| Include AI chat? | Whether to include AI chat features | Yes |
-| Include document management? | Whether to include document upload/classification | Yes |
-| Auth provider | Entra ID CIAM, Entra ID B2B, or Dual | CIAM |
+| Which platform tenant should this vertical bind to? | Three-way choice — see [Tenant binding](#tenant-binding) below | Default (currently selected) |
+| Include AI chat? | **Flag only — not implemented.** Captured but does not alter the scaffold today. | Yes |
+| Include document management? | **Flag only — not implemented.** Captured but does not alter the scaffold today. | Yes |
+| Auth provider | Entra ID CIAM (only implemented choice), B2B and Dual are listed as `[not implemented]` | CIAM |
+
+If you're logged in and a tenant was successfully bound, the CLI also asks **"Provision Entra app registration now?"** after scaffolding completes. Answering yes runs Entra provisioning against the tenant you picked in the binding step and writes `ENTRA_CLIENT_ID` / `ENTRA_CLIENT_SECRET` into the new project's `.env.local`.
+
+## Tenant binding
+
+Every vertical binds to exactly one platform tenant. The tenant ID lands in the generated `.env.local` as both `EAI_TENANT_ID` (read by the Vertical-Template's server-side tenant resolver) and `TENANT_<NAME>_ID` (read by the template's multi-tenant config resolver). The two keys are kept in sync by `eai init`.
+
+The interactive prompt offers three choices:
+
+| Choice | What it does |
+|--------|--------------|
+| **Default (currently selected): `<name>` · `<id>`** | Binds to the active tenant from `~/.eai/tokens.json` (set by `eai login` + `eai tenant select`). If you're not logged in this choice is shown as disabled. |
+| **Create a child tenant under the default `[not implemented]`** | Reserved slot. Selecting it hard-fails with a message pointing at the manual workaround (`eai tenant create --parent <id>`, then re-run `eai init --tenant <child-id>`). The underlying child-tenant bootstrap-admin path has a known live failure mode; `eai init` refuses to leave a half-provisioned child tenant bound to a fresh vertical. |
+| **Other tenant (enter ID)** | Prompts for a tenant ID, validates it against PublicAPI via `GET /custom-tenants/{id}`, and binds if the tenant exists. Does **not** change the CLI's active-tenant state — this only affects the vertical being created. |
+
+Non-interactive equivalents:
+
+- `eai init my-app --skip-prompts` — uses the active tenant silently. Warns and leaves the tenant blank if you're not logged in.
+- `eai init my-app --tenant <id> --skip-prompts` — binds to the given tenant ID after validating it exists.
+- `eai init my-app --create-child-tenant` — refuses (stub). Same pointer to the workaround.
 
 ## Examples
 
@@ -74,10 +96,13 @@ eai init
 ? Vertical name (kebab-case): patient-intake
 ? Display name: Patient Intake
 ? Description: Patient intake and triage vertical application
-? Tenant structure: Single tenant (most common)
-? Include AI chat? Yes
-? Include document management? Yes
-? Auth provider: Entra ID CIAM (recommended)
+? Which platform tenant should this vertical bind to?
+  ❯ Default (currently selected): Acme Health · 7a3e1c4b-...-b2d9
+    Create a child tenant under the default  [not implemented]
+    Other tenant (enter ID)
+? Include AI chat? [not implemented — flag only] Yes
+? Include document management? [not implemented — flag only] Yes
+? Auth provider: Entra ID CIAM (default, implemented)
 
 Creating Patient Intake
 
@@ -90,19 +115,21 @@ Creating Patient Intake
 ✔ Installed Gofer assets (16 commands, 37 agents, 16 skills)
 ✔ Initialized git repository
 
+? Provision Entra app registration now? Yes
+✔ Entra app registration created: 4f8c2a10-...-19de
+
 ✔ Created Patient Intake at /Users/you/projects/patient-intake
 
 Next steps:
+  Bound to tenant: 7a3e1c4b-...-b2d9
   1. cd patient-intake
   2. npm install
-  3. eai login — authenticate with Entra CIAM
-  4. eai tenant select — choose the tenant to work with
-  5. eai env pull — sync app config from cloud if needed
-  6. Edit src/eai.config/object-types.ts — define your data model
-  7. eai types validate — check your types
-  8. eai types seed — push types to platform
-  9. eai dev — start local development
-  10. Start Gofer — run /0_business_scenario in Claude CLI
+  3. eai env pull — sync app config from cloud if needed
+  4. Edit src/eai.config/object-types.ts — define your data model
+  5. eai types validate — check your types
+  6. eai types seed — push types to platform
+  7. eai dev — start local development
+  8. Start Gofer — run /0_business_scenario in Claude CLI
 ```
 
 ### Scaffold with name argument
