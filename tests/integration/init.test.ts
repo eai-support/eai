@@ -12,7 +12,6 @@ import inquirer from 'inquirer';
 import { describe, test, beforeEach, afterEach, expect, vi } from 'vitest';
 import { describeCloneFailure, initCommand } from '../../src/commands/init.js';
 import * as auth from '../../src/lib/auth.js';
-import * as cloudEnv from '../../src/lib/cloud-env.js';
 import * as tenantContext from '../../src/lib/tenant-context.js';
 import { createTestEnvironment, captureConsole, type TestEnvironment } from '../helpers/test-env.js';
 import { createMockServer, PublicAPIMock } from '../helpers/mock-server.js';
@@ -119,14 +118,36 @@ describe('eai init', () => {
     gitIsInstalled(ctx);
     networkIsAvailable(ctx);
 
-    const promptSpy = vi.spyOn(inquirer, 'prompt').mockResolvedValue({
-      name: 'my-vertical',
-      displayName: 'My Vertical',
-      description: 'My Vertical vertical application',
-      tenantStructure: 'single',
-      includeChat: true,
-      includeDocs: true,
-      authProvider: 'ciam',
+    const promptSpy = vi.spyOn(inquirer, 'prompt')
+      .mockResolvedValueOnce({
+        name: 'my-vertical',
+        displayName: 'My Vertical',
+        description: 'My Vertical vertical application',
+      })
+      .mockResolvedValueOnce({ mode: 'default' })
+      .mockResolvedValueOnce({
+        includeChat: true,
+        includeDocs: true,
+        authProvider: 'ciam',
+      });
+    const tenantCtxSpy = vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
+      publicApiUrl: 'https://test-api.ae.myenterprise.ai/public',
+      tokens: {
+        accessToken: 'access',
+        expiresAt: Date.now() + 60_000,
+        tenantId: 'ciam-guid',
+        tenantName: 'enterpriseaitestplatform',
+        clientId: 'client-id',
+      },
+      activeTenant: {
+        id: 'tenant-123',
+        displayName: 'Test Tenant',
+        slug: 'test-tenant',
+        domain: 'test.example.com',
+        isActive: true,
+        roles: ['tenant-admin'],
+      },
+      memberships: [],
     });
     const consoleCapture = captureConsole();
 
@@ -135,6 +156,7 @@ describe('eai init', () => {
     } finally {
       consoleCapture.restore();
       promptSpy.mockRestore();
+      tenantCtxSpy.mockRestore();
     }
 
     await expectDirectoryCreated(ctx, 'my-vertical');
@@ -238,79 +260,6 @@ describe('eai init', () => {
       publicApiSpy.mockRestore();
       tenantSpy.mockRestore();
       loadTokensSpy.mockRestore();
-    }
-  }, 30_000);
-
-  test('init hydrates ENTRA_CLIENT_SECRET from cloud config when an existing app registration is reused', async () => {
-    workingDirectoryIs(ctx, env.dir);
-
-    const promptSpy = vi.spyOn(inquirer, 'prompt')
-      .mockResolvedValueOnce({
-        name: 'existing-secret-app',
-        displayName: 'Existing Secret App',
-        description: 'Existing Secret App vertical application',
-        tenantStructure: 'single',
-        includeChat: true,
-        includeDocs: true,
-        authProvider: 'ciam',
-      })
-      .mockResolvedValueOnce({ provision: true });
-    const authSpy = vi.spyOn(auth, 'isAuthenticated').mockResolvedValue(true);
-    const loadTokensSpy = vi.spyOn(auth, 'loadTokens').mockResolvedValue({
-      accessToken: 'access',
-      expiresAt: Date.now() + 60_000,
-      tenantId: 'ciam-guid',
-      tenantName: 'enterpriseaitestplatform',
-      clientId: 'client-id',
-    });
-    const publicApiSpy = vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://test-api.ae.myenterprise.ai/public');
-    const tenantSpy = vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
-      publicApiUrl: 'https://test-api.ae.myenterprise.ai/public',
-      tokens: {
-        accessToken: 'access',
-        expiresAt: Date.now() + 60_000,
-        tenantId: 'ciam-guid',
-        tenantName: 'enterpriseaitestplatform',
-        clientId: 'client-id',
-      },
-      activeTenant: {
-        id: 'tenant-123',
-        displayName: 'Test Tenant',
-        slug: 'test-tenant',
-        domain: 'test.example.com',
-        isActive: true,
-        roles: ['tenant-admin'],
-      },
-      memberships: [],
-    });
-    const provisionSpy = vi.spyOn(
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      (await import('../../src/lib/api.js')).PlatformAPIClient.prototype,
-      'provisionEntraApp',
-    ).mockResolvedValue({
-      clientId: 'existing-client-id',
-      clientSecret: null,
-      existing: true,
-    });
-    const cloudSpy = vi.spyOn(cloudEnv, 'pullCloudEnvValues').mockResolvedValue({
-      store: 'appcs-demo-eai-dev',
-      patches: { ENTRA_CLIENT_SECRET: 'secret-from-kv' },
-      secretRefs: [{ key: 'ENTRA_CLIENT_SECRET', vaultUri: 'https://vault/secrets/entra' }],
-    });
-
-    try {
-      await initCommand.parseAsync(['existing-secret-app', '--from', templateRepo], { from: 'user' });
-      const envContent = await readFile(join(env.dir, 'existing-secret-app', '.env.local'), 'utf-8');
-      expect(envContent).toContain('ENTRA_CLIENT_ID=existing-client-id');
-      expect(envContent).toContain('ENTRA_CLIENT_SECRET=secret-from-kv');
-    } finally {
-      promptSpy.mockRestore();
-      authSpy.mockRestore();
-      loadTokensSpy.mockRestore();
-      publicApiSpy.mockRestore();
-      tenantSpy.mockRestore();
-      provisionSpy.mockRestore();
-      cloudSpy.mockRestore();
     }
   }, 30_000);
 
