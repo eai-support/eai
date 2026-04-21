@@ -1,6 +1,6 @@
 {
   "name": "@eai-tools/cli",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
   "type": "module",
   "bin": {
