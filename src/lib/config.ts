@@ -44,6 +44,49 @@ export interface ObjectTypeAction {
   }>;
 }
 
+export interface StorageIndexDefinition {
+  name?: string;
+  fields: string[] | Array<Record<string, unknown>> | Record<string, unknown>;
+  unique?: boolean;
+}
+
+export interface SqlStorageBinding {
+  databaseAlias: string;
+  tenantSchemaStrategy: 'per-tenant-schema' | 'shared-schema' | 'per-tenant-database';
+  schemaName?: string;
+  tableName: string;
+  indexes?: StorageIndexDefinition[];
+}
+
+export interface DocumentDbStorageBinding {
+  databaseAlias: string;
+  databaseName: string;
+  collectionName: string;
+  partitionKey: string;
+  indexes?: StorageIndexDefinition[];
+}
+
+export interface BlobStorageBinding {
+  storageAccountAlias: string;
+  containerName: string;
+  blobPrefix?: string;
+  metadataSchema?: Record<string, unknown>;
+}
+
+export interface SearchStorageBinding {
+  searchServiceAlias: string;
+  indexName: string;
+  sourceObjectTypes?: string[];
+  fieldMappings?: Record<string, unknown> | Array<Record<string, unknown>>;
+}
+
+export interface StorageBindingDefinition {
+  sql?: SqlStorageBinding;
+  documentdb?: DocumentDbStorageBinding;
+  blob?: BlobStorageBinding;
+  search?: SearchStorageBinding;
+}
+
 export interface ObjectTypeDefinition {
   name: string;
   displayName: string;
@@ -52,6 +95,10 @@ export interface ObjectTypeDefinition {
   linkTypes: ObjectTypeLinkType[];
   actions: ObjectTypeAction[];
   storageBackend?: string;
+  schemaVersion?: number;
+  storageMetadataStatus?: 'draft' | 'ready';
+  storageBinding?: StorageBindingDefinition;
+  provisioningHints?: Record<string, unknown>;
   status: 'draft' | 'published' | 'deprecated';
 }
 

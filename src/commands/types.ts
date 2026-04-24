@@ -43,6 +43,11 @@ interface RemoteObjectTypeDocument {
   properties: unknown[];
   linkTypes: unknown[];
   actions: unknown[];
+  storageBackend?: string;
+  schemaVersion?: number;
+  storageMetadataStatus?: string;
+  storageBinding?: unknown;
+  provisioningHints?: unknown;
   status?: string;
   publishedAt?: string | null;
 }
@@ -212,6 +217,11 @@ function extractRemoteObjectTypeDocs(payload: unknown): RemoteObjectTypeDocument
       properties: Array.isArray(value.properties) ? value.properties : [],
       linkTypes: Array.isArray(value.linkTypes) ? value.linkTypes : [],
       actions: Array.isArray(value.actions) ? value.actions : [],
+      storageBackend: typeof value.storageBackend === 'string' ? value.storageBackend : undefined,
+      schemaVersion: typeof value.schemaVersion === 'number' ? value.schemaVersion : undefined,
+      storageMetadataStatus: typeof value.storageMetadataStatus === 'string' ? value.storageMetadataStatus : undefined,
+      storageBinding: isRecord(value.storageBinding) ? value.storageBinding : undefined,
+      provisioningHints: isRecord(value.provisioningHints) ? value.provisioningHints : undefined,
       status: typeof value.status === 'string' ? value.status : undefined,
       publishedAt: typeof value.publishedAt === 'string' ? value.publishedAt : null,
     }))
@@ -472,6 +482,10 @@ Examples:
               linkTypes: type.linkTypes,
               actions: type.actions,
               storageBackend: type.storageBackend,
+              schemaVersion: type.schemaVersion,
+              storageMetadataStatus: type.storageMetadataStatus,
+              storageBinding: type.storageBinding,
+              provisioningHints: type.provisioningHints,
               status: type.status,
             });
 
@@ -490,6 +504,11 @@ Examples:
                       properties: type.properties,
                       linkTypes: type.linkTypes,
                       actions: type.actions,
+                      storageBackend: type.storageBackend,
+                      schemaVersion: type.schemaVersion,
+                      storageMetadataStatus: type.storageMetadataStatus,
+                      storageBinding: type.storageBinding,
+                      provisioningHints: type.provisioningHints,
                       status: type.status,
                     }
                   : doc
@@ -509,6 +528,10 @@ Examples:
               linkTypes: type.linkTypes,
               actions: type.actions,
               storageBackend: type.storageBackend,
+              schemaVersion: type.schemaVersion,
+              storageMetadataStatus: type.storageMetadataStatus,
+              storageBinding: type.storageBinding,
+              provisioningHints: type.provisioningHints,
               status: type.status,
               tenant: tenantId,
             });
@@ -525,6 +548,11 @@ Examples:
                 properties: type.properties,
                 linkTypes: type.linkTypes,
                 actions: type.actions,
+                storageBackend: type.storageBackend,
+                schemaVersion: type.schemaVersion,
+                storageMetadataStatus: type.storageMetadataStatus,
+                storageBinding: type.storageBinding,
+                provisioningHints: type.provisioningHints,
                 status: type.status,
               });
             } else {

@@ -107,6 +107,97 @@ export function buildTenantCreateStatusMessages(outcome: TenantCreateOutcome): s
 export const tenantCommand = new Command('tenant')
   .description('Manage tenants on the platform');
 
+const tenantStorageCommand = new Command('storage')
+  .description('Inspect tenant storage configuration');
+
+tenantStorageCommand
+  .command('list')
+  .description('List published storage bindings and operational connections for the active tenant')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .action(async (options) => {
+    const root = await findProjectRoot();
+    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
+    const context = await resolveActiveTenantContext({
+      projectRoot: root || undefined,
+      publicApiUrl,
+      interactive: true,
+    });
+
+    const client = new PlatformAPIClient(publicApiUrl, context.activeTenant.id);
+    const response = await client.getStorageStatus();
+    if (!response.ok) {
+      out.error(`Failed to fetch storage status: ${response.status} ${response.statusText}`);
+      process.exit(1);
+    }
+
+    const payload = await response.json() as {
+      objectTypes: Array<{ objectType: string; backend: string; metadataStatus: string; routeSource: string; isReady: boolean }>;
+      connections: Array<{ storage_backend: string; endpoint?: string; database_name?: string; container_name?: string; index_name?: string }>;
+    };
+
+    if (options.format === 'json') {
+      out.json(payload);
+      return;
+    }
+
+    out.success(`${payload.objectTypes.length} object type${payload.objectTypes.length === 1 ? '' : 's'} with storage metadata`);
+    for (const item of payload.objectTypes) {
+      const readiness = item.isReady ? chalk.green('ready') : chalk.yellow('pending');
+      out.info(`${chalk.cyan(item.objectType)} [${item.backend}] ${readiness} ${chalk.dim(`(${item.routeSource})`)}`);
+    }
+
+    if (payload.connections.length > 0) {
+      out.blank();
+      out.info(chalk.bold('Operational connections'));
+      for (const connection of payload.connections) {
+        const target = connection.index_name || connection.container_name || connection.database_name || connection.endpoint || 'configured';
+        out.info(`${chalk.cyan(connection.storage_backend)} — ${chalk.dim(target)}`);
+      }
+    }
+  });
+
+tenantStorageCommand
+  .command('verify')
+  .description('Check tenant storage readiness across published Object Types')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .action(async (options) => {
+    const root = await findProjectRoot();
+    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
+    const context = await resolveActiveTenantContext({
+      projectRoot: root || undefined,
+      publicApiUrl,
+      interactive: true,
+    });
+
+    const client = new PlatformAPIClient(publicApiUrl, context.activeTenant.id);
+    const response = await client.getStorageDoctor();
+    if (!response.ok) {
+      out.error(`Storage verification failed: ${response.status} ${response.statusText}`);
+      process.exit(1);
+    }
+
+    const payload = await response.json() as {
+      healthy: boolean;
+      checks: Array<{ objectType: string; backend: string; healthy: boolean; issues?: string[] }>;
+    };
+
+    if (options.format === 'json') {
+      out.json(payload);
+      return;
+    }
+
+    out[payload.healthy ? 'success' : 'warn'](
+      payload.healthy ? 'Tenant storage is healthy.' : 'Tenant storage needs attention.',
+    );
+    for (const check of payload.checks) {
+      const status = check.healthy ? chalk.green('healthy') : chalk.yellow('needs-attention');
+      const issues = check.issues?.length ? chalk.dim(` — ${check.issues.join('; ')}`) : '';
+      out.info(`${chalk.cyan(check.objectType)} [${check.backend}] ${status}${issues}`);
+    }
+  });
+
+tenantCommand.addCommand(tenantStorageCommand);
+
 // ─── eai tenant list ──────────────────────────────────────────────────────
 
 tenantCommand
