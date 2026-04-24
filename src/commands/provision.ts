@@ -163,3 +163,65 @@ Diagnostics:
     out.warn('The client secret has been written to .env.local and cannot be retrieved again.');
     out.warn('Do NOT commit .env.local to source control.');
   });
+
+// ─── eai provision storage ───────────────────────────────────────────────
+
+provisionCommand
+  .command('storage')
+  .description('Provision storage resources for published Object Types')
+  .option('--backend <backend>', 'Limit provisioning to a backend (postgresql|documentdb|blob|search)')
+  .option('--dry-run', 'Show the provision plan without creating resources', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .action(async (options) => {
+    const root = await findProjectRoot();
+    if (!root) {
+      exitWithError(ErrorCode.E001);
+    }
+
+    const publicApiUrl = await resolvePublicApiUrl(root);
+    let tenantId: string;
+
+    try {
+      const context = await resolveActiveTenantContext({ projectRoot: root, publicApiUrl, interactive: true });
+      tenantId = context.activeTenant.id;
+    } catch {
+      out.error('Failed to resolve active tenant.');
+      out.info(`Run ${chalk.cyan('eai login')} and ${chalk.cyan('eai tenant select')} first.`);
+      process.exit(1);
+    }
+
+    const client = new PlatformAPIClient(publicApiUrl, tenantId);
+    const response = await client.provisionStorage({
+      backend: options.backend,
+      dryRun: Boolean(options.dryRun),
+    });
+
+    if (!response.ok) {
+      out.error(`Storage provisioning failed: ${response.status} ${response.statusText}`);
+      process.exit(1);
+    }
+
+    const payload = await response.json() as {
+      tenantId: string;
+      dryRun: boolean;
+      results: Array<{
+        objectType: string;
+        backend: string;
+        status: string;
+        actions?: string[];
+      }>;
+    };
+
+    if (options.format === 'json') {
+      out.json(payload);
+      return;
+    }
+
+    out.success(`${payload.results.length} object type${payload.results.length === 1 ? '' : 's'} processed for storage provisioning`);
+    for (const result of payload.results) {
+      const actionSummary = result.actions && result.actions.length > 0
+        ? chalk.dim(` — ${result.actions.join(', ')}`)
+        : '';
+      out.info(`${chalk.cyan(result.objectType)} [${result.backend}] ${result.status}${actionSummary}`);
+    }
+  });

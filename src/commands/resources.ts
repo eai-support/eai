@@ -707,3 +707,85 @@ resourcesCommand
       process.exit(1);
     }
   });
+
+resourcesCommand
+  .command('sync-schema')
+  .description('Provision or reconcile storage resources from published Object Type metadata')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--backend <backend>', 'Limit to a backend (postgresql|documentdb|blob|search)')
+  .option('--dry-run', 'Show the reconcile plan without mutating storage', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+
+    const spinner = makeSpinner(options.format, 'Syncing storage schema...');
+    try {
+      const res = await ctx.client.syncStorageSchema({
+        backend: options.backend,
+        dryRun: Boolean(options.dryRun),
+      });
+      if (!res.ok) {
+        failCommand(spinner, `${res.status} ${res.statusText}`);
+        process.exit(1);
+      }
+
+      const payload = await res.json() as {
+        tenantId: string;
+        dryRun: boolean;
+        results: Array<{ objectType: string; backend: string; status: string; actions?: string[] }>;
+      };
+
+      if (options.format === 'json') {
+        out.json(payload);
+      } else {
+        succeedCommand(spinner, `${payload.results.length} storage binding${payload.results.length === 1 ? '' : 's'} processed`);
+        for (const result of payload.results) {
+          const actions = result.actions?.length ? chalk.dim(` — ${result.actions.join(', ')}`) : '';
+          out.info(`${chalk.cyan(result.objectType)} [${result.backend}] ${result.status}${actions}`);
+        }
+      }
+    } catch (err) {
+      failCommand(spinner, err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+resourcesCommand
+  .command('doctor')
+  .description('Inspect storage readiness for the active tenant')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+
+    const spinner = makeSpinner(options.format, 'Checking storage readiness...');
+    try {
+      const res = await ctx.client.getStorageDoctor();
+      if (!res.ok) {
+        failCommand(spinner, `${res.status} ${res.statusText}`);
+        process.exit(1);
+      }
+
+      const payload = await res.json() as {
+        tenantId: string;
+        healthy: boolean;
+        checks: Array<{ objectType: string; backend: string; healthy: boolean; issues?: string[] }>;
+      };
+
+      if (options.format === 'json') {
+        out.json(payload);
+      } else {
+        succeedCommand(spinner, payload.healthy ? 'Storage is healthy' : 'Storage requires attention');
+        for (const check of payload.checks) {
+          const status = check.healthy ? chalk.green('healthy') : chalk.yellow('needs-attention');
+          const issues = check.issues?.length ? chalk.dim(` — ${check.issues.join('; ')}`) : '';
+          out.info(`${chalk.cyan(check.objectType)} [${check.backend}] ${status}${issues}`);
+        }
+      }
+    } catch (err) {
+      failCommand(spinner, err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });

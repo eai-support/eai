@@ -345,6 +345,48 @@ export class PlatformAPIClient {
     });
   }
 
+  async getStorageStatus(): Promise<Response> {
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage`, {
+      method: 'GET',
+      headers: await this.headers(),
+    });
+  }
+
+  async provisionStorage(options?: {
+    backend?: string;
+    dryRun?: boolean;
+  }): Promise<Response> {
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage/provision`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({
+        backend: options?.backend,
+        dry_run: options?.dryRun ?? false,
+      }),
+    });
+  }
+
+  async syncStorageSchema(options?: {
+    backend?: string;
+    dryRun?: boolean;
+  }): Promise<Response> {
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage/sync-schema`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({
+        backend: options?.backend,
+        dry_run: options?.dryRun ?? false,
+      }),
+    });
+  }
+
+  async getStorageDoctor(): Promise<Response> {
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage/doctor`, {
+      method: 'GET',
+      headers: await this.headers(),
+    });
+  }
+
   async getHistory(objectType: string, id: string): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
     return fetch(
