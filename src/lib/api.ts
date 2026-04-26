@@ -40,6 +40,10 @@ export interface PlatformAPIRequestErrorOptions {
   operation: string;
   status: number;
   statusText: string;
+  serverMessage?: string;
+  serverCode?: string;
+  requestId?: string;
+  rawBody?: string;
 }
 
 function formatApiRequestErrorMessage(options: PlatformAPIRequestErrorOptions): string {
@@ -50,6 +54,10 @@ export class PlatformAPIRequestError extends Error {
   readonly operation: string;
   readonly status: number;
   readonly statusText: string;
+  readonly serverMessage?: string;
+  readonly serverCode?: string;
+  readonly requestId?: string;
+  readonly rawBody?: string;
 
   constructor(options: PlatformAPIRequestErrorOptions) {
     super(formatApiRequestErrorMessage(options));
@@ -57,6 +65,62 @@ export class PlatformAPIRequestError extends Error {
     this.operation = options.operation;
     this.status = options.status;
     this.statusText = options.statusText;
+    this.serverMessage = options.serverMessage;
+    this.serverCode = options.serverCode;
+    this.requestId = options.requestId;
+    this.rawBody = options.rawBody;
+  }
+}
+
+/**
+ * Best-effort extraction of server-provided diagnostic context from a failed
+ * Response. Tolerates non-JSON bodies and FastAPI/Pydantic error envelopes
+ * (``{detail: "..."}``, ``{detail: {message, code}}``, ``{errors: [...]}``).
+ *
+ * Always returns the raw text so ``--debug`` can show the full body, even
+ * when no message field could be parsed.
+ */
+export async function extractServerErrorContext(res: Response): Promise<{
+  serverMessage?: string;
+  serverCode?: string;
+  requestId?: string;
+  rawBody: string;
+}> {
+  const requestId = res.headers.get('x-request-id') ?? res.headers.get('x-correlation-id') ?? undefined;
+  const rawBody = await res.text().catch(() => '');
+  if (!rawBody) {
+    return { requestId, rawBody: '' };
+  }
+
+  try {
+    const parsed = JSON.parse(rawBody) as {
+      detail?: string | { message?: string; error?: string; code?: string };
+      message?: string;
+      error?: string;
+      code?: string;
+      errors?: { message?: string; code?: string }[];
+    };
+    let serverMessage: string | undefined;
+    let serverCode: string | undefined;
+
+    if (typeof parsed.detail === 'string') {
+      serverMessage = parsed.detail;
+    } else if (parsed.detail && typeof parsed.detail === 'object') {
+      serverMessage = parsed.detail.message ?? parsed.detail.error;
+      serverCode = parsed.detail.code;
+    }
+    if (!serverMessage) {
+      serverMessage = parsed.message ?? parsed.error;
+    }
+    if (!serverMessage && Array.isArray(parsed.errors) && parsed.errors[0]?.message) {
+      serverMessage = parsed.errors[0].message;
+      serverCode = serverCode ?? parsed.errors[0].code;
+    }
+    serverCode = serverCode ?? parsed.code;
+
+    return { serverMessage, serverCode, requestId, rawBody };
+  } catch {
+    return { requestId, rawBody };
   }
 }
 
@@ -752,10 +816,12 @@ export class PlatformAPIClient {
     });
 
     if (!res.ok) {
+      const ctx = await extractServerErrorContext(res);
       throw new PlatformAPIRequestError({
         operation: 'Entra app provisioning',
         status: res.status,
         statusText: res.statusText,
+        ...ctx,
       });
     }
 
