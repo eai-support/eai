@@ -15,6 +15,11 @@ import chalk from 'chalk';
 const require = createRequire(import.meta.url);
 const pkg = require('../package.json') as { version: string };
 
+if (process.argv.length === 3 && process.argv[2] === '--version') {
+  console.log(pkg.version);
+  process.exit(0);
+}
+
 // Commands
 import { initCommand } from './commands/init.js';
 import { devCommand } from './commands/dev.js';
@@ -41,7 +46,7 @@ const program = new Command();
 program
   .name('eai')
   .description('Enterprise AI Platform CLI — scaffold, seed, deploy, and manage vertical applications')
-  .version(pkg.version)
+  .version(pkg.version, '-V, --cli-version')
   .option('--simple', 'Plain text output without colors or symbols (for screen readers)')
   .option('--no-color', 'Disable colored output')
   .option('--color', 'Force colored output')

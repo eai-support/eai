@@ -215,9 +215,9 @@ describe('runContractAudit', () => {
           return HttpResponse.json({
             tenants: [
               {
-                id: 'tenant-1',
-                displayName: 'Tenant One',
-                slug: 'tenant-one',
+                id: 'tenant-override',
+                displayName: 'Tenant Override',
+                slug: 'tenant-override',
                 isTenantAdmin: true,
                 roles: ['tenant-admin'],
               },
@@ -225,7 +225,7 @@ describe('runContractAudit', () => {
           });
         }
 
-        if (body.endpoint === '/object-types' && body.params?.where && JSON.stringify(body.params.where).includes('tenant-override')) {
+        if (body.endpoint === '/object-types' && body.params?.['where[tenant][equals]'] === 'tenant-override') {
           return HttpResponse.json({
             docs: [{ id: 'ot-1', name: 'Customer', status: 'published', properties: [], linkTypes: [], actions: [] }],
           });

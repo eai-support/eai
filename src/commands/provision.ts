@@ -55,6 +55,28 @@ function handleProvisionError(err: unknown): never {
   process.exit(1);
 }
 
+async function formatProvisionResponseError(response: Response): Promise<string> {
+  const text = await response.text();
+  if (!text) {
+    return `Storage provisioning failed: ${response.status} ${response.statusText}`;
+  }
+
+  try {
+    const payload = JSON.parse(text) as {
+      detail?: { message?: string; error?: string } | string;
+      error?: string;
+      message?: string;
+    };
+    const detail = payload.detail;
+    const message = typeof detail === 'object'
+      ? detail.message || detail.error
+      : detail || payload.message || payload.error;
+    return `Storage provisioning failed: ${response.status} ${response.statusText}${message ? ` — ${message}` : ''}`;
+  } catch {
+    return `Storage provisioning failed: ${response.status} ${response.statusText} — ${text.slice(0, 300)}`;
+  }
+}
+
 export const provisionCommand = new Command('provision')
   .description('Provision platform resources for this vertical');
 
@@ -168,10 +190,13 @@ Diagnostics:
 
 provisionCommand
   .command('storage')
-  .description('Provision storage resources for published Object Types')
-  .option('--backend <backend>', 'Limit provisioning to a backend (postgresql|documentdb|blob|search)')
-  .option('--dry-run', 'Show the provision plan without creating resources', false)
+  .description('Provision ResourceAPI storage for the active tenant')
+  .option('--tenant-id <id>', 'Provision storage for a specific tenant')
+  .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
+  .option('--dry-run', 'Plan actions without applying changes', false)
+  .option('--rebuild-search', 'Request search projection rebuild after provisioning', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     const root = await findProjectRoot();
     if (!root) {
@@ -179,25 +204,36 @@ provisionCommand
     }
 
     const publicApiUrl = await resolvePublicApiUrl(root);
-    let tenantId: string;
+    let tenantId: string = options.tenantId;
 
     try {
-      const context = await resolveActiveTenantContext({ projectRoot: root, publicApiUrl, interactive: true });
+      const context = await resolveActiveTenantContext({
+        projectRoot: root,
+        publicApiUrl,
+        tenantId,
+        interactive: !tenantId,
+        forceRefresh: Boolean(tenantId),
+      });
       tenantId = context.activeTenant.id;
-    } catch {
-      out.error('Failed to resolve active tenant.');
-      out.info(`Run ${chalk.cyan('eai login')} and ${chalk.cyan('eai tenant select')} first.`);
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
 
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
+    const jsonOutput = options.json || options.format === 'json';
+    if (!jsonOutput) {
+      out.info(`${options.dryRun ? 'Planning' : 'Provisioning'} storage for tenant ${tenantId}...`);
+    }
+
     const response = await client.provisionStorage({
       backend: options.backend,
       dryRun: Boolean(options.dryRun),
+      rebuildSearch: Boolean(options.rebuildSearch),
     });
 
     if (!response.ok) {
-      out.error(`Storage provisioning failed: ${response.status} ${response.statusText}`);
+      out.error(await formatProvisionResponseError(response));
       process.exit(1);
     }
 
@@ -212,16 +248,16 @@ provisionCommand
       }>;
     };
 
-    if (options.format === 'json') {
+    if (jsonOutput) {
       out.json(payload);
       return;
     }
 
-    out.success(`${payload.results.length} object type${payload.results.length === 1 ? '' : 's'} processed for storage provisioning`);
+    out.success(options.dryRun ? 'Storage plan complete' : 'Storage provisioning complete');
     for (const result of payload.results) {
-      const actionSummary = result.actions && result.actions.length > 0
-        ? chalk.dim(` — ${result.actions.join(', ')}`)
-        : '';
-      out.info(`${chalk.cyan(result.objectType)} [${result.backend}] ${result.status}${actionSummary}`);
+      out.info(`${chalk.cyan(result.objectType)} ${chalk.dim(result.backend)} ${result.status}`);
+      for (const action of result.actions || []) {
+        out.dim(`  ${action}`);
+      }
     }
   });
