@@ -98,6 +98,29 @@ function succeedCommand(spinner: Ora | null, message: string): void {
   }
 }
 
+async function formatResponseError(res: Response): Promise<string> {
+  const text = await res.text();
+  if (!text) {
+    return `${res.status} ${res.statusText}`;
+  }
+
+  try {
+    const payload = JSON.parse(text) as {
+      error?: { message?: string } | string;
+      detail?: { message?: string } | string;
+      message?: string;
+    };
+    const message = typeof payload.error === 'object'
+      ? payload.error.message
+      : typeof payload.detail === 'object'
+        ? payload.detail.message
+        : payload.error || payload.detail || payload.message;
+    return `${res.status} ${res.statusText}${message ? ` — ${message}` : ''}`;
+  } catch {
+    return `${res.status} ${res.statusText} — ${text.slice(0, 300)}`;
+  }
+}
+
 export function matchPublishedType(
   requestedType: string,
   schemaTypes: SchemaTypeSummary[],
@@ -667,6 +690,247 @@ resourcesCommand
       failCommand(spinner, err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
+  });
+
+// ─── eai resources storage ────────────────────────────────────────────────
+
+const storageCommand = resourcesCommand
+  .command('storage')
+  .description('Storage provisioning status and diagnostics');
+
+storageCommand
+  .command('status')
+  .description('Show storage routing and provisioning status')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+
+    const spinner = makeSpinner(options.format, 'Fetching storage status...');
+    const res = await ctx.client.getResourceStorageStatus();
+    if (!res.ok) {
+      failCommand(spinner, await formatResponseError(res));
+      process.exit(1);
+    }
+
+    const payload = await res.json() as {
+      tenantId?: string;
+      objectTypes?: Array<{ objectType: string; backend: string; isReady?: boolean; issues?: string[] }>;
+    };
+    if (options.format === 'json') {
+      out.json(payload);
+      return;
+    }
+
+    succeedCommand(spinner, `Storage status for tenant ${payload.tenantId || ctx.tenantId}`);
+    for (const item of payload.objectTypes || []) {
+      const status = item.isReady ? chalk.green('ready') : chalk.yellow('not ready');
+      out.info(`${chalk.cyan(item.objectType)} ${chalk.dim(item.backend)} ${status}`);
+      for (const issue of item.issues || []) {
+        out.warn(`  ${issue}`);
+      }
+    }
+  });
+
+storageCommand
+  .command('doctor')
+  .description('Run storage diagnostics')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+
+    const spinner = makeSpinner(options.format, 'Running storage doctor...');
+    const res = await ctx.client.getResourceStorageDoctor();
+    if (!res.ok) {
+      failCommand(spinner, await formatResponseError(res));
+      process.exit(1);
+    }
+
+    const payload = await res.json() as {
+      healthy?: boolean;
+      checks?: Array<{ objectType: string; backend: string; healthy: boolean; issues?: string[] }>;
+    };
+    if (options.format === 'json') {
+      out.json(payload);
+      return;
+    }
+
+    if (payload.healthy) {
+      succeedCommand(spinner, 'Storage doctor passed');
+    } else {
+      failCommand(spinner, 'Storage doctor found issues');
+    }
+    for (const check of payload.checks || []) {
+      const state = check.healthy ? chalk.green('healthy') : chalk.red('unhealthy');
+      out.info(`${chalk.cyan(check.objectType)} ${chalk.dim(check.backend)} ${state}`);
+      for (const issue of check.issues || []) {
+        out.warn(`  ${issue}`);
+      }
+    }
+    if (!payload.healthy) {
+      process.exit(1);
+    }
+  });
+
+// ─── eai resources search <query> ─────────────────────────────────────────
+
+resourcesCommand
+  .command('search <query>')
+  .description('Search tenant resource projections')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--types <types>', 'Comma-separated object type names')
+  .option('--mode <mode>', 'Search mode: fulltext|hybrid|vector', 'hybrid')
+  .option('--hybrid', 'Use hybrid full-text + vector search', false)
+  .option('--vector', 'Use vector-only search', false)
+  .option('--fulltext', 'Use full-text-only search', false)
+  .option('--limit <n>', 'Max results', '10')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (query, options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+
+    const mode = options.vector ? 'vector' : options.fulltext ? 'fulltext' : options.hybrid ? 'hybrid' : options.mode;
+    const objectTypes = options.types
+      ? String(options.types).split(',').map((item) => item.trim()).filter(Boolean)
+      : undefined;
+    const spinner = makeSpinner(options.format, 'Searching resources...');
+    const res = await ctx.client.searchResources({
+      query,
+      objectTypes,
+      mode,
+      limit: parseInt(options.limit),
+      includePayload: true,
+    });
+
+    if (!res.ok) {
+      failCommand(spinner, await formatResponseError(res));
+      process.exit(1);
+    }
+
+    const payload = await res.json() as {
+      indexName?: string;
+      results?: Array<{ id: string; objectType: string; score?: number; content?: string }>;
+    };
+    if (options.format === 'json') {
+      out.json(payload);
+      return;
+    }
+
+    succeedCommand(spinner, `${payload.results?.length || 0} result(s) from ${payload.indexName || 'search'}`);
+    for (const hit of payload.results || []) {
+      out.info(`${chalk.cyan(hit.id)} ${chalk.dim(hit.objectType)} score=${hit.score ?? 'n/a'}`);
+      if (hit.content) {
+        out.dim(`  ${String(hit.content).slice(0, 160)}`);
+      }
+    }
+  });
+
+// ─── eai resources file ───────────────────────────────────────────────────
+
+const fileCommand = resourcesCommand
+  .command('file')
+  .description('Upload, download, and delete Blob-backed resource files');
+
+fileCommand
+  .command('upload <type> <id> <property> <path>')
+  .description('Upload a file to a resource file property')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (type, id, property, filePath, options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+
+    const spinner = makeSpinner(options.format, `Uploading ${filePath}...`);
+    const res = await ctx.client.uploadResourceFile(type, id, property, filePath);
+    if (!res.ok) {
+      failCommand(spinner, await formatResponseError(res));
+      process.exit(1);
+    }
+
+    const payload = await res.json() as {
+      filename?: string;
+      blobRef?: string;
+    };
+    if (options.format === 'json') {
+      out.json(payload);
+      return;
+    }
+
+    succeedCommand(spinner, `Uploaded ${payload.filename || filePath} to ${type}.${property}`);
+    if (payload.blobRef) {
+      out.info(`Blob: ${chalk.dim(payload.blobRef)}`);
+    }
+  });
+
+fileCommand
+  .command('get <type> <id> <property>')
+  .description('Download a resource file property')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--output <path>', 'Write to a specific file path')
+  .action(async (type, id, property, options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+
+    const spinner = makeSpinner('text', `Downloading ${type}.${property}...`);
+    const res = await ctx.client.downloadResourceFile(type, id, property);
+    if (!res.ok) {
+      failCommand(spinner, await formatResponseError(res));
+      process.exit(1);
+    }
+
+    const { writeFile } = await import('node:fs/promises');
+    const contentDisposition = res.headers.get('content-disposition') || '';
+    const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+    const outputPath = options.output || filenameMatch?.[1] || `${id}-${property}`;
+    await writeFile(outputPath, Buffer.from(await res.arrayBuffer()));
+    succeedCommand(spinner, `Downloaded to ${outputPath}`);
+  });
+
+fileCommand
+  .command('delete <type> <id> <property>')
+  .description('Delete a resource file property')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--force', 'Skip confirmation', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (type, id, property, options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+
+    if (!options.force) {
+      const inquirer = await import('inquirer');
+      const { confirm } = await inquirer.default.prompt([{
+        type: 'confirm',
+        name: 'confirm',
+        message: `Delete file ${type}.${property} on ${id}?`,
+        default: false,
+      }]);
+      if (!confirm) {
+        out.info('Cancelled.');
+        return;
+      }
+    }
+
+    const spinner = makeSpinner(options.format, `Deleting ${type}.${property} file...`);
+    const res = await ctx.client.deleteResourceFile(type, id, property);
+    if (!res.ok) {
+      failCommand(spinner, await formatResponseError(res));
+      process.exit(1);
+    }
+
+    const payload = await res.json();
+    if (options.format === 'json') {
+      out.json(payload);
+      return;
+    }
+
+    succeedCommand(spinner, `Deleted file on ${type}.${property}`);
   });
 
 // ─── eai resources schema ─────────────────────────────────────────────────

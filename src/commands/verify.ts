@@ -67,10 +67,20 @@ async function loadVerifyEnvironment(options?: { tenantId?: string }): Promise<V
 
   const envVars = await loadEnvFile(root);
   const env = { ...envVars, ...process.env } as Record<string, string>;
-  const publicApiUrl = await resolvePublicApiUrl(root);
+  let publicApiUrl = await resolvePublicApiUrl(root);
 
   let tenantId: string | undefined = options?.tenantId;
-  if (!tenantId) {
+  if (tenantId) {
+    const activeContext = await resolveActiveTenantContext({
+      projectRoot: root,
+      publicApiUrl,
+      tenantId,
+      interactive: false,
+      forceRefresh: true,
+    });
+    tenantId = activeContext.activeTenant.id;
+    publicApiUrl = activeContext.publicApiUrl;
+  } else {
     try {
       const activeContext = await resolveActiveTenantContext({
         projectRoot: root,
@@ -93,6 +103,29 @@ async function loadVerifyEnvironment(options?: { tenantId?: string }): Promise<V
       .map((key) => env[key])
       .find(Boolean),
   };
+}
+
+function extractTenantIdOption(options: { tenantId?: unknown }): string | undefined {
+  if (typeof options?.tenantId === 'string' && options.tenantId.trim()) {
+    return options.tenantId.trim();
+  }
+
+  const parentTenantId = verifyCommand.opts()?.tenantId;
+  if (typeof parentTenantId === 'string' && parentTenantId.trim()) {
+    return parentTenantId.trim();
+  }
+
+  const equalsArg = process.argv.find((arg) => arg.startsWith('--tenant-id='));
+  if (equalsArg) {
+    return equalsArg.slice('--tenant-id='.length).trim();
+  }
+
+  const index = process.argv.indexOf('--tenant-id');
+  if (index >= 0 && process.argv[index + 1]) {
+    return process.argv[index + 1].trim();
+  }
+
+  return undefined;
 }
 
 async function parseJsonBody(res: Response): Promise<unknown> {
@@ -910,7 +943,14 @@ Use 'eai verify' for a quick health check.
 Use 'eai verify calls' when you need to inspect the exact API contracts the CLI depends on.
   `)
   .action(async (options) => {
-    const { root, publicApiUrl, tenantId } = await loadVerifyEnvironment({ tenantId: options.tenantId });
+    let environment: VerifyEnvironment;
+    try {
+      environment = await loadVerifyEnvironment({ tenantId: extractTenantIdOption(options) });
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+    const { root, publicApiUrl, tenantId } = environment;
 
     out.heading('Platform Connectivity Checks');
     out.blank();
@@ -1015,6 +1055,91 @@ Use 'eai verify calls' when you need to inspect the exact API contracts the CLI 
   });
 
 verifyCommand
+  .command('storage')
+  .description('Verify ResourceAPI storage status and doctor contracts')
+  .option('--tenant-id <id>', 'Tenant ID to verify')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (options) => {
+    let context: VerifyEnvironment;
+    try {
+      context = await loadVerifyEnvironment({ tenantId: extractTenantIdOption(options) });
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+
+    const client = new PlatformAPIClient(context.publicApiUrl, context.tenantId || 'unknown');
+    const checks: Array<{
+      id: string;
+      status: 'passed' | 'failed';
+      details: string;
+      payload?: unknown;
+    }> = [];
+
+    const statusResponse = await client.getResourceStorageStatus();
+    if (statusResponse.ok) {
+      const payload = await statusResponse.json() as { objectTypes?: unknown[] };
+      checks.push({
+        id: 'storage-status',
+        status: 'passed',
+        details: `${payload.objectTypes?.length || 0} object type route(s) returned`,
+        payload,
+      });
+    } else {
+      checks.push({
+        id: 'storage-status',
+        status: 'failed',
+        details: `${statusResponse.status} ${statusResponse.statusText}`,
+      });
+    }
+
+    const doctorResponse = await client.getResourceStorageDoctor();
+    if (doctorResponse.ok) {
+      const payload = await doctorResponse.json() as { healthy?: boolean };
+      checks.push({
+        id: 'storage-doctor',
+        status: payload.healthy ? 'passed' : 'failed',
+        details: payload.healthy ? 'Storage doctor healthy' : 'Storage doctor reported issues',
+        payload,
+      });
+    } else {
+      checks.push({
+        id: 'storage-doctor',
+        status: 'failed',
+        details: `${doctorResponse.status} ${doctorResponse.statusText}`,
+      });
+    }
+
+    const failed = checks.filter((check) => check.status === 'failed').length;
+    const report = {
+      generatedAt: new Date().toISOString(),
+      publicApiUrl: context.publicApiUrl,
+      tenantId: context.tenantId,
+      checks,
+      summary: { passed: checks.length - failed, failed, skipped: 0 },
+    };
+
+    if (options.json || options.format === 'json') {
+      out.json(report);
+      return;
+    }
+
+    out.heading('Storage Verification');
+    for (const check of checks) {
+      if (check.status === 'passed') {
+        out.success(`${check.id}: ${check.details}`);
+      } else {
+        out.error(`${check.id}: ${check.details}`);
+      }
+    }
+
+    if (failed > 0) {
+      process.exit(1);
+    }
+  });
+
+verifyCommand
   .command('calls')
   .description('Audit platform-facing API call contracts used by the CLI')
   .option('--tenant-id <id>', 'Tenant ID to use for read-only resource and schema checks')
@@ -1033,17 +1158,23 @@ verifyCommand
       options.format = 'json';
     }
 
-    const report = await runContractAudit({
-      tenantId: options.tenantId,
-      resourceType: options.resourceType,
-      resourceId: options.resourceId,
-      workflowId: options.workflow,
-      stage: options.stage,
-      tenantRecordId: options.tenantRecord,
-      userEmail: options.userEmail,
-      includeChat: options.includeChat,
-      chatMessage: options.chatMessage,
-    });
+    let report: ContractAuditReport;
+    try {
+      report = await runContractAudit({
+        tenantId: extractTenantIdOption(options),
+        resourceType: options.resourceType,
+        resourceId: options.resourceId,
+        workflowId: options.workflow,
+        stage: options.stage,
+        tenantRecordId: options.tenantRecord,
+        userEmail: options.userEmail,
+        includeChat: options.includeChat,
+        chatMessage: options.chatMessage,
+      });
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
 
     if (options.format === 'json') {
       out.json(report);
