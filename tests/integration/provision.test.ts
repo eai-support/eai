@@ -144,6 +144,45 @@ describe('eai provision entra', () => {
     expect(content).toContain('NEXT_PUBLIC_APP_NAME=my-vertical');
   });
 
+  test('storage provisioning dogfoods the PublicAPI provision route', { timeout: 10000 }, async () => {
+    let requestBody: unknown;
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v3/provision/storage`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          tenantId: 'test-tenant-id',
+          dryRun: true,
+          results: [
+            {
+              objectType: 'Customer',
+              backend: 'documentdb',
+              status: 'planned',
+              actions: ['create_collection'],
+            },
+          ],
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync([
+      'storage',
+      '--backend',
+      'mongodb',
+      '--dry-run',
+      '--rebuild-search',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      backend: 'documentdb',
+      dry_run: true,
+      rebuild_search: true,
+    });
+  });
+
   test('default profile provisions through the prod PublicAPI when no local API URL is configured', { timeout: 10000 }, async () => {
     await clearTokens();
     await storeTokens({

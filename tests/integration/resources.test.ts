@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PlatformAPIClient } from '../../src/lib/api.js';
 import {
   buildMissingPublishedTypeMessage,
@@ -15,6 +18,7 @@ vi.mock('../../src/lib/auth.js', () => ({
 describe('resource type diagnostics', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   test('matches published type by slug-compatible name', () => {
@@ -148,5 +152,104 @@ describe('resource type diagnostics', () => {
         }),
       }),
     );
+  });
+
+  test('provisions storage through the PublicAPI storage route', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new PlatformAPIClient('https://test-api.example.com', 'tenant-1');
+    await client.provisionStorage({
+      backend: 'mongodb',
+      dryRun: true,
+      rebuildSearch: true,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://test-api.example.com/v3/provision/storage',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          tenant_id: 'tenant-1',
+          backend: 'documentdb',
+          dry_run: true,
+          rebuild_search: true,
+        }),
+      }),
+    );
+  });
+
+  test('builds storage status and doctor URLs', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new PlatformAPIClient('https://test-api.example.com', 'tenant-1');
+    await client.getResourceStorageStatus();
+    await client.getResourceStorageDoctor();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://test-api.example.com/v3/resources/tenant-1/storage',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://test-api.example.com/v3/resources/tenant-1/storage/doctor',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  test('builds hybrid search requests with slug-normalized object types', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new PlatformAPIClient('https://test-api.example.com', 'tenant-1');
+    await client.searchResources({
+      query: 'quarterly forecast',
+      objectTypes: ['CustomerProfile'],
+      mode: 'hybrid',
+      limit: 7,
+      includePayload: false,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://test-api.example.com/v3/resources/tenant-1/search',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          query: 'quarterly forecast',
+          objectTypes: ['customer-profile'],
+          mode: 'hybrid',
+          limit: 7,
+          includePayload: false,
+        }),
+      }),
+    );
+  });
+
+  test('uploads resource files as isolated Blob-backed file properties', async () => {
+    const tmp = await mkdtemp(join(tmpdir(), 'eai-cli-resource-file-'));
+    const filePath = join(tmp, 'source note.txt');
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await writeFile(filePath, 'file content');
+
+      const client = new PlatformAPIClient('https://test-api.example.com', 'tenant-1');
+      await client.uploadResourceFile('FileAsset', 'resource-1', 'attachment', filePath);
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://test-api.example.com/v3/resources/tenant-1/file-asset/resource-1/files/attachment?filename=source%20note.txt',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/octet-stream',
+          }),
+        }),
+      );
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
   });
 });
