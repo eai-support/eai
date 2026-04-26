@@ -735,7 +735,15 @@ export class PlatformAPIClient {
     verticalName: string;
     redirectUris: string[];
     idempotent?: boolean;
-  }): Promise<{ clientId: string; clientSecret: string | null; existing: boolean }> {
+  }): Promise<{
+    clientId: string;
+    clientSecret: string | null;
+    existing: boolean;
+    scopes: string[];
+    redirectUris: string[];
+    environment: string | null;
+    tenantId: string | null;
+  }> {
     const body = {
       tenant_id: request.tenantId,
       vertical_name: request.verticalName,
@@ -765,6 +773,12 @@ export class PlatformAPIClient {
       clientId?: string;
       clientSecret?: string | null;
       existing?: boolean;
+      scopes?: unknown;
+      redirect_uris?: unknown;
+      redirectUris?: unknown;
+      environment?: unknown;
+      tenant_id?: unknown;
+      tenantId?: unknown;
     };
     const clientId = data.clientId ?? data.client_id;
 
@@ -776,10 +790,19 @@ export class PlatformAPIClient {
       });
     }
 
+    const toStringArray = (value: unknown): string[] =>
+      Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim() !== '') : [];
+
     return {
       clientId,
       clientSecret: data.clientSecret ?? data.client_secret ?? null,
       existing: Boolean(data.existing),
+      scopes: toStringArray(data.scopes),
+      redirectUris: toStringArray(data.redirectUris ?? data.redirect_uris),
+      environment: typeof data.environment === 'string' ? data.environment : null,
+      tenantId: typeof (data.tenantId ?? data.tenant_id) === 'string'
+        ? (data.tenantId ?? data.tenant_id) as string
+        : null,
     };
   }
 }
