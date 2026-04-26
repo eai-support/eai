@@ -346,22 +346,41 @@ export class PlatformAPIClient {
   }
 
   async getStorageStatus(): Promise<Response> {
+    return this.getResourceStorageStatus();
+  }
+
+  async getResourceStorageStatus(): Promise<Response> {
     return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage`, {
       method: 'GET',
       headers: await this.headers(),
     });
   }
 
-  async provisionStorage(options?: {
+  async getStorageDoctor(): Promise<Response> {
+    return this.getResourceStorageDoctor();
+  }
+
+  async getResourceStorageDoctor(): Promise<Response> {
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage/doctor`, {
+      method: 'GET',
+      headers: await this.headers(),
+    });
+  }
+
+  async provisionStorage(options: {
     backend?: string;
     dryRun?: boolean;
+    rebuildSearch?: boolean;
   }): Promise<Response> {
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage/provision`, {
+    const backend = options.backend === 'mongodb' ? 'documentdb' : options.backend;
+    return fetch(`${this.baseUrl}/v3/provision/storage`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
-        backend: options?.backend,
-        dry_run: options?.dryRun ?? false,
+        tenant_id: this.tenantId,
+        backend: backend || 'all',
+        dry_run: Boolean(options.dryRun),
+        rebuild_search: Boolean(options.rebuildSearch),
       }),
     });
   }
@@ -380,9 +399,75 @@ export class PlatformAPIClient {
     });
   }
 
-  async getStorageDoctor(): Promise<Response> {
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage/doctor`, {
+  async searchResources(request: {
+    query: string;
+    objectTypes?: string[];
+    mode?: string;
+    limit?: number;
+    includePayload?: boolean;
+  }): Promise<Response> {
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/search`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({
+        query: request.query,
+        objectTypes: request.objectTypes?.map(toObjectTypeSlug),
+        mode: request.mode || 'hybrid',
+        limit: request.limit ?? 10,
+        includePayload: request.includePayload ?? true,
+      }),
+    });
+  }
+
+  async uploadResourceFile(
+    objectType: string,
+    id: string,
+    propertyName: string,
+    filePath: string,
+  ): Promise<Response> {
+    const { readFile } = await import('node:fs/promises');
+    const { basename } = await import('node:path');
+    const normalizedObjectType = toObjectTypeSlug(objectType);
+    const content = await readFile(filePath);
+    const token = await getAccessToken();
+    const h: Record<string, string> = {
+      'Content-Type': 'application/octet-stream',
+    };
+    if (token) {
+      h.Authorization = `Bearer ${token}`;
+    }
+
+    const filename = encodeURIComponent(basename(filePath));
+    return fetch(
+      `${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/${id}/files/${propertyName}?filename=${filename}`,
+      {
+        method: 'POST',
+        headers: h,
+        body: content,
+      },
+    );
+  }
+
+  async downloadResourceFile(
+    objectType: string,
+    id: string,
+    propertyName: string,
+  ): Promise<Response> {
+    const normalizedObjectType = toObjectTypeSlug(objectType);
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/${id}/files/${propertyName}`, {
       method: 'GET',
+      headers: await this.headers(),
+    });
+  }
+
+  async deleteResourceFile(
+    objectType: string,
+    id: string,
+    propertyName: string,
+  ): Promise<Response> {
+    const normalizedObjectType = toObjectTypeSlug(objectType);
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/${id}/files/${propertyName}`, {
+      method: 'DELETE',
       headers: await this.headers(),
     });
   }
