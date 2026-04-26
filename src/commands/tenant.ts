@@ -202,8 +202,9 @@ tenantCommand.addCommand(tenantStorageCommand);
 
 tenantCommand
   .command('list')
-  .description('List active tenants where the current user is a tenant admin')
+  .description('List tenants where the current user is a tenant-admin (default) or all roles with --all')
   .option('--parent <id>', 'Parent tenant ID')
+  .option('--all', 'Include tenants where the user holds non-admin roles (e.g. tenant-viewer)', false)
   .option('--debug', 'Show debug diagnostics for tenant lookup', false)
   .option('--raw-user', 'Print raw membership payload in debug mode', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -211,6 +212,7 @@ tenantCommand
   .addHelpText('after', `
 Examples:
   $ eai tenant list
+  $ eai tenant list --all              # include tenant-viewer / tenant-builder memberships
   $ eai tenant list --debug
   $ eai tenant list --debug --raw-user
   $ eai tenant list --format json | jq '.tenants[] | .name'
@@ -266,8 +268,15 @@ Examples:
 
       const tenantEntries = normalizeTenantEntries(payload);
       debug('Tenant entries before filtering', tenantEntries.length);
-      const tenants = filterTenantAdminEntries(tenantEntries);
-      debug('Tenant entries after tenant-admin filtering', tenants.length);
+      const tenants = options.all
+        ? tenantEntries.filter((entry) => entry.tenant?.isActive !== false)
+        : filterTenantAdminEntries(tenantEntries);
+      debug(
+        options.all
+          ? 'Tenant entries (all roles, active only)'
+          : 'Tenant entries after tenant-admin filtering',
+        tenants.length,
+      );
 
       // Filter by parent if requested
       const filtered = options.parent
@@ -287,7 +296,9 @@ Examples:
         return;
       }
 
-      const countLabel = `${filtered.length} tenant-admin membership${filtered.length !== 1 ? 's' : ''}`;
+      const countLabel = options.all
+        ? `${filtered.length} membership${filtered.length !== 1 ? 's' : ''}`
+        : `${filtered.length} tenant-admin membership${filtered.length !== 1 ? 's' : ''}`;
       spinner!.succeed(countLabel);
 
       if (filtered.length === 0) {
