@@ -139,7 +139,15 @@ Diagnostics:
 
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
 
-    let result: { clientId: string; clientSecret: string | null; existing: boolean };
+    let result: {
+      clientId: string;
+      clientSecret: string | null;
+      existing: boolean;
+      scopes: string[];
+      redirectUris: string[];
+      environment: string | null;
+      tenantId: string | null;
+    };
     try {
       result = await client.provisionEntraApp({
         tenantId,
@@ -153,6 +161,25 @@ Diagnostics:
       handleProvisionError(err);
     }
 
+    // Build env-var patches that derive from the platform response so the
+    // CLI persists scopes / redirect URIs / environment / tenant id without
+    // requiring manual portal clicks. Older PublicAPI versions return empty
+    // arrays; in that case we leave the keys untouched rather than writing
+    // empty strings.
+    const optionalEnv: Record<string, string> = {};
+    if (result.scopes.length > 0) {
+      optionalEnv.ENTRA_SCOPES = result.scopes.join(' ');
+    }
+    if (result.redirectUris.length > 0) {
+      optionalEnv.ENTRA_REDIRECT_URIS = result.redirectUris.join(',');
+    }
+    if (result.environment) {
+      optionalEnv.ENTRA_ENVIRONMENT = result.environment;
+    }
+    if (result.tenantId) {
+      optionalEnv.EAI_TENANT_ID = result.tenantId;
+    }
+
     if (result.existing && !result.clientSecret) {
       out.info(`App registration already exists for ${chalk.cyan(verticalName)}.`);
       if (env.ENTRA_CLIENT_SECRET) {
@@ -161,9 +188,13 @@ Diagnostics:
         out.warn('No new ENTRA_CLIENT_SECRET was returned for the existing registration.');
         out.warn('Set ENTRA_CLIENT_SECRET in .env.local manually if it is missing locally.');
       }
-      // Still write clientId in case it was missing
-      await patchEnvFile(root, { ENTRA_CLIENT_ID: result.clientId });
+      await patchEnvFile(root, { ENTRA_CLIENT_ID: result.clientId, ...optionalEnv });
       out.success(`ENTRA_CLIENT_ID confirmed: ${chalk.dim(result.clientId)}`);
+      if (Object.keys(optionalEnv).length > 0) {
+        out.info(`Refreshed env vars from platform response: ${Object.keys(optionalEnv).join(', ')}`);
+      } else {
+        out.warn('Platform response did not include scopes/redirect URIs — set ENTRA_SCOPES manually.');
+      }
       return;
     }
 
@@ -175,15 +206,33 @@ Diagnostics:
     await patchEnvFile(root, {
       ENTRA_CLIENT_ID: result.clientId,
       ENTRA_CLIENT_SECRET: result.clientSecret,
+      ...optionalEnv,
     });
 
     out.success(`Entra app registration created for ${chalk.cyan(verticalName)}`);
-    out.table([
+    const tableRows: Array<[string, string]> = [
       ['Client ID', chalk.dim(result.clientId)],
       ['Client Secret', chalk.dim('[written to .env.local]')],
-    ]);
+    ];
+    if (optionalEnv.ENTRA_SCOPES) {
+      tableRows.push(['Scopes', chalk.dim(optionalEnv.ENTRA_SCOPES)]);
+    }
+    if (optionalEnv.ENTRA_REDIRECT_URIS) {
+      tableRows.push(['Redirect URIs', chalk.dim(optionalEnv.ENTRA_REDIRECT_URIS)]);
+    }
+    if (optionalEnv.ENTRA_ENVIRONMENT) {
+      tableRows.push(['Environment', chalk.dim(optionalEnv.ENTRA_ENVIRONMENT)]);
+    }
+    out.table(tableRows);
     out.warn('The client secret has been written to .env.local and cannot be retrieved again.');
     out.warn('Do NOT commit .env.local to source control.');
+
+    if (!optionalEnv.ENTRA_SCOPES) {
+      out.warn('Platform response did not include scopes — set ENTRA_SCOPES manually.');
+    }
+    if (!optionalEnv.ENTRA_REDIRECT_URIS) {
+      out.warn('Platform response did not include redirect URIs — set ENTRA_REDIRECT_URIS manually.');
+    }
   });
 
 // ─── eai provision storage ───────────────────────────────────────────────
