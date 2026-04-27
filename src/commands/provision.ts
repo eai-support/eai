@@ -208,11 +208,17 @@ Diagnostics:
       environment: string | null;
       tenantId: string | null;
     };
+    // Respect APP_BASE_PATH from the vertical's .env.local so verticals deployed
+    // under a subpath (e.g. /van) get a redirect URI Auth.js can actually match.
+    // Without this, Next.js basePath-aware verticals 404 on the OAuth callback.
+    const basePath = (env.APP_BASE_PATH ?? '').replace(/\/+$/, '');
+    const localCallback = `http://localhost:3000${basePath}/api/auth/callback/microsoft-entra-id`;
+
     try {
       result = await client.provisionEntraApp({
         tenantId,
         verticalName,
-        redirectUris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+        redirectUris: [localCallback],
         // The platform route is intentionally idempotent: it creates on first run and
         // returns the existing app ID on later runs without attempting secret rotation.
         idempotent: true,
