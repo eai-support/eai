@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import { PlatformAPIClient, PlatformAPIRequestError } from '../lib/api.js';
+import { loadTokens } from '../lib/auth.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
@@ -239,6 +240,18 @@ Diagnostics:
       optionalEnv.EAI_TENANT_ID = result.tenantId;
     }
 
+    // Persist the Entra directory (authority) tenant id + name from the
+    // authenticated session so Auth.js can construct the issuer URL without a
+    // follow-up `eai env pull`. These come from the login token, not the
+    // platform provision response.
+    const tokens = await loadTokens();
+    if (tokens?.tenantId) {
+      optionalEnv.ENTRA_TENANT_ID = tokens.tenantId;
+    }
+    if (tokens?.tenantName) {
+      optionalEnv.ENTRA_TENANT_NAME = tokens.tenantName;
+    }
+
     if (result.existing && !result.clientSecret) {
       out.info(`App registration already exists for ${chalk.cyan(verticalName)}.`);
       if (env.ENTRA_CLIENT_SECRET) {
@@ -281,6 +294,12 @@ Diagnostics:
     }
     if (optionalEnv.ENTRA_ENVIRONMENT) {
       tableRows.push(['Environment', chalk.dim(optionalEnv.ENTRA_ENVIRONMENT)]);
+    }
+    if (optionalEnv.ENTRA_TENANT_ID) {
+      tableRows.push(['Directory Tenant ID', chalk.dim(optionalEnv.ENTRA_TENANT_ID)]);
+    }
+    if (optionalEnv.ENTRA_TENANT_NAME) {
+      tableRows.push(['Directory Tenant', chalk.dim(optionalEnv.ENTRA_TENANT_NAME)]);
     }
     out.table(tableRows);
     out.warn('The client secret has been written to .env.local and cannot be retrieved again.');
