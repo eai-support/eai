@@ -6,17 +6,49 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
-import { PlatformAPIClient } from '../lib/api.js';
+import { PlatformAPIClient, PlatformAPIRequestError } from '../lib/api.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 
-function getProvisionStatus(err: unknown): number | undefined {
-  if (typeof err !== 'object' || err === null || !('status' in err)) {
-    return undefined;
-  }
+interface ErrorContext {
+  status?: number;
+  serverMessage?: string;
+  serverCode?: string;
+  requestId?: string;
+  rawBody?: string;
+}
 
-  const status = (err as { status?: unknown }).status;
-  return typeof status === 'number' ? status : undefined;
+function readErrorContext(err: unknown): ErrorContext {
+  if (err instanceof PlatformAPIRequestError) {
+    return {
+      status: err.status,
+      serverMessage: err.serverMessage,
+      serverCode: err.serverCode,
+      requestId: err.requestId,
+      rawBody: err.rawBody,
+    };
+  }
+  return {};
+}
+
+interface DiagnosticsContext {
+  tenantSlug?: string;
+  tenantId?: string;
+  userOid?: string;
+  debug: boolean;
+}
+
+function printServerDetail(ctx: ErrorContext, diag: DiagnosticsContext): void {
+  if (ctx.serverMessage) {
+    out.info(`Server: ${ctx.serverMessage}`);
+  }
+  if (ctx.requestId) {
+    out.info(`Request ID: ${ctx.requestId}`);
+  }
+  if (diag.debug && ctx.rawBody) {
+    out.info('Raw response body:');
+    out.info(ctx.rawBody);
+  }
 }
 
 function printProvisionFallback(reference: string): void {
@@ -26,31 +58,50 @@ function printProvisionFallback(reference: string): void {
   out.info('Manual fallback: set ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET in .env.local.');
 }
 
-function handleProvisionError(err: unknown): never {
-  const status = getProvisionStatus(err);
+function tenantLabel(diag: DiagnosticsContext): string {
+  if (diag.tenantSlug && diag.tenantId) {
+    return `${chalk.cyan(diag.tenantSlug)} (${chalk.dim(diag.tenantId)})`;
+  }
+  return chalk.cyan(diag.tenantSlug ?? diag.tenantId ?? 'unknown');
+}
+
+function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
+  const ctx = readErrorContext(err);
+  const status = ctx.status;
 
   if (status === 404) {
     out.error('Entra provisioning is not available for this tenant or platform instance.');
+    printServerDetail(ctx, diag);
     printProvisionFallback('EAI-PROVISION-UNAVAILABLE');
     process.exit(1);
   }
   if (status === 501) {
     out.error('Entra provisioning is not available on this platform instance.');
+    printServerDetail(ctx, diag);
     printProvisionFallback('EAI-PROVISION-UNAVAILABLE');
     process.exit(1);
   }
   if (status === 403) {
-    out.error('Permission denied. You must be a tenant-admin to provision an Entra app registration.');
+    out.error(`Permission denied for tenant ${tenantLabel(diag)}.`);
+    printServerDetail(ctx, diag);
+    out.info('Confirm role with: eai whoami --verbose && eai tenant list');
+    if (diag.userOid) {
+      out.info(
+        `Platform team can verify membership at /api/custom-users/${diag.userOid}/tenant-memberships`,
+      );
+    }
     out.info('Reference: EAI-PROVISION-FORBIDDEN');
     process.exit(1);
   }
   if (status === 409) {
     out.error('The maximum number of app registrations for this tenant has been reached.');
+    printServerDetail(ctx, diag);
     out.info('Reference: EAI-PROVISION-LIMIT');
     out.info('Contact your platform administrator.');
     process.exit(1);
   }
   out.error('Entra provisioning failed.');
+  printServerDetail(ctx, diag);
   printProvisionFallback('EAI-PROVISION-FAILED');
   process.exit(1);
 }
@@ -86,6 +137,7 @@ provisionCommand
   .command('entra')
   .description('Create an Entra app registration for end-user auth (Auth.js)')
   .option('--force', 'Re-check the remote app registration even if ENTRA_CLIENT_ID already exists locally', false)
+  .option('--debug', 'Print full server response body on failure (diagnostic only — may contain raw error context)', false)
   .addHelpText('after', `
 Examples:
   $ eai provision entra
@@ -125,15 +177,22 @@ Diagnostics:
 
     const publicApiUrl = await resolvePublicApiUrl(root);
     let tenantId: string;
+    let tenantSlug: string | undefined;
+    let userOid: string | undefined;
 
     try {
       const context = await resolveActiveTenantContext({ projectRoot: root, publicApiUrl, interactive: true });
       tenantId = context.activeTenant.id;
+      tenantSlug = (context.activeTenant as { slug?: string }).slug;
+      userOid = (context as { user?: { oid?: string; id?: string } }).user?.oid
+        ?? (context as { user?: { id?: string } }).user?.id;
     } catch {
       out.error('Failed to resolve active tenant.');
       out.info(`Run ${chalk.cyan('eai login')} and ${chalk.cyan('eai tenant select')} first.`);
       process.exit(1);
     }
+
+    const diag: DiagnosticsContext = { tenantSlug, tenantId, userOid, debug: Boolean(options.debug) };
 
     out.info(`Provisioning Entra app registration for ${chalk.cyan(verticalName)}...`);
 
@@ -158,7 +217,7 @@ Diagnostics:
         idempotent: true,
       });
     } catch (err) {
-      handleProvisionError(err);
+      handleProvisionError(err, diag);
     }
 
     // Build env-var patches that derive from the platform response so the
