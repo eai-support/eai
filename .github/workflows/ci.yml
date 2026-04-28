@@ -16,8 +16,29 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
+      # Windows (NTFS) cannot materialize files whose names contain `:`.
+      # The Gofer resource bundle ships namespaced files like
+      # `resources/gofer/claude-commands/gofer:plan.md`, which causes
+      # `actions/checkout` to abort with `invalid path` on windows-latest.
+      # These paths are not exercised by the CLI build/lint/typecheck/test,
+      # so we skip them via sparse-checkout on Windows only.
       - name: Checkout repository
+        if: runner.os != 'Windows'
         uses: actions/checkout@v6
+
+      - name: Checkout repository (Windows — skip NTFS-illegal paths)
+        if: runner.os == 'Windows'
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !resources/gofer/claude-commands/gofer:*
+            !resources/gofer/copilot-prompts/gofer:*
+            !gofer/extension/resources/claude-commands/gofer:*
+            !gofer/extension/resources/copilot-prompts/gofer:*
+            !gofer/.agents/skills/gofer:*
+            !gofer/.github/prompts/gofer:*
+          sparse-checkout-cone-mode: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
