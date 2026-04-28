@@ -1,7 +1,6 @@
 ---
 name: 6a_gofer_engineering_review
-description:
-  Backwards-compat stub — engineering review is now Phase C of /6_gofer_validate
+description: Backwards-compat stub — engineering review is now Phase C of /6_gofer_validate
 agent: copilot-workspace
 tools:
   - Read
@@ -11,11 +10,12 @@ tools:
   - WebSearch
 argument-hint: feature-name-or-description
 gofer:
-  workflowProfile: standard
+  workflowProfile: enterpriseai
   canonicalSource: .claude/commands/6a_gofer_engineering_review.md
   canonicalChecksum: a3b6ac7813e3420dba49d75a6f69bc644216b208a591253a8cee32d937df3db6
   metadataSource: scripts/generate-commands.ts
 ---
+
 
 # Gofer Engineering Review (Back-Compat Stub)
 

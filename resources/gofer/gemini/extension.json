@@ -1,0 +1,6 @@
+{
+  "name": "gofer",
+  "version": "1.0.0",
+  "description": "Gofer pipeline as Gemini CLI extension",
+  "commands": ".gemini/commands/gofer/"
+}

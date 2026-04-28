@@ -16,6 +16,7 @@ gofer:
   metadataSource: scripts/generate-commands.ts
 ---
 
+
 # Gofer Orchestrator
 
 You are the Gofer orchestrator. Your job is to understand the user's business
@@ -716,14 +717,13 @@ Log orchestrator routing:
 .specify/scripts/bash/log-stage.sh 0_orchestrator --route [command] --feature [name]
 ```
 
+
 ## Pipeline Continuation
 
 This completes the 0_business_scenario stage. To continue the Gofer pipeline:
 
 **Next Command:** `#0a_problem_validation`
 
-The next stage will read the artifacts from this stage and continue the workflow
-automatically.
+The next stage will read the artifacts from this stage and continue the workflow automatically.
 
-**Note:** Copilot Chat supports context preservation. Your conversation history
-will be maintained as you progress through pipeline stages.
+**Note:** Copilot Chat supports context preservation. Your conversation history will be maintained as you progress through pipeline stages.

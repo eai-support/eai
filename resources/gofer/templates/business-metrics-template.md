@@ -28,9 +28,13 @@ features-analyzed: '{{N}}'
 
 ### Velocity Chart
 
-```
-Features/Month: [▓▓▓▓▓▓▓▓░░] 8/10 target
-Cycle Time:     [▓▓▓▓▓▓░░░░] 6 days avg
+```mermaid
+xychart-beta
+    title "ROI / Payback Projection"
+    x-axis ["Q1", "Q2", "Q3", "Q4", "Y2-Q1", "Y2-Q2"]
+    y-axis "Cumulative Value ({{UNIT}})" 0 --> {{Y_MAX}}
+    bar [{{COSTS_BY_QUARTER}}]
+    line [{{VALUE_BY_QUARTER}}]
 ```
 
 ---

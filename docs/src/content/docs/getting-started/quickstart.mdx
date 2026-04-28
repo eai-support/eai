@@ -48,7 +48,7 @@ This guide walks you through the complete workflow of creating a vertical applic
    ✔ Created Object Types scaffold
    ✔ Created deploy-demo.yml
    ✔ Generated CLAUDE.md
-   ✔ Installed Gofer assets (16 commands, 37 agents, 16 skills)
+   ✔ Installed Gofer assets (19 commands, 42 agents, 11 skills)
    ✔ Initialized git repository
 
    ✔ Created My Vertical at /Users/you/my-vertical
@@ -66,7 +66,7 @@ This guide walks you through the complete workflow of creating a vertical applic
     10. eai dev — start local development
    ```
 
-   The generated repo includes Gofer commands, agents, scripts, hooks, and skills for Claude CLI, Codex CLI, Gemini CLI, and GitHub Copilot. Use `--no-gofer` only when you need a bare scaffold.
+   The generated repo includes Gofer command sources, agents, scripts, hooks, Codex skills, Gemini commands, and GitHub Copilot prompts/skills. Use `--no-gofer` only when you need a bare scaffold.
 
 2. **Install dependencies**
 
@@ -247,12 +247,13 @@ This guide walks you through the complete workflow of creating a vertical applic
 
 `eai init` created the application scaffold and installed the repo-local Gofer pipeline:
 
-- `.specify/` contains workflow scripts, templates, hooks, logs, and generated feature specs.
+- `.specify/` contains workflow commands, scripts, templates, hooks, logs, and generated feature specs.
 - `.claude/commands` and `.claude/agents` power Claude CLI workflows.
-- `.system/skills` and `.agents/skills` support Codex and Gemini CLI skill discovery.
+- `.system/skills/gofer` and `.agents/skills/gofer` support Codex CLI skill discovery.
+- `.gemini/commands/gofer` and `.gemini/extension.json` support Gemini CLI command discovery.
 - `.github/prompts`, `.github/instructions`, and `.github/skills` support GitHub Copilot.
 
-Start the Gofer workflow from the generated repo with `/0_business_scenario` in Claude CLI, `$0_business_scenario` in Codex CLI, or `gemini skills list --all` in Gemini CLI.
+Start the Gofer workflow from the generated repo with `/0_business_scenario` in Claude CLI, `$gofer/1_gofer_research` in Codex CLI, or `/gofer:1_gofer_research` in Gemini CLI.
 
 Here is a summary of what each step accomplished:
 

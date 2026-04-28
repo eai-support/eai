@@ -1,0 +1,2 @@
+description = "Create a detailed technical implementation plan with architecture, data model, and contracts."
+prompt = "{{include: ../../../.specify/commands/3_gofer_plan.md}}"

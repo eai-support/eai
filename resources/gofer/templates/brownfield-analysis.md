@@ -2,18 +2,18 @@
 
 ## Constraints & Limitations
 
-| Constraint Type   | Description | Impact on Implementation |
-| ----------------- | ----------- | ------------------------ |
-| Framework         |             |                          |
-| Database          |             |                          |
-| API Compatibility |             |                          |
-| Performance       |             |                          |
+| Constraint Type | Description | Impact on Implementation |
+|-----------------|-------------|--------------------------|
+| Framework | | |
+| Database | | |
+| API Compatibility | | |
+| Performance | | |
 
 ## Technical Debt to Avoid
 
 | Pattern | Found In | Why Avoid | Use Instead |
-| ------- | -------- | --------- | ----------- |
-|         |          |           |             |
+|---------|----------|-----------|-------------|
+| | | | |
 
 ## Areas Requiring Extra Caution
 
@@ -23,8 +23,8 @@
 ## Integration Requirements
 
 | Existing Service | Integration Method | Notes |
-| ---------------- | ------------------ | ----- |
-|                  |                    |       |
+|------------------|-------------------|-------|
+| | | |
 
 ## Downstream Dependencies
 

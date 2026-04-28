@@ -1,0 +1,321 @@
+```mermaid
+classDiagram
+    class Container {
+        <<Singleton>>
+        +registerSingleton(service)
+        +resolve(service)
+        +clearInstances()
+    }
+
+    %% Core Infrastructure Services
+    class Logger {
+        <<Injectable Singleton>>
+        +error(context, error, metadata)
+        +warn(context, message, metadata)
+        +info(context, message, metadata)
+        +debug(context, message, metadata)
+    }
+
+    class StateManager {
+        <<Injectable Singleton>>
+        -logger: Logger
+        +getState()
+        +setState(state)
+        +updateState(partial)
+        +resetState()
+    }
+
+    class DisposalService {
+        <<Injectable Singleton>>
+        -logger: Logger
+        +dispose(resources, workspacePath)
+        -disposeResource(resource)
+    }
+
+    %% Extension Services (Phase 3)
+    class EventHandlers {
+        <<Injectable Singleton>>
+        -logger: Logger
+        +registerHandlers(context)
+        -onWorkspaceFoldersChanged()
+        -onTextEditorChanged()
+        -onTextDocumentSaved()
+    }
+
+    class InitializationService {
+        <<Injectable Singleton>>
+        -logger: Logger
+        +initializeForWorkspace(context)
+        -setupMemoryManager()
+        -setupProgressProvider()
+        -setupBranchSpecManager()
+    }
+
+    class CommandRegistry {
+        <<Injectable Singleton>>
+        -logger: Logger
+        +registerCommands(context)
+        -registerMemoryCommands()
+        -registerSpecCommands()
+        -registerCouncilCommands()
+    }
+
+    %% Migration Services (Phase 4)
+    class VersionDetector {
+        <<Injectable Singleton>>
+        -logger: Logger
+        +detectFormat(workspacePath)
+        +getVersionInfo(workspacePath)
+        +compareVersions(a, b)
+        +exists(workspacePath)
+    }
+
+    class UpgradeService {
+        <<Injectable Singleton>>
+        -logger: Logger
+        -versionDetector: VersionDetector
+        +upgrade(workspacePath, resourceOps, options)
+        +updateGoferTemplates(workspacePath, resourceOps)
+        +getUpgradeRecommendation(workspacePath)
+    }
+
+    class ResourceSyncer {
+        <<Injectable Singleton>>
+        -logger: Logger
+        -workspacePath: string
+        +setWorkspacePath(path)
+        +installGoferCLI()
+        +setupClaudeCommands()
+        +setupClaudeAgents()
+        +createBashScripts()
+        +migrateJsonSpecs()
+    }
+
+    class PathMigrator {
+        <<Injectable Singleton>>
+        -logger: Logger
+        -workspacePath: string
+        +setWorkspacePath(path)
+        +migratePaths()
+        +verifyMigration()
+        +rollbackMigration()
+    }
+
+    %% Future Services (Phase 2 - Pending)
+    class SpecCache {
+        <<Injectable Singleton - Planned>>
+        -logger: Logger
+        +get(key)
+        +set(key, value)
+        -evictLRU()
+    }
+
+    class MemoryCache {
+        <<Injectable Singleton - Planned>>
+        -logger: Logger
+        +get(key)
+        +set(key, value)
+        -evictByTTL()
+    }
+
+    %% Dependencies
+    Container ..> Logger : resolves
+    Container ..> StateManager : resolves
+    Container ..> DisposalService : resolves
+    Container ..> EventHandlers : resolves
+    Container ..> InitializationService : resolves
+    Container ..> CommandRegistry : resolves
+    Container ..> VersionDetector : resolves
+    Container ..> UpgradeService : resolves
+    Container ..> ResourceSyncer : resolves
+    Container ..> PathMigrator : resolves
+
+    StateManager --> Logger : depends on
+    DisposalService --> Logger : depends on
+    EventHandlers --> Logger : depends on
+    InitializationService --> Logger : depends on
+    CommandRegistry --> Logger : depends on
+
+    VersionDetector --> Logger : depends on
+    UpgradeService --> Logger : depends on
+    UpgradeService --> VersionDetector : depends on
+    ResourceSyncer --> Logger : depends on
+    PathMigrator --> Logger : depends on
+
+    SpecCache -.-> Logger : will depend on
+    MemoryCache -.-> Logger : will depend on
+
+    note for Container "TSyringe container instance\nManages all service lifecycles\nSingletons cached after first resolve"
+
+    note for Logger "No dependencies\nFirst service registered\nUsed by all other services"
+
+    note for VersionDetector "Migration service\nPhase 4 - T026"
+
+    note for UpgradeService "Migration orchestration\nPhase 4 - T027"
+
+    note for ResourceSyncer "Resource synchronization\nPhase 4 - T028\nImplements IResourceOperations"
+
+    note for PathMigrator "Path migration\nPhase 4 - T029"
+```
+
+# DI Container Diagram
+
+This diagram shows all injectable services registered in the TSyringe DI
+container and their dependency relationships.
+
+## Service Scopes
+
+All services are registered as **Singletons** using
+`container.registerSingleton()`:
+
+- ✅ **Singleton**: One instance per container (shared across extension)
+- ❌ **Transient**: Not used (each resolve creates new instance)
+
+## Dependency Hierarchy
+
+### Layer 1: Foundation (No Dependencies)
+
+- **Logger**: Foundation service with no dependencies
+
+### Layer 2: Core Infrastructure (Depends on Logger)
+
+- **StateManager**: Global state management
+- **DisposalService**: Resource cleanup coordination
+
+### Layer 3: Extension Services (Phase 3 - Depends on Logger)
+
+- **EventHandlers**: Workspace event listeners
+- **InitializationService**: Workspace initialization
+- **CommandRegistry**: Command registration
+
+### Layer 4: Migration Services (Phase 4 - Depends on Logger, VersionDetector)
+
+- **VersionDetector**: Format detection
+- **UpgradeService**: Upgrade orchestration (also depends on VersionDetector)
+- **ResourceSyncer**: File/resource operations
+- **PathMigrator**: Path reference migration
+
+### Layer 5: Cache Services (Planned - Depends on Logger)
+
+- **SpecCache**: Spec file caching (Phase 2)
+- **MemoryCache**: Memory indexing cache (Phase 2)
+
+## Registration Order
+
+Services are registered in `extension/src/di/container.ts`:
+
+```typescript
+export function registerServices(): void {
+  // Phase 1: Core infrastructure services
+  container.registerSingleton(Logger);
+
+  // Phase 3: Extension.ts extracted services (T020-T025)
+  container.registerSingleton(DisposalService);
+  container.registerSingleton(EventHandlers);
+  container.registerSingleton(InitializationService);
+  container.registerSingleton(CommandRegistry);
+  container.registerSingleton(StateManager);
+
+  // Phase 4: GoferMigrator.ts extracted services (T026-T030)
+  container.registerSingleton(VersionDetector);
+  container.registerSingleton(UpgradeService);
+  container.registerSingleton(ResourceSyncer);
+  container.registerSingleton(PathMigrator);
+}
+```
+
+Order doesn't matter for registration (dependency resolution is lazy), but
+ordered logically for readability.
+
+## Resolution Examples
+
+### Simple Resolution (No Dependencies)
+
+```typescript
+const logger = container.resolve(Logger);
+logger.info('Context', 'Message');
+```
+
+### Dependency Injection (With Dependencies)
+
+```typescript
+@injectable()
+class UpgradeService {
+  constructor(
+    private readonly logger: Logger,
+    private readonly versionDetector: VersionDetector
+  ) {}
+}
+
+// Container automatically injects dependencies
+const upgradeService = container.resolve(UpgradeService);
+```
+
+### Manual Composition (Facade Pattern)
+
+```typescript
+class GoferMigrator {
+  constructor(workspacePath: string) {
+    const container = getContainer();
+    this.logger = container.resolve(Logger);
+    this.versionDetector = container.resolve(VersionDetector);
+    this.upgradeService = container.resolve(UpgradeService);
+    this.resourceSyncer = container.resolve(ResourceSyncer);
+    this.pathMigrator = container.resolve(PathMigrator);
+  }
+}
+```
+
+## Testing Support
+
+### Mock Injection
+
+```typescript
+// In test setup
+container.register(Logger, { useValue: mockLogger });
+
+// Test code resolves mock
+const service = container.resolve(UpgradeService);
+// service.logger === mockLogger
+```
+
+### Container Reset
+
+```typescript
+// Between tests
+afterEach(() => {
+  resetContainer(); // Clears all singleton instances
+});
+```
+
+## Benefits
+
+1. **Explicit dependencies**: Constructor signatures document what's needed
+2. **Singleton management**: Container ensures only one instance exists
+3. **Type safety**: TypeScript enforces dependency types at compile-time
+4. **Testability**: Easy to inject mocks via `container.register()`
+5. **Lazy initialization**: Services created only when first resolved
+6. **Circular dependency detection**: Container throws if circular deps detected
+
+## Limitations
+
+1. **Decorator overhead**: Requires `@injectable()` on every service
+2. **Runtime metadata**: Reflection adds small performance cost
+3. **Build config**: Requires `experimentalDecorators` in tsconfig.json
+4. **No hierarchical containers**: Single global container (acceptable for
+   extension)
+
+## Future Enhancements
+
+### Phase 2: Cache Services
+
+- Register `SpecCache` as singleton
+- Register `MemoryCache` as singleton
+- Both depend on `Logger` only
+
+### Advanced Features (If Needed)
+
+- **Factory providers**: For services needing dynamic configuration
+- **Multi-injection**: For plugin architectures (not currently needed)
+- **Scoped containers**: For request-scoped services (not applicable to VSCode
+  extensions)

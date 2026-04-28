@@ -1,0 +1,2 @@
+description = "Generate comprehensive test suites from four testing perspectives for a target component."
+prompt = "{{include: ../../../.specify/commands/9_gofer_tests.md}}"

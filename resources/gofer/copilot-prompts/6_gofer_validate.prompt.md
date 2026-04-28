@@ -12,11 +12,12 @@ tools:
   - WebSearch
 argument-hint: feature-name-or-description
 gofer:
-  workflowProfile: standard
+  workflowProfile: enterpriseai
   canonicalSource: .claude/commands/6_gofer_validate.md
-  canonicalChecksum: 0bdf42e79df7bcc97c2523cade8194b6899bf12f4e3090c5f3f23aa3f97efb93
+  canonicalChecksum: 2cef13902ce7e1a50b1bf559ebe52ca22b87f80426e1ca4a412a12b923121477
   metadataSource: scripts/generate-commands.ts
 ---
+
 
 # Gofer Validate
 
@@ -914,6 +915,69 @@ to Cat2; total is still 110).
 
 ---
 
+## Step 7.4: Two-Pass Canvas Refresh (Impact Canvas)
+
+After the validation council completes, refresh the Impact Canvas with
+validation findings. This is a SURGICAL update: only the `topThreeRisks` slot of
+`impact-canvas.md` is replaced; all other canvas content (header, problem
+statement, personas, AI-leverage pie, outcomes) is preserved byte-for-byte. The
+frontmatter `pass:` marker is bumped from 1 to 2 so downstream consumers can
+tell which pass produced the artefact.
+
+```
+Task: subagent_type="visual-canvas-writer", model="sonnet"
+Prompt: "Pass-2 refresh for {FEATURE_DIR}/visuals/impact-canvas.md.
+Read validation council output from {FEATURE_DIR}/validation.md.
+Replace ONLY the topThreeRisks section with the council's top three risks.
+Preserve all other content byte-for-byte.
+
+Use the runPass2() helper at .specify/scripts/node/lib/visual-pass-pipeline.mjs
+which implements the surgical replacement (regex-bounded swap of the
+'## Top Three Risks' section + frontmatter pass: 1 -> 2 bump).
+
+Return: absolute path of file written and the three risk strings used."
+```
+
+The `runPass2()` function in
+`.specify/scripts/node/lib/visual-pass-pipeline.mjs` already implements the
+surgical replacement; the writer agent only needs to provide the three
+council-validated risk strings. This satisfies FR-016 (two-pass canvas refresh)
+and the locked decision recorded in `plan.md:912-919`.
+
+---
+
+## Step 7.5: Refresh Risk Heatmap (Persona Pack — US4)
+
+After the rubric is scored and validation council findings are available,
+dispatch `visual-risk-writer` in **pass-2 mode** to refresh the risk heatmap
+with critical risks identified by the council. This replaces the heuristic
+top-quadrant entries that pass-1 (run from this same stage before validation)
+populated from the spec NFR / Out-of-Scope sections.
+
+```
+Task: subagent_type="visual-risk-writer", model="sonnet"
+Prompt: "Pass 2: refresh risk heatmap for feature [FEATURE_NAME].
+
+Feature directory: {FEATURE_DIR}
+Spec: {FEATURE_DIR}/spec.md
+Validation council findings: {FEATURE_DIR}/validation-report.md (in-progress)
+Existing heatmap (pass-1): {FEATURE_DIR}/visuals/risk-heatmap.md
+Template: .specify/templates/visuals/risk-heatmap-template.md
+
+Replace top-quadrant risks with the validation council's critical findings.
+Preserve pass-1 risks that did not surface in validation.
+Honour ≥30 ≤200 word plain-language preamble (NFR-010).
+
+Return: absolute path of file written and risk counts per quadrant."
+```
+
+The validation report (Step 8) MUST link to the refreshed risk heatmap under its
+`## Risk Posture` section. If the Mermaid renderer fails for a downstream
+consumer, the `mermaid-tabular-fallback.mjs` helper provides a markdown-table
+fallback for the `quadrantChart` block.
+
+---
+
 ## Step 8: Generate Validation Report
 
 Write to `{FEATURE_DIR}/validation-report.md`:
@@ -1750,17 +1814,17 @@ This also logs quality metrics (rubric scores, finding counts) to:
 
 ---
 
+
+
 ## Pipeline Continuation
 
 This completes the 6_gofer_validate stage. To continue the Gofer pipeline:
 
 **Next Command:** `#6a_gofer_engineering_review`
 
-The next stage will read the artifacts from this stage and continue the workflow
-automatically.
+The next stage will read the artifacts from this stage and continue the workflow automatically.
 
-**Note:** Copilot Chat supports context preservation. Your conversation history
-will be maintained as you progress through pipeline stages.
+**Note:** Copilot Chat supports context preservation. Your conversation history will be maintained as you progress through pipeline stages.
 
 ## Key Rules
 

@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "generated": "2026-04-25T03:09:49.566Z",
+  "commands": [
+    "0a_problem_validation",
+    "10_gofer_cloud",
+    "1_gofer_research",
+    "2_gofer_specify",
+    "3_gofer_plan",
+    "4_gofer_tasks",
+    "5_gofer_implement",
+    "6_gofer_validate",
+    "6a_gofer_engineering_review",
+    "7a_stakeholder_comms",
+    "9_gofer_tests"
+  ]
+}

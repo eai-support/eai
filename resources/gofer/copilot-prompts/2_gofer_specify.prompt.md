@@ -16,6 +16,7 @@ gofer:
   metadataSource: scripts/generate-commands.ts
 ---
 
+
 # Gofer Specify
 
 You are creating a feature specification informed by prior codebase research.
@@ -523,6 +524,7 @@ Sequence Diagrams: {FEATURE_DIR}/sequence-diagrams/
 Selected Option: Option {N} - {Name}
 ```
 
+
 ---
 
 ## Guidelines
@@ -591,14 +593,13 @@ At stage completion, log metrics:
 
 Logs to: `.specify/logs/pipeline.jsonl`
 
+
 ## Pipeline Continuation
 
 This completes the 2_gofer_specify stage. To continue the Gofer pipeline:
 
 **Next Command:** `#3_gofer_plan`
 
-The next stage will read the artifacts from this stage and continue the workflow
-automatically.
+The next stage will read the artifacts from this stage and continue the workflow automatically.
 
-**Note:** Copilot Chat supports context preservation. Your conversation history
-will be maintained as you progress through pipeline stages.
+**Note:** Copilot Chat supports context preservation. Your conversation history will be maintained as you progress through pipeline stages.

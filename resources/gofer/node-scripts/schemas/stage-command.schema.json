@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "stage-command.schema.json",
+  "title": "StageCommand",
+  "description": "Schema for Gofer stage command definitions",
+  "type": "object",
+  "required": ["name", "description", "title", "surfaces", "category", "body"],
+  "additionalProperties": true,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Stage identifier, e.g. '0_business_scenario'"
+    },
+    "description": {
+      "type": "string",
+      "description": "Short description shown to Codex (≤140 chars)",
+      "maxLength": 140
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable title for the stage"
+    },
+    "surfaces": {
+      "type": "array",
+      "description": "Target surfaces where this command is emitted",
+      "items": {
+        "type": "string",
+        "enum": [
+          "claude",
+          "claude-mirror",
+          "copilot",
+          "vscode",
+          "codex",
+          "gemini",
+          "github-prompts",
+          "agents-skills",
+          "system-skills"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "category": {
+      "type": "string",
+      "description": "Command category",
+      "enum": ["pipeline", "utility", "diagnostic", "control"]
+    },
+    "args": {
+      "type": "object",
+      "description": "Optional map of arg-name to arg-definition",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string" },
+          "required": { "type": "boolean" },
+          "default": {}
+        }
+      }
+    },
+    "includes": {
+      "type": "array",
+      "description": "Optional relative paths to include",
+      "items": {
+        "type": "string"
+      }
+    },
+    "body": {
+      "type": "string",
+      "description": "The markdown body content of the command"
+    }
+  }
+}

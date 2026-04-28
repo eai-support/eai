@@ -30,13 +30,13 @@ Gofer installation is on by default. The generated repo includes:
 
 | CLI or workflow | Installed files |
 |-----------------|-----------------|
-| Shared Gofer pipeline | `.specify/scripts`, `.specify/templates`, `.specify/scripts/hooks`, `.specify/README.md` |
+| Shared Gofer pipeline | `.specify/commands`, `.specify/scripts`, `.specify/templates`, `.specify/scripts/hooks`, `.specify/README.md` |
 | Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` |
-| Codex CLI | `.system/skills` and `.agents/skills` |
-| Gemini CLI | `.agents/skills` |
+| Codex CLI | `.system/skills/gofer` and `.agents/skills/gofer` |
+| Gemini CLI | `.gemini/commands/gofer` and `.gemini/extension.json` |
 | GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/copilot-instructions.md`, `.github/skills` |
 
-Start with `/0_business_scenario` in Claude CLI, `$0_business_scenario` in Codex CLI, `gemini skills list --all` in Gemini CLI, or the Gofer prompt/skill surfaces in GitHub Copilot.
+Start with `/0_business_scenario` in Claude CLI, `$gofer/1_gofer_research` in Codex CLI, `/gofer:1_gofer_research` in Gemini CLI, or the Gofer prompt/skill surfaces in GitHub Copilot.
 
 ## Options
 
@@ -87,7 +87,7 @@ Creating Patient Intake
 ✔ Created Object Types scaffold
 ✔ Created deploy-demo.yml
 ✔ Generated CLAUDE.md
-✔ Installed Gofer assets (16 commands, 37 agents, 16 skills)
+✔ Installed Gofer assets (19 commands, 42 agents, 11 skills)
 ✔ Initialized git repository
 
 ✔ Created Patient Intake at /Users/you/projects/patient-intake
@@ -128,7 +128,7 @@ Creating Claims Processing
 ✔ Created Object Types scaffold
 ✔ Created deploy-demo.yml
 ✔ Generated CLAUDE.md
-✔ Installed Gofer assets (16 commands, 37 agents, 16 skills)
+✔ Installed Gofer assets (19 commands, 42 agents, 11 skills)
 ✔ Initialized git repository
 
 ✔ Created Claims Processing at /Users/you/projects/claims-processing
