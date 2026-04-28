@@ -1,7 +1,6 @@
 ---
 name: 10_gofer_cloud
-description:
-  READ-ONLY cloud infrastructure analysis for Azure, AWS, GCP deployments
+description: READ-ONLY cloud infrastructure analysis for Azure, AWS, GCP deployments
 agent: copilot-workspace
 tools:
   - Read
@@ -11,11 +10,12 @@ tools:
   - WebSearch
 argument-hint: feature-name-or-description
 gofer:
-  workflowProfile: standard
+  workflowProfile: enterpriseai
   canonicalSource: .claude/commands/10_gofer_cloud.md
-  canonicalChecksum: 661ddaad1f8a722e05ff3fd3556649321848124ef0f7cddc59cb0706b949c46d
+  canonicalChecksum: 243126b1ceb3b5cd213829b030483a7fb250a87578070a43081ab6c0fd3a94fe
   metadataSource: scripts/generate-commands.ts
 ---
+
 
 # Gofer Cloud
 

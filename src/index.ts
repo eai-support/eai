@@ -144,8 +144,8 @@ ${chalk.bold('Machine-Readable Output:')}
 ${chalk.bold('AI Terminal Workflows:')}
   ${chalk.dim('# New projects include Gofer commands, agents, scripts, hooks, and skills')}
   ${chalk.cyan('claude')}                   ${chalk.dim('then run /0_business_scenario')}
-  ${chalk.cyan('codex')}                    ${chalk.dim('then run $0_business_scenario')}
-  ${chalk.cyan('gemini skills list --all')} ${chalk.dim('from the generated repo')}
+  ${chalk.cyan('codex')}                    ${chalk.dim('then run $gofer/1_gofer_research')}
+  ${chalk.cyan('gemini')}                   ${chalk.dim('then run /gofer:1_gofer_research')}
   ${chalk.cyan('copilot')}                  ${chalk.dim('uses .github/prompts and .github/skills')}
 
 ${chalk.bold('Accessibility:')}

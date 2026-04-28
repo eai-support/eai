@@ -14,9 +14,10 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
   canonicalSource: .claude/commands/7a_stakeholder_comms.md
-  canonicalChecksum: ce7bd521522ce2a240890295ebcfcd9b5b27aed6a991fa1e7e702c45caafe00d
+  canonicalChecksum: 3a87b0654b694bda9d3a3a0227f63847dbd8842d70b341fbe6164e35f72644c2
   metadataSource: scripts/generate-commands.ts
 ---
+
 
 # Gofer Stakeholder Communications
 
@@ -321,6 +322,24 @@ Every section title above (`Problem Statement`,
 `Demo Script Summary`, `Success Metrics`) is mandatory in both the generated
 `presentation.marp.md` and the corresponding
 `.specify/templates/stakeholder-comms-template.md`.
+
+---
+
+## Step 7.5: Assemble Stakeholder Visual Pack
+
+After all comms artifacts are generated, compose the stakeholder visual pack
+from `{FEATURE_DIR}/visuals/` into a single `stakeholder-pack.md` file. This
+runs in deterministic order (impact-canvas → C4 → value-stream → capability
+heatmap → bounded-context → ERD → risk-heatmap → ROI projection) and skips
+artifacts that were not generated (FR-028, NFR-011, T138).
+
+```bash
+node .specify/scripts/node/lib/assemble-stakeholder-pack.mjs $FEATURE_DIR
+```
+
+The assembler writes `{FEATURE_DIR}/stakeholder-pack.md` and prints which
+artifacts were included vs. missing so the operator can re-run the relevant
+visual generators if needed.
 
 ---
 

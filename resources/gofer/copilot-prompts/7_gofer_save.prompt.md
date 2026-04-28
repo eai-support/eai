@@ -10,11 +10,12 @@ tools:
   - WebSearch
 argument-hint: feature-name-or-description
 gofer:
-  workflowProfile: standard
+  workflowProfile: enterpriseai
   canonicalSource: .claude/commands/7_gofer_save.md
-  canonicalChecksum: fa3a4ee17cf9877c93ed35a22bf17be79f1e8fb24353eadab87bbd25c5671ce0
+  canonicalChecksum: d23fd96c753c0a905d10652fab5107f170145ccd868442731941aa43ebb25514
   metadataSource: scripts/generate-commands.ts
 ---
+
 
 # Gofer Save
 

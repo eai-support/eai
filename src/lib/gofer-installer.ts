@@ -99,6 +99,7 @@ export async function installGoferResources(
   await assertDirectory(resourcesPath);
   await createGoferDirectories(targetPath);
 
+  await copyResourceDirectory(resourcesPath, 'commands', join(targetPath, '.specify', 'commands'), summary);
   await copyResourceDirectory(resourcesPath, 'templates', join(targetPath, '.specify', 'templates'), summary);
   await copyResourceDirectory(resourcesPath, 'bash-scripts', join(targetPath, '.specify', 'scripts', 'bash'), summary, {
     makeExecutable: true,
@@ -117,12 +118,15 @@ export async function installGoferResources(
   await copyResourceDirectory(resourcesPath, 'claude-agents', join(targetPath, '.claude', 'agents'), summary);
   await copyResourceDirectory(resourcesPath, 'copilot-prompts', join(targetPath, '.github', 'prompts'), summary);
   await copyResourceDirectory(resourcesPath, 'copilot-instructions', join(targetPath, '.github', 'instructions'), summary);
+  await copyResourceDirectory(resourcesPath, 'system-skills', join(targetPath, '.system', 'skills'), summary);
+  await copyResourceDirectory(resourcesPath, 'agents-skills', join(targetPath, '.agents', 'skills'), summary);
+  await copyResourceDirectory(resourcesPath, 'gemini', join(targetPath, '.gemini'), summary);
 
   summary.commands = await countFiles(join(resourcesPath, 'claude-commands'), '.md');
   summary.agents = await countFiles(join(resourcesPath, 'claude-agents'), '.md');
+  summary.skills = await countFilesRecursive(join(resourcesPath, 'agents-skills'), 'SKILL.md');
 
   const commands = await readGoferCommands(resourcesPath);
-  await generateCodexAndGeminiSkills(targetPath, commands, workflowProfile, summary);
   await generateCopilotCliSkills(targetPath, commands, workflowProfile, summary);
   await installClaudeHooks(targetPath);
   await ensureDefaultInstructions(targetPath, resourcesPath);
@@ -145,6 +149,7 @@ async function assertDirectory(path: string): Promise<void> {
 async function createGoferDirectories(workspacePath: string): Promise<void> {
   const directories = [
     join(workspacePath, '.specify', 'memory'),
+    join(workspacePath, '.specify', 'commands'),
     join(workspacePath, '.specify', 'scripts', 'bash'),
     join(workspacePath, '.specify', 'scripts', 'powershell'),
     join(workspacePath, '.specify', 'scripts', 'node'),
@@ -158,6 +163,9 @@ async function createGoferDirectories(workspacePath: string): Promise<void> {
     join(workspacePath, '.github', 'instructions'),
     join(workspacePath, '.system', 'skills'),
     join(workspacePath, '.agents', 'skills'),
+    join(workspacePath, '.gemini'),
+    join(workspacePath, '.gemini', 'commands'),
+    join(workspacePath, '.gemini', 'commands', 'gofer'),
     join(workspacePath, '.github', 'skills'),
   ];
 
@@ -244,6 +252,22 @@ async function countFiles(directory: string, extension: string): Promise<number>
   return entries.filter((entry) => entry.isFile() && entry.name.endsWith(extension)).length;
 }
 
+async function countFilesRecursive(directory: string, filename: string): Promise<number> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  let count = 0;
+
+  for (const entry of entries) {
+    const entryPath = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      count += await countFilesRecursive(entryPath, filename);
+    } else if (entry.isFile() && entry.name === filename) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
 async function readGoferCommands(resourcesPath: string): Promise<GoferCommand[]> {
   const commandsDirectory = join(resourcesPath, 'claude-commands');
   const entries = await readdir(commandsDirectory, { withFileTypes: true });
@@ -291,97 +315,23 @@ function readFrontmatterString(frontmatter: string, key: string): string | undef
   return match[1].trim().replace(/^['"]|['"]$/g, '');
 }
 
-async function generateCodexAndGeminiSkills(
-  workspacePath: string,
-  commands: readonly GoferCommand[],
-  workflowProfile: GoferWorkflowProfile,
-  summary: MutableGoferInstallSummary,
-): Promise<void> {
-  for (const command of commands) {
-    const skillContent = generateCodexSkill(command, workflowProfile);
-    const relativeSkillPath = join(command.name, 'SKILL.md');
-
-    await writeTrackedFile(
-      join(workspacePath, '.system', 'skills', relativeSkillPath),
-      skillContent,
-      summary,
-    );
-    await writeTrackedFile(
-      join(workspacePath, '.agents', 'skills', relativeSkillPath),
-      skillContent,
-      summary,
-    );
-    summary.skills += 1;
-  }
-}
-
-function generateCodexSkill(command: GoferCommand, workflowProfile: GoferWorkflowProfile): string {
-  const body = injectPipelineContinuation(transformCommandBody(command.body, 'codex'), 'codex', command.name);
-
-  return `---
-name: ${command.name}
-description: ${JSON.stringify(command.description)}
-gofer:
-  workflowProfile: ${workflowProfile}
-  canonicalSource: .claude/commands/${command.name}.md
-  canonicalChecksum: ${command.checksum}
-  metadataSource: eai-cli/resources/gofer
-arguments:
-  - name: feature
-    description: Feature name or description
-    required: false
-result_schema:
-  type: object
-  properties:
-    output:
-      type: string
-      description: Path to generated artifact or execution summary
-    status:
-      type: string
-      enum:
-        - success
-        - error
----
-
-${body}`;
-}
-
-function transformCommandBody(body: string, platform: 'codex' | 'copilot'): string {
+function transformCommandBodyForCopilot(body: string): string {
   let transformed = body;
 
   transformed = transformed.replace(/\*\*AUTO-CHAIN[^]*?(?=\n##|\n---|\n\*\*|$)/g, '');
   transformed = transformed.replace(/by calling the Skill tool with skill="[^"]+"/g, 'by running the next command');
   transformed = transformed.replace(/Skill tool/g, 'next command');
-
-  if (platform === 'codex') {
-    transformed = transformed.replace(/\/(\d+[a-z]?_gofer_\w+)/g, (_match, command: string) => `$ $${command}`);
-    transformed = transformed.replace(/\/(gofer_\w+)/g, (_match, command: string) => `$ $${command}`);
-    transformed = transformed.replace(
-      /Task: subagent_type="([^"]+)"/g,
-      '**Note**: Codex CLI does not support the Task tool. For parallel agent work, open multiple Codex CLI sessions and run the analysis in each.',
-    );
-  } else {
-    transformed = transformed.replace(/\/(\d+[a-z]?_gofer_\w+)/g, '#$1');
-    transformed = transformed.replace(/\/(gofer_\w+)/g, '#$1');
-  }
+  transformed = transformed.replace(/\/(\d+[a-z]?_gofer_\w+)/g, '#$1');
+  transformed = transformed.replace(/\/(gofer_\w+)/g, '#$1');
 
   return transformed;
 }
 
-function injectPipelineContinuation(
-  body: string,
-  platform: 'codex' | 'copilot',
-  commandName: string,
-): string {
+function injectPipelineContinuation(body: string, commandName: string): string {
   const nextCommand = getNextCommand(commandName);
   if (!nextCommand) {
     return body;
   }
-
-  const syntax = platform === 'codex' ? `$ $${nextCommand}` : `#${nextCommand}`;
-  const note = platform === 'codex'
-    ? 'Codex CLI does not support automatic command chaining. Run each stage command manually to progress through the pipeline.'
-    : 'Copilot CLI should use this project skill from the repository root so it can read the generated artifacts.';
 
   const continuation = `
 
@@ -389,11 +339,11 @@ function injectPipelineContinuation(
 
 This completes the ${commandName} stage. To continue the Gofer pipeline:
 
-**Next Command:** \`${syntax}\`
+**Next Command:** \`#${nextCommand}\`
 
 The next stage will use the artifacts generated by this command and continue the implementation workflow.
 
-**Note:** ${note}
+**Note:** Copilot CLI should use this project skill from the repository root so it can read the generated artifacts.
 `;
 
   if (body.includes('## Key Rules')) {
@@ -435,7 +385,7 @@ function generateCopilotCliSkill(
   skillName: string,
   workflowProfile: GoferWorkflowProfile,
 ): string {
-  const body = injectPipelineContinuation(transformCommandBody(command.body, 'copilot'), 'copilot', command.name);
+  const body = injectPipelineContinuation(transformCommandBodyForCopilot(command.body), command.name);
 
   return `---
 name: ${skillName}
@@ -765,6 +715,7 @@ This folder contains project specifications for AI-driven feature development.
 ## Structure
 
 - **memory/** - Constitution, decisions, and project principles
+- **commands/** - Canonical Gofer command definitions
 - **specs/** - Feature specifications
 - **templates/** - Templates for specs, plans, tasks, and reviews
 - **scripts/** - Helper scripts for workflow automation
@@ -773,8 +724,8 @@ This folder contains project specifications for AI-driven feature development.
 ## AI Terminal Commands
 
 - Claude CLI: \`/0_business_scenario\`
-- Codex CLI: \`$0_business_scenario\`
-- Gemini CLI: run \`gemini skills list --all\` from this repo to see \`.agents/skills\`
+- Codex CLI: \`$gofer/1_gofer_research\`
+- Gemini CLI: \`/gofer:1_gofer_research\`
 - GitHub Copilot: prompts are in \`.github/prompts\`; CLI skills are in \`.github/skills\`
 
 All artifacts are stored in \`.specify/specs/{feature}/\`.

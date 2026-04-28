@@ -13,20 +13,21 @@ spec-reference: spec.md
 
 ## Why It Matters
 
-**Problem**: {{from-problem-brief-root-cause}} **Impact**:
-{{from-problem-brief-annual-impact}} **Solution**:
-{{one-sentence-how-this-fixes-it}}
+**Problem**: {{from-problem-brief-root-cause}}
+**Impact**: {{from-problem-brief-annual-impact}}
+**Solution**: {{one-sentence-how-this-fixes-it}}
 
 ## What Changes for Users
 
-| Who             | Before (Today)   | After (With This Feature) |
-| --------------- | ---------------- | ------------------------- |
-| {{user-role-1}} | {{current-pain}} | {{improved-experience}}   |
-| {{user-role-2}} | {{current-pain}} | {{improved-experience}}   |
+| Who                | Before (Today)    | After (With This Feature) |
+| ------------------ | ----------------- | ------------------------- |
+| {{user-role-1}}    | {{current-pain}}  | {{improved-experience}}   |
+| {{user-role-2}}    | {{current-pain}}  | {{improved-experience}}   |
 
 ## Implementation Approach
 
-**Selected Option**: Option {{N}} — {{name}} **Complexity**: {{Low/Medium/High}}
+**Selected Option**: Option {{N}} — {{name}}
+**Complexity**: {{Low/Medium/High}}
 **Estimated Effort**: {{timeframe}}
 
 ### What's Included
@@ -42,24 +43,24 @@ spec-reference: spec.md
 
 ## Risk Assessment
 
-| Risk                | Likelihood | Impact     | Mitigation           |
-| ------------------- | ---------- | ---------- | -------------------- |
-| {{business-risk-1}} | Low/Med/Hi | Low/Med/Hi | {{how-we-handle-it}} |
-| {{business-risk-2}} | Low/Med/Hi | Low/Med/Hi | {{how-we-handle-it}} |
+| Risk                          | Likelihood | Impact | Mitigation              |
+| ----------------------------- | ---------- | ------ | ----------------------- |
+| {{business-risk-1}}           | Low/Med/Hi | Low/Med/Hi | {{how-we-handle-it}} |
+| {{business-risk-2}}           | Low/Med/Hi | Low/Med/Hi | {{how-we-handle-it}} |
 
 ## ROI Estimate
 
-| Metric                    | Value         |
-| ------------------------- | ------------- |
-| Development cost estimate | {{estimate}}  |
-| Annual value delivered    | {{estimate}}  |
-| Payback period            | {{timeframe}} |
-| Break-even point          | {{date}}      |
+| Metric                    | Value          |
+| ------------------------- | -------------- |
+| Development cost estimate | {{estimate}}   |
+| Annual value delivered    | {{estimate}}   |
+| Payback period            | {{timeframe}}  |
+| Break-even point          | {{date}}       |
 
 ## Key Assumptions
 
-These assumptions underpin the business case. If any prove false, the plan may
-need adjustment:
+These assumptions underpin the business case. If any prove false, the plan
+may need adjustment:
 
 1. {{critical-assumption-1}} — {{status: VALIDATED/UNVALIDATED}}
 2. {{critical-assumption-2}} — {{status: VALIDATED/UNVALIDATED}}
@@ -75,12 +76,12 @@ Before implementation proceeds, the following decisions are needed:
 
 ## How We'll Measure Success
 
-| Success Metric | Target     | When We'll Know |
-| -------------- | ---------- | --------------- |
-| {{metric-1}}   | {{target}} | {{timeframe}}   |
-| {{metric-2}}   | {{target}} | {{timeframe}}   |
+| Success Metric | Target          | When We'll Know  |
+| -------------- | --------------- | ---------------- |
+| {{metric-1}}   | {{target}}      | {{timeframe}}    |
+| {{metric-2}}   | {{target}}      | {{timeframe}}    |
 
 ---
 
-_This is a business summary. For full technical specification, see `spec.md`._
-_For implementation details, see `plan.md`._
+*This is a business summary. For full technical specification, see `spec.md`.*
+*For implementation details, see `plan.md`.*

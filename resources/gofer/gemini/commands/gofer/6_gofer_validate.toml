@@ -1,0 +1,2 @@
+description = "Validate the implementation against spec acceptance criteria across six quality dimensions."
+prompt = "{{include: ../../../.specify/commands/6_gofer_validate.md}}"

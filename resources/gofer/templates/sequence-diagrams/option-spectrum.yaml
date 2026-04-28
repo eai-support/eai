@@ -15,7 +15,7 @@ options:
     efficiency_score: 95
     innovation_score: 10
     complexity_target: low
-    estimated_effort: '1-2 days'
+    estimated_effort: "1-2 days"
     characteristics:
       - Direct implementation with existing tools
       - No new dependencies
@@ -26,7 +26,7 @@ options:
       - May need significant expansion later
       - Limited scalability
       - Minimal user experience polish
-    gen_ai_touchpoints: [] # None for minimal
+    gen_ai_touchpoints: []  # None for minimal
 
   2_efficient:
     number: 2
@@ -37,7 +37,7 @@ options:
     efficiency_score: 80
     innovation_score: 30
     complexity_target: low-medium
-    estimated_effort: '3-5 days'
+    estimated_effort: "3-5 days"
     characteristics:
       - Established patterns and best practices
       - Standard error handling
@@ -59,7 +59,7 @@ options:
     efficiency_score: 60
     innovation_score: 50
     complexity_target: medium
-    estimated_effort: '1-2 weeks'
+    estimated_effort: "1-2 weeks"
     characteristics:
       - Full test coverage
       - Comprehensive error handling
@@ -82,7 +82,7 @@ options:
     efficiency_score: 40
     innovation_score: 70
     complexity_target: medium-high
-    estimated_effort: '2-3 weeks'
+    estimated_effort: "2-3 weeks"
     characteristics:
       - Advanced UX patterns
       - Real-time features
@@ -107,7 +107,7 @@ options:
     efficiency_score: 20
     innovation_score: 95
     complexity_target: high
-    estimated_effort: '1-2 months'
+    estimated_effort: "1-2 months"
     characteristics:
       - Novel interaction patterns
       - Heavy AI/ML integration
@@ -129,7 +129,7 @@ options:
 # Scoring guidance
 scoring_formulas:
   efficiency:
-    description: 'How quickly can this be implemented and maintained?'
+    description: "How quickly can this be implemented and maintained?"
     factors:
       - Development time
       - Maintenance burden
@@ -137,14 +137,14 @@ scoring_formulas:
       - Team skill match
 
   complexity:
-    description: 'How complex is the implementation?'
+    description: "How complex is the implementation?"
     levels:
-      low: 'Few components, simple data flow'
-      medium: 'Multiple components, some async operations'
-      high: 'Many components, complex state management, distributed concerns'
+      low: "Few components, simple data flow"
+      medium: "Multiple components, some async operations"
+      high: "Many components, complex state management, distributed concerns"
 
   innovation:
-    description: 'How novel and differentiated is the approach?'
+    description: "How novel and differentiated is the approach?"
     factors:
       - New patterns introduced
       - User experience differentiation

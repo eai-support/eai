@@ -15,31 +15,31 @@ status: draft
 
 ## Root Cause Analysis (5 Whys)
 
-| Level | Question         | Answer     |
-| ----- | ---------------- | ---------- |
-| Why 1 | Why {{problem}}? | Because... |
-| Why 2 | Why {{cause-1}}? | Because... |
-| Why 3 | Why {{cause-2}}? | Because... |
-| Why 4 | Why {{cause-3}}? | Because... |
-| Why 5 | Why {{cause-4}}? | ROOT CAUSE |
+| Level | Question              | Answer       |
+| ----- | --------------------- | ------------ |
+| Why 1 | Why {{problem}}?      | Because...   |
+| Why 2 | Why {{cause-1}}?      | Because...   |
+| Why 3 | Why {{cause-2}}?      | Because...   |
+| Why 4 | Why {{cause-3}}?      | Because...   |
+| Why 5 | Why {{cause-4}}?      | ROOT CAUSE   |
 
 **Root Cause Summary**: {{one-sentence-root-cause}}
 
 ## Stakeholder Impact
 
-| Stakeholder | Impact Level | Frequency | Cost per Occurrence | Annual Impact |
-| ----------- | ------------ | --------- | ------------------- | ------------- |
-| {{role-1}}  | High/Med/Low | {{freq}}  | {{time-or-money}}   | {{estimate}}  |
-| {{role-2}}  | High/Med/Low | {{freq}}  | {{time-or-money}}   | {{estimate}}  |
+| Stakeholder   | Impact Level | Frequency | Cost per Occurrence | Annual Impact   |
+| ------------- | ------------ | --------- | ------------------- | --------------- |
+| {{role-1}}    | High/Med/Low | {{freq}}  | {{time-or-money}}   | {{estimate}}    |
+| {{role-2}}    | High/Med/Low | {{freq}}  | {{time-or-money}}   | {{estimate}}    |
 
 ## Business Case
 
-| Metric                         | Value            |
-| ------------------------------ | ---------------- |
-| Cost of doing nothing (annual) | {{estimate}}     |
-| Estimated value of solving     | {{estimate}}     |
-| Payback period                 | {{weeks-months}} |
-| Confidence level               | High/Med/Low     |
+| Metric                        | Value             |
+| ----------------------------- | ----------------- |
+| Cost of doing nothing (annual)| {{estimate}}      |
+| Estimated value of solving    | {{estimate}}      |
+| Payback period                | {{weeks-months}}  |
+| Confidence level              | High/Med/Low      |
 
 ## Success Metrics
 
@@ -49,12 +49,12 @@ status: draft
 
 ## Constraints
 
-| Constraint Type | Description  | Impact on Solution         |
-| --------------- | ------------ | -------------------------- |
-| Budget          | {{amount}}   | {{how-it-limits-options}}  |
-| Timeline        | {{deadline}} | {{what-must-be-ready}}     |
-| Technical       | {{limit}}    | {{what-it-prevents}}       |
-| Regulatory      | {{standard}} | {{what-must-be-compliant}} |
+| Constraint Type | Description   | Impact on Solution         |
+| --------------- | ------------- | -------------------------- |
+| Budget          | {{amount}}    | {{how-it-limits-options}}  |
+| Timeline        | {{deadline}}  | {{what-must-be-ready}}     |
+| Technical       | {{limit}}     | {{what-it-prevents}}       |
+| Regulatory      | {{standard}}  | {{what-must-be-compliant}} |
 
 ## Problem-Solution Fit
 
@@ -73,8 +73,9 @@ status: draft
 
 ## Recommendation
 
-**Proceed**: YES/NO/CONDITIONAL **Confidence**: High/Med/Low **Rationale**:
-{{2-3-sentences-plain-english}}
+**Proceed**: YES/NO/CONDITIONAL
+**Confidence**: High/Med/Low
+**Rationale**: {{2-3-sentences-plain-english}}
 
 ## Approval
 

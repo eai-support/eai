@@ -79,9 +79,10 @@ export const initCommand = new Command('init')
   .option('--no-gofer', 'Skip installing Gofer AI CLI assets')
   .addHelpText('after', `
 Gofer AI CLI assets are installed by default:
-  .specify/ scripts, templates, hooks, and memory folders
+  .specify/ commands, scripts, templates, hooks, and memory folders
   .claude/ commands and agents for Claude CLI
-  .system/skills and .agents/skills for Codex and Gemini CLI
+  .system/skills/gofer and .agents/skills/gofer for Codex CLI
+  .gemini/commands/gofer and .gemini/extension.json for Gemini CLI
   .github/prompts, .github/instructions, and .github/skills for GitHub Copilot
 
 Use --no-gofer only when you need a bare vertical scaffold.
@@ -324,7 +325,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
     }
     out.dim(`Template: ${options.from}`);
     if (options.gofer) {
-      out.dim('Gofer: run /0_business_scenario in Claude CLI, $0_business_scenario in Codex CLI, gemini skills list --all, or use Copilot prompts/skills in .github/.');
+      out.dim('Gofer: Claude /0_business_scenario; Codex $gofer/1_gofer_research; Gemini /gofer:1_gofer_research; Copilot .github prompts/skills.');
     }
     out.dim(`CLI docs: https://github.com/${GITHUB_ORG}/eai-cli`);
     out.blank();

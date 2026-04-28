@@ -5,13 +5,17 @@
  *
  * The `eai init` command installs everything under `resources/gofer/` into a
  * user's workspace, so that directory must mirror the gofer release pinned in
- * `.gofer-version`. This script clones gofer at the pinned tag into a temp
- * directory, then mirrors `extension/resources/` → `resources/gofer/`,
- * deleting stray files so removals flow through.
+ * `.gofer-version`.
+ *
+ * Newer Gofer releases still publish the extension-ready asset bundle under
+ * `extension/resources/`, but they also keep additional repo-local surfaces
+ * outside that tree (for example `.specify/commands` and Codex skills). This
+ * script mirrors `extension/resources/` first, then overlays the extra
+ * directories needed by eai-cli so published bundles stay complete.
  *
  * Usage:
  *   node scripts/sync-gofer-resources.cjs            # use pinned .gofer-version
- *   node scripts/sync-gofer-resources.cjs v2.0.10    # override tag/ref
+ *   node scripts/sync-gofer-resources.cjs v3.0.1     # override tag/ref
  *   GOFER_REF=main node scripts/sync-gofer-resources.cjs
  */
 
@@ -24,6 +28,14 @@ const REPO = 'https://github.com/eai-tools/gofer.git';
 const ROOT = path.resolve(__dirname, '..');
 const PIN_FILE = path.join(ROOT, '.gofer-version');
 const TARGET = path.join(ROOT, 'resources', 'gofer');
+const BASE_RESOURCE_DIR = path.join('extension', 'resources');
+const EXTRA_RESOURCE_MAPPINGS = [
+  ['.specify/commands', 'commands'],
+  ['.specify/memory', 'memory'],
+  ['.specify/references', 'references'],
+  ['.system/skills/gofer', path.join('system-skills', 'gofer')],
+  ['.agents/skills/gofer', path.join('agents-skills', 'gofer')],
+];
 
 function readPinnedRef() {
   const override = process.argv[2] ?? process.env.GOFER_REF;
@@ -62,6 +74,10 @@ function resolvedSha(workdir) {
   return execFileSync('git', ['-C', workdir, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim();
 }
 
+function resolvedDescribe(workdir) {
+  return execFileSync('git', ['-C', workdir, 'describe', '--tags', '--always'], { encoding: 'utf-8' }).trim();
+}
+
 function mirror(sourceDir, targetDir) {
   fs.rmSync(targetDir, { recursive: true, force: true });
   fs.mkdirSync(targetDir, { recursive: true });
@@ -81,6 +97,28 @@ function copyDir(src, dst) {
   }
 }
 
+function syncDir(workdir, sourceRelativeDir, targetRelativeDir) {
+  const sourceDir = path.join(workdir, sourceRelativeDir);
+  if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+    console.log(`▸ Skipping missing ${sourceRelativeDir}`);
+    return;
+  }
+
+  const targetDir = path.join(TARGET, targetRelativeDir);
+  fs.mkdirSync(targetDir, { recursive: true });
+  copyDir(sourceDir, targetDir);
+  console.log(`▸ Synced ${sourceRelativeDir} → ${path.relative(ROOT, targetDir)}`);
+}
+
+function writeSyncMetadata(sha, describe) {
+  const metadata = {
+    commit: sha,
+    describe,
+    synced_at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+  };
+  fs.writeFileSync(path.join(TARGET, '.gofer-version'), JSON.stringify(metadata, null, 2) + '\n');
+}
+
 function main() {
   const ref = readPinnedRef();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eai-cli-gofer-sync-'));
@@ -89,17 +127,22 @@ function main() {
     console.log(`▸ Syncing gofer resources from ${REPO} @ ${ref}`);
     cloneAtRef(ref, tmpDir);
 
-    const sourceDir = path.join(tmpDir, 'extension', 'resources');
+    const sourceDir = path.join(tmpDir, BASE_RESOURCE_DIR);
     if (!fs.existsSync(sourceDir)) {
-      throw new Error(`gofer@${ref} is missing extension/resources/ — refusing to wipe target.`);
+      throw new Error(`gofer@${ref} is missing ${BASE_RESOURCE_DIR}/ — refusing to wipe target.`);
     }
 
     const sha = resolvedSha(tmpDir);
+    const describe = resolvedDescribe(tmpDir);
     mirror(sourceDir, TARGET);
+    for (const [sourceRelativeDir, targetRelativeDir] of EXTRA_RESOURCE_MAPPINGS) {
+      syncDir(tmpDir, sourceRelativeDir, targetRelativeDir);
+    }
+    writeSyncMetadata(sha, describe);
 
     const fileCount = countFiles(TARGET);
     console.log(`▸ Mirrored ${fileCount} files into ${path.relative(ROOT, TARGET)}/`);
-    console.log(`▸ gofer ref: ${ref} (${sha})`);
+    console.log(`▸ gofer ref: ${describe} (${sha})`);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

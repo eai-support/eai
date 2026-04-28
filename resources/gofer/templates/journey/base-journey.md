@@ -1,10 +1,10 @@
 ---
-id: { { journey-id } }
-name: { { journey-name } }
-featureId: { { feature-id } }
+id: {{journey-id}}
+name: {{journey-name}}
+featureId: {{feature-id}}
 status: draft
-created: { { created-date } }
-modified: { { modified-date } }
+created: {{created-date}}
+modified: {{modified-date}}
 ---
 
 # Customer Journey: {{journey-name}}
@@ -17,15 +17,15 @@ modified: { { modified-date } }
 
 ## Actors
 
-| ID  | Name | Type | Role |
-| --- | ---- | ---- | ---- |
-
-{{#each actors}} | {{id}} | {{name}} | {{type}} | {{role}} | {{/each}}
+| ID | Name | Type | Role |
+|----|------|------|------|
+{{#each actors}}
+| {{id}} | {{name}} | {{type}} | {{role}} |
+{{/each}}
 
 ### Actor Descriptions
 
 {{#each actors}}
-
 #### {{name}} ({{type}})
 
 {{role}}
@@ -37,16 +37,19 @@ modified: { { modified-date } }
 ## Journey Steps
 
 {{#each steps}}
-
 ### Step {{stepNumber}}: {{action}}
 
 **Actor**: {{actorId}}
 
 {{action}}
 
-{{#if outcome}} **Expected Outcome**: {{outcome}} {{/if}}
+{{#if outcome}}
+**Expected Outcome**: {{outcome}}
+{{/if}}
 
-{{#if notes}} **Notes**: {{notes}} {{/if}}
+{{#if notes}}
+**Notes**: {{notes}}
+{{/if}}
 
 {{/each}}
 
@@ -70,11 +73,11 @@ sequenceDiagram
 
 ## Touchpoints
 
-| ID  | Type | Description | Actors | Steps |
-| --- | ---- | ----------- | ------ | ----- |
-
-{{#each touchpoints}} | {{id}} | {{type}} | {{description}} | {{actorIds}} |
-{{stepNumbers}} | {{/each}}
+| ID | Type | Description | Actors | Steps |
+|----|------|-------------|--------|-------|
+{{#each touchpoints}}
+| {{id}} | {{type}} | {{description}} | {{actorIds}} | {{stepNumbers}} |
+{{/each}}
 
 ---
 

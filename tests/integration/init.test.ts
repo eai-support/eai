@@ -166,9 +166,14 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'my-vertical/src/eai.config/object-types.ts');
     await expectFileExists(ctx, 'my-vertical/.claude/commands/0_business_scenario.md');
     await expectFileExists(ctx, 'my-vertical/.claude/agents/codebase-analyzer.md');
+    await expectFileExists(ctx, 'my-vertical/.specify/commands/1_gofer_research.md');
     await expectFileExists(ctx, 'my-vertical/.specify/scripts/bash/pipeline-state.sh');
-    await expectFileExists(ctx, 'my-vertical/.system/skills/0_business_scenario/SKILL.md');
-    await expectFileExists(ctx, 'my-vertical/.agents/skills/0_business_scenario/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.system/skills/gofer/1_gofer_research/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.agents/skills/gofer/1_gofer_research/SKILL.md');
+    await expectFileNotExists(ctx, 'my-vertical/.agents/skills/0_business_scenario/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.gemini/extension.json');
+    await expectFileExists(ctx, 'my-vertical/.gemini/commands/gofer/1_gofer_research.toml');
+    await expectFileNotExists(ctx, 'my-vertical/.gemini/commands/gofer/0_business_scenario.toml');
     await expectFileExists(ctx, 'my-vertical/.github/prompts/0_business_scenario.prompt.md');
     await expectFileExists(ctx, 'my-vertical/.github/skills/0-business-scenario/SKILL.md');
     await expectFileExists(ctx, 'my-vertical/.github/copilot-instructions.md');
@@ -197,8 +202,10 @@ describe('eai init', () => {
     await expectFileContains(ctx, 'quick-app/package.json', '"name": "@eai-tools/quick-app"');
     await expectFileExists(ctx, 'quick-app/.claude/commands/0_business_scenario.md');
     await expectFileExists(ctx, 'quick-app/.claude/agents/codebase-analyzer.md');
+    await expectFileExists(ctx, 'quick-app/.specify/commands/1_gofer_research.md');
     await expectFileExists(ctx, 'quick-app/.specify/scripts/hooks/post-tool-use.mjs');
-    await expectFileExists(ctx, 'quick-app/.agents/skills/0_business_scenario/SKILL.md');
+    await expectFileExists(ctx, 'quick-app/.agents/skills/gofer/1_gofer_research/SKILL.md');
+    await expectFileExists(ctx, 'quick-app/.gemini/commands/gofer/1_gofer_research.md');
     await expectFileExists(ctx, 'quick-app/.github/skills/0-business-scenario/SKILL.md');
     expectNoPrompts(ctx);
     expectCommandSucceeded(result);
@@ -212,7 +219,9 @@ describe('eai init', () => {
     await expectDirectoryCreated(ctx, 'plain-app');
     await expectFileContains(ctx, 'plain-app/package.json', '"name": "@eai-tools/plain-app"');
     await expectFileNotExists(ctx, 'plain-app/.claude/commands/0_business_scenario.md');
-    await expectFileNotExists(ctx, 'plain-app/.agents/skills/0_business_scenario/SKILL.md');
+    await expectFileNotExists(ctx, 'plain-app/.specify/commands/1_gofer_research.md');
+    await expectFileNotExists(ctx, 'plain-app/.agents/skills/gofer/1_gofer_research/SKILL.md');
+    await expectFileNotExists(ctx, 'plain-app/.gemini/extension.json');
     expectCommandSucceeded(result);
   });
 

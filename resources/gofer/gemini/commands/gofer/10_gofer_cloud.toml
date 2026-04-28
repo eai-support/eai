@@ -1,0 +1,2 @@
+description = "Deploy and configure the Gofer cloud integration for remote pipeline execution."
+prompt = "{{include: ../../../.specify/commands/10_gofer_cloud.md}}"

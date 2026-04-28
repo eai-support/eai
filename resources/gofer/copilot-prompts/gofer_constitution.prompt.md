@@ -1,7 +1,6 @@
 ---
 name: gofer_constitution
-description:
-  Create or update project constitution with coding principles and guidelines
+description: Create or update project constitution with coding principles and guidelines
 agent: copilot-workspace
 tools:
   - Read
@@ -11,11 +10,12 @@ tools:
   - WebSearch
 argument-hint: feature-name-or-description
 gofer:
-  workflowProfile: standard
+  workflowProfile: enterpriseai
   canonicalSource: .claude/commands/gofer_constitution.md
-  canonicalChecksum: f5d450a614bcf681033a80d9fbdc2c96fe1baf466c97e679e9744a9b562395c4
+  canonicalChecksum: fe7fbe1091ce379fe7d3dc501810374a425779464a7aaabd495413e581d99f4d
   metadataSource: scripts/generate-commands.ts
 ---
+
 
 # Gofer Constitution
 
@@ -23,6 +23,35 @@ You are creating or updating the project constitution - a set of principles,
 coding standards, and architectural decisions that guide all development work.
 This is critical for **agentic consistency** - ensuring AI agents behave
 consistently across sessions.
+
+## Source-of-Truth and Codex Distribution (FR-001, FR-010)
+
+The Gofer constitution lives at `.specify/memory/constitution.md` and is the
+authoritative reference for cross-cutting concerns the entire pipeline must
+respect.
+
+Two invariants the constitution MUST document and this command MUST preserve
+when updating:
+
+1. **Source-of-truth (FR-001)**: All stage commands derive from canonical files
+   at `.specify/commands/<stage>.md` — YAML frontmatter (name, description ≤140
+   chars, surfaces, args) plus Markdown body. The generator at
+   `.specify/scripts/node/generate-commands.mjs` emits to every CLI surface
+   (`.claude/commands/`, `extension/resources/copilot-prompts/`,
+   `.github/prompts/`, `.agents/skills/gofer/`, `.gemini/commands/gofer/`,
+   `.system/skills/`). Hand-edits on emitted files are rejected by the generator
+   without `--force-emit`. **Never bypass the source-of-truth.**
+
+2. **Codex distribution path (FR-010)**: Codex discovers skills at
+   `.agents/skills/` (flat, non-tenanted layout:
+   `.agents/skills/gofer/<stage>/SKILL.md`). This is NOT the same as
+   `.claude/skills/`. The constitution MUST capture that distinction explicitly
+   so future authors do not conflate the two paths. The official Codex disable
+   knob is per-skill `[[skills.config]] enabled = false` in
+   `~/.codex/config.toml`; there is NO `skills_context_budget_percent` key
+   (FR-011).
+
+When updating the constitution, ensure both sections survive the edit pass.
 
 ## User Input
 

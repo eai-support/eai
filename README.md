@@ -60,8 +60,9 @@ eai dev
 ```
 
 `eai init` installs Gofer AI terminal assets by default. New vertical repos include
-Claude commands and agents, Codex/Gemini skills, Copilot prompts and CLI skills,
-and the `.specify` scripts/templates/hooks required to run the Gofer pipeline.
+Claude commands and agents, Codex skills, Gemini commands, Copilot prompts and
+CLI skills, and the `.specify` commands/scripts/templates/hooks required to run
+the Gofer pipeline.
 Use `eai init my-vertical --no-gofer` only when you need a bare scaffold.
 
 ## Global Flags
@@ -259,13 +260,14 @@ terminals used in this workspace:
 | CLI | Installed surface | First command |
 |-----|-------------------|---------------|
 | Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` hooks | `/0_business_scenario` |
-| Codex CLI | `.system/skills` and `.agents/skills` | `$0_business_scenario` |
-| Gemini CLI | `.agents/skills` | `gemini skills list --all` |
+| Codex CLI | `.system/skills/gofer` and `.agents/skills/gofer` | `$gofer/1_gofer_research` |
+| Gemini CLI | `.gemini/commands/gofer`, `.gemini/extension.json` | `/gofer:1_gofer_research` |
 | GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | Use the Gofer prompt or matching local skill |
 
-The shared workflow artifacts live under `.specify/`: scripts, templates,
-hooks, memory, logs, and generated feature specs. Runtime state is added to
-`.gitignore`; command definitions and templates are committed with the vertical.
+The shared workflow artifacts live under `.specify/`: commands, scripts,
+templates, hooks, memory, logs, and generated feature specs. Runtime state is
+added to `.gitignore`; command definitions and templates are committed with the
+vertical.
 
 ## Development
 

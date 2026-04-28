@@ -1,0 +1,264 @@
+```mermaid
+graph TB
+    subgraph "BEFORE: Monolithic Architecture (Technical Debt)"
+        Extension1["extension.ts<br/>1200 LOC<br/>❌ God Object"]
+        Migrator1["goferMigrator.ts<br/>2499 LOC<br/>❌ God Object"]
+
+        Extension1 --> Migrator1
+        Extension1 --> VSCode1[VSCode API]
+        Migrator1 --> VSCode1
+        Migrator1 --> FS1[File System]
+
+        style Extension1 fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px
+        style Migrator1 fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px
+    end
+
+    subgraph "AFTER: Modular Architecture (Refactored)"
+        subgraph "Core Infrastructure (Phase 1)"
+            Container["DI Container<br/>87 LOC"]
+            Logger["Logger Service<br/>147 LOC"]
+
+            Container -.->|registers| Logger
+        end
+
+        subgraph "Extension Services (Phase 3)"
+            Extension2["extension.ts<br/>~800 LOC<br/>✅ Orchestrator"]
+            Disposal["DisposalService<br/>~200 LOC"]
+            Events["EventHandlers<br/>~200 LOC"]
+            Init["InitializationService<br/>~300 LOC"]
+            Commands["CommandRegistry<br/>~250 LOC"]
+            State["StateManager<br/>~150 LOC"]
+        end
+
+        subgraph "Migration Services (Phase 4)"
+            Migrator2["goferMigrator.ts<br/>467 LOC<br/>✅ Facade"]
+            Version["VersionDetector<br/>247 LOC"]
+            Upgrade["UpgradeService<br/>437 LOC"]
+            Resource["ResourceSyncer<br/>496 LOC"]
+            Path["PathMigrator<br/>332 LOC"]
+        end
+
+        %% DI Container relationships
+        Container -.->|resolves| Disposal
+        Container -.->|resolves| Events
+        Container -.->|resolves| Init
+        Container -.->|resolves| Commands
+        Container -.->|resolves| State
+        Container -.->|resolves| Version
+        Container -.->|resolves| Upgrade
+        Container -.->|resolves| Resource
+        Container -.->|resolves| Path
+
+        %% Extension service dependencies
+        Extension2 --> Container
+        Extension2 --> Init
+        Extension2 --> State
+        Extension2 --> VSCode2[VSCode API]
+
+        Init --> Commands
+        Init --> Events
+        Disposal --> Logger
+        Events --> Logger
+        Init --> Logger
+        Commands --> Logger
+        State --> Logger
+
+        %% Migration service dependencies
+        Migrator2 --> Container
+        Migrator2 --> Version
+        Migrator2 --> Upgrade
+        Migrator2 --> Resource
+        Migrator2 --> Path
+
+        Upgrade --> Logger
+        Upgrade --> Version
+        Version --> Logger
+        Resource --> Logger
+        Resource --> FS2[File System]
+        Path --> Logger
+        Path --> FS2
+
+        %% External dependencies
+        Resource --> VSCode2
+        Path --> VSCode2
+
+        style Extension2 fill:#51cf66,stroke:#2f9e44,stroke-width:3px
+        style Migrator2 fill:#51cf66,stroke:#2f9e44,stroke-width:3px
+        style Logger fill:#339af0,stroke:#1864ab,stroke-width:2px
+        style Container fill:#339af0,stroke:#1864ab,stroke-width:2px
+    end
+```
+
+# Module Dependencies Diagram
+
+This diagram shows the architecture transformation from monolithic God objects
+to modular services.
+
+## Metrics Comparison
+
+| Metric                   | Before (Monolithic) | After (Modular) | Improvement    |
+| ------------------------ | ------------------- | --------------- | -------------- |
+| **extension.ts LOC**     | 1200                | ~800            | -33% (400 LOC) |
+| **goferMigrator.ts LOC** | 2499                | 467             | -81% (2032 LOC) |
+| **Total God object LOC** | 3699                | 1267            | -66% (2432 LOC) |
+| **Service count**        | 2 (monoliths)       | 12 (focused)    | +10 services   |
+| **Max service LOC**      | 2499                | 496             | -80%           |
+| **Testable units**       | 2                   | 12              | 6x increase    |
+
+## Architecture Principles
+
+### Before: Monolithic (Anti-Patterns)
+
+❌ **God Objects**: Single files with 1000+ LOC and 20+ responsibilities
+
+- `extension.ts`: Initialization + Events + Commands + Disposal
+- `goferMigrator.ts`: Detection + Orchestration + Resources + Paths
+
+❌ **High Coupling**: Direct instantiation with `new`, global state
+
+❌ **Low Cohesion**: Unrelated functions in same file
+
+❌ **Difficult Testing**: Too many mocks needed, can't test parts in isolation
+
+### After: Modular (Best Practices)
+
+✅ **Single Responsibility**: Each service has one focused purpose
+
+- `VersionDetector`: Only format detection
+- `UpgradeService`: Only orchestration
+- `ResourceSyncer`: Only file operations
+- `PathMigrator`: Only path migration
+
+✅ **Dependency Injection**: Container manages lifecycles, explicit dependencies
+
+✅ **Facade Pattern**: `extension.ts` and `goferMigrator.ts` become thin
+orchestrators
+
+✅ **Testability**: Services tested independently with mocked dependencies
+
+## Service Responsibilities
+
+### Core Infrastructure (Phase 1)
+
+| Service   | Responsibility                | LOC | Dependencies |
+| --------- | ----------------------------- | --- | ------------ |
+| Container | DI service registration       | 87  | TSyringe     |
+| Logger    | Structured logging            | 147 | VSCode API   |
+
+### Extension Services (Phase 3)
+
+| Service        | Responsibility                  | LOC  | Dependencies         |
+| -------------- | ------------------------------- | ---- | -------------------- |
+| extension.ts   | Orchestrates activation         | ~800 | All services         |
+| Disposal       | Resource cleanup                | ~200 | Logger               |
+| EventHandlers  | Workspace event listeners       | ~200 | Logger               |
+| Init           | Workspace initialization        | ~300 | Logger, Commands     |
+| CommandRegistry| Command registration            | ~250 | Logger               |
+| StateManager   | Global state management         | ~150 | Logger               |
+
+### Migration Services (Phase 4)
+
+| Service          | Responsibility                  | LOC  | Dependencies         |
+| ---------------- | ------------------------------- | ---- | -------------------- |
+| goferMigrator.ts | Facade for migration services   | 467  | All migration svcs   |
+| VersionDetector  | Format detection                | 247  | Logger               |
+| UpgradeService   | Upgrade orchestration           | 437  | Logger, Version      |
+| ResourceSyncer   | File/resource sync              | 496  | Logger               |
+| PathMigrator     | Path reference migration        | 332  | Logger               |
+
+## Dependency Layers
+
+### Layer 1: Foundation
+
+- **Container**: Manages all service lifecycles
+- **Logger**: Used by all services (zero dependencies)
+
+### Layer 2: Core Services
+
+- **StateManager**: Maintains extension state (depends: Logger)
+- **DisposalService**: Cleans up resources (depends: Logger)
+
+### Layer 3: Feature Services
+
+- **Extension Services**: EventHandlers, InitializationService, CommandRegistry
+  (depend: Logger)
+- **Migration Services**: VersionDetector, UpgradeService, ResourceSyncer,
+  PathMigrator (depend: Logger, VersionDetector)
+
+### Layer 4: Facades
+
+- **extension.ts**: Orchestrates extension lifecycle
+- **goferMigrator.ts**: Orchestrates migration operations
+
+## Benefits of Refactoring
+
+### Code Quality
+
+- ✅ **Reduced complexity**: Max 496 LOC per file vs. 2499 LOC
+- ✅ **Improved cohesion**: Services have single, clear purpose
+- ✅ **Better naming**: Service names describe responsibility
+
+### Maintainability
+
+- ✅ **Easier navigation**: Find code by service (e.g., "path migration" →
+  `PathMigrator.ts`)
+- ✅ **Isolated changes**: Update one service without touching others
+- ✅ **Reduced merge conflicts**: Team works on different services
+
+### Testing
+
+- ✅ **Unit testable**: Mock dependencies via DI container
+- ✅ **Integration testable**: Test service interactions
+- ✅ **Faster tests**: Test one service at a time (not entire God object)
+
+### Development Velocity
+
+- ✅ **Parallel development**: Different developers on different services
+- ✅ **Faster onboarding**: Understand one 300 LOC service vs. 2500 LOC file
+- ✅ **Easier reviews**: 200-500 LOC PRs vs. 1000+ LOC changes
+
+## Anti-Patterns Eliminated
+
+### Before
+
+1. **Blob/God Object**: 2499 LOC monolith
+2. **Lava Flow**: Unclear which code is used
+3. **Spaghetti Code**: Tangled control flow
+4. **Golden Hammer**: Everything in one file
+
+### After
+
+1. **Single Responsibility**: Each service focused
+2. **Dependency Injection**: Explicit dependencies
+3. **Facade Pattern**: Thin orchestrators
+4. **Service Layer**: Clean separation of concerns
+
+## Future Phases
+
+### Phase 2: Cache Services (Pending)
+
+Will add:
+
+- `SpecCache` (spec file caching)
+- `MemoryCache` (memory indexing)
+
+Both follow same pattern: <600 LOC, depend on Logger, registered in Container.
+
+### Future Extraction Opportunities
+
+If any service grows >500 LOC:
+
+- Extract sub-services using same pattern
+- Maintain <600 LOC limit per file
+- Apply facade pattern if needed
+
+## Related ADRs
+
+- **ADR-001**: DI Framework (TSyringe)
+- **ADR-002**: Module Extraction Strategy (Phased with Facades)
+- **ADR-003**: Error Handling (Logger service)
+
+## Related Tasks
+
+- **Phase 3**: T020-T025 (extension.ts refactoring)
+- **Phase 4**: T026-T030 (goferMigrator.ts refactoring)

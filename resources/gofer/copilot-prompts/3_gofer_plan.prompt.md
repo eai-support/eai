@@ -1,7 +1,6 @@
 ---
 name: 3_gofer_plan
-description:
-  Generate technical implementation plan with architecture and contracts
+description: Generate technical implementation plan with architecture and contracts
 agent: copilot-workspace
 tools:
   - Read
@@ -13,9 +12,10 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
   canonicalSource: .claude/commands/3_gofer_plan.md
-  canonicalChecksum: cc9dbd64b09ec49b31134a9a5ce99e7356dc2ff91bfcb338b275d45863308ed0
+  canonicalChecksum: 96982e4657cdd1fc98362dea92c4b91ded3482c6605d342ae901256904dfc9cb
   metadataSource: scripts/generate-commands.ts
 ---
+
 
 # Gofer Plan
 
@@ -242,6 +242,33 @@ Return: scenario count, prerequisite count"
 
 **Run all 4 agents in parallel.** Agents 2-4 read spec.md independently while
 Agent 1 generates the plan.
+
+### Agent 5-7: Visual Writers (Persona-Pack)
+
+After the planning agents complete and write plan.md, data-model.md, and
+contracts, dispatch three visual-writer sub-agents in parallel to produce the
+developer-persona-pack visuals:
+
+```
+Task: subagent_type="visual-c4-writer", model="sonnet"
+Prompt: "Generate C4 Context and Container diagrams for {FEATURE_NAME}.
+Feature dir: {FEATURE_DIR}. Read spec.md, research.md, plan.md.
+Output to {FEATURE_DIR}/visuals/c4-context.md and c4-container.md."
+
+Task: subagent_type="visual-bounded-context-writer", model="sonnet"
+Prompt: "Generate bounded-context map for {FEATURE_NAME}.
+Feature dir: {FEATURE_DIR}. Read plan.md, data-model.md, contracts/.
+Output to {FEATURE_DIR}/visuals/bounded-context.md."
+
+Task: subagent_type="visual-erd-writer", model="sonnet"
+Prompt: "Generate data-model ERD for {FEATURE_NAME}.
+Feature dir: {FEATURE_DIR}. Read data-model.md.
+Output to {FEATURE_DIR}/visuals/data-model-erd.md."
+```
+
+These three artifacts (c4-container.md, bounded-context.md, data-model-erd.md)
+are required for the developer persona pack. The persona-pack completeness gate
+at #4_gofer_tasks start will warn if any are missing.
 
 ---
 
@@ -498,6 +525,7 @@ Artifacts created:
 Engineering Review: PASSED (cycle [N] of 5)
 ```
 
+
 ---
 
 ## LLM Council Integration (Optional)
@@ -552,17 +580,17 @@ Logs to: `.specify/logs/pipeline.jsonl`
 
 ---
 
+
+
 ## Pipeline Continuation
 
 This completes the 3_gofer_plan stage. To continue the Gofer pipeline:
 
 **Next Command:** `#4_gofer_tasks`
 
-The next stage will read the artifacts from this stage and continue the workflow
-automatically.
+The next stage will read the artifacts from this stage and continue the workflow automatically.
 
-**Note:** Copilot Chat supports context preservation. Your conversation history
-will be maintained as you progress through pipeline stages.
+**Note:** Copilot Chat supports context preservation. Your conversation history will be maintained as you progress through pipeline stages.
 
 ## Key Rules
 

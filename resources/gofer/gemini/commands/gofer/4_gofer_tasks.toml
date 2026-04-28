@@ -1,0 +1,2 @@
+description = "Break down the implementation plan into dependency-ordered, parallelisable tasks."
+prompt = "{{include: ../../../.specify/commands/4_gofer_tasks.md}}"

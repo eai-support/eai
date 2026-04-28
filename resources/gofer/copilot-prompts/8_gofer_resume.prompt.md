@@ -1,7 +1,6 @@
 ---
 name: 8_gofer_resume
-description:
-  Resume work from saved session checkpoint with full context restoration
+description: Resume work from saved session checkpoint with full context restoration
 agent: copilot-workspace
 tools:
   - Read
@@ -11,11 +10,12 @@ tools:
   - WebSearch
 argument-hint: feature-name-or-description
 gofer:
-  workflowProfile: standard
+  workflowProfile: enterpriseai
   canonicalSource: .claude/commands/8_gofer_resume.md
-  canonicalChecksum: b33ba9dfb2dbdccff6f1f80af38d8af64d8935208087d1c3c6a30b8615ccbcc7
+  canonicalChecksum: ef5cd7a4ce17df059ebf8c3bf51f6afb2f8542a6b8b030bf8b11c576d5c3b717
   metadataSource: scripts/generate-commands.ts
 ---
+
 
 # Gofer Resume
 
