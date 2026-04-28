@@ -1056,7 +1056,7 @@ Use 'eai verify calls' when you need to inspect the exact API contracts the CLI 
 
 verifyCommand
   .command('storage')
-  .description('Verify ResourceAPI storage status and doctor contracts')
+  .description('Verify storage status and doctor contracts')
   .option('--tenant-id <id>', 'Tenant ID to verify')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)

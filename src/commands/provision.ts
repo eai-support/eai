@@ -323,7 +323,7 @@ Diagnostics:
 
 provisionCommand
   .command('storage')
-  .description('Provision ResourceAPI storage for the active tenant')
+  .description('Provision storage for the active tenant')
   .option('--tenant-id <id>', 'Provision storage for a specific tenant')
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--dry-run', 'Plan actions without applying changes', false)
