@@ -437,11 +437,10 @@ export class PlatformAPIClient {
     rebuildSearch?: boolean;
   }): Promise<Response> {
     const backend = options.backend === 'mongodb' ? 'documentdb' : options.backend;
-    return fetch(`${this.baseUrl}/v3/provision/storage`, {
+    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage/provision`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
-        tenant_id: this.tenantId,
         backend: backend || 'all',
         dry_run: Boolean(options.dryRun),
         rebuild_search: Boolean(options.rebuildSearch),

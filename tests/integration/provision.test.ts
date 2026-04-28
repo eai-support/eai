@@ -148,7 +148,7 @@ describe('eai provision entra', () => {
     let requestBody: unknown;
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/storage`, async ({ request }) => {
+      http.post(`${API_BASE}/v3/resources/test-tenant-id/storage/provision`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({
           tenantId: 'test-tenant-id',
@@ -176,7 +176,6 @@ describe('eai provision entra', () => {
     ], { from: 'user' });
 
     expect(requestBody).toEqual({
-      tenant_id: 'test-tenant-id',
       backend: 'documentdb',
       dry_run: true,
       rebuild_search: true,
