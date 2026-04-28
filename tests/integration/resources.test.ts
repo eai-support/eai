@@ -166,11 +166,10 @@ describe('resource type diagnostics', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://test-api.example.com/v3/provision/storage',
+      'https://test-api.example.com/v3/resources/tenant-1/storage/provision',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
-          tenant_id: 'tenant-1',
           backend: 'documentdb',
           dry_run: true,
           rebuild_search: true,

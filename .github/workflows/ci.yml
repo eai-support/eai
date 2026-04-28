@@ -13,7 +13,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # windows-latest is intentionally excluded: the bundled Gofer
+        # resources include namespaced files like
+        # `resources/gofer/claude-commands/gofer:plan.md`, and NTFS
+        # forbids `:` in filenames. `actions/checkout` aborts before
+        # any CLI step runs, even with sparse-checkout configured (git
+        # still validates index paths). Re-enable once the colon-named
+        # files are renamed in the Gofer source-of-truth.
+        os: [ubuntu-latest, macos-latest]
 
     steps:
       - name: Checkout repository
