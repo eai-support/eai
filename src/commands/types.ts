@@ -13,8 +13,9 @@ import ora from 'ora';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { findProjectRoot, loadObjectTypes, type ObjectTypeDefinition } from '../lib/config.js';
-import { PlatformAPIClient } from '../lib/api.js';
+import { extractServerErrorContext, PlatformAPIClient } from '../lib/api.js';
 import { resolveCommandContext } from '../lib/context.js';
+import { validateObjectTypeDefaultValues } from '../lib/object-type-defaults.js';
 import { isRecord, toObjectTypeSlug } from '../lib/utils.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
@@ -56,6 +57,26 @@ export function shouldFailTypeSeedRun(
   results: Array<{ verification?: TypeSeedVerificationResult }>,
 ): boolean {
   return results.some((result) => !result.verification?.converged);
+}
+
+export interface TypeDefaultValueValidationIssue {
+  tenantKey: string;
+  typeName: string;
+  issue: string;
+}
+
+export function collectTypeDefaultValueValidationIssues(
+  objectTypes: Record<string, ObjectTypeDefinition[]>,
+): TypeDefaultValueValidationIssue[] {
+  return Object.entries(objectTypes).flatMap(([tenantKey, types]) => (
+    types.flatMap((type) => (
+      validateObjectTypeDefaultValues(type).map((issue) => ({
+        tenantKey,
+        typeName: type.name,
+        issue,
+      }))
+    ))
+  ));
 }
 
 export function resolveTenantIdForKey(
@@ -235,6 +256,22 @@ function findMatchingRemoteType(
   return findMatchingRemoteTypes(remoteDocs, requestedType)[0];
 }
 
+export async function describeFailedPlatformResponse(response: Response): Promise<string> {
+  const context = await extractServerErrorContext(response);
+  const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
+  const detail = (context.serverMessage ?? context.rawBody).trim();
+
+  if (!detail) {
+    return status;
+  }
+
+  const truncatedDetail = detail.length > 500 ? `${detail.slice(0, 497)}...` : detail;
+  const code = context.serverCode ? `[${context.serverCode}] ` : '';
+  const requestId = context.requestId ? ` (request ${context.requestId})` : '';
+
+  return `${status} - ${code}${truncatedDetail}${requestId}`;
+}
+
 async function archiveDuplicateRemoteTypes(
   client: PlatformAPIClient,
   duplicates: RemoteObjectTypeDocument[],
@@ -251,7 +288,7 @@ async function archiveDuplicateRemoteTypes(
     });
 
     if (!response.ok) {
-      throw new Error(`archive failed: ${response.status} ${response.statusText}`);
+      throw new Error(`archive failed: ${await describeFailedPlatformResponse(response)}`);
     }
 
     archived++;
@@ -398,6 +435,22 @@ Examples:
       exitWithError(ErrorCode.E303, { field: '--tenant-key when using --tenant-id with multiple tenant scopes' }, options.format);
     }
 
+    const defaultValueIssues = collectTypeDefaultValueValidationIssues(objectTypes);
+    if (defaultValueIssues.length > 0) {
+      if (options.format === 'json') {
+        out.json({
+          error: 'Object Type defaultValue validation failed',
+          issues: defaultValueIssues,
+        });
+      } else {
+        out.error('Object Type defaultValue validation failed');
+        for (const issue of defaultValueIssues) {
+          out.error(`  [${issue.tenantKey}/${issue.typeName}] ${issue.issue}`);
+        }
+      }
+      process.exit(1);
+    }
+
     // Filter to specific tenant key if requested
     const keysToSeed = await selectTenantKey(objectTypes, options.tenantKey, activeContext.activeTenant.slug);
 
@@ -445,7 +498,7 @@ Examples:
       try {
         const remoteRes = await client.getPublishedObjectTypes({ limit: 200 });
         if (!remoteRes.ok) {
-          throw new Error(`remote lookup failed: ${remoteRes.status} ${remoteRes.statusText}`);
+          throw new Error(`remote lookup failed: ${await describeFailedPlatformResponse(remoteRes)}`);
         }
         remoteDocs = extractRemoteObjectTypeDocs(await remoteRes.json());
       } catch (err) {
@@ -514,7 +567,7 @@ Examples:
                   : doc
               ));
             } else {
-              typeSpinner.fail(`  ${type.name} — update failed: ${updateRes.status}`);
+              typeSpinner.fail(`  ${type.name} — update failed: ${await describeFailedPlatformResponse(updateRes)}`);
               failed++;
             }
           } else {
@@ -556,7 +609,7 @@ Examples:
                 status: type.status,
               });
             } else {
-              typeSpinner.fail(`  ${type.name} — create failed: ${createRes.status}`);
+              typeSpinner.fail(`  ${type.name} — create failed: ${await describeFailedPlatformResponse(createRes)}`);
               failed++;
             }
           }
@@ -701,6 +754,8 @@ Examples:
             warns.push(`property "${prop.name}" has options but type is "${prop.type}" (not select)`);
           }
         }
+
+        issues.push(...validateObjectTypeDefaultValues(type));
 
         // Validate link types
         for (const link of type.linkTypes) {
