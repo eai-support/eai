@@ -12,12 +12,14 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 export interface ObjectTypeProperty {
   name: string;
   type: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'json' | 'file' | 'relationship';
   required: boolean;
   indexed?: boolean;
-  defaultValue?: string | number | boolean;
+  defaultValue?: JsonValue;
   options?: Array<{ label: string; value: string }>;
   description?: string;
 }
