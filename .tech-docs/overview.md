@@ -1,19 +1,19 @@
 ---
-generated: "2026-03-11T18:45:00Z"
-source_commit: "584ed1afb8257ec89c81a6e0515007e9491fa008"
+generated: "2026-04-30T11:33:30Z"
+source_commit: "86e6318e5014b9b77aa5e0d28cabe883a07fab21"
 ---
 
 # EAI CLI — Overview
 
 ## Service Identity
 
-**Name**: `@eai-tools/cli` (eai)
-**Version**: 0.1.4
+**Name**: `@eai-tools/cli` (eai)  
+**Version**: 2.6.0  
 **Purpose**: Enterprise AI Platform CLI for scaffolding, managing, and deploying vertical applications on the EAI platform.
 
 ## Description
 
-The EAI CLI is a command-line tool that wraps the EAI Platform API, providing developers with simple commands to work with resources, object types, tenants, and AI workflows. It handles authentication via Entra CIAM device code flow, manages environment configuration, validates and seeds data models, and orchestrates deployments to Azure.
+The EAI CLI is a command-line tool that wraps the EAI Platform API, providing developers with simple commands to work with resources, object types, tenants, and AI workflows. It handles authentication via Entra CIAM browser-based PKCE flow, manages environment configuration, validates and seeds data models, and orchestrates deployments to Azure. The CLI authenticates once via `eai login`, stores tokens locally, and uses tenant membership to drive working context via `eai tenant select`.
 
 ## Tech Stack
 
@@ -27,16 +27,20 @@ The EAI CLI is a command-line tool that wraps the EAI Platform API, providing de
 | Build Tool | TypeScript Compiler | 5.7.3 |
 | Package Manager | npm | Standard |
 | Module System | ESM (ES Modules) | Node16 |
+| Testing | Vitest + MSW | 4.1.3, 2.6.0 |
 
 ## Key Entry Points
 
 | File | Purpose |
 |------|---------|
 | `src/index.ts` | Main CLI entry point; registers all commands |
-| `src/commands/*.ts` | Individual command implementations (init, login, types, resources, etc.) |
+| `src/commands/*.ts` | 15 command implementations (init, login, types, resources, tenant, user, provision, etc.) |
 | `src/lib/api.ts` | Platform API client with auth |
-| `src/lib/auth.ts` | Entra CIAM authentication (device code flow) |
+| `src/lib/auth.ts` | Entra CIAM authentication (browser PKCE flow) |
+| `src/lib/tenant-context.ts` | Tenant membership and selection logic |
 | `src/lib/config.ts` | Project config loader and TypeScript evaluator |
+| `src/lib/error-codes.ts` | Structured error catalog (E001-E305) |
+| `src/lib/profile.ts` | Profile management (dev, test, production) |
 | `dist/index.js` | Compiled entry point (bin: `eai`) |
 
 ## How to Run Locally
@@ -57,6 +61,8 @@ npm run build       # Compile TypeScript to dist/
 npm run dev         # Watch mode (tsc --watch)
 npm run typecheck   # Type check without emitting
 npm run lint        # Run ESLint
+npm test            # Run Vitest tests
+npm run test:coverage # Coverage report
 ```
 
 ### Running the CLI Locally
@@ -77,6 +83,7 @@ eai --help
 node dist/index.js init test-vertical
 node dist/index.js login
 node dist/index.js whoami
+node dist/index.js tenant list
 ```
 
 ## Team / Ownership
@@ -89,21 +96,27 @@ node dist/index.js whoami
 
 ## Core Workflows
 
-1. **Scaffold & Initialize**: `eai init <name>` generates a new vertical app from a template
-2. **Authenticate**: `eai login` performs device code flow and stores tokens locally
-3. **Environment Sync**: `eai env pull` fetches config from Azure App Config + Key Vault
-4. **Type Management**: `eai types validate`, `eai types seed`, `eai types diff` manage Object Types
-5. **Resource CRUD**: `eai resources list/get/create/update/delete` interacts with platform data
-6. **AI Workflows**: `eai chat send/stream` sends messages to AI workflows
-7. **Deployment**: `eai deploy setup/trigger/status` orchestrates Azure deployments via GitHub Actions
+1. **Scaffold & Initialize**: `eai init <name>` generates a new vertical app from a template with Gofer AI assets
+2. **Authenticate**: `eai login` performs browser-based PKCE flow and stores tokens locally in `~/.eai/`
+3. **Tenant Selection**: `eai tenant select` chooses active tenant from user's tenant-admin memberships
+4. **Environment Sync**: `eai env pull` fetches config from Azure App Config + Key Vault
+5. **Type Management**: `eai types validate`, `eai types seed`, `eai types diff` manage Object Types
+6. **Resource CRUD**: `eai resources list/get/create/update/delete` interacts with platform data
+7. **User Management**: `eai user invite`, `eai user provision-me` adds users to tenants
+8. **AI Workflows**: `eai chat send/stream` sends messages to AI workflows; `eai docs classify/index` handles documents
+9. **Entra Provisioning**: `eai provision entra` creates/confirms Entra app registration in CIAM
+10. **Deployment**: `eai deploy setup/trigger/status` orchestrates Azure deployments via GitHub Actions
 
 ## Architecture Philosophy
 
 - **API-First**: Every command is a thin wrapper around platform API calls
 - **Token Management**: Stores encrypted tokens in `~/.eai/tokens.json` with auto-refresh
+- **Membership-Driven Context**: Active tenant comes from login memberships, not `.env.local`
+- **Profile-Based Environments**: `--profile dev|test|prod` switches between platform environments
 - **Project Context**: Discovers project root by walking up to find `eai.config.ts` or `src/eai.config/`
 - **TypeScript Evaluation**: Loads user-defined Object Types from TypeScript files by stripping types and evaluating as JS
 - **Static Registry**: Self-hosted npm registry on GitHub Pages (no external npm publish required)
+- **Structured Error Codes**: E001-E305 error catalog with suggestions
 
 ## Update Management
 
@@ -111,3 +124,16 @@ node dist/index.js whoami
 - Displays update banner after command execution
 - Users run `eai update` to upgrade to the latest version
 - Update check is skipped in CI, when `NO_UPDATE_NOTIFIER=1`, or in non-TTY environments
+
+## Gofer AI Terminal Integration
+
+Every `eai init` project includes Gofer AI assets for Claude, Codex, Gemini, and GitHub Copilot:
+
+| CLI | Installed Surface | First Command |
+|-----|-------------------|---------------|
+| Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` hooks | `/0_business_scenario` |
+| Codex CLI | `.system/skills/gofer`, `.agents/skills/gofer` | `$gofer/1_gofer_research` |
+| Gemini CLI | `.gemini/commands/gofer`, `.gemini/extension.json` | `/gofer:1_gofer_research` |
+| GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | Use Gofer prompt or local skill |
+
+Shared workflow artifacts live under `.specify/` (commands, scripts, templates, hooks, memory, logs, specs). Use `eai init <name> --no-gofer` to skip Gofer installation.
