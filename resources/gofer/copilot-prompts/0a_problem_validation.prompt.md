@@ -1,8 +1,6 @@
 ---
 name: 0a_problem_validation
-description: >-
-  Validate business problem using 5 Whys analysis, stakeholder impact mapping,
-  and market landscape research before any solution design
+description: Validate the business problem using 5 Whys root-cause analysis and stakeholder mapping.
 agent: copilot-workspace
 tools:
   - Read

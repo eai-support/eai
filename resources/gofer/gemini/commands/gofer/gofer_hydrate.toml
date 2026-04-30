@@ -1,0 +1,2 @@
+description = "Hydrate the Gofer context with project memory, constitution, and prior pipeline state."
+prompt = "{{include: ../../../.specify/commands/gofer_hydrate.md}}"

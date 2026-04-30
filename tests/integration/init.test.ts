@@ -170,10 +170,10 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'my-vertical/.specify/scripts/bash/pipeline-state.sh');
     await expectFileExists(ctx, 'my-vertical/.system/skills/gofer/1_gofer_research/SKILL.md');
     await expectFileExists(ctx, 'my-vertical/.agents/skills/gofer/1_gofer_research/SKILL.md');
-    await expectFileNotExists(ctx, 'my-vertical/.agents/skills/0_business_scenario/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.agents/skills/gofer/0_business_scenario/SKILL.md');
     await expectFileExists(ctx, 'my-vertical/.gemini/extension.json');
     await expectFileExists(ctx, 'my-vertical/.gemini/commands/gofer/1_gofer_research.toml');
-    await expectFileNotExists(ctx, 'my-vertical/.gemini/commands/gofer/0_business_scenario.toml');
+    await expectFileExists(ctx, 'my-vertical/.gemini/commands/gofer/0_business_scenario.toml');
     await expectFileExists(ctx, 'my-vertical/.github/prompts/0_business_scenario.prompt.md');
     await expectFileExists(ctx, 'my-vertical/.github/skills/0-business-scenario/SKILL.md');
     await expectFileExists(ctx, 'my-vertical/.github/copilot-instructions.md');

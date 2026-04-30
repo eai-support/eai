@@ -3,7 +3,16 @@ name: gofer:personality
 description: "Set the assistant personality for this Gofer session: friendly, pragmatic, or none (default)."
 title: 'Gofer Personality'
 category: control
-surfaces: [claude, claude-mirror, copilot, vscode]
+surfaces:
+  - claude
+  - claude-mirror
+  - copilot
+  - vscode
+  - codex
+  - gemini
+  - github-prompts
+  - agents-skills
+  - system-skills
 args:
   mode:
     type: string

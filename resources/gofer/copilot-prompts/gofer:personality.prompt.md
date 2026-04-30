@@ -1,6 +1,6 @@
 ---
 name: gofer:personality
-description: Gofer Personality
+description: Set the assistant personality for this Gofer session: friendly, pragmatic, or none (default).
 agent: copilot-workspace
 tools:
   - Read

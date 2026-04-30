@@ -52,6 +52,7 @@ If these don't exist, prompt user to run `/1_gofer_research` first.
 4. Review agent output, handle clarifications
 5. Optional multi-perspective review
 6. Output: `.specify/specs/{feature}/spec.md`
+7. EnterpriseAI default output: `.specify/specs/{feature}/contract-pack.md`
 
 ---
 
@@ -166,6 +167,9 @@ Read these files for full context:
 - {FEATURE_DIR}/proposal-review.md — Approved business scenario, architecture direction, options, overrides
 - .specify/templates/spec-template.md — Template structure to follow
 - {FEATURE_DIR}/discovery.md — Business discovery findings (read if exists, skip if not)
+- {FEATURE_DIR}/journeys/base-journey.md — AI-augmented four-step application journey (read if exists, skip if not)
+- {FEATURE_DIR}/context-bundle.md — Compact EnterpriseAI context (read if exists, skip if not)
+- {FEATURE_DIR}/reuse-scan.md — Reuse-before-create evidence (read if exists, skip if not)
 
 Generate the COMPLETE spec.md following this structure:
 
@@ -181,12 +185,25 @@ Generate the COMPLETE spec.md following this structure:
 9. Out of Scope — Clear boundaries
 10. Glossary — Key terms
 11. Research Traceability — Matrix mapping each research finding to a spec section
+12. AI-Augmented 4-Step Journey — required for app delivery, not applicable for explicit non-app work
+13. EnterpriseAI Contract Pack Summary — actors, object types, workflows, permissions, APIs/events, runtime assumptions, acceptance tests
 
 If discovery.md exists, use it to:
 - Use Problem Statement for Overview motivation
 - Use Target Users persona for 'As a [user type]' in stories
 - Use Success Metrics as targets in Success Criteria
 - Use Value Proposition for primary value framing
+- Use Application Classification to decide whether the app journey is mandatory
+
+If journeys/base-journey.md exists and is classified as app delivery, use it to:
+- Keep the user-facing scope to four steps or fewer unless the user explicitly
+  accepted extra complexity
+- Convert each step goal into functional requirements and acceptance criteria
+- Preserve the AI assistance mode for each step: chat/voice/accessibility/
+  translation, contextual prefill, recommendation, validation, completion
+  checks, human review, audit trail, or escalation
+- Add explicit requirements for user control, evidence display, confidence,
+  editability, and accessibility at each AI-assisted step
 
 If proposal-review.md exists and status is approved, use it to:
 - Treat Recommended Business Scenario as the authoritative scope for the spec
@@ -204,6 +221,8 @@ Rules:
 - Each functional requirement must include Validation and Integration references
 
 Write the complete specification to {FEATURE_DIR}/spec.md.
+When EnterpriseAI is active or no profile is specified, also write
+{FEATURE_DIR}/contract-pack.md using the contract pack requirements below.
 
 Return a structured summary:
 - User story count and priorities
@@ -561,8 +580,8 @@ Success criteria must be:
 
 ## EnterpriseAI Integration Map Requirements
 
-> Active only when `gofer.workflowProfile=enterpriseai`. Standard profile
-> outputs remain unchanged.
+EnterpriseAI is the default profile. Standard-profile outputs remain unchanged
+only when the user explicitly opts out.
 
 When the workflow profile is `enterpriseai`, `spec.md` MUST include an explicit
 **Integration Map** section that traces the flow from end-user interaction to
@@ -585,6 +604,27 @@ At minimum the map must name:
 Each link in the chain must reference the internal API contract that carries the
 integration payload (for example `IAP-001` → `IAP-002` → `IAP-003`) so the plan
 stage can bind implementation tasks directly to specification clauses.
+
+---
+
+## EnterpriseAI Contract Pack Requirements
+
+When EnterpriseAI is active or no profile is specified, generate
+`{FEATURE_DIR}/contract-pack.md` with these required sections:
+
+| Section | Required Content |
+| ------- | ---------------- |
+| Actors | Business users, administrators, approvers, external systems, support roles |
+| Object Types | Reused, extended, and newly proposed EnterpriseAI object types with owners |
+| Workflows and Journeys | External user journeys and internal orchestration flows as separate views; app delivery must include the four-step-or-fewer AI-augmented journey |
+| AI Assistance Contract | Step goal, assistance mode, context used, generated output, user controls, confidence/evidence, audit trail, completion signal, and escalation for each app step |
+| Permissions and Tenant Boundaries | Identity, authorization, policy, isolation, and tenant assumptions |
+| APIs and Events | ResourceAPI surfaces, events, payload ownership, and contract-test hooks |
+| Deployment and Runtime | Environment, config, observability, rollback, and operating assumptions |
+| Acceptance Tests | Business, security, data, architecture, operational, and regression checks |
+
+The contract pack must link every new object type/API/workflow back to
+`reuse-scan.md` and must flag any "create new" decision that lacks evidence.
 
 ---
 

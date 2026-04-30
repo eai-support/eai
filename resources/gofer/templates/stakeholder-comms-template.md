@@ -80,10 +80,28 @@ inline Mermaid (FR-029, NFR-006).
 
 ---
 
+## AI-Augmented 4-Step Journey
+
+For app delivery, summarize the four-step-or-fewer process and how generative AI
+helps the user complete each step. For non-app work, state the classification
+rationale and omit app-specific controls.
+
+| Step | Business Goal | AI Help    | User Control / Evidence |
+| ---- | ------------- | ---------- | ----------------------- |
+| 1    | {{goal}}      | {{assist}} | {{control}}             |
+| 2    | {{goal}}      | {{assist}} | {{control}}             |
+| 3    | {{goal}}      | {{assist}} | {{control}}             |
+| 4    | {{goal}}      | {{assist}} | {{control}}             |
+
+---
+
 ## Marp Presentation Deck (Optional, Recommended for EnterpriseAI)
 
 If this run enables Marp output, generate `{FEATURE_DIR}/presentation.marp.md`
-with this required structure:
+and the persona deck pack in `{FEATURE_DIR}/presentations/`. EnterpriseAI is the
+default profile; standard profile skips Marp only when explicitly requested.
+
+The general deck uses this required structure:
 
 ````markdown
 ---
@@ -106,6 +124,17 @@ title: '{{feature-name}} Stakeholder Presentation'
 - {{solution-summary}}
 - {{enterpriseai-fit}}
 - {{expected-business-outcome}}
+
+---
+
+# AI-Augmented 4-Step Journey
+
+| Step | Business Goal | AI Help    | Completion Signal |
+| ---- | ------------- | ---------- | ----------------- |
+| 1    | {{goal}}      | {{assist}} | {{signal}}        |
+| 2    | {{goal}}      | {{assist}} | {{signal}}        |
+| 3    | {{goal}}      | {{assist}} | {{signal}}        |
+| 4    | {{goal}}      | {{assist}} | {{signal}}        |
 
 ---
 
@@ -141,6 +170,40 @@ title: '{{feature-name}} Stakeholder Presentation'
 
 When Marp is not enabled, keep producing `release-notes.md` and `demo-script.md`
 outputs.
+
+### Persona Marp Deck Pack
+
+Generate a persona-specific executive summary deck for every enterprise
+decision-rights audience:
+
+| Deck | Audience | What They Need To Know |
+| ---- | -------- | ---------------------- |
+| `presentations/executive.marp.md` | Executive committee | Strategic value, funding gate, risk appetite |
+| `presentations/business.marp.md` | Business owner | User journey, operational value, adoption path |
+| `presentations/internal-delivery.marp.md` | Internal delivery | Delivery sequence, red/green loop, implementation risk |
+| `presentations/enterprise-architecture.marp.md` | Enterprise architecture | Platform fit, context bundle, contract pack, reuse decisions |
+| `presentations/ciso.marp.md` | CISO | Identity, tenant boundaries, controls, residual risk |
+| `presentations/data-architecture.marp.md` | Data architecture | Object types, lineage, data quality, governance |
+| `presentations/cio.marp.md` | CIO | Platform strategy, operating model, reusable capability roadmap |
+| `presentations/cfo.marp.md` | CFO | Investment case, benefit tracking, delivery and run cost |
+| `presentations/coo.marp.md` | COO | Process change, rollout readiness, support model |
+| `presentations/risk-compliance.marp.md` | Risk/compliance | Obligations, evidence pack, exceptions, audit trail |
+
+Each persona deck must include:
+
+- Executive Summary.
+- Decision Focus.
+- Problem Statement.
+- EnterpriseAI Solution Overview.
+- Architecture Diagram Reference with Mermaid.
+- Context Bundle.
+- Contract Pack.
+- Reuse-Before-Create.
+- Audit History.
+- Red/Green Validation Loop.
+- Demo Script Summary.
+- Success Metrics.
+- Persona-specific value/risk table and controls table.
 
 ---
 

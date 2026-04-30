@@ -8,6 +8,11 @@ surfaces:
   - claude-mirror
   - copilot
   - vscode
+  - codex
+  - gemini
+  - github-prompts
+  - agents-skills
+  - system-skills
 ---
 
 # Gofer Plan Mode Toggle

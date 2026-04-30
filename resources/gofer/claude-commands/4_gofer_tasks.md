@@ -429,10 +429,11 @@ When council mode is enabled for task generation:
 
 ## Ordered Runnable Task-Generation Guidance
 
-> Active only when `gofer.workflowProfile=enterpriseai`. Standard profile task
-> generation is unaffected.
+EnterpriseAI is the default profile. Standard profile task generation is used
+only when the user explicitly opts out.
 
-When the workflow profile is `enterpriseai`, `tasks.md` MUST emit deployment
+When the workflow profile is `enterpriseai` or no profile is specified,
+`tasks.md` MUST emit deployment
 tasks in the following ordered chain. Each task is independently runnable and
 the ordering enforces scaffold before deployment so that configuration and
 manifest artifacts exist before any deploy command runs.
@@ -450,6 +451,28 @@ manifest artifacts exist before any deploy command runs.
 
 <!-- prettier-ignore -->
 The ordering above is non-negotiable: tasks.md MUST instruct the pipeline to scaffold before deployment, validate before deploy, and only then invoke pinned `eai-cli major.minor` deployment tasks. Breaking the order causes deployment preflight gating in `/5_gofer_implement` to fail.
+
+### EnterpriseAI Contract, Reuse, and Red/Green Tasks
+
+`tasks.md` MUST also include:
+
+- Contract-pack coverage tasks for actors, object types, workflows/journeys,
+  permissions/tenant boundaries, APIs/events, deployment assumptions, and
+  acceptance tests.
+- AI-augmented journey tasks for app delivery: one task group for each of the
+  four-or-fewer journey steps covering user experience, chatbot/voice/
+  accessibility/translation support, contextual prefill, completion validation,
+  human review, audit trail, and fallback/escalation.
+- A scope-control task that checks whether any user-facing app process exceeds
+  four steps and either combines/automates extra steps or records the approved
+  exception and rationale.
+- Reuse-before-create tasks before any new EnterpriseAI object type, API/event,
+  workflow, module, or spec concept is created.
+- Test-first red/green tasks: generate spec-derived tests, verify they fail
+  against missing or incomplete implementation, implement in a separate task,
+  then re-run validation.
+- Audit-history tasks that preserve stable finding IDs, recurring findings,
+  accepted exceptions, owner, expiry, and review cadence.
 
 ---
 

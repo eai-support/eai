@@ -3,7 +3,16 @@ name: gofer:side
 description: "Open a side conversation in the active CLI without disturbing the main pipeline state; resumable."
 title: 'Gofer Side Conversation'
 category: control
-surfaces: [claude, claude-mirror, copilot, vscode]
+surfaces:
+  - claude
+  - claude-mirror
+  - copilot
+  - vscode
+  - codex
+  - gemini
+  - github-prompts
+  - agents-skills
+  - system-skills
 ---
 
 # Gofer Side Conversation

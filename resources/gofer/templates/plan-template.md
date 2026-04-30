@@ -49,6 +49,8 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 .specify/specs/[###-feature]/
 ├── spec.md              # Feature specification (/2_gofer_specify)
 ├── research.md          # Codebase research (/1_gofer_research)
+├── journeys/
+│   └── base-journey.md  # AI-augmented app journey when app delivery applies
 ├── plan.md              # This file (/3_gofer_plan)
 ├── data-model.md        # Data model design (/3_gofer_plan)
 ├── quickstart.md        # Quick start guide (/3_gofer_plan)
@@ -105,6 +107,19 @@ ios/ or android/
 **Structure Decision**: [Document the selected structure and reference the real
 directories captured above]
 
+## AI-Augmented App Journey
+
+For application delivery, the plan must preserve the four-step-or-fewer
+AI-augmented journey from `journeys/base-journey.md`. For non-app work, state
+why no app journey is required.
+
+| Step | Business Goal | AI Assistance | Architecture Implication | Validation |
+| ---- | ------------- | ------------- | ------------------------ | ---------- |
+| 1    | [goal]        | [assist]      | [component/API/data]     | [test]     |
+| 2    | [goal]        | [assist]      | [component/API/data]     | [test]     |
+| 3    | [goal]        | [assist]      | [component/API/data]     | [test]     |
+| 4    | [goal]        | [assist]      | [component/API/data]     | [test]     |
+
 ## Complexity Tracking
 
 > **Fill ONLY if Constitution Check has violations that must be justified**
@@ -116,8 +131,8 @@ directories captured above]
 
 ## EnterpriseAI Profile Metadata
 
-> Populated only when `gofer.workflowProfile=enterpriseai`. Standard-profile
-> runs leave this section empty and unchanged.
+> Populated by default for EnterpriseAI runs. Standard-profile runs leave this
+> section empty only when the user explicitly opts out.
 
 - **EAI CLI Version Pin**: `[major.minor, e.g. 2.0]` — the installed `eai-cli`
   version is recorded here at plan generation time. Deployment tasks reference

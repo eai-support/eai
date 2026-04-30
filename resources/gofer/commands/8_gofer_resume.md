@@ -6,6 +6,13 @@ category: utility
 surfaces:
   - claude
   - claude-mirror
+  - copilot
+  - vscode
+  - codex
+  - gemini
+  - github-prompts
+  - agents-skills
+  - system-skills
 aliases: [gofer:resume]
 ---
 ---

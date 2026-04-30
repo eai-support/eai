@@ -12,6 +12,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import { CANONICAL_DESCRIPTIONS, validateDescriptions } from './canonical-descriptions.mjs';
 import { parseStageCommand } from './parse-stage-command.mjs';
 
@@ -20,16 +21,10 @@ import { parseStageCommand } from './parse-stage-command.mjs';
 // ---------------------------------------------------------------------------
 
 /**
- * Stages that are exclusive to Claude surfaces and must not be emitted
- * to non-Claude surfaces (codex, gemini, copilot, github-prompts, etc.).
+ * Legacy compatibility export. Gofer now emits every command/helper to every
+ * supported surface when the stage frontmatter lists that surface.
  */
-export const CLAUDE_ONLY_STAGES = [
-  '0_business_scenario',
-  'gofer_constitution',
-  'gofer_hydrate',
-  '7_gofer_save',
-  '8_gofer_resume',
-];
+export const CLAUDE_ONLY_STAGES = [];
 
 const ALL_SURFACES = [
   'claude',
@@ -49,17 +44,18 @@ const ALL_SURFACES = [
 
 /**
  * Returns true if the given stage should be excluded from the given surface.
- * Claude-only stages are excluded from every surface except 'claude' and 'claude-mirror'.
+ * Gofer keeps this function for older tests/imports, but no stages are
+ * excluded by name anymore. Surface availability is controlled by stage
+ * frontmatter so Claude, Copilot, Codex, and Gemini stay in parity.
  *
  * @param {string} stageName
  * @param {string} surface
  * @returns {boolean}
  */
 export function shouldExclude(stageName, surface) {
-  if (!CLAUDE_ONLY_STAGES.includes(stageName)) {
-    return false;
-  }
-  return surface !== 'claude' && surface !== 'claude-mirror';
+  void stageName;
+  void surface;
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +168,7 @@ async function emitClaudeMirror(stages, root, dryRun) {
 /**
  * T039 — copilot emitter
  * Emits body to extension/resources/copilot-prompts/<name>.prompt.md.
- * Skips CLAUDE_ONLY_STAGES entirely.
+ * Emits every stage whose frontmatter includes the Copilot surface.
  *
  * @param {Array} stages
  * @param {string} root
@@ -191,7 +187,7 @@ async function emitCopilot(stages, root, dryRun) {
       console.log(`[dry-run] copilot: would write ${outPath}`);
     } else {
       await ensureDir(outDir);
-      await fs.writeFile(outPath, stage.body, 'utf8');
+      await fs.writeFile(outPath, buildCopilotPromptContent(stage), 'utf8');
       console.log(`copilot: wrote ${outPath}`);
     }
     count++;
@@ -203,7 +199,7 @@ async function emitCopilot(stages, root, dryRun) {
 /**
  * T040 — github-prompts emitter
  * Emits body to .github/prompts/<name>.prompt.md.
- * Skips CLAUDE_ONLY_STAGES entirely.
+ * Emits every stage whose frontmatter includes the GitHub prompts surface.
  *
  * @param {Array} stages
  * @param {string} root
@@ -222,13 +218,150 @@ async function emitGithubPrompts(stages, root, dryRun) {
       console.log(`[dry-run] github-prompts: would write ${outPath}`);
     } else {
       await ensureDir(outDir);
-      await fs.writeFile(outPath, stage.body, 'utf8');
+      await fs.writeFile(outPath, buildCopilotPromptContent(stage), 'utf8');
       console.log(`github-prompts: wrote ${outPath}`);
     }
     count++;
   }
   console.log(`github-prompts: ${count} file(s) emitted`);
   return true;
+}
+
+/**
+ * Builds a Copilot prompt using the same metadata and body transform as the
+ * runtime CommandGenerator. This keeps .github/prompts and bundled VSIX
+ * resources byte-equivalent to generated Copilot mirrors.
+ *
+ * @param {{ frontmatter: Record<string, unknown>, body: string }} stage
+ * @returns {string}
+ */
+function buildCopilotPromptContent(stage) {
+  const stageName = String(stage.frontmatter.name);
+  const { frontmatter, body } = splitMarkdownFrontmatter(stage.body);
+  const description = readString(frontmatter.description) ?? String(stage.frontmatter.description);
+  const transformedBody = injectPipelineContinuation(
+    transformClaudeContent(body, 'copilot'),
+    'copilot',
+    stageName
+  );
+  const canonicalChecksum = createHash('sha256').update(body, 'utf8').digest('hex');
+
+  return [
+    '---',
+    `name: ${stageName}`,
+    `description: ${description}`,
+    'agent: copilot-workspace',
+    'tools:',
+    '  - Read',
+    '  - Grep',
+    '  - Glob',
+    '  - Bash',
+    '  - WebSearch',
+    'argument-hint: feature-name-or-description',
+    'gofer:',
+    '  workflowProfile: enterpriseai',
+    `  canonicalSource: .claude/commands/${stageName}.md`,
+    `  canonicalChecksum: ${canonicalChecksum}`,
+    '  metadataSource: scripts/generate-commands.ts',
+    '---',
+    '',
+    transformedBody,
+  ].join('\n');
+}
+
+/**
+ * @param {string} content
+ * @returns {{ frontmatter: Record<string, unknown>, body: string }}
+ */
+function splitMarkdownFrontmatter(content) {
+  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!match) {
+    return { frontmatter: {}, body: content };
+  }
+
+  const frontmatter = {};
+  for (const line of match[1].split('\n')) {
+    const fieldMatch = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!fieldMatch) continue;
+    frontmatter[fieldMatch[1]] = fieldMatch[2].trim().replace(/^["']|["']$/g, '');
+  }
+
+  return { frontmatter, body: match[2] };
+}
+
+/**
+ * @param {string} content
+ * @param {'copilot'} toPlatform
+ * @returns {string}
+ */
+function transformClaudeContent(content, toPlatform) {
+  let transformed = content;
+
+  transformed = transformed.replace(/\*\*AUTO-CHAIN[^]*?(?=\n##|\n---|\n\*\*|$)/g, '');
+  transformed = transformed.replace(
+    /by calling the Skill tool with skill="[^"]+"/g,
+    'by running the next command'
+  );
+  transformed = transformed.replace(/Skill tool/g, 'next command');
+
+  if (toPlatform === 'copilot') {
+    transformed = transformed.replace(/\/(\d+[a-z]?_gofer_\w+)/g, '#$1');
+    transformed = transformed.replace(/\/(gofer_\w+)/g, '#$1');
+  }
+
+  return transformed;
+}
+
+/**
+ * @param {string} content
+ * @param {'copilot'} platform
+ * @param {string} commandName
+ * @returns {string}
+ */
+function injectPipelineContinuation(content, platform, commandName) {
+  const nextCommand = getNextCommand(commandName);
+  if (!nextCommand) return content;
+
+  const autoChainSection = `\n\n## Pipeline Continuation\n\nThis completes the ${commandName} stage. To continue the Gofer pipeline:\n\n**Next Command:** \`#${nextCommand}\`\n\nThe next stage will read the artifacts from this stage and continue the workflow automatically.\n\n**Note:** Copilot Chat supports context preservation. Your conversation history will be maintained as you progress through pipeline stages.\n`;
+
+  if (content.includes('## Key Rules')) {
+    return content.replace('## Key Rules', `${autoChainSection}\n## Key Rules`);
+  }
+
+  return content + autoChainSection;
+}
+
+/**
+ * @param {string} currentCommand
+ * @returns {string | null}
+ */
+function getNextCommand(currentCommand) {
+  const pipeline = [
+    '0_business_scenario',
+    '0a_problem_validation',
+    '1_gofer_research',
+    '2_gofer_specify',
+    '3_gofer_plan',
+    '4_gofer_tasks',
+    '5_gofer_implement',
+    '6_gofer_validate',
+    '6a_gofer_engineering_review',
+  ];
+
+  const currentIndex = pipeline.indexOf(currentCommand);
+  if (currentIndex >= 0 && currentIndex < pipeline.length - 1) {
+    return pipeline[currentIndex + 1];
+  }
+
+  return null;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string | undefined}
+ */
+function readString(value) {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 /**
@@ -243,9 +376,18 @@ function buildSkillContent(stageName, description, body) {
 }
 
 /**
+ * Escapes a string for a basic TOML double-quoted value.
+ * @param {string} value
+ * @returns {string}
+ */
+function escapeTomlString(value) {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/**
  * T041 — agents-skills emitter
  * Emits Codex SKILL.md to .agents/skills/gofer/<name>/SKILL.md.
- * Skips CLAUDE_ONLY_STAGES entirely.
+ * Emits every stage whose frontmatter includes the agents-skills surface.
  *
  * @param {Array} stages
  * @param {string} root
@@ -279,7 +421,7 @@ async function emitAgentsSkills(stages, root, dryRun) {
 /**
  * T042 — system-skills emitter
  * Emits SKILL.md to .system/skills/gofer/<name>/SKILL.md.
- * Skips CLAUDE_ONLY_STAGES entirely.
+ * Emits every stage whose frontmatter includes the system-skills surface.
  *
  * @param {Array} stages
  * @param {string} root
@@ -312,8 +454,8 @@ async function emitSystemSkills(stages, root, dryRun) {
 
 /**
  * T065 — gemini emitter
- * Emits plain markdown body to .gemini/commands/gofer/<name>.md.
- * Skips CLAUDE_ONLY_STAGES entirely.
+ * Emits plain markdown body and TOML command wrappers to
+ * .gemini/commands/gofer/<name>.md and <name>.toml.
  * T066 — also creates .gemini/commands/gofer/manifest.json listing all emitted stage names.
  *
  * @param {Array} stages
@@ -322,21 +464,33 @@ async function emitSystemSkills(stages, root, dryRun) {
  */
 async function emitGemini(stages, root, dryRun) {
   const outDir = path.join(root, '.gemini', 'commands', 'gofer');
+  const extensionPath = path.join(root, '.gemini', 'extension.json');
   const emittedNames = [];
   let count = 0;
 
   for (const stage of stages) {
-    const { name, surfaces } = stage.frontmatter;
+    const { name, description, surfaces } = stage.frontmatter;
     if (shouldExclude(String(name), 'gemini')) continue;
     if (!surfaces.includes('gemini')) continue;
 
-    const outPath = path.join(outDir, `${name}.md`);
+    const markdownPath = path.join(outDir, `${name}.md`);
+    const tomlPath = path.join(outDir, `${name}.toml`);
+    const sourceFileName = path.basename(stage.filePath);
+    const tomlContent = [
+      `description = "${escapeTomlString(String(description || name))}"`,
+      `prompt = "{{include: ../../../.specify/commands/${sourceFileName}}}"`,
+      '',
+    ].join('\n');
+
     if (dryRun) {
-      console.log(`[dry-run] gemini: would write ${outPath}`);
+      console.log(`[dry-run] gemini: would write ${markdownPath}`);
+      console.log(`[dry-run] gemini: would write ${tomlPath}`);
     } else {
       await ensureDir(outDir);
-      await fs.writeFile(outPath, stage.body, 'utf8');
-      console.log(`gemini: wrote ${outPath}`);
+      await fs.writeFile(markdownPath, stage.body, 'utf8');
+      await fs.writeFile(tomlPath, tomlContent, 'utf8');
+      console.log(`gemini: wrote ${markdownPath}`);
+      console.log(`gemini: wrote ${tomlPath}`);
     }
     emittedNames.push(String(name));
     count++;
@@ -353,10 +507,26 @@ async function emitGemini(stages, root, dryRun) {
 
   if (dryRun) {
     console.log(`[dry-run] gemini: would write manifest ${manifestPath}`);
+    console.log(`[dry-run] gemini: would write extension manifest ${extensionPath}`);
   } else {
     await ensureDir(outDir);
     await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+    await fs.writeFile(
+      extensionPath,
+      JSON.stringify(
+        {
+          name: 'gofer',
+          version: '1.0.0',
+          description: 'Gofer pipeline as Gemini CLI extension',
+          commands: '.gemini/commands/gofer/',
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
     console.log(`gemini: wrote manifest ${manifestPath}`);
+    console.log(`gemini: wrote extension manifest ${extensionPath}`);
   }
 
   console.log(`gemini: ${count} file(s) emitted`);
@@ -366,7 +536,7 @@ async function emitGemini(stages, root, dryRun) {
 /**
  * T067 — agents-md emitter
  * Creates .agents/AGENTS.md — a consolidated AGENTS.md for Gemini/Codex.
- * Includes all non-claude-only stages.
+ * Includes all stages emitted to portable agent surfaces.
  *
  * @param {Array} stages
  * @param {string} root
@@ -413,7 +583,7 @@ ${sections.join('\n\n')}
 /**
  * T068 — codex-config emitter
  * Generates .specify/outputs/codex-config-fragment.toml containing skill entries
- * for non-claude-only stages.
+ * for every stage emitted to Codex/agents-skills.
  * Does NOT touch ~/.codex/config.toml.
  *
  * @param {Array} stages

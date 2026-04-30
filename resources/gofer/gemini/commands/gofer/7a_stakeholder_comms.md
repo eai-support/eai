@@ -259,9 +259,10 @@ stakeholder communications explaining what changed and why.
 
 ## Marp Presentation Deck (EnterpriseAI Profile Extension)
 
-> Active only when `gofer.workflowProfile=enterpriseai` and Marp output is
-> enabled for the run. Standard-profile runs skip this step; Release Notes and
-> the Demo Script (5-minute walkthrough) remain the core deliverables.
+EnterpriseAI is the default profile. When Marp output is enabled, generate the
+general stakeholder deck and the persona deck pack. Standard-profile runs skip
+this step only when the user explicitly opts out; Release Notes and the Demo
+Script (5-minute walkthrough) remain the core deliverables.
 
 When enabled, generate `{FEATURE_DIR}/presentation.marp.md`. The file MUST use
 Marp frontmatter and the canonical EnterpriseAI slide deck structure:
@@ -307,6 +308,41 @@ Every section title above (`Problem Statement`,
 `Demo Script Summary`, `Success Metrics`) is mandatory in both the generated
 `presentation.marp.md` and the corresponding
 `.specify/templates/stakeholder-comms-template.md`.
+
+### Persona Marp Deck Pack
+
+Generate these additional decks under `{FEATURE_DIR}/presentations/`:
+
+| Deck | Decision-Rights Audience | Required Focus |
+| ---- | ------------------------ | -------------- |
+| `executive.marp.md` | Executive committee | Strategic value, funding gate, risk appetite |
+| `business.marp.md` | Business owner | User journey, operational value, adoption |
+| `internal-delivery.marp.md` | Delivery lead | Dependency plan, red/green loop, delivery risks |
+| `enterprise-architecture.marp.md` | Enterprise architecture | Platform fit, context bundle, contract pack, reuse decisions |
+| `ciso.marp.md` | CISO | Identity, tenant boundary, controls, residual risk |
+| `data-architecture.marp.md` | Data architecture | Object types, lineage, quality, governance |
+| `cio.marp.md` | CIO | Platform strategy, operating model, reuse roadmap |
+| `cfo.marp.md` | CFO | Investment case, benefit tracking, cost risk |
+| `coo.marp.md` | COO | Process change, rollout readiness, support model |
+| `risk-compliance.marp.md` | Risk/compliance | Obligations, evidence, exceptions, audit trail |
+
+Every persona deck MUST include:
+
+- Executive Summary.
+- Decision Focus.
+- Problem Statement.
+- EnterpriseAI Solution Overview.
+- AI-Augmented 4-Step Journey for app delivery, or the non-app classification
+  rationale when no app is being built.
+- Architecture Diagram Reference with a Mermaid diagram.
+- Context Bundle.
+- Contract Pack.
+- Reuse-Before-Create.
+- Audit History.
+- Red/Green Validation Loop.
+- Demo Script Summary.
+- Success Metrics.
+- Persona-specific value/risk table and controls table.
 
 ---
 
