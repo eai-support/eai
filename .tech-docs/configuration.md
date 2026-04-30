@@ -1,6 +1,6 @@
 ---
-generated: "2026-04-30T11:33:30Z"
-source_commit: "86e6318e5014b9b77aa5e0d28cabe883a07fab21"
+generated: "2026-04-30T12:56:32Z"
+source_commit: "98c3eab43177590a9e9bf038b02c2b05c2dfeab8"
 ---
 
 # EAI CLI — Configuration
