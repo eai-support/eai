@@ -1,6 +1,6 @@
 ---
-generated: "2026-04-30T17:57:12Z"
-source_commit: "7c879a6c02a2f9b91aa534b4c59bb62cc35a107b"
+generated: "2026-04-30T22:49:00Z"
+source_commit: "31b52b6302819ffcc64b2e527c1ac5fbfac0887b"
 ---
 
 # EAI CLI — Overview
@@ -34,12 +34,12 @@ The EAI CLI is a command-line tool that wraps the EAI Platform API, providing de
 | File | Purpose |
 |------|---------|
 | `src/index.ts` | Main CLI entry point; registers all commands |
-| `src/commands/*.ts` | 15 command implementations (init, login, types, resources, tenant, user, provision, etc.) |
+| `src/commands/*.ts` | 15 command implementations (init, dev, login, whoami, user, env, types, resources, tenant, chat, docs, deploy, verify, update, provision) |
 | `src/lib/api.ts` | Platform API client with auth |
 | `src/lib/auth.ts` | Entra CIAM authentication (browser PKCE flow) |
 | `src/lib/tenant-context.ts` | Tenant membership and selection logic |
 | `src/lib/config.ts` | Project config loader and TypeScript evaluator |
-| `src/lib/error-codes.ts` | Structured error catalog (E001-E305) |
+| `src/lib/error-codes.ts` | Structured error catalog (E001-E399) |
 | `src/lib/profile.ts` | Profile management (dev, test, production) |
 | `dist/index.js` | Compiled entry point (bin: `eai`) |
 
