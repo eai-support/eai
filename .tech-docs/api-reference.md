@@ -1,19 +1,25 @@
 ---
-generated: "2026-03-11T18:45:00Z"
-source_commit: "584ed1afb8257ec89c81a6e0515007e9491fa008"
+generated: "2026-04-30T11:33:30Z"
+source_commit: "86e6318e5014b9b77aa5e0d28cabe883a07fab21"
 ---
 
 # EAI CLI — API Reference
 
 ## Overview
 
-The CLI interacts with the **EAI Platform API v3**. All endpoints require Bearer token authentication obtained via Entra CIAM device code flow.
+The CLI interacts with the **EAI Platform API v3 (PublicAPI)** and **AdminAPI**. All endpoints require Bearer token authentication obtained via Entra CIAM browser-based PKCE flow.
 
-**Base URL**: Configured via `BASE_URL_PUBLIC_API` environment variable (e.g., `https://api.eai.example.com`)
+**Base URL (PublicAPI)**: Configured via profile or `BASE_URL_PUBLIC_API` environment variable (e.g., `https://api.ae.myenterprise.ai/public`)
+
+**Base URL (AdminAPI)**: Resolved at runtime from PublicAPI environment (e.g., `https://api.ae.myenterprise.ai/admin`)
 
 **Authentication**: `Authorization: Bearer {access_token}`
 
-## Platform API Endpoints
+**Client Class**: `PlatformAPIClient` in `src/lib/api.ts`
+
+---
+
+## PublicAPI v3 Endpoints
 
 ### Resources API
 
@@ -24,8 +30,9 @@ GET /v3/resources/{tenant_id}/{object_type}
 
 **Query Parameters**:
 - `page` (number) — Page number (default: 1)
-- `limit` (number) — Items per page (default: 20)
+- `limit` (number) — Items per page (default: 20, max: 100)
 - `sort` (string) — Sort field (prefix with `-` for descending, e.g., `-created_at`)
+- `where[field][equals]` — Filter by exact match
 
 **Response**:
 ```json
@@ -34,8 +41,8 @@ GET /v3/resources/{tenant_id}/{object_type}
     {
       "id": "uuid",
       "data": { /* resource fields */ },
-      "created_at": "2026-03-11T12:00:00Z",
-      "updated_at": "2026-03-11T12:00:00Z",
+      "created_at": "2026-04-30T12:00:00Z",
+      "updated_at": "2026-04-30T12:00:00Z",
       "version": 1,
       "tenant": "tenant-id",
       "object_type": "ObjectTypeName"
@@ -50,6 +57,8 @@ GET /v3/resources/{tenant_id}/{object_type}
 
 **CLI Command**: `eai resources list <type> --page 1 --limit 20 --sort -created_at`
 
+**Client Method**: `client.listResources(type, params)`
+
 ---
 
 #### Get Resource
@@ -63,12 +72,16 @@ GET /v3/resources/{tenant_id}/{object_type}/{id}
   "id": "uuid",
   "data": { /* resource fields */ },
   "version": 1,
-  "created_at": "2026-03-11T12:00:00Z",
-  "updated_at": "2026-03-11T12:00:00Z"
+  "created_at": "2026-04-30T12:00:00Z",
+  "updated_at": "2026-04-30T12:00:00Z",
+  "tenant": "tenant-id",
+  "object_type": "ObjectTypeName"
 }
 ```
 
 **CLI Command**: `eai resources get <type> <id>`
+
+**Client Method**: `client.getResource(type, id)`
 
 ---
 
@@ -91,11 +104,13 @@ Content-Type: application/json
   "id": "uuid",
   "data": { /* created resource */ },
   "version": 1,
-  "created_at": "2026-03-11T12:00:00Z"
+  "created_at": "2026-04-30T12:00:00Z"
 }
 ```
 
-**CLI Command**: `eai resources create <type> --data '{"field1":"value1"}'`
+**CLI Command**: `eai resources create <type> --data '{"field1":"value1"}'` or `--file resource.json`
+
+**Client Method**: `client.createResource(type, data)`
 
 ---
 
@@ -106,17 +121,30 @@ Content-Type: application/json
 
 {
   "data": {
-    "field1": "updated-value"
+    "field1": "new_value"
   },
   "version": 1
 }
 ```
 
 **Notes**:
-- `version` is required for optimistic locking
-- Server returns 409 Conflict if version doesn't match
+- Requires `version` field for optimistic locking
+- Returns `409 Conflict` if version mismatch
+- CLI auto-fetches current version before update
 
-**CLI Command**: `eai resources update <type> <id> --data '{"field1":"updated"}' --version 1`
+**Response**:
+```json
+{
+  "id": "uuid",
+  "data": { /* updated resource */ },
+  "version": 2,
+  "updated_at": "2026-04-30T12:05:00Z"
+}
+```
+
+**CLI Command**: `eai resources update <type> <id> --data '{"field1":"new_value"}'`
+
+**Client Method**: `client.updateResource(type, id, data, version)`
 
 ---
 
@@ -125,9 +153,11 @@ Content-Type: application/json
 DELETE /v3/resources/{tenant_id}/{object_type}/{id}
 ```
 
-**Response**: 204 No Content
+**Response**: `204 No Content`
 
-**CLI Command**: `eai resources delete <type> <id>`
+**CLI Command**: `eai resources delete <type> <id>` (prompts for confirmation)
+
+**Client Method**: `client.deleteResource(type, id)`
 
 ---
 
@@ -137,12 +167,12 @@ POST /v3/resources/{tenant_id}/query
 Content-Type: application/json
 
 {
-  "object_types": ["Type1", "Type2"],
+  "types": ["User", "Organization"],
   "where": {
-    "field1": { "equals": "value" },
-    "field2": { "gt": 100 }
+    "field1": "value1"
   },
-  "limit": 20
+  "limit": 50,
+  "page": 1
 }
 ```
 
@@ -150,21 +180,21 @@ Content-Type: application/json
 ```json
 {
   "results": [
-    {
-      "id": "uuid",
-      "object_type": "Type1",
-      "data": { /* fields */ }
-    }
+    { "id": "...", "object_type": "User", "data": {...} },
+    { "id": "...", "object_type": "Organization", "data": {...} }
   ],
-  "total": 15
+  "totalDocs": 100,
+  "page": 1
 }
 ```
 
-**CLI Command**: `eai resources query --types Type1,Type2 --where '{"field1":{"equals":"value"}}' --limit 20`
+**CLI Command**: `eai resources query --types User,Organization --where '{"field1":"value1"}'`
+
+**Client Method**: `client.queryResources(query)`
 
 ---
 
-#### Get Schema (Published Object Types)
+#### Get Published Schema
 ```
 GET /v3/resources/schema/{tenant_id}
 ```
@@ -174,32 +204,15 @@ GET /v3/resources/schema/{tenant_id}
 {
   "objectTypes": [
     {
-      "name": "ObjectTypeName",
-      "displayName": "Object Type Display Name",
-      "properties": [
-        {
-          "name": "fieldName",
-          "type": "text",
-          "required": true,
-          "indexed": true
-        }
-      ],
-      "linkTypes": [
-        {
-          "name": "linkName",
-          "targetObjectType": "TargetType",
-          "cardinality": "one-to-many"
-        }
-      ],
-      "actions": [
-        {
-          "name": "actionName",
-          "displayName": "Action Display Name",
-          "requiredRole": "tenant-user",
-          "validationRules": {},
-          "sideEffects": []
-        }
-      ]
+      "slug": "user",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string" },
+          "name": { "type": "string" }
+        },
+        "required": ["email"]
+      }
     }
   ]
 }
@@ -207,47 +220,7 @@ GET /v3/resources/schema/{tenant_id}
 
 **CLI Command**: `eai resources schema`
 
----
-
-#### Execute Resource Action
-```
-POST /v3/resources/{tenant_id}/{object_type}/{id}/actions/{action_name}
-Content-Type: application/json
-
-{
-  "params": {
-    "param1": "value1"
-  }
-}
-```
-
-**Response**: Varies based on action definition
-
----
-
-#### Get Resource History
-```
-GET /v3/resources/{tenant_id}/{object_type}/{id}/history
-```
-
-**Response**:
-```json
-{
-  "history": [
-    {
-      "version": 2,
-      "data": { /* snapshot */ },
-      "updated_at": "2026-03-11T13:00:00Z",
-      "updated_by": "user-id"
-    },
-    {
-      "version": 1,
-      "data": { /* snapshot */ },
-      "created_at": "2026-03-11T12:00:00Z"
-    }
-  ]
-}
-```
+**Client Method**: `client.getSchema()`
 
 ---
 
@@ -255,53 +228,52 @@ GET /v3/resources/{tenant_id}/{object_type}/{id}/history
 
 #### Send Chat Message
 ```
-POST /v3/chat/{tenant_id}/{workflow_id}/{stage}
+POST /v3/chat/{tenant_id}/{workflow}/{stage}
 Content-Type: application/json
 
 {
-  "message": "User message text",
-  "conversation_id": "uuid",
-  "params": {
-    "context_key": "context_value"
-  }
+  "message": "Hello, how can I help?",
+  "context": { "userId": "..." }
 }
 ```
 
 **Response**:
 ```json
 {
-  "response": "AI response text",
-  "conversation_id": "uuid",
-  "metadata": {}
+  "response": "I can assist you with...",
+  "conversationId": "uuid"
 }
 ```
 
-**CLI Command**: `eai chat send "Hello" --workflow wf-id --stage chat --conversation conv-id`
+**CLI Command**: `eai chat send "Hello" --workflow default --stage initial`
+
+**Client Method**: `client.sendChat(workflow, stage, message, context?)`
 
 ---
 
-#### Stream Chat Message (SSE)
+#### Stream Chat (SSE)
 ```
-POST /v3/chat/stream/{tenant_id}/{workflow_id}/{stage}
+POST /v3/chat/stream/{tenant_id}/{workflow}/{stage}
 Content-Type: application/json
+Accept: text/event-stream
 
 {
-  "message": "User message text",
-  "conversation_id": "uuid",
-  "params": {}
+  "message": "Tell me a story",
+  "context": {}
 }
 ```
 
 **Response**: Server-Sent Events stream
-
 ```
-data: {"content": "Hello"}
-data: {"content": " there"}
-data: {"content": "!"}
-data: [DONE]
+data: {"token": "Once"}
+data: {"token": " upon"}
+data: {"token": " a"}
+data: {"done": true}
 ```
 
-**CLI Command**: `eai chat stream "Hello" --workflow wf-id --stage chat`
+**CLI Command**: `eai chat stream "Tell me a story"`
+
+**Client Method**: `client.streamChat(workflow, stage, message, context?)` → Returns `Response` with SSE body
 
 ---
 
@@ -310,21 +282,27 @@ data: [DONE]
 #### Classify Document
 ```
 POST /v3/documents/classify
-Content-Type: multipart/form-data
+Content-Type: application/json
 
-files: <file-blob>
+{
+  "document": {
+    "id": "doc-id",
+    "content": "..."
+  }
+}
 ```
 
 **Response**:
 ```json
 {
-  "classification": "document-type",
-  "confidence": 0.95,
-  "metadata": {}
+  "classification": "Invoice",
+  "confidence": 0.95
 }
 ```
 
-**CLI Command**: `eai docs classify ./document.pdf`
+**CLI Command**: `eai docs classify path/to/file.pdf`
+
+**Client Method**: `client.classifyDocument(payload)`
 
 ---
 
@@ -334,65 +312,26 @@ POST /v3/documents/rag-index
 Content-Type: application/json
 
 {
-  "document_id": "uuid"
+  "documentId": "doc-id",
+  "chunks": [...]
 }
 ```
 
 **Response**:
 ```json
 {
-  "status": "indexed",
-  "document_id": "uuid"
+  "indexed": true,
+  "chunkCount": 42
 }
 ```
 
 **CLI Command**: `eai docs index <document-id>`
 
----
-
-### Authentication API
-
-#### Get Current User
-```
-GET /v3/auth/me
-Authorization: Bearer {token}
-```
-
-**Response**:
-```json
-{
-  "user_id": "uuid",
-  "upn": "user@example.com",
-  "tenant_id": "tenant-id",
-  "roles": ["tenant-user"]
-}
-```
-
-**CLI Command**: `eai whoami`
+**Client Method**: `client.indexDocument(payload)`
 
 ---
 
-#### Provision User
-```
-POST /v3/users/provisionme
-Content-Type: application/json
-
-{
-  "tenant_id": "tenant-id"
-}
-```
-
-**Response**:
-```json
-{
-  "user_id": "uuid",
-  "provisioned": true
-}
-```
-
----
-
-### Platform Orchestration API
+### Internal Orchestration
 
 #### Platform Request (Internal Routing)
 ```
@@ -400,306 +339,390 @@ POST /v3/orchestrate
 Content-Type: application/json
 
 {
-  "target_backend": "payload",
-  "endpoint": "/object-types",
-  "method": "GET",
-  "params": {
-    "where": { "name": { "equals": "ObjectType" } }
+  "backend": "payload" | "admin" | "mid",
+  "method": "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  "path": "/api/collections/...",
+  "body": { ... }
+}
+```
+
+**Purpose**: Routes requests to backend services (Payload CMS, AdminAPI, etc.) through PublicAPI.
+
+**Client Method**: `client.platformRequest(backend, method, path, body?)`
+
+**Used By**: Type seeding, environment config, internal admin operations
+
+---
+
+## AdminAPI Endpoints
+
+### User Management
+
+#### Lookup User by Email
+```
+POST /api/admin/users/lookup
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+**Response**:
+```json
+{
+  "id": "user-oid",
+  "email": "user@example.com",
+  "username": "user@example.com",
+  "user": {
+    "id": "user-oid",
+    "email": "user@example.com"
   }
 }
 ```
 
-**Purpose**: Routes requests to internal backend services (payload, type registry, etc.)
+**CLI Command**: `eai user invite --email user@example.com`
 
-**Used By**:
-- `eai types seed` — Routes to `/object-types` endpoint
-- `eai tenant list` — Routes to `/tenants` endpoint
+**Client Method**: `client.lookupUserByEmail(email)`
 
----
-
-### Tenants API (via Orchestration)
-
-#### List Tenants
-```
-Routed via /v3/orchestrate:
-{
-  "target_backend": "payload",
-  "endpoint": "/tenants",
-  "method": "GET",
-  "params": {
-    "limit": 100,
-    "where": { "parent": { "equals": "parent-id" } }
-  }
-}
-```
-
-**CLI Command**: `eai tenant list`
+**Auth**: Requires `tenant-admin` role on target tenant
 
 ---
 
-#### Get Tenant
+#### Provision User to Tenant
 ```
-Routed via /v3/orchestrate:
+POST /api/admin/tenants/{tenant_id}/users
+Content-Type: application/json
+
 {
-  "target_backend": "payload",
-  "endpoint": "/tenants/{id}",
-  "method": "GET"
+  "userId": "user-oid"
 }
 ```
 
-**CLI Command**: `eai tenant info <id>`
+**Response**:
+```json
+{
+  "success": true,
+  "message": "User added to tenant"
+}
+```
+
+**CLI Command**: `eai user invite --email user@example.com --tenant <id>`
+
+**Client Method**: `client.provisionUserToTenant(tenantId, userId)`
+
+**Auth**: Requires `tenant-admin` role on target tenant
+
+---
+
+### Tenant Management
+
+#### Get Current User Tenant Memberships
+```
+GET /api/admin/current-user/tenant-memberships
+```
+
+**Response**:
+```json
+{
+  "tenants": [
+    {
+      "tenant": {
+        "id": "tenant-id",
+        "displayName": "My Tenant",
+        "slug": "my-tenant",
+        "isActive": true
+      },
+      "roles": ["tenant-admin"],
+      "isTenantAdmin": true
+    }
+  ]
+}
+```
+
+**CLI Command**: `eai tenant list`, `eai tenant select`
+
+**Client Method**: `client.getCurrentUserMemberships()`
+
+**Auth**: Requires authenticated user
 
 ---
 
 #### Create Tenant
 ```
-Routed via /v3/orchestrate:
+POST /api/admin/tenants
+Content-Type: application/json
+
 {
-  "target_backend": "payload",
-  "endpoint": "/tenants",
-  "method": "POST",
-  "body": {
-    "name": "Tenant Name",
-    "slug": "tenant-slug",
-    "parent": "parent-id",
-    "domain": ["example.com"]
-  }
+  "displayName": "New Tenant",
+  "slug": "new-tenant",
+  "parent": "parent-tenant-id"
 }
 ```
 
-**CLI Command**: `eai tenant create`
+**Response**:
+```json
+{
+  "id": "new-tenant-id",
+  "displayName": "New Tenant",
+  "slug": "new-tenant",
+  "parent": "parent-tenant-id",
+  "isActive": true
+}
+```
+
+**CLI Command**: `eai tenant create --parent <id>`
+
+**Client Method**: `client.createTenant(payload)`
+
+**Auth**: Requires `tenant-admin` on parent tenant (for child creation)
 
 ---
 
-## Object Type Management API
-
-### Seed Object Types
-
-**Endpoint**: Routed via `/v3/orchestrate` to `/object-types`
-
-#### Check if Object Type Exists
+#### Bootstrap Child Tenant First Admin
 ```
-GET /object-types?where={"name":{"equals":"TypeName"},"tenant":{"equals":"tenant-id"}}
-```
-
-#### Create Object Type
-```
-POST /object-types
+POST /api/admin/tenants/{child_tenant_id}/bootstrap-admin
+Content-Type: application/json
 
 {
-  "name": "ObjectTypeName",
-  "displayName": "Object Type Display Name",
-  "description": "Description",
-  "properties": [...],
-  "linkTypes": [...],
-  "actions": [...],
-  "storageBackend": "mongodb",
-  "status": "published",
-  "tenant": "tenant-id"
+  "userOid": "caller-oid",
+  "userEmail": "caller@example.com"
 }
 ```
 
-#### Update Object Type
-```
-PATCH /object-types/{id}
+**Purpose**: Constrained first-admin bootstrap flow for child tenants. Caller must be `tenant-admin` on direct parent.
 
+**Response**:
+```json
 {
-  "displayName": "Updated Display Name",
-  "properties": [...],
-  "linkTypes": [...],
-  "actions": [...]
+  "parentTenantId": "parent-id",
+  "childTenantId": "child-id",
+  "userOid": "caller-oid",
+  "membershipCreated": true,
+  "adminAssigned": true,
+  "usable": true,
+  "status": "bootstrapped"
 }
 ```
 
-**CLI Command**: `eai types seed`
+**CLI Command**: Called internally by `eai tenant create`
+
+**Client Method**: `client.bootstrapChildTenantAdmin(childTenantId, request)`
+
+**Auth**: Requires `tenant-admin` on direct parent; child must not already have a tenant-admin
 
 ---
 
-## Object Type Definition Schema
+### Entra Provisioning
 
-### ObjectTypeDefinition Interface
+#### Confirm Entra App Registration
+```
+POST /api/admin/platform-ops/entra/confirm-app-registration
+Content-Type: application/json
 
-```typescript
-interface ObjectTypeDefinition {
-  name: string;                    // PascalCase identifier
-  displayName: string;             // Human-readable name
-  description?: string;            // Optional description
-  properties: ObjectTypeProperty[];
-  linkTypes: ObjectTypeLinkType[];
-  actions: ObjectTypeAction[];
-  storageBackend?: string;         // Default: "mongodb"
-  status: 'draft' | 'published' | 'deprecated';
+{
+  "tenantId": "platform-tenant-id",
+  "clientId": "vertical-client-id"
 }
 ```
 
-### ObjectTypeProperty Interface
+**Purpose**: Creates or confirms Entra app registration for the vertical in the platform's CIAM tenant.
 
-```typescript
-interface ObjectTypeProperty {
-  name: string;                    // camelCase field name
-  type: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'json' | 'file' | 'relationship';
-  required: boolean;
-  indexed?: boolean;               // Index for queries
-  defaultValue?: string | number | boolean;
-  options?: Array<{ label: string; value: string }>; // For select type
-  description?: string;
+**Response**:
+```json
+{
+  "exists": true,
+  "clientId": "client-id",
+  "displayName": "My Vertical"
 }
 ```
 
-### ObjectTypeLinkType Interface
+**CLI Command**: `eai provision entra`
 
-```typescript
-interface ObjectTypeLinkType {
-  name: string;                    // Link name
-  targetObjectType: string;        // Target type name
-  cardinality: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
-  cascadeDelete?: boolean;         // Delete linked resources
-}
-```
+**Client Method**: `client.confirmEntraAppRegistration(payload)`
 
-### ObjectTypeAction Interface
+**Auth**: Requires authenticated user; platform determines CIAM from active profile/environment
 
-```typescript
-interface ObjectTypeAction {
-  name: string;                    // Action name
-  displayName: string;             // UI display name
-  requiredRole: 'tenant-user' | 'tenant-staff' | 'tenant-admin';
-  validationRules: {
-    requiredFields?: string[];     // Fields that must be present
-    requiredStatus?: string;       // Required status value
-  };
-  sideEffects: Array<{
-    type: 'set_field' | 'set_timestamp' | 'set_user';
-    field: string;
-    value?: string | number | boolean;
-  }>;
-}
-```
+**Error Handling**: Sanitized errors; never exposes backend URLs, tenant IDs, or raw platform errors
 
 ---
 
-## CLI Internal Interfaces
+## Authentication Endpoints
 
-### StoredTokens Interface
+### Entra CIAM (OAuth 2.0 + PKCE)
 
-```typescript
-interface StoredTokens {
-  accessToken: string;
-  refreshToken?: string;
-  expiresAt: number;               // Timestamp in ms
-  tenantId: string;
-  tenantName: string;
-  clientId: string;
-  upn?: string;                    // User Principal Name
+#### Authorization URL
+```
+GET https://{ciamTenant}.ciamlogin.com/{tenantId}/oauth2/v2.0/authorize
+  ?client_id={clientId}
+  &response_type=code
+  &redirect_uri=http://localhost:8888
+  &scope={scope}
+  &code_challenge={challenge}
+  &code_challenge_method=S256
+  &state={state}
+```
+
+**Flow**:
+1. CLI generates PKCE `code_verifier` and `code_challenge`
+2. CLI opens browser to authorization URL
+3. User authenticates in browser
+4. Browser redirects to `localhost:8888?code=...&state=...`
+5. CLI exchanges `code` + `code_verifier` for tokens
+
+---
+
+#### Token Exchange
+```
+POST https://{ciamTenant}.ciamlogin.com/{tenantId}/oauth2/v2.0/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code
+&client_id={clientId}
+&code={authCode}
+&redirect_uri=http://localhost:8888
+&code_verifier={codeVerifier}
+&scope={scope}
+```
+
+**Response**:
+```json
+{
+  "access_token": "eyJ...",
+  "refresh_token": "0.A...",
+  "expires_in": 3600,
+  "token_type": "Bearer"
 }
 ```
 
-### EAIProjectConfig Interface
+**CLI Command**: `eai login`
 
-```typescript
-interface EAIProjectConfig {
-  appName: string;
-  displayName: string;
-  tenantId: string;
-  workflowId: string;
-  environment: string;
-  publicApiUrl: string;
-  entra: {
-    tenantName: string;
-    tenantId: string;
-    clientId: string;
-  };
-}
+**Client Function**: `browserLogin()` in `src/lib/auth.ts`
+
+---
+
+#### Token Refresh
 ```
+POST https://{ciamTenant}.ciamlogin.com/{tenantId}/oauth2/v2.0/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token
+&client_id={clientId}
+&refresh_token={refreshToken}
+&scope={scope}
+```
+
+**Response**: Same as token exchange
+
+**Automatic**: Triggered when token has <5min remaining
+
+**Client Function**: `getToken()` in `src/lib/auth.ts`
 
 ---
 
 ## Error Responses
 
-### Standard Error Format
+All API endpoints may return structured error responses:
 
+### Standard Error Format
 ```json
 {
-  "error": "error_code",
-  "message": "Human-readable error message",
-  "details": {}
+  "detail": {
+    "error": "RESOURCE_NOT_FOUND",
+    "message": "Resource User:123 not found"
+  }
 }
 ```
 
-### Common HTTP Status Codes
-
-| Status | Meaning | CLI Handling |
-|--------|---------|--------------|
-| 200 | Success | Parse response and display |
-| 201 | Created | Display success message with resource ID |
-| 204 | No Content | Display success message |
-| 400 | Bad Request | Display error message and exit |
-| 401 | Unauthorized | Prompt user to re-login |
-| 403 | Forbidden | Display permission error |
-| 404 | Not Found | Display not found error |
-| 409 | Conflict | Display version conflict error (optimistic locking) |
-| 500 | Server Error | Display error and suggest retrying |
-
----
-
-## Authentication Flow
-
-### Entra CIAM Device Code Flow
-
-```mermaid
-sequenceDiagram
-    participant CLI
-    participant EntraAuth as Entra CIAM
-    participant Browser
-
-    CLI->>EntraAuth: POST /oauth2/v2.0/devicecode
-    EntraAuth-->>CLI: device_code, user_code, verification_uri
-    CLI->>CLI: Display user_code and verification_uri
-    Browser->>EntraAuth: Visit verification_uri, enter user_code
-    EntraAuth->>Browser: Sign in with Entra credentials
-
-    loop Poll for token (every 5s)
-        CLI->>EntraAuth: POST /oauth2/v2.0/token (device_code)
-        alt User not yet authorized
-            EntraAuth-->>CLI: {"error": "authorization_pending"}
-        else User authorized
-            EntraAuth-->>CLI: {"access_token": "...", "refresh_token": "..."}
-            CLI->>CLI: storeTokens()
-        end
-    end
+**Alternative Formats**:
+```json
+{
+  "detail": "Not found"
+}
 ```
 
-### Token Refresh Flow
-
-```mermaid
-sequenceDiagram
-    participant CLI
-    participant EntraAuth as Entra CIAM
-    participant Cache as ~/.eai/tokens.json
-
-    CLI->>Cache: loadTokens()
-    Cache-->>CLI: Expired token
-    CLI->>EntraAuth: POST /oauth2/v2.0/token (grant_type=refresh_token)
-    alt Refresh successful
-        EntraAuth-->>CLI: New access_token + refresh_token
-        CLI->>Cache: storeTokens(new tokens)
-    else Refresh failed
-        CLI->>CLI: Prompt user to re-login (eai login)
-    end
+```json
+{
+  "message": "Validation error",
+  "errors": [
+    { "field": "email", "message": "Invalid email format" }
+  ]
+}
 ```
 
+### Common Error Codes
+
+| Status | Error Code | Description | CLI Action |
+|--------|-----------|-------------|-----------|
+| 401 | `UNAUTHORIZED` | Invalid or expired token | Prompts re-login |
+| 403 | `FORBIDDEN` | Insufficient permissions | Displays error, suggests checking roles |
+| 404 | `RESOURCE_NOT_FOUND` | Resource not found | Displays E202 error |
+| 409 | `VERSION_CONFLICT` | Optimistic locking failure | Re-fetches and retries |
+| 422 | `VALIDATION_ERROR` | Invalid request payload | Displays E301-E305 validation error |
+| 500 | `INTERNAL_ERROR` | Server error | Displays E201 platform error |
+
+**Client Error Handling**: `extractServerErrorContext()` and `parseApiError()` functions in `src/lib/api.ts`
+
+**Structured CLI Errors**: See `src/lib/error-codes.ts` for E001-E305 catalog
+
 ---
 
-## Rate Limits
+## Rate Limiting
 
-Not determined from codebase. Rate limiting is expected to be enforced by the Platform API.
+- **Limit**: 100 requests per minute per token (subject to change)
+- **Headers**: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+- **Status**: `429 Too Many Requests`
+- **CLI Behavior**: Displays error; does not auto-retry
 
 ---
 
-## Versioning
+## Request Correlation
 
-- **CLI Version**: Follows semantic versioning (e.g., `0.1.4`)
-- **API Version**: `v3` (endpoints prefixed with `/v3/`)
-- **Breaking Changes**: Major version bumps in CLI; platform API versioning is separate
+All responses include correlation headers for debugging:
 
-**CLI Command**: `eai --version` displays current CLI version
+- `X-Request-ID` — Unique request identifier
+- `X-Correlation-ID` — Cross-service correlation ID
+
+**CLI Debug Mode**: `--debug` flag logs request/response details including correlation IDs (not yet implemented)
+
+---
+
+## Machine-Readable Output
+
+All CLI commands support `--format json` for automation:
+
+```bash
+eai resources list User --format json | jq '.docs[0].data.email'
+eai tenant list --format json | jq -r '.tenants[].tenant.slug'
+eai verify calls --format json
+```
+
+**JSON Output Structure**:
+- Successful responses: Mirrors API response structure
+- Errors: Structured error object with `code`, `message`, `suggestion`, `exitCode`
+
+---
+
+## Contract Verification
+
+The `eai verify calls` command audits which platform API routes the CLI actually uses:
+
+```bash
+eai verify calls --format json
+```
+
+**Output**:
+```json
+{
+  "publicApiCalls": [
+    "GET /v3/resources/{tenant}/{type}",
+    "POST /v3/chat/stream/{tenant}/{workflow}/{stage}"
+  ],
+  "adminApiCalls": [
+    "GET /api/admin/current-user/tenant-memberships",
+    "POST /api/admin/tenants/{id}/users"
+  ]
+}
+```
+
+**Purpose**: Helps platform maintainers understand CLI's API contract surface

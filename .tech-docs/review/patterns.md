@@ -1,13 +1,13 @@
 ---
-generated: "2026-03-11T18:45:00Z"
-source_commit: "584ed1afb8257ec89c81a6e0515007e9491fa008"
+generated: "2026-04-30T11:33:30Z"
+source_commit: "86e6318e5014b9b77aa5e0d28cabe883a07fab21"
 ---
 
 # EAI CLI — Patterns & Tech Debt
 
 ## Overview
 
-This document identifies design patterns, anti-patterns, and technical debt in the EAI CLI codebase.
+This document identifies design patterns, anti-patterns, and technical debt in the EAI CLI codebase (v2.6.0).
 
 ---
 
@@ -39,6 +39,7 @@ resourcesCommand
 - `src/commands/init.ts:19`
 - `src/commands/login.ts:12`
 - `src/commands/types.ts:18`
+- 15 command files total
 
 ---
 
@@ -54,16 +55,21 @@ class PlatformAPIClient {
   async listResources(objectType: string, options?: { page?: number }): Promise<Response> {
     return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${objectType}`, ...);
   }
+
+  async getCurrentUserMemberships(): Promise<Response> {
+    return fetch(`${this.adminApiUrl}/api/admin/current-user/tenant-memberships`, ...);
+  }
 }
 ```
 
 **Benefits**:
 - Isolates HTTP concerns from command logic
-- Easy to mock for testing
+- Easy to mock for testing (MSW)
 - Single source of truth for API interactions
+- Supports both PublicAPI and AdminAPI
 
 **References**:
-- `src/lib/api.ts:10-257`
+- `src/lib/api.ts:187-600+`
 
 ---
 
@@ -92,138 +98,158 @@ async function findProjectRoot(from?: string): Promise<string | null> {
 - Supports multiple project structures (Vertical-Template, custom)
 
 **References**:
-- `src/lib/config.ts:75-106`
+- `src/lib/config.ts:75-120`
 
 ---
 
 ### 4. Factory Pattern ✅
 
-**Location**: `src/commands/*.ts` (implicit)
+**Location**: `src/lib/context.ts`
 
-**Implementation**: Commands create API client instances with environment-specific configuration.
+**Implementation**: `resolveCommandContext()` creates command context with all dependencies.
 
 **Example**:
 ```typescript
-function createClient(env: Record<string, string>): { client: PlatformAPIClient } {
-  const publicApiUrl = env.BASE_URL_PUBLIC_API;
-  const tenantId = env.TENANT_DEFAULT_ID;
-  return { client: new PlatformAPIClient(publicApiUrl, tenantId) };
+interface CommandContext {
+  publicApiUrl: string;
+  tenantId: string;
+  tenantName: string;
+  client: PlatformAPIClient;
+}
+
+async function resolveCommandContext(options: ResolveContextOptions): Promise<CommandContext> {
+  const root = await findProjectRoot();
+  const profile = getActiveProfile();
+  const tokens = await getToken();
+  const tenant = await loadActiveTenantContext();
+  const client = new PlatformAPIClient(publicApiUrl, tenant.id);
+  return { publicApiUrl, tenantId: tenant.id, tenantName: tenant.displayName, client };
 }
 ```
 
 **Benefits**:
-- Centralized client creation
-- Environment-aware configuration
+- Centralizes context creation
+- Reduces boilerplate in commands
+- Consistent error handling
 
 **References**:
-- `src/commands/resources.ts:12-19`
+- `src/lib/context.ts:35-120`
+- Used by: `src/commands/resources.ts`, `src/commands/types.ts`, `src/commands/tenant.ts`
 
 ---
 
-### 5. Singleton Pattern ⚠️ (Implicit)
+### 5. Singleton Pattern ✅
 
 **Location**: `src/lib/auth.ts`
 
-**Implementation**: Token storage is effectively a singleton (single file per user).
+**Implementation**: Module-level cache for tokens to prevent multiple refreshes.
 
 **Example**:
 ```typescript
-const TOKENS_FILE = join(homedir(), '.eai', 'tokens.json');
+// Module-level cache — keyed by profile name
+const _cache: Map<string, StoredTokens> = new Map();
 
-async function loadTokens(): Promise<StoredTokens | null> {
-  const encrypted = await readFile(TOKENS_FILE, 'utf-8');
-  return JSON.parse(decrypt(encrypted));
+export async function getToken(): Promise<string> {
+  const profile = getActiveProfile();
+  if (_cache.has(profile)) {
+    return _cache.get(profile)!.accessToken;
+  }
+  // Load from disk and cache
 }
 ```
 
-**Risks**:
-- Race condition if multiple CLI instances run concurrently
-- No file locking mechanism
-
-**Recommendation**: Add file locking (e.g., `lockfile` library) or atomic writes
+**Benefits**:
+- Prevents race conditions on token refresh
+- Reduces disk I/O for repeated token access
 
 **References**:
-- `src/lib/auth.ts:15`
-- `src/lib/auth.ts:77-85`
+- `src/lib/auth.ts:47`
 
 ---
 
 ### 6. Template Method Pattern ✅
 
-**Location**: `src/commands/*.ts` (implicit)
+**Location**: `release.sh`
 
-**Implementation**: Commands follow a template structure:
-1. Load project context
-2. Create API client
-3. Execute operation with spinner
-4. Handle response
-5. Display result
+**Implementation**: Release script defines a template for releases with validation steps.
 
-**Example** (abstracted):
-```typescript
-async function commandTemplate() {
-  const context = await loadContext();           // Step 1
-  const client = createClient(context.env);      // Step 2
-  const spinner = ora('Loading...').start();     // Step 3
-  const res = await client.operation();
-  if (!res.ok) { spinner.fail(); exit(1); }      // Step 4
-  const data = await res.json();
-  spinner.succeed(); console.log(data);          // Step 5
-}
+**Example**:
+```bash
+# Template:
+# 1. Preflight checks
+# 2. Dependency install
+# 3. Type check
+# 4. Lint
+# 5. Build
+# 6. Test
+# 7. Smoke test
+# 8. Docs build
+# 9. Pack + registry
+# 10. Bump version
+# 11. Commit + tag
+# 12. Push + release
 ```
 
 **Benefits**:
-- Consistent UX across commands
-- Predictable error handling
+- Consistent release process
+- No manual steps skipped
+- Reproducible releases
 
-**Duplication**: This pattern is repeated in ~30 command handlers (tech debt)
+**References**:
+- `release.sh:1-200`
 
 ---
 
-### 7. Adapter Pattern ✅
+### 7. Observer Pattern ✅
 
-**Location**: `src/lib/config.ts`
+**Location**: `src/lib/update-check.ts`
 
-**Implementation**: TypeScript stripping adapts TS config files to JS for evaluation.
+**Implementation**: Background update check notifies user after command execution.
 
 **Example**:
 ```typescript
-function stripTypeScript(source: string): string {
-  let js = source;
-  js = js.replace(/^import\s+.*$/gm, '');  // Remove imports
-  js = js.replace(/:\s*\w+(?:\[\])?\s*(?==)/g, ' =');  // Strip type annotations
-  return js;
-}
+// Fire-and-forget background check
+checkForUpdate(currentVersion);
+
+// Later: notify if update available
+await notifyIfUpdateAvailable(currentVersion);
 ```
 
 **Benefits**:
-- Allows TypeScript config without requiring `ts-node` dependency
-- Faster execution (no TypeScript compilation)
+- Non-blocking update checks
+- User notified without disrupting workflow
 
 **References**:
-- `src/lib/config.ts:183-208`
+- `src/lib/update-check.ts:50-120`
+- `src/index.ts:161-163`
 
 ---
 
-### 8. Proxy Pattern ✅
+### 8. Builder Pattern ✅
 
-**Location**: `src/lib/api.ts`
+**Location**: `src/lib/schema-builder.ts`
 
-**Implementation**: CLI acts as a proxy to Platform API, adding authentication headers.
+**Implementation**: Builds JSON schema representation of CLI for AI agents.
 
 **Example**:
 ```typescript
-async listResources(type: string): Promise<Response> {
-  return fetch(url, { headers: await this.headers() });  // Adds Authorization
+export function describeProgram(program: Command): CommandSchema {
+  return {
+    name: program.name(),
+    description: program.description(),
+    commands: program.commands.map(describeCommand),
+    options: program.options.map(describeOption),
+  };
 }
 ```
 
 **Benefits**:
-- Transparent authentication injection
-- Commands don't need to handle auth
+- AI agents can discover CLI capabilities at runtime
+- Enables `eai --describe` for automation
 
 **References**:
-- `src/lib/api.ts:16-25`
+- `src/lib/schema-builder.ts:10-80`
+- Used by: `src/index.ts:159`
 
 ---
 
@@ -233,482 +259,354 @@ async listResources(type: string): Promise<Response> {
 
 **Location**: `src/lib/api.ts`
 
-**Description**: `PlatformAPIClient` has 20+ methods covering all API operations.
-
-**Impact**: Class is large (257 lines) and hard to test/maintain.
-
-**Recommendation**: Split into smaller clients by domain:
-```typescript
-class ResourcesClient { /* listResources, getResource, etc. */ }
-class ChatClient { /* sendChat, streamChat */ }
-class DocumentsClient { /* classifyDocument, indexDocument */ }
-class TypesClient { /* getSchema, seedType */ }
-```
-
-**References**:
-- `src/lib/api.ts:10-257`
-
----
-
-### 2. Duplicate Code (Template Method Not Extracted) ⚠️
-
-**Location**: `src/commands/*.ts`
-
-**Description**: Each command handler repeats the same boilerplate:
-- Load project root
-- Load environment
-- Create API client
-- Initialize spinner
-
-**Impact**: ~100 lines of duplicated code across commands.
-
-**Recommendation**: Extract to shared helper (see Factory Pattern improvement).
-
-**Example Duplication**:
-```typescript
-// Repeated in ~10 commands
-const root = await findProjectRoot();
-if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
-const env = await loadEnvFile(root);
-const client = new PlatformAPIClient(env.BASE_URL_PUBLIC_API, tenantId);
-```
-
-**References**:
-- `src/commands/resources.ts:21-29`
-- `src/commands/types.ts:31-35`
-- `src/commands/chat.ts:25-37`
-
----
-
-### 3. Magic Strings ⚠️
-
-**Location**: Throughout codebase
-
-**Description**: Hardcoded strings for error messages, endpoints, config keys.
-
-**Impact**: Difficult to maintain, localize, or test.
-
-**Examples**:
-```typescript
-// Error messages
-out.error('Not in an EAI project.');
-out.error('Missing BASE_URL_PUBLIC_API or tenant ID.');
-
-// Config keys
-env.TENANT_DEFAULT_ID
-env.BASE_URL_PUBLIC_API
-
-// Endpoints
-'/v3/resources/${tenant}/${type}'
-'/v3/chat/${tenant}/${workflow}/${stage}'
-```
-
-**Recommendation**: Extract to constants:
-```typescript
-// src/lib/constants.ts
-export const ERROR_MESSAGES = {
-  NOT_IN_PROJECT: 'Not in an EAI project.',
-  MISSING_CONFIG: 'Missing BASE_URL_PUBLIC_API or tenant ID.',
-};
-
-export const ENV_KEYS = {
-  TENANT_DEFAULT: 'TENANT_DEFAULT_ID',
-  API_URL: 'BASE_URL_PUBLIC_API',
-};
-
-export const API_ENDPOINTS = {
-  RESOURCES: (tenant: string, type: string) => `/v3/resources/${tenant}/${type}`,
-  CHAT: (tenant: string, workflow: string, stage: string) => `/v3/chat/${tenant}/${workflow}/${stage}`,
-};
-```
-
----
-
-### 4. Long Functions ⚠️
-
-**Location**: `src/commands/types.ts`, `src/commands/resources.ts`
-
-**Description**: Some command handlers exceed 100 lines.
-
-**Impact**: Hard to read, test, and maintain.
-
-**Example**: `src/commands/types.ts:23-168` (145 lines for `types seed`)
-
-**Recommendation**: Extract to helper functions:
-```typescript
-// Before: 145-line action handler
-typesCommand.command('seed').action(async (options) => { /* 145 lines */ });
-
-// After: Decomposed
-async function seedAction(options) {
-  const types = await loadTypes();
-  const results = await seedTypesToPlatform(types, options);
-  displayResults(results, options);
-}
-
-async function seedTypesToPlatform(types, options) { /* ... */ }
-function displayResults(results, options) { /* ... */ }
-```
-
----
-
-### 5. Silent Failures ⚠️
-
-**Location**: `src/lib/update-check.ts`
-
-**Description**: Update check failures are swallowed silently.
-
-**Impact**: Users don't know why update check failed (network issue? registry down?).
+**Issue**: `PlatformAPIClient` handles both PublicAPI and AdminAPI with 30+ methods.
 
 **Example**:
 ```typescript
-export function checkForUpdate(currentVersion: string): void {
-  void (async () => {
-    try {
-      const latest = await fetchLatestVersion();
-      // ...
-    } catch {
-      // Silent failure — user sees nothing
-    }
-  })();
+class PlatformAPIClient {
+  // PublicAPI methods
+  async listResources() { }
+  async getResource() { }
+  async createResource() { }
+  async sendChat() { }
+  async streamChat() { }
+  async classifyDocument() { }
+  
+  // AdminAPI methods
+  async getCurrentUserMemberships() { }
+  async provisionUserToTenant() { }
+  async bootstrapChildTenantAdmin() { }
+  async createTenant() { }
+  async lookupUserByEmail() { }
+  async provisionEntraApp() { }
+  
+  // ... 20 more methods
 }
 ```
 
-**Recommendation**: Add optional verbose logging:
+**Impact**: Medium
+- Class is large but methods are cohesive (all API calls)
+- Easy to find API methods in one place
+
+**Recommendation**:
+- Consider splitting into `PublicAPIClient` and `AdminAPIClient`
+- Or extract domain-specific clients (e.g., `TenantAPIClient`, `UserAPIClient`)
+
+**Priority**: Low (works well in practice)
+
+---
+
+### 2. Magic Strings ⚠️
+
+**Location**: `src/lib/api.ts`, command files
+
+**Issue**: API paths hardcoded as strings.
+
+**Example**:
 ```typescript
-if (process.env.EAI_VERBOSE) {
-  console.error(`Update check failed: ${error.message}`);
-}
+// Current
+fetch(`${baseUrl}/v3/resources/${tenant}/${type}`)
+
+// Better
+const paths = {
+  resources: (tenant: string, type: string) => `/v3/resources/${tenant}/${type}`,
+  chat: (tenant: string, workflow: string, stage: string) => `/v3/chat/${tenant}/${workflow}/${stage}`,
+};
+fetch(`${baseUrl}${paths.resources(tenant, type)}`)
 ```
 
-**References**:
-- `src/lib/update-check.ts:81-98`
+**Impact**: Low
+- Paths are stable and unlikely to change frequently
+- Easy to find with search
+
+**Recommendation**: Extract to path builder functions
+
+**Priority**: Low
+
+---
+
+### 3. Callback Hell (Avoided) ✅
+
+**Location**: All command files
+
+**Note**: CLI properly uses `async/await` everywhere. No callback nesting.
+
+**Example**:
+```typescript
+// Good: async/await
+const token = await getToken();
+const client = new PlatformAPIClient(url, tenant);
+const res = await client.listResources(type);
+
+// Not found in codebase: callback hell
+getToken((err, token) => {
+  if (err) return console.error(err);
+  createClient(token, (err, client) => {
+    if (err) return console.error(err);
+    // ...
+  });
+});
+```
+
+**Status**: Not present in codebase
 
 ---
 
 ## Technical Debt
 
-### High Priority
+### 1. TypeScript Stripping via Temp File 💰
 
-| Item | Severity | Location | Recommendation | Effort |
-|------|----------|----------|----------------|--------|
-| **No Unit Tests** | 🔴 Critical | Entire codebase | Add Vitest with 70% coverage | 3-5 days |
-| **Duplicate Command Boilerplate** | 🟡 Medium | `src/commands/*.ts` | Extract to `command-helpers.ts` | 1 day |
-| **Token Refresh Race Condition** | 🟡 Medium | `src/lib/auth.ts:71-92` | Add file locking | 4 hours |
-| **God Object (PlatformAPIClient)** | 🟡 Medium | `src/lib/api.ts` | Split into domain clients | 2 days |
+**Location**: `src/lib/config.ts`
 
----
+**Issue**: Object Type loading writes temp file to disk, imports, then deletes.
 
-### Medium Priority
+**Current Flow**:
+1. Read `object-types.ts`
+2. Strip TypeScript types via regex
+3. Write to `/tmp/eai-*.mjs`
+4. `import()` the temp file
+5. Delete temp file
 
-| Item | Severity | Location | Recommendation | Effort |
-|------|----------|----------|----------------|--------|
-| **Magic Strings** | 🟡 Medium | Throughout | Extract to `constants.ts` | 1 day |
-| **Long Functions** | 🟡 Medium | `src/commands/types.ts`, `resources.ts` | Extract helper functions | 1 day |
-| **Sequential Type Seeding** | 🟢 Low | `src/commands/types.ts:98-158` | Parallelize with `Promise.all()` | 2 hours |
-| **No Retry Logic** | 🟢 Low | `src/lib/api.ts` | Add exponential backoff | 4 hours |
+**Trade-offs**:
+- ✅ Avoids `ts-node` or `tsx` dependency (keeps bundle small)
+- ⚠️ Disk I/O overhead
+- ⚠️ Race condition risk if multiple CLI processes run concurrently
 
----
+**Recommendation**:
+- Evaluate in-memory eval with `vm` module
+- Or accept trade-off (works well in practice)
 
-### Low Priority
+**Priority**: Low
 
-| Item | Severity | Location | Recommendation | Effort |
-|------|----------|----------|----------------|--------|
-| **Silent Update Check Failures** | 🟢 Low | `src/lib/update-check.ts` | Add verbose logging | 1 hour |
-| **No Request Caching** | 🟢 Low | `src/lib/api.ts` | Add optional TTL cache | 4 hours |
-| **Token Storage Security** | 🟢 Low | `src/lib/auth.ts` | Upgrade to OS keychain | 1 day (adds native dep) |
+**References**:
+- `src/lib/config.ts:150-200`
 
 ---
 
-## Spec vs Implementation Alignment
+### 2. Sequential Type Seeding 💰💰
 
-### .specify/ Directory Analysis
+**Location**: `src/commands/types.ts`
 
-**Finding**: `.specify/specs/_archive/` contains archived specs for:
-1. CLI Packaging and Docs
-2. Static NPM Registry
-3. CLI Consolidation
+**Issue**: Object Types are seeded one at a time, not in parallel.
 
-**Status**: All specs appear to be **implemented** (marked as archived).
+**Current**:
+```typescript
+for (const type of objectTypes) {
+  await seedType(type);
+}
+```
 
-**Verification**:
-- ✅ Static NPM Registry: Implemented (`release.sh`, `docs/public/registry/`)
-- ✅ Documentation Site: Implemented (93-page docs site)
-- ✅ CLI Consolidation: Implemented (unified command structure)
+**Impact**: 10 types take 10x single-type time
 
-**No Active Specs**: All specs in `.specify/specs/` are archived, indicating completed work.
+**Recommendation**:
+```typescript
+await Promise.all(objectTypes.map(type => seedType(type)));
+// Or rate-limited:
+await pLimit(5).map(objectTypes, type => seedType(type));
+```
 
-**Recommendation**: Keep `.specify/` updated with new feature specs as they are planned.
+**Priority**: Medium (impacts developer workflow)
+
+**References**:
+- `src/commands/types.ts:120-180`
 
 ---
 
-## Code Smells
+### 3. Encryption Key Derivation 💰
 
-### 1. Feature Envy
+**Location**: `src/lib/auth.ts`
 
-**Location**: `src/commands/types.ts:78-86`
+**Issue**: Encryption key derived from `sha256(eai-cli-${homedir}-token-store)`, not OS keychain.
 
-**Description**: Command reaches into environment object to extract nested keys.
+**Trade-offs**:
+- ✅ Portable across machines (no native dependency)
+- ⚠️ Less secure than OS keychain (macOS Keychain, Windows Credential Manager)
+- ⚠️ Same key for all users on same machine (unlikely scenario)
 
-**Example**:
-```typescript
-const normalizedKey = tenantKey.replace(/-/g, '_').toUpperCase();
-const tenantId = env[`TENANT_${normalizedKey}_ID`] || env.TENANT_DEFAULT_ID;
-```
+**Recommendation**:
+- Add optional `keytar` dependency for OS keychain
+- Fallback to current method if keychain unavailable
 
-**Recommendation**: Move to config module:
-```typescript
-// src/lib/config.ts
-export function resolveTenantId(env: Env, tenantKey: string): string {
-  const normalized = tenantKey.replace(/-/g, '_').toUpperCase();
-  return env[`TENANT_${normalized}_ID`] || env.TENANT_DEFAULT_ID;
-}
-```
+**Priority**: Medium (security improvement)
+
+**References**:
+- `src/lib/auth.ts:72-74`
 
 ---
 
-### 2. Temporary Field
+### 4. Test Coverage Gaps 💰💰
 
-**Location**: `src/lib/config.ts:141-148`
+**Location**: `tests/`
 
-**Description**: Temporary file created, used, and deleted in same function.
+**Issue**: Not all commands have unit tests.
 
-**Example**:
-```typescript
-const tempFile = join(tmpdir(), `eai-object-types-${randomUUID()}.mjs`);
-try {
-  await writeFile(tempFile, jsSource, 'utf-8');
-  const module = await import(tempFile);
-  return module.objectTypes;
-} finally {
-  await unlink(tempFile);  // Cleanup
-}
-```
+**Current Coverage** (estimated):
+- Library modules: ~60%
+- Commands: ~20%
 
-**Not a Problem**: This is an acceptable use of temporary files. Cleanup is guaranteed by `finally`.
+**Recommendation**:
+- Target 80%+ coverage on `src/lib/*.ts`
+- Add command tests using MSW for API mocking
 
----
+**Priority**: High (improves confidence in refactoring)
 
-### 3. Speculative Generality
-
-**Location**: `src/lib/api.ts:205-207`
-
-**Description**: Generic `platformRequest()` method for future flexibility.
-
-**Example**:
-```typescript
-async platformRequest(endpoint: string, method = 'GET', body?: unknown, params?: Record<string, unknown>)
-```
-
-**Not a Problem**: This is currently used by `types seed` and `tenant` commands. Not speculative.
+**References**:
+- `tests/**/*.test.ts`
+- `vitest.config.ts`
 
 ---
 
-## Recommended Refactorings
+### 5. Profile Config File Format 💰
 
-### 1. Extract Common Command Context (High Priority)
+**Location**: `~/.eai/config.json`
 
-**Before** (duplicated across commands):
-```typescript
-const root = await findProjectRoot();
-if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
-const env = await loadEnvFile(root);
-const client = new PlatformAPIClient(env.BASE_URL_PUBLIC_API, tenantId);
-```
+**Issue**: Profile config is JSON, not type-checked.
 
-**After**:
-```typescript
-// src/lib/command-helpers.ts
-export async function createCommandContext(): Promise<CommandContext> {
-  const root = await findProjectRoot();
-  if (!root) { out.error('Not in an EAI project.'); process.exit(1); }
-  const env = await loadEnvFile(root);
-  const tenantId = resolveTenantId(env);
-  const client = new PlatformAPIClient(env.BASE_URL_PUBLIC_API, tenantId);
-  return { root, env, client, tenantId };
-}
-
-// Usage in commands
-const ctx = await createCommandContext();
-const res = await ctx.client.listResources(type);
-```
-
-**Impact**: Removes ~100 lines of duplication, makes commands 30% shorter.
-
----
-
-### 2. Split PlatformAPIClient (Medium Priority)
-
-**Before** (God Object):
-```typescript
-class PlatformAPIClient {
-  listResources() { }
-  getResource() { }
-  sendChat() { }
-  classifyDocument() { }
-  // ... 20+ methods
-}
-```
-
-**After** (Domain Clients):
-```typescript
-// src/lib/clients/resources-client.ts
-export class ResourcesClient {
-  constructor(private baseUrl: string, private tenantId: string) {}
-  async list(type: string, options) { }
-  async get(type: string, id: string) { }
-  async create(type: string, data) { }
-  async update(type: string, id: string, data, version) { }
-  async delete(type: string, id: string) { }
-}
-
-// src/lib/clients/chat-client.ts
-export class ChatClient {
-  async send(workflowId, stage, message, conversationId) { }
-  async stream(workflowId, stage, message, conversationId) { }
-}
-
-// src/lib/api.ts (facade)
-export class PlatformAPIClient {
-  resources: ResourcesClient;
-  chat: ChatClient;
-  documents: DocumentsClient;
-
-  constructor(baseUrl: string, tenantId: string) {
-    this.resources = new ResourcesClient(baseUrl, tenantId);
-    this.chat = new ChatClient(baseUrl, tenantId);
-    this.documents = new DocumentsClient(baseUrl, tenantId);
-  }
-}
-
-// Usage
-const res = await client.resources.list('Task');
-```
-
-**Impact**: Better separation of concerns, easier to test, more maintainable.
-
----
-
-### 3. Add Retry Logic to API Client (Low Priority)
-
-**Before**:
-```typescript
-async listResources(type: string): Promise<Response> {
-  return fetch(url, { headers: await this.headers() });
-}
-```
-
-**After**:
-```typescript
-async listResources(type: string): Promise<Response> {
-  return this.withRetry(() => fetch(url, { headers: await this.headers() }));
-}
-
-private async withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (i === retries - 1) throw error;
-      await sleep(Math.pow(2, i) * 1000);  // Exponential backoff
+**Current**:
+```json
+{
+  "profiles": {
+    "dev": {
+      "publicApiUrl": "...",
+      "authTenantName": "...",
+      "authTenantId": "...",
+      "authClientId": "..."
     }
   }
 }
 ```
 
-**Impact**: Improves resilience to transient network failures.
+**Recommendation**:
+- Add JSON schema for validation
+- Or use TypeScript config (e.g., `eai.profiles.ts`)
+
+**Priority**: Low (works well in practice)
+
+**References**:
+- `src/lib/profile.ts:50-100`
 
 ---
 
-## Architectural Debt
+## Spec vs Implementation Alignment
 
-### 1. No Separation Between CLI and Library Code
+### Fully Aligned Specs ✅
 
-**Current**: All code is CLI-specific (Commander commands, spinners, exit codes).
+1. **011-Install Gofer** (100/100)
+   - No tech debt identified
+   - All acceptance criteria met
 
-**Future Need**: Reusable library for programmatic use (e.g., VS Code extension, web UI).
+2. **901-CLI Platform Alignment** (100/100)
+   - No tech debt identified
+   - Membership-driven tenant context fully implemented
 
-**Recommendation**: Split into two packages:
-- `@eai-tools/cli` — CLI-specific code (commands, spinners, prompts)
-- `@eai-tools/client` — Reusable library (API client, auth, config)
+3. **902-Provision Entra Diagnostics** (100/100)
+   - No tech debt identified
+   - Sanitized error handling complete
 
-**Effort**: 2-3 days to refactor and publish separate packages.
+4. **903-Provision Entra CIAM Routing** (100/100)
+   - No tech debt identified
+   - Profile-based routing complete
 
----
-
-### 2. No Plugin System
-
-**Current**: All commands are built-in.
-
-**Future Need**: Allow users to add custom commands (e.g., `eai my-company-workflow`).
-
-**Recommendation**: Add plugin discovery and loading:
-```typescript
-// ~/.eai/plugins/my-company-cli.js
-export const commands = [
-  new Command('my-company-workflow').action(() => { /* ... */ })
-];
-
-// src/index.ts
-const plugins = await loadPlugins('~/.eai/plugins');
-for (const plugin of plugins) {
-  for (const cmd of plugin.commands) {
-    program.addCommand(cmd);
-  }
-}
-```
-
-**Effort**: 3-4 days to design and implement plugin system.
+**Discrepancies**: None
 
 ---
 
-## Performance Debt
+## Tech Debt Summary
 
-### 1. Sequential Type Seeding
+| Item | Priority | Effort | Impact |
+|------|----------|--------|--------|
+| Sequential Type Seeding | Medium | Small | Medium (developer workflow) |
+| Test Coverage Gaps | High | Large | High (confidence in refactoring) |
+| Encryption Key Derivation | Medium | Medium | Medium (security improvement) |
+| TypeScript Stripping via Temp File | Low | Medium | Low (works well) |
+| Profile Config File Format | Low | Small | Low (nice-to-have) |
+| Magic Strings (API paths) | Low | Small | Low (readability) |
+| God Object (PlatformAPIClient) | Low | Large | Low (works well) |
 
-**Current**: ~10 types take 20 seconds (1 API call per type, sequential).
+**Total Debt**: 7 items (2 high/medium priority, 5 low priority)
 
-**Recommendation**: Parallelize with `Promise.all()`.
-
-**Before**:
-```typescript
-for (const type of types) {
-  const spinner = ora(`  ${type.name}`).start();
-  const res = await client.platformRequest('/object-types', 'POST', type);
-  // ...
-}
-```
-
-**After**:
-```typescript
-const results = await Promise.all(
-  types.map(async (type) => {
-    const spinner = ora(`  ${type.name}`).start();
-    const res = await client.platformRequest('/object-types', 'POST', type);
-    // ...
-    return { type, res };
-  })
-);
-```
-
-**Impact**: 3-5x faster (10 types in 4-6 seconds instead of 20 seconds).
+**Recommendation**: Prioritize test coverage and parallel type seeding. Other items are low-impact and can be deferred.
 
 ---
 
-## Summary
+## Architecture Evolution
 
-**Patterns**: 8 identified (7 good, 1 risky — Singleton without locking)
+### v0.1.4 → v2.6.0 Changes
 
-**Anti-Patterns**: 5 identified (God Object, duplication, magic strings, long functions, silent failures)
+1. **Added Profile System**:
+   - Pattern: Strategy (different profiles for different environments)
+   - Files: `src/lib/profile.ts`, `~/.eai/config.json`
 
-**Tech Debt**: 12 items (4 high priority, 4 medium, 4 low)
+2. **Added Tenant Context Management**:
+   - Pattern: Repository (AdminAPI client for memberships)
+   - Files: `src/lib/tenant-context.ts`, `~/.eai/tenant-context.json`
 
-**Spec Alignment**: ✅ All archived specs implemented
+3. **Added Error Code Catalog**:
+   - Pattern: Enum + Catalog (structured error handling)
+   - Files: `src/lib/error-codes.ts`
 
-**Top Priority**:
-1. Add unit tests
-2. Extract common command boilerplate
-3. Fix token refresh race condition
-4. Split PlatformAPIClient into domain clients
+4. **Added Context Resolution**:
+   - Pattern: Factory (centralized context creation)
+   - Files: `src/lib/context.ts`
 
-**Estimated Effort**: 7-10 days to address high and medium priority debt.
+5. **Added Schema Builder**:
+   - Pattern: Builder (JSON schema generation)
+   - Files: `src/lib/schema-builder.ts`
+
+**Architectural Improvements**:
+- Centralized context resolution (less boilerplate)
+- Structured error handling (consistent user experience)
+- Profile isolation (security improvement)
+- Spec-driven development (intentional design)
+
+---
+
+## Recommendations
+
+### Immediate Actions
+
+1. **Parallelize Type Seeding** (Medium priority, Small effort)
+   - File: `src/commands/types.ts`
+   - Use `Promise.all()` for parallel API calls
+
+2. **Expand Test Coverage** (High priority, Large effort)
+   - Target: 80%+ coverage on `src/lib/*.ts`
+   - Use MSW for API mocking
+
+### Long-Term Improvements
+
+3. **OS Keychain Integration** (Medium priority, Medium effort)
+   - File: `src/lib/auth.ts`
+   - Add optional `keytar` dependency
+
+4. **Extract API Path Builders** (Low priority, Small effort)
+   - File: `src/lib/api.ts`
+   - Create `paths` object with builder functions
+
+### Deferred (Low Priority)
+
+5. **Split PlatformAPIClient** (Low priority, Large effort)
+   - Current design works well
+   - Consider only if class exceeds 1000 lines
+
+6. **TypeScript Config for Profiles** (Low priority, Medium effort)
+   - JSON works fine for now
+   - Add JSON schema validation first
+
+---
+
+## Conclusion
+
+The EAI CLI demonstrates strong architectural patterns with minimal anti-patterns and manageable technical debt. The codebase is production-ready with clear opportunities for incremental improvement.
+
+**Key Strengths**:
+- Consistent use of design patterns (Command, Repository, Factory)
+- Spec-driven development ensures intentional design
+- Clear separation of concerns across modules
+
+**Key Opportunities**:
+- Expand test coverage (highest priority)
+- Parallelize type seeding (quick win for developer experience)
+- OS keychain integration (security improvement)
+
+All tech debt items are low-to-medium priority and do not block production use. The architecture is sound and extensible.

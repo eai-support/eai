@@ -1,297 +1,289 @@
 ---
-generated: "2026-03-11T18:45:00Z"
-source_commit: "584ed1afb8257ec89c81a6e0515007e9491fa008"
+generated: "2026-04-30T11:33:30Z"
+source_commit: "86e6318e5014b9b77aa5e0d28cabe883a07fab21"
 ---
 
 # EAI CLI — Data Model
 
 ## Overview
 
-The EAI CLI is a client-side tool with **no persistent database**. It manages two types of local data:
+The EAI CLI is a **stateless client** that interacts with the EAI Platform API. It does not maintain a local database. All persistent state resides either:
 
-1. **Authentication Tokens** — Stored in `~/.eai/tokens.json` (encrypted)
-2. **Update Check Cache** — Stored in `~/.eai/update-check.json`
-
-All business data (resources, object types, tenants) is stored in the **Platform API** and accessed via REST endpoints.
+1. **Locally** in the user's home directory (`~/.eai/`)
+2. **On the Platform** via the PublicAPI and AdminAPI
 
 ---
 
-## Local Storage Entities
+## Local Storage
 
-### 1. Authentication Tokens (`~/.eai/tokens.json`)
+### Authentication Tokens
 
-**Purpose**: Store encrypted access and refresh tokens for Entra CIAM authentication.
+**File**: `~/.eai/tokens.json` (default profile) or `~/.eai/tokens/{profile}.json` (named profiles)
 
-**Storage Format**: AES-256-CBC encrypted JSON
+**Format**: AES-256-CBC encrypted JSON
 
 **Schema**:
 ```typescript
 interface StoredTokens {
-  accessToken: string;        // JWT access token
-  refreshToken?: string;      // OAuth refresh token
-  expiresAt: number;          // Expiry timestamp (ms since epoch)
-  tenantId: string;           // Entra tenant ID
-  tenantName: string;         // Entra tenant name (subdomain)
-  clientId: string;           // Entra client ID
-  upn?: string;               // User Principal Name (email)
-}
-```
-
-**Example** (decrypted):
-```json
-{
-  "accessToken": "eyJ0eXAiOiJKV1QiLCJhbGc...",
-  "refreshToken": "0.ARAA...",
-  "expiresAt": 1709825400000,
-  "tenantId": "12345678-1234-1234-1234-123456789abc",
-  "tenantName": "eaiplatform",
-  "clientId": "87654321-4321-4321-4321-abcdef123456",
-  "upn": "user@example.com"
-}
-```
-
-**Encryption**:
-- Algorithm: AES-256-CBC
-- Key derivation: SHA-256 hash of `eai-cli-${homedir}-token-store`
-- Format: `{iv_hex}:{encrypted_hex}`
-- File permissions: `0o600` (owner read/write only)
-
-**Lifecycle**:
-- **Created**: On `eai login` success
-- **Read**: On every command execution (via `getAccessToken()`)
-- **Updated**: On token refresh (5min before expiry)
-- **Deleted**: On `eai logout`
-
-**Security Considerations**:
-- Encryption key is machine-specific (derived from home directory path)
-- Not portable across machines
-- Not suitable for shared machines (use `EAI_ACCESS_TOKEN` env var instead)
-
----
-
-### 2. Update Check Cache (`~/.eai/update-check.json`)
-
-**Purpose**: Cache latest version info to avoid excessive registry checks.
-
-**Storage Format**: Plaintext JSON
-
-**Schema**:
-```typescript
-interface UpdateCache {
-  lastCheck: number;          // Timestamp of last check (ms)
-  latestVersion: string;      // Latest version from registry
-  currentVersion: string;     // CLI version at time of check
-}
-```
-
-**Example**:
-```json
-{
-  "lastCheck": 1709825400000,
-  "latestVersion": "0.1.5",
-  "currentVersion": "0.1.4"
+  accessToken: string;           // Bearer token for API auth
+  refreshToken?: string;          // Refresh token for auto-refresh
+  expiresAt: number;              // Unix timestamp (ms)
+  tenantId: string;               // Entra CIAM tenant ID
+  tenantName: string;             // Entra CIAM tenant name
+  clientId: string;               // Entra app registration client ID
+  authScope?: string;             // OAuth scope used
+  upn?: string;                   // User principal name
+  oid?: string;                   // User object ID
+  activeTenantId?: string;        // Active platform tenant ID
+  activeTenantName?: string;      // Active platform tenant name
+  activeTenantSlug?: string;      // Active platform tenant slug
+  activeTenantDomain?: string;    // Active platform tenant domain
+  publicApiUrl?: string;          // Platform API base URL
+  membershipsCachedAt?: number;   // Timestamp of last membership fetch
 }
 ```
 
 **Lifecycle**:
-- **Created/Updated**: Background check on CLI invocation (if 24h elapsed)
-- **Read**: After command execution to display update banner
-- **TTL**: 24 hours
+- Created on `eai login`
+- Updated on token refresh (auto, when <5min remaining)
+- Cleared on `eai logout`
+- Per-profile isolation (multiple environments)
 
-**Registry Source**: `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
-
----
-
-## Platform Data Models
-
-The CLI interacts with these data models on the Platform API:
-
-### 3. Resource (Platform Entity)
-
-**Storage**: Platform Data Service (MongoDB)
-
-**Schema** (as returned by API):
-```typescript
-interface Resource {
-  id: string;                 // UUID
-  data: Record<string, any>;  // Dynamic fields based on Object Type
-  object_type: string;        // Object Type name
-  tenant: string;             // Tenant ID
-  version: number;            // Optimistic locking version
-  created_at: string;         // ISO 8601 timestamp
-  updated_at: string;         // ISO 8601 timestamp
-  created_by?: string;        // User ID
-  updated_by?: string;        // User ID
-}
-```
-
-**Example**:
-```json
-{
-  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "data": {
-    "title": "My Resource",
-    "description": "A sample resource",
-    "status": "active",
-    "priority": 5
-  },
-  "object_type": "Task",
-  "tenant": "tenant-123",
-  "version": 3,
-  "created_at": "2026-03-11T10:00:00Z",
-  "updated_at": "2026-03-11T12:30:00Z",
-  "created_by": "user-456",
-  "updated_by": "user-789"
-}
-```
-
-**Relationships**:
-- Belongs to one `ObjectType` (defines schema)
-- Belongs to one `Tenant` (multi-tenancy isolation)
-- Has version history (tracked in platform)
+**Security**:
+- File mode `0o600` (owner read/write only)
+- AES-256-CBC encryption with key derived from `sha256(eai-cli-${homedir}-token-store)`
 
 ---
 
-### 4. Object Type (Schema Definition)
+### Tenant Context
 
-**Storage**: Platform Type Registry
+**File**: `~/.eai/tenant-context.json`
+
+**Format**: Plain JSON
 
 **Schema**:
+```typescript
+interface TenantContextCache {
+  activeTenant?: {
+    id: string;              // Platform tenant ID
+    displayName: string;     // Tenant display name
+    slug: string;            // URL-friendly tenant slug
+    domain?: string;         // Custom domain (if any)
+    isActive: boolean;       // Tenant active status
+    roles: string[];         // User roles in this tenant
+  };
+  memberships?: TenantMembership[];  // Cached tenant-admin memberships
+  lastUpdated?: number;               // Unix timestamp (ms)
+}
+
+interface TenantMembership {
+  id: string;
+  displayName: string;
+  slug: string;
+  domain?: string;
+  isActive: boolean;
+  roles: string[];  // e.g., ["tenant-admin"]
+}
+```
+
+**Lifecycle**:
+- Created/updated on `eai tenant select`
+- Read by commands that need tenant context
+- Cleared on `eai logout`
+
+**Note**: Tenant selection is membership-driven; the CLI resolves available tenants from AdminAPI `/api/admin/current-user/tenant-memberships`, not from `.env.local`.
+
+---
+
+### Profile Configuration
+
+**File**: `~/.eai/config.json`
+
+**Format**: Plain JSON
+
+**Schema**:
+```typescript
+interface CliConfig {
+  activeProfile?: string;  // Last selected profile ("default", "dev", "test", "prod")
+  profiles?: Record<string, ProfileConfig>;
+}
+
+interface ProfileConfig {
+  publicApiUrl: string;        // Platform API base URL
+  authScope: string;           // OAuth scope
+  entraTenantName: string;     // Entra CIAM subdomain
+  entraTenantId: string;       // Entra CIAM tenant ID
+  entraClientId: string;       // Entra app registration client ID
+}
+```
+
+**Lifecycle**:
+- Created on first `eai login --profile <name>`
+- Updated when switching profiles
+- Persistent across sessions
+
+**Purpose**: Enables multi-environment workflows (dev, test, prod) without modifying project files.
+
+---
+
+### Update Check Cache
+
+**File**: `~/.eai/update-check.json`
+
+**Format**: Plain JSON
+
+**Schema**:
+```typescript
+interface UpdateCheckCache {
+  latestVersion: string;     // e.g., "2.7.0"
+  checkedAt: number;         // Unix timestamp (ms)
+}
+```
+
+**Lifecycle**:
+- Created on first update check
+- Refreshed every 24 hours
+- Used to display update notification banner
+
+---
+
+## Platform Storage
+
+The CLI does not create platform resources directly (except via explicit commands). All platform data is managed through PublicAPI and AdminAPI.
+
+### Resources (via PublicAPI)
+
+**Endpoint**: `/v3/resources/{tenant_id}/{object_type}`
+
+**Schema**: Platform-defined resource schema with metadata wrapper
+
+```typescript
+interface PlatformResource {
+  id: string;                      // UUID
+  data: Record<string, unknown>;   // Object Type fields
+  version: number;                 // Optimistic locking version
+  object_type: string;             // Object Type slug
+  tenant: string;                  // Tenant ID
+  created_at: string;              // ISO 8601
+  updated_at: string;              // ISO 8601
+  created_by?: string;             // User OID
+  updated_by?: string;             // User OID
+}
+```
+
+**CLI Operations**:
+- `eai resources list` → GET
+- `eai resources get` → GET by ID
+- `eai resources create` → POST
+- `eai resources update` → PUT (with version)
+- `eai resources delete` → DELETE
+
+---
+
+### Object Types (via PublicAPI)
+
+**Endpoint**: `/v3/orchestrate` → Payload CMS backend
+
+**Schema**: Platform Type Registry schema
+
 ```typescript
 interface ObjectTypeDefinition {
-  name: string;               // PascalCase identifier (e.g., "Task")
-  displayName: string;        // Human-readable (e.g., "Task")
-  description?: string;       // Optional description
-  properties: ObjectTypeProperty[];
-  linkTypes: ObjectTypeLinkType[];
-  actions: ObjectTypeAction[];
-  storageBackend?: string;    // Default: "mongodb"
-  status: 'draft' | 'published' | 'deprecated';
-  tenant: string;             // Tenant ID
-  id?: string;                // Platform-assigned ID
-  created_at?: string;        // ISO 8601 timestamp
-  updated_at?: string;        // ISO 8601 timestamp
+  slug: string;                    // URL-friendly identifier
+  name: string;                    // Display name
+  description?: string;            // Human-readable description
+  properties: PropertyDefinition[];
+  required?: string[];
+  indexes?: IndexDefinition[];
+  displayProperty?: string;
+  titleProperty?: string;
+}
+
+interface PropertyDefinition {
+  name: string;
+  type: 'text' | 'email' | 'number' | 'boolean' | 'date' | 'relationship' | ...;
+  label?: string;
+  required?: boolean;
+  unique?: boolean;
+  defaultValue?: unknown;
+  validationRules?: ValidationRule[];
+  relationTo?: string;  // For relationship fields
 }
 ```
 
-**Example**:
-```json
-{
-  "name": "Task",
-  "displayName": "Task",
-  "description": "A work item to be completed",
-  "properties": [
-    {
-      "name": "title",
-      "type": "text",
-      "required": true,
-      "indexed": true
-    },
-    {
-      "name": "description",
-      "type": "text",
-      "required": false
-    },
-    {
-      "name": "status",
-      "type": "select",
-      "required": true,
-      "options": [
-        { "label": "Todo", "value": "todo" },
-        { "label": "In Progress", "value": "in_progress" },
-        { "label": "Done", "value": "done" }
-      ],
-      "defaultValue": "todo"
-    },
-    {
-      "name": "priority",
-      "type": "number",
-      "required": false,
-      "defaultValue": 3
-    }
-  ],
-  "linkTypes": [
-    {
-      "name": "assignedTo",
-      "targetObjectType": "User",
-      "cardinality": "many-to-one"
-    },
-    {
-      "name": "comments",
-      "targetObjectType": "Comment",
-      "cardinality": "one-to-many",
-      "cascadeDelete": true
-    }
-  ],
-  "actions": [
-    {
-      "name": "complete",
-      "displayName": "Mark as Complete",
-      "requiredRole": "tenant-user",
-      "validationRules": {
-        "requiredFields": ["title"],
-        "requiredStatus": "in_progress"
-      },
-      "sideEffects": [
-        {
-          "type": "set_field",
-          "field": "status",
-          "value": "done"
-        },
-        {
-          "type": "set_timestamp",
-          "field": "completed_at"
-        }
-      ]
-    }
-  ],
-  "storageBackend": "mongodb",
-  "status": "published",
-  "tenant": "tenant-123"
-}
-```
+**CLI Operations**:
+- `eai types validate` → Local validation
+- `eai types seed` → POST to Type Registry
+- `eai types diff` → Compare local vs. remote
+- `eai types pull` → GET from Type Registry
 
-**Relationships**:
-- Defines schema for many `Resources`
-- Belongs to one `Tenant`
-- Can reference other Object Types via `linkTypes`
+**Storage**: Type Registry (platform-internal Payload CMS collection)
 
 ---
 
-### 5. Tenant (Multi-Tenancy)
+### Tenants (via AdminAPI)
 
-**Storage**: Platform Payload Service
+**Endpoint**: `/api/admin/tenants`
 
-**Schema**:
+**Schema**: Platform tenant document
+
 ```typescript
 interface Tenant {
-  id: string;                 // UUID
-  name: string;               // Tenant name
-  slug: string;               // URL-safe identifier
-  parent?: string;            // Parent tenant ID (hierarchical)
-  domain?: string[];          // Associated domains
-  created_at: string;         // ISO 8601 timestamp
-  updated_at: string;         // ISO 8601 timestamp
+  id: string;                      // UUID or slug
+  displayName: string;             // Human-readable name
+  slug: string;                    // URL-friendly identifier
+  domain?: string;                 // Custom domain (optional)
+  isActive: boolean;               // Active status
+  parent?: string | { id?: string } | null;  // Parent tenant reference
+  parentId?: string | null;        // Parent tenant ID
+  limits?: {
+    tenants?: number;              // Max child tenants
+    users?: number;                // Max users
+  };
+  created_at?: string;
+  updated_at?: string;
 }
 ```
 
-**Example**:
-```json
-{
-  "id": "tenant-123",
-  "name": "Acme Corporation",
-  "slug": "acme-corp",
-  "parent": "parent-tenant-456",
-  "domain": ["acme.com"],
-  "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-03-11T12:00:00Z"
+**CLI Operations**:
+- `eai tenant list` → GET current user memberships
+- `eai tenant info <id>` → GET tenant details
+- `eai tenant create` → POST new tenant + bootstrap first admin
+- `eai tenant select` → Interactive selection (updates local cache)
+
+**Storage**: Platform tenant collection (via AdminAPI)
+
+---
+
+### User Memberships (via AdminAPI)
+
+**Endpoint**: `/api/admin/current-user/tenant-memberships`
+
+**Schema**: Tenant membership with roles
+
+```typescript
+interface TenantMembership {
+  tenant: {
+    id: string;
+    displayName: string;
+    slug: string;
+    domain?: string;
+    isActive: boolean;
+  };
+  roles: string[];               // e.g., ["tenant-admin", "user"]
+  isTenantAdmin: boolean;        // Convenience flag
+  roleAssignments?: Array<{
+    baseRole?: string;
+    displayName?: string;
+  }>;
 }
 ```
 
-**Relationships**:
-- Has many `Resources`
-- Has many `ObjectTypes`
-- Has many child `Tenants` (hierarchical)
+**CLI Operations**:
+- Fetched on `eai login` (cached)
+- Refreshed on `eai tenant select`
+- Used for tenant list and access control
+
+**Storage**: Platform memberships (Entra ID groups + platform roles)
 
 ---
 
@@ -299,182 +291,182 @@ interface Tenant {
 
 ```mermaid
 erDiagram
-    TENANT ||--o{ OBJECT_TYPE : defines
-    TENANT ||--o{ RESOURCE : contains
-    TENANT ||--o{ TENANT : "has child tenants"
-    OBJECT_TYPE ||--o{ RESOURCE : "schema for"
-    OBJECT_TYPE ||--o{ LINK_TYPE : "defines relationships"
-    OBJECT_TYPE ||--o{ ACTION : "defines actions"
-    RESOURCE ||--o{ RESOURCE : "linked via linkTypes"
-    USER ||--o{ RESOURCE : "created/updated by"
+    CLI ||--o{ TokenStorage : stores
+    CLI ||--o{ TenantContextCache : stores
+    CLI ||--o{ ProfileConfig : stores
+    CLI }o--|| Platform : authenticates-with
+    Platform ||--|{ Tenant : contains
+    Platform ||--|{ Resource : stores
+    Platform ||--|{ ObjectType : defines
+    Tenant ||--|{ Resource : owns
+    Tenant }o--o{ User : membership
+    Resource }o--|| ObjectType : conforms-to
+    User ||--o{ TenantMembership : has
+    TenantMembership }o--|| Tenant : references
 
-    TENANT {
+    TokenStorage {
+        string accessToken
+        string refreshToken
+        number expiresAt
+        string tenantId
+        string clientId
+    }
+
+    TenantContextCache {
+        string activeTenantId
+        string activeTenantName
+        string activeTenantSlug
+        array memberships
+        number lastUpdated
+    }
+
+    ProfileConfig {
+        string publicApiUrl
+        string authScope
+        string entraTenantName
+        string entraTenantId
+    }
+
+    Tenant {
         string id PK
-        string name
+        string displayName
         string slug UK
-        string parent FK
-        string[] domain
-        timestamp created_at
-        timestamp updated_at
+        string parentId FK
+        boolean isActive
     }
 
-    OBJECT_TYPE {
+    Resource {
         string id PK
+        string tenantId FK
+        string objectType FK
+        object data
+        number version
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    ObjectType {
+        string slug PK
         string name
-        string displayName
         string description
-        string tenant FK
-        string status
-        timestamp created_at
-        timestamp updated_at
+        array properties
     }
 
-    RESOURCE {
-        string id PK
-        json data
-        string object_type FK
-        string tenant FK
-        int version
-        timestamp created_at
-        timestamp updated_at
-        string created_by FK
-        string updated_by FK
-    }
-
-    LINK_TYPE {
-        string name
-        string targetObjectType FK
-        string cardinality
-        bool cascadeDelete
-    }
-
-    ACTION {
-        string name
-        string displayName
-        string requiredRole
-        json validationRules
-        json[] sideEffects
-    }
-
-    USER {
-        string id PK
+    User {
+        string oid PK
+        string email
         string upn
-        string[] roles
+    }
+
+    TenantMembership {
+        string userId FK
+        string tenantId FK
+        array roles
     }
 ```
 
 ---
 
-## Property Type Reference
+## Data Flow Diagram
 
-### Supported Property Types
+```mermaid
+flowchart TB
+    subgraph "Local Storage (~/.eai/)"
+        Tokens[tokens.json<br/>Encrypted tokens]
+        Context[tenant-context.json<br/>Active tenant]
+        Profile[config.json<br/>Profiles]
+    end
 
-| Type | Description | Example Value |
-|------|-------------|---------------|
-| `text` | String value | `"Hello World"` |
-| `number` | Numeric value (int or float) | `42`, `3.14` |
-| `boolean` | True/false value | `true`, `false` |
-| `date` | ISO 8601 date/datetime | `"2026-03-11"`, `"2026-03-11T12:00:00Z"` |
-| `select` | Enum value (requires `options`) | `"todo"` (from predefined options) |
-| `json` | Arbitrary JSON object/array | `{"key": "value"}`, `[1, 2, 3]` |
-| `file` | File reference (UUID or URL) | `"file-uuid-123"` |
-| `relationship` | Reference to another resource | `"resource-uuid-456"` |
+    subgraph "Platform (EAI API)"
+        Tenants[Tenants<br/>AdminAPI]
+        Resources[Resources<br/>PublicAPI]
+        Types[Object Types<br/>Type Registry]
+        Memberships[Memberships<br/>Entra + Platform]
+    end
 
-### Link Cardinality
+    Login[eai login] -->|Store| Tokens
+    Login -->|Fetch| Memberships
+    Memberships -->|Cache| Context
 
-| Cardinality | Description | Example |
-|-------------|-------------|---------|
-| `one-to-one` | Resource has exactly one linked resource | User → Profile |
-| `one-to-many` | Resource has multiple linked resources | Post → Comments |
-| `many-to-one` | Multiple resources link to one resource | Tasks → User (assignee) |
-| `many-to-many` | Multiple resources link to multiple resources | Students ↔ Courses |
+    Select[eai tenant select] -->|Read| Memberships
+    Select -->|Update| Context
 
----
+    Commands[eai resources/types/*] -->|Read| Tokens
+    Commands -->|Read| Context
+    Commands -->|API Calls| Resources
+    Commands -->|API Calls| Types
 
-## Indexing Strategy
+    TenantCreate[eai tenant create] -->|POST| Tenants
+    Tenants -->|Bootstrap| Memberships
+    Memberships -->|Verify| Context
 
-**Not determined from codebase**. Indexing is configured per Object Type via the `indexed` property flag. The platform handles index creation in the underlying storage (MongoDB).
-
-**Common Indexes** (inferred):
-- `id` — Primary key (unique)
-- `object_type` + `tenant` — Scoped queries
-- `created_at`, `updated_at` — Sorting by time
-- Custom properties with `indexed: true`
-
----
-
-## Version History
-
-Resources support **optimistic locking** via the `version` field:
-
-- Every update increments the version
-- Update requests must include current version
-- Platform returns 409 Conflict if version mismatch
-- History is queryable via `/history` endpoint
-
-**Example Version History**:
-```json
-{
-  "history": [
-    {
-      "version": 3,
-      "data": { "status": "done" },
-      "updated_at": "2026-03-11T14:00:00Z",
-      "updated_by": "user-789"
-    },
-    {
-      "version": 2,
-      "data": { "status": "in_progress" },
-      "updated_at": "2026-03-11T12:00:00Z",
-      "updated_by": "user-456"
-    },
-    {
-      "version": 1,
-      "data": { "status": "todo" },
-      "created_at": "2026-03-11T10:00:00Z",
-      "created_by": "user-456"
-    }
-  ]
-}
+    Logout[eai logout] -->|Clear| Tokens
+    Logout -->|Clear| Context
 ```
-
----
-
-## Data Constraints
-
-### Object Type Validation Rules
-
-| Constraint | Rule | Enforced By |
-|------------|------|-------------|
-| Name format | PascalCase (`^[A-Z][a-zA-Z0-9]*$`) | CLI validation |
-| Unique property names | No duplicates within type | CLI validation |
-| Valid property types | One of 8 supported types | CLI validation |
-| Select options | Must have options if type is `select` | CLI validation |
-| Link target | Target Object Type must exist | Platform validation |
-| Action role | One of 3 roles | CLI validation |
-| Side effect type | One of 3 types | CLI validation |
-
-### Resource Validation Rules
-
-| Constraint | Rule | Enforced By |
-|------------|------|-------------|
-| Required fields | Must be present if `required: true` | Platform validation |
-| Type correctness | Field values match property type | Platform validation |
-| Version match | Must match current version on update | Platform (optimistic locking) |
-| Tenant isolation | Resources belong to single tenant | Platform (multi-tenancy) |
 
 ---
 
 ## Migration History
 
-**Not applicable** — The CLI does not manage database migrations. Object Type changes are versioned and managed by the platform.
+The CLI is stateless and does not manage schema migrations. However, version updates may introduce changes to local storage formats:
+
+| Version | Change | Impact |
+|---------|--------|--------|
+| 2.0.0 | Introduced profile-based token storage | Tokens moved from `~/.eai/tokens.json` to profile-specific files |
+| 2.1.0 | Added tenant context cache | New file `~/.eai/tenant-context.json` |
+| 2.5.0 | Tenant selection from memberships | Removed `TENANT_DEFAULT_ID` requirement from `.env.local` |
+| 2.6.0 | Error code catalog | Structured error responses with E001-E305 codes |
+
+**Upgrade Path**: CLI automatically handles local storage format changes. Old token files are migrated on first run after upgrade.
+
+---
+
+## Key Indexes and Constraints
+
+### Local Storage
+
+- **Tokens**: No indexes (single-file encryption)
+- **Tenant Context**: No indexes (small JSON cache)
+- **Profiles**: No indexes (single config file)
+
+### Platform Storage (CLI Perspective)
+
+The CLI does not create indexes; it queries platform-managed resources:
+
+- **Resources**: Indexed by `tenant`, `object_type`, `id` (platform-managed)
+- **Tenants**: Indexed by `id`, `slug` (platform-managed)
+- **Memberships**: Indexed by `userId`, `tenantId` (platform-managed)
 
 ---
 
 ## Data Retention
 
-**Not determined from codebase**. Retention policies are managed by the platform, not the CLI.
+| Data Type | Retention | Cleanup |
+|-----------|-----------|---------|
+| **Access Tokens** | 1 hour (platform TTL) | Auto-refreshed or cleared on logout |
+| **Refresh Tokens** | 90 days (platform TTL) | Cleared on logout |
+| **Tenant Context** | Until `eai logout` or `eai tenant select` | User-controlled |
+| **Update Check Cache** | 24 hours | Auto-refreshed |
+| **Profile Config** | Indefinite | User-controlled |
 
-**Local Data Retention**:
-- Tokens: Persisted until `eai logout` or manual file deletion
-- Update cache: 24-hour TTL, auto-refreshed
+**Manual Cleanup**:
+```bash
+# Clear all CLI state
+rm -rf ~/.eai/
+
+# Clear tokens only
+rm -f ~/.eai/tokens.json ~/.eai/tokens/*.json
+
+# Clear tenant context only
+rm -f ~/.eai/tenant-context.json
+```
+
+---
+
+## Security Considerations
+
+1. **Token Encryption**: All tokens encrypted at rest with AES-256-CBC
+2. **File Permissions**: `~/.eai/tokens.json` is mode `0o600` (owner read/write only)
+3. **No Secrets in .env.local**: Tenant IDs are not secrets; tenant selection from memberships
+4. **CI/Headless Use**: Use `EAI_ACCESS_TOKEN` env var to avoid storing tokens on disk
+5. **Profile Isolation**: Per-profile token storage prevents credential leakage across environments
