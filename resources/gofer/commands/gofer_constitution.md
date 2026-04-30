@@ -6,6 +6,13 @@ category: utility
 surfaces:
   - claude
   - claude-mirror
+  - copilot
+  - vscode
+  - codex
+  - gemini
+  - github-prompts
+  - agents-skills
+  - system-skills
 aliases: [gofer:constitution]
 ---
 ---
@@ -44,7 +51,7 @@ when updating:
    `.claude/skills/`. The constitution MUST capture that distinction explicitly
    so future authors do not conflate the two paths. The official Codex disable
    knob is per-skill `[[skills.config]] enabled = false` in
-   `~/.codex/config.toml`; there is NO `skills_context_budget_percent` key
+   `~/.codex/config.toml`; there is no global skill-budget percentage key
    (FR-011).
 
 When updating the constitution, ensure both sections survive the edit pass.

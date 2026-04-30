@@ -1,6 +1,6 @@
 ---
 name: 3_gofer_plan
-description: Generate technical implementation plan with architecture and contracts
+description: Create a detailed technical implementation plan with architecture, data model, and contracts.
 agent: copilot-workspace
 tools:
   - Read
@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
   canonicalSource: .claude/commands/3_gofer_plan.md
-  canonicalChecksum: 96982e4657cdd1fc98362dea92c4b91ded3482c6605d342ae901256904dfc9cb
+  canonicalChecksum: 0aa58a4e2afe0ccb787314b1aea0cfc7cdd3085172eb10d9bf256802a228eeb1
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -51,6 +51,8 @@ If missing, prompt user to run the prerequisite stage.
 5. Optional multi-perspective review
 6. Spec coverage validation
 7. Output: `plan.md`, `data-model.md`, `contracts/`, `quickstart.md`
+8. EnterpriseAI default output: task-ready references to `context-bundle.md`,
+   `contract-pack.md`, `reuse-scan.md`, and `audit-history.md`
 
 ---
 
@@ -559,6 +561,35 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
 3. **Integration map handoff** — restate the Vertical App → EAI Services →
    Deployment Target chain from `spec.md` and bind each link to a task
    identifier in `tasks.md`.
+4. **Contract pack handoff** — reference `{FEATURE_DIR}/contract-pack.md` and
+   bind each actor, object type, workflow/journey, permission boundary,
+   API/event, runtime assumption, and acceptance test to plan sections and
+   downstream tasks.
+5. **AI-augmented journey handoff** — for app delivery, reference
+   `{FEATURE_DIR}/journeys/base-journey.md` and plan the four-step-or-fewer
+   user-facing process as the default scope spine. Each step must include the
+   business goal, generative AI assistance mode, screen/user/data context used,
+   completion signal, user controls, audit trail, and fallback/escalation path.
+   If the plan expands beyond four user-facing steps, document why those steps
+   cannot be combined, automated, or handled by the AI assistant.
+6. **Reuse-before-create decision log** — reference `{FEATURE_DIR}/reuse-scan.md`
+   for every new or extended EnterpriseAI object type, API/event, workflow, or
+   module.
+7. **Audit history seed** — create or update `{FEATURE_DIR}/audit-history.md`
+   with stable finding IDs, decision exceptions, owner, expiry, and review
+   cadence so validation can track recurring issues.
+
+### EnterpriseAI Flow and Journey Separation
+
+Plan both:
+
+- **External user journeys**: the business/user-facing path, decision points,
+  adoption impact, and measurable value.
+- **AI-augmented app process**: for application delivery, the four-step-or-fewer
+  journey with AI assistance, contextual prefill, conversational support,
+  completion checks, and human controls at each step.
+- **Internal orchestration flows**: platform services, ResourceAPI calls,
+  events, data movement, tenant boundaries, deployment steps, and observability.
 
 ### Competitive / market analysis reference
 

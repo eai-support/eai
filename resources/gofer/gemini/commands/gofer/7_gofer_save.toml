@@ -1,0 +1,2 @@
+description = "Save session state and create a handoff checkpoint for resumption in a new context."
+prompt = "{{include: ../../../.specify/commands/7_gofer_save.md}}"

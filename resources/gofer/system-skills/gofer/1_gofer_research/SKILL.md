@@ -36,6 +36,9 @@ This is the **first stage** of the unified Gofer pipeline. Your job is to:
 
 - `.specify/specs/{feature}/research.md`
 - `.specify/specs/{feature}/proposal-review.md`
+- `.specify/specs/{feature}/journeys/base-journey.md` (application delivery default)
+- `.specify/specs/{feature}/context-bundle.md` (EnterpriseAI default)
+- `.specify/specs/{feature}/reuse-scan.md` (EnterpriseAI default)
 
 ---
 
@@ -70,11 +73,18 @@ If discovery.md exists:
    - Target Users → Research UX patterns appropriate for these users
    - Value Proposition → Research metrics and measurement approaches
    - Competitive Analysis → If researched, focus on differentiation
+   - Application Classification → Determine whether a four-step AI-augmented
+     app journey is required
+   - AI-Augmented Journey → If app delivery, preserve the four-step-or-fewer
+     journey as the scope spine for research
 
 2. **Use discovery to guide agent prompts**:
    - Codebase Locator: Focus on areas related to the discovered problem
    - Codebase Analyzer: Analyze patterns relevant to target users
    - Pattern Finder: Find examples that deliver similar value
+   - AI Pattern Finder: Find existing chatbot, voice, accessibility,
+     translation, contextual prefill, recommendation, validation, or
+     human-review patterns that can support each journey step
 
 3. **Load discovery memories** via MemoryManager if available:
    ```
@@ -250,6 +260,35 @@ When enabled, `market-analysis.md` must include:
 
 ---
 
+## Step 3.6: Context Bundle and Reuse-Before-Create Scan
+
+EnterpriseAI is the default profile. Unless the user explicitly opts out with
+the standard profile, generate:
+
+1. `{FEATURE_DIR}/context-bundle.md`
+   - Feature summary and approved business scenario.
+   - Application classification: app delivery or non-app work, with rationale.
+   - Four-step-or-fewer AI-augmented journey summary when app delivery applies.
+   - Relevant existing specs, code paths, platform references, and API surfaces.
+   - EnterpriseAI object types, tenant assumptions, deployment target, and
+     validation criteria.
+   - A compact "what the next agent needs" section to avoid dumping entire
+     source files into later stages.
+2. `{FEATURE_DIR}/reuse-scan.md`
+   - Existing object types, APIs/events, workflows, modules, specs, and
+     reference implementations that may satisfy the need.
+   - Existing AI assistance capabilities: chat, voice, accessibility,
+     translation, contextual prefill, recommendation, validation, completion
+     checks, audit logging, and escalation.
+   - Decision for each candidate: reuse, extend, or create new.
+   - Rationale, evidence path, and stakeholder/architecture owner if a new
+     platform concept is recommended.
+
+Do not recommend a new EnterpriseAI object type, API/event, workflow, or module
+until the reuse-before-create scan is complete.
+
+---
+
 ## Step 4: Synthesize Findings
 
 Once all agents complete:
@@ -362,6 +401,20 @@ status: complete
 - **Primary Value**: [Core value delivered]
 - **Measurable Goal**: [Quantified target]
 - **EnterpriseAI-First Rationale**: [Why EAI is the primary fit]
+
+## Context Bundle Summary
+
+- **Relevant Specs**: [Existing specs to carry forward]
+- **Relevant Code Paths**: [Files/directories and why they matter]
+- **EnterpriseAI Object Types**: [Known or candidate object types]
+- **Tenant and Deployment Assumptions**: [Tenant, identity, runtime, target environment]
+- **Validation Criteria**: [Business, security, data, architecture, and operational checks]
+
+## Reuse-Before-Create Scan
+
+| Candidate | Existing Evidence | Decision | Rationale | Owner |
+| --------- | ----------------- | -------- | --------- | ----- |
+| [Object type/API/workflow/module/spec] | [Path or reference] | Reuse/Extend/Create New | [Why] | [Owner] |
 
 ## Business Scenario Analysis
 

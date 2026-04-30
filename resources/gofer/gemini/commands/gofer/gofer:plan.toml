@@ -1,0 +1,2 @@
+description = "Toggle plan mode in the active CLI session for the next user prompt; non-pipeline control command."
+prompt = "{{include: ../../../.specify/commands/gofer_plan.md}}"

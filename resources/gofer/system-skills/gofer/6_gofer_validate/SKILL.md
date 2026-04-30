@@ -1662,6 +1662,10 @@ blast_radius_carryovers: [N]
 ## Step 11: Attribution Logging
 
 Log every finding to `.specify/logs/validation-findings.jsonl`.
+For EnterpriseAI runs, also mirror the same finding lifecycle to
+`{FEATURE_DIR}/audit-history.md` so executive, architecture, CISO, data, CIO,
+delivery, finance, operations, and risk/compliance stakeholders can see stable
+finding IDs, recurrence, disposition, owner, expiry, and review cadence.
 
 ### Finding Format
 
@@ -1701,6 +1705,36 @@ For each finding from all agents and automated checks, append a JSON line:
     `rollback_release`
 - `engineering_review` — Phase C findings (agent-specific sub-dimensions:
   `spec_alignment`, `code_verification`, `correctness_reverify`)
+
+### EnterpriseAI Persistent Audit Requirements
+
+`audit-history.md` MUST include:
+
+| Field | Requirement |
+| ----- | ----------- |
+| Finding ID | Stable across validation cycles; never renumber existing findings |
+| Source | Rubric category, agent, automated check, or stakeholder gate |
+| Status | Open, fixed, accepted, or escalated |
+| Recurrence | Count and prior cycle references for repeated findings |
+| Owner | Named accountable role or team |
+| Expiry | Required for accepted exceptions |
+| Evidence | Links to validation report, tests, contract pack, or code references |
+
+Recurring red findings must escalate to the relevant decision owner and block
+launch unless explicitly accepted with owner, expiry, and review cadence.
+
+For application delivery, validation MUST also check
+`{FEATURE_DIR}/journeys/base-journey.md` against the delivered implementation:
+
+- The app process has four user-facing steps or fewer, or an approved exception
+  explains why extra steps could not be combined, automated, or handled by
+  generative AI assistance.
+- Each journey step preserves its business goal, AI assistance mode, data/context
+  used, completion signal, human controls, evidence/confidence display, audit
+  trail, and fallback/escalation path.
+- Chatbot, voice, accessibility, translation, contextual prefill, validation,
+  and step-goal assistance claims are covered by acceptance tests where they are
+  in scope.
 
 ### Log Summary Entry
 

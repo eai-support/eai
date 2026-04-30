@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
   canonicalSource: .claude/commands/0_business_scenario.md
-  canonicalChecksum: d10ac037fcf5ea155d6cb0c5581293a1aa622b64b079363f0a5f81d30c30d6a7
+  canonicalChecksum: 134d0c8d7117ba8abc47ba0f86f75d5ec42c1d2cd636e386fabf9ae3034d4f19
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -319,19 +319,76 @@ Content: 'Primary value: [benefit]. Success metric: [metric] target [goal].'
 
 ---
 
-## Step 2.7: Journey Confirmation (For New Features)
+## Step 2.6: Application Classification and AI Process Default
+
+Before journey mapping, classify the request as **application delivery** or
+**non-application work**.
+
+In EnterpriseAI mode, assume the request is application delivery unless the
+user's intent is clearly non-app. Roughly 90% of Gofer business requests should
+be treated this way: the user is trying to improve a customer journey or
+business process by building an app, workflow, portal, dashboard, mobile
+experience, form, assistant, or vertical application.
+
+### Application Signals
+
+Treat the request as application delivery when it includes any of these signals:
+
+- Build an app, tool, dashboard, portal, workflow, form, chatbot, or vertical.
+- Improve how a customer, employee, advisor, agent, or operator completes work.
+- Replace a manual process with a guided digital process.
+- Use EnterpriseAI data, object types, screens, APIs, or tenant context.
+- Add generative AI to help users complete a business outcome.
+
+### Non-Application Signals
+
+Classify as non-app only when the user is asking for work such as:
+
+- Strategy, research, market analysis, board papers, or written advice.
+- Documentation, executive summaries, or slide decks without an app to build.
+- Codebase exploration, cloud audit, engineering review, or migration planning.
+- A one-off analysis task where no durable user workflow will be implemented.
+
+If non-app, record this explicitly in `discovery.md`:
+
+```markdown
+## Application Classification
+
+| Field | Decision |
+| ----- | -------- |
+| Classification | Non-application work |
+| Reason | {{why-this-is-not-an-app-or-workflow}} |
+| Four-step AI journey required | No |
+```
+
+Then continue through the pipeline without creating a four-step AI-augmented app
+journey.
+
+If app delivery is selected or inferred, continue to Step 2.7 and create the
+AI-augmented journey.
+
+---
+
+## Step 2.7: AI-Augmented Journey Confirmation (For Application Delivery)
 
 **When the user selects A. New Feature**, after completing discovery, confirm
-the customer journey before routing to the pipeline.
+the customer journey before routing to the pipeline. For application delivery,
+the default target is a concise **four-step or fewer AI-augmented process**.
+Even when the current business process has more than four steps, Gofer should
+use generative AI to compress, combine, or simplify the process into four
+business-goal-driven stages unless the user explicitly rejects that structure.
 
 **First, offer the option to skip:**
 
-| Option                            | Description                                                |
-| --------------------------------- | ---------------------------------------------------------- |
-| **Confirm Journey (Recommended)** | Review and confirm the user journey for this feature       |
-| **Skip Journey Mapping**          | Go straight to implementation without journey confirmation |
+| Option                                   | Description                                                                 |
+| ---------------------------------------- | --------------------------------------------------------------------------- |
+| **Confirm AI Journey (Recommended)**     | Review the four-step AI-augmented process for this app                      |
+| **Classify as Non-App / Skip AI Journey** | Use only when this is strategy, research, documentation, audit, or analysis |
 
-If user selects "Skip Journey Mapping", proceed directly to Step 3.
+If the user selects "Classify as Non-App / Skip AI Journey", capture the
+non-application rationale in discovery and proceed directly to Step 3. If the
+request is still an app, do not silently skip journey mapping; create a draft
+four-step journey with assumptions and ask the user to confirm or correct it.
 
 ### Journey Extraction
 
@@ -343,14 +400,27 @@ Based on the discovery answers, extract:
    - Systems (e.g., "Auth Service", "Database")
 
 2. **Steps**: What is the main flow?
-   - Number each step (1, 2, 3...)
+   - Compress the flow into four steps or fewer
+   - Number each step (1, 2, 3, 4)
    - Identify which actor performs each step
-   - Note expected outcomes
+   - State the business goal and completion outcome for each step
+   - Note which generative AI assistance improves that step
 
 3. **Touchpoints**: Where do interactions happen?
    - UI touchpoints (screens, buttons)
    - API touchpoints
    - Notifications
+
+4. **AI augmentation**: How does generative AI help?
+   - Conversational help: chatbot, voice, accessibility, translations, or
+     guided explanation
+   - Contextual prefill: populate fields from screen context, known data,
+     user profile, customer record, document, or prior workflow state
+   - Step-goal assistance: understand the goal of the step, recommend next
+     actions, validate completeness, and drive the user to successful
+     completion
+   - Human control: show confidence, evidence, edit controls, escalation path,
+     and audit trail
 
 ### Journey Confirmation Questions
 
@@ -371,11 +441,23 @@ Use AskUserQuestion to present the extracted journey:
 
 "Here's the main flow I've identified:"
 
-| Option | Description                                                                |
-| ------ | -------------------------------------------------------------------------- |
-| A      | Step 1: [action] → Step 2: [action] → Step 3: [action] (Confirm this flow) |
-| B      | I need to modify some steps                                                |
-| C      | Show me all steps in detail first                                          |
+| Option | Description                                                                                         |
+| ------ | --------------------------------------------------------------------------------------------------- |
+| A      | Step 1: [goal] → Step 2: [goal] → Step 3: [goal] → Step 4: [goal] (Confirm this AI-augmented flow) |
+| B      | I need to modify some steps                                                                         |
+| C      | Show me all steps, AI assistance, and completion criteria in detail first                           |
+
+**Question 2a: Confirm AI Assistance**
+
+"For each step, how should generative AI help the user complete the goal?"
+
+| Option | Description                                                                         |
+| ------ | ----------------------------------------------------------------------------------- |
+| A      | Chat/voice/accessibility/translations help the user understand and complete the step |
+| B      | Prefill or recommend data using screen context, user context, and EnterpriseAI data  |
+| C      | Validate completion, explain missing information, and guide the user to success      |
+| D      | Mix all of the above, with human review and audit trail controls                    |
+| Custom | Describe the AI assistance for each step                                            |
 
 **Question 3: Identify Key Touchpoints**
 
@@ -400,9 +482,12 @@ featureId: {{feature-id}}
 status: confirmed
 created: {{ISO-timestamp}}
 modified: {{ISO-timestamp}}
+applicationClassification: app
+aiAugmentedJourney: true
+maxSteps: 4
 ---
 
-# Customer Journey: {{feature-name}}
+# AI-Augmented Customer Journey: {{feature-name}}
 
 ## Overview
 
@@ -417,11 +502,21 @@ modified: {{ISO-timestamp}}
 
 ## Journey Steps
 
-### Step 1: {{action}}
+### Step 1: {{business-goal}}
 
-**Actor**: {{actor-id}} {{action-description}}
+**Actor**: {{actor-id}}
+**User action**: {{action-description}}
+**AI assistance**:
+{{chatbot-or-voice-or-accessibility-or-translation-or-prefill-or-guidance}}
+**Context used**: {{screen-context-user-data-enterpriseai-data-documents}}
+**Completion criteria**: {{how-we-know-this-step-is-successful}}
+**Controls**: {{human-review-confidence-evidence-audit-escalation}}
 
-### Step 2: {{action}}
+### Step 2: {{business-goal}}
+
+...
+
+### Step 4: {{business-goal}}
 
 ...
 
@@ -433,10 +528,18 @@ sequenceDiagram
     participant system as Backend API
 
     user->>system: Step 1 action
-    system-->>user: Response
+    system-->>user: AI-guided response, prefill, or validation
     user->>system: Step 2 action
 ```
-````
+
+## AI Augmentation Matrix
+
+| Step | Business Goal | AI Assistance | Data / Context Used | Completion Signal |
+| ---- | ------------- | ------------- | ------------------- | ----------------- |
+| 1    | {{goal}}      | {{assist}}    | {{context}}         | {{signal}}        |
+| 2    | {{goal}}      | {{assist}}    | {{context}}         | {{signal}}        |
+| 3    | {{goal}}      | {{assist}}    | {{context}}         | {{signal}}        |
+| 4    | {{goal}}      | {{assist}}    | {{context}}         | {{signal}}        |
 
 ## Touchpoints
 
@@ -451,17 +554,15 @@ sequenceDiagram
 - [x] Steps confirmed
 - [x] Touchpoints identified
 
-```
+````
 
 ### Store Journey in Memory
 
 ```
-
 Category: 'journey' Tags: ['#journey', '#feature-{id}', '#confirmed'] Content:
 'Journey for {feature}: {actor-count} actors, {step-count} steps. Main flow:
 {step-summary}.'
-
-````
+```
 
 ---
 
@@ -678,13 +779,15 @@ If context window is filling up:
 
 ## EnterpriseAI Profile Extensions
 
-> Active only when `gofer.workflowProfile=enterpriseai`. The sections below add
-> guardrails on top of the standard orchestrator; standard profile outputs
-> remain unchanged.
+EnterpriseAI is the default Gofer workflow profile. Use the standard workflow
+only when the user explicitly asks to opt out with wording such as "standard",
+"non-EAI", or "do not use EnterpriseAI". The sections below add EnterpriseAI
+guardrails on top of the standard orchestrator; explicit standard-profile
+outputs remain unchanged.
 
 ### EnterpriseAI-First Discovery Framing (MANDATORY)
 
-When the workflow profile is `enterpriseai`:
+When the workflow profile is `enterpriseai` or no profile is specified:
 
 - Frame every discovery option as an EnterpriseAI platform delivery outcome.
 - Do **not** present non-EAI platforms as primary recommendations.
@@ -693,6 +796,33 @@ When the workflow profile is `enterpriseai`:
   stage, clearly labelled as non-primary.
 - All recommended scenarios must map to an EnterpriseAI vertical application
   (business analysis → EAI services → deployment target).
+- Maintain a running domain model using the user's vocabulary. Ask adaptive
+  follow-up questions that clarify actors, object types, workflows, tenant
+  boundaries, decision owners, and measurable value.
+- Before recommending a new object type, API, workflow, module, or spec concept,
+  require a reuse-before-create scan: reuse existing, extend existing, or create
+  new with rationale.
+
+### EnterpriseAI Contract and Context Guardrails (MANDATORY)
+
+Every EnterpriseAI discovery must preserve enough information for downstream
+stages to create these artifacts without re-interviewing the user:
+
+| Artifact | Required Content |
+| -------- | ---------------- |
+| `journeys/base-journey.md` | Application classification, four-step-or-fewer AI-augmented customer journey, step goals, AI assistance, context used, controls, completion criteria |
+| `context-bundle.md` | Compact feature context, selected scenario, app/non-app decision, AI-augmented journey summary, EnterpriseAI object types, tenant assumptions, API surfaces, deployment assumptions, validation criteria |
+| `contract-pack.md` | Actors, object types, workflows/journeys, four-step AI assistance contract, permissions, tenant boundaries, APIs/events, runtime assumptions, acceptance tests |
+| `reuse-scan.md` | Existing specs, platform references, object types, APIs, workflows, modules, and the reuse/extend/create decision |
+| `audit-history.md` | Stable finding IDs, recurring-finding history, accepted exceptions, owner, expiry, and review cadence |
+
+Use these artifacts as decision evidence for executive, architecture, CISO,
+data, delivery, CIO, CFO, COO, and risk/compliance stakeholders.
+
+For application delivery, downstream stages must preserve the four-step
+AI-augmented journey as the default scope spine. If a later stage expands beyond
+four user-facing steps, it must explain why the extra complexity is necessary
+and whether generative AI could combine or automate the additional steps.
 
 ### Novice Walkthrough Guardrail (MANDATORY)
 

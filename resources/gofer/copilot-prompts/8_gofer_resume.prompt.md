@@ -1,6 +1,6 @@
 ---
 name: 8_gofer_resume
-description: Resume work from saved session checkpoint with full context restoration
+description: Resume a previous Gofer session from a saved checkpoint file.
 agent: copilot-workspace
 tools:
   - Read

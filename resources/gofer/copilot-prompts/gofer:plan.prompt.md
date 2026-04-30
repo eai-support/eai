@@ -1,6 +1,6 @@
 ---
 name: gofer:plan
-description: Gofer Plan Mode Toggle
+description: Toggle plan mode in the active CLI session for the next user prompt; non-pipeline control command.
 agent: copilot-workspace
 tools:
   - Read

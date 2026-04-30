@@ -1,7 +1,8 @@
 {
   "version": "1.0",
-  "generated": "2026-04-25T03:09:49.566Z",
+  "generated": "2026-04-30T04:45:17.748Z",
   "commands": [
+    "0_business_scenario",
     "0a_problem_validation",
     "10_gofer_cloud",
     "1_gofer_research",
@@ -11,7 +12,14 @@
     "5_gofer_implement",
     "6_gofer_validate",
     "6a_gofer_engineering_review",
+    "7_gofer_save",
     "7a_stakeholder_comms",
-    "9_gofer_tests"
+    "8_gofer_resume",
+    "9_gofer_tests",
+    "gofer:personality",
+    "gofer:plan",
+    "gofer:side",
+    "gofer_constitution",
+    "gofer_hydrate"
   ]
 }

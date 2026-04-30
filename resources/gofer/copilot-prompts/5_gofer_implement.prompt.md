@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
   canonicalSource: .claude/commands/5_gofer_implement.md
-  canonicalChecksum: b6574837c977c704ba086363a8b204cc89392ba0b86b8ccc642285fae31989d6
+  canonicalChecksum: eaed0dcbe3bef77d23ae8b4f0fed6cb02bd2747f449fb74be1b682e4f37127df
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -579,8 +579,8 @@ When council mode is enabled:
 
 ## EnterpriseAI Deployment Preflight Gate (Manifest/Config)
 
-> Active only when `gofer.workflowProfile=enterpriseai`. Standard profile runs
-> skip this gate entirely.
+EnterpriseAI is the default profile. Standard profile runs skip this gate only
+when the user explicitly opts out.
 
 Before any deployment task emitted by `#4_gofer_tasks` completes, this stage
 MUST execute deployment preflight checks (manifest/config gate). A task that
@@ -601,6 +601,25 @@ are present at the workspace root and pass their readiness checks:
   `IMPL_DEPLOYMENT_PATH_INVALID`.
 - When the gate passes, `readinessPassed=true` is recorded in the emitted event
   and the deployment task is allowed to continue.
+
+### EnterpriseAI Red/Green Implementation Discipline
+
+For EnterpriseAI runs, implementation MUST preserve the test/implementation
+separation from `tasks.md`:
+
+- Run the spec-derived tests before implementation and record the expected
+  failure when the implementation is missing or incomplete.
+- Implement only against the approved `contract-pack.md`, `context-bundle.md`,
+  `reuse-scan.md`, `journeys/base-journey.md`, and `plan.md`.
+- For application delivery, implement the four-step-or-fewer AI-augmented
+  process as the user-facing spine. Each step must preserve its business goal,
+  AI assistance mode, contextual prefill or conversational support, completion
+  criteria, human controls, audit trail, and fallback/escalation path.
+- Do not add extra user-facing app steps unless `plan.md` records why they
+  cannot be combined, automated, or handled by generative AI assistance.
+- Re-run the same tests and validation checks after implementation.
+- Update `audit-history.md` with stable finding IDs for every blocking issue,
+  recurring issue, accepted exception, owner, expiry, and review cadence.
 
 ---
 
