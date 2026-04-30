@@ -1,6 +1,6 @@
 ---
-generated: "2026-04-30T17:57:12Z"
-source_commit: "7c879a6c02a2f9b91aa534b4c59bb62cc35a107b"
+generated: "2026-04-30T22:49:00Z"
+source_commit: "31b52b6302819ffcc64b2e527c1ac5fbfac0887b"
 ---
 
 # EAI CLI — Dependencies

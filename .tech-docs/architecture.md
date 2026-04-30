@@ -1,6 +1,6 @@
 ---
-generated: "2026-04-30T17:57:12Z"
-source_commit: "7c879a6c02a2f9b91aa534b4c59bb62cc35a107b"
+generated: "2026-04-30T22:49:00Z"
+source_commit: "31b52b6302819ffcc64b2e527c1ac5fbfac0887b"
 ---
 
 # EAI CLI — Architecture
@@ -56,7 +56,8 @@ flowchart TB
 
 **Responsibilities**:
 - Initializes Commander.js program
-- Registers 15 command groups: init, dev, login, logout, env, types, resources, tenant, user, chat, docs, deploy, verify, doctor, whoami, update, provision
+- Registers 17 command instances from 15 command files (login.ts exports loginCommand + logoutCommand; verify.ts exports verifyCommand + doctorCommand)
+- Command list: init, dev, login, logout, env, types, resources, tenant, user, chat, docs, deploy, verify, doctor, whoami, update, provision
 - Handles global flags: `--profile`, `--simple`, `--no-color`, `--color`, `--describe`
 - Checks for updates in background
 - Displays update notification after command execution
@@ -297,7 +298,32 @@ Error code: E101
 }
 ```
 
-### 9. Command Modules (`src/commands/*.ts`)
+### 9. Library Modules (`src/lib/*.ts`)
+
+The CLI includes 16 library modules that provide shared functionality across commands:
+
+| Module | Purpose |
+|--------|---------|
+| `api.ts` | Platform API client (PublicAPI + AdminAPI) |
+| `auth.ts` | Entra CIAM authentication and token management |
+| `azure-cli.ts` | Azure CLI wrapper utilities |
+| `cloud-env.ts` | Cloud environment detection and config |
+| `config.ts` | Project discovery, config loading, TypeScript evaluation |
+| `context.ts` | Command context resolution (project, auth, tenant) |
+| `error-codes.ts` | Structured error catalog (E001-E399) |
+| `gofer-installer.ts` | Gofer AI terminal assets installation |
+| `npm.ts` | npm command wrapper |
+| `object-type-defaults.ts` | Object Type default value validation |
+| `output.ts` | Output formatting, symbols, colors, TTY detection |
+| `profile.ts` | Environment profile management (dev, test, prod) |
+| `schema-builder.ts` | JSON schema generator for `--describe` flag |
+| `tenant-context.ts` | Tenant membership resolution and selection |
+| `update-check.ts` | Background CLI update checker |
+| `utils.ts` | Shared utility functions |
+
+---
+
+### 10. Command Modules (`src/commands/*.ts`)
 
 Each command module exports a Commander command instance. Commands follow a consistent pattern:
 
@@ -356,33 +382,6 @@ export const exampleCommand = new Command('example')
 | **Deployment** | `deploy setup/trigger/status` | GitHub Actions deployment orchestration |
 | **Diagnostics** | `verify`, `verify calls`, `doctor` | Platform connectivity checks and contract verification |
 | **Update** | `update` | Self-update to latest version |
-
-### 10. Output Utilities (`src/lib/output.ts`)
-
-**Purpose**: Consistent formatting and symbols across all commands.
-
-**Exported Symbols**:
-- `✓` success (green)
-- `✗` error (red)
-- `⚠` warning (yellow)
-- `→` info (blue)
-- `+` added (green)
-- `-` removed (red)
-- `~` changed (yellow)
-- `=` unchanged (gray)
-
-**Helper Functions**:
-- `success()`, `error()`, `warn()`, `info()` — Styled console output
-- `heading()` — Bold section headers
-- `table()` — Aligned key-value tables
-- `blank()` — Empty line for spacing
-- `setSimpleMode()` — Enable screen-reader friendly output (no symbols/colors)
-
-**Accessibility**:
-- Respects `--simple` flag (plain text)
-- Respects `--no-color` flag (no ANSI codes)
-- Respects `NO_COLOR` environment variable
-- Auto-detects non-TTY environments
 
 ### 11. Update Check Module (`src/lib/update-check.ts`)
 

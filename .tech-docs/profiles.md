@@ -1,3 +1,8 @@
+---
+generated: "2026-04-30T22:49:00Z"
+source_commit: "31b52b6302819ffcc64b2e527c1ac5fbfac0887b"
+---
+
 # Environment Profiles
 
 Profiles let you switch between dev, test, and prod environments without changing environment variables or `.env.local` files. This is an internal feature — customers use the default profile (production) and never see the profile system.
