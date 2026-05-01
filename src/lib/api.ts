@@ -435,6 +435,7 @@ export class PlatformAPIClient {
     backend?: string;
     dryRun?: boolean;
     rebuildSearch?: boolean;
+    provisioningMode?: string;
   }): Promise<Response> {
     const backend = options.backend === 'mongodb' ? 'documentdb' : options.backend;
     return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage/provision`, {
@@ -444,6 +445,7 @@ export class PlatformAPIClient {
         backend: backend || 'all',
         dry_run: Boolean(options.dryRun),
         rebuild_search: Boolean(options.rebuildSearch),
+        provisioning_mode: options.provisioningMode ?? 'dedicated-tenant-storage',
       }),
     });
   }
@@ -730,7 +732,7 @@ export class PlatformAPIClient {
       });
     }
 
-    return this._route('payload', '/custom-tenants', 'POST', {
+    return this._route('payload', '/tenant-management', 'POST', {
       displayName: data.name,
       name: data.name,
       slug: data.slug,
