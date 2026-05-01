@@ -92,7 +92,7 @@ describe('resource type diagnostics', () => {
     );
   });
 
-  test('creates root tenants through payload custom-tenants', async () => {
+  test('creates root tenants through payload tenant-management', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -109,7 +109,7 @@ describe('resource type diagnostics', () => {
         method: 'POST',
         body: JSON.stringify({
           target_backend: 'payload',
-          endpoint: '/custom-tenants',
+          endpoint: '/tenant-management',
           method: 'POST',
           body: {
             displayName: 'Root Tenant',
@@ -173,6 +173,7 @@ describe('resource type diagnostics', () => {
           backend: 'documentdb',
           dry_run: true,
           rebuild_search: true,
+          provisioning_mode: 'dedicated-tenant-storage',
         }),
       }),
     );

@@ -179,6 +179,7 @@ describe('eai provision entra', () => {
       backend: 'documentdb',
       dry_run: true,
       rebuild_search: true,
+      provisioning_mode: 'dedicated-tenant-storage',
     });
   });
 
