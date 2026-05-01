@@ -10,6 +10,7 @@ import { provisionCommand } from '../../src/commands/provision.js';
 import { PlatformAPIClient } from '../../src/lib/api.js';
 
 const API_BASE = 'https://test-api.example.com';
+const PARENT_TENANT_ID = 'root-tenant-id';
 const CREATED_TENANT_ID = 'tenant-dedicated-001';
 const CREATED_TENANT_SLUG = 'dedicated-tenant';
 const OBJECT_TYPE = 'TenantCase';
@@ -141,29 +142,25 @@ describe('dedicated tenant lifecycle', () => {
           }, { status: 201 });
         }
 
-        if (
-          body.target_backend === 'admin'
-          && body.endpoint === '/v1/users/test-oid/memberships'
-          && body.method === 'GET'
-        ) {
-          return HttpResponse.json({
-            tenants: [
-              {
-                id: CREATED_TENANT_ID,
-                displayName: 'Dedicated Tenant',
-                slug: CREATED_TENANT_SLUG,
-                isActive: true,
-                roles: ['tenant-admin'],
-                isTenantAdmin: true,
-              },
-            ],
-          });
-        }
-
         return HttpResponse.json(
           { error: `Unhandled orchestrate route: ${body.target_backend} ${body.endpoint}` },
           { status: 500 },
         );
+      }),
+      http.get(`${API_BASE}/v3/users/me/tenants`, async ({ request }) => {
+        expect(request.headers.get('authorization')).toBe('Bearer test-access-token');
+        return HttpResponse.json({
+          tenants: [
+            {
+              id: CREATED_TENANT_ID,
+              displayName: 'Dedicated Tenant',
+              slug: CREATED_TENANT_SLUG,
+              isActive: true,
+              roles: ['tenant-admin'],
+              isTenantAdmin: true,
+            },
+          ],
+        });
       }),
       http.post(`${API_BASE}/v3/resources/${CREATED_TENANT_ID}/storage/provision`, async ({ request }) => {
         const body = await request.json() as Record<string, unknown>;
@@ -280,5 +277,103 @@ describe('dedicated tenant lifecycle', () => {
         provisioning_mode: 'dedicated-tenant-storage',
       },
     ]);
+  });
+
+  test('creates a child tenant with active tenant context and bootstraps admin membership', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const orchestrateHeaders: Array<Record<string, string>> = [];
+
+    mockServer.server.use(
+      http.get(`${API_BASE}/v3/users/me/tenants`, async ({ request }) => {
+        expect(request.headers.get('authorization')).toBe('Bearer test-access-token');
+        return HttpResponse.json({
+          tenants: [
+            {
+              id: PARENT_TENANT_ID,
+              displayName: 'Root Tenant',
+              slug: 'root-tenant',
+              isActive: true,
+              roles: ['tenant-admin'],
+              isTenantAdmin: true,
+            },
+            {
+              id: CREATED_TENANT_ID,
+              displayName: 'Dedicated Tenant',
+              slug: CREATED_TENANT_SLUG,
+              isActive: true,
+              roles: ['tenant-admin'],
+              isTenantAdmin: true,
+            },
+          ],
+        });
+      }),
+      http.post(`${API_BASE}/v3/orchestrate`, async ({ request }) => {
+        orchestrateHeaders.push(Object.fromEntries(request.headers.entries()));
+        const body = await request.json() as {
+          target_backend?: string;
+          endpoint?: string;
+          method?: string;
+          body?: Record<string, unknown>;
+        };
+
+        if (
+          body.target_backend === 'admin'
+          && body.endpoint === `/v1/tenants/${PARENT_TENANT_ID}/children`
+          && body.method === 'POST'
+        ) {
+          return HttpResponse.json({
+            id: CREATED_TENANT_ID,
+            slug: CREATED_TENANT_SLUG,
+            displayName: body.body?.displayName,
+          }, { status: 201 });
+        }
+
+        if (
+          body.target_backend === 'admin'
+          && body.endpoint === `/v1/tenants/${PARENT_TENANT_ID}/children/${CREATED_TENANT_ID}/bootstrap-admin`
+          && body.method === 'POST'
+        ) {
+          return HttpResponse.json({
+            parentTenantId: PARENT_TENANT_ID,
+            childTenantId: CREATED_TENANT_ID,
+            userOid: 'test-oid',
+            membershipCreated: true,
+            adminAssigned: true,
+            usable: true,
+            status: 'bootstrapped',
+            reason: null,
+          });
+        }
+
+        return HttpResponse.json(
+          { error: `Unhandled orchestrate route: ${body.target_backend} ${body.endpoint}` },
+          { status: 500 },
+        );
+      }),
+    );
+
+    await tenantCommand.parseAsync([
+      'create',
+      '--name', 'Dedicated Tenant',
+      '--slug', CREATED_TENANT_SLUG,
+      '--parent', PARENT_TENANT_ID,
+      '--format', 'json',
+    ], { from: 'user' });
+
+    const jsonOutputs = parseJsonOutput(logSpy);
+    expect(jsonOutputs[0]).toMatchObject({
+      tenant: expect.objectContaining({
+        id: CREATED_TENANT_ID,
+        slug: CREATED_TENANT_SLUG,
+      }),
+      bootstrap: expect.objectContaining({
+        parentTenantId: PARENT_TENANT_ID,
+        childTenantId: CREATED_TENANT_ID,
+        status: 'bootstrapped',
+      }),
+    });
+    expect(orchestrateHeaders).toHaveLength(2);
+    expect(orchestrateHeaders[0]['x-tenant-id']).toBe(PARENT_TENANT_ID);
+    expect(orchestrateHeaders[1]['x-tenant-id']).toBe(PARENT_TENANT_ID);
   });
 });

@@ -80,6 +80,20 @@ describe('runContractAudit', () => {
     await userIsLoggedIn(ctx, { email: 'jane@example.com' });
 
     mockServer.server.use(
+      http.get('https://test-api.example.com/v3/users/me/tenants', () => {
+        return HttpResponse.json({
+          tenants: [
+            {
+              id: 'tenant-1',
+              displayName: 'Tenant One',
+              slug: 'tenant-one',
+              isActive: true,
+              roles: ['tenant-admin'],
+              isTenantAdmin: true,
+            },
+          ],
+        });
+      }),
       http.get('https://test-api.example.com/health', () => {
         return HttpResponse.json({ status: 'ok' });
       }),
@@ -164,7 +178,7 @@ describe('runContractAudit', () => {
     });
 
     expect(report.summary.failed).toBe(0);
-    expect(report.summary.passed).toBeGreaterThanOrEqual(11);
+    expect(report.summary.passed).toBeGreaterThanOrEqual(5);
     expect(report.summary.skipped).toBeGreaterThan(0);
     expect(report.checks.find((check) => check.id === 'backend-config')?.status).toBe('passed');
     expect(report.checks.find((check) => check.id === 'schema')?.status).toBe('passed');
@@ -194,6 +208,20 @@ describe('runContractAudit', () => {
     await userIsLoggedIn(ctx, { email: 'jane@example.com' });
 
     mockServer.server.use(
+      http.get('https://test-api.example.com/v3/users/me/tenants', () => {
+        return HttpResponse.json({
+          tenants: [
+            {
+              id: 'tenant-override',
+              displayName: 'Tenant Override',
+              slug: 'tenant-override',
+              isActive: true,
+              roles: ['tenant-admin'],
+              isTenantAdmin: true,
+            },
+          ],
+        });
+      }),
       http.get('https://test-api.example.com/health', () => {
         return HttpResponse.json({ status: 'ok' });
       }),

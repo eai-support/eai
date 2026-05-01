@@ -198,6 +198,9 @@ export class PlatformAPIClient {
     if (token) {
       h['Authorization'] = `Bearer ${token}`;
     }
+    if (this.tenantId && this.tenantId !== 'system') {
+      h['X-Tenant-Id'] = this.tenantId;
+    }
     return h;
   }
 
