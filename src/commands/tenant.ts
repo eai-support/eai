@@ -402,11 +402,16 @@ tenantCommand
 
     const root = await findProjectRoot();
     const publicApiUrl = await resolvePublicApiUrl(root || undefined);
-
-    const client = new PlatformAPIClient(publicApiUrl, 'system');
     const spinner = options.format === 'json' ? null : ora(`Creating tenant "${options.name}"...`).start();
 
     try {
+      const context = await resolveActiveTenantContext({
+        projectRoot: root || undefined,
+        publicApiUrl,
+        interactive: true,
+      });
+      const client = new PlatformAPIClient(publicApiUrl, context.activeTenant.id);
+
       const res = await client.createTenant({
         name: options.name,
         slug: options.slug,

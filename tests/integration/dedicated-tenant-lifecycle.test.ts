@@ -141,29 +141,25 @@ describe('dedicated tenant lifecycle', () => {
           }, { status: 201 });
         }
 
-        if (
-          body.target_backend === 'admin'
-          && body.endpoint === '/v1/users/test-oid/memberships'
-          && body.method === 'GET'
-        ) {
-          return HttpResponse.json({
-            tenants: [
-              {
-                id: CREATED_TENANT_ID,
-                displayName: 'Dedicated Tenant',
-                slug: CREATED_TENANT_SLUG,
-                isActive: true,
-                roles: ['tenant-admin'],
-                isTenantAdmin: true,
-              },
-            ],
-          });
-        }
-
         return HttpResponse.json(
           { error: `Unhandled orchestrate route: ${body.target_backend} ${body.endpoint}` },
           { status: 500 },
         );
+      }),
+      http.get(`${API_BASE}/v3/users/me/tenants`, async ({ request }) => {
+        expect(request.headers.get('authorization')).toBe('Bearer test-access-token');
+        return HttpResponse.json({
+          tenants: [
+            {
+              id: CREATED_TENANT_ID,
+              displayName: 'Dedicated Tenant',
+              slug: CREATED_TENANT_SLUG,
+              isActive: true,
+              roles: ['tenant-admin'],
+              isTenantAdmin: true,
+            },
+          ],
+        });
       }),
       http.post(`${API_BASE}/v3/resources/${CREATED_TENANT_ID}/storage/provision`, async ({ request }) => {
         const body = await request.json() as Record<string, unknown>;
