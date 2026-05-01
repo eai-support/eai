@@ -1,14 +1,14 @@
 ---
-generated: "2026-05-01T00:22:36Z"
-source_commit: "e555f2af2face625cc11a4ddafcca548aa5f9dd4"
+generated: "2026-05-01T01:25:38Z"
+source_commit: "cecc419eeed31bbd515ee2ff61cbd6ddb4ef1fe1"
 ---
 
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-04-30 22:49 UTC (commit 31b52b6)  
-**Current Documentation**: 2026-05-01 00:22 UTC (commit e555f2a)  
+**Previous Documentation**: 2026-05-01 00:22 UTC (commit e555f2a)  
+**Current Documentation**: 2026-05-01 01:25 UTC (commit cecc419)  
 **Version**: 2.6.0 (no version change)
 
 ---
@@ -19,6 +19,7 @@ source_commit: "e555f2af2face625cc11a4ddafcca548aa5f9dd4"
 Automated nightly documentation refresh. No code changes since v2.6.0.
 
 ### Changes
+- **docs**: Update .tech-docs/ [nightly-automated] (cecc419)
 - **docs**: Update .tech-docs/ [nightly-automated] (e555f2a)
 - **docs**: Update .tech-docs/ [nightly-automated] (31b52b6)
 - **docs**: Update .tech-docs/ [nightly-automated] (7c879a6)
