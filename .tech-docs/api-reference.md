@@ -1,6 +1,6 @@
 ---
-generated: "2026-04-30T22:49:00Z"
-source_commit: "31b52b6302819ffcc64b2e527c1ac5fbfac0887b"
+generated: "2026-05-01T00:22:36Z"
+source_commit: "e555f2af2face625cc11a4ddafcca548aa5f9dd4"
 ---
 
 # EAI CLI — API Reference

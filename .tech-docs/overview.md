@@ -1,6 +1,6 @@
 ---
-generated: "2026-04-30T22:49:00Z"
-source_commit: "31b52b6302819ffcc64b2e527c1ac5fbfac0887b"
+generated: "2026-05-01T00:22:36Z"
+source_commit: "e555f2af2face625cc11a4ddafcca548aa5f9dd4"
 ---
 
 # EAI CLI — Overview
@@ -34,7 +34,7 @@ The EAI CLI is a command-line tool that wraps the EAI Platform API, providing de
 | File | Purpose |
 |------|---------|
 | `src/index.ts` | Main CLI entry point; registers all commands |
-| `src/commands/*.ts` | 15 command implementations (init, dev, login, whoami, user, env, types, resources, tenant, chat, docs, deploy, verify, update, provision) |
+| `src/commands/*.ts` | 14 command implementations (init, dev, login, whoami, user, env, types, resources, tenant, chat, docs, deploy, verify, update, provision) |
 | `src/lib/api.ts` | Platform API client with auth |
 | `src/lib/auth.ts` | Entra CIAM authentication (browser PKCE flow) |
 | `src/lib/tenant-context.ts` | Tenant membership and selection logic |
@@ -89,8 +89,8 @@ node dist/index.js tenant list
 ## Team / Ownership
 
 - **Project**: EAI Tools
-- **Repository**: https://github.com/eai-tools/eai-cli
-- **Homepage**: https://eai-tools.github.io/eai-cli
+- **Repository**: [https://github.com/eai-tools/eai-cli](https://github.com/eai-tools/eai-cli)
+- **Homepage**: [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli)
 - **License**: MIT
 - **Documentation**: 93-page documentation site covering getting started, guides, concepts, command reference, and 50 industry scenarios
 
