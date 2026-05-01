@@ -234,7 +234,7 @@ export async function fetchTenantAdminMemberships(publicApiUrl?: string): Promis
 
   const resolvedPublicApiUrl = publicApiUrl || await resolvePublicApiUrl();
   const client = new PlatformAPIClient(resolvedPublicApiUrl, 'system');
-  const response = await client.getUserMemberships(tokens.oid);
+  const response = await client.listCurrentUserTenants();
 
   if (!response.ok) {
     const body = await response.text();
