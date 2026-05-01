@@ -72,6 +72,22 @@ async function startLocalPublicApi(): Promise<{ baseUrl: string; calls: string[]
       }
     }
 
+    if (req.method === 'GET' && url.pathname === '/v3/users/me/tenants') {
+      await writeJson(res, 200, {
+        tenants: [
+          {
+            id: 'tenant-override',
+            displayName: 'Tenant Override',
+            slug: 'tenant-override',
+            isActive: true,
+            roles: ['tenant-admin'],
+            isTenantAdmin: true,
+          },
+        ],
+      });
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/v3/resources/schema/tenant-override') {
       await writeJson(res, 200, { objectTypes: [{ name: 'Customer' }] });
       return;

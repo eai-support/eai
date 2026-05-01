@@ -119,11 +119,11 @@ describe('eai whoami', () => {
     });
 
     let staleApiHit = false;
-    let membershipRequestBody: unknown;
+    let membershipRequestHeaders: Record<string, string> | undefined;
 
     mockServer.server.use(
-      http.post(`${RESOLVED_API_BASE}/v3/orchestrate`, async ({ request }) => {
-        membershipRequestBody = await request.json();
+      http.get(`${RESOLVED_API_BASE}/v3/users/me/tenants`, async ({ request }) => {
+        membershipRequestHeaders = Object.fromEntries(request.headers.entries());
         return HttpResponse.json({
           tenants: [
             {
@@ -136,7 +136,7 @@ describe('eai whoami', () => {
           ],
         });
       }),
-      http.post(`${STORED_API_BASE}/v3/orchestrate`, () => {
+      http.get(`${STORED_API_BASE}/v3/users/me/tenants`, () => {
         staleApiHit = true;
         return HttpResponse.json({ detail: 'stale token URL used' }, { status: 500 });
       }),
@@ -148,11 +148,7 @@ describe('eai whoami', () => {
     await whoamiCommand.parseAsync([], { from: 'user' });
 
     expect(staleApiHit).toBe(false);
-    expect(membershipRequestBody).toMatchObject({
-      target_backend: 'admin',
-      endpoint: '/v1/users/test-user-oid/memberships',
-      method: 'GET',
-    });
+    expect(membershipRequestHeaders?.authorization).toBe('Bearer test-access-token');
   });
 
   test('TC018: Whoami when not logged in', { timeout: 5000 }, async () => {
