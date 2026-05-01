@@ -431,8 +431,52 @@ tenantCommand
       let bootstrap: ChildTenantBootstrapResult | undefined;
       let bootstrapError: ParsedApiError | undefined;
       let bootstrapped = false;
+      const refreshStatus = async (bootstrappedFlag: boolean): Promise<{ status: TenantUsabilityStatus }> => {
+        if (!tenantId) {
+          return {
+            status: {
+              tenantId,
+              created: true,
+              bootstrapped: bootstrappedFlag,
+              membershipConfirmed: false,
+              adminConfirmed: false,
+              usable: false,
+              autoSelected: false,
+            },
+          };
+        }
 
-      if (options.parent && tenantId) {
+        try {
+          return await refreshTenantUsabilityStatus(tenantId, {
+            publicApiUrl,
+            created: true,
+            bootstrapped: bootstrappedFlag,
+            autoSelect: Boolean(options.parent),
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          bootstrapError ??= {
+            status: 0,
+            code: 'MEMBERSHIP_REFRESH_FAILED',
+            message,
+          };
+          return {
+            status: {
+              tenantId,
+              created: true,
+              bootstrapped: bootstrappedFlag,
+              membershipConfirmed: false,
+              adminConfirmed: false,
+              usable: false,
+              autoSelected: false,
+            },
+          };
+        }
+      };
+
+      let refreshed = await refreshStatus(bootstrapped);
+
+      if (options.parent && tenantId && !refreshed.status.usable) {
         const tokens = await loadTokens();
         if (tokens?.oid) {
           const bootstrapResponse = await client.bootstrapChildTenantAdmin(options.parent, tenantId, {
@@ -453,48 +497,8 @@ tenantCommand
             message: 'The current login is missing an oid claim, so child bootstrap was not attempted.',
           };
         }
-      }
 
-      let refreshed: { status: TenantUsabilityStatus };
-      if (tenantId) {
-        try {
-          refreshed = await refreshTenantUsabilityStatus(tenantId, {
-            publicApiUrl,
-            created: true,
-            bootstrapped,
-            autoSelect: Boolean(options.parent),
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          bootstrapError ??= {
-            status: 0,
-            code: 'MEMBERSHIP_REFRESH_FAILED',
-            message,
-          };
-          refreshed = {
-            status: {
-              tenantId,
-              created: true,
-              bootstrapped,
-              membershipConfirmed: false,
-              adminConfirmed: false,
-              usable: false,
-              autoSelected: false,
-            },
-          };
-        }
-      } else {
-        refreshed = {
-          status: {
-            tenantId,
-            created: true,
-            bootstrapped,
-            membershipConfirmed: false,
-            adminConfirmed: false,
-            usable: false,
-            autoSelected: false,
-          },
-        };
+        refreshed = await refreshStatus(bootstrapped);
       }
 
       const outcome: TenantCreateOutcome = {

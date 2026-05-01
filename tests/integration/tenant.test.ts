@@ -232,6 +232,31 @@ describe('tenant list filtering', () => {
     ]);
   });
 
+  test('describes bootstrap failure as non-fatal when direct tenant-admin is already confirmed', () => {
+    const outcome: TenantCreateOutcome = {
+      tenant: { id: 'tenant-1', slug: 'tenant-one' },
+      bootstrapError: {
+        status: 403,
+        code: 'TENANT_ACCESS_DENIED',
+        message: 'User does not have access to tenant tenant-1',
+      },
+      usability: {
+        tenantId: 'tenant-1',
+        created: true,
+        bootstrapped: false,
+        membershipConfirmed: true,
+        adminConfirmed: true,
+        usable: true,
+        autoSelected: true,
+      },
+    };
+
+    expect(buildTenantCreateStatusMessages(outcome)).toEqual([
+      'Bootstrap not confirmed: TENANT_ACCESS_DENIED: User does not have access to tenant tenant-1',
+      'Usable: direct tenant-admin confirmed and the new tenant was selected.',
+    ]);
+  });
+
   test('extracts the created tenant record from nested create responses', () => {
     expect(extractCreatedTenantRecord({
       doc: {
