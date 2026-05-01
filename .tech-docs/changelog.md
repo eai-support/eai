@@ -1,26 +1,28 @@
 ---
-generated: "2026-04-30T22:49:00Z"
-source_commit: "31b52b6302819ffcc64b2e527c1ac5fbfac0887b"
+generated: "2026-05-01T00:22:36Z"
+source_commit: "e555f2af2face625cc11a4ddafcca548aa5f9dd4"
 ---
 
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-04-30 17:57 UTC (commit 7c879a6)  
-**Current Documentation**: 2026-04-30 22:49 UTC (commit 31b52b6)  
+**Previous Documentation**: 2026-04-30 22:49 UTC (commit 31b52b6)  
+**Current Documentation**: 2026-05-01 00:22 UTC (commit e555f2a)  
 **Version**: 2.6.0 (no version change)
 
 ---
 
-## [Unreleased] - 2026-04-30
+## [Unreleased] - 2026-05-01
 
 ### Summary
 Automated nightly documentation refresh. No code changes since v2.6.0.
 
 ### Changes
+- **docs**: Update .tech-docs/ [nightly-automated] (e555f2a)
 - **docs**: Update .tech-docs/ [nightly-automated] (31b52b6)
 - **docs**: Update .tech-docs/ [nightly-automated] (7c879a6)
+- **docs**: Update .tech-docs/ [nightly-automated] (98c3eab)
 
 ---
 
@@ -42,7 +44,7 @@ This release refreshes the bundled Gofer payload to v3.1.0-1 and includes severa
 
 ---
 
-## [2.5.2] - 2026-04-XX
+## [2.5.2] - 2026-04-29
 
 ### Changes
 - **fix**: Validate object type defaults before seeding
@@ -50,14 +52,14 @@ This release refreshes the bundled Gofer payload to v3.1.0-1 and includes severa
 
 ---
 
-## [2.5.1] - 2026-04-XX
+## [2.5.1] - 2026-04-28
 
 ### Changes
 - **fix**: Route provision storage to PublicAPI resources path
 
 ---
 
-## [2.5.0] - 2026-04-XX
+## [2.5.0] - 2026-04-28
 
 ### Changes
 - **feat**: Refresh bundled Gofer payload to v3.0.1-1
@@ -66,7 +68,7 @@ This release refreshes the bundled Gofer payload to v3.1.0-1 and includes severa
 
 ---
 
-## [2.4.2] - 2026-04-XX
+## [2.4.2] - 2026-04-28
 
 ### Changes
 - **fix**: Respect `APP_BASE_PATH` when registering OAuth redirect URI
@@ -242,7 +244,7 @@ This release refreshes the bundled Gofer payload to v3.1.0-1 and includes severa
 - **Built With**: Astro + Starlight
 - **Pages**: 93 pages covering getting started, guides, concepts, command reference, 50 industry scenarios
 - **Location**: `docs/`
-- **Published**: https://eai-tools.github.io/eai-cli
+- **Published**: [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli)
 
 #### Gofer Pipeline Documentation
 - **Added**: CLAUDE.md workflow instructions
@@ -293,10 +295,10 @@ This release refreshes the bundled Gofer payload to v3.1.0-1 and includes severa
 | Version | Date | Key Changes |
 |---------|------|-------------|
 | **2.6.0** | 2026-04-30 | Refresh Gofer payload to v3.1.0-1 |
-| **2.5.2** | 2026-04-XX | Validate object type defaults before seeding |
-| **2.5.1** | 2026-04-XX | Fix provision storage routing |
-| **2.5.0** | 2026-04-XX | Refresh Gofer payload to v3.0.1-1, remove internal storage labels |
-| **2.4.2** | 2026-04-XX | Fix OAuth redirect URI with APP_BASE_PATH |
+| **2.5.2** | 2026-04-29 | Validate object type defaults before seeding |
+| **2.5.1** | 2026-04-28 | Fix provision storage routing |
+| **2.5.0** | 2026-04-28 | Refresh Gofer payload to v3.0.1-1, remove internal storage labels |
+| **2.4.2** | 2026-04-28 | Fix OAuth redirect URI with APP_BASE_PATH |
 | **2.4.1** | 2026-04-XX | Fix Entra tenant persistence |
 | **2.4.0** | 2026-04-XX | Provision entra debug mode, storage commands, tenant roles |
 | **2.3.0** | 2026-04-XX | Explicit tenant binding in eai init |
@@ -403,4 +405,4 @@ eai types seed
 
 This release includes contributions from the EAI Tools team and community feedback from the Gofer pipeline specifications process.
 
-For detailed commit history: `git log 584ed1a..86e6318`
+For detailed commit history: `git log 584ed1a..e555f2a`
