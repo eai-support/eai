@@ -1,6 +1,6 @@
 ---
-generated: "2026-05-01T02:21:45Z"
-source_commit: "999edb65571e8a03e2373b37ae3563843616a382"
+generated: "2026-05-02T17:46:00Z"
+source_commit: "06d9705d92561ba3dc873c32939e23dddbbbd64d"
 ---
 
 # EAI CLI — Overview
@@ -34,7 +34,7 @@ The EAI CLI is a command-line tool that wraps the EAI Platform API, providing de
 | File | Purpose |
 |------|---------|
 | `src/index.ts` | Main CLI entry point; registers all commands |
-| `src/commands/*.ts` | 14 command implementations (init, dev, login, whoami, user, env, types, resources, tenant, chat, docs, deploy, verify, update, provision) |
+| `src/commands/*.ts` | 15 command files (init, dev, login, whoami, user, env, types, resources, tenant, chat, docs, deploy, verify, update, provision) |
 | `src/lib/api.ts` | Platform API client with auth |
 | `src/lib/auth.ts` | Entra CIAM authentication (browser PKCE flow) |
 | `src/lib/tenant-context.ts` | Tenant membership and selection logic |
@@ -57,12 +57,13 @@ npm run build
 ### Build Commands
 
 ```bash
-npm run build       # Compile TypeScript to dist/
-npm run dev         # Watch mode (tsc --watch)
-npm run typecheck   # Type check without emitting
-npm run lint        # Run ESLint
-npm test            # Run Vitest tests
-npm run test:coverage # Coverage report
+npm run build             # Compile TypeScript to dist/
+npm run dev               # Watch mode (tsc --watch)
+npm run typecheck         # Type check without emitting
+npm run lint              # Run ESLint
+npm test                  # Run Vitest tests
+npm run test:e2e-local    # Local dedicated tenant lifecycle tests
+npm run test:coverage     # Coverage report
 ```
 
 ### Running the CLI Locally
@@ -117,6 +118,13 @@ node dist/index.js tenant list
 - **TypeScript Evaluation**: Loads user-defined Object Types from TypeScript files by stripping types and evaluating as JS
 - **Static Registry**: Self-hosted npm registry on GitHub Pages (no external npm publish required)
 - **Structured Error Codes**: E001-E305 error catalog with suggestions
+
+## Recent Enhancements (v2.6.0)
+
+- **Tenant Context Fixes**: Fixed tenant context handling for CLI tenant operations (PR #29)
+- **Local Tenant Lifecycle**: Added comprehensive local dedicated tenant lifecycle coverage with E2E tests
+- **Child Tenant Bootstrap**: Improved first-admin bootstrap flow with usability verification
+- **Membership Verification**: Enhanced membership confirmation before marking tenants as usable
 
 ## Update Management
 
