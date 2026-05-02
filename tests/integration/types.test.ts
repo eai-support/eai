@@ -5,7 +5,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { buildPayloadEqualsParams } from '../../src/lib/api.js';
+import { buildPayloadEqualsParams, PlatformAPIClient } from '../../src/lib/api.js';
 import { loadObjectTypes, type ObjectTypeDefinition, type ObjectTypeProperty } from '../../src/lib/config.js';
 import { validateObjectTypeDefaultValues } from '../../src/lib/object-type-defaults.js';
 import {
@@ -16,6 +16,7 @@ import {
   resolveTenantIdForKey,
   shouldFailTypeSeedRun,
   verifyTypeSeedConvergence,
+  verifyTypeSeedConvergenceWithRetry,
 } from '../../src/commands/types.js';
 import { createTestEnvironment } from '../helpers/test-env.js';
 
@@ -199,6 +200,140 @@ describe('verifyTypeSeedConvergence', () => {
       failedCount: 0,
       converged: true,
     });
+  });
+});
+
+describe('verifyTypeSeedConvergenceWithRetry', () => {
+  test('waits for payload publication before checking schema convergence', async () => {
+    const publishedPayloads = [
+      {
+        docs: [],
+      },
+      {
+        docs: [
+          { name: 'Customer', slug: 'customer', status: 'published' },
+        ],
+      },
+      {
+        docs: [
+          { name: 'Customer', slug: 'customer', status: 'published' },
+        ],
+      },
+    ];
+
+    const schemaPayloads = [
+      {
+        docs: [
+          { name: 'Customer', slug: 'customer', status: 'published' },
+        ],
+      },
+    ];
+
+    const client = {
+      getPublishedObjectTypes: async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => publishedPayloads.shift(),
+      }),
+      getSchema: async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => schemaPayloads.shift(),
+      }),
+    } as unknown as PlatformAPIClient;
+
+    const verification = await verifyTypeSeedConvergenceWithRetry(
+      client,
+      'tenant-1',
+      ['Customer'],
+      {
+        createdCount: 1,
+        updatedCount: 0,
+        failedCount: 0,
+      },
+      {
+        attempts: 3,
+        delayMs: 0,
+      },
+    );
+
+    expect(verification.converged).toBe(true);
+    expect(verification.matchedTypes).toEqual(['Customer']);
+  });
+
+  test('retries until published types converge', async () => {
+    const payloads = [
+      {
+        docs: [
+          { name: 'Customer', slug: 'customer', status: 'draft' },
+        ],
+      },
+      {
+        docs: [
+          { name: 'Customer', slug: 'customer', status: 'published' },
+        ],
+      },
+    ];
+
+    const client = {
+      getSchema: async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => payloads.shift(),
+      }),
+    } as unknown as PlatformAPIClient;
+
+    const verification = await verifyTypeSeedConvergenceWithRetry(
+      client,
+      'tenant-1',
+      ['Customer'],
+      {
+        createdCount: 1,
+        updatedCount: 0,
+        failedCount: 0,
+      },
+      {
+        attempts: 2,
+        delayMs: 0,
+      },
+    );
+
+    expect(verification.converged).toBe(true);
+    expect(verification.matchedTypes).toEqual(['Customer']);
+  });
+
+  test('returns the last partial verification when convergence never happens', async () => {
+    const client = {
+      getSchema: async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          docs: [{ name: 'Customer', slug: 'customer', status: 'draft' }],
+        }),
+      }),
+    } as unknown as PlatformAPIClient;
+
+    const verification = await verifyTypeSeedConvergenceWithRetry(
+      client,
+      'tenant-1',
+      ['Customer'],
+      {
+        createdCount: 1,
+        updatedCount: 0,
+        failedCount: 0,
+      },
+      {
+        attempts: 2,
+        delayMs: 0,
+      },
+    );
+
+    expect(verification.converged).toBe(false);
+    expect(verification.driftedTypes).toEqual(['Customer']);
   });
 });
 

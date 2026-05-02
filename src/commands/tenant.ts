@@ -409,6 +409,7 @@ tenantCommand
         projectRoot: root || undefined,
         publicApiUrl,
         interactive: true,
+        tenantId: options.parent || undefined,
       });
       const client = new PlatformAPIClient(publicApiUrl, context.activeTenant.id);
 
@@ -421,7 +422,11 @@ tenantCommand
 
       if (!res.ok) {
         const body = await res.text();
-        if (spinner) spinner.fail(`${res.status}: ${body}`);
+        if (spinner) {
+          spinner.fail(`${res.status}: ${body}`);
+        } else {
+          process.stderr.write(`${body || res.statusText}\n`);
+        }
         process.exit(1);
       }
 
@@ -431,8 +436,52 @@ tenantCommand
       let bootstrap: ChildTenantBootstrapResult | undefined;
       let bootstrapError: ParsedApiError | undefined;
       let bootstrapped = false;
+      const refreshStatus = async (bootstrappedFlag: boolean): Promise<{ status: TenantUsabilityStatus }> => {
+        if (!tenantId) {
+          return {
+            status: {
+              tenantId,
+              created: true,
+              bootstrapped: bootstrappedFlag,
+              membershipConfirmed: false,
+              adminConfirmed: false,
+              usable: false,
+              autoSelected: false,
+            },
+          };
+        }
 
-      if (options.parent && tenantId) {
+        try {
+          return await refreshTenantUsabilityStatus(tenantId, {
+            publicApiUrl,
+            created: true,
+            bootstrapped: bootstrappedFlag,
+            autoSelect: Boolean(options.parent),
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          bootstrapError ??= {
+            status: 0,
+            code: 'MEMBERSHIP_REFRESH_FAILED',
+            message,
+          };
+          return {
+            status: {
+              tenantId,
+              created: true,
+              bootstrapped: bootstrappedFlag,
+              membershipConfirmed: false,
+              adminConfirmed: false,
+              usable: false,
+              autoSelected: false,
+            },
+          };
+        }
+      };
+
+      let refreshed = await refreshStatus(bootstrapped);
+
+      if (options.parent && tenantId && !refreshed.status.usable) {
         const tokens = await loadTokens();
         if (tokens?.oid) {
           const bootstrapResponse = await client.bootstrapChildTenantAdmin(options.parent, tenantId, {
@@ -453,48 +502,8 @@ tenantCommand
             message: 'The current login is missing an oid claim, so child bootstrap was not attempted.',
           };
         }
-      }
 
-      let refreshed: { status: TenantUsabilityStatus };
-      if (tenantId) {
-        try {
-          refreshed = await refreshTenantUsabilityStatus(tenantId, {
-            publicApiUrl,
-            created: true,
-            bootstrapped,
-            autoSelect: Boolean(options.parent),
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          bootstrapError ??= {
-            status: 0,
-            code: 'MEMBERSHIP_REFRESH_FAILED',
-            message,
-          };
-          refreshed = {
-            status: {
-              tenantId,
-              created: true,
-              bootstrapped,
-              membershipConfirmed: false,
-              adminConfirmed: false,
-              usable: false,
-              autoSelected: false,
-            },
-          };
-        }
-      } else {
-        refreshed = {
-          status: {
-            tenantId,
-            created: true,
-            bootstrapped,
-            membershipConfirmed: false,
-            adminConfirmed: false,
-            usable: false,
-            autoSelected: false,
-          },
-        };
+        refreshed = await refreshStatus(bootstrapped);
       }
 
       const outcome: TenantCreateOutcome = {
@@ -524,6 +533,71 @@ tenantCommand
             out.info(message);
           }
         }
+      }
+    } catch (err) {
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+tenantCommand
+  .command('delete <id>')
+  .description('Delete a tenant')
+  .option('--force', 'Skip confirmation', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (id, options) => {
+    if (options.json) options.format = 'json';
+
+    if (!options.force) {
+      const { default: inquirer } = await import('inquirer');
+      const { confirm } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'confirm',
+        message: `Delete tenant ${id}?`,
+        default: false,
+      }]);
+      if (!confirm) {
+        if (options.format === 'json') {
+          out.json({ cancelled: true });
+        } else {
+          out.info('Cancelled.');
+        }
+        return;
+      }
+    }
+
+    const root = await findProjectRoot();
+    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
+    const context = await resolveActiveTenantContext({
+      projectRoot: root || undefined,
+      publicApiUrl,
+      interactive: true,
+    });
+    const client = new PlatformAPIClient(publicApiUrl, context.activeTenant.id);
+    const spinner = options.format === 'json' ? null : ora(`Deleting tenant "${id}"...`).start();
+
+    try {
+      const res = await client.deleteTenant(id);
+      if (!res.ok) {
+        const body = await res.text();
+        if (options.format === 'json') {
+          out.json({
+            id,
+            deleted: false,
+            status: res.status,
+            error: body || res.statusText,
+          });
+        } else if (spinner) {
+          spinner.fail(`${res.status}: ${body}`);
+        }
+        process.exit(1);
+      }
+
+      if (options.format === 'json') {
+        out.json({ id, deleted: true });
+      } else {
+        spinner!.succeed(`Deleted tenant ${chalk.cyan(id)}`);
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));

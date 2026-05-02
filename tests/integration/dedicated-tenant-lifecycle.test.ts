@@ -279,7 +279,7 @@ describe('dedicated tenant lifecycle', () => {
     ]);
   });
 
-  test('creates a child tenant with active tenant context and bootstraps admin membership', async () => {
+  test('creates a child tenant with active tenant context without redundant bootstrap when already usable', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const orchestrateHeaders: Array<Record<string, string>> = [];
 
@@ -328,23 +328,6 @@ describe('dedicated tenant lifecycle', () => {
           }, { status: 201 });
         }
 
-        if (
-          body.target_backend === 'admin'
-          && body.endpoint === `/v1/tenants/${PARENT_TENANT_ID}/children/${CREATED_TENANT_ID}/bootstrap-admin`
-          && body.method === 'POST'
-        ) {
-          return HttpResponse.json({
-            parentTenantId: PARENT_TENANT_ID,
-            childTenantId: CREATED_TENANT_ID,
-            userOid: 'test-oid',
-            membershipCreated: true,
-            adminAssigned: true,
-            usable: true,
-            status: 'bootstrapped',
-            reason: null,
-          });
-        }
-
         return HttpResponse.json(
           { error: `Unhandled orchestrate route: ${body.target_backend} ${body.endpoint}` },
           { status: 500 },
@@ -366,14 +349,13 @@ describe('dedicated tenant lifecycle', () => {
         id: CREATED_TENANT_ID,
         slug: CREATED_TENANT_SLUG,
       }),
-      bootstrap: expect.objectContaining({
-        parentTenantId: PARENT_TENANT_ID,
-        childTenantId: CREATED_TENANT_ID,
-        status: 'bootstrapped',
+      bootstrap: null,
+      usability: expect.objectContaining({
+        tenantId: CREATED_TENANT_ID,
+        usable: true,
       }),
     });
-    expect(orchestrateHeaders).toHaveLength(2);
+    expect(orchestrateHeaders).toHaveLength(1);
     expect(orchestrateHeaders[0]['x-tenant-id']).toBe(PARENT_TENANT_ID);
-    expect(orchestrateHeaders[1]['x-tenant-id']).toBe(PARENT_TENANT_ID);
   });
 });
