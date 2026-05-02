@@ -409,6 +409,7 @@ tenantCommand
         projectRoot: root || undefined,
         publicApiUrl,
         interactive: true,
+        tenantId: options.parent || undefined,
       });
       const client = new PlatformAPIClient(publicApiUrl, context.activeTenant.id);
 
@@ -421,7 +422,11 @@ tenantCommand
 
       if (!res.ok) {
         const body = await res.text();
-        if (spinner) spinner.fail(`${res.status}: ${body}`);
+        if (spinner) {
+          spinner.fail(`${res.status}: ${body}`);
+        } else {
+          process.stderr.write(`${body || res.statusText}\n`);
+        }
         process.exit(1);
       }
 
@@ -528,6 +533,71 @@ tenantCommand
             out.info(message);
           }
         }
+      }
+    } catch (err) {
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+tenantCommand
+  .command('delete <id>')
+  .description('Delete a tenant')
+  .option('--force', 'Skip confirmation', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (id, options) => {
+    if (options.json) options.format = 'json';
+
+    if (!options.force) {
+      const { default: inquirer } = await import('inquirer');
+      const { confirm } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'confirm',
+        message: `Delete tenant ${id}?`,
+        default: false,
+      }]);
+      if (!confirm) {
+        if (options.format === 'json') {
+          out.json({ cancelled: true });
+        } else {
+          out.info('Cancelled.');
+        }
+        return;
+      }
+    }
+
+    const root = await findProjectRoot();
+    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
+    const context = await resolveActiveTenantContext({
+      projectRoot: root || undefined,
+      publicApiUrl,
+      interactive: true,
+    });
+    const client = new PlatformAPIClient(publicApiUrl, context.activeTenant.id);
+    const spinner = options.format === 'json' ? null : ora(`Deleting tenant "${id}"...`).start();
+
+    try {
+      const res = await client.deleteTenant(id);
+      if (!res.ok) {
+        const body = await res.text();
+        if (options.format === 'json') {
+          out.json({
+            id,
+            deleted: false,
+            status: res.status,
+            error: body || res.statusText,
+          });
+        } else if (spinner) {
+          spinner.fail(`${res.status}: ${body}`);
+        }
+        process.exit(1);
+      }
+
+      if (options.format === 'json') {
+        out.json({ id, deleted: true });
+      } else {
+        spinner!.succeed(`Deleted tenant ${chalk.cyan(id)}`);
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));

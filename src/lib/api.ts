@@ -399,7 +399,7 @@ export class PlatformAPIClient {
       'GET',
       undefined,
       buildPayloadEqualsParams(filters, {
-        limit: options?.limit ?? 200,
+        limit: Math.min(options?.limit ?? 100, 100),
         sort: options?.sort ?? 'name',
       }),
     );
@@ -742,6 +742,10 @@ export class PlatformAPIClient {
       parentTenant: data.parent,
       domain: data.domain,
     });
+  }
+
+  async deleteTenant(tenantId: string): Promise<Response> {
+    return this.adminRequest(`/v1/accounts/${tenantId}/delete`, 'POST');
   }
 
   async bootstrapChildTenantAdmin(

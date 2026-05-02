@@ -336,6 +336,84 @@ export function verifyTypeSeedConvergence(
   };
 }
 
+export async function verifyTypeSeedConvergenceWithRetry(
+  client: PlatformAPIClient,
+  tenantId: string,
+  requestedTypes: string[],
+  counts: {
+    createdCount: number;
+    updatedCount: number;
+    failedCount: number;
+  },
+  options?: {
+    attempts?: number;
+    delayMs?: number;
+  },
+): Promise<TypeSeedVerificationResult> {
+  const attempts = Math.max(options?.attempts ?? 60, 1);
+  const delayMs = Math.max(options?.delayMs ?? 1000, 0);
+
+  let lastVerification: TypeSeedVerificationResult | null = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (typeof client.getPublishedObjectTypes === 'function') {
+      const publishedResponse = await client.getPublishedObjectTypes({
+        limit: Math.max(requestedTypes.length, 20),
+      });
+      if (!publishedResponse.ok) {
+        throw new Error(`published type re-fetch failed: ${publishedResponse.status} ${publishedResponse.statusText}`);
+      }
+
+      const publishedPayload = await publishedResponse.json() as unknown;
+      const publishedVerification = verifyTypeSeedConvergence(
+        tenantId,
+        requestedTypes,
+        publishedPayload,
+        counts,
+      );
+
+      if (
+        !publishedVerification.converged
+        && publishedVerification.failedCount === 0
+        && attempt < attempts
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+    }
+
+    const schemaResponse = await client.getSchema();
+    if (!schemaResponse.ok) {
+      throw new Error(`schema re-fetch failed: ${schemaResponse.status} ${schemaResponse.statusText}`);
+    }
+
+    const schemaPayload = await schemaResponse.json() as unknown;
+    const verification = verifyTypeSeedConvergence(
+      tenantId,
+      requestedTypes,
+      schemaPayload,
+      counts,
+    );
+
+    lastVerification = verification;
+    if (
+      verification.converged
+      || verification.failedCount > 0
+      || attempt === attempts
+    ) {
+      return verification;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  if (lastVerification) {
+    return lastVerification;
+  }
+
+  throw new Error('schema verification did not produce a result');
+}
+
 async function selectTenantKey(
   objectTypes: Record<string, ObjectTypeDefinition[]>,
   explicitTenantKey?: string,
@@ -454,7 +532,9 @@ Examples:
     // Filter to specific tenant key if requested
     const keysToSeed = await selectTenantKey(objectTypes, options.tenantKey, activeContext.activeTenant.slug);
 
-    out.blank();
+    if (options.format !== 'json') {
+      out.blank();
+    }
 
     const jsonResults: Array<{
       tenantKey: string;
@@ -468,7 +548,9 @@ Examples:
     for (const tenantKey of keysToSeed) {
       const types = objectTypes[tenantKey];
       if (!types || types.length === 0) {
-        out.warn(`No types for tenant key "${tenantKey}"`);
+        if (options.format !== 'json') {
+          out.warn(`No types for tenant key "${tenantKey}"`);
+        }
         continue;
       }
 
@@ -481,13 +563,17 @@ Examples:
         continue;
       }
 
-      out.heading(`Tenant: ${tenantKey} → ${chalk.dim(tenantId)} ${chalk.dim(`(${describeTenantResolutionSource(resolution.source)})`)}`);
+      if (options.format !== 'json') {
+        out.heading(`Tenant: ${tenantKey} → ${chalk.dim(tenantId)} ${chalk.dim(`(${describeTenantResolutionSource(resolution.source)})`)}`);
+      }
 
       if (options.dryRun) {
-        for (const type of types) {
-          out.info(`Would publish: ${chalk.cyan(type.name)}`);
+        if (options.format !== 'json') {
+          for (const type of types) {
+            out.info(`Would publish: ${chalk.cyan(type.name)}`);
+          }
+          out.info('Dry run — no changes made');
         }
-        out.info('Dry run — no changes made');
         continue;
       }
 
@@ -509,7 +595,7 @@ Examples:
       }
 
       for (const type of types) {
-        const typeSpinner = ora(`  ${type.name}`).start();
+        const typeSpinner = options.format === 'json' ? null : ora(`  ${type.name}`).start();
 
         try {
           const matches = findMatchingRemoteTypes(remoteDocs, type.name);
@@ -546,7 +632,9 @@ Examples:
               const archivedSuffix = duplicates.length > 0
                 ? chalk.dim(` + archived ${duplicates.length} duplicate${duplicates.length === 1 ? '' : 's'}`)
                 : '';
-              typeSpinner.succeed(`  ${type.name} ${chalk.cyan('(updated)')}${archivedSuffix}`);
+              if (typeSpinner) {
+                typeSpinner.succeed(`  ${type.name} ${chalk.cyan('(updated)')}${archivedSuffix}`);
+              }
               updated++;
               remoteDocs = remoteDocs.map((doc) => (
                 doc.id === existing.id
@@ -567,7 +655,9 @@ Examples:
                   : doc
               ));
             } else {
-              typeSpinner.fail(`  ${type.name} — update failed: ${await describeFailedPlatformResponse(updateRes)}`);
+              if (typeSpinner) {
+                typeSpinner.fail(`  ${type.name} — update failed: ${await describeFailedPlatformResponse(updateRes)}`);
+              }
               failed++;
             }
           } else {
@@ -593,7 +683,9 @@ Examples:
               const archivedSuffix = duplicates.length > 0
                 ? chalk.dim(` + archived ${duplicates.length} duplicate${duplicates.length === 1 ? '' : 's'}`)
                 : '';
-              typeSpinner.succeed(`  ${type.name} ${chalk.green('(created)')}${archivedSuffix}`);
+              if (typeSpinner) {
+                typeSpinner.succeed(`  ${type.name} ${chalk.green('(created)')}${archivedSuffix}`);
+              }
               created++;
               remoteDocs.push({
                 name: type.name,
@@ -609,32 +701,37 @@ Examples:
                 status: type.status,
               });
             } else {
-              typeSpinner.fail(`  ${type.name} — create failed: ${await describeFailedPlatformResponse(createRes)}`);
+              if (typeSpinner) {
+                typeSpinner.fail(`  ${type.name} — create failed: ${await describeFailedPlatformResponse(createRes)}`);
+              }
               failed++;
             }
           }
         } catch (err) {
-          typeSpinner.fail(`  ${type.name} — ${err instanceof Error ? err.message : String(err)}`);
+          if (typeSpinner) {
+            typeSpinner.fail(`  ${type.name} — ${err instanceof Error ? err.message : String(err)}`);
+          }
           failed++;
         }
       }
 
-      out.blank();
+      if (options.format !== 'json') {
+        out.blank();
+      }
       let verification: TypeSeedVerificationResult | undefined;
       try {
-        const schemaResponse = await client.getSchema();
-        if (!schemaResponse.ok) {
-          throw new Error(`schema re-fetch failed: ${schemaResponse.status} ${schemaResponse.statusText}`);
-        }
-        const schemaPayload = await schemaResponse.json() as unknown;
-        verification = verifyTypeSeedConvergence(
+        verification = await verifyTypeSeedConvergenceWithRetry(
+          client,
           tenantId,
           types.map((type) => type.name),
-          schemaPayload,
           {
             createdCount: created,
             updatedCount: updated,
             failedCount: failed,
+          },
+          {
+            attempts: failed > 0 ? 1 : 6,
+            delayMs: 1000,
           },
         );
       } catch (err) {
