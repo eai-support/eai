@@ -224,6 +224,31 @@ describe('resource type diagnostics', () => {
     );
   });
 
+  test('provisions tenant vertical storage through the same ResourceAPI tenant storage route', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new PlatformAPIClient('https://test-api.example.com', 'company-tenant');
+    await client.provisionStorage({
+      backend: 'documentdb',
+      dryRun: false,
+      rebuildSearch: false,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://test-api.example.com/v3/resources/company-tenant/storage/provision',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          backend: 'documentdb',
+          dry_run: false,
+          rebuild_search: false,
+          provisioning_mode: 'dedicated-tenant-storage',
+        }),
+      }),
+    );
+  });
+
   test('builds storage status and doctor URLs', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);

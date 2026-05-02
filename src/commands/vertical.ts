@@ -72,6 +72,23 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+async function validateVerticalEnrollment(
+  verticalKey: string,
+  ctx: Awaited<ReturnType<typeof resolveCommandContext>>,
+): Promise<void> {
+  const res = await ctx.client.listResources(VERTICAL_ENROLLMENT_TYPE, {
+    limit: 1,
+    where: { verticalKey },
+  });
+  if (!res.ok) {
+    fail(`Could not validate ${verticalKey}: ${res.status} ${res.statusText}`);
+  }
+  const docs = extractDocs(await readResponsePayload(res));
+  if (docs.length === 0) {
+    fail(`No tenant vertical enrollment found for ${verticalKey}. Create it with \`eai vertical create\` first, or pass --skip-validate if the platform is still publishing the Object Type.`);
+  }
+}
+
 export const verticalCommand = new Command('vertical')
   .description('Manage dynamic vertical/app instances under the active company tenant');
 
@@ -166,15 +183,7 @@ verticalCommand
     }
 
     if (!options.skipValidate) {
-      const where = { verticalKey };
-      const res = await ctx.client.listResources(VERTICAL_ENROLLMENT_TYPE, { limit: 1, where });
-      if (!res.ok) {
-        fail(`Could not validate ${verticalKey}: ${res.status} ${res.statusText}`);
-      }
-      const docs = extractDocs(await readResponsePayload(res));
-      if (docs.length === 0) {
-        fail(`No tenant vertical enrollment found for ${verticalKey}. Use --skip-validate to set it anyway.`);
-      }
+      await validateVerticalEnrollment(verticalKey, ctx);
     }
 
     await patchEnvFile(ctx.root, { EAI_VERTICAL_KEY: verticalKey });
@@ -184,4 +193,77 @@ verticalCommand
       return;
     }
     out.success(`Active vertical/app set to ${chalk.cyan(verticalKey)} in .env.local`);
+  });
+
+verticalCommand
+  .command('provision <key>')
+  .description('Provision ResourceAPI storage needed by a tenant vertical/app instance')
+  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
+  .option('--dry-run', 'Plan actions without applying changes', false)
+  .option('--rebuild-search', 'Request search projection rebuild after provisioning', false)
+  .option('--skip-validate', 'Skip ResourceAPI tenant-vertical-enrollment lookup', false)
+  .option('--select', 'Write EAI_VERTICAL_KEY after successful provisioning', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (key: string, options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const format = normalizeFormat(options);
+    const verticalKey = key.trim();
+
+    if (!verticalKey) {
+      fail('Vertical key is required.');
+    }
+
+    if (!options.skipValidate) {
+      await validateVerticalEnrollment(verticalKey, ctx);
+    }
+
+    const spinner = makeSpinner(
+      format,
+      `${options.dryRun ? 'Planning' : 'Provisioning'} ResourceAPI storage for ${verticalKey}...`,
+    );
+    const res = await ctx.client.provisionStorage({
+      backend: options.backend,
+      dryRun: Boolean(options.dryRun),
+      rebuildSearch: Boolean(options.rebuildSearch),
+    });
+    const payload = await readResponsePayload(res);
+
+    if (!res.ok) {
+      spinner?.fail('Failed to provision tenant vertical storage');
+      fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
+    }
+
+    if (options.select) {
+      await patchEnvFile(ctx.root, { EAI_VERTICAL_KEY: verticalKey });
+    }
+
+    if (format === 'json') {
+      out.json({
+        tenantId: ctx.tenantId,
+        verticalKey,
+        selected: Boolean(options.select),
+        storage: payload,
+      });
+      return;
+    }
+
+    spinner?.succeed(options.dryRun ? 'Storage plan complete' : 'Storage provisioning complete');
+    out.info(`Vertical/app ${chalk.cyan(verticalKey)} remains a ResourceAPI tenant enrollment, not a Payload child tenant.`);
+    if (isRecord(payload) && Array.isArray(payload.results)) {
+      for (const result of payload.results.filter(isRecord)) {
+        const objectType = typeof result.objectType === 'string' ? result.objectType : 'unknown';
+        const backend = typeof result.backend === 'string' ? result.backend : 'unknown';
+        const status = typeof result.status === 'string' ? result.status : 'unknown';
+        const actions = Array.isArray(result.actions) ? result.actions.map(String) : [];
+        out.info(`${chalk.cyan(objectType)} ${chalk.dim(backend)} ${status}`);
+        for (const action of actions) {
+          out.dim(`  ${action}`);
+        }
+      }
+    }
+    if (options.select) {
+      out.success(`Active vertical/app set to ${chalk.cyan(verticalKey)} in .env.local`);
+    }
   });
