@@ -29,6 +29,7 @@ import { typesCommand } from './commands/types.js';
 import { tenantCommand } from './commands/tenant.js';
 import { userCommand } from './commands/user.js';
 import { resourcesCommand } from './commands/resources.js';
+import { verticalCommand } from './commands/vertical.js';
 import { chatCommand } from './commands/chat.js';
 import { docsCommand } from './commands/docs.js';
 import { deployCommand } from './commands/deploy.js';
@@ -92,6 +93,7 @@ program.addCommand(typesCommand);
 program.addCommand(tenantCommand);
 program.addCommand(userCommand);
 program.addCommand(resourcesCommand);
+program.addCommand(verticalCommand);
 program.addCommand(chatCommand);
 program.addCommand(docsCommand);
 program.addCommand(deployCommand);
@@ -117,6 +119,7 @@ ${chalk.bold('Development Workflows:')}
 
   ${chalk.dim('# See what is published for the active tenant')}
   ${chalk.cyan('eai resources schema')}
+  ${chalk.cyan('eai vertical create "My App" --template blank-vertical-template')}
 
   ${chalk.dim('# Query resources and inspect data')}
   ${chalk.cyan('eai resources list User --limit 10')}
