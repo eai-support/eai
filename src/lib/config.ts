@@ -129,7 +129,8 @@ export async function findProjectRoot(from?: string): Promise<string | null> {
     try {
       await access(join(dir, 'package.json'));
       const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf-8'));
-      if (pkg.dependencies?.['@eai-tools/platform-sdk'] ||
+      if (pkg.dependencies?.['@enterpriseaigroup/platform-sdk'] ||
+          pkg.dependencies?.['@eai-tools/platform-sdk'] ||
           pkg.dependencies?.['@eai-tools/core']) {
         return dir;
       }

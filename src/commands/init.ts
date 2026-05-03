@@ -954,7 +954,7 @@ import { useResources } from '@/hooks/useResources';
 const { list, get, create, update, delete: remove } = useResources<MyData>('MyType');
 
 // Platform SDK (server-side)
-import { EAIPlatformClient } from '@eai-tools/platform-sdk';
+import { EAIPlatformClient } from '@enterpriseaigroup/platform-sdk';
 const client = new EAIPlatformClient({ tenantId: 'my-tenant' });
 await client.resources.create('MyType', { title: 'Hello' });
 \`\`\`
@@ -1007,7 +1007,7 @@ Key variables:
 | \`src/eai.config/default.ts\` | Tenant configuration |
 | \`src/auth.ts\` | Auth.js configuration |
 | \`src/app/api/eai/[[...rest]]/route.ts\` | BFF proxy (token injection) |
-| \`packages/platform-sdk/\` | Typed API client |
+| \`packages/platform-sdk/\` | Local typed API client source until the SDK is promoted to a shared package |
 | \`.github/workflows/deploy-demo.yml\` | Deployment workflow |
 `;
 }
