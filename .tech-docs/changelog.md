@@ -1,29 +1,60 @@
 ---
-generated: "2026-05-01T02:21:45Z"
-source_commit: "999edb65571e8a03e2373b37ae3563843616a382"
+generated: "2026-05-02T17:46:00Z"
+source_commit: "06d9705d92561ba3dc873c32939e23dddbbbd64d"
 ---
 
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-05-01 01:25 UTC (commit cecc419)  
-**Current Documentation**: 2026-05-01 02:21 UTC (commit 999edb6)  
+**Previous Documentation**: 2026-05-01 02:21 UTC (commit 999edb6)  
+**Current Documentation**: 2026-05-02 17:46 UTC (commit 06d9705)  
 **Version**: 2.6.0 (no version change)
 
 ---
 
-## [Unreleased] - 2026-05-01
+## [Unreleased] - 2026-05-02
 
 ### Summary
-Automated nightly documentation refresh. No code changes since v2.6.0.
+Tenant context fixes and local dedicated tenant lifecycle improvements. Enhanced child tenant bootstrap flow with usability verification.
 
-### Changes
-- **docs**: Update .tech-docs/ [nightly-automated] (999edb6)
-- **docs**: Update .tech-docs/ [nightly-automated] (cecc419)
-- **docs**: Update .tech-docs/ [nightly-automated] (e555f2a)
-- **docs**: Update .tech-docs/ [nightly-automated] (31b52b6)
-- **docs**: Update .tech-docs/ [nightly-automated] (7c879a6)
+### Added
+
+- **Local Dedicated Tenant Lifecycle Coverage** (commit ae537b4)
+  - Added comprehensive E2E tests for local dedicated tenant lifecycle
+  - New test script: `npm run test:e2e-local` (bash `scripts/test-local-dedicated-tenant-lifecycle.sh`)
+  - Tests cover tenant creation, bootstrap, membership verification, and usability checks
+
+### Fixed
+
+- **Tenant Context for CLI Operations** (PR #29, commit 5c10404)
+  - Fixed tenant context handling for CLI tenant operations
+  - Resolved issue where tenant context was not properly maintained during child tenant operations
+  - Improved error messages when tenant context is invalid or missing
+
+- **Child Tenant Bootstrap Redundancy** (commit 1d6057c)
+  - Avoided redundant child tenant bootstrap calls
+  - Added usability check to prevent repeated bootstrap attempts
+  - Enhanced first-admin bootstrap flow to verify membership before marking as usable
+
+### Changed
+
+- **Tenant Lifecycle Truth** (commits 49b5ea5, ae537b4)
+  - `eai tenant create` now distinguishes three states:
+    - `created`: tenant document exists
+    - `bootstrapped`: first-admin bootstrap called successfully
+    - `usable`: direct `tenant-admin` membership confirmed
+  - CLI only auto-selects new child tenants when `usable` is true
+  - Improved error messages when bootstrap is blocked or membership confirmation fails
+
+### Commits
+
+- `06d9705` - Merge pull request #30 from eai-tools/codex/issue-2688-fix-tenant-context
+- `49b5ea5` - Merge main into local tenant lifecycle branch
+- `ae537b4` - Add local dedicated tenant lifecycle coverage
+- `1d6057c` - Avoid redundant child tenant bootstrap
+- `5c10404` - Fix tenant context for CLI tenant operations (#29)
+- Previous docs commits (999edb6, cecc419, e555f2a, 31b52b6, 7c879a6)
 
 ---
 
