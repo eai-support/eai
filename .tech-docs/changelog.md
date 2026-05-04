@@ -1,19 +1,42 @@
 ---
-generated: "2026-05-02T17:46:00Z"
-source_commit: "06d9705d92561ba3dc873c32939e23dddbbbd64d"
+generated: true
+generated_at: "2026-05-04T17:57:42Z"
+source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
 ---
 
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-05-01 02:21 UTC (commit 999edb6)  
-**Current Documentation**: 2026-05-02 17:46 UTC (commit 06d9705)  
-**Version**: 2.6.0 (no version change)
+**Previous Documentation**: 2026-05-02 17:46 UTC (commit 06d9705)  
+**Current Documentation**: 2026-05-04 17:57 UTC (commit 1dc87b0)  
+**Version**: 2.6.0 → 2.7.0
 
 ---
 
-## [Unreleased] - 2026-05-02
+## [2.7.0] - 2026-05-04
+
+### Summary
+Entra provisioning validation improvements. The `eai provision entra` command now validates the `signin_ready` status from AdminAPI and provides clear warnings when Entra app registration is incomplete.
+
+### Added
+
+- **Entra Provisioning Validation** (PR #32, commit 0621814)
+  - `eai provision entra` now checks `signin_ready` field from AdminAPI `/v1/admin/auth/entra-app` response
+  - Exits with non-zero status code when `signin_ready=false`
+  - Displays warning message explaining that Entra app registration is incomplete or pending
+  - Prevents silent failures where authentication would fail due to incomplete Entra configuration
+
+### Fixed
+
+- **Entra Provisioning Silent Failures**
+  - Previously, `eai provision entra` would succeed even when Entra app registration was incomplete
+  - Users would encounter authentication failures with no clear indication of the root cause
+  - Now provides immediate feedback during provisioning phase
+
+---
+
+## [2.6.0] - 2026-05-02
 
 ### Summary
 Tenant context fixes and local dedicated tenant lifecycle improvements. Enhanced child tenant bootstrap flow with usability verification.

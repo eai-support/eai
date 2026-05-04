@@ -1,6 +1,7 @@
 ---
-generated: "2026-05-02T17:46:00Z"
-source_commit: "06d9705d92561ba3dc873c32939e23dddbbbd64d"
+generated: true
+generated_at: "2026-05-04T17:57:42Z"
+source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
 ---
 
 # EAI CLI — API Reference
@@ -533,9 +534,36 @@ Content-Type: application/json
 {
   "exists": true,
   "clientId": "client-id",
-  "displayName": "My Vertical"
+  "displayName": "My Vertical",
+  "scopes": ["User.Read", "PublicAPI.All"],
+  "redirectUris": ["http://localhost:3000/auth/callback"],
+  "environment": "dev",
+  "tenantId": "platform-tenant-id",
+  "signinCompleteness": {
+    "signinReady": true,
+    "graphDelegatedPermsGranted": true,
+    "publicApiDelegatedPermsGranted": true,
+    "adminConsentGranted": true,
+    "preAuthorizedConfigured": true,
+    "warnings": []
+  }
 }
 ```
+
+**New in v2.7.0**: The `signinCompleteness` field (also accepted as `signin_completeness`) provides a per-step rollup of post-provision sign-in wiring state. This prevents silent failures where the app registration is created but cannot reach PublicAPI from a user session.
+
+**Sign-in Completeness Fields**:
+- `signinReady` (boolean) — Overall readiness; true only when all four steps succeeded
+- `graphDelegatedPermsGranted` (boolean) — Microsoft Graph delegated permissions added
+- `publicApiDelegatedPermsGranted` (boolean) — PublicAPI delegated permissions added
+- `adminConsentGranted` (boolean) — Admin consent granted for required permissions
+- `preAuthorizedConfigured` (boolean) — PreAuthorizedApplications configured on PublicAPI app reg
+- `warnings` (string[]) — Human-readable warnings for failed steps
+
+**CLI Behavior (v2.7.0+)**:
+- When `signinReady: true` → Prints success confirmation and exits 0
+- When `signinReady: false` → Prints structured error table showing which step failed, displays warnings, provides portal remediation steps, and **exits with code 1**
+- When field absent (older PublicAPI) → Silent (cannot determine readiness)
 
 **CLI Command**: `eai provision entra`
 

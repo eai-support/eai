@@ -1,13 +1,14 @@
 ---
-generated: "2026-05-02T17:46:00Z"
-source_commit: "06d9705d92561ba3dc873c32939e23dddbbbd64d"
+generated: true
+generated_at: "2026-05-04T17:57:42Z"
+source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
 ---
 
 # EAI CLI — Patterns & Tech Debt
 
 ## Overview
 
-This document identifies design patterns, anti-patterns, and technical debt in the EAI CLI codebase (v2.6.0).
+This document identifies design patterns, anti-patterns, and technical debt in the EAI CLI codebase (v2.7.0).
 
 ---
 
