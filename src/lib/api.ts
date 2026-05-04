@@ -18,6 +18,8 @@ export interface ChildTenantBootstrapRequest {
   userEmail?: string;
 }
 
+export type TenantUsecase = 'council' | 'retail' | 'healthcare' | 'finance' | 'manufacturing' | 'generic';
+
 export interface ChildTenantBootstrapResult {
   parentTenantId: string;
   childTenantId: string;
@@ -726,12 +728,17 @@ export class PlatformAPIClient {
     slug: string;
     parent?: string;
     domain?: string[];
+    usecase?: TenantUsecase;
+    industry?: string;
+    starterTemplate?: string;
   }): Promise<Response> {
     if (data.parent) {
       return this.adminRequest(`/v1/tenants/${data.parent}/children`, 'POST', {
         displayName: data.name,
         slug: data.slug,
-        usecase: 'generic',
+        usecase: data.usecase || 'generic',
+        ...(data.industry ? { industry: data.industry } : {}),
+        ...(data.starterTemplate ? { starterTemplate: data.starterTemplate } : {}),
       });
     }
 
@@ -741,6 +748,9 @@ export class PlatformAPIClient {
       slug: data.slug,
       parentTenant: data.parent,
       domain: data.domain,
+      usecase: data.usecase || 'generic',
+      ...(data.industry ? { industry: data.industry } : {}),
+      ...(data.starterTemplate ? { starterTemplate: data.starterTemplate } : {}),
     });
   }
 

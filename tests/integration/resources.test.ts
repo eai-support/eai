@@ -118,6 +118,7 @@ describe('resource type diagnostics', () => {
             slug: 'root-tenant',
             parentTenant: undefined,
             domain: ['root.example.com'],
+            usecase: 'generic',
           },
           params: undefined,
         }),
@@ -134,6 +135,9 @@ describe('resource type diagnostics', () => {
       name: 'Child Tenant',
       slug: 'child-tenant',
       parent: 'parent-tenant',
+      usecase: 'retail',
+      industry: 'retail',
+      starterTemplate: 'blank-vertical-template',
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -147,7 +151,9 @@ describe('resource type diagnostics', () => {
           body: {
             displayName: 'Child Tenant',
             slug: 'child-tenant',
-            usecase: 'generic',
+            usecase: 'retail',
+            industry: 'retail',
+            starterTemplate: 'blank-vertical-template',
           },
           params: undefined,
         }),
