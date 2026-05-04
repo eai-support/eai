@@ -1,13 +1,14 @@
 ---
-generated: "2026-05-02T17:46:00Z"
-source_commit: "06d9705d92561ba3dc873c32939e23dddbbbd64d"
+generated: true
+generated_at: "2026-05-04T17:57:42Z"
+source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
 ---
 
 # EAI CLI — Code Quality Review
 
 ## Overview
 
-This document assesses the code quality of the EAI CLI (v2.6.0) based on analysis of the TypeScript source code, test coverage, and implementation of 4 complete feature specifications in `.specify/specs/`.
+This document assesses the code quality of the EAI CLI (v2.7.0) based on analysis of the TypeScript source code, test coverage, and implementation of 4 complete feature specifications in `.specify/specs/`.
 
 ---
 
