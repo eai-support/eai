@@ -1,14 +1,27 @@
 ---
-generated: "2026-05-02T17:46:00Z"
-source_commit: "06d9705d92561ba3dc873c32939e23dddbbbd64d"
+generated: true
+generated_at: "2026-05-04T17:57:42Z"
+source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
 ---
 
 # EAI CLI — Overview
 
+## Executive Summary
+
+| Property | Value |
+|----------|-------|
+| **Service Name** | `@eai-tools/cli` (eai) |
+| **Version** | 2.7.0 |
+| **Primary Capability** | CLI tool for scaffolding, managing, and deploying vertical applications on the EAI platform |
+| **Primary Users** | Developers building enterprise AI vertical applications |
+| **Data Sensitivity** | Low (CLI tool; handles encrypted tokens locally, no user data storage) |
+| **Current Status** | Active development (latest: v2.7.0, 2026-05-04) |
+| **Last Material Change** | v2.7.0: Entra provisioning now validates `signin_ready` state and warns when false (PR #32) |
+
 ## Service Identity
 
 **Name**: `@eai-tools/cli` (eai)  
-**Version**: 2.6.0  
+**Version**: 2.7.0  
 **Purpose**: Enterprise AI Platform CLI for scaffolding, managing, and deploying vertical applications on the EAI platform.
 
 ## Description
@@ -119,7 +132,24 @@ node dist/index.js tenant list
 - **Static Registry**: Self-hosted npm registry on GitHub Pages (no external npm publish required)
 - **Structured Error Codes**: E001-E305 error catalog with suggestions
 
-## Recent Enhancements (v2.6.0)
+## Critical Integrations
+
+| Integration | Purpose | Direction |
+|-------------|---------|-----------|
+| Entra CIAM | Authentication via browser-based PKCE flow | Outbound |
+| EAI Platform API (v3) | Resource CRUD, type management, AI workflows | Outbound |
+| Azure App Config | Environment configuration sync | Outbound |
+| Azure Key Vault | Secrets management | Outbound |
+| GitHub Actions | Deployment orchestration | Triggered |
+| Azure App Service | Deployment target | Outbound |
+
+## Recent Enhancements
+
+### v2.7.0 (2026-05-04)
+
+- **Entra Provisioning Validation** (PR #32): `eai provision entra` now checks `signin_ready` status from AdminAPI and warns + exits non-zero when false, preventing incomplete Entra app registrations from blocking authentication
+
+### v2.6.0 (2026-05-02)
 
 - **Tenant Context Fixes**: Fixed tenant context handling for CLI tenant operations (PR #29)
 - **Local Tenant Lifecycle**: Added comprehensive local dedicated tenant lifecycle coverage with E2E tests
