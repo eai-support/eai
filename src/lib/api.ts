@@ -815,6 +815,7 @@ export class PlatformAPIClient {
     redirectUris: string[];
     environment: string | null;
     tenantId: string | null;
+    signinCompleteness: SigninCompletenessSummary | null;
   }> {
     const body = {
       tenant_id: request.tenantId,
@@ -853,6 +854,8 @@ export class PlatformAPIClient {
       environment?: unknown;
       tenant_id?: unknown;
       tenantId?: unknown;
+      signin_completeness?: unknown;
+      signinCompleteness?: unknown;
     };
     const clientId = data.clientId ?? data.client_id;
 
@@ -877,6 +880,52 @@ export class PlatformAPIClient {
       tenantId: typeof (data.tenantId ?? data.tenant_id) === 'string'
         ? (data.tenantId ?? data.tenant_id) as string
         : null,
+      signinCompleteness: parseSigninCompleteness(data.signinCompleteness ?? data.signin_completeness),
     };
   }
+}
+
+/**
+ * AdminAPI's per-step rollup of the post-provision sign-in wiring it
+ * performed against MS Graph (requiredResourceAccess merge, admin consent,
+ * preAuthorizedApplications). PublicAPI relays this verbatim. `signin_ready`
+ * is True only when every step the user-session sign-in path depends on
+ * landed; False is the silent-failure pattern that produces AADSTS650057
+ * the moment a vertical's BFF proxy tries to call PublicAPI.
+ */
+export interface SigninCompletenessSummary {
+  graphPermsAdded: boolean;
+  publicapiPermsAdded: boolean;
+  consentGranted: boolean;
+  publicapiPreauthorized: boolean;
+  signinReady: boolean;
+  warnings: string[];
+}
+
+function parseSigninCompleteness(value: unknown): SigninCompletenessSummary | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const v = value as Record<string, unknown>;
+  const warnings = Array.isArray(v.warnings)
+    ? v.warnings.filter((w): w is string => typeof w === 'string')
+    : [];
+  return {
+    graphPermsAdded: Boolean(v.graph_perms_added ?? v.graphPermsAdded),
+    publicapiPermsAdded: Boolean(v.publicapi_perms_added ?? v.publicapiPermsAdded),
+    consentGranted: Boolean(v.consent_granted ?? v.consentGranted),
+    publicapiPreauthorized: Boolean(v.publicapi_preauthorized ?? v.publicapiPreauthorized),
+    // Older AdminAPI deployments don't emit `signin_ready`; derive it from
+    // the four boolean steps so the CLI behaves identically once each step
+    // is observably True/False.
+    signinReady: typeof (v.signin_ready ?? v.signinReady) === 'boolean'
+      ? Boolean(v.signin_ready ?? v.signinReady)
+      : Boolean(
+        v.graph_perms_added ?? v.graphPermsAdded
+      )
+        && Boolean(v.publicapi_perms_added ?? v.publicapiPermsAdded)
+        && Boolean(v.consent_granted ?? v.consentGranted)
+        && Boolean(v.publicapi_preauthorized ?? v.publicapiPreauthorized),
+    warnings,
+  };
 }

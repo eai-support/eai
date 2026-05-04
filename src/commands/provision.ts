@@ -6,7 +6,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
-import { PlatformAPIClient, PlatformAPIRequestError } from '../lib/api.js';
+import { PlatformAPIClient, PlatformAPIRequestError, type SigninCompletenessSummary } from '../lib/api.js';
 import { loadTokens } from '../lib/auth.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
@@ -207,6 +207,7 @@ Diagnostics:
       redirectUris: string[];
       environment: string | null;
       tenantId: string | null;
+      signinCompleteness: SigninCompletenessSummary | null;
     };
     // Respect APP_BASE_PATH from the vertical's .env.local so verticals deployed
     // under a subpath (e.g. /van) get a redirect URI Auth.js can actually match.
@@ -273,6 +274,7 @@ Diagnostics:
       } else {
         out.warn('Platform response did not include scopes/redirect URIs — set ENTRA_SCOPES manually.');
       }
+      reportSigninCompleteness(result.signinCompleteness, result.clientId);
       return;
     }
 
@@ -317,7 +319,57 @@ Diagnostics:
     if (!optionalEnv.ENTRA_REDIRECT_URIS) {
       out.warn('Platform response did not include redirect URIs — set ENTRA_REDIRECT_URIS manually.');
     }
+
+    // Surface AdminAPI's post-provision sign-in wiring rollup. When the API
+    // permission merge / admin consent / preAuthorizedApplications steps
+    // failed silently, the app reg looks "created" but cannot reach
+    // PublicAPI from a user session — sign-in then fails with AADSTS650057
+    // the moment the vertical's BFF proxy makes its first call. Refusing to
+    // exit 0 here turns that silent failure into a loud, actionable one.
+    reportSigninCompleteness(result.signinCompleteness, result.clientId);
   });
+
+function reportSigninCompleteness(
+  summary: SigninCompletenessSummary | null,
+  clientId: string,
+): void {
+  if (!summary) {
+    // Older PublicAPI deployments don't relay this field. We can't tell
+    // success from failure, so don't claim either way — silent.
+    return;
+  }
+  if (summary.signinReady) {
+    out.success('Sign-in wiring complete: app reg has Graph + PublicAPI delegated permissions, admin consent, and preAuthorizedApplications.');
+    return;
+  }
+  // Not ready — emit a structured error block and exit non-zero so
+  // onboarding scripts fail fast instead of producing a broken vertical.
+  out.error('Sign-in wiring incomplete — provisioning succeeded but the new app reg cannot reach PublicAPI from a user session.');
+  out.warn('  ✗ Without the steps below, browser sign-in will fail with AADSTS650057 the moment the BFF proxy calls PublicAPI.');
+  const stepRow = (label: string, ok: boolean): [string, string] => [
+    label,
+    ok ? chalk.green('✓ done') : chalk.red('✗ missing'),
+  ];
+  out.table([
+    stepRow('Graph delegated perms', summary.graphPermsAdded),
+    stepRow('PublicAPI delegated perms', summary.publicapiPermsAdded),
+    stepRow('Admin consent', summary.consentGranted),
+    stepRow('preAuthorizedApplications', summary.publicapiPreauthorized),
+  ]);
+  if (summary.warnings.length > 0) {
+    out.warn('Reasons:');
+    for (const w of summary.warnings) {
+      out.warn(`  - ${w}`);
+    }
+  }
+  out.warn('Remediation:');
+  out.warn(`  1. Azure portal → Microsoft Entra ID → App registrations → ${chalk.cyan(clientId)}`);
+  out.warn('  2. API permissions → Add a permission → APIs my organization uses → select PublicAPI → Delegated permissions → access_token → Add');
+  out.warn('  3. Grant admin consent for the directory tenant');
+  out.warn('  4. Re-run sign-in (clear localhost cookie / use Incognito)');
+  out.warn('Or: ask your platform team to redeploy AdminAPI / verify its service principal has Application.ReadWrite.All on Microsoft Graph.');
+  process.exit(1);
+}
 
 // ─── eai provision storage ───────────────────────────────────────────────
 
