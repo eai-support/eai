@@ -395,6 +395,13 @@ tenantCommand
   .requiredOption('--slug <slug>', 'Tenant slug (kebab-case)')
   .option('--parent <id>', 'Parent tenant ID')
   .option('--domain <domains>', 'Comma-separated domain list')
+  .option(
+    '--usecase <usecase>',
+    'Tenant usecase: council|retail|healthcare|finance|manufacturing|generic',
+    'generic',
+  )
+  .option('--industry <industry>', 'Signup/onboarding industry segment')
+  .option('--starter-template <key>', 'Starter vertical template key', 'blank-vertical-template')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
@@ -418,6 +425,9 @@ tenantCommand
         slug: options.slug,
         parent: options.parent,
         domain: options.domain?.split(',').map((d: string) => d.trim()),
+        usecase: options.usecase,
+        industry: options.industry,
+        starterTemplate: options.starterTemplate,
       });
 
       if (!res.ok) {

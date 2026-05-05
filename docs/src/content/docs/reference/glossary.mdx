@@ -81,7 +81,7 @@ See: [Architecture](/eai-cli/concepts/architecture/), [API Surface](/eai-cli/ref
 
 ### Platform SDK
 
-A TypeScript library (`@eai-tools/platform-sdk`) used inside Next.js applications to interact with the [Platform API](#platform-api). Unlike the CLI (which calls the API directly), the SDK routes requests through the [BFF proxy](#bff-proxy).
+A local TypeScript library (`packages/platform-sdk`, package name `@enterpriseaigroup/platform-sdk`) used inside Next.js applications to interact with the [Platform API](#platform-api). Unlike the CLI (which calls the API directly), the SDK routes requests through the [BFF proxy](#bff-proxy). The SDK is copied into generated apps until it is promoted to a shared package.
 
 ### Platform Service
 

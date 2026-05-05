@@ -1301,15 +1301,20 @@ export const doctorCommand = new Command('doctor')
       out.success('Platform SDK present');
     } catch {
       try {
-        await access(join(root, 'node_modules', '@eai-tools', 'platform-sdk'));
+        await access(join(root, 'node_modules', '@enterpriseaigroup', 'platform-sdk'));
         out.success('Platform SDK installed');
       } catch {
-        issues.push({
-          severity: 'warn',
-          message: 'Platform SDK not found',
-          fix: 'Run `npm install` to install @eai-tools/platform-sdk',
-        });
-        out.warn('Platform SDK not found');
+        try {
+          await access(join(root, 'node_modules', '@eai-tools', 'platform-sdk'));
+          out.success('Legacy Platform SDK installed');
+        } catch {
+          issues.push({
+            severity: 'warn',
+            message: 'Platform SDK not found',
+            fix: 'Restore local packages/platform-sdk; the shared package is not promoted yet.',
+          });
+          out.warn('Platform SDK not found');
+        }
       }
     }
 

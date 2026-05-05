@@ -10,6 +10,7 @@ import {
   normalizeBatchDeleteIds,
   normalizeBatchUpdateItems,
 } from '../../src/commands/resources.js';
+import { buildVerticalEnrollmentData } from '../../src/commands/vertical.js';
 
 vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => undefined),
@@ -117,6 +118,7 @@ describe('resource type diagnostics', () => {
             slug: 'root-tenant',
             parentTenant: undefined,
             domain: ['root.example.com'],
+            usecase: 'generic',
           },
           params: undefined,
         }),
@@ -133,6 +135,9 @@ describe('resource type diagnostics', () => {
       name: 'Child Tenant',
       slug: 'child-tenant',
       parent: 'parent-tenant',
+      usecase: 'retail',
+      industry: 'retail',
+      starterTemplate: 'blank-vertical-template',
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -146,9 +151,55 @@ describe('resource type diagnostics', () => {
           body: {
             displayName: 'Child Tenant',
             slug: 'child-tenant',
-            usecase: 'generic',
+            usecase: 'retail',
+            industry: 'retail',
+            starterTemplate: 'blank-vertical-template',
           },
           params: undefined,
+        }),
+      }),
+    );
+  });
+
+  test('builds dynamic vertical enrollment payloads without child tenant fields', () => {
+    expect(buildVerticalEnrollmentData('TikTok V1', 'company-tenant', {
+      template: 'blank-vertical-template',
+      source: 'eai-cli',
+    })).toEqual({
+      tenantId: 'company-tenant',
+      verticalKey: 'tik-tok-v1',
+      displayName: 'TikTok V1',
+      status: 'pending',
+      source: 'eai-cli',
+      templateKey: 'blank-vertical-template',
+    });
+  });
+
+  test('creates tenant vertical enrollment through ResourceAPI resources route', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new PlatformAPIClient('https://test-api.example.com', 'company-tenant');
+    await client.createResource('tenant-vertical-enrollment', {
+      tenantId: 'company-tenant',
+      verticalKey: 'tiktokv1',
+      displayName: 'TikTok V1',
+      status: 'pending',
+      source: 'eai-cli',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://test-api.example.com/v3/resources/company-tenant/tenant-vertical-enrollment',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          data: {
+            tenantId: 'company-tenant',
+            verticalKey: 'tiktokv1',
+            displayName: 'TikTok V1',
+            status: 'pending',
+            source: 'eai-cli',
+          },
         }),
       }),
     );
@@ -173,6 +224,31 @@ describe('resource type diagnostics', () => {
           backend: 'documentdb',
           dry_run: true,
           rebuild_search: true,
+          provisioning_mode: 'dedicated-tenant-storage',
+        }),
+      }),
+    );
+  });
+
+  test('provisions tenant vertical storage through the same ResourceAPI tenant storage route', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new PlatformAPIClient('https://test-api.example.com', 'company-tenant');
+    await client.provisionStorage({
+      backend: 'documentdb',
+      dryRun: false,
+      rebuildSearch: false,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://test-api.example.com/v3/resources/company-tenant/storage/provision',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          backend: 'documentdb',
+          dry_run: false,
+          rebuild_search: false,
           provisioning_mode: 'dedicated-tenant-storage',
         }),
       }),

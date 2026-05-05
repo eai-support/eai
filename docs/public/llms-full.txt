@@ -3462,7 +3462,7 @@ EAI Platform Health Check
 | Object Types                | `object-types.ts` loads without errors               |
 | Deployment workflow         | `.github/workflows/deploy-demo.yml` exists           |
 | Dependencies                | `node_modules` directory exists                      |
-| Platform SDK                | `@eai-tools/platform-sdk` is installed               |
+| Platform SDK                | Local `packages/platform-sdk` is present             |
 
 ## eai verify
 
@@ -3508,7 +3508,7 @@ All 5 checks passed
 **Cause:** The CLI cannot find an EAI project root. It looks for:
 - `eai.config.ts` in the current or parent directories
 - `src/eai.config/object-types.ts`
-- `package.json` with `@eai-tools/platform-sdk` or `@eai-tools/core` as a dependency
+- `package.json` with `@enterpriseaigroup/platform-sdk`, legacy `@eai-tools/platform-sdk`, or `@eai-tools/core` as a dependency
 
 **Fix:**
 ```bash
@@ -3997,7 +3997,7 @@ The EnterpriseAI platform follows a layered architecture. Developer tools (the C
 
 The **EAI CLI** calls the Platform API directly using a Bearer token obtained through Entra CIAM browser-based authorization code flow with PKCE. It is the primary tool for development-time operations: scaffolding, seeding Object Types, managing resources, and deploying.
 
-The **Platform SDK** (`@eai-tools/platform-sdk`) is a TypeScript library used inside Next.js applications. It calls the Platform API through the BFF proxy (see below) and provides typed helpers for resource operations, chat, and document uploads.
+The **Platform SDK** (`packages/platform-sdk`, package name `@enterpriseaigroup/platform-sdk`) is a local TypeScript library used inside Next.js applications. It calls the Platform API through the BFF proxy (see below) and provides typed helpers for resource operations, chat, and document uploads. It is copied into generated apps until it is promoted to a shared package.
 
 ### Platform API
 
@@ -7041,7 +7041,7 @@ See: [Architecture](/eai-cli/concepts/architecture/), [API Surface](/eai-cli/ref
 
 ### Platform SDK
 
-A TypeScript library (`@eai-tools/platform-sdk`) used inside Next.js applications to interact with the [Platform API](#platform-api). Unlike the CLI (which calls the API directly), the SDK routes requests through the [BFF proxy](#bff-proxy).
+A local TypeScript library (`packages/platform-sdk`, package name `@enterpriseaigroup/platform-sdk`) used inside Next.js applications to interact with the [Platform API](#platform-api). Unlike the CLI (which calls the API directly), the SDK routes requests through the [BFF proxy](#bff-proxy). The SDK is copied into generated apps until it is promoted to a shared package.
 
 ### Platform Service
 
@@ -18832,4 +18832,3 @@ export const objectTypes = {
 - **Contract-linked applications create an audit trail.** The link between VendorApplication and Contract ensures that every supply agreement traces back to a vetted and approved application.
 - **Performance scores drive data-driven renewals.** Quarterly PerformanceReviews produce numeric scores that inform contract renewal, amendment, or termination decisions.
 - **Category-based vendor segmentation.** Categorizing vendors by product type enables procurement leads to assess supplier diversity and identify gaps in the vendor portfolio.
-
