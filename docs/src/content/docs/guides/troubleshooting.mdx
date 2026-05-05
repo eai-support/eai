@@ -62,7 +62,7 @@ EAI Platform Health Check
 | Object Types                | `object-types.ts` loads without errors               |
 | Deployment workflow         | `.github/workflows/deploy-demo.yml` exists           |
 | Dependencies                | `node_modules` directory exists                      |
-| Platform SDK                | `@eai-tools/platform-sdk` is installed               |
+| Platform SDK                | Local `packages/platform-sdk` is present             |
 
 ## eai verify
 
@@ -108,7 +108,7 @@ All 5 checks passed
 **Cause:** The CLI cannot find an EAI project root. It looks for:
 - `eai.config.ts` in the current or parent directories
 - `src/eai.config/object-types.ts`
-- `package.json` with `@eai-tools/platform-sdk` or `@eai-tools/core` as a dependency
+- `package.json` with `@enterpriseaigroup/platform-sdk`, legacy `@eai-tools/platform-sdk`, or `@eai-tools/core` as a dependency
 
 **Fix:**
 ```bash

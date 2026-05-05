@@ -81,6 +81,9 @@ eai tenant create [options]
 | `--slug <slug>` | Tenant slug in kebab-case (required) | Required |
 | `--parent <id>` | Parent tenant ID for hierarchical tenants | -- |
 | `--domain <domains>` | Comma-separated list of associated domains | -- |
+| `--usecase <usecase>` | Tenant usecase (`council`, `retail`, `healthcare`, `finance`, `manufacturing`, `generic`) | `generic` |
+| `--industry <industry>` | Signup/onboarding industry segment used for baseline defaults | -- |
+| `--starter-template <key>` | Starter vertical template key | `blank-vertical-template` |
 | `--format <format>` | Output format (`text` or `json`) | `text` |
 | `--json` | Legacy alias for `--format json` | `false` |
 
@@ -191,7 +194,9 @@ eai tenant create --name "Claims Portal" --slug claims-portal --domain claims.my
 eai tenant create \
   --name "Claims Staff" \
   --slug claims-staff \
-  --parent a7c9e4d1-b2c3-4567-89ab-cdef01234567
+  --parent a7c9e4d1-b2c3-4567-89ab-cdef01234567 \
+  --usecase generic \
+  --starter-template blank-vertical-template
 ```
 
 Example outcome when bootstrap succeeds:

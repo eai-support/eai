@@ -75,7 +75,7 @@ export const initCommand = new Command('init')
   .option('--from <repo>', 'GitHub repo URL or local path for template', TEMPLATE_REPO)
   .option('--skip-prompts', 'Use defaults without interactive prompts', false)
   .option('--tenant <id>', 'Bind this vertical to the given platform tenant ID (non-interactive)')
-  .option('--create-child-tenant', '[not implemented] Create a child tenant under the default and bind to it')
+  .option('--create-child-tenant', '[not implemented] Create a real child tenant boundary under the default tenant')
   .option('--no-gofer', 'Skip installing Gofer AI CLI assets')
   .addHelpText('after', `
 Gofer AI CLI assets are installed by default:
@@ -449,7 +449,7 @@ async function promptTenantBinding(
   }
 
   choices.push({
-    name: 'Create a child tenant under the default  [not implemented]',
+    name: 'Create a child tenant boundary under the default  [not implemented]',
     value: 'child',
   });
 
@@ -475,14 +475,14 @@ async function promptTenantBinding(
     // `bootstrapChildTenantAdmin`) is exercised by `eai tenant create --parent`,
     // which currently has a known bootstrap-admin-assignment failure mode. Until
     // that is resolved, `init` fails hard rather than leaving a half-provisioned
-    // child tenant bound to a brand-new vertical.
+    // child tenant bound to a brand-new workspace boundary.
     //
     // When ready, the implementation is roughly:
     //   const { childName, childSlug } = await inquirer.prompt([...]);
     //   const client = new PlatformAPIClient(publicApiUrl, activeTenant!.id);
     //   const res = await client.createTenant({ name: childName, slug: childSlug, parent: activeTenant!.id });
     //   ... parse response, run bootstrapChildTenantAdmin, return new tenant id.
-    out.error('Creating a child tenant from `eai init` is not implemented yet. Create the child via `eai tenant create --parent <id>` and re-run `eai init` with `--tenant <child-id>` or the "Other tenant" option.');
+    out.error('Creating a child tenant from `eai init` is not implemented yet. Use child tenants only for real workspace/company hierarchy boundaries. For a vertical app under the active company tenant, run `eai vertical create "<name>" --template blank-vertical-template` after init.');
     process.exit(1);
   }
 
@@ -954,7 +954,7 @@ import { useResources } from '@/hooks/useResources';
 const { list, get, create, update, delete: remove } = useResources<MyData>('MyType');
 
 // Platform SDK (server-side)
-import { EAIPlatformClient } from '@eai-tools/platform-sdk';
+import { EAIPlatformClient } from '@enterpriseaigroup/platform-sdk';
 const client = new EAIPlatformClient({ tenantId: 'my-tenant' });
 await client.resources.create('MyType', { title: 'Hello' });
 \`\`\`
@@ -1007,7 +1007,7 @@ Key variables:
 | \`src/eai.config/default.ts\` | Tenant configuration |
 | \`src/auth.ts\` | Auth.js configuration |
 | \`src/app/api/eai/[[...rest]]/route.ts\` | BFF proxy (token injection) |
-| \`packages/platform-sdk/\` | Typed API client |
+| \`packages/platform-sdk/\` | Local typed API client source until the SDK is promoted to a shared package |
 | \`.github/workflows/deploy-demo.yml\` | Deployment workflow |
 `;
 }

@@ -45,7 +45,7 @@ The EnterpriseAI platform follows a layered architecture. Developer tools (the C
 
 The **EAI CLI** calls the Platform API directly using a Bearer token obtained through Entra CIAM browser-based authorization code flow with PKCE. It is the primary tool for development-time operations: scaffolding, seeding Object Types, managing resources, and deploying.
 
-The **Platform SDK** (`@eai-tools/platform-sdk`) is a TypeScript library used inside Next.js applications. It calls the Platform API through the BFF proxy (see below) and provides typed helpers for resource operations, chat, and document uploads.
+The **Platform SDK** (`packages/platform-sdk`, package name `@enterpriseaigroup/platform-sdk`) is a local TypeScript library used inside Next.js applications. It calls the Platform API through the BFF proxy (see below) and provides typed helpers for resource operations, chat, and document uploads. It is copied into generated apps until it is promoted to a shared package.
 
 ### Platform API
 
