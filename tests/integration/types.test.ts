@@ -618,7 +618,29 @@ describe('validateObjectTypeStorageMetadata', () => {
 });
 
 describe('collectTypeStorageValidationIssues', () => {
-  test('reports tenant and type context for seed-time storage failures', () => {
+  test('accepts published types with ready PostgreSQL storage metadata', () => {
+    const issues = collectTypeStorageValidationIssues({
+      template: [
+        {
+          ...buildObjectType([]),
+          status: 'published',
+          storageBackend: 'postgresql',
+          storageMetadataStatus: 'ready',
+          storageBinding: {
+            sql: {
+              databaseAlias: 'resourceapi-postgres',
+              tenantSchemaStrategy: 'per-tenant-schema',
+              tableName: 'workflows',
+            },
+          },
+        },
+      ],
+    });
+
+    expect(issues).toEqual([]);
+  });
+
+  test('rejects published types without ready storage metadata', () => {
     const issues = collectTypeStorageValidationIssues({
       template: [
         {
@@ -633,6 +655,33 @@ describe('collectTypeStorageValidationIssues', () => {
         tenantKey: 'template',
         typeName: 'Workflow',
         issue: expect.stringContaining('published Object Types require storageMetadataStatus "ready"'),
+      },
+    ]);
+  });
+
+  test('rejects ready PostgreSQL metadata with incomplete binding', () => {
+    const issues = collectTypeStorageValidationIssues({
+      template: [
+        {
+          ...buildObjectType([]),
+          storageBackend: 'postgresql',
+          storageMetadataStatus: 'ready',
+          storageBinding: {
+            sql: {
+              databaseAlias: 'resourceapi-postgres',
+              tenantSchemaStrategy: 'per-tenant-schema',
+              tableName: '',
+            },
+          },
+        },
+      ],
+    });
+
+    expect(issues).toEqual([
+      {
+        tenantKey: 'template',
+        typeName: 'Workflow',
+        issue: expect.stringContaining('tableName'),
       },
     ]);
   });
