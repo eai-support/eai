@@ -200,6 +200,9 @@ describe('eai init', () => {
 
     await expectDirectoryCreated(ctx, 'quick-app');
     await expectFileContains(ctx, 'quick-app/package.json', '"name": "@eai-tools/quick-app"');
+    await expectFileContains(ctx, 'quick-app/src/eai.config/object-types.ts', "storageMetadataStatus: 'ready' as const");
+    await expectFileContains(ctx, 'quick-app/src/eai.config/object-types.ts', "databaseAlias: 'resourceapi-postgres'");
+    await expectFileContains(ctx, 'quick-app/src/eai.config/object-types.ts', "tableName: 'tenant_resources'");
     await expectFileExists(ctx, 'quick-app/.claude/commands/0_business_scenario.md');
     await expectFileExists(ctx, 'quick-app/.claude/agents/codebase-analyzer.md');
     await expectFileExists(ctx, 'quick-app/.specify/commands/1_gofer_research.md');
