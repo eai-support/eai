@@ -680,12 +680,27 @@ function generateObjectTypesScaffold(opts: InitOptions): string {
  * └────────────┴─────────────────────────────────────────────────┘
  */
 
+const postgresqlResourceStorage = {
+  schemaVersion: 1,
+  storageBackend: 'postgresql' as const,
+  storageMetadataStatus: 'ready' as const,
+  storageBinding: {
+    sql: {
+      databaseAlias: 'resourceapi-postgres',
+      tenantSchemaStrategy: 'per-tenant-database' as const,
+      schemaName: 'resources',
+      tableName: 'tenant_resources',
+    },
+  },
+};
+
 export const objectTypes = {
   '${tenantKey}': [
     {
       name: 'Record',
       displayName: 'Record',
       description: 'A sample record — replace with your domain model',
+      ...postgresqlResourceStorage,
       properties: [
         {
           name: 'title',
@@ -799,6 +814,7 @@ export const objectTypes = {
       name: 'Document',
       displayName: 'Document',
       description: 'Uploaded file with classification metadata',
+      ...postgresqlResourceStorage,
       properties: [
         {
           name: 'fileName',
