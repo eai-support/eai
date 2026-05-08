@@ -10,11 +10,13 @@ import { loadObjectTypes, type ObjectTypeDefinition, type ObjectTypeProperty } f
 import { validateObjectTypeDefaultValues } from '../../src/lib/object-type-defaults.js';
 import {
   collectTypeDefaultValueValidationIssues,
+  collectTypeStorageValidationIssues,
   describeFailedPlatformResponse,
   findMatchingRemoteTypes,
   resolveDefaultTenantKey,
   resolveTenantIdForKey,
   shouldFailTypeSeedRun,
+  validateObjectTypeStorageMetadata,
   verifyTypeSeedConvergence,
   verifyTypeSeedConvergenceWithRetry,
 } from '../../src/commands/types.js';
@@ -562,6 +564,75 @@ describe('collectTypeDefaultValueValidationIssues', () => {
         tenantKey: 'template',
         typeName: 'Workflow',
         issue: expect.stringContaining('must match one of the select option values'),
+      },
+    ]);
+  });
+});
+
+describe('validateObjectTypeStorageMetadata', () => {
+  test('rejects published types that are not storage-ready', () => {
+    expect(validateObjectTypeStorageMetadata({
+      ...buildObjectType([]),
+      status: 'published',
+    })).toEqual([
+      expect.stringContaining('published Object Types require storageMetadataStatus "ready"'),
+    ]);
+  });
+
+  test('accepts ResourceAPI PostgreSQL storage metadata', () => {
+    expect(validateObjectTypeStorageMetadata({
+      ...buildObjectType([]),
+      status: 'published',
+      schemaVersion: 1,
+      storageBackend: 'postgresql',
+      storageMetadataStatus: 'ready',
+      storageBinding: {
+        sql: {
+          databaseAlias: 'resourceapi-postgres',
+          tenantSchemaStrategy: 'per-tenant-database',
+          schemaName: 'resources',
+          tableName: 'tenant_resources',
+        },
+      },
+    })).toEqual([]);
+  });
+
+  test('reports missing backend-specific binding fields', () => {
+    expect(validateObjectTypeStorageMetadata({
+      ...buildObjectType([]),
+      status: 'published',
+      storageBackend: 'documentdb',
+      storageMetadataStatus: 'ready',
+      storageBinding: {
+        documentdb: {
+          databaseAlias: 'resourceapi-cosmos',
+          databaseName: 'resources',
+          collectionName: 'tenantResources',
+          partitionKey: '',
+        },
+      },
+    })).toEqual([
+      'DocumentDB storageBinding is incomplete. Missing: partitionKey',
+    ]);
+  });
+});
+
+describe('collectTypeStorageValidationIssues', () => {
+  test('reports tenant and type context for seed-time storage failures', () => {
+    const issues = collectTypeStorageValidationIssues({
+      template: [
+        {
+          ...buildObjectType([]),
+          status: 'published',
+        },
+      ],
+    });
+
+    expect(issues).toEqual([
+      {
+        tenantKey: 'template',
+        typeName: 'Workflow',
+        issue: expect.stringContaining('published Object Types require storageMetadataStatus "ready"'),
       },
     ]);
   });
