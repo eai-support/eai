@@ -207,6 +207,12 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'quick-app/.agents/skills/gofer/1_gofer_research/SKILL.md');
     await expectFileExists(ctx, 'quick-app/.gemini/commands/gofer/1_gofer_research.md');
     await expectFileExists(ctx, 'quick-app/.github/skills/0-business-scenario/SKILL.md');
+    const objectTypes = await readFile(join(env.dir, 'quick-app', 'src', 'eai.config', 'object-types.ts'), 'utf-8');
+    expect(objectTypes).toContain("storageMetadataStatus: 'ready' as const");
+    expect(objectTypes).toContain("databaseAlias: 'resourceapi-postgres'");
+    expect(objectTypes).toContain("tenantSchemaStrategy: 'per-tenant-schema' as const");
+    expect(objectTypes).toContain("tableName: 'records'");
+    expect(objectTypes).toContain("tableName: 'documents'");
     expectNoPrompts(ctx);
     expectCommandSucceeded(result);
   }, 30_000);
