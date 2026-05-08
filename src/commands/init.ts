@@ -783,6 +783,16 @@ export const objectTypes = {
           ],
         },
       ],
+      storageBackend: 'postgresql' as const,
+      schemaVersion: 1,
+      storageMetadataStatus: 'ready' as const,
+      storageBinding: {
+        sql: {
+          databaseAlias: 'resourceapi-postgres',
+          tenantSchemaStrategy: 'per-tenant-schema' as const,
+          tableName: 'records',
+        },
+      },
       status: 'published' as const,
     },
     {
@@ -822,6 +832,16 @@ export const objectTypes = {
       ],
       linkTypes: [],
       actions: [],
+      storageBackend: 'postgresql' as const,
+      schemaVersion: 1,
+      storageMetadataStatus: 'ready' as const,
+      storageBinding: {
+        sql: {
+          databaseAlias: 'resourceapi-postgres',
+          tenantSchemaStrategy: 'per-tenant-schema' as const,
+          tableName: 'documents',
+        },
+      },
       status: 'published' as const,
     },
   ],

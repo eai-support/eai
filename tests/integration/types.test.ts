@@ -10,6 +10,7 @@ import { loadObjectTypes, type ObjectTypeDefinition, type ObjectTypeProperty } f
 import { validateObjectTypeDefaultValues } from '../../src/lib/object-type-defaults.js';
 import {
   collectTypeDefaultValueValidationIssues,
+  collectTypeStorageValidationIssues,
   describeFailedPlatformResponse,
   findMatchingRemoteTypes,
   resolveDefaultTenantKey,
@@ -562,6 +563,76 @@ describe('collectTypeDefaultValueValidationIssues', () => {
         tenantKey: 'template',
         typeName: 'Workflow',
         issue: expect.stringContaining('must match one of the select option values'),
+      },
+    ]);
+  });
+});
+
+describe('collectTypeStorageValidationIssues', () => {
+  test('accepts published types with ready PostgreSQL storage metadata', () => {
+    const issues = collectTypeStorageValidationIssues({
+      template: [
+        {
+          ...buildObjectType([]),
+          status: 'published',
+          storageBackend: 'postgresql',
+          storageMetadataStatus: 'ready',
+          storageBinding: {
+            sql: {
+              databaseAlias: 'resourceapi-postgres',
+              tenantSchemaStrategy: 'per-tenant-schema',
+              tableName: 'workflows',
+            },
+          },
+        },
+      ],
+    });
+
+    expect(issues).toEqual([]);
+  });
+
+  test('rejects published types without ready storage metadata', () => {
+    const issues = collectTypeStorageValidationIssues({
+      template: [
+        {
+          ...buildObjectType([]),
+          status: 'published',
+        },
+      ],
+    });
+
+    expect(issues).toEqual([
+      {
+        tenantKey: 'template',
+        typeName: 'Workflow',
+        issue: expect.stringContaining('storageMetadataStatus "ready"'),
+      },
+    ]);
+  });
+
+  test('rejects ready PostgreSQL metadata with incomplete binding', () => {
+    const issues = collectTypeStorageValidationIssues({
+      template: [
+        {
+          ...buildObjectType([]),
+          storageBackend: 'postgresql',
+          storageMetadataStatus: 'ready',
+          storageBinding: {
+            sql: {
+              databaseAlias: 'resourceapi-postgres',
+              tenantSchemaStrategy: 'per-tenant-schema',
+              tableName: '',
+            },
+          },
+        },
+      ],
+    });
+
+    expect(issues).toEqual([
+      {
+        tenantKey: 'template',
+        typeName: 'Workflow',
+        issue: expect.stringContaining('tableName'),
       },
     ]);
   });
