@@ -1,14 +1,14 @@
 ---
 generated: true
-generated_at: "2026-05-04T17:57:42Z"
-source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
+generated_at: "2026-05-08T17:54:00Z"
+source_commit: "825bd7f4db75d5f0be796914cc300b14969c2e74"
 ---
 
 # EAI CLI — Code Quality Review
 
 ## Overview
 
-This document assesses the code quality of the EAI CLI (v2.7.0) based on analysis of the TypeScript source code, test coverage, and implementation of 4 complete feature specifications in `.specify/specs/`.
+This document assesses the code quality of the EAI CLI (v2.8.3) based on analysis of the TypeScript source code, test coverage, and implementation of 4 complete feature specifications in `.specify/specs/`.
 
 ---
 
@@ -120,15 +120,24 @@ async updateResource(type: string, id: string, data: Record<string, unknown>, ve
 
 **Location**: `src/commands/tenant.ts`, `src/lib/tenant-context.ts`
 
-✅ **Test Coverage**: Vitest + MSW for unit tests (4.1.3)
+✅ **Test Coverage**: Vitest + MSW for integration tests (4.1.3)
 - Core library modules tested
 - API mocking via MSW
+- 3,959 lines of integration tests across 15 test files
+- Coverage includes: resources, types, tenant, login, init, provision, verify, docs
 
 ✅ **Spec Alignment**: 4 complete specs with 100/100 validation scores
 - 011-Install Gofer
 - 901-CLI Platform Alignment
 - 902-Provision Entra Diagnostics
 - 903-Provision Entra CIAM Routing
+
+✅ **Recent Fixes (v2.8.0 → v2.8.3)**:
+- **Storage Metadata Scaffolding**: `eai init` now generates Object Types with correct `storageMetadataStatus: 'draft'` field (PR #35)
+- **Tenant Lookup**: Fixed production tenant context resolution after CLI login (PR #33, commit 72ff1cd)
+- **Vertical Enrollments**: New `eai vertical` command for managing tenant app/product instances (PR #31)
+
+**Location**: `src/commands/init.ts`, `src/lib/tenant-context.ts`, `src/commands/vertical.ts`
 
 ### Areas for Improvement
 
@@ -140,7 +149,7 @@ async updateResource(type: string, id: string, data: Record<string, unknown>, ve
 - **Mitigation**: Module-level cache prevents multiple refreshes
 - **Recommendation**: Add mutex lock for refresh operation
 
-**Overall**: Code is highly correct with strong type safety, security, and validation. Spec-driven development ensures alignment with requirements.
+**Overall**: Code is highly correct with strong type safety, security, and validation. Recent fixes in v2.8.x series improved storage metadata handling and tenant context resolution. Spec-driven development ensures alignment with requirements.
 
 ---
 
@@ -194,7 +203,7 @@ async updateResource(type: string, id: string, data: Record<string, unknown>, ve
 
 ✅ **Modular Architecture**:
 - Clear separation: commands, lib, tests
-- 15 command files, 16 library modules
+- 16 command files (added `vertical.ts` in v2.8.0), 16 library modules
 - Each module has single responsibility
 
 ✅ **Testable Design**:
@@ -223,9 +232,10 @@ async updateResource(type: string, id: string, data: Record<string, unknown>, ve
 
 ### Areas for Improvement
 
-⚠️ **Test Coverage Gaps**: Not all commands have unit tests
+⚠️ **Test Coverage Gaps**: Not all commands have integration tests
 - **Recommendation**: Aim for 80%+ coverage on core library modules
-- **Progress**: MSW setup complete; need to expand command tests
+- **Progress**: MSW setup complete; 3,959 lines of integration tests across 15 files (significant improvement from v2.7.0)
+- **Recent**: Added tests for resources (515 lines), types (725 lines), tenant (311 lines), init (343 lines)
 
 ⚠️ **Magic Strings**: Some API paths hardcoded in `api.ts`
 - **Recommendation**: Extract to constants or path builder functions
@@ -303,6 +313,7 @@ async updateResource(type: string, id: string, data: Record<string, unknown>, ve
 
 5. **Standardize Error Handling** (Correctness)
    - Ensure all commands use `exitWithError()` with structured codes
+   - Status: Most commands now use `resolveCommandContext()` for centralized error handling
 
 ### Low Priority
 
@@ -346,5 +357,11 @@ The EAI CLI demonstrates high code quality across all dimensions:
 - **Performance** (8/10): Efficient caching, non-blocking operations, streaming support
 - **Maintainability** (9/10): Modular architecture, testable design, automated releases
 - **Security** (9/10): PKCE flow, token encryption, sanitized errors
+
+**Recent Improvements (v2.8.0 → v2.8.3)**:
+- Storage metadata scaffolding now aligns with platform validation rules
+- Tenant context resolution fixed for production environment
+- Test coverage expanded significantly (3,959 lines across 15 integration test files)
+- New `eai vertical` command for managing tenant app/product instances
 
 The codebase is production-ready with minor optimization opportunities. Spec-driven development ensures architectural decisions are intentional and traceable.

@@ -1,14 +1,14 @@
 ---
 generated: true
-generated_at: "2026-05-04T17:57:42Z"
-source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
+generated_at: "2026-05-08T17:54:00Z"
+source_commit: "825bd7f4db75d5f0be796914cc300b14969c2e74"
 ---
 
 # EAI CLI — Patterns & Tech Debt
 
 ## Overview
 
-This document identifies design patterns, anti-patterns, and technical debt in the EAI CLI codebase (v2.7.0).
+This document identifies design patterns, anti-patterns, and technical debt in the EAI CLI codebase (v2.8.3).
 
 ---
 
@@ -40,7 +40,8 @@ resourcesCommand
 - `src/commands/init.ts:19`
 - `src/commands/login.ts:12`
 - `src/commands/types.ts:18`
-- 15 command files total
+- `src/commands/vertical.ts:14` (added in v2.8.0)
+- 16 command files total
 
 ---
 
@@ -379,6 +380,8 @@ getToken((err, token) => {
 
 **Priority**: Low
 
+**Status**: No changes in v2.8.3 (pattern remains stable)
+
 **References**:
 - `src/lib/config.ts:150-200`
 
@@ -435,24 +438,31 @@ await pLimit(5).map(objectTypes, type => seedType(type));
 
 ---
 
-### 4. Test Coverage Gaps 💰💰
+### 4. Test Coverage Gaps 💰
 
 **Location**: `tests/`
 
-**Issue**: Not all commands have unit tests.
+**Issue**: Not all commands have integration tests.
 
-**Current Coverage** (estimated):
-- Library modules: ~60%
-- Commands: ~20%
+**Current Coverage** (v2.8.3):
+- Integration tests: 3,959 lines across 15 test files
+- Commands tested: resources (515 lines), types (725 lines), tenant (311 lines), init (343 lines), provision (515 lines), verify (251 lines)
+- Commands with limited tests: vertical (new in v2.8.0)
+
+**Improvement**: Significant progress from v2.7.0
+- Added 120+ lines of types tests
+- Added 78+ lines of resources tests
+- Added 31+ lines of tenant tests
+- MSW-based API mocking expanded
 
 **Recommendation**:
 - Target 80%+ coverage on `src/lib/*.ts`
-- Add command tests using MSW for API mocking
+- Add tests for `vertical` command
 
-**Priority**: High (improves confidence in refactoring)
+**Priority**: Medium (significantly improved from High)
 
 **References**:
-- `tests/**/*.test.ts`
+- `tests/integration/*.test.ts` (15 files)
 - `vitest.config.ts`
 
 ---
@@ -514,19 +524,21 @@ await pLimit(5).map(objectTypes, type => seedType(type));
 
 ## Tech Debt Summary
 
-| Item | Priority | Effort | Impact |
-|------|----------|--------|--------|
-| Sequential Type Seeding | Medium | Small | Medium (developer workflow) |
-| Test Coverage Gaps | High | Large | High (confidence in refactoring) |
-| Encryption Key Derivation | Medium | Medium | Medium (security improvement) |
-| TypeScript Stripping via Temp File | Low | Medium | Low (works well) |
-| Profile Config File Format | Low | Small | Low (nice-to-have) |
-| Magic Strings (API paths) | Low | Small | Low (readability) |
-| God Object (PlatformAPIClient) | Low | Large | Low (works well) |
+| Item | Priority | Effort | Impact | Status (v2.8.3) |
+|------|----------|--------|--------|-----------------|
+| Sequential Type Seeding | Medium | Small | Medium (developer workflow) | No change |
+| Test Coverage Gaps | Medium | Medium | Medium (confidence in refactoring) | Improved (was High) |
+| Encryption Key Derivation | Medium | Medium | Medium (security improvement) | No change |
+| TypeScript Stripping via Temp File | Low | Medium | Low (works well) | No change |
+| Profile Config File Format | Low | Small | Low (nice-to-have) | No change |
+| Magic Strings (API paths) | Low | Small | Low (readability) | No change |
+| God Object (PlatformAPIClient) | Low | Large | Low (works well) | No change |
 
-**Total Debt**: 7 items (2 high/medium priority, 5 low priority)
+**Total Debt**: 7 items (3 medium priority, 4 low priority)
 
-**Recommendation**: Prioritize test coverage and parallel type seeding. Other items are low-impact and can be deferred.
+**Changes in v2.8.3**: Test coverage significantly improved with 3,959 lines of integration tests, reducing priority from High to Medium.
+
+**Recommendation**: Prioritize parallel type seeding (quick win). Test coverage has improved significantly. Other items are low-impact and can be deferred.
 
 ---
 
@@ -554,11 +566,34 @@ await pLimit(5).map(objectTypes, type => seedType(type));
    - Pattern: Builder (JSON schema generation)
    - Files: `src/lib/schema-builder.ts`
 
+### v2.7.0 → v2.8.3 Changes
+
+1. **Fixed Storage Metadata Scaffolding** (v2.8.2-v2.8.3):
+   - Issue: `eai init` generated Object Types without correct `storageMetadataStatus` field
+   - Fix: Scaffold now includes `storageMetadataStatus: 'draft'` by default
+   - Impact: Prevents validation errors when seeding types after init
+   - Files: `src/commands/init.ts`
+   - PRs: #34, #35 (commits 323804c, ebee64d)
+
+2. **Fixed Production Tenant Lookup** (v2.8.1):
+   - Issue: CLI login failed to resolve production tenant context
+   - Fix: Improved tenant context resolution for production environment
+   - Impact: `eai tenant select` now works correctly after fresh login to production
+   - Files: `src/lib/tenant-context.ts`
+   - PR: #33 (commit 72ff1cd)
+
+3. **Added Vertical Enrollments** (v2.8.0):
+   - Feature: New `eai vertical` command for managing tenant app/product instances
+   - Pattern: Command + Repository (CRUD operations on vertical enrollments)
+   - Files: `src/commands/vertical.ts` (269 lines)
+   - PR: #31 (commit 7429e3c)
+
 **Architectural Improvements**:
 - Centralized context resolution (less boilerplate)
 - Structured error handling (consistent user experience)
 - Profile isolation (security improvement)
 - Spec-driven development (intentional design)
+- Storage metadata validation (prevents seeding failures)
 
 ---
 
@@ -569,30 +604,36 @@ await pLimit(5).map(objectTypes, type => seedType(type));
 1. **Parallelize Type Seeding** (Medium priority, Small effort)
    - File: `src/commands/types.ts`
    - Use `Promise.all()` for parallel API calls
+   - Status: Not yet implemented
 
-2. **Expand Test Coverage** (High priority, Large effort)
-   - Target: 80%+ coverage on `src/lib/*.ts`
-   - Use MSW for API mocking
+2. **Add Tests for Vertical Command** (Medium priority, Small effort)
+   - File: `src/commands/vertical.ts` (new in v2.8.0)
+   - Use MSW for API mocking (pattern established)
+   - Status: Command added but tests not yet implemented
 
 ### Long-Term Improvements
 
 3. **OS Keychain Integration** (Medium priority, Medium effort)
    - File: `src/lib/auth.ts`
    - Add optional `keytar` dependency
+   - Status: No change from v2.7.0
 
 4. **Extract API Path Builders** (Low priority, Small effort)
    - File: `src/lib/api.ts`
    - Create `paths` object with builder functions
+   - Status: No change from v2.7.0
 
 ### Deferred (Low Priority)
 
 5. **Split PlatformAPIClient** (Low priority, Large effort)
    - Current design works well
    - Consider only if class exceeds 1000 lines
+   - Status: No change from v2.7.0
 
 6. **TypeScript Config for Profiles** (Low priority, Medium effort)
    - JSON works fine for now
    - Add JSON schema validation first
+   - Status: No change from v2.7.0
 
 ---
 
@@ -604,10 +645,17 @@ The EAI CLI demonstrates strong architectural patterns with minimal anti-pattern
 - Consistent use of design patterns (Command, Repository, Factory)
 - Spec-driven development ensures intentional design
 - Clear separation of concerns across modules
+- Recent fixes (v2.8.x) improved storage metadata handling and tenant context resolution
+
+**Key Improvements (v2.7.0 → v2.8.3)**:
+- Storage metadata scaffolding now aligns with platform validation rules (PR #34, #35)
+- Production tenant lookup fixed for CLI login (PR #33)
+- Test coverage expanded significantly (3,959 lines, priority reduced from High to Medium)
+- New `eai vertical` command for managing tenant app/product instances (PR #31)
 
 **Key Opportunities**:
-- Expand test coverage (highest priority)
 - Parallelize type seeding (quick win for developer experience)
+- Add tests for vertical command (new in v2.8.0)
 - OS keychain integration (security improvement)
 
 All tech debt items are low-to-medium priority and do not block production use. The architecture is sound and extensible.

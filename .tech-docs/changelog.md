@@ -1,16 +1,76 @@
 ---
 generated: true
-generated_at: "2026-05-04T17:57:42Z"
-source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
+generated_at: "2026-05-08T17:54:00Z"
+source_commit: "825bd7f4db75d5f0be796914cc300b14969c2e74"
 ---
 
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-05-02 17:46 UTC (commit 06d9705)  
-**Current Documentation**: 2026-05-04 17:57 UTC (commit 1dc87b0)  
-**Version**: 2.6.0 → 2.7.0
+**Previous Documentation**: 2026-05-04 17:57 UTC (commit 1dc87b0)  
+**Current Documentation**: 2026-05-08 17:54 UTC (commit 825bd7f)  
+**Version**: 2.7.0 → 2.8.3
+
+---
+
+## [2.8.3] - 2026-05-08
+
+### Summary
+Fixed Object Type storage metadata scaffolding for generated types. The `eai init` command now correctly scaffolds `storageMetadataStatus` field for Object Types.
+
+### Fixed
+
+- **Storage Metadata Status Scaffolding** (PR #35, commit ebee64d)
+  - Fixed `eai init` to generate Object Types with correct `storageMetadataStatus` field
+  - Generated types now include `storageMetadataStatus: 'draft'` by default
+  - Published types require `storageMetadataStatus: 'ready'` with complete `storageBinding` config
+  - Prevents validation errors when seeding types after init
+
+### Related
+
+- Validation rules for storage metadata documented in `src/commands/types.ts`
+- Object Type storage binding validation in `validateObjectTypeStorageMetadata()`
+
+---
+
+## [2.8.2] - 2026-05-08
+
+### Summary
+Fixed generated Object Type storage metadata to align with platform validation rules.
+
+### Fixed
+
+- **Object Type Scaffold Storage Metadata** (PR #34, commit 323804c)
+  - Aligned object type scaffolding with storage metadata validation rules
+  - Fixed generated types to match platform requirements for `storageBackend`, `storageMetadataStatus`, and `storageBinding`
+  - Ensured published types include complete storage configuration
+  - Prevented seed failures due to invalid storage metadata
+
+### Changed
+
+- Object Type scaffolding in `eai init` now generates compliant storage metadata
+- Validation messages improved for storage binding errors
+
+---
+
+## [2.8.1] - 2026-05-08
+
+### Summary
+Fixed production tenant lookup after CLI login. The CLI now correctly resolves production tenant context when using the default profile.
+
+### Fixed
+
+- **Production Tenant Lookup** (PR #33, commit 72ff1cd)
+  - Fixed tenant context resolution for production environment
+  - CLI login now correctly caches production tenant memberships
+  - Resolved issue where `eai tenant select` would fail after fresh login to production
+  - Improved error messages when tenant lookup fails
+
+### Changed
+
+- Tenant context resolution logic in `src/lib/tenant-context.ts`
+- Improved debugging output for tenant membership fetch
 
 ---
 
