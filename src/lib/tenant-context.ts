@@ -24,6 +24,7 @@ export interface TenantEntry {
   };
   roleAssignments?: TenantRoleAssignment[];
   isTenantAdmin?: boolean;
+  role?: string;
   roles?: string[];
 }
 
@@ -35,6 +36,7 @@ interface AdminTenantMembership {
   isActive?: boolean;
   parent?: { id?: string } | string | null;
   parentId?: string | null;
+  role?: string;
   roles?: string[];
   isTenantAdmin?: boolean;
 }
@@ -72,6 +74,7 @@ function unique(values: Array<string | undefined>): string[] {
 export function getTenantRoles(entry: TenantEntry): string[] {
   return unique([
     ...(entry.roles ?? []),
+    entry.role,
     ...(entry.roleAssignments ?? []).map((assignment) => assignment.baseRole),
     entry.isTenantAdmin ? 'tenant-admin' : undefined,
   ]);
@@ -109,6 +112,7 @@ function toTenantEntry(value: AdminTenantMembership | TenantEntry): TenantEntry 
       parent: value.parent,
       parentId: value.parentId,
     },
+    role: value.role,
     roles: value.roles,
     isTenantAdmin: value.isTenantAdmin,
   };
