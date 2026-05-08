@@ -123,7 +123,7 @@ verticalCommand
 
     spinner?.succeed(`${docs.length} vertical/app instance${docs.length === 1 ? '' : 's'} found`);
     if (docs.length === 0) {
-      out.info('No ResourceAPI tenant vertical enrollments found.');
+      out.info('No tenant vertical enrollments found.');
       return;
     }
     for (const doc of docs) {
@@ -137,7 +137,7 @@ verticalCommand
   .description('Create a dynamic vertical/app instance under the active company tenant')
   .option('--tenant-id <id>', 'Run against a specific company tenant')
   .option('--key <key>', 'Stable vertical/app key (defaults to kebab-case name)')
-  .option('--template <templateKey>', 'Optional Configurator vertical-catalog template key')
+  .option('--template <templateKey>', 'Optional vertical-catalog template key')
   .option('--source <source>', 'Creation source', 'eai-cli')
   .option('--app-url <url>', 'Optional app URL')
   .option('--status <status>', 'Initial lifecycle status', 'pending')
@@ -163,14 +163,14 @@ verticalCommand
     }
 
     spinner?.succeed(`Created tenant vertical ${chalk.cyan(String(data.verticalKey))}`);
-    out.info('This is a ResourceAPI tenant app/product instance, not a Payload child tenant.');
+    out.info('This is a tenant app/product instance, not a child tenant.');
   });
 
 verticalCommand
   .command('select <key>')
   .description('Set EAI_VERTICAL_KEY in the current project .env.local')
   .option('--tenant-id <id>', 'Validate against a specific company tenant')
-  .option('--skip-validate', 'Skip ResourceAPI lookup before writing .env.local', false)
+  .option('--skip-validate', 'Skip remote lookup before writing .env.local', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options) => {
@@ -197,12 +197,12 @@ verticalCommand
 
 verticalCommand
   .command('provision <key>')
-  .description('Provision ResourceAPI storage needed by a tenant vertical/app instance')
+  .description('Provision storage needed by a tenant vertical/app instance')
   .option('--tenant-id <id>', 'Run against a specific company tenant')
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--dry-run', 'Plan actions without applying changes', false)
   .option('--rebuild-search', 'Request search projection rebuild after provisioning', false)
-  .option('--skip-validate', 'Skip ResourceAPI tenant-vertical-enrollment lookup', false)
+  .option('--skip-validate', 'Skip tenant-vertical-enrollment lookup', false)
   .option('--select', 'Write EAI_VERTICAL_KEY after successful provisioning', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -221,7 +221,7 @@ verticalCommand
 
     const spinner = makeSpinner(
       format,
-      `${options.dryRun ? 'Planning' : 'Provisioning'} ResourceAPI storage for ${verticalKey}...`,
+      `${options.dryRun ? 'Planning' : 'Provisioning'} storage for ${verticalKey}...`,
     );
     const res = await ctx.client.provisionStorage({
       backend: options.backend,
@@ -250,7 +250,7 @@ verticalCommand
     }
 
     spinner?.succeed(options.dryRun ? 'Storage plan complete' : 'Storage provisioning complete');
-    out.info(`Vertical/app ${chalk.cyan(verticalKey)} remains a ResourceAPI tenant enrollment, not a Payload child tenant.`);
+    out.info(`Vertical/app ${chalk.cyan(verticalKey)} remains a tenant enrollment, not a child tenant.`);
     if (isRecord(payload) && Array.isArray(payload.results)) {
       for (const result of payload.results.filter(isRecord)) {
         const objectType = typeof result.objectType === 'string' ? result.objectType : 'unknown';
