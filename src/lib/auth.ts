@@ -15,7 +15,7 @@ import { createServer } from 'node:http';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import type { AddressInfo } from 'node:net';
-import { getActiveProfile, getProfileTokensFile, loadProfileConfig, DEFAULT_AUTH_SCOPE } from './profile.js';
+import { getActiveProfile, getProfileTokensFile, loadProfileConfig, DEFAULT_AUTH_SCOPE, DEFAULT_PROD_AUTH_SCOPE } from './profile.js';
 
 function getTokensFile(profile = getActiveProfile()): string {
   return getProfileTokensFile(profile);
@@ -75,7 +75,7 @@ function getEncryptionKey(): Buffer {
 
 async function resolveAuthScope(profile: string): Promise<string> {
   if (profile === 'default') {
-    return DEFAULT_AUTH_SCOPE;
+    return DEFAULT_PROD_AUTH_SCOPE;
   }
 
   try {

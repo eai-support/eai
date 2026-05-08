@@ -6,14 +6,14 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { browserLogin, clearTokens, storeTokens } from '../lib/auth.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
-import { getActiveProfile, loadProfileConfig, saveActiveProfileToConfig, DEFAULT_AUTH_SCOPE } from '../lib/profile.js';
+import { getActiveProfile, loadProfileConfig, saveActiveProfileToConfig, DEFAULT_PROD_AUTH_SCOPE } from '../lib/profile.js';
 import * as out from '../lib/output.js';
 
 // Production CIAM defaults — hardcoded so `eai login` works without config files
 const PROD_TENANT_NAME = 'enterpriseaiplatform';
 const PROD_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
 const PROD_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
-const DEFAULT_SCOPE = DEFAULT_AUTH_SCOPE;
+const DEFAULT_SCOPE = DEFAULT_PROD_AUTH_SCOPE;
 
 export const loginCommand = new Command('login')
   .description('Authenticate with Entra CIAM')
