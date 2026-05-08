@@ -125,6 +125,15 @@ describe('eai login', () => {
     });
   });
 
+  test('default production auth scope includes PublicAPI audience', async () => {
+    vi.resetModules();
+    const { DEFAULT_PROD_AUTH_SCOPE, PROD_PUBLIC_API_SCOPE } = await import('../../src/lib/profile.js');
+
+    expect(DEFAULT_PROD_AUTH_SCOPE).toContain('openid profile email offline_access');
+    expect(DEFAULT_PROD_AUTH_SCOPE).toContain(PROD_PUBLIC_API_SCOPE);
+    expect(PROD_PUBLIC_API_SCOPE).toBe('api://833fc5ab-f1c9-4c60-b344-64e366f241cc/access_token');
+  });
+
   test('browserLogin completes callback flow and stores tokens', async () => {
     const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
     const restoreHome = setTestHome(tempHome);
