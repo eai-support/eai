@@ -200,6 +200,9 @@ describe('eai init', () => {
 
     await expectDirectoryCreated(ctx, 'quick-app');
     await expectFileContains(ctx, 'quick-app/package.json', '"name": "@eai-tools/quick-app"');
+    await expectFileContains(ctx, 'quick-app/src/eai.config/object-types.ts', "storageMetadataStatus: 'ready' as const");
+    await expectFileContains(ctx, 'quick-app/src/eai.config/object-types.ts', "databaseAlias: 'resourceapi-postgres'");
+    await expectFileContains(ctx, 'quick-app/src/eai.config/object-types.ts', "tableName: 'tenant_resources'");
     await expectFileExists(ctx, 'quick-app/.claude/commands/0_business_scenario.md');
     await expectFileExists(ctx, 'quick-app/.claude/agents/codebase-analyzer.md');
     await expectFileExists(ctx, 'quick-app/.specify/commands/1_gofer_research.md');
@@ -210,9 +213,8 @@ describe('eai init', () => {
     const objectTypes = await readFile(join(env.dir, 'quick-app', 'src', 'eai.config', 'object-types.ts'), 'utf-8');
     expect(objectTypes).toContain("storageMetadataStatus: 'ready' as const");
     expect(objectTypes).toContain("databaseAlias: 'resourceapi-postgres'");
-    expect(objectTypes).toContain("tenantSchemaStrategy: 'per-tenant-schema' as const");
-    expect(objectTypes).toContain("tableName: 'records'");
-    expect(objectTypes).toContain("tableName: 'documents'");
+    expect(objectTypes).toContain("tenantSchemaStrategy: 'per-tenant-database' as const");
+    expect(objectTypes).toContain("tableName: 'tenant_resources'");
     expectNoPrompts(ctx);
     expectCommandSucceeded(result);
   }, 30_000);

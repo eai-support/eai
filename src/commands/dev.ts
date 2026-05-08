@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import { getNpmExecutable } from '../lib/npm.js';
+import { getAccessToken } from '../lib/auth.js';
 import * as out from '../lib/output.js';
 
 export const devCommand = new Command('dev')
@@ -29,6 +30,18 @@ export const devCommand = new Command('dev')
     const env = { ...envVars, ...process.env };
     const appName = env.NEXT_PUBLIC_APP_NAME || 'unknown';
     const publicApiUrl = env.BASE_URL_PUBLIC_API;
+    let accessToken = env.EAI_ACCESS_TOKEN;
+
+    if (!accessToken) {
+      try {
+        accessToken = await getAccessToken() || undefined;
+        if (accessToken) {
+          env.EAI_ACCESS_TOKEN = accessToken;
+        }
+      } catch {
+        accessToken = undefined;
+      }
+    }
 
     out.heading(`Starting ${chalk.cyan(appName)}`);
     out.blank();
@@ -61,6 +74,13 @@ export const devCommand = new Command('dev')
         out.warn('BASE_URL_PUBLIC_API not set. API calls will fail.');
       }
 
+      if (accessToken) {
+        out.success('Loaded CLI access token for local API proxy');
+      } else if (!env.ENTRA_CLIENT_ID || !env.ENTRA_CLIENT_SECRET || !env.ENTRA_TENANT_ID) {
+        out.warn('No CLI token or Entra client credentials available. Local API proxy calls may fail.');
+        out.info('Run `eai login` before `eai dev`, or populate ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET, and ENTRA_TENANT_ID.');
+      }
+
       out.blank();
     }
 
@@ -76,7 +96,7 @@ export const devCommand = new Command('dev')
     const child = spawn(getNpmExecutable(), args, {
       cwd: root,
       stdio: 'inherit',
-      env: { ...process.env, ...envVars },
+      env: { ...process.env, ...envVars, ...(accessToken ? { EAI_ACCESS_TOKEN: accessToken } : {}) },
     });
 
     child.on('error', (err) => {

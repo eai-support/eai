@@ -16,6 +16,7 @@ import {
   resolveDefaultTenantKey,
   resolveTenantIdForKey,
   shouldFailTypeSeedRun,
+  validateObjectTypeStorageMetadata,
   verifyTypeSeedConvergence,
   verifyTypeSeedConvergenceWithRetry,
 } from '../../src/commands/types.js';
@@ -568,6 +569,54 @@ describe('collectTypeDefaultValueValidationIssues', () => {
   });
 });
 
+describe('validateObjectTypeStorageMetadata', () => {
+  test('rejects published types that are not storage-ready', () => {
+    expect(validateObjectTypeStorageMetadata({
+      ...buildObjectType([]),
+      status: 'published',
+    })).toEqual([
+      expect.stringContaining('published Object Types require storageMetadataStatus "ready"'),
+    ]);
+  });
+
+  test('accepts ResourceAPI PostgreSQL storage metadata', () => {
+    expect(validateObjectTypeStorageMetadata({
+      ...buildObjectType([]),
+      status: 'published',
+      schemaVersion: 1,
+      storageBackend: 'postgresql',
+      storageMetadataStatus: 'ready',
+      storageBinding: {
+        sql: {
+          databaseAlias: 'resourceapi-postgres',
+          tenantSchemaStrategy: 'per-tenant-database',
+          schemaName: 'resources',
+          tableName: 'tenant_resources',
+        },
+      },
+    })).toEqual([]);
+  });
+
+  test('reports missing backend-specific binding fields', () => {
+    expect(validateObjectTypeStorageMetadata({
+      ...buildObjectType([]),
+      status: 'published',
+      storageBackend: 'documentdb',
+      storageMetadataStatus: 'ready',
+      storageBinding: {
+        documentdb: {
+          databaseAlias: 'resourceapi-cosmos',
+          databaseName: 'resources',
+          collectionName: 'tenantResources',
+          partitionKey: '',
+        },
+      },
+    })).toEqual([
+      'DocumentDB storageBinding is incomplete. Missing: partitionKey',
+    ]);
+  });
+});
+
 describe('collectTypeStorageValidationIssues', () => {
   test('accepts published types with ready PostgreSQL storage metadata', () => {
     const issues = collectTypeStorageValidationIssues({
@@ -605,7 +654,7 @@ describe('collectTypeStorageValidationIssues', () => {
       {
         tenantKey: 'template',
         typeName: 'Workflow',
-        issue: expect.stringContaining('storageMetadataStatus "ready"'),
+        issue: expect.stringContaining('published Object Types require storageMetadataStatus "ready"'),
       },
     ]);
   });
