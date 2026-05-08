@@ -184,3 +184,9 @@ export async function saveActiveProfileToConfig(name: string): Promise<void> {
 
 /** Default OAuth scope when none is configured. */
 export const DEFAULT_AUTH_SCOPE = 'openid profile email offline_access';
+
+/** Production PublicAPI delegated scope required for default-profile API calls. */
+export const PROD_PUBLIC_API_SCOPE = 'api://833fc5ab-f1c9-4c60-b344-64e366f241cc/access_token';
+
+/** Default-profile OAuth scope for production CIAM login. */
+export const DEFAULT_PROD_AUTH_SCOPE = `${DEFAULT_AUTH_SCOPE} ${PROD_PUBLIC_API_SCOPE}`;
