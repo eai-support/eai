@@ -65,6 +65,12 @@ export interface TypeDefaultValueValidationIssue {
   issue: string;
 }
 
+export interface TypeStorageValidationIssue {
+  tenantKey: string;
+  typeName: string;
+  issue: string;
+}
+
 export function collectTypeDefaultValueValidationIssues(
   objectTypes: Record<string, ObjectTypeDefinition[]>,
 ): TypeDefaultValueValidationIssue[] {
@@ -76,6 +82,97 @@ export function collectTypeDefaultValueValidationIssues(
         issue,
       }))
     ))
+  ));
+}
+
+function hasConfiguredValue(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== '';
+}
+
+function missingStorageFields(scope: Record<string, unknown> | undefined, fields: string[]): string[] {
+  return fields.filter((field) => !hasConfiguredValue(scope?.[field]));
+}
+
+function storageBindingScope(
+  type: ObjectTypeDefinition,
+  key: 'sql' | 'documentdb' | 'blob' | 'search',
+): Record<string, unknown> | undefined {
+  if (!isRecord(type.storageBinding)) {
+    return undefined;
+  }
+
+  const value = type.storageBinding[key];
+  return isRecord(value) ? value : undefined;
+}
+
+export function collectTypeStorageValidationIssues(
+  objectTypes: Record<string, ObjectTypeDefinition[]>,
+): TypeStorageValidationIssue[] {
+  return Object.entries(objectTypes).flatMap(([tenantKey, types]) => (
+    types.flatMap((type) => {
+      const issues: TypeStorageValidationIssue[] = [];
+      const storageMetadataStatus = type.storageMetadataStatus ?? 'draft';
+      const storageBackend = type.storageBackend ?? 'postgresql';
+
+      if (type.status === 'published' && storageMetadataStatus !== 'ready') {
+        issues.push({
+          tenantKey,
+          typeName: type.name,
+          issue: 'published Object Types require storageMetadataStatus "ready"',
+        });
+      }
+
+      if (storageMetadataStatus !== 'ready') {
+        return issues;
+      }
+
+      if (!isRecord(type.storageBinding)) {
+        issues.push({
+          tenantKey,
+          typeName: type.name,
+          issue: 'storageMetadataStatus "ready" requires storageBinding',
+        });
+        return issues;
+      }
+
+      const requirements: Record<string, { key: 'sql' | 'documentdb' | 'blob' | 'search'; label: string; fields: string[] }> = {
+        postgresql: {
+          key: 'sql',
+          label: 'PostgreSQL storageBinding',
+          fields: ['databaseAlias', 'tenantSchemaStrategy', 'tableName'],
+        },
+        documentdb: {
+          key: 'documentdb',
+          label: 'DocumentDB storageBinding',
+          fields: ['databaseAlias', 'databaseName', 'collectionName', 'partitionKey'],
+        },
+        blob: {
+          key: 'blob',
+          label: 'Blob storageBinding',
+          fields: ['storageAccountAlias', 'containerName'],
+        },
+        search: {
+          key: 'search',
+          label: 'Search storageBinding',
+          fields: ['searchServiceAlias'],
+        },
+      };
+      const requirement = requirements[storageBackend];
+      if (!requirement) {
+        return issues;
+      }
+
+      const missing = missingStorageFields(storageBindingScope(type, requirement.key), requirement.fields);
+      if (missing.length > 0) {
+        issues.push({
+          tenantKey,
+          typeName: type.name,
+          issue: `${requirement.label} is incomplete. Missing: ${missing.join(', ')}`,
+        });
+      }
+
+      return issues;
+    })
   ));
 }
 
@@ -529,6 +626,22 @@ Examples:
       process.exit(1);
     }
 
+    const storageIssues = collectTypeStorageValidationIssues(objectTypes);
+    if (storageIssues.length > 0) {
+      if (options.format === 'json') {
+        out.json({
+          error: 'Object Type storage metadata validation failed',
+          issues: storageIssues,
+        });
+      } else {
+        out.error('Object Type storage metadata validation failed');
+        for (const issue of storageIssues) {
+          out.error(`  [${issue.tenantKey}/${issue.typeName}] ${issue.issue}`);
+        }
+      }
+      process.exit(1);
+    }
+
     // Filter to specific tenant key if requested
     const keysToSeed = await selectTenantKey(objectTypes, options.tenantKey, activeContext.activeTenant.slug);
 
@@ -853,6 +966,7 @@ Examples:
         }
 
         issues.push(...validateObjectTypeDefaultValues(type));
+        issues.push(...collectTypeStorageValidationIssues({ [tenantKey]: [type] }).map((issue) => issue.issue));
 
         // Validate link types
         for (const link of type.linkTypes) {
