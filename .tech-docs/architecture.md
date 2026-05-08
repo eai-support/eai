@@ -1,12 +1,12 @@
 ---
 generated: true
-generated_at: "2026-05-04T17:57:42Z"
-source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
+generated_at: "2026-05-08T17:54:00Z"
+source_commit: "825bd7f4db75d5f0be796914cc300b14969c2e74"
 ---
 
 # EAI CLI — Architecture
 
-## High-Level Architecture
+## High-Level System Context
 
 ```mermaid
 flowchart TB
@@ -49,6 +49,46 @@ flowchart TB
     CLI -->|7. Deploy| AppService
 ```
 
+## Representative Runtime Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as eai CLI
+    participant Tokens as Token Store
+    participant CIAM as Entra CIAM
+    participant AdminAPI
+    participant PublicAPI
+
+    User->>CLI: eai login
+    CLI->>CIAM: Initiate PKCE flow (browser)
+    CIAM->>User: Authenticate
+    User->>CIAM: Credentials
+    CIAM->>CLI: Authorization code (via localhost:8888)
+    CLI->>CIAM: Exchange code for token
+    CIAM-->>CLI: Access token + refresh token
+    CLI->>Tokens: Store encrypted tokens
+
+    User->>CLI: eai tenant select
+    CLI->>Tokens: Load access token
+    CLI->>AdminAPI: GET /current-user/tenant-memberships
+    AdminAPI-->>CLI: List of tenant-admin tenants
+    CLI->>User: Prompt for tenant selection
+    User->>CLI: Select tenant
+    CLI->>CLI: Cache selected tenant
+
+    User->>CLI: eai resources list User
+    CLI->>Tokens: Load access token (check expiry)
+    alt Token expired
+        CLI->>CIAM: Refresh token
+        CIAM-->>CLI: New access token
+        CLI->>Tokens: Update token
+    end
+    CLI->>PublicAPI: GET /v3/resources/{tenant}/User
+    PublicAPI-->>CLI: List of User resources
+    CLI->>User: Display formatted output
+```
+
 ## Component Breakdown
 
 ### 1. CLI Core (`src/index.ts`)
@@ -57,9 +97,12 @@ flowchart TB
 
 **Responsibilities**:
 - Initializes Commander.js program
-- Registers 17 command instances from 15 command files (login.ts exports loginCommand + logoutCommand; verify.ts exports verifyCommand + doctorCommand)
-- Command list: init, dev, login, logout, env, types, resources, tenant, user, chat, docs, deploy, verify, doctor, whoami, update, provision
-- Handles global flags: `--profile`, `--simple`, `--no-color`, `--color`, `--describe`
+- Registers 17 command instances from 15 command files
+  - `login.ts` exports `loginCommand` + `logoutCommand`
+  - `verify.ts` exports `verifyCommand` + `doctorCommand`
+  - All others export a single command
+- Command list: init, dev, login, logout, env, types, resources, tenant, user, vertical, chat, docs, deploy, verify, doctor, whoami, update, provision
+- Handles global flags: `--profile`, `--simple`, `--no-color`, `--color`, `--describe`, `--format`
 - Checks for updates in background
 - Displays update notification after command execution
 
@@ -211,6 +254,7 @@ sequenceDiagram
 | `platformRequest()` | `POST /v3/orchestrate` | Internal routing to backend services |
 | `lookupUserByEmail()` | `POST /api/admin/users/lookup` | Look up user by email (AdminAPI) |
 | `provisionUserToTenant()` | `POST /api/admin/tenants/{id}/users` | Add user to tenant (AdminAPI) |
+| `provisionMe()` | `POST /v3/resources/{tenant}/provision-me` | Self-provision to tenant |
 | `getCurrentUserMemberships()` | `GET /api/admin/current-user/tenant-memberships` | Get tenant-admin memberships |
 | `createTenant()` | `POST /api/admin/tenants` | Create new tenant |
 | `bootstrapChildTenantAdmin()` | `POST /api/admin/tenants/{id}/bootstrap-admin` | Bootstrap first admin for child tenant |
@@ -278,7 +322,7 @@ const ctx = await resolveCommandContext({ interactive: true });
 **Key Function**:
 - `exitWithError(code, vars?, format?)` — Display structured error and exit
 
-**Output Format**:
+**Output Format (text)**:
 ```
 ✗ Not logged in
 
@@ -287,7 +331,7 @@ Run `eai login` to authenticate with the platform
 Error code: E101
 ```
 
-**JSON Format** (with `--format json`):
+**Output Format (JSON)**:
 ```json
 {
   "error": {
@@ -303,26 +347,24 @@ Error code: E101
 
 The CLI includes 16 library modules that provide shared functionality across commands:
 
-| Module | Purpose |
-|--------|---------|
-| `api.ts` | Platform API client (PublicAPI + AdminAPI) |
-| `auth.ts` | Entra CIAM authentication and token management |
-| `azure-cli.ts` | Azure CLI wrapper utilities |
-| `cloud-env.ts` | Cloud environment detection and config |
-| `config.ts` | Project discovery, config loading, TypeScript evaluation |
-| `context.ts` | Command context resolution (project, auth, tenant) |
-| `error-codes.ts` | Structured error catalog (E001-E399) |
-| `gofer-installer.ts` | Gofer AI terminal assets installation |
-| `npm.ts` | npm command wrapper |
-| `object-type-defaults.ts` | Object Type default value validation |
-| `output.ts` | Output formatting, symbols, colors, TTY detection |
-| `profile.ts` | Environment profile management (dev, test, prod) |
-| `schema-builder.ts` | JSON schema generator for `--describe` flag |
-| `tenant-context.ts` | Tenant membership resolution and selection |
-| `update-check.ts` | Background CLI update checker |
-| `utils.ts` | Shared utility functions |
-
----
+| Module | Purpose | Key Exports |
+|--------|---------|-------------|
+| `api.ts` | Platform API client (PublicAPI + AdminAPI) | `PlatformAPIClient`, `extractServerErrorContext()` |
+| `auth.ts` | Entra CIAM authentication and token management | `browserLogin()`, `getToken()`, `logout()` |
+| `azure-cli.ts` | Azure CLI wrapper utilities | Azure CLI command wrappers |
+| `cloud-env.ts` | Cloud environment detection and config | Environment resolution |
+| `config.ts` | Project discovery, config loading, TypeScript evaluation | `findProjectRoot()`, `loadObjectTypes()` |
+| `context.ts` | Command context resolution (project, auth, tenant) | `resolveCommandContext()` |
+| `error-codes.ts` | Structured error catalog (E001-E399) | `exitWithError()`, `ErrorCode` enum |
+| `gofer-installer.ts` | Gofer AI terminal assets installation | Gofer asset installation logic |
+| `npm.ts` | npm command wrapper | npm utilities |
+| `object-type-defaults.ts` | Object Type default value validation | Object Type defaults |
+| `output.ts` | Output formatting, symbols, colors, TTY detection | `success()`, `error()`, `warn()`, `info()` |
+| `profile.ts` | Environment profile management (dev, test, prod) | `getActiveProfile()`, `loadProfileConfig()` |
+| `schema-builder.ts` | JSON schema generator for `--describe` flag | `describeProgram()` |
+| `tenant-context.ts` | Tenant membership resolution and selection | `loadActiveTenantContext()` |
+| `update-check.ts` | Background CLI update checker | `checkForUpdate()`, `notifyIfUpdateAvailable()` |
+| `utils.ts` | Shared utility functions | `toObjectTypeSlug()`, utilities |
 
 ### 10. Command Modules (`src/commands/*.ts`)
 
@@ -378,6 +420,7 @@ export const exampleCommand = new Command('example')
 | **Resources** | `resources list/get/create/update/delete/query/schema` | CRUD operations |
 | **Tenants** | `tenant list/select/info/create` | Multi-tenancy management |
 | **Users** | `user invite`, `user provision-me` | User provisioning to tenants |
+| **Verticals** | `vertical create` | Vertical application management |
 | **Entra Provisioning** | `provision entra` | Entra app registration in CIAM |
 | **AI** | `chat send/stream`, `docs upload/classify/index` | AI and document processing |
 | **Deployment** | `deploy setup/trigger/status` | GitHub Actions deployment orchestration |
@@ -400,7 +443,7 @@ sequenceDiagram
         Cache-->>CLI: Skip check
     else Cache expired or missing
         CLI->>Registry: GET /registry/@eai-tools/cli
-        Registry-->>CLI: {"dist-tags": {"latest": "2.7.0"}}
+        Registry-->>CLI: {"dist-tags": {"latest": "2.8.3"}}
         CLI->>Cache: Write cache
     end
 
@@ -482,15 +525,60 @@ Used for administrative operations:
 - **Profile-Based CIAM Selection**: Platform environment determines CIAM tenant
 - **Authority**: `https://{tenantName}.ciamlogin.com/{tenantId}`
 
+## Security Architecture
+
+### Trust Boundaries
+
+```mermaid
+flowchart TB
+    subgraph "Untrusted Zone"
+        User[Developer]
+        Browser[Web Browser]
+    end
+
+    subgraph "Local Machine (Trusted)"
+        CLI[CLI Process]
+        Tokens[Encrypted Token Store]
+        Config[Project Config]
+    end
+
+    subgraph "Cloud (Trusted)"
+        CIAM[Entra CIAM]
+        API[Platform API]
+    end
+
+    User -->|Commands| CLI
+    CLI -->|Launch| Browser
+    Browser -->|Auth Flow| CIAM
+    CIAM -->|Token| CLI
+    CLI -->|Store Encrypted| Tokens
+    CLI -->|Bearer Token| API
+```
+
+### Authentication Flow
+
+1. **Initial Auth**: Browser-based PKCE flow prevents token interception
+2. **Token Storage**: AES-256-CBC encryption with machine-specific key
+3. **Token Usage**: Bearer token in Authorization header for all API calls
+4. **Token Refresh**: Automatic refresh with 5-minute buffer before expiry
+5. **Scope Enforcement**: Platform API validates tenant-admin role for admin operations
+
+### Authorization Flow
+
+1. **Tenant Selection**: User must be `tenant-admin` on selected tenant
+2. **Membership Validation**: AdminAPI returns only accessible tenants
+3. **Command Context**: Each command validates tenant access before execution
+4. **Read-Only Targeting**: `--tenant` flag allows read-only operations on other tenants (if permitted)
+
 ## Error Handling Strategy
 
 1. **API Errors**: Check `res.ok` before parsing JSON; display status and body on failure
-2. **Structured Error Codes**: Use `exitWithError()` for consistent error messages with codes (E001-E305)
+2. **Structured Error Codes**: Use `exitWithError()` for consistent error messages with codes (E001-E399)
 3. **Missing Config**: Exit early with helpful message directing user to `eai env pull` or config docs
 4. **Auth Failures**: Catch refresh failures; prompt user to re-login via structured error
 5. **Network Timeouts**: 5-second timeout on update checks (non-blocking)
 6. **User Confirmation**: Destructive operations (delete, deploy) prompt for confirmation unless `--force`
-7. **Sanitized Diagnostics**: `eai provision entra` never exposes backend URLs, tenant IDs, or raw platform errors
+7. **Sanitized Diagnostics**: Commands never expose internal backend URLs or sensitive platform details
 
 ## Performance Considerations
 

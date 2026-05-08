@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-04T17:57:42Z"
-source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
+generated_at: "2026-05-08T17:54:00Z"
+source_commit: "825bd7f4db75d5f0be796914cc300b14969c2e74"
 ---
 
 # EAI CLI — Overview
@@ -11,17 +11,17 @@ source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.7.0 |
+| **Version** | 2.8.3 |
 | **Primary Capability** | CLI tool for scaffolding, managing, and deploying vertical applications on the EAI platform |
 | **Primary Users** | Developers building enterprise AI vertical applications |
 | **Data Sensitivity** | Low (CLI tool; handles encrypted tokens locally, no user data storage) |
-| **Current Status** | Active development (latest: v2.7.0, 2026-05-04) |
-| **Last Material Change** | v2.7.0: Entra provisioning now validates `signin_ready` state and warns when false (PR #32) |
+| **Current Status** | Active development (latest: v2.8.3, 2026-05-08) |
+| **Last Material Change** | v2.8.3: Fixed storage metadata status scaffolding for Object Types (PR #35) |
 
 ## Service Identity
 
 **Name**: `@eai-tools/cli` (eai)  
-**Version**: 2.7.0  
+**Version**: 2.8.3  
 **Purpose**: Enterprise AI Platform CLI for scaffolding, managing, and deploying vertical applications on the EAI platform.
 
 ## Description
@@ -47,7 +47,7 @@ The EAI CLI is a command-line tool that wraps the EAI Platform API, providing de
 | File | Purpose |
 |------|---------|
 | `src/index.ts` | Main CLI entry point; registers all commands |
-| `src/commands/*.ts` | 15 command files (init, dev, login, whoami, user, env, types, resources, tenant, chat, docs, deploy, verify, update, provision) |
+| `src/commands/*.ts` | 15 command files (init, dev, login, whoami, user, env, types, resources, tenant, vertical, chat, docs, deploy, verify, update, provision) |
 | `src/lib/api.ts` | Platform API client with auth |
 | `src/lib/auth.ts` | Entra CIAM authentication (browser PKCE flow) |
 | `src/lib/tenant-context.ts` | Tenant membership and selection logic |
@@ -104,7 +104,7 @@ node dist/index.js tenant list
 
 - **Project**: EAI Tools
 - **Repository**: [https://github.com/eai-tools/eai-cli](https://github.com/eai-tools/eai-cli)
-- **Homepage**: [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli)
+- **Homepage**: [https://eai-tools.github.io/eai-cli](https://github.com/eai-tools/eai-cli)
 - **License**: MIT
 - **Documentation**: 93-page documentation site covering getting started, guides, concepts, command reference, and 50 industry scenarios
 
@@ -113,12 +113,12 @@ node dist/index.js tenant list
 1. **Scaffold & Initialize**: `eai init <name>` generates a new vertical app from a template with Gofer AI assets
 2. **Authenticate**: `eai login` performs browser-based PKCE flow and stores tokens locally in `~/.eai/`
 3. **Tenant Selection**: `eai tenant select` chooses active tenant from user's tenant-admin memberships
-4. **Environment Sync**: `eai env pull` fetches config from Azure App Config + Key Vault
-5. **Type Management**: `eai types validate`, `eai types seed`, `eai types diff` manage Object Types
-6. **Resource CRUD**: `eai resources list/get/create/update/delete` interacts with platform data
-7. **User Management**: `eai user invite`, `eai user provision-me` adds users to tenants
-8. **AI Workflows**: `eai chat send/stream` sends messages to AI workflows; `eai docs classify/index` handles documents
-9. **Entra Provisioning**: `eai provision entra` creates/confirms Entra app registration in CIAM
+4. **Entra Provisioning**: `eai provision entra` creates/confirms Entra app registration in CIAM for end-user authentication
+5. **Environment Sync**: `eai env pull` fetches config from Azure App Config + Key Vault
+6. **Type Management**: `eai types validate`, `eai types seed`, `eai types diff` manage Object Types
+7. **Resource CRUD**: `eai resources list/get/create/update/delete` interacts with platform data
+8. **User Management**: `eai user invite`, `eai user provision-me` adds users to tenants
+9. **AI Workflows**: `eai chat send/stream` sends messages to AI workflows; `eai docs classify/index` handles documents
 10. **Deployment**: `eai deploy setup/trigger/status` orchestrates Azure deployments via GitHub Actions
 
 ## Architecture Philosophy
@@ -130,7 +130,7 @@ node dist/index.js tenant list
 - **Project Context**: Discovers project root by walking up to find `eai.config.ts` or `src/eai.config/`
 - **TypeScript Evaluation**: Loads user-defined Object Types from TypeScript files by stripping types and evaluating as JS
 - **Static Registry**: Self-hosted npm registry on GitHub Pages (no external npm publish required)
-- **Structured Error Codes**: E001-E305 error catalog with suggestions
+- **Structured Error Codes**: E001-E399 error catalog with suggestions
 
 ## Critical Integrations
 
@@ -145,16 +145,17 @@ node dist/index.js tenant list
 
 ## Recent Enhancements
 
-### v2.7.0 (2026-05-04)
+### v2.8.3 (2026-05-08)
 
-- **Entra Provisioning Validation** (PR #32): `eai provision entra` now checks `signin_ready` status from AdminAPI and warns + exits non-zero when false, preventing incomplete Entra app registrations from blocking authentication
+- **Storage Metadata Status Fix** (PR #35): Fixed Object Type scaffolding to properly initialize `metadata.status` field for storage compliance
 
-### v2.6.0 (2026-05-02)
+### v2.8.2 (2026-05-06)
 
-- **Tenant Context Fixes**: Fixed tenant context handling for CLI tenant operations (PR #29)
-- **Local Tenant Lifecycle**: Added comprehensive local dedicated tenant lifecycle coverage with E2E tests
-- **Child Tenant Bootstrap**: Improved first-admin bootstrap flow with usability verification
-- **Membership Verification**: Enhanced membership confirmation before marking tenants as usable
+- **Object Type Storage Metadata** (PR #34): Aligned Object Type scaffolding with platform storage metadata rules
+
+### v2.8.1 (2026-05-05)
+
+- **Production Tenant Lookup**: Fixed tenant lookup after CLI login in production environments (PR #33)
 
 ## Update Management
 

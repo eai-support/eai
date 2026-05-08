@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-04T17:57:42Z"
-source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
+generated_at: "2026-05-08T17:54:00Z"
+source_commit: "825bd7f4db75d5f0be796914cc300b14969c2e74"
 ---
 
 # EAI CLI — Deployment
@@ -25,7 +25,7 @@ The EAI CLI uses a **static npm registry hosted on GitHub Pages**, eliminating t
 
 **Package Name**: `@eai-tools/cli`
 
-**Current Version**: 2.6.0
+**Current Version**: 2.8.3
 
 ### Installation
 
@@ -121,15 +121,15 @@ The release script verifies these commands are registered:
 {
   "name": "@eai-tools/cli",
   "dist-tags": {
-    "latest": "2.6.0"
+    "latest": "2.8.3"
   },
   "versions": {
-    "2.6.0": {
+    "2.8.3": {
       "name": "@eai-tools/cli",
-      "version": "2.6.0",
+      "version": "2.8.3",
       "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
       "dist": {
-        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.6.0.tgz",
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.3.tgz",
         "shasum": "..."
       }
     }
@@ -171,8 +171,8 @@ permissions:
 | Bump | Increment | Use Case |
 |------|-----------|----------|
 | `patch` | `2.5.2` → `2.5.3` | Bug fixes, dependency updates |
-| `minor` | `2.5.2` → `2.6.0` | New features, backward-compatible |
-| `major` | `2.6.0` → `3.0.0` | Breaking changes |
+| `minor` | `2.7.2` → `2.8.0` | New features, backward-compatible |
+| `major` | `2.8.3` → `3.0.0` | Breaking changes |
 
 **Manual Bump**:
 ```bash
@@ -196,7 +196,7 @@ sequenceDiagram
         Cache-->>CLI: Skip check
     else Cache expired
         CLI->>Registry: GET /registry/@eai-tools/cli
-        Registry-->>CLI: {"dist-tags": {"latest": "2.7.0"}}
+        Registry-->>CLI: {"dist-tags": {"latest": "2.8.3"}}
         CLI->>Cache: Write cache
     end
 
