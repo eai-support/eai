@@ -24,6 +24,21 @@ include them if explicitly requested in the feature specification.
 **Organization**: Tasks are grouped by user story to enable independent
 implementation and testing of each story.
 
+## App-Delivery Preconditions
+
+When the feature is classified as application delivery, tasks must preserve the
+shared numbered stages **and** enforce these prerequisites before downstream
+implementation:
+
+- `ui-approval.md` exists and is approved
+- `service-fit-matrix.md` exists and distinguishes accessible now,
+  purchasable, and unavailable platform capabilities
+- preview work stays inside approved Vertical Template blocks unless an
+  exception task is recorded
+
+For explicit non-app work, mark this section "Not applicable" and continue with
+the shared stages without app-only gates.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)

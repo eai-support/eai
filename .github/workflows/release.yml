@@ -54,7 +54,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/public/registry/
+          git add docs-site/static/registry/
           git commit -m "chore: publish v${GITHUB_REF_NAME#v} to registry"
           git push origin HEAD:main
 

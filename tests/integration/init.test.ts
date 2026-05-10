@@ -10,7 +10,12 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import inquirer from 'inquirer';
 import { describe, test, beforeEach, afterEach, expect, vi } from 'vitest';
-import { describeCloneFailure, initCommand } from '../../src/commands/init.js';
+import {
+  describeCloneFailure,
+  initCommand,
+  isDefaultTemplateSource,
+  resolveTemplateClonePlan,
+} from '../../src/commands/init.js';
 import * as auth from '../../src/lib/auth.js';
 import * as tenantContext from '../../src/lib/tenant-context.js';
 import { createTestEnvironment, captureConsole, type TestEnvironment } from '../helpers/test-env.js';
@@ -168,9 +173,9 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'my-vertical/.claude/agents/codebase-analyzer.md');
     await expectFileExists(ctx, 'my-vertical/.specify/commands/1_gofer_research.md');
     await expectFileExists(ctx, 'my-vertical/.specify/scripts/bash/pipeline-state.sh');
-    await expectFileExists(ctx, 'my-vertical/.system/skills/gofer/1_gofer_research/SKILL.md');
-    await expectFileExists(ctx, 'my-vertical/.agents/skills/gofer/1_gofer_research/SKILL.md');
-    await expectFileExists(ctx, 'my-vertical/.agents/skills/gofer/0_business_scenario/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.system/skills/1_gofer_research/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.agents/skills/1_gofer_research/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.agents/skills/0_business_scenario/SKILL.md');
     await expectFileExists(ctx, 'my-vertical/.gemini/extension.json');
     await expectFileExists(ctx, 'my-vertical/.gemini/commands/gofer/1_gofer_research.toml');
     await expectFileExists(ctx, 'my-vertical/.gemini/commands/gofer/0_business_scenario.toml');
@@ -207,7 +212,7 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'quick-app/.claude/agents/codebase-analyzer.md');
     await expectFileExists(ctx, 'quick-app/.specify/commands/1_gofer_research.md');
     await expectFileExists(ctx, 'quick-app/.specify/scripts/hooks/post-tool-use.mjs');
-    await expectFileExists(ctx, 'quick-app/.agents/skills/gofer/1_gofer_research/SKILL.md');
+    await expectFileExists(ctx, 'quick-app/.agents/skills/1_gofer_research/SKILL.md');
     await expectFileExists(ctx, 'quick-app/.gemini/commands/gofer/1_gofer_research.md');
     await expectFileExists(ctx, 'quick-app/.github/skills/0-business-scenario/SKILL.md');
     const objectTypes = await readFile(join(env.dir, 'quick-app', 'src', 'eai.config', 'object-types.ts'), 'utf-8');
@@ -228,7 +233,7 @@ describe('eai init', () => {
     await expectFileContains(ctx, 'plain-app/package.json', '"name": "@eai-tools/plain-app"');
     await expectFileNotExists(ctx, 'plain-app/.claude/commands/0_business_scenario.md');
     await expectFileNotExists(ctx, 'plain-app/.specify/commands/1_gofer_research.md');
-    await expectFileNotExists(ctx, 'plain-app/.agents/skills/gofer/1_gofer_research/SKILL.md');
+    await expectFileNotExists(ctx, 'plain-app/.agents/skills/1_gofer_research/SKILL.md');
     await expectFileNotExists(ctx, 'plain-app/.gemini/extension.json');
     expectCommandSucceeded(result);
   });
@@ -332,12 +337,33 @@ describe('describeCloneFailure', () => {
 
     expect(message).toContain('`git` is required');
     expect(message).toContain('winget install --id Git.Git -e');
-    expect(message).toContain('eai-tools/eai-vertical-template.git');
+    expect(message).toContain('eai-tools/Vertical-Template.git');
   });
 
   test('passes through unrelated clone errors', () => {
     expect(describeCloneFailure('/tmp/template', new Error('fatal: unable to access repository'))).toBe(
       'fatal: unable to access repository',
     );
+  });
+});
+
+describe('resolveTemplateClonePlan', () => {
+  test('treats both canonical and legacy template URLs as the default source', () => {
+    expect(isDefaultTemplateSource('https://github.com/eai-tools/Vertical-Template.git')).toBe(true);
+    expect(isDefaultTemplateSource('https://github.com/eai-tools/eai-vertical-template.git')).toBe(true);
+  });
+
+  test('returns the linked-source pin for the default template', () => {
+    const plan = resolveTemplateClonePlan('https://github.com/eai-tools/Vertical-Template.git');
+    expect(plan.cloneSource).toBe('https://github.com/eai-tools/Vertical-Template.git');
+    expect(plan.pinnedCommit).toBe('2169e69c87f582c826dced2deafcd174ee081656');
+    expect(plan.displaySource).toBe('eai-tools/Vertical-Template@2169e69');
+  });
+
+  test('passes through custom template sources unchanged', () => {
+    const plan = resolveTemplateClonePlan('/tmp/custom-template');
+    expect(plan.cloneSource).toBe('/tmp/custom-template');
+    expect(plan.pinnedCommit).toBeUndefined();
+    expect(plan.displaySource).toBe('/tmp/custom-template');
   });
 });
