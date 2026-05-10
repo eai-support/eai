@@ -1,30 +1,21 @@
 ---
 generated: true
-generated_at: "2026-05-10T13:34:44.155Z"
-source_commit: "6630fadf30a5abbe6f03398d06f58830938db0e7"
+generated_at: "2026-05-10T14:23:36.419Z"
+source_commit: "16242be8766857a2aba9b79acafcad0c19205e84"
 ---
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-05-10 12:25 UTC (commit a33f796)  
-**Current Documentation**: 2026-05-10 13:33 UTC (commit 6630fad)  
+**Previous Documentation**: 2026-05-10 13:33 UTC (commit 6630fad)  
+**Current Documentation**: 2026-05-10 14:21 UTC (commit 16242be)  
 **Version**: 2.8.3 (stable)
 
 ### Changes in This Update
 
-#### Documentation Improvements
-- **Restored Docs Preview MDX Shim** (PR #38, commit b076a9f)
-  - Fixed MDX components for docs preview functionality
-  - Ensures documentation can be previewed correctly during development
-  
-- **Restored Scenarios Library** (PR #37, commit 13f4300)
-  - Re-added comprehensive scenarios documentation (50 industry scenarios)
-  - Includes examples across 7 programming languages
-  - Scenarios now available in `docs-site/scenarios/`
-
 #### Automated Updates
-- Nightly .tech-docs updates continue to run automatically (commit 895a5fa)
+- Nightly `.tech-docs/` documentation refresh (commit 16242be)
+- No material code changes since last generation
 
 ---
 
