@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-10T11:17:59.756Z"
-source_commit: "f628173b70d1400907cfb654ebabeacf95eb8117"
+generated_at: "2026-05-10T12:25:07.527Z"
+source_commit: "a33f796479b58b91ec2dde178460836667153dd2"
 ---
 # Documentation Surfaces
 
@@ -27,7 +27,7 @@ The central nightly `tech-docs` process treats `.tech-docs/` as the canonical ge
 
 ## Consolidation Status
 
-- Repo: `eai-cli`
+- Repo: `tech-docs`
 - Canonical nightly-generated surface: `.tech-docs/`
 - Additional surfaces detected: 1
 - Additional docs workflows detected: 1
