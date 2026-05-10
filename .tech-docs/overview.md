@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-10T12:25:07.527Z"
-source_commit: "a33f796479b58b91ec2dde178460836667153dd2"
+generated_at: "2026-05-10T13:34:44.155Z"
+source_commit: "6630fadf30a5abbe6f03398d06f58830938db0e7"
 ---
 # EAI CLI — Overview
 
@@ -240,6 +240,6 @@ The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to stati
 
 - **Version**: 2.8.3 (released 2026-05-08)
 - **Build Status**: Passing (CI workflow validates TypeCheck, Lint, Build, Tests)
-- **Documentation**: Up-to-date (last generated 2026-05-10T12:16:55Z)
-- **Source Commit**: `a33f796479b58b91ec2dde178460836667153dd2`
+- **Documentation**: Up-to-date (last generated 2026-05-10T13:33:18Z)
+- **Source Commit**: `6630fadf30a5abbe6f03398d06f58830938db0e7`
 - **Registry Status**: Published to GitHub Pages registry
