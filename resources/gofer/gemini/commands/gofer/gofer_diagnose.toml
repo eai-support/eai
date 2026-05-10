@@ -1,0 +1,2 @@
+description = "Run a reproduce-minimize-instrument-fix loop for bugs and failing tests."
+prompt = "{{include: ../../../.specify/commands/gofer_diagnose.md}}"

@@ -84,8 +84,11 @@ All commands support these global flags:
 
 | Command | Description |
 |---------|-------------|
-| `eai init [name]` | Interactive scaffold from the public EAI vertical template with Gofer AI CLI assets |
+| `eai init [name]` | Interactive scaffold from the CLI-pinned public EAI vertical template with Gofer AI CLI assets |
 | `eai dev` | Start local dev server with connectivity checks |
+
+The bundled default template is versioned with the installed CLI. Use `--from`
+to override it with a different repository or a local template path.
 
 ### Authentication
 
@@ -260,7 +263,7 @@ terminals used in this workspace:
 | CLI | Installed surface | First command |
 |-----|-------------------|---------------|
 | Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` hooks | `/0_business_scenario` |
-| Codex CLI | `.system/skills/gofer` and `.agents/skills/gofer` | `$gofer/1_gofer_research` |
+| Codex CLI | `.agents/skills/` with a legacy `.system/skills/` mirror | Ask Codex to use the relevant Gofer skill |
 | Gemini CLI | `.gemini/commands/gofer`, `.gemini/extension.json` | `/gofer:1_gofer_research` |
 | GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | Use the Gofer prompt or matching local skill |
 

@@ -11,8 +11,8 @@ tools:
 argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
-  canonicalSource: .claude/commands/7a_stakeholder_comms.md
-  canonicalChecksum: 246efaf545eb43e344519d73a2abb28da1631374eec2f3e8e2dbbf03208b0489
+  canonicalSource: .specify/commands/7a_stakeholder_comms.md
+  canonicalChecksum: ddc5b64e40325547941895826ff8fe5e08b5d24ca0921fdb5e056806440fe1ab
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -92,7 +92,7 @@ Instead, inform the user that validation must pass first.
 3. **Verify validation passed**:
    - Check `validation-report.md` for `status: PASS`
    - If FAIL: "Validation must pass before generating communications. Current
-     score: [N]/100. Run #6_gofer_validate first."
+     score: [N]/110. Run #6_gofer_validate first."
 
 ---
 
@@ -141,7 +141,7 @@ Read pipeline logs and feature artifacts to produce:
 2. Stage duration breakdown
 3. Quality metrics (validation score, iterations)
 4. Cost analysis (token usage)
-5. Portfolio status (all features in .specify/specs/)
+5. Portfolio status (active top-level features in .specify/specs/, excluding `_archived/`)
 6. Scope health indicators
 
 Return structured report (<2000 tokens)."
@@ -261,7 +261,7 @@ stakeholder communications explaining what changed and why.
   3.  #3_gofer_plan            ✓ (Technical architecture)
   4.  #4_gofer_tasks           ✓ (Task breakdown)
   5.  #5_gofer_implement       ✓ (Implementation)
-  6.  #6_gofer_validate        ✓ (Quality: [score]/100)
+  6.  #6_gofer_validate        ✓ (Quality: [score]/110)
   7a. /7a_stakeholder_comms    ✓ (Communications package)
 
   The feature is ready for stakeholder review and deployment.

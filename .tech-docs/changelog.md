@@ -1,15 +1,25 @@
 ---
 generated: true
-generated_at: "2026-05-10T11:17:59.756Z"
-source_commit: "f628173b70d1400907cfb654ebabeacf95eb8117"
+generated_at: "2026-05-10T14:23:36.419Z"
+source_commit: "16242be8766857a2aba9b79acafcad0c19205e84"
 ---
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-05-04 17:57 UTC (commit 1dc87b0)  
-**Current Documentation**: 2026-05-08 17:54 UTC (commit 825bd7f)  
-**Version**: 2.7.0 → 2.8.3
+**Previous Documentation**: 2026-05-10 13:33 UTC (commit 6630fad)  
+**Current Documentation**: 2026-05-10 14:21 UTC (commit 16242be)  
+**Version**: 2.8.3 (stable)
+
+### Changes in This Update
+
+#### Automated Updates
+- Nightly `.tech-docs/` documentation refresh (commit 16242be)
+- No material code changes since last generation
+
+---
+
+## Previous Updates
 
 ---
 

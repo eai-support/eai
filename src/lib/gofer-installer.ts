@@ -724,7 +724,7 @@ This folder contains project specifications for AI-driven feature development.
 ## AI Terminal Commands
 
 - Claude CLI: \`/0_business_scenario\`
-- Codex CLI: \`$gofer/1_gofer_research\`
+- Codex CLI: ask Codex to use the relevant Gofer skill from \`.agents/skills/\`
 - Gemini CLI: \`/gofer:1_gofer_research\`
 - GitHub Copilot: prompts are in \`.github/prompts\`; CLI skills are in \`.github/skills\`
 

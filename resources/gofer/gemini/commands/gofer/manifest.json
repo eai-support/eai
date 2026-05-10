@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "generated": "2026-04-30T04:45:17.748Z",
+  "generated": "2026-05-10T13:03:30.020Z",
   "commands": [
     "0_business_scenario",
     "0a_problem_validation",
@@ -16,9 +16,14 @@
     "7a_stakeholder_comms",
     "8_gofer_resume",
     "9_gofer_tests",
+    "gofer:diagnose",
     "gofer:personality",
     "gofer:plan",
     "gofer:side",
+    "gofer:spec-summary",
+    "gofer:tdd",
+    "gofer:vocabulary",
+    "gofer:zoom-out",
     "gofer_constitution",
     "gofer_hydrate"
   ]

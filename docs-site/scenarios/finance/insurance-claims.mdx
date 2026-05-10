@@ -1,0 +1,272 @@
+---
+title: Insurance Claims
+description: Build an insurance claims processing system with adjudication and payment workflows using the EAI CLI.
+---
+
+## Persona
+
+**Role**: Full-stack developer at an insurtech company (250 employees) building a claims management platform for property and casualty insurers.
+
+Each insurance carrier is onboarded as a separate tenant, maintaining independent claims data, adjuster assignments, and payment records. The platform must handle high claim volumes during catastrophic events while keeping carrier data strictly separated.
+
+## Business Problem
+
+Insurance claims processing involves multiple handoffs -- initial filing, documentation review, adjuster assignment, damage assessment, and payment authorization. When these steps live in separate systems, claims languish in queues, policyholders wait weeks for updates, and adjusters duplicate effort reviewing the same documentation. This scenario builds a unified claims pipeline from submission through payment.
+
+<!-- four-step-application:start -->
+## Four-Step Application
+
+This scenario works best as a four-step, human-in-the-loop application. The existing object model already gives this scenario a strong delivery backbone through Claim, Adjudication, and Payment.
+
+- **Mission metric focus:** faster cycle time, better compliance quality, and stronger revenue or loss performance.
+- **Human + AI pattern:** Each step combines structured workflow data with chat assistance, background generation, document understanding, and accessible interaction patterns when they improve the experience.
+
+### Step 1. Capture demand and context
+
+- **Goal:** Make it easy for the user to start the Insurance Claims journey with complete, trusted context.
+- **Required data:** Claim context such as policyNumber, type, amount, and description.
+- **AI support:** Use chat to guide intake, generate clearer prompts, create accessible summaries, and assist with voice or vision-led capture when a form alone is not the best experience. EAI can support structured intake, chat workflows, and document-centred capture today; richer native multimodal capture may still need workflow extensions or connected services.
+- **Business impact:** Improve completion rate, reduce first-touch effort, and raise customer or staff confidence in the UX from the very first interaction.
+- **EAI delivery:** Model the intake as tenant-isolated object types and resources, then use actions, chat workflows, and document indexing or classification to keep the initial record complete and usable.
+
+### Step 2. Prepare the decision
+
+- **Goal:** Turn the captured context into the next best action for Insurance Claims without forcing the human reviewer to assemble the case manually.
+- **Required data:** Claim state and history; Adjudication fields such as adjuster, decision, approvedAmount, and reasoning.
+- **AI support:** Run background summarisation, extraction, classification, recommendation drafting, and answer generation so a reviewer sees a prepared case instead of raw fragments. EAI delivers the structured records and AI workflow hooks for this today; specialised scoring engines, external rules, or advanced reasoning controls may still need integration work.
+- **Business impact:** Reduce cycle time, improve quality and consistency, and protect the mission-critical metric before the case moves into execution.
+- **EAI delivery:** Link records across the scenario, persist decision state as resources, and use workflow actions plus chat assistance to keep humans in control while AI prepares the work.
+
+### Step 3. Execute and collaborate
+
+- **Goal:** Coordinate the actual work, handoffs, approvals, and user updates needed to deliver the service or outcome.
+- **Required data:** Adjudication actions such as submitDecision; Payment fields such as amount, method, processedDate, and status.
+- **AI support:** Draft replies, produce work packets, monitor exceptions in the background, and surface the next action for each operator. EAI can orchestrate tenant-isolated records, actions, chats, and document workflows today; deeper system-to-system automation may require additional connectors or workflow capability.
+- **Business impact:** Increase operator productivity, reduce rework across handoffs, and improve service consistency across the application journey.
+- **EAI delivery:** Use linked object types, actions, resource updates, and workflow-triggered AI assistance so the team can execute in one model instead of splitting work across disconnected tools.
+
+### Step 4. Resolve, explain, and improve
+
+- **Goal:** Close the loop with a clear outcome, an understandable explanation, and feedback that improves the next case.
+- **Required data:** final status, outcome, audit history, and follow-up signals across Claim, Adjudication, and Payment.
+- **AI support:** Generate outcome summaries, customer-friendly answers, compliance-ready notes, management insights, and accessible follow-up content. EAI can store outcome records and support answer generation today, while richer proactive agents, advanced analytics, or channel-specific accessibility features may need additional product capability.
+- **Business impact:** Increase trust, quality, and measurable business value through faster cycle time, better compliance quality, and stronger revenue or loss performance.
+- **EAI delivery:** Keep the full audit trail in structured resources, use AI workflows to explain outcomes, and feed the resulting signals into future product, service, and operational improvement work.
+
+<!-- four-step-application:end -->
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Claim** | `policyNumber` (text), `type` (select: auto, property, liability, health), `amount` (number), `description` (text), `status` (select: filed, under-review, approved, denied, paid) | one-to-many → Adjudication, one-to-many → Payment | `fileClaim` |
+| **Adjudication** | `adjuster` (text), `decision` (select: approve, deny, request-info), `approvedAmount` (number), `reasoning` (text), `reviewDate` (date) | many-to-one → Claim | `submitDecision` |
+| **Payment** | `amount` (number), `method` (select: ach, check, direct-repair), `processedDate` (date), `status` (select: pending, processed, returned), `payee` (text) | many-to-one → Claim | `processPayment` |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init insurance-claims
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+   <Aside type="note">
+     If you are an external developer, see [Configuration](/docs/configuration) and [Environment Profiles](/docs/profiles) for login and local environment setup.
+   </Aside>
+
+3. **Define your Object Types**
+
+   Create the Claim, Adjudication, and Payment types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: insurance-claims
+   ✔ Claim — 5 props, 2 links, 1 action
+   ✔ Adjudication — 5 props, 1 link, 1 action
+   ✔ Payment — 5 props, 1 link, 1 action
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create a sample claim**
+
+   ```bash
+   eai resources create Claim --data '{"policyNumber": "POL-2026-44821", "type": "property", "amount": 12500, "description": "Water damage from burst pipe in basement, affecting drywall and flooring", "status": "filed"}'
+   ```
+
+7. **List filed claims**
+
+   ```bash
+   eai resources list Claim
+   ```
+
+8. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'insurance-claims': [
+    {
+      name: 'Claim',
+      displayName: 'Claim',
+      description: 'An insurance claim filed by a policyholder for loss or damage',
+      properties: [
+        { name: 'policyNumber', type: 'text' as const, required: true, indexed: true },
+        {
+          name: 'type', type: 'select' as const, required: true,
+          options: [
+            { label: 'Auto', value: 'auto' },
+            { label: 'Property', value: 'property' },
+            { label: 'Liability', value: 'liability' },
+            { label: 'Health', value: 'health' },
+          ],
+        },
+        { name: 'amount', type: 'number' as const, required: true },
+        { name: 'description', type: 'text' as const, required: true },
+        {
+          name: 'status', type: 'select' as const, required: true,
+          defaultValue: 'filed',
+          options: [
+            { label: 'Filed', value: 'filed' },
+            { label: 'Under Review', value: 'under-review' },
+            { label: 'Approved', value: 'approved' },
+            { label: 'Denied', value: 'denied' },
+            { label: 'Paid', value: 'paid' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'adjudications', targetObjectType: 'Adjudication', cardinality: 'one-to-many' as const },
+        { name: 'payments', targetObjectType: 'Payment', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'fileClaim',
+          displayName: 'File Claim',
+          description: 'Submit a new insurance claim with supporting documentation',
+          inputs: [
+            { name: 'policyNumber', type: 'text' as const, required: true },
+            { name: 'type', type: 'select' as const, required: true },
+            { name: 'amount', type: 'number' as const, required: true },
+            { name: 'description', type: 'text' as const, required: true },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Adjudication',
+      displayName: 'Adjudication',
+      description: 'An adjuster review and decision on an insurance claim',
+      properties: [
+        { name: 'adjuster', type: 'text' as const, required: true, indexed: true },
+        {
+          name: 'decision', type: 'select' as const, required: true,
+          options: [
+            { label: 'Approve', value: 'approve' },
+            { label: 'Deny', value: 'deny' },
+            { label: 'Request Info', value: 'request-info' },
+          ],
+        },
+        { name: 'approvedAmount', type: 'number' as const, required: false },
+        { name: 'reasoning', type: 'text' as const, required: true },
+        { name: 'reviewDate', type: 'date' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'claim', targetObjectType: 'Claim', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'submitDecision',
+          displayName: 'Submit Decision',
+          description: 'Record the adjuster decision and approved amount for the claim',
+          inputs: [
+            { name: 'decision', type: 'select' as const, required: true },
+            { name: 'approvedAmount', type: 'number' as const, required: false },
+            { name: 'reasoning', type: 'text' as const, required: true },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Payment',
+      displayName: 'Payment',
+      description: 'A payment issued to settle an approved insurance claim',
+      properties: [
+        { name: 'amount', type: 'number' as const, required: true },
+        {
+          name: 'method', type: 'select' as const, required: true,
+          options: [
+            { label: 'ACH Transfer', value: 'ach' },
+            { label: 'Check', value: 'check' },
+            { label: 'Direct Repair', value: 'direct-repair' },
+          ],
+        },
+        { name: 'processedDate', type: 'date' as const, required: true },
+        {
+          name: 'status', type: 'select' as const, required: true,
+          defaultValue: 'pending',
+          options: [
+            { label: 'Pending', value: 'pending' },
+            { label: 'Processed', value: 'processed' },
+            { label: 'Returned', value: 'returned' },
+          ],
+        },
+        { name: 'payee', type: 'text' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'claim', targetObjectType: 'Claim', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'processPayment',
+          displayName: 'Process Payment',
+          description: 'Execute the claim payment to the policyholder or repair vendor',
+          inputs: [
+            { name: 'amount', type: 'number' as const, required: true },
+            { name: 'method', type: 'select' as const, required: true },
+            { name: 'payee', type: 'text' as const, required: true },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Complete claims lifecycle**: The Claim, Adjudication, and Payment types cover every stage from initial filing through settlement, eliminating the need for separate tracking systems.
+- **Adjuster decision tracking**: Every adjudication records the adjuster, decision reasoning, and approved amount, providing a defensible audit trail for regulatory review and dispute resolution.
+- **Flexible payment methods**: The Payment type supports ACH, check, and direct repair vendor payments, accommodating different claim types and policyholder preferences.
+- **Carrier-level isolation**: Each insurance carrier operates in a separate tenant, ensuring that claims data, adjuster assignments, and payment records are never accessible across carrier boundaries.

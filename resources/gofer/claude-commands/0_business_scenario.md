@@ -352,16 +352,46 @@ journey.
 If app delivery is selected or inferred, continue to Step 2.7 and create the
 AI-augmented journey.
 
+### Shared Numbered Stage Contract
+
+Gofer MUST keep the same numbered stages for both classifications. The
+classification changes the behavior inside the shared stages; it does **not**
+remove existing non-app functionality or fork Gofer into unrelated products.
+
+| Mode | Stage Behavior |
+| ---- | -------------- |
+| Application delivery | Shared stages gain a UI-first interview, a Vertical Template constrained preview loop, preview self-review, optional branding intake, an explicit UI approval gate, and a post-approval EnterpriseAI service-fit gate before plan/tasks are finalized |
+| Non-app work | Shared stages preserve the current research, documentation, exploration, bug-fix, migration, audit, and other non-app workflows without app-only preview, branding, or service-fit requirements |
+
 ---
 
 ## Step 2.7: AI-Augmented Journey Confirmation (For Application Delivery)
 
-**When the user selects A. New Feature**, after completing discovery, confirm
-the customer journey before routing to the pipeline. For application delivery,
-the default target is a concise **four-step or fewer AI-augmented process**.
-Even when the current business process has more than four steps, Gofer should
-use generative AI to compress, combine, or simplify the process into four
-business-goal-driven stages unless the user explicitly rejects that structure.
+When the request is classified as **application delivery**, confirm the
+customer journey before routing to the rest of the pipeline. For application
+delivery, the default target is a concise **four-step or fewer AI-augmented
+process**. Even when the current business process has more than four steps,
+Gofer should use generative AI to compress, combine, or simplify the process
+into four business-goal-driven stages unless the user explicitly rejects that
+structure.
+
+### UI-First App-Delivery Default
+
+For app delivery, the default early process is:
+
+1. **Interview and visual brief** — understand the MVP outcome, must-have
+   screens, target users, workflow goals, and whether client branding or logos
+   must be applied.
+2. **Constrained MVP preview** — generate the first preview from the Vertical
+   Template blocks already installed in the project by `eai-cli`, rather than
+   from an unconstrained custom UI.
+3. **Preview self-review and approval** — use screenshot or Playwright-style
+   local review before showing the preview, then iterate with the stakeholder
+   until the UI is explicitly approved.
+4. **EnterpriseAI service-fit gate** — after UI approval, review which
+   platform services are accessible now, purchasable but unavailable now, or
+   unsupported, and lock that decision before plan/tasks are treated as
+   complete.
 
 **First, offer the option to skip:**
 
@@ -390,11 +420,15 @@ Based on the discovery answers, extract:
    - Identify which actor performs each step
    - State the business goal and completion outcome for each step
    - Note which generative AI assistance improves that step
+   - For app delivery, default the steps to: brief -> preview -> approval ->
+     service fit unless the user clearly needs a different four-step shape
 
 3. **Touchpoints**: Where do interactions happen?
    - UI touchpoints (screens, buttons)
    - API touchpoints
    - Notifications
+   - Local preview touchpoints such as browser views, screenshots, or
+     Playwright/self-review outputs when the feature includes a UI
 
 4. **AI augmentation**: How does generative AI help?
    - Conversational help: chatbot, voice, accessibility, translations, or
@@ -406,6 +440,8 @@ Based on the discovery answers, extract:
      completion
    - Human control: show confidence, evidence, edit controls, escalation path,
      and audit trail
+   - Preview critique: review the generated MVP before presentation and suggest
+     concrete fixes when the first pass is visually weak or off-brief
 
 ### Journey Confirmation Questions
 
@@ -796,6 +832,10 @@ stages to create these artifacts without re-interviewing the user:
 | Artifact | Required Content |
 | -------- | ---------------- |
 | `journeys/base-journey.md` | Application classification, four-step-or-fewer AI-augmented customer journey, step goals, AI assistance, context used, controls, completion criteria |
+| `ui-preview-brief.md` | App-delivery-only preview brief: target screens, Vertical Template component constraints, branding inputs, preview validation expectations |
+| `ui-review-log.md` | App-delivery-only iteration log: preview evidence, requested changes, accepted changes, unresolved issues |
+| `ui-approval.md` | App-delivery-only approval gate: approved preview, approved branding, approved component exceptions, approver and timestamp |
+| `service-fit-matrix.md` | App-delivery-only service selection evidence: desired platform capability, evidence source, accessible now vs purchasable vs unavailable, selected direction |
 | `context-bundle.md` | Compact feature context, selected scenario, app/non-app decision, AI-augmented journey summary, EnterpriseAI object types, tenant assumptions, API surfaces, deployment assumptions, validation criteria |
 | `contract-pack.md` | Actors, object types, workflows/journeys, four-step AI assistance contract, permissions, tenant boundaries, APIs/events, runtime assumptions, acceptance tests |
 | `reuse-scan.md` | Existing specs, platform references, object types, APIs, workflows, modules, and the reuse/extend/create decision |
@@ -808,6 +848,8 @@ For application delivery, downstream stages must preserve the four-step
 AI-augmented journey as the default scope spine. If a later stage expands beyond
 four user-facing steps, it must explain why the extra complexity is necessary
 and whether generative AI could combine or automate the additional steps.
+Non-app work keeps the same numbered stages without requiring the app-delivery
+preview, branding, approval, or service-fit artifacts.
 
 ### Novice Walkthrough Guardrail (MANDATORY)
 

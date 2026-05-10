@@ -4,6 +4,7 @@
 
 import { Command } from 'commander';
 import { execFile } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { promisify } from 'node:util';
 import { readFile, writeFile, access, mkdir, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -21,10 +22,25 @@ import { pullCloudEnvValues } from '../lib/cloud-env.js';
 import { getActiveProfile, loadProfileConfig } from '../lib/profile.js';
 
 const exec = promisify(execFile);
+const require = createRequire(import.meta.url);
 
-const TEMPLATE_REPO = 'https://github.com/eai-tools/eai-vertical-template.git';
+const TEMPLATE_REPO = 'https://github.com/eai-tools/Vertical-Template.git';
+const LEGACY_TEMPLATE_REPO = 'https://github.com/eai-tools/eai-vertical-template.git';
 const GITHUB_ORG = 'eai-tools';
-const TEMPLATE_REPO_LABEL = `${GITHUB_ORG}/eai-vertical-template`;
+const TEMPLATE_REPO_LABEL = `${GITHUB_ORG}/Vertical-Template`;
+
+interface LinkedSourcesManifest {
+  readonly verticalTemplate?: {
+    readonly repo?: string;
+    readonly commit?: string;
+  };
+}
+
+export interface TemplateClonePlan {
+  readonly cloneSource: string;
+  readonly displaySource: string;
+  readonly pinnedCommit?: string;
+}
 
 interface InitOptions {
   name: string;
@@ -63,7 +79,7 @@ export function describeCloneFailure(templateSource: string, error: unknown): st
   }
 
   if (
-    templateSource === TEMPLATE_REPO
+    isDefaultTemplateSource(templateSource)
     && /repository .* not found|repository not found|fatal: .* not found/i.test(message)
   ) {
     return `${message}\n\nThe default template source (${TEMPLATE_REPO}) could not be reached.\n` +
@@ -71,6 +87,59 @@ export function describeCloneFailure(templateSource: string, error: unknown): st
   }
 
   return message;
+}
+
+function loadLinkedSourcesManifest(): LinkedSourcesManifest | null {
+  try {
+    return require('../../resources/linked-sources.json') as LinkedSourcesManifest;
+  } catch {
+    return null;
+  }
+}
+
+export function isDefaultTemplateSource(templateSource: string): boolean {
+  return templateSource === TEMPLATE_REPO || templateSource === LEGACY_TEMPLATE_REPO;
+}
+
+export function resolveTemplateClonePlan(templateSource: string): TemplateClonePlan {
+  if (!isDefaultTemplateSource(templateSource)) {
+    return {
+      cloneSource: templateSource,
+      displaySource: describeTemplateSource(templateSource),
+    };
+  }
+
+  const linkedSources = loadLinkedSourcesManifest();
+  const cloneSource = linkedSources?.verticalTemplate?.repo || TEMPLATE_REPO;
+  const pinnedCommit = linkedSources?.verticalTemplate?.commit;
+
+  return {
+    cloneSource,
+    pinnedCommit,
+    displaySource: pinnedCommit ? `${TEMPLATE_REPO_LABEL}@${pinnedCommit.slice(0, 7)}` : TEMPLATE_REPO_LABEL,
+  };
+}
+
+async function cloneTemplate(templateSource: string, targetDir: string): Promise<TemplateClonePlan> {
+  const plan = resolveTemplateClonePlan(templateSource);
+
+  if (!plan.pinnedCommit) {
+    await exec('git', ['clone', '--depth', '1', plan.cloneSource, targetDir]);
+    return plan;
+  }
+
+  try {
+    await exec('git', ['init', targetDir]);
+    await exec('git', ['-C', targetDir, 'remote', 'add', 'origin', plan.cloneSource]);
+    await exec('git', ['-C', targetDir, 'fetch', '--depth', '1', 'origin', plan.pinnedCommit]);
+    await exec('git', ['-C', targetDir, 'checkout', 'FETCH_HEAD']);
+    return plan;
+  } catch {
+    await rm(targetDir, { recursive: true, force: true });
+    await exec('git', ['clone', plan.cloneSource, targetDir]);
+    await exec('git', ['-C', targetDir, 'checkout', plan.pinnedCommit]);
+    return plan;
+  }
 }
 
 export const initCommand = new Command('init')
@@ -85,9 +154,12 @@ export const initCommand = new Command('init')
 Gofer AI CLI assets are installed by default:
   .specify/ commands, scripts, templates, hooks, and memory folders
   .claude/ commands and agents for Claude CLI
-  .system/skills/gofer and .agents/skills/gofer for Codex CLI
+  .system/skills and .agents/skills for Codex CLI
   .gemini/commands/gofer and .gemini/extension.json for Gemini CLI
   .github/prompts, .github/instructions, and .github/skills for GitHub Copilot
+
+The default public template is pinned to the version bundled with this CLI.
+Use --from to override it with another repo or local path.
 
 Use --no-gofer only when you need a bare vertical scaffold.
 `)
@@ -182,11 +254,12 @@ Use --no-gofer only when you need a bare vertical scaffold.
 
     // Step 1: Clone template
     const cloneSpinner = ora('Cloning template...').start();
+    const templatePlan = resolveTemplateClonePlan(options.from);
     try {
-      await exec('git', ['clone', '--depth', '1', options.from, targetDir]);
+      await cloneTemplate(options.from, targetDir);
       // Remove .git to start fresh
       await rm(join(targetDir, '.git'), { recursive: true, force: true });
-      cloneSpinner.succeed(`Cloned from ${chalk.dim(describeTemplateSource(options.from))}`);
+      cloneSpinner.succeed(`Cloned from ${chalk.dim(templatePlan.displaySource)}`);
     } catch (err) {
       cloneSpinner.fail('Failed to clone template');
       out.error(describeCloneFailure(options.from, err));
@@ -272,7 +345,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
     try {
       await exec('git', ['init'], { cwd: targetDir });
       await exec('git', ['add', '.'], { cwd: targetDir });
-      await exec('git', ['commit', '-m', `Initial scaffold from template\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${describeTemplateSource(options.from)}`], { cwd: targetDir });
+      await exec('git', ['commit', '-m', `Initial scaffold from template\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${templatePlan.displaySource}`], { cwd: targetDir });
       gitSpinner.succeed('Initialized git repository');
     } catch (err) {
       gitSpinner.fail('Failed to initialize git');
@@ -311,9 +384,9 @@ Use --no-gofer only when you need a bare vertical scaffold.
     if (!entraProvisioned) {
       out.dim(`Run ${chalk.cyan('eai provision entra')} inside the project to set up Entra authentication.`);
     }
-    out.dim(`Template: ${options.from}`);
+    out.dim(`Template: ${templatePlan.displaySource}`);
     if (options.gofer) {
-      out.dim('Gofer: Claude /0_business_scenario; Codex $gofer/1_gofer_research; Gemini /gofer:1_gofer_research; Copilot .github prompts/skills.');
+      out.dim('Gofer: Claude /0_business_scenario; Codex uses the repo-local Gofer skills; Gemini /gofer:1_gofer_research; Copilot .github prompts/skills.');
     }
     out.dim(`CLI docs: https://github.com/${GITHUB_ORG}/eai-cli`);
     out.blank();
@@ -544,7 +617,7 @@ function toDisplayName(name: string): string {
 }
 
 function describeTemplateSource(templateSource: string): string {
-  if (templateSource === TEMPLATE_REPO) {
+  if (isDefaultTemplateSource(templateSource)) {
     return TEMPLATE_REPO_LABEL;
   }
 
