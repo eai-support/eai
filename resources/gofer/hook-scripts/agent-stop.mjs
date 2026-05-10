@@ -25,10 +25,41 @@ const DEBUG_LOG = join(PROJECT_DIR, '.specify', 'hooks', 'hook-debug.log');
 const TAIL_BYTES = 50 * 1024; // 50KB to capture enough conversation
 
 // Learning extraction limits
-const MAX_NEW_MEMORIES_PER_TURN = 5;
+const MAX_NEW_MEMORIES_PER_TURN = 3;
 const MAX_TOTAL_MEMORIES = 200;
 const MAX_MEMORY_CONTENT_CHARS = 500;
 const DEDUP_OVERLAP_THRESHOLD = 0.7; // 70% word overlap = duplicate
+
+const CATEGORY_TAGS = {
+  decision: ['#decision'],
+  preference: ['#preference'],
+  error_resolution: ['#error-fix'],
+  file_knowledge: ['#files'],
+  pattern: ['#pattern'],
+};
+
+const CATEGORY_TYPES = {
+  decision: 'decision',
+  preference: 'semantic',
+  error_resolution: 'procedural',
+  file_knowledge: 'semantic',
+  pattern: 'procedural',
+};
+
+const CATEGORY_CONFIDENCE = {
+  decision: 85,
+  preference: 100,
+  error_resolution: 80,
+  file_knowledge: 70,
+  pattern: 75,
+};
+
+const LOW_SIGNAL_PATTERNS = [
+  /\b(?:100\/100|pass(?:ed)?|all tests passed|feature complete|done|completed|finished)\b/i,
+  /\b(?:let me know|i can|we can|if you want|happy to|next step)\b/i,
+  /\b(?:this turn|in this session|today|just now)\b/i,
+  /^\s*(?:understood|noted|sounds good|great|okay)\b/i,
+];
 
 function debug(msg) {
   try {
@@ -162,7 +193,7 @@ function extractContentText(entry) {
 function extractLearnings(messages, sessionId) {
   const learnings = [];
   const now = Date.now();
-  const sessionTag = `#session-${(sessionId || 'unknown').substring(0, 8)}`;
+  const seen = new Set();
 
   for (const msg of messages) {
     const text = msg.content;
@@ -171,14 +202,14 @@ function extractLearnings(messages, sessionId) {
     // Extract decisions
     const decisions = extractDecisions(text);
     for (const d of decisions) {
-      learnings.push(makeMemory(d, 'decision', ['#auto-learned', '#decision', sessionTag], sessionId, now));
+      pushLearning(learnings, seen, d, 'decision', sessionId, now);
     }
 
     // Extract preferences (primarily from human messages)
     if (msg.role === 'human') {
       const prefs = extractPreferences(text);
       for (const p of prefs) {
-        learnings.push(makeMemory(p, 'preference', ['#auto-learned', '#preference', sessionTag], sessionId, now));
+        pushLearning(learnings, seen, p, 'preference', sessionId, now);
       }
     }
 
@@ -186,20 +217,20 @@ function extractLearnings(messages, sessionId) {
     if (msg.role === 'assistant') {
       const fixes = extractErrorResolutions(text);
       for (const f of fixes) {
-        learnings.push(makeMemory(f, 'error_resolution', ['#auto-learned', '#error-fix', sessionTag], sessionId, now));
+        pushLearning(learnings, seen, f, 'error_resolution', sessionId, now);
       }
 
       // Extract file knowledge from assistant messages
       const fileKnowledge = extractFileKnowledge(text);
       for (const fk of fileKnowledge) {
-        learnings.push(makeMemory(fk, 'file_knowledge', ['#auto-learned', '#files', sessionTag], sessionId, now));
+        pushLearning(learnings, seen, fk, 'file_knowledge', sessionId, now);
       }
     }
 
     // Extract patterns from either role
     const patterns = extractPatterns(text);
     for (const p of patterns) {
-      learnings.push(makeMemory(p, 'pattern', ['#auto-learned', '#pattern', sessionTag], sessionId, now));
+      pushLearning(learnings, seen, p, 'pattern', sessionId, now);
     }
   }
 
@@ -218,7 +249,74 @@ function makeMemory(content, category, tags, sessionId, now) {
     lastUsed: now,
     usedCount: 0,
     learnedFrom: `session:${sessionId || 'unknown'}`,
+    type: CATEGORY_TYPES[category],
+    confidence: CATEGORY_CONFIDENCE[category],
   };
+}
+
+function normalizeLearningText(text) {
+  return text.replace(/\s+/g, ' ').replace(/^[\s\-*#>]+/, '').trim();
+}
+
+function hasMinimumDistinctWords(text, minimum = 6) {
+  const uniqueWords = new Set(text.toLowerCase().split(/\W+/).filter(w => w.length >= 3));
+  return uniqueWords.size >= minimum;
+}
+
+function isLowSignal(text) {
+  return LOW_SIGNAL_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function isDurableLearning(text, category) {
+  if (!text || text.length < 25 || text.length > MAX_MEMORY_CONTENT_CHARS) {
+    return false;
+  }
+
+  const minimumDistinctWords = {
+    decision: 5,
+    preference: 4,
+    error_resolution: 5,
+    file_knowledge: 6,
+    pattern: 6,
+  };
+
+  if (
+    isLowSignal(text) ||
+    !hasMinimumDistinctWords(text, minimumDistinctWords[category] || 6)
+  ) {
+    return false;
+  }
+
+  switch (category) {
+    case 'decision':
+      return /\b(?:use|using|switch|choose|chosen|opted|plan|approach)\b/i.test(text);
+    case 'preference':
+      return /\b(?:prefer|always|never|must|should|please|want)\b/i.test(text);
+    case 'error_resolution':
+      return /\b(?:fixed|resolved|root cause|caused by|due to|missing|added|removed|updated|changed)\b/i.test(text);
+    case 'file_knowledge':
+      return /(?:\.\/|src\/|extension\/|language-server\/|tests\/|\.specify\/)\S+\.(?:ts|tsx|js|jsx|mjs|json|md|yaml|yml)/.test(text) &&
+        /\b(?:handles|manages|provides|responsible for|defines|implements|registers|wires|contains|lives in|located in)\b/i.test(text);
+    case 'pattern':
+      return /\b(?:pattern|architecture|responsible for|handles|manages|provides|workflow)\b/i.test(text);
+    default:
+      return true;
+  }
+}
+
+function pushLearning(learnings, seen, content, category, sessionId, now) {
+  const normalized = normalizeLearningText(content);
+  if (!isDurableLearning(normalized, category)) {
+    return;
+  }
+
+  const dedupeKey = `${category}:${normalized.toLowerCase()}`;
+  if (seen.has(dedupeKey)) {
+    return;
+  }
+
+  seen.add(dedupeKey);
+  learnings.push(makeMemory(normalized, category, CATEGORY_TAGS[category] || [], sessionId, now));
 }
 
 /**

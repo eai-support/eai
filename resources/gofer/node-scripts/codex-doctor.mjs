@@ -17,7 +17,7 @@
 //
 // Usage:
 //   node codex-doctor.mjs [--root <path>] [--format json|markdown]
-//   default --root: ~/.codex/skills
+//   default --root: ~/.codex/skills (legacy global bundle root)
 //   default --format: markdown
 //
 // Exit codes (per cli-commands.md §2.1):
@@ -50,8 +50,8 @@ export const READ_ONLY_ASSERTION = Object.freeze({
   enforced: true,
 });
 
-// Canonical Gofer stage names — a tenant whose subdirs include ≥12 of these is
-// considered a "Gofer-bundle-shaped" tenant.
+// Canonical Gofer skill names — a tenant whose subdirs include enough of these
+// is considered a "Gofer-bundle-shaped" tenant.
 export const CANONICAL_GOFER_STAGES = Object.freeze([
   '0_business_scenario',
   '0a_problem_validation',
@@ -69,9 +69,14 @@ export const CANONICAL_GOFER_STAGES = Object.freeze([
   '10_gofer_cloud',
   'gofer_constitution',
   'gofer_hydrate',
+  'gofer:vocabulary',
+  'gofer:diagnose',
+  'gofer:tdd',
+  'gofer:spec-summary',
+  'gofer:zoom-out',
 ]);
 
-const GOFER_BUNDLE_THRESHOLD = 12; // ≥12 of 16 canonical stages → bundle.
+const GOFER_BUNDLE_THRESHOLD = 16; // preserves compatibility with pre-helper installs.
 
 function parseArgs(argv) {
   const args = { root: null, format: 'markdown' };
@@ -100,6 +105,63 @@ function parseFrontmatter(src) {
     out[kv[1]] = val;
   }
   return out;
+}
+
+async function readSkillRow(tenantPath, stageName, skillFile) {
+  let skillStat;
+  try {
+    skillStat = fs.statSync(skillFile);
+  } catch {
+    return null;
+  }
+  if (!skillStat.isFile()) return null;
+  const src = await fsp.readFile(skillFile, 'utf8');
+  const fm = parseFrontmatter(src);
+  const rawName = fm.name || stageName;
+  const name = rawName.startsWith('gofer/') ? rawName.slice('gofer/'.length) : rawName;
+  const description = fm.description || '';
+  return {
+    tenantDir: tenantPath,
+    stageDir: path.dirname(skillFile),
+    stageName: name,
+    skillFile,
+    name,
+    description,
+    descriptionBytes: Buffer.byteLength(description, 'utf8'),
+  };
+}
+
+async function collectSkillRows(tenantPath, stagePath, stageName) {
+  const rows = [];
+  const directRow = await readSkillRow(tenantPath, stageName, path.join(stagePath, 'SKILL.md'));
+  if (directRow) {
+    rows.push(directRow);
+  }
+
+  let nestedEntries;
+  try {
+    nestedEntries = fs.readdirSync(stagePath, { withFileTypes: true });
+  } catch {
+    return rows;
+  }
+
+  for (const nested of nestedEntries) {
+    const nestedPath = path.join(stagePath, nested.name);
+    let nestedStat;
+    try {
+      nestedStat = fs.statSync(nestedPath);
+    } catch {
+      continue;
+    }
+    if (!nestedStat.isDirectory()) continue;
+
+    const nestedRow = await readSkillRow(tenantPath, nested.name, path.join(nestedPath, 'SKILL.md'));
+    if (nestedRow) {
+      rows.push(nestedRow);
+    }
+  }
+
+  return rows;
 }
 
 // Walk root, dereferencing symlinks (statSync follows symlinks by default).
@@ -139,26 +201,8 @@ async function walkSkills(root) {
         continue;
       }
       if (!stageStat.isDirectory()) continue;
-      const skillFile = path.join(stagePath, 'SKILL.md');
-      let skillStat;
-      try {
-        skillStat = fs.statSync(skillFile);
-      } catch {
-        continue;
-      }
-      if (!skillStat.isFile()) continue;
-      const src = await fsp.readFile(skillFile, 'utf8');
-      const fm = parseFrontmatter(src);
-      const description = fm.description || '';
-      found.push({
-        tenantDir: tenantPath,
-        stageDir: stagePath,
-        stageName: stage.name,
-        skillFile,
-        name: fm.name || stage.name,
-        description,
-        descriptionBytes: Buffer.byteLength(description, 'utf8'),
-      });
+      const rows = await collectSkillRows(tenantPath, stagePath, stage.name);
+      found.push(...rows);
     }
   }
   return found;

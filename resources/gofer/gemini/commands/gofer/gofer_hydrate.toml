@@ -1,2 +1,2 @@
-description = "Hydrate the Gofer context with project memory, constitution, and prior pipeline state."
+description = "Reverse-engineer specification from existing code (Hydration)."
 prompt = "{{include: ../../../.specify/commands/gofer_hydrate.md}}"

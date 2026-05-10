@@ -33,8 +33,8 @@ const EXTRA_RESOURCE_MAPPINGS = [
   ['.specify/commands', 'commands'],
   ['.specify/memory', 'memory'],
   ['.specify/references', 'references'],
-  ['.system/skills/gofer', path.join('system-skills', 'gofer')],
-  ['.agents/skills/gofer', path.join('agents-skills', 'gofer')],
+  ['.system/skills', 'system-skills'],
+  ['.agents/skills', 'agents-skills'],
 ];
 
 function readPinnedRef() {

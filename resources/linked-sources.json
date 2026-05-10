@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "gofer": {
+    "repo": "https://github.com/eai-tools/gofer.git",
+    "commit": "6b457ddd796d13c0da957e8a57840f3ca1e8b190",
+    "describe": "6b457dd"
+  },
+  "verticalTemplate": {
+    "repo": "https://github.com/eai-tools/Vertical-Template.git",
+    "commit": "2169e69c87f582c826dced2deafcd174ee081656",
+    "packageLockSha256": "4a1b4877eae141f3076903aa308ab089ea0a840395d486ba0ac056f8b58305fe",
+    "enterpriseRegistry": "https://enterpriseaigroup.github.io/enterpriseai-packages/registry",
+    "enterprisePackageFingerprint": "e83d46555d947c1911b19ddafe03bff99555e633ccbe0007f190ed450dfd11ed",
+    "enterprisePackages": {
+      "@enterpriseaigroup/core": {
+        "version": "1.0.68",
+        "resolved": "https://enterpriseaigroup.github.io/enterpriseai-packages/registry/tarballs/enterpriseaigroup-core-1.0.68.tgz"
+      },
+      "@enterpriseaigroup/demo": {
+        "version": "1.0.57",
+        "resolved": "https://enterpriseaigroup.github.io/enterpriseai-packages/registry/tarballs/enterpriseaigroup-demo-1.0.57.tgz"
+      }
+    }
+  }
+}

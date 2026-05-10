@@ -151,6 +151,8 @@ Read these files for full context:
 - .specify/templates/spec-template.md — Template structure to follow
 - {FEATURE_DIR}/discovery.md — Business discovery findings (read if exists, skip if not)
 - {FEATURE_DIR}/journeys/base-journey.md — AI-augmented four-step application journey (read if exists, skip if not)
+- {FEATURE_DIR}/ui-preview-brief.md — UI-first preview brief for app delivery (read if exists, skip if not)
+- {FEATURE_DIR}/service-fit-matrix.md — approved or draft service-fit evidence (read if exists, skip if not)
 - {FEATURE_DIR}/context-bundle.md — Compact EnterpriseAI context (read if exists, skip if not)
 - {FEATURE_DIR}/reuse-scan.md — Reuse-before-create evidence (read if exists, skip if not)
 
@@ -169,7 +171,9 @@ Generate the COMPLETE spec.md following this structure:
 10. Glossary — Key terms
 11. Research Traceability — Matrix mapping each research finding to a spec section
 12. AI-Augmented 4-Step Journey — required for app delivery, not applicable for explicit non-app work
-13. EnterpriseAI Contract Pack Summary — actors, object types, workflows, permissions, APIs/events, runtime assumptions, acceptance tests
+13. UI Preview And Approval Gate — required for app delivery, not applicable for explicit non-app work
+14. EnterpriseAI Service Fit — required for app delivery, not applicable for explicit non-app work
+15. EnterpriseAI Contract Pack Summary — actors, object types, workflows, permissions, APIs/events, runtime assumptions, acceptance tests
 
 If discovery.md exists, use it to:
 - Use Problem Statement for Overview motivation
@@ -188,6 +192,24 @@ If journeys/base-journey.md exists and is classified as app delivery, use it to:
 - Add explicit requirements for user control, evidence display, confidence,
   editability, and accessibility at each AI-assisted step
 
+If ui-preview-brief.md exists, use it to:
+- Require the first MVP preview to stay inside the approved Vertical Template
+  blocks before any create-new UI concept is proposed
+- Carry forward branding/logo requirements as explicit scope, not as implied
+  polish
+- Require preview self-review evidence such as screenshot, local render proof,
+  or Playwright-style checks before stakeholder presentation
+- Require a versioned `ui-review-log.md` and explicit `ui-approval.md` before
+  downstream planning/tasks are treated as complete
+
+If service-fit-matrix.md exists, use it to:
+- Separate desired platform capabilities into accessible now, purchasable but
+  unavailable now, and unsupported without new platform work
+- Bind each chosen capability back to user-facing workflow needs rather than
+  generic platform availability
+- Keep non-selected or blocked capabilities in Out of Scope, Assumptions, or
+  Risks as appropriate
+
 If proposal-review.md exists and status is approved, use it to:
 - Treat Recommended Business Scenario as the authoritative scope for the spec
 - Reflect the approved architecture direction in Assumptions, Dependencies, and NFR framing
@@ -202,6 +224,9 @@ Rules:
 - Reference ALL integration points from research.md in Dependencies
 - Honor the approved direction in proposal-review.md over unapproved alternatives
 - Each functional requirement must include Validation and Integration references
+- Explicit non-app work MUST keep the shared numbered stages but MUST NOT be
+  forced to create app-only preview, approval, branding, or service-fit
+  sections beyond marking them "Not applicable"
 
 Write the complete specification to {FEATURE_DIR}/spec.md.
 When EnterpriseAI is active or no profile is specified, also write
@@ -600,7 +625,9 @@ When EnterpriseAI is active or no profile is specified, generate
 | Actors | Business users, administrators, approvers, external systems, support roles |
 | Object Types | Reused, extended, and newly proposed EnterpriseAI object types with owners |
 | Workflows and Journeys | External user journeys and internal orchestration flows as separate views; app delivery must include the four-step-or-fewer AI-augmented journey |
+| UI Preview and Approval | For app delivery: preview brief, Vertical Template constraints, branding inputs, preview validation evidence expectations, review-log requirements, approval gate rules; for non-app work: mark not applicable |
 | AI Assistance Contract | Step goal, assistance mode, context used, generated output, user controls, confidence/evidence, audit trail, completion signal, and escalation for each app step |
+| EnterpriseAI Service Fit | For app delivery: desired capabilities, evidence source, accessible now vs purchasable vs unavailable classification, selected direction, and blocked-capability handling |
 | Permissions and Tenant Boundaries | Identity, authorization, policy, isolation, and tenant assumptions |
 | APIs and Events | ResourceAPI surfaces, events, payload ownership, and contract-test hooks |
 | Deployment and Runtime | Environment, config, observability, rollback, and operating assumptions |
@@ -620,3 +647,20 @@ At stage completion, log metrics:
 ```
 
 Logs to: `.specify/logs/pipeline.jsonl`
+
+---
+
+## Optional Helpers: Vocabulary Extraction and Spec Summary
+
+- If the operator explicitly requests the `vocabulary` selector after `spec.md`
+  is stabilized, run `gofer:vocabulary` inline and write
+  `.specify/specs/{feature}/glossary.md` using the same artifact contract as the
+  standalone helper.
+- If the operator explicitly requests the `spec-summary` selector after `spec.md`
+  is stabilized, run `gofer:spec-summary` inline and write
+  `.specify/specs/{feature}/spec-summary.md` using the same artifact contract as
+  the standalone helper.
+- If `spec.md` is missing, continue the stage normally and report that the
+  helper was not run.
+- These selectors are optional and do not change stage progress, routing, or
+  pipeline state.

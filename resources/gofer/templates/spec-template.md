@@ -110,6 +110,26 @@ _Example of marking unclear requirements:_
 - **[Entity 1]**: [What it represents, key attributes without implementation]
 - **[Entity 2]**: [What it represents, relationships to other entities]
 
+## Application Classification & Journey
+
+- **Mode**: [application delivery | non-app work]
+- **Shared numbered stages preserved**: yes
+- **Journey requirement**: [four-step AI-augmented journey | not applicable]
+
+## UI Preview & Approval Gate _(application delivery only)_
+
+- **First MVP preview**: [what must be shown first]
+- **Vertical Template constraints**: [which approved blocks/patterns must be reused]
+- **Branding scope**: [logos/styling in scope or not]
+- **Preview validation requirement**: [screenshot, local render proof, Playwright-style checks]
+- **Approval requirement**: [who approves and what artifact records it]
+
+## EnterpriseAI Service Fit _(application delivery only)_
+
+- **Capability selection must happen**: after UI approval and before plan/tasks are considered complete
+- **Evidence sources**: [`eai --describe`, `eai whoami`, `eai tenant select`, `eai resources schema`, `eai verify calls --format json`, or approved equivalent]
+- **Decision states**: [accessible now | purchasable but unavailable now | unavailable without new platform work]
+
 ## Success Criteria _(mandatory)_
 
 <!--
