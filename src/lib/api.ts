@@ -31,6 +31,19 @@ export interface ChildTenantBootstrapResult {
   reason?: string | null;
 }
 
+export interface CapabilityEvaluationRequest {
+  tenantId: string;
+  targetCapability: 'child-tenants' | 'ai-chat' | 'documents' | 'auth-b2b' | 'auth-dual';
+  requestedOperation?: 'create' | 'enable' | 'configure' | 'inspect';
+}
+
+export interface CapabilityDecision {
+  outcome: 'allow' | 'deny' | 'upgrade-required';
+  reasonCode: string;
+  reasonMessage: string;
+  upgradeUrl?: string | null;
+}
+
 export interface ParsedApiError {
   status: number;
   code?: string;
@@ -768,6 +781,33 @@ export class PlatformAPIClient {
       'POST',
       body,
     );
+  }
+
+  async evaluateCapability(request: CapabilityEvaluationRequest): Promise<CapabilityDecision> {
+    const response = await fetch(`${this.baseUrl}/v3/capabilities/evaluate`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({
+        tenant_id: request.tenantId,
+        target_capability: request.targetCapability,
+        requested_operation: request.requestedOperation || 'inspect',
+      }),
+    });
+
+    if (!response.ok) {
+      const context = await extractServerErrorContext(response);
+      throw new PlatformAPIRequestError({
+        operation: `POST /v3/capabilities/evaluate (${request.targetCapability})`,
+        status: response.status,
+        statusText: response.statusText,
+        serverMessage: context.serverMessage,
+        serverCode: context.serverCode,
+        requestId: context.requestId,
+        rawBody: context.rawBody,
+      });
+    }
+
+    return await response.json() as CapabilityDecision;
   }
 
   // --------------- Users ---------------
