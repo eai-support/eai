@@ -45,7 +45,7 @@ interface StoredTokens {
 
 **Lifecycle**:
 - Created on `eai login`
-- Updated on token refresh (auto, when <5min remaining)
+- Updated on token refresh (auto, when &lt;5 min remaining)
 - Cleared on `eai logout`
 - Per-profile isolation (multiple environments)
 

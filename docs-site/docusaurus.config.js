@@ -5,7 +5,7 @@ import { themes as prismThemes } from 'prism-react-renderer';
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'EAI CLI',
-  tagline: 'Nightly-generated technical documentation sourced from .tech-docs',
+  tagline: 'Technical documentation and scenario library for the EAI CLI',
   favicon: 'img/favicon.ico',
   url: 'https://eai-tools.github.io',
   baseUrl: '/eai-cli/',
@@ -51,6 +51,16 @@ const config = {
   ],
   plugins: [
     [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'scenarios',
+        path: 'scenarios',
+        routeBasePath: 'scenarios',
+        sidebarPath: './sidebars.scenarios.js',
+        onInlineTags: 'ignore',
+      },
+    ],
+    [
       '@docusaurus/plugin-content-pages',
       {
         path: 'src/pages',
@@ -69,6 +79,13 @@ const config = {
           label: 'Documentation',
         },
         {
+          type: 'doc',
+          docId: 'index',
+          docsPluginId: 'scenarios',
+          position: 'left',
+          label: 'Scenarios',
+        },
+        {
           href: 'https://github.com/eai-tools/eai-cli',
           label: 'GitHub',
           position: 'right',
@@ -84,6 +101,7 @@ const config = {
             {label: 'Overview', to: '/docs/overview'},
             {label: 'API Reference', to: '/docs/api-reference'},
             {label: 'Configuration', to: '/docs/configuration'},
+            {label: 'Scenarios', to: '/scenarios'},
             {
               label: 'Registry',
               href: 'https://eai-tools.github.io/eai-cli/registry/',
