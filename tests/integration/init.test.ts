@@ -12,6 +12,7 @@ import inquirer from 'inquirer';
 import { describe, test, beforeEach, afterEach, expect, vi } from 'vitest';
 import { describeCloneFailure, initCommand } from '../../src/commands/init.js';
 import * as auth from '../../src/lib/auth.js';
+import { PlatformAPIClient } from '../../src/lib/api.js';
 import * as tenantContext from '../../src/lib/tenant-context.js';
 import { createTestEnvironment, captureConsole, type TestEnvironment } from '../helpers/test-env.js';
 import { createMockServer, PublicAPIMock } from '../helpers/mock-server.js';
@@ -125,11 +126,9 @@ describe('eai init', () => {
         description: 'My Vertical vertical application',
       })
       .mockResolvedValueOnce({ mode: 'default' })
-      .mockResolvedValueOnce({
-        includeChat: true,
-        includeDocs: true,
-        authProvider: 'ciam',
-      });
+      .mockResolvedValueOnce({ includeChat: true })
+      .mockResolvedValueOnce({ includeDocs: true })
+      .mockResolvedValueOnce({ authProvider: 'ciam' });
     const tenantCtxSpy = vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
       publicApiUrl: 'https://test-api.ae.myenterprise.ai/public',
       tokens: {
@@ -149,12 +148,14 @@ describe('eai init', () => {
       },
       memberships: [],
     });
+    const authSpy = vi.spyOn(auth, 'isAuthenticated').mockResolvedValue(false);
     const consoleCapture = captureConsole();
 
     try {
       await initCommand.parseAsync(['my-vertical', '--from', templateRepo], { from: 'user' });
     } finally {
       consoleCapture.restore();
+      authSpy.mockRestore();
       promptSpy.mockRestore();
       tenantCtxSpy.mockRestore();
     }
@@ -179,6 +180,95 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'my-vertical/.github/copilot-instructions.md');
     await expectFileContains(ctx, 'my-vertical/CLAUDE.md', '## Gofer Pipeline');
     expect(consoleCapture.stdout.join('\n')).toContain('Created My Vertical');
+  }, 30_000);
+
+  test('creates and binds a child tenant during init when requested', async () => {
+    workingDirectoryIs(ctx, env.dir);
+
+    const promptSpy = vi.spyOn(inquirer, 'prompt')
+      .mockResolvedValueOnce({
+        name: 'child-vertical',
+        displayName: 'Child Vertical',
+        description: 'Child Vertical vertical application',
+      })
+      .mockResolvedValueOnce({ mode: 'child' })
+      .mockResolvedValueOnce({ includeChat: true })
+      .mockResolvedValueOnce({ includeDocs: true })
+      .mockResolvedValueOnce({ authProvider: 'ciam' });
+    const tenantCtxSpy = vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
+      publicApiUrl: 'https://test-api.ae.myenterprise.ai/public',
+      tokens: {
+        accessToken: 'access',
+        expiresAt: Date.now() + 60_000,
+        tenantId: 'ciam-guid',
+        tenantName: 'enterpriseaitestplatform',
+        clientId: 'client-id',
+      },
+      activeTenant: {
+        id: 'tenant-parent',
+        displayName: 'Parent Tenant',
+        slug: 'parent-tenant',
+        domain: 'parent.example.com',
+        isActive: true,
+        roles: ['tenant-admin'],
+      },
+      memberships: [],
+    });
+    const authSpy = vi.spyOn(auth, 'isAuthenticated').mockResolvedValue(false);
+    const loadTokensSpy = vi.spyOn(auth, 'loadTokens').mockResolvedValue({
+      accessToken: 'access',
+      expiresAt: Date.now() + 60_000,
+      tenantId: 'ciam-guid',
+      tenantName: 'enterpriseaitestplatform',
+      clientId: 'client-id',
+      oid: 'user-oid',
+      upn: 'user@example.com',
+    });
+    const capabilitySpy = vi.spyOn(PlatformAPIClient.prototype, 'evaluateCapability')
+      .mockResolvedValue({
+        outcome: 'allow',
+        reasonCode: 'allowed',
+        reasonMessage: 'Capability is included in the current plan.',
+        upgradeUrl: null,
+      });
+    const createTenantSpy = vi.spyOn(PlatformAPIClient.prototype, 'createTenant')
+      .mockResolvedValue(new Response(JSON.stringify({
+        id: 'tenant-child',
+        displayName: 'Child Vertical',
+        slug: 'child-vertical',
+      }), { status: 201 }));
+    const bootstrapSpy = vi.spyOn(PlatformAPIClient.prototype, 'bootstrapChildTenantAdmin')
+      .mockResolvedValue(new Response(JSON.stringify({
+        usable: true,
+      }), { status: 200 }));
+
+    try {
+      await initCommand.parseAsync(['child-vertical', '--from', templateRepo], { from: 'user' });
+      const envContent = await readFile(join(env.dir, 'child-vertical', '.env.local'), 'utf-8');
+      expect(envContent).toContain('EAI_TENANT_ID=tenant-child');
+      expect(envContent).toContain('TENANT_CHILD_VERTICAL_ID=tenant-child');
+      expect(createTenantSpy).toHaveBeenCalledWith(expect.objectContaining({
+        name: 'Child Vertical',
+        slug: 'child-vertical',
+        parent: 'tenant-parent',
+      }));
+      expect(bootstrapSpy).toHaveBeenCalledWith('tenant-parent', 'tenant-child', {
+        userOid: 'user-oid',
+        userEmail: 'user@example.com',
+      });
+      expect(capabilitySpy).toHaveBeenCalledWith(expect.objectContaining({
+        tenantId: 'tenant-parent',
+        targetCapability: 'child-tenants',
+      }));
+    } finally {
+      authSpy.mockRestore();
+      promptSpy.mockRestore();
+      tenantCtxSpy.mockRestore();
+      loadTokensSpy.mockRestore();
+      capabilitySpy.mockRestore();
+      createTenantSpy.mockRestore();
+      bootstrapSpy.mockRestore();
+    }
   }, 30_000);
 
   test('TC002: Initialize with --skip-prompts flag', async () => {

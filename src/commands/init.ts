@@ -15,7 +15,7 @@ import * as out from '../lib/output.js';
 import { installGoferResources } from '../lib/gofer-installer.js';
 import { isAuthenticated, loadTokens } from '../lib/auth.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl, type TenantMembership } from '../lib/tenant-context.js';
-import { PlatformAPIClient } from '../lib/api.js';
+import { parseApiError, PlatformAPIClient, type CapabilityDecision } from '../lib/api.js';
 import { patchEnvFile } from '../lib/config.js';
 import { pullCloudEnvValues } from '../lib/cloud-env.js';
 import { getActiveProfile, loadProfileConfig } from '../lib/profile.js';
@@ -35,6 +35,10 @@ interface InitOptions {
   includeDocs: boolean;
   authProvider: 'ciam' | 'b2b' | 'dual';
 }
+
+type InitCapabilityKey = 'child-tenants' | 'ai-chat' | 'documents' | 'auth-b2b' | 'auth-dual';
+
+type InitCapabilityMap = Record<InitCapabilityKey, CapabilityDecision>;
 
 export function describeCloneFailure(templateSource: string, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -88,34 +92,37 @@ Gofer AI CLI assets are installed by default:
 Use --no-gofer only when you need a bare vertical scaffold.
 `)
   .action(async (nameArg, options) => {
-    if (options.createChildTenant) {
-      out.error('`--create-child-tenant` is not implemented yet. Re-run without this flag, or use `--tenant <id>` to bind an existing tenant.');
-      process.exit(1);
-    }
-
     const publicApiUrl = await resolvePublicApiUrl();
     const activeTenant = await loadActiveTenantForInit(publicApiUrl);
 
     let tenantId: string;
     let initOptions: InitOptions;
+    let targetDir: string;
 
     if (options.skipPrompts && nameArg) {
-      if (options.tenant) {
-        await assertTenantExists(publicApiUrl, options.tenant);
-        tenantId = options.tenant;
-      } else if (activeTenant) {
-        tenantId = activeTenant.id;
-      } else {
-        tenantId = '';
-        out.warn('No active tenant and `--tenant <id>` not supplied — TENANT_<KEY>_ID will be left blank. Bind later by editing .env.local.');
-      }
+      targetDir = resolve(process.cwd(), nameArg);
+      await ensureTargetDirAvailable(targetDir, nameArg);
+      tenantId = await promptTenantBinding(
+        publicApiUrl,
+        activeTenant,
+        options.tenant,
+        {
+          slug: nameArg,
+          displayName: toDisplayName(nameArg),
+        },
+        Boolean(options.createChildTenant),
+        false,
+      );
+      const capabilities = tenantId
+        ? await evaluateInitCapabilities(publicApiUrl, tenantId)
+        : defaultInitCapabilities();
       initOptions = {
         name: nameArg,
         displayName: toDisplayName(nameArg),
         description: `${toDisplayName(nameArg)} vertical application`,
         tenantId,
-        includeChat: true,
-        includeDocs: true,
+        includeChat: capabilities['ai-chat'].outcome === 'allow',
+        includeDocs: capabilities.documents.outcome === 'allow',
         authProvider: 'ciam',
       };
     } else {
@@ -146,32 +153,22 @@ Use --no-gofer only when you need a bare vertical scaffold.
         },
       ]);
 
-      tenantId = await promptTenantBinding(publicApiUrl, activeTenant, options.tenant);
+      targetDir = resolve(process.cwd(), String(baseAnswers.name));
+      await ensureTargetDirAvailable(targetDir, String(baseAnswers.name));
 
-      const featureAnswers = await inquirer.prompt([
+      tenantId = await promptTenantBinding(
+        publicApiUrl,
+        activeTenant,
+        options.tenant,
         {
-          type: 'confirm',
-          name: 'includeChat',
-          message: 'Include AI chat? [not implemented — flag only]',
-          default: true,
+          slug: String(baseAnswers.name),
+          displayName: String(baseAnswers.displayName),
         },
-        {
-          type: 'confirm',
-          name: 'includeDocs',
-          message: 'Include document management? [not implemented — flag only]',
-          default: true,
-        },
-        {
-          type: 'list',
-          name: 'authProvider',
-          message: 'Auth provider:',
-          choices: [
-            { name: 'Entra ID CIAM (default, implemented)', value: 'ciam' },
-            { name: 'Entra ID B2B (corporate SSO) [not implemented]', value: 'b2b' },
-            { name: 'Dual (CIAM + B2B) [not implemented]', value: 'dual' },
-          ],
-        },
-      ]);
+        Boolean(options.createChildTenant),
+        true,
+      );
+
+      const featureAnswers = await promptFeatureOptions(publicApiUrl, tenantId);
 
       initOptions = {
         ...(baseAnswers as { name: string; displayName: string; description: string }),
@@ -179,15 +176,6 @@ Use --no-gofer only when you need a bare vertical scaffold.
         ...(featureAnswers as { includeChat: boolean; includeDocs: boolean; authProvider: 'ciam' | 'b2b' | 'dual' }),
       };
     }
-
-    const targetDir = resolve(process.cwd(), initOptions.name);
-
-    // Check if directory already exists
-    try {
-      await access(targetDir);
-      out.error(`Directory "${initOptions.name}" already exists.`);
-      process.exit(1);
-    } catch { /* good — doesn't exist */ }
 
     out.heading(`Creating ${chalk.cyan(initOptions.displayName)}`);
     out.blank();
@@ -427,10 +415,25 @@ async function promptTenantBinding(
   publicApiUrl: string,
   activeTenant: TenantMembership | null,
   tenantFlag: string | undefined,
+  childTenantSeed: { slug: string; displayName: string },
+  forceChild = false,
+  interactive = true,
 ): Promise<string> {
   if (tenantFlag) {
     await assertTenantExists(publicApiUrl, tenantFlag);
     return tenantFlag;
+  }
+
+  if (forceChild) {
+    if (!activeTenant) {
+      out.error('Creating a child tenant requires an active parent tenant. Run `eai login` and `eai tenant select`, or pass `--tenant <id>` to bind an existing tenant.');
+      process.exit(1);
+    }
+    return createChildTenantDuringInit(publicApiUrl, activeTenant, childTenantSeed);
+  }
+
+  if (!interactive) {
+    return activeTenant?.id ?? '';
   }
 
   const choices: Array<{ name: string; value: 'default' | 'child' | 'other'; disabled?: string }> = [];
@@ -449,7 +452,7 @@ async function promptTenantBinding(
   }
 
   choices.push({
-    name: 'Create a child tenant boundary under the default  [not implemented]',
+    name: 'Create a child tenant boundary under the default',
     value: 'child',
   });
 
@@ -470,20 +473,7 @@ async function promptTenantBinding(
   }
 
   if (mode === 'child') {
-    // Stub: child-tenant creation from `eai init` is intentionally not wired up
-    // yet. The underlying API (`PlatformAPIClient.createTenant({ parent })` plus
-    // `bootstrapChildTenantAdmin`) is exercised by `eai tenant create --parent`,
-    // which currently has a known bootstrap-admin-assignment failure mode. Until
-    // that is resolved, `init` fails hard rather than leaving a half-provisioned
-    // child tenant bound to a brand-new workspace boundary.
-    //
-    // When ready, the implementation is roughly:
-    //   const { childName, childSlug } = await inquirer.prompt([...]);
-    //   const client = new PlatformAPIClient(publicApiUrl, activeTenant!.id);
-    //   const res = await client.createTenant({ name: childName, slug: childSlug, parent: activeTenant!.id });
-    //   ... parse response, run bootstrapChildTenantAdmin, return new tenant id.
-    out.error('Creating a child tenant from `eai init` is not implemented yet. Use child tenants only for real workspace/company hierarchy boundaries. For a vertical app under the active company tenant, run `eai vertical create "<name>" --template blank-vertical-template` after init.');
-    process.exit(1);
+    return createChildTenantDuringInit(publicApiUrl, activeTenant!, childTenantSeed);
   }
 
   const { otherId } = await inquirer.prompt([{
@@ -574,12 +564,24 @@ function describeGitInitFailure(error: unknown): string {
   return message;
 }
 
+async function ensureTargetDirAvailable(targetDir: string, projectName: string): Promise<void> {
+  try {
+    await access(targetDir);
+    out.error(`Directory "${projectName}" already exists.`);
+    process.exit(1);
+  } catch {
+    // good — doesn't exist
+  }
+}
+
 // ─── Generators ────────────────────────────────────────────────────────────
 
 function generateEnvFile(opts: InitOptions): string {
   const envKey = opts.name.replace(/-/g, '_').toUpperCase();
   const authSecret = randomBytes(32).toString('base64');
-  const workflowSection = `WORKFLOW_${envKey}_ID=`;
+  const workflowSection = opts.includeChat
+    ? `WORKFLOW_${envKey}_ID=`
+    : `# WORKFLOW_${envKey}_ID=  # Set later if chat is enabled`;
 
   return `# =============================================================================
 # EAI Vertical: ${opts.displayName}
@@ -614,6 +616,13 @@ TENANT_${envKey}_ID=
 ${workflowSection}
 
 # =============================================================================
+# Init capability selections
+# =============================================================================
+EAI_INIT_INCLUDE_AI_CHAT=${String(opts.includeChat)}
+EAI_INIT_INCLUDE_DOCUMENTS=${String(opts.includeDocs)}
+EAI_AUTH_PROVIDER=${opts.authProvider}
+
+# =============================================================================
 # Microsoft Entra ID (CIAM) — end-user auth for this vertical
 # Run 'eai provision entra' to populate ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET
 # =============================================================================
@@ -637,6 +646,69 @@ AUTH_SECRET=${authSecret}
 
 function generateObjectTypesScaffold(opts: InitOptions): string {
   const tenantKey = opts.name;
+  const documentLinkBlock = opts.includeDocs
+    ? `      linkTypes: [
+        {
+          name: 'documents',
+          targetObjectType: 'Document',
+          cardinality: 'one-to-many' as const,
+          cascadeDelete: true,
+        },
+      ],`
+    : `      linkTypes: [],`;
+  const documentTypeBlock = opts.includeDocs
+    ? `
+    {
+      name: 'Document',
+      displayName: 'Document',
+      description: 'Uploaded file with classification metadata',
+      ...postgresqlResourceStorage,
+      properties: [
+        {
+          name: 'fileName',
+          type: 'text' as const,
+          required: true,
+          description: 'Original file name',
+        },
+        {
+          name: 'fileUrl',
+          type: 'file' as const,
+          required: true,
+          description: 'URL to the uploaded file',
+        },
+        {
+          name: 'category',
+          type: 'select' as const,
+          required: false,
+          options: [
+            { label: 'General', value: 'general' },
+            { label: 'Report', value: 'report' },
+            { label: 'Evidence', value: 'evidence' },
+          ],
+          description: 'Document category (can be auto-classified)',
+        },
+        {
+          name: 'uploadedAt',
+          type: 'date' as const,
+          required: false,
+          description: 'When the document was uploaded',
+        },
+      ],
+      linkTypes: [],
+      actions: [],
+      storageBackend: 'postgresql' as const,
+      schemaVersion: 1,
+      storageMetadataStatus: 'ready' as const,
+      storageBinding: {
+        sql: {
+          databaseAlias: 'resourceapi-postgres',
+          tenantSchemaStrategy: 'per-tenant-schema' as const,
+          tableName: 'documents',
+        },
+      },
+      status: 'published' as const,
+    },`
+    : '';
   return `/**
  * Object Type definitions for ${opts.displayName}
  *
@@ -762,14 +834,7 @@ export const objectTypes = {
           description: 'User ID of the assignee',
         },
       ],
-      linkTypes: [
-        {
-          name: 'documents',
-          targetObjectType: 'Document',
-          cardinality: 'one-to-many' as const,
-          cascadeDelete: true,
-        },
-      ],
+${documentLinkBlock}
       actions: [
         {
           name: 'submit',
@@ -810,56 +875,7 @@ export const objectTypes = {
       },
       status: 'published' as const,
     },
-    {
-      name: 'Document',
-      displayName: 'Document',
-      description: 'Uploaded file with classification metadata',
-      ...postgresqlResourceStorage,
-      properties: [
-        {
-          name: 'fileName',
-          type: 'text' as const,
-          required: true,
-          description: 'Original file name',
-        },
-        {
-          name: 'fileUrl',
-          type: 'file' as const,
-          required: true,
-          description: 'URL to the uploaded file',
-        },
-        {
-          name: 'category',
-          type: 'select' as const,
-          required: false,
-          options: [
-            { label: 'General', value: 'general' },
-            { label: 'Report', value: 'report' },
-            { label: 'Evidence', value: 'evidence' },
-          ],
-          description: 'Document category (can be auto-classified)',
-        },
-        {
-          name: 'uploadedAt',
-          type: 'date' as const,
-          required: false,
-          description: 'When the document was uploaded',
-        },
-      ],
-      linkTypes: [],
-      actions: [],
-      storageBackend: 'postgresql' as const,
-      schemaVersion: 1,
-      storageMetadataStatus: 'ready' as const,
-      storageBinding: {
-        sql: {
-          databaseAlias: 'resourceapi-postgres',
-          tenantSchemaStrategy: 'per-tenant-schema' as const,
-          tableName: 'documents',
-        },
-      },
-      status: 'published' as const,
-    },
+${documentTypeBlock}
   ],
 
   // ── Dual-tenant example (uncomment if using dual tenant structure) ──
@@ -867,6 +883,213 @@ export const objectTypes = {
   // '${tenantKey}-staff': [ ... ],
 };
 `;
+}
+
+function defaultInitCapabilities(): InitCapabilityMap {
+  return {
+    'child-tenants': {
+      outcome: 'deny',
+      reasonCode: 'capability_service_unavailable',
+      reasonMessage: 'Child-tenant entitlement could not be confirmed right now.',
+      upgradeUrl: null,
+    },
+    'ai-chat': {
+      outcome: 'allow',
+      reasonCode: 'default_cli_fallback',
+      reasonMessage: 'AI chat defaults to enabled when capability evaluation is unavailable.',
+      upgradeUrl: null,
+    },
+    documents: {
+      outcome: 'allow',
+      reasonCode: 'default_cli_fallback',
+      reasonMessage: 'Document management defaults to enabled when capability evaluation is unavailable.',
+      upgradeUrl: null,
+    },
+    'auth-b2b': {
+      outcome: 'deny',
+      reasonCode: 'template_scaffold_unavailable',
+      reasonMessage: 'B2B auth scaffolding is not currently available in eai init.',
+      upgradeUrl: null,
+    },
+    'auth-dual': {
+      outcome: 'deny',
+      reasonCode: 'template_scaffold_unavailable',
+      reasonMessage: 'Dual-auth scaffolding is not currently available in eai init.',
+      upgradeUrl: null,
+    },
+  };
+}
+
+async function evaluateCapabilityForInit(
+  client: PlatformAPIClient,
+  targetCapability: InitCapabilityKey,
+  tenantId: string,
+): Promise<CapabilityDecision> {
+  try {
+    return await client.evaluateCapability({
+      tenantId,
+      targetCapability,
+      requestedOperation: targetCapability === 'child-tenants' ? 'create' : 'enable',
+    });
+  } catch {
+    return defaultInitCapabilities()[targetCapability];
+  }
+}
+
+async function evaluateInitCapabilities(
+  publicApiUrl: string,
+  tenantId: string,
+): Promise<InitCapabilityMap> {
+  const client = new PlatformAPIClient(publicApiUrl, tenantId);
+  const [
+    childTenants,
+    aiChat,
+    documents,
+    authB2B,
+    authDual,
+  ] = await Promise.all([
+    evaluateCapabilityForInit(client, 'child-tenants', tenantId),
+    evaluateCapabilityForInit(client, 'ai-chat', tenantId),
+    evaluateCapabilityForInit(client, 'documents', tenantId),
+    evaluateCapabilityForInit(client, 'auth-b2b', tenantId),
+    evaluateCapabilityForInit(client, 'auth-dual', tenantId),
+  ]);
+
+  return {
+    'child-tenants': childTenants,
+    'ai-chat': aiChat,
+    documents,
+    'auth-b2b': authB2B,
+    'auth-dual': authDual,
+  };
+}
+
+async function createChildTenantDuringInit(
+  publicApiUrl: string,
+  activeTenant: TenantMembership,
+  childTenantSeed: { slug: string; displayName: string },
+): Promise<string> {
+  const client = new PlatformAPIClient(publicApiUrl, activeTenant.id);
+  const childDecision = await evaluateCapabilityForInit(client, 'child-tenants', activeTenant.id);
+  if (childDecision.outcome !== 'allow') {
+    const suffix = childDecision.upgradeUrl ? ` Upgrade: ${childDecision.upgradeUrl}` : '';
+    out.error(`${childDecision.reasonMessage}${suffix}`);
+    process.exit(1);
+  }
+
+  const createResponse = await client.createTenant({
+    name: childTenantSeed.displayName,
+    slug: childTenantSeed.slug,
+    parent: activeTenant.id,
+    usecase: 'generic',
+    starterTemplate: 'blank-vertical-template',
+  });
+
+  if (!createResponse.ok) {
+    const error = await parseApiError(createResponse);
+    out.error(`Child tenant creation failed: ${error.message}`);
+    process.exit(1);
+  }
+
+  const tenantPayload = await createResponse.json() as Record<string, unknown>;
+  const createdTenant = (tenantPayload['doc'] && typeof tenantPayload['doc'] === 'object'
+    ? tenantPayload['doc']
+    : tenantPayload) as Record<string, unknown>;
+  const childTenantId = String(createdTenant.id || '');
+
+  if (!childTenantId) {
+    out.error('Child tenant creation succeeded but returned no tenant ID.');
+    process.exit(1);
+  }
+
+  const tokens = await loadTokens().catch(() => null);
+  if (!tokens?.oid) {
+    out.error('Child tenant creation needs a current login with an oid claim so the first tenant admin can be bootstrapped.');
+    process.exit(1);
+  }
+
+  const bootstrapResponse = await client.bootstrapChildTenantAdmin(activeTenant.id, childTenantId, {
+    userOid: tokens.oid,
+    userEmail: tokens.upn,
+  });
+
+  if (!bootstrapResponse.ok) {
+    const error = await parseApiError(bootstrapResponse);
+    out.error(`Child tenant was created but bootstrap failed: ${error.message}`);
+    process.exit(1);
+  }
+
+  const bootstrap = await bootstrapResponse.json() as { usable?: boolean; reason?: string | null };
+  if (!bootstrap.usable) {
+    out.error(`Child tenant was created but is not yet usable for the current login${bootstrap.reason ? `: ${bootstrap.reason}` : '.'}`);
+    process.exit(1);
+  }
+
+  out.info(`Created child tenant boundary under ${activeTenant.displayName}: ${childTenantSeed.displayName} · ${chalk.dim(childTenantId)}`);
+  return childTenantId;
+}
+
+function buildAuthProviderChoices(capabilities: InitCapabilityMap): Array<{ name: string; value: 'ciam' | 'b2b' | 'dual'; disabled?: string }> {
+  const b2bDisabled = capabilities['auth-b2b'].outcome === 'allow'
+    ? 'vertical template scaffolding is not available yet'
+    : capabilities['auth-b2b'].reasonMessage;
+  const dualDisabled = capabilities['auth-dual'].outcome === 'allow'
+    ? 'vertical template scaffolding is not available yet'
+    : capabilities['auth-dual'].reasonMessage;
+
+  return [
+    { name: 'Entra ID CIAM', value: 'ciam' },
+    { name: 'Entra ID B2B (corporate SSO)', value: 'b2b', disabled: b2bDisabled },
+    { name: 'Dual (CIAM + B2B)', value: 'dual', disabled: dualDisabled },
+  ];
+}
+
+async function promptFeatureOptions(
+  publicApiUrl: string,
+  tenantId: string,
+): Promise<{ includeChat: boolean; includeDocs: boolean; authProvider: 'ciam' | 'b2b' | 'dual' }> {
+  const capabilities = await evaluateInitCapabilities(publicApiUrl, tenantId);
+
+  let includeChat = false;
+  if (capabilities['ai-chat'].outcome === 'allow') {
+    const answer = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'includeChat',
+      message: 'Include AI chat?',
+      default: true,
+    }]);
+    includeChat = Boolean(answer.includeChat);
+  } else {
+    out.warn(`AI chat disabled: ${capabilities['ai-chat'].reasonMessage}`);
+  }
+
+  let includeDocs = false;
+  if (capabilities.documents.outcome === 'allow') {
+    const answer = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'includeDocs',
+      message: 'Include document management?',
+      default: true,
+    }]);
+    includeDocs = Boolean(answer.includeDocs);
+  } else {
+    out.warn(`Document management disabled: ${capabilities.documents.reasonMessage}`);
+  }
+
+  const authChoices = buildAuthProviderChoices(capabilities);
+  const authProviderAnswer = await inquirer.prompt([{
+    type: 'list',
+    name: 'authProvider',
+    message: 'Auth provider:',
+    choices: authChoices,
+    default: 'ciam',
+  }]);
+
+  return {
+    includeChat,
+    includeDocs,
+    authProvider: authProviderAnswer.authProvider,
+  };
 }
 
 function generateDeployWorkflow(opts: InitOptions): string {
