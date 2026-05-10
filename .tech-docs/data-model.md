@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-10T13:34:44.155Z"
-source_commit: "6630fadf30a5abbe6f03398d06f58830938db0e7"
+generated_at: "2026-05-10T14:23:36.419Z"
+source_commit: "16242be8766857a2aba9b79acafcad0c19205e84"
 ---
 # EAI CLI — Data Model
 

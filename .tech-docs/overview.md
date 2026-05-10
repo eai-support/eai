@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-10T13:34:44.155Z"
-source_commit: "6630fadf30a5abbe6f03398d06f58830938db0e7"
+generated_at: "2026-05-10T14:23:36.419Z"
+source_commit: "16242be8766857a2aba9b79acafcad0c19205e84"
 ---
 # EAI CLI — Overview
 
@@ -15,7 +15,7 @@ source_commit: "6630fadf30a5abbe6f03398d06f58830938db0e7"
 | **Primary Users** | Enterprise AI application developers and DevOps engineers |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no user data storage) |
 | **Current Status** | Active development (v2.8.3 released 2026-05-08) |
-| **Last Material Change** | v2.8.3: Fixed Object Type storage metadata status scaffolding (PR #35) |
+| **Last Material Change** | v2.8.3: Fixed Object Type storage metadata status scaffolding (PR #35, 2026-05-08) |
 
 ## Service Identity
 
@@ -65,9 +65,17 @@ The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.jso
 | `src/lib/tenant-context.ts` | Tenant membership lookup and active tenant selection logic |
 | `src/lib/profile.ts` | Environment profile management (dev, test, production) |
 | `src/lib/config.ts` | Project config loader (dotenv + TypeScript evaluation) |
+| `src/lib/context.ts` | Centralized context resolution (project root, profile, auth, tenant) |
 | `src/lib/error-codes.ts` | Structured error catalog (E001-E399) with suggestions |
 | `src/lib/output.ts` | Output utilities (colored symbols, TTY detection, simple mode) |
 | `src/lib/schema-builder.ts` | CLI introspection for `--describe` flag (AI agent support) |
+| `src/lib/update-check.ts` | Auto-update checker using GitHub Releases API |
+| `src/lib/cloud-env.ts` | Azure App Config and Key Vault integration |
+| `src/lib/azure-cli.ts` | Azure CLI wrapper for cloud operations |
+| `src/lib/gofer-installer.ts` | Gofer AI terminal assets installer |
+| `src/lib/npm.ts` | NPM registry and package management utilities |
+| `src/lib/object-type-defaults.ts` | Object Type scaffolding defaults |
+| `src/lib/utils.ts` | Shared utility functions |
 | `dist/index.js` | Compiled entry point (bin: `eai`) |
 
 ## How to Run Locally
@@ -240,6 +248,6 @@ The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to stati
 
 - **Version**: 2.8.3 (released 2026-05-08)
 - **Build Status**: Passing (CI workflow validates TypeCheck, Lint, Build, Tests)
-- **Documentation**: Up-to-date (last generated 2026-05-10T13:33:18Z)
-- **Source Commit**: `6630fadf30a5abbe6f03398d06f58830938db0e7`
+- **Documentation**: Up-to-date (last generated 2026-05-10T14:21:44Z)
+- **Source Commit**: `16242be8766857a2aba9b79acafcad0c19205e84`
 - **Registry Status**: Published to GitHub Pages registry
