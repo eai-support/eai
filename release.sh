@@ -102,14 +102,14 @@ echo "  ✓ All 12 command groups registered"
 
 # ── Docs build ──
 echo "▸ Building docs site..."
-(cd docs && npm ci --silent && npm run build 2>&1 | tail -1)
+(cd docs-site && npm ci --silent && npm run build 2>&1 | tail -1)
 echo "  ✓ Docs build succeeded"
 
 # ── IP scan ──
 echo "▸ Scanning for IP leaks..."
 IP_TERMS="Configurator|ResourceAPI|AICore|PayloadCMS|OPA|Rego|HyPE|OBO"
 LEAKS=$(grep -rn --include='*.ts' --include='*.mdx' --include='*.md' \
-  -E "$IP_TERMS" src/ docs/src/ 2>/dev/null \
+  -E "$IP_TERMS" src/ .tech-docs/ docs-site/src/ 2>/dev/null \
   | grep -v node_modules || true)
 if [[ -n "$LEAKS" ]]; then
   echo "✗ IP terms found in source:"
@@ -139,7 +139,7 @@ rm -f "$TARBALL"
 echo "  ✓ Registry generated"
 
 # ── Commit, tag, push ──
-git add package.json package-lock.json docs/public/registry/
+git add package.json package-lock.json docs-site/static/registry/
 git commit \
   -m "chore: release v$NEW_VERSION — $MESSAGE" \
   -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"

@@ -1,9 +1,8 @@
 ---
 generated: true
-generated_at: "2026-05-08T17:54:00Z"
-source_commit: "825bd7f4db75d5f0be796914cc300b14969c2e74"
+generated_at: "2026-05-10T11:17:59.756Z"
+source_commit: "f628173b70d1400907cfb654ebabeacf95eb8117"
 ---
-
 # EAI CLI — Overview
 
 ## Executive Summary
@@ -176,3 +175,17 @@ Every `eai init` project includes Gofer AI assets for Claude, Codex, Gemini, and
 | GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | Use Gofer prompt or local skill |
 
 Shared workflow artifacts live under `.specify/` (commands, scripts, templates, hooks, memory, logs, specs). Use `eai init <name> --no-gofer` to skip Gofer installation.
+
+## Current Status
+
+- Nightly-managed `.tech-docs/` content is present for this repository.
+- Source commit: `f628173b70d1`
+- Additional repo-local docs surfaces detected: 2
+
+## Documentation Surfaces
+
+| Path | Purpose | Nightly managed |
+|---|---|---|
+| `.tech-docs/` | Canonical generated technical snapshot | Yes |
+| `docs/` | Repo-local documentation surface | No |
+| `docs-site/` | Repo-local documentation surface | No |
