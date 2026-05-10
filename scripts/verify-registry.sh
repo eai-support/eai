@@ -6,8 +6,8 @@ set -euo pipefail
 # Usage: ./scripts/verify-registry.sh
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PACKUMENT="$ROOT/docs/public/registry/@eai-tools/cli"
-TARBALL_DIR="$ROOT/docs/public/registry/-/@eai-tools"
+PACKUMENT="$ROOT/docs-site/static/registry/@eai-tools/cli"
+TARBALL_DIR="$ROOT/docs-site/static/registry/-/@eai-tools"
 PASS=0
 FAIL=0
 SKIP=0
@@ -170,7 +170,7 @@ fi
 #  Phase 1b: Version Listing Page
 # ══════════════════════════════════════════
 
-INDEX_HTML="$ROOT/docs/public/registry/index.html"
+INDEX_HTML="$ROOT/docs-site/static/registry/index.html"
 
 section "TC041: Version listing HTML exists"
 if [[ -f "$INDEX_HTML" ]]; then
@@ -209,7 +209,7 @@ fi
 #  Phase 1c: Deployment docs .npmrc check
 # ══════════════════════════════════════════
 
-DEPLOY_MDX="$ROOT/docs/src/content/docs/guides/deployment.mdx"
+DEPLOY_MDX="$ROOT/.tech-docs/legacy-src/docs/src/content/docs/guides/deployment.mdx"
 
 section "TC045: deployment.mdx npx usage preceded by .npmrc setup"
 # Every npx @eai-tools/cli in deployment.mdx must have a .npmrc config line before it
@@ -246,7 +246,7 @@ for term in "npm publish" "NPM_TOKEN" "registry.npmjs.org" "NODE_AUTH_TOKEN"; do
 done
 
 section "TC007: Registry generation step exists in workflow"
-for term in "node scripts/generate-registry.cjs" "git add docs/public/registry/" "git push origin HEAD:main"; do
+for term in "node scripts/generate-registry.cjs" "git add docs-site/static/registry/" "git push origin HEAD:main"; do
   if grep -q "$term" "$RELEASE_YML" 2>/dev/null; then
     pass "Found '$term' in release.yml"
   else
@@ -296,7 +296,7 @@ else
 fi
 
 section "TC027: Release script stages registry files"
-if grep -q "docs/public/registry/" "$RELEASE_SH" 2>/dev/null; then
+if grep -q "docs-site/static/registry/" "$RELEASE_SH" 2>/dev/null; then
   pass "release.sh stages registry files"
 else
   fail "release.sh missing registry file staging"
@@ -352,9 +352,9 @@ fi
 #  Phase 5: Documentation Content
 # ══════════════════════════════════════════
 
-INSTALL_MDX="$ROOT/docs/src/content/docs/getting-started/installation.mdx"
-INDEX_MDX="$ROOT/docs/src/content/docs/index.mdx"
-GLOSSARY_MDX="$ROOT/docs/src/content/docs/reference/glossary.mdx"
+INSTALL_MDX="$ROOT/.tech-docs/legacy-src/docs/src/content/docs/getting-started/installation.mdx"
+INDEX_MDX="$ROOT/.tech-docs/legacy-src/docs/src/content/docs/index.mdx"
+GLOSSARY_MDX="$ROOT/.tech-docs/legacy-src/docs/src/content/docs/reference/glossary.mdx"
 README="$ROOT/README.md"
 SETUP_MD="$ROOT/.github/SETUP.md"
 
@@ -511,25 +511,25 @@ else
 fi
 
 section "TC036: Docs site builds and includes registry files"
-if (cd "$ROOT/docs" && npm run build >/dev/null 2>&1); then
+if (cd "$ROOT/docs-site" && npm run build >/dev/null 2>&1); then
   pass "Docs build succeeds"
 else
   fail "Docs build failed"
 fi
-if [[ -f "$ROOT/docs/dist/registry/@eai-tools/cli" ]]; then
+if [[ -f "$ROOT/docs-site/build/registry/@eai-tools/cli" ]]; then
   pass "Packument in docs/dist"
 else
   fail "Packument missing from docs/dist"
 fi
-if [[ -f "$ROOT/docs/dist/registry/-/@eai-tools/cli-${PKG_VERSION}.tgz" ]]; then
+if [[ -f "$ROOT/docs-site/build/registry/-/@eai-tools/cli-${PKG_VERSION}.tgz" ]]; then
   pass "Tarball in docs/dist"
 else
   fail "Tarball missing from docs/dist"
 fi
 
 section "TC037: Packument survives Astro build (source matches dist)"
-if [[ -f "$ROOT/docs/dist/registry/@eai-tools/cli" ]]; then
-  if diff -q "$PACKUMENT" "$ROOT/docs/dist/registry/@eai-tools/cli" >/dev/null 2>&1; then
+if [[ -f "$ROOT/docs-site/build/registry/@eai-tools/cli" ]]; then
+  if diff -q "$PACKUMENT" "$ROOT/docs-site/build/registry/@eai-tools/cli" >/dev/null 2>&1; then
     pass "Packument source matches dist"
   else
     fail "Packument differs between source and dist"

@@ -5,7 +5,7 @@
  *
  * Reads package.json, finds the npm pack tarball, computes integrity hashes,
  * and writes/updates the registry packument + copies the tarball into the
- * docs/public/registry/ directory structure.
+ * docs-site/static/registry/ directory structure.
  *
  * Usage: npm pack && node scripts/generate-registry.cjs
  */
@@ -15,7 +15,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
-const REGISTRY_DIR = path.join(ROOT, 'docs', 'public', 'registry');
+const REGISTRY_DIR = path.join(ROOT, 'docs-site', 'static', 'registry');
 const SCOPE = '@eai-tools';
 const BASE_URL = 'https://eai-tools.github.io/eai-cli/registry';
 
@@ -117,9 +117,9 @@ function main() {
   console.log('');
   console.log(`✓ Registry updated: ${name}@${version}`);
   console.log(`  Versions in registry: ${versionCount}`);
-  console.log(`  Packument: docs/public/registry/${SCOPE}/cli`);
-  console.log(`  Tarball:   docs/public/registry/-/${SCOPE}/cli-${version}.tgz`);
-  console.log(`  Listing:   docs/public/registry/index.html`);
+  console.log(`  Packument: docs-site/static/registry/${SCOPE}/cli`);
+  console.log(`  Tarball:   docs-site/static/registry/-/${SCOPE}/cli-${version}.tgz`);
+  console.log(`  Listing:   docs-site/static/registry/index.html`);
 }
 
 function generateVersionListing(packument) {
@@ -216,7 +216,7 @@ echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.np
 npm install -g @eai-tools/cli
 
 # Local repo checkout smoke test
-npm install -g ./docs/public/registry/-/@eai-tools/cli-latest.tgz</code></pre>
+npm install -g ./docs-site/static/registry/-/@eai-tools/cli-latest.tgz</code></pre>
 
   <h2>Versions</h2>
   <table>

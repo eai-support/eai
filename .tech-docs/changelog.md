@@ -1,9 +1,8 @@
 ---
 generated: true
-generated_at: "2026-05-08T17:54:00Z"
-source_commit: "825bd7f4db75d5f0be796914cc300b14969c2e74"
+generated_at: "2026-05-10T11:17:59.756Z"
+source_commit: "f628173b70d1400907cfb654ebabeacf95eb8117"
 ---
-
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update

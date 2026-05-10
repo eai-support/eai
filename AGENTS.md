@@ -40,7 +40,7 @@ eai-cli/
 │       ├── output.ts            # Output utilities
 │       ├── schema-builder.ts    # CLI schema introspection
 │       └── update-check.ts      # Update checker
-├── docs/                        # Astro/Starlight docs site (93 pages)
+├── docs-site/                   # Docusaurus docs wrapper publishing from .tech-docs
 ├── .specify/                    # Gofer pipeline specs
 │   └── specs/
 │       └── cli-help-enhancement/

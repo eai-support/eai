@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 /**
- * Generate docs/public/llms-full.txt by concatenating all documentation content
+ * Generate docs-site/static/llms-full.txt by concatenating archived documentation content
  */
 
 const fs = require('fs');
 const path = require('path');
 
-const DOCS_DIR = path.join(__dirname, '../docs/src/content/docs');
-const OUTPUT_FILE = path.join(__dirname, '../docs/public/llms-full.txt');
+const DOCS_DIR = path.join(__dirname, '../.tech-docs/legacy-src/docs/src/content/docs');
+const OUTPUT_FILE = path.join(__dirname, '../docs-site/static/llms-full.txt');
 
 // Define the order of sections
 const SECTION_ORDER = [
