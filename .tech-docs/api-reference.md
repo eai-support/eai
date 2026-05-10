@@ -641,7 +641,7 @@ grant_type=refresh_token
 
 **Response**: Same as token exchange
 
-**Automatic**: Triggered when token has <5min remaining
+**Automatic**: Triggered when token has &lt;5 min remaining
 
 **Client Function**: `getToken()` in `src/lib/auth.ts`
 

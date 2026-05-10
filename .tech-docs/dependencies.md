@@ -82,7 +82,7 @@ graph TB
 
 **Commands Affected**:
 - `eai login` — Browser-based authentication
-- Any command requiring authentication (when token <5min remaining → auto-refresh)
+- Any command requiring authentication (when token &lt;5 min remaining → auto-refresh)
 
 **Profile-Specific**:
 - Each profile (`dev`, `test`, `prod`) may use a different CIAM tenant
