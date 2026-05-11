@@ -6,6 +6,7 @@
 
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import inquirer from 'inquirer';
@@ -43,6 +44,8 @@ import {
 } from '../helpers/assert-dsl.js';
 
 const exec = promisify(execFile);
+const require = createRequire(import.meta.url);
+const pkg = require('../../package.json') as { version: string };
 
 async function createLocalTemplateRepo(baseDir: string): Promise<string> {
   const templateDir = join(baseDir, 'vertical-template');
@@ -174,6 +177,7 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'my-vertical/.claude/agents/codebase-analyzer.md');
     await expectFileExists(ctx, 'my-vertical/.specify/commands/1_gofer_research.md');
     await expectFileExists(ctx, 'my-vertical/.specify/scripts/bash/pipeline-state.sh');
+    await expectFileExists(ctx, 'my-vertical/.eai-manifest.json');
     await expectFileExists(ctx, 'my-vertical/.system/skills/1_gofer_research/SKILL.md');
     await expectFileExists(ctx, 'my-vertical/.agents/skills/1_gofer_research/SKILL.md');
     await expectFileExists(ctx, 'my-vertical/.agents/skills/0_business_scenario/SKILL.md');
@@ -184,6 +188,8 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'my-vertical/.github/skills/0-business-scenario/SKILL.md');
     await expectFileExists(ctx, 'my-vertical/.github/copilot-instructions.md');
     await expectFileContains(ctx, 'my-vertical/CLAUDE.md', '## Gofer Pipeline');
+    await expectFileContains(ctx, 'my-vertical/.eai-manifest.json', `"version": "${pkg.version}"`);
+    await expectFileContains(ctx, 'my-vertical/.eai-manifest.json', '"displaySource":');
     expect(consoleCapture.stdout.join('\n')).toContain('Created My Vertical');
   }, 30_000);
 

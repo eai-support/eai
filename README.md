@@ -6,15 +6,16 @@ Every command wraps platform API calls — developers work with **resources, typ
 
 ## Install
 
-Configure npm to use the EAI registry:
+The release workflow now targets npm first. If the package has already been published there, install with:
+
+```bash
+npm install -g @eai-tools/cli
+```
+
+If that returns `404` because the next npm-backed release has not been cut yet, or if you need the static fallback channel that older `eai update` builds use, configure the EAI registry:
 
 ```bash
 echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
-```
-
-Then install globally:
-
-```bash
 npm install -g @eai-tools/cli
 ```
 
@@ -164,6 +165,7 @@ to override it with a different repository or a local template path.
 | `eai verify` | Run platform connectivity checks (supports read-only `--tenant-id`) |
 | `eai verify calls` | Audit platform API contracts used by the CLI (supports read-only `--tenant-id`) |
 | `eai doctor` | Comprehensive diagnostics with fix suggestions |
+| `eai gofer refresh` | Safely refresh repo-local Gofer-managed assets with backups and conflict detection |
 
 ## Tenant Lifecycle Truth
 
@@ -272,6 +274,41 @@ templates, hooks, memory, logs, and generated feature specs. Runtime state is
 added to `.gitignore`; command definitions and templates are committed with the
 vertical.
 
+### Updating an existing repo safely
+
+`eai update` updates the installed CLI package only. It does **not** blindly
+rewrite Gofer assets, template files, or UI components inside an existing
+vertical repo.
+
+Use these commands instead:
+
+```bash
+# See whether a newer CLI release exists
+eai update --check
+
+# See whether this repo's Gofer-managed files differ from the installed CLI bundle
+eai doctor --check-updates
+
+# Preview safe Gofer-managed asset updates for the current repo
+eai gofer refresh --check
+
+# Apply only the safe Gofer-managed file updates, with backups for replaced files
+eai gofer refresh
+```
+
+Important boundaries:
+
+- `eai gofer refresh` manages the Gofer-owned surfaces copied by `eai init`
+  such as `.specify/`, `.claude/`, `.agents/skills/`, `.gemini/`, and
+  generated Copilot Gofer files.
+- It writes or updates `.eai-manifest.json` so future refreshes can detect
+  local edits and avoid overwriting them accidentally.
+- If a tracked managed file has local edits, refresh leaves it untouched unless
+  you explicitly pass `--force`, and even then it backs the file up first.
+- Template or UI component drift is reported by `eai doctor --check-updates`,
+  but those changes are **not** auto-merged into existing repos yet. Review a
+  fresh `eai init` scaffold diff before applying template/UI changes manually.
+
 ## Development
 
 ```bash
@@ -286,7 +323,7 @@ npm run lint         # Run ESLint
 
 ## Releasing
 
-Releases are managed with `release.sh`, which runs a full validation pipeline before publishing.
+Releases are managed with `release.sh`. It validates the release candidate locally, bumps the version, regenerates the static registry artifacts, pushes `main` plus the annotated tag, waits for GitHub Actions to publish to npm, waits for the docs deployment that updates the static registry, and then verifies both public channels expose the new version.
 
 ```bash
 ./release.sh <patch|minor|major> "Release message"
@@ -300,23 +337,47 @@ Examples:
 ./release.sh major "New config format, breaking changes to types CLI"
 ```
 
-The script runs these checks before releasing:
+### Release prerequisites
+
+- Run from a clean `main` checkout
+- `gh` must be installed and authenticated
+- The GitHub repo must have an `NPM_TOKEN` secret with publish access to `@eai-tools/cli`
+
+### What `release.sh` validates before tagging
+
+The script runs `npm run release:check`, which covers the main `$6_gofer_validate` style release gates:
 
 1. Verifies you're on `main` with a clean working tree
 2. Pulls latest and installs dependencies (`npm ci`)
 3. Typecheck (`tsc --noEmit`)
 4. Lint (`eslint`)
 5. Build (`tsc`)
-6. Smoke tests — `eai --version`, `eai --help`, all 12 command groups present
-7. Docs site build
-8. Registry generation (`npm pack` + `generate-registry.cjs`)
-9. IP leak scan (ensures no internal terms in source)
+6. Test (`vitest run`)
+7. Smoke tests — `eai --version`, `eai --help`, and the shipped command groups
+8. Docs site build
+9. Registry artifact generation (`npm pack` + `generate-registry.cjs`)
+10. `npm publish --dry-run --registry=https://registry.npmjs.org/ --@eai-tools:registry=https://registry.npmjs.org/`
 
-If all checks pass, it:
+### What happens after the local checks pass
 
-- Bumps the version in `package.json`
-- Commits (including registry files), creates an annotated git tag, and pushes
-- Creates a GitHub release with your message
+1. `release.sh` bumps the requested semver level
+2. It regenerates `docs-site/static/registry/` for the new version
+3. It commits the release, creates an annotated `vX.Y.Z` tag, and pushes `main --follow-tags`
+4. The tag-triggered GitHub Actions `Release` workflow publishes to npm and creates the GitHub release
+5. The `Deploy Docs` workflow publishes the matching static registry update to GitHub Pages
+6. `release.sh` waits for both workflows and verifies:
+   - `https://registry.npmjs.org/@eai-tools%2fcli`
+   - `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+
+If either public channel does not converge to the new version, the script exits non-zero so the release is treated as incomplete.
+
+The release path publishes the repository exactly as committed. Bundled Gofer and linked-source refreshes happen separately via `npm run sync:gofer` / `npm run sync:linked-sources` and should be committed before you cut a release instead of being fetched during publish time.
+
+### Release channel policy
+
+- **npm is the target primary install channel once the release workflow publishes the tag**
+- **GitHub Pages static registry is the compatibility fallback** for older `eai update` builds and locked-down environments
+- `eai update` prefers npm when it is current and falls back to the static registry when that channel is newer
 
 ## Documentation
 

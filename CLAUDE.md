@@ -46,6 +46,19 @@ See @AGENTS.md for project conventions, commands, and code style.
    - Zero context switching required from the user
    - Go fix failing CI tests without being told how
 
+## Release Notes
+
+- Treat `./release.sh` as the canonical release entrypoint
+- Keep `release.sh`, `.github/workflows/release.yml`, `.github/workflows/docs.yml`,
+  `src/commands/update.ts`, `src/lib/update-check.ts`, and `README.md` in sync
+- Validate release work with `npm run release:check`
+- npm is the target primary distribution channel after a successful release; the
+  GitHub Pages static registry is the fallback/update compatibility channel and
+  must keep matching the same version
+- `eai update` upgrades the installed CLI package only; it does not rewrite project repos
+- Use `eai gofer refresh --check` to preview safe Gofer-managed file updates in an existing repo
+- Use `eai doctor --check-updates` to report Gofer/template drift; template and UI updates are still manual review territory
+
 ## Gofer Pipeline
 
 Gofer pipeline commands (run via `/` prefix in Claude Code):
