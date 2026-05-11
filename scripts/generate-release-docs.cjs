@@ -98,7 +98,6 @@ ${output}`
   )).join('\n\n---\n\n');
 
   return `# EAI CLI Help Snapshot
-Generated: ${context.generatedAt}
 Version: ${context.version}
 
 Install / update the CLI:
@@ -164,8 +163,6 @@ ${doc.body.trim()}`
 > Release-aligned documentation bundle for \`@eai-tools/cli\` v${context.version}.
 > Generated from \`.tech-docs/\` plus current CLI help output.
 
-Generated: ${context.generatedAt}
-
 ## Install
 
 \`\`\`bash
@@ -190,7 +187,6 @@ ${docsSections}
 function buildContext() {
   return {
     version: VERSION,
-    generatedAt: new Date().toISOString(),
     docs: readAllDocs(),
     helpSnapshots: readHelpSnapshots(),
   };
