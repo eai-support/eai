@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-11T10:27:51.087Z"
-source_commit: "1b64ee219494833d995dabac7442e9f47e15f213"
+generated_at: "2026-05-11T10:44:35.156Z"
+source_commit: "db1c646127039ddd0f950df6c2ee52119d394719"
 ---
 # EAI CLI — Changelog
 
@@ -9,7 +9,7 @@ source_commit: "1b64ee219494833d995dabac7442e9f47e15f213"
 
 **Previous Documentation**: 2026-05-10 13:33 UTC (commit 6630fad)  
 **Current Documentation**: 2026-05-10 14:21 UTC (commit 16242be)  
-**Version**: 2.8.9 (stable)
+**Version**: 2.8.10 (stable)
 
 ### Changes in This Update
 
@@ -38,6 +38,10 @@ source_commit: "1b64ee219494833d995dabac7442e9f47e15f213"
 ## [2.8.9] - 2026-05-11
 
 - Highlight update workflows in CLI help
+
+## [2.8.10] - 2026-05-11
+
+- Fix legacy template provenance detection
 
 ## Previous Updates
 
