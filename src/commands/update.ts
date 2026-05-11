@@ -81,6 +81,7 @@ Notes:
   - One-time setup for manual installs: npm config set @eai-tools:registry ${STATIC_REGISTRY_URL} --location=user
   - \`eai update\` upgrades the installed CLI package only; it does not rewrite existing project files.
   - Use \`eai gofer refresh --check\` to preview safe repo-local Gofer asset updates.
+  - Use \`eai template check\` to preview vertical-template and UI drift before copying changes manually.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
   `)
   .action(async (options: { check?: boolean }) => {

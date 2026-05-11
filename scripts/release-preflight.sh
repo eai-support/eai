@@ -86,7 +86,7 @@ if ! grep -q "Enterprise AI Platform CLI" <<<"$HELP_OUTPUT"; then
   exit 1
 fi
 
-for command_name in init login dev types resources deploy env verify chat docs whoami doctor update tenant user; do
+for command_name in init login dev types resources deploy env verify chat docs whoami doctor update tenant user template; do
   if ! grep -q "$command_name" <<<"$HELP_OUTPUT"; then
     echo "✗ eai --help is missing command group: $command_name"
     exit 1
@@ -184,8 +184,14 @@ if (!llmsFull.includes(currentVersion)) {
 if (!llmsFull.includes('eai gofer refresh --help')) {
   throw new Error('llms-full.txt is missing current Gofer help output');
 }
+if (!llmsFull.includes('eai template check --help')) {
+  throw new Error('llms-full.txt is missing the template check help snapshot');
+}
 if (!cliHelp.includes('eai gofer refresh --help')) {
   throw new Error('cli-help.txt is missing the Gofer refresh help snapshot');
+}
+if (!cliHelp.includes('eai template check --help')) {
+  throw new Error('cli-help.txt is missing the template check help snapshot');
 }
 EOF
 echo "  ✓ README, package metadata, and release docs align with the static-registry release flow"

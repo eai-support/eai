@@ -59,7 +59,8 @@ See @AGENTS.md for project conventions, commands, and code style.
 - Install or update the CLI with `npm install -g @eai-tools/cli`
 - `eai update` upgrades the installed CLI package only; it does not rewrite project repos
 - Use `eai gofer refresh --check` to preview safe Gofer-managed file updates in an existing repo
-- Use `eai doctor --check-updates` to report Gofer/template drift; template and UI updates are still manual review territory
+- Use `eai doctor --check-updates` to report CLI, Gofer, and template drift
+- Use `eai template check` to preview vertical-template and UI drift before copying changes manually
 
 ## Gofer Pipeline
 
