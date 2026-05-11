@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-11T09:57:05.483Z"
-source_commit: "5d0a67caec442daf1e8599bb5bc30d5472189c6a"
+generated_at: "2026-05-11T10:27:51.087Z"
+source_commit: "1b64ee219494833d995dabac7442e9f47e15f213"
 ---
 # EAI CLI — Changelog
 
@@ -9,7 +9,7 @@ source_commit: "5d0a67caec442daf1e8599bb5bc30d5472189c6a"
 
 **Previous Documentation**: 2026-05-10 13:33 UTC (commit 6630fad)  
 **Current Documentation**: 2026-05-10 14:21 UTC (commit 16242be)  
-**Version**: 2.8.8 (stable)
+**Version**: 2.8.9 (stable)
 
 ### Changes in This Update
 
@@ -34,6 +34,10 @@ source_commit: "5d0a67caec442daf1e8599bb5bc30d5472189c6a"
 ## [2.8.8] - 2026-05-11
 
 - Add template drift preview and move workflows onto Node 24
+
+## [2.8.9] - 2026-05-11
+
+- Highlight update workflows in CLI help
 
 ## Previous Updates
 
