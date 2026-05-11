@@ -12,7 +12,20 @@ To enable documentation deployment:
 
 ## Package Registry
 
-This project uses a **static npm registry** hosted on GitHub Pages instead of npmjs.com. No `NPM_TOKEN` secret is needed. The release workflow runs `npm pack` and `scripts/generate-registry.cjs` to produce registry metadata, which is committed to `main` and served via GitHub Pages at `https://eai-tools.github.io/eai-cli/registry`.
+This project publishes the CLI to **npm** and also maintains a **static fallback registry** on GitHub Pages.
+
+Required one-time secret:
+
+1. Go to **Settings > Secrets and variables > Actions**.
+2. Add a repository secret named `NPM_TOKEN`.
+3. Use an npm access token that has publish rights for `@eai-tools/cli`.
+
+Release channel responsibilities:
+
+- **npm** is the primary install/update target after the release workflow succeeds: `npm install -g @eai-tools/cli`
+- **GitHub Pages static registry** remains available at `https://eai-tools.github.io/eai-cli/registry`
+- The release workflow publishes to npm from the pushed release tag
+- The docs workflow deploys the matching static registry metadata from `main`
 
 ## Branch Protection Rules
 
@@ -28,27 +41,23 @@ Recommended branch protection for `main`:
 
 ## Creating a Release
 
-Releases are triggered by pushing a version tag:
+Use the repo root release script from a clean `main` checkout:
 
 ```bash
-# Tag the release
-git tag -a v0.1.0 -m "Release v0.1.0"
-
-# Push the tag to trigger the release workflow
-git push --tags
+./release.sh patch "Release message"
 ```
 
 This will:
 
-1. Run the full build and lint pipeline.
-2. Generate static registry metadata and commit to `main`.
-3. Create a GitHub Release with auto-generated release notes.
+1. Run the local release preflight (`npm run release:check`).
+2. Bump the version, regenerate `docs-site/static/registry/`, commit, and tag.
+3. Push `main` and the annotated `vX.Y.Z` tag.
+4. Wait for the GitHub `Release` workflow to publish to npm and create the GitHub release.
+5. Wait for `Deploy Docs` to push the matching static registry update to GitHub Pages.
+6. Verify both public channels report the new version.
+7. If npm still returns `404`, treat the release as incomplete and keep using the static registry until the publish issue is fixed.
 
 ### Version Conventions
 
 - Follow [Semantic Versioning](https://semver.org/): `vMAJOR.MINOR.PATCH`
-- Update the version in `package.json` before tagging:
-  ```bash
-  npm version 0.1.0 --no-git-tag-version
-  ```
-- Commit the version bump, then create and push the tag.
+- Let `release.sh` manage the version bump and tag creation.

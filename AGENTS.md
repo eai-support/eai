@@ -10,6 +10,7 @@
 
 - **Build**: `npm run build`
 - **Lint**: `npm run lint`
+- **Release preflight**: `npm run release:check`
 
 ## Project Structure
 
@@ -17,7 +18,7 @@
 eai-cli/
 ├── src/
 │   ├── index.ts                 # Entry point, Commander.js program
-│   ├── commands/                # 14 command files
+│   ├── commands/                # Command modules
 │   │   ├── init.ts              # Scaffold new vertical
 │   │   ├── dev.ts               # Local dev server
 │   │   ├── login.ts             # Auth (login/logout)
@@ -31,13 +32,16 @@ eai-cli/
 │   │   ├── docs.ts              # Document operations
 │   │   ├── deploy.ts            # Deployment
 │   │   ├── verify.ts            # Platform checks (verify/doctor)
+│   │   ├── gofer.ts             # Safe Gofer asset refresh for existing repos
 │   │   └── update.ts            # CLI updates
-│   └── lib/                     # 9 library modules
+│   └── lib/                     # Shared library modules
 │       ├── api.ts               # PlatformAPIClient
 │       ├── auth.ts              # Entra CIAM auth
 │       ├── config.ts            # Config loader
 │       ├── error-codes.ts       # Error code system
+│       ├── gofer-refresh.ts     # Gofer manifest planning/apply
 │       ├── output.ts            # Output utilities
+│       ├── project-manifest.ts  # Project manifest persistence
 │       ├── schema-builder.ts    # CLI schema introspection
 │       └── update-check.ts      # Update checker
 ├── docs-site/                   # Docusaurus docs wrapper publishing from .tech-docs
@@ -132,6 +136,23 @@ const config = await loadConfig();
 - Use conventional commit messages (feat:, fix:, chore:, docs:)
 - Create feature branches for new work
 - Run tests and linting before committing
+
+## Release Workflow
+
+- `./release.sh <patch|minor|major> "Message"` is the canonical human release entrypoint
+- `release.sh` must remain aligned with:
+  - `.github/workflows/release.yml`
+  - `.github/workflows/docs.yml`
+  - `src/commands/update.ts`
+  - `src/lib/update-check.ts`
+  - `README.md`
+- npm is the target primary install/update channel after a successful release; the static GitHub Pages registry is the compatibility fallback
+- Before changing release behavior, verify both channels still work:
+  - `curl https://registry.npmjs.org/@eai-tools%2fcli`
+  - `curl https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+- `eai update` upgrades the installed CLI package only
+- `eai gofer refresh --check` previews safe repo-local Gofer asset updates
+- Template or UI component drift for existing repos is reported via `eai doctor --check-updates`, not auto-merged
 
 ## Boundaries
 

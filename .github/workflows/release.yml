@@ -7,11 +7,11 @@ on:
 
 permissions:
   contents: write
-  packages: write
+  id-token: write
 
 jobs:
   release:
-    name: Publish & Release
+    name: Publish npm release
     runs-on: ubuntu-latest
 
     steps:
@@ -25,6 +25,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          scope: '@eai-tools'
+          registry-url: https://registry.npmjs.org
 
       - name: Validate version matches tag
         run: |
@@ -38,25 +40,40 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Lint
         run: npm run lint
 
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm run test
+
+      - name: Verify committed static registry points at this tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAG_VERSION="$TAG_VERSION" node <<'EOF'
+          const fs = require('node:fs');
+          const packument = JSON.parse(fs.readFileSync('docs-site/static/registry/@eai-tools/cli', 'utf8'));
+          const expected = process.env.TAG_VERSION;
+          if (packument['dist-tags']?.latest !== expected) {
+            throw new Error(`packument latest ${packument['dist-tags']?.latest ?? 'missing'} does not match ${expected}`);
+          }
+          if (!packument.versions?.[expected]) {
+            throw new Error(`packument missing version ${expected}`);
+          }
+          EOF
+
       - name: Create npm tarball
         run: npm pack
 
-      - name: Generate registry metadata
-        run: node scripts/generate-registry.cjs
-
-      - name: Publish to static registry
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs-site/static/registry/
-          git commit -m "chore: publish v${GITHUB_REF_NAME#v} to registry"
-          git push origin HEAD:main
+      - name: Publish package to npm
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Generate changelog
         id: changelog
@@ -83,15 +100,16 @@ jobs:
 
             ## Installation
 
-            Configure your `.npmrc` to use the EAI registry:
+            Install from npm:
 
             ```
-            @eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
+            npm install -g @eai-tools/cli
             ```
 
-            Then install:
+            Fallback static registry:
 
             ```bash
+            echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
             npm install -g @eai-tools/cli
             ```
 
