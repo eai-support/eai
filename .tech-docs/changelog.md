@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-11T08:08:26.920Z"
-source_commit: "abb99562face3e5edfe56e21a2a4783e92b378ff"
+generated_at: "2026-05-11T08:13:05.939Z"
+source_commit: "50111ca3e8aee80dc76cb9c4deaa6f7c964dadea"
 ---
 # EAI CLI — Changelog
 
@@ -9,7 +9,7 @@ source_commit: "abb99562face3e5edfe56e21a2a4783e92b378ff"
 
 **Previous Documentation**: 2026-05-10 13:33 UTC (commit 6630fad)  
 **Current Documentation**: 2026-05-10 14:21 UTC (commit 16242be)  
-**Version**: 2.8.6 (stable)
+**Version**: 2.8.7 (stable)
 
 ### Changes in This Update
 
@@ -26,6 +26,10 @@ source_commit: "abb99562face3e5edfe56e21a2a4783e92b378ff"
 ## [2.8.6] - 2026-05-11
 
 - Refresh release docs and CLI help automation
+
+## [2.8.7] - 2026-05-11
+
+- Make release-facing docs generation deterministic
 
 ## Previous Updates
 
