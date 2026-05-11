@@ -6,16 +6,15 @@ Every command wraps platform API calls — developers work with **resources, typ
 
 ## Install
 
-The release workflow now targets npm first. If the package has already been published there, install with:
+Configure the scoped EAI registry once per user:
 
 ```bash
-npm install -g @eai-tools/cli
+npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
 ```
 
-If that returns `404` because the next npm-backed release has not been cut yet, or if you need the static fallback channel that older `eai update` builds use, configure the EAI registry:
+Install or update the EnterpriseAI CLI:
 
 ```bash
-echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
 npm install -g @eai-tools/cli
 ```
 
@@ -323,7 +322,7 @@ npm run lint         # Run ESLint
 
 ## Releasing
 
-Releases are managed with `release.sh`. It validates the release candidate locally, bumps the version, regenerates the static registry artifacts, pushes `main` plus the annotated tag, waits for GitHub Actions to publish to npm, waits for the docs deployment that updates the static registry, and then verifies both public channels expose the new version.
+Releases are managed with `release.sh`. It validates the release candidate locally, bumps the version, refreshes the release-facing docs/help surfaces, regenerates the static registry artifacts, pushes `main` plus the annotated tag, waits for GitHub Actions to create the GitHub release, waits for the docs deployment that updates the static registry, and then verifies the public static registry exposes the new version.
 
 ```bash
 ./release.sh <patch|minor|major> "Release message"
@@ -341,7 +340,6 @@ Examples:
 
 - Run from a clean `main` checkout
 - `gh` must be installed and authenticated
-- The GitHub repo must have an `NPM_TOKEN` secret with publish access to `@eai-tools/cli`
 
 ### What `release.sh` validates before tagging
 
@@ -355,29 +353,36 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 6. Test (`vitest run`)
 7. Smoke tests — `eai --version`, `eai --help`, and the shipped command groups
 8. Docs site build
-9. Registry artifact generation (`npm pack` + `generate-registry.cjs`)
-10. `npm publish --dry-run --registry=https://registry.npmjs.org/ --@eai-tools:registry=https://registry.npmjs.org/`
+9. Release-facing docs/help generation (`llms.txt`, `llms-full.txt`, `cli-help.txt`)
+10. Registry artifact generation (`npm pack` + `generate-registry.cjs`)
+11. Static-registry release metadata stays aligned with the documented install flow
 
 ### What happens after the local checks pass
 
 1. `release.sh` bumps the requested semver level
-2. It regenerates `docs-site/static/registry/` for the new version
-3. It commits the release, creates an annotated `vX.Y.Z` tag, and pushes `main --follow-tags`
-4. The tag-triggered GitHub Actions `Release` workflow publishes to npm and creates the GitHub release
-5. The `Deploy Docs` workflow publishes the matching static registry update to GitHub Pages
-6. `release.sh` waits for both workflows and verifies:
-   - `https://registry.npmjs.org/@eai-tools%2fcli`
-   - `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+2. It updates the visible `.tech-docs/` release metadata to the new version and release message
+3. It regenerates `docs-site/static/registry/`, `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`
+4. It commits the release, creates an annotated `vX.Y.Z` tag, and pushes `main --follow-tags`
+5. The tag-triggered GitHub Actions `Release` workflow verifies the committed release docs/help surfaces before creating the GitHub release and attaching the packaged tarball
+6. The `Deploy Docs` workflow publishes the matching static registry and release-doc bundle to GitHub Pages
+7. `release.sh` waits for both workflows and verifies `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
 
-If either public channel does not converge to the new version, the script exits non-zero so the release is treated as incomplete.
+If the static registry does not converge to the new version, the script exits non-zero so the release is treated as incomplete.
 
 The release path publishes the repository exactly as committed. Bundled Gofer and linked-source refreshes happen separately via `npm run sync:gofer` / `npm run sync:linked-sources` and should be committed before you cut a release instead of being fetched during publish time.
 
+Helpful maintainer commands:
+
+```bash
+npm run docs:release-assets
+npm run docs:release-assets:check
+```
+
 ### Release channel policy
 
-- **npm is the target primary install channel once the release workflow publishes the tag**
-- **GitHub Pages static registry is the compatibility fallback** for older `eai update` builds and locked-down environments
-- `eai update` prefers npm when it is current and falls back to the static registry when that channel is newer
+- **GitHub Pages static registry is the release channel**
+- Configure the registry once with `npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user`
+- Install or update with `npm install -g @eai-tools/cli`, or use `eai update`
 
 ## Documentation
 

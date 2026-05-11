@@ -146,10 +146,12 @@ const config = await loadConfig();
   - `src/commands/update.ts`
   - `src/lib/update-check.ts`
   - `README.md`
-- npm is the target primary install/update channel after a successful release; the static GitHub Pages registry is the compatibility fallback
-- Before changing release behavior, verify both channels still work:
-  - `curl https://registry.npmjs.org/@eai-tools%2fcli`
+- Every release should refresh `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`
+- GitHub Pages static registry is the release/install channel
+- Before changing release behavior, verify the public packument still works:
   - `curl https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+- Preferred user setup is `npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user`
+- Install or update the CLI with `npm install -g @eai-tools/cli`
 - `eai update` upgrades the installed CLI package only
 - `eai gofer refresh --check` previews safe repo-local Gofer asset updates
 - Template or UI component drift for existing repos is reported via `eai doctor --check-updates`, not auto-merged

@@ -18,21 +18,21 @@ The EAI CLI has two deployment contexts:
 
 ### Publishing Model
 
-The EAI CLI uses a **static npm registry hosted on GitHub Pages**, eliminating the need for npm.js publishing.
+The EAI CLI uses a **static npm registry hosted on GitHub Pages**, eliminating the need for npmjs publishing.
 
 **Registry URL**: `https://eai-tools.github.io/eai-cli/registry`
 
 **Package Name**: `@eai-tools/cli`
 
-**Current Version**: 2.8.3
+**Current Version**: See the registry latest tag at `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
 
 ### Installation
 
 Users configure npm to use the EAI registry, then install globally:
 
 ```bash
-# Configure npm registry
-echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
+# Configure the scoped EAI registry once
+npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
 
 # Install globally
 npm install -g @eai-tools/cli
@@ -109,26 +109,26 @@ The release script verifies these commands are registered:
 
 **Inputs**:
 - `package.json` — Version, description, keywords
-- `docs/public/registry/-/@eai-tools/cli-latest.tgz` — Latest tarball
+- `eai-tools-cli-{version}.tgz` — Tarball produced by `npm pack`
 
 **Outputs**:
-- `docs/public/registry/@eai-tools/cli` — npm packument (package metadata)
-- `docs/public/registry/-/@eai-tools/cli-{version}.tgz` — Versioned tarball
+- `docs-site/static/registry/@eai-tools/cli` — npm packument (package metadata)
+- `docs-site/static/registry/-/@eai-tools/cli-{version}.tgz` — Versioned tarball
 
 **Packument Structure**:
 ```json
 {
   "name": "@eai-tools/cli",
   "dist-tags": {
-    "latest": "2.8.3"
+    "latest": "2.8.5"
   },
   "versions": {
-    "2.8.3": {
+    "2.8.5": {
       "name": "@eai-tools/cli",
-      "version": "2.8.3",
+      "version": "2.8.5",
       "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
       "dist": {
-        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.3.tgz",
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.5.tgz",
         "shasum": "..."
       }
     }
@@ -145,15 +145,15 @@ The release script verifies these commands are registered:
 **Steps**:
 
 1. **Checkout** — Fetch repository with full history
-2. **Setup Node.js** — Install Node 20
+2. **Setup Node.js** — Install Node 24
 3. **Validate Version** — Ensure tag matches `package.json` version
 4. **Install** — `npm ci`
-5. **Build** — `npm run build`
-6. **Test** — `npm run test`
-7. **Lint** — `npm run lint`
-8. **Create Tarball** — `npm pack`
-9. **Generate Registry** — `node scripts/generate-registry.cjs`
-10. **Publish to Registry** — Commit registry files to `docs/public/registry/`
+5. **Typecheck** — `npm run typecheck`
+6. **Lint** — `npm run lint`
+7. **Build** — `npm run build`
+8. **Test** — `npm run test`
+9. **Verify Registry** — Confirm the committed static registry latest tag matches the release tag
+10. **Create Tarball** — `npm pack`
 11. **Generate Changelog** — Extract commit messages since last tag
 12. **Create GitHub Release** — Publish release with tarball and changelog
 
@@ -195,7 +195,7 @@ sequenceDiagram
         Cache-->>CLI: Skip check
     else Cache expired
         CLI->>Registry: GET /registry/@eai-tools/cli
-        Registry-->>CLI: {"dist-tags": {"latest": "2.8.3"}}
+        Registry-->>CLI: {"dist-tags": {"latest": "2.8.5"}}
         CLI->>Cache: Write cache
     end
 
@@ -209,7 +209,7 @@ sequenceDiagram
 
 **Update Command**:
 ```bash
-eai update  # Runs: npm install -g @eai-tools/cli@latest
+eai update  # Reinstalls the latest CLI from the scoped EAI registry
 ```
 
 ---
@@ -422,7 +422,7 @@ jobs:
       
       # Install CLI
       - run: |
-          echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
+          npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
           npm install -g @eai-tools/cli
       
       # Authenticate (headless)
