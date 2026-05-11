@@ -1,6 +1,6 @@
 # EAI CLI Help Snapshot
-Generated: 2026-05-11T07:01:46.557Z
-Version: 2.8.5
+Generated: 2026-05-11T08:08:28.873Z
+Version: 2.8.6
 
 Install / update the CLI:
 npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user

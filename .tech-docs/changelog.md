@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-11T07:00:55.718Z"
-source_commit: "9f23ff016bd3bf8d5a11f3bb3c2821f39d11a6ca"
+generated_at: "2026-05-11T08:08:26.920Z"
+source_commit: "abb99562face3e5edfe56e21a2a4783e92b378ff"
 ---
 # EAI CLI — Changelog
 
@@ -9,7 +9,7 @@ source_commit: "9f23ff016bd3bf8d5a11f3bb3c2821f39d11a6ca"
 
 **Previous Documentation**: 2026-05-10 13:33 UTC (commit 6630fad)  
 **Current Documentation**: 2026-05-10 14:21 UTC (commit 16242be)  
-**Version**: 2.8.5 (stable)
+**Version**: 2.8.6 (stable)
 
 ### Changes in This Update
 
@@ -22,6 +22,10 @@ source_commit: "9f23ff016bd3bf8d5a11f3bb3c2821f39d11a6ca"
 ## [2.8.5] - 2026-05-11
 
 - Align release docs and CLI help automation with the static registry flow
+
+## [2.8.6] - 2026-05-11
+
+- Refresh release docs and CLI help automation
 
 ## Previous Updates
 
