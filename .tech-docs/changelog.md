@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-11T13:59:10.837Z"
-source_commit: "3a0a9d5ad7625da40028deb9a5b62267db504925"
+generated_at: "2026-05-11T14:16:42.658Z"
+source_commit: "a8a694f01ee627d905c62dd2f11230c312b5d499"
 ---
 # EAI CLI — Changelog
 
@@ -9,7 +9,7 @@ source_commit: "3a0a9d5ad7625da40028deb9a5b62267db504925"
 
 **Previous Documentation**: 2026-05-10 13:33 UTC (commit 6630fad)  
 **Current Documentation**: 2026-05-10 14:21 UTC (commit 16242be)  
-**Version**: 2.8.11 (stable)
+**Version**: 2.8.12 (stable)
 
 ### Changes in This Update
 
@@ -46,6 +46,10 @@ source_commit: "3a0a9d5ad7625da40028deb9a5b62267db504925"
 ## [2.8.11] - 2026-05-11
 
 - Add tenant app registration persistence spec
+
+## [2.8.12] - 2026-05-11
+
+- Fix docs workflow Node 24 artifact action
 
 ## Previous Updates
 
