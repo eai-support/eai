@@ -154,8 +154,18 @@ ${chalk.bold('AI Terminal Workflows:')}
   ${chalk.cyan('codex')}                    ${chalk.dim('then ask Codex to use the 1_gofer_research skill')}
   ${chalk.cyan('gemini')}                   ${chalk.dim('then run /gofer:1_gofer_research')}
   ${chalk.cyan('copilot')}                  ${chalk.dim('uses .github/prompts and .github/skills')}
+
+${chalk.bold('Updates:')}
+  ${chalk.dim('# Check for a newer CLI release and install it safely')}
+  ${chalk.cyan('eai update --check')}       ${chalk.dim('preview the latest published CLI version')}
+  ${chalk.cyan('eai update')}               ${chalk.dim('update the installed CLI package')}
+
+  ${chalk.dim('# Preview repo-local Gofer asset updates before writing files')}
   ${chalk.cyan('eai gofer refresh --check')} ${chalk.dim('preview managed Gofer asset updates for this repo')}
-  ${chalk.cyan('eai template check')}       ${chalk.dim('preview vertical-template and UI drift before copying changes')}
+  ${chalk.cyan('eai gofer refresh')}        ${chalk.dim('apply safe Gofer-managed asset updates with backups')}
+
+  ${chalk.dim('# Preview vertical-template and UI component drift before copying changes')}
+  ${chalk.cyan('eai template check')}       ${chalk.dim('review potential vertical or UI file updates without overwriting local work')}
 
 ${chalk.bold('Accessibility:')}
   ${chalk.dim('# Screen reader friendly output')}
