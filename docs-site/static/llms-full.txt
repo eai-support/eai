@@ -2,8 +2,6 @@
 > Release-aligned documentation bundle for `@eai-tools/cli` v2.8.6.
 > Generated from `.tech-docs/` plus current CLI help output.
 
-Generated: 2026-05-11T08:08:28.873Z
-
 ## Install
 
 ```bash

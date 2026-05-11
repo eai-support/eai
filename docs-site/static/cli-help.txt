@@ -1,5 +1,4 @@
 # EAI CLI Help Snapshot
-Generated: 2026-05-11T08:08:28.873Z
 Version: 2.8.6
 
 Install / update the CLI:
