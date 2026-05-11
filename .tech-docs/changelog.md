@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-11T10:44:35.156Z"
-source_commit: "db1c646127039ddd0f950df6c2ee52119d394719"
+generated_at: "2026-05-11T13:59:10.837Z"
+source_commit: "3a0a9d5ad7625da40028deb9a5b62267db504925"
 ---
 # EAI CLI — Changelog
 
@@ -9,7 +9,7 @@ source_commit: "db1c646127039ddd0f950df6c2ee52119d394719"
 
 **Previous Documentation**: 2026-05-10 13:33 UTC (commit 6630fad)  
 **Current Documentation**: 2026-05-10 14:21 UTC (commit 16242be)  
-**Version**: 2.8.10 (stable)
+**Version**: 2.8.11 (stable)
 
 ### Changes in This Update
 
@@ -42,6 +42,10 @@ source_commit: "db1c646127039ddd0f950df6c2ee52119d394719"
 ## [2.8.10] - 2026-05-11
 
 - Fix legacy template provenance detection
+
+## [2.8.11] - 2026-05-11
+
+- Add tenant app registration persistence spec
 
 ## Previous Updates
 

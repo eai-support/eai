@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-11T10:44:35.155Z"
-source_commit: "db1c646127039ddd0f950df6c2ee52119d394719"
+generated_at: "2026-05-11T13:59:10.836Z"
+source_commit: "3a0a9d5ad7625da40028deb9a5b62267db504925"
 ---
 # EAI CLI — Overview
 
@@ -10,17 +10,17 @@ source_commit: "db1c646127039ddd0f950df6c2ee52119d394719"
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.8.10 |
+| **Version** | 2.8.11 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers and DevOps engineers |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no user data storage) |
-| **Current Status** | Active development (v2.8.10 released 2026-05-11) |
-| **Last Material Change** | v2.8.10: Fix legacy template provenance detection (2026-05-11) |
+| **Current Status** | Active development (v2.8.11 released 2026-05-11) |
+| **Last Material Change** | v2.8.11: Add tenant app registration persistence spec (2026-05-11) |
 
 ## Service Identity
 
 **Name**: `@eai-tools/cli` (eai)  
-**Version**: 2.8.10  
+**Version**: 2.8.11  
 **Purpose**: Command-line interface for the Enterprise AI Platform that wraps all platform API calls, providing developers with simple commands to scaffold projects, authenticate users, manage data models, perform CRUD operations, and deploy applications to Azure.
 
 ## Description
@@ -199,6 +199,9 @@ node dist/index.js tenant list
 
 ## Recent Enhancements
 
+### v2.8.11 (2026-05-11)
+- **Add tenant app registration persistence spec**
+
 ### v2.8.10 (2026-05-11)
 - **Fix legacy template provenance detection**
 
@@ -264,7 +267,7 @@ The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to stati
 
 ## Current Status
 
-- **Version**: 2.8.10 (released 2026-05-11)
+- **Version**: 2.8.11 (released 2026-05-11)
 - **Build Status**: Passing (CI workflow validates TypeCheck, Lint, Build, Tests)
 - **Documentation**: Up-to-date (last generated 2026-05-10T14:21:44Z)
 - **Source Commit**: `16242be8766857a2aba9b79acafcad0c19205e84`
