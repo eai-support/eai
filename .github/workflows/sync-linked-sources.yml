@@ -11,6 +11,9 @@ on:
         default: false
         type: boolean
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 permissions:
   contents: write
   pull-requests: write
@@ -71,7 +74,7 @@ jobs:
 
       - name: Create sync pull request
         if: steps.drift.outputs.changed == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: codex/linked-sources-sync
           delete-branch: true
