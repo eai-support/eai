@@ -1243,7 +1243,7 @@ async function renderDoctorUpdateStatus(root: string): Promise<void> {
   const manifest = await loadProjectManifest(root);
   if (!manifest) {
     out.info('No `.eai-manifest.json` found yet. Run `eai gofer refresh --check` once to adopt the current Gofer-managed asset snapshot safely.');
-    out.info('Template and UI component drift is not auto-merged yet; compare against a fresh `eai init` output before copying changes manually.');
+    out.info('Template and UI component drift is not auto-merged yet; use `eai template check` before copying changes manually.');
     return;
   }
 
@@ -1292,6 +1292,7 @@ async function renderDoctorUpdateStatus(root: string): Promise<void> {
     out.info(`Project template source: ${projectTemplateLabel}`);
     out.info(`Current bundled default template: ${bundledTemplateLabel}`);
     out.info('This project was initialized from a different template source, so template or UI updates still need manual review.');
+    out.dim(`  Preview: ${chalk.cyan('eai template check')}`);
     return;
   }
 
@@ -1301,7 +1302,7 @@ async function renderDoctorUpdateStatus(root: string): Promise<void> {
     manifest.template.commit !== bundledTemplate.pinnedCommit
   ) {
     out.warn(`Bundled default template has changed since init: ${projectTemplateLabel} → ${bundledTemplateLabel}`);
-    out.info('The CLI does not auto-merge template or UI component updates into existing repos yet. Review a fresh scaffold diff before applying those changes manually.');
+    out.info('The CLI does not auto-merge template or UI component updates into existing repos yet. Review `eai template check` before applying those changes manually.');
     return;
   }
 
@@ -1320,7 +1321,8 @@ Examples:
 Notes:
   - \`eai update\` upgrades the installed CLI package only.
   - \`eai gofer refresh --check\` previews safe repo-local Gofer asset updates.
-  - Template and UI component changes are reported, but they are not auto-merged into existing repos yet.
+  - \`eai template check\` previews vertical-template and UI drift without writing files.
+  - Template and UI component changes are not auto-merged into existing repos yet.
   `)
   .action(async (options: { fix?: boolean; checkUpdates?: boolean }) => {
     const issues: Array<{ severity: 'error' | 'warn' | 'info'; message: string; fix?: string }> = [];

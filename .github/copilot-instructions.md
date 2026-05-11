@@ -38,4 +38,5 @@ research.md, spec.md, plan.md, and tasks.md.
 - Install or update the CLI with `npm install -g @eai-tools/cli`
 - `eai update` upgrades the installed CLI package only
 - `eai gofer refresh --check` previews safe Gofer-managed repo updates
-- `eai doctor --check-updates` reports Gofer/template drift; template/UI changes are not auto-merged into existing repos yet
+- `eai doctor --check-updates` reports CLI, Gofer, and template drift
+- `eai template check` previews vertical-template and UI drift before manual updates

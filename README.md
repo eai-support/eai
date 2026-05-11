@@ -165,6 +165,7 @@ to override it with a different repository or a local template path.
 | `eai verify calls` | Audit platform API contracts used by the CLI (supports read-only `--tenant-id`) |
 | `eai doctor` | Comprehensive diagnostics with fix suggestions |
 | `eai gofer refresh` | Safely refresh repo-local Gofer-managed assets with backups and conflict detection |
+| `eai template check` | Preview vertical-template and UI drift without writing files |
 
 ## Tenant Lifecycle Truth
 
@@ -291,6 +292,9 @@ eai doctor --check-updates
 # Preview safe Gofer-managed asset updates for the current repo
 eai gofer refresh --check
 
+# Preview vertical-template and UI component drift before copying changes manually
+eai template check
+
 # Apply only the safe Gofer-managed file updates, with backups for replaced files
 eai gofer refresh
 ```
@@ -304,9 +308,12 @@ Important boundaries:
   local edits and avoid overwriting them accidentally.
 - If a tracked managed file has local edits, refresh leaves it untouched unless
   you explicitly pass `--force`, and even then it backs the file up first.
-- Template or UI component drift is reported by `eai doctor --check-updates`,
-  but those changes are **not** auto-merged into existing repos yet. Review a
-  fresh `eai init` scaffold diff before applying template/UI changes manually.
+- `eai template check` previews file-level drift against the current vertical
+  template snapshot and highlights which files are new versus which need manual
+  review, including likely UI paths under `src/app` and `src/components`.
+- Template or UI component changes are **not** auto-merged into existing repos
+  yet. Copy additions first, then diff/review existing files that `eai template
+  check` marks for manual review.
 
 ## Development
 

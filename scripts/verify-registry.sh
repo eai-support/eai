@@ -9,8 +9,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PACKUMENT="$ROOT/docs-site/static/registry/@eai-tools/cli"
 TARBALL_DIR="$ROOT/docs-site/static/registry/-/@eai-tools"
 REGISTRY_INDEX="$ROOT/docs-site/static/registry/index.html"
+CI_YML="$ROOT/.github/workflows/ci.yml"
+DOCS_YML="$ROOT/.github/workflows/docs.yml"
 RELEASE_YML="$ROOT/.github/workflows/release.yml"
 RELEASE_SH="$ROOT/release.sh"
+SYNC_YML="$ROOT/.github/workflows/sync-linked-sources.yml"
 GENERATOR="$ROOT/scripts/generate-registry.cjs"
 README="$ROOT/README.md"
 SETUP_MD="$ROOT/.github/SETUP.md"
@@ -144,13 +147,29 @@ else
 fi
 
 section "Release workflow"
-for required in "Create GitHub release" "$CONFIG_CMD" "$INSTALL_CMD"; do
+for required in "Create GitHub release" "$CONFIG_CMD" "$INSTALL_CMD" "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24" "softprops/action-gh-release@v3"; do
   if contains "$RELEASE_YML" "$required"; then
     pass "release.yml contains '$required'"
   else
     fail "release.yml missing '$required'"
   fi
 done
+
+section "Workflow runtime alignment"
+for workflow in "$CI_YML" "$DOCS_YML" "$SYNC_YML"; do
+  label="$(basename "$workflow")"
+  if contains "$workflow" 'FORCE_JAVASCRIPT_ACTIONS_TO_NODE24'; then
+    pass "$label opts JavaScript actions into Node 24"
+  else
+    fail "$label is missing FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"
+  fi
+done
+
+if contains "$SYNC_YML" 'peter-evans/create-pull-request@v8'; then
+  pass "sync-linked-sources.yml uses create-pull-request@v8"
+else
+  fail "sync-linked-sources.yml is not on create-pull-request@v8"
+fi
 
 for forbidden in "NPM_TOKEN" "NODE_AUTH_TOKEN" "registry.npmjs.org" "npm publish --access public --provenance"; do
   if omits "$RELEASE_YML" "$forbidden"; then
@@ -239,10 +258,22 @@ else
   fail "llms-full.txt missing Gofer help output"
 fi
 
+if contains "$LLMS_FULL" 'eai template check --help'; then
+  pass "llms-full.txt contains template check help output"
+else
+  fail "llms-full.txt missing template check help output"
+fi
+
 if contains "$CLI_HELP" 'eai doctor --help'; then
   pass "cli-help.txt contains doctor help snapshot"
 else
   fail "cli-help.txt missing doctor help snapshot"
+fi
+
+if contains "$CLI_HELP" 'eai template check --help'; then
+  pass "cli-help.txt contains template check help snapshot"
+else
+  fail "cli-help.txt missing template check help snapshot"
 fi
 
 section "Build and docs generation"

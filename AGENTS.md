@@ -154,7 +154,8 @@ const config = await loadConfig();
 - Install or update the CLI with `npm install -g @eai-tools/cli`
 - `eai update` upgrades the installed CLI package only
 - `eai gofer refresh --check` previews safe repo-local Gofer asset updates
-- Template or UI component drift for existing repos is reported via `eai doctor --check-updates`, not auto-merged
+- `eai template check` previews vertical-template and UI drift for existing repos without writing files
+- Template or UI component changes are not auto-merged; review the preview before copying changes manually
 
 ## Boundaries
 

@@ -13,6 +13,7 @@ npm install -g @eai-tools/cli
 
 - `eai update` reinstalls the latest CLI from the scoped EAI registry.
 - `eai gofer refresh` updates Gofer-managed assets without blindly overwriting local work.
+- `eai template check` previews vertical-template and UI drift without writing files.
 - Template and UI drift are reported by `eai doctor --check-updates` and still require manual review.
 
 # CLI Help
@@ -56,6 +57,8 @@ Commands:
   update [options]       Check for and install CLI updates
   provision              Provision platform resources for this vertical
   gofer                  Inspect and refresh Gofer-managed project assets
+  template               Preview vertical template and UI component drift for
+                         the current project
   help [command]         display help for command
 
 Getting Started:
@@ -104,6 +107,7 @@ AI Terminal Workflows:
   gemini                   then run /gofer:1_gofer_research
   copilot                  uses .github/prompts and .github/skills
   eai gofer refresh --check preview managed Gofer asset updates for this repo
+  eai template check       preview vertical-template and UI drift before copying changes
 
 Accessibility:
   # Screen reader friendly output
@@ -131,6 +135,7 @@ Notes:
   - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
   - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
   - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
+  - Use `eai template check` to preview vertical-template and UI drift before copying changes manually.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
 ```
 
@@ -154,7 +159,8 @@ Examples:
 Notes:
   - `eai update` upgrades the installed CLI package only.
   - `eai gofer refresh --check` previews safe repo-local Gofer asset updates.
-  - Template and UI component changes are reported, but they are not auto-merged into existing repos yet.
+  - `eai template check` previews vertical-template and UI drift without writing files.
+  - Template and UI component changes are not auto-merged into existing repos yet.
 ```
 
 ## eai gofer --help
@@ -188,6 +194,43 @@ Options:
                      (default: false)
   --format <format>  Output format (text|json) (default: "text")
   -h, --help         display help for command
+```
+
+## eai template --help
+
+```text
+Usage: eai template [options] [command]
+
+Preview vertical template and UI component drift for the current project
+
+Options:
+  -h, --help       display help for command
+
+Commands:
+  check [options]  Preview file-level template/UI drift without writing to the
+                   repo
+  help [command]   display help for command
+```
+
+## eai template check --help
+
+```text
+Usage: eai template check [options]
+
+Preview file-level template/UI drift without writing to the repo
+
+Options:
+  --format <format>  Output format (text|json) (default: "text")
+  -h, --help         display help for command
+
+Typical workflow:
+  eai doctor --check-updates
+  eai template check
+
+Notes:
+  - This command never writes files to your repo.
+  - Template/UI updates still require manual review and selective copy/diff.
+  - Use `eai gofer refresh --check` separately for Gofer-managed assets.
 ```
 
 ---
