@@ -4,8 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 REPO="eai-tools/eai-cli"
 NPM_PACKAGE="@eai-tools/cli"
-NPM_PACKUMENT_URL="https://registry.npmjs.org/@eai-tools%2fcli"
-NPM_REGISTRY_URL="https://registry.npmjs.org/"
+STATIC_REGISTRY_URL="https://eai-tools.github.io/eai-cli/registry/"
 STATIC_PACKUMENT_URL="https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli"
 
 BUMP="${1:-}"
@@ -96,27 +95,6 @@ wait_for_docs_run() {
   gh run watch "$run_id" --repo "$REPO" --exit-status
 }
 
-verify_npm_latest() {
-  local expected_version="$1"
-  local actual_version=""
-
-  for _attempt in $(seq 1 24); do
-    actual_version="$(
-      curl -fsSL "$NPM_PACKUMENT_URL" \
-        | node -e 'let raw="";process.stdin.on("data",(chunk)=>raw+=chunk);process.stdin.on("end",()=>{const parsed=JSON.parse(raw);process.stdout.write(parsed["dist-tags"]?.latest ?? "");});' \
-        2>/dev/null || true
-    )"
-    if [[ "$actual_version" == "$expected_version" ]]; then
-      echo "  ✓ npm latest is $actual_version"
-      return 0
-    fi
-    sleep 5
-  done
-
-  echo "✗ npm latest did not converge to $expected_version (saw: ${actual_version:-unavailable})"
-  return 1
-}
-
 verify_static_registry_latest() {
   local expected_version="$1"
   local actual_version=""
@@ -189,20 +167,16 @@ echo "  ✓ version: $OLD_VERSION -> $NEW_VERSION"
 
 section "Regenerating release artifacts"
 rm -f "eai-tools-cli-${OLD_VERSION}.tgz" "eai-tools-cli-${NEW_VERSION}.tgz"
+node scripts/update-release-doc-metadata.cjs "$NEW_VERSION" "$MESSAGE" >/dev/null
 TARBALL="$(npm pack --silent)"
 node scripts/generate-registry.cjs >/dev/null
-npm publish \
-  --dry-run \
-  --access public \
-  "--registry=${NPM_REGISTRY_URL}" \
-  "--@eai-tools:registry=${NPM_REGISTRY_URL}" \
-  >/dev/null
+node scripts/generate-release-docs.cjs >/dev/null
 echo "  ✓ npm pack -> $TARBALL"
 echo "  ✓ static registry metadata refreshed"
-echo "  ✓ npm publish dry-run for $NEW_VERSION"
+echo "  ✓ release-facing docs refreshed"
 
 section "Committing release"
-git add package.json package-lock.json docs-site/static/registry/
+git add package.json package-lock.json .tech-docs/ docs-site/static/registry/ docs-site/static/llms.txt docs-site/static/llms-full.txt docs-site/static/cli-help.txt
 git commit -m "chore: release v$NEW_VERSION — $MESSAGE"
 git tag -a "v$NEW_VERSION" -m "$MESSAGE"
 RELEASE_COMMIT_SHA="$(git rev-parse HEAD)"
@@ -222,7 +196,6 @@ wait_for_docs_run "$RELEASE_COMMIT_SHA"
 echo "  ✓ Deploy Docs workflow completed"
 
 section "Verifying public release channels"
-verify_npm_latest "$NEW_VERSION"
 verify_static_registry_latest "$NEW_VERSION"
 
 echo ""
@@ -230,9 +203,8 @@ echo "════════════════════════�
 echo "  Released v$NEW_VERSION — $MESSAGE"
 echo "══════════════════════════════════════════"
 echo ""
-echo "Install from npm after the release workflow publishes successfully:"
-echo "  npm install -g @eai-tools/cli"
+echo "Preferred setup for future installs and updates:"
+echo "  npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user"
 echo ""
-echo "Fallback static registry:"
-echo "  echo '@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry' >> ~/.npmrc"
+echo "Install or update the EnterpriseAI CLI with:"
 echo "  npm install -g @eai-tools/cli"

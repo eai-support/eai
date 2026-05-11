@@ -1198,8 +1198,8 @@ verifyCommand
 
 // ─── eai doctor ────────────────────────────────────────────────────────────
 
-function describeReleaseChannel(channel: 'npm' | 'static-registry'): string {
-  return channel === 'npm' ? 'npm' : 'static registry';
+function describeReleaseChannel(channel: 'static-registry'): string {
+  return channel === 'static-registry' ? 'static registry' : channel;
 }
 
 function describeTemplateSnapshot(template: {
@@ -1228,7 +1228,7 @@ async function renderDoctorUpdateStatus(root: string): Promise<void> {
 
   const latestRelease = await fetchLatestRelease();
   if (!latestRelease) {
-    out.warn('Could not determine the latest published CLI release right now.');
+    out.warn('Could not determine the latest published CLI release from the EAI static registry right now.');
   } else if (compareVersions(latestRelease.version, currentCliVersion) > 0) {
     out.warn(
       `Published CLI available: ${latestRelease.version} ${chalk.dim(`(${describeReleaseChannel(latestRelease.channel)})`)}`,
