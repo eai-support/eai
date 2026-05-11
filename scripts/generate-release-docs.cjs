@@ -29,6 +29,8 @@ const HELP_COMMANDS = [
   { label: 'eai doctor --help', args: ['dist/index.js', 'doctor', '--help'] },
   { label: 'eai gofer --help', args: ['dist/index.js', 'gofer', '--help'] },
   { label: 'eai gofer refresh --help', args: ['dist/index.js', 'gofer', 'refresh', '--help'] },
+  { label: 'eai template --help', args: ['dist/index.js', 'template', '--help'] },
+  { label: 'eai template check --help', args: ['dist/index.js', 'template', 'check', '--help'] },
 ];
 const OUTPUTS = [
   { path: path.join(STATIC_DIR, 'llms.txt'), build: buildLlmsIndex },
@@ -174,6 +176,7 @@ ${INSTALL_CMD}
 
 - \`eai update\` reinstalls the latest CLI from the scoped EAI registry.
 - \`eai gofer refresh\` updates Gofer-managed assets without blindly overwriting local work.
+- \`eai template check\` previews vertical-template and UI drift without writing files.
 - Template and UI drift are reported by \`eai doctor --check-updates\` and still require manual review.
 
 # CLI Help

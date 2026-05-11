@@ -38,6 +38,7 @@ import { whoamiCommand } from './commands/whoami.js';
 import { updateCommand } from './commands/update.js';
 import { provisionCommand } from './commands/provision.js';
 import { goferCommand } from './commands/gofer.js';
+import { templateCommand } from './commands/template.js';
 import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
 import { setActiveProfile, loadActiveProfileFromConfig } from './lib/profile.js';
@@ -104,6 +105,7 @@ program.addCommand(whoamiCommand);
 program.addCommand(updateCommand);
 program.addCommand(provisionCommand);
 program.addCommand(goferCommand);
+program.addCommand(templateCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -153,6 +155,7 @@ ${chalk.bold('AI Terminal Workflows:')}
   ${chalk.cyan('gemini')}                   ${chalk.dim('then run /gofer:1_gofer_research')}
   ${chalk.cyan('copilot')}                  ${chalk.dim('uses .github/prompts and .github/skills')}
   ${chalk.cyan('eai gofer refresh --check')} ${chalk.dim('preview managed Gofer asset updates for this repo')}
+  ${chalk.cyan('eai template check')}       ${chalk.dim('preview vertical-template and UI drift before copying changes')}
 
 ${chalk.bold('Accessibility:')}
   ${chalk.dim('# Screen reader friendly output')}
