@@ -105,4 +105,35 @@ describe('eai template check', () => {
     expectDisplayedMessage(result, 'Files needing manual review');
     expectDisplayedMessage(result, 'UI files in review set');
   });
+
+  test('infers template provenance from a legacy eai init scaffold commit when the manifest is missing', async () => {
+    const templateRepo = join(tmpdir(), `eai-template-source-${Date.now()}-legacy`);
+    await createTemplateRepo(templateRepo);
+
+    await writeFileRecursive(env.dir, 'package.json', JSON.stringify({
+      name: '@eai-tools/template-check-legacy-fixture',
+      version: '0.0.1',
+      dependencies: {
+        '@enterpriseaigroup/core': '1.0.0',
+      },
+    }, null, 2) + '\n');
+    await writeFileRecursive(env.dir, 'src/eai.config/object-types.ts', 'export const objectTypes = {};\n');
+    await writeFileRecursive(env.dir, 'src/eai.config/default.ts', 'export default {};\n');
+    await writeFileRecursive(env.dir, '.specify/spec.json', '{}\n');
+    await writeFileRecursive(env.dir, 'src/components/Hero.tsx', 'export function Hero() { return <div>Hero v1</div>; }\n');
+
+    await git(env.dir, ['init']);
+    await git(env.dir, ['add', '.']);
+    await git(
+      env.dir,
+      ['commit', '-m', `Initial scaffold from template\n\nApp: Legacy Fixture\nCreated by: eai init\nTemplate: ${templateRepo}`],
+    );
+
+    const result = await runCommand(ctx, 'eai template check');
+
+    expectCommandSucceeded(result);
+    expectDisplayedMessage(result, 'Template provenance was inferred from the original `eai init` scaffold commit');
+    expectDisplayedMessage(result, 'src/components/Hero.tsx');
+    expectDisplayedMessage(result, 'src/components/Badge.tsx');
+  });
 });

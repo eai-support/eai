@@ -19,8 +19,8 @@ import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 import { compareVersions, fetchLatestRelease } from '../lib/update-check.js';
 import { readGoferBundleMetadata } from '../lib/gofer-refresh.js';
-import { loadProjectManifest } from '../lib/project-manifest.js';
-import { resolveTemplateClonePlan } from './init.js';
+import { resolveProjectManifest } from '../lib/project-manifest.js';
+import { isDefaultTemplateSource, resolveTemplateClonePlan } from './init.js';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json') as { version: string };
@@ -1240,11 +1240,18 @@ async function renderDoctorUpdateStatus(root: string): Promise<void> {
     );
   }
 
-  const manifest = await loadProjectManifest(root);
+  const resolvedManifest = await resolveProjectManifest(root);
+  const manifest = resolvedManifest.manifest;
   if (!manifest) {
     out.info('No `.eai-manifest.json` found yet. Run `eai gofer refresh --check` once to adopt the current Gofer-managed asset snapshot safely.');
     out.info('Template and UI component drift is not auto-merged yet; use `eai template check` before copying changes manually.');
     return;
+  }
+
+  if (resolvedManifest.source === 'inferred-init-commit') {
+    out.info('Using template provenance inferred from the original `eai init` scaffold commit because this project does not yet record template provenance in `.eai-manifest.json`.');
+  } else if (resolvedManifest.source === 'inferred-project-structure') {
+    out.info('Using template provenance inferred from this legacy EAI scaffold because this project does not yet record template provenance in `.eai-manifest.json`.');
   }
 
   if (manifest.cli?.version) {
@@ -1288,7 +1295,11 @@ async function renderDoctorUpdateStatus(root: string): Promise<void> {
     displaySource: bundledTemplate.displaySource,
   });
 
-  if (manifest.template.repo && manifest.template.repo !== bundledTemplate.cloneSource) {
+  if (
+    manifest.template.repo
+    && !isDefaultTemplateSource(manifest.template.repo)
+    && manifest.template.repo !== bundledTemplate.cloneSource
+  ) {
     out.info(`Project template source: ${projectTemplateLabel}`);
     out.info(`Current bundled default template: ${bundledTemplateLabel}`);
     out.info('This project was initialized from a different template source, so template or UI updates still need manual review.');
