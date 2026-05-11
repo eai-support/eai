@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-11T08:13:05.939Z"
-source_commit: "50111ca3e8aee80dc76cb9c4deaa6f7c964dadea"
+generated_at: "2026-05-11T09:57:05.482Z"
+source_commit: "5d0a67caec442daf1e8599bb5bc30d5472189c6a"
 ---
 # EAI CLI — Dependencies
 
@@ -15,7 +15,7 @@ The EAI CLI is a **client-side tool with no downstream dependents**. It depends 
 
 ```mermaid
 graph TB
-    CLI[eai CLI v2.8.7]
+    CLI[eai CLI v2.8.8]
 
     subgraph "Authentication"
         EntraCIAM[Entra CIAM<br/>Browser PKCE Flow<br/>localhost:8888 callback]
