@@ -106,8 +106,18 @@ AI Terminal Workflows:
   codex                    then ask Codex to use the 1_gofer_research skill
   gemini                   then run /gofer:1_gofer_research
   copilot                  uses .github/prompts and .github/skills
+
+Updates:
+  # Check for a newer CLI release and install it safely
+  eai update --check       preview the latest published CLI version
+  eai update               update the installed CLI package
+
+  # Preview repo-local Gofer asset updates before writing files
   eai gofer refresh --check preview managed Gofer asset updates for this repo
-  eai template check       preview vertical-template and UI drift before copying changes
+  eai gofer refresh        apply safe Gofer-managed asset updates with backups
+
+  # Preview vertical-template and UI component drift before copying changes
+  eai template check       review potential vertical or UI file updates without overwriting local work
 
 Accessibility:
   # Screen reader friendly output

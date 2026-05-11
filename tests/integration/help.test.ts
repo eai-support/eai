@@ -26,13 +26,19 @@ describe('CLI help output', () => {
     await env.cleanup();
   });
 
-  test('top-level help includes the current getting-started workflow', async () => {
+  test('top-level help highlights the current update and getting-started workflows', async () => {
     const result = await runCommand(ctx, 'eai --help');
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('eai env pull');
     expect(result.stdout).toContain('eai resources schema');
     expect(result.stdout).toContain('eai verify calls --format json');
+    expect(result.stdout).toContain('Updates:');
+    expect(result.stdout).toContain('eai update --check');
+    expect(result.stdout).toContain('eai update');
+    expect(result.stdout).toContain('eai gofer refresh --check');
+    expect(result.stdout).toContain('eai gofer refresh');
+    expect(result.stdout).toContain('eai template check');
   });
 
   test('login help explains the sign-in and tenant selection flow', async () => {
