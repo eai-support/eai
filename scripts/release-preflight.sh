@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DOCS_DIR="$ROOT/docs-site"
 PACKUMENT="$ROOT/docs-site/static/registry/@eai-tools/cli"
-NPM_REGISTRY_URL="https://registry.npmjs.org/"
 GENERATED_TARBALL=""
+BACKUP_DIR=""
 
 section() {
   echo ""
@@ -16,12 +16,36 @@ cleanup() {
   if [[ -n "$GENERATED_TARBALL" ]]; then
     rm -f "$ROOT/$GENERATED_TARBALL" 2>/dev/null || true
   fi
-  git -C "$ROOT" restore --worktree --staged docs-site/static/registry >/dev/null 2>&1 || true
+  if [[ -n "$BACKUP_DIR" && -d "$BACKUP_DIR" ]]; then
+    rm -rf "$ROOT/docs-site/static/registry"
+    if [[ -d "$BACKUP_DIR/registry" ]]; then
+      cp -R "$BACKUP_DIR/registry" "$ROOT/docs-site/static/registry"
+    fi
+
+    for file in llms.txt llms-full.txt cli-help.txt; do
+      rm -f "$ROOT/docs-site/static/$file"
+      if [[ -f "$BACKUP_DIR/$file" ]]; then
+        cp "$BACKUP_DIR/$file" "$ROOT/docs-site/static/$file"
+      fi
+    done
+
+    rm -rf "$BACKUP_DIR"
+  fi
 }
 
 trap cleanup EXIT
 
 cd "$ROOT"
+
+BACKUP_DIR="$(mktemp -d)"
+if [[ -d "$ROOT/docs-site/static/registry" ]]; then
+  cp -R "$ROOT/docs-site/static/registry" "$BACKUP_DIR/registry"
+fi
+for file in llms.txt llms-full.txt cli-help.txt; do
+  if [[ -f "$ROOT/docs-site/static/$file" ]]; then
+    cp "$ROOT/docs-site/static/$file" "$BACKUP_DIR/$file"
+  fi
+done
 
 section "Checking release prerequisites"
 for command in node npm git; do
@@ -94,8 +118,10 @@ echo "  ✓ docs-site build"
 section "Generating release artifacts"
 GENERATED_TARBALL="$(npm pack --silent)"
 node scripts/generate-registry.cjs >/dev/null
+node scripts/generate-release-docs.cjs >/dev/null
 echo "  ✓ npm pack -> $GENERATED_TARBALL"
 echo "  ✓ static registry metadata regenerated"
+echo "  ✓ release-facing docs regenerated"
 
 section "Validating static registry metadata"
 node <<'EOF'
@@ -124,14 +150,45 @@ EOF
 echo "  ✓ packument latest matches package.json"
 echo "  ✓ versioned tarball exists"
 
-section "Dry-running npm publish"
-npm publish \
-  --dry-run \
-  --access public \
-  "--registry=${NPM_REGISTRY_URL}" \
-  "--@eai-tools:registry=${NPM_REGISTRY_URL}" \
-  >/dev/null
-echo "  ✓ npm publish --dry-run"
+section "Verifying release metadata"
+node <<'EOF'
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = process.cwd();
+const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
+const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf-8');
+
+if (!readme.includes('npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user')) {
+  throw new Error('README install instructions are missing the scoped registry setup command');
+}
+
+if (!pkg.files?.includes('resources')) {
+  throw new Error('package.json files list must include bundled resources');
+}
+
+const llmsIndex = fs.readFileSync(path.join(root, 'docs-site/static/llms.txt'), 'utf-8');
+const llmsFull = fs.readFileSync(path.join(root, 'docs-site/static/llms-full.txt'), 'utf-8');
+const cliHelp = fs.readFileSync(path.join(root, 'docs-site/static/cli-help.txt'), 'utf-8');
+const currentVersion = pkg.version;
+
+if (!llmsIndex.includes(currentVersion)) {
+  throw new Error('llms.txt is missing the current package version');
+}
+if (!llmsIndex.includes('npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user')) {
+  throw new Error('llms.txt is missing the scoped registry setup command');
+}
+if (!llmsFull.includes(currentVersion)) {
+  throw new Error('llms-full.txt is missing the current package version');
+}
+if (!llmsFull.includes('eai gofer refresh --help')) {
+  throw new Error('llms-full.txt is missing current Gofer help output');
+}
+if (!cliHelp.includes('eai gofer refresh --help')) {
+  throw new Error('cli-help.txt is missing the Gofer refresh help snapshot');
+}
+EOF
+echo "  ✓ README, package metadata, and release docs align with the static-registry release flow"
 
 echo ""
 echo "✓ Release preflight passed"

@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-10T14:23:36.419Z"
-source_commit: "16242be8766857a2aba9b79acafcad0c19205e84"
+generated_at: "2026-05-11T07:00:55.723Z"
+source_commit: "9f23ff016bd3bf8d5a11f3bb3c2821f39d11a6ca"
 ---
 # EAI CLI — Architecture
 
@@ -204,7 +204,7 @@ graph TB
 | **output.ts** | `success`, `error`, `warn`, `info`, `symbols` | Colored output utilities with TTY detection and simple mode |
 | **utils.ts** | `toObjectTypeSlug`, `isRecord`, `sleep` | Helper functions for string manipulation, type guards, delays |
 | **schema-builder.ts** | `describeProgram` | JSON schema generator for `--describe` flag (AI agent introspection) |
-| **update-check.ts** | `checkForUpdate`, `notifyIfUpdateAvailable` | GitHub Releases API integration for version checks |
+| **update-check.ts** | `checkForUpdate`, `notifyIfUpdateAvailable` | Static EAI registry integration for version checks |
 | **gofer-installer.ts** | `installGoferAssets` | Copies Gofer AI terminal assets to new vertical projects |
 | **object-type-defaults.ts** | `getObjectTypeDefaults` | Default field definitions for Object Type scaffolding |
 | **cloud-env.ts** | `pullCloudEnv`, `pushCloudEnv` | Azure App Config + Key Vault integration |
@@ -425,7 +425,7 @@ graph LR
 
 **Caching**: 
 - Token refresh is avoided if token TTL > 5 minutes
-- Update checks cached for 24 hours in `~/.eai/last-update-check`
+- Update checks cached for 24 hours in `~/.eai/update-check.json`
 - Tenant memberships are not cached (always fetched fresh)
 
 ## Scalability Considerations

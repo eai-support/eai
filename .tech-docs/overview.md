@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-10T14:23:36.419Z"
-source_commit: "16242be8766857a2aba9b79acafcad0c19205e84"
+generated_at: "2026-05-11T07:00:55.692Z"
+source_commit: "9f23ff016bd3bf8d5a11f3bb3c2821f39d11a6ca"
 ---
 # EAI CLI — Overview
 
@@ -10,17 +10,17 @@ source_commit: "16242be8766857a2aba9b79acafcad0c19205e84"
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.8.3 |
+| **Version** | 2.8.5 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers and DevOps engineers |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no user data storage) |
-| **Current Status** | Active development (v2.8.3 released 2026-05-08) |
-| **Last Material Change** | v2.8.3: Fixed Object Type storage metadata status scaffolding (PR #35, 2026-05-08) |
+| **Current Status** | Active development (v2.8.5 released 2026-05-11) |
+| **Last Material Change** | v2.8.5: Align release docs and CLI help automation with the static registry flow (2026-05-11) |
 
 ## Service Identity
 
 **Name**: `@eai-tools/cli` (eai)  
-**Version**: 2.8.3  
+**Version**: 2.8.5  
 **Purpose**: Command-line interface for the Enterprise AI Platform that wraps all platform API calls, providing developers with simple commands to scaffold projects, authenticate users, manage data models, perform CRUD operations, and deploy applications to Azure.
 
 ## Description
@@ -69,7 +69,7 @@ The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.jso
 | `src/lib/error-codes.ts` | Structured error catalog (E001-E399) with suggestions |
 | `src/lib/output.ts` | Output utilities (colored symbols, TTY detection, simple mode) |
 | `src/lib/schema-builder.ts` | CLI introspection for `--describe` flag (AI agent support) |
-| `src/lib/update-check.ts` | Auto-update checker using GitHub Releases API |
+| `src/lib/update-check.ts` | Auto-update checker using the static EAI registry packument |
 | `src/lib/cloud-env.ts` | Azure App Config and Key Vault integration |
 | `src/lib/azure-cli.ts` | Azure CLI wrapper for cloud operations |
 | `src/lib/gofer-installer.ts` | Gofer AI terminal assets installer |
@@ -199,6 +199,9 @@ node dist/index.js tenant list
 
 ## Recent Enhancements
 
+### v2.8.5 (2026-05-11)
+- **Align release docs and CLI help automation with the static registry flow**
+
 ### v2.8.3 (2026-05-08)
 - **Storage Metadata Status Fix** (PR #35): Fixed Object Type scaffolding to properly initialize `metadata.status` field for storage compliance
 
@@ -214,9 +217,9 @@ node dist/index.js tenant list
 
 ## Update Management
 
-- **Background Checks**: Queries GitHub Releases API every 24 hours (cached in `~/.eai/last-update-check`)
+- **Background Checks**: Queries the static EAI registry packument every 24 hours (cached in `~/.eai/update-check.json`)
 - **Update Banner**: Displays notification after command execution if newer version available
-- **Manual Upgrade**: Users run `eai update` to upgrade to latest version
+- **Manual Upgrade**: Users run `eai update` or `npm install -g @eai-tools/cli` after configuring the scoped EAI registry
 - **Skip Conditions**: Update check skipped in CI, when `NO_UPDATE_NOTIFIER=1`, or in non-TTY environments
 
 ## Gofer AI Terminal Integration
@@ -246,7 +249,7 @@ The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to stati
 
 ## Current Status
 
-- **Version**: 2.8.3 (released 2026-05-08)
+- **Version**: 2.8.5 (released 2026-05-11)
 - **Build Status**: Passing (CI workflow validates TypeCheck, Lint, Build, Tests)
 - **Documentation**: Up-to-date (last generated 2026-05-10T14:21:44Z)
 - **Source Commit**: `16242be8766857a2aba9b79acafcad0c19205e84`

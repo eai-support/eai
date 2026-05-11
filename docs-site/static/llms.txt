@@ -1,142 +1,35 @@
 # EAI CLI Documentation
 
-> Build vertical business applications with the EnterpriseAI platform CLI.
+> Release-aligned documentation surfaces for `@eai-tools/cli` v2.8.5.
 
-## Overview
+## Install
 
-The EAI CLI (`@eai-tools/cli`) lets developers scaffold, seed, deploy, and manage vertical business applications on the EnterpriseAI platform. Install with `npm install -g @eai-tools/cli`.
+```bash
+npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm install -g @eai-tools/cli
+```
 
-## Getting Started
+## Key Commands
 
-- [Installation](/eai-cli/getting-started/installation/): Install via npm, npx, or from source
-- [Quick Start](/eai-cli/getting-started/quickstart/): Get running in 5 minutes
-- [Authentication](/eai-cli/getting-started/authentication/): Device code flow with Entra CIAM
-- [Your First Vertical](/eai-cli/getting-started/first-vertical/): Build a complete app from scratch
+- `eai update` updates the installed CLI package only.
+- `eai doctor --check-updates` reports CLI, Gofer, and template drift.
+- `eai gofer refresh --check` previews safe Gofer-managed file updates in an existing repo.
 
-## Guides
+## Documentation
 
-- [Object Types](/eai-cli/guides/object-types/): Define data models with properties, links, actions
-- [Resources](/eai-cli/guides/resources/): CRUD operations and querying
-- [Environment](/eai-cli/guides/environment/): Sync cloud config to local development
-- [Deployment](/eai-cli/guides/deployment/): CI/CD and Azure App Service deployment
-- [AI Features](/eai-cli/guides/ai-features/): Chat, documents, and RAG integration
-- [Multi-Tenant](/eai-cli/guides/multi-tenant/): Tenant management and data isolation
-- [Security](/eai-cli/guides/security/): Authentication, roles, and access control
-- [Troubleshooting](/eai-cli/guides/troubleshooting/): Diagnostics and common issues
+- [EAI CLI — Overview](/eai-cli/docs/overview)
+- [EAI CLI — Architecture](/eai-cli/docs/architecture)
+- [EAI CLI — Configuration](/eai-cli/docs/configuration)
+- [Environment Profiles](/eai-cli/docs/profiles)
+- [EAI CLI — API Reference](/eai-cli/docs/api-reference)
+- [EAI CLI — Data Model](/eai-cli/docs/data-model)
+- [EAI CLI — Dependencies](/eai-cli/docs/dependencies)
+- [EAI CLI — Deployment](/eai-cli/docs/deployment)
+- [EAI CLI — Changelog](/eai-cli/docs/changelog)
+- [Documentation Surfaces](/eai-cli/docs/documentation-surfaces)
 
-## Concepts
+## Help & AI Bundles
 
-- [Platform Overview](/eai-cli/concepts/platform-overview/): What is EnterpriseAI?
-- [Verticals](/eai-cli/concepts/verticals/): Industry-specific business applications
-- [Architecture](/eai-cli/concepts/architecture/): CLI → Platform API → Services
-- [Data Model](/eai-cli/concepts/data-model/): Object Types as core abstraction
-- [Security Model](/eai-cli/concepts/security-model/): Roles, tenants, and permissions
-
-## Command Reference
-
-- [eai init](/eai-cli/reference/commands/init/): Scaffold a new vertical
-- [eai login](/eai-cli/reference/commands/login/): Authenticate with the platform
-- [eai env](/eai-cli/reference/commands/env/): Environment variable management
-- [eai types](/eai-cli/reference/commands/types/): Object Type operations
-- [eai resources](/eai-cli/reference/commands/resources/): Resource CRUD
-- [eai tenant](/eai-cli/reference/commands/tenant/): Tenant management
-- [eai chat](/eai-cli/reference/commands/chat/): AI chat operations
-- [eai docs](/eai-cli/reference/commands/docs/): Document operations
-- [eai deploy](/eai-cli/reference/commands/deploy/): Deployment workflows
-- [eai verify](/eai-cli/reference/commands/verify/): Connectivity checks
-- [eai whoami](/eai-cli/reference/commands/whoami/): Auth status
-- [eai dev](/eai-cli/reference/commands/dev/): Local development server
-
-## Reference
-
-- [Object Type Schema](/eai-cli/reference/object-type-schema/): Complete schema specification
-- [API Surface](/eai-cli/reference/api-surface/): Public API endpoints
-- [Environment Variables](/eai-cli/reference/environment-vars/): Configuration reference
-- [Error Codes](/eai-cli/reference/error-codes/): Error reference and troubleshooting
-- [Glossary](/eai-cli/reference/glossary/): Platform terminology
-
-## Code Examples
-
-- [TypeScript](/eai-cli/examples/typescript/): Platform SDK and fetch patterns
-- [Python](/eai-cli/examples/python/): requests/httpx patterns
-- [C#](/eai-cli/examples/csharp/): HttpClient patterns
-- [Java](/eai-cli/examples/java/): HttpClient (Java 11+) patterns
-- [Go](/eai-cli/examples/go/): net/http patterns
-- [Rust](/eai-cli/examples/rust/): reqwest patterns
-- [Shell](/eai-cli/examples/shell/): curl and jq patterns
-
-## Industry Scenarios (50)
-
-### Healthcare
-- [Patient Intake](/eai-cli/scenarios/healthcare/patient-intake/)
-- [Clinical Trials](/eai-cli/scenarios/healthcare/clinical-trials/)
-- [Telemedicine](/eai-cli/scenarios/healthcare/telemedicine/)
-- [Pharmacy Inventory](/eai-cli/scenarios/healthcare/pharmacy-inventory/)
-- [Mental Health](/eai-cli/scenarios/healthcare/mental-health/)
-
-### Finance
-- [KYC Verification](/eai-cli/scenarios/finance/kyc-verification/)
-- [Loan Processing](/eai-cli/scenarios/finance/loan-processing/)
-- [Transaction Monitoring](/eai-cli/scenarios/finance/transaction-monitoring/)
-- [Insurance Claims](/eai-cli/scenarios/finance/insurance-claims/)
-- [Portfolio Management](/eai-cli/scenarios/finance/portfolio-management/)
-
-### Government
-- [Planning Permits](/eai-cli/scenarios/government/planning-permits/)
-- [Citizen Services](/eai-cli/scenarios/government/citizen-services/)
-- [Regulatory Compliance](/eai-cli/scenarios/government/regulatory-compliance/)
-- [Public Records](/eai-cli/scenarios/government/public-records/)
-- [Grant Management](/eai-cli/scenarios/government/grant-management/)
-
-### Retail
-- [Product Compliance](/eai-cli/scenarios/retail/product-compliance/)
-- [Loyalty Program](/eai-cli/scenarios/retail/loyalty-program/)
-- [Inventory Management](/eai-cli/scenarios/retail/inventory-management/)
-- [E-Commerce Returns](/eai-cli/scenarios/retail/ecommerce-returns/)
-- [Supplier Onboarding](/eai-cli/scenarios/retail/supplier-onboarding/)
-
-### Education
-- [Course Management](/eai-cli/scenarios/education/course-management/)
-- [Admissions Portal](/eai-cli/scenarios/education/admissions-portal/)
-- [Learning Analytics](/eai-cli/scenarios/education/learning-analytics/)
-- [Accreditation](/eai-cli/scenarios/education/accreditation/)
-- [Research Grants](/eai-cli/scenarios/education/research-grants/)
-
-### Real Estate
-- [Property Management](/eai-cli/scenarios/real-estate/property-management/)
-- [Lease Management](/eai-cli/scenarios/real-estate/lease-management/)
-- [Maintenance Requests](/eai-cli/scenarios/real-estate/maintenance-requests/)
-- [Property Inspection](/eai-cli/scenarios/real-estate/property-inspection/)
-- [Real Estate CRM](/eai-cli/scenarios/real-estate/real-estate-crm/)
-
-### Manufacturing
-- [Quality Control](/eai-cli/scenarios/manufacturing/quality-control/)
-- [Production Tracking](/eai-cli/scenarios/manufacturing/production-tracking/)
-- [Defect Management](/eai-cli/scenarios/manufacturing/defect-management/)
-- [Supply Chain](/eai-cli/scenarios/manufacturing/supply-chain/)
-- [Equipment Maintenance](/eai-cli/scenarios/manufacturing/equipment-maintenance/)
-
-### Legal
-- [Contract Review](/eai-cli/scenarios/legal/contract-review/)
-- [Case Management](/eai-cli/scenarios/legal/case-management/)
-- [Compliance Monitoring](/eai-cli/scenarios/legal/compliance-monitoring/)
-- [E-Discovery](/eai-cli/scenarios/legal/e-discovery/)
-- [Billing & Time Tracking](/eai-cli/scenarios/legal/billing-time-tracking/)
-
-### Non-Profit
-- [Beneficiary Tracking](/eai-cli/scenarios/non-profit/beneficiary-tracking/)
-- [Donor Management](/eai-cli/scenarios/non-profit/donor-management/)
-- [Volunteer Coordination](/eai-cli/scenarios/non-profit/volunteer-coordination/)
-- [Impact Measurement](/eai-cli/scenarios/non-profit/impact-measurement/)
-- [Grant Reporting](/eai-cli/scenarios/non-profit/grant-reporting/)
-
-### Logistics
-- [Shipment Tracking](/eai-cli/scenarios/logistics/shipment-tracking/)
-- [Route Optimization](/eai-cli/scenarios/logistics/route-optimization/)
-- [Warehouse Management](/eai-cli/scenarios/logistics/warehouse-management/)
-- [Fleet Management](/eai-cli/scenarios/logistics/fleet-management/)
-- [Last Mile Delivery](/eai-cli/scenarios/logistics/last-mile-delivery/)
-
-## Optional
-
-- [llms-full.txt](/eai-cli/llms-full.txt): Full documentation in a single file for AI agents
+- [cli-help.txt](/eai-cli/cli-help.txt): Current CLI help snapshots used for release validation
+- [llms-full.txt](/eai-cli/llms-full.txt): Full release-aligned documentation bundle for AI agents
+- [Registry](/eai-cli/registry/): Static EAI package registry on GitHub Pages

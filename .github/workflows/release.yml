@@ -7,11 +7,10 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   release:
-    name: Publish npm release
+    name: Create GitHub release
     runs-on: ubuntu-latest
 
     steps:
@@ -25,8 +24,6 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          scope: '@eai-tools'
-          registry-url: https://registry.npmjs.org
 
       - name: Validate version matches tag
         run: |
@@ -52,6 +49,9 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Verify committed release-facing docs
+        run: node scripts/generate-release-docs.cjs --check
+
       - name: Verify committed static registry points at this tag
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
@@ -69,11 +69,6 @@ jobs:
 
       - name: Create npm tarball
         run: npm pack
-
-      - name: Publish package to npm
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Generate changelog
         id: changelog
@@ -100,16 +95,15 @@ jobs:
 
             ## Installation
 
-            Install from npm:
-
-            ```
-            npm install -g @eai-tools/cli
-            ```
-
-            Fallback static registry:
+            Configure the scoped EAI registry once per user:
 
             ```bash
-            echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
+            npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+            ```
+
+            Install or update the EnterpriseAI CLI:
+
+            ```bash
             npm install -g @eai-tools/cli
             ```
 

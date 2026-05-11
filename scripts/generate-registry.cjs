@@ -209,8 +209,8 @@ function generateVersionListing(packument) {
   <p class="subtitle">${packument.versions[latest].description}</p>
 
   <h2>Install</h2>
-  <pre><code># 1. Configure the registry (one-time setup)
-echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
+  <pre><code># 1. Configure the scoped EAI registry (one-time setup)
+npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
 
 # 2. Install the CLI globally
 npm install -g @eai-tools/cli

@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-10T14:23:36.419Z"
-source_commit: "16242be8766857a2aba9b79acafcad0c19205e84"
+generated_at: "2026-05-11T07:00:55.718Z"
+source_commit: "9f23ff016bd3bf8d5a11f3bb3c2821f39d11a6ca"
 ---
 # EAI CLI — Changelog
 
@@ -9,7 +9,7 @@ source_commit: "16242be8766857a2aba9b79acafcad0c19205e84"
 
 **Previous Documentation**: 2026-05-10 13:33 UTC (commit 6630fad)  
 **Current Documentation**: 2026-05-10 14:21 UTC (commit 16242be)  
-**Version**: 2.8.3 (stable)
+**Version**: 2.8.5 (stable)
 
 ### Changes in This Update
 
@@ -18,6 +18,10 @@ source_commit: "16242be8766857a2aba9b79acafcad0c19205e84"
 - No material code changes since last generation
 
 ---
+
+## [2.8.5] - 2026-05-11
+
+- Align release docs and CLI help automation with the static registry flow
 
 ## Previous Updates
 
@@ -458,7 +462,8 @@ This release refreshes the bundled Gofer payload to v3.1.0-1 and includes severa
 
 #### Step 1: Update CLI
 ```bash
-npm install -g @eai-tools/cli@latest
+npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm install -g @eai-tools/cli
 eai --version  # Should show 2.6.0
 ```
 

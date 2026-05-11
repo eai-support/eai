@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-10T14:23:36.419Z"
-source_commit: "16242be8766857a2aba9b79acafcad0c19205e84"
+generated_at: "2026-05-11T07:00:55.713Z"
+source_commit: "9f23ff016bd3bf8d5a11f3bb3c2821f39d11a6ca"
 ---
 # EAI CLI — Dependencies
 
@@ -15,7 +15,7 @@ The EAI CLI is a **client-side tool with no downstream dependents**. It depends 
 
 ```mermaid
 graph TB
-    CLI[eai CLI v2.8.3]
+    CLI[eai CLI v2.8.5]
 
     subgraph "Authentication"
         EntraCIAM[Entra CIAM<br/>Browser PKCE Flow<br/>localhost:8888 callback]
@@ -291,7 +291,7 @@ graph TB
 
 **Failure Impact**:
 - Update notifications not displayed
-- Manual updates still work via `npm install -g @eai-tools/cli@latest`
+- Manual updates still work via `npm install -g @eai-tools/cli` after configuring the scoped EAI registry, or simply `eai update`
 
 **Timeout**: 5 seconds (non-blocking)
 
