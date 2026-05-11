@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-11T09:57:05.482Z"
-source_commit: "5d0a67caec442daf1e8599bb5bc30d5472189c6a"
+generated_at: "2026-05-11T10:27:51.087Z"
+source_commit: "1b64ee219494833d995dabac7442e9f47e15f213"
 ---
 # EAI CLI — Overview
 
@@ -10,17 +10,17 @@ source_commit: "5d0a67caec442daf1e8599bb5bc30d5472189c6a"
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.8.8 |
+| **Version** | 2.8.9 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers and DevOps engineers |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no user data storage) |
-| **Current Status** | Active development (v2.8.8 released 2026-05-11) |
-| **Last Material Change** | v2.8.8: Add template drift preview and move workflows onto Node 24 (2026-05-11) |
+| **Current Status** | Active development (v2.8.9 released 2026-05-11) |
+| **Last Material Change** | v2.8.9: Highlight update workflows in CLI help (2026-05-11) |
 
 ## Service Identity
 
 **Name**: `@eai-tools/cli` (eai)  
-**Version**: 2.8.8  
+**Version**: 2.8.9  
 **Purpose**: Command-line interface for the Enterprise AI Platform that wraps all platform API calls, providing developers with simple commands to scaffold projects, authenticate users, manage data models, perform CRUD operations, and deploy applications to Azure.
 
 ## Description
@@ -199,6 +199,9 @@ node dist/index.js tenant list
 
 ## Recent Enhancements
 
+### v2.8.9 (2026-05-11)
+- **Highlight update workflows in CLI help**
+
 ### v2.8.8 (2026-05-11)
 - **Add template drift preview and move workflows onto Node 24**
 
@@ -258,7 +261,7 @@ The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to stati
 
 ## Current Status
 
-- **Version**: 2.8.8 (released 2026-05-11)
+- **Version**: 2.8.9 (released 2026-05-11)
 - **Build Status**: Passing (CI workflow validates TypeCheck, Lint, Build, Tests)
 - **Documentation**: Up-to-date (last generated 2026-05-10T14:21:44Z)
 - **Source Commit**: `16242be8766857a2aba9b79acafcad0c19205e84`
