@@ -236,17 +236,17 @@ fi
 
 RELEASE_YML="$ROOT/.github/workflows/release.yml"
 
-section "TC006: No npm publish in release workflow"
-for term in "npm publish" "NPM_TOKEN" "registry.npmjs.org" "NODE_AUTH_TOKEN"; do
+section "TC006: Release workflow publishes to npm"
+for term in "npm publish --access public --provenance" "NPM_TOKEN" "registry.npmjs.org" "NODE_AUTH_TOKEN"; do
   if grep -q "$term" "$RELEASE_YML" 2>/dev/null; then
-    fail "Found '$term' in release.yml"
+    pass "Found '$term' in release.yml"
   else
-    pass "No '$term' in release.yml"
+    fail "Missing '$term' in release.yml"
   fi
 done
 
-section "TC007: Registry generation step exists in workflow"
-for term in "node scripts/generate-registry.cjs" "git add docs-site/static/registry/" "git push origin HEAD:main"; do
+section "TC007: Release workflow validates the committed registry instead of mutating main"
+for term in "packument latest" "docs-site/static/registry/@eai-tools/cli" "npm pack"; do
   if grep -q "$term" "$RELEASE_YML" 2>/dev/null; then
     pass "Found '$term' in release.yml"
   else
@@ -255,10 +255,15 @@ for term in "node scripts/generate-registry.cjs" "git add docs-site/static/regis
 done
 
 section "TC008: GitHub Release body has correct install instructions"
-if grep -q "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" "$RELEASE_YML" 2>/dev/null; then
-  pass "Release body has .npmrc config"
+if grep -q "Install from npm:" "$RELEASE_YML" 2>/dev/null; then
+  pass "Release body prefers npm"
 else
-  fail "Release body missing .npmrc config"
+  fail "Release body missing npm-first install guidance"
+fi
+if grep -q "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" "$RELEASE_YML" 2>/dev/null; then
+  pass "Release body has fallback .npmrc config"
+else
+  fail "Release body missing fallback .npmrc config"
 fi
 if grep -q "npm install -g @eai-tools/cli" "$RELEASE_YML" 2>/dev/null; then
   pass "Release body has npm install"
@@ -302,11 +307,18 @@ else
   fail "release.sh missing registry file staging"
 fi
 
-section "TC028: Release script install instructions use .npmrc"
+section "TC028: Release script verifies both release channels"
+for term in "registry.npmjs.org/@eai-tools%2fcli" "verify_static_registry_latest" "wait_for_release_run" "wait_for_docs_run"; do
+  if grep -q "$term" "$RELEASE_SH" 2>/dev/null; then
+    pass "Found '$term' in release.sh"
+  else
+    fail "Missing '$term' in release.sh"
+  fi
+done
 if grep -q "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" "$RELEASE_SH" 2>/dev/null; then
-  pass "release.sh has .npmrc registry URL"
+  pass "release.sh has fallback .npmrc registry URL"
 else
-  fail "release.sh missing .npmrc registry URL"
+  fail "release.sh missing fallback .npmrc registry URL"
 fi
 if grep -q "npm install -g @eai-tools/cli" "$RELEASE_SH" 2>/dev/null; then
   pass "release.sh has npm install instruction"
@@ -476,20 +488,25 @@ if grep -q "static npm registry" "$SETUP_MD" 2>/dev/null; then
 else
   fail "SETUP.md missing static npm registry"
 fi
+if grep -q "npm" "$SETUP_MD" 2>/dev/null; then
+  pass "SETUP.md mentions npm publishing"
+else
+  fail "SETUP.md missing npm publishing guidance"
+fi
 if grep -q "GitHub Pages" "$SETUP_MD" 2>/dev/null; then
   pass "SETUP.md mentions GitHub Pages"
 else
   fail "SETUP.md missing GitHub Pages"
 fi
 if grep -q 'Set the name to.*NPM_TOKEN' "$SETUP_MD" 2>/dev/null || grep -q 'secret.*NPM_TOKEN' "$SETUP_MD" 2>/dev/null; then
-  fail "SETUP.md still has NPM_TOKEN setup instructions"
+  pass "SETUP.md has NPM_TOKEN setup instructions"
 else
-  pass "SETUP.md no NPM_TOKEN setup instructions"
+  fail "SETUP.md missing NPM_TOKEN setup instructions"
 fi
-if grep -q "Generate static registry metadata" "$SETUP_MD" 2>/dev/null; then
-  pass "SETUP.md describes registry generation"
+if grep -q "release.sh" "$SETUP_MD" 2>/dev/null; then
+  pass "SETUP.md describes release.sh"
 else
-  fail "SETUP.md missing registry generation description"
+  fail "SETUP.md missing release.sh guidance"
 fi
 
 # ══════════════════════════════════════════

@@ -70,16 +70,26 @@ describe('CLI help output', () => {
     expect(typeof schema).toBe('object');
   });
 
-  test('verify and update help include concrete examples', async () => {
+  test('verify, doctor, gofer, and update help include concrete examples', async () => {
     const verifyResult = await runCommand(ctx, 'eai verify --help');
+    const doctorResult = await runCommand(ctx, 'eai doctor --help');
+    const goferResult = await runCommand(ctx, 'eai gofer --help');
     const updateResult = await runCommand(ctx, 'eai update --help');
 
     expect(verifyResult.exitCode).toBe(0);
     expect(verifyResult.stdout).toContain('eai verify --tenant-id <tenantId>');
     expect(verifyResult.stdout).toContain("Use 'eai verify calls' when you need to inspect");
 
+    expect(doctorResult.exitCode).toBe(0);
+    expect(doctorResult.stdout).toContain('eai doctor --check-updates');
+    expect(doctorResult.stdout).toContain('eai update');
+
+    expect(goferResult.exitCode).toBe(0);
+    expect(goferResult.stdout).toContain('refresh');
+
     expect(updateResult.exitCode).toBe(0);
     expect(updateResult.stdout).toContain('eai update --check');
-    expect(updateResult.stdout).toContain('Public npm dependencies still come from the normal npm registry.');
+    expect(updateResult.stdout).toContain('The CLI prefers npm when it is current and falls back to the EAI static registry when needed.');
+    expect(updateResult.stdout).toContain('eai gofer refresh --check');
   });
 });

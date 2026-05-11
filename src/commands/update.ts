@@ -12,7 +12,11 @@ import { promisify } from 'node:util';
 import process from 'node:process';
 import ora from 'ora';
 import chalk from 'chalk';
-import { fetchLatestVersion, isNewerVersion } from '../lib/update-check.js';
+import {
+  fetchLatestRelease,
+  type ReleaseChannel,
+  isNewerVersion,
+} from '../lib/update-check.js';
 import { getNpmExecutable } from '../lib/npm.js';
 import * as out from '../lib/output.js';
 
@@ -20,17 +24,30 @@ const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json') as { version: string };
 
+const NPM_REGISTRY_URL = 'https://registry.npmjs.org/';
 const REGISTRY_URL = 'https://eai-tools.github.io/eai-cli/registry';
-const REGISTRY_FLAG = `--@eai-tools:registry=${REGISTRY_URL}`;
+const STATIC_SCOPE_REGISTRY_FLAG = `--@eai-tools:registry=${REGISTRY_URL}`;
+const NPM_SCOPE_REGISTRY_FLAG = `--@eai-tools:registry=${NPM_REGISTRY_URL}`;
+const NPM_DEFAULT_REGISTRY_FLAG = `--registry=${NPM_REGISTRY_URL}`;
 
-export function buildUpdateInstallArgs(version: string): string[] {
-  return [
+export function buildUpdateInstallArgs(
+  version: string,
+  channel: ReleaseChannel = 'npm',
+): string[] {
+  const args = [
     'install',
     '-g',
     `@eai-tools/cli@${version}`,
     '--prefer-online',
-    REGISTRY_FLAG,
   ];
+
+  if (channel === 'npm') {
+    args.push(NPM_SCOPE_REGISTRY_FLAG, NPM_DEFAULT_REGISTRY_FLAG);
+  } else {
+    args.push(STATIC_SCOPE_REGISTRY_FLAG);
+  }
+
+  return args;
 }
 
 export function isUpdatePermissionError(message: string): boolean {
@@ -39,9 +56,10 @@ export function isUpdatePermissionError(message: string): boolean {
 
 export function buildUpdatePermissionGuidance(
   version: string,
+  channel: ReleaseChannel = 'npm',
   platform: NodeJS.Platform = process.platform,
 ): string[] {
-  const installCommand = `npm ${buildUpdateInstallArgs(version).join(' ')}`;
+  const installCommand = `npm ${buildUpdateInstallArgs(version, channel).join(' ')}`;
 
   if (platform === 'win32') {
     return [
@@ -66,23 +84,25 @@ Examples:
   $ eai update
 
 Notes:
-  - The CLI installs from the EAI scoped registry.
+  - The CLI prefers npm when it is current and falls back to the EAI static registry when needed.
   - npm is asked to revalidate registry metadata before installing.
-  - Public npm dependencies still come from the normal npm registry.
+  - \`eai update\` upgrades the installed CLI package only; it does not rewrite existing project files.
+  - Use \`eai gofer refresh --check\` to preview safe repo-local Gofer asset updates.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
   `)
   .action(async (options: { check?: boolean }) => {
     const current = pkg.version;
 
     const spinner = ora('Checking for updates...').start();
-    const latest = await fetchLatestVersion();
+    const latestRelease = await fetchLatestRelease();
 
-    if (!latest) {
-      spinner.fail('Could not reach the update registry.');
+    if (!latestRelease) {
+      spinner.fail('Could not reach the release channels.');
       out.info('Check your network connection and try again.');
       process.exit(1);
     }
 
+    const { channel, version: latest } = latestRelease;
     if (!isNewerVersion(current, latest)) {
       spinner.succeed(`Already on the latest version (${chalk.green(current)})`);
       return;
@@ -97,13 +117,13 @@ Notes:
 
     const installSpinner = ora(`Installing @eai-tools/cli@${latest}...`).start();
     try {
-      await exec(getNpmExecutable(), buildUpdateInstallArgs(latest));
+      await exec(getNpmExecutable(), buildUpdateInstallArgs(latest, channel));
       installSpinner.succeed(`Updated to ${chalk.green(latest)}`);
     } catch (err) {
       installSpinner.fail('Update failed.');
       const message = err instanceof Error ? err.message : String(err);
       if (isUpdatePermissionError(message)) {
-        for (const line of buildUpdatePermissionGuidance(latest)) {
+        for (const line of buildUpdatePermissionGuidance(latest, channel)) {
           if (line.includes(': ')) {
             const [prefix, ...rest] = line.split(': ');
             out.info(`${prefix}: ${chalk.cyan(rest.join(': '))}`);
@@ -113,7 +133,7 @@ Notes:
         }
       } else {
         out.error(message);
-        out.info(`Manual install: ${chalk.cyan(`npm ${buildUpdateInstallArgs(latest).join(' ')}`)}`);
+        out.info(`Manual install: ${chalk.cyan(`npm ${buildUpdateInstallArgs(latest, channel).join(' ')}`)}`);
       }
       process.exit(1);
     }

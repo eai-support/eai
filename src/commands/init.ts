@@ -14,15 +14,19 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import * as out from '../lib/output.js';
 import { installGoferResources } from '../lib/gofer-installer.js';
+import { applyGoferRefresh, planGoferRefresh } from '../lib/gofer-refresh.js';
 import { isAuthenticated, loadTokens } from '../lib/auth.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl, type TenantMembership } from '../lib/tenant-context.js';
 import { parseApiError, PlatformAPIClient, type CapabilityDecision } from '../lib/api.js';
 import { patchEnvFile } from '../lib/config.js';
 import { pullCloudEnvValues } from '../lib/cloud-env.js';
 import { getActiveProfile, loadProfileConfig } from '../lib/profile.js';
+import type { ProjectManifest } from '../lib/project-manifest.js';
+import { saveProjectManifest } from '../lib/project-manifest.js';
 
 const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
+const pkg = require('../../package.json') as { version: string };
 
 const TEMPLATE_REPO = 'https://github.com/eai-tools/Vertical-Template.git';
 const LEGACY_TEMPLATE_REPO = 'https://github.com/eai-tools/eai-vertical-template.git';
@@ -40,6 +44,21 @@ export interface TemplateClonePlan {
   readonly cloneSource: string;
   readonly displaySource: string;
   readonly pinnedCommit?: string;
+}
+
+function buildInitialProjectManifest(templatePlan: TemplateClonePlan): ProjectManifest {
+  return {
+    schemaVersion: 1,
+    cli: {
+      version: pkg.version,
+    },
+    template: {
+      repo: templatePlan.cloneSource,
+      commit: templatePlan.pinnedCommit,
+      displaySource: templatePlan.displaySource,
+      initializedAt: new Date().toISOString(),
+    },
+  };
 }
 
 interface InitOptions {
@@ -340,7 +359,27 @@ Use --no-gofer only when you need a bare vertical scaffold.
       }
     }
 
-    // Step 8: Initialize git
+    // Step 8: Record project manifest for future safe refreshes
+    const manifestSpinner = ora('Recording project manifest...').start();
+    try {
+      const initialManifest = buildInitialProjectManifest(templatePlan);
+      await saveProjectManifest(targetDir, initialManifest);
+
+      if (options.gofer) {
+        const refreshPlan = await planGoferRefresh(targetDir, initialManifest, {
+          workflowProfile: 'enterpriseai',
+        });
+        await applyGoferRefresh(refreshPlan);
+      }
+
+      manifestSpinner.succeed('Recorded .eai-manifest.json');
+    } catch (err) {
+      manifestSpinner.fail('Failed to record project manifest');
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+
+    // Step 9: Initialize git
     const gitSpinner = ora('Initializing git...').start();
     try {
       await exec('git', ['init'], { cwd: targetDir });
@@ -352,7 +391,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
       out.warn(describeGitInitFailure(err));
     }
 
-    // Step 9: Optionally provision Entra app registration inline against the
+    // Step 10: Optionally provision Entra app registration inline against the
     // tenant the user selected in the tenant-binding prompt (not the active
     // tenant blindly). Only runs in interactive mode when logged in and a
     // tenant is bound.
