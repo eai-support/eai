@@ -14,6 +14,7 @@ import ora from 'ora';
 import chalk from 'chalk';
 import {
   fetchLatestRelease,
+  STATIC_REGISTRY_URL,
   type ReleaseChannel,
   isNewerVersion,
 } from '../lib/update-check.js';
@@ -24,15 +25,11 @@ const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json') as { version: string };
 
-const NPM_REGISTRY_URL = 'https://registry.npmjs.org/';
-const REGISTRY_URL = 'https://eai-tools.github.io/eai-cli/registry';
-const STATIC_SCOPE_REGISTRY_FLAG = `--@eai-tools:registry=${REGISTRY_URL}`;
-const NPM_SCOPE_REGISTRY_FLAG = `--@eai-tools:registry=${NPM_REGISTRY_URL}`;
-const NPM_DEFAULT_REGISTRY_FLAG = `--registry=${NPM_REGISTRY_URL}`;
+const STATIC_SCOPE_REGISTRY_FLAG = `--@eai-tools:registry=${STATIC_REGISTRY_URL}`;
 
 export function buildUpdateInstallArgs(
   version: string,
-  channel: ReleaseChannel = 'npm',
+  _channel: ReleaseChannel = 'static-registry',
 ): string[] {
   const args = [
     'install',
@@ -41,11 +38,7 @@ export function buildUpdateInstallArgs(
     '--prefer-online',
   ];
 
-  if (channel === 'npm') {
-    args.push(NPM_SCOPE_REGISTRY_FLAG, NPM_DEFAULT_REGISTRY_FLAG);
-  } else {
-    args.push(STATIC_SCOPE_REGISTRY_FLAG);
-  }
+  args.push(STATIC_SCOPE_REGISTRY_FLAG);
 
   return args;
 }
@@ -56,7 +49,7 @@ export function isUpdatePermissionError(message: string): boolean {
 
 export function buildUpdatePermissionGuidance(
   version: string,
-  channel: ReleaseChannel = 'npm',
+  channel: ReleaseChannel = 'static-registry',
   platform: NodeJS.Platform = process.platform,
 ): string[] {
   const installCommand = `npm ${buildUpdateInstallArgs(version, channel).join(' ')}`;
@@ -84,8 +77,8 @@ Examples:
   $ eai update
 
 Notes:
-  - The CLI prefers npm when it is current and falls back to the EAI static registry when needed.
-  - npm is asked to revalidate registry metadata before installing.
+  - The CLI installs from the scoped EAI static registry on GitHub Pages.
+  - One-time setup for manual installs: npm config set @eai-tools:registry ${STATIC_REGISTRY_URL} --location=user
   - \`eai update\` upgrades the installed CLI package only; it does not rewrite existing project files.
   - Use \`eai gofer refresh --check\` to preview safe repo-local Gofer asset updates.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
@@ -97,7 +90,7 @@ Notes:
     const latestRelease = await fetchLatestRelease();
 
     if (!latestRelease) {
-      spinner.fail('Could not reach the release channels.');
+      spinner.fail('Could not reach the EAI static release registry.');
       out.info('Check your network connection and try again.');
       process.exit(1);
     }

@@ -12,19 +12,14 @@ To enable documentation deployment:
 
 ## Package Registry
 
-This project publishes the CLI to **npm** and also maintains a **static fallback registry** on GitHub Pages.
-
-Required one-time secret:
-
-1. Go to **Settings > Secrets and variables > Actions**.
-2. Add a repository secret named `NPM_TOKEN`.
-3. Use an npm access token that has publish rights for `@eai-tools/cli`.
+This project publishes the CLI through the **static scoped registry** on GitHub Pages.
 
 Release channel responsibilities:
 
-- **npm** is the primary install/update target after the release workflow succeeds: `npm install -g @eai-tools/cli`
-- **GitHub Pages static registry** remains available at `https://eai-tools.github.io/eai-cli/registry`
-- The release workflow publishes to npm from the pushed release tag
+- **GitHub Pages static registry** is available at `https://eai-tools.github.io/eai-cli/registry/`
+- Users should configure it once with `npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user`
+- Install or update with `npm install -g @eai-tools/cli`
+- The release workflow creates the GitHub release from the pushed release tag
 - The docs workflow deploys the matching static registry metadata from `main`
 
 ## Branch Protection Rules
@@ -50,12 +45,13 @@ Use the repo root release script from a clean `main` checkout:
 This will:
 
 1. Run the local release preflight (`npm run release:check`).
-2. Bump the version, regenerate `docs-site/static/registry/`, commit, and tag.
+2. Bump the version, refresh `.tech-docs/` release metadata plus `docs-site/static/registry/`, `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`, then commit and tag.
 3. Push `main` and the annotated `vX.Y.Z` tag.
-4. Wait for the GitHub `Release` workflow to publish to npm and create the GitHub release.
+4. Wait for the GitHub `Release` workflow to create the GitHub release.
 5. Wait for `Deploy Docs` to push the matching static registry update to GitHub Pages.
-6. Verify both public channels report the new version.
-7. If npm still returns `404`, treat the release as incomplete and keep using the static registry until the publish issue is fixed.
+6. Verify the public static registry reports the new version.
+
+The release path also verifies that the committed AI-facing docs and CLI help snapshots are current before the GitHub release is created.
 
 ### Version Conventions
 

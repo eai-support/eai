@@ -6,6 +6,7 @@ on:
     paths:
       - ".tech-docs/**"
       - "docs-site/**"
+      - "scripts/generate-release-docs.cjs"
       - "scripts/generate-registry.cjs"
       - "scripts/generate-llms-full.cjs"
   workflow_dispatch:
@@ -47,6 +48,9 @@ jobs:
             "docs-site/build/index.html"
             "docs-site/build/docs/overview.html"
             "docs-site/build/registry/index.html"
+            "docs-site/build/llms.txt"
+            "docs-site/build/llms-full.txt"
+            "docs-site/build/cli-help.txt"
           )
 
           for file in "${REQUIRED_FILES[@]}"; do

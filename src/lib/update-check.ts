@@ -11,11 +11,11 @@ import chalk from 'chalk';
 
 const EAI_DIR = join(homedir(), '.eai');
 const CACHE_FILE = join(EAI_DIR, 'update-check.json');
-export const NPM_PACKUMENT_URL = 'https://registry.npmjs.org/@eai-tools%2fcli';
-export const STATIC_PACKUMENT_URL = 'https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli';
+export const STATIC_REGISTRY_URL = 'https://eai-tools.github.io/eai-cli/registry/';
+export const STATIC_PACKUMENT_URL = `${STATIC_REGISTRY_URL}@eai-tools/cli`;
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-export type ReleaseChannel = 'npm' | 'static-registry';
+export type ReleaseChannel = 'static-registry';
 
 export interface LatestRelease {
   channel: ReleaseChannel;
@@ -71,11 +71,7 @@ export function selectNewestRelease(candidates: readonly LatestRelease[]): Lates
       return versionDelta;
     }
 
-    if (left.channel === right.channel) {
-      return 0;
-    }
-
-    return left.channel === 'npm' ? -1 : 1;
+    return 0;
   })[0] ?? null;
 }
 
@@ -103,14 +99,9 @@ async function fetchChannelLatest(
   }
 }
 
-/** Fetch the newest release from npm and the static registry. */
+/** Fetch the newest release from the static EAI registry. */
 export async function fetchLatestRelease(): Promise<LatestRelease | null> {
-  const releases = await Promise.all([
-    fetchChannelLatest(NPM_PACKUMENT_URL, 'npm'),
-    fetchChannelLatest(STATIC_PACKUMENT_URL, 'static-registry'),
-  ]);
-
-  return selectNewestRelease(releases.filter((release): release is LatestRelease => release !== null));
+  return fetchChannelLatest(STATIC_PACKUMENT_URL, 'static-registry');
 }
 
 /** Fetch the latest version from the available release channels. */
