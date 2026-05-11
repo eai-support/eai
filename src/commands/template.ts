@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { findProjectRoot } from '../lib/config.js';
-import { loadProjectManifest } from '../lib/project-manifest.js';
+import { resolveProjectManifest, type ProjectManifestSource } from '../lib/project-manifest.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 import { describeCloneFailure, isDefaultTemplateSource, resolveTemplateClonePlan } from './init.js';
@@ -44,6 +44,7 @@ interface TemplateCheckItem {
 }
 
 interface TemplateCheckPlan {
+  readonly manifestSource: ProjectManifestSource;
   readonly sourceLabel: string;
   readonly usesBundledDefault: boolean;
   readonly projectTemplateLabel: string;
@@ -157,10 +158,11 @@ async function cloneTemplateSnapshot(templateSource: string, targetDir: string):
 }
 
 async function planTemplateCheck(projectRoot: string): Promise<TemplateCheckPlan | { readonly skipped: string; readonly projectTemplateLabel: string; readonly currentTemplateLabel: string }> {
-  const manifest = await loadProjectManifest(projectRoot);
+  const resolvedManifest = await resolveProjectManifest(projectRoot);
+  const manifest = resolvedManifest.manifest;
   if (!manifest?.template) {
     out.error('This project does not record template provenance yet.');
-    out.info('Use `eai init` with a current CLI, or add `.eai-manifest.json` from a freshly initialized project before checking template drift.');
+    out.info('Run `eai gofer refresh --check` once to adopt the current project snapshot, or add `.eai-manifest.json` from a freshly initialized project before checking template drift.');
     process.exit(1);
   }
 
@@ -268,6 +270,7 @@ async function planTemplateCheck(projectRoot: string): Promise<TemplateCheckPlan
     });
 
     return {
+      manifestSource: resolvedManifest.source,
       sourceLabel,
       usesBundledDefault,
       projectTemplateLabel,
@@ -284,6 +287,17 @@ function renderAction(action: TemplateCheckAction): string {
   return action === 'add'
     ? `${out.symbols.added} add`
     : `${out.symbols.changed} review`;
+}
+
+function describeManifestSourceNote(source: ProjectManifestSource): string | null {
+  switch (source) {
+    case 'inferred-init-commit':
+      return 'Template provenance was inferred from the original `eai init` scaffold commit because this project does not yet record template provenance in `.eai-manifest.json`.';
+    case 'inferred-project-structure':
+      return 'Template provenance was inferred from this legacy EAI scaffold because this project does not yet record template provenance in `.eai-manifest.json`.';
+    default:
+      return null;
+  }
 }
 
 export const templateCommand = new Command('template')
@@ -344,6 +358,7 @@ Notes:
           current: plan.currentTemplateLabel,
           source: plan.sourceLabel,
           usesBundledDefault: plan.usesBundledDefault,
+          manifestSource: plan.manifestSource,
         },
         summary: plan.summary,
         items: plan.items,
@@ -356,6 +371,10 @@ Notes:
     out.success(`Project root: ${chalk.dim(root)}`);
     out.success(`Project template: ${plan.projectTemplateLabel}`);
     out.success(`Current comparison source: ${plan.sourceLabel}`);
+    const manifestSourceNote = describeManifestSourceNote(plan.manifestSource);
+    if (manifestSourceNote) {
+      out.info(manifestSourceNote);
+    }
     out.info('This preview does not write files. Review changes before copying any template or UI updates into your repo.');
 
     if (plan.items.length === 0) {

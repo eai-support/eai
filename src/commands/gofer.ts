@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { findProjectRoot } from '../lib/config.js';
 import * as out from '../lib/output.js';
 import { applyGoferRefresh, planGoferRefresh } from '../lib/gofer-refresh.js';
-import { loadProjectManifest } from '../lib/project-manifest.js';
+import { resolveProjectManifest } from '../lib/project-manifest.js';
 
 function describeAction(action: string): string {
   switch (action) {
@@ -40,8 +40,8 @@ goferCommand
       process.exit(1);
     }
 
-    const manifest = await loadProjectManifest(root);
-    const plan = await planGoferRefresh(root, manifest, { workflowProfile: 'enterpriseai' });
+    const resolvedManifest = await resolveProjectManifest(root);
+    const plan = await planGoferRefresh(root, resolvedManifest.manifest, { workflowProfile: 'enterpriseai' });
     const actionableItems = plan.items.filter((item) => item.action !== 'unchanged');
 
     if (options.format === 'json') {
@@ -75,6 +75,12 @@ goferCommand
 
     if (plan.bundle.describe || plan.bundle.commit) {
       out.success(`Bundled Gofer assets: ${plan.bundle.describe || plan.bundle.commit}`);
+    }
+
+    if (resolvedManifest.source === 'inferred-init-commit') {
+      out.info('Using template provenance inferred from the original `eai init` scaffold commit because this project does not yet record template provenance in `.eai-manifest.json`.');
+    } else if (resolvedManifest.source === 'inferred-project-structure') {
+      out.info('Using template provenance inferred from this legacy EAI scaffold because this project does not yet record template provenance in `.eai-manifest.json`.');
     }
 
     if (plan.firstRefresh) {
