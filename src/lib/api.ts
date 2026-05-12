@@ -44,6 +44,60 @@ export interface CapabilityDecision {
   upgradeUrl?: string | null;
 }
 
+export type RuntimeWorkflowStatus =
+  | 'available'
+  | 'not_ready'
+  | 'blocked'
+  | 'operator_required'
+  | 'paid_upgrade_required'
+  | 'rate_limited'
+  | 'upgrade_required'
+  | 'unsupported';
+
+export interface RuntimeWorkflowStatusResult {
+  workflowKey: string;
+  tenantId: string | null;
+  status: RuntimeWorkflowStatus;
+  reasonCode: string;
+  reasonMessage: string;
+  runtimeWorkflowRef: string | null;
+  nextAction: string | null;
+  checkedAt?: string | null;
+}
+
+export interface RuntimeWorkflowRequestResult {
+  requestId: string;
+  workflowKey: string;
+  tenantId: string;
+  status: RuntimeWorkflowStatus;
+  reasonCode: string;
+  reasonMessage: string;
+  runtimeWorkflowRef: string | null;
+  nextAction: string | null;
+}
+
+export interface BuilderReadinessCheck {
+  key: string;
+  status: RuntimeWorkflowStatus;
+  reasonCode: string;
+  reasonMessage: string;
+  nextAction: string | null;
+}
+
+export interface BuilderReadinessResult {
+  tenantId: string;
+  status: RuntimeWorkflowStatus;
+  checks: BuilderReadinessCheck[];
+  checkedAt?: string | null;
+}
+
+export interface RotateEntraSecretResult {
+  clientId: string;
+  clientSecret: string;
+  tenantId: string;
+  expiresAt: string | null;
+}
+
 export interface ParsedApiError {
   status: number;
   code?: string;
@@ -197,6 +251,75 @@ export async function parseApiError(response: Response): Promise<ParsedApiError>
       bodyText,
     };
   }
+}
+
+function readStringField(body: Record<string, unknown>, camelKey: string, snakeKey: string): string | null {
+  const value = body[camelKey] ?? body[snakeKey];
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function readWorkflowStatus(value: unknown): RuntimeWorkflowStatus {
+  if (value === 'upgrade-required' || value === 'paid-upgrade-required') {
+    return 'paid_upgrade_required';
+  }
+  if (
+    value === 'available'
+    || value === 'not_ready'
+    || value === 'blocked'
+    || value === 'operator_required'
+    || value === 'paid_upgrade_required'
+    || value === 'rate_limited'
+    || value === 'upgrade_required'
+    || value === 'unsupported'
+  ) {
+    return value;
+  }
+  return 'operator_required';
+}
+
+function parseRuntimeWorkflowStatus(body: Record<string, unknown>): RuntimeWorkflowStatusResult {
+  return {
+    workflowKey: readStringField(body, 'workflowKey', 'workflow_key') ?? 'unknown',
+    tenantId: readStringField(body, 'tenantId', 'tenant_id'),
+    status: readWorkflowStatus(body.status),
+    reasonCode: readStringField(body, 'reasonCode', 'reason_code') ?? 'runtime_workflow_status_unknown',
+    reasonMessage: readStringField(body, 'reasonMessage', 'reason_message') ?? 'Runtime workflow status is unknown.',
+    runtimeWorkflowRef: readStringField(body, 'runtimeWorkflowRef', 'runtime_workflow_ref'),
+    nextAction: readStringField(body, 'nextAction', 'next_action'),
+    checkedAt: readStringField(body, 'checkedAt', 'checked_at'),
+  };
+}
+
+function parseRuntimeWorkflowRequest(body: Record<string, unknown>): RuntimeWorkflowRequestResult {
+  return {
+    requestId: readStringField(body, 'requestId', 'request_id') ?? 'unknown',
+    workflowKey: readStringField(body, 'workflowKey', 'workflow_key') ?? 'unknown',
+    tenantId: readStringField(body, 'tenantId', 'tenant_id') ?? 'unknown',
+    status: readWorkflowStatus(body.status),
+    reasonCode: readStringField(body, 'reasonCode', 'reason_code') ?? 'runtime_workflow_requested',
+    reasonMessage: readStringField(body, 'reasonMessage', 'reason_message') ?? 'Runtime workflow request submitted.',
+    runtimeWorkflowRef: readStringField(body, 'runtimeWorkflowRef', 'runtime_workflow_ref'),
+    nextAction: readStringField(body, 'nextAction', 'next_action'),
+  };
+}
+
+function parseBuilderReadiness(body: Record<string, unknown>): BuilderReadinessResult {
+  const checks = Array.isArray(body.checks)
+    ? body.checks.filter((check): check is Record<string, unknown> => Boolean(check) && typeof check === 'object')
+    : [];
+
+  return {
+    tenantId: readStringField(body, 'tenantId', 'tenant_id') ?? 'unknown',
+    status: readWorkflowStatus(body.status),
+    checkedAt: readStringField(body, 'checkedAt', 'checked_at'),
+    checks: checks.map((check) => ({
+      key: readStringField(check, 'key', 'key') ?? 'unknown',
+      status: readWorkflowStatus(check.status),
+      reasonCode: readStringField(check, 'reasonCode', 'reason_code') ?? 'builder_check_unknown',
+      reasonMessage: readStringField(check, 'reasonMessage', 'reason_message') ?? 'Builder check did not return detail.',
+      nextAction: readStringField(check, 'nextAction', 'next_action'),
+    })),
+  };
 }
 
 export class PlatformAPIClient {
@@ -607,6 +730,92 @@ export class PlatformAPIClient {
     );
   }
 
+  // --------------- Builder / Workflows ---------------
+
+  async getBuilderReadiness(options?: {
+    tenantId?: string;
+    workflowKeys?: string[];
+  }): Promise<BuilderReadinessResult> {
+    const params = new URLSearchParams();
+    params.set('tenant_id', options?.tenantId || this.tenantId);
+    for (const workflowKey of options?.workflowKeys || []) {
+      params.append('workflow_keys', workflowKey);
+    }
+
+    const response = await fetch(`${this.baseUrl}/v3/builder/readiness?${params.toString()}`, {
+      method: 'GET',
+      headers: await this.headers(),
+    });
+
+    if (!response.ok) {
+      const context = await extractServerErrorContext(response);
+      throw new PlatformAPIRequestError({
+        operation: 'Builder readiness check',
+        status: response.status,
+        statusText: response.statusText,
+        ...context,
+      });
+    }
+
+    return parseBuilderReadiness(await response.json() as Record<string, unknown>);
+  }
+
+  async getRuntimeWorkflowStatus(
+    workflowKey: string,
+    tenantId = this.tenantId,
+  ): Promise<RuntimeWorkflowStatusResult> {
+    const params = new URLSearchParams({ tenant_id: tenantId });
+    const response = await fetch(
+      `${this.baseUrl}/v3/workflows/runtime/${encodeURIComponent(workflowKey)}/status?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: await this.headers(),
+      },
+    );
+
+    if (!response.ok) {
+      const context = await extractServerErrorContext(response);
+      throw new PlatformAPIRequestError({
+        operation: `Runtime workflow status (${workflowKey})`,
+        status: response.status,
+        statusText: response.statusText,
+        ...context,
+      });
+    }
+
+    return parseRuntimeWorkflowStatus(await response.json() as Record<string, unknown>);
+  }
+
+  async requestRuntimeWorkflow(request: {
+    tenantId?: string;
+    workflowKey: string;
+    displayName?: string;
+    reason?: string;
+  }): Promise<RuntimeWorkflowRequestResult> {
+    const response = await fetch(`${this.baseUrl}/v3/workflows/runtime-requests`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({
+        tenant_id: request.tenantId || this.tenantId,
+        workflow_key: request.workflowKey,
+        display_name: request.displayName,
+        reason: request.reason,
+      }),
+    });
+
+    if (!response.ok) {
+      const context = await extractServerErrorContext(response);
+      throw new PlatformAPIRequestError({
+        operation: `Runtime workflow request (${request.workflowKey})`,
+        status: response.status,
+        statusText: response.statusText,
+        ...context,
+      });
+    }
+
+    return parseRuntimeWorkflowRequest(await response.json() as Record<string, unknown>);
+  }
+
   // --------------- Documents ---------------
 
   private async uploadDocumentBatch(
@@ -931,6 +1140,48 @@ export class PlatformAPIClient {
         ? (data.tenantId ?? data.tenant_id) as string
         : null,
       signinCompleteness: parseSigninCompleteness(data.signinCompleteness ?? data.signin_completeness),
+    };
+  }
+
+  async rotateEntraAppSecret(request: {
+    tenantId: string;
+    clientId: string;
+  }): Promise<RotateEntraSecretResult> {
+    const response = await fetch(
+      `${this.baseUrl}/v3/provision/entra-app/${encodeURIComponent(request.clientId)}/rotate-secret`,
+      {
+        method: 'POST',
+        headers: await this.headers(),
+        body: JSON.stringify({ tenant_id: request.tenantId }),
+      },
+    );
+
+    if (!response.ok) {
+      const context = await extractServerErrorContext(response);
+      throw new PlatformAPIRequestError({
+        operation: 'Entra app secret rotation',
+        status: response.status,
+        statusText: response.statusText,
+        ...context,
+      });
+    }
+
+    const data = await response.json() as Record<string, unknown>;
+    const clientId = readStringField(data, 'clientId', 'client_id');
+    const clientSecret = readStringField(data, 'clientSecret', 'client_secret');
+    if (!clientId || !clientSecret) {
+      throw new PlatformAPIRequestError({
+        operation: 'Entra app secret rotation',
+        status: response.status,
+        statusText: 'Invalid secret rotation response',
+      });
+    }
+
+    return {
+      clientId,
+      clientSecret,
+      tenantId: readStringField(data, 'tenantId', 'tenant_id') ?? request.tenantId,
+      expiresAt: readStringField(data, 'expiresAt', 'expires_at'),
     };
   }
 }

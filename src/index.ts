@@ -31,6 +31,7 @@ import { userCommand } from './commands/user.js';
 import { resourcesCommand } from './commands/resources.js';
 import { verticalCommand } from './commands/vertical.js';
 import { chatCommand } from './commands/chat.js';
+import { workflowCommand } from './commands/workflow.js';
 import { docsCommand } from './commands/docs.js';
 import { deployCommand } from './commands/deploy.js';
 import { verifyCommand, doctorCommand } from './commands/verify.js';
@@ -97,6 +98,7 @@ program.addCommand(userCommand);
 program.addCommand(resourcesCommand);
 program.addCommand(verticalCommand);
 program.addCommand(chatCommand);
+program.addCommand(workflowCommand);
 program.addCommand(docsCommand);
 program.addCommand(deployCommand);
 program.addCommand(verifyCommand);
@@ -128,6 +130,11 @@ ${chalk.bold('Development Workflows:')}
   ${chalk.dim('# Query resources and inspect data')}
   ${chalk.cyan('eai resources list User --limit 10')}
   ${chalk.cyan('eai resources get User <id>')}
+
+  ${chalk.dim('# Check AI runtime workflow readiness before using chat')}
+  ${chalk.cyan('eai workflow readiness strategy-monitor')}
+  ${chalk.cyan('eai workflow status strategy-monitor')}
+  ${chalk.cyan('eai workflow request strategy-monitor --reason "CEO strategy cockpit"')}
 
   ${chalk.dim('# Check login, tenant, and API connectivity')}
   ${chalk.cyan('eai verify && eai doctor')}
