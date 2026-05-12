@@ -47,7 +47,10 @@ export interface CapabilityDecision {
 export type RuntimeWorkflowStatus =
   | 'available'
   | 'not_ready'
+  | 'blocked'
   | 'operator_required'
+  | 'paid_upgrade_required'
+  | 'rate_limited'
   | 'upgrade_required'
   | 'unsupported';
 
@@ -57,7 +60,7 @@ export interface RuntimeWorkflowStatusResult {
   status: RuntimeWorkflowStatus;
   reasonCode: string;
   reasonMessage: string;
-  runtimeWorkflowId: string | null;
+  runtimeWorkflowRef: string | null;
   nextAction: string | null;
   checkedAt?: string | null;
 }
@@ -69,7 +72,7 @@ export interface RuntimeWorkflowRequestResult {
   status: RuntimeWorkflowStatus;
   reasonCode: string;
   reasonMessage: string;
-  runtimeWorkflowId: string | null;
+  runtimeWorkflowRef: string | null;
   nextAction: string | null;
 }
 
@@ -256,10 +259,16 @@ function readStringField(body: Record<string, unknown>, camelKey: string, snakeK
 }
 
 function readWorkflowStatus(value: unknown): RuntimeWorkflowStatus {
+  if (value === 'upgrade-required' || value === 'paid-upgrade-required') {
+    return 'paid_upgrade_required';
+  }
   if (
     value === 'available'
     || value === 'not_ready'
+    || value === 'blocked'
     || value === 'operator_required'
+    || value === 'paid_upgrade_required'
+    || value === 'rate_limited'
     || value === 'upgrade_required'
     || value === 'unsupported'
   ) {
@@ -275,7 +284,7 @@ function parseRuntimeWorkflowStatus(body: Record<string, unknown>): RuntimeWorkf
     status: readWorkflowStatus(body.status),
     reasonCode: readStringField(body, 'reasonCode', 'reason_code') ?? 'runtime_workflow_status_unknown',
     reasonMessage: readStringField(body, 'reasonMessage', 'reason_message') ?? 'Runtime workflow status is unknown.',
-    runtimeWorkflowId: readStringField(body, 'runtimeWorkflowId', 'runtime_workflow_id'),
+    runtimeWorkflowRef: readStringField(body, 'runtimeWorkflowRef', 'runtime_workflow_ref'),
     nextAction: readStringField(body, 'nextAction', 'next_action'),
     checkedAt: readStringField(body, 'checkedAt', 'checked_at'),
   };
@@ -289,7 +298,7 @@ function parseRuntimeWorkflowRequest(body: Record<string, unknown>): RuntimeWork
     status: readWorkflowStatus(body.status),
     reasonCode: readStringField(body, 'reasonCode', 'reason_code') ?? 'runtime_workflow_requested',
     reasonMessage: readStringField(body, 'reasonMessage', 'reason_message') ?? 'Runtime workflow request submitted.',
-    runtimeWorkflowId: readStringField(body, 'runtimeWorkflowId', 'runtime_workflow_id'),
+    runtimeWorkflowRef: readStringField(body, 'runtimeWorkflowRef', 'runtime_workflow_ref'),
     nextAction: readStringField(body, 'nextAction', 'next_action'),
   };
 }

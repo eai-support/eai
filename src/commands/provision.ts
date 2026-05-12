@@ -46,9 +46,11 @@ function printServerDetail(ctx: ErrorContext, diag: DiagnosticsContext): void {
   if (ctx.requestId) {
     out.info(`Request ID: ${ctx.requestId}`);
   }
-  if (diag.debug && ctx.rawBody) {
-    out.info('Raw response body:');
-    out.info(ctx.rawBody);
+  if (diag.debug && ctx.status) {
+    out.info(`HTTP status: ${ctx.status}`);
+  }
+  if (diag.debug && ctx.serverCode) {
+    out.info(`Server code: ${ctx.serverCode}`);
   }
 }
 
@@ -148,7 +150,7 @@ provisionCommand
   .description('Create an Entra app registration for end-user auth (Auth.js)')
   .option('--force', 'Re-check the remote app registration even if ENTRA_CLIENT_ID already exists locally', false)
   .option('--rotate-secret', 'Rotate the existing ENTRA_CLIENT_ID secret and write the new value to .env.local', false)
-  .option('--debug', 'Print full server response body on failure (diagnostic only — may contain raw error context)', false)
+  .option('--debug', 'Print product-safe diagnostic status and request identifiers on failure', false)
   .addHelpText('after', `
 Examples:
   $ eai provision entra
@@ -410,7 +412,7 @@ function reportSigninCompleteness(
   out.warn('  2. API permissions → Add a permission → APIs my organization uses → select PublicAPI → Delegated permissions → access_token → Add');
   out.warn('  3. Grant admin consent for the directory tenant');
   out.warn('  4. Re-run sign-in (clear localhost cookie / use Incognito)');
-  out.warn('Or: ask your platform team to redeploy AdminAPI / verify its service principal has Application.ReadWrite.All on Microsoft Graph.');
+  out.warn('Or: ask your platform team to review the public provisioning support reference for this tenant.');
   process.exit(1);
 }
 

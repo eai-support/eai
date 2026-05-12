@@ -24,8 +24,8 @@ function printWorkflowStatus(result: RuntimeWorkflowStatusResult): void {
     ['Reason', result.reasonCode],
   ]);
   out.info(result.reasonMessage);
-  if (result.runtimeWorkflowId) {
-    out.success(`Runtime workflow id: ${chalk.dim(result.runtimeWorkflowId)}`);
+  if (result.runtimeWorkflowRef) {
+    out.success(`Runtime workflow ref: ${chalk.dim(result.runtimeWorkflowRef)}`);
   }
   if (result.nextAction) {
     out.warn(result.nextAction);
@@ -41,8 +41,8 @@ function printWorkflowRequest(result: RuntimeWorkflowRequestResult): void {
     ['Reason', result.reasonCode],
   ]);
   out.info(result.reasonMessage);
-  if (result.runtimeWorkflowId) {
-    out.success(`Runtime workflow id: ${chalk.dim(result.runtimeWorkflowId)}`);
+  if (result.runtimeWorkflowRef) {
+    out.success(`Runtime workflow ref: ${chalk.dim(result.runtimeWorkflowRef)}`);
   }
   if (result.nextAction) {
     out.warn(result.nextAction);
