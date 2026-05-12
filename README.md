@@ -98,6 +98,7 @@ to override it with a different repository or a local template path.
 | `eai logout` | Clear stored tokens |
 | `eai whoami` | Show auth status and project context |
 | `eai provision entra` | Create or confirm the vertical's Entra app registration in the CIAM for the active platform environment |
+| `eai provision entra --rotate-secret` | Rotate the existing app registration secret and write the new value to `.env.local` |
 | `eai user invite --email <email>` | Add an existing user to the active tenant or an explicit tenant |
 | `eai user provision-me` | Provision yourself to the active tenant or an explicit tenant |
 
@@ -145,6 +146,9 @@ to override it with a different repository or a local template path.
 |---------|-------------|
 | `eai chat send <message>` | Send a single chat message |
 | `eai chat stream <message>` | Stream a conversation (SSE) |
+| `eai workflow readiness [keys...]` | Check tenant access, plan metadata, and optional workflow readiness together |
+| `eai workflow status <key>` | Check whether an AI runtime workflow key is bound for the active tenant |
+| `eai workflow request <key>` | Request operator-assisted workflow binding when a workflow is not ready yet |
 | `eai docs upload <file>` | Upload a document |
 | `eai docs classify <file>` | Classify a document |
 | `eai docs index <id>` | Index a document for RAG |
@@ -194,12 +198,15 @@ eai tenant select ──────────────────→ Curr
 eai env pull ───────────────────────→ Azure App Config + Key Vault
 eai types seed ─────────────────────→ Platform API → Type Registry
 eai resources list ─────────────────→ Platform API → Data Service
+eai workflow status ────────────────→ Platform API → AI runtime readiness
 eai chat stream ────────────────────→ Platform API → AI Service
 eai docs classify ──────────────────→ Platform API → AI Service
 eai deploy trigger ─────────────────→ GitHub Actions → Azure App Service
 ```
 
 The CLI authenticates via browser-based authorization code flow with PKCE, stores tokens locally in `~/.eai/`, persists the active working tenant from your tenant-admin memberships, and calls the platform API directly with a Bearer token. `.env.local` is still available for project runtime configuration, but tenant selection for CLI platform commands comes from `eai login` and `eai tenant select`.
+
+Runtime workflow checks are intentionally public-safe. They tell you whether a workflow key is `available`, `operator_required`, `upgrade_required`, or not ready without exposing private platform topology. Use `eai workflow request <key>` when the platform reports `operator_required`.
 
 ## Error Codes
 
