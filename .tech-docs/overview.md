@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-11T14:16:42.658Z"
-source_commit: "a8a694f01ee627d905c62dd2f11230c312b5d499"
+generated_at: "2026-05-12T18:20:19.200Z"
+source_commit: "9e4b7835da3f7e5ca934d77b0d41844e29959b39"
 ---
 # EAI CLI — Overview
 
@@ -14,8 +14,8 @@ source_commit: "a8a694f01ee627d905c62dd2f11230c312b5d499"
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers and DevOps engineers |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no user data storage) |
-| **Current Status** | Active development (v2.8.12 released 2026-05-11) |
-| **Last Material Change** | v2.8.12: Fix docs workflow Node 24 artifact action (2026-05-11) |
+| **Current Status** | Active development (v2.8.12 stable) |
+| **Last Material Change** | v2.8.12: Fix docs workflow Node 24 artifact action (2026-05-11); Public platform builder experience spec added (2026-05-12) |
 
 ## Service Identity
 
@@ -83,8 +83,8 @@ The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.jso
 ### Installation (Development)
 
 ```bash
-git clone https://github.com/enterpriseaigroup/tech-docs.git
-cd tech-docs
+git clone https://github.com/eai-tools/eai-cli.git
+cd eai-cli
 npm install
 npm run build
 ```
