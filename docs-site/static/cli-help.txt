@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Version: 2.8.12
+Version: 2.8.13
 
 Install / update the CLI:
 npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
@@ -36,6 +36,7 @@ Commands:
   vertical               Manage dynamic vertical/app instances under the active
                          company tenant
   chat                   Chat with AI workflows
+  workflow               Inspect and request AI runtime workflow bindings
   docs                   Document upload, classification, and indexing
   deploy                 Deployment management
   verify [options]       Run platform connectivity checks
@@ -67,6 +68,11 @@ Development Workflows:
   # Query resources and inspect data
   eai resources list User --limit 10
   eai resources get User <id>
+
+  # Check AI runtime workflow readiness before using chat
+  eai workflow readiness strategy-monitor
+  eai workflow status strategy-monitor
+  eai workflow request strategy-monitor --reason "CEO strategy cockpit"
 
   # Check login, tenant, and API connectivity
   eai verify && eai doctor

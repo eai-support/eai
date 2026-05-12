@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-12T18:20:19.200Z"
-source_commit: "9e4b7835da3f7e5ca934d77b0d41844e29959b39"
+generated_at: "2026-05-12T23:36:29.611Z"
+source_commit: "945283decf734989b2aaa3336a102889e1d89ad6"
 ---
 # EAI CLI — Overview
 
@@ -10,17 +10,17 @@ source_commit: "9e4b7835da3f7e5ca934d77b0d41844e29959b39"
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.8.12 |
+| **Version** | 2.8.13 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers and DevOps engineers |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no user data storage) |
-| **Current Status** | Active development (v2.8.12 stable) |
-| **Last Material Change** | v2.8.12: Fix docs workflow Node 24 artifact action (2026-05-11); Public platform builder experience spec added (2026-05-12) |
+| **Current Status** | Active development (v2.8.13 released 2026-05-12) |
+| **Last Material Change** | v2.8.13: Add public platform builder workflow readiness and update guidance (2026-05-12) |
 
 ## Service Identity
 
 **Name**: `@eai-tools/cli` (eai)  
-**Version**: 2.8.12  
+**Version**: 2.8.13  
 **Purpose**: Command-line interface for the Enterprise AI Platform that wraps all platform API calls, providing developers with simple commands to scaffold projects, authenticate users, manage data models, perform CRUD operations, and deploy applications to Azure.
 
 ## Description
@@ -199,6 +199,9 @@ node dist/index.js tenant list
 
 ## Recent Enhancements
 
+### v2.8.13 (2026-05-12)
+- **Add public platform builder workflow readiness and update guidance**
+
 ### v2.8.12 (2026-05-11)
 - **Fix docs workflow Node 24 artifact action**
 
@@ -270,7 +273,7 @@ The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to stati
 
 ## Current Status
 
-- **Version**: 2.8.12 (released 2026-05-11)
+- **Version**: 2.8.13 (released 2026-05-12)
 - **Build Status**: Passing (CI workflow validates TypeCheck, Lint, Build, Tests)
 - **Documentation**: Up-to-date (last generated 2026-05-10T14:21:44Z)
 - **Source Commit**: `16242be8766857a2aba9b79acafcad0c19205e84`
