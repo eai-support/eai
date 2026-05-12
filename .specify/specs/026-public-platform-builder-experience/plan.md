@@ -1,7 +1,7 @@
 ---
 feature: "026-public-platform-builder-experience"
 repo: "eai CLI"
-status: ready
+status: implemented
 created: "2026-05-12T00:00:00Z"
 ---
 
@@ -9,14 +9,14 @@ created: "2026-05-12T00:00:00Z"
 
 ## Technical Context
 
-This PR is a Gofer specification/bootstrap change for eai CLI. It adds Markdown artifacts under `.specify/specs/026-public-platform-builder-experience/` and does not modify runtime source code.
+This PR implements the public workflow readiness CLI surface and keeps the Gofer specification artifacts under `.specify/specs/026-public-platform-builder-experience/` aligned with the source changes.
 
 ## Current PR Scope
 
-- Add research and approved proposal context.
-- Preserve eai CLI's public/private responsibility boundary.
-- Add task, traceability, quickstart, and validation artifacts.
-- Keep runtime implementation as a follow-up delivery stream.
+- Add `eai workflow readiness`, `eai workflow status`, and `eai workflow request` commands.
+- Route all workflow readiness checks through PublicAPI only.
+- Surface public-safe statuses and workflow refs without printing raw runtime workflow ids.
+- Add integration tests for the new CLI/PublicAPI contract.
 
 ## File Structure
 
@@ -36,9 +36,9 @@ This PR is a Gofer specification/bootstrap change for eai CLI. It adds Markdown 
 ## Implementation Roadmap
 
 1. Bootstrap the Gofer artifacts in this PR.
-2. Open follow-up implementation PRs for the runtime work described in `spec.md`.
-3. Add repo-specific tests with each runtime implementation PR.
-4. Run CI and `$6_gofer_validate` after each implementation PR reaches green.
+2. Implement workflow readiness/status/request commands and API client parsers.
+3. Add repo-specific tests for request URLs, JSON parsing, and CLI output.
+4. Run CI and `$6_gofer_validate` after implementation reaches green.
 5. Regenerate `.tech-docs/` for this repository after runtime implementation
    lands, then let the central `tech-docs` aggregation workflow publish the
    updated technical documentation into Docusaurus.

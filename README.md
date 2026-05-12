@@ -206,7 +206,7 @@ eai deploy trigger ─────────────────→ GitHub
 
 The CLI authenticates via browser-based authorization code flow with PKCE, stores tokens locally in `~/.eai/`, persists the active working tenant from your tenant-admin memberships, and calls the platform API directly with a Bearer token. `.env.local` is still available for project runtime configuration, but tenant selection for CLI platform commands comes from `eai login` and `eai tenant select`.
 
-Runtime workflow checks are intentionally public-safe. They tell you whether a workflow key is `available`, `operator_required`, `upgrade_required`, or not ready without exposing private platform topology. Use `eai workflow request <key>` when the platform reports `operator_required`.
+Runtime workflow checks are intentionally public-safe. They tell you whether a workflow key is `available`, `operator_required`, `paid_upgrade_required`, `rate_limited`, `blocked`, `unsupported`, or not ready without exposing private platform topology. Use `eai workflow request <key>` when the platform reports `operator_required`.
 
 ## Error Codes
 
