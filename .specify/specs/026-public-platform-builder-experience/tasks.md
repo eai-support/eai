@@ -1,10 +1,21 @@
-# Tasks - eai CLI
+---
+feature: "026-public-platform-builder-experience"
+repo: "eai CLI"
+status: complete-for-bootstrap-pr
+created: "2026-05-12T00:00:00Z"
+---
 
-- [ ] Add or extend builder readiness command backed by PublicAPI.
-- [ ] Add workflow status and workflow request commands.
-- [ ] Add existing Entra app secret rotation command path.
-- [ ] Update help text to highlight CLI, Gofer, template, and UI update checks.
-- [ ] Harden template provenance detection for existing `eai init` repositories.
-- [ ] Add dry-run/diff safeguards for template and UI component updates.
-- [ ] Add docs and tests that avoid private platform details.
+# Tasks
 
+## Current PR Tasks
+
+- [x] T001 Create repo-owned Feature 026 specification at `.specify/specs/026-public-platform-builder-experience/spec.md`.
+- [x] T002 Add research and approved proposal artifacts.
+- [x] T003 Add implementation plan, data model, quickstart, and traceability artifacts.
+- [x] T004 Add Gofer validation artifact for the specification/bootstrap PR.
+
+## Protected Boundaries
+
+- Runtime source code is protected in this PR.
+- Public-facing docs must not expose private platform internals.
+- Follow-up implementation work must use a separate PR with its own tests and validation.
