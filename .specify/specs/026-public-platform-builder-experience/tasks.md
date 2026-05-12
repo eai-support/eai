@@ -1,7 +1,7 @@
 ---
 feature: "026-public-platform-builder-experience"
 repo: "eai CLI"
-status: complete-for-bootstrap-pr
+status: implemented
 created: "2026-05-12T00:00:00Z"
 ---
 
@@ -15,6 +15,10 @@ created: "2026-05-12T00:00:00Z"
 - [x] T004 Add Gofer validation artifact for the specification/bootstrap PR.
 - [x] T005 Record the repo-local `.tech-docs/` regeneration and central
       `tech-docs` aggregation gate for follow-up implementation PRs.
+- [x] T006 Add workflow readiness/status/request commands.
+- [x] T007 Add PublicAPI client methods and status parsing for public builder readiness.
+- [x] T008 Keep CLI help/output on the public side of the platform boundary.
+- [x] T009 Add integration coverage for workflow command requests and parser behavior.
 
 ## Follow-Up Documentation Gate
 
@@ -24,6 +28,5 @@ aggregation before release.
 
 ## Protected Boundaries
 
-- Runtime source code is protected in this PR.
 - Public-facing docs must not expose private platform internals.
-- Follow-up implementation work must use a separate PR with its own tests and validation.
+- CLI output must not expose raw runtime workflow ids or private service instructions.
