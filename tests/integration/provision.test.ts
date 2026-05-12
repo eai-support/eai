@@ -278,6 +278,41 @@ describe('eai provision entra', () => {
     expect(content).toContain('ENTRA_CLIENT_ID=remote-client');
   });
 
+  test('rotate-secret writes a new ENTRA_CLIENT_SECRET without creating a new app', { timeout: 10000 }, async () => {
+    let rotateBody: unknown;
+    let createEndpointHit = false;
+
+    await writeFile(
+      join(env.dir, '.env.local'),
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_ID=client-1\n`,
+    );
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v3/provision/entra-app/client-1/rotate-secret`, async ({ request }) => {
+        rotateBody = await request.json();
+        return HttpResponse.json({
+          client_id: 'client-1',
+          client_secret: 'rotated-secret',
+          tenant_id: 'test-tenant-id',
+          expires_at: '2026-12-31T00:00:00Z',
+        });
+      }),
+      http.post(`${API_BASE}/v3/provision/entra-app`, () => {
+        createEndpointHit = true;
+        return HttpResponse.json({ detail: 'should not create' }, { status: 500 });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra', '--rotate-secret'], { from: 'user' });
+
+    expect(rotateBody).toEqual({ tenant_id: 'test-tenant-id' });
+    expect(createEndpointHit).toBe(false);
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('ENTRA_CLIENT_ID=client-1');
+    expect(content).toContain('ENTRA_CLIENT_SECRET=rotated-secret');
+  });
+
   test('named profile API URL overrides local env when provisioning', { timeout: 10000 }, async () => {
     setActiveProfile('test');
     await mkdir(join(env.dir, '.eai'), { recursive: true });

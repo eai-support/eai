@@ -107,6 +107,15 @@ function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
   process.exit(1);
 }
 
+function handleSecretRotationError(err: unknown, diag: DiagnosticsContext): never {
+  const ctx = readErrorContext(err);
+  out.error('Entra client secret rotation failed.');
+  printServerDetail(ctx, diag);
+  out.info('Reference: EAI-PROVISION-ROTATE-SECRET-FAILED');
+  out.info('Confirm you are a tenant admin and ENTRA_CLIENT_ID belongs to the active tenant.');
+  process.exit(1);
+}
+
 async function formatProvisionResponseError(response: Response): Promise<string> {
   const text = await response.text();
   if (!text) {
@@ -138,16 +147,19 @@ provisionCommand
   .command('entra')
   .description('Create an Entra app registration for end-user auth (Auth.js)')
   .option('--force', 'Re-check the remote app registration even if ENTRA_CLIENT_ID already exists locally', false)
+  .option('--rotate-secret', 'Rotate the existing ENTRA_CLIENT_ID secret and write the new value to .env.local', false)
   .option('--debug', 'Print full server response body on failure (diagnostic only — may contain raw error context)', false)
   .addHelpText('after', `
 Examples:
   $ eai provision entra
   $ eai provision entra --force
+  $ eai provision entra --rotate-secret
 
 What happens:
   - Calls the platform provisioning API to create an Entra app registration
   - Writes ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET to .env.local
   - If the registration already exists, confirms ENTRA_CLIENT_ID without rotating the secret
+  - With --rotate-secret, rotates the existing app registration secret through the platform API
 
 Diagnostics:
   - Uses the PublicAPI URL from the active profile, .env.local BASE_URL_PUBLIC_API, environment, or the default API
@@ -170,9 +182,10 @@ Diagnostics:
     }
 
     // Check if ENTRA_CLIENT_ID already exists
-    if (env.ENTRA_CLIENT_ID && !options.force) {
+    if (env.ENTRA_CLIENT_ID && !options.force && !options.rotateSecret) {
       out.warn(`ENTRA_CLIENT_ID is already set for ${chalk.cyan(verticalName)}.`);
       out.info(`Use ${chalk.cyan('eai provision entra --force')} to re-check the remote registration and confirm ENTRA_CLIENT_ID.`);
+      out.info(`Use ${chalk.cyan('eai provision entra --rotate-secret')} to rotate and write a new ENTRA_CLIENT_SECRET.`);
       process.exit(0);
     }
 
@@ -195,9 +208,39 @@ Diagnostics:
 
     const diag: DiagnosticsContext = { tenantSlug, tenantId, userOid, debug: Boolean(options.debug) };
 
-    out.info(`Provisioning Entra app registration for ${chalk.cyan(verticalName)}...`);
-
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
+
+    if (options.rotateSecret) {
+      if (!env.ENTRA_CLIENT_ID) {
+        out.error('ENTRA_CLIENT_ID is not set in .env.local. Run `eai provision entra` first.');
+        process.exit(1);
+      }
+      out.info(`Rotating Entra client secret for ${chalk.cyan(verticalName)}...`);
+      try {
+        const rotated = await client.rotateEntraAppSecret({
+          tenantId,
+          clientId: env.ENTRA_CLIENT_ID,
+        });
+        await patchEnvFile(root, {
+          ENTRA_CLIENT_ID: rotated.clientId,
+          ENTRA_CLIENT_SECRET: rotated.clientSecret,
+          EAI_TENANT_ID: rotated.tenantId,
+        });
+        out.success(`Entra client secret rotated for ${chalk.cyan(verticalName)}`);
+        out.table([
+          ['Client ID', chalk.dim(rotated.clientId)],
+          ['Client Secret', chalk.dim('[written to .env.local]')],
+          ['Expires', chalk.dim(rotated.expiresAt || 'unknown')],
+        ]);
+        out.warn('The new client secret has been written to .env.local and cannot be retrieved again.');
+        out.warn('Do NOT commit .env.local to source control.');
+        return;
+      } catch (err) {
+        handleSecretRotationError(err, diag);
+      }
+    }
+
+    out.info(`Provisioning Entra app registration for ${chalk.cyan(verticalName)}...`);
 
     let result: {
       clientId: string;
