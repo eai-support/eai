@@ -13,6 +13,14 @@ created: "2026-05-12T00:00:00Z"
 - [x] T002 Add research and approved proposal artifacts.
 - [x] T003 Add implementation plan, data model, quickstart, and traceability artifacts.
 - [x] T004 Add Gofer validation artifact for the specification/bootstrap PR.
+- [x] T005 Record the repo-local `.tech-docs/` regeneration and central
+      `tech-docs` aggregation gate for follow-up implementation PRs.
+
+## Follow-Up Documentation Gate
+
+Source-changing implementation PRs must update this repository's `.tech-docs/`
+snapshot, pass generated-docs validation, and verify central Docusaurus
+aggregation before release.
 
 ## Protected Boundaries
 

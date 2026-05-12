@@ -19,6 +19,8 @@ This validation applies to the eai CLI Gofer specification/bootstrap PR only. Ru
 - Repo-owned spec exists.
 - Research, proposal, plan, data model, quickstart, tasks, and traceability artifacts exist.
 - Tasks are complete for the current PR scope.
+- The follow-up documentation propagation gate is recorded: implementation PRs
+  must regenerate `.tech-docs/` and pass central `tech-docs` aggregation/build.
 
 ## Pending Gate
 

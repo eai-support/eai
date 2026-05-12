@@ -39,6 +39,16 @@ This PR is a Gofer specification/bootstrap change for eai CLI. It adds Markdown 
 2. Open follow-up implementation PRs for the runtime work described in `spec.md`.
 3. Add repo-specific tests with each runtime implementation PR.
 4. Run CI and `$6_gofer_validate` after each implementation PR reaches green.
+5. Regenerate `.tech-docs/` for this repository after runtime implementation
+   lands, then let the central `tech-docs` aggregation workflow publish the
+   updated technical documentation into Docusaurus.
+
+## Documentation Propagation Gate
+
+Generated technical documentation for this repository is owned by `.tech-docs/`
+and aggregated by the central `tech-docs` nightly/docs workflow. Follow-up
+implementation PRs must refresh `.tech-docs/`, pass the generated-docs
+validation contract, and verify central aggregation/build before release.
 
 ## Risk Assessment
 
