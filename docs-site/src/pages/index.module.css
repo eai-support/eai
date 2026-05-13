@@ -1,0 +1,73 @@
+.hero {
+  padding: 5rem 1.5rem 3rem;
+  background:
+    radial-gradient(circle at top, rgba(62, 173, 110, 0.2), transparent 38%),
+    linear-gradient(180deg, rgba(46, 133, 85, 0.08), transparent 70%);
+}
+
+.heroInner {
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.eyebrow {
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ifm-color-primary);
+}
+
+.lead {
+  max-width: 760px;
+  margin: 1.25rem auto 0;
+  font-size: 1.1rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+}
+
+.highlights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.5rem 4rem;
+}
+
+.panel {
+  padding: 1.4rem;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 16px;
+  background: var(--ifm-background-surface-color);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.06);
+}
+
+.panel h2 {
+  margin-bottom: 0.6rem;
+  font-size: 1.1rem;
+}
+
+.panel p {
+  margin-bottom: 0.9rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+[data-theme='dark'] .hero {
+  background:
+    radial-gradient(circle at top, rgba(79, 221, 191, 0.18), transparent 34%),
+    linear-gradient(180deg, rgba(37, 194, 160, 0.08), transparent 70%);
+}
+
+[data-theme='dark'] .panel {
+  box-shadow: none;
+}

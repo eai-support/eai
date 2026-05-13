@@ -4,7 +4,7 @@
   "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
   "type": "module",
   "bin": {
-    "eai": "./dist/index.js"
+    "eai": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -20,7 +20,11 @@
     "prepare": "tsc",
     "lint:no-placeholder": "! grep -r EAI_CLI_CLIENT_ID_PLACEHOLDER src/",
     "sync:gofer": "node scripts/sync-gofer-resources.cjs",
-    "prepublishOnly": "npm run sync:gofer && npm run lint:no-placeholder && npm run build && npm run lint"
+    "sync:linked-sources": "node scripts/sync-linked-sources.js",
+    "docs:release-assets": "node scripts/generate-release-docs.cjs",
+    "docs:release-assets:check": "node scripts/generate-release-docs.cjs --check",
+    "release:check": "bash scripts/release-preflight.sh",
+    "prepublishOnly": "npm run lint:no-placeholder && npm run typecheck && npm run lint && npm run build && npm run test"
   },
   "files": [
     "dist",
@@ -40,7 +44,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/eai-tools/eai-cli.git"
+    "url": "git+https://github.com/eai-tools/eai-cli.git"
   },
   "homepage": "https://eai-tools.github.io/eai-cli",
   "bugs": {

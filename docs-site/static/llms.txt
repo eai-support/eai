@@ -1,0 +1,35 @@
+# EAI CLI Documentation
+
+> Release-aligned documentation surfaces for `@eai-tools/cli` v2.8.13.
+
+## Install
+
+```bash
+npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm install -g @eai-tools/cli
+```
+
+## Key Commands
+
+- `eai update` updates the installed CLI package only.
+- `eai doctor --check-updates` reports CLI, Gofer, and template drift.
+- `eai gofer refresh --check` previews safe Gofer-managed file updates in an existing repo.
+
+## Documentation
+
+- [EAI CLI — Overview](/eai-cli/docs/overview)
+- [EAI CLI — Architecture](/eai-cli/docs/architecture)
+- [EAI CLI — Configuration](/eai-cli/docs/configuration)
+- [Environment Profiles](/eai-cli/docs/profiles)
+- [EAI CLI — API Reference](/eai-cli/docs/api-reference)
+- [EAI CLI — Data Model](/eai-cli/docs/data-model)
+- [EAI CLI — Dependencies](/eai-cli/docs/dependencies)
+- [EAI CLI — Deployment](/eai-cli/docs/deployment)
+- [EAI CLI — Changelog](/eai-cli/docs/changelog)
+- [Documentation Surfaces](/eai-cli/docs/documentation-surfaces)
+
+## Help & AI Bundles
+
+- [cli-help.txt](/eai-cli/cli-help.txt): Current CLI help snapshots used for release validation
+- [llms-full.txt](/eai-cli/llms-full.txt): Full release-aligned documentation bundle for AI agents
+- [Registry](/eai-cli/registry/): Static EAI package registry on GitHub Pages

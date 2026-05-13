@@ -51,6 +51,10 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 ├── research.md          # Codebase research (/1_gofer_research)
 ├── journeys/
 │   └── base-journey.md  # AI-augmented app journey when app delivery applies
+├── ui-preview-brief.md  # App-delivery preview brief when app delivery applies
+├── ui-review-log.md     # App-delivery preview evidence and iteration log
+├── ui-approval.md       # App-delivery approval gate record
+├── service-fit-matrix.md # App-delivery capability selection evidence
 ├── plan.md              # This file (/3_gofer_plan)
 ├── data-model.md        # Data model design (/3_gofer_plan)
 ├── quickstart.md        # Quick start guide (/3_gofer_plan)
@@ -119,6 +123,19 @@ why no app journey is required.
 | 2    | [goal]        | [assist]      | [component/API/data]     | [test]     |
 | 3    | [goal]        | [assist]      | [component/API/data]     | [test]     |
 | 4    | [goal]        | [assist]      | [component/API/data]     | [test]     |
+
+## UI Preview And Service-Fit Gate
+
+For application delivery, the plan must lock the approved preview and service
+selection before downstream implementation is treated as complete. For non-app
+work, state why this gate is not applicable.
+
+| Gate | Required Artifact | Validation |
+| ---- | ----------------- | ---------- |
+| Preview scope | `ui-preview-brief.md` | [how the MVP preview scope is defined] |
+| Preview evidence | `ui-review-log.md` | [screenshot, local render, or Playwright-style proof] |
+| UI approval | `ui-approval.md` | [who approves and when] |
+| Service fit | `service-fit-matrix.md` | [how accessible vs purchasable vs unavailable is proved] |
 
 ## Complexity Tracking
 

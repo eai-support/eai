@@ -6,12 +6,19 @@
 
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import inquirer from 'inquirer';
 import { describe, test, beforeEach, afterEach, expect, vi } from 'vitest';
-import { describeCloneFailure, initCommand } from '../../src/commands/init.js';
+import {
+  describeCloneFailure,
+  initCommand,
+  isDefaultTemplateSource,
+  resolveTemplateClonePlan,
+} from '../../src/commands/init.js';
 import * as auth from '../../src/lib/auth.js';
+import { PlatformAPIClient } from '../../src/lib/api.js';
 import * as tenantContext from '../../src/lib/tenant-context.js';
 import { createTestEnvironment, captureConsole, type TestEnvironment } from '../helpers/test-env.js';
 import { createMockServer, PublicAPIMock } from '../helpers/mock-server.js';
@@ -37,6 +44,8 @@ import {
 } from '../helpers/assert-dsl.js';
 
 const exec = promisify(execFile);
+const require = createRequire(import.meta.url);
+const pkg = require('../../package.json') as { version: string };
 
 async function createLocalTemplateRepo(baseDir: string): Promise<string> {
   const templateDir = join(baseDir, 'vertical-template');
@@ -125,11 +134,9 @@ describe('eai init', () => {
         description: 'My Vertical vertical application',
       })
       .mockResolvedValueOnce({ mode: 'default' })
-      .mockResolvedValueOnce({
-        includeChat: true,
-        includeDocs: true,
-        authProvider: 'ciam',
-      });
+      .mockResolvedValueOnce({ includeChat: true })
+      .mockResolvedValueOnce({ includeDocs: true })
+      .mockResolvedValueOnce({ authProvider: 'ciam' });
     const tenantCtxSpy = vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
       publicApiUrl: 'https://test-api.ae.myenterprise.ai/public',
       tokens: {
@@ -149,12 +156,14 @@ describe('eai init', () => {
       },
       memberships: [],
     });
+    const authSpy = vi.spyOn(auth, 'isAuthenticated').mockResolvedValue(false);
     const consoleCapture = captureConsole();
 
     try {
       await initCommand.parseAsync(['my-vertical', '--from', templateRepo], { from: 'user' });
     } finally {
       consoleCapture.restore();
+      authSpy.mockRestore();
       promptSpy.mockRestore();
       tenantCtxSpy.mockRestore();
     }
@@ -168,9 +177,10 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'my-vertical/.claude/agents/codebase-analyzer.md');
     await expectFileExists(ctx, 'my-vertical/.specify/commands/1_gofer_research.md');
     await expectFileExists(ctx, 'my-vertical/.specify/scripts/bash/pipeline-state.sh');
-    await expectFileExists(ctx, 'my-vertical/.system/skills/gofer/1_gofer_research/SKILL.md');
-    await expectFileExists(ctx, 'my-vertical/.agents/skills/gofer/1_gofer_research/SKILL.md');
-    await expectFileExists(ctx, 'my-vertical/.agents/skills/gofer/0_business_scenario/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.eai-manifest.json');
+    await expectFileExists(ctx, 'my-vertical/.system/skills/1_gofer_research/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.agents/skills/1_gofer_research/SKILL.md');
+    await expectFileExists(ctx, 'my-vertical/.agents/skills/0_business_scenario/SKILL.md');
     await expectFileExists(ctx, 'my-vertical/.gemini/extension.json');
     await expectFileExists(ctx, 'my-vertical/.gemini/commands/gofer/1_gofer_research.toml');
     await expectFileExists(ctx, 'my-vertical/.gemini/commands/gofer/0_business_scenario.toml');
@@ -178,7 +188,98 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'my-vertical/.github/skills/0-business-scenario/SKILL.md');
     await expectFileExists(ctx, 'my-vertical/.github/copilot-instructions.md');
     await expectFileContains(ctx, 'my-vertical/CLAUDE.md', '## Gofer Pipeline');
+    await expectFileContains(ctx, 'my-vertical/.eai-manifest.json', `"version": "${pkg.version}"`);
+    await expectFileContains(ctx, 'my-vertical/.eai-manifest.json', '"displaySource":');
     expect(consoleCapture.stdout.join('\n')).toContain('Created My Vertical');
+  }, 30_000);
+
+  test('creates and binds a child tenant during init when requested', async () => {
+    workingDirectoryIs(ctx, env.dir);
+
+    const promptSpy = vi.spyOn(inquirer, 'prompt')
+      .mockResolvedValueOnce({
+        name: 'child-vertical',
+        displayName: 'Child Vertical',
+        description: 'Child Vertical vertical application',
+      })
+      .mockResolvedValueOnce({ mode: 'child' })
+      .mockResolvedValueOnce({ includeChat: true })
+      .mockResolvedValueOnce({ includeDocs: true })
+      .mockResolvedValueOnce({ authProvider: 'ciam' });
+    const tenantCtxSpy = vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
+      publicApiUrl: 'https://test-api.ae.myenterprise.ai/public',
+      tokens: {
+        accessToken: 'access',
+        expiresAt: Date.now() + 60_000,
+        tenantId: 'ciam-guid',
+        tenantName: 'enterpriseaitestplatform',
+        clientId: 'client-id',
+      },
+      activeTenant: {
+        id: 'tenant-parent',
+        displayName: 'Parent Tenant',
+        slug: 'parent-tenant',
+        domain: 'parent.example.com',
+        isActive: true,
+        roles: ['tenant-admin'],
+      },
+      memberships: [],
+    });
+    const authSpy = vi.spyOn(auth, 'isAuthenticated').mockResolvedValue(false);
+    const loadTokensSpy = vi.spyOn(auth, 'loadTokens').mockResolvedValue({
+      accessToken: 'access',
+      expiresAt: Date.now() + 60_000,
+      tenantId: 'ciam-guid',
+      tenantName: 'enterpriseaitestplatform',
+      clientId: 'client-id',
+      oid: 'user-oid',
+      upn: 'user@example.com',
+    });
+    const capabilitySpy = vi.spyOn(PlatformAPIClient.prototype, 'evaluateCapability')
+      .mockResolvedValue({
+        outcome: 'allow',
+        reasonCode: 'allowed',
+        reasonMessage: 'Capability is included in the current plan.',
+        upgradeUrl: null,
+      });
+    const createTenantSpy = vi.spyOn(PlatformAPIClient.prototype, 'createTenant')
+      .mockResolvedValue(new Response(JSON.stringify({
+        id: 'tenant-child',
+        displayName: 'Child Vertical',
+        slug: 'child-vertical',
+      }), { status: 201 }));
+    const bootstrapSpy = vi.spyOn(PlatformAPIClient.prototype, 'bootstrapChildTenantAdmin')
+      .mockResolvedValue(new Response(JSON.stringify({
+        usable: true,
+      }), { status: 200 }));
+
+    try {
+      await initCommand.parseAsync(['child-vertical', '--from', templateRepo], { from: 'user' });
+      const envContent = await readFile(join(env.dir, 'child-vertical', '.env.local'), 'utf-8');
+      expect(envContent).toContain('EAI_TENANT_ID=tenant-child');
+      expect(envContent).toContain('TENANT_CHILD_VERTICAL_ID=tenant-child');
+      expect(createTenantSpy).toHaveBeenCalledWith(expect.objectContaining({
+        name: 'Child Vertical',
+        slug: 'child-vertical',
+        parent: 'tenant-parent',
+      }));
+      expect(bootstrapSpy).toHaveBeenCalledWith('tenant-parent', 'tenant-child', {
+        userOid: 'user-oid',
+        userEmail: 'user@example.com',
+      });
+      expect(capabilitySpy).toHaveBeenCalledWith(expect.objectContaining({
+        tenantId: 'tenant-parent',
+        targetCapability: 'child-tenants',
+      }));
+    } finally {
+      authSpy.mockRestore();
+      promptSpy.mockRestore();
+      tenantCtxSpy.mockRestore();
+      loadTokensSpy.mockRestore();
+      capabilitySpy.mockRestore();
+      createTenantSpy.mockRestore();
+      bootstrapSpy.mockRestore();
+    }
   }, 30_000);
 
   test('TC002: Initialize with --skip-prompts flag', async () => {
@@ -207,7 +308,7 @@ describe('eai init', () => {
     await expectFileExists(ctx, 'quick-app/.claude/agents/codebase-analyzer.md');
     await expectFileExists(ctx, 'quick-app/.specify/commands/1_gofer_research.md');
     await expectFileExists(ctx, 'quick-app/.specify/scripts/hooks/post-tool-use.mjs');
-    await expectFileExists(ctx, 'quick-app/.agents/skills/gofer/1_gofer_research/SKILL.md');
+    await expectFileExists(ctx, 'quick-app/.agents/skills/1_gofer_research/SKILL.md');
     await expectFileExists(ctx, 'quick-app/.gemini/commands/gofer/1_gofer_research.md');
     await expectFileExists(ctx, 'quick-app/.github/skills/0-business-scenario/SKILL.md');
     const objectTypes = await readFile(join(env.dir, 'quick-app', 'src', 'eai.config', 'object-types.ts'), 'utf-8');
@@ -228,7 +329,7 @@ describe('eai init', () => {
     await expectFileContains(ctx, 'plain-app/package.json', '"name": "@eai-tools/plain-app"');
     await expectFileNotExists(ctx, 'plain-app/.claude/commands/0_business_scenario.md');
     await expectFileNotExists(ctx, 'plain-app/.specify/commands/1_gofer_research.md');
-    await expectFileNotExists(ctx, 'plain-app/.agents/skills/gofer/1_gofer_research/SKILL.md');
+    await expectFileNotExists(ctx, 'plain-app/.agents/skills/1_gofer_research/SKILL.md');
     await expectFileNotExists(ctx, 'plain-app/.gemini/extension.json');
     expectCommandSucceeded(result);
   });
@@ -332,12 +433,33 @@ describe('describeCloneFailure', () => {
 
     expect(message).toContain('`git` is required');
     expect(message).toContain('winget install --id Git.Git -e');
-    expect(message).toContain('eai-tools/eai-vertical-template.git');
+    expect(message).toContain('eai-tools/Vertical-Template.git');
   });
 
   test('passes through unrelated clone errors', () => {
     expect(describeCloneFailure('/tmp/template', new Error('fatal: unable to access repository'))).toBe(
       'fatal: unable to access repository',
     );
+  });
+});
+
+describe('resolveTemplateClonePlan', () => {
+  test('treats both canonical and legacy template URLs as the default source', () => {
+    expect(isDefaultTemplateSource('https://github.com/eai-tools/Vertical-Template.git')).toBe(true);
+    expect(isDefaultTemplateSource('https://github.com/eai-tools/eai-vertical-template.git')).toBe(true);
+  });
+
+  test('returns the linked-source pin for the default template', () => {
+    const plan = resolveTemplateClonePlan('https://github.com/eai-tools/Vertical-Template.git');
+    expect(plan.cloneSource).toBe('https://github.com/eai-tools/Vertical-Template.git');
+    expect(plan.pinnedCommit).toBe('2169e69c87f582c826dced2deafcd174ee081656');
+    expect(plan.displaySource).toBe('eai-tools/Vertical-Template@2169e69');
+  });
+
+  test('passes through custom template sources unchanged', () => {
+    const plan = resolveTemplateClonePlan('/tmp/custom-template');
+    expect(plan.cloneSource).toBe('/tmp/custom-template');
+    expect(plan.pinnedCommit).toBeUndefined();
+    expect(plan.displaySource).toBe('/tmp/custom-template');
   });
 });

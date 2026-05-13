@@ -86,6 +86,22 @@ function parseMinimalYaml(yaml) {
   return result;
 }
 
+function toCanonicalCommandName(fileStem) {
+  if (fileStem.includes(':')) {
+    return fileStem;
+  }
+
+  if (fileStem === 'gofer_constitution' || fileStem === 'gofer_hydrate') {
+    return fileStem;
+  }
+
+  if (fileStem.startsWith('gofer_')) {
+    return `gofer:${fileStem.slice('gofer_'.length).replace(/_/g, '-')}`;
+  }
+
+  return fileStem;
+}
+
 /**
  * Performs structural validation of a parsed frontmatter object.
  * Throws if required fields are missing or have wrong types.
@@ -103,6 +119,9 @@ function validateFrontmatter(fm, filePath) {
 
   if (typeof fm.name !== 'string') {
     throw new Error(`'name' must be a string in ${filePath}`);
+  }
+  if (!/^(?:[0-9]+[a-z]?_[a-z0-9_]+|gofer_[a-z0-9_]+|gofer:[a-z0-9-]+)$/.test(fm.name)) {
+    throw new Error(`'name' contains invalid characters in ${filePath}`);
   }
   if (typeof fm.description !== 'string') {
     throw new Error(`'description' must be a string in ${filePath}`);
@@ -130,6 +149,14 @@ function validateFrontmatter(fm, filePath) {
   const validCategories = new Set(['pipeline', 'utility', 'diagnostic', 'control']);
   if (!validCategories.has(fm.category)) {
     throw new Error(`Invalid category '${fm.category}' in ${filePath}`);
+  }
+
+  const fileStem = (filePath.split(/[\\/]/).pop() || '').replace(/\.md$/, '');
+  const expectedName = toCanonicalCommandName(fileStem);
+  if (fm.name !== expectedName) {
+    throw new Error(
+      `'name' must match canonical command id '${expectedName}' for ${filePath}`
+    );
   }
 }
 

@@ -1,9 +1,8 @@
 ---
 generated: true
-generated_at: "2026-05-04T17:57:42Z"
-source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
+generated_at: "2026-05-13T18:16:23.977Z"
+source_commit: "a34126c2e29f910c1539a8c93ab8e9d3c49d8154"
 ---
-
 # EAI CLI — Dependencies
 
 ## Overview
@@ -16,7 +15,7 @@ The EAI CLI is a **client-side tool with no downstream dependents**. It depends 
 
 ```mermaid
 graph TB
-    CLI[eai CLI v2.6.0]
+    CLI[eai CLI v2.8.13]
 
     subgraph "Authentication"
         EntraCIAM[Entra CIAM<br/>Browser PKCE Flow<br/>localhost:8888 callback]
@@ -83,7 +82,7 @@ graph TB
 
 **Commands Affected**:
 - `eai login` — Browser-based authentication
-- Any command requiring authentication (when token <5min remaining → auto-refresh)
+- Any command requiring authentication (when token &lt;5 min remaining → auto-refresh)
 
 **Profile-Specific**:
 - Each profile (`dev`, `test`, `prod`) may use a different CIAM tenant
@@ -292,7 +291,7 @@ graph TB
 
 **Failure Impact**:
 - Update notifications not displayed
-- Manual updates still work via `npm install -g @eai-tools/cli@latest`
+- Manual updates still work via `npm install -g @eai-tools/cli` after configuring the scoped EAI registry, or simply `eai update`
 
 **Timeout**: 5 seconds (non-blocking)
 

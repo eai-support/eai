@@ -12,7 +12,15 @@ To enable documentation deployment:
 
 ## Package Registry
 
-This project uses a **static npm registry** hosted on GitHub Pages instead of npmjs.com. No `NPM_TOKEN` secret is needed. The release workflow runs `npm pack` and `scripts/generate-registry.cjs` to produce registry metadata, which is committed to `main` and served via GitHub Pages at `https://eai-tools.github.io/eai-cli/registry`.
+This project publishes the CLI through the **static scoped registry** on GitHub Pages.
+
+Release channel responsibilities:
+
+- **GitHub Pages static registry** is available at `https://eai-tools.github.io/eai-cli/registry/`
+- Users should configure it once with `npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user`
+- Install or update with `npm install -g @eai-tools/cli`
+- The release workflow creates the GitHub release from the pushed release tag
+- The docs workflow deploys the matching static registry metadata from `main`
 
 ## Branch Protection Rules
 
@@ -28,27 +36,24 @@ Recommended branch protection for `main`:
 
 ## Creating a Release
 
-Releases are triggered by pushing a version tag:
+Use the repo root release script from a clean `main` checkout:
 
 ```bash
-# Tag the release
-git tag -a v0.1.0 -m "Release v0.1.0"
-
-# Push the tag to trigger the release workflow
-git push --tags
+./release.sh patch "Release message"
 ```
 
 This will:
 
-1. Run the full build and lint pipeline.
-2. Generate static registry metadata and commit to `main`.
-3. Create a GitHub Release with auto-generated release notes.
+1. Run the local release preflight (`npm run release:check`).
+2. Bump the version, refresh `.tech-docs/` release metadata plus `docs-site/static/registry/`, `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`, then commit and tag.
+3. Push `main` and the annotated `vX.Y.Z` tag.
+4. Wait for the GitHub `Release` workflow to create the GitHub release.
+5. Wait for `Deploy Docs` to push the matching static registry update to GitHub Pages.
+6. Verify the public static registry reports the new version.
+
+The release path also verifies that the committed AI-facing docs and CLI help snapshots are current before the GitHub release is created.
 
 ### Version Conventions
 
 - Follow [Semantic Versioning](https://semver.org/): `vMAJOR.MINOR.PATCH`
-- Update the version in `package.json` before tagging:
-  ```bash
-  npm version 0.1.0 --no-git-tag-version
-  ```
-- Commit the version bump, then create and push the tag.
+- Let `release.sh` manage the version bump and tag creation.

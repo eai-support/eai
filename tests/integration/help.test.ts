@@ -26,13 +26,19 @@ describe('CLI help output', () => {
     await env.cleanup();
   });
 
-  test('top-level help includes the current getting-started workflow', async () => {
+  test('top-level help highlights the current update and getting-started workflows', async () => {
     const result = await runCommand(ctx, 'eai --help');
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('eai env pull');
     expect(result.stdout).toContain('eai resources schema');
     expect(result.stdout).toContain('eai verify calls --format json');
+    expect(result.stdout).toContain('Updates:');
+    expect(result.stdout).toContain('eai update --check');
+    expect(result.stdout).toContain('eai update');
+    expect(result.stdout).toContain('eai gofer refresh --check');
+    expect(result.stdout).toContain('eai gofer refresh');
+    expect(result.stdout).toContain('eai template check');
   });
 
   test('login help explains the sign-in and tenant selection flow', async () => {
@@ -70,16 +76,32 @@ describe('CLI help output', () => {
     expect(typeof schema).toBe('object');
   });
 
-  test('verify and update help include concrete examples', async () => {
+  test('verify, doctor, gofer, template, and update help include concrete examples', async () => {
     const verifyResult = await runCommand(ctx, 'eai verify --help');
+    const doctorResult = await runCommand(ctx, 'eai doctor --help');
+    const goferResult = await runCommand(ctx, 'eai gofer --help');
+    const templateResult = await runCommand(ctx, 'eai template --help');
     const updateResult = await runCommand(ctx, 'eai update --help');
 
     expect(verifyResult.exitCode).toBe(0);
     expect(verifyResult.stdout).toContain('eai verify --tenant-id <tenantId>');
     expect(verifyResult.stdout).toContain("Use 'eai verify calls' when you need to inspect");
 
+    expect(doctorResult.exitCode).toBe(0);
+    expect(doctorResult.stdout).toContain('eai doctor --check-updates');
+    expect(doctorResult.stdout).toContain('eai update');
+
+    expect(goferResult.exitCode).toBe(0);
+    expect(goferResult.stdout).toContain('refresh');
+
+    expect(templateResult.exitCode).toBe(0);
+    expect(templateResult.stdout).toContain('check');
+
     expect(updateResult.exitCode).toBe(0);
     expect(updateResult.stdout).toContain('eai update --check');
-    expect(updateResult.stdout).toContain('Public npm dependencies still come from the normal npm registry.');
+    expect(updateResult.stdout).toContain('The CLI installs from the scoped EAI static registry on GitHub Pages.');
+    expect(updateResult.stdout).toContain('npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user');
+    expect(updateResult.stdout).toContain('eai gofer refresh --check');
+    expect(updateResult.stdout).toContain('eai template check');
   });
 });

@@ -1,0 +1,1044 @@
+{
+  "name": "@eai-tools/cli",
+  "dist-tags": {
+    "latest": "2.8.13"
+  },
+  "versions": {
+    "0.1.0": {
+      "name": "@eai-tools/cli",
+      "version": "0.1.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.0.tgz",
+        "shasum": "b4965ac1c8f9137731b6eed54b063935ef48aa75",
+        "integrity": "sha512-lQJNJxO6IDGrx2yQkSvOP7qlrLpYunKME03TP2u2hA+PxDBdeq3qz+8QFt0yYiaWGFX8+7EDftZLkJ5baCDEmA=="
+      }
+    },
+    "0.1.1": {
+      "name": "@eai-tools/cli",
+      "version": "0.1.1",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.1.tgz",
+        "shasum": "55b374261a087ca3312d8920f259f28328a85615",
+        "integrity": "sha512-nQ+Vll26OI30hnbcvnnklg/8qxuhM67q96GfQL+/QhDXlINlBRZaTiN5g+/v2ViDBiKQGu5eeC5PWSI4vehT8g=="
+      }
+    },
+    "0.1.2": {
+      "name": "@eai-tools/cli",
+      "version": "0.1.2",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.2.tgz",
+        "shasum": "39451b95b0ddb5a89af1ae5b1a22f8b697d3db81",
+        "integrity": "sha512-g4TL+yL6uOUrABtgQDfpLwoydvRhIx5IaNy6kUzzCHvUO2BVMLhO3KZc+hVuAkb/jiSXTAeDAb1rQFWqs3G70w=="
+      }
+    },
+    "0.1.3": {
+      "name": "@eai-tools/cli",
+      "version": "0.1.3",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.3.tgz",
+        "shasum": "719c4b2504fd61b2fad7338e1e7d5027325e0876",
+        "integrity": "sha512-NMmHRiFkvHmXCKpMgHUUTxwVJRR2YAc7cKXrMxZEpV38pyX/PNSxtcCG8gYrTci9JtHLXm599HUFC9hX/pAvIA=="
+      }
+    },
+    "0.1.4": {
+      "name": "@eai-tools/cli",
+      "version": "0.1.4",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.4.tgz",
+        "shasum": "d20a9363cad7a20825803756c6a0880f65fa3021",
+        "integrity": "sha512-U9Y2NWvC5kj/BtWgh9Dz5s71yu8EstVoUncVbTC9bohS7JenHFk9Guv+zZfcWQka3HyhgZOPDtW/FeJ9vDk9mw=="
+      }
+    },
+    "0.1.5": {
+      "name": "@eai-tools/cli",
+      "version": "0.1.5",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.5.tgz",
+        "shasum": "a57cf2745f8957eba69eff0673b3be485e85ba2c",
+        "integrity": "sha512-UtGHXwg9oXLUa+sQqH3pE9APc83OLv+jwsBXx9CpoABbYpMJ6gPyWtAO+qL5PbXj9+krQ4vha+TkJx0CdxXdDQ=="
+      }
+    },
+    "0.1.6": {
+      "name": "@eai-tools/cli",
+      "version": "0.1.6",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.6.tgz",
+        "shasum": "806bbb622552659dbeac956788acd4c9ccbe1e09",
+        "integrity": "sha512-MhFS0G+iVCw8y3y56R96QUfrAH1H5ttLSfqnIils5c90NhIYjdNwuQHZHkOBaiYMojn4fS9ShVugEV+RH22UBw=="
+      }
+    },
+    "0.1.7": {
+      "name": "@eai-tools/cli",
+      "version": "0.1.7",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.7.tgz",
+        "shasum": "ff7b7911180872057ab13a604b2a29b79f058d59",
+        "integrity": "sha512-sstHxFjZgR/6BTQlYNgyHzYE4t8mjrwMYHIN5itOTpTDmvt744/kRwI5jRVfqVNXQSxVgOSz6cS8250YAiTKTA=="
+      }
+    },
+    "0.1.8": {
+      "name": "@eai-tools/cli",
+      "version": "0.1.8",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.8.tgz",
+        "shasum": "0d69071257da33cc8f05606085bd8ec0a3e3f6cc",
+        "integrity": "sha512-k2hJW9hg99JCMNcmLH8waaoQTIZDyJfpTYuKy6rdo2x0m6Ty5GNAklW6/dlyG/hNOvNkgXwRddzL44S7Tu8HYw=="
+      }
+    },
+    "0.2.0": {
+      "name": "@eai-tools/cli",
+      "version": "0.2.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.2.0.tgz",
+        "shasum": "79907b6cb50f10b51ed3539802fadde7d3e6702c",
+        "integrity": "sha512-pUZOuPsSrWZByx5h/4DIw1b+66RDQV+97t86GzZOOcP2pefDn3dUIqa9qFN7oTTCokwbJMNcR4YqKRbONYf6OQ=="
+      }
+    },
+    "0.3.0": {
+      "name": "@eai-tools/cli",
+      "version": "0.3.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.3.0.tgz",
+        "shasum": "b2dd6c22715c3ee28378496f8ff7e9468a9709dc",
+        "integrity": "sha512-ddeGJIB7w9WM81l++BNqk9K2qaMbDIzLQAW93+u3ZkWlBg4sgeLTGmPdSOjvDY5W7Zh4Xz4OKxfHqBQs04k1KQ=="
+      }
+    },
+    "0.3.1": {
+      "name": "@eai-tools/cli",
+      "version": "0.3.1",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.3.1.tgz",
+        "shasum": "eb760ea6bdfb77fac67a738095309d6c786dc936",
+        "integrity": "sha512-3T8REkPY9BHY6Gxw937UByCkJmwX7YcxIIi/jYwUbOf4qbTKXd2D2zWGf4WsOQXndly+sz2SMKn5sN8qbL75UA=="
+      }
+    },
+    "0.3.2": {
+      "name": "@eai-tools/cli",
+      "version": "0.3.2",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.3.2.tgz",
+        "shasum": "8f79ec96938db3dfd39e345684be26b91c7d4a76",
+        "integrity": "sha512-H2OiPY53gFwQt2Cghpet57TxcoX60smZe+MngQkl9AlQrokHlzHEBNuRoRM5XaPTX7dM43WshNZLWSp1JPIq9w=="
+      }
+    },
+    "0.3.3": {
+      "name": "@eai-tools/cli",
+      "version": "0.3.3",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.3.3.tgz",
+        "shasum": "52bd2bbd770e88459135a822dca5348175b9cbc3",
+        "integrity": "sha512-/nR0e1gpoP1A06ZmDmthv14X4TzGFelp7EFB8NScO5gLh9v284jvJlWZqnRYaA8LSk8m1NkQ3v8vKuCpiHbvuQ=="
+      }
+    },
+    "0.3.4": {
+      "name": "@eai-tools/cli",
+      "version": "0.3.4",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.3.4.tgz",
+        "shasum": "3680711b287175773344f413017bd6f484d42dd4",
+        "integrity": "sha512-0ZSXELGl1gF5I8dXo5bIxQPJZOUqTFZvf4DvXjt8/r/XqSrdxiOPfd+W8NV/9cfSKKFSnd0MHNtHMdnbeo1ceQ=="
+      }
+    },
+    "0.3.5": {
+      "name": "@eai-tools/cli",
+      "version": "0.3.5",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.3.5.tgz",
+        "shasum": "776836dec65c64a64febb20285285df26edf2b04",
+        "integrity": "sha512-GlIW8/Fs5A917ZVc8EfDb96mcvxD/sz1RqeLRKRDqT4QiClvfLGEbDOkb02M1sNpRWRewDIGOhKKoaeJ6XsW4g=="
+      }
+    },
+    "2.0.5": {
+      "name": "@eai-tools/cli",
+      "version": "2.0.5",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.0.5.tgz",
+        "shasum": "50af6e0c234b5b4534db4a13b46c3b497ba805d9",
+        "integrity": "sha512-0zXRrA6yCG5KRvR0PjVHeggM6KtFYQEUgEkASF9M6iqwi9P3Fp2uWdNrrrYzyssOP/VmlMXUzQ8jy60TcD/g6g=="
+      }
+    },
+    "2.0.6": {
+      "name": "@eai-tools/cli",
+      "version": "2.0.6",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.0.6.tgz",
+        "shasum": "78fd224adda29e2e80a87b110a9c167bc0ccf92c",
+        "integrity": "sha512-PeqzO/Bspsd+m0GerBB3pojE/WAHO8gsEU4TJU59TLzpdiMH+M+CFFN4wwM4ULGigq+YiEyPXlWbrsHYK4pdtQ=="
+      }
+    },
+    "2.0.7": {
+      "name": "@eai-tools/cli",
+      "version": "2.0.7",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.0.7.tgz",
+        "shasum": "5b3f8bac57ef212201fa67fb3a173621f910c5cc",
+        "integrity": "sha512-TjtCSH2KcxtWYeWu9hQ/YhVbDd3YoJOy3ZCSojYhe/vBn1JoupoTDYB4W1PJp2/ROhJeOyIPAlSjEdkH77z5KA=="
+      }
+    },
+    "2.1.0": {
+      "name": "@eai-tools/cli",
+      "version": "2.1.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.1.0.tgz",
+        "shasum": "a4e7e1f3876ff6b0f0ffa15b08b8ee17dbab1228",
+        "integrity": "sha512-ja+QW2Iq6kk69WHczHfNptgzaK3SdEf/1qcAffR6Qra9NTpvMPMIp5uo1tAaFpMBuRsdL0Wq2OjpXN/wvU2R2A=="
+      }
+    },
+    "2.1.1": {
+      "name": "@eai-tools/cli",
+      "version": "2.1.1",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.1.1.tgz",
+        "shasum": "927937a8e126f66599164a7c2f7162fcb6365e08",
+        "integrity": "sha512-t3m8+RZ24zgKHb0EKNbV1TlIy5Z1nUbJH2BthOkFKAR3SJxukTcEpq2dTQIMufB0VJ4v29lMq61TmDWWm1xTBg=="
+      }
+    },
+    "2.1.2": {
+      "name": "@eai-tools/cli",
+      "version": "2.1.2",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.1.2.tgz",
+        "shasum": "b2ccafc6476516586db23b26a1ea95d3d8dc7623",
+        "integrity": "sha512-OS9xLT1gTiZFdDP/b+cH8fQNIj8sUGCltC9DPWjlbizCeqi0QRgpt1xzGGRs+ubA7ekgY7jG23oIjKR3CIU4Gg=="
+      }
+    },
+    "2.2.0": {
+      "name": "@eai-tools/cli",
+      "version": "2.2.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.2.0.tgz",
+        "shasum": "dbe3ba1e90b439b987e6480899eeea7760b7becb",
+        "integrity": "sha512-XjGmUSKX0cFEsRXNWtvcB13uB6QwVHO4aRlpfOUfK/8TZyMcOp5psCYdRsmG0tXGhj5vjOQQ3h/6MpK2j0E5Yw=="
+      }
+    },
+    "2.3.0": {
+      "name": "@eai-tools/cli",
+      "version": "2.3.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.3.0.tgz",
+        "shasum": "2a4187bb937de5e911eb2de05b488e7ff0938095",
+        "integrity": "sha512-Tzt2FEkenq1V7r68gjwam6IhDBE0ek5RyewCYLWah03y/FC5h3O/lKX6drSHX4zTVv0/vEiHi+yUD1lmvybw7g=="
+      }
+    },
+    "2.4.0": {
+      "name": "@eai-tools/cli",
+      "version": "2.4.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.4.0.tgz",
+        "shasum": "72477ea82bf205040ae1cb0d4a6b56aade304d34",
+        "integrity": "sha512-zRZiGwUx4yCbe33n9NrDtQrj6Le1OfARlvQrTfY4H+e6PCJVR4A2FcxDs8iNG+SgXELWslMMuHwrw5NTGGGOOA=="
+      }
+    },
+    "2.4.1": {
+      "name": "@eai-tools/cli",
+      "version": "2.4.1",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.4.1.tgz",
+        "shasum": "f112d428785ae3035894d78d98277a1b582cf0dc",
+        "integrity": "sha512-LAUAMEOnV1PDGaJ4EAeo6PHS+DXtDfxEhVSyH906FJQFHZZ/4PPTiqup5e6sXcVXzBdQVUud0queV6WgEVNqow=="
+      }
+    },
+    "2.4.2": {
+      "name": "@eai-tools/cli",
+      "version": "2.4.2",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.4.2.tgz",
+        "shasum": "5132dd2194d7df9d354aba4aff2972370bd476de",
+        "integrity": "sha512-1fPae5j7CEBivbcf2eCBL8fYmx4GTNA3jnn/WPn+Q6JCHz9jnz3nOMnUQjWOzHtojUrc2c/5lVOMnUsWelotbA=="
+      }
+    },
+    "2.5.0": {
+      "name": "@eai-tools/cli",
+      "version": "2.5.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.5.0.tgz",
+        "shasum": "7795c55fb56355125157795c89aba3102bcf04fe",
+        "integrity": "sha512-3Y6BWgkrdXuc/1wLsP8QA9h1PpCMfvIy1iITIsnzAGPGoutUcOi2eJ6CbzqzCpgaAPjmvRR5xuwCT2jiC0fzww=="
+      }
+    },
+    "2.5.1": {
+      "name": "@eai-tools/cli",
+      "version": "2.5.1",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.5.1.tgz",
+        "shasum": "6e01b9fdaaa47f8ce9517d97da786497512d31be",
+        "integrity": "sha512-lywnRsDv/iAQjieYjaWqyvTCvrFH01bVUQkIRuAd5UZznC7RnZkwmDKNrzaps2zT4dy5713MWl+h7sTy3xYqFw=="
+      }
+    },
+    "2.5.2": {
+      "name": "@eai-tools/cli",
+      "version": "2.5.2",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.5.2.tgz",
+        "shasum": "11b20e36e077ca0000728dffc5e2e9a9eed62265",
+        "integrity": "sha512-myoecaz6ER7QQetnWXLrG1s5t6kXS4/HnMORYsL8BsO86OUodSXHBm68gJjKjc/kOGnRgAvbzheUtyskKVYHrQ=="
+      }
+    },
+    "2.6.0": {
+      "name": "@eai-tools/cli",
+      "version": "2.6.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.6.0.tgz",
+        "shasum": "f270646a29c6c4701b484ac6ac1ae7fdd297a090",
+        "integrity": "sha512-fSc0NZT9qm6xyVyNWHJRDoECkUj04LUWQ3ynxtOXoiYGel2ZmelJOVOMtBdVF8zUZ3IDTbG/jmMMcbD8hIiyaw=="
+      }
+    },
+    "2.7.0": {
+      "name": "@eai-tools/cli",
+      "version": "2.7.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.7.0.tgz",
+        "shasum": "65165ad453c1ed234129f1faa232597a0fa205b0",
+        "integrity": "sha512-yBO/mN1Ix9jjRLiBtZa3tzCGrrkkK3D3v13WlUCc/8cBWtpX+z0vcAbfIicOPp1X4//m5KrRzoDAYz6zfWsYIQ=="
+      }
+    },
+    "2.8.0": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.0.tgz",
+        "shasum": "0cbe0eba1942d35f3d8d8017a5c435313ea025d7",
+        "integrity": "sha512-lF09+0OuVLkZJISgPpAd7YE07tKjd0BZW5K6p6sJ85G746LYwSaUVIe4L19HV3+ZamKDd6a+MCtz4D+zTDhAEA=="
+      }
+    },
+    "2.8.4": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.4",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "./dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.4.tgz",
+        "shasum": "af322dca53dc1eb92dbba5d32f1167a4f0ffd095",
+        "integrity": "sha512-YLw4/MQW3vFuzPePsmQz+HBdiIMdNTsb0sBsxVNR6BwGVJ1nRNj/z4XNOUzWatiwFNnOVQAD4wJenIvhu7dKqg=="
+      }
+    },
+    "2.8.5": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.5",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.5.tgz",
+        "shasum": "7419ba248d505578f03de77acf73b4222375b814",
+        "integrity": "sha512-JMWxndmE2NOW0q+KjIE7Q7N867saN6LyBr9pWTJQeG+7N1YOFzrOpOxjIhRHIhP2yBZgukSXXcDQNGovv/v2uA=="
+      }
+    },
+    "2.8.6": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.6",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.6.tgz",
+        "shasum": "a65896e6ec23d86216b0c4dcd074fa012beb0875",
+        "integrity": "sha512-KC3gZL4MHhcmajdFHhI2Ds0IVzHzPWoVqDRTqqcylwTodYsDmZz3JkDCFSTEz8PrbNWMmUOqVRW2cmu5TBQspQ=="
+      }
+    },
+    "2.8.7": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.7",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.7.tgz",
+        "shasum": "dd48c28b8d2c582f33c03e4e808f1a80e4100d63",
+        "integrity": "sha512-dozL8MxsuAHp8W+6/nENUSbu83FAYj4IYOlJiIIQT2/CzmP14rMF1Ny3cIynELF5MfibPo+EtiaiNbKsJdqHjg=="
+      }
+    },
+    "2.8.8": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.8",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.8.tgz",
+        "shasum": "f7827dab6edd8069e8ea8c60a580e64b685f7382",
+        "integrity": "sha512-pDq5RN9HJlxC+EKc4Esvq4Zb46dC7NW8gvLCwyeOPr9YYYR7VDtm7uhsCJIRiQjp047GJKNscb98BFjHIYnhcQ=="
+      }
+    },
+    "2.8.9": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.9",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.9.tgz",
+        "shasum": "266c6fb32dd77cc56438aacd1d3f5603fc375ae0",
+        "integrity": "sha512-plGIIV1K7jNNIiaYBKNQCLba3tbXY92ovQdeinZyzY4UPDA/bhv19fOK1eIuR+iPB+VpNYxNYrbP0rBGTVh/qw=="
+      }
+    },
+    "2.8.10": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.10",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.10.tgz",
+        "shasum": "7ef4caec3a24fa400717683706a4f34b03dad9d1",
+        "integrity": "sha512-hAm2nmHof0OjmtasNknPvNAkeiMxLQ+DBRyqsbvFiqnqYiEAzXrIlJpLF4Y4ptE5293pwGMdz9nRMyY5IKJi+w=="
+      }
+    },
+    "2.8.11": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.11",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.11.tgz",
+        "shasum": "6df88ce981a507b4eed4e4ea86943650de72aa60",
+        "integrity": "sha512-unbJ54UbFzmpzGSDy1xjTsYsSbtPD0Ek40h5Lv7NLFHTMiqP2+4YM6n/hXlC/GAi0A/u3eyi+LTIF2cyXOBSQA=="
+      }
+    },
+    "2.8.12": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.12",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.12.tgz",
+        "shasum": "62afa8731b27d02112725197a9081ef34eb40fc2",
+        "integrity": "sha512-b9vPdp5djYxCaW63YbTbt0bShxpY/fTCoX1NVbso8w5jpGoyEr2Gvc/Z3RLlGk6shCRhf+miu3/I+duznmi3aA=="
+      }
+    },
+    "2.8.13": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.13",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "^5.3.0",
+        "commander": "^13.1.0",
+        "dotenv": "^16.4.7",
+        "inquirer": "^12.3.2",
+        "ora": "^8.1.1"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.13.tgz",
+        "shasum": "2302197a81c6c887191513b3abee009be4461ad5",
+        "integrity": "sha512-psHsTu1rsSyKcrQCC4XEhAisMPWEKu6g7QHkcd7g34AgGpsLFWzuPR42pCcSOU41r+qj/RXt07fdKnljIZf8fw=="
+      }
+    }
+  },
+  "time": {
+    "0.1.0": "2026-03-09T07:55:20.781Z",
+    "modified": "2026-05-12T23:36:32.787Z",
+    "0.1.1": "2026-03-10T01:18:22.994Z",
+    "0.1.2": "2026-03-10T01:52:22.136Z",
+    "0.1.3": "2026-03-10T02:10:02.992Z",
+    "0.1.4": "2026-03-10T08:37:04.883Z",
+    "0.1.5": "2026-03-29T22:11:53.135Z",
+    "0.1.6": "2026-03-29T22:22:23.138Z",
+    "0.1.7": "2026-03-29T22:25:25.609Z",
+    "0.1.8": "2026-04-04T10:01:18.851Z",
+    "0.2.0": "2026-04-04T20:48:25.322Z",
+    "0.3.0": "2026-04-05T08:49:13.050Z",
+    "0.3.1": "2026-04-09T04:05:53.155Z",
+    "0.3.2": "2026-04-09T07:14:26.128Z",
+    "0.3.3": "2026-04-09T07:26:24.771Z",
+    "0.3.4": "2026-04-09T07:50:57.410Z",
+    "0.3.5": "2026-04-09T13:38:51.096Z",
+    "2.0.5": "2026-04-13T05:02:38.977Z",
+    "2.0.6": "2026-04-13T07:08:38.861Z",
+    "2.0.7": "2026-04-13T07:17:42.119Z",
+    "2.1.0": "2026-04-14T02:00:50.249Z",
+    "2.1.1": "2026-04-14T07:35:07.426Z",
+    "2.1.2": "2026-04-20T06:31:16.435Z",
+    "2.2.0": "2026-04-20T14:09:23.365Z",
+    "2.3.0": "2026-04-21T08:24:47.040Z",
+    "2.4.0": "2026-04-27T00:41:19.146Z",
+    "2.4.1": "2026-04-27T23:28:44.136Z",
+    "2.4.2": "2026-04-27T23:53:14.779Z",
+    "2.5.0": "2026-04-28T05:39:14.394Z",
+    "2.5.1": "2026-04-28T07:12:36.023Z",
+    "2.5.2": "2026-04-29T09:24:19.832Z",
+    "2.6.0": "2026-04-30T05:37:28.770Z",
+    "2.7.0": "2026-05-04T00:24:15.212Z",
+    "2.8.0": "2026-05-05T07:12:03.449Z",
+    "2.8.4": "2026-05-10T14:32:28.647Z",
+    "2.8.5": "2026-05-11T05:36:30.538Z",
+    "2.8.6": "2026-05-11T08:08:28.793Z",
+    "2.8.7": "2026-05-11T08:13:07.797Z",
+    "2.8.8": "2026-05-11T09:57:07.353Z",
+    "2.8.9": "2026-05-11T10:27:52.942Z",
+    "2.8.10": "2026-05-11T10:44:37.018Z",
+    "2.8.11": "2026-05-11T13:59:12.749Z",
+    "2.8.12": "2026-05-11T14:16:44.712Z",
+    "2.8.13": "2026-05-12T23:36:32.787Z"
+  },
+  "modified": "2026-05-12T23:36:32.787Z"
+}

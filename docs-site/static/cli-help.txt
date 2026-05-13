@@ -1,0 +1,242 @@
+# EAI CLI Help Snapshot
+Version: 2.8.13
+
+Install / update the CLI:
+npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm install -g @eai-tools/cli
+
+eai --help
+==========
+
+Usage: eai [options] [command]
+
+Enterprise AI Platform CLI — scaffold, seed, deploy, and manage vertical
+applications
+
+Options:
+  -V, --cli-version      output the version number
+  --simple               Plain text output without colors or symbols (for screen
+                         readers)
+  --no-color             Disable colored output
+  --color                Force colored output
+  --profile <name>       Use a named environment profile (e.g. dev, test)
+  --describe             Output JSON schema of all commands
+  -h, --help             display help for command
+
+Commands:
+  init [options] [name]  Scaffold a new vertical application
+  dev [options]          Start local development server
+  login [options]        Authenticate with Entra CIAM
+  logout                 Clear stored authentication tokens
+  env                    Manage environment variables
+  types                  Manage Object Type definitions
+  tenant                 Manage tenants on the platform
+  user                   Manage users on the platform
+  resources              CRUD operations on platform resources
+  vertical               Manage dynamic vertical/app instances under the active
+                         company tenant
+  chat                   Chat with AI workflows
+  workflow               Inspect and request AI runtime workflow bindings
+  docs                   Document upload, classification, and indexing
+  deploy                 Deployment management
+  verify [options]       Run platform connectivity checks
+  doctor [options]       Diagnose common issues and suggest fixes
+  whoami                 Show auth status and tenant info
+  update [options]       Check for and install CLI updates
+  provision              Provision platform resources for this vertical
+  gofer                  Inspect and refresh Gofer-managed project assets
+  template               Preview vertical template and UI component drift for
+                         the current project
+  help [command]         display help for command
+
+Getting Started:
+  eai init my-vertical     Scaffold a vertical app with Gofer AI CLI assets
+  eai login                Authenticate with Entra CIAM
+  eai provision entra      Create Entra app registration for end-user auth
+  eai env pull             Sync app config from cloud
+  eai types seed           Publish Object Types to the platform
+  eai dev                  Start local development server
+
+Development Workflows:
+  # Define your types, validate them, then publish them
+  eai types validate && eai types seed
+
+  # See what is published for the active tenant
+  eai resources schema
+  eai vertical create "My App" --template blank-vertical-template
+
+  # Query resources and inspect data
+  eai resources list User --limit 10
+  eai resources get User <id>
+
+  # Check AI runtime workflow readiness before using chat
+  eai workflow readiness strategy-monitor
+  eai workflow status strategy-monitor
+  eai workflow request strategy-monitor --reason "CEO strategy cockpit"
+
+  # Check login, tenant, and API connectivity
+  eai verify && eai doctor
+
+Deployment:
+  # Set up GitHub Actions deployment
+  eai deploy setup --repo org/name
+
+  # Trigger deployment and check status
+  eai deploy trigger && eai deploy status
+
+Machine-Readable Output:
+  # Get structured JSON output for automation
+  eai resources list User --format json
+  eai tenant list --format json | jq
+  eai verify calls --format json
+
+  # Discover CLI structure for AI agents
+  eai --describe
+
+AI Terminal Workflows:
+  # New projects include Gofer commands, agents, scripts, hooks, and skills
+  claude                   then run /0_business_scenario
+  codex                    then ask Codex to use the 1_gofer_research skill
+  gemini                   then run /gofer:1_gofer_research
+  copilot                  uses .github/prompts and .github/skills
+
+Updates:
+  # Check for a newer CLI release and install it safely
+  eai update --check       preview the latest published CLI version
+  eai update               update the installed CLI package
+
+  # Preview repo-local Gofer asset updates before writing files
+  eai gofer refresh --check preview managed Gofer asset updates for this repo
+  eai gofer refresh        apply safe Gofer-managed asset updates with backups
+
+  # Preview vertical-template and UI component drift before copying changes
+  eai template check       review potential vertical or UI file updates without overwriting local work
+
+Accessibility:
+  # Screen reader friendly output
+  eai --simple <command>
+  eai --no-color <command>
+
+---
+
+eai update --help
+=================
+
+Usage: eai update [options]
+
+Check for and install CLI updates
+
+Options:
+  --check     Only check for updates without installing
+  -h, --help  display help for command
+
+Examples:
+  $ eai update --check
+  $ eai update
+
+Notes:
+  - The CLI installs from the scoped EAI static registry on GitHub Pages.
+  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+  - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
+  - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
+  - Use `eai template check` to preview vertical-template and UI drift before copying changes manually.
+  - If npm hits a permissions error, the CLI explains how to retry on your platform.
+
+---
+
+eai doctor --help
+=================
+
+Usage: eai doctor [options]
+
+Diagnose common issues and suggest fixes
+
+Options:
+  --fix            Attempt to fix issues automatically (default: false)
+  --check-updates  Report CLI release status plus Gofer/template drift for the
+                   current project (default: false)
+  -h, --help       display help for command
+
+Examples:
+  $ eai doctor
+  $ eai doctor --check-updates
+
+Notes:
+  - `eai update` upgrades the installed CLI package only.
+  - `eai gofer refresh --check` previews safe repo-local Gofer asset updates.
+  - `eai template check` previews vertical-template and UI drift without writing files.
+  - Template and UI component changes are not auto-merged into existing repos yet.
+
+---
+
+eai gofer --help
+================
+
+Usage: eai gofer [options] [command]
+
+Inspect and refresh Gofer-managed project assets
+
+Options:
+  -h, --help         display help for command
+
+Commands:
+  refresh [options]  Refresh Gofer-managed assets in the current project without
+                     blindly overwriting local work
+  help [command]     display help for command
+
+---
+
+eai gofer refresh --help
+========================
+
+Usage: eai gofer refresh [options]
+
+Refresh Gofer-managed assets in the current project without blindly overwriting
+local work
+
+Options:
+  --check            Show the refresh plan without writing files (default:
+                     false)
+  --force            Overwrite conflicting managed files after backing them up
+                     (default: false)
+  --format <format>  Output format (text|json) (default: "text")
+  -h, --help         display help for command
+
+---
+
+eai template --help
+===================
+
+Usage: eai template [options] [command]
+
+Preview vertical template and UI component drift for the current project
+
+Options:
+  -h, --help       display help for command
+
+Commands:
+  check [options]  Preview file-level template/UI drift without writing to the
+                   repo
+  help [command]   display help for command
+
+---
+
+eai template check --help
+=========================
+
+Usage: eai template check [options]
+
+Preview file-level template/UI drift without writing to the repo
+
+Options:
+  --format <format>  Output format (text|json) (default: "text")
+  -h, --help         display help for command
+
+Typical workflow:
+  eai doctor --check-updates
+  eai template check
+
+Notes:
+  - This command never writes files to your repo.
+  - Template/UI updates still require manual review and selective copy/diff.
+  - Use `eai gofer refresh --check` separately for Gofer-managed assets.

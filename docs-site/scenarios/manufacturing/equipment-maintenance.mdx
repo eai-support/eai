@@ -1,0 +1,216 @@
+---
+title: Equipment Maintenance
+description: Build an equipment maintenance scheduling, downtime tracking, and repair log workflow for manufacturing using the EAI CLI.
+---
+
+## Persona
+
+**Role**: Industrial IoT developer at a plastics manufacturer operating 80+ machines across two plants.
+
+Maintenance is entirely reactive -- machines break, technicians scramble to fix them, and the same failures repeat because there is no preventive maintenance schedule. Repair history lives in technicians' memories, spare parts usage is untracked, and downtime costs are estimated rather than measured. The company wants to shift from reactive to preventive maintenance.
+
+## Business Problem
+
+Unplanned downtime is the most expensive problem on the factory floor. Without maintenance schedules, equipment runs until failure. Without repair logs, the same issues are diagnosed from scratch each time. Without parts tracking, critical spares run out at the worst moments. This scenario builds an equipment maintenance system that schedules preventive maintenance, logs every repair with parts and duration, and provides a complete service history for each machine.
+
+<!-- four-step-application:start -->
+## Four-Step Application
+
+This scenario works best as a four-step, human-in-the-loop application. The existing object model already gives this scenario a strong delivery backbone through Equipment, MaintenanceSchedule, and RepairLog.
+
+- **Mission metric focus:** higher throughput, lower defect rates, and stronger operational resilience.
+- **Human + AI pattern:** Each step combines structured workflow data with chat assistance, background generation, document understanding, and accessible interaction patterns when they improve the experience.
+
+### Step 1. Capture demand and context
+
+- **Goal:** Make it easy for the user to start the Equipment Maintenance journey with complete, trusted context.
+- **Required data:** Equipment context such as name, type, location, and lastService.
+- **AI support:** Use chat to guide intake, generate clearer prompts, create accessible summaries, and assist with voice or vision-led capture when a form alone is not the best experience. EAI can support structured intake, chat workflows, and document-centred capture today; richer native multimodal capture may still need workflow extensions or connected services.
+- **Business impact:** Improve completion rate, reduce first-touch effort, and raise customer or staff confidence in the UX from the very first interaction.
+- **EAI delivery:** Model the intake as tenant-isolated object types and resources, then use actions, chat workflows, and document indexing or classification to keep the initial record complete and usable.
+
+### Step 2. Prepare the decision
+
+- **Goal:** Turn the captured context into the next best action for Equipment Maintenance without forcing the human reviewer to assemble the case manually.
+- **Required data:** Equipment state and history; MaintenanceSchedule fields such as frequency, nextDue, description, and status.
+- **AI support:** Run background summarisation, extraction, classification, recommendation drafting, and answer generation so a reviewer sees a prepared case instead of raw fragments. EAI delivers the structured records and AI workflow hooks for this today; specialised scoring engines, external rules, or advanced reasoning controls may still need integration work.
+- **Business impact:** Reduce cycle time, improve quality and consistency, and protect the mission-critical metric before the case moves into execution.
+- **EAI delivery:** Link records across the scenario, persist decision state as resources, and use workflow actions plus chat assistance to keep humans in control while AI prepares the work.
+
+### Step 3. Execute and collaborate
+
+- **Goal:** Coordinate the actual work, handoffs, approvals, and user updates needed to deliver the service or outcome.
+- **Required data:** MaintenanceSchedule actions such as completeMaintenance; RepairLog fields such as issue, technician, duration, and parts.
+- **AI support:** Draft replies, produce work packets, monitor exceptions in the background, and surface the next action for each operator. EAI can orchestrate tenant-isolated records, actions, chats, and document workflows today; deeper system-to-system automation may require additional connectors or workflow capability.
+- **Business impact:** Increase operator productivity, reduce rework across handoffs, and improve service consistency across the application journey.
+- **EAI delivery:** Use linked object types, actions, resource updates, and workflow-triggered AI assistance so the team can execute in one model instead of splitting work across disconnected tools.
+
+### Step 4. Resolve, explain, and improve
+
+- **Goal:** Close the loop with a clear outcome, an understandable explanation, and feedback that improves the next case.
+- **Required data:** final status, outcome, audit history, and follow-up signals across Equipment, MaintenanceSchedule, and RepairLog.
+- **AI support:** Generate outcome summaries, customer-friendly answers, compliance-ready notes, management insights, and accessible follow-up content. EAI can store outcome records and support answer generation today, while richer proactive agents, advanced analytics, or channel-specific accessibility features may need additional product capability.
+- **Business impact:** Increase trust, quality, and measurable business value through higher throughput, lower defect rates, and stronger operational resilience.
+- **EAI delivery:** Keep the full audit trail in structured resources, use AI workflows to explain outcomes, and feed the resulting signals into future product, service, and operational improvement work.
+
+<!-- four-step-application:end -->
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Equipment** | `name` (text), `type` (text), `location` (text), `lastService` (date), `status` (select: operational, maintenance, offline) | one-to-many → MaintenanceSchedule, one-to-many → RepairLog | -- |
+| **MaintenanceSchedule** | `frequency` (select: daily, weekly, monthly, quarterly, annual), `nextDue` (date), `description` (text), `status` (select: active, paused) | many-to-one → Equipment | `completeMaintenance` |
+| **RepairLog** | `issue` (text), `technician` (text), `duration` (number), `parts` (text), `cost` (number), `repairedDate` (date) | many-to-one → Equipment | -- |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init equipment-maintenance
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+   <Aside type="note">
+     If you are an external developer, see [Configuration](/docs/configuration) and [Environment Profiles](/docs/profiles) for login and local environment setup.
+   </Aside>
+
+3. **Define your Object Types**
+
+   Create the Equipment, MaintenanceSchedule, and RepairLog types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: equipment-maintenance
+   ✔ Equipment — 5 props, 2 links, 0 actions
+   ✔ MaintenanceSchedule — 4 props, 1 link, 1 action
+   ✔ RepairLog — 6 props, 1 link, 0 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create Equipment --data '{"name": "Injection Molder #7", "type": "Injection Molding Machine", "location": "Plant A, Bay 3", "lastService": "2025-06-01", "status": "operational"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'equipment-maintenance': [
+    {
+      name: 'Equipment',
+      displayName: 'Equipment',
+      description: 'A piece of manufacturing equipment or machinery',
+      properties: [
+        { name: 'name', type: 'text' as const, required: true, indexed: true },
+        { name: 'type', type: 'text' as const, required: true },
+        { name: 'location', type: 'text' as const, required: true, indexed: true },
+        { name: 'lastService', type: 'date' as const, required: false },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'operational', options: [
+          { label: 'Operational', value: 'operational' },
+          { label: 'Maintenance', value: 'maintenance' },
+          { label: 'Offline', value: 'offline' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'maintenanceSchedules', targetObjectType: 'MaintenanceSchedule', cardinality: 'one-to-many' as const },
+        { name: 'repairLogs', targetObjectType: 'RepairLog', cardinality: 'one-to-many' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+    {
+      name: 'MaintenanceSchedule',
+      displayName: 'Maintenance Schedule',
+      description: 'A recurring preventive maintenance schedule for equipment',
+      properties: [
+        { name: 'frequency', type: 'select' as const, required: true, options: [
+          { label: 'Daily', value: 'daily' },
+          { label: 'Weekly', value: 'weekly' },
+          { label: 'Monthly', value: 'monthly' },
+          { label: 'Quarterly', value: 'quarterly' },
+          { label: 'Annual', value: 'annual' },
+        ]},
+        { name: 'nextDue', type: 'date' as const, required: true, indexed: true },
+        { name: 'description', type: 'text' as const, required: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'active', options: [
+          { label: 'Active', value: 'active' },
+          { label: 'Paused', value: 'paused' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'equipment', targetObjectType: 'Equipment', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'completeMaintenance',
+          displayName: 'Complete Maintenance',
+          description: 'Record completion of a scheduled maintenance task',
+          requiredRole: 'tenant-user',
+          validationRules: { requiredStatus: 'active' },
+          sideEffects: [
+            { type: 'set_timestamp', field: 'nextDue' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'RepairLog',
+      displayName: 'Repair Log',
+      description: 'A record of a repair performed on equipment',
+      properties: [
+        { name: 'issue', type: 'text' as const, required: true },
+        { name: 'technician', type: 'text' as const, required: true },
+        { name: 'duration', type: 'number' as const, required: true },
+        { name: 'parts', type: 'text' as const, required: false },
+        { name: 'cost', type: 'number' as const, required: false },
+        { name: 'repairedDate', type: 'date' as const, required: true, indexed: true },
+      ],
+      linkTypes: [
+        { name: 'equipment', targetObjectType: 'Equipment', cardinality: 'many-to-one' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Preventive over reactive**: Scheduled maintenance with configurable frequencies shifts the plant from costly breakdowns to planned service windows.
+- **Repair history**: A complete log of every repair, including parts used and time spent, enables pattern recognition for recurring failures.
+- **Cost visibility**: Tracking repair costs and duration per machine helps justify equipment replacement decisions with hard data.
+- **Machine-level profiles**: Linking schedules and repair logs to individual equipment creates a service history that follows each machine throughout its lifecycle.

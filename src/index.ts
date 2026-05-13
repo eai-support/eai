@@ -31,12 +31,15 @@ import { userCommand } from './commands/user.js';
 import { resourcesCommand } from './commands/resources.js';
 import { verticalCommand } from './commands/vertical.js';
 import { chatCommand } from './commands/chat.js';
+import { workflowCommand } from './commands/workflow.js';
 import { docsCommand } from './commands/docs.js';
 import { deployCommand } from './commands/deploy.js';
 import { verifyCommand, doctorCommand } from './commands/verify.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { updateCommand } from './commands/update.js';
 import { provisionCommand } from './commands/provision.js';
+import { goferCommand } from './commands/gofer.js';
+import { templateCommand } from './commands/template.js';
 import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
 import { setActiveProfile, loadActiveProfileFromConfig } from './lib/profile.js';
@@ -95,6 +98,7 @@ program.addCommand(userCommand);
 program.addCommand(resourcesCommand);
 program.addCommand(verticalCommand);
 program.addCommand(chatCommand);
+program.addCommand(workflowCommand);
 program.addCommand(docsCommand);
 program.addCommand(deployCommand);
 program.addCommand(verifyCommand);
@@ -102,6 +106,8 @@ program.addCommand(doctorCommand);
 program.addCommand(whoamiCommand);
 program.addCommand(updateCommand);
 program.addCommand(provisionCommand);
+program.addCommand(goferCommand);
+program.addCommand(templateCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -125,6 +131,11 @@ ${chalk.bold('Development Workflows:')}
   ${chalk.cyan('eai resources list User --limit 10')}
   ${chalk.cyan('eai resources get User <id>')}
 
+  ${chalk.dim('# Check AI runtime workflow readiness before using chat')}
+  ${chalk.cyan('eai workflow readiness strategy-monitor')}
+  ${chalk.cyan('eai workflow status strategy-monitor')}
+  ${chalk.cyan('eai workflow request strategy-monitor --reason "CEO strategy cockpit"')}
+
   ${chalk.dim('# Check login, tenant, and API connectivity')}
   ${chalk.cyan('eai verify && eai doctor')}
 
@@ -147,9 +158,21 @@ ${chalk.bold('Machine-Readable Output:')}
 ${chalk.bold('AI Terminal Workflows:')}
   ${chalk.dim('# New projects include Gofer commands, agents, scripts, hooks, and skills')}
   ${chalk.cyan('claude')}                   ${chalk.dim('then run /0_business_scenario')}
-  ${chalk.cyan('codex')}                    ${chalk.dim('then run $gofer/1_gofer_research')}
+  ${chalk.cyan('codex')}                    ${chalk.dim('then ask Codex to use the 1_gofer_research skill')}
   ${chalk.cyan('gemini')}                   ${chalk.dim('then run /gofer:1_gofer_research')}
   ${chalk.cyan('copilot')}                  ${chalk.dim('uses .github/prompts and .github/skills')}
+
+${chalk.bold('Updates:')}
+  ${chalk.dim('# Check for a newer CLI release and install it safely')}
+  ${chalk.cyan('eai update --check')}       ${chalk.dim('preview the latest published CLI version')}
+  ${chalk.cyan('eai update')}               ${chalk.dim('update the installed CLI package')}
+
+  ${chalk.dim('# Preview repo-local Gofer asset updates before writing files')}
+  ${chalk.cyan('eai gofer refresh --check')} ${chalk.dim('preview managed Gofer asset updates for this repo')}
+  ${chalk.cyan('eai gofer refresh')}        ${chalk.dim('apply safe Gofer-managed asset updates with backups')}
+
+  ${chalk.dim('# Preview vertical-template and UI component drift before copying changes')}
+  ${chalk.cyan('eai template check')}       ${chalk.dim('review potential vertical or UI file updates without overwriting local work')}
 
 ${chalk.bold('Accessibility:')}
   ${chalk.dim('# Screen reader friendly output')}
