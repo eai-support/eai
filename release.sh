@@ -1,185 +1,210 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── EAI CLI Release Script ──
-# Usage: ./release.sh <patch|minor|major> "Release message"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+REPO="eai-tools/eai-cli"
+NPM_PACKAGE="@eai-tools/cli"
+STATIC_REGISTRY_URL="https://eai-tools.github.io/eai-cli/registry/"
+STATIC_PACKUMENT_URL="https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli"
 
 BUMP="${1:-}"
 MESSAGE="${2:-}"
 
+usage() {
+  cat <<'EOF'
+Usage: ./release.sh <patch|minor|major> "Release message"
+
+  patch  2.8.4 -> 2.8.5  (bug fixes)
+  minor  2.8.4 -> 2.9.0  (new features)
+  major  2.8.4 -> 3.0.0  (breaking changes)
+
+Examples:
+  ./release.sh patch "Fix auth token refresh bug"
+  ./release.sh minor "Add bulk resource import command"
+  ./release.sh major "Replace config schema with v3 format"
+EOF
+}
+
+section() {
+  echo ""
+  echo "▸ $1"
+}
+
+require_command() {
+  local command_name="$1"
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    echo "✗ Required command not found: $command_name"
+    exit 1
+  fi
+}
+
+wait_for_release_run() {
+  local tag_name="$1"
+  local run_id=""
+
+  for _attempt in $(seq 1 30); do
+    run_id="$(gh run list \
+      --repo "$REPO" \
+      --workflow release.yml \
+      --limit 20 \
+      --json databaseId,headBranch \
+      --jq ".[] | select(.headBranch == \"$tag_name\") | .databaseId" \
+      | head -n 1)"
+
+    if [[ -n "$run_id" ]]; then
+      break
+    fi
+
+    sleep 3
+  done
+
+  if [[ -z "$run_id" ]]; then
+    echo "✗ Could not find the Release workflow run for $tag_name"
+    exit 1
+  fi
+
+  gh run watch "$run_id" --repo "$REPO" --exit-status
+}
+
+wait_for_docs_run() {
+  local commit_sha="$1"
+  local run_id=""
+
+  for _attempt in $(seq 1 30); do
+    run_id="$(gh run list \
+      --repo "$REPO" \
+      --workflow docs.yml \
+      --branch main \
+      --limit 30 \
+      --json databaseId,headSha \
+      --jq ".[] | select(.headSha == \"$commit_sha\") | .databaseId" \
+      | head -n 1)"
+
+    if [[ -n "$run_id" ]]; then
+      break
+    fi
+
+    sleep 3
+  done
+
+  if [[ -z "$run_id" ]]; then
+    echo "✗ Could not find the Deploy Docs workflow run for commit $commit_sha"
+    exit 1
+  fi
+
+  gh run watch "$run_id" --repo "$REPO" --exit-status
+}
+
+verify_static_registry_latest() {
+  local expected_version="$1"
+  local actual_version=""
+
+  for _attempt in $(seq 1 24); do
+    actual_version="$(
+      curl -fsSL "$STATIC_PACKUMENT_URL" \
+        | node -e 'let raw="";process.stdin.on("data",(chunk)=>raw+=chunk);process.stdin.on("end",()=>{const parsed=JSON.parse(raw);process.stdout.write(parsed["dist-tags"]?.latest ?? "");});' \
+        2>/dev/null || true
+    )"
+    if [[ "$actual_version" == "$expected_version" ]]; then
+      echo "  ✓ static registry latest is $actual_version"
+      return 0
+    fi
+    sleep 5
+  done
+
+  echo "✗ static registry latest did not converge to $expected_version (saw: ${actual_version:-unavailable})"
+  return 1
+}
+
 if [[ ! "$BUMP" =~ ^(patch|minor|major)$ ]] || [[ -z "$MESSAGE" ]]; then
-  echo "Usage: ./release.sh <patch|minor|major> \"Release message\""
-  echo ""
-  echo "  patch  0.1.0 → 0.1.1  (bug fixes)"
-  echo "  minor  0.1.0 → 0.2.0  (new features)"
-  echo "  major  0.1.0 → 1.0.0  (breaking changes)"
-  echo ""
-  echo "Examples:"
-  echo "  ./release.sh patch \"Fix auth token refresh bug\""
-  echo "  ./release.sh minor \"Add bulk resource import command\""
-  echo "  ./release.sh major \"New config format, breaking changes to types CLI\""
+  usage
   exit 1
 fi
 
-# ── Preflight ──
-echo "══════════════════════════════════════════"
-echo "  EAI CLI Release — $BUMP"
-echo "  $MESSAGE"
-echo "══════════════════════════════════════════"
-echo ""
+section "Release configuration"
+echo "  Package: $NPM_PACKAGE"
+echo "  Bump:    $BUMP"
+echo "  Message: $MESSAGE"
 
-# Must be on main
-BRANCH=$(git branch --show-current)
+require_command git
+require_command node
+require_command npm
+require_command gh
+require_command curl
+
+cd "$ROOT"
+
+section "Checking git state"
+BRANCH="$(git branch --show-current)"
 if [[ "$BRANCH" != "main" ]]; then
-  echo "✗ Must be on main branch (currently on $BRANCH)"
+  echo "✗ Must be on main (currently on $BRANCH)"
   exit 1
 fi
 
-# Working tree must be clean
-if [[ -n $(git status --porcelain) ]]; then
+if [[ -n "$(git status --porcelain)" ]]; then
   echo "✗ Working tree is dirty — commit or stash changes first"
   exit 1
 fi
 
-# Pull latest
-echo "▸ Pulling latest from origin..."
+gh auth status >/dev/null
+echo "  ✓ git working tree is clean"
+echo "  ✓ gh is authenticated"
+
+section "Syncing with origin/main"
 git pull --rebase origin main
+echo "  ✓ up to date with origin/main"
 
-# ── Node version check ──
-echo "▸ Checking Node.js version..."
-NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
-if (( NODE_VERSION < 20 )); then
-  echo "✗ Node.js >= 20 required (found $(node -v))"
-  exit 1
-fi
-echo "  ✓ Node $(node -v)"
+section "Running release preflight"
+npm run release:check
+echo "  ✓ release preflight"
 
-# ── Install dependencies ──
-echo "▸ Installing dependencies..."
-npm ci --silent
-echo "  ✓ Dependencies installed"
+OLD_VERSION="$(node -p "require('./package.json').version")"
 
-# ── Typecheck ──
-echo "▸ Running typecheck..."
-npm run typecheck
-echo "  ✓ Typecheck passed"
-
-# ── Lint ──
-echo "▸ Running linter..."
-npm run lint
-echo "  ✓ Lint passed"
-
-# ── Build ──
-echo "▸ Building..."
-npm run build
-echo "  ✓ Build succeeded"
-
-# ── Tests ──
-echo "▸ Running tests..."
-npm run test
-echo "  ✓ Tests passed"
-
-# ── Smoke test: CLI runs ──
-echo "▸ Smoke testing CLI..."
-CLI_VERSION=$(node dist/index.js --version 2>&1)
-echo "  ✓ eai --version → $CLI_VERSION"
-
-CLI_HELP=$(node dist/index.js --help 2>&1)
-if ! echo "$CLI_HELP" | grep -q "Enterprise AI Platform CLI"; then
-  echo "✗ --help output missing expected text"
-  exit 1
-fi
-echo "  ✓ eai --help looks good"
-
-# Verify key commands are registered
-for CMD in init login dev types resources deploy env verify chat docs whoami doctor; do
-  if ! echo "$CLI_HELP" | grep -q "$CMD"; then
-    echo "✗ Missing command: $CMD"
-    exit 1
-  fi
-done
-echo "  ✓ All 12 command groups registered"
-
-# ── Docs build ──
-echo "▸ Building docs site..."
-(cd docs && npm ci --silent && npm run build 2>&1 | tail -1)
-echo "  ✓ Docs build succeeded"
-
-# ── IP scan ──
-echo "▸ Scanning for IP leaks..."
-IP_TERMS="Configurator|ResourceAPI|AICore|PayloadCMS|OPA|Rego|HyPE|OBO"
-LEAKS=$(grep -rn --include='*.ts' --include='*.mdx' --include='*.md' \
-  -E "$IP_TERMS" src/ docs/src/ 2>/dev/null \
-  | grep -v node_modules || true)
-if [[ -n "$LEAKS" ]]; then
-  echo "✗ IP terms found in source:"
-  echo "$LEAKS"
-  exit 1
-fi
-echo "  ✓ No IP leaks"
-
-# ── All checks passed ──
-echo ""
-echo "══════════════════════════════════════════"
-echo "  All checks passed ✓"
-echo "══════════════════════════════════════════"
-echo ""
-
-# ── Version bump ──
-OLD_VERSION=$(node -p "require('./package.json').version")
-NEW_VERSION=$(npm version "$BUMP" --no-git-tag-version)
+section "Bumping version"
+NEW_VERSION="$(npm version "$BUMP" --no-git-tag-version)"
 NEW_VERSION="${NEW_VERSION#v}"
-echo "▸ Version: $OLD_VERSION → $NEW_VERSION"
+echo "  ✓ version: $OLD_VERSION -> $NEW_VERSION"
 
-# ── Generate registry ──
-echo "▸ Generating registry..."
-TARBALL=$(npm pack --silent)
-node scripts/generate-registry.cjs
-rm -f "$TARBALL"
-echo "  ✓ Registry generated"
+section "Regenerating release artifacts"
+rm -f "eai-tools-cli-${OLD_VERSION}.tgz" "eai-tools-cli-${NEW_VERSION}.tgz"
+node scripts/update-release-doc-metadata.cjs "$NEW_VERSION" "$MESSAGE" >/dev/null
+TARBALL="$(npm pack --silent)"
+node scripts/generate-registry.cjs >/dev/null
+node scripts/generate-release-docs.cjs >/dev/null
+echo "  ✓ npm pack -> $TARBALL"
+echo "  ✓ static registry metadata refreshed"
+echo "  ✓ release-facing docs refreshed"
 
-# ── Commit, tag, push ──
-git add package.json package-lock.json docs/public/registry/
-git commit \
-  -m "chore: release v$NEW_VERSION — $MESSAGE" \
-  -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+section "Committing release"
+git add package.json package-lock.json .tech-docs/ docs-site/static/registry/ docs-site/static/llms.txt docs-site/static/llms-full.txt docs-site/static/cli-help.txt
+git commit -m "chore: release v$NEW_VERSION — $MESSAGE"
 git tag -a "v$NEW_VERSION" -m "$MESSAGE"
-git push origin main --tags
+RELEASE_COMMIT_SHA="$(git rev-parse HEAD)"
+echo "  ✓ commit created at $RELEASE_COMMIT_SHA"
+echo "  ✓ tag created: v$NEW_VERSION"
 
-echo "  ✓ Pushed v$NEW_VERSION"
+section "Pushing main and tag"
+git push origin main --follow-tags
+echo "  ✓ pushed main and v$NEW_VERSION"
 
-# ── GitHub Release ──
-echo "▸ Creating GitHub release..."
-gh release create "v$NEW_VERSION" \
-  --title "v$NEW_VERSION — $MESSAGE" \
-  --notes "$(cat <<EOF
-## $MESSAGE
+section "Waiting for GitHub release workflow"
+wait_for_release_run "v$NEW_VERSION"
+echo "  ✓ Release workflow completed"
 
-**Install:**
+section "Waiting for docs/static-registry deployment"
+wait_for_docs_run "$RELEASE_COMMIT_SHA"
+echo "  ✓ Deploy Docs workflow completed"
 
-Configure \`.npmrc\`:
-\`\`\`
-@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
-\`\`\`
-
-Then:
-\`\`\`bash
-npm install -g @eai-tools/cli
-\`\`\`
-
-**Full changelog:** https://github.com/eai-tools/eai-cli/compare/v$OLD_VERSION...v$NEW_VERSION
-EOF
-)"
-
-RELEASE_URL="https://github.com/eai-tools/eai-cli/releases/tag/v$NEW_VERSION"
-echo "  ✓ Release created: $RELEASE_URL"
+section "Verifying public release channels"
+verify_static_registry_latest "$NEW_VERSION"
 
 echo ""
 echo "══════════════════════════════════════════"
 echo "  Released v$NEW_VERSION — $MESSAGE"
 echo "══════════════════════════════════════════"
 echo ""
-echo "Install:"
-echo "  echo '@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry' >> ~/.npmrc"
-echo "  npm install -g @eai-tools/cli"
+echo "Preferred setup for future installs and updates:"
+echo "  npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user"
 echo ""
+echo "Install or update the EnterpriseAI CLI with:"
+echo "  npm install -g @eai-tools/cli"

@@ -6,6 +6,7 @@
 import { Command } from 'commander';
 import { randomUUID } from 'node:crypto';
 import { access } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import ora from 'ora';
 import chalk from 'chalk';
@@ -16,6 +17,14 @@ import { normalizeTenantEntries, resolveActiveTenantContext, resolvePublicApiUrl
 import { isRecord } from '../lib/utils.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
+import { compareVersions, fetchLatestRelease } from '../lib/update-check.js';
+import { readGoferBundleMetadata } from '../lib/gofer-refresh.js';
+import { resolveProjectManifest } from '../lib/project-manifest.js';
+import { isDefaultTemplateSource, resolveTemplateClonePlan } from './init.js';
+
+const require = createRequire(import.meta.url);
+const pkg = require('../../package.json') as { version: string };
+const DEFAULT_TEMPLATE_SOURCE = 'https://github.com/eai-tools/Vertical-Template.git';
 
 interface VerifyEnvironment {
   root: string;
@@ -1189,10 +1198,144 @@ verifyCommand
 
 // ─── eai doctor ────────────────────────────────────────────────────────────
 
+function describeReleaseChannel(channel: 'static-registry'): string {
+  return channel === 'static-registry' ? 'static registry' : channel;
+}
+
+function describeTemplateSnapshot(template: {
+  readonly displaySource?: string;
+  readonly repo?: string;
+  readonly commit?: string;
+}): string {
+  if (template.displaySource) {
+    return template.displaySource;
+  }
+
+  if (template.commit && template.repo) {
+    return `${template.repo}@${template.commit.slice(0, 7)}`;
+  }
+
+  return template.repo || 'unknown';
+}
+
+async function renderDoctorUpdateStatus(root: string): Promise<void> {
+  out.blank();
+  out.heading('Update Status');
+  out.blank();
+
+  const currentCliVersion = pkg.version;
+  out.success(`Installed CLI version: ${chalk.dim(currentCliVersion)}`);
+
+  const latestRelease = await fetchLatestRelease();
+  if (!latestRelease) {
+    out.warn('Could not determine the latest published CLI release from the EAI static registry right now.');
+  } else if (compareVersions(latestRelease.version, currentCliVersion) > 0) {
+    out.warn(
+      `Published CLI available: ${latestRelease.version} ${chalk.dim(`(${describeReleaseChannel(latestRelease.channel)})`)}`,
+    );
+    out.dim(`  Run: ${chalk.cyan('eai update')}`);
+  } else {
+    out.success(
+      `Published CLI channel is current: ${latestRelease.version} ${chalk.dim(`(${describeReleaseChannel(latestRelease.channel)})`)}`,
+    );
+  }
+
+  const resolvedManifest = await resolveProjectManifest(root);
+  const manifest = resolvedManifest.manifest;
+  if (!manifest) {
+    out.info('No `.eai-manifest.json` found yet. Run `eai gofer refresh --check` once to adopt the current Gofer-managed asset snapshot safely.');
+    out.info('Template and UI component drift is not auto-merged yet; use `eai template check` before copying changes manually.');
+    return;
+  }
+
+  if (resolvedManifest.source === 'inferred-init-commit') {
+    out.info('Using template provenance inferred from the original `eai init` scaffold commit because this project does not yet record template provenance in `.eai-manifest.json`.');
+  } else if (resolvedManifest.source === 'inferred-project-structure') {
+    out.info('Using template provenance inferred from this legacy EAI scaffold because this project does not yet record template provenance in `.eai-manifest.json`.');
+  }
+
+  if (manifest.cli?.version) {
+    if (manifest.cli.version === currentCliVersion) {
+      out.success(`Project manifest CLI snapshot: ${manifest.cli.version}`);
+    } else {
+      out.info(`Project manifest CLI snapshot: ${manifest.cli.version} ${chalk.dim(`(current CLI: ${currentCliVersion})`)}`);
+    }
+  } else {
+    out.info('Project manifest does not yet record a CLI snapshot.');
+  }
+
+  if (manifest.gofer) {
+    const bundledGofer = await readGoferBundleMetadata();
+    const projectLabel = manifest.gofer.bundle?.describe || manifest.gofer.bundle?.commit || 'unknown';
+    const bundledLabel = bundledGofer.describe || bundledGofer.commit || 'unknown';
+    if (
+      bundledGofer.commit &&
+      manifest.gofer.bundle?.commit &&
+      bundledGofer.commit !== manifest.gofer.bundle.commit
+    ) {
+      out.warn(`Bundled Gofer assets differ from this project: ${projectLabel} → ${bundledLabel}`);
+      out.dim(`  Preview: ${chalk.cyan('eai gofer refresh --check')}`);
+    } else {
+      out.success(`Gofer-managed asset snapshot: ${projectLabel}`);
+    }
+  } else {
+    out.info('Gofer-managed assets are not tracked yet. Run `eai gofer refresh --check` to preview a safe refresh.');
+  }
+
+  if (!manifest.template) {
+    out.info('Template provenance is not recorded for this project.');
+    return;
+  }
+
+  const bundledTemplate = resolveTemplateClonePlan(DEFAULT_TEMPLATE_SOURCE);
+  const projectTemplateLabel = describeTemplateSnapshot(manifest.template);
+  const bundledTemplateLabel = describeTemplateSnapshot({
+    repo: bundledTemplate.cloneSource,
+    commit: bundledTemplate.pinnedCommit,
+    displaySource: bundledTemplate.displaySource,
+  });
+
+  if (
+    manifest.template.repo
+    && !isDefaultTemplateSource(manifest.template.repo)
+    && manifest.template.repo !== bundledTemplate.cloneSource
+  ) {
+    out.info(`Project template source: ${projectTemplateLabel}`);
+    out.info(`Current bundled default template: ${bundledTemplateLabel}`);
+    out.info('This project was initialized from a different template source, so template or UI updates still need manual review.');
+    out.dim(`  Preview: ${chalk.cyan('eai template check')}`);
+    return;
+  }
+
+  if (
+    manifest.template.commit &&
+    bundledTemplate.pinnedCommit &&
+    manifest.template.commit !== bundledTemplate.pinnedCommit
+  ) {
+    out.warn(`Bundled default template has changed since init: ${projectTemplateLabel} → ${bundledTemplateLabel}`);
+    out.info('The CLI does not auto-merge template or UI component updates into existing repos yet. Review `eai template check` before applying those changes manually.');
+    return;
+  }
+
+  out.success(`Template snapshot: ${projectTemplateLabel}`);
+}
+
 export const doctorCommand = new Command('doctor')
   .description('Diagnose common issues and suggest fixes')
   .option('--fix', 'Attempt to fix issues automatically', false)
-  .action(async (_options) => {
+  .option('--check-updates', 'Report CLI release status plus Gofer/template drift for the current project', false)
+  .addHelpText('after', `
+Examples:
+  $ eai doctor
+  $ eai doctor --check-updates
+
+Notes:
+  - \`eai update\` upgrades the installed CLI package only.
+  - \`eai gofer refresh --check\` previews safe repo-local Gofer asset updates.
+  - \`eai template check\` previews vertical-template and UI drift without writing files.
+  - Template and UI component changes are not auto-merged into existing repos yet.
+  `)
+  .action(async (options: { fix?: boolean; checkUpdates?: boolean }) => {
     const issues: Array<{ severity: 'error' | 'warn' | 'info'; message: string; fix?: string }> = [];
 
     out.heading('EAI Platform Health Check');
@@ -1316,6 +1459,10 @@ export const doctorCommand = new Command('doctor')
           out.warn('Platform SDK not found');
         }
       }
+    }
+
+    if (options.checkUpdates) {
+      await renderDoctorUpdateStatus(root);
     }
 
     // Summary

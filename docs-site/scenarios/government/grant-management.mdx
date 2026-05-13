@@ -1,0 +1,224 @@
+---
+title: Grant Management
+description: Manage grant applications, disbursements, and impact reporting for government funding programs using the EAI CLI.
+---
+
+## Persona
+
+**Role:** Grants Program Manager at a state economic development agency.
+
+You administer multiple grant programs that fund community development, small business growth, and workforce training. Each program receives hundreds of applications per cycle. Once grants are awarded, your team must track milestone-based disbursements and collect impact reports from grantees. The current system is a patchwork of forms, email, and manual ledger entries.
+
+## Business Problem
+
+Grant applications arrive through different channels with no standardized format. Disbursement tracking is done in spreadsheets that are not linked to the original applications, making it difficult to verify that funds are released against completed milestones. Impact reports are submitted as unstructured documents with no consistent metrics. You need:
+
+- A unified application intake tied to specific grant programs.
+- Milestone-based disbursement tracking linked to awarded grants.
+- Structured impact reporting with quantifiable metrics and narrative context.
+
+<!-- four-step-application:start -->
+## Four-Step Application
+
+This scenario works best as a four-step, human-in-the-loop application. The existing object model already gives this scenario a strong delivery backbone through GrantApplication, Disbursement, and ImpactReport.
+
+- **Mission metric focus:** shorter response times, higher citizen trust, and better service-level performance.
+- **Human + AI pattern:** Each step combines structured workflow data with chat assistance, background generation, document understanding, and accessible interaction patterns when they improve the experience.
+
+### Step 1. Capture demand and context
+
+- **Goal:** Make it easy for the user to start the Grant Management journey with complete, trusted context.
+- **Required data:** GrantApplication context such as the core workflow data.
+- **AI support:** Use chat to guide intake, generate clearer prompts, create accessible summaries, and assist with voice or vision-led capture when a form alone is not the best experience. EAI can support structured intake, chat workflows, and document-centred capture today; richer native multimodal capture may still need workflow extensions or connected services.
+- **Business impact:** Improve completion rate, reduce first-touch effort, and raise customer or staff confidence in the UX from the very first interaction.
+- **EAI delivery:** Model the intake as tenant-isolated object types and resources, then use actions, chat workflows, and document indexing or classification to keep the initial record complete and usable.
+
+### Step 2. Prepare the decision
+
+- **Goal:** Turn the captured context into the next best action for Grant Management without forcing the human reviewer to assemble the case manually.
+- **Required data:** GrantApplication state and history.
+- **AI support:** Run background summarisation, extraction, classification, recommendation drafting, and answer generation so a reviewer sees a prepared case instead of raw fragments. EAI delivers the structured records and AI workflow hooks for this today; specialised scoring engines, external rules, or advanced reasoning controls may still need integration work.
+- **Business impact:** Reduce cycle time, improve quality and consistency, and protect the mission-critical metric before the case moves into execution.
+- **EAI delivery:** Link records across the scenario, persist decision state as resources, and use workflow actions plus chat assistance to keep humans in control while AI prepares the work.
+
+### Step 3. Execute and collaborate
+
+- **Goal:** Coordinate the actual work, handoffs, approvals, and user updates needed to deliver the service or outcome.
+- **Required data:** Disbursement execution state.
+- **AI support:** Draft replies, produce work packets, monitor exceptions in the background, and surface the next action for each operator. EAI can orchestrate tenant-isolated records, actions, chats, and document workflows today; deeper system-to-system automation may require additional connectors or workflow capability.
+- **Business impact:** Increase operator productivity, reduce rework across handoffs, and improve service consistency across the application journey.
+- **EAI delivery:** Use linked object types, actions, resource updates, and workflow-triggered AI assistance so the team can execute in one model instead of splitting work across disconnected tools.
+
+### Step 4. Resolve, explain, and improve
+
+- **Goal:** Close the loop with a clear outcome, an understandable explanation, and feedback that improves the next case.
+- **Required data:** final status, outcome, audit history, and follow-up signals across GrantApplication, Disbursement, and ImpactReport.
+- **AI support:** Generate outcome summaries, customer-friendly answers, compliance-ready notes, management insights, and accessible follow-up content. EAI can store outcome records and support answer generation today, while richer proactive agents, advanced analytics, or channel-specific accessibility features may need additional product capability.
+- **Business impact:** Increase trust, quality, and measurable business value through shorter response times, higher citizen trust, and better service-level performance.
+- **EAI delivery:** Keep the full audit trail in structured resources, use AI workflows to explain outcomes, and feed the resulting signals into future product, service, and operational improvement work.
+
+<!-- four-step-application:end -->
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **GrantApplication** | program, applicant, amount, status | has many Disbursements, has many ImpactReports | submit, review, award, reject |
+| **Disbursement** | grant, amount, milestone, date | belongs to GrantApplication | request, approve, release |
+| **ImpactReport** | grant, period, metrics, narrative | belongs to GrantApplication | submit, review, accept |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the vertical**
+
+   ```bash
+   eai init grant-management
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+   <Aside type="note">
+     If you are an external developer, see [Configuration](/docs/configuration) and [Environment Profiles](/docs/profiles) for login and local environment setup.
+   </Aside>
+
+3. **Define Object Types**
+
+   Add GrantApplication, Disbursement, and ImpactReport to `src/eai.config/object-types.ts`.
+
+4. **Validate and seed**
+
+   ```bash
+   eai types validate
+   eai types seed
+   ```
+
+   ```
+   Tenant: grant-management
+   ✔ GrantApplication — 4 props, 2 links, 4 actions
+   ✔ Disbursement — 4 props, 1 link, 3 actions
+   ✔ ImpactReport — 4 props, 1 link, 3 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Create a grant application**
+
+   ```bash
+   eai resources create GrantApplication \
+     --data '{"program": "Small Business Growth Fund", "applicant": "Downtown Bakery LLC", "amount": 25000, "status": "submitted"}'
+   ```
+
+6. **Track a disbursement**
+
+   ```bash
+   eai resources create Disbursement \
+     --data '{"grant": "app-001", "amount": 10000, "milestone": "Equipment Purchase", "date": "2026-04-15"}'
+   ```
+
+7. **List awarded grants**
+
+   ```bash
+   eai resources list GrantApplication --filter 'status=awarded'
+   ```
+
+8. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'grant-management': [
+    {
+      name: 'GrantApplication',
+      displayName: 'Grant Application',
+      description: 'An application submitted by an organization for a specific grant program',
+      properties: [
+        { name: 'program', type: 'text' as const, required: true, indexed: true },
+        { name: 'applicant', type: 'text' as const, required: true, indexed: true },
+        { name: 'amount', type: 'number' as const, required: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'draft',
+          options: [
+            { label: 'Draft', value: 'draft' },
+            { label: 'Submitted', value: 'submitted' },
+            { label: 'Under Review', value: 'under-review' },
+            { label: 'Awarded', value: 'awarded' },
+            { label: 'Rejected', value: 'rejected' },
+            { label: 'Completed', value: 'completed' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'disbursements', target: 'Disbursement', cardinality: 'many' as const },
+        { name: 'impactReports', target: 'ImpactReport', cardinality: 'many' as const },
+      ],
+      actions: [
+        { name: 'submit', displayName: 'Submit Application' },
+        { name: 'review', displayName: 'Begin Review' },
+        { name: 'award', displayName: 'Award Grant' },
+        { name: 'reject', displayName: 'Reject Application' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Disbursement',
+      displayName: 'Disbursement',
+      description: 'A payment released to a grantee upon completion of a defined milestone',
+      properties: [
+        { name: 'grant', type: 'text' as const, required: true },
+        { name: 'amount', type: 'number' as const, required: true },
+        { name: 'milestone', type: 'text' as const, required: true },
+        { name: 'date', type: 'date' as const, required: true },
+      ],
+      linkTypes: [
+        { name: 'grantApplication', target: 'GrantApplication', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'request', displayName: 'Request Disbursement' },
+        { name: 'approve', displayName: 'Approve Disbursement' },
+        { name: 'release', displayName: 'Release Funds' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'ImpactReport',
+      displayName: 'Impact Report',
+      description: 'A periodic report submitted by a grantee documenting outcomes and metrics',
+      properties: [
+        { name: 'grant', type: 'text' as const, required: true },
+        { name: 'period', type: 'text' as const, required: true },
+        { name: 'metrics', type: 'text' as const, required: true },
+        { name: 'narrative', type: 'text' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'grantApplication', target: 'GrantApplication', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'submit', displayName: 'Submit Report' },
+        { name: 'review', displayName: 'Review Report' },
+        { name: 'accept', displayName: 'Accept Report' },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Milestone-based disbursements prevent premature payouts.** Each Disbursement is tied to a specific milestone, ensuring funds are released only when deliverables are verified.
+- **Structured impact reporting enables program evaluation.** Standardized metrics fields make it possible to compare outcomes across grantees and programs.
+- **End-to-end grant lifecycle tracking.** From application through disbursement to impact reporting, every stage is captured in a single system with clear status transitions.
+- **Program-level visibility.** Filtering applications by program and status gives program managers an at-a-glance view of portfolio health across all active grant cycles.

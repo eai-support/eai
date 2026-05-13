@@ -452,6 +452,23 @@ manifest artifacts exist before any deploy command runs.
 <!-- prettier-ignore -->
 The ordering above is non-negotiable: tasks.md MUST instruct the pipeline to scaffold before deployment, validate before deploy, and only then invoke pinned `eai-cli major.minor` deployment tasks. Breaking the order causes deployment preflight gating in `/5_gofer_implement` to fail.
 
+### App-Delivery Preconditions Inside Shared Stages
+
+For **application delivery**, task generation MUST treat the UI-first gate as a
+precondition to downstream implementation tasks:
+
+- If `{FEATURE_DIR}/ui-approval.md` does not exist or is not approved, emit
+  only the blocking preview/approval tasks needed to reach approval; do **not**
+  emit downstream implementation tasks as if the UI were already settled.
+- If `{FEATURE_DIR}/service-fit-matrix.md` is missing or does not distinguish
+  accessible now vs purchasable vs unavailable platform capabilities, emit a
+  blocking service-fit task group before normal build tasks.
+- Use the Vertical Template already scaffolded by `eai-cli` as the default UI
+  lego-block source. Any create-new UI concept must appear as an explicit
+  exception task with rationale.
+- For **non-app work**, keep the shared numbered stages but skip these
+  preview/approval/service-fit prerequisites.
+
 ### EnterpriseAI Contract, Reuse, and Red/Green Tasks
 
 `tasks.md` MUST also include:
@@ -463,6 +480,16 @@ The ordering above is non-negotiable: tasks.md MUST instruct the pipeline to sca
   four-or-fewer journey steps covering user experience, chatbot/voice/
   accessibility/translation support, contextual prefill, completion validation,
   human review, audit trail, and fallback/escalation.
+- App-delivery preview/approval tasks that:
+  - build the first MVP from Vertical Template blocks
+  - apply approved branding/logo work when in scope
+  - collect screenshot or Playwright-style self-review evidence
+  - update `ui-review-log.md`
+  - block downstream work until `ui-approval.md` is approved
+- App-delivery service-fit tasks that update `service-fit-matrix.md` using
+  tenant-aware evidence from `eai --describe`, `eai whoami`, `eai tenant
+  select`, `eai resources schema`, `eai verify calls --format json`, or
+  equivalent approved platform evidence.
 - A scope-control task that checks whether any user-facing app process exceeds
   four steps and either combines/automates extra steps or records the approved
   exception and rationale.

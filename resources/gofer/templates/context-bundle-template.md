@@ -20,6 +20,7 @@ workflowProfile: enterpriseai
 | Value metric          | {{metric}}                        |
 | EnterpriseAI vertical | {{vertical-app}}                  |
 | App classification    | {{app-or-non-app-with-rationale}} |
+| Pipeline mode         | {{shared-stages-app-or-non-app}}  |
 
 ## AI-Augmented Journey Summary
 
@@ -41,6 +42,9 @@ rationale.
 | -------------------------- | -------------------------------- | ----------- |
 | `discovery.md`             | {{business-context}}             | Keep        |
 | `journeys/base-journey.md` | {{ai-augmented-process-context}} | Keep / N/A  |
+| `ui-preview-brief.md`      | {{preview-scope-and-branding}}   | Keep / N/A  |
+| `ui-approval.md`           | {{approved-ui-gate}}             | Keep / N/A  |
+| `service-fit-matrix.md`    | {{capability-selection}}         | Keep / N/A  |
 | `research.md`              | {{implementation-context}}       | Keep        |
 | `reuse-scan.md`            | {{reuse-evidence}}               | Keep        |
 | `contract-pack.md`         | {{delivery-contracts}}           | Keep        |

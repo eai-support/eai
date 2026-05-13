@@ -1,0 +1,4280 @@
+# EAI CLI — Full Documentation
+> Release-aligned documentation bundle for `@eai-tools/cli` v2.8.13.
+> Generated from `.tech-docs/` plus current CLI help output.
+
+## Install
+
+```bash
+npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm install -g @eai-tools/cli
+```
+
+## Update & Refresh Model
+
+- `eai update` reinstalls the latest CLI from the scoped EAI registry.
+- `eai gofer refresh` updates Gofer-managed assets without blindly overwriting local work.
+- `eai template check` previews vertical-template and UI drift without writing files.
+- Template and UI drift are reported by `eai doctor --check-updates` and still require manual review.
+
+# CLI Help
+
+## eai --help
+
+```text
+Usage: eai [options] [command]
+
+Enterprise AI Platform CLI — scaffold, seed, deploy, and manage vertical
+applications
+
+Options:
+  -V, --cli-version      output the version number
+  --simple               Plain text output without colors or symbols (for screen
+                         readers)
+  --no-color             Disable colored output
+  --color                Force colored output
+  --profile <name>       Use a named environment profile (e.g. dev, test)
+  --describe             Output JSON schema of all commands
+  -h, --help             display help for command
+
+Commands:
+  init [options] [name]  Scaffold a new vertical application
+  dev [options]          Start local development server
+  login [options]        Authenticate with Entra CIAM
+  logout                 Clear stored authentication tokens
+  env                    Manage environment variables
+  types                  Manage Object Type definitions
+  tenant                 Manage tenants on the platform
+  user                   Manage users on the platform
+  resources              CRUD operations on platform resources
+  vertical               Manage dynamic vertical/app instances under the active
+                         company tenant
+  chat                   Chat with AI workflows
+  workflow               Inspect and request AI runtime workflow bindings
+  docs                   Document upload, classification, and indexing
+  deploy                 Deployment management
+  verify [options]       Run platform connectivity checks
+  doctor [options]       Diagnose common issues and suggest fixes
+  whoami                 Show auth status and tenant info
+  update [options]       Check for and install CLI updates
+  provision              Provision platform resources for this vertical
+  gofer                  Inspect and refresh Gofer-managed project assets
+  template               Preview vertical template and UI component drift for
+                         the current project
+  help [command]         display help for command
+
+Getting Started:
+  eai init my-vertical     Scaffold a vertical app with Gofer AI CLI assets
+  eai login                Authenticate with Entra CIAM
+  eai provision entra      Create Entra app registration for end-user auth
+  eai env pull             Sync app config from cloud
+  eai types seed           Publish Object Types to the platform
+  eai dev                  Start local development server
+
+Development Workflows:
+  # Define your types, validate them, then publish them
+  eai types validate && eai types seed
+
+  # See what is published for the active tenant
+  eai resources schema
+  eai vertical create "My App" --template blank-vertical-template
+
+  # Query resources and inspect data
+  eai resources list User --limit 10
+  eai resources get User <id>
+
+  # Check AI runtime workflow readiness before using chat
+  eai workflow readiness strategy-monitor
+  eai workflow status strategy-monitor
+  eai workflow request strategy-monitor --reason "CEO strategy cockpit"
+
+  # Check login, tenant, and API connectivity
+  eai verify && eai doctor
+
+Deployment:
+  # Set up GitHub Actions deployment
+  eai deploy setup --repo org/name
+
+  # Trigger deployment and check status
+  eai deploy trigger && eai deploy status
+
+Machine-Readable Output:
+  # Get structured JSON output for automation
+  eai resources list User --format json
+  eai tenant list --format json | jq
+  eai verify calls --format json
+
+  # Discover CLI structure for AI agents
+  eai --describe
+
+AI Terminal Workflows:
+  # New projects include Gofer commands, agents, scripts, hooks, and skills
+  claude                   then run /0_business_scenario
+  codex                    then ask Codex to use the 1_gofer_research skill
+  gemini                   then run /gofer:1_gofer_research
+  copilot                  uses .github/prompts and .github/skills
+
+Updates:
+  # Check for a newer CLI release and install it safely
+  eai update --check       preview the latest published CLI version
+  eai update               update the installed CLI package
+
+  # Preview repo-local Gofer asset updates before writing files
+  eai gofer refresh --check preview managed Gofer asset updates for this repo
+  eai gofer refresh        apply safe Gofer-managed asset updates with backups
+
+  # Preview vertical-template and UI component drift before copying changes
+  eai template check       review potential vertical or UI file updates without overwriting local work
+
+Accessibility:
+  # Screen reader friendly output
+  eai --simple <command>
+  eai --no-color <command>
+```
+
+## eai update --help
+
+```text
+Usage: eai update [options]
+
+Check for and install CLI updates
+
+Options:
+  --check     Only check for updates without installing
+  -h, --help  display help for command
+
+Examples:
+  $ eai update --check
+  $ eai update
+
+Notes:
+  - The CLI installs from the scoped EAI static registry on GitHub Pages.
+  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+  - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
+  - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
+  - Use `eai template check` to preview vertical-template and UI drift before copying changes manually.
+  - If npm hits a permissions error, the CLI explains how to retry on your platform.
+```
+
+## eai doctor --help
+
+```text
+Usage: eai doctor [options]
+
+Diagnose common issues and suggest fixes
+
+Options:
+  --fix            Attempt to fix issues automatically (default: false)
+  --check-updates  Report CLI release status plus Gofer/template drift for the
+                   current project (default: false)
+  -h, --help       display help for command
+
+Examples:
+  $ eai doctor
+  $ eai doctor --check-updates
+
+Notes:
+  - `eai update` upgrades the installed CLI package only.
+  - `eai gofer refresh --check` previews safe repo-local Gofer asset updates.
+  - `eai template check` previews vertical-template and UI drift without writing files.
+  - Template and UI component changes are not auto-merged into existing repos yet.
+```
+
+## eai gofer --help
+
+```text
+Usage: eai gofer [options] [command]
+
+Inspect and refresh Gofer-managed project assets
+
+Options:
+  -h, --help         display help for command
+
+Commands:
+  refresh [options]  Refresh Gofer-managed assets in the current project without
+                     blindly overwriting local work
+  help [command]     display help for command
+```
+
+## eai gofer refresh --help
+
+```text
+Usage: eai gofer refresh [options]
+
+Refresh Gofer-managed assets in the current project without blindly overwriting
+local work
+
+Options:
+  --check            Show the refresh plan without writing files (default:
+                     false)
+  --force            Overwrite conflicting managed files after backing them up
+                     (default: false)
+  --format <format>  Output format (text|json) (default: "text")
+  -h, --help         display help for command
+```
+
+## eai template --help
+
+```text
+Usage: eai template [options] [command]
+
+Preview vertical template and UI component drift for the current project
+
+Options:
+  -h, --help       display help for command
+
+Commands:
+  check [options]  Preview file-level template/UI drift without writing to the
+                   repo
+  help [command]   display help for command
+```
+
+## eai template check --help
+
+```text
+Usage: eai template check [options]
+
+Preview file-level template/UI drift without writing to the repo
+
+Options:
+  --format <format>  Output format (text|json) (default: "text")
+  -h, --help         display help for command
+
+Typical workflow:
+  eai doctor --check-updates
+  eai template check
+
+Notes:
+  - This command never writes files to your repo.
+  - Template/UI updates still require manual review and selective copy/diff.
+  - Use `eai gofer refresh --check` separately for Gofer-managed assets.
+```
+
+---
+
+# EAI CLI — Overview
+
+# EAI CLI — Overview
+
+## Executive Summary
+
+| Property | Value |
+|----------|-------|
+| **Service Name** | `@eai-tools/cli` (eai) |
+| **Version** | 2.8.13 |
+| **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
+| **Primary Users** | Enterprise AI application developers and DevOps engineers |
+| **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no user data storage) |
+| **Current Status** | Active development (v2.8.13 released 2026-05-12) |
+| **Last Material Change** | v2.8.13: Add public platform builder workflow readiness and update guidance (2026-05-12) |
+
+## Service Identity
+
+**Name**: `@eai-tools/cli` (eai)  
+**Version**: 2.8.13  
+**Purpose**: Command-line interface for the Enterprise AI Platform that wraps all platform API calls, providing developers with simple commands to scaffold projects, authenticate users, manage data models, perform CRUD operations, and deploy applications to Azure.
+
+## Description
+
+The EAI CLI is a TypeScript-based command-line tool that serves as the primary developer interface to the EAI Platform. It abstracts away platform complexity by providing intuitive commands for:
+
+- **Project scaffolding** with Gofer AI integration (Claude, Codex, Gemini, Copilot)
+- **Authentication** via Entra CIAM browser-based PKCE flow
+- **Tenant management** driven by membership context
+- **Object Type management** (validate, seed, diff, pull)
+- **Resource CRUD operations** with multi-tenant support
+- **AI workflows** (chat streaming, document classification, RAG indexing)
+- **Environment synchronization** with Azure App Config and Key Vault
+- **Deployment orchestration** to Azure App Service via GitHub Actions
+
+The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.json`, and uses tenant membership from the platform to establish working context via `eai tenant select`. Every command is a thin, typed wrapper around platform API endpoints with structured error codes (E001-E399) and machine-readable output formats (JSON, YAML, text).
+
+## Tech Stack
+
+| Component | Technology | Version |
+|-----------|-----------|---------|
+| **Language** | TypeScript (strict mode) | 5.7.3 |
+| **Runtime** | Node.js | ≥20.0.0 |
+| **CLI Framework** | Commander.js | 13.1.0 |
+| **HTTP Client** | Native Fetch API | Built-in (Node.js) |
+| **Module System** | ESM (ES Modules) | Node16 resolution |
+| **UI/Output** | Chalk, Ora, Inquirer | 5.3.0, 8.1.1, 12.3.2 |
+| **Config Loader** | dotenv | 16.4.7 |
+| **Build Tool** | TypeScript Compiler (tsc) | 5.7.3 |
+| **Package Manager** | npm | Standard |
+| **Testing** | Vitest + MSW | 4.1.3, 2.6.0 |
+| **Linter** | ESLint 10 + typescript-eslint | 10.0.3, 8.56.1 |
+
+## Key Entry Points
+
+| File | Purpose |
+|------|---------|
+| `src/index.ts` | Main CLI entry point; registers 16 command modules and global hooks |
+| `src/commands/*.ts` | 16 command files: init, dev, login, logout, whoami, user, provision, env, types, resources, tenant, vertical, chat, docs, deploy, verify, doctor, update |
+| `src/lib/api.ts` | Platform API client with Bearer token auth and error handling |
+| `src/lib/auth.ts` | Entra CIAM authentication (browser PKCE flow) and token storage |
+| `src/lib/tenant-context.ts` | Tenant membership lookup and active tenant selection logic |
+| `src/lib/profile.ts` | Environment profile management (dev, test, production) |
+| `src/lib/config.ts` | Project config loader (dotenv + TypeScript evaluation) |
+| `src/lib/context.ts` | Centralized context resolution (project root, profile, auth, tenant) |
+| `src/lib/error-codes.ts` | Structured error catalog (E001-E399) with suggestions |
+| `src/lib/output.ts` | Output utilities (colored symbols, TTY detection, simple mode) |
+| `src/lib/schema-builder.ts` | CLI introspection for `--describe` flag (AI agent support) |
+| `src/lib/update-check.ts` | Auto-update checker using the static EAI registry packument |
+| `src/lib/cloud-env.ts` | Azure App Config and Key Vault integration |
+| `src/lib/azure-cli.ts` | Azure CLI wrapper for cloud operations |
+| `src/lib/gofer-installer.ts` | Gofer AI terminal assets installer |
+| `src/lib/npm.ts` | NPM registry and package management utilities |
+| `src/lib/object-type-defaults.ts` | Object Type scaffolding defaults |
+| `src/lib/utils.ts` | Shared utility functions |
+| `dist/index.js` | Compiled entry point (bin: `eai`) |
+
+## How to Run Locally
+
+### Installation (Development)
+
+```bash
+git clone https://github.com/eai-tools/eai-cli.git
+cd eai-cli
+npm install
+npm run build
+```
+
+### Build Commands
+
+```bash
+npm run build             # Compile TypeScript → dist/
+npm run dev               # Watch mode (tsc --watch)
+npm run typecheck         # Type check without emitting
+npm run lint              # Run ESLint
+npm test                  # Run Vitest tests
+npm run test:e2e-local    # E2E dedicated tenant lifecycle tests
+npm run test:coverage     # Generate coverage report
+```
+
+### Running the CLI Locally
+
+```bash
+# After building
+node dist/index.js --help
+
+# Or link globally for testing
+npm link
+eai --help
+```
+
+### Testing Commands
+
+```bash
+# Scaffold a new vertical
+node dist/index.js init test-vertical
+
+# Authenticate with platform
+node dist/index.js login
+
+# Check auth status
+node dist/index.js whoami
+
+# List accessible tenants
+node dist/index.js tenant list
+```
+
+## Team / Ownership
+
+- **Organization**: EAI Tools
+- **Repository**: [https://github.com/enterpriseaigroup/tech-docs](https://github.com/enterpriseaigroup/tech-docs)
+- **Published Package**: `@eai-tools/cli`
+- **Registry**: Self-hosted on GitHub Pages (`https://eai-tools.github.io/eai-cli/registry`)
+- **Homepage**: [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli)
+- **License**: MIT
+- **Documentation**: 93-page Docusaurus site with command reference, guides, and 50 industry scenarios
+
+## Core Workflows
+
+1. **Scaffold & Initialize**  
+   `eai init <name>` — Generates new vertical from template with Gofer AI assets for Claude/Codex/Gemini/Copilot
+
+2. **Authenticate**  
+   `eai login` — Launches browser-based PKCE flow, stores tokens in `~/.eai/tokens.json`
+
+3. **Tenant Selection**  
+   `eai tenant select` — Chooses active tenant from user's `tenant-admin` memberships
+
+4. **Entra Provisioning**  
+   `eai provision entra` — Creates/confirms Entra app registration in CIAM for end-user authentication
+
+5. **Environment Sync**  
+   `eai env pull --include-secrets` — Fetches config from Azure App Config + Key Vault → `.env.local`
+
+6. **Type Management**  
+   `eai types validate` → `eai types seed` — Validates local Object Types against platform rules, then pushes to platform
+
+7. **Resource CRUD**  
+   `eai resources list/get/create/update/delete <type>` — Interacts with platform data via PublicAPI
+
+8. **User Management**  
+   `eai user invite --email <email>` — Adds users to tenants  
+   `eai user provision-me` — Self-provision to active tenant
+
+9. **AI Workflows**  
+   `eai chat send/stream <message>` — Sends messages to AI workflows  
+   `eai docs classify/index <file>` — Document processing and RAG indexing
+
+10. **Deployment**  
+    `eai deploy setup` → `eai deploy trigger` — Orchestrates Azure deployments via GitHub Actions
+
+## Architecture Philosophy
+
+- **API-First**: Every command is a thin wrapper around platform API v3 endpoints
+- **Token Management**: Stores encrypted tokens locally with auto-refresh
+- **Membership-Driven Context**: Active tenant comes from login memberships, not `.env.local`
+- **Profile-Based Environments**: `--profile dev|test|prod` switches platform environments
+- **Project Context Discovery**: Walks up directory tree to find `eai.config.ts` or `src/eai.config/`
+- **TypeScript Evaluation**: Loads user-defined Object Types from TS files by stripping types and evaluating as JS
+- **Static Registry**: Self-hosted npm registry on GitHub Pages (no external npm publish)
+- **Structured Errors**: E001-E399 catalog with actionable suggestions
+- **Machine-Readable Output**: `--format json|yaml|text` for automation; `--describe` for AI agents
+
+## Critical Integrations
+
+| Integration | Purpose | Direction | Auth Method |
+|-------------|---------|-----------|-------------|
+| **Entra CIAM** | User authentication via browser PKCE flow | Outbound | OAuth 2.0 Authorization Code + PKCE |
+| **EAI Platform API (v3)** | Resource CRUD, type management, AI workflows | Outbound | Bearer token (JWT) |
+| **Azure App Config** | Environment configuration sync | Outbound | Managed Identity / Service Principal |
+| **Azure Key Vault** | Secrets retrieval | Outbound | Managed Identity / Service Principal |
+| **GitHub Actions** | CI/CD deployment orchestration | Triggered by CLI | GitHub token |
+| **Azure App Service** | Deployment target for vertical apps | Outbound (via GH Actions) | Service Principal |
+| **AdminAPI** | Entra provisioning, tenant bootstrap | Outbound | Bearer token (JWT) |
+| **ResourceAPI (MID)** | Multi-tenant resource queries | Outbound | Bearer token (JWT) |
+
+## Recent Enhancements
+
+### v2.8.13 (2026-05-12)
+- **Add public platform builder workflow readiness and update guidance**
+
+### v2.8.12 (2026-05-11)
+- **Fix docs workflow Node 24 artifact action**
+
+### v2.8.11 (2026-05-11)
+- **Add tenant app registration persistence spec**
+
+### v2.8.10 (2026-05-11)
+- **Fix legacy template provenance detection**
+
+### v2.8.9 (2026-05-11)
+- **Highlight update workflows in CLI help**
+
+### v2.8.8 (2026-05-11)
+- **Add template drift preview and move workflows onto Node 24**
+
+### v2.8.7 (2026-05-11)
+- **Make release-facing docs generation deterministic**
+
+### v2.8.6 (2026-05-11)
+- **Refresh release docs and CLI help automation**
+
+### v2.8.5 (2026-05-11)
+- **Align release docs and CLI help automation with the static registry flow**
+
+### v2.8.3 (2026-05-08)
+- **Storage Metadata Status Fix** (PR #35): Fixed Object Type scaffolding to properly initialize `metadata.status` field for storage compliance
+
+### v2.8.2 (2026-05-06)
+- **Object Type Storage Metadata** (PR #34): Aligned Object Type scaffolding with platform storage metadata rules
+
+### v2.8.1 (2026-05-05)
+- **Production Tenant Lookup Fix** (PR #33): Fixed tenant lookup after CLI login in production environments
+
+### v2.8.0 (2026-05-03)
+- **Vertical Enrollment Management** (PR #31): Added tenant vertical enrollment commands
+- **Entra Provisioning Warnings** (PR #32): Warn and exit non-zero when AdminAPI reports `signin_ready=false`
+
+## Update Management
+
+- **Background Checks**: Queries the static EAI registry packument every 24 hours (cached in `~/.eai/update-check.json`)
+- **Update Banner**: Displays notification after command execution if newer version available
+- **Manual Upgrade**: Users run `eai update` or `npm install -g @eai-tools/cli` after configuring the scoped EAI registry
+- **Skip Conditions**: Update check skipped in CI, when `NO_UPDATE_NOTIFIER=1`, or in non-TTY environments
+
+## Gofer AI Terminal Integration
+
+Every `eai init` project includes Gofer AI assets for multi-terminal support:
+
+| CLI | Installed Surface | First Command |
+|-----|-------------------|---------------|
+| **Claude CLI** | `.claude/commands`, `.claude/agents`, `.claude/settings.json` | `/0_business_scenario` |
+| **Codex CLI** | `.system/skills/gofer`, `.agents/skills/gofer` | `$gofer/1_gofer_research` |
+| **Gemini CLI** | `.gemini/commands/gofer`, `.gemini/extension.json` | `/gofer:1_gofer_research` |
+| **GitHub Copilot** | `.github/prompts`, `.github/instructions`, `.github/skills` | Use Gofer prompt or skill |
+
+**Shared Workflow**: `.specify/` directory contains commands, scripts, templates, hooks, memory, logs, and generated feature specs. Use `eai init <name> --no-gofer` to skip Gofer installation.
+
+## Documentation Surfaces
+
+This repository maintains multiple documentation surfaces:
+
+| Path | Purpose | Publishing Workflow | Nightly Managed |
+|------|---------|---------------------|-----------------|
+| `.tech-docs/` | Canonical generated technical snapshot (this document) | Central tech-docs nightly pipeline | **Yes** |
+| `docs-site/` | Docusaurus documentation site (93 pages) | GitHub Actions (`docs.yml`) → GitHub Pages | No |
+| Root `*.md` files | Developer guides (README, CODEBASE, AGENTS, CLAUDE) | Committed to repo, no build step | No |
+
+The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to static HTML and deploys to GitHub Pages at [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli). It is **not** managed by the nightly tech-docs pipeline.
+
+## Current Status
+
+- **Version**: 2.8.13 (released 2026-05-12)
+- **Build Status**: Passing (CI workflow validates TypeCheck, Lint, Build, Tests)
+- **Documentation**: Up-to-date (last generated 2026-05-10T14:21:44Z)
+- **Source Commit**: `16242be8766857a2aba9b79acafcad0c19205e84`
+- **Registry Status**: Published to GitHub Pages registry
+
+---
+
+# EAI CLI — Architecture
+
+# EAI CLI — Architecture
+
+## System Context
+
+The EAI CLI serves as the developer-facing gateway to the EAI Platform, abstracting away platform complexity behind simple command-line operations.
+
+```mermaid
+flowchart TB
+    subgraph "Developer Environment"
+        Dev[Developer]
+        CLI[EAI CLI<br/>@eai-tools/cli]
+        Browser[Web Browser]
+        LocalFS[~/.eai/<br/>tokens.json<br/>config.json]
+        ProjectFS[Project<br/>eai.config.ts<br/>.env.local]
+    end
+    
+    subgraph "EAI Platform"
+        Entra[Entra CIAM<br/>Authentication]
+        PublicAPI[PublicAPI v3<br/>Resources, Types, Chat]
+        AdminAPI[AdminAPI<br/>Tenant Bootstrap<br/>Entra Provisioning]
+        ResourceAPI[ResourceAPI MID<br/>Multi-Tenant Queries]
+    end
+    
+    subgraph "Azure Services"
+        AppConfig[Azure App Config<br/>Environment Variables]
+        KeyVault[Azure Key Vault<br/>Secrets]
+        AppService[Azure App Service<br/>Deployment Target]
+    end
+    
+    subgraph "GitHub"
+        GHActions[GitHub Actions<br/>CI/CD Workflows]
+        GHReleases[GitHub Releases<br/>Version Check]
+        GHPages[GitHub Pages<br/>Static Registry]
+    end
+    
+    Dev -->|eai commands| CLI
+    CLI -->|PKCE Flow| Browser
+    Browser -->|OAuth Callback| Entra
+    Entra -->|Access Token| CLI
+    CLI -->|Store Tokens| LocalFS
+    CLI -->|Load Config| ProjectFS
+    CLI -->|Bearer Token| PublicAPI
+    CLI -->|Bearer Token| AdminAPI
+    CLI -->|Bearer Token| ResourceAPI
+    CLI -->|Pull Config| AppConfig
+    CLI -->|Fetch Secrets| KeyVault
+    CLI -->|Trigger Deploy| GHActions
+    GHActions -->|Deploy| AppService
+    CLI -->|Check Updates| GHReleases
+    Dev -->|npm install| GHPages
+```
+
+## Runtime Flow: Typical User Session
+
+```mermaid
+sequenceDiagram
+    actor Dev as Developer
+    participant CLI as EAI CLI
+    participant Browser as Web Browser
+    participant Entra as Entra CIAM
+    participant Local as ~/.eai/
+    participant API as Platform API
+    participant Azure as Azure Services
+    
+    Dev->>CLI: eai login
+    CLI->>Browser: Launch PKCE auth flow
+    Browser->>Entra: Authorization request
+    Entra->>Browser: Consent & authenticate
+    Browser->>CLI: Callback with auth code
+    CLI->>Entra: Exchange code for token
+    Entra->>CLI: Access token + refresh token
+    CLI->>Local: Store encrypted tokens
+    
+    Dev->>CLI: eai tenant select
+    CLI->>API: GET /v3/tenants/memberships
+    API->>CLI: Tenant list (tenant-admin only)
+    CLI->>Local: Save active tenant ID
+    
+    Dev->>CLI: eai env pull --include-secrets
+    CLI->>Azure: Fetch App Config + Key Vault
+    Azure->>CLI: Environment variables & secrets
+    CLI->>CLI: Write .env.local
+    
+    Dev->>CLI: eai types seed
+    CLI->>CLI: Load src/eai.config/object-types.ts
+    CLI->>API: POST /v3/object-types/validate
+    API->>CLI: Validation results
+    CLI->>API: POST /v3/object-types/seed
+    API->>CLI: Seed confirmation
+    
+    Dev->>CLI: eai resources list User
+    CLI->>API: GET /v3/resources?type=User
+    API->>CLI: Resource list
+    CLI->>Dev: Display formatted output
+```
+
+## Component Architecture
+
+### Core Components
+
+```mermaid
+graph TB
+    subgraph "Entry Point"
+        Index[src/index.ts<br/>Commander Program]
+    end
+    
+    subgraph "Command Layer (16 modules)"
+        Init[init.ts<br/>Scaffold Projects]
+        Auth[login.ts<br/>Authentication]
+        Types[types.ts<br/>Object Type Management]
+        Resources[resources.ts<br/>CRUD Operations]
+        Tenant[tenant.ts<br/>Tenant Context]
+        Deploy[deploy.ts<br/>Deployment]
+        Chat[chat.ts<br/>AI Workflows]
+        Docs[docs.ts<br/>Document Processing]
+        Other[+ 8 more commands]
+    end
+    
+    subgraph "Library Layer (16 modules)"
+        API[api.ts<br/>HTTP Client]
+        AuthLib[auth.ts<br/>Token Storage]
+        Config[config.ts<br/>Config Loader]
+        TenantCtx[tenant-context.ts<br/>Membership Lookup]
+        Profile[profile.ts<br/>Environment Profiles]
+        Errors[error-codes.ts<br/>Error Catalog]
+        Output[output.ts<br/>UI Utilities]
+        Utils[utils.ts<br/>Helpers]
+    end
+    
+    subgraph "External Systems"
+        Platform[EAI Platform API]
+        FS[File System<br/>~/.eai/<br/>project/]
+        Browser[Web Browser<br/>PKCE Flow]
+    end
+    
+    Index --> Init
+    Index --> Auth
+    Index --> Types
+    Index --> Resources
+    Index --> Tenant
+    Index --> Deploy
+    Index --> Chat
+    Index --> Docs
+    Index --> Other
+    
+    Init --> API
+    Auth --> AuthLib
+    Types --> API
+    Types --> Config
+    Resources --> API
+    Resources --> TenantCtx
+    Tenant --> API
+    Tenant --> TenantCtx
+    Deploy --> API
+    Chat --> API
+    Docs --> API
+    
+    API --> Platform
+    AuthLib --> FS
+    AuthLib --> Browser
+    Config --> FS
+    TenantCtx --> API
+    Profile --> FS
+    Errors --> Output
+```
+
+### Command Layer (src/commands/)
+
+| Module | Commands | Purpose |
+|--------|----------|---------|
+| **init.ts** | `init` | Scaffolds new vertical from template; installs Gofer AI assets |
+| **dev.ts** | `dev` | Starts local dev server with connectivity checks |
+| **login.ts** | `login`, `logout` | Entra CIAM authentication via browser PKCE flow |
+| **whoami.ts** | `whoami` | Displays auth status, active tenant, profile |
+| **user.ts** | `user invite`, `user provision-me` | User management (invite to tenant, self-provision) |
+| **provision.ts** | `provision entra` | Creates/confirms Entra app registration in CIAM |
+| **env.ts** | `env pull`, `env list`, `env push` | Azure App Config + Key Vault sync |
+| **types.ts** | `types validate`, `types seed`, `types diff`, `types pull` | Object Type management |
+| **resources.ts** | `resources list/get/create/update/delete`, `resources query`, `resources schema` | Resource CRUD operations |
+| **tenant.ts** | `tenant list`, `tenant select`, `tenant info`, `tenant create` | Tenant context management |
+| **vertical.ts** | `vertical info`, `vertical enroll`, `vertical unenroll` | Vertical enrollment operations |
+| **chat.ts** | `chat send`, `chat stream` | AI chat workflows (sync/streaming) |
+| **docs.ts** | `docs upload`, `docs classify`, `docs index` | Document operations (upload, classify, RAG indexing) |
+| **deploy.ts** | `deploy setup`, `deploy trigger`, `deploy status` | GitHub Actions deployment orchestration |
+| **verify.ts** | `verify`, `verify calls`, `doctor` | Platform connectivity checks and diagnostics |
+| **update.ts** | `update` | CLI self-update from GitHub registry |
+
+### Library Layer (src/lib/)
+
+| Module | Exports | Purpose |
+|--------|---------|---------|
+| **api.ts** | `PlatformAPIClient` | HTTP client for PublicAPI, AdminAPI, ResourceAPI with Bearer token auth |
+| **auth.ts** | `getToken`, `saveToken`, `clearToken`, `startAuthFlow` | Entra CIAM authentication and token storage in `~/.eai/tokens.json` |
+| **config.ts** | `loadConfig` | Loads `.env.local`, evaluates `eai.config.ts` as JS, merges env vars |
+| **tenant-context.ts** | `getActiveTenant`, `setActiveTenant`, `getTenantMemberships` | Tenant membership lookup and active tenant persistence |
+| **profile.ts** | `setActiveProfile`, `getActiveProfile`, `loadProfile` | Environment profile management (dev, test, prod) |
+| **context.ts** | `resolveCommandContext` | Command context resolver (project root, token, tenant, profile) |
+| **error-codes.ts** | `ErrorCode`, `exitWithError`, `formatError` | Structured error catalog (E001-E399) with suggestions |
+| **output.ts** | `success`, `error`, `warn`, `info`, `symbols` | Colored output utilities with TTY detection and simple mode |
+| **utils.ts** | `toObjectTypeSlug`, `isRecord`, `sleep` | Helper functions for string manipulation, type guards, delays |
+| **schema-builder.ts** | `describeProgram` | JSON schema generator for `--describe` flag (AI agent introspection) |
+| **update-check.ts** | `checkForUpdate`, `notifyIfUpdateAvailable` | Static EAI registry integration for version checks |
+| **gofer-installer.ts** | `installGoferAssets` | Copies Gofer AI terminal assets to new vertical projects |
+| **object-type-defaults.ts** | `getObjectTypeDefaults` | Default field definitions for Object Type scaffolding |
+| **cloud-env.ts** | `pullCloudEnv`, `pushCloudEnv` | Azure App Config + Key Vault integration |
+| **azure-cli.ts** | `execAzureCLI` | Azure CLI command wrapper for cloud operations |
+| **npm.ts** | `installDependencies`, `checkNpmVersion` | npm integration for package installation |
+
+## Data Flow
+
+### Authentication Flow
+
+1. **User Initiates**: `eai login`
+2. **CLI Generates**: PKCE code verifier + challenge
+3. **CLI Launches**: Browser to Entra CIAM authorize endpoint
+4. **User Authenticates**: In browser via CIAM
+5. **Browser Redirects**: To `http://localhost:3000/callback` with auth code
+6. **CLI Exchanges**: Auth code + verifier for tokens
+7. **CLI Stores**: Encrypted tokens in `~/.eai/tokens.json`
+8. **CLI Fetches**: User memberships from `/v3/tenants/memberships`
+9. **CLI Persists**: Active tenant in `~/.eai/config.json`
+
+### Object Type Seeding Flow
+
+1. **CLI Loads**: `src/eai.config/object-types.ts` (TypeScript)
+2. **CLI Strips**: Type annotations via regex
+3. **CLI Evaluates**: As JavaScript to extract type definitions
+4. **CLI Calls**: `POST /v3/object-types/validate` with payload
+5. **Platform Validates**: Against schema rules
+6. **CLI Calls**: `POST /v3/object-types/seed` if validation passes
+7. **Platform Persists**: Types to registry
+8. **CLI Polls**: `GET /v3/object-types/schema` until convergence
+
+### Resource CRUD Flow
+
+1. **CLI Resolves**: Active tenant from `~/.eai/config.json`
+2. **CLI Validates**: Token from `~/.eai/tokens.json` (refreshes if expired)
+3. **CLI Calls**: `GET /v3/resources?type=<Type>&tenant_id=<ID>`
+4. **Platform Filters**: By tenant membership and RBAC
+5. **CLI Formats**: Response as JSON, YAML, or colored text based on `--format`
+
+## Trust Boundaries
+
+### Authentication & Authorization
+
+```mermaid
+flowchart LR
+    subgraph "Untrusted"
+        Dev[Developer<br/>Local Machine]
+    end
+    
+    subgraph "Trust Boundary 1: Entra CIAM"
+        Entra[Entra CIAM<br/>OAuth 2.0 + PKCE]
+    end
+    
+    subgraph "Trust Boundary 2: Platform API"
+        API[Platform API<br/>Bearer Token Validation]
+        RBAC[RBAC Engine<br/>Tenant Admin Check]
+    end
+    
+    Dev -->|1. Browser PKCE Flow| Entra
+    Entra -->|2. JWT Access Token| Dev
+    Dev -->|3. Bearer Token| API
+    API -->|4. Validate Token| RBAC
+    RBAC -->|5. Authorize Request| API
+```
+
+**Security Controls**:
+- **Entra CIAM**: OAuth 2.0 Authorization Code + PKCE flow (no client secret)
+- **Token Storage**: Encrypted at rest in `~/.eai/tokens.json` (OS-level file permissions)
+- **Token Expiry**: Auto-refresh tokens before expiration
+- **Tenant Isolation**: Platform enforces tenant membership via RBAC
+- **HTTPS Only**: All platform API calls over TLS 1.2+
+
+## Design Patterns
+
+### Command Pattern (Commander.js)
+
+Each command is a self-contained module that registers with the Commander program:
+
+```typescript
+// src/commands/resources.ts
+export const resourcesCommand = new Command('resources')
+  .description('CRUD operations on platform resources')
+  .addCommand(listCommand)
+  .addCommand(getCommand)
+  .addCommand(createCommand)
+  .addCommand(updateCommand)
+  .addCommand(deleteCommand);
+```
+
+### Centralized Error Handling
+
+All errors route through `error-codes.ts` for consistent formatting:
+
+```typescript
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
+
+if (!token) {
+  exitWithError(ErrorCode.E101, undefined, options.format);
+}
+```
+
+### Context Resolver Pattern
+
+`resolveCommandContext` aggregates project state, auth, and tenant context:
+
+```typescript
+const ctx = await resolveCommandContext({
+  requireProject: true,
+  requireAuth: true,
+  requireTenant: true,
+});
+// ctx: { projectRoot, token, tenantId, profile }
+```
+
+### Lazy Evaluation (TypeScript Config)
+
+Object Types are loaded from TypeScript files by stripping types and evaluating as JS:
+
+```typescript
+const tsCode = fs.readFileSync('src/eai.config/object-types.ts', 'utf-8');
+const jsCode = stripTypeAnnotations(tsCode);
+const module = { exports: {} };
+new Function('module', 'exports', jsCode)(module, module.exports);
+const types = module.exports.objectTypes;
+```
+
+### API Client Factory
+
+`PlatformAPIClient` encapsulates auth, base URL, and error handling:
+
+```typescript
+const client = new PlatformAPIClient(token, baseUrl);
+const response = await client.get('/v3/resources');
+// Throws PlatformAPIRequestError on non-2xx
+```
+
+## Configuration Hierarchy
+
+The CLI resolves configuration from multiple sources in priority order:
+
+```mermaid
+flowchart TB
+    CLI[CLI Invocation]
+    
+    subgraph "Priority Order (High → Low)"
+        Flags[1. CLI Flags<br/>--profile dev<br/>--format json]
+        Env[2. Environment Variables<br/>EAI_PROFILE=dev<br/>NO_COLOR=1]
+        Local[3. .env.local<br/>BASE_URL_PUBLIC_API=...]
+        TSConfig[4. eai.config.ts<br/>export const config = ...]
+        Persisted[5. ~/.eai/config.json<br/>activeProfile: 'dev']
+        Defaults[6. Built-in Defaults<br/>format: 'text'<br/>profile: 'default']
+    end
+    
+    CLI --> Flags
+    Flags --> Env
+    Env --> Local
+    Local --> TSConfig
+    TSConfig --> Persisted
+    Persisted --> Defaults
+```
+
+## Module Dependencies
+
+```mermaid
+graph LR
+    subgraph "Commands"
+        CMD[Command Modules]
+    end
+    
+    subgraph "Core Libraries"
+        API[api.ts]
+        Auth[auth.ts]
+        Config[config.ts]
+        Context[context.ts]
+    end
+    
+    subgraph "Support Libraries"
+        Errors[error-codes.ts]
+        Output[output.ts]
+        Utils[utils.ts]
+    end
+    
+    subgraph "External Dependencies"
+        Commander[Commander.js]
+        Chalk[Chalk]
+        Inquirer[Inquirer]
+        Fetch[Node Fetch]
+    end
+    
+    CMD --> Context
+    Context --> API
+    Context --> Auth
+    Context --> Config
+    API --> Auth
+    API --> Errors
+    API --> Fetch
+    Auth --> Output
+    Auth --> Errors
+    Config --> Utils
+    Errors --> Output
+    Output --> Chalk
+    CMD --> Commander
+    CMD --> Inquirer
+```
+
+## Performance Characteristics
+
+| Operation | Typical Duration | Notes |
+|-----------|-----------------|-------|
+| `eai login` | 5-15s | Browser launch + user interaction |
+| `eai tenant select` | 0.5-2s | API call to fetch memberships |
+| `eai types validate` | 0.2-1s | Local TypeScript evaluation + API validation |
+| `eai types seed` | 1-5s | API seed call + polling for convergence |
+| `eai resources list` | 0.5-3s | API call with pagination |
+| `eai resources create` | 0.3-1s | Single API POST |
+| `eai env pull` | 2-10s | Azure App Config + Key Vault queries |
+| `eai deploy trigger` | 0.5-2s | GitHub Actions workflow dispatch |
+
+**Caching**: 
+- Token refresh is avoided if token TTL > 5 minutes
+- Update checks cached for 24 hours in `~/.eai/update-check.json`
+- Tenant memberships are not cached (always fetched fresh)
+
+## Scalability Considerations
+
+- **Stateless Design**: CLI maintains no persistent connections; all state in local files
+- **Token Auto-Refresh**: Prevents auth errors during long-running operations
+- **Pagination Support**: `eai resources list` supports `--limit` and `--skip` for large datasets
+- **Streaming Output**: `eai chat stream` uses Server-Sent Events (SSE) for real-time responses
+- **Profile Isolation**: Multiple profiles (dev, test, prod) enable parallel workflows
+
+## Extensibility
+
+### Adding a New Command
+
+1. Create `src/commands/my-command.ts`
+2. Define Commander `Command` with options and action handler
+3. Import and register in `src/index.ts`
+4. Add error codes to `src/lib/error-codes.ts` if needed
+5. Write tests in `tests/commands/my-command.test.ts`
+
+### Adding a New Library Module
+
+1. Create `src/lib/my-module.ts`
+2. Export typed functions with JSDoc comments
+3. Import in command modules as needed
+4. Add unit tests in `tests/lib/my-module.test.ts`
+
+### Adding a New Error Code
+
+1. Add enum value to `ErrorCode` in `src/lib/error-codes.ts`
+2. Add entry to `errorCatalog` with message and suggestion
+3. Use `exitWithError(ErrorCode.EXXX, context, format)` in commands
+
+---
+
+# EAI CLI — Configuration
+
+# EAI CLI — Configuration
+
+## Overview
+
+The EAI CLI uses a **profile-based configuration system** for switching between platform environments (dev, test, prod) plus project configuration via environment variables. The CLI handles:
+
+1. **Authentication** — Entra CIAM browser-based PKCE flow, stored per-profile in `~/.eai/tokens.json` or `~/.eai/tokens/{profile}.json`
+2. **Profile selection** — `--profile` flag, `EAI_PROFILE` env var, or persisted active profile
+3. **Tenant context** — Active tenant stored in `~/.eai/tenant-context.json`, selected via `eai tenant select`
+4. **Project configuration** — Environment variables from `.env.local` for API endpoints and app identification
+5. **Structured error codes** — E001-E399 error catalog for consistent error handling
+
+---
+
+## Profile System
+
+### What are Profiles?
+
+Profiles let developers switch between dev, test, and prod platform environments without changing configuration files. Each profile has its own API endpoint, Entra CIAM credentials, and token storage.
+
+**Default behavior** (no `--profile` flag):
+- Uses production (hardcoded in source)
+- Tokens stored at `~/.eai/tokens.json`
+- No config file needed
+
+**Named profiles** (`--profile dev` or `--profile test`):
+- Reads platform config from `~/.eai/config.json`
+- Stores tokens at `~/.eai/tokens/{profile}.json`
+- Completely isolated from other profiles
+
+### Profile Configuration Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `publicApiUrl` | Yes | Platform API gateway URL (e.g., `https://dev-api.ae.myenterprise.ai/public`) |
+| `authTenantName` | Yes | Entra CIAM tenant subdomain (before `.ciamlogin.com`) |
+| `authTenantId` | Yes | Entra CIAM tenant GUID |
+| `authClientId` | Yes | OAuth client ID for the CLI app registration (public client) |
+| `authScope` | No | OAuth scope (default: `openid profile email offline_access`) |
+
+### Profile Precedence
+
+1. **`--profile <name>` flag** — Highest priority
+2. **`EAI_PROFILE` environment variable**
+3. **`activeProfile` in `~/.eai/config.json`** — Set automatically on login
+4. **`default`** (production) — Lowest priority, no config file needed
+
+---
+
+## Token Storage
+
+### Per-Profile Token Files
+
+Tokens are encrypted and stored per-profile:
+
+| Profile | Location | Format |
+|---------|----------|--------|
+| `default` (prod) | `~/.eai/tokens.json` | AES-256-CBC encrypted JSON |
+| Named (e.g., `dev`) | `~/.eai/tokens/{profile}.json` | AES-256-CBC encrypted JSON |
+
+### Security
+
+- **Encryption**: AES-256-CBC with key derived from `sha256(eai-cli-${homedir}-token-store)`
+- **File mode**: `0o600` (owner read/write only)
+- **Token lifecycle**: Auto-refreshed 5 minutes before expiry; manual refresh via `eai login`
+- **Headless bypass**: `EAI_ACCESS_TOKEN` env var bypasses file storage for CI/CD pipelines
+
+---
+
+## Tenant Context
+
+### Active Tenant Storage
+
+The active tenant is stored in `~/.eai/tenant-context.json`:
+
+```json
+{
+  "activeTenant": {
+    "id": "tenant-123",
+    "displayName": "Team A",
+    "slug": "team-a",
+    "isActive": true,
+    "roles": ["tenant-admin", "tenant-staff"]
+  },
+  "membershipsCachedAt": 1683043200000
+}
+```
+
+### Tenant Selection
+
+```bash
+# List available tenant-admin memberships
+eai tenant list
+
+# Select a tenant interactively
+eai tenant select
+
+# Or create a new tenant
+eai tenant create --name "New Team" --parent <parent-tenant-id>
+```
+
+---
+
+## Global Flags
+
+| Flag | Purpose | Default |
+|------|---------|---------|
+| `--profile <name>` | Use named environment profile (dev, test) | Production (default) |
+| `--simple` | Plain text output without colors/symbols (for screen readers) | Off |
+| `--no-color` | Disable colored output | Auto-detect |
+| `--color` | Force colored output | Auto-detect |
+| `--describe` | Output JSON schema of all commands | Off |
+
+---
+
+## Environment Variables
+
+### Core Configuration
+
+| Variable | Required | Default | Example |
+|----------|----------|---------|---------|
+| `BASE_URL_PUBLIC_API` | Yes | — | `https://api.eai.example.com` |
+| `NEXT_PUBLIC_APP_NAME` | Yes | — | `my-vertical` |
+| `EAI_ENV` | No | `dev` | `dev`, `staging`, `prod` |
+
+### Optional Overrides
+
+| Variable | Required | Default | Example |
+|----------|----------|---------|---------|
+| `EAI_PROFILE` | No | — | `dev`, `test` |
+| `EAI_ACCESS_TOKEN` | No | — | `eyJ0eXAiOiJKV1Qi...` |
+| `NO_UPDATE_NOTIFIER` | No | — | `1` |
+| `CI` | No (auto-detected) | — | `true` |
+
+---
+
+## Configuration Files
+
+### 1. Project Config (`eai.config.ts` or `src/eai.config/object-types.ts`)
+
+**Purpose**: Defines Object Types for the project.
+
+**Location**:
+- `src/eai.config/object-types.ts` (Vertical-Template convention)
+- `eai.config/object-types.ts` (alternative)
+- `eai.config.ts` (project root)
+
+### 2. Environment File (`.env.local`)
+
+**Purpose**: Store environment-specific configuration and secrets.
+
+**Location**: Project root (`.env.local`)
+
+**Format**: Dotenv syntax (key=value)
+
+### 3. Profile Config (`~/.eai/config.json`)
+
+**Purpose**: Store named profile configurations (dev, test) and active profile selection.
+
+**Location**: `~/.eai/config.json`
+
+### 4. Tenant Context Cache (`~/.eai/tenant-context.json`)
+
+**Purpose**: Cache active tenant selection.
+
+**Location**: `~/.eai/tenant-context.json`
+
+### 5. Token Storage (`~/.eai/tokens.json` or `~/.eai/tokens/{profile}.json`)
+
+**Purpose**: Encrypted authentication tokens per profile.
+
+**Location**:
+- Default profile: `~/.eai/tokens.json`
+- Named profiles: `~/.eai/tokens/{profile}.json`
+
+---
+
+## Error Codes
+
+The CLI uses structured error codes (E001-E399) for consistent error handling:
+
+### E001-E099: Project Errors
+
+| Code | Message | Suggestion |
+|------|---------|-----------|
+| E001 | Not in an EAI project | Run `eai init` or navigate to an EAI project |
+| E002 | Environment variable not set | Set the missing variable in `.env.local` or environment |
+| E003 | Configuration file not found | Ensure config file exists or run `eai init` |
+| E004 | Object Types file not found | Create `src/eai.config/object-types.ts` |
+| E005 | Invalid project structure | Run `eai verify` to check setup |
+| E006 | Failed to load configuration | Check `.env.local` and `eai.config.ts` for syntax errors |
+
+### E100-E199: Authentication Errors
+
+| Code | Message | Suggestion |
+|------|---------|-----------|
+| E101 | Not logged in | Run `eai login` to authenticate |
+| E102 | Access token expired | Run `eai login` to refresh |
+| E103 | Invalid credentials | Verify credentials and try `eai login` again |
+| E104 | Authentication failed | Contact administrator or try `eai login` again |
+
+### E200-E299: Platform API Errors
+
+| Code | Message | Suggestion |
+|------|---------|-----------|
+| E201 | Platform API unreachable | Check network and verify `BASE_URL_PUBLIC_API` |
+| E202 | Resource not found | Verify resource ID and try again |
+| E203 | Platform API error | Check error details; contact support if issue persists |
+| E204 | Permission denied | Contact administrator for access |
+| E205 | Resource conflict | Resource already exists or conflicts with existing data |
+
+### E300-E399: Validation Errors
+
+| Code | Message | Suggestion |
+|------|---------|-----------|
+| E301 | Invalid schema | Fix schema errors listed in output |
+| E302 | Validation failed | Correct validation errors and try again |
+| E303 | Required field missing | Provide a value for the missing field |
+| E304 | Invalid format | Use one of the valid formats listed |
+| E305 | Invalid input | Check input and try again |
+
+---
+
+## File Layout
+
+### macOS / Linux
+
+```
+~/.eai/
+  config.json              # Profile configurations (only if profiles are set up)
+  tokens.json              # Default (prod) tokens
+  tokens/
+    dev.json               # Dev profile tokens
+    test.json              # Test profile tokens
+  tenant-context.json      # Active tenant selection
+  update-check.json        # Update cache (not profile-scoped)
+```
+
+### Windows
+
+```
+%USERPROFILE%\.eai\
+  config.json              # Profile configurations (only if profiles are set up)
+  tokens.json              # Default (prod) tokens
+  tokens\
+    dev.json               # Dev profile tokens
+    test.json              # Test profile tokens
+  tenant-context.json      # Active tenant selection
+  update-check.json        # Update cache (not profile-scoped)
+```
+
+---
+
+# Environment Profiles
+
+# Environment Profiles
+
+Profiles let you switch between dev, test, and prod environments without changing environment variables or `.env.local` files. This is an internal feature — customers use the default profile (production) and never see the profile system.
+
+## How It Works
+
+- **No `--profile` flag** = default profile = production. Same behavior as before profiles existed. No config file needed.
+- **`--profile dev`** = reads the profile config file (`~/.eai/config.json` on macOS/Linux, `%USERPROFILE%\.eai\config.json` on Windows) for auth and API config, and stores tokens in the matching profile token file (`~/.eai/tokens/dev.json` or `%USERPROFILE%\.eai\tokens\dev.json`).
+
+Profiles are completely isolated — logging into dev does not affect your prod session.
+
+## Setup
+
+Create the profile config file with one or more named profiles:
+
+| OS            | Config file path                  |
+| ------------- | --------------------------------- |
+| macOS / Linux | `~/.eai/config.json`              |
+| Windows       | `%USERPROFILE%\.eai\config.json`  |
+
+Notes:
+
+- On macOS, `~` usually expands to `/Users/<your-username>`.
+- On Windows, `%USERPROFILE%` usually expands to `C:\Users\<your-username>`.
+- Create the `.eai` directory first if it does not already exist.
+
+Then add:
+
+```json
+{
+  "profiles": {
+    "dev": {
+      "publicApiUrl": "https://dev-api.ae.myenterprise.ai/public",
+      "authTenantName": "eaidevmyentepriseai",
+      "authTenantId": "50808ce0-f31b-4fd0-9861-74b83b8c112a",
+      "authClientId": "c3c10ee2-aeeb-4a64-8eea-5ca43a3252af",
+      "authScope": "openid profile email offline_access"
+    },
+    "test": {
+      "publicApiUrl": "https://test-api.ae.myenterprise.ai/public",
+      "authTenantName": "enterpriseaitestplatform",
+      "authTenantId": "dffacd2b-7705-43f2-86ae-75d1ef003a71",
+      "authClientId": "861ad00a-aba1-47e4-baf2-3e3f6ef4a69e",
+      "authScope": "openid profile email offline_access api://97f59e40-0d86-4c6d-8ac6-80659fea1a4e/access_token"
+    }
+  }
+}
+```
+
+Production values are hardcoded in the CLI source (`src/commands/login.ts` and `src/lib/tenant-context.ts`).
+No profile is needed for prod — `eai login` works out of the box.
+
+`eai provision entra` follows the same model. Default/no profile routes to the production platform API and the production CIAM selected by that deployment. `--profile test` and `--profile dev` route to their configured platform APIs, and those services choose the matching test or dev CIAM from deployment configuration. Do not add a CLI request field for CIAM or environment selection.
+
+### Required Fields
+
+| Field            | Description                                                  | Where to find it                                                     |
+| ---------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `publicApiUrl`   | Platform API gateway URL for the environment                 | Azure Portal → App Service or API Management                         |
+| `authTenantName` | Entra CIAM tenant subdomain (before `.ciamlogin.com`)        | Entra admin center → Tenant overview                                 |
+| `authTenantId`   | Entra CIAM tenant GUID                                       | Entra admin center → Tenant overview → Tenant ID                     |
+| `authClientId`   | OAuth client ID for the CLI app registration (public client) | Entra admin center → App registrations → "EAI CLI - Developer Tools" |
+
+### Optional Fields
+
+| Field       | Default                               |
+| ----------- | ------------------------------------- |
+| `authScope` | `openid profile email offline_access` |
+
+For environments where the CLI calls PublicAPI directly, set `authScope` to include that environment's Public API scope. For the current test tenant:
+
+```json
+"authScope": "openid profile email offline_access api://97f59e40-0d86-4c6d-8ac6-80659fea1a4e/access_token"
+```
+
+## Usage
+
+Logging in with a profile makes it the active profile for all subsequent commands:
+
+```bash
+# Login to dev — sets "dev" as the active profile
+eai --profile dev login
+
+# These now use dev automatically (no --profile needed)
+eai whoami
+eai resources list User
+eai tenant list
+
+# Switch to test — sets "test" as the active profile
+eai --profile test login
+
+# These now use test
+eai whoami
+eai resources list User
+
+# Switch back to prod
+eai login
+
+# Back to prod (default)
+eai whoami
+```
+
+You can also override the active profile for a single command without changing it:
+
+```bash
+# Active profile is dev, but run this one command against test
+eai --profile test resources list User
+
+# Still on dev for everything else
+eai whoami    # → dev
+```
+
+## EAI_PROFILE Environment Variable
+
+Set `EAI_PROFILE` in your shell to avoid typing `--profile` on every command:
+
+```bash
+# For a session
+export EAI_PROFILE=dev
+eai login
+eai whoami
+eai resources list User
+
+# Or per-command
+EAI_PROFILE=dev eai whoami
+```
+
+The `--profile` flag takes precedence over `EAI_PROFILE`.
+
+## Precedence
+
+Profile resolution order (highest to lowest):
+
+1. `--profile <name>` flag
+2. `EAI_PROFILE` environment variable
+3. `activeProfile` in the profile config file (`~/.eai/config.json` on macOS/Linux, `%USERPROFILE%\.eai\config.json` on Windows), set automatically on login
+4. `default` (production — no config file, uses the default token cache: `~/.eai/tokens.json` on macOS/Linux or `%USERPROFILE%\.eai\tokens.json` on Windows)
+
+## File Layout
+
+macOS / Linux:
+
+```
+~/.eai/
+  config.json           # Profile configurations (only if profiles are set up)
+  tokens.json           # Default (prod) tokens (unchanged from before)
+  tokens/
+    dev.json            # Dev profile tokens
+    test.json           # Test profile tokens
+  update-check.json     # Update cache (not profile-scoped)
+```
+
+Windows:
+
+```
+%USERPROFILE%\.eai\
+  config.json           # Profile configurations (only if profiles are set up)
+  tokens.json           # Default (prod) tokens (unchanged from before)
+  tokens\
+    dev.json            # Dev profile tokens
+    test.json           # Test profile tokens
+  update-check.json     # Update cache (not profile-scoped)
+```
+
+## Deprecated: EAI_CIAM_* Environment Variables
+
+Previously, auth config was set via environment variables:
+
+```bash
+# DEPRECATED — use profiles instead
+export EAI_CIAM_TENANT_NAME=myorg
+export EAI_CIAM_TENANT_ID=12345678-...
+export EAI_CIAM_CLIENT_ID=87654321-...
+```
+
+These still work as a fallback for the default profile but will show a deprecation warning. Move to profiles for a cleaner setup.
+
+## CI/Headless Usage
+
+The `EAI_ACCESS_TOKEN` environment variable bypass is unchanged. Profiles are for interactive developer use. CI pipelines should continue using `EAI_ACCESS_TOKEN`:
+
+```bash
+export EAI_ACCESS_TOKEN=<bearer-token>
+eai resources list User   # Works without login, no profile needed
+```
+
+---
+
+# EAI CLI — API Reference
+
+# EAI CLI — API Reference
+
+## Overview
+
+The CLI interacts with the **EAI Platform API v3 (PublicAPI)** and **AdminAPI**. All endpoints require Bearer token authentication obtained via Entra CIAM browser-based PKCE flow.
+
+**Base URL (PublicAPI)**: Configured via profile or `BASE_URL_PUBLIC_API` environment variable (e.g., `https://api.ae.myenterprise.ai/public`)
+
+**Base URL (AdminAPI)**: Resolved at runtime from PublicAPI environment (e.g., `https://api.ae.myenterprise.ai/admin`)
+
+**Authentication**: `Authorization: Bearer {access_token}`
+
+**Client Class**: `PlatformAPIClient` in `src/lib/api.ts`
+
+---
+
+## PublicAPI v3 Endpoints
+
+### Resources API
+
+#### List Resources
+```
+GET /v3/resources/{tenant_id}/{object_type}
+```
+
+**Query Parameters**:
+- `page` (number) — Page number (default: 1)
+- `limit` (number) — Items per page (default: 20, max: 100)
+- `sort` (string) — Sort field (prefix with `-` for descending, e.g., `-created_at`)
+- `where[field][equals]` — Filter by exact match
+
+**Response**:
+```json
+{
+  "docs": [
+    {
+      "id": "uuid",
+      "data": { /* resource fields */ },
+      "created_at": "2026-04-30T12:00:00Z",
+      "updated_at": "2026-04-30T12:00:00Z",
+      "version": 1,
+      "tenant": "tenant-id",
+      "object_type": "ObjectTypeName"
+    }
+  ],
+  "totalDocs": 100,
+  "page": 1,
+  "totalPages": 5,
+  "limit": 20
+}
+```
+
+**CLI Command**: `eai resources list <type> --page 1 --limit 20 --sort -created_at`
+
+**Client Method**: `client.listResources(type, params)`
+
+---
+
+#### Get Resource
+```
+GET /v3/resources/{tenant_id}/{object_type}/{id}
+```
+
+**Response**:
+```json
+{
+  "id": "uuid",
+  "data": { /* resource fields */ },
+  "version": 1,
+  "created_at": "2026-04-30T12:00:00Z",
+  "updated_at": "2026-04-30T12:00:00Z",
+  "tenant": "tenant-id",
+  "object_type": "ObjectTypeName"
+}
+```
+
+**CLI Command**: `eai resources get <type> <id>`
+
+**Client Method**: `client.getResource(type, id)`
+
+---
+
+#### Create Resource
+```
+POST /v3/resources/{tenant_id}/{object_type}
+Content-Type: application/json
+
+{
+  "data": {
+    "field1": "value1",
+    "field2": 123
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "id": "uuid",
+  "data": { /* created resource */ },
+  "version": 1,
+  "created_at": "2026-04-30T12:00:00Z"
+}
+```
+
+**CLI Command**: `eai resources create <type> --data '{"field1":"value1"}'` or `--file resource.json`
+
+**Client Method**: `client.createResource(type, data)`
+
+---
+
+#### Update Resource
+```
+PUT /v3/resources/{tenant_id}/{object_type}/{id}
+Content-Type: application/json
+
+{
+  "data": {
+    "field1": "new_value"
+  },
+  "version": 1
+}
+```
+
+**Notes**:
+- Requires `version` field for optimistic locking
+- Returns `409 Conflict` if version mismatch
+- CLI auto-fetches current version before update
+
+**Response**:
+```json
+{
+  "id": "uuid",
+  "data": { /* updated resource */ },
+  "version": 2,
+  "updated_at": "2026-04-30T12:05:00Z"
+}
+```
+
+**CLI Command**: `eai resources update <type> <id> --data '{"field1":"new_value"}'`
+
+**Client Method**: `client.updateResource(type, id, data, version)`
+
+---
+
+#### Delete Resource
+```
+DELETE /v3/resources/{tenant_id}/{object_type}/{id}
+```
+
+**Response**: `204 No Content`
+
+**CLI Command**: `eai resources delete <type> <id>` (prompts for confirmation)
+
+**Client Method**: `client.deleteResource(type, id)`
+
+---
+
+#### Query Resources (Cross-Type)
+```
+POST /v3/resources/{tenant_id}/query
+Content-Type: application/json
+
+{
+  "types": ["User", "Organization"],
+  "where": {
+    "field1": "value1"
+  },
+  "limit": 50,
+  "page": 1
+}
+```
+
+**Response**:
+```json
+{
+  "results": [
+    { "id": "...", "object_type": "User", "data": {...} },
+    { "id": "...", "object_type": "Organization", "data": {...} }
+  ],
+  "totalDocs": 100,
+  "page": 1
+}
+```
+
+**CLI Command**: `eai resources query --types User,Organization --where '{"field1":"value1"}'`
+
+**Client Method**: `client.queryResources(query)`
+
+---
+
+#### Get Published Schema
+```
+GET /v3/resources/schema/{tenant_id}
+```
+
+**Response**:
+```json
+{
+  "objectTypes": [
+    {
+      "slug": "user",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string" },
+          "name": { "type": "string" }
+        },
+        "required": ["email"]
+      }
+    }
+  ]
+}
+```
+
+**CLI Command**: `eai resources schema`
+
+**Client Method**: `client.getSchema()`
+
+---
+
+### Chat API
+
+#### Send Chat Message
+```
+POST /v3/chat/{tenant_id}/{workflow}/{stage}
+Content-Type: application/json
+
+{
+  "message": "Hello, how can I help?",
+  "context": { "userId": "..." }
+}
+```
+
+**Response**:
+```json
+{
+  "response": "I can assist you with...",
+  "conversationId": "uuid"
+}
+```
+
+**CLI Command**: `eai chat send "Hello" --workflow default --stage initial`
+
+**Client Method**: `client.sendChat(workflow, stage, message, context?)`
+
+---
+
+#### Stream Chat (SSE)
+```
+POST /v3/chat/stream/{tenant_id}/{workflow}/{stage}
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "message": "Tell me a story",
+  "context": {}
+}
+```
+
+**Response**: Server-Sent Events stream
+```
+data: {"token": "Once"}
+data: {"token": " upon"}
+data: {"token": " a"}
+data: {"done": true}
+```
+
+**CLI Command**: `eai chat stream "Tell me a story"`
+
+**Client Method**: `client.streamChat(workflow, stage, message, context?)` → Returns `Response` with SSE body
+
+---
+
+### Documents API
+
+#### Classify Document
+```
+POST /v3/documents/classify
+Content-Type: application/json
+
+{
+  "document": {
+    "id": "doc-id",
+    "content": "..."
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "classification": "Invoice",
+  "confidence": 0.95
+}
+```
+
+**CLI Command**: `eai docs classify path/to/file.pdf`
+
+**Client Method**: `client.classifyDocument(payload)`
+
+---
+
+#### Index Document for RAG
+```
+POST /v3/documents/rag-index
+Content-Type: application/json
+
+{
+  "documentId": "doc-id",
+  "chunks": [...]
+}
+```
+
+**Response**:
+```json
+{
+  "indexed": true,
+  "chunkCount": 42
+}
+```
+
+**CLI Command**: `eai docs index <document-id>`
+
+**Client Method**: `client.indexDocument(payload)`
+
+---
+
+### Internal Orchestration
+
+#### Platform Request (Internal Routing)
+```
+POST /v3/orchestrate
+Content-Type: application/json
+
+{
+  "backend": "payload" | "admin" | "mid",
+  "method": "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  "path": "/api/collections/...",
+  "body": { ... }
+}
+```
+
+**Purpose**: Routes requests to backend services (Payload CMS, AdminAPI, etc.) through PublicAPI.
+
+**Client Method**: `client.platformRequest(backend, method, path, body?)`
+
+**Used By**: Type seeding, environment config, internal admin operations
+
+---
+
+## AdminAPI Endpoints
+
+### User Management
+
+#### Lookup User by Email
+```
+POST /api/admin/users/lookup
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+**Response**:
+```json
+{
+  "id": "user-oid",
+  "email": "user@example.com",
+  "username": "user@example.com",
+  "user": {
+    "id": "user-oid",
+    "email": "user@example.com"
+  }
+}
+```
+
+**CLI Command**: `eai user invite --email user@example.com`
+
+**Client Method**: `client.lookupUserByEmail(email)`
+
+**Auth**: Requires `tenant-admin` role on target tenant
+
+---
+
+#### Provision User to Tenant
+```
+POST /api/admin/tenants/{tenant_id}/users
+Content-Type: application/json
+
+{
+  "userId": "user-oid"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "User added to tenant"
+}
+```
+
+**CLI Command**: `eai user invite --email user@example.com --tenant <id>`
+
+**Client Method**: `client.provisionUserToTenant(tenantId, userId)`
+
+**Auth**: Requires `tenant-admin` role on target tenant
+
+---
+
+### Tenant Management
+
+#### Get Current User Tenant Memberships
+```
+GET /api/admin/current-user/tenant-memberships
+```
+
+**Response**:
+```json
+{
+  "tenants": [
+    {
+      "tenant": {
+        "id": "tenant-id",
+        "displayName": "My Tenant",
+        "slug": "my-tenant",
+        "isActive": true
+      },
+      "roles": ["tenant-admin"],
+      "isTenantAdmin": true
+    }
+  ]
+}
+```
+
+**CLI Command**: `eai tenant list`, `eai tenant select`
+
+**Client Method**: `client.getCurrentUserMemberships()`
+
+**Auth**: Requires authenticated user
+
+---
+
+#### Create Tenant
+```
+POST /api/admin/tenants
+Content-Type: application/json
+
+{
+  "displayName": "New Tenant",
+  "slug": "new-tenant",
+  "parent": "parent-tenant-id"
+}
+```
+
+**Response**:
+```json
+{
+  "id": "new-tenant-id",
+  "displayName": "New Tenant",
+  "slug": "new-tenant",
+  "parent": "parent-tenant-id",
+  "isActive": true
+}
+```
+
+**CLI Command**: `eai tenant create --parent <id>`
+
+**Client Method**: `client.createTenant(payload)`
+
+**Auth**: Requires `tenant-admin` on parent tenant (for child creation)
+
+---
+
+#### Bootstrap Child Tenant First Admin
+```
+POST /api/admin/tenants/{child_tenant_id}/bootstrap-admin
+Content-Type: application/json
+
+{
+  "userOid": "caller-oid",
+  "userEmail": "caller@example.com"
+}
+```
+
+**Purpose**: Constrained first-admin bootstrap flow for child tenants. Caller must be `tenant-admin` on direct parent.
+
+**Response**:
+```json
+{
+  "parentTenantId": "parent-id",
+  "childTenantId": "child-id",
+  "userOid": "caller-oid",
+  "membershipCreated": true,
+  "adminAssigned": true,
+  "usable": true,
+  "status": "bootstrapped"
+}
+```
+
+**CLI Command**: Called internally by `eai tenant create`
+
+**Client Method**: `client.bootstrapChildTenantAdmin(childTenantId, request)`
+
+**Auth**: Requires `tenant-admin` on direct parent; child must not already have a tenant-admin
+
+---
+
+### Entra Provisioning
+
+#### Confirm Entra App Registration
+```
+POST /api/admin/platform-ops/entra/confirm-app-registration
+Content-Type: application/json
+
+{
+  "tenantId": "platform-tenant-id",
+  "clientId": "vertical-client-id"
+}
+```
+
+**Purpose**: Creates or confirms Entra app registration for the vertical in the platform's CIAM tenant.
+
+**Response**:
+```json
+{
+  "exists": true,
+  "clientId": "client-id",
+  "displayName": "My Vertical",
+  "scopes": ["User.Read", "PublicAPI.All"],
+  "redirectUris": ["http://localhost:3000/auth/callback"],
+  "environment": "dev",
+  "tenantId": "platform-tenant-id",
+  "signinCompleteness": {
+    "signinReady": true,
+    "graphDelegatedPermsGranted": true,
+    "publicApiDelegatedPermsGranted": true,
+    "adminConsentGranted": true,
+    "preAuthorizedConfigured": true,
+    "warnings": []
+  }
+}
+```
+
+**New in v2.7.0**: The `signinCompleteness` field (also accepted as `signin_completeness`) provides a per-step rollup of post-provision sign-in wiring state. This prevents silent failures where the app registration is created but cannot reach PublicAPI from a user session.
+
+**Sign-in Completeness Fields**:
+- `signinReady` (boolean) — Overall readiness; true only when all four steps succeeded
+- `graphDelegatedPermsGranted` (boolean) — Microsoft Graph delegated permissions added
+- `publicApiDelegatedPermsGranted` (boolean) — PublicAPI delegated permissions added
+- `adminConsentGranted` (boolean) — Admin consent granted for required permissions
+- `preAuthorizedConfigured` (boolean) — PreAuthorizedApplications configured on PublicAPI app reg
+- `warnings` (string[]) — Human-readable warnings for failed steps
+
+**CLI Behavior (v2.7.0+)**:
+- When `signinReady: true` → Prints success confirmation and exits 0
+- When `signinReady: false` → Prints structured error table showing which step failed, displays warnings, provides portal remediation steps, and **exits with code 1**
+- When field absent (older PublicAPI) → Silent (cannot determine readiness)
+
+**CLI Command**: `eai provision entra`
+
+**Client Method**: `client.confirmEntraAppRegistration(payload)`
+
+**Auth**: Requires authenticated user; platform determines CIAM from active profile/environment
+
+**Error Handling**: Sanitized errors; never exposes backend URLs, tenant IDs, or raw platform errors
+
+---
+
+## Authentication Endpoints
+
+### Entra CIAM (OAuth 2.0 + PKCE)
+
+#### Authorization URL
+```
+GET https://{ciamTenant}.ciamlogin.com/{tenantId}/oauth2/v2.0/authorize
+  ?client_id={clientId}
+  &response_type=code
+  &redirect_uri=http://localhost:8888
+  &scope={scope}
+  &code_challenge={challenge}
+  &code_challenge_method=S256
+  &state={state}
+```
+
+**Flow**:
+1. CLI generates PKCE `code_verifier` and `code_challenge`
+2. CLI opens browser to authorization URL
+3. User authenticates in browser
+4. Browser redirects to `localhost:8888?code=...&state=...`
+5. CLI exchanges `code` + `code_verifier` for tokens
+
+---
+
+#### Token Exchange
+```
+POST https://{ciamTenant}.ciamlogin.com/{tenantId}/oauth2/v2.0/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code
+&client_id={clientId}
+&code={authCode}
+&redirect_uri=http://localhost:8888
+&code_verifier={codeVerifier}
+&scope={scope}
+```
+
+**Response**:
+```json
+{
+  "access_token": "eyJ...",
+  "refresh_token": "0.A...",
+  "expires_in": 3600,
+  "token_type": "Bearer"
+}
+```
+
+**CLI Command**: `eai login`
+
+**Client Function**: `browserLogin()` in `src/lib/auth.ts`
+
+---
+
+#### Token Refresh
+```
+POST https://{ciamTenant}.ciamlogin.com/{tenantId}/oauth2/v2.0/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token
+&client_id={clientId}
+&refresh_token={refreshToken}
+&scope={scope}
+```
+
+**Response**: Same as token exchange
+
+**Automatic**: Triggered when token has &lt;5 min remaining
+
+**Client Function**: `getToken()` in `src/lib/auth.ts`
+
+---
+
+## Error Responses
+
+All API endpoints may return structured error responses:
+
+### Standard Error Format
+```json
+{
+  "detail": {
+    "error": "RESOURCE_NOT_FOUND",
+    "message": "Resource User:123 not found"
+  }
+}
+```
+
+**Alternative Formats**:
+```json
+{
+  "detail": "Not found"
+}
+```
+
+```json
+{
+  "message": "Validation error",
+  "errors": [
+    { "field": "email", "message": "Invalid email format" }
+  ]
+}
+```
+
+### Common Error Codes
+
+| Status | Error Code | Description | CLI Action |
+|--------|-----------|-------------|-----------|
+| 401 | `UNAUTHORIZED` | Invalid or expired token | Prompts re-login |
+| 403 | `FORBIDDEN` | Insufficient permissions | Displays error, suggests checking roles |
+| 404 | `RESOURCE_NOT_FOUND` | Resource not found | Displays E202 error |
+| 409 | `VERSION_CONFLICT` | Optimistic locking failure | Re-fetches and retries |
+| 422 | `VALIDATION_ERROR` | Invalid request payload | Displays E301-E305 validation error |
+| 500 | `INTERNAL_ERROR` | Server error | Displays E201 platform error |
+
+**Client Error Handling**: `extractServerErrorContext()` and `parseApiError()` functions in `src/lib/api.ts`
+
+**Structured CLI Errors**: See `src/lib/error-codes.ts` for E001-E305 catalog
+
+---
+
+## Rate Limiting
+
+- **Limit**: 100 requests per minute per token (subject to change)
+- **Headers**: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+- **Status**: `429 Too Many Requests`
+- **CLI Behavior**: Displays error; does not auto-retry
+
+---
+
+## Request Correlation
+
+All responses include correlation headers for debugging:
+
+- `X-Request-ID` — Unique request identifier
+- `X-Correlation-ID` — Cross-service correlation ID
+
+**CLI Debug Mode**: `--debug` flag logs request/response details including correlation IDs (not yet implemented)
+
+---
+
+## Machine-Readable Output
+
+All CLI commands support `--format json` for automation:
+
+```bash
+eai resources list User --format json | jq '.docs[0].data.email'
+eai tenant list --format json | jq -r '.tenants[].tenant.slug'
+eai verify calls --format json
+```
+
+**JSON Output Structure**:
+- Successful responses: Mirrors API response structure
+- Errors: Structured error object with `code`, `message`, `suggestion`, `exitCode`
+
+---
+
+## Contract Verification
+
+The `eai verify calls` command audits which platform API routes the CLI actually uses:
+
+```bash
+eai verify calls --format json
+```
+
+**Output**:
+```json
+{
+  "publicApiCalls": [
+    "GET /v3/resources/{tenant}/{type}",
+    "POST /v3/chat/stream/{tenant}/{workflow}/{stage}"
+  ],
+  "adminApiCalls": [
+    "GET /api/admin/current-user/tenant-memberships",
+    "POST /api/admin/tenants/{id}/users"
+  ]
+}
+```
+
+**Purpose**: Helps platform maintainers understand CLI's API contract surface
+
+---
+
+# EAI CLI — Data Model
+
+# EAI CLI — Data Model
+
+## Overview
+
+The EAI CLI is a **stateless client** that interacts with the EAI Platform API. It does not maintain a local database. All persistent state resides either:
+
+1. **Locally** in the user's home directory (`~/.eai/`)
+2. **On the Platform** via the PublicAPI and AdminAPI
+
+---
+
+## Local Storage
+
+### Authentication Tokens
+
+**File**: `~/.eai/tokens.json` (default profile) or `~/.eai/tokens/{profile}.json` (named profiles)
+
+**Format**: AES-256-CBC encrypted JSON
+
+**Schema**:
+```typescript
+interface StoredTokens {
+  accessToken: string;           // Bearer token for API auth
+  refreshToken?: string;          // Refresh token for auto-refresh
+  expiresAt: number;              // Unix timestamp (ms)
+  tenantId: string;               // Entra CIAM tenant ID
+  tenantName: string;             // Entra CIAM tenant name
+  clientId: string;               // Entra app registration client ID
+  authScope?: string;             // OAuth scope used
+  upn?: string;                   // User principal name
+  oid?: string;                   // User object ID
+  activeTenantId?: string;        // Active platform tenant ID
+  activeTenantName?: string;      // Active platform tenant name
+  activeTenantSlug?: string;      // Active platform tenant slug
+  activeTenantDomain?: string;    // Active platform tenant domain
+  publicApiUrl?: string;          // Platform API base URL
+  membershipsCachedAt?: number;   // Timestamp of last membership fetch
+}
+```
+
+**Lifecycle**:
+- Created on `eai login`
+- Updated on token refresh (auto, when &lt;5 min remaining)
+- Cleared on `eai logout`
+- Per-profile isolation (multiple environments)
+
+**Security**:
+- File mode `0o600` (owner read/write only)
+- AES-256-CBC encryption with key derived from `sha256(eai-cli-${homedir}-token-store)`
+
+---
+
+### Tenant Context
+
+**File**: `~/.eai/tenant-context.json`
+
+**Format**: Plain JSON
+
+**Schema**:
+```typescript
+interface TenantContextCache {
+  activeTenant?: {
+    id: string;              // Platform tenant ID
+    displayName: string;     // Tenant display name
+    slug: string;            // URL-friendly tenant slug
+    domain?: string;         // Custom domain (if any)
+    isActive: boolean;       // Tenant active status
+    roles: string[];         // User roles in this tenant
+  };
+  memberships?: TenantMembership[];  // Cached tenant-admin memberships
+  lastUpdated?: number;               // Unix timestamp (ms)
+}
+
+interface TenantMembership {
+  id: string;
+  displayName: string;
+  slug: string;
+  domain?: string;
+  isActive: boolean;
+  roles: string[];  // e.g., ["tenant-admin"]
+}
+```
+
+**Lifecycle**:
+- Created/updated on `eai tenant select`
+- Read by commands that need tenant context
+- Cleared on `eai logout`
+
+**Note**: Tenant selection is membership-driven; the CLI resolves available tenants from AdminAPI `/api/admin/current-user/tenant-memberships`, not from `.env.local`.
+
+---
+
+### Profile Configuration
+
+**File**: `~/.eai/config.json`
+
+**Format**: Plain JSON
+
+**Schema**:
+```typescript
+interface CliConfig {
+  activeProfile?: string;  // Last selected profile ("default", "dev", "test", "prod")
+  profiles?: Record<string, ProfileConfig>;
+}
+
+interface ProfileConfig {
+  publicApiUrl: string;        // Platform API base URL
+  authScope: string;           // OAuth scope
+  entraTenantName: string;     // Entra CIAM subdomain
+  entraTenantId: string;       // Entra CIAM tenant ID
+  entraClientId: string;       // Entra app registration client ID
+}
+```
+
+**Lifecycle**:
+- Created on first `eai login --profile <name>`
+- Updated when switching profiles
+- Persistent across sessions
+
+**Purpose**: Enables multi-environment workflows (dev, test, prod) without modifying project files.
+
+---
+
+### Update Check Cache
+
+**File**: `~/.eai/update-check.json`
+
+**Format**: Plain JSON
+
+**Schema**:
+```typescript
+interface UpdateCheckCache {
+  latestVersion: string;     // e.g., "2.7.0"
+  checkedAt: number;         // Unix timestamp (ms)
+}
+```
+
+**Lifecycle**:
+- Created on first update check
+- Refreshed every 24 hours
+- Used to display update notification banner
+
+---
+
+## Platform Storage
+
+The CLI does not create platform resources directly (except via explicit commands). All platform data is managed through PublicAPI and AdminAPI.
+
+### Resources (via PublicAPI)
+
+**Endpoint**: `/v3/resources/{tenant_id}/{object_type}`
+
+**Schema**: Platform-defined resource schema with metadata wrapper
+
+```typescript
+interface PlatformResource {
+  id: string;                      // UUID
+  data: Record<string, unknown>;   // Object Type fields
+  version: number;                 // Optimistic locking version
+  object_type: string;             // Object Type slug
+  tenant: string;                  // Tenant ID
+  created_at: string;              // ISO 8601
+  updated_at: string;              // ISO 8601
+  created_by?: string;             // User OID
+  updated_by?: string;             // User OID
+}
+```
+
+**CLI Operations**:
+- `eai resources list` → GET
+- `eai resources get` → GET by ID
+- `eai resources create` → POST
+- `eai resources update` → PUT (with version)
+- `eai resources delete` → DELETE
+
+---
+
+### Object Types (via PublicAPI)
+
+**Endpoint**: `/v3/orchestrate` → Payload CMS backend
+
+**Schema**: Platform Type Registry schema
+
+```typescript
+interface ObjectTypeDefinition {
+  slug: string;                    // URL-friendly identifier
+  name: string;                    // Display name
+  description?: string;            // Human-readable description
+  properties: PropertyDefinition[];
+  required?: string[];
+  indexes?: IndexDefinition[];
+  displayProperty?: string;
+  titleProperty?: string;
+}
+
+interface PropertyDefinition {
+  name: string;
+  type: 'text' | 'email' | 'number' | 'boolean' | 'date' | 'relationship' | ...;
+  label?: string;
+  required?: boolean;
+  unique?: boolean;
+  defaultValue?: unknown;
+  validationRules?: ValidationRule[];
+  relationTo?: string;  // For relationship fields
+}
+```
+
+**CLI Operations**:
+- `eai types validate` → Local validation
+- `eai types seed` → POST to Type Registry
+- `eai types diff` → Compare local vs. remote
+- `eai types pull` → GET from Type Registry
+
+**Storage**: Type Registry (platform-internal Payload CMS collection)
+
+---
+
+### Tenants (via AdminAPI)
+
+**Endpoint**: `/api/admin/tenants`
+
+**Schema**: Platform tenant document
+
+```typescript
+interface Tenant {
+  id: string;                      // UUID or slug
+  displayName: string;             // Human-readable name
+  slug: string;                    // URL-friendly identifier
+  domain?: string;                 // Custom domain (optional)
+  isActive: boolean;               // Active status
+  parent?: string | { id?: string } | null;  // Parent tenant reference
+  parentId?: string | null;        // Parent tenant ID
+  limits?: {
+    tenants?: number;              // Max child tenants
+    users?: number;                // Max users
+  };
+  created_at?: string;
+  updated_at?: string;
+}
+```
+
+**CLI Operations**:
+- `eai tenant list` → GET current user memberships
+- `eai tenant info <id>` → GET tenant details
+- `eai tenant create` → POST new tenant + bootstrap first admin
+- `eai tenant select` → Interactive selection (updates local cache)
+
+**Storage**: Platform tenant collection (via AdminAPI)
+
+---
+
+### User Memberships (via AdminAPI)
+
+**Endpoint**: `/api/admin/current-user/tenant-memberships`
+
+**Schema**: Tenant membership with roles
+
+```typescript
+interface TenantMembership {
+  tenant: {
+    id: string;
+    displayName: string;
+    slug: string;
+    domain?: string;
+    isActive: boolean;
+  };
+  roles: string[];               // e.g., ["tenant-admin", "user"]
+  isTenantAdmin: boolean;        // Convenience flag
+  roleAssignments?: Array<{
+    baseRole?: string;
+    displayName?: string;
+  }>;
+}
+```
+
+**CLI Operations**:
+- Fetched on `eai login` (cached)
+- Refreshed on `eai tenant select`
+- Used for tenant list and access control
+
+**Storage**: Platform memberships (Entra ID groups + platform roles)
+
+---
+
+## Entity Relationship Diagram
+
+```mermaid
+erDiagram
+    CLI ||--o{ TokenStorage : stores
+    CLI ||--o{ TenantContextCache : stores
+    CLI ||--o{ ProfileConfig : stores
+    CLI }o--|| Platform : authenticates-with
+    Platform ||--|{ Tenant : contains
+    Platform ||--|{ Resource : stores
+    Platform ||--|{ ObjectType : defines
+    Tenant ||--|{ Resource : owns
+    Tenant }o--o{ User : membership
+    Resource }o--|| ObjectType : conforms-to
+    User ||--o{ TenantMembership : has
+    TenantMembership }o--|| Tenant : references
+
+    TokenStorage {
+        string accessToken
+        string refreshToken
+        number expiresAt
+        string tenantId
+        string clientId
+    }
+
+    TenantContextCache {
+        string activeTenantId
+        string activeTenantName
+        string activeTenantSlug
+        array memberships
+        number lastUpdated
+    }
+
+    ProfileConfig {
+        string publicApiUrl
+        string authScope
+        string entraTenantName
+        string entraTenantId
+    }
+
+    Tenant {
+        string id PK
+        string displayName
+        string slug UK
+        string parentId FK
+        boolean isActive
+    }
+
+    Resource {
+        string id PK
+        string tenantId FK
+        string objectType FK
+        object data
+        number version
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    ObjectType {
+        string slug PK
+        string name
+        string description
+        array properties
+    }
+
+    User {
+        string oid PK
+        string email
+        string upn
+    }
+
+    TenantMembership {
+        string userId FK
+        string tenantId FK
+        array roles
+    }
+```
+
+---
+
+## Data Flow Diagram
+
+```mermaid
+flowchart TB
+    subgraph "Local Storage (~/.eai/)"
+        Tokens[tokens.json<br/>Encrypted tokens]
+        Context[tenant-context.json<br/>Active tenant]
+        Profile[config.json<br/>Profiles]
+    end
+
+    subgraph "Platform (EAI API)"
+        Tenants[Tenants<br/>AdminAPI]
+        Resources[Resources<br/>PublicAPI]
+        Types[Object Types<br/>Type Registry]
+        Memberships[Memberships<br/>Entra + Platform]
+    end
+
+    Login[eai login] -->|Store| Tokens
+    Login -->|Fetch| Memberships
+    Memberships -->|Cache| Context
+
+    Select[eai tenant select] -->|Read| Memberships
+    Select -->|Update| Context
+
+    Commands[eai resources/types/*] -->|Read| Tokens
+    Commands -->|Read| Context
+    Commands -->|API Calls| Resources
+    Commands -->|API Calls| Types
+
+    TenantCreate[eai tenant create] -->|POST| Tenants
+    Tenants -->|Bootstrap| Memberships
+    Memberships -->|Verify| Context
+
+    Logout[eai logout] -->|Clear| Tokens
+    Logout -->|Clear| Context
+```
+
+---
+
+## Migration History
+
+The CLI is stateless and does not manage schema migrations. However, version updates may introduce changes to local storage formats:
+
+| Version | Change | Impact |
+|---------|--------|--------|
+| 2.0.0 | Introduced profile-based token storage | Tokens moved from `~/.eai/tokens.json` to profile-specific files |
+| 2.1.0 | Added tenant context cache | New file `~/.eai/tenant-context.json` |
+| 2.5.0 | Tenant selection from memberships | Removed `TENANT_DEFAULT_ID` requirement from `.env.local` |
+| 2.6.0 | Error code catalog | Structured error responses with E001-E305 codes |
+
+**Upgrade Path**: CLI automatically handles local storage format changes. Old token files are migrated on first run after upgrade.
+
+---
+
+## Key Indexes and Constraints
+
+### Local Storage
+
+- **Tokens**: No indexes (single-file encryption)
+- **Tenant Context**: No indexes (small JSON cache)
+- **Profiles**: No indexes (single config file)
+
+### Platform Storage (CLI Perspective)
+
+The CLI does not create indexes; it queries platform-managed resources:
+
+- **Resources**: Indexed by `tenant`, `object_type`, `id` (platform-managed)
+- **Tenants**: Indexed by `id`, `slug` (platform-managed)
+- **Memberships**: Indexed by `userId`, `tenantId` (platform-managed)
+
+---
+
+## Data Retention
+
+| Data Type | Retention | Cleanup |
+|-----------|-----------|---------|
+| **Access Tokens** | 1 hour (platform TTL) | Auto-refreshed or cleared on logout |
+| **Refresh Tokens** | 90 days (platform TTL) | Cleared on logout |
+| **Tenant Context** | Until `eai logout` or `eai tenant select` | User-controlled |
+| **Update Check Cache** | 24 hours | Auto-refreshed |
+| **Profile Config** | Indefinite | User-controlled |
+
+**Manual Cleanup**:
+```bash
+# Clear all CLI state
+rm -rf ~/.eai/
+
+# Clear tokens only
+rm -f ~/.eai/tokens.json ~/.eai/tokens/*.json
+
+# Clear tenant context only
+rm -f ~/.eai/tenant-context.json
+```
+
+---
+
+## Security Considerations
+
+1. **Token Encryption**: All tokens encrypted at rest with AES-256-CBC
+2. **File Permissions**: `~/.eai/tokens.json` is mode `0o600` (owner read/write only)
+3. **No Secrets in .env.local**: Tenant IDs are not secrets; tenant selection from memberships
+4. **CI/Headless Use**: Use `EAI_ACCESS_TOKEN` env var to avoid storing tokens on disk
+5. **Profile Isolation**: Per-profile token storage prevents credential leakage across environments
+
+---
+
+# EAI CLI — Dependencies
+
+# EAI CLI — Dependencies
+
+## Overview
+
+The EAI CLI is a **client-side tool with no downstream dependents**. It depends on external services for authentication, platform API access, and deployment.
+
+---
+
+## Dependency Diagram
+
+```mermaid
+graph TB
+    CLI[eai CLI v2.8.13]
+
+    subgraph "Authentication"
+        EntraCIAM[Entra CIAM<br/>Browser PKCE Flow<br/>localhost:8888 callback]
+    end
+
+    subgraph "Platform Services"
+        PublicAPI[Platform API v3<br/>/v3/resources<br/>/v3/chat<br/>/v3/orchestrate]
+        AdminAPI[Admin API<br/>/api/admin/tenants<br/>/api/admin/users]
+        TypeRegistry[Type Registry]
+        DataService[Data Service]
+        AIService[AI Service]
+    end
+
+    subgraph "Azure Services"
+        AppConfig[Azure App Config]
+        KeyVault[Azure Key Vault]
+        AppService[Azure App Service]
+    end
+
+    subgraph "External Tools"
+        GitHubCLI[GitHub CLI<br/>gh]
+        AzureCLI[Azure CLI<br/>az]
+        Git[Git]
+    end
+
+    subgraph "Registry"
+        GitHubPages[GitHub Pages<br/>Static NPM Registry]
+    end
+
+    CLI -->|1. Browser Login| EntraCIAM
+    CLI -->|2. Fetch Memberships| AdminAPI
+    CLI -->|3. API Calls| PublicAPI
+    PublicAPI --> TypeRegistry
+    PublicAPI --> DataService
+    PublicAPI --> AIService
+
+    CLI -->|4. Sync Config| AppConfig
+    CLI -->|5. Fetch Secrets| KeyVault
+    CLI -->|6. Deploy| AppService
+
+    CLI -->|7. Trigger Workflows| GitHubCLI
+    CLI -->|8. Deploy Commands| AzureCLI
+    CLI -->|9. Version Control| Git
+
+    CLI -->|10. Update Check| GitHubPages
+```
+
+---
+
+## Upstream Dependencies
+
+### 1. Entra CIAM (Microsoft Entra)
+
+**Type**: Authentication Service
+
+**Dependency Level**: Critical
+
+**Protocol**: OAuth 2.0 Authorization Code Flow with PKCE (RFC 7636)
+
+**Endpoints**:
+- Authorization: `https://{tenantName}.ciamlogin.com/{tenantId}/oauth2/v2.0/authorize`
+- Token Exchange: `https://{tenantName}.ciamlogin.com/{tenantId}/oauth2/v2.0/token`
+- Token Refresh: `https://{tenantName}.ciamlogin.com/{tenantId}/oauth2/v2.0/token` (refresh_token grant)
+
+**Commands Affected**:
+- `eai login` — Browser-based authentication
+- Any command requiring authentication (when token &lt;5 min remaining → auto-refresh)
+
+**Profile-Specific**:
+- Each profile (`dev`, `test`, `prod`) may use a different CIAM tenant
+- Platform resolves correct CIAM from environment/profile
+
+**Failure Impact**:
+- Users cannot authenticate
+- Token refresh fails → must re-login
+- Headless/CI environments unaffected (can use `EAI_ACCESS_TOKEN` env var)
+
+**Fallback**: Use `EAI_ACCESS_TOKEN` environment variable for headless scenarios
+
+---
+
+### 2. Platform API v3 (PublicAPI)
+
+**Type**: REST API
+
+**Dependency Level**: Critical
+
+**Base URL**: Profile-specific or from `BASE_URL_PUBLIC_API` (e.g., `https://api.ae.myenterprise.ai/public`)
+
+**Endpoints Used**:
+- `/v3/resources/{tenant}/{type}` — Resource CRUD
+- `/v3/resources/{tenant}/query` — Cross-type queries
+- `/v3/resources/schema/{tenant}` — Published Object Types
+- `/v3/chat/{tenant}/{workflow}/{stage}` — AI chat
+- `/v3/chat/stream/{tenant}/{workflow}/{stage}` — Streaming chat (SSE)
+- `/v3/documents/classify` — Document classification
+- `/v3/documents/rag-index` — RAG indexing
+- `/v3/orchestrate` — Internal routing to backend services
+
+**Commands Affected**:
+- `eai resources` (all subcommands)
+- `eai types seed/diff/pull`
+- `eai chat send/stream`
+- `eai docs classify/index`
+- `eai verify`, `eai doctor`
+
+**Failure Impact**:
+- All resource operations fail
+- Type seeding fails
+- AI workflows unavailable
+- CLI remains usable for local tasks (`eai init`, `eai login`, etc.)
+
+**Health Check**: `eai verify` tests API connectivity and token validity
+
+---
+
+### 3. Admin API
+
+**Type**: REST API
+
+**Dependency Level**: Critical (for tenant/user management)
+
+**Base URL**: Resolved at runtime from PublicAPI environment (e.g., `https://api.ae.myenterprise.ai/admin`)
+
+**Endpoints Used**:
+- `/api/admin/current-user/tenant-memberships` — Tenant-admin membership list
+- `/api/admin/tenants` — Tenant creation
+- `/api/admin/tenants/{id}/bootstrap-admin` — First-admin bootstrap for child tenants
+- `/api/admin/tenants/{id}/users` — User provisioning
+- `/api/admin/users/lookup` — User lookup by email
+- `/api/admin/platform-ops/entra/confirm-app-registration` — Entra provisioning
+
+**Commands Affected**:
+- `eai tenant list/select/create`
+- `eai user invite`
+- `eai user provision-me`
+- `eai provision entra`
+
+**Failure Impact**:
+- Cannot list or select tenants
+- Cannot create child tenants or provision users
+- Cannot create Entra app registrations
+
+**Auth**: Requires authenticated user with appropriate roles (`tenant-admin` for tenant operations)
+
+---
+
+### 4. Azure App Config
+
+**Type**: Configuration Service
+
+**Dependency Level**: Optional (for `eai env` commands)
+
+**Connection**: Via `AZURE_APP_CONFIG_CONNECTION_STRING` or Azure SDK
+
+**Operations**:
+- `GET` — Fetch environment variables
+- `SET` — Push local overrides (admin only)
+
+**Commands Affected**:
+- `eai env pull`
+- `eai env list`
+- `eai env push`
+
+**Failure Impact**:
+- Cannot sync environment configuration
+- Projects can still use local `.env.local` files
+
+---
+
+### 5. Azure Key Vault
+
+**Type**: Secret Management Service
+
+**Dependency Level**: Optional (for secret-enabled `eai env pull`)
+
+**Connection**: Via Azure SDK (authenticated via Azure CLI or managed identity)
+
+**Operations**:
+- `GET secret` — Fetch secrets referenced in App Config
+
+**Commands Affected**:
+- `eai env pull --include-secrets`
+
+**Failure Impact**:
+- Secrets are not synced
+- Non-secret config still works
+
+---
+
+### 6. GitHub CLI (`gh`)
+
+**Type**: External CLI Tool
+
+**Dependency Level**: Optional (for deployment)
+
+**Version**: ≥2.0.0
+
+**Operations**:
+- `gh workflow run` — Trigger deployment workflows
+- `gh run list` — Check deployment status
+
+**Commands Affected**:
+- `eai deploy trigger`
+- `eai deploy status`
+
+**Failure Impact**:
+- Cannot trigger or monitor GitHub Actions deployments
+- Manual workflow triggers still work via GitHub UI
+
+**Installation Check**: `which gh` or `gh --version`
+
+---
+
+### 7. Azure CLI (`az`)
+
+**Type**: External CLI Tool
+
+**Dependency Level**: Optional (for Azure App Config/Key Vault auth)
+
+**Version**: ≥2.0.0
+
+**Operations**:
+- `az login` — Authenticate to Azure
+- `az account get-access-token` — Get token for Azure SDK
+
+**Commands Affected**:
+- `eai env pull` (if using Azure identity)
+- `eai env push`
+
+**Failure Impact**:
+- Cannot authenticate to Azure services
+- Fallback: Use connection strings or service principal
+
+**Installation Check**: `which az` or `az --version`
+
+---
+
+### 8. Git
+
+**Type**: Version Control System
+
+**Dependency Level**: Recommended (for `eai deploy`)
+
+**Version**: ≥2.0.0
+
+**Operations**:
+- Repository detection for deploy commands
+
+**Commands Affected**:
+- `eai deploy setup`
+
+**Failure Impact**:
+- Cannot auto-detect repository info
+- Users must manually specify `--repo` flag
+
+---
+
+### 9. GitHub Pages Registry
+
+**Type**: Static NPM Registry
+
+**Dependency Level**: Low (for update checks)
+
+**URL**: `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+
+**Operations**:
+- `GET` — Fetch latest version metadata (24h cache)
+
+**Commands Affected**:
+- Background update check (all commands)
+- `eai update`
+
+**Failure Impact**:
+- Update notifications not displayed
+- Manual updates still work via `npm install -g @eai-tools/cli` after configuring the scoped EAI registry, or simply `eai update`
+
+**Timeout**: 5 seconds (non-blocking)
+
+---
+
+## Downstream Dependents
+
+**None**. The CLI is a terminal application with no services or tools depending on it.
+
+**Usage Context**: Developers run the CLI interactively or in CI/CD scripts to interact with the EAI platform.
+
+---
+
+## NPM Package Dependencies
+
+### Production Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `chalk` | ^5.3.0 | Terminal colors and styling |
+| `commander` | ^13.1.0 | CLI framework and argument parsing |
+| `dotenv` | ^16.4.7 | `.env.local` file parsing |
+| `inquirer` | ^12.3.2 | Interactive prompts (tenant selection, confirmations) |
+| `ora` | ^8.1.1 | Loading spinners |
+
+**Total Dependencies**: 5 packages (ESM-only)
+
+**Bundle Size**: ~3.5 MB (including node_modules)
+
+---
+
+### Development Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `@eslint/js` | ^10.0.1 | ESLint core config |
+| `@types/node` | ^22.13.0 | Node.js type definitions |
+| `@vitest/ui` | ^4.1.3 | Vitest UI for test debugging |
+| `eslint` | ^10.0.3 | Linting |
+| `msw` | ^2.6.0 | Mock Service Worker for API testing |
+| `typescript` | ^5.7.3 | TypeScript compiler |
+| `typescript-eslint` | ^8.56.1 | TypeScript ESLint plugin |
+| `vitest` | ^4.1.3 | Test framework |
+
+---
+
+## External Service Contracts
+
+### Entra CIAM Contract
+
+**OAuth 2.0 Endpoints**: As specified in RFC 6749 + RFC 7636 (PKCE)
+
+**Token Format**: JWT (RFC 7519)
+
+**Token Claims**:
+- `oid` — User object ID
+- `upn` — User principal name (email)
+- `tid` — Tenant ID
+- `exp` — Expiration timestamp
+
+**Expected Behavior**:
+- Redirect URI: `http://localhost:8888` (fixed, no wildcard)
+- PKCE code challenge method: `S256` (SHA-256)
+- Scope: Configurable per profile (default: `api://{clientId}/.default offline_access`)
+
+---
+
+### Platform API Contract
+
+**Authentication**: `Authorization: Bearer {access_token}`
+
+**Content-Type**: `application/json`
+
+**Response Format**: JSON (with structured error responses)
+
+**Pagination**: `page` and `limit` query parameters
+
+**Error Format**:
+```json
+{
+  "detail": {
+    "error": "ERROR_CODE",
+    "message": "Human-readable message"
+  }
+}
+```
+
+**Rate Limiting**: 100 requests/minute per token (not enforced in CLI)
+
+**Versioning**: `/v3/` prefix in all endpoints
+
+**Contract Verification**: `eai verify calls --format json` audits actual API surface used by CLI
+
+---
+
+### Admin API Contract
+
+**Authentication**: `Authorization: Bearer {access_token}` (same as PublicAPI)
+
+**Authorization**: Role-based access control
+- `tenant-admin` required for tenant operations
+- Membership-based scoping (user can only access tenants where they are `tenant-admin`)
+
+**Error Handling**: Sanitized errors (no backend URL exposure, no raw tenant IDs)
+
+**Tenant Usability Check**: Child tenant creation includes membership verification before marking as `usable`
+
+---
+
+## Dependency Health Monitoring
+
+**Not implemented**. The CLI does not monitor dependency health proactively.
+
+**User-Facing Health Checks**:
+- `eai verify` — Tests PublicAPI connectivity and auth token validity
+- `eai verify calls` — Audits API contract surface
+- `eai doctor` — Comprehensive diagnostics with fix suggestions
+
+**Failure Modes**:
+- Network errors → Display E201 (Platform unreachable)
+- Auth failures → Display E101-E104 (Auth errors)
+- API errors → Display E202-E205 (Platform errors)
+
+---
+
+## Security Considerations
+
+1. **Token Storage**: Tokens encrypted at rest, file mode `0o600`
+2. **HTTPS Only**: All API calls use HTTPS (no plaintext HTTP)
+3. **PKCE Flow**: Prevents authorization code interception
+4. **No Secrets in Repo**: `.env.local` is gitignored
+5. **Sanitized Errors**: `eai provision entra` never exposes backend details
+6. **Profile Isolation**: Per-profile token storage prevents credential leakage
+
+---
+
+## Upgrade Path
+
+**CLI Updates**: `eai update` (fetches latest from GitHub Pages registry)
+
+**Breaking Changes**: Announced in `CHANGELOG.md` and GitHub releases
+
+**Backward Compatibility**: CLI maintains compatibility with PublicAPI v3 contract
+
+**Token Migration**: Automatic migration from old token format to profile-based storage (introduced in v2.0.0)
+
+---
+
+# EAI CLI — Deployment
+
+# EAI CLI — Deployment
+
+## Overview
+
+The EAI CLI has two deployment contexts:
+
+1. **CLI Distribution** — How the `eai` CLI tool itself is published and installed
+2. **Vertical Application Deployment** — How the CLI helps deploy vertical apps to Azure
+
+---
+
+## CLI Distribution
+
+### Publishing Model
+
+The EAI CLI uses a **static npm registry hosted on GitHub Pages**, eliminating the need for npmjs publishing.
+
+**Registry URL**: `https://eai-tools.github.io/eai-cli/registry`
+
+**Package Name**: `@eai-tools/cli`
+
+**Current Version**: See the registry latest tag at `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+
+### Installation
+
+Users configure npm to use the EAI registry, then install globally:
+
+```bash
+# Configure the scoped EAI registry once
+npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+
+# Install globally
+npm install -g @eai-tools/cli
+
+# Verify installation
+eai --version
+```
+
+### Release Process
+
+Releases are managed by `release.sh` script, which runs a comprehensive validation pipeline.
+
+**Command**:
+```bash
+./release.sh <patch|minor|major> "Release message"
+```
+
+**Examples**:
+```bash
+./release.sh patch "Fix auth token refresh bug"
+./release.sh minor "Add bulk resource import command"
+./release.sh major "New config format, breaking changes to types CLI"
+```
+
+**Release Pipeline**:
+```mermaid
+flowchart TB
+    Start[./release.sh] --> Check1[Verify on main branch]
+    Check1 --> Check2[Verify clean working tree]
+    Check2 --> Check3[Pull latest changes]
+    Check3 --> NodeCheck[Node.js >= 20 check]
+    NodeCheck --> Install[npm ci]
+    Install --> Typecheck[tsc --noEmit]
+    Typecheck --> Lint[npm run lint]
+    Lint --> Build[npm run build]
+    Build --> Test[npm run test]
+    Test --> Smoke[Smoke Tests]
+    Smoke --> Docs[Build docs site]
+    Docs --> Pack[npm pack]
+    Pack --> Registry[generate-registry.cjs]
+    Registry --> IPScan[IP leak scan]
+    IPScan --> Bump[Bump package.json version]
+    Bump --> Commit[git commit + tag]
+    Commit --> Push[git push + push tags]
+    Push --> GHRelease[Create GitHub Release]
+```
+
+### Validation Checks
+
+| Check | Tool | Purpose |
+|-------|------|---------|
+| **Branch** | `git branch --show-current` | Must be on `main` |
+| **Working Tree** | `git status --porcelain` | Must be clean (no uncommitted changes) |
+| **Node Version** | `node -v` | Must be >= 20.0.0 |
+| **Dependencies** | `npm ci` | Clean install from lockfile |
+| **Type Check** | `tsc --noEmit` | TypeScript type errors |
+| **Lint** | `npm run lint` | ESLint violations |
+| **Build** | `npm run build` | Compilation errors |
+| **Tests** | `npm run test` | Vitest unit tests pass |
+| **Smoke Tests** | `node dist/index.js --version/--help` | CLI executable and commands present (init, login, dev, types, resources, deploy, env, verify, chat, docs, whoami, doctor, tenant, user, provision, update) |
+| **Docs Build** | Build documentation site | Astro/Starlight docs generation succeeds |
+| **Registry** | `npm pack` + `generate-registry.cjs` | Registry metadata valid |
+| **IP Leak** | Scan source for internal terms | No sensitive info leaked |
+
+### Smoke Test Details
+
+The release script verifies these commands are registered:
+- `init`, `login`, `dev`, `types`, `resources`, `deploy`, `env`
+- `verify`, `chat`, `docs`, `whoami`, `doctor`, `tenant`, `user`, `provision`, `update`
+
+### Registry Generation
+
+**Script**: `scripts/generate-registry.cjs`
+
+**Inputs**:
+- `package.json` — Version, description, keywords
+- `eai-tools-cli-{version}.tgz` — Tarball produced by `npm pack`
+
+**Outputs**:
+- `docs-site/static/registry/@eai-tools/cli` — npm packument (package metadata)
+- `docs-site/static/registry/-/@eai-tools/cli-{version}.tgz` — Versioned tarball
+
+**Packument Structure**:
+```json
+{
+  "name": "@eai-tools/cli",
+  "dist-tags": {
+    "latest": "2.8.5"
+  },
+  "versions": {
+    "2.8.5": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.5",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.5.tgz",
+        "shasum": "..."
+      }
+    }
+  }
+}
+```
+
+### GitHub Actions Workflow
+
+**File**: `.github/workflows/release.yml` (if present)
+
+**Trigger**: Git tag push (`v*`)
+
+**Steps**:
+
+1. **Checkout** — Fetch repository with full history
+2. **Setup Node.js** — Install Node 24
+3. **Validate Version** — Ensure tag matches `package.json` version
+4. **Install** — `npm ci`
+5. **Typecheck** — `npm run typecheck`
+6. **Lint** — `npm run lint`
+7. **Build** — `npm run build`
+8. **Test** — `npm run test`
+9. **Verify Registry** — Confirm the committed static registry latest tag matches the release tag
+10. **Create Tarball** — `npm pack`
+11. **Generate Changelog** — Extract commit messages since last tag
+12. **Create GitHub Release** — Publish release with tarball and changelog
+
+**Permissions**:
+```yaml
+permissions:
+  contents: write  # For creating releases and pushing to gh-pages
+```
+
+### Version Bumping
+
+**Semantic Versioning**: `MAJOR.MINOR.PATCH`
+
+| Bump | Increment | Use Case |
+|------|-----------|----------|
+| `patch` | `2.5.2` → `2.5.3` | Bug fixes, dependency updates |
+| `minor` | `2.7.2` → `2.8.0` | New features, backward-compatible |
+| `major` | `2.8.3` → `3.0.0` | Breaking changes |
+
+**Manual Bump**:
+```bash
+npm version patch -m "chore: release v%s"   # Creates commit + tag
+git push origin main --follow-tags
+```
+
+### Update Mechanism
+
+Users are notified of updates via background check (24h cache):
+
+**Update Check Flow**:
+```mermaid
+sequenceDiagram
+    participant CLI
+    participant Cache as ~/.eai/update-check.json
+    participant Registry as GitHub Pages
+
+    CLI->>Cache: Read cache
+    alt Cache < 24h old
+        Cache-->>CLI: Skip check
+    else Cache expired
+        CLI->>Registry: GET /registry/@eai-tools/cli
+        Registry-->>CLI: {"dist-tags": {"latest": "2.8.5"}}
+        CLI->>Cache: Write cache
+    end
+
+    Note over CLI: Execute command
+
+    CLI->>Cache: Read latest version
+    alt Latest > Current
+        CLI->>CLI: Display update banner
+    end
+```
+
+**Update Command**:
+```bash
+eai update  # Reinstalls the latest CLI from the scoped EAI registry
+```
+
+---
+
+## Vertical Application Deployment
+
+The CLI helps deploy vertical applications (built with the Platform SDK) to Azure App Service.
+
+### Deployment Architecture
+
+```mermaid
+flowchart TB
+    Dev[Developer Machine] -->|1. eai deploy setup| GHActions[GitHub Actions Workflow]
+    Dev -->|2. eai deploy trigger| Trigger[gh workflow run]
+    Trigger -->|3. Execute| Build[npm ci && npm run build]
+    Build -->|4. Package| Artifact[Build artifact]
+    Artifact -->|5. Deploy| AppService[Azure App Service]
+    AppService -->|6. Health Check| URL[https://my-app.azurewebsites.net]
+    Dev -->|7. eai deploy status| Status[Check workflow runs]
+```
+
+### Setup Deployment
+
+**Command**: `eai deploy setup`
+
+**Purpose**: Generates GitHub Actions workflow file and documents required secrets.
+
+**Generated File**: `.github/workflows/deploy-demo.yml`
+
+**Workflow Contents**:
+```yaml
+name: Deploy to Azure
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+      - uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ secrets.AZURE_APP_NAME }}
+          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
+```
+
+**Required GitHub Secrets**:
+- `AZURE_APP_NAME` — Azure App Service name
+- `AZURE_PUBLISH_PROFILE` — Publish profile (downloaded from Azure Portal)
+
+**Setup Output**:
+```bash
+eai deploy setup --repo myorg/my-vertical
+
+✓ Created .github/workflows/deploy-demo.yml
+
+Next steps:
+1. Add GitHub secrets:
+   - AZURE_APP_NAME
+   - AZURE_PUBLISH_PROFILE
+2. Push workflow to GitHub:
+   git add .github/workflows/deploy-demo.yml
+   git commit -m "Add deployment workflow"
+   git push
+3. Trigger deployment:
+   eai deploy trigger
+```
+
+### Trigger Deployment
+
+**Command**: `eai deploy trigger`
+
+**Purpose**: Manually trigger GitHub Actions workflow via `gh` CLI.
+
+**Requirements**:
+- `gh` CLI installed and authenticated
+- Workflow file exists (`.github/workflows/deploy-demo.yml`)
+- User has repo admin permissions
+
+**Execution**:
+```bash
+eai deploy trigger
+
+▸ Triggering deployment workflow...
+✓ Workflow triggered successfully
+  Run ID: 123456789
+  URL: https://github.com/myorg/my-vertical/actions/runs/123456789
+```
+
+**Underlying Command**:
+```bash
+gh workflow run deploy-demo.yml --ref main
+```
+
+### Check Deployment Status
+
+**Command**: `eai deploy status`
+
+**Purpose**: List recent GitHub Actions workflow runs.
+
+**Output**:
+```bash
+eai deploy status
+
+Recent deployments:
+  ✓ Run #42  main  2 hours ago   success   (Deploy to Azure)
+  ✗ Run #41  main  1 day ago     failure   (Deploy to Azure)
+  ✓ Run #40  main  3 days ago    success   (Deploy to Azure)
+```
+
+**Underlying Command**:
+```bash
+gh run list --workflow=deploy-demo.yml --limit=10
+```
+
+### Azure Resources
+
+The CLI does not create Azure resources (App Service, Key Vault, App Config). These must be provisioned manually or via Infrastructure-as-Code (Terraform, Bicep, ARM templates).
+
+**Typical Azure Setup**:
+
+| Resource | Purpose |
+|----------|---------|
+| **Azure App Service** | Hosts the vertical application (Node.js runtime) |
+| **Azure App Config** | Stores environment configuration |
+| **Azure Key Vault** | Stores secrets (API keys, connection strings) |
+| **Application Insights** | Monitoring and telemetry (optional) |
+
+### Environment Configuration Sync
+
+**Command**: `eai env pull`
+
+**Purpose**: Syncs environment config from Azure App Config + Key Vault to `.env.local`.
+
+**Pre-Deployment Checklist**:
+1. ✅ Azure App Service created
+2. ✅ Azure App Config populated
+3. ✅ GitHub secrets configured
+4. ✅ Workflow file committed
+5. ✅ `eai deploy trigger` executed
+6. ✅ Deployment succeeded (check `eai deploy status`)
+7. ✅ Health check passes (`curl https://my-app.azurewebsites.net/health`)
+
+---
+
+## Deployment Health Checks
+
+### CLI Health Check
+
+**Command**: `eai verify`
+
+**Checks**:
+- Platform API reachable
+- Authentication valid
+- Tenant accessible
+
+**Output**:
+```bash
+eai verify
+
+✓ Platform API reachable (https://api.eai.example.com)
+✓ Authentication valid (token expires in 42 minutes)
+✓ Tenant accessible (Team A - tenant-123)
+```
+
+### Vertical App Health Check
+
+Most vertical apps expose a `/health` endpoint:
+
+```bash
+curl https://my-app.azurewebsites.net/health
+```
+
+**Expected Response**:
+```json
+{
+  "status": "healthy",
+  "platform": "connected",
+  "database": "connected"
+}
+```
+
+---
+
+## CI/CD Integration
+
+### GitHub Actions Example
+
+```yaml
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20
+      
+      # Install CLI
+      - run: |
+          npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+          npm install -g @eai-tools/cli
+      
+      # Authenticate (headless)
+      - env:
+          EAI_ACCESS_TOKEN: ${{ secrets.EAI_ACCESS_TOKEN }}
+          NO_UPDATE_NOTIFIER: 1
+        run: |
+          eai types validate
+          eai types seed --dry-run
+          eai verify
+```
+
+### Environment Variables for CI
+
+| Variable | Purpose |
+|----------|---------|
+| `EAI_ACCESS_TOKEN` | Bypass token storage, use provided token |
+| `NO_UPDATE_NOTIFIER` | Disable update checks |
+| `CI` | Auto-detected by CLI; disables interactive prompts |
+
+---
+
+## Rollback Strategy
+
+### CLI Rollback
+
+**Downgrade to Previous Version**:
+```bash
+npm install -g @eai-tools/cli@2.5.2
+eai --version  # Verify downgrade
+```
+
+### Vertical App Rollback
+
+**Via GitHub Actions**:
+1. Navigate to failed deployment run
+2. Find previous successful run
+3. Click "Re-run jobs"
+
+**Via Azure Portal**:
+1. Navigate to App Service
+2. Deployment Center → Deployment History
+3. Select previous deployment
+4. Click "Redeploy"
+
+**Via `gh` CLI**:
+```bash
+# List recent runs
+gh run list --workflow=deploy-demo.yml
+
+# Re-run previous successful run
+gh run rerun 123456789
+```
+
+---
+
+## Security Considerations
+
+### CLI Distribution
+
+- **Tarball Integrity**: SHA checksums verified by npm on install
+- **HTTPS Only**: Registry served over HTTPS (GitHub Pages)
+- **No Secrets in Source**: IP leak scan prevents accidental secret commits
+- **Supply Chain**: No npm.js dependency; full control over distribution
+
+### Vertical App Deployment
+
+- **Secrets in GitHub Secrets**: Never commit Azure publish profiles or tokens
+- **Least Privilege**: Deploy keys have App Service write-only permissions
+- **Signed Commits**: Release commits are signed by maintainer
+- **Audit Trail**: GitHub Actions logs retained for 90 days
+
+---
+
+## Monitoring and Observability
+
+### CLI Update Metrics
+
+**Not currently tracked**. Possible future additions:
+- Update check success rate
+- Version distribution (% on latest, lagging versions)
+- Update adoption rate
+
+### Deployment Metrics
+
+**Via GitHub Actions**:
+- Workflow success rate
+- Deployment duration
+- Failure reasons (build, test, deploy)
+
+**Via Azure App Service**:
+- Application Insights (telemetry, logs, exceptions)
+- Health check endpoint uptime
+- Request/response metrics
+
+---
+
+## Troubleshooting
+
+### "gh: command not found"
+
+**Cause**: GitHub CLI not installed
+
+**Fix**:
+```bash
+# macOS
+brew install gh
+
+# Linux (Debian/Ubuntu)
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update && sudo apt install gh
+
+# Authenticate
+gh auth login
+```
+
+### "Workflow not found"
+
+**Cause**: Workflow file doesn't exist or is in wrong location
+
+**Fix**:
+```bash
+eai deploy setup --repo myorg/my-vertical
+git add .github/workflows/deploy-demo.yml
+git commit -m "Add deployment workflow"
+git push
+```
+
+### "Deployment failed: Publish profile invalid"
+
+**Cause**: Expired or incorrect Azure publish profile
+
+**Fix**:
+1. Go to Azure Portal → App Service → Deployment Center
+2. Download new publish profile
+3. Update GitHub secret `AZURE_PUBLISH_PROFILE`
+4. Re-trigger deployment: `eai deploy trigger`
+
+---
+
+## Future Enhancements
+
+- [ ] Automated blue-green deployments
+- [ ] Deployment preview environments (PR-based)
+- [ ] CLI telemetry (opt-in, privacy-preserving)
+- [ ] Registry CDN for faster installs
+- [ ] Signed tarballs with GPG
+
+---
+
+# EAI CLI — Changelog
+
+# EAI CLI — Changelog
+
+## Recent Changes Since Last Documentation Update
+
+**Previous Documentation**: 2026-05-11 14:16 UTC (commit a8a694f)  
+**Current Documentation**: 2026-05-12 18:17 UTC (commit 9e4b783)  
+**Version**: 2.8.13 (stable)
+
+### Changes in This Update
+
+#### Documentation Updates
+- Added Feature 026 specification: Public Platform Builder Experience (commit 9e4b783)
+  - Specifies developer-facing platform configuration and resource bootstrapping workflows
+  - Includes quickstart guide, research notes, implementation plan, and validation criteria
+  - Planning artifact for future CLI enhancement
+- Nightly `.tech-docs/` documentation refresh
+- No implementation code changes since last generation
+
+---
+
+## [2.8.5] - 2026-05-11
+
+- Align release docs and CLI help automation with the static registry flow
+
+## [2.8.6] - 2026-05-11
+
+- Refresh release docs and CLI help automation
+
+## [2.8.7] - 2026-05-11
+
+- Make release-facing docs generation deterministic
+
+## [2.8.8] - 2026-05-11
+
+- Add template drift preview and move workflows onto Node 24
+
+## [2.8.9] - 2026-05-11
+
+- Highlight update workflows in CLI help
+
+## [2.8.10] - 2026-05-11
+
+- Fix legacy template provenance detection
+
+## [2.8.11] - 2026-05-11
+
+- Add tenant app registration persistence spec
+
+## [2.8.12] - 2026-05-11
+
+- Fix docs workflow Node 24 artifact action
+
+## [2.8.13] - 2026-05-12
+
+- Add public platform builder workflow readiness and update guidance
+
+## Previous Updates
+
+---
+
+## [2.8.3] - 2026-05-08
+
+### Summary
+Fixed Object Type storage metadata scaffolding for generated types. The `eai init` command now correctly scaffolds `storageMetadataStatus` field for Object Types.
+
+### Fixed
+
+- **Storage Metadata Status Scaffolding** (PR #35, commit ebee64d)
+  - Fixed `eai init` to generate Object Types with correct `storageMetadataStatus` field
+  - Generated types now include `storageMetadataStatus: 'draft'` by default
+  - Published types require `storageMetadataStatus: 'ready'` with complete `storageBinding` config
+  - Prevents validation errors when seeding types after init
+
+### Related
+
+- Validation rules for storage metadata documented in `src/commands/types.ts`
+- Object Type storage binding validation in `validateObjectTypeStorageMetadata()`
+
+---
+
+## [2.8.2] - 2026-05-08
+
+### Summary
+Fixed generated Object Type storage metadata to align with platform validation rules.
+
+### Fixed
+
+- **Object Type Scaffold Storage Metadata** (PR #34, commit 323804c)
+  - Aligned object type scaffolding with storage metadata validation rules
+  - Fixed generated types to match platform requirements for `storageBackend`, `storageMetadataStatus`, and `storageBinding`
+  - Ensured published types include complete storage configuration
+  - Prevented seed failures due to invalid storage metadata
+
+### Changed
+
+- Object Type scaffolding in `eai init` now generates compliant storage metadata
+- Validation messages improved for storage binding errors
+
+---
+
+## [2.8.1] - 2026-05-08
+
+### Summary
+Fixed production tenant lookup after CLI login. The CLI now correctly resolves production tenant context when using the default profile.
+
+### Fixed
+
+- **Production Tenant Lookup** (PR #33, commit 72ff1cd)
+  - Fixed tenant context resolution for production environment
+  - CLI login now correctly caches production tenant memberships
+  - Resolved issue where `eai tenant select` would fail after fresh login to production
+  - Improved error messages when tenant lookup fails
+
+### Changed
+
+- Tenant context resolution logic in `src/lib/tenant-context.ts`
+- Improved debugging output for tenant membership fetch
+
+---
+
+## [2.7.0] - 2026-05-04
+
+### Summary
+Entra provisioning validation improvements. The `eai provision entra` command now validates the `signin_ready` status from AdminAPI and provides clear warnings when Entra app registration is incomplete.
+
+### Added
+
+- **Entra Provisioning Validation** (PR #32, commit 0621814)
+  - `eai provision entra` now checks `signin_ready` field from AdminAPI `/v1/admin/auth/entra-app` response
+  - Exits with non-zero status code when `signin_ready=false`
+  - Displays warning message explaining that Entra app registration is incomplete or pending
+  - Prevents silent failures where authentication would fail due to incomplete Entra configuration
+
+### Fixed
+
+- **Entra Provisioning Silent Failures**
+  - Previously, `eai provision entra` would succeed even when Entra app registration was incomplete
+  - Users would encounter authentication failures with no clear indication of the root cause
+  - Now provides immediate feedback during provisioning phase
+
+---
+
+## [2.6.0] - 2026-05-02
+
+### Summary
+Tenant context fixes and local dedicated tenant lifecycle improvements. Enhanced child tenant bootstrap flow with usability verification.
+
+### Added
+
+- **Local Dedicated Tenant Lifecycle Coverage** (commit ae537b4)
+  - Added comprehensive E2E tests for local dedicated tenant lifecycle
+  - New test script: `npm run test:e2e-local` (bash `scripts/test-local-dedicated-tenant-lifecycle.sh`)
+  - Tests cover tenant creation, bootstrap, membership verification, and usability checks
+
+### Fixed
+
+- **Tenant Context for CLI Operations** (PR #29, commit 5c10404)
+  - Fixed tenant context handling for CLI tenant operations
+  - Resolved issue where tenant context was not properly maintained during child tenant operations
+  - Improved error messages when tenant context is invalid or missing
+
+- **Child Tenant Bootstrap Redundancy** (commit 1d6057c)
+  - Avoided redundant child tenant bootstrap calls
+  - Added usability check to prevent repeated bootstrap attempts
+  - Enhanced first-admin bootstrap flow to verify membership before marking as usable
+
+### Changed
+
+- **Tenant Lifecycle Truth** (commits 49b5ea5, ae537b4)
+  - `eai tenant create` now distinguishes three states:
+    - `created`: tenant document exists
+    - `bootstrapped`: first-admin bootstrap called successfully
+    - `usable`: direct `tenant-admin` membership confirmed
+  - CLI only auto-selects new child tenants when `usable` is true
+  - Improved error messages when bootstrap is blocked or membership confirmation fails
+
+### Commits
+
+- `06d9705` - Merge pull request #30 from eai-tools/codex/issue-2688-fix-tenant-context
+- `49b5ea5` - Merge main into local tenant lifecycle branch
+- `ae537b4` - Add local dedicated tenant lifecycle coverage
+- `1d6057c` - Avoid redundant child tenant bootstrap
+- `5c10404` - Fix tenant context for CLI tenant operations (#29)
+- Previous docs commits (999edb6, cecc419, e555f2a, 31b52b6, 7c879a6)
+
+---
+
+## [2.6.0] - 2026-04-30
+
+### Summary
+This release refreshes the bundled Gofer payload to v3.1.0-1 and includes several infrastructure improvements.
+
+### Changes
+- **feat**: Refresh bundled Gofer payload to v3.1.0-1
+- **chore**: Publish v2.6.0 to registry
+- **chore**: Release v2.6.0
+
+### Spec Implementation
+- **Gofer Installation** (`.specify/specs/011-install-gofer`): COMPLETE (100/100 validation score)
+- **CLI Platform Alignment** (`.specify/specs/901-cli-platform-alignment`): COMPLETE (100/100 validation score)
+- **Provision Entra Diagnostics** (`.specify/specs/902-provision-entra-diagnostics`): COMPLETE (100/100 validation score)
+- **Provision Entra CIAM Routing** (`.specify/specs/903-provision-entra-ciam-routing`): COMPLETE (100/100 validation score)
+
+---
+
+## [2.5.2] - 2026-04-29
+
+### Changes
+- **fix**: Validate object type defaults before seeding
+- **chore**: Publish v2.5.2 to registry
+
+---
+
+## [2.5.1] - 2026-04-28
+
+### Changes
+- **fix**: Route provision storage to PublicAPI resources path
+
+---
+
+## [2.5.0] - 2026-04-28
+
+### Changes
+- **feat**: Refresh bundled Gofer payload to v3.0.1-1
+- **fix**: Remove internal storage labels from CLI help
+- **chore**: Publish v2.5.0 to registry
+
+---
+
+## [2.4.2] - 2026-04-28
+
+### Changes
+- **fix**: Respect `APP_BASE_PATH` when registering OAuth redirect URI
+
+---
+
+## [2.4.1] - 2026-04-XX
+
+### Changes
+- **fix**: Persist `ENTRA_TENANT_ID` and `ENTRA_TENANT_NAME` in provision entra
+
+---
+
+## [2.4.0] - 2026-04-XX
+
+### Changes
+- **feat**: Add provision entra debug mode
+- **feat**: Persist scopes, redirect URIs, env, tenant ID
+- **feat**: Show all user roles in tenant list
+- **feat**: Add resource storage CLI dogfood commands
+- **chore**: Publish v2.4.0 to registry
+
+---
+
+## [2.3.0] - 2026-04-XX
+
+### Changes
+- **feat**: Replace tenant-structure prompt with explicit tenant binding in `eai init`
+- **chore**: Publish v2.3.0 to registry
+
+---
+
+## Major Changes Since v0.1.4 (March 2026)
+
+### 🔐 Authentication & Authorization
+
+#### Browser-Based PKCE Flow
+- **Changed**: Authentication flow from device code to browser-based PKCE (RFC 7636)
+- **Impact**: Faster login, no device code polling, localhost:8888 callback server
+- **Files**: `src/lib/auth.ts`
+- **Commands Affected**: `eai login`
+
+#### Profile System
+- **Added**: Multi-environment profile support (`--profile dev|test|prod`)
+- **Added**: `EAI_PROFILE` environment variable
+- **Added**: Per-profile token storage (`~/.eai/tokens/{profile}.json`)
+- **Added**: Profile config in `~/.eai/config.json`
+- **Impact**: Developers can switch between dev/test/prod without changing files
+- **Files**: `src/lib/profile.ts`, `src/lib/auth.ts`
+- **Commands Affected**: All commands (global `--profile` flag)
+
+#### Tenant Context Management
+- **Added**: Membership-driven tenant selection via `eai tenant select`
+- **Added**: Tenant context cache (`~/.eai/tenant-context.json`)
+- **Changed**: Tenant selection from `.env.local` vars to login-based memberships
+- **Impact**: Active tenant comes from AdminAPI memberships, not environment variables
+- **Files**: `src/lib/tenant-context.ts`, `src/lib/context.ts`
+- **Commands Affected**: `eai tenant list/select`, all tenant-scoped commands
+
+### 🛠️ New Commands
+
+#### `eai provision entra`
+- **Purpose**: Create or confirm Entra app registration in CIAM for the vertical
+- **Features**: Profile-based CIAM routing, sanitized error handling, OAuth scope/redirect URI persistence
+- **Spec**: `.specify/specs/902-provision-entra-diagnostics`, `.specify/specs/903-provision-entra-ciam-routing`
+- **Files**: `src/commands/provision.ts`
+
+#### `eai user invite`
+- **Purpose**: Add existing user to tenant via tenant-admin provisioning flow
+- **Features**: User lookup by email, role assignment
+- **Files**: `src/commands/user.ts`
+
+#### `eai user provision-me`
+- **Purpose**: Self-provision to a tenant (when invited but not yet provisioned)
+- **Files**: `src/commands/user.ts`
+
+#### `eai tenant create`
+- **Enhanced**: Now includes first-admin bootstrap and membership verification
+- **Features**: Child tenant usability check, auto-selection only if truly usable
+- **Spec**: `.specify/specs/901-cli-platform-alignment`
+- **Files**: `src/commands/tenant.ts`
+
+#### `eai verify calls`
+- **Purpose**: Audit platform API contracts used by the CLI
+- **Features**: Lists PublicAPI and AdminAPI routes the CLI actually calls
+- **Files**: `src/commands/verify.ts`
+
+#### Resource Storage Commands (Dogfood)
+- **Added**: `eai resources storage-status`
+- **Added**: `eai resources storage-doctor`
+- **Added**: `eai resources provision-storage`
+- **Purpose**: Manage object-specific storage backends
+
+### 📚 Library Additions
+
+#### Error Code System
+- **Added**: Structured error catalog (E001-E399)
+- **Categories**: Project (E001-E099), Auth (E100-E199), Platform (E200-E299), Validation (E300-E399)
+- **Features**: Consistent error messages, exit codes, suggestions
+- **Files**: `src/lib/error-codes.ts`
+- **Usage**: `exitWithError(ErrorCode.E101)` → "Not logged in. Run `eai login` to authenticate."
+
+#### Context Resolution
+- **Added**: Unified context resolution for commands
+- **Purpose**: Centralize project root, profile, auth, tenant discovery
+- **Features**: Reduces boilerplate, consistent error handling
+- **Files**: `src/lib/context.ts`
+- **Usage**: `const ctx = await resolveCommandContext({ interactive: true })`
+
+#### Cloud Environment Management
+- **Added**: Azure App Config + Key Vault integration
+- **Purpose**: Sync environment variables to `.env.local`
+- **Files**: `src/lib/cloud-env.ts`
+
+#### Azure CLI Integration
+- **Added**: Azure CLI detection and token acquisition
+- **Purpose**: Authenticate to Azure services for `eai env pull`
+- **Files**: `src/lib/azure-cli.ts`
+
+#### Schema Builder
+- **Added**: `--describe` flag support for AI agents
+- **Purpose**: Output JSON schema of CLI command structure
+- **Features**: Enables AI tools to discover capabilities at runtime
+- **Files**: `src/lib/schema-builder.ts`
+- **Usage**: `eai --describe | jq '.commands[]'`
+
+#### Object Type Defaults
+- **Added**: Default property value utilities
+- **Purpose**: Validate and apply default values for Object Type properties
+- **Files**: `src/lib/object-type-defaults.ts`
+
+### 🔄 Breaking Changes
+
+#### Tenant Selection
+- **Removed**: `TENANT_DEFAULT_ID` and `TENANT_{APP}_ID` from `.env.local` (deprecated)
+- **Replacement**: Use `eai login` + `eai tenant select` (membership-driven)
+- **Migration**: Existing projects still work (fallback to env vars with deprecation warning)
+
+#### Authentication Flow
+- **Removed**: Device code flow (no more user codes to type in browser)
+- **Replacement**: Browser-based PKCE flow (localhost:8888 callback)
+- **Migration**: Existing tokens remain valid; re-login uses new flow
+
+### ✨ Enhancements
+
+#### AdminAPI Integration
+- **Added**: Direct AdminAPI routes for tenant/user management
+- **Endpoints**: `/api/admin/tenants`, `/api/admin/users/lookup`, `/api/admin/current-user/tenant-memberships`, `/api/admin/tenants/{id}/bootstrap-admin`
+- **Impact**: Membership resolution, user provisioning, tenant creation
+- **Files**: `src/lib/api.ts`
+
+#### Gofer Asset Installation
+- **Enhanced**: `eai init` now installs Gofer AI CLI assets by default
+- **Includes**: Claude commands/agents, Codex skills, Gemini commands, Copilot prompts
+- **Escape Hatch**: `eai init <name> --no-gofer` to skip
+- **Spec**: `.specify/specs/011-install-gofer` (COMPLETE)
+- **Files**: `src/lib/gofer-installer.ts`
+
+#### Output Formatting
+- **Added**: `--simple` flag for screen-reader friendly output
+- **Added**: `--no-color` / `--color` flags for color control
+- **Enhanced**: `symbols` object (✓, ✗, ⚠, →, +, -, ~, =)
+- **Files**: `src/lib/output.ts`
+
+#### Test Coverage
+- **Added**: Vitest + MSW for API mocking
+- **Coverage**: Unit tests for core library modules
+- **Files**: `tests/**/*.test.ts`, `vitest.config.ts`
+
+### 📄 Documentation
+
+#### Comprehensive Docs Site
+- **Built With**: Astro + Starlight
+- **Pages**: 93 pages covering getting started, guides, concepts, command reference, 50 industry scenarios
+- **Location**: `docs/`
+- **Published**: [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli)
+
+#### Gofer Pipeline Documentation
+- **Added**: CLAUDE.md workflow instructions
+- **Added**: AGENTS.md project conventions
+- **Commands**: `/0_business_scenario` through `/8_gofer_resume`
+- **Files**: `CLAUDE.md`, `AGENTS.md`
+
+### 🐛 Bug Fixes
+
+- Fixed token refresh race condition (5min buffer before expiry)
+- Fixed TypeScript evaluation for Object Types with complex imports
+- Fixed tenant bootstrap confirmation flow (membership verification)
+- Fixed Entra provisioning error handling (sanitized backend details)
+- Fixed profile isolation (per-profile tokens don't leak across environments)
+- Fixed object type defaults validation before seeding
+- Fixed provision storage routing to PublicAPI resources path
+- Fixed OAuth redirect URI to respect `APP_BASE_PATH`
+- Fixed Entra tenant ID and tenant name persistence in provision entra
+
+### 🔒 Security
+
+- Sanitized error messages in `eai provision entra` (no backend URL exposure)
+- Added per-profile token encryption (AES-256-CBC)
+- Enforced file mode `0o600` on token files
+- Added IP leak scan to release pipeline
+- Removed hardcoded tenant IDs from source
+
+### 📦 Dependencies
+
+**Added**:
+- `vitest` 4.1.3 (testing framework)
+- `msw` 2.6.0 (API mocking)
+- `@vitest/ui` 4.1.3 (test UI)
+
+**Updated**:
+- `commander` ^12 → ^13.1.0
+- `inquirer` ^11 → ^12.3.2
+- `typescript` ^5.6 → ^5.7.3
+- `eslint` ^9 → ^10.0.3
+- `dotenv` ^16.4.7
+- `chalk` ^5.3.0
+- `ora` ^8.1.1
+
+---
+
+## Version History Summary
+
+| Version | Date | Key Changes |
+|---------|------|-------------|
+| **2.6.0** | 2026-04-30 | Refresh Gofer payload to v3.1.0-1 |
+| **2.5.2** | 2026-04-29 | Validate object type defaults before seeding |
+| **2.5.1** | 2026-04-28 | Fix provision storage routing |
+| **2.5.0** | 2026-04-28 | Refresh Gofer payload to v3.0.1-1, remove internal storage labels |
+| **2.4.2** | 2026-04-28 | Fix OAuth redirect URI with APP_BASE_PATH |
+| **2.4.1** | 2026-04-XX | Fix Entra tenant persistence |
+| **2.4.0** | 2026-04-XX | Provision entra debug mode, storage commands, tenant roles |
+| **2.3.0** | 2026-04-XX | Explicit tenant binding in eai init |
+| **2.1.0** | 2026-03-XX | Tenant context cache added |
+| **2.0.0** | 2026-03-XX | Profile-based token storage |
+| **0.1.4** | 2026-03-11 | Last documented version (previous tech-docs snapshot) |
+
+---
+
+## Architectural Changes
+
+### Authentication Architecture
+- **Before**: Device code flow → `~/.eai/tokens.json` → Single environment
+- **After**: Browser PKCE flow → `~/.eai/tokens/{profile}.json` → Multi-environment profiles
+
+### Tenant Selection Architecture
+- **Before**: `.env.local` (`TENANT_DEFAULT_ID`) → Manual management
+- **After**: AdminAPI memberships → `eai tenant select` → Cached in `~/.eai/tenant-context.json`
+
+### Error Handling Architecture
+- **Before**: Inline error messages, inconsistent formats
+- **After**: Structured error codes (E001-E399), catalog with suggestions
+
+### Command Context Architecture
+- **Before**: Each command discovers project root, loads config, creates API client
+- **After**: Centralized `resolveCommandContext()` in `src/lib/context.ts`
+
+---
+
+## Migration Guide (0.1.4 → 2.6.0)
+
+### For End Users
+
+#### Step 1: Update CLI
+```bash
+npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm install -g @eai-tools/cli
+eai --version  # Should show 2.6.0
+```
+
+#### Step 2: Re-Login (New PKCE Flow)
+```bash
+eai logout
+eai login  # Opens browser for authentication
+```
+
+#### Step 3: Select Tenant (If Multi-Tenant User)
+```bash
+eai tenant list
+eai tenant select
+```
+
+#### Step 4: Verify Setup
+```bash
+eai whoami
+eai verify
+```
+
+### For Projects
+
+#### Update `.env.local` (Optional but Recommended)
+- Remove `TENANT_DEFAULT_ID` (deprecated, use `eai tenant select`)
+- Remove `ENTRA_*` variables if using profiles (use `~/.eai/config.json` instead)
+
+#### Update Scripts
+- Replace `TENANT_ID` env var references with tenant selection
+- Use `EAI_ACCESS_TOKEN` for CI/CD (headless authentication)
+
+### For CI/CD Pipelines
+
+**Before**:
+```bash
+export TENANT_ID=${{ secrets.TENANT_ID }}
+eai types seed
+```
+
+**After**:
+```bash
+export EAI_ACCESS_TOKEN=${{ secrets.EAI_ACCESS_TOKEN }}
+export NO_UPDATE_NOTIFIER=1
+eai types seed
+```
+
+---
+
+## Known Issues
+
+- Profile switching requires re-login (by design for security)
+- `eai tenant create` may require manual membership refresh if bootstrap is delayed
+- Update checks may timeout in regions with GitHub Pages latency
+
+---
+
+## Upcoming Features (Roadmap)
+
+- [ ] `eai types define` — Interactive Object Type builder
+- [ ] `eai dev --offline` — Local mock gateway for offline development
+- [ ] `eai tunnel` — Cloudflare tunnel for webhook testing
+- [ ] CLI telemetry (opt-in, privacy-preserving)
+- [ ] Automated blue-green deployments
+
+---
+
+## Contributors
+
+This release includes contributions from the EAI Tools team and community feedback from the Gofer pipeline specifications process.
+
+For detailed commit history: `git log 584ed1a..e555f2a`
+
+---
+
+# Documentation Surfaces
+
+# Documentation Surfaces
+
+## Standard Source Of Truth
+
+The central nightly `tech-docs` process treats `.tech-docs/` as the canonical generated snapshot for this repository.
+
+| Path | Role | Central nightly aggregation |
+|---|---|---|
+| `.tech-docs/` | Generated technical snapshot derived from code and repo metadata | Yes |
+
+## Additional Repo-Local Documentation Surfaces
+
+| Path | Role | Central nightly aggregation |
+|---|---|---|
+| `docs-site/` | Docs-site framework project | No; should be summarized into `.tech-docs/` |
+
+## Documentation Workflows
+
+| Workflow | Triggers | Purpose |
+|---|---|---|
+| `.github/workflows/docs.yml` | push, manual | Repo-local docs publishing or pages deployment |
+
+## Consolidation Status
+
+- Repo: `tech-docs`
+- Canonical nightly-generated surface: `.tech-docs/`
+- Additional surfaces detected: 1
+- Additional docs workflows detected: 1

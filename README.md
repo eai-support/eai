@@ -6,13 +6,13 @@ Every command wraps platform API calls — developers work with **resources, typ
 
 ## Install
 
-Configure npm to use the EAI registry:
+Configure the scoped EAI registry once per user:
 
 ```bash
-echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
+npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
 ```
 
-Then install globally:
+Install or update the EnterpriseAI CLI:
 
 ```bash
 npm install -g @eai-tools/cli
@@ -21,10 +21,10 @@ npm install -g @eai-tools/cli
 If you are validating the generated registry from a local checkout of this repo, install the tarball instead of the packument file:
 
 ```bash
-npm install -g ./docs/public/registry/-/@eai-tools/cli-latest.tgz
+npm install -g ./docs-site/static/registry/-/@eai-tools/cli-latest.tgz
 ```
 
-`docs/public/registry/@eai-tools/cli` is the registry metadata file. It is not an installable package directory.
+`docs-site/static/registry/@eai-tools/cli` is the registry metadata file. It is not an installable package directory.
 
 ## Quick Start
 
@@ -84,8 +84,11 @@ All commands support these global flags:
 
 | Command | Description |
 |---------|-------------|
-| `eai init [name]` | Interactive scaffold from the public EAI vertical template with Gofer AI CLI assets |
+| `eai init [name]` | Interactive scaffold from the CLI-pinned public EAI vertical template with Gofer AI CLI assets |
 | `eai dev` | Start local dev server with connectivity checks |
+
+The bundled default template is versioned with the installed CLI. Use `--from`
+to override it with a different repository or a local template path.
 
 ### Authentication
 
@@ -95,6 +98,7 @@ All commands support these global flags:
 | `eai logout` | Clear stored tokens |
 | `eai whoami` | Show auth status and project context |
 | `eai provision entra` | Create or confirm the vertical's Entra app registration in the CIAM for the active platform environment |
+| `eai provision entra --rotate-secret` | Rotate the existing app registration secret and write the new value to `.env.local` |
 | `eai user invite --email <email>` | Add an existing user to the active tenant or an explicit tenant |
 | `eai user provision-me` | Provision yourself to the active tenant or an explicit tenant |
 
@@ -142,6 +146,9 @@ All commands support these global flags:
 |---------|-------------|
 | `eai chat send <message>` | Send a single chat message |
 | `eai chat stream <message>` | Stream a conversation (SSE) |
+| `eai workflow readiness [keys...]` | Check tenant access, plan metadata, and optional workflow readiness together |
+| `eai workflow status <key>` | Check whether an AI runtime workflow key is bound for the active tenant |
+| `eai workflow request <key>` | Request operator-assisted workflow binding when a workflow is not ready yet |
 | `eai docs upload <file>` | Upload a document |
 | `eai docs classify <file>` | Classify a document |
 | `eai docs index <id>` | Index a document for RAG |
@@ -161,6 +168,8 @@ All commands support these global flags:
 | `eai verify` | Run platform connectivity checks (supports read-only `--tenant-id`) |
 | `eai verify calls` | Audit platform API contracts used by the CLI (supports read-only `--tenant-id`) |
 | `eai doctor` | Comprehensive diagnostics with fix suggestions |
+| `eai gofer refresh` | Safely refresh repo-local Gofer-managed assets with backups and conflict detection |
+| `eai template check` | Preview vertical-template and UI drift without writing files |
 
 ## Tenant Lifecycle Truth
 
@@ -189,12 +198,15 @@ eai tenant select ──────────────────→ Curr
 eai env pull ───────────────────────→ Azure App Config + Key Vault
 eai types seed ─────────────────────→ Platform API → Type Registry
 eai resources list ─────────────────→ Platform API → Data Service
+eai workflow status ────────────────→ Platform API → AI runtime readiness
 eai chat stream ────────────────────→ Platform API → AI Service
 eai docs classify ──────────────────→ Platform API → AI Service
 eai deploy trigger ─────────────────→ GitHub Actions → Azure App Service
 ```
 
 The CLI authenticates via browser-based authorization code flow with PKCE, stores tokens locally in `~/.eai/`, persists the active working tenant from your tenant-admin memberships, and calls the platform API directly with a Bearer token. `.env.local` is still available for project runtime configuration, but tenant selection for CLI platform commands comes from `eai login` and `eai tenant select`.
+
+Runtime workflow checks are intentionally public-safe. They tell you whether a workflow key is `available`, `operator_required`, `paid_upgrade_required`, `rate_limited`, `blocked`, `unsupported`, or not ready without exposing private platform topology. Use `eai workflow request <key>` when the platform reports `operator_required`.
 
 ## Error Codes
 
@@ -260,7 +272,7 @@ terminals used in this workspace:
 | CLI | Installed surface | First command |
 |-----|-------------------|---------------|
 | Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` hooks | `/0_business_scenario` |
-| Codex CLI | `.system/skills/gofer` and `.agents/skills/gofer` | `$gofer/1_gofer_research` |
+| Codex CLI | `.agents/skills/` with a legacy `.system/skills/` mirror | Ask Codex to use the relevant Gofer skill |
 | Gemini CLI | `.gemini/commands/gofer`, `.gemini/extension.json` | `/gofer:1_gofer_research` |
 | GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | Use the Gofer prompt or matching local skill |
 
@@ -268,6 +280,47 @@ The shared workflow artifacts live under `.specify/`: commands, scripts,
 templates, hooks, memory, logs, and generated feature specs. Runtime state is
 added to `.gitignore`; command definitions and templates are committed with the
 vertical.
+
+### Updating an existing repo safely
+
+`eai update` updates the installed CLI package only. It does **not** blindly
+rewrite Gofer assets, template files, or UI components inside an existing
+vertical repo.
+
+Use these commands instead:
+
+```bash
+# See whether a newer CLI release exists
+eai update --check
+
+# See whether this repo's Gofer-managed files differ from the installed CLI bundle
+eai doctor --check-updates
+
+# Preview safe Gofer-managed asset updates for the current repo
+eai gofer refresh --check
+
+# Preview vertical-template and UI component drift before copying changes manually
+eai template check
+
+# Apply only the safe Gofer-managed file updates, with backups for replaced files
+eai gofer refresh
+```
+
+Important boundaries:
+
+- `eai gofer refresh` manages the Gofer-owned surfaces copied by `eai init`
+  such as `.specify/`, `.claude/`, `.agents/skills/`, `.gemini/`, and
+  generated Copilot Gofer files.
+- It writes or updates `.eai-manifest.json` so future refreshes can detect
+  local edits and avoid overwriting them accidentally.
+- If a tracked managed file has local edits, refresh leaves it untouched unless
+  you explicitly pass `--force`, and even then it backs the file up first.
+- `eai template check` previews file-level drift against the current vertical
+  template snapshot and highlights which files are new versus which need manual
+  review, including likely UI paths under `src/app` and `src/components`.
+- Template or UI component changes are **not** auto-merged into existing repos
+  yet. Copy additions first, then diff/review existing files that `eai template
+  check` marks for manual review.
 
 ## Development
 
@@ -283,7 +336,7 @@ npm run lint         # Run ESLint
 
 ## Releasing
 
-Releases are managed with `release.sh`, which runs a full validation pipeline before publishing.
+Releases are managed with `release.sh`. It validates the release candidate locally, bumps the version, refreshes the release-facing docs/help surfaces, regenerates the static registry artifacts, pushes `main` plus the annotated tag, waits for GitHub Actions to create the GitHub release, waits for the docs deployment that updates the static registry, and then verifies the public static registry exposes the new version.
 
 ```bash
 ./release.sh <patch|minor|major> "Release message"
@@ -297,23 +350,53 @@ Examples:
 ./release.sh major "New config format, breaking changes to types CLI"
 ```
 
-The script runs these checks before releasing:
+### Release prerequisites
+
+- Run from a clean `main` checkout
+- `gh` must be installed and authenticated
+
+### What `release.sh` validates before tagging
+
+The script runs `npm run release:check`, which covers the main `$6_gofer_validate` style release gates:
 
 1. Verifies you're on `main` with a clean working tree
 2. Pulls latest and installs dependencies (`npm ci`)
 3. Typecheck (`tsc --noEmit`)
 4. Lint (`eslint`)
 5. Build (`tsc`)
-6. Smoke tests — `eai --version`, `eai --help`, all 12 command groups present
-7. Docs site build
-8. Registry generation (`npm pack` + `generate-registry.cjs`)
-9. IP leak scan (ensures no internal terms in source)
+6. Test (`vitest run`)
+7. Smoke tests — `eai --version`, `eai --help`, and the shipped command groups
+8. Docs site build
+9. Release-facing docs/help generation (`llms.txt`, `llms-full.txt`, `cli-help.txt`)
+10. Registry artifact generation (`npm pack` + `generate-registry.cjs`)
+11. Static-registry release metadata stays aligned with the documented install flow
 
-If all checks pass, it:
+### What happens after the local checks pass
 
-- Bumps the version in `package.json`
-- Commits (including registry files), creates an annotated git tag, and pushes
-- Creates a GitHub release with your message
+1. `release.sh` bumps the requested semver level
+2. It updates the visible `.tech-docs/` release metadata to the new version and release message
+3. It regenerates `docs-site/static/registry/`, `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`
+4. It commits the release, creates an annotated `vX.Y.Z` tag, and pushes `main --follow-tags`
+5. The tag-triggered GitHub Actions `Release` workflow verifies the committed release docs/help surfaces before creating the GitHub release and attaching the packaged tarball
+6. The `Deploy Docs` workflow publishes the matching static registry and release-doc bundle to GitHub Pages
+7. `release.sh` waits for both workflows and verifies `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+
+If the static registry does not converge to the new version, the script exits non-zero so the release is treated as incomplete.
+
+The release path publishes the repository exactly as committed. Bundled Gofer and linked-source refreshes happen separately via `npm run sync:gofer` / `npm run sync:linked-sources` and should be committed before you cut a release instead of being fetched during publish time.
+
+Helpful maintainer commands:
+
+```bash
+npm run docs:release-assets
+npm run docs:release-assets:check
+```
+
+### Release channel policy
+
+- **GitHub Pages static registry is the release channel**
+- Configure the registry once with `npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user`
+- Install or update with `npm install -g @eai-tools/cli`, or use `eai update`
 
 ## Documentation
 

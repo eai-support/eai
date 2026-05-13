@@ -1,0 +1,2 @@
+description = "Extract domain terminology into a canonical feature glossary."
+prompt = "{{include: ../../../.specify/commands/gofer_vocabulary.md}}"

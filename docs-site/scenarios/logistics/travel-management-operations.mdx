@@ -1,0 +1,120 @@
+---
+title: Travel Management Operations
+description: Handle trip requests, bookings, approvals, duty-of-care alerts, disruptions, and expense workflows.
+---
+
+## Business Problem
+
+Travel management teams coordinate trip requests, bookings, approvals, policy checks, disruptions, expense recovery, and supplier relationships. A dedicated vertical helps service teams keep every traveller and booking decision connected.
+
+<!-- four-step-application:start -->
+## Four-Step Application
+
+This scenario works best as a four-step, human-in-the-loop application. The required object model already gives this scenario a strong delivery backbone for a four-step operating experience.
+
+- **Mission metric focus:** better on-time performance, lower exception costs, and higher operator productivity.
+- **Human + AI pattern:** Each step combines structured workflow data with chat assistance, background generation, document understanding, and accessible interaction patterns when they improve the experience.
+
+### Step 1. Capture demand and context
+
+- **Goal:** Make it easy for the user to start the Travel Management Operations journey with complete, trusted context.
+- **Required data:** Traveler (traveller profile), CostCenter (budget owner), TravelPolicy (applicable policy), TripRequest (trip request), and Approval (travel approval).
+- **AI support:** Use chat to guide intake, generate clearer prompts, create accessible summaries, and assist with voice or vision-led capture when a form alone is not the best experience. EAI can support structured intake, chat workflows, and document-centred capture today; richer native multimodal capture may still need workflow extensions or connected services.
+- **Business impact:** Improve completion rate, reduce first-touch effort, and raise customer or staff confidence in the UX from the very first interaction.
+- **EAI delivery:** Model the intake as tenant-isolated object types and resources, then use actions, chat workflows, and document indexing or classification to keep the initial record complete and usable.
+
+### Step 2. Prepare the decision
+
+- **Goal:** Turn the captured context into the next best action for Travel Management Operations without forcing the human reviewer to assemble the case manually.
+- **Required data:** Itinerary (trip itinerary), AirBooking (flight booking), HotelBooking (hotel booking), GroundBooking (ground transport booking), and VisaTask (visa or entry task).
+- **AI support:** Run background summarisation, extraction, classification, recommendation drafting, and answer generation so a reviewer sees a prepared case instead of raw fragments. EAI delivers the structured records and AI workflow hooks for this today; specialised scoring engines, external rules, or advanced reasoning controls may still need integration work.
+- **Business impact:** Reduce cycle time, improve quality and consistency, and protect the mission-critical metric before the case moves into execution.
+- **EAI delivery:** Link records across the scenario, persist decision state as resources, and use workflow actions plus chat assistance to keep humans in control while AI prepares the work.
+
+### Step 3. Execute and collaborate
+
+- **Goal:** Coordinate the actual work, handoffs, approvals, and user updates needed to deliver the service or outcome.
+- **Required data:** ExpenseReport (expense claim), Receipt (expense receipt), DutyOfCareAlert (traveller risk alert), SupplierRate (negotiated rate), and UnusedTicket (unused ticket credit).
+- **AI support:** Draft replies, produce work packets, monitor exceptions in the background, and surface the next action for each operator. EAI can orchestrate tenant-isolated records, actions, chats, and document workflows today; deeper system-to-system automation may require additional connectors or workflow capability.
+- **Business impact:** Increase operator productivity, reduce rework across handoffs, and improve service consistency across the application journey.
+- **EAI delivery:** Use linked object types, actions, resource updates, and workflow-triggered AI assistance so the team can execute in one model instead of splitting work across disconnected tools.
+
+### Step 4. Resolve, explain, and improve
+
+- **Goal:** Close the loop with a clear outcome, an understandable explanation, and feedback that improves the next case.
+- **Required data:** TravelDisruption (trip disruption), ServiceRequest (traveller support request), Profile (traveller settings profile), LoyaltyProgram (loyalty program record), and CarbonEstimate (trip emissions estimate).
+- **AI support:** Generate outcome summaries, customer-friendly answers, compliance-ready notes, management insights, and accessible follow-up content. EAI can store outcome records and support answer generation today, while richer proactive agents, advanced analytics, or channel-specific accessibility features may need additional product capability.
+- **Business impact:** Increase trust, quality, and measurable business value through better on-time performance, lower exception costs, and higher operator productivity.
+- **EAI delivery:** Keep the full audit trail in structured resources, use AI workflows to explain outcomes, and feed the resulting signals into future product, service, and operational improvement work.
+
+<!-- four-step-application:end -->
+## Required Object Model (22 object types)
+
+This scenario needs more than 20 object types because it spans intake, delivery, exceptions, governance, and reporting.
+
+### Traveller and Policy Context
+
+- `Traveler` — traveller profile
+- `CostCenter` — budget owner
+- `TravelPolicy` — applicable policy
+- `TripRequest` — trip request
+- `Approval` — travel approval
+- `Itinerary` — trip itinerary
+- `AirBooking` — flight booking
+- `HotelBooking` — hotel booking
+
+### Trip Execution
+
+- `GroundBooking` — ground transport booking
+- `VisaTask` — visa or entry task
+- `ExpenseReport` — expense claim
+- `Receipt` — expense receipt
+- `DutyOfCareAlert` — traveller risk alert
+- `SupplierRate` — negotiated rate
+- `UnusedTicket` — unused ticket credit
+- `RefundCase` — refund workflow
+
+### Service and Reporting
+
+- `TravelDisruption` — trip disruption
+- `ServiceRequest` — traveller support request
+- `Profile` — traveller settings profile
+- `LoyaltyProgram` — loyalty program record
+- `CarbonEstimate` — trip emissions estimate
+- `ReportingSnapshot` — management report snapshot
+
+## Delivery Workflow
+
+1. Authenticate and choose the tenant you want to work in.
+
+   ```bash
+   eai login
+   eai tenant select
+   ```
+
+2. Pull environment values, validate the type definitions, and seed the model.
+
+   ```bash
+   eai env pull --include-secrets
+   eai types validate
+   eai types seed
+   ```
+
+3. Verify that the full model is available for the active tenant before building UI and workflows.
+
+   ```bash
+   eai resources schema --format json
+   eai verify calls --format json
+   ```
+
+4. Load pilot data and exercise the operational workflows for the scenario.
+
+## AI and Document Opportunities
+
+- Classify traveller emails and supplier notices into booking, disruption, or expense workflows.
+- Summarise disruption impact and recommend next actions based on policy and traveller importance.
+- Generate spend and duty-of-care insights from bookings, alerts, and expense patterns.
+
+## Why This Scenario Is High-Value
+
+Travel operations sit between customer service, compliance, and spend control. This scenario helps travel teams respond faster while keeping policy and reporting intact.

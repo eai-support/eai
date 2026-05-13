@@ -83,11 +83,11 @@ async function loadStages(root) {
   try {
     entries = await fs.readdir(commandsDir);
   } catch {
-    console.warn(`[warn] .specify/commands/ not found at ${commandsDir} — no stages loaded`);
-    return [];
+    throw new Error(`.specify/commands/ not found at ${commandsDir}`);
   }
 
   const stages = [];
+  const parseErrors = [];
   for (const entry of entries) {
     if (!entry.endsWith('.md') || entry === '.gitkeep') continue;
     const filePath = path.join(commandsDir, entry);
@@ -95,10 +95,43 @@ async function loadStages(root) {
       const parsed = await parseStageCommand(filePath);
       stages.push({ filePath, ...parsed });
     } catch (err) {
-      console.warn(`[warn] Skipping ${entry}: ${err.message}`);
+      parseErrors.push(`${entry}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  if (parseErrors.length > 0) {
+    throw new Error(
+      `Failed to parse ${parseErrors.length} command file(s):\n${parseErrors.join('\n')}`
+    );
+  }
+
   return stages;
+}
+
+function getStageOutputStem(stage) {
+  return path.basename(stage.filePath, '.md');
+}
+
+async function removeLegacyGeneratedPath(outPath, legacyPath) {
+  if (outPath === legacyPath) {
+    return;
+  }
+
+  await fs.rm(legacyPath, { recursive: true, force: true });
+}
+
+async function removeLegacyGeneratedPaths(outPath, legacyPaths) {
+  for (const legacyPath of legacyPaths) {
+    await removeLegacyGeneratedPath(outPath, legacyPath);
+  }
+}
+
+function getCodexLegacySkillDirs(root, surfaceRoot, stageStem, stageName) {
+  return [
+    path.join(root, surfaceRoot, stageName),
+    path.join(root, surfaceRoot, 'gofer', stageStem),
+    path.join(root, surfaceRoot, 'gofer', stageName),
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -121,12 +154,15 @@ async function emitClaude(stages, root, dryRun) {
     if (!surfaces.includes('claude')) continue;
     if (shouldExclude(String(name), 'claude')) continue;
 
-    const outPath = path.join(outDir, `${name}.md`);
+    const stageStem = getStageOutputStem(stage);
+    const outPath = path.join(outDir, `${stageStem}.md`);
+    const legacyPath = path.join(outDir, `${name}.md`);
     if (dryRun) {
       console.log(`[dry-run] claude: would write ${outPath}`);
     } else {
       await ensureDir(outDir);
       await fs.writeFile(outPath, stage.body, 'utf8');
+      await removeLegacyGeneratedPath(outPath, legacyPath);
       console.log(`claude: wrote ${outPath}`);
     }
     count++;
@@ -151,12 +187,15 @@ async function emitClaudeMirror(stages, root, dryRun) {
     if (!surfaces.includes('claude-mirror')) continue;
     if (shouldExclude(String(name), 'claude-mirror')) continue;
 
-    const outPath = path.join(outDir, `${name}.md`);
+    const stageStem = getStageOutputStem(stage);
+    const outPath = path.join(outDir, `${stageStem}.md`);
+    const legacyPath = path.join(outDir, `${name}.md`);
     if (dryRun) {
       console.log(`[dry-run] claude-mirror: would write ${outPath}`);
     } else {
       await ensureDir(outDir);
       await fs.writeFile(outPath, stage.body, 'utf8');
+      await removeLegacyGeneratedPath(outPath, legacyPath);
       console.log(`claude-mirror: wrote ${outPath}`);
     }
     count++;
@@ -182,12 +221,15 @@ async function emitCopilot(stages, root, dryRun) {
     if (shouldExclude(String(name), 'copilot')) continue;
     if (!surfaces.includes('copilot')) continue;
 
-    const outPath = path.join(outDir, `${name}.prompt.md`);
+    const stageStem = getStageOutputStem(stage);
+    const outPath = path.join(outDir, `${stageStem}.prompt.md`);
+    const legacyPath = path.join(outDir, `${name}.prompt.md`);
     if (dryRun) {
       console.log(`[dry-run] copilot: would write ${outPath}`);
     } else {
       await ensureDir(outDir);
       await fs.writeFile(outPath, buildCopilotPromptContent(stage), 'utf8');
+      await removeLegacyGeneratedPath(outPath, legacyPath);
       console.log(`copilot: wrote ${outPath}`);
     }
     count++;
@@ -213,12 +255,15 @@ async function emitGithubPrompts(stages, root, dryRun) {
     if (shouldExclude(String(name), 'github-prompts')) continue;
     if (!surfaces.includes('github-prompts')) continue;
 
-    const outPath = path.join(outDir, `${name}.prompt.md`);
+    const stageStem = getStageOutputStem(stage);
+    const outPath = path.join(outDir, `${stageStem}.prompt.md`);
+    const legacyPath = path.join(outDir, `${name}.prompt.md`);
     if (dryRun) {
       console.log(`[dry-run] github-prompts: would write ${outPath}`);
     } else {
       await ensureDir(outDir);
       await fs.writeFile(outPath, buildCopilotPromptContent(stage), 'utf8');
+      await removeLegacyGeneratedPath(outPath, legacyPath);
       console.log(`github-prompts: wrote ${outPath}`);
     }
     count++;
@@ -245,6 +290,7 @@ function buildCopilotPromptContent(stage) {
     stageName
   );
   const canonicalChecksum = createHash('sha256').update(body, 'utf8').digest('hex');
+  const sourceFileName = path.basename(stage.filePath);
 
   return [
     '---',
@@ -260,7 +306,7 @@ function buildCopilotPromptContent(stage) {
     'argument-hint: feature-name-or-description',
     'gofer:',
     '  workflowProfile: enterpriseai',
-    `  canonicalSource: .claude/commands/${stageName}.md`,
+    `  canonicalSource: .specify/commands/${sourceFileName}`,
     `  canonicalChecksum: ${canonicalChecksum}`,
     '  metadataSource: scripts/generate-commands.ts',
     '---',
@@ -307,6 +353,7 @@ function transformClaudeContent(content, toPlatform) {
   if (toPlatform === 'copilot') {
     transformed = transformed.replace(/\/(\d+[a-z]?_gofer_\w+)/g, '#$1');
     transformed = transformed.replace(/\/(gofer_\w+)/g, '#$1');
+    transformed = transformed.replace(/(^SourceCommandId:\s*)#/gm, '$1/');
   }
 
   return transformed;
@@ -372,7 +419,7 @@ function readString(value) {
  * @returns {string}
  */
 function buildSkillContent(stageName, description, body) {
-  return `---\nname: gofer/${stageName}\ndescription: "${description}"\n---\n\n${body}`;
+  return `---\nname: ${stageName}\ndescription: "${description}"\n---\n\n${body}`;
 }
 
 /**
@@ -386,7 +433,7 @@ function escapeTomlString(value) {
 
 /**
  * T041 — agents-skills emitter
- * Emits Codex SKILL.md to .agents/skills/gofer/<name>/SKILL.md.
+ * Emits Codex SKILL.md to .agents/skills/<name>/SKILL.md.
  * Emits every stage whose frontmatter includes the agents-skills surface.
  *
  * @param {Array} stages
@@ -394,15 +441,17 @@ function escapeTomlString(value) {
  * @param {boolean} dryRun
  */
 async function emitAgentsSkills(stages, root, dryRun) {
-  const baseDir = path.join(root, '.agents', 'skills', 'gofer');
+  const baseDir = path.join(root, '.agents', 'skills');
   let count = 0;
   for (const stage of stages) {
     const { name, description, surfaces } = stage.frontmatter;
     if (shouldExclude(String(name), 'agents-skills')) continue;
     if (!surfaces.includes('agents-skills')) continue;
 
-    const skillDir = path.join(baseDir, String(name));
+    const stageStem = getStageOutputStem(stage);
+    const skillDir = path.join(baseDir, stageStem);
     const outPath = path.join(skillDir, 'SKILL.md');
+    const legacySkillDir = path.join(baseDir, String(name));
     const content = buildSkillContent(String(name), String(description), stage.body);
 
     if (dryRun) {
@@ -410,6 +459,10 @@ async function emitAgentsSkills(stages, root, dryRun) {
     } else {
       await ensureDir(skillDir);
       await fs.writeFile(outPath, content, 'utf8');
+      await removeLegacyGeneratedPaths(skillDir, [
+        legacySkillDir,
+        ...getCodexLegacySkillDirs(root, '.agents/skills', stageStem, String(name)),
+      ]);
       console.log(`agents-skills: wrote ${outPath}`);
     }
     count++;
@@ -420,7 +473,7 @@ async function emitAgentsSkills(stages, root, dryRun) {
 
 /**
  * T042 — system-skills emitter
- * Emits SKILL.md to .system/skills/gofer/<name>/SKILL.md.
+ * Emits SKILL.md to .system/skills/<name>/SKILL.md.
  * Emits every stage whose frontmatter includes the system-skills surface.
  *
  * @param {Array} stages
@@ -428,15 +481,17 @@ async function emitAgentsSkills(stages, root, dryRun) {
  * @param {boolean} dryRun
  */
 async function emitSystemSkills(stages, root, dryRun) {
-  const baseDir = path.join(root, '.system', 'skills', 'gofer');
+  const baseDir = path.join(root, '.system', 'skills');
   let count = 0;
   for (const stage of stages) {
     const { name, description, surfaces } = stage.frontmatter;
     if (shouldExclude(String(name), 'system-skills')) continue;
     if (!surfaces.includes('system-skills')) continue;
 
-    const skillDir = path.join(baseDir, String(name));
+    const stageStem = getStageOutputStem(stage);
+    const skillDir = path.join(baseDir, stageStem);
     const outPath = path.join(skillDir, 'SKILL.md');
+    const legacySkillDir = path.join(baseDir, String(name));
     const content = buildSkillContent(String(name), String(description), stage.body);
 
     if (dryRun) {
@@ -444,6 +499,10 @@ async function emitSystemSkills(stages, root, dryRun) {
     } else {
       await ensureDir(skillDir);
       await fs.writeFile(outPath, content, 'utf8');
+      await removeLegacyGeneratedPaths(skillDir, [
+        legacySkillDir,
+        ...getCodexLegacySkillDirs(root, '.system/skills', stageStem, String(name)),
+      ]);
       console.log(`system-skills: wrote ${outPath}`);
     }
     count++;
@@ -473,8 +532,11 @@ async function emitGemini(stages, root, dryRun) {
     if (shouldExclude(String(name), 'gemini')) continue;
     if (!surfaces.includes('gemini')) continue;
 
-    const markdownPath = path.join(outDir, `${name}.md`);
-    const tomlPath = path.join(outDir, `${name}.toml`);
+    const stageStem = getStageOutputStem(stage);
+    const markdownPath = path.join(outDir, `${stageStem}.md`);
+    const tomlPath = path.join(outDir, `${stageStem}.toml`);
+    const legacyMarkdownPath = path.join(outDir, `${name}.md`);
+    const legacyTomlPath = path.join(outDir, `${name}.toml`);
     const sourceFileName = path.basename(stage.filePath);
     const tomlContent = [
       `description = "${escapeTomlString(String(description || name))}"`,
@@ -489,6 +551,8 @@ async function emitGemini(stages, root, dryRun) {
       await ensureDir(outDir);
       await fs.writeFile(markdownPath, stage.body, 'utf8');
       await fs.writeFile(tomlPath, tomlContent, 'utf8');
+      await removeLegacyGeneratedPath(markdownPath, legacyMarkdownPath);
+      await removeLegacyGeneratedPath(tomlPath, legacyTomlPath);
       console.log(`gemini: wrote ${markdownPath}`);
       console.log(`gemini: wrote ${tomlPath}`);
     }
@@ -595,9 +659,11 @@ async function emitCodexConfig(stages, root, dryRun) {
   const outPath = path.join(outDir, 'codex-config-fragment.toml');
   const timestamp = new Date().toISOString();
   const lines = [
-    `# Gofer skill entries for ~/.codex/config.toml`,
+    `# Gofer skill overrides for ~/.codex/config.toml`,
     `# Generated by generate-commands.mjs on ${timestamp}`,
-    `# Append this to your ~/.codex/config.toml`,
+    `# Codex discovers repository-local Gofer skills from .agents/skills automatically.`,
+    `# Only use these [[skills.config]] blocks when you need explicit per-skill overrides.`,
+    `# Replace /full/path/to/repo with the absolute path to your local checkout.`,
     ``,
   ];
 
@@ -607,8 +673,9 @@ async function emitCodexConfig(stages, root, dryRun) {
     if (shouldExclude(String(name), 'codex-config')) continue;
     if (!surfaces.includes('codex') && !surfaces.includes('agents-skills')) continue;
 
+    const stageStem = getStageOutputStem(stage);
     lines.push(`[[skills.config]]`);
-    lines.push(`name = "gofer/${name}"`);
+    lines.push(`path = "/full/path/to/repo/.agents/skills/${escapeTomlString(stageStem)}"`);
     lines.push(`enabled = true`);
     lines.push(``);
     count++;
@@ -716,7 +783,13 @@ async function main() {
   }
 
   // Load all stage command files from .specify/commands/
-  const stages = await loadStages(root);
+  let stages;
+  try {
+    stages = await loadStages(root);
+  } catch (err) {
+    console.error(`Stage loading failed: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
 
   if (stages.length === 0) {
     console.warn('[warn] No stage command files found in .specify/commands/ — nothing to emit');

@@ -1,9 +1,8 @@
 ---
 generated: true
-generated_at: "2026-05-04T17:57:42Z"
-source_commit: "1dc87b0302b65642cfa0a2f553c36679544eceb8"
+generated_at: "2026-05-13T18:16:23.977Z"
+source_commit: "a34126c2e29f910c1539a8c93ab8e9d3c49d8154"
 ---
-
 # EAI CLI — Data Model
 
 ## Overview
@@ -46,7 +45,7 @@ interface StoredTokens {
 
 **Lifecycle**:
 - Created on `eai login`
-- Updated on token refresh (auto, when <5min remaining)
+- Updated on token refresh (auto, when &lt;5 min remaining)
 - Cleared on `eai logout`
 - Per-profile isolation (multiple environments)
 

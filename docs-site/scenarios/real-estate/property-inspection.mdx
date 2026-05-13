@@ -1,0 +1,237 @@
+---
+title: Property Inspection
+description: Build a property inspection scheduling, checklist tracking, and issue resolution workflow using the EAI CLI.
+---
+
+## Persona
+
+**Role**: Developer at a facilities management company conducting 500+ inspections per year across commercial properties.
+
+The inspection team uses paper checklists and photo uploads to shared drives. Reports are compiled manually in word processors, and tracking which issues were resolved requires cross-referencing emails. The company needs a digital inspection workflow that captures findings in real time and tracks issues to resolution.
+
+## Business Problem
+
+Paper-based inspections create a lag between finding issues and reporting them. Photos are disconnected from checklist items, historical inspection data is difficult to compare, and unresolved issues fall through the cracks between inspection cycles. This scenario builds an inspection platform where inspectors complete structured checklists on-site, attach photos to specific findings, and any issues discovered are tracked through to resolution.
+
+<!-- four-step-application:start -->
+## Four-Step Application
+
+This scenario works best as a four-step, human-in-the-loop application. The existing object model already gives this scenario a strong delivery backbone through Inspection, ChecklistItem, and Issue.
+
+- **Mission metric focus:** faster deal or service cycle time, better tenant or client experience, and stronger asset performance.
+- **Human + AI pattern:** Each step combines structured workflow data with chat assistance, background generation, document understanding, and accessible interaction patterns when they improve the experience.
+
+### Step 1. Capture demand and context
+
+- **Goal:** Make it easy for the user to start the Property Inspection journey with complete, trusted context.
+- **Required data:** Inspection context such as property, inspector, date, and type.
+- **AI support:** Use chat to guide intake, generate clearer prompts, create accessible summaries, and assist with voice or vision-led capture when a form alone is not the best experience. EAI can support structured intake, chat workflows, and document-centred capture today; richer native multimodal capture may still need workflow extensions or connected services.
+- **Business impact:** Improve completion rate, reduce first-touch effort, and raise customer or staff confidence in the UX from the very first interaction.
+- **EAI delivery:** Model the intake as tenant-isolated object types and resources, then use actions, chat workflows, and document indexing or classification to keep the initial record complete and usable.
+
+### Step 2. Prepare the decision
+
+- **Goal:** Turn the captured context into the next best action for Property Inspection without forcing the human reviewer to assemble the case manually.
+- **Required data:** Inspection state and history; ChecklistItem fields such as area, condition, notes, and photos.
+- **AI support:** Run background summarisation, extraction, classification, recommendation drafting, and answer generation so a reviewer sees a prepared case instead of raw fragments. EAI delivers the structured records and AI workflow hooks for this today; specialised scoring engines, external rules, or advanced reasoning controls may still need integration work.
+- **Business impact:** Reduce cycle time, improve quality and consistency, and protect the mission-critical metric before the case moves into execution.
+- **EAI delivery:** Link records across the scenario, persist decision state as resources, and use workflow actions plus chat assistance to keep humans in control while AI prepares the work.
+
+### Step 3. Execute and collaborate
+
+- **Goal:** Coordinate the actual work, handoffs, approvals, and user updates needed to deliver the service or outcome.
+- **Required data:** ChecklistItem execution state; Issue fields such as description, severity, resolution, and resolvedDate.
+- **AI support:** Draft replies, produce work packets, monitor exceptions in the background, and surface the next action for each operator. EAI can orchestrate tenant-isolated records, actions, chats, and document workflows today; deeper system-to-system automation may require additional connectors or workflow capability.
+- **Business impact:** Increase operator productivity, reduce rework across handoffs, and improve service consistency across the application journey.
+- **EAI delivery:** Use linked object types, actions, resource updates, and workflow-triggered AI assistance so the team can execute in one model instead of splitting work across disconnected tools.
+
+### Step 4. Resolve, explain, and improve
+
+- **Goal:** Close the loop with a clear outcome, an understandable explanation, and feedback that improves the next case.
+- **Required data:** final status, outcome, audit history, and follow-up signals across Inspection, ChecklistItem, and Issue.
+- **AI support:** Generate outcome summaries, customer-friendly answers, compliance-ready notes, management insights, and accessible follow-up content. EAI can store outcome records and support answer generation today, while richer proactive agents, advanced analytics, or channel-specific accessibility features may need additional product capability.
+- **Business impact:** Increase trust, quality, and measurable business value through faster deal or service cycle time, better tenant or client experience, and stronger asset performance.
+- **EAI delivery:** Keep the full audit trail in structured resources, use AI workflows to explain outcomes, and feed the resulting signals into future product, service, and operational improvement work.
+
+<!-- four-step-application:end -->
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Inspection** | `property` (text), `inspector` (text), `date` (date), `type` (select: annual, quarterly, move-in, move-out), `status` (select: scheduled, in-progress, completed) | one-to-many → ChecklistItem, one-to-many → Issue | `beginInspection` |
+| **ChecklistItem** | `area` (text), `condition` (select: good, fair, poor, critical), `notes` (text), `photos` (file) | many-to-one → Inspection | -- |
+| **Issue** | `description` (text), `severity` (select: minor, moderate, major, critical), `resolution` (text), `resolvedDate` (date), `status` (select: open, in-progress, resolved) | many-to-one → Inspection | `resolveIssue` |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init property-inspection
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+   <Aside type="note">
+     If you are an external developer, see [Configuration](/docs/configuration) and [Environment Profiles](/docs/profiles) for login and local environment setup.
+   </Aside>
+
+3. **Define your Object Types**
+
+   Create the Inspection, ChecklistItem, and Issue types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: property-inspection
+   ✔ Inspection — 5 props, 2 links, 1 action
+   ✔ ChecklistItem — 4 props, 1 link, 0 actions
+   ✔ Issue — 5 props, 1 link, 1 action
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create Inspection --data '{"property": "100 Commerce Blvd", "inspector": "Maria Garcia", "date": "2025-06-15", "type": "quarterly", "status": "scheduled"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'property-inspection': [
+    {
+      name: 'Inspection',
+      displayName: 'Inspection',
+      description: 'A scheduled property inspection event',
+      properties: [
+        { name: 'property', type: 'text' as const, required: true, indexed: true },
+        { name: 'inspector', type: 'text' as const, required: true },
+        { name: 'date', type: 'date' as const, required: true, indexed: true },
+        { name: 'type', type: 'select' as const, required: true, options: [
+          { label: 'Annual', value: 'annual' },
+          { label: 'Quarterly', value: 'quarterly' },
+          { label: 'Move-In', value: 'move-in' },
+          { label: 'Move-Out', value: 'move-out' },
+        ]},
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'scheduled', options: [
+          { label: 'Scheduled', value: 'scheduled' },
+          { label: 'In Progress', value: 'in-progress' },
+          { label: 'Completed', value: 'completed' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'checklistItems', targetObjectType: 'ChecklistItem', cardinality: 'one-to-many' as const, cascadeDelete: true },
+        { name: 'issues', targetObjectType: 'Issue', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'beginInspection',
+          displayName: 'Begin Inspection',
+          description: 'Mark a scheduled inspection as in progress',
+          requiredRole: 'tenant-user',
+          validationRules: { requiredStatus: 'scheduled' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'in-progress' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'ChecklistItem',
+      displayName: 'Checklist Item',
+      description: 'A single item on an inspection checklist',
+      properties: [
+        { name: 'area', type: 'text' as const, required: true },
+        { name: 'condition', type: 'select' as const, required: true, options: [
+          { label: 'Good', value: 'good' },
+          { label: 'Fair', value: 'fair' },
+          { label: 'Poor', value: 'poor' },
+          { label: 'Critical', value: 'critical' },
+        ]},
+        { name: 'notes', type: 'text' as const, required: false },
+        { name: 'photos', type: 'file' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'inspection', targetObjectType: 'Inspection', cardinality: 'many-to-one' as const },
+      ],
+      actions: [],
+      status: 'published' as const,
+    },
+    {
+      name: 'Issue',
+      displayName: 'Issue',
+      description: 'A problem found during inspection that requires resolution',
+      properties: [
+        { name: 'description', type: 'text' as const, required: true },
+        { name: 'severity', type: 'select' as const, required: true, options: [
+          { label: 'Minor', value: 'minor' },
+          { label: 'Moderate', value: 'moderate' },
+          { label: 'Major', value: 'major' },
+          { label: 'Critical', value: 'critical' },
+        ]},
+        { name: 'resolution', type: 'text' as const, required: false },
+        { name: 'resolvedDate', type: 'date' as const, required: false },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'open', options: [
+          { label: 'Open', value: 'open' },
+          { label: 'In Progress', value: 'in-progress' },
+          { label: 'Resolved', value: 'resolved' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'inspection', targetObjectType: 'Inspection', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'resolveIssue',
+          displayName: 'Resolve Issue',
+          description: 'Mark an issue as resolved with a resolution description',
+          requiredRole: 'tenant-staff',
+          validationRules: { requiredFields: ['resolution'], requiredStatus: 'in-progress' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'resolved' },
+            { type: 'set_timestamp', field: 'resolvedDate' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Structured checklists**: Standardized condition ratings across areas make inspections consistent and comparable over time.
+- **Photo documentation**: File attachments on checklist items link visual evidence directly to specific findings, eliminating loose photo folders.
+- **Issue tracking to resolution**: Issues discovered during inspections are tracked through to completion with required resolution descriptions, preventing items from being forgotten.
+- **Inspection history**: Linking checklist items and issues to inspections creates a full audit trail for each property over time.

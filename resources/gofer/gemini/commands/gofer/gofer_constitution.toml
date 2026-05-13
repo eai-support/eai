@@ -1,2 +1,2 @@
-description = "Display the Gofer working constitution and core principles for this project."
+description = "Create or update project constitution with coding principles and guidelines."
 prompt = "{{include: ../../../.specify/commands/gofer_constitution.md}}"

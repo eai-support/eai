@@ -28,6 +28,12 @@ export interface GoferInstallSummary {
   readonly copilotSkills: number;
 }
 
+export interface GoferManagedResourceMapping {
+  readonly sourceSubdirectory: string;
+  readonly targetSegments: readonly string[];
+  readonly makeExecutable?: boolean;
+}
+
 interface MutableGoferInstallSummary {
   copied: number;
   updated: number;
@@ -79,6 +85,22 @@ const GOFER_GITIGNORE_ENTRIES = [
   '.specify/specs/*/research-index.json',
 ] as const;
 
+export const GOFER_RESOURCE_MAPPINGS: readonly GoferManagedResourceMapping[] = [
+  { sourceSubdirectory: 'commands', targetSegments: ['.specify', 'commands'] },
+  { sourceSubdirectory: 'templates', targetSegments: ['.specify', 'templates'] },
+  { sourceSubdirectory: 'bash-scripts', targetSegments: ['.specify', 'scripts', 'bash'], makeExecutable: true },
+  { sourceSubdirectory: 'powershell-scripts', targetSegments: ['.specify', 'scripts', 'powershell'] },
+  { sourceSubdirectory: 'node-scripts', targetSegments: ['.specify', 'scripts', 'node'], makeExecutable: true },
+  { sourceSubdirectory: 'hook-scripts', targetSegments: ['.specify', 'scripts', 'hooks'] },
+  { sourceSubdirectory: 'claude-commands', targetSegments: ['.claude', 'commands'] },
+  { sourceSubdirectory: 'claude-agents', targetSegments: ['.claude', 'agents'] },
+  { sourceSubdirectory: 'copilot-prompts', targetSegments: ['.github', 'prompts'] },
+  { sourceSubdirectory: 'copilot-instructions', targetSegments: ['.github', 'instructions'] },
+  { sourceSubdirectory: 'system-skills', targetSegments: ['.system', 'skills'] },
+  { sourceSubdirectory: 'agents-skills', targetSegments: ['.agents', 'skills'] },
+  { sourceSubdirectory: 'gemini', targetSegments: ['.gemini'] },
+] as const;
+
 export async function installGoferResources(
   workspacePath: string,
   options: GoferInstallOptions = {},
@@ -99,28 +121,15 @@ export async function installGoferResources(
   await assertDirectory(resourcesPath);
   await createGoferDirectories(targetPath);
 
-  await copyResourceDirectory(resourcesPath, 'commands', join(targetPath, '.specify', 'commands'), summary);
-  await copyResourceDirectory(resourcesPath, 'templates', join(targetPath, '.specify', 'templates'), summary);
-  await copyResourceDirectory(resourcesPath, 'bash-scripts', join(targetPath, '.specify', 'scripts', 'bash'), summary, {
-    makeExecutable: true,
-  });
-  await copyResourceDirectory(
-    resourcesPath,
-    'powershell-scripts',
-    join(targetPath, '.specify', 'scripts', 'powershell'),
-    summary,
-  );
-  await copyResourceDirectory(resourcesPath, 'node-scripts', join(targetPath, '.specify', 'scripts', 'node'), summary, {
-    makeExecutable: true,
-  });
-  await copyResourceDirectory(resourcesPath, 'hook-scripts', join(targetPath, '.specify', 'scripts', 'hooks'), summary);
-  await copyResourceDirectory(resourcesPath, 'claude-commands', join(targetPath, '.claude', 'commands'), summary);
-  await copyResourceDirectory(resourcesPath, 'claude-agents', join(targetPath, '.claude', 'agents'), summary);
-  await copyResourceDirectory(resourcesPath, 'copilot-prompts', join(targetPath, '.github', 'prompts'), summary);
-  await copyResourceDirectory(resourcesPath, 'copilot-instructions', join(targetPath, '.github', 'instructions'), summary);
-  await copyResourceDirectory(resourcesPath, 'system-skills', join(targetPath, '.system', 'skills'), summary);
-  await copyResourceDirectory(resourcesPath, 'agents-skills', join(targetPath, '.agents', 'skills'), summary);
-  await copyResourceDirectory(resourcesPath, 'gemini', join(targetPath, '.gemini'), summary);
+  for (const mapping of GOFER_RESOURCE_MAPPINGS) {
+    await copyResourceDirectory(
+      resourcesPath,
+      mapping.sourceSubdirectory,
+      join(targetPath, ...mapping.targetSegments),
+      summary,
+      { makeExecutable: mapping.makeExecutable },
+    );
+  }
 
   summary.commands = await countFiles(join(resourcesPath, 'claude-commands'), '.md');
   summary.agents = await countFiles(join(resourcesPath, 'claude-agents'), '.md');
@@ -137,7 +146,7 @@ export async function installGoferResources(
   return summary;
 }
 
-function resolveGoferResourcesPath(): string {
+export function resolveGoferResourcesPath(): string {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   return resolve(moduleDir, '..', '..', 'resources', 'gofer');
 }
@@ -426,7 +435,7 @@ async function writeTrackedFile(
   summary[targetExists ? 'updated' : 'copied'] += 1;
 }
 
-async function installClaudeHooks(workspacePath: string): Promise<void> {
+export async function installClaudeHooks(workspacePath: string): Promise<void> {
   const settingsPath = join(workspacePath, '.claude', 'settings.json');
   await mkdir(dirname(settingsPath), { recursive: true });
 
@@ -480,7 +489,7 @@ async function readJsonFile(path: string): Promise<Record<string, unknown>> {
   }
 }
 
-async function ensureDefaultInstructions(workspacePath: string, resourcesPath: string): Promise<void> {
+export async function ensureDefaultInstructions(workspacePath: string, resourcesPath: string): Promise<void> {
   const projectInfo = await detectProjectInfo(workspacePath);
   await ensureFile(join(workspacePath, 'AGENTS.md'), await generateAgentsMd(resourcesPath, projectInfo));
   await ensureClaudeMd(workspacePath, resourcesPath);
@@ -652,7 +661,7 @@ function extractWorkflowSection(workflow: string): string {
   return lines.slice(startIndex >= 0 ? startIndex + 1 : 0, endIndex >= 0 ? endIndex : lines.length).join('\n').trim();
 }
 
-async function updateVSCodeSettings(workspacePath: string): Promise<void> {
+export async function updateVSCodeSettings(workspacePath: string): Promise<void> {
   const settingsPath = join(workspacePath, '.vscode', 'settings.json');
   await mkdir(dirname(settingsPath), { recursive: true });
 
@@ -679,7 +688,7 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
 }
 
-async function updateGitignore(workspacePath: string): Promise<void> {
+export async function updateGitignore(workspacePath: string): Promise<void> {
   const gitignorePath = join(workspacePath, '.gitignore');
   let content = '';
 
@@ -706,9 +715,8 @@ async function updateGitignore(workspacePath: string): Promise<void> {
   await writeFile(gitignorePath, updated, 'utf-8');
 }
 
-async function writeGoferReadme(workspacePath: string): Promise<void> {
-  const readmePath = join(workspacePath, '.specify', 'README.md');
-  const content = `# Gofer - Specification Directory
+export function generateGoferReadmeContent(): string {
+  return `# Gofer - Specification Directory
 
 This folder contains project specifications for AI-driven feature development.
 
@@ -724,12 +732,54 @@ This folder contains project specifications for AI-driven feature development.
 ## AI Terminal Commands
 
 - Claude CLI: \`/0_business_scenario\`
-- Codex CLI: \`$gofer/1_gofer_research\`
+- Codex CLI: ask Codex to use the relevant Gofer skill from \`.agents/skills/\`
 - Gemini CLI: \`/gofer:1_gofer_research\`
 - GitHub Copilot: prompts are in \`.github/prompts\`; CLI skills are in \`.github/skills\`
 
 All artifacts are stored in \`.specify/specs/{feature}/\`.
 `;
+}
+
+export async function writeGoferReadme(workspacePath: string): Promise<void> {
+  const readmePath = join(workspacePath, '.specify', 'README.md');
+  const content = generateGoferReadmeContent();
 
   await writeFile(readmePath, content, 'utf-8');
+}
+
+export async function renderGoferManagedTextFiles(
+  workspacePath: string,
+  options: GoferInstallOptions = {},
+): Promise<Array<{ readonly relativePath: string; readonly content: string }>> {
+  const resourcesPath = resolveGoferResourcesPath();
+  const workflowProfile = options.workflowProfile ?? 'enterpriseai';
+  const projectInfo = await detectProjectInfo(workspacePath);
+  const commands = await readGoferCommands(resourcesPath);
+
+  const files: Array<{ readonly relativePath: string; readonly content: string }> = [];
+
+  files.push({
+    relativePath: join('AGENTS.md'),
+    content: await generateAgentsMd(resourcesPath, projectInfo),
+  });
+
+  files.push({
+    relativePath: join('.github', 'copilot-instructions.md'),
+    content: await generateCopilotInstructions(resourcesPath, projectInfo),
+  });
+
+  files.push({
+    relativePath: join('.specify', 'README.md'),
+    content: generateGoferReadmeContent(),
+  });
+
+  for (const command of commands) {
+    const skillName = toCopilotSkillName(command.name);
+    files.push({
+      relativePath: join('.github', 'skills', skillName, 'SKILL.md'),
+      content: generateCopilotCliSkill(command, skillName, workflowProfile),
+    });
+  }
+
+  return files;
 }
