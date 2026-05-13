@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-12T18:20:19.200Z"
-source_commit: "9e4b7835da3f7e5ca934d77b0d41844e29959b39"
+generated_at: "2026-05-13T18:16:23.977Z"
+source_commit: "a34126c2e29f910c1539a8c93ab8e9d3c49d8154"
 ---
 # EAI CLI — API Reference
 
@@ -571,6 +571,119 @@ Content-Type: application/json
 **Auth**: Requires authenticated user; platform determines CIAM from active profile/environment
 
 **Error Handling**: Sanitized errors; never exposes backend URLs, tenant IDs, or raw platform errors
+
+---
+
+### Workflow API
+
+#### Get Builder Readiness
+```
+GET /v3/builder/readiness
+  ?tenant_id={tenantId}
+  &workflow_keys={key1}
+  &workflow_keys={key2}
+```
+
+**Query Parameters**:
+- `tenant_id` (string, required) — Tenant ID to check readiness for
+- `workflow_keys` (string[], optional) — Public workflow keys to include in readiness checks
+
+**Response**:
+```json
+{
+  "tenantId": "tenant-uuid",
+  "status": "available",
+  "checks": [
+    {
+      "key": "tenant_plan_active",
+      "status": "available",
+      "reasonCode": "PLAN_ACTIVE",
+      "reasonMessage": "Tenant has active billing plan",
+      "nextAction": null
+    },
+    {
+      "key": "workflow_key_public",
+      "status": "unavailable",
+      "reasonCode": "WORKFLOW_NOT_CONFIGURED",
+      "reasonMessage": "Workflow not configured for this tenant",
+      "nextAction": "Configure workflow in tenant settings"
+    }
+  ]
+}
+```
+
+**CLI Command**: `eai workflow readiness [workflow-keys...]`
+
+**Client Method**: `client.getBuilderReadiness({ tenantId, workflowKeys })`
+
+---
+
+#### Get Runtime Workflow Status
+```
+GET /v3/workflows/runtime/{workflowKey}/status?tenant_id={tenantId}
+```
+
+**Path Parameters**:
+- `workflowKey` (string) — Public workflow key
+
+**Query Parameters**:
+- `tenant_id` (string, required) — Tenant ID
+
+**Response**:
+```json
+{
+  "workflowKey": "sentiment-analysis",
+  "tenantId": "tenant-uuid",
+  "status": "available",
+  "reasonCode": "WORKFLOW_READY",
+  "reasonMessage": "Workflow is configured and ready to use",
+  "runtimeWorkflowRef": "runtime-workflow-uuid",
+  "nextAction": null
+}
+```
+
+**CLI Command**: `eai workflow status <workflow-key>`
+
+**Client Method**: `client.getRuntimeWorkflowStatus(workflowKey, tenantId)`
+
+---
+
+#### Request Runtime Workflow
+```
+POST /v3/workflows/runtime-requests
+Content-Type: application/json
+
+{
+  "tenant_id": "tenant-uuid",
+  "workflow_key": "sentiment-analysis",
+  "display_name": "Custom Sentiment Analyzer",
+  "reason": "Need sentiment analysis for customer feedback"
+}
+```
+
+**Request Body**:
+- `tenant_id` (string, required) — Tenant ID
+- `workflow_key` (string, required) — Public workflow key
+- `display_name` (string, optional) — Human-readable name for the workflow instance
+- `reason` (string, optional) — Reason for requesting the workflow
+
+**Response**:
+```json
+{
+  "requestId": "request-uuid",
+  "workflowKey": "sentiment-analysis",
+  "tenantId": "tenant-uuid",
+  "status": "pending",
+  "reasonCode": "REQUEST_CREATED",
+  "reasonMessage": "Workflow request created and pending approval",
+  "runtimeWorkflowRef": null,
+  "nextAction": "Wait for admin approval"
+}
+```
+
+**CLI Command**: `eai workflow request <workflow-key> [--display-name <name>] [--reason <reason>]`
+
+**Client Method**: `client.requestRuntimeWorkflow({ tenantId, workflowKey, displayName, reason })`
 
 ---
 
