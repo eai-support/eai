@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-12T23:36:29.611Z"
-source_commit: "945283decf734989b2aaa3336a102889e1d89ad6"
+generated_at: "2026-05-13T18:16:23.977Z"
+source_commit: "a34126c2e29f910c1539a8c93ab8e9d3c49d8154"
 ---
 # EAI CLI — Overview
 
@@ -14,8 +14,8 @@ source_commit: "945283decf734989b2aaa3336a102889e1d89ad6"
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers and DevOps engineers |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no user data storage) |
-| **Current Status** | Active development (v2.8.13 released 2026-05-12) |
-| **Last Material Change** | v2.8.13: Add public platform builder workflow readiness and update guidance (2026-05-12) |
+| **Current Status** | Active development (v2.8.13 released 2026-05-13) |
+| **Last Material Change** | v2.8.13: Add public platform builder workflow readiness and update guidance (2026-05-13) |
 
 ## Service Identity
 
@@ -58,8 +58,8 @@ The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.jso
 
 | File | Purpose |
 |------|---------|
-| `src/index.ts` | Main CLI entry point; registers 16 command modules and global hooks |
-| `src/commands/*.ts` | 16 command files: init, dev, login, logout, whoami, user, provision, env, types, resources, tenant, vertical, chat, docs, deploy, verify, doctor, update |
+| `src/index.ts` | Main CLI entry point; registers 19 command modules and global hooks |
+| `src/commands/*.ts` | 19 command files: init, dev, login, whoami, user, provision, env, types, resources, tenant, vertical, chat, docs, deploy, verify, update, gofer, template, workflow |
 | `src/lib/api.ts` | Platform API client with Bearer token auth and error handling |
 | `src/lib/auth.ts` | Entra CIAM authentication (browser PKCE flow) and token storage |
 | `src/lib/tenant-context.ts` | Tenant membership lookup and active tenant selection logic |
@@ -73,6 +73,8 @@ The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.jso
 | `src/lib/cloud-env.ts` | Azure App Config and Key Vault integration |
 | `src/lib/azure-cli.ts` | Azure CLI wrapper for cloud operations |
 | `src/lib/gofer-installer.ts` | Gofer AI terminal assets installer |
+| `src/lib/gofer-refresh.ts` | Gofer manifest planning and apply logic |
+| `src/lib/project-manifest.ts` | Project manifest persistence |
 | `src/lib/npm.ts` | NPM registry and package management utilities |
 | `src/lib/object-type-defaults.ts` | Object Type scaffolding defaults |
 | `src/lib/utils.ts` | Shared utility functions |
@@ -131,7 +133,7 @@ node dist/index.js tenant list
 ## Team / Ownership
 
 - **Organization**: EAI Tools
-- **Repository**: [https://github.com/enterpriseaigroup/tech-docs](https://github.com/enterpriseaigroup/tech-docs)
+- **Repository**: [https://github.com/eai-tools/eai-cli](https://github.com/eai-tools/eai-cli)
 - **Published Package**: `@eai-tools/cli`
 - **Registry**: Self-hosted on GitHub Pages (`https://eai-tools.github.io/eai-cli/registry`)
 - **Homepage**: [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli)
@@ -273,8 +275,8 @@ The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to stati
 
 ## Current Status
 
-- **Version**: 2.8.13 (released 2026-05-12)
+- **Version**: 2.8.13 (released 2026-05-13)
 - **Build Status**: Passing (CI workflow validates TypeCheck, Lint, Build, Tests)
-- **Documentation**: Up-to-date (last generated 2026-05-10T14:21:44Z)
-- **Source Commit**: `16242be8766857a2aba9b79acafcad0c19205e84`
+- **Documentation**: Up-to-date (last generated 2026-05-13T18:11:20Z)
+- **Source Commit**: `a34126c2e29f910c1539a8c93ab8e9d3c49d8154`
 - **Registry Status**: Published to GitHub Pages registry

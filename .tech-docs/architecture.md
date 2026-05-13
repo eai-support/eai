@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-12T23:36:29.613Z"
-source_commit: "945283decf734989b2aaa3336a102889e1d89ad6"
+generated_at: "2026-05-13T18:16:23.977Z"
+source_commit: "a34126c2e29f910c1539a8c93ab8e9d3c49d8154"
 ---
 # EAI CLI — Architecture
 
@@ -109,7 +109,7 @@ graph TB
         Index[src/index.ts<br/>Commander Program]
     end
     
-    subgraph "Command Layer (16 modules)"
+    subgraph "Command Layer (19 modules)"
         Init[init.ts<br/>Scaffold Projects]
         Auth[login.ts<br/>Authentication]
         Types[types.ts<br/>Object Type Management]
@@ -118,7 +118,7 @@ graph TB
         Deploy[deploy.ts<br/>Deployment]
         Chat[chat.ts<br/>AI Workflows]
         Docs[docs.ts<br/>Document Processing]
-        Other[+ 8 more commands]
+        Other[+ 11 more commands]
     end
     
     subgraph "Library Layer (16 modules)"
@@ -189,6 +189,9 @@ graph TB
 | **deploy.ts** | `deploy setup`, `deploy trigger`, `deploy status` | GitHub Actions deployment orchestration |
 | **verify.ts** | `verify`, `verify calls`, `doctor` | Platform connectivity checks and diagnostics |
 | **update.ts** | `update` | CLI self-update from GitHub registry |
+| **gofer.ts** | `gofer refresh`, `gofer status` | Inspect and refresh Gofer-managed project assets |
+| **template.ts** | `template check` | Preview vertical template drift without writing files |
+| **workflow.ts** | `workflow status`, `workflow request`, `workflow readiness` | Inspect and request AI runtime workflow bindings |
 
 ### Library Layer (src/lib/)
 
@@ -206,6 +209,8 @@ graph TB
 | **schema-builder.ts** | `describeProgram` | JSON schema generator for `--describe` flag (AI agent introspection) |
 | **update-check.ts** | `checkForUpdate`, `notifyIfUpdateAvailable` | Static EAI registry integration for version checks |
 | **gofer-installer.ts** | `installGoferAssets` | Copies Gofer AI terminal assets to new vertical projects |
+| **gofer-refresh.ts** | `planGoferRefresh`, `applyGoferRefresh` | Gofer manifest planning and apply logic for safe asset updates |
+| **project-manifest.ts** | `resolveProjectManifest`, `writeProjectManifest` | Project manifest persistence (.eai-manifest.json) |
 | **object-type-defaults.ts** | `getObjectTypeDefaults` | Default field definitions for Object Type scaffolding |
 | **cloud-env.ts** | `pullCloudEnv`, `pushCloudEnv` | Azure App Config + Key Vault integration |
 | **azure-cli.ts** | `execAzureCLI` | Azure CLI command wrapper for cloud operations |

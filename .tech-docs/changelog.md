@@ -1,25 +1,23 @@
 ---
 generated: true
-generated_at: "2026-05-12T23:36:29.613Z"
-source_commit: "945283decf734989b2aaa3336a102889e1d89ad6"
+generated_at: "2026-05-13T18:16:23.977Z"
+source_commit: "a34126c2e29f910c1539a8c93ab8e9d3c49d8154"
 ---
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-05-11 14:16 UTC (commit a8a694f)  
-**Current Documentation**: 2026-05-12 18:17 UTC (commit 9e4b783)  
+**Previous Documentation**: 2026-05-12 23:36 UTC (commit 945283d)  
+**Current Documentation**: 2026-05-13 18:11 UTC (commit a34126c)  
 **Version**: 2.8.13 (stable)
 
 ### Changes in This Update
 
-#### Documentation Updates
-- Added Feature 026 specification: Public Platform Builder Experience (commit 9e4b783)
-  - Specifies developer-facing platform configuration and resource bootstrapping workflows
-  - Includes quickstart guide, research notes, implementation plan, and validation criteria
-  - Planning artifact for future CLI enhancement
+#### Release v2.8.13 (commit a34126c)
+- Published release v2.8.13 with public platform builder workflow readiness and update guidance
+- Release includes latest documentation updates and platform compatibility enhancements
 - Nightly `.tech-docs/` documentation refresh
-- No implementation code changes since last generation
+- No implementation code changes since previous documentation generation
 
 ---
 
