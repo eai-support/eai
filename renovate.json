@@ -1,0 +1,24 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "timezone": "Australia/Sydney",
+  "schedule": [
+    "before 8:30am on the first monday of the month"
+  ],
+  "minimumReleaseAge": "14 days",
+  "rangeStrategy": "pin",
+  "dependencyDashboard": true,
+  "prConcurrentLimit": 5,
+  "automerge": false,
+  "packageRules": [
+    {
+      "description": "Keep published peer dependency compatibility ranges intact.",
+      "matchDepTypes": [
+        "peerDependencies"
+      ],
+      "rangeStrategy": "widen"
+    }
+  ]
+}
