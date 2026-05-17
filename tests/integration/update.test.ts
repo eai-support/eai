@@ -17,7 +17,7 @@ describe('buildUpdateInstallArgs', () => {
       '-g',
       '@eai-tools/cli@1.2.3',
       '--prefer-online',
-      '--@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry/',
+      '--@eai-tools:registry=https://eai-tools.github.io/eai/registry/',
     ]);
   });
 });
@@ -43,7 +43,7 @@ describe('update permission guidance', () => {
   test('avoids sudo-centric guidance on Unix', () => {
     expect(buildUpdatePermissionGuidance('1.2.3', 'static-registry', 'darwin')).toEqual([
       'Your global npm install location is not writable from this shell.',
-      'Retry from a shell that can write to your global npm directory: npm install -g @eai-tools/cli@1.2.3 --prefer-online --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry/',
+      'Retry from a shell that can write to your global npm directory: npm install -g @eai-tools/cli@1.2.3 --prefer-online --@eai-tools:registry=https://eai-tools.github.io/eai/registry/',
       'If you use nvm, Homebrew, or Volta, prefer their user-writable install path instead of sudo.',
     ]);
   });
@@ -51,7 +51,7 @@ describe('update permission guidance', () => {
   test('includes the scoped registry when retrying a static-registry install', () => {
     expect(buildUpdatePermissionGuidance('1.2.3', 'static-registry', 'darwin')).toEqual([
       'Your global npm install location is not writable from this shell.',
-      'Retry from a shell that can write to your global npm directory: npm install -g @eai-tools/cli@1.2.3 --prefer-online --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry/',
+      'Retry from a shell that can write to your global npm directory: npm install -g @eai-tools/cli@1.2.3 --prefer-online --@eai-tools:registry=https://eai-tools.github.io/eai/registry/',
       'If you use nvm, Homebrew, or Volta, prefer their user-writable install path instead of sudo.',
     ]);
   });
@@ -59,7 +59,7 @@ describe('update permission guidance', () => {
   test('uses elevated shell guidance on Windows', () => {
     expect(buildUpdatePermissionGuidance('1.2.3', 'static-registry', 'win32')).toEqual([
       'Your global npm install location is not writable from this shell.',
-      'Retry from an elevated PowerShell or Command Prompt: npm install -g @eai-tools/cli@1.2.3 --prefer-online --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry/',
+      'Retry from an elevated PowerShell or Command Prompt: npm install -g @eai-tools/cli@1.2.3 --prefer-online --@eai-tools:registry=https://eai-tools.github.io/eai/registry/',
     ]);
   });
 });

@@ -2,7 +2,7 @@
 Version: 2.8.13
 
 Install / update the CLI:
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 npm install -g @eai-tools/cli
 
 eai --help
@@ -136,7 +136,7 @@ Examples:
 
 Notes:
   - The CLI installs from the scoped EAI static registry on GitHub Pages.
-  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
   - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
   - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
   - Use `eai template check` to preview vertical-template and UI drift before copying changes manually.

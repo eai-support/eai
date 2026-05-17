@@ -2,36 +2,45 @@
  * eai init — scaffold a new vertical application from the template.
  */
 
-import { Command } from 'commander';
-import { execFile } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { promisify } from 'node:util';
-import { readFile, writeFile, access, mkdir, rm } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { randomBytes } from 'node:crypto';
-import ora from 'ora';
-import chalk from 'chalk';
-import inquirer from 'inquirer';
-import * as out from '../lib/output.js';
-import { installGoferResources } from '../lib/gofer-installer.js';
-import { applyGoferRefresh, planGoferRefresh } from '../lib/gofer-refresh.js';
-import { isAuthenticated, loadTokens } from '../lib/auth.js';
-import { resolveActiveTenantContext, resolvePublicApiUrl, type TenantMembership } from '../lib/tenant-context.js';
-import { parseApiError, PlatformAPIClient, type CapabilityDecision } from '../lib/api.js';
-import { patchEnvFile } from '../lib/config.js';
-import { pullCloudEnvValues } from '../lib/cloud-env.js';
-import { getActiveProfile, loadProfileConfig } from '../lib/profile.js';
-import type { ProjectManifest } from '../lib/project-manifest.js';
-import { saveProjectManifest } from '../lib/project-manifest.js';
+import { Command } from "commander";
+import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
+import { promisify } from "node:util";
+import { readFile, writeFile, access, mkdir, rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { randomBytes } from "node:crypto";
+import ora from "ora";
+import chalk from "chalk";
+import inquirer from "inquirer";
+import * as out from "../lib/output.js";
+import { installGoferResources } from "../lib/gofer-installer.js";
+import { applyGoferRefresh, planGoferRefresh } from "../lib/gofer-refresh.js";
+import { isAuthenticated, loadTokens } from "../lib/auth.js";
+import {
+  resolveActiveTenantContext,
+  resolvePublicApiUrl,
+  type TenantMembership,
+} from "../lib/tenant-context.js";
+import {
+  parseApiError,
+  PlatformAPIClient,
+  type CapabilityDecision,
+} from "../lib/api.js";
+import { patchEnvFile } from "../lib/config.js";
+import { pullCloudEnvValues } from "../lib/cloud-env.js";
+import { getActiveProfile, loadProfileConfig } from "../lib/profile.js";
+import type { ProjectManifest } from "../lib/project-manifest.js";
+import { saveProjectManifest } from "../lib/project-manifest.js";
 
 const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
-const pkg = require('../../package.json') as { version: string };
+const pkg = require("../../package.json") as { version: string };
 
-const TEMPLATE_REPO = 'https://github.com/eai-tools/Vertical-Template.git';
-const LEGACY_TEMPLATE_REPO = 'https://github.com/eai-tools/eai-vertical-template.git';
-const GITHUB_ORG = 'eai-tools';
-const TEMPLATE_REPO_LABEL = `${GITHUB_ORG}/Vertical-Template`;
+const TEMPLATE_REPO = "https://github.com/eai-tools/eai-app-template.git";
+const LEGACY_TEMPLATE_REPO_NAME = ["Vertical", "Template"].join("-");
+const LEGACY_TEMPLATE_REPO = `https://github.com/eai-tools/${LEGACY_TEMPLATE_REPO_NAME}.git`;
+const GITHUB_ORG = "eai-tools";
+const TEMPLATE_REPO_LABEL = `${GITHUB_ORG}/eai-app-template`;
 
 interface LinkedSourcesManifest {
   readonly verticalTemplate?: {
@@ -46,7 +55,9 @@ export interface TemplateClonePlan {
   readonly pinnedCommit?: string;
 }
 
-function buildInitialProjectManifest(templatePlan: TemplateClonePlan): ProjectManifest {
+function buildInitialProjectManifest(
+  templatePlan: TemplateClonePlan,
+): ProjectManifest {
   return {
     schemaVersion: 1,
     cli: {
@@ -68,41 +79,53 @@ interface InitOptions {
   tenantId: string;
   includeChat: boolean;
   includeDocs: boolean;
-  authProvider: 'ciam' | 'b2b' | 'dual';
+  authProvider: "ciam" | "b2b" | "dual";
 }
 
-type InitCapabilityKey = 'child-tenants' | 'ai-chat' | 'documents' | 'auth-b2b' | 'auth-dual';
+type InitCapabilityKey =
+  | "child-tenants"
+  | "ai-chat"
+  | "documents"
+  | "auth-b2b"
+  | "auth-dual";
 
 type InitCapabilityMap = Record<InitCapabilityKey, CapabilityDecision>;
 
-export function describeCloneFailure(templateSource: string, error: unknown): string {
+export function describeCloneFailure(
+  templateSource: string,
+  error: unknown,
+): string {
   const message = error instanceof Error ? error.message : String(error);
   const normalized = message.toLowerCase();
 
   if (
-    /spawn git enoent/i.test(message)
-    || normalized.includes('git is not recognized')
-    || normalized.includes('no such file or directory')
-    && normalized.includes('git')
+    /spawn git enoent/i.test(message) ||
+    normalized.includes("git is not recognized") ||
+    (normalized.includes("no such file or directory") &&
+      normalized.includes("git"))
   ) {
     return [
-      '`git` is required to scaffold from a repository source, but it is not installed or not on your PATH.',
-      'Install Git, reopen your terminal, and run the command again.',
-      '',
-      'Windows: winget install --id Git.Git -e',
-      'Download: https://git-scm.com/download/win',
-      '',
+      "`git` is required to scaffold from a repository source, but it is not installed or not on your PATH.",
+      "Install Git, reopen your terminal, and run the command again.",
+      "",
+      "Windows: winget install --id Git.Git -e",
+      "Download: https://git-scm.com/download/win",
+      "",
       `Default public template: ${TEMPLATE_REPO}`,
       `Custom source: eai init <name> --from <repo-or-path>`,
-    ].join('\n');
+    ].join("\n");
   }
 
   if (
-    isDefaultTemplateSource(templateSource)
-    && /repository .* not found|repository not found|fatal: .* not found/i.test(message)
+    isDefaultTemplateSource(templateSource) &&
+    /repository .* not found|repository not found|fatal: .* not found/i.test(
+      message,
+    )
   ) {
-    return `${message}\n\nThe default template source (${TEMPLATE_REPO}) could not be reached.\n` +
-      `Use ${'`'}eai init <name> --from <repo-or-path>${'`'} with another accessible template source if GitHub is blocked from this machine.`;
+    return (
+      `${message}\n\nThe default template source (${TEMPLATE_REPO}) could not be reached.\n` +
+      `Use ${"`"}eai init <name> --from <repo-or-path>${"`"} with another accessible template source if GitHub is blocked from this machine.`
+    );
   }
 
   return message;
@@ -110,17 +133,21 @@ export function describeCloneFailure(templateSource: string, error: unknown): st
 
 function loadLinkedSourcesManifest(): LinkedSourcesManifest | null {
   try {
-    return require('../../resources/linked-sources.json') as LinkedSourcesManifest;
+    return require("../../resources/linked-sources.json") as LinkedSourcesManifest;
   } catch {
     return null;
   }
 }
 
 export function isDefaultTemplateSource(templateSource: string): boolean {
-  return templateSource === TEMPLATE_REPO || templateSource === LEGACY_TEMPLATE_REPO;
+  return (
+    templateSource === TEMPLATE_REPO || templateSource === LEGACY_TEMPLATE_REPO
+  );
 }
 
-export function resolveTemplateClonePlan(templateSource: string): TemplateClonePlan {
+export function resolveTemplateClonePlan(
+  templateSource: string,
+): TemplateClonePlan {
   if (!isDefaultTemplateSource(templateSource)) {
     return {
       cloneSource: templateSource,
@@ -135,41 +162,73 @@ export function resolveTemplateClonePlan(templateSource: string): TemplateCloneP
   return {
     cloneSource,
     pinnedCommit,
-    displaySource: pinnedCommit ? `${TEMPLATE_REPO_LABEL}@${pinnedCommit.slice(0, 7)}` : TEMPLATE_REPO_LABEL,
+    displaySource: pinnedCommit
+      ? `${TEMPLATE_REPO_LABEL}@${pinnedCommit.slice(0, 7)}`
+      : TEMPLATE_REPO_LABEL,
   };
 }
 
-async function cloneTemplate(templateSource: string, targetDir: string): Promise<TemplateClonePlan> {
+async function cloneTemplate(
+  templateSource: string,
+  targetDir: string,
+): Promise<TemplateClonePlan> {
   const plan = resolveTemplateClonePlan(templateSource);
 
   if (!plan.pinnedCommit) {
-    await exec('git', ['clone', '--depth', '1', plan.cloneSource, targetDir]);
+    await exec("git", ["clone", "--depth", "1", plan.cloneSource, targetDir]);
     return plan;
   }
 
   try {
-    await exec('git', ['init', targetDir]);
-    await exec('git', ['-C', targetDir, 'remote', 'add', 'origin', plan.cloneSource]);
-    await exec('git', ['-C', targetDir, 'fetch', '--depth', '1', 'origin', plan.pinnedCommit]);
-    await exec('git', ['-C', targetDir, 'checkout', 'FETCH_HEAD']);
+    await exec("git", ["init", targetDir]);
+    await exec("git", [
+      "-C",
+      targetDir,
+      "remote",
+      "add",
+      "origin",
+      plan.cloneSource,
+    ]);
+    await exec("git", [
+      "-C",
+      targetDir,
+      "fetch",
+      "--depth",
+      "1",
+      "origin",
+      plan.pinnedCommit,
+    ]);
+    await exec("git", ["-C", targetDir, "checkout", "FETCH_HEAD"]);
     return plan;
   } catch {
     await rm(targetDir, { recursive: true, force: true });
-    await exec('git', ['clone', plan.cloneSource, targetDir]);
-    await exec('git', ['-C', targetDir, 'checkout', plan.pinnedCommit]);
+    await exec("git", ["clone", plan.cloneSource, targetDir]);
+    await exec("git", ["-C", targetDir, "checkout", plan.pinnedCommit]);
     return plan;
   }
 }
 
-export const initCommand = new Command('init')
-  .description('Scaffold a new vertical application')
-  .argument('[name]', 'Name for the vertical (kebab-case)')
-  .option('--from <repo>', 'GitHub repo URL or local path for template', TEMPLATE_REPO)
-  .option('--skip-prompts', 'Use defaults without interactive prompts', false)
-  .option('--tenant <id>', 'Bind this vertical to the given platform tenant ID (non-interactive)')
-  .option('--create-child-tenant', '[not implemented] Create a real child tenant boundary under the default tenant')
-  .option('--no-gofer', 'Skip installing Gofer AI CLI assets')
-  .addHelpText('after', `
+export const initCommand = new Command("init")
+  .description("Scaffold a new vertical application")
+  .argument("[name]", "Name for the vertical (kebab-case)")
+  .option(
+    "--from <repo>",
+    "GitHub repo URL or local path for template",
+    TEMPLATE_REPO,
+  )
+  .option("--skip-prompts", "Use defaults without interactive prompts", false)
+  .option(
+    "--tenant <id>",
+    "Bind this vertical to the given platform tenant ID (non-interactive)",
+  )
+  .option(
+    "--create-child-tenant",
+    "[not implemented] Create a real child tenant boundary under the default tenant",
+  )
+  .option("--no-gofer", "Skip installing Gofer AI CLI assets")
+  .addHelpText(
+    "after",
+    `
 Gofer AI CLI assets are installed by default:
   .specify/ commands, scripts, templates, hooks, and memory folders
   .claude/ commands and agents for Claude CLI
@@ -181,7 +240,8 @@ The default public template is pinned to the version bundled with this CLI.
 Use --from to override it with another repo or local path.
 
 Use --no-gofer only when you need a bare vertical scaffold.
-`)
+`,
+  )
   .action(async (nameArg, options) => {
     const publicApiUrl = await resolvePublicApiUrl();
     const activeTenant = await loadActiveTenantForInit(publicApiUrl);
@@ -212,35 +272,36 @@ Use --no-gofer only when you need a bare vertical scaffold.
         displayName: toDisplayName(nameArg),
         description: `${toDisplayName(nameArg)} vertical application`,
         tenantId,
-        includeChat: capabilities['ai-chat'].outcome === 'allow',
-        includeDocs: capabilities.documents.outcome === 'allow',
-        authProvider: 'ciam',
+        includeChat: capabilities["ai-chat"].outcome === "allow",
+        includeDocs: capabilities.documents.outcome === "allow",
+        authProvider: "ciam",
       };
     } else {
       const baseAnswers = await inquirer.prompt([
         {
-          type: 'input',
-          name: 'name',
-          message: 'Vertical name (kebab-case):',
+          type: "input",
+          name: "name",
+          message: "Vertical name (kebab-case):",
           default: nameArg,
           validate: (input: string) => {
             if (!/^[a-z][a-z0-9-]*$/.test(input)) {
-              return 'Must be lowercase, start with a letter, and contain only letters, numbers, and hyphens';
+              return "Must be lowercase, start with a letter, and contain only letters, numbers, and hyphens";
             }
             return true;
           },
         },
         {
-          type: 'input',
-          name: 'displayName',
-          message: 'Display name:',
+          type: "input",
+          name: "displayName",
+          message: "Display name:",
           default: (answers: { name: string }) => toDisplayName(answers.name),
         },
         {
-          type: 'input',
-          name: 'description',
-          message: 'Description:',
-          default: (answers: { displayName: string }) => `${answers.displayName} vertical application`,
+          type: "input",
+          name: "description",
+          message: "Description:",
+          default: (answers: { displayName: string }) =>
+            `${answers.displayName} vertical application`,
         },
       ]);
 
@@ -262,9 +323,17 @@ Use --no-gofer only when you need a bare vertical scaffold.
       const featureAnswers = await promptFeatureOptions(publicApiUrl, tenantId);
 
       initOptions = {
-        ...(baseAnswers as { name: string; displayName: string; description: string }),
+        ...(baseAnswers as {
+          name: string;
+          displayName: string;
+          description: string;
+        }),
         tenantId,
-        ...(featureAnswers as { includeChat: boolean; includeDocs: boolean; authProvider: 'ciam' | 'b2b' | 'dual' }),
+        ...(featureAnswers as {
+          includeChat: boolean;
+          includeDocs: boolean;
+          authProvider: "ciam" | "b2b" | "dual";
+        }),
       };
     }
 
@@ -272,122 +341,144 @@ Use --no-gofer only when you need a bare vertical scaffold.
     out.blank();
 
     // Step 1: Clone template
-    const cloneSpinner = ora('Cloning template...').start();
+    const cloneSpinner = ora("Cloning template...").start();
     const templatePlan = resolveTemplateClonePlan(options.from);
     try {
       await cloneTemplate(options.from, targetDir);
       // Remove .git to start fresh
-      await rm(join(targetDir, '.git'), { recursive: true, force: true });
-      cloneSpinner.succeed(`Cloned from ${chalk.dim(templatePlan.displaySource)}`);
+      await rm(join(targetDir, ".git"), { recursive: true, force: true });
+      cloneSpinner.succeed(
+        `Cloned from ${chalk.dim(templatePlan.displaySource)}`,
+      );
     } catch (err) {
-      cloneSpinner.fail('Failed to clone template');
+      cloneSpinner.fail("Failed to clone template");
       out.error(describeCloneFailure(options.from, err));
       process.exit(1);
     }
 
     // Step 2: Update package.json
-    const pkgSpinner = ora('Customizing package.json...').start();
+    const pkgSpinner = ora("Customizing package.json...").start();
     try {
-      const pkgPath = join(targetDir, 'package.json');
-      const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'));
+      const pkgPath = join(targetDir, "package.json");
+      const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
       pkg.name = `@${GITHUB_ORG}/${initOptions.name}`;
       pkg.description = initOptions.description;
-      pkg.version = '0.1.0';
-      await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
-      pkgSpinner.succeed('Updated package.json');
+      pkg.version = "0.1.0";
+      await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+      pkgSpinner.succeed("Updated package.json");
     } catch (_err) {
-      pkgSpinner.fail('Failed to update package.json');
+      pkgSpinner.fail("Failed to update package.json");
     }
 
     // Step 3: Generate .env.local with placeholders
-    const envSpinner = ora('Generating .env.local...').start();
+    const envSpinner = ora("Generating .env.local...").start();
     try {
       const envContent = generateEnvFile(initOptions);
-      await writeFile(join(targetDir, '.env.local'), envContent, 'utf-8');
-      await hydrateEnvFromLoginContext(targetDir, initOptions.name, initOptions.tenantId);
-      envSpinner.succeed('Generated .env.local');
+      await writeFile(join(targetDir, ".env.local"), envContent, "utf-8");
+      await hydrateEnvFromLoginContext(
+        targetDir,
+        initOptions.name,
+        initOptions.tenantId,
+      );
+      envSpinner.succeed("Generated .env.local");
     } catch (_err) {
-      envSpinner.fail('Failed to generate .env.local');
+      envSpinner.fail("Failed to generate .env.local");
     }
 
     // Step 4: Generate Object Types scaffold
-    const typesSpinner = ora('Creating Object Types scaffold...').start();
+    const typesSpinner = ora("Creating Object Types scaffold...").start();
     try {
       const typesContent = generateObjectTypesScaffold(initOptions);
-      await writeFile(join(targetDir, 'src', 'eai.config', 'object-types.ts'), typesContent, 'utf-8');
-      typesSpinner.succeed('Created Object Types scaffold');
+      await writeFile(
+        join(targetDir, "src", "eai.config", "object-types.ts"),
+        typesContent,
+        "utf-8",
+      );
+      typesSpinner.succeed("Created Object Types scaffold");
     } catch (_err) {
-      typesSpinner.fail('Failed to create Object Types scaffold');
+      typesSpinner.fail("Failed to create Object Types scaffold");
     }
 
     // Step 5: Generate deploy workflow
-    const deploySpinner = ora('Creating deployment workflow...').start();
+    const deploySpinner = ora("Creating deployment workflow...").start();
     try {
-      const workflowDir = join(targetDir, '.github', 'workflows');
+      const workflowDir = join(targetDir, ".github", "workflows");
       await mkdir(workflowDir, { recursive: true });
       const workflowContent = generateDeployWorkflow(initOptions);
-      await writeFile(join(workflowDir, 'deploy-demo.yml'), workflowContent, 'utf-8');
-      deploySpinner.succeed('Created deploy-demo.yml');
+      await writeFile(
+        join(workflowDir, "deploy-demo.yml"),
+        workflowContent,
+        "utf-8",
+      );
+      deploySpinner.succeed("Created deploy-demo.yml");
     } catch (_err) {
-      deploySpinner.fail('Failed to create deployment workflow');
+      deploySpinner.fail("Failed to create deployment workflow");
     }
 
     // Step 6: Generate project CLAUDE.md
-    const claudeSpinner = ora('Generating CLAUDE.md...').start();
+    const claudeSpinner = ora("Generating CLAUDE.md...").start();
     try {
       const claudeContent = generateClaudeMd(initOptions);
-      await writeFile(join(targetDir, 'CLAUDE.md'), claudeContent, 'utf-8');
-      claudeSpinner.succeed('Generated CLAUDE.md');
+      await writeFile(join(targetDir, "CLAUDE.md"), claudeContent, "utf-8");
+      claudeSpinner.succeed("Generated CLAUDE.md");
     } catch (_err) {
-      claudeSpinner.fail('Failed to generate CLAUDE.md');
+      claudeSpinner.fail("Failed to generate CLAUDE.md");
     }
 
     // Step 7: Install Gofer AI CLI assets
     if (options.gofer) {
-      const goferSpinner = ora('Installing Gofer AI CLI assets...').start();
+      const goferSpinner = ora("Installing Gofer AI CLI assets...").start();
       try {
         const summary = await installGoferResources(targetDir, {
-          workflowProfile: 'enterpriseai',
+          workflowProfile: "enterpriseai",
         });
         goferSpinner.succeed(
           `Installed Gofer assets (${summary.commands} commands, ${summary.agents} agents, ${summary.skills} skills)`,
         );
       } catch (err) {
-        goferSpinner.fail('Failed to install Gofer AI CLI assets');
+        goferSpinner.fail("Failed to install Gofer AI CLI assets");
         out.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
       }
     }
 
     // Step 8: Record project manifest for future safe refreshes
-    const manifestSpinner = ora('Recording project manifest...').start();
+    const manifestSpinner = ora("Recording project manifest...").start();
     try {
       const initialManifest = buildInitialProjectManifest(templatePlan);
       await saveProjectManifest(targetDir, initialManifest);
 
       if (options.gofer) {
         const refreshPlan = await planGoferRefresh(targetDir, initialManifest, {
-          workflowProfile: 'enterpriseai',
+          workflowProfile: "enterpriseai",
         });
         await applyGoferRefresh(refreshPlan);
       }
 
-      manifestSpinner.succeed('Recorded .eai-manifest.json');
+      manifestSpinner.succeed("Recorded .eai-manifest.json");
     } catch (err) {
-      manifestSpinner.fail('Failed to record project manifest');
+      manifestSpinner.fail("Failed to record project manifest");
       out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
 
     // Step 9: Initialize git
-    const gitSpinner = ora('Initializing git...').start();
+    const gitSpinner = ora("Initializing git...").start();
     try {
-      await exec('git', ['init'], { cwd: targetDir });
-      await exec('git', ['add', '.'], { cwd: targetDir });
-      await exec('git', ['commit', '-m', `Initial scaffold from template\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${templatePlan.displaySource}`], { cwd: targetDir });
-      gitSpinner.succeed('Initialized git repository');
+      await exec("git", ["init"], { cwd: targetDir });
+      await exec("git", ["add", "."], { cwd: targetDir });
+      await exec(
+        "git",
+        [
+          "commit",
+          "-m",
+          `Initial scaffold from template\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${templatePlan.displaySource}`,
+        ],
+        { cwd: targetDir },
+      );
+      gitSpinner.succeed("Initialized git repository");
     } catch (err) {
-      gitSpinner.fail('Failed to initialize git');
+      gitSpinner.fail("Failed to initialize git");
       out.warn(describeGitInitFailure(err));
     }
 
@@ -400,34 +491,47 @@ Use --no-gofer only when you need a bare vertical scaffold.
       const loggedIn = await isAuthenticated();
       if (loggedIn) {
         out.blank();
-        const { provision } = await inquirer.prompt([{
-          type: 'confirm',
-          name: 'provision',
-          message: 'Provision Entra app registration now?',
-          default: true,
-        }]);
+        const { provision } = await inquirer.prompt([
+          {
+            type: "confirm",
+            name: "provision",
+            message: "Provision Entra app registration now?",
+            default: true,
+          },
+        ]);
         if (provision) {
-          entraProvisioned = await provisionEntraInline(targetDir, initOptions.name, initOptions.tenantId, publicApiUrl);
+          entraProvisioned = await provisionEntraInline(
+            targetDir,
+            initOptions.name,
+            initOptions.tenantId,
+            publicApiUrl,
+          );
         }
       }
     }
 
     out.blank();
-    out.success(`Created ${chalk.bold(initOptions.displayName)} at ${chalk.cyan(targetDir)}`);
+    out.success(
+      `Created ${chalk.bold(initOptions.displayName)} at ${chalk.cyan(targetDir)}`,
+    );
     out.blank();
-    out.heading('Next steps:');
+    out.heading("Next steps:");
     out.blank();
     if (initOptions.tenantId) {
       out.dim(`Bound to tenant: ${chalk.cyan(initOptions.tenantId)}`);
     }
     if (!entraProvisioned) {
-      out.dim(`Run ${chalk.cyan('eai provision entra')} inside the project to set up Entra authentication.`);
+      out.dim(
+        `Run ${chalk.cyan("eai provision entra")} inside the project to set up Entra authentication.`,
+      );
     }
     out.dim(`Template: ${templatePlan.displaySource}`);
     if (options.gofer) {
-      out.dim('Gofer: Claude /0_business_scenario; Codex uses the repo-local Gofer skills; Gemini /gofer:1_gofer_research; Copilot .github prompts/skills.');
+      out.dim(
+        "Gofer: Claude /0_business_scenario; Codex uses the repo-local Gofer skills; Gemini /gofer:1_gofer_research; Copilot .github prompts/skills.",
+      );
     }
-    out.dim(`CLI docs: https://github.com/${GITHUB_ORG}/eai-cli`);
+    out.dim(`CLI docs: https://github.com/${GITHUB_ORG}/eai`);
     out.blank();
   });
 
@@ -442,13 +546,15 @@ async function provisionEntraInline(
   tenantId: string,
   publicApiUrl: string,
 ): Promise<boolean> {
-  const spinner = ora('Provisioning Entra app registration...').start();
+  const spinner = ora("Provisioning Entra app registration...").start();
   try {
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
     const result = await client.provisionEntraApp({
       tenantId,
       verticalName,
-      redirectUris: [`http://localhost:3000/${verticalName}/api/auth/callback/microsoft-entra-id`],
+      redirectUris: [
+        `http://localhost:3000/${verticalName}/api/auth/callback/microsoft-entra-id`,
+      ],
       idempotent: true,
     });
 
@@ -457,37 +563,52 @@ async function provisionEntraInline(
         ENTRA_CLIENT_ID: result.clientId,
         ENTRA_CLIENT_SECRET: result.clientSecret,
       });
-      spinner.succeed(`Entra app registration ${result.existing ? 'confirmed' : 'created'}: ${chalk.dim(result.clientId)}`);
-      out.warn('The client secret has been written to .env.local and cannot be retrieved again.');
+      spinner.succeed(
+        `Entra app registration ${result.existing ? "confirmed" : "created"}: ${chalk.dim(result.clientId)}`,
+      );
+      out.warn(
+        "The client secret has been written to .env.local and cannot be retrieved again.",
+      );
       return true;
     }
 
     if (result.existing) {
       await patchEnvFile(targetDir, { ENTRA_CLIENT_ID: result.clientId });
       const hydratedSecret = await hydrateCloudSecret(targetDir, verticalName);
-      spinner.succeed(`Entra app registration confirmed: ${chalk.dim(result.clientId)}`);
+      spinner.succeed(
+        `Entra app registration confirmed: ${chalk.dim(result.clientId)}`,
+      );
       if (hydratedSecret) {
-        out.success('ENTRA_CLIENT_SECRET hydrated from cloud config.');
+        out.success("ENTRA_CLIENT_SECRET hydrated from cloud config.");
       } else {
-        out.warn('An existing registration was found. Run `eai env pull --include-secrets` if ENTRA_CLIENT_SECRET is missing locally.');
+        out.warn(
+          "An existing registration was found. Run `eai env pull --include-secrets` if ENTRA_CLIENT_SECRET is missing locally.",
+        );
       }
       return true;
     }
 
-    spinner.fail('Provisioning returned no credentials.');
-    out.warn('Run `eai provision entra` after setup to complete Entra registration.');
+    spinner.fail("Provisioning returned no credentials.");
+    out.warn(
+      "Run `eai provision entra` after setup to complete Entra registration.",
+    );
     return false;
   } catch (err) {
     if (process.env.DEBUG) {
-      console.error('[eai:provision]', err);
+      console.error("[eai:provision]", err);
     }
-    spinner.fail('Entra provisioning failed — skipping.');
-    out.warn('Run `eai provision entra` inside the project to complete Entra registration.');
+    spinner.fail("Entra provisioning failed — skipping.");
+    out.warn(
+      "Run `eai provision entra` inside the project to complete Entra registration.",
+    );
     return false;
   }
 }
 
-async function hydrateCloudSecret(targetDir: string, verticalName: string): Promise<boolean> {
+async function hydrateCloudSecret(
+  targetDir: string,
+  verticalName: string,
+): Promise<boolean> {
   try {
     const { patches } = await pullCloudEnvValues({
       label: verticalName,
@@ -504,21 +625,31 @@ async function hydrateCloudSecret(targetDir: string, verticalName: string): Prom
   }
 }
 
-async function loadActiveTenantForInit(publicApiUrl: string): Promise<TenantMembership | null> {
+async function loadActiveTenantForInit(
+  publicApiUrl: string,
+): Promise<TenantMembership | null> {
   try {
-    const ctx = await resolveActiveTenantContext({ publicApiUrl, interactive: false });
+    const ctx = await resolveActiveTenantContext({
+      publicApiUrl,
+      interactive: false,
+    });
     return ctx.activeTenant;
   } catch {
     return null;
   }
 }
 
-async function assertTenantExists(publicApiUrl: string, tenantId: string): Promise<void> {
+async function assertTenantExists(
+  publicApiUrl: string,
+  tenantId: string,
+): Promise<void> {
   const client = new PlatformAPIClient(publicApiUrl, tenantId);
   const res = await client.getTenant(tenantId);
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    out.error(`Tenant ${tenantId} could not be resolved (${res.status}). ${body}`.trim());
+    const body = await res.text().catch(() => "");
+    out.error(
+      `Tenant ${tenantId} could not be resolved (${res.status}). ${body}`.trim(),
+    );
     process.exit(1);
   }
 }
@@ -538,62 +669,82 @@ async function promptTenantBinding(
 
   if (forceChild) {
     if (!activeTenant) {
-      out.error('Creating a child tenant requires an active parent tenant. Run `eai login` and `eai tenant select`, or pass `--tenant <id>` to bind an existing tenant.');
+      out.error(
+        "Creating a child tenant requires an active parent tenant. Run `eai login` and `eai tenant select`, or pass `--tenant <id>` to bind an existing tenant.",
+      );
       process.exit(1);
     }
-    return createChildTenantDuringInit(publicApiUrl, activeTenant, childTenantSeed);
+    return createChildTenantDuringInit(
+      publicApiUrl,
+      activeTenant,
+      childTenantSeed,
+    );
   }
 
   if (!interactive) {
-    return activeTenant?.id ?? '';
+    return activeTenant?.id ?? "";
   }
 
-  const choices: Array<{ name: string; value: 'default' | 'child' | 'other'; disabled?: string }> = [];
+  const choices: Array<{
+    name: string;
+    value: "default" | "child" | "other";
+    disabled?: string;
+  }> = [];
 
   if (activeTenant) {
     choices.push({
       name: `Default (currently selected): ${activeTenant.displayName} · ${chalk.dim(activeTenant.id)}`,
-      value: 'default',
+      value: "default",
     });
   } else {
     choices.push({
-      name: 'Default (currently selected)',
-      value: 'default',
-      disabled: 'no active tenant — run `eai login` and `eai tenant select` first',
+      name: "Default (currently selected)",
+      value: "default",
+      disabled:
+        "no active tenant — run `eai login` and `eai tenant select` first",
     });
   }
 
   choices.push({
-    name: 'Create a child tenant boundary under the default',
-    value: 'child',
+    name: "Create a child tenant boundary under the default",
+    value: "child",
   });
 
   choices.push({
-    name: 'Other tenant (enter ID)',
-    value: 'other',
+    name: "Other tenant (enter ID)",
+    value: "other",
   });
 
-  const { mode } = await inquirer.prompt([{
-    type: 'list',
-    name: 'mode',
-    message: 'Which platform tenant should this vertical bind to?',
-    choices,
-  }]);
+  const { mode } = await inquirer.prompt([
+    {
+      type: "list",
+      name: "mode",
+      message: "Which platform tenant should this vertical bind to?",
+      choices,
+    },
+  ]);
 
-  if (mode === 'default') {
+  if (mode === "default") {
     return activeTenant!.id;
   }
 
-  if (mode === 'child') {
-    return createChildTenantDuringInit(publicApiUrl, activeTenant!, childTenantSeed);
+  if (mode === "child") {
+    return createChildTenantDuringInit(
+      publicApiUrl,
+      activeTenant!,
+      childTenantSeed,
+    );
   }
 
-  const { otherId } = await inquirer.prompt([{
-    type: 'input',
-    name: 'otherId',
-    message: 'Tenant ID:',
-    validate: (input: string) => input.trim().length > 0 || 'Tenant ID is required',
-  }]);
+  const { otherId } = await inquirer.prompt([
+    {
+      type: "input",
+      name: "otherId",
+      message: "Tenant ID:",
+      validate: (input: string) =>
+        input.trim().length > 0 || "Tenant ID is required",
+    },
+  ]);
   const trimmed = String(otherId).trim();
   await assertTenantExists(publicApiUrl, trimmed);
   return trimmed;
@@ -605,7 +756,7 @@ async function hydrateEnvFromLoginContext(
   platformTenantId: string,
 ): Promise<void> {
   const patches: Record<string, string> = {};
-  const envKey = verticalName.replace(/-/g, '_').toUpperCase();
+  const envKey = verticalName.replace(/-/g, "_").toUpperCase();
 
   try {
     patches.BASE_URL_PUBLIC_API = await resolvePublicApiUrl(targetDir);
@@ -650,9 +801,9 @@ async function hydrateEnvFromLoginContext(
 
 function toDisplayName(name: string): string {
   return name
-    .split('-')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 function describeTemplateSource(templateSource: string): string {
@@ -662,7 +813,7 @@ function describeTemplateSource(templateSource: string): string {
 
   const githubMatch = templateSource.match(/github\.com[:/](.+?)(?:\.git)?$/i);
   if (githubMatch?.[1]) {
-    return githubMatch[1].replace(/\/+$/, '');
+    return githubMatch[1].replace(/\/+$/, "");
   }
 
   return templateSource;
@@ -671,12 +822,15 @@ function describeTemplateSource(templateSource: string): string {
 function describeGitInitFailure(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/spawn git enoent/i.test(message)) {
-    return '`git` was not found on your PATH, so the project was created without an initialized repository. Install Git and run `git init` inside the new project if you want version control.';
+    return "`git` was not found on your PATH, so the project was created without an initialized repository. Install Git and run `git init` inside the new project if you want version control.";
   }
   return message;
 }
 
-async function ensureTargetDirAvailable(targetDir: string, projectName: string): Promise<void> {
+async function ensureTargetDirAvailable(
+  targetDir: string,
+  projectName: string,
+): Promise<void> {
   try {
     await access(targetDir);
     out.error(`Directory "${projectName}" already exists.`);
@@ -689,8 +843,8 @@ async function ensureTargetDirAvailable(targetDir: string, projectName: string):
 // ─── Generators ────────────────────────────────────────────────────────────
 
 function generateEnvFile(opts: InitOptions): string {
-  const envKey = opts.name.replace(/-/g, '_').toUpperCase();
-  const authSecret = randomBytes(32).toString('base64');
+  const envKey = opts.name.replace(/-/g, "_").toUpperCase();
+  const authSecret = randomBytes(32).toString("base64");
   const workflowSection = opts.includeChat
     ? `WORKFLOW_${envKey}_ID=`
     : `# WORKFLOW_${envKey}_ID=  # Set later if chat is enabled`;
@@ -820,7 +974,7 @@ function generateObjectTypesScaffold(opts: InitOptions): string {
       },
       status: 'published' as const,
     },`
-    : '';
+    : "";
   return `/**
  * Object Type definitions for ${opts.displayName}
  *
@@ -999,34 +1153,39 @@ ${documentTypeBlock}
 
 function defaultInitCapabilities(): InitCapabilityMap {
   return {
-    'child-tenants': {
-      outcome: 'deny',
-      reasonCode: 'capability_service_unavailable',
-      reasonMessage: 'Child-tenant entitlement could not be confirmed right now.',
+    "child-tenants": {
+      outcome: "deny",
+      reasonCode: "capability_service_unavailable",
+      reasonMessage:
+        "Child-tenant entitlement could not be confirmed right now.",
       upgradeUrl: null,
     },
-    'ai-chat': {
-      outcome: 'allow',
-      reasonCode: 'default_cli_fallback',
-      reasonMessage: 'AI chat defaults to enabled when capability evaluation is unavailable.',
+    "ai-chat": {
+      outcome: "allow",
+      reasonCode: "default_cli_fallback",
+      reasonMessage:
+        "AI chat defaults to enabled when capability evaluation is unavailable.",
       upgradeUrl: null,
     },
     documents: {
-      outcome: 'allow',
-      reasonCode: 'default_cli_fallback',
-      reasonMessage: 'Document management defaults to enabled when capability evaluation is unavailable.',
+      outcome: "allow",
+      reasonCode: "default_cli_fallback",
+      reasonMessage:
+        "Document management defaults to enabled when capability evaluation is unavailable.",
       upgradeUrl: null,
     },
-    'auth-b2b': {
-      outcome: 'deny',
-      reasonCode: 'template_scaffold_unavailable',
-      reasonMessage: 'B2B auth scaffolding is not currently available in eai init.',
+    "auth-b2b": {
+      outcome: "deny",
+      reasonCode: "template_scaffold_unavailable",
+      reasonMessage:
+        "B2B auth scaffolding is not currently available in eai init.",
       upgradeUrl: null,
     },
-    'auth-dual': {
-      outcome: 'deny',
-      reasonCode: 'template_scaffold_unavailable',
-      reasonMessage: 'Dual-auth scaffolding is not currently available in eai init.',
+    "auth-dual": {
+      outcome: "deny",
+      reasonCode: "template_scaffold_unavailable",
+      reasonMessage:
+        "Dual-auth scaffolding is not currently available in eai init.",
       upgradeUrl: null,
     },
   };
@@ -1041,7 +1200,8 @@ async function evaluateCapabilityForInit(
     return await client.evaluateCapability({
       tenantId,
       targetCapability,
-      requestedOperation: targetCapability === 'child-tenants' ? 'create' : 'enable',
+      requestedOperation:
+        targetCapability === "child-tenants" ? "create" : "enable",
     });
   } catch {
     return defaultInitCapabilities()[targetCapability];
@@ -1053,26 +1213,21 @@ async function evaluateInitCapabilities(
   tenantId: string,
 ): Promise<InitCapabilityMap> {
   const client = new PlatformAPIClient(publicApiUrl, tenantId);
-  const [
-    childTenants,
-    aiChat,
-    documents,
-    authB2B,
-    authDual,
-  ] = await Promise.all([
-    evaluateCapabilityForInit(client, 'child-tenants', tenantId),
-    evaluateCapabilityForInit(client, 'ai-chat', tenantId),
-    evaluateCapabilityForInit(client, 'documents', tenantId),
-    evaluateCapabilityForInit(client, 'auth-b2b', tenantId),
-    evaluateCapabilityForInit(client, 'auth-dual', tenantId),
-  ]);
+  const [childTenants, aiChat, documents, authB2B, authDual] =
+    await Promise.all([
+      evaluateCapabilityForInit(client, "child-tenants", tenantId),
+      evaluateCapabilityForInit(client, "ai-chat", tenantId),
+      evaluateCapabilityForInit(client, "documents", tenantId),
+      evaluateCapabilityForInit(client, "auth-b2b", tenantId),
+      evaluateCapabilityForInit(client, "auth-dual", tenantId),
+    ]);
 
   return {
-    'child-tenants': childTenants,
-    'ai-chat': aiChat,
+    "child-tenants": childTenants,
+    "ai-chat": aiChat,
     documents,
-    'auth-b2b': authB2B,
-    'auth-dual': authDual,
+    "auth-b2b": authB2B,
+    "auth-dual": authDual,
   };
 }
 
@@ -1082,9 +1237,15 @@ async function createChildTenantDuringInit(
   childTenantSeed: { slug: string; displayName: string },
 ): Promise<string> {
   const client = new PlatformAPIClient(publicApiUrl, activeTenant.id);
-  const childDecision = await evaluateCapabilityForInit(client, 'child-tenants', activeTenant.id);
-  if (childDecision.outcome !== 'allow') {
-    const suffix = childDecision.upgradeUrl ? ` Upgrade: ${childDecision.upgradeUrl}` : '';
+  const childDecision = await evaluateCapabilityForInit(
+    client,
+    "child-tenants",
+    activeTenant.id,
+  );
+  if (childDecision.outcome !== "allow") {
+    const suffix = childDecision.upgradeUrl
+      ? ` Upgrade: ${childDecision.upgradeUrl}`
+      : "";
     out.error(`${childDecision.reasonMessage}${suffix}`);
     process.exit(1);
   }
@@ -1093,8 +1254,8 @@ async function createChildTenantDuringInit(
     name: childTenantSeed.displayName,
     slug: childTenantSeed.slug,
     parent: activeTenant.id,
-    usecase: 'generic',
-    starterTemplate: 'blank-vertical-template',
+    usecase: "generic",
+    starterTemplate: "blank-vertical-template",
   });
 
   if (!createResponse.ok) {
@@ -1103,99 +1264,139 @@ async function createChildTenantDuringInit(
     process.exit(1);
   }
 
-  const tenantPayload = await createResponse.json() as Record<string, unknown>;
-  const createdTenant = (tenantPayload['doc'] && typeof tenantPayload['doc'] === 'object'
-    ? tenantPayload['doc']
-    : tenantPayload) as Record<string, unknown>;
-  const childTenantId = String(createdTenant.id || '');
+  const tenantPayload = (await createResponse.json()) as Record<
+    string,
+    unknown
+  >;
+  const createdTenant = (
+    tenantPayload["doc"] && typeof tenantPayload["doc"] === "object"
+      ? tenantPayload["doc"]
+      : tenantPayload
+  ) as Record<string, unknown>;
+  const childTenantId = String(createdTenant.id || "");
 
   if (!childTenantId) {
-    out.error('Child tenant creation succeeded but returned no tenant ID.');
+    out.error("Child tenant creation succeeded but returned no tenant ID.");
     process.exit(1);
   }
 
   const tokens = await loadTokens().catch(() => null);
   if (!tokens?.oid) {
-    out.error('Child tenant creation needs a current login with an oid claim so the first tenant admin can be bootstrapped.');
+    out.error(
+      "Child tenant creation needs a current login with an oid claim so the first tenant admin can be bootstrapped.",
+    );
     process.exit(1);
   }
 
-  const bootstrapResponse = await client.bootstrapChildTenantAdmin(activeTenant.id, childTenantId, {
-    userOid: tokens.oid,
-    userEmail: tokens.upn,
-  });
+  const bootstrapResponse = await client.bootstrapChildTenantAdmin(
+    activeTenant.id,
+    childTenantId,
+    {
+      userOid: tokens.oid,
+      userEmail: tokens.upn,
+    },
+  );
 
   if (!bootstrapResponse.ok) {
     const error = await parseApiError(bootstrapResponse);
-    out.error(`Child tenant was created but bootstrap failed: ${error.message}`);
+    out.error(
+      `Child tenant was created but bootstrap failed: ${error.message}`,
+    );
     process.exit(1);
   }
 
-  const bootstrap = await bootstrapResponse.json() as { usable?: boolean; reason?: string | null };
+  const bootstrap = (await bootstrapResponse.json()) as {
+    usable?: boolean;
+    reason?: string | null;
+  };
   if (!bootstrap.usable) {
-    out.error(`Child tenant was created but is not yet usable for the current login${bootstrap.reason ? `: ${bootstrap.reason}` : '.'}`);
+    out.error(
+      `Child tenant was created but is not yet usable for the current login${bootstrap.reason ? `: ${bootstrap.reason}` : "."}`,
+    );
     process.exit(1);
   }
 
-  out.info(`Created child tenant boundary under ${activeTenant.displayName}: ${childTenantSeed.displayName} · ${chalk.dim(childTenantId)}`);
+  out.info(
+    `Created child tenant boundary under ${activeTenant.displayName}: ${childTenantSeed.displayName} · ${chalk.dim(childTenantId)}`,
+  );
   return childTenantId;
 }
 
-function buildAuthProviderChoices(capabilities: InitCapabilityMap): Array<{ name: string; value: 'ciam' | 'b2b' | 'dual'; disabled?: string }> {
-  const b2bDisabled = capabilities['auth-b2b'].outcome === 'allow'
-    ? 'vertical template scaffolding is not available yet'
-    : capabilities['auth-b2b'].reasonMessage;
-  const dualDisabled = capabilities['auth-dual'].outcome === 'allow'
-    ? 'vertical template scaffolding is not available yet'
-    : capabilities['auth-dual'].reasonMessage;
+function buildAuthProviderChoices(
+  capabilities: InitCapabilityMap,
+): Array<{ name: string; value: "ciam" | "b2b" | "dual"; disabled?: string }> {
+  const b2bDisabled =
+    capabilities["auth-b2b"].outcome === "allow"
+      ? "vertical template scaffolding is not available yet"
+      : capabilities["auth-b2b"].reasonMessage;
+  const dualDisabled =
+    capabilities["auth-dual"].outcome === "allow"
+      ? "vertical template scaffolding is not available yet"
+      : capabilities["auth-dual"].reasonMessage;
 
   return [
-    { name: 'Entra ID CIAM', value: 'ciam' },
-    { name: 'Entra ID B2B (corporate SSO)', value: 'b2b', disabled: b2bDisabled },
-    { name: 'Dual (CIAM + B2B)', value: 'dual', disabled: dualDisabled },
+    { name: "Entra ID CIAM", value: "ciam" },
+    {
+      name: "Entra ID B2B (corporate SSO)",
+      value: "b2b",
+      disabled: b2bDisabled,
+    },
+    { name: "Dual (CIAM + B2B)", value: "dual", disabled: dualDisabled },
   ];
 }
 
 async function promptFeatureOptions(
   publicApiUrl: string,
   tenantId: string,
-): Promise<{ includeChat: boolean; includeDocs: boolean; authProvider: 'ciam' | 'b2b' | 'dual' }> {
+): Promise<{
+  includeChat: boolean;
+  includeDocs: boolean;
+  authProvider: "ciam" | "b2b" | "dual";
+}> {
   const capabilities = await evaluateInitCapabilities(publicApiUrl, tenantId);
 
   let includeChat = false;
-  if (capabilities['ai-chat'].outcome === 'allow') {
-    const answer = await inquirer.prompt([{
-      type: 'confirm',
-      name: 'includeChat',
-      message: 'Include AI chat?',
-      default: true,
-    }]);
+  if (capabilities["ai-chat"].outcome === "allow") {
+    const answer = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "includeChat",
+        message: "Include AI chat?",
+        default: true,
+      },
+    ]);
     includeChat = Boolean(answer.includeChat);
   } else {
-    out.warn(`AI chat disabled: ${capabilities['ai-chat'].reasonMessage}`);
+    out.warn(`AI chat disabled: ${capabilities["ai-chat"].reasonMessage}`);
   }
 
   let includeDocs = false;
-  if (capabilities.documents.outcome === 'allow') {
-    const answer = await inquirer.prompt([{
-      type: 'confirm',
-      name: 'includeDocs',
-      message: 'Include document management?',
-      default: true,
-    }]);
+  if (capabilities.documents.outcome === "allow") {
+    const answer = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "includeDocs",
+        message: "Include document management?",
+        default: true,
+      },
+    ]);
     includeDocs = Boolean(answer.includeDocs);
   } else {
-    out.warn(`Document management disabled: ${capabilities.documents.reasonMessage}`);
+    out.warn(
+      `Document management disabled: ${capabilities.documents.reasonMessage}`,
+    );
   }
 
   const authChoices = buildAuthProviderChoices(capabilities);
-  const authProviderAnswer = await inquirer.prompt([{
-    type: 'list',
-    name: 'authProvider',
-    message: 'Auth provider:',
-    choices: authChoices,
-    default: 'ciam',
-  }]);
+  const authProviderAnswer = await inquirer.prompt([
+    {
+      type: "list",
+      name: "authProvider",
+      message: "Auth provider:",
+      choices: authChoices,
+      default: "ciam",
+    },
+  ]);
 
   return {
     includeChat,

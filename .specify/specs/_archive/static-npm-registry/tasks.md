@@ -43,7 +43,7 @@ graph LR
   3. Compute SHA-1 hex hash (`shasum`) and SHA-512 SRI hash (`integrity`) of tarball using `node:crypto`
   4. Read existing packument from `docs/public/registry/@eai-tools/cli` if it exists (JSON parse)
   5. Append new version entry to `versions` object; update `dist-tags.latest`
-  6. Set `dist.tarball` URL to `https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-{version}.tgz`
+  6. Set `dist.tarball` URL to `https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-{version}.tgz`
   7. Write updated packument as extensionless file to `docs/public/registry/@eai-tools/cli`
   8. Create directory `docs/public/registry/-/@eai-tools/` if needed
   9. Copy tarball to `docs/public/registry/-/@eai-tools/cli-{version}.tgz`
@@ -102,7 +102,7 @@ graph LR
 - [x] T005 [P] [US2] Update release.sh to remove Homebrew references and update install instructions
 
   Changes:
-  1. In `gh release create` notes: replace `npm install -g github:eai-tools/eai-cli#v$NEW_VERSION` with `.npmrc` setup + `npm install -g @eai-tools/cli`
+  1. In `gh release create` notes: replace `npm install -g github:eai-tools/eai#v$NEW_VERSION` with `.npmrc` setup + `npm install -g @eai-tools/cli`
   2. Remove any Homebrew references from the final "Install:" echo
   3. In the `git add` step, add `docs/public/registry/` alongside `package.json package-lock.json`
   4. After `npm pack` (add it if not present), add `node scripts/generate-registry.cjs`
@@ -144,7 +144,7 @@ graph LR
   ```
   Configure your npm to use the EAI registry:
 
-  echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
+  echo "@eai-tools:registry=https://eai-tools.github.io/eai/registry" >> ~/.npmrc
 
   Then install globally:
 

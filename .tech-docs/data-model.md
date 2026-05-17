@@ -51,7 +51,7 @@ interface StoredTokens {
 
 **Security**:
 - File mode `0o600` (owner read/write only)
-- AES-256-CBC encryption with key derived from `sha256(eai-cli-${homedir}-token-store)`
+- AES-256-CBC encryption with key derived from `sha256(eai-${homedir}-token-store)`
 
 ---
 

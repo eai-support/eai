@@ -37,7 +37,7 @@ Reasoning:
 
 - `entra-config` is already used for root-tenant branded login and single-app
   identity config.
-- app registrations created by `eai-cli` are per-vertical operational assets,
+- app registrations created by `eai` are per-vertical operational assets,
   not the same concept as root-tenant login config.
 - the CMS already supports record-per-type metadata with `upsertTenantData(...)`.
 
@@ -72,7 +72,7 @@ Recommended document shape:
         ],
         "secretKey": "ENTRA_CLIENT_SECRET"
       },
-      "provisionedBy": "eai-cli",
+      "provisionedBy": "eai",
       "lastProvisionedAt": "2026-05-11T12:34:56Z",
       "lastSecretRotatedAt": "2026-05-11T12:34:56Z"
     }
@@ -155,7 +155,7 @@ the local machine no longer has the secret.
 
 ## Service Ownership
 
-### eai-cli
+### eai
 
 Owns:
 
@@ -230,7 +230,7 @@ AdminAPI changes:
 - use existing `rotate-secret` route for forced recovery
 - add or reuse a cloud-config writer service if none exists yet
 
-eai-cli changes:
+eai changes:
 
 - parse new response fields
 - surface CMS sync status

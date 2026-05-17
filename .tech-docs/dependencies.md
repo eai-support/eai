@@ -280,7 +280,7 @@ graph TB
 
 **Dependency Level**: Low (for update checks)
 
-**URL**: `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+**URL**: `https://eai-tools.github.io/eai/registry/@eai-tools/cli`
 
 **Operations**:
 - `GET` — Fetch latest version metadata (24h cache)

@@ -54,9 +54,9 @@ The CLI is **fully implemented** with 12 command groups (30+ subcommands) coveri
 
 **ALREADY CORRECT:**
 - `package.json:2` — `@eai-tools/cli` ✓
-- `README.md:10,16` — `@eai-tools/cli`, `eai-tools/eai-cli` ✓
+- `README.md:10,16` — `@eai-tools/cli`, `eai-tools/eai` ✓
 - `src/commands/init.ts:17-18` — `eai-tools/Vertical-Template`, `eai-tools` ✓
-- `.specify/README.md:62` — `eai-tools/gofer` ✓
+- `.specify/README.md:62` — `eai-tools/eai-gofer` ✓
 
 **AUTO-GENERATED (will regenerate):**
 - `package-lock.json:2,8` — Still shows old name, regenerates on `npm install`
@@ -276,11 +276,11 @@ response = requests.post(
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/eai-tools/eai-cli.git"
+    "url": "https://github.com/eai-tools/eai.git"
   },
-  "homepage": "https://eai-tools.github.io/eai-cli",
+  "homepage": "https://eai-tools.github.io/eai",
   "bugs": {
-    "url": "https://github.com/eai-tools/eai-cli/issues"
+    "url": "https://github.com/eai-tools/eai/issues"
   },
   "publishConfig": {
     "access": "public"
@@ -301,7 +301,7 @@ Create `eai-tools/homebrew-tap` repository with formula:
 ```ruby
 class Eai < Formula
   desc "Enterprise AI Platform CLI"
-  homepage "https://eai-tools.github.io/eai-cli"
+  homepage "https://eai-tools.github.io/eai"
   url "https://registry.npmjs.org/@eai-tools/cli/-/cli-#{version}.tgz"
   depends_on "node@20"
   # ...
@@ -397,7 +397,7 @@ docs/
 
 ## Open Questions
 
-- [ ] Should the documentation site be deployed to `eai-tools.github.io/eai-cli` (GitHub Pages) or a custom domain?
+- [ ] Should the documentation site be deployed to `eai-tools.github.io/eai` (GitHub Pages) or a custom domain?
 - [ ] Should the Homebrew tap be a separate repo (`eai-tools/homebrew-tap`) or part of this repo?
 - [ ] What license should the CLI use? (Currently UNLICENSED — needs MIT or Apache-2.0 for npm publish)
 - [ ] Should we include a CLI auto-update mechanism (like oclif plugin-update)?
@@ -419,7 +419,7 @@ docs/
 
 6. **Update org references first** — Quick win that prevents confusion. Only 4 source files need changes.
 
-7. **GitHub Pages deployment** — Free, integrates with the existing GitHub workflow, provides `eai-tools.github.io/eai-cli` URL automatically.
+7. **GitHub Pages deployment** — Free, integrates with the existing GitHub workflow, provides `eai-tools.github.io/eai` URL automatically.
 
 8. **Automate everything** — CI on PR, release on tag, docs on merge. Zero manual steps for publishing.
 
@@ -608,13 +608,13 @@ Documentation must be structured for AI coding agents (Claude Code, Copilot, Cur
 
 4. **GitHub Releases (Binary download — no Node.js required)**:
    ```bash
-   curl -fsSL https://eai-tools.github.io/eai-cli/install.sh | sh
+   curl -fsSL https://eai-tools.github.io/eai/install.sh | sh
    ```
    For CI/CD environments and users who don't want Node.js.
 
 5. **Clone & Build (Contributors)**:
    ```bash
-   git clone https://github.com/eai-tools/eai-cli.git && cd eai-cli && npm install && npm run build && npm link
+   git clone https://github.com/eai-tools/eai.git && cd eai && npm install && npm run build && npm link
    ```
 
 **Key UX Decision**: The `npx` path is crucial for university students and first-time users — they can try the CLI without committing to a global install.
@@ -633,14 +633,14 @@ Create an `/llms.txt` file at the documentation site root following the emerging
 
 ## Documentation
 
-- [Getting Started](https://eai-tools.github.io/eai-cli/getting-started/quickstart/): 5-minute quickstart guide
-- [Installation](https://eai-tools.github.io/eai-cli/getting-started/installation/): Install via npm, brew, or binary
-- [Authentication](https://eai-tools.github.io/eai-cli/getting-started/authentication/): Login with Microsoft Entra
-- [Command Reference](https://eai-tools.github.io/eai-cli/reference/commands/): All CLI commands and flags
-- [Object Types Guide](https://eai-tools.github.io/eai-cli/guides/object-types/): Define your data model
-- [Resources Guide](https://eai-tools.github.io/eai-cli/guides/resources/): CRUD operations
-- [Deployment Guide](https://eai-tools.github.io/eai-cli/guides/deployment/): CI/CD and deployment
-- [Scenarios](https://eai-tools.github.io/eai-cli/scenarios/): 50 industry-specific developer scenarios
+- [Getting Started](https://eai-tools.github.io/eai/getting-started/quickstart/): 5-minute quickstart guide
+- [Installation](https://eai-tools.github.io/eai/getting-started/installation/): Install via npm, brew, or binary
+- [Authentication](https://eai-tools.github.io/eai/getting-started/authentication/): Login with Microsoft Entra
+- [Command Reference](https://eai-tools.github.io/eai/reference/commands/): All CLI commands and flags
+- [Object Types Guide](https://eai-tools.github.io/eai/guides/object-types/): Define your data model
+- [Resources Guide](https://eai-tools.github.io/eai/guides/resources/): CRUD operations
+- [Deployment Guide](https://eai-tools.github.io/eai/guides/deployment/): CI/CD and deployment
+- [Scenarios](https://eai-tools.github.io/eai/scenarios/): 50 industry-specific developer scenarios
 
 ## Concepts
 

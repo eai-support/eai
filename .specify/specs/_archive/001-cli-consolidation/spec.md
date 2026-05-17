@@ -8,7 +8,7 @@ status: complete
 
 ## Overview
 
-Consolidate all vertical-related feature work from the trialportal repo into a single, coherent CLI package at `eai-tools/eai-cli`. Update all references from `enterpriseaigroup` to `eai-tools` for the template repo. Enhance scaffolding quality based on lessons learned from demo-iom and the vertical-delivery-pipeline spec.
+Consolidate all vertical-related feature work from the trialportal repo into a single, coherent CLI package at `eai-tools/eai`. Update all references from `enterpriseaigroup` to `eai-tools` for the template repo. Enhance scaffolding quality based on lessons learned from demo-iom and the vertical-delivery-pipeline spec.
 
 ## Requirements
 

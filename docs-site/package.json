@@ -1,5 +1,5 @@
 {
-  "name": "eai-cli-docs-site",
+  "name": "eai-docs-site",
   "version": "0.1.0",
   "private": true,
   "description": "Nightly-generated documentation site for EAI CLI",

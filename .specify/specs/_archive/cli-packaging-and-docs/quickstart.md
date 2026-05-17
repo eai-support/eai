@@ -50,7 +50,7 @@ node dist/index.js --version
 cd docs
 npm install
 npm run dev
-# Visit http://localhost:4321/eai-cli/
+# Visit http://localhost:4321/eai/
 # Check: search works, dark mode toggles, navigation functions
 # Check: /llms.txt is accessible
 ```

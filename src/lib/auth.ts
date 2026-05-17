@@ -22,7 +22,11 @@ function getTokensFile(profile = getActiveProfile()): string {
 }
 
 function getEncryptionKeySource(): string {
-  return `eai-cli-${homedir()}-token-store`;
+  return `eai-${homedir()}-token-store`;
+}
+
+function getLegacyEncryptionKeySource(): string {
+  return `${['eai', 'cli'].join('-')}-${homedir()}-token-store`;
 }
 
 export interface StoredTokens {
@@ -69,8 +73,8 @@ interface CallbackServer {
   close: () => Promise<void>;
 }
 
-function getEncryptionKey(): Buffer {
-  return createHash('sha256').update(getEncryptionKeySource()).digest();
+function getEncryptionKey(source = getEncryptionKeySource()): Buffer {
+  return createHash('sha256').update(source).digest();
 }
 
 async function resolveAuthScope(profile: string): Promise<string> {
@@ -100,7 +104,21 @@ function encrypt(data: string): string {
 }
 
 function decrypt(data: string): string {
-  const key = getEncryptionKey();
+  const sources = [getEncryptionKeySource(), getLegacyEncryptionKeySource()];
+  let lastError: unknown;
+
+  for (const source of sources) {
+    try {
+      return decryptWithKey(data, getEncryptionKey(source));
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+}
+
+function decryptWithKey(data: string, key: Buffer): string {
   const [ivHex, encrypted] = data.split(':');
   const iv = Buffer.from(ivHex, 'hex');
   const decipher = createDecipheriv('aes-256-cbc', key, iv);

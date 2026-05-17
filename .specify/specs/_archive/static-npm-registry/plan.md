@@ -31,12 +31,12 @@ Release Flow:
     → push triggers docs.yml → deploys to GitHub Pages
 
 Consumer Flow:
-  .npmrc: @eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
+  .npmrc: @eai-tools:registry=https://eai-tools.github.io/eai/registry
   npm install @eai-tools/cli
-    → GET https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli
+    → GET https://eai-tools.github.io/eai/registry/@eai-tools/cli
     → parses packument JSON (served as text/plain, npm doesn't validate)
     → resolves version via semver + dist-tags
-    → GET https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-{ver}.tgz
+    → GET https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-{ver}.tgz
     → verifies integrity hash
     → installs
 ```
@@ -101,7 +101,7 @@ tarballs.
       "engines": { "node": ">=20.0.0" },
       "dependencies": { ... },
       "dist": {
-        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.0.tgz",
+        "tarball": "https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-0.1.0.tgz",
         "shasum": "<sha1-hex-40-chars>",
         "integrity": "sha512-<base64>"
       }
@@ -211,13 +211,13 @@ install method. Remove all Homebrew references.
 - [ ] Replace install tabs with three methods:
   1. **npm registry (recommended)**: Configure `.npmrc`, then
      `npm install -g @eai-tools/cli`
-  2. **npm from GitHub**: Direct `npm install -g github:eai-tools/eai-cli`
+  2. **npm from GitHub**: Direct `npm install -g github:eai-tools/eai`
      (existing method, now secondary)
   3. **From source**: Clone, build, link (unchanged)
 - [ ] Remove Homebrew tab entirely
 - [ ] Add `.npmrc` configuration instructions with code block:
   ```
-  @eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
+  @eai-tools:registry=https://eai-tools.github.io/eai/registry
   ```
 - [ ] Explain where to create `.npmrc` (project root or `~/.npmrc`)
 - [ ] Update the "Update" section: remove Homebrew tab, add registry update
@@ -297,7 +297,7 @@ release.sh                           ← MODIFIED: remove Homebrew, add registry
   (`node:crypto`, `node:fs`, `node:path`).
 - **Idempotent generation**: Running the script twice with the same version
   overwrites rather than duplicating.
-- **Backward compatible**: The `npm install -g github:eai-tools/eai-cli` method
+- **Backward compatible**: The `npm install -g github:eai-tools/eai` method
   still works as a fallback.
 - **Docs workflow unchanged**: Registry files in `docs/public/` are automatically
   included in the Astro build and deployed by the existing `docs.yml` workflow.

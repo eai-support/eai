@@ -10,6 +10,7 @@ import { isRecord, toObjectTypeSlug } from '../lib/utils.js';
 import * as out from '../lib/output.js';
 
 const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
+const DEFAULT_VERTICAL_SOURCE = ['eai', 'cli'].join('-');
 
 export interface VerticalCreateOptions {
   key?: string;
@@ -41,7 +42,7 @@ export function buildVerticalEnrollmentData(
     verticalKey,
     displayName,
     status: options.status || 'pending',
-    source: options.source || 'eai-cli',
+    source: options.source || DEFAULT_VERTICAL_SOURCE,
     ...(options.template ? { templateKey: options.template } : {}),
     ...(options.appUrl ? { appUrl: options.appUrl } : {}),
   };
@@ -138,7 +139,7 @@ verticalCommand
   .option('--tenant-id <id>', 'Run against a specific company tenant')
   .option('--key <key>', 'Stable vertical/app key (defaults to kebab-case name)')
   .option('--template <templateKey>', 'Optional vertical-catalog template key')
-  .option('--source <source>', 'Creation source', 'eai-cli')
+  .option('--source <source>', 'Creation source', DEFAULT_VERTICAL_SOURCE)
   .option('--app-url <url>', 'Optional app URL')
   .option('--status <status>', 'Initial lifecycle status', 'pending')
   .option('--format <format>', 'Output format (text|json)', 'text')

@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-REPO="eai-tools/eai-cli"
+REPO="eai-tools/eai"
 NPM_PACKAGE="@eai-tools/cli"
-STATIC_REGISTRY_URL="https://eai-tools.github.io/eai-cli/registry/"
-STATIC_PACKUMENT_URL="https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli"
+STATIC_REGISTRY_URL="https://eai-tools.github.io/eai/registry/"
+STATIC_PACKUMENT_URL="https://eai-tools.github.io/eai/registry/@eai-tools/cli"
 
 BUMP="${1:-}"
 MESSAGE="${2:-}"
@@ -204,7 +204,7 @@ echo "  Released v$NEW_VERSION — $MESSAGE"
 echo "══════════════════════════════════════════"
 echo ""
 echo "Preferred setup for future installs and updates:"
-echo "  npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user"
+echo "  npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user"
 echo ""
 echo "Install or update the EnterpriseAI CLI with:"
 echo "  npm install -g @eai-tools/cli"

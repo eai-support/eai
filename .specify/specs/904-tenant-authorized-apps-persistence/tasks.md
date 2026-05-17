@@ -5,7 +5,7 @@ Date: 2026-05-11
 ## Overview
 
 - Total phases: 5
-- Primary goal: make `eai-cli`-triggered tenant and Entra operations leave the
+- Primary goal: make `eai`-triggered tenant and Entra operations leave the
   tenant CMS and cloud secret state authoritative before local env patching
 - Parallel opportunities: tests and documentation can run in parallel after the
   platform contract is in place
@@ -53,12 +53,12 @@ Verification:
 
 ## Phase 3: CLI Consumption
 
-Goal: make `eai-cli` consume and report the new authoritative platform contract.
+Goal: make `eai` consume and report the new authoritative platform contract.
 
-- [ ] T011 Extend the provisioning response type and parsing logic in [api.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai-cli/src/lib/api.ts)
-- [ ] T012 Update `eai provision entra` output and failure handling in [provision.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai-cli/src/commands/provision.ts)
-- [ ] T013 Update inline provisioning inside `eai init` to consume the same contract in [init.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai-cli/src/commands/init.ts)
-- [ ] T014 Make CLI messaging treat `.env.local` as a mirror of platform-owned state, not the source of truth, in [provision.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai-cli/src/commands/provision.ts) and [env.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai-cli/src/commands/env.ts)
+- [ ] T011 Extend the provisioning response type and parsing logic in [api.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai/src/lib/api.ts)
+- [ ] T012 Update `eai provision entra` output and failure handling in [provision.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai/src/commands/provision.ts)
+- [ ] T013 Update inline provisioning inside `eai init` to consume the same contract in [init.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai/src/commands/init.ts)
+- [ ] T014 Make CLI messaging treat `.env.local` as a mirror of platform-owned state, not the source of truth, in [provision.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai/src/commands/provision.ts) and [env.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai/src/commands/env.ts)
 
 Verification:
 
@@ -69,10 +69,10 @@ Verification:
 
 Goal: turn `--force` into a working recovery path and add regression coverage.
 
-- [ ] T015 Implement `eai provision entra --force` as rotate-secret orchestration instead of a no-op idempotent retry in [provision.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai-cli/src/commands/provision.ts) and [api.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai-cli/src/lib/api.ts)
+- [ ] T015 Implement `eai provision entra --force` as rotate-secret orchestration instead of a no-op idempotent retry in [provision.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai/src/commands/provision.ts) and [api.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai/src/lib/api.ts)
 - [ ] T016 Add AdminAPI route coverage for secret rotation payload needs in [test_ciam.py](/Users/eai-douglasross/Code/eai/tech-docs/mod-platform/AdminAPI/tests/test_ciam.py)
 - [ ] T017 Add PublicAPI unit coverage for strict tenant authorization, tenant-data sync, and cloud-secret persistence gates in [test_provision.py](/Users/eai-douglasross/Code/eai/tech-docs/mod-platform/PublicAPI/src/tests/unit/test_provision.py)
-- [ ] T018 Add `eai-cli` integration coverage for create, existing repair, forced rotation, and local secret hydration in [provision.test.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai-cli/tests/integration/provision.test.ts)
+- [ ] T018 Add `eai` integration coverage for create, existing repair, forced rotation, and local secret hydration in [provision.test.ts](/Users/eai-douglasross/Code/eai/tech-docs/mod-tools/eai/tests/integration/provision.test.ts)
 
 Verification:
 
@@ -83,9 +83,9 @@ Verification:
 
 Goal: align docs and final validation with the new platform-owned process.
 
-- [ ] T019 Update `eai-cli` help/docs to describe the platform-owned CMS + cloud-secret flow
+- [ ] T019 Update `eai` help/docs to describe the platform-owned CMS + cloud-secret flow
 - [ ] T020 Update runbook/docs that currently imply Azure Portal is required for existing-app recovery
-- [ ] T021 Run targeted validation across `eai-cli`, PublicAPI, AdminAPI, and Configurator test suites
+- [ ] T021 Run targeted validation across `eai`, PublicAPI, AdminAPI, and Configurator test suites
 
 Verification:
 

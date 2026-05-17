@@ -55,7 +55,7 @@ See @AGENTS.md for project conventions, commands, and code style.
 - Refresh `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt` as part of every release
 - GitHub Pages static registry is the release and update channel, and it must
   keep matching the current tag
-- Preferred install setup is `npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user`
+- Preferred install setup is `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
 - Install or update the CLI with `npm install -g @eai-tools/cli`
 - `eai update` upgrades the installed CLI package only; it does not rewrite project repos
 - Use `eai gofer refresh --check` to preview safe Gofer-managed file updates in an existing repo

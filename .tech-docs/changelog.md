@@ -406,7 +406,7 @@ This release refreshes the bundled Gofer payload to v3.1.0-1 and includes severa
 - **Built With**: Astro + Starlight
 - **Pages**: 93 pages covering getting started, guides, concepts, command reference, 50 industry scenarios
 - **Location**: `docs/`
-- **Published**: [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli)
+- **Published**: [https://eai-tools.github.io/eai](https://eai-tools.github.io/eai)
 
 #### Gofer Pipeline Documentation
 - **Added**: CLAUDE.md workflow instructions
@@ -496,7 +496,7 @@ This release refreshes the bundled Gofer payload to v3.1.0-1 and includes severa
 
 #### Step 1: Update CLI
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 npm install -g @eai-tools/cli
 eai --version  # Should show 2.6.0
 ```

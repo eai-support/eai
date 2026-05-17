@@ -6,17 +6,31 @@
  * ts-node or tsx as dependencies.
  */
 
-import { readFile, writeFile, unlink, access } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { randomUUID } from 'node:crypto';
-import { pathToFileURL } from 'node:url';
+import { readFile, writeFile, unlink, access } from "node:fs/promises";
+import { resolve, join } from "node:path";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
 
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 export interface ObjectTypeProperty {
   name: string;
-  type: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'json' | 'file' | 'relationship';
+  type:
+    | "text"
+    | "number"
+    | "boolean"
+    | "date"
+    | "select"
+    | "json"
+    | "file"
+    | "relationship";
   required: boolean;
   indexed?: boolean;
   defaultValue?: JsonValue;
@@ -27,20 +41,20 @@ export interface ObjectTypeProperty {
 export interface ObjectTypeLinkType {
   name: string;
   targetObjectType: string;
-  cardinality: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
+  cardinality: "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
   cascadeDelete?: boolean;
 }
 
 export interface ObjectTypeAction {
   name: string;
   displayName: string;
-  requiredRole: 'tenant-viewer' | 'tenant-builder' | 'tenant-admin';
+  requiredRole: "tenant-viewer" | "tenant-builder" | "tenant-admin";
   validationRules: {
     requiredFields?: string[];
     requiredStatus?: string;
   };
   sideEffects: Array<{
-    type: 'set_field' | 'set_timestamp' | 'set_user';
+    type: "set_field" | "set_timestamp" | "set_user";
     field: string;
     value?: string | number | boolean;
   }>;
@@ -54,7 +68,10 @@ export interface StorageIndexDefinition {
 
 export interface SqlStorageBinding {
   databaseAlias: string;
-  tenantSchemaStrategy: 'per-tenant-schema' | 'shared-schema' | 'per-tenant-database';
+  tenantSchemaStrategy:
+    | "per-tenant-schema"
+    | "shared-schema"
+    | "per-tenant-database";
   schemaName?: string;
   tableName: string;
   indexes?: StorageIndexDefinition[];
@@ -98,45 +115,55 @@ export interface ObjectTypeDefinition {
   actions: ObjectTypeAction[];
   storageBackend?: string;
   schemaVersion?: number;
-  storageMetadataStatus?: 'draft' | 'ready';
+  storageMetadataStatus?: "draft" | "ready";
   storageBinding?: StorageBindingDefinition;
   provisioningHints?: Record<string, unknown>;
-  status: 'draft' | 'published' | 'deprecated';
+  status: "draft" | "published" | "deprecated";
 }
 
 /**
  * Find the project root by walking up from cwd looking for eai.config.ts
- * or src/eai.config/object-types.ts (Vertical-Template convention).
+ * or src/eai.config/object-types.ts (eai-app-template convention).
  */
 export async function findProjectRoot(from?: string): Promise<string | null> {
   let dir = from || process.cwd();
-  const root = resolve('/');
+  const root = resolve("/");
 
   while (dir !== root) {
     // Check for eai.config.ts at project root (CLI convention)
     try {
-      await access(join(dir, 'eai.config.ts'));
+      await access(join(dir, "eai.config.ts"));
       return dir;
-    } catch { /* not here */ }
+    } catch {
+      /* not here */
+    }
 
-    // Check for src/eai.config/ directory (Vertical-Template convention)
+    // Check for src/eai.config/ directory (eai-app-template convention)
     try {
-      await access(join(dir, 'src', 'eai.config', 'object-types.ts'));
+      await access(join(dir, "src", "eai.config", "object-types.ts"));
       return dir;
-    } catch { /* not here */ }
+    } catch {
+      /* not here */
+    }
 
     // Check for package.json with eai-related deps (fallback)
     try {
-      await access(join(dir, 'package.json'));
-      const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf-8'));
-      if (pkg.dependencies?.['@enterpriseaigroup/platform-sdk'] ||
-          pkg.dependencies?.['@eai-tools/platform-sdk'] ||
-          pkg.dependencies?.['@eai-tools/core']) {
+      await access(join(dir, "package.json"));
+      const pkg = JSON.parse(
+        await readFile(join(dir, "package.json"), "utf-8"),
+      );
+      if (
+        pkg.dependencies?.["@enterpriseaigroup/platform-sdk"] ||
+        pkg.dependencies?.["@eai-tools/platform-sdk"] ||
+        pkg.dependencies?.["@eai-tools/core"]
+      ) {
         return dir;
       }
-    } catch { /* not here */ }
+    } catch {
+      /* not here */
+    }
 
-    dir = resolve(dir, '..');
+    dir = resolve(dir, "..");
   }
 
   return null;
@@ -151,25 +178,30 @@ export async function findProjectRoot(from?: string): Promise<string | null> {
 export async function loadObjectTypes(
   projectRoot: string,
 ): Promise<Record<string, ObjectTypeDefinition[]>> {
-  // Try src/eai.config/object-types.ts (Vertical-Template convention)
-  let objectTypesPath = join(projectRoot, 'src', 'eai.config', 'object-types.ts');
+  // Try src/eai.config/object-types.ts (eai-app-template convention)
+  let objectTypesPath = join(
+    projectRoot,
+    "src",
+    "eai.config",
+    "object-types.ts",
+  );
   try {
     await access(objectTypesPath);
   } catch {
     // Try eai.config/object-types.ts
-    objectTypesPath = join(projectRoot, 'eai.config', 'object-types.ts');
+    objectTypesPath = join(projectRoot, "eai.config", "object-types.ts");
     try {
       await access(objectTypesPath);
     } catch {
       throw new Error(
         `No object-types.ts found. Expected at:\n` +
-        `  ${join(projectRoot, 'src', 'eai.config', 'object-types.ts')}\n` +
-        `  ${join(projectRoot, 'eai.config', 'object-types.ts')}`,
+          `  ${join(projectRoot, "src", "eai.config", "object-types.ts")}\n` +
+          `  ${join(projectRoot, "eai.config", "object-types.ts")}`,
       );
     }
   }
 
-  const source = await readFile(objectTypesPath, 'utf-8');
+  const source = await readFile(objectTypesPath, "utf-8");
 
   // Strip TypeScript constructs to produce evaluable JS
   const jsSource = stripTypeScript(source);
@@ -177,32 +209,40 @@ export async function loadObjectTypes(
   // Write to a temp .mjs file and import it
   const tempFile = join(tmpdir(), `eai-object-types-${randomUUID()}.mjs`);
   try {
-    await writeFile(tempFile, jsSource, 'utf-8');
+    await writeFile(tempFile, jsSource, "utf-8");
     const module = await import(pathToFileURL(tempFile).href);
     return module.objectTypes || module.default?.objectTypes || {};
   } finally {
-    try { await unlink(tempFile); } catch { /* cleanup best-effort */ }
+    try {
+      await unlink(tempFile);
+    } catch {
+      /* cleanup best-effort */
+    }
   }
 }
 
 /**
  * Load environment variables from the project's .env.local file.
  */
-export async function loadEnvFile(projectRoot: string): Promise<Record<string, string>> {
-  const envPath = join(projectRoot, '.env.local');
+export async function loadEnvFile(
+  projectRoot: string,
+): Promise<Record<string, string>> {
+  const envPath = join(projectRoot, ".env.local");
   try {
-    const content = await readFile(envPath, 'utf-8');
+    const content = await readFile(envPath, "utf-8");
     const vars: Record<string, string> = {};
-    for (const line of content.split('\n')) {
+    for (const line of content.split("\n")) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const eqIndex = trimmed.indexOf('=');
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIndex = trimmed.indexOf("=");
       if (eqIndex === -1) continue;
       const key = trimmed.slice(0, eqIndex).trim();
       let value = trimmed.slice(eqIndex + 1).trim();
       // Strip surrounding quotes
-      if ((value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"))) {
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
         value = value.slice(1, -1);
       }
       vars[key] = value;
@@ -222,22 +262,22 @@ export async function patchEnvFile(
   projectRoot: string,
   patches: Record<string, string>,
 ): Promise<void> {
-  const envPath = join(projectRoot, '.env.local');
+  const envPath = join(projectRoot, ".env.local");
   let content: string;
 
   try {
-    content = await readFile(envPath, 'utf-8');
+    content = await readFile(envPath, "utf-8");
   } catch {
     // File doesn't exist — create it from the patches alone
     const lines = Object.entries(patches).map(([k, v]) => `${k}=${v}`);
-    await writeFile(envPath, lines.join('\n') + '\n', 'utf-8');
+    await writeFile(envPath, lines.join("\n") + "\n", "utf-8");
     return;
   }
 
   const patchKeys = Object.keys(patches);
   const patched = new Set<string>();
 
-  const updatedLines = content.split('\n').map((line) => {
+  const updatedLines = content.split("\n").map((line) => {
     for (const key of patchKeys) {
       if (line.startsWith(`${key}=`)) {
         patched.add(key);
@@ -253,37 +293,40 @@ export async function patchEnvFile(
     }
   }
 
-  const trailingNewline = content.endsWith('\n') ? '\n' : '';
-  await writeFile(envPath, updatedLines.join('\n') + trailingNewline, 'utf-8');
+  const trailingNewline = content.endsWith("\n") ? "\n" : "";
+  await writeFile(envPath, updatedLines.join("\n") + trailingNewline, "utf-8");
 }
 
 /**
  * Strip TypeScript-specific syntax to produce evaluable JS.
- * Based on Vertical-Template's generate-object-types-json.mjs approach.
+ * Based on eai-app-template's generate-object-types-json.mjs approach.
  */
 function stripTypeScript(source: string): string {
   let js = source;
 
   // Remove import statements
-  js = js.replace(/^import\s+.*$/gm, '');
+  js = js.replace(/^import\s+.*$/gm, "");
 
   // Remove export type / export interface blocks
-  js = js.replace(/^export\s+type\s+\w+\s*=\s*[^;]+;/gm, '');
-  js = js.replace(/^export\s+interface\s+\w+\s*\{[\s\S]*?\n\}/gm, '');
-  js = js.replace(/^interface\s+\w+\s*\{[\s\S]*?\n\}/gm, '');
-  js = js.replace(/^type\s+\w+\s*=\s*[^;]+;/gm, '');
+  js = js.replace(/^export\s+type\s+\w+\s*=\s*[^;]+;/gm, "");
+  js = js.replace(/^export\s+interface\s+\w+\s*\{[\s\S]*?\n\}/gm, "");
+  js = js.replace(/^interface\s+\w+\s*\{[\s\S]*?\n\}/gm, "");
+  js = js.replace(/^type\s+\w+\s*=\s*[^;]+;/gm, "");
 
   // Remove type annotations from variable declarations: `: TypeName` after identifiers
   // e.g., `const x: Record<string, Foo[]> = {` → `const x = {`
-  js = js.replace(/:\s*(?:Record|Array|Map|Set)<[^>]+>(?:\[\])?(?:\s*=)/g, ' =');
-  js = js.replace(/:\s*\w+(?:\[\])?\s*(?==)/g, ' =');
+  js = js.replace(
+    /:\s*(?:Record|Array|Map|Set)<[^>]+>(?:\[\])?(?:\s*=)/g,
+    " =",
+  );
+  js = js.replace(/:\s*\w+(?:\[\])?\s*(?==)/g, " =");
 
   // Remove `as const` assertions
-  js = js.replace(/\s+as\s+const/g, '');
+  js = js.replace(/\s+as\s+const/g, "");
 
   // Change `export const` to just `export const` (keep for module)
   // Actually, wrap in an export for ESM
-  js = js.replace(/^export\s+const\s+/gm, 'export const ');
+  js = js.replace(/^export\s+const\s+/gm, "export const ");
 
   return js;
 }
