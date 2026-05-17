@@ -418,7 +418,7 @@ The site MUST include the following sections:
 
 - The npm scope `@eai-tools` is available and the team has publish access
 - GitHub Pages is enabled for the `eai-tools/eai` repository
-- The Vertical-Template at `https://github.com/eai-tools/Vertical-Template` will be accessible (at least to authenticated users) by the time documentation references it
+- The eai-app-template at `https://github.com/eai-tools/eai-app-template` will be accessible (at least to authenticated users) by the time documentation references it
 - The MIT license is acceptable for the CLI (research noted UNLICENSED blocks npm publish)
 - Node.js 20+ remains the minimum requirement (aligned with current package.json engines)
 - The existing Commander.js command structure will not change significantly during documentation work

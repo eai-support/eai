@@ -13,7 +13,7 @@ Consolidate all vertical-related feature work from the trialportal repo into a s
 ## Requirements
 
 ### R1: Org Migration (Critical)
-- Update template repo URL from `enterpriseaigroup/Vertical-Template` to `eai-tools/Vertical-Template`
+- Update template repo URL from the previous EnterpriseAI vertical template repo to `eai-tools/eai-app-template`
 - Update GitHub org constant from `enterpriseaigroup` to `eai-tools`
 - Update package name from `@enterpriseaigroup/cli` to `@eai-tools/cli`
 

@@ -18,7 +18,7 @@ Build a comprehensive packaging and distribution system for the EAI CLI, plus a 
 3. **50 Developer Scenarios** — Industry verticals across healthcare, finance, government, retail, etc.
 4. **Multi-Language Examples** — TypeScript, Python, C#, Java, Go, Rust showing CLI integration
 5. **Organization Updates** — All references updated from old orgs to `eai-tools`
-6. **Vertical Template Integration** — Updated references to `https://github.com/eai-tools/Vertical-Template`
+6. **Vertical Template Integration** — Updated references to `https://github.com/eai-tools/eai-app-template`
 
 ---
 
@@ -55,7 +55,7 @@ The CLI is **fully implemented** with 12 command groups (30+ subcommands) coveri
 **ALREADY CORRECT:**
 - `package.json:2` — `@eai-tools/cli` ✓
 - `README.md:10,16` — `@eai-tools/cli`, `eai-tools/eai` ✓
-- `src/commands/init.ts:17-18` — `eai-tools/Vertical-Template`, `eai-tools` ✓
+- `src/commands/init.ts:17-18` — `eai-tools/eai-app-template`, `eai-tools` ✓
 - `.specify/README.md:62` — `eai-tools/eai-gofer` ✓
 
 **AUTO-GENERATED (will regenerate):**
@@ -387,7 +387,7 @@ docs/
 ## Constraints & Considerations
 
 1. **IP Protection**: Documentation must expose the public API surface without revealing internal implementation (single-table JSONB, OPA Rego policies, OBO token chain, etc.)
-2. **Vertical-Template Access**: The template repo at `https://github.com/eai-tools/Vertical-Template` appears to be private/not yet published. Documentation should reference it but handle the case where it's not publicly accessible.
+2. **Template Access**: The template repo at `https://github.com/eai-tools/eai-app-template` appears to be private/not yet published. Documentation should reference it but handle the case where it's not publicly accessible.
 3. **Platform Dependencies**: Many CLI commands require a live EnterpriseAI platform instance. Documentation should clearly indicate which commands work offline vs. require connectivity.
 4. **Enterprise Security**: Documentation site will be on GitHub Pages (public). Must not contain any secrets, internal URLs, or sensitive configuration.
 5. **Node.js Requirement**: CLI requires Node.js 20+. Must be clearly documented for all installation methods.
