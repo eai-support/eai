@@ -25,6 +25,11 @@ export async function loadBlockCatalog(): Promise<BlockCatalog> {
     ...(await loadPinnedManifests(projectRoot, packageMetadata)),
   ];
   const discoveredBlocks = discovered.flatMap((manifest) => normalizeManifestBlocks(manifest));
+  const discoveredIds = new Set(discoveredBlocks.map((entry) => entry.id));
+  const validationBlocks = [
+    ...BUILTIN_BLOCKS.filter((entry) => !discoveredIds.has(entry.id)),
+    ...discoveredBlocks,
+  ];
   const allBlocks = [...BUILTIN_BLOCKS, ...discoveredBlocks];
   const byId = new Map(allBlocks.map((entry) => [entry.id, entry]));
 
@@ -32,7 +37,7 @@ export async function loadBlockCatalog(): Promise<BlockCatalog> {
     blocks: Array.from(byId.values()).sort((left, right) => left.id.localeCompare(right.id)),
     manifests: discovered.map((entry) => summarizeManifest(entry)),
     packageMetadata,
-    validation: validateEntries(allBlocks, false),
+    validation: validateEntries(validationBlocks, false),
   };
 }
 

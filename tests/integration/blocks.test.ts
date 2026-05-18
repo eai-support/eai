@@ -196,6 +196,60 @@ describe('blocks command journey', () => {
     expect(payload.byReadiness['public-ready']).toBeGreaterThan(0);
   });
 
+  test('HP005 validates installed package manifests that replace built-in fallback ids', async () => {
+    await writeFileRecursive(env.dir, 'package.json', JSON.stringify({
+      name: 'blocks-shadow-fixture',
+      type: 'module',
+      dependencies: {
+        '@enterpriseaigroup/blocks': '1.2.3',
+      },
+    }, null, 2));
+    await writeFileRecursive(env.dir, 'node_modules/@enterpriseaigroup/blocks/package.json', JSON.stringify({
+      name: '@enterpriseaigroup/blocks',
+      version: '1.2.3',
+      type: 'module',
+      eai: {
+        blockManifest: './manifest.json',
+      },
+    }, null, 2));
+    await writeFileRecursive(env.dir, 'node_modules/@enterpriseaigroup/blocks/manifest.json', JSON.stringify({
+      schemaVersion: '1.0.0',
+      packageName: '@enterpriseaigroup/blocks',
+      packageProfiles: ['external', 'hybrid'],
+      blocks: [{
+        id: 'design.hero',
+        title: 'Hero',
+        exportName: 'Hero',
+        packageLane: 'foundation',
+        backendCoupling: 'external-safe',
+        publicReadiness: 'public-ready',
+        storybook: {
+          title: 'Foundation/Blocks/Hero',
+          storyId: 'foundation-blocks-hero--default',
+        },
+      }],
+    }, null, 2));
+
+    const validate = await runCommand(ctx, 'eai blocks validate --format json');
+    const describe = await runCommand(ctx, 'eai blocks describe design.hero --format json');
+
+    expect(validate.exitCode).toBe(0);
+    expect(JSON.parse(validate.stdout)).toEqual(expect.objectContaining({
+      valid: true,
+      errors: [],
+    }));
+    expect(JSON.parse(describe.stdout)).toEqual(expect.objectContaining({
+      id: 'design.hero',
+      source: expect.objectContaining({
+        type: 'installed-package',
+        packageName: '@enterpriseaigroup/blocks',
+      }),
+      storybook: expect.objectContaining({
+        storyId: 'foundation-blocks-hero--default',
+      }),
+    }));
+  });
+
   test('BP001 rejects unknown block ids with a helpful message', async () => {
     const result = await runCommand(ctx, 'eai blocks describe missing.block');
 
