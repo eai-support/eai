@@ -26,3 +26,6 @@ homebrew-tap/
 .specify/memory/context-health-state.json
 .specify/memory/observation-cache/
 .specify/specs/*/research-index.json
+
+# QAgent runtime artifacts
+.qagent/
