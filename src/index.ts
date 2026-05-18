@@ -177,8 +177,10 @@ ${chalk.bold('Updates:')}
   ${chalk.cyan('eai template check')}       ${chalk.dim('review potential vertical or UI file updates without overwriting local work')}
 
   ${chalk.dim('# Discover AI-readable UI blocks for Gofer and vertical apps')}
-  ${chalk.cyan('eai blocks list')}          ${chalk.dim('list foundation, product, addon, and demo block IDs')}
+  ${chalk.cyan('eai blocks list --readiness public-ready')}
+                                  ${chalk.dim('list foundation, product, addon, and demo block IDs')}
   ${chalk.cyan('eai blocks describe core.button')}
+  ${chalk.cyan('eai blocks readiness')}     ${chalk.dim('summarize public readiness and package-profile compatibility')}
 
 ${chalk.bold('Accessibility:')}
   ${chalk.dim('# Screen reader friendly output')}
