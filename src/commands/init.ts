@@ -67,7 +67,9 @@ function buildInitialProjectManifest(
     packages: {
       profile: packageProfile,
       source:
-        packageProfile === "internal" ? "enterpriseai-packages" : "eai-packages",
+        packageProfile === "internal"
+          ? "enterpriseai-packages"
+          : "eai-packages",
       recordedAt: new Date().toISOString(),
     },
     template: {
@@ -891,6 +893,7 @@ function generateEnvFile(opts: InitOptions): string {
 # App Identity
 NEXT_PUBLIC_APP_NAME=${opts.name}
 APP_BASE_PATH=/${opts.name}
+NEXT_PUBLIC_APP_BASE_PATH=/${opts.name}
 
 # =============================================================================
 # Platform API
