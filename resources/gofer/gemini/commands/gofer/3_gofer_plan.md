@@ -40,7 +40,8 @@ If missing, prompt user to run the prerequisite stage.
 8. EnterpriseAI default output: task-ready references to `context-bundle.md`,
    `contract-pack.md`, `reuse-scan.md`, `audit-history.md`, and for app
    delivery `ui-review-log.md`, `ui-approval.md`, and
-   `service-fit-matrix.md`
+   `service-fit-matrix.md`, including public-readiness, block-porting, DAISY
+   decoupling, Storybook, theme override, and package-profile decisions
 
 ---
 
@@ -76,6 +77,9 @@ Planning dispatches multiple agents — keep main context lightweight.
    - Note whether `discovery.md`, `.specify/memory/constitution.md` exist
    - Note whether `ui-preview-brief.md`, `ui-review-log.md`,
      `ui-approval.md`, and `service-fit-matrix.md` exist
+   - Note external/internal/hybrid profile choice, package lane, coupling
+     status, Storybook story IDs, theme override points, custom-block
+     exceptions, and public-readiness status when app delivery applies
    - Note whether `{FEATURE_DIR}/sequence-diagrams/selected-option.md` exists
 
 3. **Note template path**: `.specify/templates/plan-template.md`
@@ -133,6 +137,15 @@ Generate the COMPLETE plan.md with these sections:
    - User Story Coverage (Story | Status | Plan References)
    - Requirement Coverage (FR-ID | Status | Plan Reference)
    Verify 100% coverage of all user stories and functional requirements.
+9. AI-Readable Blocks Bridge:
+   - Package profile choice: external, internal, or hybrid
+   - Package lane for each UI block or package surface
+   - Coupling status, including DAISY decoupling boundary or approved
+     internal-only exception
+   - Block porting plan with stable block IDs, Storybook story IDs, theme
+     override points, and custom-block exceptions
+   - Public-readiness tasks required before an external or hybrid package is
+     considered complete
 
 Rules:
 - Every user story from spec.md MUST have plan coverage
@@ -141,6 +154,9 @@ Rules:
 - Reference specific file paths for all components
 - Plan must be specific enough for task generation
 - Resolve all unknowns — no NEEDS CLARIFICATION in the plan
+- App-delivery plans MUST make public-readiness, block porting, DAISY
+  decoupling, Storybook coverage, theme overrides, and package-profile work
+  visible enough for `/4_gofer_tasks` to emit first-class runnable tasks
 
 Write the complete plan to {FEATURE_DIR}/plan.md.
 

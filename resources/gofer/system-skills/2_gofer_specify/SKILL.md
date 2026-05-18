@@ -200,10 +200,18 @@ If journeys/base-journey.md exists and is classified as app delivery, use it to:
 If ui-preview-brief.md exists, use it to:
 - Require the first MVP preview to stay inside the approved Vertical Template
   blocks before any create-new UI concept is proposed
+- Require the specification to preserve the selected external/internal/hybrid
+  profile choice, package lane, coupling status, public-readiness target, and
+  block-porting decision for each UI block
 - Require every proposed UI building block to cite an `eai blocks describe`
   result by stable ID; ambiguous display names are not acceptable
 - Require any unknown UI component to be recorded as a custom-block exception
   with manifest shape, component owner, data/resource binding, and approval path
+- Require Storybook story IDs and theme override points for every reusable or
+  ported block; if no story exists, make story creation or an approved exception
+  part of the requirements
+- Require DAISY-coupled blocks to define the decoupling boundary through
+  `eai resources schema`, an adapter, or an explicit internal-only exception
 - Carry forward branding/logo requirements as explicit scope, not as implied
   polish
 - Require preview self-review evidence such as screenshot, local render proof,

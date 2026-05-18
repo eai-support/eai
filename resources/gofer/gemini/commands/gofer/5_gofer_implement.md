@@ -610,10 +610,19 @@ separation from `tasks.md`:
 - Before implementing UI, run or inspect `eai --describe`, `eai blocks list`,
   `eai blocks describe <id>` for every selected block, and
   `eai resources schema`. Implementation notes must cite the block IDs,
-  required resources, bindings, override points, and any approved custom-block
-  exception.
+  required resources, bindings, package lane, coupling status, Storybook story
+  IDs, theme override points, and any approved custom-block exception.
 - Reject unknown component names during implementation unless `tasks.md` and
   `ui-approval.md` explicitly authorize a custom extension block and manifest.
+- Treat package-profile, block-porting, DAISY decoupling, and public-readiness
+  tasks as first-class implementation tasks, not polish. External and hybrid
+  profile work is incomplete until package exports, Storybook stories, theme
+  overrides, consumer smoke checks, and unsupported custom-block exceptions are
+  resolved or explicitly deferred by approval artifacts.
+- Do not let public or hybrid package lanes import DAISY internals directly.
+  Use `eai resources schema`, an adapter boundary, or an approved internal-only
+  exception; record the coupling status in implementation notes and
+  `ui-review-log.md`.
 - For application delivery, implement the four-step-or-fewer AI-augmented
   process as the user-facing spine. Each step must preserve its business goal,
   AI assistance mode, contextual prefill or conversational support, completion

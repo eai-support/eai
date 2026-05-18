@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
   canonicalSource: .specify/commands/4_gofer_tasks.md
-  canonicalChecksum: 018740a36af38784cf6ae0f037501378ee497d467fbf7b629fcc7f1dc8cc1054
+  canonicalChecksum: f60830318c3c930fd8b5d0cc0111d7ec1af6d5210a0233ae5c41a2e95b0958af
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -483,8 +483,22 @@ precondition to downstream implementation tasks:
 - Add a block-catalog task before any UI implementation task. It MUST run
   `eai --describe`, `eai blocks list`, `eai blocks describe <id>` for selected
   blocks, and `eai resources schema`; task notes must cite block IDs, resource
-  fields, data/action bindings, override points, and approved custom-block
-  exceptions.
+  fields, data/action bindings, package lane, coupling status, Storybook story
+  IDs, theme override points, and approved custom-block exceptions.
+- Add package-profile tasks that lock the external/internal/hybrid profile
+  choice and the package lane before any public, shared, or app-local block
+  implementation begins.
+- Add block-porting tasks for every selected Vertical Template block that must
+  move into a reusable package lane, including Storybook story ID coverage,
+  theme override points, exports, and compatibility checks.
+- Add DAISY decoupling tasks whenever a block or package lane is not
+  internal-only and still depends on DAISY internals; the task must define the
+  resource-schema or adapter boundary and the regression proof that DAISY is no
+  longer required by the public surface.
+- Add public-readiness tasks for external and hybrid profiles covering public
+  exports, docs/examples where already part of the package surface,
+  accessibility/theming contracts, consumer smoke tests, and unsupported
+  custom-block exceptions.
 - For **non-app work**, keep the shared numbered stages but skip these
   preview/approval/service-fit prerequisites.
 
@@ -502,6 +516,9 @@ precondition to downstream implementation tasks:
 - App-delivery preview/approval tasks that:
   - build the first MVP from Vertical Template blocks
   - select only known `eai blocks` IDs unless a custom-block exception exists
+  - preserve package lane, external/internal/hybrid profile choice, coupling
+    status, Storybook story IDs, and theme override points from the approved
+    preview brief
   - apply approved branding/logo work when in scope
   - collect screenshot or Playwright-style self-review evidence
   - update `ui-review-log.md`
