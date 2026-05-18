@@ -189,9 +189,9 @@ const tenantId = process.argv[2];
 const profileName = process.argv[3];
 const publicApiUrl = process.argv[4];
 (async () => {
-  const profile = await import('/Users/os/Desktop/EAI/Code/cloud-stack/eai-cli/dist/lib/profile.js');
+  const profile = await import('/Users/os/Desktop/EAI/Code/cloud-stack/eai/dist/lib/profile.js');
   profile.setActiveProfile(profileName);
-  const { getAccessToken } = await import('/Users/os/Desktop/EAI/Code/cloud-stack/eai-cli/dist/lib/auth.js');
+  const { getAccessToken } = await import('/Users/os/Desktop/EAI/Code/cloud-stack/eai/dist/lib/auth.js');
   const token = await getAccessToken();
   const response = await fetch(`${publicApiUrl}/v3/orchestrate`, {
     method: 'POST',

@@ -4,7 +4,7 @@ Use this local reference when external EAI CLI documentation cannot be reached.
 
 ## Version pinning rule
 
-- Detect installed `eai-cli` version.
+- Detect installed `eai` version.
 - Record **major.minor** in generated plan/tasks artifacts.
 - Use command syntax compatible with that pinned major.minor.
 

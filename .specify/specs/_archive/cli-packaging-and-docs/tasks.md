@@ -87,9 +87,9 @@ This task breakdown converts the implementation plan into executable work items.
 
 - [x] T013 [US2] Update `package.json` with complete metadata:
   - Add `"license": "MIT"`
-  - Add `"repository": { "type": "git", "url": "https://github.com/eai-tools/eai-cli.git" }`
-  - Add `"homepage": "https://eai-tools.github.io/eai-cli"`
-  - Add `"bugs": { "url": "https://github.com/eai-tools/eai-cli/issues" }`
+  - Add `"repository": { "type": "git", "url": "https://github.com/eai-tools/eai.git" }`
+  - Add `"homepage": "https://eai-tools.github.io/eai"`
+  - Add `"bugs": { "url": "https://github.com/eai-tools/eai/issues" }`
   - Add `"publishConfig": { "access": "public" }`
   - Add `"keywords": ["cli", "enterprise", "ai", "vertical", "platform", "eai", "typescript", "commander"]`
   - Update `"files"` field to remove non-existent `"templates"` reference — set to `["dist"]`
@@ -214,8 +214,8 @@ This task breakdown converts the implementation plan into executable work items.
 
 - [x] T024 [US4] Initialize Starlight project in `docs/` directory:
   - Run `npm create astro@latest -- --template starlight` in docs/ directory
-  - Configure `astro.config.mjs` with site URL `https://eai-tools.github.io/eai-cli`
-  - Set base path to `/eai-cli`
+  - Configure `astro.config.mjs` with site URL `https://eai-tools.github.io/eai`
+  - Set base path to `/eai`
   - Configure sidebar navigation: Getting Started, Guides, Concepts, Reference, Examples, Scenarios
   - Add social links (GitHub repository)
   - Enable Expressive Code integration for multi-language tabs
@@ -293,7 +293,7 @@ This task breakdown converts the implementation plan into executable work items.
 - [x] V020 Run `cd docs && npm run preview` — site loads with navigation, search, dark mode toggle
 - [x] V021 Content review: Spot-check 10 random pages for IP leakage (use grep for forbidden terms)
 - [x] V022 Test search: Query for "resources", "login", "Object Type" — finds relevant pages
-- [x] V023 Test llms.txt: Request `http://localhost:4321/eai-cli/llms.txt` — returns structured content
+- [x] V023 Test llms.txt: Request `http://localhost:4321/eai/llms.txt` — returns structured content
 - [x] V024 Test mobile layout: Open site on mobile device or DevTools responsive mode — layout is readable
 - [x] V025 Run Lighthouse audit: Performance score > 90, Accessibility > 90, SEO > 90
 
@@ -468,7 +468,7 @@ This task breakdown converts the implementation plan into executable work items.
   - Clean up test installation
 
 - [x] T051 End-to-end documentation test:
-  - Visit production docs site: `https://eai-tools.github.io/eai-cli`
+  - Visit production docs site: `https://eai-tools.github.io/eai`
   - Test search for 10 common queries (commands, concepts, scenarios)
   - Navigate through Getting Started → Quickstart
   - Open 5 random scenarios across different industries

@@ -275,7 +275,7 @@ async updateResource(type: string, id: string, data: Record<string, unknown>, ve
 
 ### Areas for Improvement
 
-⚠️ **Encryption Key Derivation**: Key derived from `sha256(eai-cli-${homedir}-token-store)`
+⚠️ **Encryption Key Derivation**: Key derived from `sha256(eai-${homedir}-token-store)`
 - **Concern**: Not cryptographically random; same key for all users on same machine
 - **Recommendation**: Use OS keychain (e.g., `keytar`, macOS Keychain, Windows Credential Manager)
 - **Trade-off**: Avoiding native dependencies for portability

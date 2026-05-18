@@ -39,7 +39,7 @@ src/
 - Rename `@enterpriseaigroup/cli` → `@eai-tools/cli`
 
 ### `src/commands/init.ts`
-- Update `TEMPLATE_REPO` constant → `https://github.com/eai-tools/Vertical-Template.git`
+- Update `TEMPLATE_REPO` constant → `https://github.com/eai-tools/eai-app-template.git`
 - Update `GITHUB_ORG` constant → `eai-tools`
 - Enhance `generateEnvFile()` — add `TENANT_KEYS`, improve comments
 - Enhance `generateObjectTypesScaffold()` — richer example with all field types

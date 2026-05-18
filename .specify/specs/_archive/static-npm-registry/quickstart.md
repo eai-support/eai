@@ -4,7 +4,7 @@
 
 - Node.js 20+
 - npm 7+
-- Access to the eai-cli repository
+- Access to the eai repository
 
 ## Testing the Registry (After Implementation)
 
@@ -37,7 +37,7 @@ ls docs/dist/registry/-/@eai-tools/cli-*.tgz
 
 ```bash
 # Configure .npmrc
-echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
+echo "@eai-tools:registry=https://eai-tools.github.io/eai/registry" >> ~/.npmrc
 
 # Install
 npm install -g @eai-tools/cli
@@ -73,7 +73,7 @@ grep -ri "brew\|homebrew\|tap" \
 **Problem**: `npm install @eai-tools/cli` returns 404
 **Solution**: Check `.npmrc` is configured with the registry URL:
 ```
-@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
+@eai-tools:registry=https://eai-tools.github.io/eai/registry
 ```
 
 ### Integrity check failed

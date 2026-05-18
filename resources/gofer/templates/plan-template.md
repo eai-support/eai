@@ -151,7 +151,7 @@ work, state why this gate is not applicable.
 > Populated by default for EnterpriseAI runs. Standard-profile runs leave this
 > section empty only when the user explicitly opts out.
 
-- **EAI CLI Version Pin**: `[major.minor, e.g. 2.0]` — the installed `eai-cli`
+- **EAI CLI Version Pin**: `[major.minor, e.g. 2.0]` — the installed `eai`
   version is recorded here at plan generation time. Deployment tasks reference
   this pin to prevent drift between local and CI environments.
 - **Vertical Template Reference**: `[vertical-template tag or SHA]`

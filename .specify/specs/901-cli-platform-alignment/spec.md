@@ -12,7 +12,7 @@ assignee: "engineer-agent"
 
 ## Summary
 
-Bring `eai-cli` into line with the current AdminAPI/PublicAPI/application patterns so tenant-aware CLI operations behave like the working app stack and Gofer artifacts no longer point at stale tenant-env assumptions.
+Bring `eai` into line with the current AdminAPI/PublicAPI/application patterns so tenant-aware CLI operations behave like the working app stack and Gofer artifacts no longer point at stale tenant-env assumptions.
 
 ## User Stories
 

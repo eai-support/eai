@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**eai-cli** is a TypeScript project. Package manager: npm.
+**eai** is a TypeScript project. Package manager: npm.
 
 ## Available Commands
 
@@ -33,8 +33,8 @@ research.md, spec.md, plan.md, and tasks.md.
 - Keep `release.sh`, `.github/workflows/release.yml`, `src/commands/update.ts`,
   `src/lib/update-check.ts`, and `README.md` aligned
 - Verify the public static registry explicitly:
-  - `curl https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
-- Preferred user setup is `npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user`
+  - `curl https://eai-tools.github.io/eai/registry/@eai-tools/cli`
+- Preferred user setup is `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
 - Install or update the CLI with `npm install -g @eai-tools/cli`
 - `eai update` upgrades the installed CLI package only
 - `eai gofer refresh --check` previews safe Gofer-managed repo updates

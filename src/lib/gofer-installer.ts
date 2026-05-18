@@ -404,7 +404,7 @@ gofer:
   canonicalCommand: ${command.name}
   canonicalSource: .claude/commands/${command.name}.md
   canonicalChecksum: ${command.checksum}
-  metadataSource: eai-cli/resources/gofer
+  metadataSource: eai/resources/gofer
 ---
 
 # Gofer Command: ${command.name}

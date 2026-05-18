@@ -13,7 +13,7 @@ author: Claude
 
 Distribute `@eai-tools/cli` through a static npm registry hosted on the
 existing GitHub Pages documentation site at
-`https://eai-tools.github.io/eai-cli/registry`. This enables consumers to
+`https://eai-tools.github.io/eai/registry`. This enables consumers to
 install the CLI using standard `npm install @eai-tools/cli` with full semver
 range support, without publishing to npmjs.com or any public registry.
 
@@ -45,7 +45,7 @@ verifying `eai --version` outputs the expected version.
 **Acceptance Scenarios**:
 
 1. **Given** a consumer has added
-   `@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry` to their
+   `@eai-tools:registry=https://eai-tools.github.io/eai/registry` to their
    `.npmrc`, **When** they run `npm install -g @eai-tools/cli`, **Then** the CLI
    is installed and `eai --version` outputs the current version.
 
@@ -83,7 +83,7 @@ URLs on GitHub Pages.
    `dist-tags.latest` points to 0.2.0.
 
 3. **Given** a release workflow runs, **When** a consumer runs
-   `npm view @eai-tools/cli versions --registry=https://eai-tools.github.io/eai-cli/registry`,
+   `npm view @eai-tools/cli versions --registry=https://eai-tools.github.io/eai/registry`,
    **Then** all released versions are listed.
 
 ---
@@ -286,7 +286,7 @@ benefit over tarball-based distribution.
 | Research Finding | Spec Section | Reference |
 |-----------------|-------------|-----------|
 | npm doesn't validate Content-Type | Assumptions | TD1 in research.md |
-| Registry URL: eai-tools.github.io/eai-cli/registry | FR-004, FR-005 | TD2 in research.md |
+| Registry URL: eai-tools.github.io/eai/registry | FR-004, FR-005 | TD2 in research.md |
 | Tarballs on Pages (not Releases, repo is private) | FR-005 | TD3 in research.md |
 | generate-llms-full.cjs pattern for scripts | Dependencies | Pattern 1 in research.md |
 | npm pack in release.yml | Dependencies | Pattern 2 in research.md |
@@ -295,5 +295,5 @@ benefit over tarball-based distribution.
 | Version accumulation needed | FR-003 | TD5 in research.md |
 | Remove Homebrew | FR-009, FR-011, FR-012 | TD6 in research.md |
 | Tabbed install instructions pattern | FR-008 | Pattern 4 in research.md |
-| Base path /eai-cli | FR-004, FR-005 | Constraints in research.md |
+| Base path /eai | FR-004, FR-005 | Constraints in research.md |
 | publishConfig removal | FR-010 | research.md recommendations |

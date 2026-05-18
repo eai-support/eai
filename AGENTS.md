@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-- **Project**: eai-cli
+- **Project**: eai
 - **Language**: TypeScript
 - **Package Manager**: npm
 
@@ -15,7 +15,7 @@
 ## Project Structure
 
 ```
-eai-cli/
+eai/
 ├── src/
 │   ├── index.ts                 # Entry point, Commander.js program
 │   ├── commands/                # Command modules
@@ -149,8 +149,8 @@ const config = await loadConfig();
 - Every release should refresh `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`
 - GitHub Pages static registry is the release/install channel
 - Before changing release behavior, verify the public packument still works:
-  - `curl https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
-- Preferred user setup is `npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user`
+  - `curl https://eai-tools.github.io/eai/registry/@eai-tools/cli`
+- Preferred user setup is `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
 - Install or update the CLI with `npm install -g @eai-tools/cli`
 - `eai update` upgrades the installed CLI package only
 - `eai gofer refresh --check` previews safe repo-local Gofer asset updates

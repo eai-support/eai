@@ -50,14 +50,14 @@ from being returned to public CLI users.
 
 | Repo | Check | Command | Result |
 |---|---|---|---|
-| eai-cli | Build | `npm run build` | PASS |
-| eai-cli | Type check | `npm run typecheck` | PASS |
-| eai-cli | Full tests | `npm test` | PASS, 13 files, 87 tests |
-| eai-cli | Placeholder guard | `npm run lint:no-placeholder` | PASS |
-| eai-cli | Lint | `npm run lint -- --max-warnings=0` | PASS |
-| eai-cli | Targeted provision/whoami | `npx vitest run tests/integration/provision.test.ts tests/integration/whoami.test.ts` | PASS, 16 tests |
-| eai-cli | No-emit compile | `npx tsc -p tsconfig.json --noEmit` | PASS |
-| eai-cli docs | Docs build | `npm run build` in `docs` | PASS |
+| eai | Build | `npm run build` | PASS |
+| eai | Type check | `npm run typecheck` | PASS |
+| eai | Full tests | `npm test` | PASS, 13 files, 87 tests |
+| eai | Placeholder guard | `npm run lint:no-placeholder` | PASS |
+| eai | Lint | `npm run lint -- --max-warnings=0` | PASS |
+| eai | Targeted provision/whoami | `npx vitest run tests/integration/provision.test.ts tests/integration/whoami.test.ts` | PASS, 16 tests |
+| eai | No-emit compile | `npx tsc -p tsconfig.json --noEmit` | PASS |
+| eai docs | Docs build | `npm run build` in `docs` | PASS |
 | PublicAPI | Full tests | `uv run pytest` | PASS, 756 passed, 4 skipped |
 | PublicAPI | Lint | `uv run ruff check src/app/routers/v3/provision.py src/tests/unit/test_provision.py src/app/config.py src/tests/unit/test_config_environment.py` | PASS |
 | PublicAPI | Production alias regression | `APP_ENVIRONMENT=production uv run pytest src/tests/unit/test_orchestrator_service.py src/tests/unit/test_user_service.py -q` | PASS, 40 tests |

@@ -5,7 +5,7 @@
 The CLI Help Enhancement feature implementation is **100% complete** but documentation on GitHub Pages is **NOT updated**.
 
 **Docs Build Status:** ✅ PASS (98 pages, 4839 words indexed)
-**Docs Deployment:** ✅ Live at https://eai-tools.github.io/eai-cli/
+**Docs Deployment:** ✅ Live at https://eai-tools.github.io/eai/
 **Feature Documentation:** ❌ **MISSING**
 
 ---

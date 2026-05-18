@@ -44,11 +44,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/eai-tools/eai-cli.git"
+    "url": "git+https://github.com/eai-tools/eai.git"
   },
-  "homepage": "https://eai-tools.github.io/eai-cli",
+  "homepage": "https://eai-tools.github.io/eai",
   "bugs": {
-    "url": "https://github.com/eai-tools/eai-cli/issues"
+    "url": "https://github.com/eai-tools/eai/issues"
   },
   "engines": {
     "node": ">=20.0.0"

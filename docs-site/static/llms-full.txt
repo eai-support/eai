@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 npm install -g @eai-tools/cli
 ```
 
@@ -148,7 +148,7 @@ Examples:
 
 Notes:
   - The CLI installs from the scoped EAI static registry on GitHub Pages.
-  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
   - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
   - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
   - Use `eai template check` to preview vertical-template and UI drift before copying changes manually.
@@ -333,8 +333,8 @@ The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.jso
 ### Installation (Development)
 
 ```bash
-git clone https://github.com/eai-tools/eai-cli.git
-cd eai-cli
+git clone https://github.com/eai-tools/eai.git
+cd eai
 npm install
 npm run build
 ```
@@ -383,8 +383,8 @@ node dist/index.js tenant list
 - **Organization**: EAI Tools
 - **Repository**: [https://github.com/enterpriseaigroup/tech-docs](https://github.com/enterpriseaigroup/tech-docs)
 - **Published Package**: `@eai-tools/cli`
-- **Registry**: Self-hosted on GitHub Pages (`https://eai-tools.github.io/eai-cli/registry`)
-- **Homepage**: [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli)
+- **Registry**: Self-hosted on GitHub Pages (`https://eai-tools.github.io/eai/registry`)
+- **Homepage**: [https://eai-tools.github.io/eai](https://eai-tools.github.io/eai)
 - **License**: MIT
 - **Documentation**: 93-page Docusaurus site with command reference, guides, and 50 industry scenarios
 
@@ -519,7 +519,7 @@ This repository maintains multiple documentation surfaces:
 | `docs-site/` | Docusaurus documentation site (93 pages) | GitHub Actions (`docs.yml`) → GitHub Pages | No |
 | Root `*.md` files | Developer guides (README, CODEBASE, AGENTS, CLAUDE) | Committed to repo, no build step | No |
 
-The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to static HTML and deploys to GitHub Pages at [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli). It is **not** managed by the nightly tech-docs pipeline.
+The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to static HTML and deploys to GitHub Pages at [https://eai-tools.github.io/eai](https://eai-tools.github.io/eai). It is **not** managed by the nightly tech-docs pipeline.
 
 ## Current Status
 
@@ -1055,7 +1055,7 @@ Tokens are encrypted and stored per-profile:
 
 ### Security
 
-- **Encryption**: AES-256-CBC with key derived from `sha256(eai-cli-${homedir}-token-store)`
+- **Encryption**: AES-256-CBC with key derived from `sha256(eai-${homedir}-token-store)`
 - **File mode**: `0o600` (owner read/write only)
 - **Token lifecycle**: Auto-refreshed 5 minutes before expiry; manual refresh via `eai login`
 - **Headless bypass**: `EAI_ACCESS_TOKEN` env var bypasses file storage for CI/CD pipelines
@@ -1136,7 +1136,7 @@ eai tenant create --name "New Team" --parent <parent-tenant-id>
 **Purpose**: Defines Object Types for the project.
 
 **Location**:
-- `src/eai.config/object-types.ts` (Vertical-Template convention)
+- `src/eai.config/object-types.ts` (eai-app-template convention)
 - `eai.config/object-types.ts` (alternative)
 - `eai.config.ts` (project root)
 
@@ -2241,7 +2241,7 @@ interface StoredTokens {
 
 **Security**:
 - File mode `0o600` (owner read/write only)
-- AES-256-CBC encryption with key derived from `sha256(eai-cli-${homedir}-token-store)`
+- AES-256-CBC encryption with key derived from `sha256(eai-${homedir}-token-store)`
 
 ---
 
@@ -2942,7 +2942,7 @@ graph TB
 
 **Dependency Level**: Low (for update checks)
 
-**URL**: `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+**URL**: `https://eai-tools.github.io/eai/registry/@eai-tools/cli`
 
 **Operations**:
 - `GET` — Fetch latest version metadata (24h cache)
@@ -3121,11 +3121,11 @@ The EAI CLI has two deployment contexts:
 
 The EAI CLI uses a **static npm registry hosted on GitHub Pages**, eliminating the need for npmjs publishing.
 
-**Registry URL**: `https://eai-tools.github.io/eai-cli/registry`
+**Registry URL**: `https://eai-tools.github.io/eai/registry`
 
 **Package Name**: `@eai-tools/cli`
 
-**Current Version**: See the registry latest tag at `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+**Current Version**: See the registry latest tag at `https://eai-tools.github.io/eai/registry/@eai-tools/cli`
 
 ### Installation
 
@@ -3133,7 +3133,7 @@ Users configure npm to use the EAI registry, then install globally:
 
 ```bash
 # Configure the scoped EAI registry once
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 
 # Install globally
 npm install -g @eai-tools/cli
@@ -3229,7 +3229,7 @@ The release script verifies these commands are registered:
       "version": "2.8.5",
       "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
       "dist": {
-        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.5.tgz",
+        "tarball": "https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-2.8.5.tgz",
         "shasum": "..."
       }
     }
@@ -3523,7 +3523,7 @@ jobs:
       
       # Install CLI
       - run: |
-          npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+          npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
           npm install -g @eai-tools/cli
       
       # Authenticate (headless)
@@ -4082,7 +4082,7 @@ This release refreshes the bundled Gofer payload to v3.1.0-1 and includes severa
 - **Built With**: Astro + Starlight
 - **Pages**: 93 pages covering getting started, guides, concepts, command reference, 50 industry scenarios
 - **Location**: `docs/`
-- **Published**: [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli)
+- **Published**: [https://eai-tools.github.io/eai](https://eai-tools.github.io/eai)
 
 #### Gofer Pipeline Documentation
 - **Added**: CLAUDE.md workflow instructions
@@ -4172,7 +4172,7 @@ This release refreshes the bundled Gofer payload to v3.1.0-1 and includes severa
 
 #### Step 1: Update CLI
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 npm install -g @eai-tools/cli
 eai --version  # Should show 2.6.0
 ```

@@ -545,9 +545,9 @@ When council mode is enabled for `gofer_plan` stage:
 
 When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
 
-1. **EAI CLI version pin** — record the installed `eai-cli` version as a
+1. **EAI CLI version pin** — record the installed `eai` version as a
    `major.minor` pin (for example `2.0`). The plan stage resolves the local
-   version via `eai-cli --version`, strips the patch component, and writes the
+   version via `eai --version`, strips the patch component, and writes the
    pin to the `EnterpriseAI Profile Metadata` block of `plan-template.md` so
    every downstream task is reproducible. Plans MUST apply
    `pin guidance to `major.minor`` and never to a specific patch release.

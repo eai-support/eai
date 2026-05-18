@@ -419,7 +419,7 @@ await pLimit(5).map(objectTypes, type => seedType(type));
 
 **Location**: `src/lib/auth.ts`
 
-**Issue**: Encryption key derived from `sha256(eai-cli-${homedir}-token-store)`, not OS keychain.
+**Issue**: Encryption key derived from `sha256(eai-${homedir}-token-store)`, not OS keychain.
 
 **Trade-offs**:
 - ✅ Portable across machines (no native dependency)
