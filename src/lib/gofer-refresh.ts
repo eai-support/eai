@@ -339,6 +339,7 @@ function createManifestFromPlan(
   return {
     schemaVersion: 1,
     cli: plan.manifest?.cli,
+    packages: plan.manifest?.packages,
     template: plan.manifest?.template,
     gofer: {
       bundle: plan.bundle,
