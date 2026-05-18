@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-17T17:49:18.918Z"
-source_commit: "e2ebfae2a6f9d813ceecb56d6f0e6172a373778e"
+generated_at: "2026-05-18T18:14:41.702Z"
+source_commit: "f700e8534b788d15e317badd0ece00924251f372"
 ---
 # EAI CLI — Code Quality Review
 

@@ -1,23 +1,36 @@
 ---
 generated: true
-generated_at: "2026-05-17T17:49:18.918Z"
-source_commit: "e2ebfae2a6f9d813ceecb56d6f0e6172a373778e"
+generated_at: "2026-05-18T18:14:41.702Z"
+source_commit: "f700e8534b788d15e317badd0ece00924251f372"
 ---
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-05-16 17:49 UTC (commit 383b413)  
-**Current Documentation**: 2026-05-17 17:47 UTC (commit e2ebfae)  
+**Previous Documentation**: 2026-05-17 17:49 UTC (commit e2ebfae)  
+**Current Documentation**: 2026-05-18 18:12 UTC (commit f700e85)  
 **Version**: 2.8.13 (stable)
 
 ### Changes in This Update
 
-#### Nightly Documentation Refresh (commit e2ebfae)
-- Automated nightly documentation update to `.tech-docs/`
-- No implementation code changes since previous documentation generation
-- Refreshed frontmatter timestamps and source commit references
-- Current stable version remains v2.8.13
+#### PR #49: AI-Readable UI Blocks Bridge (commit f700e85)
+- Merged feature branch for AI-readable UI blocks bridge
+- Enables AI agents to parse and interact with UI block catalog
+- Adds machine-readable block metadata for tool use by AI systems
+
+#### Supply Chain Hardening (commit 24134b4, PR #47)
+- Hardened npm supply chain security policy
+- Enhanced dependency validation and integrity checks
+- Improved security posture for npm package installations
+
+#### Infrastructure Cleanup (commits a093477, ad483cd)
+- Added `.gitignore` entry for qagent runtime artifacts
+- Removed nested submodules from repository structure
+- Aligned repository rename references across documentation
+
+#### Repository Alignment (commit 66a7e1b)
+- Updated references to reflect repository rename
+- Ensured consistency across documentation and configuration files
 
 ---
 
