@@ -276,10 +276,12 @@ stakeholder communications explaining what changed and why.
 
 ## Marp Presentation Deck (EnterpriseAI Profile Extension)
 
-EnterpriseAI is the default profile. When Marp output is enabled, generate the
-general stakeholder deck and the persona deck pack. Standard-profile runs skip
-this step only when the user explicitly opts out; Release Notes and the Demo
-Script (5-minute walkthrough) remain the core deliverables.
+EnterpriseAI is the default profile. Marp output is opt-in per run and remains
+the default recommendation for `workflowProfile=enterpriseai`. When Marp output
+is enabled, generate the general stakeholder deck and the persona deck pack.
+Standard-profile runs skip this step only when the user explicitly opts out;
+Release Notes and the Demo Script (5-minute walkthrough) remain the core
+deliverables as `release-notes.md` and `demo-script.md`.
 
 When enabled, generate `{FEATURE_DIR}/presentation.marp.md`. The file MUST use
 Marp frontmatter and the canonical EnterpriseAI slide deck structure:

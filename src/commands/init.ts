@@ -57,11 +57,20 @@ export interface TemplateClonePlan {
 
 function buildInitialProjectManifest(
   templatePlan: TemplateClonePlan,
+  packageProfile: PackageProfile,
 ): ProjectManifest {
   return {
     schemaVersion: 1,
     cli: {
       version: pkg.version,
+    },
+    packages: {
+      profile: packageProfile,
+      source:
+        packageProfile === "internal"
+          ? "enterpriseai-packages"
+          : "eai-packages",
+      recordedAt: new Date().toISOString(),
     },
     template: {
       repo: templatePlan.cloneSource,
@@ -80,7 +89,10 @@ interface InitOptions {
   includeChat: boolean;
   includeDocs: boolean;
   authProvider: "ciam" | "b2b" | "dual";
+  packageProfile: PackageProfile;
 }
+
+type PackageProfile = "external" | "internal" | "hybrid";
 
 type InitCapabilityKey =
   | "child-tenants"
@@ -226,6 +238,11 @@ export const initCommand = new Command("init")
     "[not implemented] Create a real child tenant boundary under the default tenant",
   )
   .option("--no-gofer", "Skip installing Gofer AI CLI assets")
+  .option(
+    "--package-profile <profile>",
+    "Package profile to record for block catalog discovery: external, internal, or hybrid",
+    "external",
+  )
   .addHelpText(
     "after",
     `
@@ -249,6 +266,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
     let tenantId: string;
     let initOptions: InitOptions;
     let targetDir: string;
+    const packageProfile = resolvePackageProfile(options.packageProfile);
 
     if (options.skipPrompts && nameArg) {
       targetDir = resolve(process.cwd(), nameArg);
@@ -275,6 +293,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
         includeChat: capabilities["ai-chat"].outcome === "allow",
         includeDocs: capabilities.documents.outcome === "allow",
         authProvider: "ciam",
+        packageProfile,
       };
     } else {
       const baseAnswers = await inquirer.prompt([
@@ -334,6 +353,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
           includeDocs: boolean;
           authProvider: "ciam" | "b2b" | "dual";
         }),
+        packageProfile,
       };
     }
 
@@ -445,7 +465,10 @@ Use --no-gofer only when you need a bare vertical scaffold.
     // Step 8: Record project manifest for future safe refreshes
     const manifestSpinner = ora("Recording project manifest...").start();
     try {
-      const initialManifest = buildInitialProjectManifest(templatePlan);
+      const initialManifest = buildInitialProjectManifest(
+        templatePlan,
+        initOptions.packageProfile,
+      );
       await saveProjectManifest(targetDir, initialManifest);
 
       if (options.gofer) {
@@ -531,9 +554,21 @@ Use --no-gofer only when you need a bare vertical scaffold.
         "Gofer: Claude /0_business_scenario; Codex uses the repo-local Gofer skills; Gemini /gofer:1_gofer_research; Copilot .github prompts/skills.",
       );
     }
+    out.dim(`Package profile: ${initOptions.packageProfile}`);
     out.dim(`CLI docs: https://github.com/${GITHUB_ORG}/eai`);
     out.blank();
   });
+
+function resolvePackageProfile(value: unknown): PackageProfile {
+  if (value === "external" || value === "internal" || value === "hybrid") {
+    return value;
+  }
+
+  out.error(
+    `Invalid --package-profile "${String(value)}". Use external, internal, or hybrid.`,
+  );
+  process.exit(1);
+}
 
 /**
  * Provision an Entra app registration inline at the end of `eai init`, bound
@@ -858,6 +893,7 @@ function generateEnvFile(opts: InitOptions): string {
 # App Identity
 NEXT_PUBLIC_APP_NAME=${opts.name}
 APP_BASE_PATH=/${opts.name}
+NEXT_PUBLIC_APP_BASE_PATH=/${opts.name}
 
 # =============================================================================
 # Platform API

@@ -119,16 +119,34 @@ _Example of marking unclear requirements:_
 ## UI Preview & Approval Gate _(application delivery only)_
 
 - **First MVP preview**: [what must be shown first]
-- **Vertical Template constraints**: [which approved blocks/patterns must be reused]
+- **Profile choice**: [external / internal / hybrid]
+- **Package lane**: [public-package / internal-app / hybrid-adapter / app-local]
+- **Coupling status**: [DAISY-coupled / DAISY-decoupled / hybrid-adapter]
+- **Public-readiness target**: [required / deferred / not applicable]
+- **Vertical Template constraints**: [which approved blocks/patterns must be
+  reused]
+- **Block catalog evidence**: [`eai blocks list`, `eai blocks describe <id>`,
+  selected block IDs, and any custom-block exception]
+- **Resource bindings**: [`eai resources schema` fields/actions/events used by
+  selected blocks]
+- **Storybook story IDs**: [story IDs for reusable/ported blocks, or approved exception]
+- **Theme override points**: [tokens, slots, CSS variables, data/action hooks]
+- **Block porting and DAISY decoupling**: [reuse/port/custom decision and
+  adapter/resource-schema boundary]
 - **Branding scope**: [logos/styling in scope or not]
-- **Preview validation requirement**: [screenshot, local render proof, Playwright-style checks]
+- **Preview validation requirement**: [screenshot, local render proof,
+  Playwright-style checks]
 - **Approval requirement**: [who approves and what artifact records it]
 
 ## EnterpriseAI Service Fit _(application delivery only)_
 
-- **Capability selection must happen**: after UI approval and before plan/tasks are considered complete
-- **Evidence sources**: [`eai --describe`, `eai whoami`, `eai tenant select`, `eai resources schema`, `eai verify calls --format json`, or approved equivalent]
-- **Decision states**: [accessible now | purchasable but unavailable now | unavailable without new platform work]
+- **Capability selection must happen**: after UI approval and before plan/tasks
+  are considered complete
+- **Evidence sources**: [`eai --describe`, `eai whoami`, `eai tenant select`,
+  `eai resources schema`, `eai verify calls --format json`, or approved
+  equivalent]
+- **Decision states**: [accessible now | purchasable but unavailable now |
+  unavailable without new platform work]
 
 ## Success Criteria _(mandatory)_
 

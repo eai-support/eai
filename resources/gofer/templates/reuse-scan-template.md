@@ -15,6 +15,9 @@ workflowProfile: enterpriseai
 | APIs/events             | {{paths-or-query}} | {{result}} |
 | Workflows/journeys      | {{paths-or-query}} | {{result}} |
 | Modules/components      | {{paths-or-query}} | {{result}} |
+| UI blocks/packages      | {{eai-blocks-or-storybook-query}} | {{result}} |
+| Theme override points   | {{tokens-slots-css-vars-query}} | {{result}} |
+| DAISY coupling paths    | {{imports-or-runtime-query}} | {{result}} |
 | EnterpriseAI references | {{paths-or-query}} | {{result}} |
 
 ## Decisions
@@ -22,6 +25,12 @@ workflowProfile: enterpriseai
 | Candidate     | Evidence              | Decision                    | Rationale | Owner     |
 | ------------- | --------------------- | --------------------------- | --------- | --------- |
 | {{candidate}} | {{path-or-reference}} | Reuse / Extend / Create New | {{why}}   | {{owner}} |
+
+## Block Porting And Package Profile Decisions
+
+| Candidate Block | Package Lane | Storybook Story ID | Coupling Status | Decision | Public-Readiness Impact |
+| --------------- | ------------ | ------------------ | --------------- | -------- | ----------------------- |
+| {{block-id}} | {{lane}} | {{story-id-or-na}} | {{coupling-status}} | Reuse / Port / Custom Exception | {{impact-or-na}} |
 
 ## Create-New Exceptions
 

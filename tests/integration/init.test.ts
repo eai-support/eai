@@ -196,6 +196,16 @@ describe("eai init", () => {
       '"name": "@eai-tools/my-vertical"',
     );
     await expectFileExists(ctx, "my-vertical/.env.local");
+    await expectFileContains(
+      ctx,
+      "my-vertical/.env.local",
+      "APP_BASE_PATH=/my-vertical",
+    );
+    await expectFileContains(
+      ctx,
+      "my-vertical/.env.local",
+      "NEXT_PUBLIC_APP_BASE_PATH=/my-vertical",
+    );
     await expectFileExists(ctx, "my-vertical/src/eai.config/object-types.ts");
     await expectFileExists(
       ctx,
