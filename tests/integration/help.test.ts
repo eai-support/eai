@@ -100,7 +100,7 @@ describe('CLI help output', () => {
     expect(updateResult.exitCode).toBe(0);
     expect(updateResult.stdout).toContain('eai update --check');
     expect(updateResult.stdout).toContain('The CLI installs from the scoped EAI static registry on GitHub Pages.');
-    expect(updateResult.stdout).toContain('npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user');
+    expect(updateResult.stdout).toContain('npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user');
     expect(updateResult.stdout).toContain('eai gofer refresh --check');
     expect(updateResult.stdout).toContain('eai template check');
   });

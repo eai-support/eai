@@ -398,7 +398,7 @@ For app delivery, the default early process is:
    screens, target users, workflow goals, and whether client branding or logos
    must be applied.
 2. **Constrained MVP preview** — generate the first preview from the Vertical
-   Template blocks already installed in the project by `eai-cli`, rather than
+   Template blocks already installed in the project by `eai`, rather than
    from an unconstrained custom UI.
 3. **Preview self-review and approval** — use screenshot or Playwright-style
    local review before showing the preview, then iterate with the stakeholder

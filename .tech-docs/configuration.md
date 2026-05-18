@@ -65,7 +65,7 @@ Tokens are encrypted and stored per-profile:
 
 ### Security
 
-- **Encryption**: AES-256-CBC with key derived from `sha256(eai-cli-${homedir}-token-store)`
+- **Encryption**: AES-256-CBC with key derived from `sha256(eai-${homedir}-token-store)`
 - **File mode**: `0o600` (owner read/write only)
 - **Token lifecycle**: Auto-refreshed 5 minutes before expiry; manual refresh via `eai login`
 - **Headless bypass**: `EAI_ACCESS_TOKEN` env var bypasses file storage for CI/CD pipelines

@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 npm install -g @eai-tools/cli
 ```
 
@@ -17,19 +17,19 @@ npm install -g @eai-tools/cli
 
 ## Documentation
 
-- [EAI CLI — Overview](/eai-cli/docs/overview)
-- [EAI CLI — Architecture](/eai-cli/docs/architecture)
-- [EAI CLI — Configuration](/eai-cli/docs/configuration)
-- [Environment Profiles](/eai-cli/docs/profiles)
-- [EAI CLI — API Reference](/eai-cli/docs/api-reference)
-- [EAI CLI — Data Model](/eai-cli/docs/data-model)
-- [EAI CLI — Dependencies](/eai-cli/docs/dependencies)
-- [EAI CLI — Deployment](/eai-cli/docs/deployment)
-- [EAI CLI — Changelog](/eai-cli/docs/changelog)
-- [Documentation Surfaces](/eai-cli/docs/documentation-surfaces)
+- [EAI CLI — Overview](/eai/docs/overview)
+- [EAI CLI — Architecture](/eai/docs/architecture)
+- [EAI CLI — Configuration](/eai/docs/configuration)
+- [Environment Profiles](/eai/docs/profiles)
+- [EAI CLI — API Reference](/eai/docs/api-reference)
+- [EAI CLI — Data Model](/eai/docs/data-model)
+- [EAI CLI — Dependencies](/eai/docs/dependencies)
+- [EAI CLI — Deployment](/eai/docs/deployment)
+- [EAI CLI — Changelog](/eai/docs/changelog)
+- [Documentation Surfaces](/eai/docs/documentation-surfaces)
 
 ## Help & AI Bundles
 
-- [cli-help.txt](/eai-cli/cli-help.txt): Current CLI help snapshots used for release validation
-- [llms-full.txt](/eai-cli/llms-full.txt): Full release-aligned documentation bundle for AI agents
-- [Registry](/eai-cli/registry/): Static EAI package registry on GitHub Pages
+- [cli-help.txt](/eai/cli-help.txt): Current CLI help snapshots used for release validation
+- [llms-full.txt](/eai/llms-full.txt): Full release-aligned documentation bundle for AI agents
+- [Registry](/eai/registry/): Static EAI package registry on GitHub Pages

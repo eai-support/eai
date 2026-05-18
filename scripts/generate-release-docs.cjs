@@ -9,7 +9,7 @@ const DOCS_DIR = path.join(ROOT, '.tech-docs');
 const STATIC_DIR = path.join(ROOT, 'docs-site', 'static');
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'));
 const VERSION = PKG.version;
-const REGISTRY_SETUP = 'npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user';
+const REGISTRY_SETUP = 'npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user';
 const INSTALL_CMD = 'npm install -g @eai-tools/cli';
 const DOC_ORDER = [
   'overview.md',
@@ -112,7 +112,7 @@ ${sections}
 
 function buildLlmsIndex(context) {
   const docsList = context.docs.map((doc) => (
-`- [${doc.title}](/eai-cli/docs/${doc.slug})`
+`- [${doc.title}](/eai/docs/${doc.slug})`
   )).join('\n');
 
   return `# EAI CLI Documentation
@@ -138,9 +138,9 @@ ${docsList}
 
 ## Help & AI Bundles
 
-- [cli-help.txt](/eai-cli/cli-help.txt): Current CLI help snapshots used for release validation
-- [llms-full.txt](/eai-cli/llms-full.txt): Full release-aligned documentation bundle for AI agents
-- [Registry](/eai-cli/registry/): Static EAI package registry on GitHub Pages
+- [cli-help.txt](/eai/cli-help.txt): Current CLI help snapshots used for release validation
+- [llms-full.txt](/eai/llms-full.txt): Full release-aligned documentation bundle for AI agents
+- [Registry](/eai/registry/): Static EAI package registry on GitHub Pages
 `;
 }
 

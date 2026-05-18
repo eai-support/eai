@@ -20,11 +20,11 @@ The EAI CLI has two deployment contexts:
 
 The EAI CLI uses a **static npm registry hosted on GitHub Pages**, eliminating the need for npmjs publishing.
 
-**Registry URL**: `https://eai-tools.github.io/eai-cli/registry`
+**Registry URL**: `https://eai-tools.github.io/eai/registry`
 
 **Package Name**: `@eai-tools/cli`
 
-**Current Version**: See the registry latest tag at `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+**Current Version**: See the registry latest tag at `https://eai-tools.github.io/eai/registry/@eai-tools/cli`
 
 ### Installation
 
@@ -32,7 +32,7 @@ Users configure npm to use the EAI registry, then install globally:
 
 ```bash
 # Configure the scoped EAI registry once
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 
 # Install globally
 npm install -g @eai-tools/cli
@@ -128,7 +128,7 @@ The release script verifies these commands are registered:
       "version": "2.8.5",
       "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
       "dist": {
-        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.5.tgz",
+        "tarball": "https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-2.8.5.tgz",
         "shasum": "..."
       }
     }
@@ -422,7 +422,7 @@ jobs:
       
       # Install CLI
       - run: |
-          npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+          npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
           npm install -g @eai-tools/cli
       
       # Authenticate (headless)

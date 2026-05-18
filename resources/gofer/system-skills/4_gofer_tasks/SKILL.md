@@ -443,19 +443,19 @@ tasks in the following ordered chain. Each task is independently runnable and
 the ordering enforces scaffold before deployment so that configuration and
 manifest artifacts exist before any deploy command runs.
 
-1. **Vertical Template scaffolding -> `eai-cli scaffold`**
-   - Command: `eai-cli scaffold --template vertical --name <app-name>`
+1. **Vertical Template scaffolding -> `eai init`**
+   - Command: `eai init <app-name>`
    - Produces the working directory, `manifest.yml`, and `config.json` expected
      by subsequent tasks.
-2. **Local validation -> `eai-cli validate`**
-   - Command: `eai-cli validate`
+2. **Local validation -> `eai verify`**
+   - Command: `eai verify`
    - Confirms manifest/config correctness before any deploy attempt.
-3. **Pinned `eai-cli major.minor` deployment tasks -> `eai-cli deploy`**
-   - Command: `eai-cli deploy --env <environment>`
+3. **Pinned `eai major.minor` deployment tasks -> `eai deploy`**
+   - Command: `eai deploy trigger --repo <org/repo>`
    - Inherits the `major.minor` pin recorded in `plan.md`.
 
 <!-- prettier-ignore -->
-The ordering above is non-negotiable: tasks.md MUST instruct the pipeline to scaffold before deployment, validate before deploy, and only then invoke pinned `eai-cli major.minor` deployment tasks. Breaking the order causes deployment preflight gating in `/5_gofer_implement` to fail.
+The ordering above is non-negotiable: tasks.md MUST instruct the pipeline to scaffold before deployment, validate before deploy, and only then invoke pinned `eai major.minor` deployment tasks. Breaking the order causes deployment preflight gating in `/5_gofer_implement` to fail.
 
 ### App-Delivery Preconditions Inside Shared Stages
 
@@ -468,7 +468,7 @@ precondition to downstream implementation tasks:
 - If `{FEATURE_DIR}/service-fit-matrix.md` is missing or does not distinguish
   accessible now vs purchasable vs unavailable platform capabilities, emit a
   blocking service-fit task group before normal build tasks.
-- Use the Vertical Template already scaffolded by `eai-cli` as the default UI
+- Use the Vertical Template already scaffolded by `eai` as the default UI
   lego-block source. Any create-new UI concept must appear as an explicit
   exception task with rationale.
 - For **non-app work**, keep the shared numbered stages but skip these

@@ -617,7 +617,7 @@ At minimum the map must name:
 1. **Vertical App**: the student-facing or business-facing vertical being
    delivered (maps to the `vertical-template` reference).
 2. **EAI Services**: the EnterpriseAI platform services the vertical consumes
-   (maps to entries in `.specify/references/eai/eai-cli.md`).
+   (maps to entries in `.specify/references/eai/eai.md`).
 3. **Deployment Target**: the deployment environment and pipeline that will host
    the running vertical (maps to `.specify/references/eai/deployment-repo.md`).
 

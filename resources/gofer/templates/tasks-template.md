@@ -15,7 +15,7 @@ entire pipeline.
 
 > **EAI CLI Version Pin** (enterpriseai profile only): deployment tasks in this
 > list inherit the `major.minor` pin recorded in `plan.md` so builds in CI and
-> on developer machines use the same `eai-cli` toolchain. Standard-profile runs
+> on developer machines use the same `eai` toolchain. Standard-profile runs
 > ignore this section.
 
 **Tests**: The examples below include test tasks. Tests are OPTIONAL - only

@@ -1,16 +1,19 @@
-import { execFile } from 'node:child_process';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { promisify } from 'node:util';
+import { execFile } from "node:child_process";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 
-export const PROJECT_MANIFEST_RELATIVE_PATH = '.eai-manifest.json';
-const DEFAULT_TEMPLATE_REPO = 'https://github.com/eai-tools/Vertical-Template.git';
-const LEGACY_DEFAULT_TEMPLATE_REPO = 'https://github.com/eai-tools/eai-vertical-template.git';
+export const PROJECT_MANIFEST_RELATIVE_PATH = ".eai-manifest.json";
+const DEFAULT_TEMPLATE_REPO =
+  "https://github.com/eai-tools/eai-app-template.git";
+const DEFAULT_TEMPLATE_REPO_NAME = "eai-app-template";
+const LEGACY_TEMPLATE_REPO_NAME = ["Vertical", "Template"].join("-");
+const LEGACY_DEFAULT_TEMPLATE_REPO = `https://github.com/eai-tools/${LEGACY_TEMPLATE_REPO_NAME}.git`;
 const execFileAsync = promisify(execFile);
 
 export interface GoferManagedFileState {
   readonly sha256: string;
-  readonly source: 'bundled' | 'generated';
+  readonly source: "bundled" | "generated";
 }
 
 export interface ProjectManifest {
@@ -36,10 +39,10 @@ export interface ProjectManifest {
 }
 
 export type ProjectManifestSource =
-  | 'file'
-  | 'inferred-init-commit'
-  | 'inferred-project-structure'
-  | 'none';
+  | "file"
+  | "inferred-init-commit"
+  | "inferred-project-structure"
+  | "none";
 
 export interface ResolvedProjectManifest {
   readonly manifest: ProjectManifest | null;
@@ -50,9 +53,11 @@ export function getProjectManifestPath(projectRoot: string): string {
   return join(projectRoot, PROJECT_MANIFEST_RELATIVE_PATH);
 }
 
-export async function loadProjectManifest(projectRoot: string): Promise<ProjectManifest | null> {
+export async function loadProjectManifest(
+  projectRoot: string,
+): Promise<ProjectManifest | null> {
   try {
-    const raw = await readFile(getProjectManifestPath(projectRoot), 'utf-8');
+    const raw = await readFile(getProjectManifestPath(projectRoot), "utf-8");
     return JSON.parse(raw) as ProjectManifest;
   } catch {
     return null;
@@ -68,25 +73,41 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-function coerceTemplateRepoFromDisplaySource(displaySource: string): { repo: string; commit?: string } {
+function coerceTemplateRepoFromDisplaySource(displaySource: string): {
+  repo: string;
+  commit?: string;
+} {
   const trimmed = displaySource.trim();
-  const defaultMatch = trimmed.match(/^(eai-tools\/(?:Vertical-Template|eai-vertical-template))(?:@([0-9a-f]{7,40}))?$/i);
+  const defaultMatch = trimmed.match(
+    new RegExp(
+      `^(eai-tools\\/(?:${LEGACY_TEMPLATE_REPO_NAME}|${DEFAULT_TEMPLATE_REPO_NAME}))(?:@([0-9a-f]{7,40}))?$`,
+      "i",
+    ),
+  );
   if (defaultMatch) {
+    const matchedRepo = defaultMatch[1].toLowerCase();
     return {
-      repo: defaultMatch[1] === 'eai-tools/eai-vertical-template' ? LEGACY_DEFAULT_TEMPLATE_REPO : DEFAULT_TEMPLATE_REPO,
+      repo:
+        matchedRepo === `eai-tools/${LEGACY_TEMPLATE_REPO_NAME}`.toLowerCase()
+          ? LEGACY_DEFAULT_TEMPLATE_REPO
+          : DEFAULT_TEMPLATE_REPO,
       commit: defaultMatch[2],
     };
   }
 
-  const githubUrlMatch = trimmed.match(/^https?:\/\/github\.com\/([^/\s]+\/[^/\s]+?)(?:\.git)?(?:@([0-9a-f]{7,40}))?$/i);
+  const githubUrlMatch = trimmed.match(
+    /^https?:\/\/github\.com\/([^/\s]+\/[^/\s]+?)(?:\.git)?(?:@([0-9a-f]{7,40}))?$/i,
+  );
   if (githubUrlMatch?.[1]) {
     return {
-      repo: `https://github.com/${githubUrlMatch[1].replace(/\/+$/, '')}.git`,
+      repo: `https://github.com/${githubUrlMatch[1].replace(/\/+$/, "")}.git`,
       commit: githubUrlMatch[2],
     };
   }
 
-  const githubLabelMatch = trimmed.match(/^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)(?:@([0-9a-f]{7,40}))?$/);
+  const githubLabelMatch = trimmed.match(
+    /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)(?:@([0-9a-f]{7,40}))?$/,
+  );
   if (githubLabelMatch?.[1]) {
     return {
       repo: `https://github.com/${githubLabelMatch[1]}.git`,
@@ -97,35 +118,44 @@ function coerceTemplateRepoFromDisplaySource(displaySource: string): { repo: str
   return { repo: trimmed };
 }
 
-async function inferManifestFromLegacyInitCommit(projectRoot: string): Promise<ProjectManifest | null> {
+async function inferManifestFromLegacyInitCommit(
+  projectRoot: string,
+): Promise<ProjectManifest | null> {
   try {
-    const { stdout: rootCommitStdout } = await execFileAsync('git', ['rev-list', '--max-parents=0', 'HEAD'], {
-      cwd: projectRoot,
-    });
+    const { stdout: rootCommitStdout } = await execFileAsync(
+      "git",
+      ["rev-list", "--max-parents=0", "HEAD"],
+      {
+        cwd: projectRoot,
+      },
+    );
     const rootCommit = rootCommitStdout.trim().split(/\s+/)[0];
     if (!rootCommit) {
       return null;
     }
 
     const { stdout: metadataStdout } = await execFileAsync(
-      'git',
-      ['show', '-s', '--format=%B%x00%cI', rootCommit],
+      "git",
+      ["show", "-s", "--format=%B%x00%cI", rootCommit],
       { cwd: projectRoot },
     );
-    const [message = '', committedAt = ''] = metadataStdout.split('\0');
-    if (!/Initial scaffold from template/i.test(message) || !/Created by:\s*eai init/i.test(message)) {
+    const [message = "", committedAt = ""] = metadataStdout.split("\0");
+    if (
+      !/Initial scaffold from template/i.test(message) ||
+      !/Created by:\s*eai init/i.test(message)
+    ) {
       return null;
     }
 
     const templateLine = message
-      .split('\n')
+      .split("\n")
       .map((line) => line.trim())
-      .find((line) => line.startsWith('Template:'));
+      .find((line) => line.startsWith("Template:"));
     if (!templateLine) {
       return null;
     }
 
-    const displaySource = templateLine.replace(/^Template:\s*/, '').trim();
+    const displaySource = templateLine.replace(/^Template:\s*/, "").trim();
     if (!displaySource) {
       return null;
     }
@@ -144,7 +174,9 @@ async function inferManifestFromLegacyInitCommit(projectRoot: string): Promise<P
   }
 }
 
-async function inferManifestFromLegacyProjectStructure(projectRoot: string): Promise<ProjectManifest | null> {
+async function inferManifestFromLegacyProjectStructure(
+  projectRoot: string,
+): Promise<ProjectManifest | null> {
   const [
     hasObjectTypes,
     hasTenantConfig,
@@ -153,12 +185,12 @@ async function inferManifestFromLegacyProjectStructure(projectRoot: string): Pro
     hasGeminiConfig,
     hasClaudeDoc,
   ] = await Promise.all([
-    fileExists(join(projectRoot, 'src', 'eai.config', 'object-types.ts')),
-    fileExists(join(projectRoot, 'src', 'eai.config', 'default.ts')),
-    fileExists(join(projectRoot, '.specify')),
-    fileExists(join(projectRoot, '.claude')),
-    fileExists(join(projectRoot, '.gemini')),
-    fileExists(join(projectRoot, 'CLAUDE.md')),
+    fileExists(join(projectRoot, "src", "eai.config", "object-types.ts")),
+    fileExists(join(projectRoot, "src", "eai.config", "default.ts")),
+    fileExists(join(projectRoot, ".specify")),
+    fileExists(join(projectRoot, ".claude")),
+    fileExists(join(projectRoot, ".gemini")),
+    fileExists(join(projectRoot, "CLAUDE.md")),
   ]);
 
   if (!hasObjectTypes) {
@@ -166,7 +198,9 @@ async function inferManifestFromLegacyProjectStructure(projectRoot: string): Pro
   }
 
   try {
-    const pkg = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf-8')) as {
+    const pkg = JSON.parse(
+      await readFile(join(projectRoot, "package.json"), "utf-8"),
+    ) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
     };
@@ -175,14 +209,23 @@ async function inferManifestFromLegacyProjectStructure(projectRoot: string): Pro
       ...(pkg.devDependencies ?? {}),
     };
     const hasEaiDependencies = Boolean(
-      allDependencies['@enterpriseaigroup/core']
-      || allDependencies['@enterpriseaigroup/demo']
-      || allDependencies['@enterpriseaigroup/platform-sdk']
-      || allDependencies['@eai-tools/core']
-      || allDependencies['@eai-tools/platform-sdk'],
+      allDependencies["@enterpriseaigroup/core"] ||
+      allDependencies["@enterpriseaigroup/demo"] ||
+      allDependencies["@enterpriseaigroup/platform-sdk"] ||
+      allDependencies["@eai-tools/core"] ||
+      allDependencies["@eai-tools/platform-sdk"],
     );
 
-    if (!(hasEaiDependencies || hasTenantConfig || hasSpecifyDir || hasClaudeConfig || hasGeminiConfig || hasClaudeDoc)) {
+    if (
+      !(
+        hasEaiDependencies ||
+        hasTenantConfig ||
+        hasSpecifyDir ||
+        hasClaudeConfig ||
+        hasGeminiConfig ||
+        hasClaudeDoc
+      )
+    ) {
       return null;
     }
 
@@ -190,7 +233,7 @@ async function inferManifestFromLegacyProjectStructure(projectRoot: string): Pro
       schemaVersion: 1,
       template: {
         repo: DEFAULT_TEMPLATE_REPO,
-        displaySource: 'eai-tools/Vertical-Template (legacy scaffold inferred)',
+        displaySource: "eai-tools/eai-app-template (legacy scaffold inferred)",
       },
     };
   } catch {
@@ -198,58 +241,69 @@ async function inferManifestFromLegacyProjectStructure(projectRoot: string): Pro
   }
 }
 
-export async function resolveProjectManifest(projectRoot: string): Promise<ResolvedProjectManifest> {
+export async function resolveProjectManifest(
+  projectRoot: string,
+): Promise<ResolvedProjectManifest> {
   const manifest = await loadProjectManifest(projectRoot);
   if (manifest?.template) {
     return {
       manifest,
-      source: 'file',
+      source: "file",
     };
   }
 
-  const initCommitManifest = await inferManifestFromLegacyInitCommit(projectRoot);
+  const initCommitManifest =
+    await inferManifestFromLegacyInitCommit(projectRoot);
   if (initCommitManifest) {
     return {
       manifest: manifest
         ? {
-          ...manifest,
-          template: initCommitManifest.template,
-        }
+            ...manifest,
+            template: initCommitManifest.template,
+          }
         : initCommitManifest,
-      source: 'inferred-init-commit',
+      source: "inferred-init-commit",
     };
   }
 
-  const structureManifest = await inferManifestFromLegacyProjectStructure(projectRoot);
+  const structureManifest =
+    await inferManifestFromLegacyProjectStructure(projectRoot);
   if (structureManifest) {
     return {
       manifest: manifest
         ? {
-          ...manifest,
-          template: structureManifest.template,
-        }
+            ...manifest,
+            template: structureManifest.template,
+          }
         : structureManifest,
-      source: 'inferred-project-structure',
+      source: "inferred-project-structure",
     };
   }
 
   if (manifest) {
     return {
       manifest,
-      source: 'file',
+      source: "file",
     };
   }
 
   return {
     manifest: null,
-    source: 'none',
+    source: "none",
   };
 }
 
-export async function saveProjectManifest(projectRoot: string, manifest: ProjectManifest): Promise<void> {
+export async function saveProjectManifest(
+  projectRoot: string,
+  manifest: ProjectManifest,
+): Promise<void> {
   const manifestPath = getProjectManifestPath(projectRoot);
   await mkdir(dirname(manifestPath), { recursive: true });
-  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
+  await writeFile(
+    manifestPath,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf-8",
+  );
 }
 
 export async function updateProjectManifest(

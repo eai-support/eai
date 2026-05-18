@@ -24,7 +24,7 @@ This document outlines the phased approach to implementing and executing the 100
 
 **Commands:**
 ```bash
-cd /Users/example/Code/eai/eai-cli
+cd /Users/example/Code/eai/eai
 npm install
 ```
 

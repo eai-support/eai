@@ -85,8 +85,8 @@ The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.jso
 ### Installation (Development)
 
 ```bash
-git clone https://github.com/eai-tools/eai-cli.git
-cd eai-cli
+git clone https://github.com/eai-tools/eai.git
+cd eai
 npm install
 npm run build
 ```
@@ -133,10 +133,10 @@ node dist/index.js tenant list
 ## Team / Ownership
 
 - **Organization**: EAI Tools
-- **Repository**: [https://github.com/eai-tools/eai-cli](https://github.com/eai-tools/eai-cli)
+- **Repository**: [https://github.com/eai-tools/eai](https://github.com/eai-tools/eai)
 - **Published Package**: `@eai-tools/cli`
-- **Registry**: Self-hosted on GitHub Pages (`https://eai-tools.github.io/eai-cli/registry`)
-- **Homepage**: [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli)
+- **Registry**: Self-hosted on GitHub Pages (`https://eai-tools.github.io/eai/registry`)
+- **Homepage**: [https://eai-tools.github.io/eai](https://eai-tools.github.io/eai)
 - **License**: MIT
 - **Documentation**: 93-page Docusaurus site with command reference, guides, and 50 industry scenarios
 
@@ -271,7 +271,7 @@ This repository maintains multiple documentation surfaces:
 | `docs-site/` | Docusaurus documentation site (93 pages) | GitHub Actions (`docs.yml`) → GitHub Pages | No |
 | Root `*.md` files | Developer guides (README, CODEBASE, AGENTS, CLAUDE) | Committed to repo, no build step | No |
 
-The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to static HTML and deploys to GitHub Pages at [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli). It is **not** managed by the nightly tech-docs pipeline.
+The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to static HTML and deploys to GitHub Pages at [https://eai-tools.github.io/eai](https://eai-tools.github.io/eai). It is **not** managed by the nightly tech-docs pipeline.
 
 ## Current Status
 
