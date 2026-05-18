@@ -287,6 +287,11 @@ the standard profile, generate:
    - Vertical Template constraint map: which approved template blocks or layout
      patterns the preview should use before any create-new UI concept is
      considered.
+   - Block catalog evidence: run `eai --describe`, `eai blocks list`,
+     `eai blocks describe <id>` for each candidate, and
+     `eai resources schema`; record stable block IDs, required resources,
+     data/action bindings, theme/override points, and any custom-block
+     exception that needs approval.
    - Branding inputs: whether client styling, logos, colors, copy tone, or
      other corporate-brand artifacts must be applied.
    - Preview validation plan: what screenshot, browser-render, or

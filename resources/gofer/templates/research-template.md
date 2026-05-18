@@ -91,6 +91,8 @@ Why relevant: [Explanation]
 
 - **Smallest useful MVP to show first**: [description]
 - **Vertical Template constraints**: [approved blocks/patterns to reuse first]
+- **Block catalog discovery**: [`eai --describe`, `eai blocks list`, candidate `eai blocks describe <id>` results, and `eai resources schema` evidence]
+- **Selected block IDs**: [stable IDs, required resources, bindings, override points, and custom-block exceptions]
 - **Branding inputs**: [logos, colors, voice, or "not in scope"]
 - **Preview validation expectation**: [screenshot, local render proof, Playwright-style checks]
 

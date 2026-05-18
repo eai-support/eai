@@ -133,6 +133,8 @@ work, state why this gate is not applicable.
 | Gate | Required Artifact | Validation |
 | ---- | ----------------- | ---------- |
 | Preview scope | `ui-preview-brief.md` | [how the MVP preview scope is defined] |
+| Block catalog | `eai blocks list` / `eai blocks describe <id>` | [selected IDs, override points, and custom-block exceptions] |
+| Resource bindings | `eai resources schema` | [object fields/actions/events feeding selected blocks] |
 | Preview evidence | `ui-review-log.md` | [screenshot, local render, or Playwright-style proof] |
 | UI approval | `ui-approval.md` | [who approves and when] |
 | Service fit | `service-fit-matrix.md` | [how accessible vs purchasable vs unavailable is proved] |

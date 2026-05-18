@@ -21,6 +21,11 @@ export interface ProjectManifest {
   readonly cli?: {
     readonly version: string;
   };
+  readonly packages?: {
+    readonly profile: "external" | "internal" | "hybrid";
+    readonly source?: "eai-packages" | "enterpriseai-packages";
+    readonly recordedAt?: string;
+  };
   readonly template?: {
     readonly repo?: string;
     readonly commit?: string;

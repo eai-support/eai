@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
   canonicalSource: .specify/commands/1_gofer_research.md
-  canonicalChecksum: d95dcba083abf5d7c230cb58f490e1ac6d5c96a6f6ed1d8a2cf396d05c09268f
+  canonicalChecksum: 27e1887b44e76f2d98c6f336e0b170b16c639d3751e5b06bec828aa3cc97cec3
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -302,6 +302,11 @@ the standard profile, generate:
    - Vertical Template constraint map: which approved template blocks or layout
      patterns the preview should use before any create-new UI concept is
      considered.
+   - Block catalog evidence: run `eai --describe`, `eai blocks list`,
+     `eai blocks describe <id>` for each candidate, and
+     `eai resources schema`; record stable block IDs, required resources,
+     data/action bindings, theme/override points, and any custom-block
+     exception that needs approval.
    - Branding inputs: whether client styling, logos, colors, copy tone, or
      other corporate-brand artifacts must be applied.
    - Preview validation plan: what screenshot, browser-render, or

@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
   canonicalSource: .specify/commands/5_gofer_implement.md
-  canonicalChecksum: 2012faf6e6354352a5767490a4427832e315fce072f0668925a1345767fae018
+  canonicalChecksum: a187ca1a2f70df99a1fcf8adf52e706c607ce09c5adc69a85a2e06eec535fda0
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -618,6 +618,13 @@ separation from `tasks.md`:
 - For application delivery, use the Vertical Template already installed in the
   workspace as the default UI lego-block source. Any create-new UI concept must
   be justified in the approved plan and approval artifacts.
+- Before implementing UI, run or inspect `eai --describe`, `eai blocks list`,
+  `eai blocks describe <id>` for every selected block, and
+  `eai resources schema`. Implementation notes must cite the block IDs,
+  required resources, bindings, override points, and any approved custom-block
+  exception.
+- Reject unknown component names during implementation unless `tasks.md` and
+  `ui-approval.md` explicitly authorize a custom extension block and manifest.
 - For application delivery, implement the four-step-or-fewer AI-augmented
   process as the user-facing spine. Each step must preserve its business goal,
   AI assistance mode, contextual prefill or conversational support, completion

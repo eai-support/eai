@@ -120,6 +120,8 @@ _Example of marking unclear requirements:_
 
 - **First MVP preview**: [what must be shown first]
 - **Vertical Template constraints**: [which approved blocks/patterns must be reused]
+- **Block catalog evidence**: [`eai blocks list`, `eai blocks describe <id>`, selected block IDs, and any custom-block exception]
+- **Resource bindings**: [`eai resources schema` fields/actions/events used by selected blocks]
 - **Branding scope**: [logos/styling in scope or not]
 - **Preview validation requirement**: [screenshot, local render proof, Playwright-style checks]
 - **Approval requirement**: [who approves and what artifact records it]

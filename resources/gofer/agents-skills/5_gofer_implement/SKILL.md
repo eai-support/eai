@@ -612,6 +612,13 @@ separation from `tasks.md`:
 - For application delivery, use the Vertical Template already installed in the
   workspace as the default UI lego-block source. Any create-new UI concept must
   be justified in the approved plan and approval artifacts.
+- Before implementing UI, run or inspect `eai --describe`, `eai blocks list`,
+  `eai blocks describe <id>` for every selected block, and
+  `eai resources schema`. Implementation notes must cite the block IDs,
+  required resources, bindings, override points, and any approved custom-block
+  exception.
+- Reject unknown component names during implementation unless `tasks.md` and
+  `ui-approval.md` explicitly authorize a custom extension block and manifest.
 - For application delivery, implement the four-step-or-fewer AI-augmented
   process as the user-facing spine. Each step must preserve its business goal,
   AI assistance mode, contextual prefill or conversational support, completion

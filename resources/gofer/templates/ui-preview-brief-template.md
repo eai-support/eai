@@ -26,6 +26,9 @@ status: draft
 | Constraint | Decision |
 | ---------- | -------- |
 | Default layout / blocks | {{approved-template-blocks}} |
+| Block catalog evidence | {{eai-blocks-list-and-describe-evidence}} |
+| Resource bindings | {{eai-resources-schema-bindings}} |
+| Override points | {{theme-presentation-copy-data-action-overrides}} |
 | Allowed create-new exceptions | {{approved-exceptions-or-none}} |
 | Accessibility baseline | {{expectation}} |
 
@@ -44,4 +47,3 @@ status: draft
 - [ ] Screenshot or Playwright-style self-review captured
 - [ ] Brief-to-preview mismatch list recorded
 - [ ] Open visual risks called out before stakeholder review
-

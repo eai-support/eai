@@ -579,7 +579,7 @@ async function emitGemini(stages, root, dryRun) {
       extensionPath,
       JSON.stringify(
         {
-          name: 'gofer',
+          name: 'eai-gofer',
           version: '1.0.0',
           description: 'Gofer pipeline as Gemini CLI extension',
           commands: '.gemini/commands/gofer/',
