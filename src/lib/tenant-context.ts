@@ -191,6 +191,12 @@ async function loadContextEnv(projectRoot?: string): Promise<Record<string, stri
 }
 
 export async function resolvePublicApiUrl(projectRoot?: string): Promise<string> {
+  // 0. Test/headless override — highest priority so test runners can pin the
+  // CLI at a specific environment without writing files into the project.
+  if (process.env.EAI_API_URL) {
+    return process.env.EAI_API_URL;
+  }
+
   // 1. Profile config (named profiles carry their own API URL)
   const profile = getActiveProfile();
   if (profile !== 'default') {

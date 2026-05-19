@@ -160,6 +160,30 @@ export function formatError(
 }
 
 /**
+ * Numeric exit code for an `ErrorCode`.
+ *
+ * Default behaviour is unchanged: every error exits with code 1, so existing
+ * shell scripts and CI matchers (`|| exit 1`) keep working.
+ *
+ * Set `EAI_STABLE_EXIT_CODES=1` to opt in to category-based exit codes:
+ *   E0xx → 1     (project/config — kept at 1 for legacy parity)
+ *   E1xx → 101   (auth)
+ *   E2xx → 201   (platform)
+ *   E3xx → 301   (validation)
+ *
+ * Test runners use the opt-in form so they can assert on the category from
+ * the exit code alone, without parsing JSON. The JSON error envelope always
+ * carries the precise `Exxx` code regardless of this flag.
+ */
+export function exitCodeFor(code: ErrorCode): number {
+  if (process.env.EAI_STABLE_EXIT_CODES !== '1') return 1;
+  const n = Number.parseInt(code.slice(1), 10);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  if (n < 100) return 1;
+  return n;
+}
+
+/**
  * Format error for JSON output
  */
 export function formatErrorJSON(
@@ -175,9 +199,25 @@ export function formatErrorJSON(
       code,
       message,
       suggestion,
-      exitCode: 1,
+      exitCode: exitCodeFor(code),
     },
   };
+}
+
+/**
+ * Detect `--format json` from process.argv when callers do not thread the
+ * format option through every helper. Lets shared exit paths (E001 in a deep
+ * helper, etc.) honour `--format json` without rewiring the entire call chain.
+ */
+function detectFormatFromArgv(): 'text' | 'json' {
+  const argv = process.argv;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--json') return 'json';
+    if (arg === '--format=json') return 'json';
+    if (arg === '--format' && argv[i + 1] === 'json') return 'json';
+  }
+  return 'text';
 }
 
 /**
@@ -188,7 +228,8 @@ export function exitWithError(
   context?: Record<string, string>,
   format?: 'text' | 'json',
 ): never {
-  if (format === 'json') {
+  const effectiveFormat = format ?? detectFormatFromArgv();
+  if (effectiveFormat === 'json') {
     console.error(JSON.stringify(formatErrorJSON(code, context), null, 2));
   } else {
     // Import error symbol only when needed (avoids circular dependency)
@@ -197,5 +238,5 @@ export function exitWithError(
     console.error(`${errorSymbol} ${errorMessage}`);
   }
 
-  process.exit(1);
+  process.exit(exitCodeFor(code));
 }

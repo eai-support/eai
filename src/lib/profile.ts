@@ -43,8 +43,13 @@ export function getActiveProfile(): string {
 
 // ── Paths ────────────────────────────────────────────────────────────────────
 
+/**
+ * Root directory for CLI state (config + tokens).
+ * Defaults to `~/.eai`. Override with `EAI_PROFILE_DIR` for headless/parallel
+ * test runners that must avoid collisions on the user's home directory.
+ */
 function getEaiDir(): string {
-  return join(homedir(), '.eai');
+  return process.env.EAI_PROFILE_DIR || join(homedir(), '.eai');
 }
 
 export function getConfigFilePath(): string {
