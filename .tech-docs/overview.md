@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-18T18:14:41.702Z"
-source_commit: "f700e8534b788d15e317badd0ece00924251f372"
+generated_at: "2026-05-19T18:18:09.974Z"
+source_commit: "0efc50cec82087eead261426a4146d5ba45b902d"
 ---
 # EAI CLI — Overview
 
@@ -32,9 +32,10 @@ The EAI CLI is a TypeScript-based command-line tool that serves as the primary d
 - **Tenant management** driven by membership context
 - **Object Type management** (validate, seed, diff, pull)
 - **Resource CRUD operations** with multi-tenant support
-- **AI workflows** (chat streaming, document classification, RAG indexing)
+- **AI workflows** (chat streaming, document classification, RAG indexing, workflow readiness checks)
 - **Environment synchronization** with Azure App Config and Key Vault
 - **Deployment orchestration** to Azure App Service via GitHub Actions
+- **AI-readable UI blocks** for vertical development with foundation, product, addon, and demo components
 
 The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.json`, and uses tenant membership from the platform to establish working context via `eai tenant select`. Every command is a thin, typed wrapper around platform API endpoints with structured error codes (E001-E399) and machine-readable output formats (JSON, YAML, text).
 
@@ -42,24 +43,24 @@ The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.jso
 
 | Component | Technology | Version |
 |-----------|-----------|---------|
-| **Language** | TypeScript (strict mode) | 5.7.3 |
+| **Language** | TypeScript (strict mode) | 5.9.3 |
 | **Runtime** | Node.js | ≥20.0.0 |
 | **CLI Framework** | Commander.js | 13.1.0 |
 | **HTTP Client** | Native Fetch API | Built-in (Node.js) |
 | **Module System** | ESM (ES Modules) | Node16 resolution |
-| **UI/Output** | Chalk, Ora, Inquirer | 5.3.0, 8.1.1, 12.3.2 |
-| **Config Loader** | dotenv | 16.4.7 |
-| **Build Tool** | TypeScript Compiler (tsc) | 5.7.3 |
+| **UI/Output** | Chalk, Ora, Inquirer | 5.6.2, 8.2.0, 12.11.1 |
+| **Config Loader** | dotenv | 16.6.1 |
+| **Build Tool** | TypeScript Compiler (tsc) | 5.9.3 |
 | **Package Manager** | npm | Standard |
-| **Testing** | Vitest + MSW | 4.1.3, 2.6.0 |
+| **Testing** | Vitest + MSW | 4.1.3, 2.12.10 |
 | **Linter** | ESLint 10 + typescript-eslint | 10.0.3, 8.56.1 |
 
 ## Key Entry Points
 
 | File | Purpose |
 |------|---------|
-| `src/index.ts` | Main CLI entry point; registers 19 command modules and global hooks |
-| `src/commands/*.ts` | 19 command files: init, dev, login, whoami, user, provision, env, types, resources, tenant, vertical, chat, docs, deploy, verify, update, gofer, template, workflow |
+| `src/index.ts` | Main CLI entry point; registers 20 command modules and global hooks |
+| `src/commands/*.ts` | 20 command files: init, dev, login, whoami, user, provision, env, types, resources, tenant, vertical, blocks, chat, docs, deploy, verify, update, gofer, template, workflow |
 | `src/lib/api.ts` | Platform API client with Bearer token auth and error handling |
 | `src/lib/auth.ts` | Entra CIAM authentication (browser PKCE flow) and token storage |
 | `src/lib/tenant-context.ts` | Tenant membership lookup and active tenant selection logic |
@@ -71,13 +72,10 @@ The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.jso
 | `src/lib/schema-builder.ts` | CLI introspection for `--describe` flag (AI agent support) |
 | `src/lib/update-check.ts` | Auto-update checker using the static EAI registry packument |
 | `src/lib/cloud-env.ts` | Azure App Config and Key Vault integration |
-| `src/lib/azure-cli.ts` | Azure CLI wrapper for cloud operations |
 | `src/lib/gofer-installer.ts` | Gofer AI terminal assets installer |
 | `src/lib/gofer-refresh.ts` | Gofer manifest planning and apply logic |
+| `src/lib/block-catalog.ts` | AI-readable UI block catalog loader and validator |
 | `src/lib/project-manifest.ts` | Project manifest persistence |
-| `src/lib/npm.ts` | NPM registry and package management utilities |
-| `src/lib/object-type-defaults.ts` | Object Type scaffolding defaults |
-| `src/lib/utils.ts` | Shared utility functions |
 | `dist/index.js` | Compiled entry point (bin: `eai`) |
 
 ## How to Run Locally
@@ -101,6 +99,7 @@ npm run lint              # Run ESLint
 npm test                  # Run Vitest tests
 npm run test:e2e-local    # E2E dedicated tenant lifecycle tests
 npm run test:coverage     # Generate coverage report
+npm run release:check     # Release preflight validation
 ```
 
 ### Running the CLI Locally
@@ -128,6 +127,9 @@ node dist/index.js whoami
 
 # List accessible tenants
 node dist/index.js tenant list
+
+# List AI-readable UI blocks
+node dist/index.js blocks list --readiness public-ready
 ```
 
 ## Team / Ownership
@@ -168,11 +170,16 @@ node dist/index.js tenant list
    `eai user provision-me` — Self-provision to active tenant
 
 9. **AI Workflows**  
+   `eai workflow readiness` — Checks tenant access, plan metadata, and AI runtime workflow readiness  
    `eai chat send/stream <message>` — Sends messages to AI workflows  
    `eai docs classify/index <file>` — Document processing and RAG indexing
 
 10. **Deployment**  
     `eai deploy setup` → `eai deploy trigger` — Orchestrates Azure deployments via GitHub Actions
+
+11. **UI Block Discovery**  
+    `eai blocks list` — Lists AI-readable UI blocks from the shared platform block catalog  
+    `eai blocks describe <id>` — Shows detailed block usage and examples
 
 ## Architecture Philosophy
 
@@ -185,6 +192,7 @@ node dist/index.js tenant list
 - **Static Registry**: Self-hosted npm registry on GitHub Pages (no external npm publish)
 - **Structured Errors**: E001-E399 catalog with actionable suggestions
 - **Machine-Readable Output**: `--format json|yaml|text` for automation; `--describe` for AI agents
+- **Gofer Pipeline Integration**: `.specify/` directory with full AI-assisted development workflow
 
 ## Critical Integrations
 
@@ -199,68 +207,6 @@ node dist/index.js tenant list
 | **AdminAPI** | Entra provisioning, tenant bootstrap | Outbound | Bearer token (JWT) |
 | **ResourceAPI (MID)** | Multi-tenant resource queries | Outbound | Bearer token (JWT) |
 
-## Recent Enhancements
-
-### v2.8.13 (2026-05-12)
-- **Add public platform builder workflow readiness and update guidance**
-
-### v2.8.12 (2026-05-11)
-- **Fix docs workflow Node 24 artifact action**
-
-### v2.8.11 (2026-05-11)
-- **Add tenant app registration persistence spec**
-
-### v2.8.10 (2026-05-11)
-- **Fix legacy template provenance detection**
-
-### v2.8.9 (2026-05-11)
-- **Highlight update workflows in CLI help**
-
-### v2.8.8 (2026-05-11)
-- **Add template drift preview and move workflows onto Node 24**
-
-### v2.8.7 (2026-05-11)
-- **Make release-facing docs generation deterministic**
-
-### v2.8.6 (2026-05-11)
-- **Refresh release docs and CLI help automation**
-
-### v2.8.5 (2026-05-11)
-- **Align release docs and CLI help automation with the static registry flow**
-
-### v2.8.3 (2026-05-08)
-- **Storage Metadata Status Fix** (PR #35): Fixed Object Type scaffolding to properly initialize `metadata.status` field for storage compliance
-
-### v2.8.2 (2026-05-06)
-- **Object Type Storage Metadata** (PR #34): Aligned Object Type scaffolding with platform storage metadata rules
-
-### v2.8.1 (2026-05-05)
-- **Production Tenant Lookup Fix** (PR #33): Fixed tenant lookup after CLI login in production environments
-
-### v2.8.0 (2026-05-03)
-- **Vertical Enrollment Management** (PR #31): Added tenant vertical enrollment commands
-- **Entra Provisioning Warnings** (PR #32): Warn and exit non-zero when AdminAPI reports `signin_ready=false`
-
-## Update Management
-
-- **Background Checks**: Queries the static EAI registry packument every 24 hours (cached in `~/.eai/update-check.json`)
-- **Update Banner**: Displays notification after command execution if newer version available
-- **Manual Upgrade**: Users run `eai update` or `npm install -g @eai-tools/cli` after configuring the scoped EAI registry
-- **Skip Conditions**: Update check skipped in CI, when `NO_UPDATE_NOTIFIER=1`, or in non-TTY environments
-
-## Gofer AI Terminal Integration
-
-Every `eai init` project includes Gofer AI assets for multi-terminal support:
-
-| CLI | Installed Surface | First Command |
-|-----|-------------------|---------------|
-| **Claude CLI** | `.claude/commands`, `.claude/agents`, `.claude/settings.json` | `/0_business_scenario` |
-| **Codex CLI** | `.system/skills/gofer`, `.agents/skills/gofer` | `$gofer/1_gofer_research` |
-| **Gemini CLI** | `.gemini/commands/gofer`, `.gemini/extension.json` | `/gofer:1_gofer_research` |
-| **GitHub Copilot** | `.github/prompts`, `.github/instructions`, `.github/skills` | Use Gofer prompt or skill |
-
-**Shared Workflow**: `.specify/` directory contains commands, scripts, templates, hooks, memory, logs, and generated feature specs. Use `eai init <name> --no-gofer` to skip Gofer installation.
-
 ## Documentation Surfaces
 
 This repository maintains multiple documentation surfaces:
@@ -271,12 +217,12 @@ This repository maintains multiple documentation surfaces:
 | `docs-site/` | Docusaurus documentation site (93 pages) | GitHub Actions (`docs.yml`) → GitHub Pages | No |
 | Root `*.md` files | Developer guides (README, CODEBASE, AGENTS, CLAUDE) | Committed to repo, no build step | No |
 
-The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to static HTML and deploys to GitHub Pages at [https://eai-tools.github.io/eai](https://eai-tools.github.io/eai). It is **not** managed by the nightly tech-docs pipeline.
+The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to static HTML and deploys to GitHub Pages at [https://eai-tools.github.io/eai](https://github.com/eai-tools/eai). It is **not** managed by the nightly tech-docs pipeline.
 
 ## Current Status
 
 - **Version**: 2.8.13 (released 2026-05-12)
 - **Build Status**: Passing (CI workflow validates TypeCheck, Lint, Build, Tests)
-- **Documentation**: Up-to-date (last generated 2026-05-18T18:12:45Z)
-- **Source Commit**: `f700e8534b788d15e317badd0ece00924251f372`
+- **Documentation**: Up-to-date (last generated 2026-05-19T18:13:33Z)
+- **Source Commit**: `0efc50cec82087eead261426a4146d5ba45b902d`
 - **Registry Status**: Published to GitHub Pages registry
