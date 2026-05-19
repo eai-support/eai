@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-18T18:14:41.702Z"
-source_commit: "f700e8534b788d15e317badd0ece00924251f372"
+generated_at: "2026-05-19T18:18:09.974Z"
+source_commit: "0efc50cec82087eead261426a4146d5ba45b902d"
 ---
 # EAI CLI — Architecture
 
@@ -109,7 +109,7 @@ graph TB
         Index[src/index.ts<br/>Commander Program]
     end
     
-    subgraph "Command Layer (19 modules)"
+    subgraph "Command Layer (20 modules)"
         Init[init.ts<br/>Scaffold Projects]
         Auth[login.ts<br/>Authentication]
         Types[types.ts<br/>Object Type Management]
@@ -118,7 +118,9 @@ graph TB
         Deploy[deploy.ts<br/>Deployment]
         Chat[chat.ts<br/>AI Workflows]
         Docs[docs.ts<br/>Document Processing]
-        Other[+ 11 more commands]
+        Blocks[blocks.ts<br/>UI Block Catalog]
+        Workflow[workflow.ts<br/>AI Readiness]
+        Other[+ 10 more commands]
     end
     
     subgraph "Library Layer (16 modules)"
@@ -192,6 +194,7 @@ graph TB
 | **gofer.ts** | `gofer refresh`, `gofer status` | Inspect and refresh Gofer-managed project assets |
 | **template.ts** | `template check` | Preview vertical template drift without writing files |
 | **workflow.ts** | `workflow status`, `workflow request`, `workflow readiness` | Inspect and request AI runtime workflow bindings |
+| **blocks.ts** | `blocks list`, `blocks describe`, `blocks readiness` | AI-readable UI component discovery and documentation |
 
 ### Library Layer (src/lib/)
 
@@ -215,6 +218,10 @@ graph TB
 | **cloud-env.ts** | `pullCloudEnv`, `pushCloudEnv` | Azure App Config + Key Vault integration |
 | **azure-cli.ts** | `execAzureCLI` | Azure CLI command wrapper for cloud operations |
 | **npm.ts** | `installDependencies`, `checkNpmVersion` | npm integration for package installation |
+| **block-catalog.ts** | `loadBlockCatalog`, `filterBlocksByReadiness` | AI-readable UI block catalog loader and validator |
+| **block-catalog-validation.ts** | `validateBlockCatalog` | Block catalog schema validation |
+| **block-catalog-normalize.ts** | `normalizeBlockCatalog` | Block catalog normalization and transformation |
+| **block-catalog-types.ts** | `BlockDefinition`, `BlockReadiness` | TypeScript types for block catalog |
 
 ## Data Flow
 

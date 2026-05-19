@@ -1,22 +1,30 @@
 ---
 generated: true
-generated_at: "2026-05-18T18:14:41.702Z"
-source_commit: "f700e8534b788d15e317badd0ece00924251f372"
+generated_at: "2026-05-19T18:18:09.974Z"
+source_commit: "0efc50cec82087eead261426a4146d5ba45b902d"
 ---
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-05-17 17:49 UTC (commit e2ebfae)  
-**Current Documentation**: 2026-05-18 18:12 UTC (commit f700e85)  
+**Previous Documentation**: 2026-05-18 18:14 UTC (commit f700e85)  
+**Current Documentation**: 2026-05-19 18:13 UTC (commit 0efc50c)  
 **Version**: 2.8.13 (stable)
 
 ### Changes in This Update
+
+#### Nightly Documentation Update (commit 0efc50c)
+- Automated nightly .tech-docs/ refresh
+- Updated all technical documentation with latest repository state
+- Refreshed architecture diagrams and dependency graphs
 
 #### PR #49: AI-Readable UI Blocks Bridge (commit f700e85)
 - Merged feature branch for AI-readable UI blocks bridge
 - Enables AI agents to parse and interact with UI block catalog
 - Adds machine-readable block metadata for tool use by AI systems
+- New `blocks` command module with list, describe, and readiness subcommands
+- Block catalog loader with validation and normalization pipeline
+- Support for filtering blocks by readiness level (public-ready, preview, draft)
 
 #### Supply Chain Hardening (commit 24134b4, PR #47)
 - Hardened npm supply chain security policy
