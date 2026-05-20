@@ -114,3 +114,72 @@ jobs:
           files: |
             *.tgz
           make_latest: true
+
+      # ── Notify eai-testing-dev so each release triggers a cross-service smoke ───
+      # Fires repository_dispatch(deploy-completed) which routes through the
+      # cross-service-e2e.yml matrix (matrix.service=eai-cli) and runs Playwright
+      # against services-dev. See:
+      #   - docs/ONBOARDING_NEW_VERTICAL.md in eai-testing-dev for the full pattern
+      #   - tests/cross-service/eai-cli/ for the spec set this dispatch exercises
+      # All GitHub context flows through env: vars, never directly into run:.
+      - name: Build deployment-completion payload
+        id: dispatch-payload
+        env:
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          REPO_FULL: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          DEPLOY_RUN_URL="https://github.com/${REPO_FULL}/actions/runs/${RUN_ID}"
+          PAYLOAD="$(jq -cn \
+            --arg repository "eai-cli" \
+            --arg service "eai-cli" \
+            --arg environment "dev" \
+            --arg sha "${SHA}" \
+            --arg tag "${TAG}" \
+            --arg deployed_at "${DEPLOYED_AT}" \
+            --arg deploy_run_url "${DEPLOY_RUN_URL}" \
+            '{
+              repository: $repository,
+              service: $service,
+              environment: $environment,
+              sha: $sha,
+              tag: $tag,
+              deployed_at: $deployed_at,
+              deploy_run_url: $deploy_run_url
+            }')"
+          echo "payload=${PAYLOAD}" >> "$GITHUB_OUTPUT"
+
+      - name: Create eai-testing-dev app token
+        id: testing-app-token
+        # Soft-fail: if the org secret/app is not yet provisioned for this repo,
+        # surface a warning but do not fail the release. Once an org admin adds
+        # eai-tools/eai to the EAI_TESTING_APP_PRIVATE_KEY allow-list, the next
+        # release lights this up automatically.
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.EAI_TESTING_APP_ID }}
+          private-key: ${{ secrets.EAI_TESTING_APP_PRIVATE_KEY }}
+          owner: enterpriseaigroup
+          repositories: |
+            eai-testing-dev
+          permission-contents: write
+
+      - name: Notify eai-testing-dev of release completion
+        if: success() && steps.testing-app-token.outputs.token != ''
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ steps.testing-app-token.outputs.token }}
+          repository: enterpriseaigroup/eai-testing-dev
+          event-type: deploy-completed
+          client-payload: ${{ steps.dispatch-payload.outputs.payload }}
+
+      - name: Warn if cross-service notify was skipped
+        if: steps.testing-app-token.outputs.token == ''
+        run: |
+          echo "::warning::eai-testing-dev cross-service smoke was NOT triggered for this release."
+          echo "::warning::Ask an org admin to add eai-tools/eai to the EAI_TESTING_APP_PRIVATE_KEY allow-list,"
+          echo "::warning::or verify EAI_TESTING_APP_ID is exposed to this repository."
