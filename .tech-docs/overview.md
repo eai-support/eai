@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-19T18:18:09.974Z"
-source_commit: "0efc50cec82087eead261426a4146d5ba45b902d"
+generated_at: "2026-05-20T18:23:54.542Z"
+source_commit: "d0d45e62503a0faf09358688229b017bebbd1b45"
 ---
 # EAI CLI — Overview
 
@@ -14,8 +14,8 @@ source_commit: "0efc50cec82087eead261426a4146d5ba45b902d"
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers and DevOps engineers |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no user data storage) |
-| **Current Status** | Active development (v2.8.13 released 2026-05-12) |
-| **Last Material Change** | PR #49: AI-readable UI blocks bridge, hardened npm supply chain policy (2026-05-18) |
+| **Current Status** | Active development (v2.8.13 stable) |
+| **Last Material Change** | Nightly automated documentation updates (2026-05-20) |
 
 ## Service Identity
 
@@ -221,8 +221,8 @@ The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to stati
 
 ## Current Status
 
-- **Version**: 2.8.13 (released 2026-05-12)
+- **Version**: 2.8.13 (stable)
 - **Build Status**: Passing (CI workflow validates TypeCheck, Lint, Build, Tests)
-- **Documentation**: Up-to-date (last generated 2026-05-19T18:13:33Z)
-- **Source Commit**: `0efc50cec82087eead261426a4146d5ba45b902d`
+- **Documentation**: Up-to-date (last generated 2026-05-20T18:22:15Z)
+- **Source Commit**: `d0d45e62503a0faf09358688229b017bebbd1b45`
 - **Registry Status**: Published to GitHub Pages registry
