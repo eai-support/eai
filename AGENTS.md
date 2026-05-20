@@ -131,6 +131,23 @@ const config = await loadConfig();
 - Write tests for new functionality before marking tasks complete
 - Run the full test suite before committing
 
+### Sibling-PR Requirement (Cross-Service Verification)
+
+Every PR that ships customer-visible CLI behavior MUST have a sibling PR in
+[`enterpriseaigroup/eai-testing-dev`](https://github.com/enterpriseaigroup/eai-testing-dev)
+that either:
+
+1. Adds/updates Playwright specs under `tests/cross-service/eai-cli/`, OR
+2. Updates the locked `--describe` snapshot at
+   `tests/suite/contracts/eai-cli/schemas/cli-describe.command-list.json` when
+   a top-level command is added/renamed/removed, OR
+3. Carries a documented escape clause (link the rationale in the PR body —
+   e.g. internal refactor, docs-only, no observable behavior change).
+
+Missing sibling PR link = blocking review. The eai-cli `release.yml` workflow
+fires `repository_dispatch(deploy-completed)` to eai-testing-dev on every
+tag push, so an out-of-date contract surfaces immediately on the next release.
+
 ## Git Workflow
 
 - Use conventional commit messages (feat:, fix:, chore:, docs:)
