@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-20T18:23:54.542Z"
-source_commit: "d0d45e62503a0faf09358688229b017bebbd1b45"
+generated_at: "2026-05-21T18:15:44.424Z"
+source_commit: "bbacb511fd6f024d2f3131c2717b69d466831f27"
 ---
 # EAI CLI — Overview
 
@@ -15,7 +15,7 @@ source_commit: "d0d45e62503a0faf09358688229b017bebbd1b45"
 | **Primary Users** | Enterprise AI application developers and DevOps engineers |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no user data storage) |
 | **Current Status** | Active development (v2.8.13 stable) |
-| **Last Material Change** | Nightly automated documentation updates (2026-05-20) |
+| **Last Material Change** | Nightly automated documentation updates (2026-05-21) |
 
 ## Service Identity
 
@@ -223,6 +223,7 @@ The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to stati
 
 - **Version**: 2.8.13 (stable)
 - **Build Status**: Passing (CI workflow validates TypeCheck, Lint, Build, Tests)
-- **Documentation**: Up-to-date (last generated 2026-05-20T18:22:15Z)
-- **Source Commit**: `d0d45e62503a0faf09358688229b017bebbd1b45`
+- **Documentation**: Up-to-date (last generated 2026-05-21T18:12:41Z)
+- **Source Commit**: `bbacb511fd6f024d2f3131c2717b69d466831f27`
 - **Registry Status**: Published to GitHub Pages registry
+- **Lines of Code**: ~15,600 TypeScript LOC (src/ directory)

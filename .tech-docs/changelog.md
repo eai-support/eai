@@ -1,23 +1,28 @@
 ---
 generated: true
-generated_at: "2026-05-20T18:23:54.542Z"
-source_commit: "d0d45e62503a0faf09358688229b017bebbd1b45"
+generated_at: "2026-05-21T18:15:44.424Z"
+source_commit: "bbacb511fd6f024d2f3131c2717b69d466831f27"
 ---
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-05-19 18:18 UTC (commit 0efc50c)  
-**Current Documentation**: 2026-05-20 18:22 UTC (commit d0d45e6)  
+**Previous Documentation**: 2026-05-20 18:23 UTC (commit d0d45e6)  
+**Current Documentation**: 2026-05-21 18:12 UTC (commit bbacb51)  
 **Version**: 2.8.13 (stable)
 
 ### Changes in This Update
 
-#### Nightly Documentation Update (commit d0d45e6)
+#### Nightly Documentation Update (commit bbacb51)
 - Automated nightly .tech-docs/ refresh
 - Updated all technical documentation with latest repository state
 - Synchronized documentation timestamps and commit references
 - Validated all command modules and library structure
+- Repository state remains stable at v2.8.13
+
+#### Previous Nightly Update (commit d0d45e6)
+- Automated documentation refresh from previous night
+- Maintained documentation consistency across all surfaces
 
 #### PR #49: AI-Readable UI Blocks Bridge (commit f700e85)
 - Merged feature branch for AI-readable UI blocks bridge
