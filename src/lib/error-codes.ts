@@ -169,18 +169,29 @@ export function formatError(
  *   E0xx → 1     (project/config — kept at 1 for legacy parity)
  *   E1xx → 101   (auth)
  *   E2xx → 201   (platform)
- *   E3xx → 301   (validation)
+ *   E3xx → 121   (validation — stays under 128 so it does not collide with
+ *                 the POSIX "terminated by signal N" range 128+N)
+ *
+ * Important: every returned code is in the 0-255 range. POSIX `wait(2)`
+ * truncates exit status to the low 8 bits, so returning `305` for E305 would
+ * leave `$?` showing `49` while the JSON envelope claims `305`. By returning
+ * category codes that already fit in 8 bits, the JSON `exitCode` field and
+ * the actual subprocess status reported by the OS are guaranteed to agree.
  *
  * Test runners use the opt-in form so they can assert on the category from
  * the exit code alone, without parsing JSON. The JSON error envelope always
- * carries the precise `Exxx` code regardless of this flag.
+ * carries the precise `Exxx` code regardless of this flag (via the `code`
+ * field); only the numeric `exitCode` is folded to the category bucket.
  */
 export function exitCodeFor(code: ErrorCode): number {
   if (process.env.EAI_STABLE_EXIT_CODES !== '1') return 1;
   const n = Number.parseInt(code.slice(1), 10);
   if (!Number.isFinite(n) || n <= 0) return 1;
-  if (n < 100) return 1;
-  return n;
+  if (n < 100) return 1;     // E0xx — project / config
+  if (n < 200) return 101;   // E1xx — auth
+  if (n < 300) return 201;   // E2xx — platform
+  if (n < 400) return 121;   // E3xx — validation (below signal range 128+)
+  return 1;                  // unknown category → generic failure
 }
 
 /**
