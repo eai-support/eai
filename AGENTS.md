@@ -148,6 +148,26 @@ Missing sibling PR link = blocking review. The eai-cli `release.yml` workflow
 fires `repository_dispatch(deploy-completed)` to eai-testing-dev on every
 tag push, so an out-of-date contract surfaces immediately on the next release.
 
+### Headless / CI Test Affordances
+
+The following environment variables let automated runners (e.g. eai-testing-dev
+cross-service workers) drive the CLI without interactive login or touching a
+developer's `~/.eai/`:
+
+- `EAI_ACCESS_TOKEN` — when set to a valid Entra access-token JWT, the CLI
+  treats this as a fully authenticated session: `getAccessToken()` returns it
+  directly and `loadTokens()` synthesizes the session identity (`oid`,
+  `expiresAt`) by decoding the token. No browser login or on-disk token file is
+  required. Used by headless cross-service runners.
+- `EAI_PROFILE_DIR` — overrides the default `~/.eai` root so each parallel
+  runner gets an isolated token/config directory.
+- `EAI_API_URL` — overrides `resolvePublicApiUrl()` before profile lookup so
+  tests can pin the CLI at a specific environment (e.g. services-dev) without
+  writing `BASE_URL_PUBLIC_API` into the project `.env.local`.
+- `EAI_STABLE_EXIT_CODES=1` — opts in to category-based exit codes
+  (`E1xx` → 101, `E2xx` → 201, `E3xx` → 121). Default remains exit 1 so
+  existing shell scripts keep working.
+
 ## Git Workflow
 
 - Use conventional commit messages (feat:, fix:, chore:, docs:)
