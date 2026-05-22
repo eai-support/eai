@@ -136,7 +136,69 @@ export async function storeTokens(tokens: StoredTokens): Promise<void> {
   _cache.set(profile, tokens);
 }
 
+/**
+ * Decode a JWT payload segment without verifying the signature.
+ * Returns the claims object, or null if the token is not a decodable JWT.
+ */
+function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
+  try {
+    const segment = jwt.split('.')[1];
+    if (!segment) return null;
+    const decoded: unknown = JSON.parse(Buffer.from(segment, 'base64url').toString());
+    if (!decoded || typeof decoded !== 'object') return null;
+    return decoded as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build a StoredTokens record from the EAI_ACCESS_TOKEN env var, so headless
+ * callers (CI runners, automation, agents) are a fully authenticated session
+ * without a browser login or an on-disk token file.
+ *
+ * Returns null when EAI_ACCESS_TOKEN is unset, or is not a decodable JWT
+ * carrying an oid/sub identity claim — callers then fall back to the
+ * encrypted on-disk token store.
+ */
+function loadEnvTokens(): StoredTokens | null {
+  const envToken = process.env.EAI_ACCESS_TOKEN?.trim();
+  if (!envToken) return null;
+
+  const claims = decodeJwtPayload(envToken);
+  if (!claims) return null;
+
+  const oid =
+    (typeof claims.oid === 'string' && claims.oid) ||
+    (typeof claims.sub === 'string' && claims.sub) ||
+    '';
+  if (!oid) return null;
+
+  const expiresAt =
+    typeof claims.exp === 'number'
+      ? claims.exp * 1000
+      : Date.now() + 3_600_000; // fallback: assume a 1h session when the JWT carries no exp
+  const upn =
+    typeof claims.preferred_username === 'string' ? claims.preferred_username : undefined;
+
+  return {
+    accessToken: envToken,
+    expiresAt,
+    tenantId: '',
+    tenantName: '',
+    clientId: '',
+    oid,
+    upn,
+  };
+}
+
 export async function loadTokens(): Promise<StoredTokens | null> {
+  // Headless auth: a valid EAI_ACCESS_TOKEN is a complete authenticated
+  // session, taking precedence over the cache and the on-disk token file —
+  // consistent with getAccessToken() and isAuthenticated().
+  const envTokens = loadEnvTokens();
+  if (envTokens) return envTokens;
+
   const profile = getActiveProfile();
   const cached = _cache.get(profile);
   if (cached) return cached;
@@ -177,7 +239,7 @@ export async function clearTokens(): Promise<void> {
  * Check if we have a valid (non-expired) access token.
  */
 export async function isAuthenticated(): Promise<boolean> {
-  if (process.env.EAI_ACCESS_TOKEN) return true;
+  if (process.env.EAI_ACCESS_TOKEN) return loadEnvTokens() !== null;
   const tokens = await loadTokens();
   if (!tokens) return false;
   return tokens.expiresAt > Date.now();
@@ -188,7 +250,7 @@ export async function isAuthenticated(): Promise<boolean> {
  * Supports EAI_ACCESS_TOKEN env var for headless/server use.
  */
 export async function getAccessToken(): Promise<string | null> {
-  const envToken = process.env.EAI_ACCESS_TOKEN;
+  const envToken = process.env.EAI_ACCESS_TOKEN?.trim();
   if (envToken) return envToken;
 
   const tokens = await loadTokens();
@@ -480,14 +542,10 @@ async function refreshAccessToken(tokens: StoredTokens): Promise<StoredTokens | 
 }
 
 /**
- * Parse a claim from a JWT without verification (for display only).
+ * Parse a string claim from a JWT without verification (for display only).
  */
 function parseJwtClaim(jwt: string, claim: string): string | null {
-  try {
-    const payload = jwt.split('.')[1];
-    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString());
-    return decoded[claim] || null;
-  } catch {
-    return null;
-  }
+  const claims = decodeJwtPayload(jwt);
+  const value = claims?.[claim];
+  return typeof value === 'string' && value ? value : null;
 }
