@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-21T18:15:44.424Z"
-source_commit: "bbacb511fd6f024d2f3131c2717b69d466831f27"
+generated_at: "2026-05-22T18:14:18.901Z"
+source_commit: "793141ab7e1e3af8073893f57a68009c7fd9900d"
 ---
 # EAI CLI — Patterns & Tech Debt
 
