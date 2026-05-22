@@ -1,26 +1,26 @@
 ---
 generated: true
-generated_at: "2026-05-21T18:15:44.424Z"
-source_commit: "bbacb511fd6f024d2f3131c2717b69d466831f27"
+generated_at: "2026-05-22T18:14:18.901Z"
+source_commit: "793141ab7e1e3af8073893f57a68009c7fd9900d"
 ---
 # EAI CLI — Changelog
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-05-20 18:23 UTC (commit d0d45e6)  
-**Current Documentation**: 2026-05-21 18:12 UTC (commit bbacb51)  
+**Previous Documentation**: 2026-05-21 18:15 UTC (commit bbacb51)  
+**Current Documentation**: 2026-05-22 18:12 UTC (commit 793141a)  
 **Version**: 2.8.13 (stable)
 
 ### Changes in This Update
 
-#### Nightly Documentation Update (commit bbacb51)
+#### Nightly Documentation Update (commit 793141a)
 - Automated nightly .tech-docs/ refresh
 - Updated all technical documentation with latest repository state
 - Synchronized documentation timestamps and commit references
 - Validated all command modules and library structure
 - Repository state remains stable at v2.8.13
 
-#### Previous Nightly Update (commit d0d45e6)
+#### Previous Nightly Update (commit bbacb51)
 - Automated documentation refresh from previous night
 - Maintained documentation consistency across all surfaces
 
