@@ -279,9 +279,7 @@ Diagnostics:
     if (result.scopes.length > 0) {
       optionalEnv.ENTRA_SCOPES = result.scopes.join(' ');
     }
-    if (result.redirectUris.length > 0) {
-      optionalEnv.ENTRA_REDIRECT_URIS = result.redirectUris.join(',');
-    }
+    optionalEnv.ENTRA_REDIRECT_URIS = localCallback;
     optionalEnv.AUTH_URL = authRuntime.siteUrl;
     optionalEnv.NEXTAUTH_URL = authRuntime.siteUrl;
     optionalEnv.AUTH_TRUST_HOST = 'true';
