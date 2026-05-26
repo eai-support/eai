@@ -1,49 +1,356 @@
 ---
 generated: true
-generated_at: "2026-05-13T18:16:23.977Z"
-source_commit: "a34126c2e29f910c1539a8c93ab8e9d3c49d8154"
+generated_at: "2026-05-23T18:05:52.673Z"
+source_commit: "3f2653e8e0c12fcd8b9be770d495dbf8269079f1"
 ---
 # EAI CLI — API Reference
 
 ## Overview
 
-The CLI interacts with the **EAI Platform API v3 (PublicAPI)** and **AdminAPI**. All endpoints require Bearer token authentication obtained via Entra CIAM browser-based PKCE flow.
+The EAI CLI provides 20 command groups covering scaffolding, authentication, tenant management, data operations, AI workflows, deployment, and diagnostics. All commands that interact with the platform use the **EAI Platform API v3** with Bearer token authentication.
 
-**Base URL (PublicAPI)**: Configured via profile or `BASE_URL_PUBLIC_API` environment variable (e.g., `https://api.ae.myenterprise.ai/public`)
-
-**Base URL (AdminAPI)**: Resolved at runtime from PublicAPI environment (e.g., `https://api.ae.myenterprise.ai/admin`)
-
-**Authentication**: `Authorization: Bearer {access_token}`
-
-**Client Class**: `PlatformAPIClient` in `src/lib/api.ts`
+**Base URL**: Configured via `BASE_URL_PUBLIC_API` environment variable or profile  
+**Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)  
+**Client Class**: `PlatformAPIClient` in `src/lib/api.ts`  
+**Global Flags**: `--format <format>`, `--simple`, `--no-color`, `--color`, `--profile <name>`, `--describe`
 
 ---
 
-## PublicAPI v3 Endpoints
+## CLI Commands
 
-### Resources API
+### Scaffolding Commands
 
-#### List Resources
+#### `eai init [name]`
+Scaffold a new vertical application from the EAI vertical template.
+
+**Options**:
+- `[name]` — Project directory name (optional, prompts if omitted)
+- `--from <source>` — Template source (repository URL or local path, default: CLI-bundled template)
+- `--no-gofer` — Skip Gofer AI asset installation
+- `--template <name>` — Template variant to use
+
+**What it does**:
+1. Clones template repository or copies local template
+2. Installs Gofer AI assets (.claude, .agents, .gemini, .github, .specify)
+3. Initializes git repository
+4. Installs npm dependencies
+5. Creates `.eai-manifest.json` for tracking managed files
+
+**No API calls** — local operation only
+
+---
+
+#### `eai dev`
+Start local development server with connectivity checks.
+
+**Options**:
+- `--port <port>` — Port number (default: 3000)
+- `--host <host>` — Host binding (default: localhost)
+
+**What it does**:
+1. Validates project structure
+2. Checks platform connectivity (if configured)
+3. Starts Next.js dev server (or project-specific dev command)
+4. Displays local URL and QR code
+
+**No API calls** — local operation only
+
+---
+
+### Authentication Commands
+
+#### `eai login`
+Authenticate with Entra CIAM using browser-based PKCE flow.
+
+**Options**:
+- `--port <port>` — Localhost callback port (default: 3476)
+
+**What it does**:
+1. Generates PKCE `code_verifier` and `code_challenge`
+2. Opens browser to Entra CIAM authorization endpoint
+3. Listens on `http://localhost:3476/callback` for OAuth callback
+4. Exchanges authorization code + code_verifier for tokens
+5. Saves tokens to `~/.eai/tokens.json`
+
+**Platform API Endpoints Used**:
+- Entra CIAM: `POST /oauth2/v2.0/token` (token exchange)
+
+---
+
+#### `eai logout`
+Clear stored authentication tokens.
+
+**What it does**:
+1. Deletes `~/.eai/tokens.json`
+2. Clears tenant context
+
+**No API calls**
+
+---
+
+#### `eai whoami`
+Show authentication status and project context.
+
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
+
+**What it does**:
+1. Reads `~/.eai/tokens.json`
+2. Reads `~/.eai/context.json`
+3. Displays user info, active tenant, profile, token expiry
+
+**Output** (text format):
 ```
-GET /v3/resources/{tenant_id}/{object_type}
+✓ Logged in as user@example.com
+→ Active tenant: acme-corp (tenant-id-123)
+→ Profile: dev
+→ Token expires: 2026-05-24T12:00:00Z
 ```
 
-**Query Parameters**:
-- `page` (number) — Page number (default: 1)
-- `limit` (number) — Items per page (default: 20, max: 100)
-- `sort` (string) — Sort field (prefix with `-` for descending, e.g., `-created_at`)
-- `where[field][equals]` — Filter by exact match
+**No API calls**
 
-**Response**:
+---
+
+### Tenant Commands
+
+#### `eai tenant list`
+List tenants where you are a `tenant-admin`.
+
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v3/tenants/memberships` — Fetch user's tenant memberships
+
+---
+
+#### `eai tenant select [tenant]`
+Choose the active tenant for platform operations.
+
+**Arguments**:
+- `[tenant]` — Tenant ID or slug (optional, prompts if omitted)
+
+**What it does**:
+1. Fetches tenant memberships
+2. Validates user has `tenant-admin` role
+3. Saves selection to `~/.eai/context.json`
+
+**Platform API Endpoints Used**:
+- `GET /v3/tenants/memberships`
+
+---
+
+#### `eai tenant info <id>`
+Show tenant details.
+
+**Arguments**:
+- `<id>` — Tenant ID or slug
+
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v3/tenants/{id}`
+
+---
+
+#### `eai tenant create`
+Create a new tenant and verify usability.
+
+**Options**:
+- `--name <name>` — Tenant display name
+- `--slug <slug>` — Tenant slug (URL-safe identifier)
+- `--parent <id>` — Parent tenant ID (for child tenants)
+- `--format <format>` — Output format (text|json, default: text)
+
+**What it does**:
+1. Creates tenant document
+2. Attempts first-admin bootstrap (for child tenants)
+3. Verifies direct `tenant-admin` membership
+4. Auto-selects tenant if usable
+
+**Platform API Endpoints Used**:
+- `POST /v3/tenants` — Create tenant
+- `POST /v3/tenants/{id}/bootstrap-first-admin` — Bootstrap admin (child tenants)
+- `GET /v3/tenants/memberships` — Verify membership
+
+---
+
+### User Management Commands
+
+#### `eai user invite --email <email>`
+Add an existing user to a tenant.
+
+**Options**:
+- `--email <email>` — User email (required)
+- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--role <role>` — Role to assign (default: tenant-member)
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `POST /v3/tenants/{tenant_id}/users/invite`
+
+---
+
+#### `eai user provision-me`
+Provision yourself to a tenant.
+
+**Options**:
+- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `POST /v3/tenants/{tenant_id}/users/provision`
+
+---
+
+#### `eai provision entra`
+Create or confirm Entra app registration for the vertical.
+
+**Options**:
+- `--rotate-secret` — Rotate the existing app registration secret
+- `--format <format>` — Output format (text|json, default: text)
+
+**What it does**:
+1. Calls AdminAPI to create/update Entra app registration
+2. Writes client ID and secret to `.env.local`
+
+**Platform API Endpoints Used**:
+- `POST /admin/entra/provision`
+
+---
+
+### Environment Commands
+
+#### `eai env pull`
+Sync environment variables from Azure App Config and Key Vault.
+
+**Options**:
+- `--include-secrets` — Include secrets from Key Vault
+- `--format <format>` — Output format (text|json, default: text)
+
+**What it does**:
+1. Fetches non-secret config from Azure App Configuration
+2. Fetches secrets from Azure Key Vault (if `--include-secrets`)
+3. Writes to `.env.local`
+
+**Platform API Endpoints Used**:
+- `GET /v3/config/environment` — Fetch environment variables
+- `GET /v3/config/secrets` — Fetch secrets (if `--include-secrets`)
+
+---
+
+#### `eai env list`
+Show current environment variables.
+
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
+
+**What it does**:
+1. Loads `.env.local`
+2. Loads `eai.config.ts`
+3. Merges with `process.env`
+4. Displays final configuration (masks secrets)
+
+**No API calls**
+
+---
+
+#### `eai env push`
+Push local environment overrides to cloud (admin only).
+
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `POST /v3/config/environment` — Upload environment variables
+
+---
+
+### Object Type Commands
+
+#### `eai types validate`
+Validate Object Type definitions against platform schema rules.
+
+**What it does**:
+1. Reads `src/eai.config/object-types.ts`
+2. Validates schemas locally
+3. Reports validation errors
+
+**No API calls** — local validation only
+
+---
+
+#### `eai types seed`
+Push Object Types to platform and verify convergence.
+
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
+
+**What it does**:
+1. Reads `src/eai.config/object-types.ts`
+2. Validates schemas locally
+3. Posts types to platform (batch)
+4. Fetches remote state to verify convergence
+
+**Platform API Endpoints Used**:
+- `POST /v3/object-types/batch` — Publish types
+- `GET /v3/object-types` — Verify remote state
+
+---
+
+#### `eai types diff`
+Compare local definitions with remote state.
+
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v3/object-types` — Fetch remote types
+
+---
+
+#### `eai types pull`
+Download remote types to local TypeScript.
+
+**Options**:
+- `--output <path>` — Output file path (default: src/eai.config/object-types.ts)
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v3/object-types` — Fetch remote types
+
+---
+
+### Resource Commands
+
+#### `eai resources list <type>`
+List resources of a specific Object Type.
+
+**Arguments**:
+- `<type>` — Object Type name
+
+**Options**:
+- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--page <number>` — Page number (default: 1)
+- `--limit <number>` — Items per page (default: 20, max: 100)
+- `--sort <field>` — Sort field (prefix with `-` for descending)
+- `--where[field][equals] <value>` — Filter by exact match
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v3/resources/{tenant_id}/{object_type}?page=1&limit=20&sort=...`
+
+**Response Schema**:
 ```json
 {
   "docs": [
     {
       "id": "uuid",
-      "data": { /* resource fields */ },
-      "created_at": "2026-04-30T12:00:00Z",
-      "updated_at": "2026-04-30T12:00:00Z",
+      "data": {},
       "version": 1,
+      "created_at": "2026-05-23T12:00:00Z",
+      "updated_at": "2026-05-23T12:00:00Z",
       "tenant": "tenant-id",
       "object_type": "ObjectTypeName"
     }
@@ -55,41 +362,41 @@ GET /v3/resources/{tenant_id}/{object_type}
 }
 ```
 
-**CLI Command**: `eai resources list <type> --page 1 --limit 20 --sort -created_at`
+---
 
-**Client Method**: `client.listResources(type, params)`
+#### `eai resources get <type> <id>`
+Get a single resource.
+
+**Arguments**:
+- `<type>` — Object Type name
+- `<id>` — Resource ID
+
+**Options**:
+- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v3/resources/{tenant_id}/{object_type}/{id}`
 
 ---
 
-#### Get Resource
-```
-GET /v3/resources/{tenant_id}/{object_type}/{id}
-```
+#### `eai resources create <type>`
+Create a resource.
 
-**Response**:
+**Arguments**:
+- `<type>` — Object Type name
+
+**Options**:
+- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--data <json>` — Resource data as JSON string
+- `--file <path>` — Resource data from JSON file
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `POST /v3/resources/{tenant_id}/{object_type}`
+
+**Request Body**:
 ```json
-{
-  "id": "uuid",
-  "data": { /* resource fields */ },
-  "version": 1,
-  "created_at": "2026-04-30T12:00:00Z",
-  "updated_at": "2026-04-30T12:00:00Z",
-  "tenant": "tenant-id",
-  "object_type": "ObjectTypeName"
-}
-```
-
-**CLI Command**: `eai resources get <type> <id>`
-
-**Client Method**: `client.getResource(type, id)`
-
----
-
-#### Create Resource
-```
-POST /v3/resources/{tenant_id}/{object_type}
-Content-Type: application/json
-
 {
   "data": {
     "field1": "value1",
@@ -98,771 +405,507 @@ Content-Type: application/json
 }
 ```
 
-**Response**:
-```json
-{
-  "id": "uuid",
-  "data": { /* created resource */ },
-  "version": 1,
-  "created_at": "2026-04-30T12:00:00Z"
-}
-```
+---
 
-**CLI Command**: `eai resources create <type> --data '{"field1":"value1"}'` or `--file resource.json`
+#### `eai resources update <type> <id>`
+Update a resource.
 
-**Client Method**: `client.createResource(type, data)`
+**Arguments**:
+- `<type>` — Object Type name
+- `<id>` — Resource ID
+
+**Options**:
+- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--data <json>` — Resource data as JSON string
+- `--file <path>` — Resource data from JSON file
+- `--format <format>` — Output format (text|json, default: text)
+
+**What it does**:
+1. Fetches current resource to get version
+2. Merges updates with existing data
+3. Posts update with version for optimistic locking
+
+**Platform API Endpoints Used**:
+- `GET /v3/resources/{tenant_id}/{object_type}/{id}` — Fetch current version
+- `PUT /v3/resources/{tenant_id}/{object_type}/{id}` — Update resource
 
 ---
 
-#### Update Resource
-```
-PUT /v3/resources/{tenant_id}/{object_type}/{id}
-Content-Type: application/json
+#### `eai resources delete <type> <id>`
+Delete a resource.
 
-{
-  "data": {
-    "field1": "new_value"
-  },
-  "version": 1
-}
-```
+**Arguments**:
+- `<type>` — Object Type name
+- `<id>` — Resource ID
 
-**Notes**:
-- Requires `version` field for optimistic locking
-- Returns `409 Conflict` if version mismatch
-- CLI auto-fetches current version before update
+**Options**:
+- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--yes` — Skip confirmation prompt
+- `--format <format>` — Output format (text|json, default: text)
 
-**Response**:
-```json
-{
-  "id": "uuid",
-  "data": { /* updated resource */ },
-  "version": 2,
-  "updated_at": "2026-04-30T12:05:00Z"
-}
-```
-
-**CLI Command**: `eai resources update <type> <id> --data '{"field1":"new_value"}'`
-
-**Client Method**: `client.updateResource(type, id, data, version)`
+**Platform API Endpoints Used**:
+- `DELETE /v3/resources/{tenant_id}/{object_type}/{id}`
 
 ---
 
-#### Delete Resource
-```
-DELETE /v3/resources/{tenant_id}/{object_type}/{id}
-```
+#### `eai resources query`
+Cross-type query with filters.
 
-**Response**: `204 No Content`
+**Options**:
+- `--types <types>` — Comma-separated Object Type names
+- `--where <filter>` — Filter expression
+- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--format <format>` — Output format (text|json, default: text)
 
-**CLI Command**: `eai resources delete <type> <id>` (prompts for confirmation)
-
-**Client Method**: `client.deleteResource(type, id)`
-
----
-
-#### Query Resources (Cross-Type)
-```
-POST /v3/resources/{tenant_id}/query
-Content-Type: application/json
-
-{
-  "types": ["User", "Organization"],
-  "where": {
-    "field1": "value1"
-  },
-  "limit": 50,
-  "page": 1
-}
-```
-
-**Response**:
-```json
-{
-  "results": [
-    { "id": "...", "object_type": "User", "data": {...} },
-    { "id": "...", "object_type": "Organization", "data": {...} }
-  ],
-  "totalDocs": 100,
-  "page": 1
-}
-```
-
-**CLI Command**: `eai resources query --types User,Organization --where '{"field1":"value1"}'`
-
-**Client Method**: `client.queryResources(query)`
+**Platform API Endpoints Used**:
+- `POST /v3/resources/query` — Cross-type query
 
 ---
 
-#### Get Published Schema
-```
-GET /v3/resources/schema/{tenant_id}
-```
+#### `eai resources schema`
+Show published Object Types for tenant.
 
-**Response**:
-```json
-{
-  "objectTypes": [
-    {
-      "slug": "user",
-      "schema": {
-        "type": "object",
-        "properties": {
-          "email": { "type": "string" },
-          "name": { "type": "string" }
-        },
-        "required": ["email"]
-      }
-    }
-  ]
-}
-```
+**Options**:
+- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--format <format>` — Output format (text|json, default: text)
 
-**CLI Command**: `eai resources schema`
-
-**Client Method**: `client.getSchema()`
+**Platform API Endpoints Used**:
+- `GET /v3/object-types?tenant_id={tenant_id}`
 
 ---
 
-### Chat API
+### AI Workflow Commands
 
-#### Send Chat Message
-```
-POST /v3/chat/{tenant_id}/{workflow}/{stage}
-Content-Type: application/json
+#### `eai chat send <message>`
+Send a single chat message.
 
-{
-  "message": "Hello, how can I help?",
-  "context": { "userId": "..." }
-}
-```
+**Arguments**:
+- `<message>` — Chat message text
 
-**Response**:
-```json
-{
-  "response": "I can assist you with...",
-  "conversationId": "uuid"
-}
-```
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
 
-**CLI Command**: `eai chat send "Hello" --workflow default --stage initial`
-
-**Client Method**: `client.sendChat(workflow, stage, message, context?)`
+**Platform API Endpoints Used**:
+- `POST /v3/ai/chat` — Send chat message
 
 ---
 
-#### Stream Chat (SSE)
-```
-POST /v3/chat/stream/{tenant_id}/{workflow}/{stage}
-Content-Type: application/json
-Accept: text/event-stream
+#### `eai chat stream <message>`
+Stream a conversation (SSE).
 
-{
-  "message": "Tell me a story",
-  "context": {}
-}
-```
+**Arguments**:
+- `<message>` — Chat message text
 
-**Response**: Server-Sent Events stream
-```
-data: {"token": "Once"}
-data: {"token": " upon"}
-data: {"token": " a"}
-data: {"done": true}
-```
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
 
-**CLI Command**: `eai chat stream "Tell me a story"`
-
-**Client Method**: `client.streamChat(workflow, stage, message, context?)` → Returns `Response` with SSE body
+**Platform API Endpoints Used**:
+- `POST /v3/ai/chat/stream` — Stream chat response
 
 ---
 
-### Documents API
+#### `eai workflow readiness [keys...]`
+Check tenant access, plan metadata, and workflow readiness together.
 
-#### Classify Document
-```
-POST /v3/documents/classify
-Content-Type: application/json
+**Arguments**:
+- `[keys...]` — Workflow keys to check (optional)
 
-{
-  "document": {
-    "id": "doc-id",
-    "content": "..."
-  }
-}
-```
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
 
-**Response**:
-```json
-{
-  "classification": "Invoice",
-  "confidence": 0.95
-}
-```
-
-**CLI Command**: `eai docs classify path/to/file.pdf`
-
-**Client Method**: `client.classifyDocument(payload)`
+**Platform API Endpoints Used**:
+- `GET /v3/ai/workflows/readiness?keys=...` — Check workflow readiness
 
 ---
 
-#### Index Document for RAG
-```
-POST /v3/documents/rag-index
-Content-Type: application/json
+#### `eai workflow status <key>`
+Check whether an AI runtime workflow key is bound for the active tenant.
 
-{
-  "documentId": "doc-id",
-  "chunks": [...]
-}
-```
+**Arguments**:
+- `<key>` — Workflow key
 
-**Response**:
-```json
-{
-  "indexed": true,
-  "chunkCount": 42
-}
-```
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
 
-**CLI Command**: `eai docs index <document-id>`
+**Platform API Endpoints Used**:
+- `GET /v3/ai/workflows/{key}/status` — Check workflow status
 
-**Client Method**: `client.indexDocument(payload)`
+**Possible Statuses**:
+- `available` — Workflow is ready to use
+- `operator_required` — Manual operator binding needed
+- `paid_upgrade_required` — Requires paid tier
+- `rate_limited` — Rate limit exceeded
+- `blocked` — Blocked for policy reasons
+- `unsupported` — Not supported in this environment
 
 ---
 
-### Internal Orchestration
+#### `eai workflow request <key>`
+Request operator-assisted workflow binding.
 
-#### Platform Request (Internal Routing)
-```
-POST /v3/orchestrate
-Content-Type: application/json
+**Arguments**:
+- `<key>` — Workflow key
 
-{
-  "backend": "payload" | "admin" | "mid",
-  "method": "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
-  "path": "/api/collections/...",
-  "body": { ... }
-}
-```
+**Options**:
+- `--reason <reason>` — Reason for request
+- `--format <format>` — Output format (text|json, default: text)
 
-**Purpose**: Routes requests to backend services (Payload CMS, AdminAPI, etc.) through PublicAPI.
-
-**Client Method**: `client.platformRequest(backend, method, path, body?)`
-
-**Used By**: Type seeding, environment config, internal admin operations
+**Platform API Endpoints Used**:
+- `POST /v3/ai/workflows/{key}/request` — Request workflow binding
 
 ---
 
-## AdminAPI Endpoints
+### Document Commands
 
-### User Management
+#### `eai docs upload <file>`
+Upload a document.
 
-#### Lookup User by Email
-```
-POST /api/admin/users/lookup
-Content-Type: application/json
+**Arguments**:
+- `<file>` — File path
 
-{
-  "email": "user@example.com"
-}
-```
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
 
-**Response**:
-```json
-{
-  "id": "user-oid",
-  "email": "user@example.com",
-  "username": "user@example.com",
-  "user": {
-    "id": "user-oid",
-    "email": "user@example.com"
-  }
-}
-```
-
-**CLI Command**: `eai user invite --email user@example.com`
-
-**Client Method**: `client.lookupUserByEmail(email)`
-
-**Auth**: Requires `tenant-admin` role on target tenant
+**Platform API Endpoints Used**:
+- `POST /v3/documents/upload` — Upload document (multipart/form-data)
 
 ---
 
-#### Provision User to Tenant
-```
-POST /api/admin/tenants/{tenant_id}/users
-Content-Type: application/json
+#### `eai docs classify <file>`
+Classify a document.
 
-{
-  "userId": "user-oid"
-}
-```
+**Arguments**:
+- `<file>` — File path
 
-**Response**:
-```json
-{
-  "success": true,
-  "message": "User added to tenant"
-}
-```
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
 
-**CLI Command**: `eai user invite --email user@example.com --tenant <id>`
-
-**Client Method**: `client.provisionUserToTenant(tenantId, userId)`
-
-**Auth**: Requires `tenant-admin` role on target tenant
+**Platform API Endpoints Used**:
+- `POST /v3/documents/classify` — Classify document
 
 ---
 
-### Tenant Management
+#### `eai docs index <id>`
+Index a document for RAG.
 
-#### Get Current User Tenant Memberships
-```
-GET /api/admin/current-user/tenant-memberships
-```
+**Arguments**:
+- `<id>` — Document ID
 
-**Response**:
-```json
-{
-  "tenants": [
-    {
-      "tenant": {
-        "id": "tenant-id",
-        "displayName": "My Tenant",
-        "slug": "my-tenant",
-        "isActive": true
-      },
-      "roles": ["tenant-admin"],
-      "isTenantAdmin": true
-    }
-  ]
-}
-```
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
 
-**CLI Command**: `eai tenant list`, `eai tenant select`
-
-**Client Method**: `client.getCurrentUserMemberships()`
-
-**Auth**: Requires authenticated user
+**Platform API Endpoints Used**:
+- `POST /v3/documents/{id}/index` — Index document
 
 ---
 
-#### Create Tenant
-```
-POST /api/admin/tenants
-Content-Type: application/json
+### Deployment Commands
 
-{
-  "displayName": "New Tenant",
-  "slug": "new-tenant",
-  "parent": "parent-tenant-id"
-}
-```
+#### `eai deploy setup`
+Generate deploy-demo.yml and GitHub secrets.
 
-**Response**:
-```json
-{
-  "id": "new-tenant-id",
-  "displayName": "New Tenant",
-  "slug": "new-tenant",
-  "parent": "parent-tenant-id",
-  "isActive": true
-}
-```
+**Options**:
+- `--repo <owner/name>` — GitHub repository (e.g., org/repo)
+- `--format <format>` — Output format (text|json, default: text)
 
-**CLI Command**: `eai tenant create --parent <id>`
+**What it does**:
+1. Generates `.github/workflows/deploy-demo.yml`
+2. Lists required GitHub secrets
+3. Provides setup instructions
 
-**Client Method**: `client.createTenant(payload)`
-
-**Auth**: Requires `tenant-admin` on parent tenant (for child creation)
+**No API calls** — generates local files only
 
 ---
 
-#### Bootstrap Child Tenant First Admin
-```
-POST /api/admin/tenants/{child_tenant_id}/bootstrap-admin
-Content-Type: application/json
+#### `eai deploy trigger`
+Trigger deployment workflow.
 
-{
-  "userOid": "caller-oid",
-  "userEmail": "caller@example.com"
-}
-```
+**Options**:
+- `--workflow <name>` — Workflow file name (default: deploy-demo.yml)
+- `--ref <ref>` — Git ref to deploy (default: main)
+- `--format <format>` — Output format (text|json, default: text)
 
-**Purpose**: Constrained first-admin bootstrap flow for child tenants. Caller must be `tenant-admin` on direct parent.
-
-**Response**:
-```json
-{
-  "parentTenantId": "parent-id",
-  "childTenantId": "child-id",
-  "userOid": "caller-oid",
-  "membershipCreated": true,
-  "adminAssigned": true,
-  "usable": true,
-  "status": "bootstrapped"
-}
-```
-
-**CLI Command**: Called internally by `eai tenant create`
-
-**Client Method**: `client.bootstrapChildTenantAdmin(childTenantId, request)`
-
-**Auth**: Requires `tenant-admin` on direct parent; child must not already have a tenant-admin
+**GitHub API Endpoints Used**:
+- `POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches` — Trigger workflow
 
 ---
 
-### Entra Provisioning
+#### `eai deploy status`
+Check deployment status.
 
-#### Confirm Entra App Registration
-```
-POST /api/admin/platform-ops/entra/confirm-app-registration
-Content-Type: application/json
+**Options**:
+- `--run-id <id>` — Workflow run ID (default: latest)
+- `--format <format>` — Output format (text|json, default: text)
 
-{
-  "tenantId": "platform-tenant-id",
-  "clientId": "vertical-client-id"
-}
-```
-
-**Purpose**: Creates or confirms Entra app registration for the vertical in the platform's CIAM tenant.
-
-**Response**:
-```json
-{
-  "exists": true,
-  "clientId": "client-id",
-  "displayName": "My Vertical",
-  "scopes": ["User.Read", "PublicAPI.All"],
-  "redirectUris": ["http://localhost:3000/auth/callback"],
-  "environment": "dev",
-  "tenantId": "platform-tenant-id",
-  "signinCompleteness": {
-    "signinReady": true,
-    "graphDelegatedPermsGranted": true,
-    "publicApiDelegatedPermsGranted": true,
-    "adminConsentGranted": true,
-    "preAuthorizedConfigured": true,
-    "warnings": []
-  }
-}
-```
-
-**New in v2.7.0**: The `signinCompleteness` field (also accepted as `signin_completeness`) provides a per-step rollup of post-provision sign-in wiring state. This prevents silent failures where the app registration is created but cannot reach PublicAPI from a user session.
-
-**Sign-in Completeness Fields**:
-- `signinReady` (boolean) — Overall readiness; true only when all four steps succeeded
-- `graphDelegatedPermsGranted` (boolean) — Microsoft Graph delegated permissions added
-- `publicApiDelegatedPermsGranted` (boolean) — PublicAPI delegated permissions added
-- `adminConsentGranted` (boolean) — Admin consent granted for required permissions
-- `preAuthorizedConfigured` (boolean) — PreAuthorizedApplications configured on PublicAPI app reg
-- `warnings` (string[]) — Human-readable warnings for failed steps
-
-**CLI Behavior (v2.7.0+)**:
-- When `signinReady: true` → Prints success confirmation and exits 0
-- When `signinReady: false` → Prints structured error table showing which step failed, displays warnings, provides portal remediation steps, and **exits with code 1**
-- When field absent (older PublicAPI) → Silent (cannot determine readiness)
-
-**CLI Command**: `eai provision entra`
-
-**Client Method**: `client.confirmEntraAppRegistration(payload)`
-
-**Auth**: Requires authenticated user; platform determines CIAM from active profile/environment
-
-**Error Handling**: Sanitized errors; never exposes backend URLs, tenant IDs, or raw platform errors
+**GitHub API Endpoints Used**:
+- `GET /repos/{owner}/{repo}/actions/runs` — Fetch workflow runs
 
 ---
 
-### Workflow API
+### Diagnostics Commands
 
-#### Get Builder Readiness
-```
-GET /v3/builder/readiness
-  ?tenant_id={tenantId}
-  &workflow_keys={key1}
-  &workflow_keys={key2}
-```
+#### `eai verify`
+Run platform connectivity checks.
 
-**Query Parameters**:
-- `tenant_id` (string, required) — Tenant ID to check readiness for
-- `workflow_keys` (string[], optional) — Public workflow keys to include in readiness checks
+**Options**:
+- `--tenant-id <id>` — Target tenant (default: active tenant, read-only)
+- `--format <format>` — Output format (text|json, default: text)
 
-**Response**:
-```json
-{
-  "tenantId": "tenant-uuid",
-  "status": "available",
-  "checks": [
-    {
-      "key": "tenant_plan_active",
-      "status": "available",
-      "reasonCode": "PLAN_ACTIVE",
-      "reasonMessage": "Tenant has active billing plan",
-      "nextAction": null
-    },
-    {
-      "key": "workflow_key_public",
-      "status": "unavailable",
-      "reasonCode": "WORKFLOW_NOT_CONFIGURED",
-      "reasonMessage": "Workflow not configured for this tenant",
-      "nextAction": "Configure workflow in tenant settings"
-    }
-  ]
-}
-```
+**What it does**:
+1. Checks authentication status
+2. Validates platform API connectivity
+3. Verifies tenant membership
+4. Tests Object Types endpoint
+5. Tests Resources endpoint
 
-**CLI Command**: `eai workflow readiness [workflow-keys...]`
-
-**Client Method**: `client.getBuilderReadiness({ tenantId, workflowKeys })`
+**Platform API Endpoints Used**:
+- `GET /v3/health` — Platform health check
+- `GET /v3/tenants/memberships` — Verify membership
+- `GET /v3/object-types` — Test types endpoint
+- `GET /v3/resources/schema` — Test resources endpoint
 
 ---
 
-#### Get Runtime Workflow Status
-```
-GET /v3/workflows/runtime/{workflowKey}/status?tenant_id={tenantId}
-```
+#### `eai verify calls`
+Audit platform API contracts used by the CLI.
 
-**Path Parameters**:
-- `workflowKey` (string) — Public workflow key
+**Options**:
+- `--tenant-id <id>` — Target tenant (default: active tenant, read-only)
+- `--format <format>` — Output format (text|json, default: text)
 
-**Query Parameters**:
-- `tenant_id` (string, required) — Tenant ID
-
-**Response**:
-```json
-{
-  "workflowKey": "sentiment-analysis",
-  "tenantId": "tenant-uuid",
-  "status": "available",
-  "reasonCode": "WORKFLOW_READY",
-  "reasonMessage": "Workflow is configured and ready to use",
-  "runtimeWorkflowRef": "runtime-workflow-uuid",
-  "nextAction": null
-}
-```
-
-**CLI Command**: `eai workflow status <workflow-key>`
-
-**Client Method**: `client.getRuntimeWorkflowStatus(workflowKey, tenantId)`
+**What it does**:
+1. Lists all API endpoints used by CLI
+2. Tests each endpoint
+3. Reports contract compatibility
 
 ---
 
-#### Request Runtime Workflow
-```
-POST /v3/workflows/runtime-requests
-Content-Type: application/json
+#### `eai doctor`
+Comprehensive diagnostics with fix suggestions.
 
-{
-  "tenant_id": "tenant-uuid",
-  "workflow_key": "sentiment-analysis",
-  "display_name": "Custom Sentiment Analyzer",
-  "reason": "Need sentiment analysis for customer feedback"
-}
-```
+**Options**:
+- `--check-updates` — Check for CLI, Gofer, and template drift
+- `--format <format>` — Output format (text|json, default: text)
 
-**Request Body**:
-- `tenant_id` (string, required) — Tenant ID
-- `workflow_key` (string, required) — Public workflow key
-- `display_name` (string, optional) — Human-readable name for the workflow instance
-- `reason` (string, optional) — Reason for requesting the workflow
-
-**Response**:
-```json
-{
-  "requestId": "request-uuid",
-  "workflowKey": "sentiment-analysis",
-  "tenantId": "tenant-uuid",
-  "status": "pending",
-  "reasonCode": "REQUEST_CREATED",
-  "reasonMessage": "Workflow request created and pending approval",
-  "runtimeWorkflowRef": null,
-  "nextAction": "Wait for admin approval"
-}
-```
-
-**CLI Command**: `eai workflow request <workflow-key> [--display-name <name>] [--reason <reason>]`
-
-**Client Method**: `client.requestRuntimeWorkflow({ tenantId, workflowKey, displayName, reason })`
+**What it does**:
+1. Runs all `verify` checks
+2. Validates project structure
+3. Checks dependencies
+4. Checks for CLI updates
+5. Checks for Gofer asset updates (if `--check-updates`)
+6. Checks for template drift (if `--check-updates`)
+7. Provides fix suggestions
 
 ---
 
-## Authentication Endpoints
+### Maintenance Commands
 
-### Entra CIAM (OAuth 2.0 + PKCE)
+#### `eai update`
+Update the CLI to the latest version.
 
-#### Authorization URL
-```
-GET https://{ciamTenant}.ciamlogin.com/{tenantId}/oauth2/v2.0/authorize
-  ?client_id={clientId}
-  &response_type=code
-  &redirect_uri=http://localhost:8888
-  &scope={scope}
-  &code_challenge={challenge}
-  &code_challenge_method=S256
-  &state={state}
-```
+**Options**:
+- `--check` — Check if update is available without installing
+- `--format <format>` — Output format (text|json, default: text)
 
-**Flow**:
-1. CLI generates PKCE `code_verifier` and `code_challenge`
-2. CLI opens browser to authorization URL
-3. User authenticates in browser
-4. Browser redirects to `localhost:8888?code=...&state=...`
-5. CLI exchanges `code` + `code_verifier` for tokens
+**What it does**:
+1. Checks GitHub Releases API for latest version
+2. Compares with installed version
+3. Runs `npm install -g @eai-tools/cli@latest` (if update available)
+
+**GitHub API Endpoints Used**:
+- `GET /repos/{owner}/{repo}/releases/latest` — Check latest version
 
 ---
 
-#### Token Exchange
-```
-POST https://{ciamTenant}.ciamlogin.com/{tenantId}/oauth2/v2.0/token
-Content-Type: application/x-www-form-urlencoded
+#### `eai gofer refresh`
+Safely refresh Gofer-managed assets.
 
-grant_type=authorization_code
-&client_id={clientId}
-&code={authCode}
-&redirect_uri=http://localhost:8888
-&code_verifier={codeVerifier}
-&scope={scope}
-```
+**Options**:
+- `--check` — Preview changes without applying
+- `--force` — Overwrite locally modified files (creates backups)
+- `--format <format>` — Output format (text|json, default: text)
 
-**Response**:
-```json
-{
-  "access_token": "eyJ...",
-  "refresh_token": "0.A...",
-  "expires_in": 3600,
-  "token_type": "Bearer"
-}
-```
+**What it does**:
+1. Reads `.eai-manifest.json`
+2. Compares installed Gofer assets with CLI bundle
+3. Detects locally modified files (via hash comparison)
+4. Updates safe files, backs up modified files
+5. Updates manifest
 
-**CLI Command**: `eai login`
-
-**Client Function**: `browserLogin()` in `src/lib/auth.ts`
+**No API calls** — local operation only
 
 ---
 
-#### Token Refresh
-```
-POST https://{ciamTenant}.ciamlogin.com/{tenantId}/oauth2/v2.0/token
-Content-Type: application/x-www-form-urlencoded
+#### `eai template check`
+Preview vertical-template and UI drift.
 
-grant_type=refresh_token
-&client_id={clientId}
-&refresh_token={refreshToken}
-&scope={scope}
-```
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
 
-**Response**: Same as token exchange
+**What it does**:
+1. Compares local project with CLI-bundled template
+2. Identifies new files in template
+3. Identifies changed files (requires manual review)
+4. Lists UI component drift
 
-**Automatic**: Triggered when token has &lt;5 min remaining
-
-**Client Function**: `getToken()` in `src/lib/auth.ts`
+**No API calls** — local operation only
 
 ---
 
-## Error Responses
+### Block Catalog Commands
 
-All API endpoints may return structured error responses:
+#### `eai blocks list`
+List available UI blocks.
 
-### Standard Error Format
-```json
-{
-  "detail": {
-    "error": "RESOURCE_NOT_FOUND",
-    "message": "Resource User:123 not found"
-  }
-}
-```
+**Options**:
+- `--category <category>` — Filter by category (foundation|product|addon|demo)
+- `--format <format>` — Output format (text|json, default: text)
 
-**Alternative Formats**:
-```json
-{
-  "detail": "Not found"
-}
-```
+**What it does**:
+1. Reads block catalog from project or CLI bundle
+2. Parses block metadata
+3. Lists blocks with descriptions
 
-```json
-{
-  "message": "Validation error",
-  "errors": [
-    { "field": "email", "message": "Invalid email format" }
-  ]
-}
-```
-
-### Common Error Codes
-
-| Status | Error Code | Description | CLI Action |
-|--------|-----------|-------------|-----------|
-| 401 | `UNAUTHORIZED` | Invalid or expired token | Prompts re-login |
-| 403 | `FORBIDDEN` | Insufficient permissions | Displays error, suggests checking roles |
-| 404 | `RESOURCE_NOT_FOUND` | Resource not found | Displays E202 error |
-| 409 | `VERSION_CONFLICT` | Optimistic locking failure | Re-fetches and retries |
-| 422 | `VALIDATION_ERROR` | Invalid request payload | Displays E301-E305 validation error |
-| 500 | `INTERNAL_ERROR` | Server error | Displays E201 platform error |
-
-**Client Error Handling**: `extractServerErrorContext()` and `parseApiError()` functions in `src/lib/api.ts`
-
-**Structured CLI Errors**: See `src/lib/error-codes.ts` for E001-E305 catalog
+**No API calls** — local operation only
 
 ---
 
-## Rate Limiting
+#### `eai blocks validate`
+Validate block catalog schema.
 
-- **Limit**: 100 requests per minute per token (subject to change)
-- **Headers**: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
-- **Status**: `429 Too Many Requests`
-- **CLI Behavior**: Displays error; does not auto-retry
+**Options**:
+- `--format <format>` — Output format (text|json, default: text)
+
+**What it does**:
+1. Reads block catalog
+2. Validates against schema
+3. Reports validation errors
+
+**No API calls** — local operation only
+
+---
+
+### Vertical Commands
+
+#### `eai vertical create <name>`
+Create a new vertical instance.
+
+**Arguments**:
+- `<name>` — Vertical display name
+
+**Options**:
+- `--template <name>` — Template variant
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `POST /v3/verticals` — Create vertical
 
 ---
 
-## Request Correlation
+## Platform API Endpoints
 
-All responses include correlation headers for debugging:
+### Authentication
+- `POST /oauth2/v2.0/token` — Entra CIAM token exchange (external)
 
-- `X-Request-ID` — Unique request identifier
-- `X-Correlation-ID` — Cross-service correlation ID
+### Health
+- `GET /v3/health` — Platform health check
 
-**CLI Debug Mode**: `--debug` flag logs request/response details including correlation IDs (not yet implemented)
+### Tenants
+- `GET /v3/tenants/memberships` — Fetch user's tenant memberships
+- `GET /v3/tenants/{id}` — Get tenant details
+- `POST /v3/tenants` — Create tenant
+- `POST /v3/tenants/{id}/bootstrap-first-admin` — Bootstrap first admin
 
----
+### Users
+- `POST /v3/tenants/{tenant_id}/users/invite` — Invite user to tenant
+- `POST /v3/tenants/{tenant_id}/users/provision` — Provision user
+
+### Object Types
+- `GET /v3/object-types` — List Object Types
+- `POST /v3/object-types/batch` — Publish Object Types (batch)
+
+### Resources
+- `GET /v3/resources/{tenant_id}/{object_type}` — List resources
+- `GET /v3/resources/{tenant_id}/{object_type}/{id}` — Get resource
+- `POST /v3/resources/{tenant_id}/{object_type}` — Create resource
+- `PUT /v3/resources/{tenant_id}/{object_type}/{id}` — Update resource
+- `DELETE /v3/resources/{tenant_id}/{object_type}/{id}` — Delete resource
+- `POST /v3/resources/query` — Cross-type query
+- `GET /v3/resources/schema` — Get schema for tenant
+
+### AI Workflows
+- `POST /v3/ai/chat` — Send chat message
+- `POST /v3/ai/chat/stream` — Stream chat response
+- `GET /v3/ai/workflows/readiness` — Check workflow readiness
+- `GET /v3/ai/workflows/{key}/status` — Check workflow status
+- `POST /v3/ai/workflows/{key}/request` — Request workflow binding
+
+### Documents
+- `POST /v3/documents/upload` — Upload document
+- `POST /v3/documents/classify` — Classify document
+- `POST /v3/documents/{id}/index` — Index document for RAG
+
+### Configuration
+- `GET /v3/config/environment` — Fetch environment variables
+- `GET /v3/config/secrets` — Fetch secrets
+- `POST /v3/config/environment` — Upload environment variables
+
+### Verticals
+- `POST /v3/verticals` — Create vertical
+
+### AdminAPI
+- `POST /admin/entra/provision` — Provision Entra app registration
+
+## Global Flags
+
+All commands support these global flags:
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--format <format>` | string | Output format: `text` (default), `json`, or `yaml` |
+| `--simple` | boolean | Plain text output without colors or symbols (for screen readers) |
+| `--no-color` | boolean | Disable colored output |
+| `--color` | boolean | Force colored output (for testing) |
+| `--profile <name>` | string | Use a named environment profile (e.g., dev, test) |
+| `--describe` | boolean | Output JSON schema of command structure (for AI agents) |
+
+## Error Codes
+
+The CLI uses structured error codes for consistent error handling:
+
+| Range | Category | Examples |
+|-------|----------|----------|
+| E001-E099 | Project errors | Not in EAI project, config missing, invalid structure |
+| E100-E199 | Auth errors | Not logged in, token expired, invalid credentials |
+| E200-E299 | Platform errors | API unreachable, resource not found, service unavailable |
+| E300-E399 | Validation errors | Invalid schema, missing field, type mismatch |
+
+All errors include:
+- Error code (e.g., `E101`)
+- Error message (e.g., "Not logged in")
+- Suggestion (e.g., "Run `eai login` to authenticate")
+- Exit code (non-zero)
 
 ## Machine-Readable Output
 
-All CLI commands support `--format json` for automation:
+Commands that return structured data support `--format json` for automation:
 
 ```bash
-eai resources list User --format json | jq '.docs[0].data.email'
-eai tenant list --format json | jq -r '.tenants[].tenant.slug'
-eai verify calls --format json
+# Get JSON output
+eai resources list User --format json
+
+# Parse with jq
+eai tenant list --format json | jq '.tenants[] | .slug'
+
+# Use in scripts
+if eai verify --format json | jq -e '.healthy' > /dev/null; then
+  echo "Platform is healthy"
+fi
 ```
 
-**JSON Output Structure**:
-- Successful responses: Mirrors API response structure
-- Errors: Structured error object with `code`, `message`, `suggestion`, `exitCode`
-
----
-
-## Contract Verification
-
-The `eai verify calls` command audits which platform API routes the CLI actually uses:
+The `--describe` flag outputs the CLI command structure as JSON Schema, enabling AI agents and automation tools to discover capabilities at runtime:
 
 ```bash
-eai verify calls --format json
+eai --describe        # Describe all commands
+eai types --describe  # Describe types subcommands
 ```
-
-**Output**:
-```json
-{
-  "publicApiCalls": [
-    "GET /v3/resources/{tenant}/{type}",
-    "POST /v3/chat/stream/{tenant}/{workflow}/{stage}"
-  ],
-  "adminApiCalls": [
-    "GET /api/admin/current-user/tenant-memberships",
-    "POST /api/admin/tenants/{id}/users"
-  ]
-}
-```
-
-**Purpose**: Helps platform maintainers understand CLI's API contract surface

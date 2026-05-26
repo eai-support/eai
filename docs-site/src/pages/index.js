@@ -44,7 +44,7 @@ export default function Home() {
           <article className={styles.panel}>
             <h2>Registry</h2>
             <p>Self-hosted package registry assets published alongside the docs site.</p>
-            <Link href="https://eai-tools.github.io/eai-cli/registry/">View the registry</Link>
+            <Link href="https://eai-tools.github.io/eai/registry/">View the registry</Link>
           </article>
         </section>
       </main>

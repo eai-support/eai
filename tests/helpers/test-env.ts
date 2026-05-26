@@ -18,7 +18,7 @@ export interface TestEnvironment {
  * Creates an isolated test environment with temp directory
  */
 export async function createTestEnvironment(): Promise<TestEnvironment> {
-  const dir = await mkdtemp(join(tmpdir(), 'eai-cli-test-'));
+  const dir = await mkdtemp(join(tmpdir(), 'eai-test-'));
 
   return {
     dir,

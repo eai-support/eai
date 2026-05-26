@@ -59,6 +59,6 @@ AI agents validate code against the constitution before implementation.
 
 ## Learn More
 
-- **Full Documentation**: https://github.com/eai-tools/gofer
+- **Full Documentation**: https://github.com/eai-tools/eai-gofer
 - **AI Agent Guidelines**: See AGENTS.md in your project root
 - **Gofer Extension**: View specs and progress in VSCode sidebar

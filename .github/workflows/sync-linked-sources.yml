@@ -85,7 +85,7 @@ jobs:
 
             Updated by `${{ github.workflow }}` after detecting drift in:
             - `gofer`
-            - `eai-vertical-template`
+            - `eai-app-template`
             - template-resolved `@enterpriseaigroup/*` packages
 
             Proposed version bump: `${{ env.next_version }}`

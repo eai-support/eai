@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
   canonicalSource: .specify/commands/6_gofer_validate.md
-  canonicalChecksum: 22db7af79cad3e9dc5d3157be0eaa5d9c036e6f93ad867884c6a780a3eb33c78
+  canonicalChecksum: 08cf2940efd1d871a1a4c161a16fd559eccceba52b6a78099e8a87d40ec4827e
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -1890,9 +1890,16 @@ For application delivery, validation MUST also check
   capability, the evidence source used to evaluate it, and whether it is
   accessible now, purchasable but unavailable now, or unavailable without new
   platform work.
+- The approved external/internal/hybrid profile choice, package lane, coupling
+  status, Storybook story IDs, theme override points, public-readiness target,
+  and custom-block exceptions are present in the preview/approval/service-fit
+  artifacts and match the delivered implementation.
 - Validation confirms that app-delivery runs used Vertical Template blocks by
   default and that any create-new UI concept was explicitly approved rather
   than silently introduced.
+- Validation confirms that block-porting tasks produced the expected package
+  surface and that public or hybrid lanes do not directly depend on DAISY
+  internals unless an approved internal-only exception is recorded.
 - Chatbot, voice, accessibility, translation, contextual prefill, validation,
   and step-goal assistance claims are covered by acceptance tests where they are
   in scope.

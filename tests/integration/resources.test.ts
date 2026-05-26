@@ -164,13 +164,13 @@ describe('resource type diagnostics', () => {
   test('builds dynamic vertical enrollment payloads without child tenant fields', () => {
     expect(buildVerticalEnrollmentData('TikTok V1', 'company-tenant', {
       template: 'blank-vertical-template',
-      source: 'eai-cli',
+      source: 'eai',
     })).toEqual({
       tenantId: 'company-tenant',
       verticalKey: 'tik-tok-v1',
       displayName: 'TikTok V1',
       status: 'pending',
-      source: 'eai-cli',
+      source: 'eai',
       templateKey: 'blank-vertical-template',
     });
   });
@@ -185,7 +185,7 @@ describe('resource type diagnostics', () => {
       verticalKey: 'tiktokv1',
       displayName: 'TikTok V1',
       status: 'pending',
-      source: 'eai-cli',
+      source: 'eai',
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -198,7 +198,7 @@ describe('resource type diagnostics', () => {
             verticalKey: 'tiktokv1',
             displayName: 'TikTok V1',
             status: 'pending',
-            source: 'eai-cli',
+            source: 'eai',
           },
         }),
       }),
@@ -304,7 +304,7 @@ describe('resource type diagnostics', () => {
   });
 
   test('uploads resource files as isolated Blob-backed file properties', async () => {
-    const tmp = await mkdtemp(join(tmpdir(), 'eai-cli-resource-file-'));
+    const tmp = await mkdtemp(join(tmpdir(), 'eai-resource-file-'));
     const filePath = join(tmp, 'source note.txt');
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);

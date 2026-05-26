@@ -37,6 +37,19 @@ this section "Not applicable" and link to the classification rationale in
 | `ui-review-log.md` | {{preview-iteration-evidence}} | {{yes-or-na}} |
 | `ui-approval.md` | {{explicit-approval-gate}} | {{yes-or-na}} |
 
+## AI-Readable Blocks Bridge Contract
+
+| Field | Decision | Evidence |
+| ----- | -------- | -------- |
+| Profile choice | External / Internal / Hybrid | {{source}} |
+| Package lane | {{public-package-internal-app-hybrid-adapter-app-local}} | {{source}} |
+| Coupling status | {{daisy-coupled-daisy-decoupled-hybrid-adapter}} | {{source}} |
+| Storybook story IDs | {{story-ids-or-exceptions}} | {{source}} |
+| Theme override points | {{tokens-slots-css-vars}} | {{source}} |
+| Custom-block exceptions | {{none-or-approval-path}} | {{source}} |
+| Public-readiness target | {{required-deferred-not-applicable}} | {{source}} |
+| Block porting / DAISY decoupling | {{reuse-port-adapter-exception}} | {{source}} |
+
 ## AI Assistance Contract
 
 For app delivery, the user-facing process should be four steps or fewer. If the

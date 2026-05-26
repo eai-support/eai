@@ -212,6 +212,18 @@ If journeys/base-journey.md exists and is classified as app delivery, use it to:
 If ui-preview-brief.md exists, use it to:
 - Require the first MVP preview to stay inside the approved Vertical Template
   blocks before any create-new UI concept is proposed
+- Require the specification to preserve the selected external/internal/hybrid
+  profile choice, package lane, coupling status, public-readiness target, and
+  block-porting decision for each UI block
+- Require every proposed UI building block to cite an `eai blocks describe`
+  result by stable ID; ambiguous display names are not acceptable
+- Require any unknown UI component to be recorded as a custom-block exception
+  with manifest shape, component owner, data/resource binding, and approval path
+- Require Storybook story IDs and theme override points for every reusable or
+  ported block; if no story exists, make story creation or an approved exception
+  part of the requirements
+- Require DAISY-coupled blocks to define the decoupling boundary through
+  `eai resources schema`, an adapter, or an explicit internal-only exception
 - Carry forward branding/logo requirements as explicit scope, not as implied
   polish
 - Require preview self-review evidence such as screenshot, local render proof,
@@ -622,7 +634,7 @@ At minimum the map must name:
 1. **Vertical App**: the student-facing or business-facing vertical being
    delivered (maps to the `vertical-template` reference).
 2. **EAI Services**: the EnterpriseAI platform services the vertical consumes
-   (maps to entries in `.specify/references/eai/eai-cli.md`).
+   (maps to entries in `.specify/references/eai/eai.md`).
 3. **Deployment Target**: the deployment environment and pipeline that will host
    the running vertical (maps to `.specify/references/eai/deployment-repo.md`).
 
@@ -645,6 +657,7 @@ When EnterpriseAI is active or no profile is specified, generate
 | UI Preview and Approval | For app delivery: preview brief, Vertical Template constraints, branding inputs, preview validation evidence expectations, review-log requirements, approval gate rules; for non-app work: mark not applicable |
 | AI Assistance Contract | Step goal, assistance mode, context used, generated output, user controls, confidence/evidence, audit trail, completion signal, and escalation for each app step |
 | EnterpriseAI Service Fit | For app delivery: desired capabilities, evidence source, accessible now vs purchasable vs unavailable classification, selected direction, and blocked-capability handling |
+| Public Platform Boundary | Public docs/help/CLI/PublicAPI behavior the builder may rely on; private platform details intentionally excluded; upgrade/operator-required paths expressed as product-safe user actions |
 | Permissions and Tenant Boundaries | Identity, authorization, policy, isolation, and tenant assumptions |
 | APIs and Events | ResourceAPI surfaces, events, payload ownership, and contract-test hooks |
 | Deployment and Runtime | Environment, config, observability, rollback, and operating assumptions |
@@ -652,6 +665,15 @@ When EnterpriseAI is active or no profile is specified, generate
 
 The contract pack must link every new object type/API/workflow back to
 `reuse-scan.md` and must flag any "create new" decision that lacks evidence.
+For EnterpriseAI public-facing work, the contract pack must also separate:
+
+- **Public builder knowledge**: EAI CLI commands, PublicAPI responses, template
+  configuration, support documentation, and user-safe statuses such as
+  `available`, `operator_required`, `upgrade_required`, and `not_ready`.
+- **Private platform knowledge**: internal service topology, direct downstream
+  credentials, private provisioning paths, and any bypass around plan limits or
+  AuthZ. These may inform internal implementation tasks, but must not be copied
+  into public docs, generated help, templates, or vertical guidance.
 
 ---
 

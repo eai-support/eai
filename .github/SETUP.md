@@ -16,8 +16,8 @@ This project publishes the CLI through the **static scoped registry** on GitHub 
 
 Release channel responsibilities:
 
-- **GitHub Pages static registry** is available at `https://eai-tools.github.io/eai-cli/registry/`
-- Users should configure it once with `npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user`
+- **GitHub Pages static registry** is available at `https://eai-tools.github.io/eai/registry/`
+- Users should configure it once with `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
 - Install or update with `npm install -g @eai-tools/cli`
 - The release workflow creates the GitHub release from the pushed release tag
 - The docs workflow deploys the matching static registry metadata from `main`

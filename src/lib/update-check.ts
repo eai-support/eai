@@ -11,7 +11,7 @@ import chalk from 'chalk';
 
 const EAI_DIR = join(homedir(), '.eai');
 const CACHE_FILE = join(EAI_DIR, 'update-check.json');
-export const STATIC_REGISTRY_URL = 'https://eai-tools.github.io/eai-cli/registry/';
+export const STATIC_REGISTRY_URL = 'https://eai-tools.github.io/eai/registry/';
 export const STATIC_PACKUMENT_URL = `${STATIC_REGISTRY_URL}@eai-tools/cli`;
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 

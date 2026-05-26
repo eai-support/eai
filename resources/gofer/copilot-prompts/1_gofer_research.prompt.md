@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
   canonicalSource: .specify/commands/1_gofer_research.md
-  canonicalChecksum: d95dcba083abf5d7c230cb58f490e1ac6d5c96a6f6ed1d8a2cf396d05c09268f
+  canonicalChecksum: 63bc89a4ff3725f3a1fbc4a196da0edb17eabda22cbf9efcf363e9348f57e094
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -282,6 +282,9 @@ the standard profile, generate:
    - Feature summary and approved business scenario.
    - Application classification: app delivery or non-app work, with rationale.
    - Four-step-or-fewer AI-augmented journey summary when app delivery applies.
+   - AI-readable blocks bridge summary: external/internal/hybrid profile
+     choice, package lane, coupling status, public-readiness target, and block
+     porting posture.
    - Relevant existing specs, code paths, platform references, and API surfaces.
    - EnterpriseAI object types, tenant assumptions, deployment target, and
      validation criteria.
@@ -293,15 +296,32 @@ the standard profile, generate:
    - Existing AI assistance capabilities: chat, voice, accessibility,
      translation, contextual prefill, recommendation, validation, completion
      checks, audit logging, and escalation.
+   - Existing UI block/package assets, Storybook story IDs, theme override
+     points, and DAISY dependencies that affect reuse, porting, or decoupling.
    - Decision for each candidate: reuse, extend, or create new.
    - Rationale, evidence path, and stakeholder/architecture owner if a new
      platform concept is recommended.
 3. `{FEATURE_DIR}/ui-preview-brief.md` (application delivery only)
    - MVP preview scope: target users, must-have screens, target workflow, and
      the smallest useful UI slice to show first.
+   - Package profile: selected external/internal/hybrid profile choice, package
+     lane, coupling status, public-readiness target, and why that lane is
+     appropriate for this feature.
    - Vertical Template constraint map: which approved template blocks or layout
      patterns the preview should use before any create-new UI concept is
      considered.
+   - Block catalog evidence: run `eai --describe`, `eai blocks list`,
+     `eai blocks describe <id>` for each candidate, and
+     `eai resources schema`; record stable block IDs, required resources,
+     data/action bindings, Storybook story IDs, theme override points, package
+     lane, coupling status, and any custom-block exception that needs approval.
+   - Block porting and DAISY decoupling evidence: identify whether each selected
+     block is reused as-is, ported into a package lane, or blocked by DAISY
+     coupling; define the adapter/resource-schema boundary for any decoupling
+     work.
+   - Public-readiness evidence: for external or hybrid profiles, capture package
+     exports, consumer-facing constraints, accessibility/theming expectations,
+     and what still prevents public consumption.
    - Branding inputs: whether client styling, logos, colors, copy tone, or
      other corporate-brand artifacts must be applied.
    - Preview validation plan: what screenshot, browser-render, or
@@ -345,6 +365,8 @@ Once all agents complete:
 4. **Application-Delivery Gate Summary** (app delivery only)
    - Preview-first rationale and the smallest useful MVP to show first
    - Vertical Template reuse constraints and any approved extension gaps
+   - External/internal/hybrid profile choice, package lane, coupling status,
+     public-readiness target, block-porting needs, and DAISY decoupling status
    - Candidate capability-discovery inputs for the later service-fit gate
    - Non-app runs must explicitly state "Not applicable"
 
