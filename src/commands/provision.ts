@@ -254,11 +254,8 @@ Diagnostics:
       tenantId: string | null;
       signinCompleteness: SigninCompletenessSummary | null;
     };
-    // Respect APP_BASE_PATH from the vertical's .env.local so verticals deployed
-    // under a subpath (e.g. /van) get a redirect URI Auth.js can actually match.
-    // Without this, Next.js basePath-aware verticals 404 on the OAuth callback.
-    const basePath = (env.APP_BASE_PATH ?? '').replace(/\/+$/, '');
-    const localCallback = `http://localhost:3000${basePath}/api/auth/callback/microsoft-entra-id`;
+    const authRuntime = resolveAuthRuntime(env);
+    const localCallback = `${authRuntime.siteUrl}/api/auth/callback/microsoft-entra-id`;
 
     try {
       result = await client.provisionEntraApp({
@@ -285,6 +282,9 @@ Diagnostics:
     if (result.redirectUris.length > 0) {
       optionalEnv.ENTRA_REDIRECT_URIS = result.redirectUris.join(',');
     }
+    optionalEnv.AUTH_URL = authRuntime.siteUrl;
+    optionalEnv.NEXTAUTH_URL = authRuntime.siteUrl;
+    optionalEnv.AUTH_TRUST_HOST = 'true';
     if (result.environment) {
       optionalEnv.ENTRA_ENVIRONMENT = result.environment;
     }
@@ -373,6 +373,42 @@ Diagnostics:
     // exit 0 here turns that silent failure into a loud, actionable one.
     reportSigninCompleteness(result.signinCompleteness, result.clientId);
   });
+
+function normaliseBasePath(value: string | undefined): string {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed || trimmed === '/') {
+    return '';
+  }
+  return `/${trimmed.replace(/^\/+|\/+$/g, '')}`;
+}
+
+function stripAuthEndpointPath(pathname: string): string {
+  if (pathname === '/api/auth') {
+    return '/';
+  }
+  return pathname.endsWith('/api/auth')
+    ? pathname.slice(0, -'/api/auth'.length) || '/'
+    : pathname;
+}
+
+function stripTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+function resolveAuthRuntime(env: Record<string, string>): { siteUrl: string } {
+  const basePath = normaliseBasePath(env.APP_BASE_PATH);
+  const rawUrl = env.NEXTAUTH_URL || env.AUTH_URL || 'http://localhost:3000';
+
+  try {
+    const url = new URL(rawUrl);
+    url.pathname = basePath || stripAuthEndpointPath(url.pathname);
+    url.search = '';
+    url.hash = '';
+    return { siteUrl: stripTrailingSlash(url.toString()) };
+  } catch {
+    return { siteUrl: `http://localhost:3000${basePath}` };
+  }
+}
 
 function reportSigninCompleteness(
   summary: SigninCompletenessSummary | null,

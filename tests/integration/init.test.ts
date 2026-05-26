@@ -206,6 +206,16 @@ describe("eai init", () => {
       "my-vertical/.env.local",
       "NEXT_PUBLIC_APP_BASE_PATH=/my-vertical",
     );
+    await expectFileContains(
+      ctx,
+      "my-vertical/.env.local",
+      "AUTH_URL=http://localhost:3000/my-vertical",
+    );
+    await expectFileContains(
+      ctx,
+      "my-vertical/.env.local",
+      "NEXTAUTH_URL=http://localhost:3000/my-vertical",
+    );
     await expectFileExists(ctx, "my-vertical/src/eai.config/object-types.ts");
     await expectFileExists(
       ctx,
