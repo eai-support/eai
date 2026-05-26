@@ -1,7 +1,7 @@
 {
   "name": "@eai-tools/cli",
   "dist-tags": {
-    "latest": "2.8.15"
+    "latest": "2.9.0"
   },
   "versions": {
     "0.1.0": {
@@ -1038,11 +1038,34 @@
         "shasum": "02e31f39380305dcbf3b9e116aa8cae0cc41e3f7",
         "integrity": "sha512-kcAUfTr+d5UMKwWfCnbnmLgqv0gNBPG/yp/QCgmOaWX9NrD3O4XrIM84F+jvuuolG+zYHEaOP07QWt0Kbnwb5A=="
       }
+    },
+    "2.9.0": {
+      "name": "@eai-tools/cli",
+      "version": "2.9.0",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=20.0.0"
+      },
+      "dependencies": {
+        "chalk": "5.6.2",
+        "commander": "13.1.0",
+        "dotenv": "16.6.1",
+        "inquirer": "12.11.1",
+        "ora": "8.2.0"
+      },
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-2.9.0.tgz",
+        "shasum": "1df910d7f57cf16bdd8ce3810bf287785e153780",
+        "integrity": "sha512-gT0PiJZ/98kfWz8aGlVIWEDjgdaXEzF3Wr5frD1FLFNqOIgo1jvjwhgyg9tfIOWX3sW4yrODx4LPEmwiwjy09A=="
+      }
     }
   },
   "time": {
     "0.1.0": "2026-03-09T07:55:20.781Z",
-    "modified": "2026-05-26T04:47:11.490Z",
+    "modified": "2026-05-26T21:12:03.671Z",
     "0.1.1": "2026-03-10T01:18:22.994Z",
     "0.1.2": "2026-03-10T01:52:22.136Z",
     "0.1.3": "2026-03-10T02:10:02.992Z",
@@ -1086,7 +1109,8 @@
     "2.8.12": "2026-05-11T14:16:44.712Z",
     "2.8.13": "2026-05-12T23:36:32.787Z",
     "2.8.14": "2026-05-26T04:31:07.212Z",
-    "2.8.15": "2026-05-26T04:47:11.490Z"
+    "2.8.15": "2026-05-26T04:47:11.490Z",
+    "2.9.0": "2026-05-26T21:12:03.671Z"
   },
-  "modified": "2026-05-26T04:47:11.490Z"
+  "modified": "2026-05-26T21:12:03.671Z"
 }
