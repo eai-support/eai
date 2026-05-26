@@ -23,7 +23,7 @@ async function createGoferFixture(projectRoot: string): Promise<void> {
   await writeFile(
     join(projectRoot, 'package.json'),
     JSON.stringify({
-      name: '@eai-tools/gofer-refresh-fixture',
+      name: '@eai-tools/eai-gofer-refresh-fixture',
       version: '0.0.1',
       type: 'module',
       scripts: {

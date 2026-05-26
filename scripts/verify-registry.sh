@@ -24,7 +24,7 @@ DEPLOY_DOC="$ROOT/.tech-docs/deployment.md"
 LLMS_INDEX="$ROOT/docs-site/static/llms.txt"
 LLMS_FULL="$ROOT/docs-site/static/llms-full.txt"
 CLI_HELP="$ROOT/docs-site/static/cli-help.txt"
-STATIC_REGISTRY_URL="https://eai-tools.github.io/eai-cli/registry/"
+STATIC_REGISTRY_URL="https://eai-tools.github.io/eai/registry/"
 CONFIG_CMD="npm config set @eai-tools:registry ${STATIC_REGISTRY_URL} --location=user"
 INSTALL_CMD="npm install -g @eai-tools/cli"
 PASS=0

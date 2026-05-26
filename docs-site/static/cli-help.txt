@@ -2,7 +2,7 @@
 Version: 2.8.13
 
 Install / update the CLI:
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 npm install -g @eai-tools/cli
 
 eai --help
@@ -47,6 +47,7 @@ Commands:
   gofer                  Inspect and refresh Gofer-managed project assets
   template               Preview vertical template and UI component drift for
                          the current project
+  blocks                 Discover AI-readable EAI UI block manifests
   help [command]         display help for command
 
 Getting Started:
@@ -112,6 +113,12 @@ Updates:
   # Preview vertical-template and UI component drift before copying changes
   eai template check       review potential vertical or UI file updates without overwriting local work
 
+  # Discover AI-readable UI blocks for Gofer and vertical apps
+  eai blocks list --readiness public-ready
+                                  list foundation, product, addon, and demo block IDs
+  eai blocks describe core.button
+  eai blocks readiness     summarize public readiness and package-profile compatibility
+
 Accessibility:
   # Screen reader friendly output
   eai --simple <command>
@@ -136,7 +143,7 @@ Examples:
 
 Notes:
   - The CLI installs from the scoped EAI static registry on GitHub Pages.
-  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
   - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
   - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
   - Use `eai template check` to preview vertical-template and UI drift before copying changes manually.

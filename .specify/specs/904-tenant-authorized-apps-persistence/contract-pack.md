@@ -4,8 +4,8 @@ Date: 2026-05-11
 
 ## Actors
 
-- Tenant admin running `eai-cli`
-- `eai-cli` as the operator-facing command surface
+- Tenant admin running `eai`
+- `eai` as the operator-facing command surface
 - PublicAPI as orchestration boundary
 - AdminAPI as Entra/Graph app-registration owner
 - Configurator as tenant and tenant-data CMS owner
@@ -113,7 +113,7 @@ Date: 2026-05-11
 - App Config label should remain the vertical/app name so `eai env pull --include-secrets` can recover secrets consistently.
 - Runtime auth acceptance continues to read `authorizedApps[]` through PublicAPI validation.
 - Configurator tenant-data upsert should use existing `upsertTenantData(...)` semantics.
-- `eai-cli` should treat local env as a mirror of platform-owned state, not the source of truth.
+- `eai` should treat local env as a mirror of platform-owned state, not the source of truth.
 
 ## Acceptance Tests
 

@@ -2,7 +2,7 @@
 
 ## Scope
 
-Validate and review the `eai-cli` fixes for:
+Validate and review the `eai` fixes for:
 
 - tenant-admin-only tenant listing
 - tenant-key to tenant-ID resolution for `types seed` / `types diff`

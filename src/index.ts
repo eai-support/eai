@@ -40,6 +40,7 @@ import { updateCommand } from './commands/update.js';
 import { provisionCommand } from './commands/provision.js';
 import { goferCommand } from './commands/gofer.js';
 import { templateCommand } from './commands/template.js';
+import { blocksCommand } from './commands/blocks.js';
 import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
 import { setActiveProfile, loadActiveProfileFromConfig } from './lib/profile.js';
@@ -108,6 +109,7 @@ program.addCommand(updateCommand);
 program.addCommand(provisionCommand);
 program.addCommand(goferCommand);
 program.addCommand(templateCommand);
+program.addCommand(blocksCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -173,6 +175,12 @@ ${chalk.bold('Updates:')}
 
   ${chalk.dim('# Preview vertical-template and UI component drift before copying changes')}
   ${chalk.cyan('eai template check')}       ${chalk.dim('review potential vertical or UI file updates without overwriting local work')}
+
+  ${chalk.dim('# Discover AI-readable UI blocks for Gofer and vertical apps')}
+  ${chalk.cyan('eai blocks list --readiness public-ready')}
+                                  ${chalk.dim('list foundation, product, addon, and demo block IDs')}
+  ${chalk.cyan('eai blocks describe core.button')}
+  ${chalk.cyan('eai blocks readiness')}     ${chalk.dim('summarize public readiness and package-profile compatibility')}
 
 ${chalk.bold('Accessibility:')}
   ${chalk.dim('# Screen reader friendly output')}

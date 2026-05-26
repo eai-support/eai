@@ -4,7 +4,7 @@ Date: 2026-05-11
 
 ## User Story
 
-As a tenant admin using `eai-cli`, I want tenant creation and Entra app
+As a tenant admin using `eai`, I want tenant creation and Entra app
 provisioning to leave `tenants.authorizedApps[]` in the correct state so the
 resulting tenant and app can authenticate against platform services without a
 manual Configurator repair step.
@@ -17,13 +17,13 @@ manual Configurator repair step.
 - AC-001a: The tenant CMS stores app-registration metadata in `tenant-data`
   using a dedicated dataType for platform-managed app registrations rather than
   overloading root-tenant `entra-config`.
-- AC-002: Root tenant creation flows used by `eai-cli` continue to create
+- AC-002: Root tenant creation flows used by `eai` continue to create
   tenants through Configurator `/tenant-management`, so the tenant record
   includes the caller app's `azp` in `authorizedApps[]`.
-- AC-003: Child tenant creation flows used by `eai-cli` continue to create
+- AC-003: Child tenant creation flows used by `eai` continue to create
   children through AdminAPI into Configurator `/tenant-management`, so the
   child tenant inherits the parent tenant's `authorizedApps[]`.
-- AC-004: Entra app provisioning flows used by `eai-cli` (`eai provision entra`
+- AC-004: Entra app provisioning flows used by `eai` (`eai provision entra`
   and inline `eai init`) persist the provisioned or reconciled app `clientId`
   into `tenants.authorizedApps[]` before the CLI presents the app registration
   as ready for runtime use.
@@ -35,18 +35,18 @@ manual Configurator repair step.
   platform route, persists the replacement secret to cloud config/Key Vault,
   and refreshes the tenant-data metadata record.
 - AC-005: The provisioning API contract exposes the tenant-authorization
-  outcome explicitly, and `eai-cli` surfaces a clear success, repair, warning,
+  outcome explicitly, and `eai` surfaces a clear success, repair, warning,
   or failure state based on that outcome rather than silently ignoring it.
 - AC-005a: The provisioning API contract also exposes tenant-metadata upsert
   and cloud-secret persistence outcomes explicitly, and the CLI reports them in
   operator-friendly terms.
-- AC-006: `eai-cli` integration coverage includes:
+- AC-006: `eai` integration coverage includes:
   new registration success, existing-registration repair, and
   tenant-authorization warning/failure handling.
-- AC-006a: `eai-cli` integration coverage includes forced secret rotation and
+- AC-006a: `eai` integration coverage includes forced secret rotation and
   local secret hydration from the platform-managed cloud config label.
 - AC-007: The feature is specified and tracked in
-  `mod-tools/eai-cli/.specify/specs/904-tenant-authorized-apps-persistence/`.
+  `mod-tools/eai/.specify/specs/904-tenant-authorized-apps-persistence/`.
   No runtime code change is required in the `gofer` submodule for this work.
 
 ## Dependencies
@@ -59,7 +59,7 @@ manual Configurator repair step.
   `validate_azp_for_tenant(...)`.
 - `mod-platform/AdminAPI` child-tenant creation proxy and app-registration
   provisioning plus secret rotation.
-- `mod-tools/eai-cli` provision and init command handling plus integration
+- `mod-tools/eai` provision and init command handling plus integration
   tests.
 
 ## Non-Goals

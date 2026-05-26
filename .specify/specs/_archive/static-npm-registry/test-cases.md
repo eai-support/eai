@@ -112,7 +112,7 @@ Traces to: US1-AC2, FR-005
 #
 # parsePackument
 #
-# expectDistTarballUrl "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.0.tgz"
+# expectDistTarballUrl "https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-0.1.0.tgz"
 ```
 
 #### TC005: SHA-1 and SHA-512 Hashes Are Correct
@@ -275,7 +275,7 @@ Traces to: US2-AC1, FR-012
 #
 # readFile ".github/workflows/release.yml"
 #
-# expectMatch "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry"
+# expectMatch "@eai-tools:registry=https://eai-tools.github.io/eai/registry"
 # expectMatch "npm install -g @eai-tools/cli"
 # expectNoMatch "brew"
 # expectNoMatch "homebrew"
@@ -321,7 +321,7 @@ Traces to: FR-011
 #
 # readFile "release.sh"
 #
-# expectMatch "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry"
+# expectMatch "@eai-tools:registry=https://eai-tools.github.io/eai/registry"
 # expectMatch "npm install -g @eai-tools/cli"
 # expectNoMatchCaseInsensitive "brew"
 # expectNoMatchCaseInsensitive "homebrew"
@@ -369,8 +369,8 @@ Traces to: US3-AC1, FR-008
 #
 # readFile "docs/src/content/docs/getting-started/installation.mdx"
 #
-# expectMatch "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry"
-# expectMatch 'echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc'
+# expectMatch "@eai-tools:registry=https://eai-tools.github.io/eai/registry"
+# expectMatch 'echo "@eai-tools:registry=https://eai-tools.github.io/eai/registry" >> ~/.npmrc'
 ```
 
 #### TC013: Installation Page Has npm Install as Primary Method
@@ -470,7 +470,7 @@ Traces to: US3-AC3
 # Traces to: US3-AC3
 # Note: Requires deployed GitHub Pages. Manual post-deployment test.
 #
-# configureNpmrc "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry"
+# configureNpmrc "@eai-tools:registry=https://eai-tools.github.io/eai/registry"
 #
 # runCommand "npm install -g @eai-tools/cli"
 #
@@ -490,7 +490,7 @@ Traces to: US3-AC1, FR-008
 #
 # readFile "docs/src/content/docs/index.mdx"
 #
-# expectMatch "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry"
+# expectMatch "@eai-tools:registry=https://eai-tools.github.io/eai/registry"
 # expectMatch "npm install -g @eai-tools/cli"
 # expectNoMatch "npx @eai-tools/cli"  # npx won't work without .npmrc
 ```
@@ -523,9 +523,9 @@ Traces to: US3-AC1, FR-008
 #
 # readFile "README.md"
 #
-# expectMatch "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry"
+# expectMatch "@eai-tools:registry=https://eai-tools.github.io/eai/registry"
 # expectMatch "npm install -g @eai-tools/cli"
-# expectNoMatch "github:eai-tools/eai-cli"  # old method removed as primary
+# expectNoMatch "github:eai-tools/eai"  # old method removed as primary
 # expectMatch "Registry generation"  # in releasing section
 ```
 

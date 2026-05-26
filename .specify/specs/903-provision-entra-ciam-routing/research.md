@@ -4,7 +4,7 @@ Date: 2026-04-13
 
 ## Repositories Reviewed
 
-- `eai-cli`: profile selection, tenant context, and `eai provision entra`.
+- `eai`: profile selection, tenant context, and `eai provision entra`.
 - `PublicAPI`: public provisioning route and environment config loading.
 - `AdminAPI`: app registration service, auth validation, App Configuration loading.
 - `ResourceAPI`: environment-owned CIAM configuration pattern; no app registration creation path.

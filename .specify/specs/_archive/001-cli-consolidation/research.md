@@ -29,8 +29,8 @@ sources:
 ## Org Migration
 
 The Vertical-Template repo has moved from `enterpriseaigroup` to `eai-tools`:
-- **Old**: `https://github.com/enterpriseaigroup/Vertical-Template`
-- **New**: `https://github.com/eai-tools/Vertical-Template`
+- **Old**: previous EnterpriseAI vertical template repo URL
+- **New**: `https://github.com/eai-tools/eai-app-template`
 
 All CLI references to `enterpriseaigroup` that relate to the template must update to `eai-tools`.
 

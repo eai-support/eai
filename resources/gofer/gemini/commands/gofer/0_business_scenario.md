@@ -272,6 +272,16 @@ status: complete
 | Problem Focus | [Choice] | [Why]     |
 | User Target   | [Choice] | [Why]     |
 | Value Metric  | [Choice] | [Why]     |
+
+## AI-Readable Blocks Bridge
+
+| Field | Decision |
+| ----- | -------- |
+| Profile Choice | External / Internal / Hybrid |
+| Package Lane | {{public-package | internal-app | hybrid-adapter | app-local}} |
+| Coupling Status | {{daisy-coupled | daisy-decoupled | hybrid-adapter}} |
+| Public-Readiness Target | {{required | deferred | not-applicable}} |
+| Block Porting Need | {{reuse | port | custom-block-exception}} |
 ```
 
 ### Store in Memory
@@ -383,7 +393,7 @@ For app delivery, the default early process is:
    screens, target users, workflow goals, and whether client branding or logos
    must be applied.
 2. **Constrained MVP preview** — generate the first preview from the Vertical
-   Template blocks already installed in the project by `eai-cli`, rather than
+   Template blocks already installed in the project by `eai`, rather than
    from an unconstrained custom UI.
 3. **Preview self-review and approval** — use screenshot or Playwright-style
    local review before showing the preview, then iterate with the stakeholder
@@ -392,6 +402,24 @@ For app delivery, the default early process is:
    platform services are accessible now, purchasable but unavailable now, or
    unsupported, and lock that decision before plan/tasks are treated as
    complete.
+
+### AI-Readable Blocks Bridge Intake
+
+For EnterpriseAI app delivery, the interview must also capture the packaging
+and coupling path before research starts:
+
+| Intake Field | Required Decision |
+| ------------ | ----------------- |
+| Profile choice | External, internal, or hybrid package profile |
+| Package lane | Public reusable block package, internal vertical app, hybrid adapter, or app-local implementation |
+| Coupling status | DAISY-coupled, DAISY-decoupled, or hybrid adapter boundary |
+| Public-readiness target | Whether the first delivery must be ready for external package consumers |
+| Block porting need | Reuse existing block, port a Vertical Template block, or request a custom-block exception |
+
+External and hybrid profile choices require explicit public-readiness,
+block-porting, DAISY decoupling, Storybook, and theme-override evidence in the
+later Gofer artifacts. Internal-only choices still record why public readiness
+is not required now.
 
 **First, offer the option to skip:**
 

@@ -130,12 +130,25 @@ For application delivery, the plan must lock the approved preview and service
 selection before downstream implementation is treated as complete. For non-app
 work, state why this gate is not applicable.
 
-| Gate | Required Artifact | Validation |
-| ---- | ----------------- | ---------- |
-| Preview scope | `ui-preview-brief.md` | [how the MVP preview scope is defined] |
-| Preview evidence | `ui-review-log.md` | [screenshot, local render, or Playwright-style proof] |
-| UI approval | `ui-approval.md` | [who approves and when] |
-| Service fit | `service-fit-matrix.md` | [how accessible vs purchasable vs unavailable is proved] |
+| Gate              | Required Artifact                              | Validation                                                   |
+| ----------------- | ---------------------------------------------- | ------------------------------------------------------------ |
+| Preview scope     | `ui-preview-brief.md`                          | [how the MVP preview scope is defined]                       |
+| Platform describe | `eai --describe`                               | [CLI version, tenant/platform capability notes, package lane] |
+| Block catalog     | `eai blocks list` / `eai blocks describe <id>` | [selected IDs, Storybook story IDs, theme override points, coupling status, and custom-block exceptions] |
+| Resource bindings | `eai resources schema`                         | [object fields/actions/events feeding selected blocks]       |
+| Preview evidence  | `ui-review-log.md`                             | [screenshot, local render, or Playwright-style proof]        |
+| UI approval       | `ui-approval.md`                               | [who approves and when]                                      |
+| Service fit       | `service-fit-matrix.md`                        | [how accessible vs purchasable vs unavailable is proved]     |
+
+## AI-Readable Blocks Bridge
+
+| Workstream | Required Decision | Plan Reference |
+| ---------- | ----------------- | -------------- |
+| Package profile | [external / internal / hybrid] | [where tasks will enforce profile choice] |
+| Package lane | [public package / internal app / hybrid adapter / app-local] | [package/export path] |
+| Block porting | [reuse / port / custom-block exception] | [block IDs and story IDs] |
+| DAISY decoupling | [coupled / decoupled / adapter boundary] | [resource schema or adapter path] |
+| Public-readiness | [required / deferred / not applicable] | [consumer-facing checks] |
 
 ## Complexity Tracking
 
@@ -151,8 +164,12 @@ work, state why this gate is not applicable.
 > Populated by default for EnterpriseAI runs. Standard-profile runs leave this
 > section empty only when the user explicitly opts out.
 
-- **EAI CLI Version Pin**: `[major.minor, e.g. 2.0]` — the installed `eai-cli`
+- **EAI CLI Version Pin**: `[major.minor, e.g. 2.0]` — the installed `eai`
   version is recorded here at plan generation time. Deployment tasks reference
   this pin to prevent drift between local and CI environments.
 - **Vertical Template Reference**: `[vertical-template tag or SHA]`
 - **Deployment Repo Reference**: `[deployment-repo tag or SHA]`
+- **Package Profile Choice**: `[external | internal | hybrid]`
+- **Package Lane**: `[public-package | internal-app | hybrid-adapter | app-local]`
+- **Coupling Status**: `[daisy-coupled | daisy-decoupled | hybrid-adapter]`
+- **Public-Readiness Target**: `[required | deferred | not-applicable]`

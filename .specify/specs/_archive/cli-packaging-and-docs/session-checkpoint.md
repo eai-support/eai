@@ -33,7 +33,7 @@ tasksApproved: true
 - CLI name: Keep `eai`
 - Distribution: npm primary, npx zero-install, Homebrew, GitHub Releases
 - License: MIT
-- Site URL: eai-tools.github.io/eai-cli
+- Site URL: eai-tools.github.io/eai
 - llms.txt for AI agent consumption
 - Progressive disclosure for university student accessibility
 

@@ -101,7 +101,7 @@ jobs:
             Configure the scoped EAI registry once per user:
 
             ```bash
-            npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+            npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
             ```
 
             Install or update the EnterpriseAI CLI:
@@ -110,7 +110,7 @@ jobs:
             npm install -g @eai-tools/cli
             ```
 
-            See the [full documentation](https://eai-tools.github.io/eai-cli) for details.
+            See the [full documentation](https://eai-tools.github.io/eai) for details.
           files: |
             *.tgz
           make_latest: true

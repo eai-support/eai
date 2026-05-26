@@ -5,7 +5,7 @@ repositories or documentation are unavailable at runtime.
 
 ## Included references
 
-- `eai-cli.md`
+- `eai.md`
 - `vertical-template.md`
 - `deployment-repo.md`
 

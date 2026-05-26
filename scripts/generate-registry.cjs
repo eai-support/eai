@@ -17,7 +17,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const REGISTRY_DIR = path.join(ROOT, 'docs-site', 'static', 'registry');
 const SCOPE = '@eai-tools';
-const BASE_URL = 'https://eai-tools.github.io/eai-cli/registry';
+const BASE_URL = 'https://eai-tools.github.io/eai/registry';
 
 function main() {
   // 1. Read package.json
@@ -210,7 +210,7 @@ function generateVersionListing(packument) {
 
   <h2>Install</h2>
   <pre><code># 1. Configure the scoped EAI registry (one-time setup)
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 
 # 2. Install the CLI globally
 npm install -g @eai-tools/cli

@@ -2,7 +2,7 @@
 
 ## Scope
 
-Align `eai-cli` with the current platform and application patterns visible in the checked-out submodules:
+Align `eai` with the current platform and application patterns visible in the checked-out submodules:
 
 - `PublicAPI`
 - `AdminAPI`
@@ -21,7 +21,7 @@ Also normalize `.specify/specs` so active Gofer artifacts describe the current c
 - `POST /v3/orchestrate` with `target_backend: "admin"`
 - `GET /v1/users/{oid}/memberships`
 
-This is a better fit for `eai-cli` than the older `payload:/custom-users/me` assumption because it matches the live application pattern and gives tenant membership data directly.
+This is a better fit for `eai` than the older `payload:/custom-users/me` assumption because it matches the live application pattern and gives tenant membership data directly.
 
 ### 2. User lookup/provision flows are split across AdminAPI and PublicAPI
 

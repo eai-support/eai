@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 npm install -g @eai-tools/cli
 ```
 
@@ -60,6 +60,7 @@ Commands:
   gofer                  Inspect and refresh Gofer-managed project assets
   template               Preview vertical template and UI component drift for
                          the current project
+  blocks                 Discover AI-readable EAI UI block manifests
   help [command]         display help for command
 
 Getting Started:
@@ -125,6 +126,12 @@ Updates:
   # Preview vertical-template and UI component drift before copying changes
   eai template check       review potential vertical or UI file updates without overwriting local work
 
+  # Discover AI-readable UI blocks for Gofer and vertical apps
+  eai blocks list --readiness public-ready
+                                  list foundation, product, addon, and demo block IDs
+  eai blocks describe core.button
+  eai blocks readiness     summarize public readiness and package-profile compatibility
+
 Accessibility:
   # Screen reader friendly output
   eai --simple <command>
@@ -148,7 +155,7 @@ Examples:
 
 Notes:
   - The CLI installs from the scoped EAI static registry on GitHub Pages.
-  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
   - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
   - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
   - Use `eai template check` to preview vertical-template and UI drift before copying changes manually.
@@ -308,8 +315,8 @@ The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.jso
 
 | File | Purpose |
 |------|---------|
-| `src/index.ts` | Main CLI entry point; registers 16 command modules and global hooks |
-| `src/commands/*.ts` | 16 command files: init, dev, login, logout, whoami, user, provision, env, types, resources, tenant, vertical, chat, docs, deploy, verify, doctor, update |
+| `src/index.ts` | Main CLI entry point; registers 19 command modules and global hooks |
+| `src/commands/*.ts` | 19 command files: init, dev, login, whoami, user, provision, env, types, resources, tenant, vertical, chat, docs, deploy, verify, update, gofer, template, workflow |
 | `src/lib/api.ts` | Platform API client with Bearer token auth and error handling |
 | `src/lib/auth.ts` | Entra CIAM authentication (browser PKCE flow) and token storage |
 | `src/lib/tenant-context.ts` | Tenant membership lookup and active tenant selection logic |
@@ -323,6 +330,8 @@ The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.jso
 | `src/lib/cloud-env.ts` | Azure App Config and Key Vault integration |
 | `src/lib/azure-cli.ts` | Azure CLI wrapper for cloud operations |
 | `src/lib/gofer-installer.ts` | Gofer AI terminal assets installer |
+| `src/lib/gofer-refresh.ts` | Gofer manifest planning and apply logic |
+| `src/lib/project-manifest.ts` | Project manifest persistence |
 | `src/lib/npm.ts` | NPM registry and package management utilities |
 | `src/lib/object-type-defaults.ts` | Object Type scaffolding defaults |
 | `src/lib/utils.ts` | Shared utility functions |
@@ -333,8 +342,8 @@ The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.jso
 ### Installation (Development)
 
 ```bash
-git clone https://github.com/eai-tools/eai-cli.git
-cd eai-cli
+git clone https://github.com/eai-tools/eai.git
+cd eai
 npm install
 npm run build
 ```
@@ -381,10 +390,10 @@ node dist/index.js tenant list
 ## Team / Ownership
 
 - **Organization**: EAI Tools
-- **Repository**: [https://github.com/enterpriseaigroup/tech-docs](https://github.com/enterpriseaigroup/tech-docs)
+- **Repository**: [https://github.com/eai-tools/eai](https://github.com/eai-tools/eai)
 - **Published Package**: `@eai-tools/cli`
-- **Registry**: Self-hosted on GitHub Pages (`https://eai-tools.github.io/eai-cli/registry`)
-- **Homepage**: [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli)
+- **Registry**: Self-hosted on GitHub Pages (`https://eai-tools.github.io/eai/registry`)
+- **Homepage**: [https://eai-tools.github.io/eai](https://eai-tools.github.io/eai)
 - **License**: MIT
 - **Documentation**: 93-page Docusaurus site with command reference, guides, and 50 industry scenarios
 
@@ -519,14 +528,14 @@ This repository maintains multiple documentation surfaces:
 | `docs-site/` | Docusaurus documentation site (93 pages) | GitHub Actions (`docs.yml`) → GitHub Pages | No |
 | Root `*.md` files | Developer guides (README, CODEBASE, AGENTS, CLAUDE) | Committed to repo, no build step | No |
 
-The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to static HTML and deploys to GitHub Pages at [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli). It is **not** managed by the nightly tech-docs pipeline.
+The `docs-site/` directory contains a Docusaurus 3.6.3 site that builds to static HTML and deploys to GitHub Pages at [https://eai-tools.github.io/eai](https://eai-tools.github.io/eai). It is **not** managed by the nightly tech-docs pipeline.
 
 ## Current Status
 
 - **Version**: 2.8.13 (released 2026-05-12)
 - **Build Status**: Passing (CI workflow validates TypeCheck, Lint, Build, Tests)
-- **Documentation**: Up-to-date (last generated 2026-05-10T14:21:44Z)
-- **Source Commit**: `16242be8766857a2aba9b79acafcad0c19205e84`
+- **Documentation**: Up-to-date (last generated 2026-05-17T17:47:56Z)
+- **Source Commit**: `e2ebfae2a6f9d813ceecb56d6f0e6172a373778e`
 - **Registry Status**: Published to GitHub Pages registry
 
 ---
@@ -639,7 +648,7 @@ graph TB
         Index[src/index.ts<br/>Commander Program]
     end
     
-    subgraph "Command Layer (16 modules)"
+    subgraph "Command Layer (19 modules)"
         Init[init.ts<br/>Scaffold Projects]
         Auth[login.ts<br/>Authentication]
         Types[types.ts<br/>Object Type Management]
@@ -648,7 +657,7 @@ graph TB
         Deploy[deploy.ts<br/>Deployment]
         Chat[chat.ts<br/>AI Workflows]
         Docs[docs.ts<br/>Document Processing]
-        Other[+ 8 more commands]
+        Other[+ 11 more commands]
     end
     
     subgraph "Library Layer (16 modules)"
@@ -719,6 +728,9 @@ graph TB
 | **deploy.ts** | `deploy setup`, `deploy trigger`, `deploy status` | GitHub Actions deployment orchestration |
 | **verify.ts** | `verify`, `verify calls`, `doctor` | Platform connectivity checks and diagnostics |
 | **update.ts** | `update` | CLI self-update from GitHub registry |
+| **gofer.ts** | `gofer refresh`, `gofer status` | Inspect and refresh Gofer-managed project assets |
+| **template.ts** | `template check` | Preview vertical template drift without writing files |
+| **workflow.ts** | `workflow status`, `workflow request`, `workflow readiness` | Inspect and request AI runtime workflow bindings |
 
 ### Library Layer (src/lib/)
 
@@ -736,6 +748,8 @@ graph TB
 | **schema-builder.ts** | `describeProgram` | JSON schema generator for `--describe` flag (AI agent introspection) |
 | **update-check.ts** | `checkForUpdate`, `notifyIfUpdateAvailable` | Static EAI registry integration for version checks |
 | **gofer-installer.ts** | `installGoferAssets` | Copies Gofer AI terminal assets to new vertical projects |
+| **gofer-refresh.ts** | `planGoferRefresh`, `applyGoferRefresh` | Gofer manifest planning and apply logic for safe asset updates |
+| **project-manifest.ts** | `resolveProjectManifest`, `writeProjectManifest` | Project manifest persistence (.eai-manifest.json) |
 | **object-type-defaults.ts** | `getObjectTypeDefaults` | Default field definitions for Object Type scaffolding |
 | **cloud-env.ts** | `pullCloudEnv`, `pushCloudEnv` | Azure App Config + Key Vault integration |
 | **azure-cli.ts** | `execAzureCLI` | Azure CLI command wrapper for cloud operations |
@@ -1055,7 +1069,7 @@ Tokens are encrypted and stored per-profile:
 
 ### Security
 
-- **Encryption**: AES-256-CBC with key derived from `sha256(eai-cli-${homedir}-token-store)`
+- **Encryption**: AES-256-CBC with key derived from `sha256(eai-${homedir}-token-store)`
 - **File mode**: `0o600` (owner read/write only)
 - **Token lifecycle**: Auto-refreshed 5 minutes before expiry; manual refresh via `eai login`
 - **Headless bypass**: `EAI_ACCESS_TOKEN` env var bypasses file storage for CI/CD pipelines
@@ -2009,6 +2023,119 @@ Content-Type: application/json
 
 ---
 
+### Workflow API
+
+#### Get Builder Readiness
+```
+GET /v3/builder/readiness
+  ?tenant_id={tenantId}
+  &workflow_keys={key1}
+  &workflow_keys={key2}
+```
+
+**Query Parameters**:
+- `tenant_id` (string, required) — Tenant ID to check readiness for
+- `workflow_keys` (string[], optional) — Public workflow keys to include in readiness checks
+
+**Response**:
+```json
+{
+  "tenantId": "tenant-uuid",
+  "status": "available",
+  "checks": [
+    {
+      "key": "tenant_plan_active",
+      "status": "available",
+      "reasonCode": "PLAN_ACTIVE",
+      "reasonMessage": "Tenant has active billing plan",
+      "nextAction": null
+    },
+    {
+      "key": "workflow_key_public",
+      "status": "unavailable",
+      "reasonCode": "WORKFLOW_NOT_CONFIGURED",
+      "reasonMessage": "Workflow not configured for this tenant",
+      "nextAction": "Configure workflow in tenant settings"
+    }
+  ]
+}
+```
+
+**CLI Command**: `eai workflow readiness [workflow-keys...]`
+
+**Client Method**: `client.getBuilderReadiness({ tenantId, workflowKeys })`
+
+---
+
+#### Get Runtime Workflow Status
+```
+GET /v3/workflows/runtime/{workflowKey}/status?tenant_id={tenantId}
+```
+
+**Path Parameters**:
+- `workflowKey` (string) — Public workflow key
+
+**Query Parameters**:
+- `tenant_id` (string, required) — Tenant ID
+
+**Response**:
+```json
+{
+  "workflowKey": "sentiment-analysis",
+  "tenantId": "tenant-uuid",
+  "status": "available",
+  "reasonCode": "WORKFLOW_READY",
+  "reasonMessage": "Workflow is configured and ready to use",
+  "runtimeWorkflowRef": "runtime-workflow-uuid",
+  "nextAction": null
+}
+```
+
+**CLI Command**: `eai workflow status <workflow-key>`
+
+**Client Method**: `client.getRuntimeWorkflowStatus(workflowKey, tenantId)`
+
+---
+
+#### Request Runtime Workflow
+```
+POST /v3/workflows/runtime-requests
+Content-Type: application/json
+
+{
+  "tenant_id": "tenant-uuid",
+  "workflow_key": "sentiment-analysis",
+  "display_name": "Custom Sentiment Analyzer",
+  "reason": "Need sentiment analysis for customer feedback"
+}
+```
+
+**Request Body**:
+- `tenant_id` (string, required) — Tenant ID
+- `workflow_key` (string, required) — Public workflow key
+- `display_name` (string, optional) — Human-readable name for the workflow instance
+- `reason` (string, optional) — Reason for requesting the workflow
+
+**Response**:
+```json
+{
+  "requestId": "request-uuid",
+  "workflowKey": "sentiment-analysis",
+  "tenantId": "tenant-uuid",
+  "status": "pending",
+  "reasonCode": "REQUEST_CREATED",
+  "reasonMessage": "Workflow request created and pending approval",
+  "runtimeWorkflowRef": null,
+  "nextAction": "Wait for admin approval"
+}
+```
+
+**CLI Command**: `eai workflow request <workflow-key> [--display-name <name>] [--reason <reason>]`
+
+**Client Method**: `client.requestRuntimeWorkflow({ tenantId, workflowKey, displayName, reason })`
+
+---
+
 ## Authentication Endpoints
 
 ### Entra CIAM (OAuth 2.0 + PKCE)
@@ -2241,7 +2368,7 @@ interface StoredTokens {
 
 **Security**:
 - File mode `0o600` (owner read/write only)
-- AES-256-CBC encryption with key derived from `sha256(eai-cli-${homedir}-token-store)`
+- AES-256-CBC encryption with key derived from `sha256(eai-${homedir}-token-store)`
 
 ---
 
@@ -2942,7 +3069,7 @@ graph TB
 
 **Dependency Level**: Low (for update checks)
 
-**URL**: `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+**URL**: `https://eai-tools.github.io/eai/registry/@eai-tools/cli`
 
 **Operations**:
 - `GET` — Fetch latest version metadata (24h cache)
@@ -3121,11 +3248,11 @@ The EAI CLI has two deployment contexts:
 
 The EAI CLI uses a **static npm registry hosted on GitHub Pages**, eliminating the need for npmjs publishing.
 
-**Registry URL**: `https://eai-tools.github.io/eai-cli/registry`
+**Registry URL**: `https://eai-tools.github.io/eai/registry`
 
 **Package Name**: `@eai-tools/cli`
 
-**Current Version**: See the registry latest tag at `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+**Current Version**: See the registry latest tag at `https://eai-tools.github.io/eai/registry/@eai-tools/cli`
 
 ### Installation
 
@@ -3133,7 +3260,7 @@ Users configure npm to use the EAI registry, then install globally:
 
 ```bash
 # Configure the scoped EAI registry once
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 
 # Install globally
 npm install -g @eai-tools/cli
@@ -3229,7 +3356,7 @@ The release script verifies these commands are registered:
       "version": "2.8.5",
       "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
       "dist": {
-        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.8.5.tgz",
+        "tarball": "https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-2.8.5.tgz",
         "shasum": "..."
       }
     }
@@ -3523,7 +3650,7 @@ jobs:
       
       # Install CLI
       - run: |
-          npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+          npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
           npm install -g @eai-tools/cli
       
       # Authenticate (headless)
@@ -3681,19 +3808,17 @@ git push
 
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-05-11 14:16 UTC (commit a8a694f)  
-**Current Documentation**: 2026-05-12 18:17 UTC (commit 9e4b783)  
+**Previous Documentation**: 2026-05-16 17:49 UTC (commit 383b413)  
+**Current Documentation**: 2026-05-17 17:47 UTC (commit e2ebfae)  
 **Version**: 2.8.13 (stable)
 
 ### Changes in This Update
 
-#### Documentation Updates
-- Added Feature 026 specification: Public Platform Builder Experience (commit 9e4b783)
-  - Specifies developer-facing platform configuration and resource bootstrapping workflows
-  - Includes quickstart guide, research notes, implementation plan, and validation criteria
-  - Planning artifact for future CLI enhancement
-- Nightly `.tech-docs/` documentation refresh
-- No implementation code changes since last generation
+#### Nightly Documentation Refresh (commit e2ebfae)
+- Automated nightly documentation update to `.tech-docs/`
+- No implementation code changes since previous documentation generation
+- Refreshed frontmatter timestamps and source commit references
+- Current stable version remains v2.8.13
 
 ---
 
@@ -4082,7 +4207,7 @@ This release refreshes the bundled Gofer payload to v3.1.0-1 and includes severa
 - **Built With**: Astro + Starlight
 - **Pages**: 93 pages covering getting started, guides, concepts, command reference, 50 industry scenarios
 - **Location**: `docs/`
-- **Published**: [https://eai-tools.github.io/eai-cli](https://eai-tools.github.io/eai-cli)
+- **Published**: [https://eai-tools.github.io/eai](https://eai-tools.github.io/eai)
 
 #### Gofer Pipeline Documentation
 - **Added**: CLAUDE.md workflow instructions
@@ -4172,7 +4297,7 @@ This release refreshes the bundled Gofer payload to v3.1.0-1 and includes severa
 
 #### Step 1: Update CLI
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 npm install -g @eai-tools/cli
 eai --version  # Should show 2.6.0
 ```

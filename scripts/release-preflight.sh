@@ -159,7 +159,7 @@ const root = process.cwd();
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf-8');
 
-if (!readme.includes('npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user')) {
+if (!readme.includes('npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user')) {
   throw new Error('README install instructions are missing the scoped registry setup command');
 }
 
@@ -175,7 +175,7 @@ const currentVersion = pkg.version;
 if (!llmsIndex.includes(currentVersion)) {
   throw new Error('llms.txt is missing the current package version');
 }
-if (!llmsIndex.includes('npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user')) {
+if (!llmsIndex.includes('npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user')) {
   throw new Error('llms.txt is missing the scoped registry setup command');
 }
 if (!llmsFull.includes(currentVersion)) {

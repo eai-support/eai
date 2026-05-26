@@ -9,7 +9,7 @@ Every command wraps platform API calls — developers work with **resources, typ
 Configure the scoped EAI registry once per user:
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 ```
 
 Install or update the EnterpriseAI CLI:
@@ -325,8 +325,8 @@ Important boundaries:
 ## Development
 
 ```bash
-git clone https://github.com/eai-tools/eai-cli.git
-cd eai-cli
+git clone https://github.com/eai-tools/eai.git
+cd eai
 npm install
 npm run build        # Compile TypeScript
 npm run dev          # Watch mode
@@ -379,7 +379,7 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 4. It commits the release, creates an annotated `vX.Y.Z` tag, and pushes `main --follow-tags`
 5. The tag-triggered GitHub Actions `Release` workflow verifies the committed release docs/help surfaces before creating the GitHub release and attaching the packaged tarball
 6. The `Deploy Docs` workflow publishes the matching static registry and release-doc bundle to GitHub Pages
-7. `release.sh` waits for both workflows and verifies `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli`
+7. `release.sh` waits for both workflows and verifies `https://eai-tools.github.io/eai/registry/@eai-tools/cli`
 
 If the static registry does not converge to the new version, the script exits non-zero so the release is treated as incomplete.
 
@@ -395,12 +395,12 @@ npm run docs:release-assets:check
 ### Release channel policy
 
 - **GitHub Pages static registry is the release channel**
-- Configure the registry once with `npm config set @eai-tools:registry https://eai-tools.github.io/eai-cli/registry/ --location=user`
+- Configure the registry once with `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
 - Install or update with `npm install -g @eai-tools/cli`, or use `eai update`
 
 ## Documentation
 
-Full documentation: https://eai-tools.github.io/eai-cli/
+Full documentation: https://eai-tools.github.io/eai/
 
 93 pages covering getting started, guides, concepts, command reference, 50 industry scenarios, and examples in 7 languages.
 
