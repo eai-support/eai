@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-26T04:31:05.076Z"
-source_commit: "278ee504820a47cf5f577a6542b69778c2a02f13"
+generated_at: "2026-05-26T04:47:09.400Z"
+source_commit: "0e8e9c341400b9a04640b80e1a3af96ef4dbd73e"
 ---
 # EAI CLI — Architecture
 
