@@ -188,6 +188,48 @@ describe('eai provision entra', () => {
     expect(content).toContain('ENTRA_REDIRECT_URIS=http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id');
   });
 
+  test('HP002 provision entra persists requested callback when platform response contains stale defaults', { timeout: 10000 }, async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      [
+        `BASE_URL_PUBLIC_API=${API_BASE}`,
+        'NEXT_PUBLIC_APP_NAME=no-code-builder',
+        'APP_BASE_PATH=/no-code-builder',
+        'AUTH_URL=http://localhost:3000/no-code-builder',
+        'ENTRA_REDIRECT_URIS=http://localhost:3000/api/auth/callback/microsoft-entra-id',
+        '',
+      ].join('\n'),
+    );
+
+    let requestBody: unknown;
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          client_id: 'cid-stale-response',
+          client_secret: null,
+          existing: true,
+          redirectUris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'no-code-builder',
+      redirect_uris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('ENTRA_REDIRECT_URIS=http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id');
+  });
+
   test('BP001 provision entra falls back to localhost basePath when Auth.js URL is malformed', { timeout: 10000 }, async () => {
     await writeFile(
       join(env.dir, '.env.local'),
