@@ -6,6 +6,12 @@ import { createMockServer } from '../helpers/mock-server.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
 import { workflowCommand } from '../../src/commands/workflow.js';
+import {
+  buildWorkflowProvisionPayloads,
+  parseEnvMapping,
+  parseStageSpec,
+  validateStageEnvMappings,
+} from '../../src/lib/workflow-provisioning.js';
 
 const API_BASE = 'https://test-api.example.com';
 
@@ -173,5 +179,114 @@ describe('eai workflow', () => {
       workflow_key: 'strategy-monitor',
       reason: 'CEO strategy cockpit',
     });
+  });
+
+  test('HP001 FL-WORKFLOW-001: provision creates shared workflow and vertical config records', { timeout: 10000 }, async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const listRequests: string[] = [];
+    let sharedCreateBody: unknown;
+    let verticalCreateBody: unknown;
+
+    mockServer.server.use(
+      http.get(`${API_BASE}/v3/resources/test-tenant-id/shared-workflow-config`, ({ request }) => {
+        listRequests.push(request.url);
+        return HttpResponse.json({ docs: [], totalDocs: 0, page: 1, totalPages: 0 });
+      }),
+      http.get(`${API_BASE}/v3/resources/test-tenant-id/vertical-product-config`, ({ request }) => {
+        listRequests.push(request.url);
+        return HttpResponse.json({ docs: [], totalDocs: 0, page: 1, totalPages: 0 });
+      }),
+      http.post(`${API_BASE}/v3/resources/test-tenant-id/shared-workflow-config`, async ({ request }) => {
+        sharedCreateBody = await request.json();
+        return HttpResponse.json({ id: 'workflow-record-1' }, { status: 201 });
+      }),
+      http.post(`${API_BASE}/v3/resources/test-tenant-id/vertical-product-config`, async ({ request }) => {
+        verticalCreateBody = await request.json();
+        return HttpResponse.json({ id: 'vertical-config-1' }, { status: 201 });
+      }),
+    );
+
+    await workflowCommand.parseAsync([
+      'provision',
+      'configurator',
+      '--vertical',
+      'no-code-builder',
+      '--display-name',
+      'Workflow Configurator',
+      '--workflow-env-key',
+      'NEXT_PUBLIC_WORKFLOW_CONFIGURATOR_ID',
+      '--stage',
+      'analyze-process:Analyze process',
+      '--stage',
+      'generate-workflow:Generate workflow',
+      '--stage',
+      'suggest-improvements:Suggest improvements',
+      '--stage-env',
+      'WORKFLOW_ANALYZE_STAGE=analyze-process',
+      '--stage-env',
+      'WORKFLOW_GENERATE_STAGE=generate-workflow',
+      '--stage-env',
+      'WORKFLOW_SUGGESTIONS_STAGE=suggest-improvements',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(listRequests.some((url) => url.includes('workflowKey'))).toBe(true);
+    expect(sharedCreateBody).toEqual({
+      data: expect.objectContaining({
+        tenantId: 'test-tenant-id',
+        workflowKey: 'configurator',
+        usecase: 'generic',
+        scopeKey: 'generic:configurator',
+        displayName: 'Workflow Configurator',
+        consumedBy: ['no-code-builder'],
+        definition: {
+          workflowDefinition: expect.objectContaining({
+            code: 'configurator',
+            stages: [
+              expect.objectContaining({ id: 'analyze-process', code: 'analyze-process', name: 'Analyze process' }),
+              expect.objectContaining({ id: 'generate-workflow', code: 'generate-workflow', name: 'Generate workflow' }),
+              expect.objectContaining({ id: 'suggest-improvements', code: 'suggest-improvements', name: 'Suggest improvements' }),
+            ],
+          }),
+        },
+      }),
+    });
+    expect(verticalCreateBody).toEqual({
+      data: expect.objectContaining({
+        tenantId: 'test-tenant-id',
+        verticalKey: 'no-code-builder',
+        configKey: 'workflow:configurator',
+        config: expect.objectContaining({
+          workflowKey: 'configurator',
+          setupStatus: 'completed',
+        }),
+      }),
+    });
+
+    const output = logSpy.mock.calls.flat().join('\n');
+    expect(output).toContain('"NEXT_PUBLIC_WORKFLOW_CONFIGURATOR_ID": "workflow-record-1"');
+    expect(output).toContain('"WORKFLOW_ANALYZE_STAGE": "analyze-process"');
+  });
+
+  test('BP001 FL-WORKFLOW-001: rejects stage env mappings that reference unknown stages', () => {
+    const stages = [parseStageSpec('intake:Intake', 0)];
+
+    expect(() => validateStageEnvMappings(
+      stages,
+      Object.fromEntries([parseEnvMapping('WORKFLOW_REVIEW_STAGE=review')]),
+    )).toThrow('WORKFLOW_REVIEW_STAGE points at unknown stage "review"');
+
+    expect(() => buildWorkflowProvisionPayloads({
+      tenantId: 'tenant-1',
+      verticalKey: 'any-vertical',
+      workflowKey: 'any-workflow',
+      displayName: 'Any Workflow',
+      stages,
+    }, {
+      stageEnv: Object.fromEntries([parseEnvMapping('WORKFLOW_INTAKE_STAGE=intake')]),
+    })).not.toThrow();
+
+    expect(() => parseEnvMapping('workflow-review=review')).toThrow('Invalid env key');
   });
 });
