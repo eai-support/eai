@@ -7,8 +7,10 @@ import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
 import { workflowCommand } from '../../src/commands/workflow.js';
 import {
+  buildWorkflowAiRuntimeBindingPayloads,
   buildWorkflowProvisionPayloads,
   parseEnvMapping,
+  parseStagePrompt,
   parseStageSpec,
   validateStageEnvMappings,
 } from '../../src/lib/workflow-provisioning.js';
@@ -269,6 +271,115 @@ describe('eai workflow', () => {
     expect(output).toContain('"WORKFLOW_ANALYZE_STAGE": "analyze-process"');
   });
 
+  test('HP002 FL-WORKFLOW-002: provision can bind AI runtime records for workflow stages', { timeout: 10000 }, async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const createdProfiles: unknown[] = [];
+    const createdPrompts: unknown[] = [];
+
+    mockServer.server.use(
+      http.get(`${API_BASE}/v3/resources/test-tenant-id/shared-workflow-config`, () =>
+        HttpResponse.json({ docs: [], totalDocs: 0, page: 1, totalPages: 0 }),
+      ),
+      http.get(`${API_BASE}/v3/resources/test-tenant-id/vertical-product-config`, () =>
+        HttpResponse.json({ docs: [], totalDocs: 0, page: 1, totalPages: 0 }),
+      ),
+      http.get(`${API_BASE}/v3/resources/test-tenant-id/shared-ai-profile`, () =>
+        HttpResponse.json({ docs: [], totalDocs: 0, page: 1, totalPages: 0 }),
+      ),
+      http.get(`${API_BASE}/v3/resources/test-tenant-id/shared-chatbot-config`, () =>
+        HttpResponse.json({ docs: [], totalDocs: 0, page: 1, totalPages: 0 }),
+      ),
+      http.post(`${API_BASE}/v3/resources/test-tenant-id/shared-workflow-config`, () =>
+        HttpResponse.json({ id: 'workflow-record-1' }, { status: 201 }),
+      ),
+      http.post(`${API_BASE}/v3/resources/test-tenant-id/vertical-product-config`, () =>
+        HttpResponse.json({ id: 'vertical-config-1' }, { status: 201 }),
+      ),
+      http.post(`${API_BASE}/v3/resources/test-tenant-id/shared-ai-profile`, async ({ request }) => {
+        createdProfiles.push(await request.json());
+        return HttpResponse.json({ id: 'ai-profile-1' }, { status: 201 });
+      }),
+      http.post(`${API_BASE}/v3/resources/test-tenant-id/shared-chatbot-config`, async ({ request }) => {
+        createdPrompts.push(await request.json());
+        return HttpResponse.json({ id: `prompt-${createdPrompts.length}` }, { status: 201 });
+      }),
+    );
+
+    await workflowCommand.parseAsync([
+      'provision',
+      'configurator',
+      '--vertical',
+      'no-code-builder',
+      '--display-name',
+      'Workflow Configurator',
+      '--stage',
+      'analyze-process:Analyze process',
+      '--stage',
+      'generate-workflow:Generate workflow',
+      '--stage',
+      'suggest-improvements:Suggest improvements',
+      '--bind-ai-runtime',
+      '--ai-provider',
+      'azure-openai',
+      '--ai-model',
+      'azure/gpt-5.1-chat',
+      '--ai-profile-key',
+      'configurator-runtime',
+      '--stage-prompt',
+      'analyze-process=Extract BusinessUnderstanding JSON from the conversation.',
+      '--stage-prompt',
+      'generate-workflow=Return WorkflowStructure JSON.',
+      '--stage-prompt',
+      'suggest-improvements=Return ImprovementSuggestion JSON array.',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(createdProfiles).toHaveLength(1);
+    expect(createdProfiles[0]).toEqual({
+      data: expect.objectContaining({
+        tenantId: 'test-tenant-id',
+        profileKey: 'configurator-runtime',
+        providerIntegrationKey: 'azure-openai',
+        model: 'azure/gpt-5.1-chat',
+        status: 'active',
+      }),
+    });
+    expect(createdPrompts).toHaveLength(3);
+    expect(createdPrompts).toEqual(
+      expect.arrayContaining([
+        {
+          data: expect.objectContaining({
+            configKey: 'configurator-analyze-process',
+            promptLevel: 'workflow-stage',
+            workflowKey: 'configurator',
+            workflowStageKey: 'analyze-process',
+            aiProfileKey: 'configurator-runtime',
+            promptContent: 'Extract BusinessUnderstanding JSON from the conversation.',
+          }),
+        },
+        {
+          data: expect.objectContaining({
+            configKey: 'configurator-generate-workflow',
+            workflowStageKey: 'generate-workflow',
+            promptContent: 'Return WorkflowStructure JSON.',
+          }),
+        },
+        {
+          data: expect.objectContaining({
+            configKey: 'configurator-suggest-improvements',
+            workflowStageKey: 'suggest-improvements',
+            promptContent: 'Return ImprovementSuggestion JSON array.',
+          }),
+        },
+      ]),
+    );
+
+    const output = logSpy.mock.calls.flat().join('\n');
+    expect(output).toContain('"objectType": "shared-ai-profile"');
+    expect(output).toContain('"objectType": "shared-chatbot-config"');
+  });
+
   test('BP001 FL-WORKFLOW-001: rejects stage env mappings that reference unknown stages', () => {
     const stages = [parseStageSpec('intake:Intake', 0)];
 
@@ -288,5 +399,35 @@ describe('eai workflow', () => {
     })).not.toThrow();
 
     expect(() => parseEnvMapping('workflow-review=review')).toThrow('Invalid env key');
+    expect(() => parseStagePrompt('review')).toThrow('Stage prompts must use');
+    expect(parseStagePrompt('intake=Collect intake JSON')).toEqual([
+      'intake',
+      'Collect intake JSON',
+    ]);
+
+    expect(buildWorkflowAiRuntimeBindingPayloads({
+      tenantId: 'tenant-1',
+      verticalKey: 'builder-app',
+      workflowKey: 'configurator',
+      displayName: 'Configurator',
+      stages,
+      providerIntegrationKey: 'azure-openai',
+      model: 'azure/gpt-5.1-chat',
+      stagePrompts: { intake: 'Return intake JSON.' },
+    })).toMatchObject({
+      aiProfile: {
+        profileKey: 'configurator-default-model',
+        providerIntegrationKey: 'azure-openai',
+        model: 'azure/gpt-5.1-chat',
+      },
+      chatbotConfigs: [
+        expect.objectContaining({
+          configKey: 'configurator-intake',
+          promptLevel: 'workflow-stage',
+          workflowStageKey: 'intake',
+          promptContent: 'Return intake JSON.',
+        }),
+      ],
+    });
   });
 });

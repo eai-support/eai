@@ -2,6 +2,8 @@ import { toObjectTypeSlug } from './utils.js';
 
 export const SHARED_WORKFLOW_CONFIG_OBJECT_TYPE = 'shared-workflow-config';
 export const VERTICAL_PRODUCT_CONFIG_OBJECT_TYPE = 'vertical-product-config';
+export const SHARED_AI_PROFILE_OBJECT_TYPE = 'shared-ai-profile';
+export const SHARED_CHATBOT_CONFIG_OBJECT_TYPE = 'shared-chatbot-config';
 export const WORKFLOW_VERTICAL_CONFIG_PREFIX = 'workflow:';
 
 export type WorkflowProvisionStatus = 'active' | 'draft';
@@ -29,6 +31,18 @@ export interface WorkflowProvisionPayloads {
   verticalConfig: Record<string, unknown>;
   workflowEnvKey: string;
   envValues: Record<string, string>;
+}
+
+export interface WorkflowAiRuntimeBindingInput extends WorkflowProvisionDefinitionInput {
+  providerIntegrationKey: string;
+  model: string;
+  profileKey?: string;
+  stagePrompts?: Record<string, string>;
+}
+
+export interface WorkflowAiRuntimeBindingPayloads {
+  aiProfile: Record<string, unknown>;
+  chatbotConfigs: Array<Record<string, unknown>>;
 }
 
 export function workflowVerticalConfigKey(workflowKey: string): string {
@@ -217,4 +231,104 @@ export function buildWorkflowProvisionPayloads(
     workflowEnvKey,
     envValues,
   };
+}
+
+export function parseStagePrompt(value: string): [string, string] {
+  const separatorIndex = value.indexOf('=');
+  if (separatorIndex <= 0) {
+    throw new Error('Stage prompts must use stage-id=prompt text.');
+  }
+  const stageId = toObjectTypeSlug(value.slice(0, separatorIndex).trim());
+  const prompt = value.slice(separatorIndex + 1).trim();
+  if (!stageId || !prompt) {
+    throw new Error('Stage prompts must use stage-id=prompt text.');
+  }
+  return [stageId, prompt];
+}
+
+export function buildWorkflowAiRuntimeBindingPayloads(
+  input: WorkflowAiRuntimeBindingInput,
+): WorkflowAiRuntimeBindingPayloads {
+  const workflowKey = toObjectTypeSlug(input.workflowKey);
+  const verticalKey = toObjectTypeSlug(input.verticalKey);
+  const displayName = input.displayName.trim();
+  const status = input.status ?? 'active';
+  const usecase = input.usecase?.trim() || 'generic';
+  const scopeKey = input.scopeKey?.trim() || `${usecase}:${workflowKey}`;
+  const source = input.source?.trim() || 'eai-cli';
+  const profileKey = toObjectTypeSlug(input.profileKey || `${workflowKey}-default-model`);
+  const providerIntegrationKey = input.providerIntegrationKey.trim();
+  const model = input.model.trim();
+
+  if (!providerIntegrationKey) {
+    throw new Error('AI provider integration key is required.');
+  }
+  if (!model) {
+    throw new Error('AI model is required.');
+  }
+
+  const stages = input.stages.map((stage, index) => {
+    const code = toObjectTypeSlug(stage.id);
+    if (!code) {
+      throw new Error('Stage id is required.');
+    }
+    return {
+      id: code,
+      name: stage.name?.trim() || humanizeSlug(code),
+      order: stage.order ?? index + 1,
+    };
+  });
+
+  const aiProfile = {
+    tenantId: input.tenantId,
+    profileKey,
+    displayName: `${displayName} model profile`,
+    providerIntegrationKey,
+    provider: providerIntegrationKey,
+    model,
+    temperature: 0.2,
+    maxTokens: 4096,
+    status,
+    revision: 1,
+    source,
+    metadata: {
+      provisionedBy: 'eai-cli',
+      workflowKey,
+      verticalKey,
+    },
+  };
+
+  const chatbotConfigs = stages.map((stage) => {
+    const promptContent =
+      input.stagePrompts?.[stage.id] ||
+      `You are the AI assistant for ${displayName}, stage ${stage.name}. Follow the app contract for this stage and return structured output when requested.`;
+    return {
+      tenantId: input.tenantId,
+      configKey: `${workflowKey}-${stage.id}`,
+      displayName: `${displayName} · ${stage.name}`,
+      promptLevel: 'workflow-stage',
+      scopeKey: `${scopeKey}:${stage.id}`,
+      verticalKey,
+      verticalKeys: [verticalKey],
+      workflowKey,
+      workflowStageKey: stage.id,
+      promptContent,
+      aiProfileKey: profileKey,
+      assignmentRules: {
+        verticalKeys: [verticalKey],
+        workflowKey,
+        workflowStageKey: stage.id,
+      },
+      allowedOverrideFields: ['promptContent', 'aiProfileKey', 'ragPolicy', 'toolPolicy'],
+      status,
+      revision: 1,
+      source,
+      metadata: {
+        provisionedBy: 'eai-cli',
+        workflowScopeKey: scopeKey,
+      },
+    };
+  });
+
+  return { aiProfile, chatbotConfigs };
 }
