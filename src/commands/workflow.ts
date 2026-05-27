@@ -255,6 +255,34 @@ Examples:
 
       const normalizedWorkflowKey = String(payloads.workflowConfig.workflowKey);
       const normalizedVerticalKey = String(payloads.verticalConfig.verticalKey);
+      const shouldBindAiRuntime = Boolean(
+        options.bindAiRuntime ||
+        options.aiProvider ||
+        options.aiModel ||
+        (options.stagePrompt ?? []).length,
+      );
+      let runtimePayloads: ReturnType<typeof buildWorkflowAiRuntimeBindingPayloads> | undefined;
+      if (shouldBindAiRuntime) {
+        if (!options.aiProvider || !options.aiModel) {
+          throw new Error('--bind-ai-runtime requires --ai-provider and --ai-model.');
+        }
+        const stagePrompts = Object.fromEntries((options.stagePrompt ?? []).map(parseStagePrompt));
+        validateStagePromptMappings(stages, stagePrompts);
+        runtimePayloads = buildWorkflowAiRuntimeBindingPayloads({
+          tenantId: context.tenantId,
+          verticalKey: options.vertical,
+          workflowKey,
+          displayName,
+          stages,
+          usecase: options.usecase,
+          scopeKey: options.scopeKey,
+          status: options.status,
+          providerIntegrationKey: options.aiProvider,
+          model: options.aiModel,
+          profileKey: options.aiProfileKey,
+          stagePrompts,
+        });
+      }
 
       const workflow = await upsertWorkflowResource(
         context,
@@ -275,34 +303,9 @@ Examples:
         },
         payloads.verticalConfig,
       );
-      const shouldBindAiRuntime = Boolean(
-        options.bindAiRuntime ||
-        options.aiProvider ||
-        options.aiModel ||
-        (options.stagePrompt ?? []).length,
-      );
       const aiRuntime: Array<{ objectType: string; key: string; id?: string; action: string }> = [];
 
-      if (shouldBindAiRuntime) {
-        if (!options.aiProvider || !options.aiModel) {
-          throw new Error('--bind-ai-runtime requires --ai-provider and --ai-model.');
-        }
-        const stagePrompts = Object.fromEntries((options.stagePrompt ?? []).map(parseStagePrompt));
-        validateStagePromptMappings(stages, stagePrompts);
-        const runtimePayloads = buildWorkflowAiRuntimeBindingPayloads({
-          tenantId: context.tenantId,
-          verticalKey: options.vertical,
-          workflowKey,
-          displayName,
-          stages,
-          usecase: options.usecase,
-          scopeKey: options.scopeKey,
-          status: options.status,
-          providerIntegrationKey: options.aiProvider,
-          model: options.aiModel,
-          profileKey: options.aiProfileKey,
-          stagePrompts,
-        });
+      if (runtimePayloads) {
         const profileKey = String(runtimePayloads.aiProfile.profileKey);
         const profile = await upsertWorkflowResource(
           context,

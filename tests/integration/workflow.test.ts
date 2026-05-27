@@ -537,6 +537,86 @@ describe("eai workflow", () => {
     },
   );
 
+  test.each([
+    {
+      label: "missing AI model",
+      args: [
+        "provision",
+        "configurator",
+        "--vertical",
+        "no-code-builder",
+        "--stage",
+        "analyze-process:Analyze process",
+        "--bind-ai-runtime",
+        "--ai-provider",
+        "azure-openai",
+        "--format",
+        "json",
+      ],
+      message: "--bind-ai-runtime requires --ai-provider and --ai-model.",
+    },
+    {
+      label: "unknown stage prompt",
+      args: [
+        "provision",
+        "configurator",
+        "--vertical",
+        "no-code-builder",
+        "--stage",
+        "analyze-process:Analyze process",
+        "--bind-ai-runtime",
+        "--ai-provider",
+        "azure-openai",
+        "--ai-model",
+        "azure/gpt-5.1-chat",
+        "--stage-prompt",
+        "review=Return review JSON.",
+        "--format",
+        "json",
+      ],
+      message: 'Stage prompt points at unknown stage "review".',
+    },
+  ])(
+    "BP002 FL-WORKFLOW-002: rejects invalid AI runtime flags before resource upserts ($label)",
+    async ({ args, message }) => {
+      const resourceRequests: string[] = [];
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+        throw new Error("process.exit called");
+      }) as never);
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      mockServer.server.use(
+        http.all(
+          `${API_BASE}/v3/resources/test-tenant-id/:objectType`,
+          ({ request }) => {
+            resourceRequests.push(`${request.method} ${request.url}`);
+            if (request.method === "GET") {
+              return HttpResponse.json({
+                docs: [],
+                totalDocs: 0,
+                page: 1,
+                totalPages: 0,
+              });
+            }
+            return HttpResponse.json(
+              { id: "unexpected-resource-write" },
+              { status: request.method === "POST" ? 201 : 200 },
+            );
+          },
+        ),
+      );
+
+      await expect(
+        workflowCommand.parseAsync(args, { from: "user" }),
+      ).rejects.toThrow("process.exit called");
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errSpy.mock.calls.flat().join(" ")).toContain(message);
+      expect(resourceRequests).toEqual([]);
+    },
+    10000,
+  );
+
   test("BP001 FL-WORKFLOW-001: rejects stage env mappings that reference unknown stages", () => {
     const stages = [parseStageSpec("intake:Intake", 0)];
 
