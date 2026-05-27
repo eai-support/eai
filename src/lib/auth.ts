@@ -239,7 +239,11 @@ export async function clearTokens(): Promise<void> {
  * Check if we have a valid (non-expired) access token.
  */
 export async function isAuthenticated(): Promise<boolean> {
-  if (process.env.EAI_ACCESS_TOKEN) return loadEnvTokens() !== null;
+  // loadTokens() already encapsulates the env-vs-disk precedence: a valid
+  // EAI_ACCESS_TOKEN JWT wins, otherwise we fall back to the on-disk session.
+  // Delegating here keeps the two paths in lockstep and avoids short-circuits
+  // that ignore a perfectly good on-disk session when EAI_ACCESS_TOKEN is set
+  // to a non-JWT placeholder (e.g. test fixtures, opaque platform tokens).
   const tokens = await loadTokens();
   if (!tokens) return false;
   return tokens.expiresAt > Date.now();
