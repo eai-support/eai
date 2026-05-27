@@ -23,6 +23,7 @@ import {
   SHARED_CHATBOT_CONFIG_OBJECT_TYPE,
   SHARED_WORKFLOW_CONFIG_OBJECT_TYPE,
   validateStageEnvMappings,
+  validateStagePromptMappings,
   VERTICAL_PRODUCT_CONFIG_OBJECT_TYPE,
   workflowVerticalConfigKey,
   type WorkflowProvisionStatus,
@@ -287,6 +288,7 @@ Examples:
           throw new Error('--bind-ai-runtime requires --ai-provider and --ai-model.');
         }
         const stagePrompts = Object.fromEntries((options.stagePrompt ?? []).map(parseStagePrompt));
+        validateStagePromptMappings(stages, stagePrompts);
         const runtimePayloads = buildWorkflowAiRuntimeBindingPayloads({
           tenantId: context.tenantId,
           verticalKey: options.vertical,

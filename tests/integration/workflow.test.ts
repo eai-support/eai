@@ -18,6 +18,7 @@ import {
   SHARED_ASSET_ADOPTION_OBJECT_TYPE,
   SHARED_ASSET_DISPOSITION_OBJECT_TYPE,
   validateStageEnvMappings,
+  validateStagePromptMappings,
 } from "../../src/lib/workflow-provisioning.js";
 
 const API_BASE = "https://test-api.example.com";
@@ -480,6 +481,18 @@ describe("eai workflow", () => {
         }),
       });
       expect(createdPrompts).toHaveLength(3);
+      const deprecatedOverrideFieldsKey = ["allowed", "OverrideFields"].join("");
+      for (const createdPrompt of createdPrompts) {
+        expect(createdPrompt.data).toMatchObject({
+          customizableFields: [
+            "promptContent",
+            "aiProfileKey",
+            "ragPolicy",
+            "toolPolicy",
+          ],
+        });
+        expect(createdPrompt.data).not.toHaveProperty(deprecatedOverrideFieldsKey);
+      }
       expect(createdPrompts).toEqual(
         expect.arrayContaining([
           {
@@ -533,6 +546,9 @@ describe("eai workflow", () => {
         Object.fromEntries([parseEnvMapping("WORKFLOW_REVIEW_STAGE=review")]),
       ),
     ).toThrow('WORKFLOW_REVIEW_STAGE points at unknown stage "review"');
+    expect(() =>
+      validateStagePromptMappings(stages, { review: "Return review JSON." }),
+    ).toThrow('Stage prompt points at unknown stage "review"');
 
     expect(() =>
       buildWorkflowProvisionPayloads(
@@ -591,6 +607,12 @@ describe("eai workflow", () => {
             verticalKeys: ["builder-app"],
           }),
           promptContent: "Return intake JSON.",
+          customizableFields: [
+            "promptContent",
+            "aiProfileKey",
+            "ragPolicy",
+            "toolPolicy",
+          ],
         }),
       ],
     });

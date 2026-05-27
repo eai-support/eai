@@ -117,6 +117,20 @@ export function validateStageEnvMappings(
   }
 }
 
+export function validateStagePromptMappings(
+  stages: WorkflowProvisionStage[],
+  stagePrompts: Record<string, string>,
+): void {
+  const validStageIds = new Set(
+    stages.map((stage) => toObjectTypeSlug(stage.id)),
+  );
+  for (const stageId of Object.keys(stagePrompts)) {
+    if (!validStageIds.has(toObjectTypeSlug(stageId))) {
+      throw new Error(`Stage prompt points at unknown stage "${stageId}".`);
+    }
+  }
+}
+
 export function buildWorkflowProvisionPayloads(
   input: WorkflowProvisionDefinitionInput,
   options?: {
@@ -339,7 +353,7 @@ export function buildWorkflowAiRuntimeBindingPayloads(
         workflowKey,
         workflowStageKey: stage.id,
       },
-      allowedOverrideFields: [
+      customizableFields: [
         "promptContent",
         "aiProfileKey",
         "ragPolicy",
