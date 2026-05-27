@@ -15,6 +15,8 @@ import {
   parseEnvMapping,
   parseStagePrompt,
   parseStageSpec,
+  SHARED_ASSET_ADOPTION_OBJECT_TYPE,
+  SHARED_ASSET_DISPOSITION_OBJECT_TYPE,
   validateStageEnvMappings,
 } from "../../src/lib/workflow-provisioning.js";
 
@@ -489,6 +491,10 @@ describe("eai workflow", () => {
               aiProfileKey: "configurator-runtime",
               assignmentRules: expect.objectContaining({
                 appScope: "selected",
+                adoption: "accept",
+                disposition: "accept",
+                adoptionObjectType: SHARED_ASSET_ADOPTION_OBJECT_TYPE,
+                dispositionObjectType: SHARED_ASSET_DISPOSITION_OBJECT_TYPE,
                 verticalKeys: ["no-code-builder"],
               }),
               promptContent:
@@ -578,6 +584,10 @@ describe("eai workflow", () => {
           workflowStageKey: "intake",
           assignmentRules: expect.objectContaining({
             appScope: "selected",
+            adoption: "accept",
+            disposition: "accept",
+            adoptionObjectType: SHARED_ASSET_ADOPTION_OBJECT_TYPE,
+            dispositionObjectType: SHARED_ASSET_DISPOSITION_OBJECT_TYPE,
             verticalKeys: ["builder-app"],
           }),
           promptContent: "Return intake JSON.",

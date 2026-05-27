@@ -4,6 +4,8 @@ export const SHARED_WORKFLOW_CONFIG_OBJECT_TYPE = "shared-workflow-config";
 export const VERTICAL_PRODUCT_CONFIG_OBJECT_TYPE = "vertical-product-config";
 export const SHARED_AI_PROFILE_OBJECT_TYPE = "shared-ai-profile";
 export const SHARED_CHATBOT_CONFIG_OBJECT_TYPE = "shared-chatbot-config";
+export const SHARED_ASSET_ADOPTION_OBJECT_TYPE = "shared-asset-adoption";
+export const SHARED_ASSET_DISPOSITION_OBJECT_TYPE = "shared-asset-disposition";
 export const WORKFLOW_VERTICAL_CONFIG_PREFIX = "workflow:";
 
 export type WorkflowProvisionStatus = "active" | "draft";
@@ -329,6 +331,10 @@ export function buildWorkflowAiRuntimeBindingPayloads(
       aiProfileKey: profileKey,
       assignmentRules: {
         appScope: "selected",
+        adoption: "accept",
+        disposition: "accept",
+        adoptionObjectType: SHARED_ASSET_ADOPTION_OBJECT_TYPE,
+        dispositionObjectType: SHARED_ASSET_DISPOSITION_OBJECT_TYPE,
         verticalKeys: [verticalKey],
         workflowKey,
         workflowStageKey: stage.id,
