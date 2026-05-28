@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-26T21:12:00.987Z"
-source_commit: "7e20706d07902843ffa4898e3bb29006ca3d7835"
+generated_at: "2026-05-28T00:39:05.893Z"
+source_commit: "77ac608aa142edbf19749b1817752f93646448d7"
 ---
 # EAI CLI — Overview
 
@@ -10,17 +10,17 @@ source_commit: "7e20706d07902843ffa4898e3bb29006ca3d7835"
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.9.0 |
+| **Version** | 2.9.1 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
-| **Current Status** | Active development (v2.9.0 released 2026-05-26) |
-| **Last Material Change** | v2.9.0: Add vertical workflow provisioning (2026-05-26) |
+| **Current Status** | Active development (v2.9.1 released 2026-05-28) |
+| **Last Material Change** | v2.9.1: Bind AI runtime during workflow provisioning (2026-05-28) |
 
 ## Service Identity
 
 **Name**: `@eai-tools/cli` (eai)  
-**Version**: 2.9.0  
+**Version**: 2.9.1  
 **Purpose**: Command-line interface for the Enterprise AI Platform that wraps all platform API calls, providing developers with simple commands to scaffold projects, authenticate users, manage data models, perform CRUD operations, deploy to Azure, and integrate AI capabilities.
 
 ## Description
