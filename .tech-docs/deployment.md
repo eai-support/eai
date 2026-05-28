@@ -1,16 +1,16 @@
 ---
-generated: "2026-05-02T17:46:00Z"
-source_commit: "06d9705d92561ba3dc873c32939e23dddbbbd64d"
+generated: true
+generated_at: "2026-05-23T18:05:52.673Z"
+source_commit: "3f2653e8e0c12fcd8b9be770d495dbf8269079f1"
 ---
-
 # EAI CLI — Deployment
 
 ## Overview
 
-The EAI CLI has two deployment contexts:
+The EAI CLI has two distinct deployment contexts:
 
-1. **CLI Distribution** — How the `eai` CLI tool itself is published and installed
-2. **Vertical Application Deployment** — How the CLI helps deploy vertical apps to Azure
+1. **CLI Distribution** — How the `eai` CLI tool itself is published and installed by developers
+2. **Vertical Application Deployment** — How the CLI orchestrates deployment of vertical apps to Azure App Service
 
 ---
 
@@ -18,21 +18,20 @@ The EAI CLI has two deployment contexts:
 
 ### Publishing Model
 
-The EAI CLI uses a **static npm registry hosted on GitHub Pages**, eliminating the need for npm.js publishing.
+The EAI CLI uses a **static npm registry hosted on GitHub Pages**, eliminating the need for npmjs publishing.
 
-**Registry URL**: `https://eai-tools.github.io/eai-cli/registry`
-
-**Package Name**: `@eai-tools/cli`
-
-**Current Version**: 2.6.0
+**Registry URL**: [https://eai-tools.github.io/eai/registry](https://eai-tools.github.io/eai/registry)  
+**Package Name**: `@eai-tools/cli`  
+**Current Version**: 2.8.13  
+**Package Metadata**: [https://eai-tools.github.io/eai/registry/@eai-tools/cli](https://eai-tools.github.io/eai/registry/@eai-tools/cli)
 
 ### Installation
 
 Users configure npm to use the EAI registry, then install globally:
 
 ```bash
-# Configure npm registry
-echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
+# Configure the scoped EAI registry (one-time setup)
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
 
 # Install globally
 npm install -g @eai-tools/cli
@@ -41,11 +40,32 @@ npm install -g @eai-tools/cli
 eai --version
 ```
 
-### Release Process
+### Update Channel
 
-Releases are managed by `release.sh` script, which runs a comprehensive validation pipeline.
+Users update the CLI via:
 
-**Command**:
+```bash
+# Check for updates
+eai update --check
+
+# Install latest version
+eai update
+
+# Or manually
+npm install -g @eai-tools/cli@latest
+```
+
+The CLI checks for updates once per 24 hours via GitHub Releases API and notifies users if a newer version is available.
+
+---
+
+## Release Process
+
+### Release Script
+
+Releases are managed by `./release.sh`, which runs a comprehensive validation pipeline before publishing.
+
+**Usage**:
 ```bash
 ./release.sh <patch|minor|major> "Release message"
 ```
@@ -57,517 +77,447 @@ Releases are managed by `release.sh` script, which runs a comprehensive validati
 ./release.sh major "New config format, breaking changes to types CLI"
 ```
 
-**Release Pipeline**:
+### Release Pipeline Stages
+
 ```mermaid
 flowchart TB
-    Start[./release.sh] --> Check1[Verify on main branch]
-    Check1 --> Check2[Verify clean working tree]
-    Check2 --> Check3[Pull latest changes]
-    Check3 --> NodeCheck[Node.js >= 20 check]
-    NodeCheck --> Install[npm ci]
-    Install --> Typecheck[tsc --noEmit]
-    Typecheck --> Lint[npm run lint]
-    Lint --> Build[npm run build]
-    Build --> Test[npm run test]
-    Test --> Smoke[Smoke Tests]
-    Smoke --> Docs[Build docs site]
-    Docs --> Pack[npm pack]
-    Pack --> Registry[generate-registry.cjs]
-    Registry --> IPScan[IP leak scan]
-    IPScan --> Bump[Bump package.json version]
-    Bump --> Commit[git commit + tag]
-    Commit --> Push[git push + push tags]
-    Push --> GHRelease[Create GitHub Release]
+    Start[./release.sh]
+    Preflight[Release Preflight Checks]
+    Bump[Bump Version]
+    GenDocs[Generate Release Docs]
+    GenRegistry[Generate Registry Artifacts]
+    Commit[Commit Release]
+    Tag[Create Annotated Tag]
+    Push[Push main + Tag]
+    GHRelease[GitHub Release Workflow]
+    GHPages[Deploy Docs Workflow]
+    Verify[Verify Public Registry]
+    Done[Release Complete]
+    
+    Start --> Preflight
+    Preflight --> Bump
+    Bump --> GenDocs
+    GenDocs --> GenRegistry
+    GenRegistry --> Commit
+    Commit --> Tag
+    Tag --> Push
+    Push --> GHRelease
+    Push --> GHPages
+    GHRelease --> Verify
+    GHPages --> Verify
+    Verify --> Done
+    
+    style Start fill:#e1f5ff
+    style Done fill:#d4edda
+    style Preflight fill:#fff3cd
+    style Verify fill:#fff3cd
 ```
 
-### Validation Checks
+### Preflight Checks (`npm run release:check`)
 
-| Check | Tool | Purpose |
-|-------|------|---------|
-| **Branch** | `git branch --show-current` | Must be on `main` |
-| **Working Tree** | `git status --porcelain` | Must be clean (no uncommitted changes) |
-| **Node Version** | `node -v` | Must be >= 20.0.0 |
-| **Dependencies** | `npm ci` | Clean install from lockfile |
-| **Type Check** | `tsc --noEmit` | TypeScript type errors |
-| **Lint** | `npm run lint` | ESLint violations |
-| **Build** | `npm run build` | Compilation errors |
-| **Tests** | `npm run test` | Vitest unit tests pass |
-| **Smoke Tests** | `node dist/index.js --version/--help` | CLI executable and commands present (init, login, dev, types, resources, deploy, env, verify, chat, docs, whoami, doctor, tenant, user, provision, update) |
-| **Docs Build** | Build documentation site | Astro/Starlight docs generation succeeds |
-| **Registry** | `npm pack` + `generate-registry.cjs` | Registry metadata valid |
-| **IP Leak** | Scan source for internal terms | No sensitive info leaked |
+Before tagging, `release.sh` validates:
 
-### Smoke Test Details
+1. **Clean working tree** — No uncommitted changes
+2. **On main branch** — Must release from `main`
+3. **Latest code** — `git pull` to ensure up-to-date
+4. **Dependencies installed** — `npm ci`
+5. **Type checking** — `tsc --noEmit`
+6. **Linting** — `eslint src/`
+7. **Build** — `tsc` (compile to `dist/`)
+8. **Tests** — `vitest run`
+9. **Smoke tests** — `eai --version`, `eai --help`, command groups
+10. **Docs site build** — `cd docs-site && npm run build`
+11. **Release docs generated** — `llms.txt`, `llms-full.txt`, `cli-help.txt`
+12. **Registry artifacts validated** — `npm pack` + `generate-registry.cjs`
 
-The release script verifies these commands are registered:
-- `init`, `login`, `dev`, `types`, `resources`, `deploy`, `env`
-- `verify`, `chat`, `docs`, `whoami`, `doctor`, `tenant`, `user`, `provision`, `update`
+If any check fails, the release is aborted.
 
-### Registry Generation
+### Release Execution
 
-**Script**: `scripts/generate-registry.cjs`
+After passing preflight checks:
 
-**Inputs**:
-- `package.json` — Version, description, keywords
-- `docs/public/registry/-/@eai-tools/cli-latest.tgz` — Latest tarball
+1. **Bump version** — Updates `package.json` with new semver version
+2. **Generate release docs** — Refreshes `docs-site/static/llms.txt`, `llms-full.txt`, `cli-help.txt`
+3. **Generate registry** — Creates `docs-site/static/registry/` packument and tarball
+4. **Update `.tech-docs/`** — Updates release metadata in `.tech-docs/overview.md` and `.tech-docs/changelog.md`
+5. **Commit** — `git commit -m "chore: release vX.Y.Z"`
+6. **Tag** — `git tag -a vX.Y.Z -m "Release message"`
+7. **Push** — `git push origin main --follow-tags`
 
-**Outputs**:
-- `docs/public/registry/@eai-tools/cli` — npm packument (package metadata)
-- `docs/public/registry/-/@eai-tools/cli-{version}.tgz` — Versioned tarball
+### GitHub Actions Workflows
 
-**Packument Structure**:
-```json
-{
-  "name": "@eai-tools/cli",
-  "dist-tags": {
-    "latest": "2.6.0"
-  },
-  "versions": {
-    "2.6.0": {
-      "name": "@eai-tools/cli",
-      "version": "2.6.0",
-      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
-      "dist": {
-        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-2.6.0.tgz",
-        "shasum": "..."
-      }
-    }
-  }
-}
-```
+#### Release Workflow (`.github/workflows/release.yml`)
 
-### GitHub Actions Workflow
-
-**File**: `.github/workflows/release.yml` (if present)
-
-**Trigger**: Git tag push (`v*`)
+**Trigger**: Tag push (`v*`)
 
 **Steps**:
+1. Checkout repository
+2. Setup Node.js 24
+3. Validate version matches tag
+4. Install dependencies (`npm ci`)
+5. Type check (`npm run typecheck`)
+6. Lint (`npm run lint`)
+7. Build (`npm run build`)
+8. Test (`npm run test`)
+9. Verify committed release docs (`npm run docs:release-assets:check`)
+10. Verify committed registry points at tag version
+11. Create GitHub Release
+12. Attach tarball to release
 
-1. **Checkout** — Fetch repository with full history
-2. **Setup Node.js** — Install Node 20
-3. **Validate Version** — Ensure tag matches `package.json` version
-4. **Install** — `npm ci`
-5. **Build** — `npm run build`
-6. **Test** — `npm run test`
-7. **Lint** — `npm run lint`
-8. **Create Tarball** — `npm pack`
-9. **Generate Registry** — `node scripts/generate-registry.cjs`
-10. **Publish to Registry** — Commit registry files to `docs/public/registry/`
-11. **Generate Changelog** — Extract commit messages since last tag
-12. **Create GitHub Release** — Publish release with tarball and changelog
+**Outputs**: GitHub Release with tarball attachment
 
-**Permissions**:
-```yaml
-permissions:
-  contents: write  # For creating releases and pushing to gh-pages
-```
+---
 
-### Version Bumping
+#### Deploy Docs Workflow (`.github/workflows/docs.yml`)
 
-**Semantic Versioning**: `MAJOR.MINOR.PATCH`
+**Trigger**: Push to `main` with changes to:
+- `.tech-docs/**`
+- `docs-site/**`
+- `scripts/generate-release-docs.cjs`
+- `scripts/generate-registry.cjs`
+- `scripts/generate-llms-full.cjs`
 
-| Bump | Increment | Use Case |
-|------|-----------|----------|
-| `patch` | `2.5.2` → `2.5.3` | Bug fixes, dependency updates |
-| `minor` | `2.5.2` → `2.6.0` | New features, backward-compatible |
-| `major` | `2.6.0` → `3.0.0` | Breaking changes |
+Or manual workflow dispatch.
 
-**Manual Bump**:
-```bash
-npm version patch -m "chore: release v%s"   # Creates commit + tag
-git push origin main --follow-tags
-```
+**Steps**:
+1. Checkout repository
+2. Setup Node.js 24
+3. Install docs-site dependencies (`cd docs-site && npm ci`)
+4. Build Docusaurus site (`npm run build`)
+5. Verify generated site (index.html, registry files, llms.txt files)
+6. Upload to GitHub Pages
+7. Deploy to `https://eai-tools.github.io/eai`
 
-### Update Mechanism
+**Outputs**: Documentation site and static registry at GitHub Pages
 
-Users are notified of updates via background check (24h cache):
+**Post-Deployment**: `release.sh` waits for deployment and verifies public registry shows new version
 
-**Update Check Flow**:
+---
+
+## Deployment Topology
+
+### CLI Distribution
+
 ```mermaid
-sequenceDiagram
-    participant CLI
-    participant Cache as ~/.eai/update-check.json
-    participant Registry as GitHub Pages
-
-    CLI->>Cache: Read cache
-    alt Cache < 24h old
-        Cache-->>CLI: Skip check
-    else Cache expired
-        CLI->>Registry: GET /registry/@eai-tools/cli
-        Registry-->>CLI: {"dist-tags": {"latest": "2.7.0"}}
-        CLI->>Cache: Write cache
-    end
-
-    Note over CLI: Execute command
-
-    CLI->>Cache: Read latest version
-    alt Latest > Current
-        CLI->>CLI: Display update banner
+flowchart TB
+    Dev[Developer Machine]
+    GitHub[GitHub Repository]
+    Actions[GitHub Actions]
+    Pages[GitHub Pages]
+    Registry[Static npm Registry]
+    User[End Users]
+    
+    Dev -->|git push --tags| GitHub
+    GitHub -->|Trigger on tag| Actions
+    Actions -->|Build & Release| GitHub
+    Actions -->|Deploy Docs| Pages
+    Pages -->|Serve| Registry
+    Registry -->|npm install -g| User
+    
+    subgraph GitHub Pages
+        Pages
+        Registry
     end
 ```
 
-**Update Command**:
-```bash
-eai update  # Runs: npm install -g @eai-tools/cli@latest
+### Vertical App Deployment (via `eai deploy`)
+
+```mermaid
+flowchart TB
+    Dev[Developer]
+    CLI[eai deploy trigger]
+    GitHub[GitHub Repository]
+    Actions[GitHub Actions]
+    Azure[Azure App Service]
+    
+    Dev -->|eai deploy trigger| CLI
+    CLI -->|POST workflow dispatch| GitHub
+    GitHub -->|Trigger| Actions
+    Actions -->|Build| Actions
+    Actions -->|Deploy| Azure
+    Azure -->|Serve app| Users[End Users]
 ```
 
 ---
 
 ## Vertical Application Deployment
 
-The CLI helps deploy vertical applications (built with the Platform SDK) to Azure App Service.
-
-### Deployment Architecture
-
-```mermaid
-flowchart TB
-    Dev[Developer Machine] -->|1. eai deploy setup| GHActions[GitHub Actions Workflow]
-    Dev -->|2. eai deploy trigger| Trigger[gh workflow run]
-    Trigger -->|3. Execute| Build[npm ci && npm run build]
-    Build -->|4. Package| Artifact[Build artifact]
-    Artifact -->|5. Deploy| AppService[Azure App Service]
-    AppService -->|6. Health Check| URL[https://my-app.azurewebsites.net]
-    Dev -->|7. eai deploy status| Status[Check workflow runs]
-```
+The CLI provides commands to orchestrate deployment of vertical apps to Azure App Service via GitHub Actions.
 
 ### Setup Deployment
 
-**Command**: `eai deploy setup`
-
-**Purpose**: Generates GitHub Actions workflow file and documents required secrets.
-
-**Generated File**: `.github/workflows/deploy-demo.yml`
-
-**Workflow Contents**:
-```yaml
-name: Deploy to Azure
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 20
-      - run: npm ci
-      - run: npm run build
-      - uses: azure/webapps-deploy@v2
-        with:
-          app-name: ${{ secrets.AZURE_APP_NAME }}
-          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
+```bash
+eai deploy setup --repo org/my-vertical
 ```
+
+**What it does**:
+1. Generates `.github/workflows/deploy-demo.yml`
+2. Lists required GitHub secrets
+3. Provides setup instructions
 
 **Required GitHub Secrets**:
-- `AZURE_APP_NAME` — Azure App Service name
-- `AZURE_PUBLISH_PROFILE` — Publish profile (downloaded from Azure Portal)
-
-**Setup Output**:
-```bash
-eai deploy setup --repo myorg/my-vertical
-
-✓ Created .github/workflows/deploy-demo.yml
-
-Next steps:
-1. Add GitHub secrets:
-   - AZURE_APP_NAME
-   - AZURE_PUBLISH_PROFILE
-2. Push workflow to GitHub:
-   git add .github/workflows/deploy-demo.yml
-   git commit -m "Add deployment workflow"
-   git push
-3. Trigger deployment:
-   eai deploy trigger
-```
+- `AZURE_WEBAPP_PUBLISH_PROFILE` — Azure App Service publish profile
+- `AZURE_WEBAPP_NAME` — Azure App Service name
 
 ### Trigger Deployment
 
-**Command**: `eai deploy trigger`
-
-**Purpose**: Manually trigger GitHub Actions workflow via `gh` CLI.
-
-**Requirements**:
-- `gh` CLI installed and authenticated
-- Workflow file exists (`.github/workflows/deploy-demo.yml`)
-- User has repo admin permissions
-
-**Execution**:
 ```bash
 eai deploy trigger
-
-▸ Triggering deployment workflow...
-✓ Workflow triggered successfully
-  Run ID: 123456789
-  URL: https://github.com/myorg/my-vertical/actions/runs/123456789
 ```
 
-**Underlying Command**:
-```bash
-gh workflow run deploy-demo.yml --ref main
-```
+**What it does**:
+1. Reads `GITHUB_TOKEN` from `.env.local`
+2. Reads `GITHUB_REPOSITORY` from `.env.local`
+3. Calls GitHub Actions API to dispatch `deploy-demo.yml` workflow
+4. Returns workflow run ID
+
+**Options**:
+- `--workflow <name>` — Workflow file name (default: `deploy-demo.yml`)
+- `--ref <ref>` — Git ref to deploy (default: `main`)
 
 ### Check Deployment Status
 
-**Command**: `eai deploy status`
-
-**Purpose**: List recent GitHub Actions workflow runs.
-
-**Output**:
 ```bash
 eai deploy status
-
-Recent deployments:
-  ✓ Run #42  main  2 hours ago   success   (Deploy to Azure)
-  ✗ Run #41  main  1 day ago     failure   (Deploy to Azure)
-  ✓ Run #40  main  3 days ago    success   (Deploy to Azure)
 ```
 
-**Underlying Command**:
-```bash
-gh run list --workflow=deploy-demo.yml --limit=10
-```
-
-### Azure Resources
-
-The CLI does not create Azure resources (App Service, Key Vault, App Config). These must be provisioned manually or via Infrastructure-as-Code (Terraform, Bicep, ARM templates).
-
-**Typical Azure Setup**:
-
-| Resource | Purpose |
-|----------|---------|
-| **Azure App Service** | Hosts the vertical application (Node.js runtime) |
-| **Azure App Config** | Stores environment configuration |
-| **Azure Key Vault** | Stores secrets (API keys, connection strings) |
-| **Application Insights** | Monitoring and telemetry (optional) |
-
-### Environment Configuration Sync
-
-**Command**: `eai env pull`
-
-**Purpose**: Syncs environment config from Azure App Config + Key Vault to `.env.local`.
-
-**Pre-Deployment Checklist**:
-1. ✅ Azure App Service created
-2. ✅ Azure App Config populated
-3. ✅ GitHub secrets configured
-4. ✅ Workflow file committed
-5. ✅ `eai deploy trigger` executed
-6. ✅ Deployment succeeded (check `eai deploy status`)
-7. ✅ Health check passes (`curl https://my-app.azurewebsites.net/health`)
+**What it does**:
+1. Fetches latest workflow runs
+2. Displays status, conclusion, and logs URL
+3. Supports `--run-id` to check specific run
 
 ---
 
-## Deployment Health Checks
+## Infrastructure
 
-### CLI Health Check
+### GitHub Pages
 
-**Command**: `eai verify`
+**URL**: [https://eai-tools.github.io/eai](https://eai-tools.github.io/eai)
 
-**Checks**:
-- Platform API reachable
-- Authentication valid
-- Tenant accessible
+**Purpose**:
+- Documentation site (Docusaurus)
+- Static npm registry
+- Release artifacts (llms.txt, cli-help.txt)
 
-**Output**:
+**Deployment**:
+- Automated via `.github/workflows/docs.yml`
+- Triggered on push to `main` affecting docs or registry
+- Manual dispatch available
+
+**Resources**:
+- HTML/CSS/JS assets (Docusaurus build)
+- npm registry packument (`registry/@eai-tools/cli`)
+- Tarball releases (`registry/-/@eai-tools/cli-*.tgz`)
+- AI-readable docs (`llms.txt`, `llms-full.txt`)
+- CLI help output (`cli-help.txt`)
+
+---
+
+### GitHub Repository
+
+**URL**: [https://github.com/eai-tools/eai](https://github.com/eai-tools/eai)
+
+**Branch Protection**:
+- `main` branch protected
+- Require pull request reviews (recommended)
+- Require status checks to pass (recommended)
+
+**GitHub Actions Secrets** (for releases):
+- `GITHUB_TOKEN` — Auto-generated, used for creating releases
+- No additional secrets required (public repository)
+
+---
+
+### Azure App Service (for vertical apps)
+
+Vertical applications deployed via `eai deploy` typically use:
+
+**Resource**: Azure App Service (Linux)  
+**Runtime**: Node.js 20.x or later  
+**Deployment Method**: GitHub Actions with publish profile  
+**Configuration**: Environment variables from Azure App Configuration  
+**Secrets**: Stored in Azure Key Vault
+
+**Deployment Flow**:
+1. `eai deploy trigger` calls GitHub Actions API
+2. GitHub Actions builds Next.js app
+3. Deploys to Azure App Service using publish profile
+4. App Service pulls environment from Azure App Config
+5. App Service pulls secrets from Azure Key Vault (if configured)
+
+---
+
+## Health Checks
+
+### CLI Installation Health
+
+Verify CLI is correctly installed:
+
 ```bash
+# Check version
+eai --version
+
+# Check help
+eai --help
+
+# Run platform connectivity checks
 eai verify
-
-✓ Platform API reachable (https://api.eai.example.com)
-✓ Authentication valid (token expires in 42 minutes)
-✓ Tenant accessible (Team A - tenant-123)
 ```
 
-### Vertical App Health Check
+### Registry Health
 
-Most vertical apps expose a `/health` endpoint:
+Verify static registry is serving correctly:
 
 ```bash
-curl https://my-app.azurewebsites.net/health
+# Check packument file
+curl https://eai-tools.github.io/eai/registry/@eai-tools/cli
+
+# Check latest tarball exists
+curl -I https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-latest.tgz
 ```
 
-**Expected Response**:
+Expected packument format:
 ```json
 {
-  "status": "healthy",
-  "platform": "connected",
-  "database": "connected"
+  "name": "@eai-tools/cli",
+  "versions": {
+    "2.8.13": {
+      "name": "@eai-tools/cli",
+      "version": "2.8.13",
+      "dist": {
+        "tarball": "https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-2.8.13.tgz"
+      }
+    }
+  },
+  "dist-tags": {
+    "latest": "2.8.13"
+  }
 }
 ```
 
----
+### Vertical App Health
 
-## CI/CD Integration
+Vertical apps deployed to Azure should expose health endpoints:
 
-### GitHub Actions Example
+```bash
+# Check app health
+curl https://my-vertical.azurewebsites.net/api/health
 
-```yaml
-name: CI
-
-on: [push, pull_request]
-
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 20
-      
-      # Install CLI
-      - run: |
-          echo "@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry" >> ~/.npmrc
-          npm install -g @eai-tools/cli
-      
-      # Authenticate (headless)
-      - env:
-          EAI_ACCESS_TOKEN: ${{ secrets.EAI_ACCESS_TOKEN }}
-          NO_UPDATE_NOTIFIER: 1
-        run: |
-          eai types validate
-          eai types seed --dry-run
-          eai verify
+# Check via CLI
+eai verify
 ```
 
-### Environment Variables for CI
+---
 
-| Variable | Purpose |
-|----------|---------|
-| `EAI_ACCESS_TOKEN` | Bypass token storage, use provided token |
-| `NO_UPDATE_NOTIFIER` | Disable update checks |
-| `CI` | Auto-detected by CLI; disables interactive prompts |
+## Deployment Checklist
+
+### For CLI Releases
+
+- [ ] All tests passing (`npm test`)
+- [ ] Linting clean (`npm run lint`)
+- [ ] Type checking clean (`npm run typecheck`)
+- [ ] Build succeeds (`npm run build`)
+- [ ] Smoke tests pass (`eai --version`, `eai --help`)
+- [ ] Docs site builds (`cd docs-site && npm run build`)
+- [ ] Release docs generated (`npm run docs:release-assets`)
+- [ ] Registry artifacts valid (`npm pack` + verify packument)
+- [ ] On `main` branch with clean working tree
+- [ ] Changelog updated in `.tech-docs/changelog.md`
+- [ ] Run `./release.sh <semver> "Message"`
+- [ ] Wait for GitHub Actions to complete
+- [ ] Verify public registry shows new version
+- [ ] Test installation: `npm install -g @eai-tools/cli@latest`
+
+### For Vertical App Deployments
+
+- [ ] Environment variables configured in `.env.local`
+- [ ] GitHub secrets configured (`AZURE_WEBAPP_PUBLISH_PROFILE`, `AZURE_WEBAPP_NAME`)
+- [ ] Deployment workflow tested locally
+- [ ] Run `eai deploy setup --repo org/name` (if first time)
+- [ ] Run `eai deploy trigger`
+- [ ] Check deployment status with `eai deploy status`
+- [ ] Verify app is running in Azure Portal
+- [ ] Test app endpoints
+- [ ] Monitor Application Insights for errors
 
 ---
 
-## Rollback Strategy
+## Rollback Procedures
 
 ### CLI Rollback
 
-**Downgrade to Previous Version**:
-```bash
-npm install -g @eai-tools/cli@2.5.2
-eai --version  # Verify downgrade
-```
+If a release has issues:
+
+1. **Install previous version**:
+   ```bash
+   npm install -g @eai-tools/cli@2.8.12
+   ```
+
+2. **Revert git tag** (if needed):
+   ```bash
+   git tag -d vX.Y.Z
+   git push origin :refs/tags/vX.Y.Z
+   ```
+
+3. **Delete GitHub Release** (via GitHub UI or API)
+
+4. **Fix issue and re-release**
 
 ### Vertical App Rollback
 
-**Via GitHub Actions**:
-1. Navigate to failed deployment run
-2. Find previous successful run
-3. Click "Re-run jobs"
+If a vertical app deployment fails:
 
-**Via Azure Portal**:
-1. Navigate to App Service
-2. Deployment Center → Deployment History
-3. Select previous deployment
-4. Click "Redeploy"
+1. **Check deployment logs** in GitHub Actions
 
-**Via `gh` CLI**:
-```bash
-# List recent runs
-gh run list --workflow=deploy-demo.yml
+2. **Roll back in Azure Portal**:
+   - Go to Azure App Service
+   - Deployment Center → Deployment slots or Previous deployments
+   - Select previous working deployment
+   - Click "Redeploy"
 
-# Re-run previous successful run
-gh run rerun 123456789
-```
+3. **Or re-deploy previous git ref**:
+   ```bash
+   eai deploy trigger --ref previous-working-commit-sha
+   ```
 
 ---
 
-## Security Considerations
+## Monitoring
 
-### CLI Distribution
+### CLI Distribution Monitoring
 
-- **Tarball Integrity**: SHA checksums verified by npm on install
-- **HTTPS Only**: Registry served over HTTPS (GitHub Pages)
-- **No Secrets in Source**: IP leak scan prevents accidental secret commits
-- **Supply Chain**: No npm.js dependency; full control over distribution
+- **GitHub Pages uptime**: Monitor [https://eai-tools.github.io/eai](https://eai-tools.github.io/eai)
+- **Registry availability**: Monitor packument endpoint
+- **Release workflow status**: Check GitHub Actions runs
+- **User feedback**: Monitor GitHub Issues
 
-### Vertical App Deployment
+### Vertical App Monitoring
 
-- **Secrets in GitHub Secrets**: Never commit Azure publish profiles or tokens
-- **Least Privilege**: Deploy keys have App Service write-only permissions
-- **Signed Commits**: Release commits are signed by maintainer
-- **Audit Trail**: GitHub Actions logs retained for 90 days
+Applications deployed via `eai deploy` should use:
 
----
-
-## Monitoring and Observability
-
-### CLI Update Metrics
-
-**Not currently tracked**. Possible future additions:
-- Update check success rate
-- Version distribution (% on latest, lagging versions)
-- Update adoption rate
-
-### Deployment Metrics
-
-**Via GitHub Actions**:
-- Workflow success rate
-- Deployment duration
-- Failure reasons (build, test, deploy)
-
-**Via Azure App Service**:
-- Application Insights (telemetry, logs, exceptions)
-- Health check endpoint uptime
-- Request/response metrics
+- **Azure Application Insights**: Request telemetry, exceptions, traces
+- **Azure Monitor**: Resource metrics (CPU, memory, requests)
+- **Log Analytics**: Centralized logging
+- **Azure App Service Logs**: Deployment logs, runtime logs
 
 ---
 
-## Troubleshooting
+## CI/CD Workflows Summary
 
-### "gh: command not found"
-
-**Cause**: GitHub CLI not installed
-
-**Fix**:
-```bash
-# macOS
-brew install gh
-
-# Linux (Debian/Ubuntu)
-curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-sudo apt update && sudo apt install gh
-
-# Authenticate
-gh auth login
-```
-
-### "Workflow not found"
-
-**Cause**: Workflow file doesn't exist or is in wrong location
-
-**Fix**:
-```bash
-eai deploy setup --repo myorg/my-vertical
-git add .github/workflows/deploy-demo.yml
-git commit -m "Add deployment workflow"
-git push
-```
-
-### "Deployment failed: Publish profile invalid"
-
-**Cause**: Expired or incorrect Azure publish profile
-
-**Fix**:
-1. Go to Azure Portal → App Service → Deployment Center
-2. Download new publish profile
-3. Update GitHub secret `AZURE_PUBLISH_PROFILE`
-4. Re-trigger deployment: `eai deploy trigger`
+| Workflow | Trigger | Purpose | Outputs |
+|----------|---------|---------|---------|
+| `release.yml` | Tag push (`v*`) | Create GitHub Release | GitHub Release + tarball |
+| `docs.yml` | Push to `main` (docs changes) | Deploy documentation and registry | GitHub Pages site + registry |
+| `ci.yml` | Push, pull request | Run tests and linting | Test results |
+| `sync-linked-sources.yml` | Schedule (nightly) | Sync linked source files | Updated files |
 
 ---
 
-## Future Enhancements
+## Future Deployment Enhancements
 
-- [ ] Automated blue-green deployments
-- [ ] Deployment preview environments (PR-based)
-- [ ] CLI telemetry (opt-in, privacy-preserving)
-- [ ] Registry CDN for faster installs
-- [ ] Signed tarballs with GPG
+- [ ] Automated semantic versioning based on commit messages
+- [ ] Blue-green deployments for vertical apps
+- [ ] Canary releases for CLI distribution
+- [ ] Automated rollback on health check failures
+- [ ] Multi-region registry distribution (CDN)
+- [ ] Signed releases with GPG verification

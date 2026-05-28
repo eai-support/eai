@@ -1,0 +1,2 @@
+description = "Show how the current feature connects to broader system boundaries."
+prompt = "{{include: ../../../.specify/commands/gofer_zoom_out.md}}"

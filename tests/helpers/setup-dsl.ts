@@ -66,7 +66,7 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
 
   // Encrypt and write (mimicking the CLI's storeTokens function)
   const { createHash, createCipheriv, randomBytes } = await import('node:crypto');
-  const key = createHash('sha256').update(`eai-cli-${homedir}-token-store`).digest();
+  const key = createHash('sha256').update(`eai-${homedir}-token-store`).digest();
   const iv = randomBytes(16);
   const cipher = createCipheriv('aes-256-cbc', key, iv);
   let encrypted = cipher.update(JSON.stringify(tokens), 'utf-8', 'hex');

@@ -32,6 +32,12 @@ approvedAt: ''
 
 [What should be specified next and why]
 
+## Pipeline Mode Decision
+
+- **Classification**: [application delivery | non-app work]
+- **Shared numbered stages preserved**: yes
+- **App-delivery-only gates**: [preview, approval, service fit | not applicable]
+
 ## Technology Architecture Recommendation
 
 ### Recommended Architecture
@@ -49,6 +55,8 @@ approvedAt: ''
 
 - [Decision]: [Rationale]
 - [Decision]: [Rationale]
+- [Preview strategy]: [Why this is the right first MVP or why it is not applicable]
+- [Service-fit approach]: [Why this capability-selection approach is right or not applicable]
 
 ## What Can Change Before Specification
 

@@ -94,12 +94,12 @@ This feature delivers:
 ### US4: Documentation Site Foundation (P2)
 
 **As a** developer (or university student),
-**I want** a professional documentation site at `eai-tools.github.io/eai-cli` with getting started guides, command reference, and concept explanations,
+**I want** a professional documentation site at `eai-tools.github.io/eai` with getting started guides, command reference, and concept explanations,
 **So that** I can learn how to use the CLI and platform without reading source code.
 
 **Why this priority**: Documentation is the primary discovery and learning channel. Needed before promoting the CLI to external developers.
 
-**Independent Test**: Visit `eai-tools.github.io/eai-cli`, search for "init", find the command reference, follow the quickstart guide through `eai init` → `eai login` → `eai types seed`.
+**Independent Test**: Visit `eai-tools.github.io/eai`, search for "init", find the command reference, follow the quickstart guide through `eai init` → `eai login` → `eai types seed`.
 
 **Acceptance Scenarios**:
 
@@ -326,7 +326,7 @@ The site MUST include the following sections:
 
 **Documentation Site (P2)**
 
-- **FR-015**: Documentation site MUST be built with Starlight (Astro) and deployed to GitHub Pages at `eai-tools.github.io/eai-cli`
+- **FR-015**: Documentation site MUST be built with Starlight (Astro) and deployed to GitHub Pages at `eai-tools.github.io/eai`
 - **FR-016**: Documentation site MUST include built-in search via Pagefind
 - **FR-017**: Documentation site MUST serve `/llms.txt` and `/llms-full.txt` for AI agent consumption
 - **FR-018**: Every documentation page MUST use progressive disclosure — plain English first, then diagrams, then code
@@ -417,8 +417,8 @@ The site MUST include the following sections:
 ## Assumptions
 
 - The npm scope `@eai-tools` is available and the team has publish access
-- GitHub Pages is enabled for the `eai-tools/eai-cli` repository
-- The Vertical-Template at `https://github.com/eai-tools/Vertical-Template` will be accessible (at least to authenticated users) by the time documentation references it
+- GitHub Pages is enabled for the `eai-tools/eai` repository
+- The eai-app-template at `https://github.com/eai-tools/eai-app-template` will be accessible (at least to authenticated users) by the time documentation references it
 - The MIT license is acceptable for the CLI (research noted UNLICENSED blocks npm publish)
 - Node.js 20+ remains the minimum requirement (aligned with current package.json engines)
 - The existing Commander.js command structure will not change significantly during documentation work

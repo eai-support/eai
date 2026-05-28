@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-- **Project**: eai-cli
+- **Project**: eai
 - **Language**: TypeScript
 - **Package Manager**: npm
 
@@ -10,14 +10,15 @@
 
 - **Build**: `npm run build`
 - **Lint**: `npm run lint`
+- **Release preflight**: `npm run release:check`
 
 ## Project Structure
 
 ```
-eai-cli/
+eai/
 ├── src/
 │   ├── index.ts                 # Entry point, Commander.js program
-│   ├── commands/                # 14 command files
+│   ├── commands/                # Command modules
 │   │   ├── init.ts              # Scaffold new vertical
 │   │   ├── dev.ts               # Local dev server
 │   │   ├── login.ts             # Auth (login/logout)
@@ -31,16 +32,19 @@ eai-cli/
 │   │   ├── docs.ts              # Document operations
 │   │   ├── deploy.ts            # Deployment
 │   │   ├── verify.ts            # Platform checks (verify/doctor)
+│   │   ├── gofer.ts             # Safe Gofer asset refresh for existing repos
 │   │   └── update.ts            # CLI updates
-│   └── lib/                     # 9 library modules
+│   └── lib/                     # Shared library modules
 │       ├── api.ts               # PlatformAPIClient
 │       ├── auth.ts              # Entra CIAM auth
 │       ├── config.ts            # Config loader
 │       ├── error-codes.ts       # Error code system
+│       ├── gofer-refresh.ts     # Gofer manifest planning/apply
 │       ├── output.ts            # Output utilities
+│       ├── project-manifest.ts  # Project manifest persistence
 │       ├── schema-builder.ts    # CLI schema introspection
 │       └── update-check.ts      # Update checker
-├── docs/                        # Astro/Starlight docs site (93 pages)
+├── docs-site/                   # Docusaurus docs wrapper publishing from .tech-docs
 ├── .specify/                    # Gofer pipeline specs
 │   └── specs/
 │       └── cli-help-enhancement/
@@ -132,6 +136,26 @@ const config = await loadConfig();
 - Use conventional commit messages (feat:, fix:, chore:, docs:)
 - Create feature branches for new work
 - Run tests and linting before committing
+
+## Release Workflow
+
+- `./release.sh <patch|minor|major> "Message"` is the canonical human release entrypoint
+- `release.sh` must remain aligned with:
+  - `.github/workflows/release.yml`
+  - `.github/workflows/docs.yml`
+  - `src/commands/update.ts`
+  - `src/lib/update-check.ts`
+  - `README.md`
+- Every release should refresh `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`
+- GitHub Pages static registry is the release/install channel
+- Before changing release behavior, verify the public packument still works:
+  - `curl https://eai-tools.github.io/eai/registry/@eai-tools/cli`
+- Preferred user setup is `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
+- Install or update the CLI with `npm install -g @eai-tools/cli`
+- `eai update` upgrades the installed CLI package only
+- `eai gofer refresh --check` previews safe repo-local Gofer asset updates
+- `eai template check` previews vertical-template and UI drift for existing repos without writing files
+- Template or UI component changes are not auto-merged; review the preview before copying changes manually
 
 ## Boundaries
 

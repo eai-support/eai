@@ -132,6 +132,9 @@ Validation checks before writing:
 - Every data model entity has implementing tasks
 - Every API contract endpoint has implementing tasks
 - Task file paths match plan.md File Structure section
+- For CLI-driven platform mutations, task order must reflect authoritative
+  store setup before orchestrator writes, orchestrator writes before CLI
+  consumption, and platform persistence before local mirror patching.
 
 Write the complete task breakdown to {FEATURE_DIR}/tasks.md.
 
@@ -438,19 +441,55 @@ tasks in the following ordered chain. Each task is independently runnable and
 the ordering enforces scaffold before deployment so that configuration and
 manifest artifacts exist before any deploy command runs.
 
-1. **Vertical Template scaffolding -> `eai-cli scaffold`**
-   - Command: `eai-cli scaffold --template vertical --name <app-name>`
+1. **Vertical Template scaffolding -> `eai init`**
+   - Command: `eai init <app-name>`
    - Produces the working directory, `manifest.yml`, and `config.json` expected
      by subsequent tasks.
-2. **Local validation -> `eai-cli validate`**
-   - Command: `eai-cli validate`
+2. **Local validation -> `eai verify`**
+   - Command: `eai verify`
    - Confirms manifest/config correctness before any deploy attempt.
-3. **Pinned `eai-cli major.minor` deployment tasks -> `eai-cli deploy`**
-   - Command: `eai-cli deploy --env <environment>`
+3. **Pinned `eai major.minor` deployment tasks -> `eai deploy`**
+   - Command: `eai deploy trigger --repo <org/repo>`
    - Inherits the `major.minor` pin recorded in `plan.md`.
 
 <!-- prettier-ignore -->
-The ordering above is non-negotiable: tasks.md MUST instruct the pipeline to scaffold before deployment, validate before deploy, and only then invoke pinned `eai-cli major.minor` deployment tasks. Breaking the order causes deployment preflight gating in `/5_gofer_implement` to fail.
+The ordering above is non-negotiable: tasks.md MUST instruct the pipeline to scaffold before deployment, validate before deploy, and only then invoke pinned `eai major.minor` deployment tasks. Breaking the order causes deployment preflight gating in `/5_gofer_implement` to fail.
+
+### App-Delivery Preconditions Inside Shared Stages
+
+For **application delivery**, task generation MUST treat the UI-first gate as a
+precondition to downstream implementation tasks:
+
+- If `{FEATURE_DIR}/ui-approval.md` does not exist or is not approved, emit
+  only the blocking preview/approval tasks needed to reach approval; do **not**
+  emit downstream implementation tasks as if the UI were already settled.
+- If `{FEATURE_DIR}/service-fit-matrix.md` is missing or does not distinguish
+  accessible now vs purchasable vs unavailable platform capabilities, emit a
+  blocking service-fit task group before normal build tasks.
+- Use the Vertical Template already scaffolded by `eai` as the default UI
+  lego-block source. Any create-new UI concept must appear as an explicit
+  exception task with rationale.
+- Add a block-catalog task before any UI implementation task. It MUST run
+  `eai --describe`, `eai blocks list`, `eai blocks describe <id>` for selected
+  blocks, and `eai resources schema`; task notes must cite block IDs, resource
+  fields, data/action bindings, package lane, coupling status, Storybook story
+  IDs, theme override points, and approved custom-block exceptions.
+- Add package-profile tasks that lock the external/internal/hybrid profile
+  choice and the package lane before any public, shared, or app-local block
+  implementation begins.
+- Add block-porting tasks for every selected Vertical Template block that must
+  move into a reusable package lane, including Storybook story ID coverage,
+  theme override points, exports, and compatibility checks.
+- Add DAISY decoupling tasks whenever a block or package lane is not
+  internal-only and still depends on DAISY internals; the task must define the
+  resource-schema or adapter boundary and the regression proof that DAISY is no
+  longer required by the public surface.
+- Add public-readiness tasks for external and hybrid profiles covering public
+  exports, docs/examples where already part of the package surface,
+  accessibility/theming contracts, consumer smoke tests, and unsupported
+  custom-block exceptions.
+- For **non-app work**, keep the shared numbered stages but skip these
+  preview/approval/service-fit prerequisites.
 
 ### EnterpriseAI Contract, Reuse, and Red/Green Tasks
 
@@ -463,6 +502,20 @@ The ordering above is non-negotiable: tasks.md MUST instruct the pipeline to sca
   four-or-fewer journey steps covering user experience, chatbot/voice/
   accessibility/translation support, contextual prefill, completion validation,
   human review, audit trail, and fallback/escalation.
+- App-delivery preview/approval tasks that:
+  - build the first MVP from Vertical Template blocks
+  - select only known `eai blocks` IDs unless a custom-block exception exists
+  - preserve package lane, external/internal/hybrid profile choice, coupling
+    status, Storybook story IDs, and theme override points from the approved
+    preview brief
+  - apply approved branding/logo work when in scope
+  - collect screenshot or Playwright-style self-review evidence
+  - update `ui-review-log.md`
+  - block downstream work until `ui-approval.md` is approved
+- App-delivery service-fit tasks that update `service-fit-matrix.md` using
+  tenant-aware evidence from `eai --describe`, `eai whoami`, `eai tenant
+  select`, `eai resources schema`, `eai verify calls --format json`, or
+  equivalent approved platform evidence.
 - A scope-control task that checks whether any user-facing app process exceeds
   four steps and either combines/automates extra steps or records the approved
   exception and rationale.
@@ -473,6 +526,22 @@ The ordering above is non-negotiable: tasks.md MUST instruct the pipeline to sca
   then re-run validation.
 - Audit-history tasks that preserve stable finding IDs, recurring findings,
   accepted exceptions, owner, expiry, and review cadence.
+
+### CLI-Driven Platform State Ordering
+
+When a command-line workflow is expected to update platform state, `tasks.md`
+MUST order work like this unless the plan proves a different authoritative
+dependency:
+
+1. Define or extend the authoritative storage model.
+2. Implement platform-side orchestrator writes into those stores.
+3. Implement secret/config persistence if secrets or environment state are part
+   of the success contract.
+4. Implement CLI or UX consumption of the new platform response.
+5. Add regression tests for create, repair, recovery, and failure gates.
+
+The CLI must not be treated as the source of truth when the plan says the
+platform owns persistence.
 
 ---
 

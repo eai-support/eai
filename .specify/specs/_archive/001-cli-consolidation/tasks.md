@@ -15,7 +15,7 @@ completedAt: 2026-03-09
 - [x] T004 [P] Change GITHUB_ORG from enterpriseaigroup to eai-tools in src/commands/init.ts
 - [x] T005 [P] Replace all enterpriseaigroup references with eai-tools in README.md
 - [x] T006 [P] Update install command to reference @eai-tools/cli in README.md
-- [x] T007 [P] Update clone URL to eai-tools/eai-cli in README.md
+- [x] T007 [P] Update clone URL to eai-tools/eai in README.md
 
 ## Phase 2: Enhanced Scaffolding
 
@@ -43,4 +43,4 @@ completedAt: 2026-03-09
 - [x] T023 Run node dist/index.js --help — verify all commands listed
 - [x] T024 Run eai types validate from Vertical-Template — verify passing
 - [x] T025 Run eai doctor from Vertical-Template — verify project detection
-- [x] T026 Stage, commit, and push all changes to main on eai-tools/eai-cli
+- [x] T026 Stage, commit, and push all changes to main on eai-tools/eai

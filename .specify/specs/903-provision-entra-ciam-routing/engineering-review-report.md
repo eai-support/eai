@@ -30,9 +30,9 @@ returned to public `eai` users.
 
 | Repo | Verification | Result |
 |---|---|---|
-| eai-cli | `npm run build && npm run typecheck && npm test && npm run lint:no-placeholder && npm run lint -- --max-warnings=0` | PASS |
-| eai-cli | `npm run build && npx vitest run tests/integration/provision.test.ts tests/integration/whoami.test.ts && npx tsc -p tsconfig.json --noEmit` | PASS |
-| eai-cli docs | `npm run build` in `docs` | PASS |
+| eai | `npm run build && npm run typecheck && npm test && npm run lint:no-placeholder && npm run lint -- --max-warnings=0` | PASS |
+| eai | `npm run build && npx vitest run tests/integration/provision.test.ts tests/integration/whoami.test.ts && npx tsc -p tsconfig.json --noEmit` | PASS |
+| eai docs | `npm run build` in `docs` | PASS |
 | PublicAPI | `uv run pytest` | PASS, 756 passed, 4 skipped |
 | PublicAPI | Targeted ruff checks on changed files | PASS |
 | AdminAPI | `uv run pytest` | PASS, 343 passed |

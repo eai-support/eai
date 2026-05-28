@@ -141,7 +141,133 @@ describe('eai provision entra', () => {
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=cid-1');
     expect(content).toContain('ENTRA_CLIENT_SECRET=secret-1');
+    expect(content).toContain('AUTH_URL=http://localhost:3000');
+    expect(content).toContain('NEXTAUTH_URL=http://localhost:3000');
+    expect(content).toContain('AUTH_TRUST_HOST=true');
     expect(content).toContain('NEXT_PUBLIC_APP_NAME=my-vertical');
+  });
+
+  test('HP001 provision entra basePath projects register and persist matching Auth.js URLs', { timeout: 10000 }, async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      [
+        `BASE_URL_PUBLIC_API=${API_BASE}`,
+        'NEXT_PUBLIC_APP_NAME=no-code-builder',
+        'APP_BASE_PATH=/no-code-builder',
+        'NEXTAUTH_URL=http://localhost:3000',
+        '',
+      ].join('\n'),
+    );
+
+    let requestBody: unknown;
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          client_id: 'cid-basepath',
+          client_secret: 'secret-basepath',
+          existing: false,
+          redirectUris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'no-code-builder',
+      redirect_uris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('ENTRA_REDIRECT_URIS=http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id');
+  });
+
+  test('HP002 provision entra persists requested callback when platform response contains stale defaults', { timeout: 10000 }, async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      [
+        `BASE_URL_PUBLIC_API=${API_BASE}`,
+        'NEXT_PUBLIC_APP_NAME=no-code-builder',
+        'APP_BASE_PATH=/no-code-builder',
+        'AUTH_URL=http://localhost:3000/no-code-builder',
+        'ENTRA_REDIRECT_URIS=http://localhost:3000/api/auth/callback/microsoft-entra-id',
+        '',
+      ].join('\n'),
+    );
+
+    let requestBody: unknown;
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          client_id: 'cid-stale-response',
+          client_secret: null,
+          existing: true,
+          redirectUris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'no-code-builder',
+      redirect_uris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('ENTRA_REDIRECT_URIS=http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id');
+  });
+
+  test('BP001 provision entra falls back to localhost basePath when Auth.js URL is malformed', { timeout: 10000 }, async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      [
+        `BASE_URL_PUBLIC_API=${API_BASE}`,
+        'NEXT_PUBLIC_APP_NAME=no-code-builder',
+        'APP_BASE_PATH=/no-code-builder',
+        'NEXTAUTH_URL=not-a-url',
+        '',
+      ].join('\n'),
+    );
+
+    let requestBody: unknown;
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          client_id: 'cid-bad-url',
+          client_secret: 'secret-bad-url',
+          existing: false,
+          redirectUris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'no-code-builder',
+      redirect_uris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
   });
 
   test('storage provisioning dogfoods the PublicAPI provision route', { timeout: 10000 }, async () => {
@@ -276,6 +402,41 @@ describe('eai provision entra', () => {
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=remote-client');
+  });
+
+  test('rotate-secret writes a new ENTRA_CLIENT_SECRET without creating a new app', { timeout: 10000 }, async () => {
+    let rotateBody: unknown;
+    let createEndpointHit = false;
+
+    await writeFile(
+      join(env.dir, '.env.local'),
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_ID=client-1\n`,
+    );
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v3/provision/entra-app/client-1/rotate-secret`, async ({ request }) => {
+        rotateBody = await request.json();
+        return HttpResponse.json({
+          client_id: 'client-1',
+          client_secret: 'rotated-secret',
+          tenant_id: 'test-tenant-id',
+          expires_at: '2026-12-31T00:00:00Z',
+        });
+      }),
+      http.post(`${API_BASE}/v3/provision/entra-app`, () => {
+        createEndpointHit = true;
+        return HttpResponse.json({ detail: 'should not create' }, { status: 500 });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra', '--rotate-secret'], { from: 'user' });
+
+    expect(rotateBody).toEqual({ tenant_id: 'test-tenant-id' });
+    expect(createEndpointHit).toBe(false);
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('ENTRA_CLIENT_ID=client-1');
+    expect(content).toContain('ENTRA_CLIENT_SECRET=rotated-secret');
   });
 
   test('named profile API URL overrides local env when provisioning', { timeout: 10000 }, async () => {

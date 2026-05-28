@@ -46,9 +46,11 @@ function printServerDetail(ctx: ErrorContext, diag: DiagnosticsContext): void {
   if (ctx.requestId) {
     out.info(`Request ID: ${ctx.requestId}`);
   }
-  if (diag.debug && ctx.rawBody) {
-    out.info('Raw response body:');
-    out.info(ctx.rawBody);
+  if (diag.debug && ctx.status) {
+    out.info(`HTTP status: ${ctx.status}`);
+  }
+  if (diag.debug && ctx.serverCode) {
+    out.info(`Server code: ${ctx.serverCode}`);
   }
 }
 
@@ -107,6 +109,15 @@ function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
   process.exit(1);
 }
 
+function handleSecretRotationError(err: unknown, diag: DiagnosticsContext): never {
+  const ctx = readErrorContext(err);
+  out.error('Entra client secret rotation failed.');
+  printServerDetail(ctx, diag);
+  out.info('Reference: EAI-PROVISION-ROTATE-SECRET-FAILED');
+  out.info('Confirm you are a tenant admin and ENTRA_CLIENT_ID belongs to the active tenant.');
+  process.exit(1);
+}
+
 async function formatProvisionResponseError(response: Response): Promise<string> {
   const text = await response.text();
   if (!text) {
@@ -138,16 +149,19 @@ provisionCommand
   .command('entra')
   .description('Create an Entra app registration for end-user auth (Auth.js)')
   .option('--force', 'Re-check the remote app registration even if ENTRA_CLIENT_ID already exists locally', false)
-  .option('--debug', 'Print full server response body on failure (diagnostic only — may contain raw error context)', false)
+  .option('--rotate-secret', 'Rotate the existing ENTRA_CLIENT_ID secret and write the new value to .env.local', false)
+  .option('--debug', 'Print product-safe diagnostic status and request identifiers on failure', false)
   .addHelpText('after', `
 Examples:
   $ eai provision entra
   $ eai provision entra --force
+  $ eai provision entra --rotate-secret
 
 What happens:
   - Calls the platform provisioning API to create an Entra app registration
   - Writes ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET to .env.local
   - If the registration already exists, confirms ENTRA_CLIENT_ID without rotating the secret
+  - With --rotate-secret, rotates the existing app registration secret through the platform API
 
 Diagnostics:
   - Uses the PublicAPI URL from the active profile, .env.local BASE_URL_PUBLIC_API, environment, or the default API
@@ -170,9 +184,10 @@ Diagnostics:
     }
 
     // Check if ENTRA_CLIENT_ID already exists
-    if (env.ENTRA_CLIENT_ID && !options.force) {
+    if (env.ENTRA_CLIENT_ID && !options.force && !options.rotateSecret) {
       out.warn(`ENTRA_CLIENT_ID is already set for ${chalk.cyan(verticalName)}.`);
       out.info(`Use ${chalk.cyan('eai provision entra --force')} to re-check the remote registration and confirm ENTRA_CLIENT_ID.`);
+      out.info(`Use ${chalk.cyan('eai provision entra --rotate-secret')} to rotate and write a new ENTRA_CLIENT_SECRET.`);
       process.exit(0);
     }
 
@@ -195,9 +210,39 @@ Diagnostics:
 
     const diag: DiagnosticsContext = { tenantSlug, tenantId, userOid, debug: Boolean(options.debug) };
 
-    out.info(`Provisioning Entra app registration for ${chalk.cyan(verticalName)}...`);
-
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
+
+    if (options.rotateSecret) {
+      if (!env.ENTRA_CLIENT_ID) {
+        out.error('ENTRA_CLIENT_ID is not set in .env.local. Run `eai provision entra` first.');
+        process.exit(1);
+      }
+      out.info(`Rotating Entra client secret for ${chalk.cyan(verticalName)}...`);
+      try {
+        const rotated = await client.rotateEntraAppSecret({
+          tenantId,
+          clientId: env.ENTRA_CLIENT_ID,
+        });
+        await patchEnvFile(root, {
+          ENTRA_CLIENT_ID: rotated.clientId,
+          ENTRA_CLIENT_SECRET: rotated.clientSecret,
+          EAI_TENANT_ID: rotated.tenantId,
+        });
+        out.success(`Entra client secret rotated for ${chalk.cyan(verticalName)}`);
+        out.table([
+          ['Client ID', chalk.dim(rotated.clientId)],
+          ['Client Secret', chalk.dim('[written to .env.local]')],
+          ['Expires', chalk.dim(rotated.expiresAt || 'unknown')],
+        ]);
+        out.warn('The new client secret has been written to .env.local and cannot be retrieved again.');
+        out.warn('Do NOT commit .env.local to source control.');
+        return;
+      } catch (err) {
+        handleSecretRotationError(err, diag);
+      }
+    }
+
+    out.info(`Provisioning Entra app registration for ${chalk.cyan(verticalName)}...`);
 
     let result: {
       clientId: string;
@@ -209,11 +254,8 @@ Diagnostics:
       tenantId: string | null;
       signinCompleteness: SigninCompletenessSummary | null;
     };
-    // Respect APP_BASE_PATH from the vertical's .env.local so verticals deployed
-    // under a subpath (e.g. /van) get a redirect URI Auth.js can actually match.
-    // Without this, Next.js basePath-aware verticals 404 on the OAuth callback.
-    const basePath = (env.APP_BASE_PATH ?? '').replace(/\/+$/, '');
-    const localCallback = `http://localhost:3000${basePath}/api/auth/callback/microsoft-entra-id`;
+    const authRuntime = resolveAuthRuntime(env);
+    const localCallback = `${authRuntime.siteUrl}/api/auth/callback/microsoft-entra-id`;
 
     try {
       result = await client.provisionEntraApp({
@@ -237,9 +279,10 @@ Diagnostics:
     if (result.scopes.length > 0) {
       optionalEnv.ENTRA_SCOPES = result.scopes.join(' ');
     }
-    if (result.redirectUris.length > 0) {
-      optionalEnv.ENTRA_REDIRECT_URIS = result.redirectUris.join(',');
-    }
+    optionalEnv.ENTRA_REDIRECT_URIS = localCallback;
+    optionalEnv.AUTH_URL = authRuntime.siteUrl;
+    optionalEnv.NEXTAUTH_URL = authRuntime.siteUrl;
+    optionalEnv.AUTH_TRUST_HOST = 'true';
     if (result.environment) {
       optionalEnv.ENTRA_ENVIRONMENT = result.environment;
     }
@@ -329,6 +372,42 @@ Diagnostics:
     reportSigninCompleteness(result.signinCompleteness, result.clientId);
   });
 
+function normaliseBasePath(value: string | undefined): string {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed || trimmed === '/') {
+    return '';
+  }
+  return `/${trimmed.replace(/^\/+|\/+$/g, '')}`;
+}
+
+function stripAuthEndpointPath(pathname: string): string {
+  if (pathname === '/api/auth') {
+    return '/';
+  }
+  return pathname.endsWith('/api/auth')
+    ? pathname.slice(0, -'/api/auth'.length) || '/'
+    : pathname;
+}
+
+function stripTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+function resolveAuthRuntime(env: Record<string, string>): { siteUrl: string } {
+  const basePath = normaliseBasePath(env.APP_BASE_PATH);
+  const rawUrl = env.NEXTAUTH_URL || env.AUTH_URL || 'http://localhost:3000';
+
+  try {
+    const url = new URL(rawUrl);
+    url.pathname = basePath || stripAuthEndpointPath(url.pathname);
+    url.search = '';
+    url.hash = '';
+    return { siteUrl: stripTrailingSlash(url.toString()) };
+  } catch {
+    return { siteUrl: `http://localhost:3000${basePath}` };
+  }
+}
+
 function reportSigninCompleteness(
   summary: SigninCompletenessSummary | null,
   clientId: string,
@@ -367,7 +446,7 @@ function reportSigninCompleteness(
   out.warn('  2. API permissions → Add a permission → APIs my organization uses → select PublicAPI → Delegated permissions → access_token → Add');
   out.warn('  3. Grant admin consent for the directory tenant');
   out.warn('  4. Re-run sign-in (clear localhost cookie / use Incognito)');
-  out.warn('Or: ask your platform team to redeploy AdminAPI / verify its service principal has Application.ReadWrite.All on Microsoft Graph.');
+  out.warn('Or: ask your platform team to review the public provisioning support reference for this tenant.');
   process.exit(1);
 }
 

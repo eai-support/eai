@@ -4,8 +4,15 @@ on:
   push:
     branches: [main]
     paths:
-      - "docs/**"
+      - ".tech-docs/**"
+      - "docs-site/**"
+      - "scripts/generate-release-docs.cjs"
+      - "scripts/generate-registry.cjs"
+      - "scripts/generate-llms-full.cjs"
   workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 permissions:
   contents: read
@@ -30,21 +37,39 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: docs/package-lock.json
+          cache-dependency-path: docs-site/package-lock.json
 
-      - name: Install docs dependencies
-        run: cd docs && npm ci
+      - name: Install docs-site dependencies
+        run: cd docs-site && npm ci
 
-      - name: Build Starlight site
-        run: cd docs && npm run build
+      - name: Build Docusaurus docs site
+        run: cd docs-site && npm run build
+
+      - name: Verify generated site
+        run: |
+          REQUIRED_FILES=(
+            "docs-site/build/index.html"
+            "docs-site/build/docs/overview.html"
+            "docs-site/build/registry/index.html"
+            "docs-site/build/llms.txt"
+            "docs-site/build/llms-full.txt"
+            "docs-site/build/cli-help.txt"
+          )
+
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "ERROR: Required file $file is missing!"
+              exit 1
+            fi
+          done
 
       - name: Configure Pages
         uses: actions/configure-pages@v6
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
-          path: docs/dist
+          path: docs-site/build
 
       - name: Deploy to GitHub Pages
         id: deployment

@@ -11,8 +11,16 @@ import chalk from 'chalk';
 
 const EAI_DIR = join(homedir(), '.eai');
 const CACHE_FILE = join(EAI_DIR, 'update-check.json');
-const REGISTRY_URL = 'https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli';
+export const STATIC_REGISTRY_URL = 'https://eai-tools.github.io/eai/registry/';
+export const STATIC_PACKUMENT_URL = `${STATIC_REGISTRY_URL}@eai-tools/cli`;
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+export type ReleaseChannel = 'static-registry';
+
+export interface LatestRelease {
+  channel: ReleaseChannel;
+  version: string;
+}
 
 interface UpdateCache {
   lastCheck: number;
@@ -39,21 +47,66 @@ export function isNewerVersion(current: string, latest: string): boolean {
   return false;
 }
 
-/** Fetch the latest version from the GitHub Pages npm registry. */
-export async function fetchLatestVersion(): Promise<string | null> {
+export function compareVersions(left: string, right: string): number {
+  const lhs = left.split('.').map(Number);
+  const rhs = right.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const delta = (lhs[i] ?? 0) - (rhs[i] ?? 0);
+    if (delta !== 0) {
+      return delta;
+    }
+  }
+
+  return 0;
+}
+
+export function selectNewestRelease(candidates: readonly LatestRelease[]): LatestRelease | null {
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  return [...candidates].sort((left, right) => {
+    const versionDelta = compareVersions(right.version, left.version);
+    if (versionDelta !== 0) {
+      return versionDelta;
+    }
+
+    return 0;
+  })[0] ?? null;
+}
+
+async function fetchChannelLatest(
+  url: string,
+  channel: ReleaseChannel,
+): Promise<LatestRelease | null> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(REGISTRY_URL, { signal: controller.signal });
+    const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
 
     if (!res.ok) return null;
 
     const data = (await res.json()) as { 'dist-tags'?: { latest?: string } };
-    return data['dist-tags']?.latest ?? null;
+    const version = data['dist-tags']?.latest ?? null;
+    if (!version) {
+      return null;
+    }
+
+    return { channel, version };
   } catch {
     return null;
   }
+}
+
+/** Fetch the newest release from the static EAI registry. */
+export async function fetchLatestRelease(): Promise<LatestRelease | null> {
+  return fetchChannelLatest(STATIC_PACKUMENT_URL, 'static-registry');
+}
+
+/** Fetch the latest version from the available release channels. */
+export async function fetchLatestVersion(): Promise<string | null> {
+  return (await fetchLatestRelease())?.version ?? null;
 }
 
 async function readCache(): Promise<UpdateCache | null> {

@@ -139,9 +139,9 @@ docs/                           # NEW: Starlight documentation site
 
 - [ ] **2.1** Update `package.json`:
   - Add `"license": "MIT"` (or user's choice)
-  - Add `"repository": { "type": "git", "url": "https://github.com/eai-tools/eai-cli.git" }`
-  - Add `"homepage": "https://eai-tools.github.io/eai-cli"`
-  - Add `"bugs": { "url": "https://github.com/eai-tools/eai-cli/issues" }`
+  - Add `"repository": { "type": "git", "url": "https://github.com/eai-tools/eai.git" }`
+  - Add `"homepage": "https://eai-tools.github.io/eai"`
+  - Add `"bugs": { "url": "https://github.com/eai-tools/eai/issues" }`
   - Add `"publishConfig": { "access": "public" }`
   - Add `"keywords": ["cli", "enterprise", "ai", "vertical", "platform", "eai"]`
   - Update `"files"` to remove non-existent `"templates"` — set to `["dist"]`
@@ -241,8 +241,8 @@ docs/                           # NEW: Starlight documentation site
   cd docs && npm create astro@latest -- --template starlight
   ```
   Configure `astro.config.mjs` with:
-  - Site URL: `https://eai-tools.github.io/eai-cli`
-  - Base path: `/eai-cli`
+  - Site URL: `https://eai-tools.github.io/eai`
+  - Base path: `/eai`
   - Sidebar navigation matching the IA from spec
   - Social links (GitHub)
   - Expressive Code for multi-language tabs

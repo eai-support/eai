@@ -15,7 +15,7 @@ entire pipeline.
 
 > **EAI CLI Version Pin** (enterpriseai profile only): deployment tasks in this
 > list inherit the `major.minor` pin recorded in `plan.md` so builds in CI and
-> on developer machines use the same `eai-cli` toolchain. Standard-profile runs
+> on developer machines use the same `eai` toolchain. Standard-profile runs
 > ignore this section.
 
 **Tests**: The examples below include test tasks. Tests are OPTIONAL - only
@@ -23,6 +23,27 @@ include them if explicitly requested in the feature specification.
 
 **Organization**: Tasks are grouped by user story to enable independent
 implementation and testing of each story.
+
+## App-Delivery Preconditions
+
+When the feature is classified as application delivery, tasks must preserve the
+shared numbered stages **and** enforce these prerequisites before downstream
+implementation:
+
+- `ui-approval.md` exists and is approved
+- `service-fit-matrix.md` exists and distinguishes accessible now, purchasable,
+  and unavailable platform capabilities
+- preview work stays inside approved Vertical Template blocks unless an
+  exception task is recorded
+- package lane, coupling status, Storybook story IDs, theme override points,
+  custom-block exceptions, and external/internal/hybrid profile choice are
+  recorded before UI implementation tasks begin
+
+External and hybrid profiles must include first-class public-readiness,
+block-porting, and DAISY decoupling tasks before user-story implementation.
+
+For explicit non-app work, mark this section "Not applicable" and continue with
+the shared stages without app-only gates.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -82,6 +103,14 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] T007 Create base models/entities that all stories depend on
 - [ ] T008 Configure error handling and logging infrastructure
 - [ ] T009 Setup environment configuration management
+- [ ] T010 Lock external/internal/hybrid package profile and package lane from
+      `ui-preview-brief.md`
+- [ ] T011 Run `eai --describe`, `eai blocks list`,
+      `eai blocks describe <id>`, and `eai resources schema`; record block IDs,
+      resource bindings, coupling status, Storybook story IDs, theme override
+      points, and custom-block exceptions
+- [ ] T012 Add block-porting, DAISY decoupling, and public-readiness work for
+      external or hybrid package lanes
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in
 parallel

@@ -5,13 +5,15 @@ on:
     tags:
       - "v*"
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 permissions:
   contents: write
-  packages: write
 
 jobs:
   release:
-    name: Publish & Release
+    name: Create GitHub release
     runs-on: ubuntu-latest
 
     steps:
@@ -38,25 +40,38 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Lint
         run: npm run lint
 
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm run test
+
+      - name: Verify committed release-facing docs
+        run: node scripts/generate-release-docs.cjs --check
+
+      - name: Verify committed static registry points at this tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAG_VERSION="$TAG_VERSION" node <<'EOF'
+          const fs = require('node:fs');
+          const packument = JSON.parse(fs.readFileSync('docs-site/static/registry/@eai-tools/cli', 'utf8'));
+          const expected = process.env.TAG_VERSION;
+          if (packument['dist-tags']?.latest !== expected) {
+            throw new Error(`packument latest ${packument['dist-tags']?.latest ?? 'missing'} does not match ${expected}`);
+          }
+          if (!packument.versions?.[expected]) {
+            throw new Error(`packument missing version ${expected}`);
+          }
+          EOF
+
       - name: Create npm tarball
         run: npm pack
-
-      - name: Generate registry metadata
-        run: node scripts/generate-registry.cjs
-
-      - name: Publish to static registry
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/public/registry/
-          git commit -m "chore: publish v${GITHUB_REF_NAME#v} to registry"
-          git push origin HEAD:main
 
       - name: Generate changelog
         id: changelog
@@ -74,7 +89,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           body: |
             ## What's Changed
@@ -83,19 +98,19 @@ jobs:
 
             ## Installation
 
-            Configure your `.npmrc` to use the EAI registry:
+            Configure the scoped EAI registry once per user:
 
-            ```
-            @eai-tools:registry=https://eai-tools.github.io/eai-cli/registry
+            ```bash
+            npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
             ```
 
-            Then install:
+            Install or update the EnterpriseAI CLI:
 
             ```bash
             npm install -g @eai-tools/cli
             ```
 
-            See the [full documentation](https://eai-tools.github.io/eai-cli) for details.
+            See the [full documentation](https://eai-tools.github.io/eai) for details.
           files: |
             *.tgz
           make_latest: true

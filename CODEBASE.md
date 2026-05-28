@@ -26,7 +26,7 @@ The CLI provides a developer-friendly interface to the EAI Platform, abstracting
 src/
 ├── index.ts                 # Entry point, Commander program, global flags
 ├── commands/                # 14 command modules
-│   ├── init.ts              # eai init - Scaffold from Vertical-Template
+│   ├── init.ts              # eai init - Scaffold from eai-app-template
 │   ├── dev.ts               # eai dev - Local dev server
 │   ├── login.ts             # eai login/logout - Entra CIAM auth
 │   ├── whoami.ts            # eai whoami - Auth status
@@ -57,15 +57,15 @@ src/
 All commands follow this structure:
 
 ```typescript
-import { Command } from 'commander';
-import { createAPIClient } from '../lib/api.js';
-import { getToken } from '../lib/auth.js';
-import { ErrorCode, exitWithError } from '../lib/error-codes.js';
-import { success, error } from '../lib/output.js';
+import { Command } from "commander";
+import { createAPIClient } from "../lib/api.js";
+import { getToken } from "../lib/auth.js";
+import { ErrorCode, exitWithError } from "../lib/error-codes.js";
+import { success, error } from "../lib/output.js";
 
-export const myCommand = new Command('my-command')
-  .description('Brief description for --help')
-  .option('--format <format>', 'Output format (text|json)', 'text')
+export const myCommand = new Command("my-command")
+  .description("Brief description for --help")
+  .option("--format <format>", "Output format (text|json)", "text")
   .action(async (options) => {
     try {
       // 1. Validate prerequisites
@@ -76,10 +76,10 @@ export const myCommand = new Command('my-command')
 
       // 2. Call platform API
       const client = createAPIClient(token);
-      const result = await client.get('/v3/endpoint');
+      const result = await client.get("/v3/endpoint");
 
       // 3. Handle output format
-      if (options.format === 'json') {
+      if (options.format === "json") {
         console.log(JSON.stringify(result, null, 2));
       } else {
         success(`Operation completed: ${result.data.length} items`);
@@ -92,41 +92,42 @@ export const myCommand = new Command('my-command')
 
 ### Command Groups
 
-| Group | Commands | Purpose |
-|-------|----------|---------|
-| **Scaffolding** | init, dev | Project setup and local development |
-| **Auth** | login, logout, whoami | Authentication and identity |
-| **Config** | env | Environment variables and secrets |
-| **Schema** | types | Object Type definitions |
-| **Data** | resources, tenant | CRUD operations |
-| **AI** | chat, docs | AI workflows and documents |
-| **Deploy** | deploy | GitHub Actions deployment |
-| **Diagnostics** | verify, doctor | Platform health checks |
-| **Maintenance** | update, user | CLI updates and user management |
+| Group           | Commands              | Purpose                             |
+| --------------- | --------------------- | ----------------------------------- |
+| **Scaffolding** | init, dev             | Project setup and local development |
+| **Auth**        | login, logout, whoami | Authentication and identity         |
+| **Config**      | env                   | Environment variables and secrets   |
+| **Schema**      | types                 | Object Type definitions             |
+| **Data**        | resources, tenant     | CRUD operations                     |
+| **AI**          | chat, docs            | AI workflows and documents          |
+| **Deploy**      | deploy                | GitHub Actions deployment           |
+| **Diagnostics** | verify, doctor        | Platform health checks              |
+| **Maintenance** | update, user          | CLI updates and user management     |
 
 ## Libraries
 
 ### api.ts - Platform API Client
 
 ```typescript
-import { createAPIClient } from './lib/api.js';
+import { createAPIClient } from "./lib/api.js";
 
 const client = createAPIClient(token);
 
 // GET request
-const result = await client.get('/v3/object-types');
+const result = await client.get("/v3/object-types");
 
 // POST request
-const created = await client.post('/v3/resources', { data });
+const created = await client.post("/v3/resources", { data });
 
 // PUT request
-const updated = await client.put('/v3/resources/123', { data });
+const updated = await client.put("/v3/resources/123", { data });
 
 // DELETE request
-await client.delete('/v3/resources/123');
+await client.delete("/v3/resources/123");
 ```
 
 **Key features**:
+
 - Bearer token authentication
 - Automatic error handling
 - JSON request/response
@@ -135,7 +136,7 @@ await client.delete('/v3/resources/123');
 ### auth.ts - Authentication
 
 ```typescript
-import { getToken, saveToken, clearToken } from './lib/auth.js';
+import { getToken, saveToken, clearToken } from "./lib/auth.js";
 
 // Get stored token (or undefined)
 const token = await getToken();
@@ -153,13 +154,14 @@ await clearToken();
 ### config.ts - Configuration Loader
 
 ```typescript
-import { loadConfig } from './lib/config.js';
+import { loadConfig } from "./lib/config.js";
 
 const config = await loadConfig();
 // Returns: { BASE_URL_PUBLIC_API, TENANT_ID, ... }
 ```
 
 **Sources** (in order):
+
 1. `.env.local` (dotenv)
 2. `eai.config.ts` (TypeScript exports)
 3. `process.env` (system environment)
@@ -167,18 +169,19 @@ const config = await loadConfig();
 ### error-codes.ts - Error Handling
 
 ```typescript
-import { ErrorCode, exitWithError, formatError } from './lib/error-codes.js';
+import { ErrorCode, exitWithError, formatError } from "./lib/error-codes.js";
 
 // Exit with error (text or JSON format)
 exitWithError(ErrorCode.E101); // Not logged in
-exitWithError(ErrorCode.E002, { var: 'BASE_URL_PUBLIC_API' });
-exitWithError(ErrorCode.E201, { url: apiUrl }, 'json');
+exitWithError(ErrorCode.E002, { var: "BASE_URL_PUBLIC_API" });
+exitWithError(ErrorCode.E201, { url: apiUrl }, "json");
 
 // Format error without exiting
 const errorMessage = formatError(ErrorCode.E101);
 ```
 
 **Error code categories**:
+
 - **E001-E099**: Project errors (config, not in project)
 - **E100-E199**: Auth errors (not logged in, token expired)
 - **E200-E299**: Platform errors (API down, not found)
@@ -187,35 +190,38 @@ const errorMessage = formatError(ErrorCode.E101);
 ### output.ts - Output Utilities
 
 ```typescript
-import { success, error, warn, info, symbols } from './lib/output.js';
+import { success, error, warn, info, symbols } from "./lib/output.js";
 
-success('Operation completed');           // ✓ Operation completed
-error('Something went wrong');            // ✗ Something went wrong
-warn('Deprecation warning');              // ⚠ Deprecation warning
-info('Additional context');               // → Additional context
+success("Operation completed"); // ✓ Operation completed
+error("Something went wrong"); // ✗ Something went wrong
+warn("Deprecation warning"); // ⚠ Deprecation warning
+info("Additional context"); // → Additional context
 ```
 
 **Symbols**:
+
 ```typescript
-symbols.success   // ✓ (green)
-symbols.error     // ✗ (red)
-symbols.warning   // ⚠ (yellow)
-symbols.info      // → (blue)
-symbols.pending   // ○ (gray)
-symbols.updated   // ↻ (cyan)
-symbols.unchanged // = (gray)
-symbols.added     // + (green)
-symbols.removed   // - (red)
-symbols.changed   // ~ (yellow)
+symbols.success; // ✓ (green)
+symbols.error; // ✗ (red)
+symbols.warning; // ⚠ (yellow)
+symbols.info; // → (blue)
+symbols.pending; // ○ (gray)
+symbols.updated; // ↻ (cyan)
+symbols.unchanged; // = (gray)
+symbols.added; // + (green)
+symbols.removed; // - (red)
+symbols.changed; // ~ (yellow)
 ```
 
 **Color handling**:
+
 - Respects `--no-color` flag
 - Respects `NO_COLOR` environment variable
 - Respects `FORCE_COLOR` environment variable
 - Auto-detects TTY (disables colors when piped)
 
 **Simple mode** (for screen readers):
+
 - `--simple` flag converts symbols to text: `SUCCESS:`, `ERROR:`, `WARNING:`, `INFO:`
 - No ANSI escape codes
 - Pure ASCII output
@@ -223,7 +229,7 @@ symbols.changed   // ~ (yellow)
 ### schema-builder.ts - CLI Introspection
 
 ```typescript
-import { describeProgram } from './lib/schema-builder.js';
+import { describeProgram } from "./lib/schema-builder.js";
 
 const schema = describeProgram(program);
 console.log(JSON.stringify(schema, null, 2));
@@ -234,7 +240,7 @@ Used by `--describe` flag to output JSON schema of CLI structure for AI agents.
 ### update-check.ts - Version Management
 
 ```typescript
-import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
+import { checkForUpdate, notifyIfUpdateAvailable } from "./lib/update-check.js";
 
 // Check for updates (async, non-blocking)
 await checkForUpdate(currentVersion);
@@ -253,11 +259,11 @@ Defined in `src/index.ts`, available on all commands:
 
 ```typescript
 program
-  .option('--simple', 'Plain text output without colors or symbols')
-  .option('--no-color', 'Disable colored output')
-  .option('--color', 'Force colored output')
-  .option('--describe', 'Output JSON schema of all commands')
-  .hook('preAction', (thisCommand) => {
+  .option("--simple", "Plain text output without colors or symbols")
+  .option("--no-color", "Disable colored output")
+  .option("--color", "Force colored output")
+  .option("--describe", "Output JSON schema of all commands")
+  .hook("preAction", (thisCommand) => {
     const opts = thisCommand.opts();
 
     if (opts.simple) {
@@ -265,11 +271,11 @@ program
     }
 
     if (opts.noColor) {
-      process.env.NO_COLOR = '1';
+      process.env.NO_COLOR = "1";
     }
 
     if (opts.color) {
-      process.env.FORCE_COLOR = '1';
+      process.env.FORCE_COLOR = "1";
     }
   });
 ```
@@ -309,13 +315,15 @@ try {
 ```
 
 **Never**:
+
 ```typescript
 // ❌ Don't do this
-console.error('Error:', err.message);
+console.error("Error:", err.message);
 process.exit(1);
 ```
 
 **Always**:
+
 ```typescript
 // ✅ Do this
 exitWithError(ErrorCode.E203, { details: err.message }, options.format);
@@ -335,7 +343,7 @@ const client = createAPIClient(token);
 
 // 3. Make request with error handling
 try {
-  const result = await client.get('/v3/endpoint');
+  const result = await client.get("/v3/endpoint");
   return result;
 } catch (err) {
   exitWithError(ErrorCode.E203, { details: err.message }, options.format);
@@ -347,17 +355,22 @@ try {
 Use Commander's declarative help:
 
 ```typescript
-export const myCommand = new Command('my-command')
-  .description('Brief description (1 line)')
-  .option('--tenant-key <key>', 'Target tenant (default: from .env.local)')
-  .option('--format <format>', 'Output format (text|json)', 'text')
-  .addHelpText('after', `
+export const myCommand = new Command("my-command")
+  .description("Brief description (1 line)")
+  .option("--tenant-key <key>", "Target tenant (default: from .env.local)")
+  .option("--format <format>", "Output format (text|json)", "text")
+  .addHelpText(
+    "after",
+    `
 Examples:
   $ eai my-command
   $ eai my-command --tenant-key acme
   $ eai my-command --format json
-  `)
-  .action(async (options) => { /* ... */ });
+  `,
+  )
+  .action(async (options) => {
+    /* ... */
+  });
 ```
 
 ## Adding Features
@@ -368,23 +381,23 @@ Examples:
 
 ```typescript
 // src/commands/my-new-command.ts
-import { Command } from 'commander';
-import { ErrorCode, exitWithError } from '../lib/error-codes.js';
-import { success } from '../lib/output.js';
+import { Command } from "commander";
+import { ErrorCode, exitWithError } from "../lib/error-codes.js";
+import { success } from "../lib/output.js";
 
-export const myNewCommand = new Command('my-new-command')
-  .description('What this command does')
-  .option('--format <format>', 'Output format (text|json)', 'text')
+export const myNewCommand = new Command("my-new-command")
+  .description("What this command does")
+  .option("--format <format>", "Output format (text|json)", "text")
   .action(async (options) => {
     // Implementation
-    success('Done!');
+    success("Done!");
   });
 ```
 
 2. **Register in `src/index.ts`**:
 
 ```typescript
-import { myNewCommand } from './commands/my-new-command.js';
+import { myNewCommand } from "./commands/my-new-command.js";
 
 program.addCommand(myNewCommand);
 ```
@@ -401,18 +414,18 @@ program.addCommand(myNewCommand);
 ```typescript
 export enum ErrorCode {
   // ...
-  E999 = 'E999', // Your new error code
+  E999 = "E999", // Your new error code
 }
 ```
 
 2. **Add to catalog**:
 
 ```typescript
-export const errorCatalog: Record<ErrorCode, Omit<ErrorDefinition, 'code'>> = {
+export const errorCatalog: Record<ErrorCode, Omit<ErrorDefinition, "code">> = {
   // ...
   [ErrorCode.E999]: {
-    message: 'What went wrong',
-    suggestion: 'How to fix it',
+    message: "What went wrong",
+    suggestion: "How to fix it",
   },
 };
 ```
@@ -420,7 +433,7 @@ export const errorCatalog: Record<ErrorCode, Omit<ErrorDefinition, 'code'>> = {
 3. **Use in commands**:
 
 ```typescript
-exitWithError(ErrorCode.E999, { contextVar: 'value' }, options.format);
+exitWithError(ErrorCode.E999, { contextVar: "value" }, options.format);
 ```
 
 ### Adding a New Output Utility
@@ -440,9 +453,9 @@ export function myUtility(text: string): void {
 2. **Use in commands**:
 
 ```typescript
-import { myUtility } from '../lib/output.js';
+import { myUtility } from "../lib/output.js";
 
-myUtility('This is my custom output');
+myUtility("This is my custom output");
 ```
 
 ### Adding Global Flags
@@ -451,8 +464,8 @@ Add to `src/index.ts` program options:
 
 ```typescript
 program
-  .option('--my-flag', 'What this flag does')
-  .hook('preAction', (thisCommand) => {
+  .option("--my-flag", "What this flag does")
+  .hook("preAction", (thisCommand) => {
     const opts = thisCommand.opts();
     if (opts.myFlag) {
       // Handle flag globally

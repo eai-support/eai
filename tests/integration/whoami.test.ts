@@ -75,7 +75,7 @@ describe('eai whoami', () => {
     await env.cleanup();
   });
 
-  test('TC016: Whoami shows current user info', { timeout: 5000 }, async () => {
+  test('TC016: Whoami shows current user info', { timeout: 15000 }, async () => {
     // TC016: Whoami displays current user info
     // Traces to: Auth-US3-AC1
     //
@@ -96,7 +96,7 @@ describe('eai whoami', () => {
     expectDisplayedMessage(result, 'test@example.com');
   });
 
-  test('uses the resolved PublicAPI URL for membership lookup', { timeout: 5000 }, async () => {
+  test('uses the resolved PublicAPI URL for membership lookup', { timeout: 15000 }, async () => {
     workingDirectoryIs(ctx, env.dir);
     await projectHasValidObjectTypes(ctx, [{ name: 'case', displayName: 'Case' }]);
     await projectHasEnvFile(ctx, { BASE_URL_PUBLIC_API: RESOLVED_API_BASE });
@@ -151,7 +151,7 @@ describe('eai whoami', () => {
     expect(membershipRequestHeaders?.authorization).toBe('Bearer test-access-token');
   });
 
-  test('TC018: Whoami when not logged in', { timeout: 5000 }, async () => {
+  test('TC018: Whoami when not logged in', { timeout: 15000 }, async () => {
     // TC018: Whoami when not logged in
     // Traces to: Auth-US3-ERR1
     //

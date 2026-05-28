@@ -46,6 +46,7 @@ describe('tenant list filtering', () => {
   test('recognises tenant-admin via compatibility fields', () => {
     expect(tenantEntryHasTenantAdminRole(createTenantEntry({ isTenantAdmin: true }))).toBe(true);
     expect(tenantEntryHasTenantAdminRole(createTenantEntry({ roles: ['tenant-user', 'tenant-admin'] }))).toBe(true);
+    expect(tenantEntryHasTenantAdminRole(createTenantEntry({ role: 'tenant-admin' }))).toBe(true);
   });
 
   test('filters out non-admin and inactive memberships', () => {
@@ -139,6 +140,36 @@ describe('tenant list filtering', () => {
       },
       isTenantAdmin: true,
       roles: ['tenant-admin'],
+    }]);
+  });
+
+  test('normalizes PublicAPI tenant membership payloads with singular role', () => {
+    const entries = normalizeTenantEntries({
+      tenants: [{
+        id: 'tenant-mikeno',
+        displayName: 'Mikeno',
+        slug: 'dev-mikeno-41b96a77',
+        role: 'tenant-admin',
+        depth: 1,
+        createdAt: '2026-05-08T00:00:00Z',
+      }],
+      totalCount: 1,
+      cacheHit: false,
+    });
+
+    expect(filterTenantAdminEntries(entries)).toEqual([{
+      tenant: {
+        id: 'tenant-mikeno',
+        displayName: 'Mikeno',
+        slug: 'dev-mikeno-41b96a77',
+        isActive: true,
+        parent: undefined,
+        parentId: undefined,
+        domain: undefined,
+      },
+      role: 'tenant-admin',
+      roles: undefined,
+      isTenantAdmin: undefined,
     }]);
   });
 

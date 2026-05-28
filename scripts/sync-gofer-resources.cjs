@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Sync bundled gofer assets from the canonical eai-tools/gofer repository.
+ * Sync bundled gofer assets from the canonical eai-tools/eai-gofer repository.
  *
  * The `eai init` command installs everything under `resources/gofer/` into a
  * user's workspace, so that directory must mirror the gofer release pinned in
@@ -11,7 +11,7 @@
  * `extension/resources/`, but they also keep additional repo-local surfaces
  * outside that tree (for example `.specify/commands` and Codex skills). This
  * script mirrors `extension/resources/` first, then overlays the extra
- * directories needed by eai-cli so published bundles stay complete.
+ * directories needed by eai so published bundles stay complete.
  *
  * Usage:
  *   node scripts/sync-gofer-resources.cjs            # use pinned .gofer-version
@@ -24,7 +24,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const REPO = 'https://github.com/eai-tools/gofer.git';
+const REPO = 'https://github.com/eai-tools/eai-gofer.git';
 const ROOT = path.resolve(__dirname, '..');
 const PIN_FILE = path.join(ROOT, '.gofer-version');
 const TARGET = path.join(ROOT, 'resources', 'gofer');
@@ -33,8 +33,8 @@ const EXTRA_RESOURCE_MAPPINGS = [
   ['.specify/commands', 'commands'],
   ['.specify/memory', 'memory'],
   ['.specify/references', 'references'],
-  ['.system/skills/gofer', path.join('system-skills', 'gofer')],
-  ['.agents/skills/gofer', path.join('agents-skills', 'gofer')],
+  ['.system/skills', 'system-skills'],
+  ['.agents/skills', 'agents-skills'],
 ];
 
 function readPinnedRef() {
@@ -121,7 +121,7 @@ function writeSyncMetadata(sha, describe) {
 
 function main() {
   const ref = readPinnedRef();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eai-cli-gofer-sync-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eai-gofer-sync-'));
 
   try {
     console.log(`▸ Syncing gofer resources from ${REPO} @ ${ref}`);

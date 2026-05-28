@@ -1,13 +1,13 @@
 /**
  * canonical-descriptions.mjs
- * Canonical stage descriptions for all 16 Gofer pipeline stages.
+ * Canonical descriptions for all 21 Gofer pipeline, utility, and helper commands.
  * Each description must be ≤140 chars and the cumulative UTF-8 byte total
  * must not exceed 2048 bytes (Codex skill-budget constraint).
  */
 
 export const CANONICAL_DESCRIPTIONS = {
   '0_business_scenario':
-    'Define the business problem and scenario for Gofer to analyse and solve.',
+    'Define the business problem and scenario Gofer should solve.',
   '0a_problem_validation':
     'Validate the business problem using 5 Whys root-cause analysis and stakeholder mapping.',
   '1_gofer_research':
@@ -21,7 +21,7 @@ export const CANONICAL_DESCRIPTIONS = {
   '5_gofer_implement':
     'Execute all tasks from tasks.md phase by phase with feedback loops and engineering review.',
   '6_gofer_validate':
-    'Validate the implementation against spec acceptance criteria across six quality dimensions.',
+    'Validate implemented work with evidence-backed scoring, blast-radius analysis, and review.',
   '6a_gofer_engineering_review':
     'Run a targeted engineering review on a specific component or concern.',
   '7_gofer_save':
@@ -35,9 +35,19 @@ export const CANONICAL_DESCRIPTIONS = {
   '10_gofer_cloud':
     'Deploy and configure the Gofer cloud integration for remote pipeline execution.',
   gofer_constitution:
-    'Display the Gofer working constitution and core principles for this project.',
+    'Create or update project constitution with coding principles and guidelines.',
   gofer_hydrate:
-    'Hydrate the Gofer context with project memory, constitution, and prior pipeline state.',
+    'Reverse-engineer specification from existing code (Hydration).',
+  'gofer:vocabulary':
+    'Extract domain terminology into a canonical feature glossary.',
+  'gofer:diagnose':
+    'Run a reproduce-minimize-instrument-fix loop for bugs and failing tests.',
+  'gofer:tdd':
+    'Guide a red-green-refactor loop tied to spec acceptance criteria.',
+  'gofer:spec-summary':
+    'Generate a business-friendly summary of feature value and scope.',
+  'gofer:zoom-out':
+    'Show how the current feature connects to broader system boundaries.',
 };
 
 /**

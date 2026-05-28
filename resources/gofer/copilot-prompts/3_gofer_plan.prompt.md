@@ -11,8 +11,8 @@ tools:
 argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
-  canonicalSource: .claude/commands/3_gofer_plan.md
-  canonicalChecksum: 0aa58a4e2afe0ccb787314b1aea0cfc7cdd3085172eb10d9bf256802a228eeb1
+  canonicalSource: .specify/commands/3_gofer_plan.md
+  canonicalChecksum: 30a6fb593f540f9bcff71f086c6afc5de168e19a1f6cb796ebe7a782cab2fb36
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -52,7 +52,10 @@ If missing, prompt user to run the prerequisite stage.
 6. Spec coverage validation
 7. Output: `plan.md`, `data-model.md`, `contracts/`, `quickstart.md`
 8. EnterpriseAI default output: task-ready references to `context-bundle.md`,
-   `contract-pack.md`, `reuse-scan.md`, and `audit-history.md`
+   `contract-pack.md`, `reuse-scan.md`, `audit-history.md`, and for app
+   delivery `ui-review-log.md`, `ui-approval.md`, and
+   `service-fit-matrix.md`, including public-readiness, block-porting, DAISY
+   decoupling, Storybook, theme override, and package-profile decisions
 
 ---
 
@@ -86,6 +89,11 @@ Planning dispatches multiple agents — keep main context lightweight.
    directly):
    - Note feature name from FEATURE_DIR
    - Note whether `discovery.md`, `.specify/memory/constitution.md` exist
+   - Note whether `ui-preview-brief.md`, `ui-review-log.md`,
+     `ui-approval.md`, and `service-fit-matrix.md` exist
+   - Note external/internal/hybrid profile choice, package lane, coupling
+     status, Storybook story IDs, theme override points, custom-block
+     exceptions, and public-readiness status when app delivery applies
    - Note whether `{FEATURE_DIR}/sequence-diagrams/selected-option.md` exists
 
 3. **Note template path**: `.specify/templates/plan-template.md`
@@ -110,6 +118,10 @@ Feature directory: {FEATURE_DIR}
 Read these files for full context:
 - {FEATURE_DIR}/research.md — Technology decisions, integration points, patterns, constraints
 - {FEATURE_DIR}/spec.md — User stories, requirements, success criteria
+- {FEATURE_DIR}/ui-preview-brief.md — app-delivery preview brief (read if exists, skip if not)
+- {FEATURE_DIR}/ui-review-log.md — app-delivery preview iteration history (read if exists, skip if not)
+- {FEATURE_DIR}/ui-approval.md — app-delivery approval state (read if exists, skip if not)
+- {FEATURE_DIR}/service-fit-matrix.md — app-delivery capability selections (read if exists, skip if not)
 - .specify/templates/plan-template.md — Plan template structure
 - .specify/memory/constitution.md — Project principles (read if exists)
 - {FEATURE_DIR}/sequence-diagrams/selected-option.md — Selected approach (read if exists)
@@ -139,6 +151,15 @@ Generate the COMPLETE plan.md with these sections:
    - User Story Coverage (Story | Status | Plan References)
    - Requirement Coverage (FR-ID | Status | Plan Reference)
    Verify 100% coverage of all user stories and functional requirements.
+9. AI-Readable Blocks Bridge:
+   - Package profile choice: external, internal, or hybrid
+   - Package lane for each UI block or package surface
+   - Coupling status, including DAISY decoupling boundary or approved
+     internal-only exception
+   - Block porting plan with stable block IDs, Storybook story IDs, theme
+     override points, and custom-block exceptions
+   - Public-readiness tasks required before an external or hybrid package is
+     considered complete
 
 Rules:
 - Every user story from spec.md MUST have plan coverage
@@ -147,6 +168,9 @@ Rules:
 - Reference specific file paths for all components
 - Plan must be specific enough for task generation
 - Resolve all unknowns — no NEEDS CLARIFICATION in the plan
+- App-delivery plans MUST make public-readiness, block porting, DAISY
+  decoupling, Storybook coverage, theme overrides, and package-profile work
+  visible enough for `#4_gofer_tasks` to emit first-class runnable tasks
 
 Write the complete plan to {FEATURE_DIR}/plan.md.
 
@@ -548,9 +572,9 @@ When council mode is enabled for `gofer_plan` stage:
 
 When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
 
-1. **EAI CLI version pin** — record the installed `eai-cli` version as a
+1. **EAI CLI version pin** — record the installed `eai` version as a
    `major.minor` pin (for example `2.0`). The plan stage resolves the local
-   version via `eai-cli --version`, strips the patch component, and writes the
+   version via `eai --version`, strips the patch component, and writes the
    pin to the `EnterpriseAI Profile Metadata` block of `plan-template.md` so
    every downstream task is reproducible. Plans MUST apply
    `pin guidance to `major.minor`` and never to a specific patch release.
@@ -572,12 +596,43 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
    completion signal, user controls, audit trail, and fallback/escalation path.
    If the plan expands beyond four user-facing steps, document why those steps
    cannot be combined, automated, or handled by the AI assistant.
-6. **Reuse-before-create decision log** — reference `{FEATURE_DIR}/reuse-scan.md`
+6. **UI-first approval gate handoff** — for app delivery, reference
+   `{FEATURE_DIR}/ui-preview-brief.md` and require the planning stage to lock
+   the preview loop before plan/tasks are considered complete. The plan MUST:
+   - keep the first preview constrained to Vertical Template blocks unless an
+     approved extension is recorded
+   - cite `eai blocks describe <id>` evidence for every selected block ID,
+     plus the ResourceAPI/Object Type fields from `eai resources schema` that
+     feed each block
+   - record override points for theme tokens, `presentationConfig`, copy,
+     data/action bindings, and client extension blocks
+   - capture whether client branding/logos are in scope
+   - require screenshot, local render proof, or Playwright-style self-review
+     evidence before stakeholder presentation
+   - update `{FEATURE_DIR}/ui-review-log.md` for each iteration and require
+     explicit stakeholder approval in `{FEATURE_DIR}/ui-approval.md`
+7. **EnterpriseAI service-fit handoff** — for app delivery, the plan MUST
+   produce or update `{FEATURE_DIR}/service-fit-matrix.md` after UI approval and
+   before tasks are treated as complete. The matrix must distinguish:
+   - accessible now
+   - purchasable but unavailable now
+   - unavailable without new platform work
+   The plan must source this evidence from `eai --describe`, `eai whoami`,
+   `eai tenant select`, `eai resources schema`, `eai verify calls --format
+   json`, `eai workflow readiness <workflow-key>`, `eai workflow status
+   <workflow-key>`, `eai workflow request <workflow-key>`, `eai provision
+   entra --rotate-secret`, or documented equivalent public platform evidence.
+8. **Reuse-before-create decision log** — reference `{FEATURE_DIR}/reuse-scan.md`
    for every new or extended EnterpriseAI object type, API/event, workflow, or
    module.
-7. **Audit history seed** — create or update `{FEATURE_DIR}/audit-history.md`
+9. **Audit history seed** — create or update `{FEATURE_DIR}/audit-history.md`
    with stable finding IDs, decision exceptions, owner, expiry, and review
    cadence so validation can track recurring issues.
+10. **Public/private knowledge split** — identify which implementation facts
+    are safe for public docs, Gofer guidance, EAI CLI help, or Vertical Template
+    comments, and which facts are internal-only. Plans must express blocked
+    states as public-safe actions (`operator_required`, `upgrade_required`, or
+    documented support URL) rather than exposing private service topology.
 
 ### EnterpriseAI Flow and Journey Separation
 
@@ -588,6 +643,12 @@ Plan both:
 - **AI-augmented app process**: for application delivery, the four-step-or-fewer
   journey with AI assistance, contextual prefill, conversational support,
   completion checks, and human controls at each step.
+- **App-delivery preview and approval loop**: for application delivery, the
+  local preview creation, self-review, stakeholder feedback, branding updates,
+  and approval-gate behavior that must occur before plan/tasks are finalized.
+- **EnterpriseAI service-fit gate**: for application delivery, the post-approval
+  capability-selection discussion that binds chosen platform services to the
+  approved UI and distinguishes accessible now vs purchasable vs unavailable.
 - **Internal orchestration flows**: platform services, ResourceAPI calls,
   events, data movement, tenant boundaries, deployment steps, and observability.
 

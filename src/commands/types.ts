@@ -65,12 +65,125 @@ export interface TypeDefaultValueValidationIssue {
   issue: string;
 }
 
+export interface TypeStorageValidationIssue {
+  tenantKey: string;
+  typeName: string;
+  issue: string;
+}
+
+const VALID_STORAGE_BACKENDS = ['postgresql', 'documentdb', 'blob', 'search'] as const;
+const VALID_STORAGE_METADATA_STATUSES = ['draft', 'ready'] as const;
+
 export function collectTypeDefaultValueValidationIssues(
   objectTypes: Record<string, ObjectTypeDefinition[]>,
 ): TypeDefaultValueValidationIssue[] {
   return Object.entries(objectTypes).flatMap(([tenantKey, types]) => (
     types.flatMap((type) => (
       validateObjectTypeDefaultValues(type).map((issue) => ({
+        tenantKey,
+        typeName: type.name,
+        issue,
+      }))
+    ))
+  ));
+}
+
+function hasStorageValue(value: unknown): boolean {
+  return value !== null && value !== undefined && value !== '';
+}
+
+function getStorageBindingScope(binding: unknown, key: string): Record<string, unknown> | null {
+  if (!isRecord(binding)) {
+    return null;
+  }
+
+  const scope = binding[key];
+  return isRecord(scope) ? scope : null;
+}
+
+function collectMissingStorageFields(
+  scope: Record<string, unknown> | null,
+  fields: string[],
+): string[] {
+  return fields.filter((field) => !hasStorageValue(scope?.[field]));
+}
+
+function formatStorageFieldIssue(label: string, missing: string[]): string {
+  return `${label} is incomplete. Missing: ${missing.join(', ')}`;
+}
+
+export function validateObjectTypeStorageMetadata(type: ObjectTypeDefinition): string[] {
+  const issues: string[] = [];
+  const backend = type.storageBackend || 'postgresql';
+  const storageMetadataStatus = type.storageMetadataStatus || 'draft';
+
+  if (!VALID_STORAGE_BACKENDS.includes(backend as typeof VALID_STORAGE_BACKENDS[number])) {
+    issues.push(`storageBackend "${backend}" must be one of: ${VALID_STORAGE_BACKENDS.join(', ')}`);
+  }
+
+  if (!VALID_STORAGE_METADATA_STATUSES.includes(storageMetadataStatus as typeof VALID_STORAGE_METADATA_STATUSES[number])) {
+    issues.push(`storageMetadataStatus "${storageMetadataStatus}" must be one of: ${VALID_STORAGE_METADATA_STATUSES.join(', ')}`);
+  }
+
+  if (type.status === 'published' && storageMetadataStatus !== 'ready') {
+    issues.push('published Object Types require storageMetadataStatus "ready"');
+  }
+
+  if (
+    storageMetadataStatus !== 'ready'
+    || !VALID_STORAGE_BACKENDS.includes(backend as typeof VALID_STORAGE_BACKENDS[number])
+  ) {
+    return issues;
+  }
+
+  if (!isRecord(type.storageBinding)) {
+    issues.push('storageMetadataStatus "ready" requires storageBinding');
+    return issues;
+  }
+
+  if (backend === 'postgresql') {
+    const missing = collectMissingStorageFields(
+      getStorageBindingScope(type.storageBinding, 'sql'),
+      ['databaseAlias', 'tenantSchemaStrategy', 'tableName'],
+    );
+    if (missing.length > 0) {
+      issues.push(formatStorageFieldIssue('PostgreSQL storageBinding', missing));
+    }
+  } else if (backend === 'documentdb') {
+    const missing = collectMissingStorageFields(
+      getStorageBindingScope(type.storageBinding, 'documentdb'),
+      ['databaseAlias', 'databaseName', 'collectionName', 'partitionKey'],
+    );
+    if (missing.length > 0) {
+      issues.push(formatStorageFieldIssue('DocumentDB storageBinding', missing));
+    }
+  } else if (backend === 'blob') {
+    const missing = collectMissingStorageFields(
+      getStorageBindingScope(type.storageBinding, 'blob'),
+      ['storageAccountAlias', 'containerName'],
+    );
+    if (missing.length > 0) {
+      issues.push(formatStorageFieldIssue('Blob storageBinding', missing));
+    }
+  } else if (backend === 'search') {
+    const missing = collectMissingStorageFields(
+      getStorageBindingScope(type.storageBinding, 'search'),
+      ['searchServiceAlias'],
+    );
+    if (missing.length > 0) {
+      issues.push(formatStorageFieldIssue('Search storageBinding', missing));
+    }
+  }
+
+  return issues;
+}
+
+export function collectTypeStorageValidationIssues(
+  objectTypes: Record<string, ObjectTypeDefinition[]>,
+): TypeStorageValidationIssue[] {
+  return Object.entries(objectTypes).flatMap(([tenantKey, types]) => (
+    types.flatMap((type) => (
+      validateObjectTypeStorageMetadata(type).map((issue) => ({
         tenantKey,
         typeName: type.name,
         issue,
@@ -529,6 +642,22 @@ Examples:
       process.exit(1);
     }
 
+    const storageIssues = collectTypeStorageValidationIssues(objectTypes);
+    if (storageIssues.length > 0) {
+      if (options.format === 'json') {
+        out.json({
+          error: 'Object Type storage metadata validation failed',
+          issues: storageIssues,
+        });
+      } else {
+        out.error('Object Type storage metadata validation failed');
+        for (const issue of storageIssues) {
+          out.error(`  [${issue.tenantKey}/${issue.typeName}] ${issue.issue}`);
+        }
+      }
+      process.exit(1);
+    }
+
     // Filter to specific tenant key if requested
     const keysToSeed = await selectTenantKey(objectTypes, options.tenantKey, activeContext.activeTenant.slug);
 
@@ -853,6 +982,7 @@ Examples:
         }
 
         issues.push(...validateObjectTypeDefaultValues(type));
+        issues.push(...validateObjectTypeStorageMetadata(type));
 
         // Validate link types
         for (const link of type.linkTypes) {

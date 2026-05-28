@@ -1899,7 +1899,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai update --check')
 //
-// expectRegistryFetched('https://eai-tools.github.io/eai-cli/registry')
+// expectRegistryFetched('https://eai-tools.github.io/eai/registry')
 // expectDisplayedMessage('Current version: 0.1.4')
 // expectDisplayedMessage('Latest version: 0.2.0')
 // expectDisplayedMessage('Update available')
@@ -1920,7 +1920,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // runCommand('eai update')
 // respondToPrompt('Install v0.2.0?', 'yes')
 //
-// expectNPMCalled('npm install -g @eai-tools/cli@0.2.0 --@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry')
+// expectNPMCalled('npm install -g @eai-tools/cli@0.2.0 --@eai-tools:registry=https://eai-tools.github.io/eai/registry')
 // expectSuccessMessage('Updated to v0.2.0')
 ```
 

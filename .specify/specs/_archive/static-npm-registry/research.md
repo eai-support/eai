@@ -10,7 +10,7 @@ status: complete
 ## Feature Summary
 
 Distribute `@eai-tools/cli` via a static npm registry hosted on GitHub Pages at
-`https://eai-tools.github.io/eai-cli/registry`. Consumers set a single `.npmrc`
+`https://eai-tools.github.io/eai/registry`. Consumers set a single `.npmrc`
 line and use standard `npm install @eai-tools/cli` with full semver support. The
 GitHub repo remains private; the Pages site is public. Homebrew distribution is
 being removed.
@@ -30,7 +30,7 @@ new registry-based install flow and remove Homebrew references.
 | Registry static files    | `docs/public/registry/` (NEW)                       | Extensionless metadata files served by Pages       |
 | Installation docs        | `docs/src/content/docs/getting-started/installation.mdx` | Update install instructions                   |
 | Release script           | `release.sh`                                        | Update install instructions in release notes       |
-| Astro config             | `docs/astro.config.mjs`                             | No changes needed — `base: '/eai-cli'` works       |
+| Astro config             | `docs/astro.config.mjs`                             | No changes needed — `base: '/eai'` works       |
 | Package config           | `package.json`                                      | Remove `publishConfig` (no longer publishing to npm) |
 
 ### Existing Patterns to Follow
@@ -79,7 +79,7 @@ Found in: `.github/workflows/docs.yml:44-51`
 Why relevant: Everything in `docs/dist/` gets deployed. Files in `docs/public/`
 are copied to `docs/dist/` during Astro build. So placing registry files in
 `docs/public/registry/` makes them available at
-`https://eai-tools.github.io/eai-cli/registry/`.
+`https://eai-tools.github.io/eai/registry/`.
 
 #### Pattern 4: Tabbed Installation Instructions
 
@@ -96,7 +96,7 @@ Currently has: npm from GitHub (recommended), Homebrew, From source.
 
 2. **Docs build → Static files**: Astro copies `docs/public/` to `docs/dist/`
    during build. Registry files placed in `docs/public/registry/` will be
-   available at `/eai-cli/registry/` on the deployed site.
+   available at `/eai/registry/` on the deployed site.
 
 3. **Cross-workflow coordination**: The release workflow creates tarballs, but
    the docs workflow deploys Pages. Options:
@@ -138,11 +138,11 @@ Currently has: npm from GitHub (recommended), Homebrew, From source.
 
 ### Decision 2: Registry URL Structure
 
-- **Choice**: `https://eai-tools.github.io/eai-cli/registry`
+- **Choice**: `https://eai-tools.github.io/eai/registry`
 - **Rationale**: Sits alongside the docs site under the same base path.
-  Consumer `.npmrc`: `@eai-tools:registry=https://eai-tools.github.io/eai-cli/registry`
+  Consumer `.npmrc`: `@eai-tools:registry=https://eai-tools.github.io/eai/registry`
 - **URL mapping**: npm requests
-  `https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli` →
+  `https://eai-tools.github.io/eai/registry/@eai-tools/cli` →
   GitHub Pages serves file at `docs/public/registry/@eai-tools/cli` (note: `cli`
   is a file, not a directory)
 
@@ -151,7 +151,7 @@ Currently has: npm from GitHub (recommended), Homebrew, From source.
 - **Choice**: Store tarballs in `registry/-/@eai-tools/` directory on Pages
 - **Rationale**: Follows the npm registry convention. The `dist.tarball` URL
   in the metadata points to
-  `https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-{version}.tgz`
+  `https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-{version}.tgz`
 - **Alternative considered**: GitHub Releases download URLs — rejected because
   the repo is private, so release download URLs require authentication.
 
@@ -214,7 +214,7 @@ The file at `registry/@eai-tools/cli` must contain:
         "ora": "^8.1.1"
       },
       "dist": {
-        "tarball": "https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.0.tgz",
+        "tarball": "https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-0.1.0.tgz",
         "shasum": "<sha1-hex>",
         "integrity": "sha512-<base64>"
       }
@@ -243,8 +243,8 @@ docs/public/registry/
 
 After Astro build, these appear at:
 ```
-https://eai-tools.github.io/eai-cli/registry/@eai-tools/cli       ← packument
-https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.0.tgz  ← tarball
+https://eai-tools.github.io/eai/registry/@eai-tools/cli       ← packument
+https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-0.1.0.tgz  ← tarball
 ```
 
 ## Constraints & Considerations
@@ -254,8 +254,8 @@ https://eai-tools.github.io/eai-cli/registry/-/@eai-tools/cli-0.1.0.tgz  ← tar
   consumers — tarballs must be hosted on Pages.
 - **Accumulating versions**: Each release must append to existing metadata,
   not replace it. The metadata file is committed to the repo.
-- **Base path**: The Astro `base: '/eai-cli'` means all URLs are under
-  `/eai-cli/`. The registry URL is `/eai-cli/registry/`.
+- **Base path**: The Astro `base: '/eai'` means all URLs are under
+  `/eai/`. The registry URL is `/eai/registry/`.
 - **Content-Type**: GitHub Pages serves extensionless files as `text/plain`.
   Confirmed npm doesn't validate this.
 - **Tarball size**: CLI tarballs are small (~50KB). GitHub Pages has a 1GB

@@ -20,6 +20,11 @@ workflowProfile: enterpriseai
 | Value metric          | {{metric}}                        |
 | EnterpriseAI vertical | {{vertical-app}}                  |
 | App classification    | {{app-or-non-app-with-rationale}} |
+| Pipeline mode         | {{shared-stages-app-or-non-app}}  |
+| Profile choice        | {{external-internal-hybrid}}      |
+| Package lane          | {{package-lane}}                  |
+| Coupling status       | {{coupling-status}}               |
+| Public-readiness      | {{target-or-na}}                  |
 
 ## AI-Augmented Journey Summary
 
@@ -41,6 +46,9 @@ rationale.
 | -------------------------- | -------------------------------- | ----------- |
 | `discovery.md`             | {{business-context}}             | Keep        |
 | `journeys/base-journey.md` | {{ai-augmented-process-context}} | Keep / N/A  |
+| `ui-preview-brief.md`      | {{preview-scope-and-branding}}   | Keep / N/A  |
+| `ui-approval.md`           | {{approved-ui-gate}}             | Keep / N/A  |
+| `service-fit-matrix.md`    | {{capability-selection}}         | Keep / N/A  |
 | `research.md`              | {{implementation-context}}       | Keep        |
 | `reuse-scan.md`            | {{reuse-evidence}}               | Keep        |
 | `contract-pack.md`         | {{delivery-contracts}}           | Keep        |
@@ -54,6 +62,12 @@ rationale.
 | APIs/events         | {{api-event-surfaces}} | {{path-or-reference}} |
 | Deployment target   | {{target-env}}         | {{path-or-reference}} |
 | Validation criteria | {{criteria}}           | {{path-or-reference}} |
+
+## AI-Readable Blocks Bridge Context
+
+| Block ID | Package Lane | Storybook Story ID | Theme Override Points | Coupling Status | Porting / Decoupling Decision |
+| -------- | ------------ | ------------------ | --------------------- | --------------- | ----------------------------- |
+| {{block-id}} | {{lane}} | {{story-id-or-na}} | {{theme-overrides}} | {{coupling-status}} | {{reuse-port-adapter-exception}} |
 
 ## Next Agent Instructions
 

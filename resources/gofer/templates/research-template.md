@@ -19,6 +19,12 @@ codebase_type: '[greenfield | brownfield]'
 
 [Brief description of what we're building]
 
+## Application Classification
+
+- **Mode**: [application delivery | non-app work]
+- **Shared numbered stages preserved**: [yes]
+- **Why this classification applies**: [rationale]
+
 ## Business Scenario Analysis
 
 ### Scenario Options Considered
@@ -78,6 +84,37 @@ Why relevant: [Explanation]
 ### Decision 2: [Topic]
 
 ...
+
+## UI-First App Delivery Research _(application delivery only)_
+
+### Preview Strategy
+
+- **Smallest useful MVP to show first**: [description]
+- **Profile choice**: [external / internal / hybrid]
+- **Package lane**: [public-package / internal-app / hybrid-adapter / app-local]
+- **Coupling status**: [DAISY-coupled / DAISY-decoupled / hybrid-adapter]
+- **Public-readiness target**: [required / deferred / not applicable]
+- **Vertical Template constraints**: [approved blocks/patterns to reuse first]
+- **Block catalog discovery**: [`eai --describe`, `eai blocks list`, candidate
+  `eai blocks describe <id>` results, and `eai resources schema` evidence]
+- **Selected block IDs**: [stable IDs, required resources, bindings, override
+  points, Storybook story IDs, theme override points, package lane, coupling
+  status, and custom-block exceptions]
+- **Block porting plan**: [reuse as-is, port to package, or custom-block
+  exception with owner and approval path]
+- **DAISY decoupling plan**: [adapter/resource-schema boundary or approved
+  internal-only exception]
+- **Branding inputs**: [logos, colors, voice, or "not in scope"]
+- **Preview validation expectation**: [screenshot, local render proof,
+  Playwright-style checks]
+
+### Service-Fit Discovery Inputs
+
+- **Capability discovery sources**: [`eai --describe`, `eai whoami`, `eai tenant
+  select`, `eai resources schema`, `eai verify calls --format json`, or
+  equivalent]
+- **What must be decided after UI approval**: [service selection questions]
+- **Non-app note**: [write "Not applicable" when this feature is non-app work]
 
 ## Recommended Architecture Direction
 
