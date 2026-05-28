@@ -44,35 +44,29 @@ async function startLocalPublicApi(): Promise<{ baseUrl: string; calls: string[]
       return;
     }
 
-    if (req.method === 'POST' && url.pathname === '/v3/orchestrate') {
-      const body = await readRequestBody(req) as {
-        target_backend?: string;
-        endpoint?: string;
-      };
-      calls.push(`${body.target_backend || 'unknown'} ${body.endpoint || 'unknown'}`);
-      if (body.target_backend === 'admin' && body.endpoint === '/v1/users/test-user-oid/memberships') {
-        await writeJson(res, 200, {
-          tenants: [
-            {
-              tenant: {
-                id: 'tenant-override',
-                displayName: 'Tenant Override',
-                slug: 'tenant-override',
-                isActive: true,
-              },
-              roles: ['tenant-admin'],
+    if (req.method === 'GET' && url.pathname === '/v4/platform/users/test-user-oid/memberships') {
+      await writeJson(res, 200, {
+        tenants: [
+          {
+            tenant: {
+              id: 'tenant-override',
+              displayName: 'Tenant Override',
+              slug: 'tenant-override',
+              isActive: true,
             },
-          ],
-        });
-        return;
-      }
-      if (body.target_backend === 'payload' && body.endpoint === '/object-types') {
-        await writeJson(res, 200, { docs: [{ name: 'Customer', status: 'published' }] });
-        return;
-      }
+            roles: ['tenant-admin'],
+          },
+        ],
+      });
+      return;
     }
 
-    if (req.method === 'GET' && url.pathname === '/v3/users/me/tenants') {
+    if (req.method === 'GET' && url.pathname === '/v4/data/resources/object-types') {
+      await writeJson(res, 200, { docs: [{ name: 'Customer', status: 'published' }] });
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/v4/identity/tenants') {
       await writeJson(res, 200, {
         tenants: [
           {
@@ -88,12 +82,12 @@ async function startLocalPublicApi(): Promise<{ baseUrl: string; calls: string[]
       return;
     }
 
-    if (req.method === 'GET' && url.pathname === '/v3/resources/schema/tenant-override') {
+    if (req.method === 'GET' && url.pathname === '/v4/data/resources/schema/tenant-override') {
       await writeJson(res, 200, { objectTypes: [{ name: 'Customer' }] });
       return;
     }
 
-    if (req.method === 'GET' && url.pathname === '/v3/resources/tenant-override/storage') {
+    if (req.method === 'GET' && url.pathname === '/v4/data/resources/tenant-override/storage') {
       await writeJson(res, 200, {
         tenantId: 'tenant-override',
         objectTypes: [{ objectType: 'Customer', backend: 'postgresql', isReady: true }],
@@ -101,7 +95,7 @@ async function startLocalPublicApi(): Promise<{ baseUrl: string; calls: string[]
       return;
     }
 
-    if (req.method === 'GET' && url.pathname === '/v3/resources/tenant-override/storage/doctor') {
+    if (req.method === 'GET' && url.pathname === '/v4/data/resources/tenant-override/storage/doctor') {
       await writeJson(res, 200, {
         tenantId: 'tenant-override',
         healthy: true,
@@ -220,7 +214,7 @@ describe('eai verify', () => {
 
       expectCommandSucceeded(result);
       expectDisplayedMessage(result, 'Platform Connectivity Checks');
-      expect(localApi.calls).toContain('GET /v3/resources/schema/tenant-override');
+      expect(localApi.calls).toContain('GET /v4/data/resources/schema/tenant-override');
     } finally {
       await localApi.close();
     }

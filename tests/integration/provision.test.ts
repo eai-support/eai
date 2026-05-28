@@ -59,7 +59,7 @@ function joinedConsoleOutput(...spies: Array<{ mock: { calls: unknown[][] } }>):
 
 function expectNoProvisionInternals(output: string): void {
   expect(output).not.toContain(API_BASE);
-  expect(output).not.toContain('/v3/provision/entra-app');
+  expect(output).not.toContain('/v4/platform/provisioning/entra-apps');
   expect(output).not.toContain('POST ');
   expect(output).not.toContain('PublicAPI');
   expect(output).not.toContain('AdminAPI');
@@ -123,7 +123,7 @@ describe('eai provision entra', () => {
     let requestBody: unknown;
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({ client_id: 'cid-1', client_secret: 'secret-1', existing: false });
       }),
@@ -162,7 +162,7 @@ describe('eai provision entra', () => {
     let requestBody: unknown;
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({
           client_id: 'cid-basepath',
@@ -204,7 +204,7 @@ describe('eai provision entra', () => {
     let requestBody: unknown;
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({
           client_id: 'cid-stale-response',
@@ -245,7 +245,7 @@ describe('eai provision entra', () => {
     let requestBody: unknown;
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({
           client_id: 'cid-bad-url',
@@ -274,7 +274,7 @@ describe('eai provision entra', () => {
     let requestBody: unknown;
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/resources/test-tenant-id/storage/provision`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/data/resources/test-tenant-id/storage/provision`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({
           tenantId: 'test-tenant-id',
@@ -332,11 +332,11 @@ describe('eai provision entra', () => {
     let staleTokenApiHit = false;
 
     mockServer.server.use(
-      http.post(`${DEFAULT_PUBLIC_API_URL}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${DEFAULT_PUBLIC_API_URL}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({ client_id: 'prod-client-id', client_secret: 'prod-secret', existing: false });
       }),
-      http.post(`${API_BASE}/v3/provision/entra-app`, () => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => {
         staleTokenApiHit = true;
         return HttpResponse.json({ detail: 'stale token URL used' }, { status: 500 });
       }),
@@ -364,7 +364,7 @@ describe('eai provision entra', () => {
     );
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.json({ client_id: 'cid-1', client_secret: null, existing: true }),
       ),
     );
@@ -385,7 +385,7 @@ describe('eai provision entra', () => {
     );
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({ client_id: 'remote-client', client_secret: null, existing: true });
       }),
@@ -414,7 +414,7 @@ describe('eai provision entra', () => {
     );
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app/client-1/rotate-secret`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/client-1/rotate-secret`, async ({ request }) => {
         rotateBody = await request.json();
         return HttpResponse.json({
           client_id: 'client-1',
@@ -423,7 +423,7 @@ describe('eai provision entra', () => {
           expires_at: '2026-12-31T00:00:00Z',
         });
       }),
-      http.post(`${API_BASE}/v3/provision/entra-app`, () => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => {
         createEndpointHit = true;
         return HttpResponse.json({ detail: 'should not create' }, { status: 500 });
       }),
@@ -460,7 +460,7 @@ describe('eai provision entra', () => {
     let requestBody: unknown;
 
     mockServer.server.use(
-      http.post(`${PROFILE_API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${PROFILE_API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({ client_id: 'profile-client-id', client_secret: 'profile-secret', existing: false });
       }),
@@ -497,7 +497,7 @@ describe('eai provision entra', () => {
     let requestBody: unknown;
 
     mockServer.server.use(
-      http.post(`${DEV_PROFILE_API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${DEV_PROFILE_API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({ client_id: 'dev-client-id', client_secret: 'dev-secret', existing: false });
       }),
@@ -527,7 +527,7 @@ describe('eai provision entra', () => {
     });
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/orchestrate`, () =>
+      http.get(`${API_BASE}/v4/platform/users/test-oid/memberships`, () =>
         HttpResponse.json(
           { detail: 'AdminAPI /v1/users/test-oid/memberships failed for tenant test-tenant-id' },
           { status: 500 },
@@ -554,7 +554,7 @@ describe('eai provision entra', () => {
 
   test('HTTP 403: exits with code 1 and reports permission denied', { timeout: 10000 }, async () => {
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.json({ error: 'forbidden' }, { status: 403 }),
       ),
     );
@@ -574,7 +574,7 @@ describe('eai provision entra', () => {
 
   test('HTTP 409: exits with code 1 and reports quota exceeded', { timeout: 10000 }, async () => {
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.json({ error: 'conflict' }, { status: 409 }),
       ),
     );
@@ -594,7 +594,7 @@ describe('eai provision entra', () => {
 
   test('HTTP 404: exits with code 1 and reports product-safe diagnostics', { timeout: 10000 }, async () => {
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.json(
           { error: { code: 'tenant_not_found', message: 'Tenant test-tenant-id was not found' } },
           { status: 404 },
@@ -622,7 +622,7 @@ describe('eai provision entra', () => {
 
   test('HTTP 501: exits with code 1 and does not expose implementation details', { timeout: 10000 }, async () => {
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.text('not implemented', { status: 501 }),
       ),
     );
@@ -649,7 +649,7 @@ describe('eai provision entra', () => {
     ['empty client id', { client_id: '', client_secret: 'secret-with-empty-client-id', existing: false }],
   ])('malformed success response with %s exits safely without writing credentials', async (_case, responseBody) => {
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.json(responseBody),
       ),
     );
