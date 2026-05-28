@@ -14,11 +14,16 @@ import {
   type RuntimeWorkflowStatusResult,
 } from '../lib/api.js';
 import {
+  buildWorkflowAiRuntimeBindingPayloads,
   buildWorkflowProvisionPayloads,
   parseEnvMapping,
+  parseStagePrompt,
   parseStageSpec,
+  SHARED_AI_PROFILE_OBJECT_TYPE,
+  SHARED_CHATBOT_CONFIG_OBJECT_TYPE,
   SHARED_WORKFLOW_CONFIG_OBJECT_TYPE,
   validateStageEnvMappings,
+  validateStagePromptMappings,
   VERTICAL_PRODUCT_CONFIG_OBJECT_TYPE,
   workflowVerticalConfigKey,
   type WorkflowProvisionStatus,
@@ -44,6 +49,11 @@ interface WorkflowProvisionOptions {
   stage?: string[];
   stageEnv?: string[];
   workflowEnvKey?: string;
+  bindAiRuntime?: boolean;
+  aiProvider?: string;
+  aiModel?: string;
+  aiProfileKey?: string;
+  stagePrompt?: string[];
   status?: WorkflowProvisionStatus;
   writeLocalEnv?: boolean;
   writeAppConfig?: boolean;
@@ -190,6 +200,11 @@ workflowCommand
   .option('--stage <stage>', 'Stage id, optionally id:Display Name. Repeat for multiple stages.', collect, [])
   .option('--stage-env <mapping>', 'Env mapping KEY=stage-id. Repeat for stage env vars.', collect, [])
   .option('--workflow-env-key <key>', 'Env key for the workflow id')
+  .option('--bind-ai-runtime', 'Also create shared-ai-profile and shared-chatbot-config records for the stages', false)
+  .option('--ai-provider <integrationKey>', 'Tenant integration key for the AI provider')
+  .option('--ai-model <model>', 'AI model/deployment name for the workflow runtime')
+  .option('--ai-profile-key <key>', 'Reusable shared-ai-profile key (defaults to <workflow>-default-model)')
+  .option('--stage-prompt <stage=prompt>', 'Prompt content for a stage. Repeat for multiple stages.', collect, [])
   .option('--status <status>', 'active or draft', 'active')
   .option('--write-local-env', 'Patch .env.local with generated env values', false)
   .option('--write-app-config', 'Write generated env values to Azure App Configuration', false)
@@ -207,6 +222,7 @@ Examples:
       --stage-env WORKFLOW_ANALYZE_STAGE=analyze-process \\
       --stage-env WORKFLOW_GENERATE_STAGE=generate-workflow \\
       --stage-env WORKFLOW_SUGGESTIONS_STAGE=suggest-improvements
+      --bind-ai-runtime --ai-provider azure-openai --ai-model gpt-5.1-chat
 
   $ eai workflow provision onboarding --vertical hr-helper --stage intake --stage review --write-local-env
   `)
@@ -239,6 +255,34 @@ Examples:
 
       const normalizedWorkflowKey = String(payloads.workflowConfig.workflowKey);
       const normalizedVerticalKey = String(payloads.verticalConfig.verticalKey);
+      const shouldBindAiRuntime = Boolean(
+        options.bindAiRuntime ||
+        options.aiProvider ||
+        options.aiModel ||
+        (options.stagePrompt ?? []).length,
+      );
+      let runtimePayloads: ReturnType<typeof buildWorkflowAiRuntimeBindingPayloads> | undefined;
+      if (shouldBindAiRuntime) {
+        if (!options.aiProvider || !options.aiModel) {
+          throw new Error('--bind-ai-runtime requires --ai-provider and --ai-model.');
+        }
+        const stagePrompts = Object.fromEntries((options.stagePrompt ?? []).map(parseStagePrompt));
+        validateStagePromptMappings(stages, stagePrompts);
+        runtimePayloads = buildWorkflowAiRuntimeBindingPayloads({
+          tenantId: context.tenantId,
+          verticalKey: options.vertical,
+          workflowKey,
+          displayName,
+          stages,
+          usecase: options.usecase,
+          scopeKey: options.scopeKey,
+          status: options.status,
+          providerIntegrationKey: options.aiProvider,
+          model: options.aiModel,
+          profileKey: options.aiProfileKey,
+          stagePrompts,
+        });
+      }
 
       const workflow = await upsertWorkflowResource(
         context,
@@ -259,6 +303,44 @@ Examples:
         },
         payloads.verticalConfig,
       );
+      const aiRuntime: Array<{ objectType: string; key: string; id?: string; action: string }> = [];
+
+      if (runtimePayloads) {
+        const profileKey = String(runtimePayloads.aiProfile.profileKey);
+        const profile = await upsertWorkflowResource(
+          context,
+          SHARED_AI_PROFILE_OBJECT_TYPE,
+          {
+            tenantId: context.tenantId,
+            profileKey,
+          },
+          runtimePayloads.aiProfile,
+        );
+        aiRuntime.push({
+          objectType: SHARED_AI_PROFILE_OBJECT_TYPE,
+          key: profileKey,
+          id: profile.id,
+          action: profile.action,
+        });
+        for (const chatbotConfig of runtimePayloads.chatbotConfigs) {
+          const configKey = String(chatbotConfig.configKey);
+          const config = await upsertWorkflowResource(
+            context,
+            SHARED_CHATBOT_CONFIG_OBJECT_TYPE,
+            {
+              tenantId: context.tenantId,
+              configKey,
+            },
+            chatbotConfig,
+          );
+          aiRuntime.push({
+            objectType: SHARED_CHATBOT_CONFIG_OBJECT_TYPE,
+            key: configKey,
+            id: config.id,
+            action: config.action,
+          });
+        }
+      }
 
       const envValues = {
         ...payloads.envValues,
@@ -296,6 +378,7 @@ Examples:
           verticalKey: normalizedVerticalKey,
           configKey: workflowVerticalConfigKey(normalizedWorkflowKey),
         },
+        aiRuntime,
         env: envValues,
         appConfig: appConfig ?? null,
       };
@@ -307,6 +390,9 @@ Examples:
 
       out.success(`${workflow.action === 'created' ? 'Created' : 'Updated'} ${SHARED_WORKFLOW_CONFIG_OBJECT_TYPE} ${chalk.cyan(normalizedWorkflowKey)}`);
       out.success(`${vertical.action === 'created' ? 'Created' : 'Updated'} ${VERTICAL_PRODUCT_CONFIG_OBJECT_TYPE} ${chalk.cyan(String(result.vertical.configKey))}`);
+      for (const runtimeRecord of aiRuntime) {
+        out.success(`${runtimeRecord.action === 'created' ? 'Created' : 'Updated'} ${runtimeRecord.objectType} ${chalk.cyan(runtimeRecord.key)}`);
+      }
       if (options.writeLocalEnv) {
         out.success('Patched .env.local');
       }
@@ -344,8 +430,7 @@ workflowCommand
   });
 
 function collect(value: string, previous: string[]): string[] {
-  previous.push(value);
-  return previous;
+  return [...(previous ?? []), value];
 }
 
 workflowCommand
