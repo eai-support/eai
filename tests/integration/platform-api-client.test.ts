@@ -159,6 +159,25 @@ describe('PlatformAPIClient', () => {
     expect(result.requestId).toBe('rwf_123')
   })
 
+  test('posts chat requests with PublicAPI thread id', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.streamChat('workflow-1', 'analyze-process', 'Hello', 'thread-123', { topic: 'onboarding' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v3/chat/stream/tenant-parent/workflow-1/analyze-process')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      message: 'Hello',
+      thread_id: 'thread-123',
+      params: { topic: 'onboarding' },
+    })
+  })
+
   test('rotates Entra app secrets through the public provision router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
