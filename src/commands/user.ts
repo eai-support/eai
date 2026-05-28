@@ -6,8 +6,43 @@ import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
 import { PlatformAPIClient } from '../lib/api.js';
-import { resolveCommandContext } from '../lib/context.js';
+import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import * as out from '../lib/output.js';
+
+interface ListUsersEnvelope {
+  users: Array<{
+    id: string;
+    email: string;
+    displayName: string;
+    role: string;
+    createdAt: string;
+  }>;
+  count: number;
+  page: number;
+  totalPages: number;
+}
+
+interface DeleteUserEnvelope {
+  message: string;
+  user_oid: string;
+  tenant_id: string;
+  removed: boolean;
+}
+
+interface ErrorEnvelope {
+  error?: string;
+  message?: string;
+}
+
+async function readJson<T>(response: Response): Promise<T | ErrorEnvelope> {
+  const text = await response.text();
+  if (!text) return {} as ErrorEnvelope;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return { message: text };
+  }
+}
 
 export const userCommand = new Command('user')
   .description('Manage users on the platform');
@@ -80,6 +115,118 @@ userCommand
     } catch (err) {
       provisionSpinner.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
+    }
+  });
+
+// ─── eai user list ────────────────────────────────────────────────────────────
+
+userCommand
+  .command('list')
+  .description('List users in a tenant')
+  .option('--tenant <id>', 'Tenant ID (defaults to the active tenant)')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .option('--limit <n>', 'Items per page', '50')
+  .option('--page <n>', '1-indexed page number', '1')
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenant, interactive: !options.tenant });
+    const format = normalizeFormat(options);
+    const limit = Number.parseInt(options.limit, 10);
+    const page = Number.parseInt(options.page, 10);
+    if (!Number.isFinite(limit) || limit < 1) {
+      out.error('--limit must be a positive integer.');
+      process.exit(1);
+    }
+    if (!Number.isFinite(page) || page < 1) {
+      out.error('--page must be a positive integer.');
+      process.exit(1);
+    }
+    const offset = (page - 1) * limit;
+
+    const spinner = makeSpinner(format, 'Listing users...');
+    const res = await ctx.client.listUsers({ tenantId: ctx.tenantId, limit, offset });
+    const payload = await readJson<ListUsersEnvelope>(res);
+
+    if (!res.ok) {
+      spinner?.fail('Failed to list users');
+      const errBody = payload as ErrorEnvelope;
+      out.error(errBody.message ?? `${res.status} ${res.statusText}`);
+      process.exit(1);
+    }
+
+    const envelope = payload as ListUsersEnvelope;
+    if (format === 'json') {
+      out.json(envelope);
+      return;
+    }
+
+    spinner?.succeed(`${envelope.count} user${envelope.count === 1 ? '' : 's'} (page ${envelope.page}/${envelope.totalPages})`);
+    if (envelope.users.length === 0) {
+      out.info('No users found.');
+      return;
+    }
+    for (const u of envelope.users) {
+      out.info(`${chalk.cyan(u.email)} · ${u.displayName} · ${chalk.dim(u.role)} · ${chalk.dim(u.id)}`);
+    }
+  });
+
+// ─── eai user delete ──────────────────────────────────────────────────────────
+
+userCommand
+  .command('delete <userId>')
+  .description('Remove a user from a tenant (admin only)')
+  .option('--tenant <id>', 'Tenant ID (defaults to the active tenant)')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .option('--force', 'Skip the interactive confirmation prompt', false)
+  .action(async (userId: string, options) => {
+    const targetId = userId.trim();
+    if (!targetId) {
+      out.error('userId is required.');
+      process.exit(1);
+    }
+
+    const ctx = await resolveCommandContext({ tenantId: options.tenant, interactive: !options.tenant });
+    const format = normalizeFormat(options);
+
+    const callerOid = ctx.tokens.oid;
+    if (callerOid && callerOid === targetId) {
+      out.error('Cannot delete yourself. Use the self-deprovision endpoint /v3/users/me/tenants/{tenant_id}.');
+      process.exit(1);
+    }
+
+    if (!options.force && format !== 'json' && process.stdout.isTTY) {
+      const readline = await import('node:readline/promises');
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await rl.question(`Remove user ${targetId} from tenant ${ctx.tenantId}? (y/N) `);
+      rl.close();
+      if (!/^y(es)?$/i.test(answer.trim())) {
+        out.info('Aborted.');
+        return;
+      }
+    }
+
+    const spinner = makeSpinner(format, `Removing ${targetId} from tenant ${ctx.tenantId}...`);
+    const res = await ctx.client.deleteUserFromTenant(ctx.tenantId, targetId);
+    const payload = await readJson<DeleteUserEnvelope>(res);
+
+    if (!res.ok) {
+      spinner?.fail('Delete failed');
+      const errBody = payload as ErrorEnvelope;
+      out.error(errBody.message ?? `${res.status} ${res.statusText}`);
+      process.exit(1);
+    }
+
+    const envelope = payload as DeleteUserEnvelope;
+    if (format === 'json') {
+      out.json(envelope);
+      return;
+    }
+
+    if (envelope.removed) {
+      spinner?.succeed(`Removed ${chalk.cyan(targetId)} from tenant ${chalk.dim(ctx.tenantId)}`);
+    } else {
+      spinner?.succeed('User was not a member; nothing changed.');
     }
   });
 

@@ -197,6 +197,90 @@ verticalCommand
   });
 
 verticalCommand
+  .command('delete <key>')
+  .description('Delete a tenant vertical/app instance (reverses `vertical create`)')
+  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--force', 'Skip the interactive confirmation prompt', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (key: string, options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const format = normalizeFormat(options);
+    const verticalKey = key.trim();
+
+    if (!verticalKey) {
+      fail('Vertical key is required.');
+    }
+
+    const lookupSpinner = makeSpinner(format, `Resolving vertical key ${verticalKey}...`);
+    const lookupRes = await ctx.client.listResources(VERTICAL_ENROLLMENT_TYPE, {
+      limit: 2,
+      where: { verticalKey },
+    });
+    if (!lookupRes.ok) {
+      lookupSpinner?.fail('Lookup failed');
+      fail(`Could not resolve ${verticalKey}: ${lookupRes.status} ${lookupRes.statusText}`);
+    }
+    const docs = extractDocs(await readResponsePayload(lookupRes));
+
+    if (docs.length === 0) {
+      lookupSpinner?.fail(`No vertical with key ${verticalKey}`);
+      fail(`No vertical with key ${verticalKey}.`);
+    }
+
+    if (docs.length > 1) {
+      lookupSpinner?.fail(`Multiple verticals matched key ${verticalKey}`);
+      fail(`Multiple verticals matched key ${verticalKey}; refusing without explicit id.`);
+    }
+
+    const target = docs[0];
+    const targetId = target?.id;
+    if (!targetId) {
+      lookupSpinner?.fail('Resolved record is missing an id');
+      fail(`Resolved record for ${verticalKey} is missing an id.`);
+    }
+
+    lookupSpinner?.succeed(`Resolved ${verticalKey} → ${targetId}`);
+
+    if (!options.force && format !== 'json' && process.stdout.isTTY) {
+      const readline = await import('node:readline/promises');
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await rl.question(`Delete tenant-vertical-enrollment '${verticalKey}'? (y/N) `);
+      rl.close();
+      if (!/^y(es)?$/i.test(answer.trim())) {
+        out.info('Aborted.');
+        return;
+      }
+    }
+
+    const deleteSpinner = makeSpinner(format, `Deleting ${verticalKey}...`);
+    const deleteRes = await ctx.client.deleteResource(VERTICAL_ENROLLMENT_TYPE, targetId);
+    const deletePayload = await readResponsePayload(deleteRes);
+
+    if (!deleteRes.ok) {
+      deleteSpinner?.fail('Delete failed');
+      fail(isRecord(deletePayload) && typeof deletePayload.message === 'string'
+        ? deletePayload.message
+        : `${deleteRes.status} ${deleteRes.statusText}`);
+    }
+
+    if (format === 'json') {
+      out.json({
+        tenantId: ctx.tenantId,
+        objectType: VERTICAL_ENROLLMENT_TYPE,
+        verticalKey,
+        id: targetId,
+        deleted: true,
+        warning: 'Storage provisioned by `eai vertical provision` is NOT rolled back by this command.',
+      });
+      return;
+    }
+
+    deleteSpinner?.succeed(`Deleted tenant vertical ${chalk.cyan(verticalKey)}`);
+    out.warn('Storage provisioned by `eai vertical provision` is NOT rolled back by this command.');
+  });
+
+verticalCommand
   .command('provision <key>')
   .description('Provision storage needed by a tenant vertical/app instance')
   .option('--tenant-id <id>', 'Run against a specific company tenant')

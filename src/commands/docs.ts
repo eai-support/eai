@@ -5,7 +5,21 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { resolveCommandContext } from '../lib/context.js';
+import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
+import * as out from '../lib/output.js';
+
+interface ListDocumentsEnvelope {
+  documents: Array<{
+    id: string;
+    filename: string;
+    type: string;
+    createdAt: string;
+    status: string;
+  }>;
+  count: number;
+  page: number;
+  totalPages: number;
+}
 
 interface BatchDocumentSummary {
   document_id?: string;
@@ -71,6 +85,61 @@ Typical workflow:
   2. Classify it if your platform uses document classification
   3. Index the document ID if you want it available to RAG or chat workflows
   `);
+
+// ─── eai docs list ───────────────────────────────────────────────────────
+
+docsCommand
+  .command('list')
+  .description('List documents in a tenant')
+  .option('--tenant <id>', 'Tenant ID (defaults to the active tenant)')
+  .option('--type <kbDocType>', 'Filter by document type')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .option('--limit <n>', 'Items per page', '50')
+  .option('--page <n>', '1-indexed page number', '1')
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenant, interactive: !options.tenant });
+    const format = normalizeFormat(options);
+    const limit = Number.parseInt(options.limit, 10);
+    const page = Number.parseInt(options.page, 10);
+    if (!Number.isFinite(limit) || limit < 1) {
+      out.error('--limit must be a positive integer.');
+      process.exit(1);
+    }
+    if (!Number.isFinite(page) || page < 1) {
+      out.error('--page must be a positive integer.');
+      process.exit(1);
+    }
+    const offset = (page - 1) * limit;
+
+    const spinner = makeSpinner(format, 'Listing documents...');
+    const res = await ctx.client.listDocuments({
+      tenantId: ctx.tenantId,
+      limit,
+      offset,
+      type: options.type,
+    });
+
+    if (!res.ok) {
+      spinner?.fail(await readResponseError(res));
+      process.exit(1);
+    }
+
+    const envelope = await res.json() as ListDocumentsEnvelope;
+    if (format === 'json') {
+      out.json(envelope);
+      return;
+    }
+
+    spinner?.succeed(`${envelope.count} document${envelope.count === 1 ? '' : 's'} (page ${envelope.page}/${envelope.totalPages})`);
+    if (envelope.documents.length === 0) {
+      out.info('No documents found.');
+      return;
+    }
+    for (const d of envelope.documents) {
+      out.info(`${chalk.cyan(d.filename)} · ${d.type} · ${chalk.dim(d.status)} · ${chalk.dim(d.id)}`);
+    }
+  });
 
 // ─── eai docs upload ─────────────────────────────────────────────────────
 

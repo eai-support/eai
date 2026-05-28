@@ -1059,6 +1059,47 @@ export class PlatformAPIClient {
     });
   }
 
+  async listUsers(opts: {
+    tenantId: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Response> {
+    const params = new URLSearchParams({ tenant_id: opts.tenantId });
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts.offset !== undefined) params.set('offset', String(opts.offset));
+    return fetch(`${this.baseUrl}/v3/users?${params.toString()}`, {
+      method: 'GET',
+      headers: await this.headers(),
+    });
+  }
+
+  async deleteUserFromTenant(tenantId: string, userId: string): Promise<Response> {
+    const params = new URLSearchParams({ tenant_id: tenantId });
+    return fetch(
+      `${this.baseUrl}/v3/users/${encodeURIComponent(userId)}?${params.toString()}`,
+      {
+        method: 'DELETE',
+        headers: await this.headers(),
+      },
+    );
+  }
+
+  async listDocuments(opts: {
+    tenantId: string;
+    limit?: number;
+    offset?: number;
+    type?: string;
+  }): Promise<Response> {
+    const params = new URLSearchParams({ tenant_id: opts.tenantId });
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts.offset !== undefined) params.set('offset', String(opts.offset));
+    if (opts.type !== undefined) params.set('type', opts.type);
+    return fetch(`${this.baseUrl}/v3/documents?${params.toString()}`, {
+      method: 'GET',
+      headers: await this.headers(),
+    });
+  }
+
   // --------------- Provisioning ---------------
 
   async provisionEntraApp(request: {
