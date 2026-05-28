@@ -18,6 +18,12 @@ export interface CloudEnvPullResult {
   secretRefs: Array<{ key: string; vaultUri: string }>;
 }
 
+export interface CloudEnvSetOptions {
+  environment?: string;
+  label: string;
+  values: Record<string, string>;
+}
+
 function resolveStoreOverride(environment: string): string | undefined {
   const normalized = environment.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_');
   return process.env[`EAI_APP_CONFIG_STORE_${normalized}`];
@@ -79,4 +85,23 @@ export async function pullCloudEnvValues(options: CloudEnvPullOptions): Promise<
     patches,
     secretRefs,
   };
+}
+
+export async function setCloudEnvValues(options: CloudEnvSetOptions): Promise<{ store: string; count: number }> {
+  const store = resolveAppConfigStore(options.environment || 'dev');
+  let count = 0;
+
+  for (const [key, value] of Object.entries(options.values)) {
+    await execAzureCli([
+      'appconfig', 'kv', 'set',
+      '--name', store,
+      '--key', key,
+      '--value', value,
+      '--label', options.label,
+      '--yes',
+    ]);
+    count++;
+  }
+
+  return { store, count };
 }

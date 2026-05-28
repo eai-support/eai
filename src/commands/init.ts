@@ -584,11 +584,12 @@ async function provisionEntraInline(
   const spinner = ora("Provisioning Entra app registration...").start();
   try {
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
+    const authSiteUrl = `http://localhost:3000/${verticalName}`;
     const result = await client.provisionEntraApp({
       tenantId,
       verticalName,
       redirectUris: [
-        `http://localhost:3000/${verticalName}/api/auth/callback/microsoft-entra-id`,
+        `${authSiteUrl}/api/auth/callback/microsoft-entra-id`,
       ],
       idempotent: true,
     });
@@ -597,6 +598,9 @@ async function provisionEntraInline(
       await patchEnvFile(targetDir, {
         ENTRA_CLIENT_ID: result.clientId,
         ENTRA_CLIENT_SECRET: result.clientSecret,
+        AUTH_URL: authSiteUrl,
+        NEXTAUTH_URL: authSiteUrl,
+        AUTH_TRUST_HOST: "true",
       });
       spinner.succeed(
         `Entra app registration ${result.existing ? "confirmed" : "created"}: ${chalk.dim(result.clientId)}`,
@@ -608,7 +612,12 @@ async function provisionEntraInline(
     }
 
     if (result.existing) {
-      await patchEnvFile(targetDir, { ENTRA_CLIENT_ID: result.clientId });
+      await patchEnvFile(targetDir, {
+        ENTRA_CLIENT_ID: result.clientId,
+        AUTH_URL: authSiteUrl,
+        NEXTAUTH_URL: authSiteUrl,
+        AUTH_TRUST_HOST: "true",
+      });
       const hydratedSecret = await hydrateCloudSecret(targetDir, verticalName);
       spinner.succeed(
         `Entra app registration confirmed: ${chalk.dim(result.clientId)}`,
@@ -938,6 +947,9 @@ ENTRA_CLIENT_SECRET=
 # Auth.js — auto-generated secret
 # =============================================================================
 AUTH_SECRET=${authSecret}
+AUTH_URL=http://localhost:3000/${opts.name}
+NEXTAUTH_URL=http://localhost:3000/${opts.name}
+AUTH_TRUST_HOST=true
 
 # =============================================================================
 # IMPORTANT: Do NOT commit this file. Use 'eai env pull' to sync from cloud.

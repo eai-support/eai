@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Version: 2.8.13
+Version: 2.9.0
 
 Install / update the CLI:
 npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
@@ -36,7 +36,8 @@ Commands:
   vertical               Manage dynamic vertical/app instances under the active
                          company tenant
   chat                   Chat with AI workflows
-  workflow               Inspect and request AI runtime workflow bindings
+  workflow               Provision vertical workflow configs and inspect AI
+                         runtime workflow bindings
   docs                   Document upload, classification, and indexing
   deploy                 Deployment management
   verify [options]       Run platform connectivity checks
