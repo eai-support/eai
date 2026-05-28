@@ -115,7 +115,7 @@ describe("eai workflow", () => {
 
       mockServer.server.use(
         http.get(
-          `${API_BASE}/v3/workflows/runtime/strategy-monitor/status`,
+          `${API_BASE}/v4/workflows/runtime/strategy-monitor/status`,
           ({ request }) => {
             requestUrl = request.url;
             return HttpResponse.json({
@@ -149,7 +149,7 @@ describe("eai workflow", () => {
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       mockServer.server.use(
-        http.get(`${API_BASE}/v3/builder/readiness`, ({ request }) => {
+        http.get(`${API_BASE}/v4/integrations/builder/readiness`, ({ request }) => {
           requestUrl = request.url;
           return HttpResponse.json({
             tenant_id: "test-tenant-id",
@@ -187,7 +187,7 @@ describe("eai workflow", () => {
 
       mockServer.server.use(
         http.post(
-          `${API_BASE}/v3/workflows/runtime-requests`,
+          `${API_BASE}/v4/workflows/runtime-requests`,
           async ({ request }) => {
             requestBody = await request.json();
             return HttpResponse.json({
@@ -233,7 +233,7 @@ describe("eai workflow", () => {
 
       mockServer.server.use(
         http.get(
-          `${API_BASE}/v3/resources/test-tenant-id/shared-workflow-config`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/shared-workflow-config`,
           ({ request }) => {
             listRequests.push(request.url);
             return HttpResponse.json({
@@ -245,7 +245,7 @@ describe("eai workflow", () => {
           },
         ),
         http.get(
-          `${API_BASE}/v3/resources/test-tenant-id/vertical-product-config`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/vertical-product-config`,
           ({ request }) => {
             listRequests.push(request.url);
             return HttpResponse.json({
@@ -257,7 +257,7 @@ describe("eai workflow", () => {
           },
         ),
         http.post(
-          `${API_BASE}/v3/resources/test-tenant-id/shared-workflow-config`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/shared-workflow-config`,
           async ({ request }) => {
             sharedCreateBody = await request.json();
             return HttpResponse.json(
@@ -267,7 +267,7 @@ describe("eai workflow", () => {
           },
         ),
         http.post(
-          `${API_BASE}/v3/resources/test-tenant-id/vertical-product-config`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/vertical-product-config`,
           async ({ request }) => {
             verticalCreateBody = await request.json();
             return HttpResponse.json(
@@ -371,7 +371,7 @@ describe("eai workflow", () => {
 
       mockServer.server.use(
         http.get(
-          `${API_BASE}/v3/resources/test-tenant-id/shared-workflow-config`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/shared-workflow-config`,
           () =>
             HttpResponse.json({
               docs: [],
@@ -381,7 +381,7 @@ describe("eai workflow", () => {
             }),
         ),
         http.get(
-          `${API_BASE}/v3/resources/test-tenant-id/vertical-product-config`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/vertical-product-config`,
           () =>
             HttpResponse.json({
               docs: [],
@@ -391,7 +391,7 @@ describe("eai workflow", () => {
             }),
         ),
         http.get(
-          `${API_BASE}/v3/resources/test-tenant-id/shared-ai-profile`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/shared-ai-profile`,
           () =>
             HttpResponse.json({
               docs: [],
@@ -401,7 +401,7 @@ describe("eai workflow", () => {
             }),
         ),
         http.get(
-          `${API_BASE}/v3/resources/test-tenant-id/shared-chatbot-config`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/shared-chatbot-config`,
           () =>
             HttpResponse.json({
               docs: [],
@@ -411,22 +411,22 @@ describe("eai workflow", () => {
             }),
         ),
         http.post(
-          `${API_BASE}/v3/resources/test-tenant-id/shared-workflow-config`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/shared-workflow-config`,
           () => HttpResponse.json({ id: "workflow-record-1" }, { status: 201 }),
         ),
         http.post(
-          `${API_BASE}/v3/resources/test-tenant-id/vertical-product-config`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/vertical-product-config`,
           () => HttpResponse.json({ id: "vertical-config-1" }, { status: 201 }),
         ),
         http.post(
-          `${API_BASE}/v3/resources/test-tenant-id/shared-ai-profile`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/shared-ai-profile`,
           async ({ request }) => {
             createdProfiles.push(await request.json());
             return HttpResponse.json({ id: "ai-profile-1" }, { status: 201 });
           },
         ),
         http.post(
-          `${API_BASE}/v3/resources/test-tenant-id/shared-chatbot-config`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/shared-chatbot-config`,
           async ({ request }) => {
             createdPrompts.push(await request.json());
             return HttpResponse.json(
@@ -587,7 +587,7 @@ describe("eai workflow", () => {
 
       mockServer.server.use(
         http.all(
-          `${API_BASE}/v3/resources/test-tenant-id/:objectType`,
+          `${API_BASE}/v4/data/resources/test-tenant-id/:objectType`,
           ({ request }) => {
             resourceRequests.push(`${request.method} ${request.url}`);
             if (request.method === "GET") {
