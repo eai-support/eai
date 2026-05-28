@@ -1,0 +1,121 @@
+name: Deploy CLI Release Marker
+run-name: "Deploy CLI Release Marker (release: ${{ inputs.release_tag }} -> ${{ inputs.environment }})"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment whose release gate should validate this CLI tag
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+      release_tag:
+        description: CLI release tag to validate
+        required: true
+        type: string
+      post_deploy_e2e_mode:
+        description: Post-deploy cross-service E2E dispatch mode.
+        required: false
+        default: immediate
+        type: choice
+        options:
+          - immediate
+          - defer
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eai-cli-${{ inputs.environment }}-release-marker
+  cancel-in-progress: false
+
+jobs:
+  validate-release:
+    name: Validate CLI release tag
+    runs-on: ubuntu-latest
+    outputs:
+      deployed_sha: ${{ steps.deployed-meta.outputs.deployed_sha }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Capture release commit
+        id: deployed-meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "deployed_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Validate version matches release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_version="${{ inputs.release_tag }}"
+          tag_version="${tag_version#v}"
+          package_version="$(node -p "require('./package.json').version")"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "::error::Tag version ($tag_version) does not match package.json ($package_version)"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+  notify-e2e:
+    name: Notify eai-testing-dev
+    needs: validate-release
+    if: ${{ inputs.post_deploy_e2e_mode != 'defer' && needs.validate-release.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create eai-testing-dev app token
+        id: testing-app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: enterpriseaigroup
+          repositories: eai-testing-dev
+          permission-contents: write
+
+      - name: Notify eai-testing-dev of CLI release marker
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ steps.testing-app-token.outputs.token }}
+          repository: enterpriseaigroup/eai-testing-dev
+          event-type: deploy-completed
+          client-payload: >-
+            {
+              "repository": "eai",
+              "service": "eai-cli",
+              "environment": "${{ inputs.environment }}",
+              "ref": "${{ inputs.release_tag }}",
+              "sha": "${{ needs.validate-release.outputs.deployed_sha }}",
+              "tag": "${{ inputs.release_tag }}",
+              "workflow_run_id": "${{ github.run_id }}",
+              "workflow_run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "status": "success"
+            }
