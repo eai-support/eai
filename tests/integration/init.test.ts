@@ -50,6 +50,9 @@ import {
 const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pkg = require("../../package.json") as { version: string };
+const linkedSources = require("../../resources/linked-sources.json") as {
+  verticalTemplate: { commit: string };
+};
 
 async function createLocalTemplateRepo(baseDir: string): Promise<string> {
   const templateDir = join(baseDir, "vertical-template");
@@ -662,8 +665,10 @@ describe("resolveTemplateClonePlan", () => {
     expect(plan.cloneSource).toBe(
       "https://github.com/eai-tools/eai-app-template.git",
     );
-    expect(plan.pinnedCommit).toBe("13763149ba19d459e3e0f664e1b716e5952c2554");
-    expect(plan.displaySource).toBe("eai-tools/eai-app-template@1376314");
+    expect(plan.pinnedCommit).toBe(linkedSources.verticalTemplate.commit);
+    expect(plan.displaySource).toBe(
+      `eai-tools/eai-app-template@${linkedSources.verticalTemplate.commit.slice(0, 7)}`,
+    );
   });
 
   test("passes through custom template sources unchanged", () => {
