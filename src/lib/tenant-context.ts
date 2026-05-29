@@ -67,8 +67,113 @@ export interface TenantUsabilityStatus {
   autoSelected: boolean;
 }
 
+type TenantHierarchyRecord = Record<string, unknown>;
+
 function unique(values: Array<string | undefined>): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+}
+
+function tenantRefId(value: unknown): string | null {
+  if (typeof value === 'string' && value) return value;
+  if (value && typeof value === 'object' && 'id' in value) {
+    const id = (value as { id?: unknown }).id;
+    return typeof id === 'string' && id ? id : null;
+  }
+  return null;
+}
+
+function tenantParentId(tenant: TenantHierarchyRecord): string | null {
+  return (
+    (typeof tenant.parentTenantId === 'string' && tenant.parentTenantId) ||
+    tenantRefId(tenant.parentTenant)
+  );
+}
+
+function tenantUltimateParentId(tenant: TenantHierarchyRecord): string | null {
+  return (
+    (typeof tenant.ultimateParentId === 'string' && tenant.ultimateParentId) ||
+    tenantRefId(tenant.ultimateParent)
+  );
+}
+
+function isBuilderSandboxTier(tenant: TenantHierarchyRecord): boolean {
+  const tier = typeof tenant.tier === 'string' ? tenant.tier.toLowerCase() : '';
+  return tier === 'developer' || tier === 'builder';
+}
+
+async function readTenantHierarchyRecord(
+  client: PlatformAPIClient,
+  tenantId: string,
+): Promise<TenantHierarchyRecord> {
+  const response = await client.getTenant(tenantId);
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(
+      `Tenant ${tenantId} could not be resolved (${response.status}). ${body}`.trim(),
+    );
+  }
+
+  const payload = await response.json();
+  if (!isRecord(payload)) {
+    throw new Error(`Tenant ${tenantId} returned an invalid response.`);
+  }
+  return payload;
+}
+
+async function resolveBuilderWorkspaceTenantId(
+  client: PlatformAPIClient,
+  tenantId: string,
+  tenant: TenantHierarchyRecord,
+): Promise<string> {
+  let workspaceTenantId = tenantId;
+  let parentId = tenantParentId(tenant);
+  const seen = new Set<string>([tenantId]);
+
+  for (let depth = 0; parentId && depth < 20; depth += 1) {
+    if (seen.has(parentId)) {
+      throw new Error(`Tenant hierarchy cycle detected while resolving ${tenantId}.`);
+    }
+    seen.add(parentId);
+
+    let parent: TenantHierarchyRecord;
+    try {
+      parent = await readTenantHierarchyRecord(client, parentId);
+    } catch {
+      return workspaceTenantId;
+    }
+
+    const grandParentId = tenantParentId(parent);
+    if (!grandParentId) {
+      return workspaceTenantId;
+    }
+
+    workspaceTenantId = parentId;
+    parentId = grandParentId;
+  }
+
+  if (parentId) {
+    throw new Error(`Tenant hierarchy is too deep while resolving ${tenantId}.`);
+  }
+  return workspaceTenantId;
+}
+
+export async function resolveMainCompanyTenantId(
+  publicApiUrl: string,
+  tenantId: string,
+): Promise<string> {
+  const client = new PlatformAPIClient(publicApiUrl, tenantId);
+  const tenant = await readTenantHierarchyRecord(client, tenantId);
+  const parentId = tenantParentId(tenant);
+
+  if (!parentId) {
+    return tenantId;
+  }
+
+  if (isBuilderSandboxTier(tenant)) {
+    return resolveBuilderWorkspaceTenantId(client, tenantId, tenant);
+  }
+
+  return tenantUltimateParentId(tenant) || parentId;
 }
 
 export function getTenantRoles(entry: TenantEntry): string[] {

@@ -18,6 +18,7 @@ import { applyGoferRefresh, planGoferRefresh } from "../lib/gofer-refresh.js";
 import { isAuthenticated, loadTokens } from "../lib/auth.js";
 import {
   resolveActiveTenantContext,
+  resolveMainCompanyTenantId,
   resolvePublicApiUrl,
   type TenantMembership,
 } from "../lib/tenant-context.js";
@@ -731,41 +732,6 @@ interface InitTenantAppBinding {
   childTenantId?: string;
 }
 
-function tenantRefId(value: unknown): string | null {
-  if (typeof value === "string" && value) return value;
-  if (value && typeof value === "object" && "id" in value) {
-    const id = (value as { id?: unknown }).id;
-    return typeof id === "string" && id ? id : null;
-  }
-  return null;
-}
-
-async function resolveUltimateParentTenantId(
-  publicApiUrl: string,
-  tenantId: string,
-): Promise<string> {
-  const client = new PlatformAPIClient(publicApiUrl, tenantId);
-  const res = await client.getTenant(tenantId);
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    out.error(
-      `Tenant ${tenantId} could not be resolved (${res.status}). ${body}`.trim(),
-    );
-    process.exit(1);
-  }
-  const tenant = (await res.json()) as Record<string, unknown>;
-  const parentId =
-    (typeof tenant.parentTenantId === "string" && tenant.parentTenantId) ||
-    tenantRefId(tenant.parentTenant);
-  const ultimateParentId =
-    (typeof tenant.ultimateParentId === "string" && tenant.ultimateParentId) ||
-    tenantRefId(tenant.ultimateParent);
-  if (parentId) {
-    return ultimateParentId || parentId;
-  }
-  return tenantId;
-}
-
 async function promptCompanyTenantForInit(
   publicApiUrl: string,
   activeTenant: TenantMembership | null,
@@ -774,7 +740,7 @@ async function promptCompanyTenantForInit(
 ): Promise<string> {
   if (companyFlag) {
     await assertTenantExists(publicApiUrl, companyFlag);
-    return resolveUltimateParentTenantId(publicApiUrl, companyFlag);
+    return resolveMainCompanyTenantId(publicApiUrl, companyFlag);
   }
 
   if (!interactive && !activeTenant) {
@@ -785,7 +751,7 @@ async function promptCompanyTenantForInit(
   }
 
   if (!interactive && activeTenant) {
-    return resolveUltimateParentTenantId(publicApiUrl, activeTenant.id);
+    return resolveMainCompanyTenantId(publicApiUrl, activeTenant.id);
   }
 
   const choices: Array<{
@@ -823,7 +789,7 @@ async function promptCompanyTenantForInit(
   ]);
 
   if (mode === "default") {
-    return resolveUltimateParentTenantId(publicApiUrl, activeTenant!.id);
+    return resolveMainCompanyTenantId(publicApiUrl, activeTenant!.id);
   }
 
   const { otherId } = await inquirer.prompt([
@@ -837,7 +803,7 @@ async function promptCompanyTenantForInit(
   ]);
   const trimmed = String(otherId).trim();
   await assertTenantExists(publicApiUrl, trimmed);
-  return resolveUltimateParentTenantId(publicApiUrl, trimmed);
+  return resolveMainCompanyTenantId(publicApiUrl, trimmed);
 }
 
 async function createTenantAppForInit(

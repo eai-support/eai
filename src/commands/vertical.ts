@@ -6,6 +6,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import { PlatformAPIClient } from '../lib/api.js';
+import { resolveMainCompanyTenantId } from '../lib/tenant-context.js';
 import { patchEnvFile } from '../lib/config.js';
 import {
   errMsg,
@@ -81,31 +82,6 @@ async function readResponsePayload(res: Response): Promise<unknown> {
 function fail(message: string): never {
   out.error(message);
   process.exit(1);
-}
-
-function tenantRefId(value: unknown): string | null {
-  if (typeof value === 'string' && value) return value;
-  if (value && typeof value === 'object' && 'id' in value) {
-    const id = (value as { id?: unknown }).id;
-    return typeof id === 'string' && id ? id : null;
-  }
-  return null;
-}
-
-async function resolveMainCompanyTenantId(publicApiUrl: string, tenantId: string): Promise<string> {
-  const client = new PlatformAPIClient(publicApiUrl, tenantId);
-  const res = await client.getTenant(tenantId);
-  if (!res.ok) {
-    fail(`Could not resolve company tenant ${tenantId}: ${res.status} ${res.statusText}`);
-  }
-  const tenant = (await readResponsePayload(res)) as Record<string, unknown>;
-  const parentId =
-    (typeof tenant.parentTenantId === 'string' && tenant.parentTenantId) ||
-    tenantRefId(tenant.parentTenant);
-  const ultimateParentId =
-    (typeof tenant.ultimateParentId === 'string' && tenant.ultimateParentId) ||
-    tenantRefId(tenant.ultimateParent);
-  return parentId ? ultimateParentId || parentId : tenantId;
 }
 
 async function validateVerticalEnrollment(
