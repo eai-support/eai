@@ -244,11 +244,11 @@ export const initCommand = new Command("init")
   )
   .option(
     "--child-tenant <name>",
-    "Child company tenant display name for the app runtime boundary",
+    "Create or reuse a child company tenant display name for the app runtime boundary",
   )
   .option(
     "--create-child-tenant",
-    "[not implemented] Create a real child tenant boundary under the default tenant",
+    "Prompt for a child company tenant instead of using the selected company tenant",
   )
   .option("--no-gofer", "Skip installing Gofer AI CLI assets")
   .option(
@@ -295,10 +295,11 @@ Use --no-gofer only when you need a bare vertical scaffold.
           displayName: toDisplayName(nameArg),
         },
         options.childTenant,
+        Boolean(options.createChildTenant),
         false,
       );
       parentTenantId = binding.parentTenantId;
-      tenantId = binding.childTenantId;
+      tenantId = binding.runtimeTenantId;
       const capabilities = tenantId
         ? await evaluateInitCapabilities(publicApiUrl, tenantId)
         : defaultInitCapabilities();
@@ -355,10 +356,11 @@ Use --no-gofer only when you need a bare vertical scaffold.
           displayName: String(baseAnswers.displayName),
         },
         options.childTenant,
+        Boolean(options.createChildTenant),
         true,
       );
       parentTenantId = binding.parentTenantId;
-      tenantId = binding.childTenantId;
+      tenantId = binding.runtimeTenantId;
 
       const featureAnswers = await promptFeatureOptions(publicApiUrl, tenantId);
 
@@ -724,7 +726,8 @@ async function assertTenantExists(
 
 interface InitTenantAppBinding {
   parentTenantId: string;
-  childTenantId: string;
+  runtimeTenantId: string;
+  childTenantId?: string;
 }
 
 function tenantRefId(value: unknown): string | null {
@@ -843,6 +846,7 @@ async function createTenantAppForInit(
   immediateParentFlag: string | undefined,
   appSeed: { slug: string; displayName: string },
   childTenantOption: string | undefined,
+  createChildTenantFlag: boolean,
   interactive: boolean,
 ): Promise<InitTenantAppBinding> {
   const companyTenantId = await promptCompanyTenantForInit(
@@ -859,21 +863,42 @@ async function createTenantAppForInit(
     await assertTenantExists(publicApiUrl, immediateParentTenantId);
   }
   const client = new PlatformAPIClient(publicApiUrl, companyTenantId);
-  const childDecision = await evaluateCapabilityForInit(
-    client,
-    "child-tenants",
-    companyTenantId,
-  );
-  if (childDecision.outcome !== "allow") {
-    const suffix = childDecision.upgradeUrl
-      ? ` Upgrade: ${childDecision.upgradeUrl}`
-      : "";
-    out.error(`${childDecision.reasonMessage}${suffix}`);
-    process.exit(1);
-  }
 
   let childTenantDisplayName = childTenantOption?.trim() ?? "";
-  if (!childTenantDisplayName && interactive) {
+  let shouldCreateChildTenant =
+    Boolean(childTenantDisplayName) || createChildTenantFlag;
+  if (!shouldCreateChildTenant && interactive) {
+    const answer = await inquirer.prompt([
+      {
+        type: "list",
+        name: "appTenantScope",
+        message: "App tenant scope:",
+        default: "current",
+        choices: [
+          { name: "Current company tenant", value: "current" },
+          { name: "New child company tenant", value: "child" },
+        ],
+      },
+    ]);
+    shouldCreateChildTenant = String(answer.appTenantScope || "current") === "child";
+  }
+
+  if (shouldCreateChildTenant) {
+    const childDecision = await evaluateCapabilityForInit(
+      client,
+      "child-tenants",
+      companyTenantId,
+    );
+    if (childDecision.outcome !== "allow") {
+      const suffix = childDecision.upgradeUrl
+        ? ` Upgrade: ${childDecision.upgradeUrl}`
+        : "";
+      out.error(`${childDecision.reasonMessage}${suffix}`);
+      process.exit(1);
+    }
+  }
+
+  if (shouldCreateChildTenant && !childTenantDisplayName && interactive) {
     const answer = await inquirer.prompt([
       {
         type: "input",
@@ -886,7 +911,7 @@ async function createTenantAppForInit(
     ]);
     childTenantDisplayName = String(answer.childTenantDisplayName).trim();
   }
-  if (!childTenantDisplayName) {
+  if (shouldCreateChildTenant && !childTenantDisplayName) {
     out.error(
       "A child company tenant name is required. Pass `--child-tenant <name>`.",
     );
@@ -899,7 +924,7 @@ async function createTenantAppForInit(
     ...(immediateParentTenantId !== companyTenantId
       ? { parentTenantId: immediateParentTenantId }
       : {}),
-    childTenantDisplayName,
+    ...(childTenantDisplayName ? { childTenantDisplayName } : {}),
     templateKey: "blank-vertical-template",
     source: "eai-cli",
     usecase: "generic",
@@ -918,14 +943,23 @@ async function createTenantAppForInit(
       ? String((childTenant as Record<string, unknown>).id || "")
       : "";
   if (!childTenantId) {
-    out.error("App creation succeeded but returned no child tenant ID.");
-    process.exit(1);
+    out.info(
+      `Created app ${chalk.cyan(appSeed.slug)} under company tenant ${chalk.cyan(immediateParentTenantId)}.`,
+    );
+    return {
+      parentTenantId: companyTenantId,
+      runtimeTenantId: immediateParentTenantId,
+    };
   }
 
   out.info(
     `Created app ${chalk.cyan(appSeed.slug)} under main company ${chalk.cyan(companyTenantId)} with child company ${chalk.cyan(childTenantId)}.`,
   );
-  return { parentTenantId: companyTenantId, childTenantId };
+  return {
+    parentTenantId: companyTenantId,
+    runtimeTenantId: childTenantId,
+    childTenantId,
+  };
 }
 
 async function hydrateEnvFromLoginContext(

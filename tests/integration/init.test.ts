@@ -170,7 +170,7 @@ describe("eai init", () => {
         description: "My Vertical vertical application",
       })
       .mockResolvedValueOnce({ mode: "default" })
-      .mockResolvedValueOnce({ childTenantDisplayName: "My Vertical" })
+      .mockResolvedValueOnce({ appTenantScope: "current" })
       .mockResolvedValueOnce({ includeChat: true })
       .mockResolvedValueOnce({ includeDocs: true })
       .mockResolvedValueOnce({ authProvider: "ciam" });
@@ -223,11 +223,7 @@ describe("eai init", () => {
       .mockResolvedValue(
         new Response(
           JSON.stringify({
-            childTenant: {
-              id: "tenant-my-vertical",
-              displayName: "My Vertical",
-              slug: "my-vertical",
-            },
+            childTenant: null,
           }),
           { status: 201 },
         ),
@@ -238,6 +234,17 @@ describe("eai init", () => {
       await initCommand.parseAsync(["my-vertical", "--from", templateRepo], {
         from: "user",
       });
+      expect(createTenantAppSpy).toHaveBeenCalledWith(
+        "tenant-123",
+        expect.objectContaining({
+          appDisplayName: "My Vertical",
+          verticalKey: "my-vertical",
+          source: "eai-cli",
+        }),
+      );
+      expect(createTenantAppSpy.mock.calls[0]?.[1]).not.toHaveProperty(
+        "childTenantDisplayName",
+      );
     } finally {
       consoleCapture.restore();
       authSpy.mockRestore();
@@ -265,7 +272,7 @@ describe("eai init", () => {
     await expectFileContains(
       ctx,
       "my-vertical/.env.local",
-      "EAI_TENANT_ID=tenant-my-vertical",
+      "EAI_TENANT_ID=tenant-123",
     );
     await expectFileContains(
       ctx,
@@ -360,6 +367,7 @@ describe("eai init", () => {
         description: "Child Vertical vertical application",
       })
       .mockResolvedValueOnce({ mode: "default" })
+      .mockResolvedValueOnce({ appTenantScope: "child" })
       .mockResolvedValueOnce({ childTenantDisplayName: "Child Vertical" })
       .mockResolvedValueOnce({ includeChat: true })
       .mockResolvedValueOnce({ includeDocs: true })

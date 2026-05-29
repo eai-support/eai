@@ -164,10 +164,10 @@ verticalCommand
 
 verticalCommand
   .command('create <name>')
-  .description('Create an app and child company tenant under a company tenant')
+  .description('Create an app under a company tenant')
   .option('--tenant-id <id>', 'Main company tenant ID that owns this app')
   .option('--parent-tenant <id>', 'Immediate parent company tenant ID for the new child company')
-  .option('--child-tenant <name>', 'Child company tenant display name')
+  .option('--child-tenant <name>', 'Create or reuse a child company tenant display name')
   .option('--child-tenant-slug <slug>', 'Child company tenant key')
   .option('--key <key>', 'Stable app key (defaults to kebab-case name)')
   .option('--template <templateKey>', 'Optional vertical-catalog template key')
@@ -184,9 +184,6 @@ verticalCommand
     const format = normalizeFormat(options);
     const data = buildVerticalEnrollmentData(name, companyTenantId, options);
     const childTenantDisplayName = options.childTenant?.trim();
-    if (!childTenantDisplayName) {
-      fail('Child company tenant name is required. Pass --child-tenant "Company Name".');
-    }
     const spinner = makeSpinner(format, `Creating ${data.verticalKey}...`);
 
     const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
@@ -194,7 +191,7 @@ verticalCommand
       appDisplayName: String(data.displayName),
       verticalKey: String(data.verticalKey),
       ...(immediateParentTenantId !== companyTenantId ? { parentTenantId: immediateParentTenantId } : {}),
-      childTenantDisplayName,
+      ...(childTenantDisplayName ? { childTenantDisplayName } : {}),
       ...(options.childTenantSlug ? { childTenantSlug: options.childTenantSlug } : {}),
       ...(options.template ? { templateKey: options.template } : {}),
       source: options.source || DEFAULT_VERTICAL_SOURCE,
@@ -219,6 +216,8 @@ verticalCommand
     }
     if (isRecord(payload) && isRecord(payload.childTenant)) {
       out.info(`Child tenant: ${chalk.cyan(String(payload.childTenant.displayName ?? childTenantDisplayName))} · ${chalk.dim(String(payload.childTenant.id ?? ''))}`);
+    } else {
+      out.info(`App tenant: ${chalk.cyan(immediateParentTenantId)}`);
     }
   });
 

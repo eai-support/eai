@@ -34,7 +34,7 @@ export interface TenantAppCreateRequest {
   appDisplayName: string;
   verticalKey: string;
   parentTenantId?: string;
-  childTenantDisplayName: string;
+  childTenantDisplayName?: string;
   childTenantSlug?: string;
   templateKey?: string;
   source?: string;
