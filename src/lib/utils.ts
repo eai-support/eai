@@ -34,12 +34,22 @@ export function errMsg(err: unknown): string {
 
 export const CHILD_TENANT_NAME_REQUIRED_MESSAGE =
   "A child company tenant name is required. Pass `--child-tenant <name>`.";
+export const CHILD_TENANT_SLUG_REQUIRED_MESSAGE =
+  "A child company tenant slug is required. Pass `--child-tenant-slug <slug>`.";
 
-export function normalizeChildTenantDisplayNameOption(value: string | undefined): string | undefined {
+function normalizeRequiredCliOptionValue(value: string | undefined, message: string): string | undefined {
   if (value === undefined) return undefined;
   const trimmed = value.trim();
   if (!trimmed) {
-    throw new Error(CHILD_TENANT_NAME_REQUIRED_MESSAGE);
+    throw new Error(message);
   }
   return trimmed;
+}
+
+export function normalizeChildTenantDisplayNameOption(value: string | undefined): string | undefined {
+  return normalizeRequiredCliOptionValue(value, CHILD_TENANT_NAME_REQUIRED_MESSAGE);
+}
+
+export function normalizeChildTenantSlugOption(value: string | undefined): string | undefined {
+  return normalizeRequiredCliOptionValue(value, CHILD_TENANT_SLUG_REQUIRED_MESSAGE);
 }

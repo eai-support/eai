@@ -7,7 +7,13 @@ import chalk from 'chalk';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import { patchEnvFile } from '../lib/config.js';
-import { errMsg, isRecord, normalizeChildTenantDisplayNameOption, toObjectTypeSlug } from '../lib/utils.js';
+import {
+  errMsg,
+  isRecord,
+  normalizeChildTenantDisplayNameOption,
+  normalizeChildTenantSlugOption,
+  toObjectTypeSlug,
+} from '../lib/utils.js';
 import * as out from '../lib/output.js';
 
 const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
@@ -184,8 +190,10 @@ verticalCommand
     const format = normalizeFormat(options);
     const data = buildVerticalEnrollmentData(name, companyTenantId, options);
     let childTenantDisplayName: string | undefined;
+    let childTenantSlug: string | undefined;
     try {
       childTenantDisplayName = normalizeChildTenantDisplayNameOption(options.childTenant);
+      childTenantSlug = normalizeChildTenantSlugOption(options.childTenantSlug);
     } catch (err) {
       fail(errMsg(err));
     }
@@ -197,7 +205,7 @@ verticalCommand
       verticalKey: String(data.verticalKey),
       ...(immediateParentTenantId !== companyTenantId ? { parentTenantId: immediateParentTenantId } : {}),
       ...(childTenantDisplayName ? { childTenantDisplayName } : {}),
-      ...(options.childTenantSlug ? { childTenantSlug: options.childTenantSlug } : {}),
+      ...(childTenantSlug ? { childTenantSlug } : {}),
       ...(options.template ? { templateKey: options.template } : {}),
       source: options.source || DEFAULT_VERTICAL_SOURCE,
       ...(options.appUrl ? { appUrl: options.appUrl } : {}),

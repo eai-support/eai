@@ -11,7 +11,7 @@ import {
   normalizeBatchUpdateItems,
 } from '../../src/commands/resources.js';
 import { buildVerticalEnrollmentData } from '../../src/commands/vertical.js';
-import { normalizeChildTenantDisplayNameOption } from '../../src/lib/utils.js';
+import { normalizeChildTenantDisplayNameOption, normalizeChildTenantSlugOption } from '../../src/lib/utils.js';
 
 vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => undefined),
@@ -169,6 +169,11 @@ describe('resource type diagnostics', () => {
     expect(normalizeChildTenantDisplayNameOption('  Child Company  ')).toBe('Child Company');
     expect(() => normalizeChildTenantDisplayNameOption('   ')).toThrow(
       'A child company tenant name is required',
+    );
+    expect(normalizeChildTenantSlugOption(undefined)).toBeUndefined();
+    expect(normalizeChildTenantSlugOption('  child-company  ')).toBe('child-company');
+    expect(() => normalizeChildTenantSlugOption('   ')).toThrow(
+      'A child company tenant slug is required',
     );
   });
 
