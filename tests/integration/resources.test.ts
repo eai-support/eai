@@ -11,6 +11,7 @@ import {
   normalizeBatchUpdateItems,
 } from '../../src/commands/resources.js';
 import { buildVerticalEnrollmentData } from '../../src/commands/vertical.js';
+import { normalizeChildTenantDisplayNameOption } from '../../src/lib/utils.js';
 
 vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => undefined),
@@ -161,6 +162,14 @@ describe('resource type diagnostics', () => {
       source: 'eai',
       templateKey: 'blank-vertical-template',
     });
+  });
+
+  test('normalizes explicit child-tenant CLI option values', () => {
+    expect(normalizeChildTenantDisplayNameOption(undefined)).toBeUndefined();
+    expect(normalizeChildTenantDisplayNameOption('  Child Company  ')).toBe('Child Company');
+    expect(() => normalizeChildTenantDisplayNameOption('   ')).toThrow(
+      'A child company tenant name is required',
+    );
   });
 
   test('creates tenant vertical enrollment through ResourceAPI resources route', async () => {

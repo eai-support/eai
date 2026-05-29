@@ -31,3 +31,15 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 export function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+export const CHILD_TENANT_NAME_REQUIRED_MESSAGE =
+  "A child company tenant name is required. Pass `--child-tenant <name>`.";
+
+export function normalizeChildTenantDisplayNameOption(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(CHILD_TENANT_NAME_REQUIRED_MESSAGE);
+  }
+  return trimmed;
+}

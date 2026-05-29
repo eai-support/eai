@@ -29,6 +29,7 @@ import {
 import { patchEnvFile } from "../lib/config.js";
 import { pullCloudEnvValues } from "../lib/cloud-env.js";
 import { getActiveProfile, loadProfileConfig } from "../lib/profile.js";
+import { errMsg, normalizeChildTenantDisplayNameOption } from "../lib/utils.js";
 import type { ProjectManifest } from "../lib/project-manifest.js";
 import { saveProjectManifest } from "../lib/project-manifest.js";
 
@@ -864,7 +865,14 @@ async function createTenantAppForInit(
   }
   const client = new PlatformAPIClient(publicApiUrl, companyTenantId);
 
-  let childTenantDisplayName = childTenantOption?.trim() ?? "";
+  let childTenantDisplayName = "";
+  try {
+    childTenantDisplayName =
+      normalizeChildTenantDisplayNameOption(childTenantOption) ?? "";
+  } catch (err) {
+    out.error(errMsg(err));
+    process.exit(1);
+  }
   let shouldCreateChildTenant =
     Boolean(childTenantDisplayName) || createChildTenantFlag;
   if (!shouldCreateChildTenant && interactive) {

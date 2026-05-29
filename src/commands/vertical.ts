@@ -7,7 +7,7 @@ import chalk from 'chalk';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import { patchEnvFile } from '../lib/config.js';
-import { isRecord, toObjectTypeSlug } from '../lib/utils.js';
+import { errMsg, isRecord, normalizeChildTenantDisplayNameOption, toObjectTypeSlug } from '../lib/utils.js';
 import * as out from '../lib/output.js';
 
 const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
@@ -183,7 +183,12 @@ verticalCommand
       options.parentTenant?.trim() || (options.tenantId ? companyTenantId : ctx.tenantId);
     const format = normalizeFormat(options);
     const data = buildVerticalEnrollmentData(name, companyTenantId, options);
-    const childTenantDisplayName = options.childTenant?.trim();
+    let childTenantDisplayName: string | undefined;
+    try {
+      childTenantDisplayName = normalizeChildTenantDisplayNameOption(options.childTenant);
+    } catch (err) {
+      fail(errMsg(err));
+    }
     const spinner = makeSpinner(format, `Creating ${data.verticalKey}...`);
 
     const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
