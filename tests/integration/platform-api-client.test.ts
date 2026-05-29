@@ -44,6 +44,34 @@ describe('PlatformAPIClient', () => {
     expect(init?.method).toBe('POST')
   })
 
+  test('creates apps through the public company app route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 201 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.createTenantApp('tenant-parent', {
+      appDisplayName: 'DEF',
+      verticalKey: 'def',
+      parentTenantId: 'tenant-def',
+      childTenantDisplayName: 'IJK',
+      source: 'eai-cli',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      appDisplayName: 'DEF',
+      verticalKey: 'def',
+      parentTenantId: 'tenant-def',
+      childTenantDisplayName: 'IJK',
+      source: 'eai-cli',
+    })
+  })
+
   test('posts capability evaluation requests to the public capability router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

@@ -5,6 +5,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
+import { PlatformAPIClient } from '../lib/api.js';
 import { patchEnvFile } from '../lib/config.js';
 import { isRecord, toObjectTypeSlug } from '../lib/utils.js';
 import * as out from '../lib/output.js';
@@ -18,6 +19,9 @@ export interface VerticalCreateOptions {
   source?: string;
   appUrl?: string;
   status?: string;
+  parentTenant?: string;
+  childTenant?: string;
+  childTenantSlug?: string;
   format?: string;
   json?: boolean;
 }
@@ -31,10 +35,10 @@ export function buildVerticalEnrollmentData(
   const verticalKey = (options.key || toObjectTypeSlug(displayName)).trim();
 
   if (!displayName) {
-    throw new Error('Vertical display name is required.');
+    throw new Error('App display name is required.');
   }
   if (!verticalKey) {
-    throw new Error('Vertical key is required.');
+    throw new Error('App key is required.');
   }
 
   return {
@@ -73,6 +77,31 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+function tenantRefId(value: unknown): string | null {
+  if (typeof value === 'string' && value) return value;
+  if (value && typeof value === 'object' && 'id' in value) {
+    const id = (value as { id?: unknown }).id;
+    return typeof id === 'string' && id ? id : null;
+  }
+  return null;
+}
+
+async function resolveMainCompanyTenantId(publicApiUrl: string, tenantId: string): Promise<string> {
+  const client = new PlatformAPIClient(publicApiUrl, tenantId);
+  const res = await client.getTenant(tenantId);
+  if (!res.ok) {
+    fail(`Could not resolve company tenant ${tenantId}: ${res.status} ${res.statusText}`);
+  }
+  const tenant = (await readResponsePayload(res)) as Record<string, unknown>;
+  const parentId =
+    (typeof tenant.parentTenantId === 'string' && tenant.parentTenantId) ||
+    tenantRefId(tenant.parentTenant);
+  const ultimateParentId =
+    (typeof tenant.ultimateParentId === 'string' && tenant.ultimateParentId) ||
+    tenantRefId(tenant.ultimateParent);
+  return parentId ? ultimateParentId || parentId : tenantId;
+}
+
 async function validateVerticalEnrollment(
   verticalKey: string,
   ctx: Awaited<ReturnType<typeof resolveCommandContext>>,
@@ -86,16 +115,16 @@ async function validateVerticalEnrollment(
   }
   const docs = extractDocs(await readResponsePayload(res));
   if (docs.length === 0) {
-    fail(`No tenant vertical enrollment found for ${verticalKey}. Create it with \`eai vertical create\` first, or pass --skip-validate if the platform is still publishing the Object Type.`);
+    fail(`No app found for ${verticalKey}. Create it with \`eai vertical create\` first, or pass --skip-validate if the app is still being prepared.`);
   }
 }
 
 export const verticalCommand = new Command('vertical')
-  .description('Manage dynamic vertical/app instances under the active company tenant');
+  .description('Manage apps under the active company tenant');
 
 verticalCommand
   .command('list')
-  .description('List vertical/app instances for the active company tenant')
+  .description('List apps for the active company tenant')
   .option('--tenant-id <id>', 'Run against a specific company tenant')
   .option('--limit <n>', 'Items per page', '50')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -103,7 +132,7 @@ verticalCommand
   .action(async (options) => {
     const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     const format = normalizeFormat(options);
-    const spinner = makeSpinner(format, 'Listing tenant verticals...');
+    const spinner = makeSpinner(format, 'Listing apps...');
 
     const res = await ctx.client.listResources(VERTICAL_ENROLLMENT_TYPE, {
       limit: Number.parseInt(options.limit, 10),
@@ -112,19 +141,19 @@ verticalCommand
     const payload = await readResponsePayload(res);
 
     if (!res.ok) {
-      spinner?.fail('Failed to list tenant verticals');
+      spinner?.fail('Failed to list apps');
       fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
     }
 
     const docs = extractDocs(payload);
     if (format === 'json') {
-      out.json({ tenantId: ctx.tenantId, objectType: VERTICAL_ENROLLMENT_TYPE, verticals: docs });
+      out.json({ tenantId: ctx.tenantId, apps: docs });
       return;
     }
 
-    spinner?.succeed(`${docs.length} vertical/app instance${docs.length === 1 ? '' : 's'} found`);
+    spinner?.succeed(`${docs.length} app${docs.length === 1 ? '' : 's'} found`);
     if (docs.length === 0) {
-      out.info('No tenant vertical enrollments found.');
+      out.info('No apps found.');
       return;
     }
     for (const doc of docs) {
@@ -135,9 +164,12 @@ verticalCommand
 
 verticalCommand
   .command('create <name>')
-  .description('Create a dynamic vertical/app instance under the active company tenant')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
-  .option('--key <key>', 'Stable vertical/app key (defaults to kebab-case name)')
+  .description('Create an app and child company tenant under a company tenant')
+  .option('--tenant-id <id>', 'Main company tenant ID that owns this app')
+  .option('--parent-tenant <id>', 'Immediate parent company tenant ID for the new child company')
+  .option('--child-tenant <name>', 'Child company tenant display name')
+  .option('--child-tenant-slug <slug>', 'Child company tenant key')
+  .option('--key <key>', 'Stable app key (defaults to kebab-case name)')
   .option('--template <templateKey>', 'Optional vertical-catalog template key')
   .option('--source <source>', 'Creation source', DEFAULT_VERTICAL_SOURCE)
   .option('--app-url <url>', 'Optional app URL')
@@ -146,25 +178,48 @@ verticalCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (name: string, options: VerticalCreateOptions & { tenantId?: string }) => {
     const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const companyTenantId = await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const immediateParentTenantId =
+      options.parentTenant?.trim() || (options.tenantId ? companyTenantId : ctx.tenantId);
     const format = normalizeFormat(options);
-    const data = buildVerticalEnrollmentData(name, ctx.tenantId, options);
+    const data = buildVerticalEnrollmentData(name, companyTenantId, options);
+    const childTenantDisplayName = options.childTenant?.trim();
+    if (!childTenantDisplayName) {
+      fail('Child company tenant name is required. Pass --child-tenant "Company Name".');
+    }
     const spinner = makeSpinner(format, `Creating ${data.verticalKey}...`);
 
-    const res = await ctx.client.createResource(VERTICAL_ENROLLMENT_TYPE, data);
+    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const res = await client.createTenantApp(companyTenantId, {
+      appDisplayName: String(data.displayName),
+      verticalKey: String(data.verticalKey),
+      ...(immediateParentTenantId !== companyTenantId ? { parentTenantId: immediateParentTenantId } : {}),
+      childTenantDisplayName,
+      ...(options.childTenantSlug ? { childTenantSlug: options.childTenantSlug } : {}),
+      ...(options.template ? { templateKey: options.template } : {}),
+      source: options.source || DEFAULT_VERTICAL_SOURCE,
+      ...(options.appUrl ? { appUrl: options.appUrl } : {}),
+    });
     const payload = await readResponsePayload(res);
 
     if (!res.ok) {
-      spinner?.fail('Failed to create tenant vertical');
+      spinner?.fail('Failed to create app');
       fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
     }
 
     if (format === 'json') {
-      out.json({ tenantId: ctx.tenantId, objectType: VERTICAL_ENROLLMENT_TYPE, request: data, response: payload });
+      out.json({ tenantId: companyTenantId, appKey: data.verticalKey, request: data, response: payload });
       return;
     }
 
-    spinner?.succeed(`Created tenant vertical ${chalk.cyan(String(data.verticalKey))}`);
-    out.info('This is a tenant app/product instance, not a child tenant.');
+    spinner?.succeed(`Created app ${chalk.cyan(String(data.verticalKey))}`);
+    out.info(`Main company tenant: ${chalk.cyan(companyTenantId)}`);
+    if (immediateParentTenantId !== companyTenantId) {
+      out.info(`Immediate parent company: ${chalk.cyan(immediateParentTenantId)}`);
+    }
+    if (isRecord(payload) && isRecord(payload.childTenant)) {
+      out.info(`Child tenant: ${chalk.cyan(String(payload.childTenant.displayName ?? childTenantDisplayName))} · ${chalk.dim(String(payload.childTenant.id ?? ''))}`);
+    }
   });
 
 verticalCommand
@@ -180,7 +235,7 @@ verticalCommand
     const verticalKey = key.trim();
 
     if (!verticalKey) {
-      fail('Vertical key is required.');
+      fail('App key is required.');
     }
 
     if (!options.skipValidate) {
@@ -193,17 +248,17 @@ verticalCommand
       out.json({ tenantId: ctx.tenantId, verticalKey, env: 'EAI_VERTICAL_KEY' });
       return;
     }
-    out.success(`Active vertical/app set to ${chalk.cyan(verticalKey)} in .env.local`);
+    out.success(`Active app set to ${chalk.cyan(verticalKey)} in .env.local`);
   });
 
 verticalCommand
   .command('provision <key>')
-  .description('Provision storage needed by a tenant vertical/app instance')
+  .description('Prepare platform storage for an app')
   .option('--tenant-id <id>', 'Run against a specific company tenant')
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--dry-run', 'Plan actions without applying changes', false)
   .option('--rebuild-search', 'Request search projection rebuild after provisioning', false)
-  .option('--skip-validate', 'Skip tenant-vertical-enrollment lookup', false)
+  .option('--skip-validate', 'Skip app lookup', false)
   .option('--select', 'Write EAI_VERTICAL_KEY after successful provisioning', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -213,7 +268,7 @@ verticalCommand
     const verticalKey = key.trim();
 
     if (!verticalKey) {
-      fail('Vertical key is required.');
+      fail('App key is required.');
     }
 
     if (!options.skipValidate) {
@@ -232,7 +287,7 @@ verticalCommand
     const payload = await readResponsePayload(res);
 
     if (!res.ok) {
-      spinner?.fail('Failed to provision tenant vertical storage');
+      spinner?.fail('Failed to prepare app storage');
       fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
     }
 
@@ -251,7 +306,7 @@ verticalCommand
     }
 
     spinner?.succeed(options.dryRun ? 'Storage plan complete' : 'Storage provisioning complete');
-    out.info(`Vertical/app ${chalk.cyan(verticalKey)} remains a tenant enrollment, not a child tenant.`);
+    out.info(`App ${chalk.cyan(verticalKey)} is linked under the selected company tenant.`);
     if (isRecord(payload) && Array.isArray(payload.results)) {
       for (const result of payload.results.filter(isRecord)) {
         const objectType = typeof result.objectType === 'string' ? result.objectType : 'unknown';
@@ -265,6 +320,6 @@ verticalCommand
       }
     }
     if (options.select) {
-      out.success(`Active vertical/app set to ${chalk.cyan(verticalKey)} in .env.local`);
+      out.success(`Active app set to ${chalk.cyan(verticalKey)} in .env.local`);
     }
   });

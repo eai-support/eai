@@ -291,7 +291,8 @@ describe("eai init", () => {
         displayName: "Child Vertical",
         description: "Child Vertical vertical application",
       })
-      .mockResolvedValueOnce({ mode: "child" })
+      .mockResolvedValueOnce({ mode: "default" })
+      .mockResolvedValueOnce({ childTenantDisplayName: "Child Vertical" })
       .mockResolvedValueOnce({ includeChat: true })
       .mockResolvedValueOnce({ includeDocs: true })
       .mockResolvedValueOnce({ authProvider: "ciam" });
@@ -334,26 +335,30 @@ describe("eai init", () => {
         reasonMessage: "Capability is included in the current plan.",
         upgradeUrl: null,
       });
-    const createTenantSpy = vi
-      .spyOn(PlatformAPIClient.prototype, "createTenant")
+    const getTenantSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "getTenant")
       .mockResolvedValue(
         new Response(
           JSON.stringify({
-            id: "tenant-child",
-            displayName: "Child Vertical",
-            slug: "child-vertical",
-          }),
-          { status: 201 },
-        ),
-      );
-    const bootstrapSpy = vi
-      .spyOn(PlatformAPIClient.prototype, "bootstrapChildTenantAdmin")
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            usable: true,
+            id: "tenant-parent",
+            displayName: "Parent Tenant",
+            ultimateParentId: "tenant-parent",
           }),
           { status: 200 },
+        ),
+      );
+    const createTenantAppSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "createTenantApp")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            childTenant: {
+              id: "tenant-child",
+              displayName: "Child Vertical",
+              slug: "child-vertical",
+            },
+          }),
+          { status: 201 },
         ),
       );
 
@@ -366,21 +371,16 @@ describe("eai init", () => {
         "utf-8",
       );
       expect(envContent).toContain("EAI_TENANT_ID=tenant-child");
+      expect(envContent).toContain("EAI_PARENT_TENANT_ID=tenant-parent");
       expect(envContent).toContain("TENANT_CHILD_VERTICAL_ID=tenant-child");
-      expect(createTenantSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: "Child Vertical",
-          slug: "child-vertical",
-          parent: "tenant-parent",
-        }),
-      );
-      expect(bootstrapSpy).toHaveBeenCalledWith(
+      expect(createTenantAppSpy).toHaveBeenCalledWith(
         "tenant-parent",
-        "tenant-child",
-        {
-          userOid: "user-oid",
-          userEmail: "user@example.com",
-        },
+        expect.objectContaining({
+          appDisplayName: "Child Vertical",
+          verticalKey: "child-vertical",
+          childTenantDisplayName: "Child Vertical",
+          source: "eai-cli",
+        }),
       );
       expect(capabilitySpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -394,8 +394,8 @@ describe("eai init", () => {
       tenantCtxSpy.mockRestore();
       loadTokensSpy.mockRestore();
       capabilitySpy.mockRestore();
-      createTenantSpy.mockRestore();
-      bootstrapSpy.mockRestore();
+      getTenantSpy.mockRestore();
+      createTenantAppSpy.mockRestore();
     }
   }, 30_000);
 

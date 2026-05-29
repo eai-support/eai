@@ -85,6 +85,7 @@ interface InitOptions {
   name: string;
   displayName: string;
   description: string;
+  parentTenantId: string;
   tenantId: string;
   includeChat: boolean;
   includeDocs: boolean;
@@ -231,7 +232,19 @@ export const initCommand = new Command("init")
   .option("--skip-prompts", "Use defaults without interactive prompts", false)
   .option(
     "--tenant <id>",
-    "Bind this vertical to the given platform tenant ID (non-interactive)",
+    "Main company tenant ID (deprecated alias for --company-tenant)",
+  )
+  .option(
+    "--company-tenant <id>",
+    "Main company tenant ID that owns this app",
+  )
+  .option(
+    "--parent-tenant <id>",
+    "Immediate parent company tenant ID for the new child company",
+  )
+  .option(
+    "--child-tenant <name>",
+    "Child company tenant display name for the app runtime boundary",
   )
   .option(
     "--create-child-tenant",
@@ -264,6 +277,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
     const activeTenant = await loadActiveTenantForInit(publicApiUrl);
 
     let tenantId: string;
+    let parentTenantId: string;
     let initOptions: InitOptions;
     let targetDir: string;
     const packageProfile = resolvePackageProfile(options.packageProfile);
@@ -271,17 +285,20 @@ Use --no-gofer only when you need a bare vertical scaffold.
     if (options.skipPrompts && nameArg) {
       targetDir = resolve(process.cwd(), nameArg);
       await ensureTargetDirAvailable(targetDir, nameArg);
-      tenantId = await promptTenantBinding(
+      const binding = await createTenantAppForInit(
         publicApiUrl,
         activeTenant,
-        options.tenant,
+        options.companyTenant || options.tenant,
+        options.parentTenant,
         {
           slug: nameArg,
           displayName: toDisplayName(nameArg),
         },
-        Boolean(options.createChildTenant),
+        options.childTenant,
         false,
       );
+      parentTenantId = binding.parentTenantId;
+      tenantId = binding.childTenantId;
       const capabilities = tenantId
         ? await evaluateInitCapabilities(publicApiUrl, tenantId)
         : defaultInitCapabilities();
@@ -289,6 +306,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
         name: nameArg,
         displayName: toDisplayName(nameArg),
         description: `${toDisplayName(nameArg)} vertical application`,
+        parentTenantId,
         tenantId,
         includeChat: capabilities["ai-chat"].outcome === "allow",
         includeDocs: capabilities.documents.outcome === "allow",
@@ -327,17 +345,20 @@ Use --no-gofer only when you need a bare vertical scaffold.
       targetDir = resolve(process.cwd(), String(baseAnswers.name));
       await ensureTargetDirAvailable(targetDir, String(baseAnswers.name));
 
-      tenantId = await promptTenantBinding(
+      const binding = await createTenantAppForInit(
         publicApiUrl,
         activeTenant,
-        options.tenant,
+        options.companyTenant || options.tenant,
+        options.parentTenant,
         {
           slug: String(baseAnswers.name),
           displayName: String(baseAnswers.displayName),
         },
-        Boolean(options.createChildTenant),
+        options.childTenant,
         true,
       );
+      parentTenantId = binding.parentTenantId;
+      tenantId = binding.childTenantId;
 
       const featureAnswers = await promptFeatureOptions(publicApiUrl, tenantId);
 
@@ -347,6 +368,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
           displayName: string;
           description: string;
         }),
+        parentTenantId,
         tenantId,
         ...(featureAnswers as {
           includeChat: boolean;
@@ -398,6 +420,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
       await hydrateEnvFromLoginContext(
         targetDir,
         initOptions.name,
+        initOptions.parentTenantId,
         initOptions.tenantId,
       );
       envSpinner.succeed("Generated .env.local");
@@ -541,6 +564,7 @@ Use --no-gofer only when you need a bare vertical scaffold.
     out.heading("Next steps:");
     out.blank();
     if (initOptions.tenantId) {
+      out.dim(`Main company tenant: ${chalk.cyan(initOptions.parentTenantId)}`);
       out.dim(`Bound to tenant: ${chalk.cyan(initOptions.tenantId)}`);
     }
     if (!entraProvisioned) {
@@ -698,6 +722,212 @@ async function assertTenantExists(
   }
 }
 
+interface InitTenantAppBinding {
+  parentTenantId: string;
+  childTenantId: string;
+}
+
+function tenantRefId(value: unknown): string | null {
+  if (typeof value === "string" && value) return value;
+  if (value && typeof value === "object" && "id" in value) {
+    const id = (value as { id?: unknown }).id;
+    return typeof id === "string" && id ? id : null;
+  }
+  return null;
+}
+
+async function resolveUltimateParentTenantId(
+  publicApiUrl: string,
+  tenantId: string,
+): Promise<string> {
+  const client = new PlatformAPIClient(publicApiUrl, tenantId);
+  const res = await client.getTenant(tenantId);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    out.error(
+      `Tenant ${tenantId} could not be resolved (${res.status}). ${body}`.trim(),
+    );
+    process.exit(1);
+  }
+  const tenant = (await res.json()) as Record<string, unknown>;
+  const parentId =
+    (typeof tenant.parentTenantId === "string" && tenant.parentTenantId) ||
+    tenantRefId(tenant.parentTenant);
+  const ultimateParentId =
+    (typeof tenant.ultimateParentId === "string" && tenant.ultimateParentId) ||
+    tenantRefId(tenant.ultimateParent);
+  if (parentId) {
+    return ultimateParentId || parentId;
+  }
+  return tenantId;
+}
+
+async function promptCompanyTenantForInit(
+  publicApiUrl: string,
+  activeTenant: TenantMembership | null,
+  companyFlag: string | undefined,
+  interactive: boolean,
+): Promise<string> {
+  if (companyFlag) {
+    await assertTenantExists(publicApiUrl, companyFlag);
+    return resolveUltimateParentTenantId(publicApiUrl, companyFlag);
+  }
+
+  if (!interactive && !activeTenant) {
+    out.error(
+      "A main company tenant is required. Pass `--company-tenant <id>` after completing onboarding.",
+    );
+    process.exit(1);
+  }
+
+  if (!interactive && activeTenant) {
+    return resolveUltimateParentTenantId(publicApiUrl, activeTenant.id);
+  }
+
+  const choices: Array<{
+    name: string;
+    value: "default" | "other";
+    disabled?: string;
+  }> = [];
+
+  if (activeTenant) {
+    choices.push({
+      name: `Default (currently selected): ${activeTenant.displayName} · ${chalk.dim(activeTenant.id)}`,
+      value: "default",
+    });
+  } else {
+    choices.push({
+      name: "Default (currently selected)",
+      value: "default",
+      disabled:
+        "no active tenant — run `eai login` and complete onboarding first",
+    });
+  }
+
+  choices.push({
+    name: "Other main company tenant (enter ID)",
+    value: "other",
+  });
+
+  const { mode } = await inquirer.prompt([
+    {
+      type: "list",
+      name: "mode",
+      message: "Which main company tenant should own this app?",
+      choices,
+    },
+  ]);
+
+  if (mode === "default") {
+    return resolveUltimateParentTenantId(publicApiUrl, activeTenant!.id);
+  }
+
+  const { otherId } = await inquirer.prompt([
+    {
+      type: "input",
+      name: "otherId",
+      message: "Main company tenant ID:",
+      validate: (input: string) =>
+        input.trim().length > 0 || "Main company tenant ID is required",
+    },
+  ]);
+  const trimmed = String(otherId).trim();
+  await assertTenantExists(publicApiUrl, trimmed);
+  return resolveUltimateParentTenantId(publicApiUrl, trimmed);
+}
+
+async function createTenantAppForInit(
+  publicApiUrl: string,
+  activeTenant: TenantMembership | null,
+  companyFlag: string | undefined,
+  immediateParentFlag: string | undefined,
+  appSeed: { slug: string; displayName: string },
+  childTenantOption: string | undefined,
+  interactive: boolean,
+): Promise<InitTenantAppBinding> {
+  const companyTenantId = await promptCompanyTenantForInit(
+    publicApiUrl,
+    activeTenant,
+    companyFlag,
+    interactive,
+  );
+  const defaultImmediateParentTenantId =
+    companyFlag || !activeTenant ? companyTenantId : activeTenant.id;
+  const immediateParentTenantId =
+    immediateParentFlag?.trim() || defaultImmediateParentTenantId;
+  if (immediateParentTenantId !== companyTenantId) {
+    await assertTenantExists(publicApiUrl, immediateParentTenantId);
+  }
+  const client = new PlatformAPIClient(publicApiUrl, companyTenantId);
+  const childDecision = await evaluateCapabilityForInit(
+    client,
+    "child-tenants",
+    companyTenantId,
+  );
+  if (childDecision.outcome !== "allow") {
+    const suffix = childDecision.upgradeUrl
+      ? ` Upgrade: ${childDecision.upgradeUrl}`
+      : "";
+    out.error(`${childDecision.reasonMessage}${suffix}`);
+    process.exit(1);
+  }
+
+  let childTenantDisplayName = childTenantOption?.trim() ?? "";
+  if (!childTenantDisplayName && interactive) {
+    const answer = await inquirer.prompt([
+      {
+        type: "input",
+        name: "childTenantDisplayName",
+        message: "Child company tenant name:",
+        default: appSeed.displayName,
+        validate: (input: string) =>
+          input.trim().length > 0 || "Child company tenant name is required",
+      },
+    ]);
+    childTenantDisplayName = String(answer.childTenantDisplayName).trim();
+  }
+  if (!childTenantDisplayName) {
+    out.error(
+      "A child company tenant name is required. Pass `--child-tenant <name>`.",
+    );
+    process.exit(1);
+  }
+
+  const res = await client.createTenantApp(companyTenantId, {
+    appDisplayName: appSeed.displayName,
+    verticalKey: appSeed.slug,
+    ...(immediateParentTenantId !== companyTenantId
+      ? { parentTenantId: immediateParentTenantId }
+      : {}),
+    childTenantDisplayName,
+    templateKey: "blank-vertical-template",
+    source: "eai-cli",
+    usecase: "generic",
+  });
+
+  if (!res.ok) {
+    const error = await parseApiError(res);
+    out.error(`App creation failed: ${error.message}`);
+    process.exit(1);
+  }
+
+  const payload = (await res.json()) as Record<string, unknown>;
+  const childTenant = payload.childTenant;
+  const childTenantId =
+    childTenant && typeof childTenant === "object"
+      ? String((childTenant as Record<string, unknown>).id || "")
+      : "";
+  if (!childTenantId) {
+    out.error("App creation succeeded but returned no child tenant ID.");
+    process.exit(1);
+  }
+
+  out.info(
+    `Created app ${chalk.cyan(appSeed.slug)} under main company ${chalk.cyan(companyTenantId)} with child company ${chalk.cyan(childTenantId)}.`,
+  );
+  return { parentTenantId: companyTenantId, childTenantId };
+}
+
 async function promptTenantBinding(
   publicApiUrl: string,
   activeTenant: TenantMembership | null,
@@ -797,6 +1027,7 @@ async function promptTenantBinding(
 async function hydrateEnvFromLoginContext(
   targetDir: string,
   verticalName: string,
+  parentTenantId: string,
   platformTenantId: string,
 ): Promise<void> {
   const patches: Record<string, string> = {};
@@ -831,6 +1062,10 @@ async function hydrateEnvFromLoginContext(
     }
   } catch {
     // Best-effort bootstrap only.
+  }
+
+  if (parentTenantId) {
+    patches.EAI_PARENT_TENANT_ID = parentTenantId;
   }
 
   if (platformTenantId) {
@@ -912,11 +1147,14 @@ BASE_URL_PUBLIC_API=
 
 # =============================================================================
 # Tenant configuration
-# EAI_TENANT_ID is the server-side tenant this vertical binds to — read by
+# EAI_PARENT_TENANT_ID is the onboarding-created company tenant that owns
+# the platform app entry.
+# EAI_TENANT_ID is the server-side company tenant this app binds to — read by
 # the template in src/app/page.tsx and src/app/api/eai/[[...rest]]/route.ts.
 # TENANT_KEYS + TENANT_<KEY>_ID support the multi-tenant config resolver at
 # src/app/api/eai/config/route.ts. Both keys are kept in sync by eai init.
 # =============================================================================
+EAI_PARENT_TENANT_ID=
 EAI_TENANT_ID=
 TENANT_KEYS=${opts.name}
 TENANT_${envKey}_ID=
