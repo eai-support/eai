@@ -151,7 +151,7 @@ export class PublicAPIMock {
    * Mock object types list
    */
   mockObjectTypesList(types: Array<{ id: string; name: string; tenant: string }>) {
-    this.mockServer.mockGET(`${this.baseURL}/object-types`, {
+    this.mockServer.mockGET(`${this.baseURL}/v4/data/resources/object-types`, {
       body: { docs: types, totalDocs: types.length },
     });
   }
@@ -160,7 +160,7 @@ export class PublicAPIMock {
    * Mock object type creation
    */
   mockObjectTypeCreate(type: { id: string; name: string }) {
-    this.mockServer.mockPOST(`${this.baseURL}/object-types`, {
+    this.mockServer.mockPOST(`${this.baseURL}/v4/data/resources/object-types`, {
       status: 201,
       body: { id: type.id, name: type.name },
     });
@@ -170,7 +170,7 @@ export class PublicAPIMock {
    * Mock resources list
    */
   mockResourcesList(tenantId: string, objectType: string, resources: Array<{ id: string; data: unknown }>) {
-    this.mockServer.mockGET(`${this.baseURL}/v3/resources/${tenantId}/${objectType}`, {
+    this.mockServer.mockGET(`${this.baseURL}/v4/data/resources/${tenantId}/${objectType}`, {
       body: {
         docs: resources,
         totalDocs: resources.length,
@@ -184,7 +184,7 @@ export class PublicAPIMock {
    * Mock resource get
    */
   mockResourceGet(tenantId: string, objectType: string, id: string, data: unknown) {
-    this.mockServer.mockGET(`${this.baseURL}/v3/resources/${tenantId}/${objectType}/${id}`, {
+    this.mockServer.mockGET(`${this.baseURL}/v4/data/resources/${tenantId}/${objectType}/${id}`, {
       body: { id, data, created_at: new Date().toISOString(), version: 1 },
     });
   }
@@ -193,7 +193,7 @@ export class PublicAPIMock {
    * Mock resource create
    */
   mockResourceCreate(tenantId: string, objectType: string, id: string) {
-    this.mockServer.mockPOST(`${this.baseURL}/v3/resources/${tenantId}/${objectType}`, {
+    this.mockServer.mockPOST(`${this.baseURL}/v4/data/resources/${tenantId}/${objectType}`, {
       status: 201,
       body: { id },
     });
@@ -203,7 +203,7 @@ export class PublicAPIMock {
    * Mock resource update
    */
   mockResourceUpdate(tenantId: string, objectType: string, id: string) {
-    this.mockServer.mockPUT(`${this.baseURL}/v3/resources/${tenantId}/${objectType}/${id}`, {
+    this.mockServer.mockPUT(`${this.baseURL}/v4/data/resources/${tenantId}/${objectType}/${id}`, {
       body: { id, updated: true },
     });
   }
@@ -212,7 +212,7 @@ export class PublicAPIMock {
    * Mock resource delete
    */
   mockResourceDelete(tenantId: string, objectType: string, id: string) {
-    this.mockServer.mockDELETE(`${this.baseURL}/v3/resources/${tenantId}/${objectType}/${id}`, {
+    this.mockServer.mockDELETE(`${this.baseURL}/v4/data/resources/${tenantId}/${objectType}/${id}`, {
       status: 204,
       body: null,
     });
@@ -222,7 +222,7 @@ export class PublicAPIMock {
    * Mock chat message
    */
   mockChatSend(tenantId: string, workflowId: string, stage: string, response: string) {
-    this.mockServer.mockPOST(`${this.baseURL}/v3/chat/${tenantId}/${workflowId}/${stage}`, {
+    this.mockServer.mockPOST(`${this.baseURL}/v4/ai/chat/${tenantId}/${workflowId}/${stage}`, {
       body: { response, thread_id: 'test-thread-id', stage },
     });
   }
