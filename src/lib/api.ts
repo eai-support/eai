@@ -9,7 +9,6 @@
 import { getAccessToken } from './auth.js';
 import { toObjectTypeSlug } from './utils.js';
 
-type PlatformBackend = 'payload' | 'admin' | 'mid';
 type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 type ResourceWhere = Record<string, unknown>;
 
@@ -342,20 +341,43 @@ export class PlatformAPIClient {
     return h;
   }
 
-  // --------------- Internal routing ---------------
+  // --------------- Public v4 routing ---------------
 
-  /** @internal — do not use directly; use typed methods below. */
-  private async _route(
-    backend: PlatformBackend,
-    endpoint: string,
+  private buildUrl(path: string, params?: Record<string, unknown> | URLSearchParams): string {
+    const query = params instanceof URLSearchParams ? params : new URLSearchParams();
+    if (params && !(params instanceof URLSearchParams)) {
+      for (const [key, value] of Object.entries(params)) {
+        if (value === undefined || value === null) continue;
+        if (Array.isArray(value)) {
+          for (const item of value) query.append(key, String(item));
+        } else {
+          query.set(key, String(value));
+        }
+      }
+    }
+    const qs = query.toString();
+    return `${this.baseUrl.replace(/\/$/, '')}${path}${qs ? `?${qs}` : ''}`;
+  }
+
+  private resourcePath(...segments: string[]): string {
+    const encodedSegments = segments.map((segment) => encodeURIComponent(segment));
+    return `/v4/data/resources/${encodeURIComponent(this.tenantId)}/${encodedSegments.join('/')}`;
+  }
+
+  private pathParam(value: string): string {
+    return value.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+  }
+
+  private async jsonRequest(
+    path: string,
     method: PlatformMethod = 'GET',
     body?: unknown,
-    params?: Record<string, unknown>,
+    params?: Record<string, unknown> | URLSearchParams,
   ): Promise<Response> {
-    return fetch(`${this.baseUrl}/v3/orchestrate`, {
-      method: 'POST',
+    return fetch(this.buildUrl(path, params), {
+      method,
       headers: await this.headers(),
-      body: JSON.stringify({ target_backend: backend, endpoint, method, body, params }),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   }
 
@@ -378,9 +400,7 @@ export class PlatformAPIClient {
     if (options?.sort) params.set('sort', options.sort);
     if (options?.where) params.set('where', JSON.stringify(options.where));
     if (options?.cursor) params.set('cursor', options.cursor);
-    const qs = params.toString();
-    const url = `${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}${qs ? `?${qs}` : ''}`;
-    return fetch(url, { headers: await this.headers() });
+    return fetch(this.buildUrl(this.resourcePath(normalizedObjectType), params), { headers: await this.headers() });
   }
 
   async streamResources(
@@ -393,22 +413,20 @@ export class PlatformAPIClient {
     if (options?.sort) params.set('sort', options.sort);
     if (options?.where) params.set('where', JSON.stringify(options.where));
     if (options?.cursor) params.set('cursor', options.cursor);
-    const qs = params.toString();
-    const url = `${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/stream${qs ? `?${qs}` : ''}`;
-    return fetch(url, { headers: await this.headers() });
+    return fetch(this.buildUrl(this.resourcePath(normalizedObjectType, 'stream'), params), { headers: await this.headers() });
   }
 
   async getResource(objectType: string, id: string): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
     return fetch(
-      `${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/${id}`,
+      this.buildUrl(this.resourcePath(normalizedObjectType, id)),
       { headers: await this.headers() },
     );
   }
 
   async createResource(objectType: string, data: Record<string, unknown>): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}`, {
+    return fetch(this.buildUrl(this.resourcePath(normalizedObjectType)), {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({ data }),
@@ -422,7 +440,7 @@ export class PlatformAPIClient {
     version: number,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/${id}`, {
+    return fetch(this.buildUrl(this.resourcePath(normalizedObjectType, id)), {
       method: 'PUT',
       headers: await this.headers(),
       body: JSON.stringify({ data, version }),
@@ -431,7 +449,7 @@ export class PlatformAPIClient {
 
   async deleteResource(objectType: string, id: string): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/${id}`, {
+    return fetch(this.buildUrl(this.resourcePath(normalizedObjectType, id)), {
       method: 'DELETE',
       headers: await this.headers(),
     });
@@ -442,7 +460,7 @@ export class PlatformAPIClient {
     items: Array<{ data: Record<string, unknown> }>,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/batch/create`, {
+    return fetch(this.buildUrl(this.resourcePath(normalizedObjectType, 'batch', 'create')), {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({ items }),
@@ -454,7 +472,7 @@ export class PlatformAPIClient {
     items: Array<{ id: string; data: Record<string, unknown>; version: number }>,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/batch/update`, {
+    return fetch(this.buildUrl(this.resourcePath(normalizedObjectType, 'batch', 'update')), {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({ items }),
@@ -463,7 +481,7 @@ export class PlatformAPIClient {
 
   async batchDeleteResources(objectType: string, ids: string[]): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/batch/delete`, {
+    return fetch(this.buildUrl(this.resourcePath(normalizedObjectType, 'batch', 'delete')), {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({ ids }),
@@ -480,7 +498,7 @@ export class PlatformAPIClient {
     },
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/aggregate`, {
+    return fetch(this.buildUrl(this.resourcePath(normalizedObjectType, 'aggregate')), {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify(request),
@@ -495,7 +513,7 @@ export class PlatformAPIClient {
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
     return fetch(
-      `${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/${id}/actions/${action}`,
+      this.buildUrl(this.resourcePath(normalizedObjectType, id, 'actions', action)),
       {
         method: 'POST',
         headers: await this.headers(),
@@ -510,7 +528,7 @@ export class PlatformAPIClient {
     join?: unknown;
     limit?: number;
   }): Promise<Response> {
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/query`, {
+    return fetch(this.buildUrl(this.resourcePath('query')), {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -544,7 +562,7 @@ export class PlatformAPIClient {
   }
 
   async getSchema(): Promise<Response> {
-    return fetch(`${this.baseUrl}/v3/resources/schema/${this.tenantId}`, {
+    return fetch(`${this.baseUrl}/v4/data/resources/schema/${encodeURIComponent(this.tenantId)}`, {
       method: 'GET',
       headers: await this.headers(),
     });
@@ -555,7 +573,7 @@ export class PlatformAPIClient {
   }
 
   async getResourceStorageStatus(): Promise<Response> {
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage`, {
+    return fetch(this.buildUrl(this.resourcePath('storage')), {
       method: 'GET',
       headers: await this.headers(),
     });
@@ -566,7 +584,7 @@ export class PlatformAPIClient {
   }
 
   async getResourceStorageDoctor(): Promise<Response> {
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage/doctor`, {
+    return fetch(this.buildUrl(this.resourcePath('storage', 'doctor')), {
       method: 'GET',
       headers: await this.headers(),
     });
@@ -579,7 +597,7 @@ export class PlatformAPIClient {
     provisioningMode?: string;
   }): Promise<Response> {
     const backend = options.backend === 'mongodb' ? 'documentdb' : options.backend;
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage/provision`, {
+    return fetch(this.buildUrl(this.resourcePath('storage', 'provision')), {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -595,7 +613,7 @@ export class PlatformAPIClient {
     backend?: string;
     dryRun?: boolean;
   }): Promise<Response> {
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/storage/sync-schema`, {
+    return fetch(this.buildUrl(this.resourcePath('storage', 'sync-schema')), {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -612,7 +630,7 @@ export class PlatformAPIClient {
     limit?: number;
     includePayload?: boolean;
   }): Promise<Response> {
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/search`, {
+    return fetch(this.buildUrl(this.resourcePath('search')), {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -643,9 +661,9 @@ export class PlatformAPIClient {
       h.Authorization = `Bearer ${token}`;
     }
 
-    const filename = encodeURIComponent(basename(filePath));
+    const filename = basename(filePath);
     return fetch(
-      `${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/${id}/files/${propertyName}?filename=${filename}`,
+      `${this.buildUrl(this.resourcePath(normalizedObjectType, id, 'files', propertyName))}?filename=${encodeURIComponent(filename)}`,
       {
         method: 'POST',
         headers: h,
@@ -660,7 +678,7 @@ export class PlatformAPIClient {
     propertyName: string,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/${id}/files/${propertyName}`, {
+    return fetch(this.buildUrl(this.resourcePath(normalizedObjectType, id, 'files', propertyName)), {
       method: 'GET',
       headers: await this.headers(),
     });
@@ -672,7 +690,7 @@ export class PlatformAPIClient {
     propertyName: string,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/${id}/files/${propertyName}`, {
+    return fetch(this.buildUrl(this.resourcePath(normalizedObjectType, id, 'files', propertyName)), {
       method: 'DELETE',
       headers: await this.headers(),
     });
@@ -681,7 +699,7 @@ export class PlatformAPIClient {
   async getHistory(objectType: string, id: string): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
     return fetch(
-      `${this.baseUrl}/v3/resources/${this.tenantId}/${normalizedObjectType}/${id}/history`,
+      this.buildUrl(this.resourcePath(normalizedObjectType, id, 'history')),
       { headers: await this.headers() },
     );
   }
@@ -696,7 +714,7 @@ export class PlatformAPIClient {
     params?: Record<string, unknown>,
   ): Promise<Response> {
     return fetch(
-      `${this.baseUrl}/v3/chat/${this.tenantId}/${workflowId}/${stage}`,
+      `${this.baseUrl}/v4/ai/chat/${encodeURIComponent(this.tenantId)}/${encodeURIComponent(workflowId)}/${this.pathParam(stage)}`,
       {
         method: 'POST',
         headers: await this.headers(),
@@ -717,7 +735,7 @@ export class PlatformAPIClient {
     params?: Record<string, unknown>,
   ): Promise<Response> {
     return fetch(
-      `${this.baseUrl}/v3/chat/stream/${this.tenantId}/${workflowId}/${stage}`,
+      `${this.baseUrl}/v4/ai/chat/stream/${encodeURIComponent(this.tenantId)}/${encodeURIComponent(workflowId)}/${this.pathParam(stage)}`,
       {
         method: 'POST',
         headers: await this.headers(),
@@ -742,7 +760,7 @@ export class PlatformAPIClient {
       params.append('workflow_keys', workflowKey);
     }
 
-    const response = await fetch(`${this.baseUrl}/v3/builder/readiness?${params.toString()}`, {
+    const response = await fetch(this.buildUrl('/v4/integrations/builder/readiness', params), {
       method: 'GET',
       headers: await this.headers(),
     });
@@ -766,7 +784,7 @@ export class PlatformAPIClient {
   ): Promise<RuntimeWorkflowStatusResult> {
     const params = new URLSearchParams({ tenant_id: tenantId });
     const response = await fetch(
-      `${this.baseUrl}/v3/workflows/runtime/${encodeURIComponent(workflowKey)}/status?${params.toString()}`,
+      this.buildUrl(`/v4/workflows/runtime/${encodeURIComponent(workflowKey)}/status`, params),
       {
         method: 'GET',
         headers: await this.headers(),
@@ -792,7 +810,7 @@ export class PlatformAPIClient {
     displayName?: string;
     reason?: string;
   }): Promise<RuntimeWorkflowRequestResult> {
-    const response = await fetch(`${this.baseUrl}/v3/workflows/runtime-requests`, {
+    const response = await fetch(`${this.baseUrl}/v4/workflows/runtime-requests`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -836,8 +854,8 @@ export class PlatformAPIClient {
     h['X-Tenant-Id'] = this.tenantId;
 
     const endpoint = processingMode === 'classification'
-      ? '/v3/documents/classify'
-      : '/v3/documents/upload';
+      ? '/v4/data/documents/classify'
+      : '/v4/data/documents/upload';
 
     return fetch(`${this.baseUrl}${endpoint}`, {
       method: 'POST',
@@ -855,7 +873,10 @@ export class PlatformAPIClient {
   }
 
   async getDocumentRecord(documentId: string): Promise<Response> {
-    return this.platformRequest(`/custom-documents/${documentId}`, 'GET');
+    return fetch(`${this.baseUrl}/v4/data/documents/records/${encodeURIComponent(documentId)}`, {
+      method: 'GET',
+      headers: await this.headers(),
+    });
   }
 
   async indexDocument(documentId: string): Promise<Response> {
@@ -896,7 +917,7 @@ export class PlatformAPIClient {
       ? document.businessRequest
       : document.businessRequest?.id;
 
-    return fetch(`${this.baseUrl}/v3/documents/rag-index`, {
+    return fetch(`${this.baseUrl}/v4/data/documents/rag-index`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -918,7 +939,25 @@ export class PlatformAPIClient {
     body?: unknown,
     params?: Record<string, unknown>,
   ): Promise<Response> {
-    return this._route('payload', endpoint, method, body, params);
+    const objectTypeMatch = endpoint.match(/^\/object-types(?:\/([^/]+))?$/);
+    if (objectTypeMatch) {
+      const objectTypeId = objectTypeMatch[1];
+      const path = objectTypeId
+        ? `/v4/data/resources/object-types/${encodeURIComponent(objectTypeId)}`
+        : '/v4/data/resources/object-types';
+      return this.jsonRequest(path, method, body, params);
+    }
+
+    const documentMatch = endpoint.match(/^\/custom-documents\/([^/]+)$/);
+    if (documentMatch?.[1] && method === 'GET') {
+      return this.jsonRequest(`/v4/data/documents/records/${encodeURIComponent(documentMatch[1])}`, 'GET', undefined, params);
+    }
+
+    throw new PlatformAPIRequestError({
+      operation: `Unsupported public v4 platform request (${method} ${endpoint})`,
+      status: 400,
+      statusText: 'Unsupported legacy platform proxy route',
+    });
   }
 
   /** Route a request through the AdminAPI gateway. */
@@ -928,7 +967,65 @@ export class PlatformAPIClient {
     body?: unknown,
     params?: Record<string, unknown>,
   ): Promise<Response> {
-    return this._route('admin', endpoint, method, body, params);
+    const membershipMatch = endpoint.match(/^\/v1\/users\/([^/]+)\/memberships$/);
+    if (membershipMatch?.[1] && method === 'GET') {
+      return this.jsonRequest(`/v4/platform/users/${encodeURIComponent(membershipMatch[1])}/memberships`, 'GET', undefined, params);
+    }
+
+    if (endpoint.startsWith('/v1/users/by-email?') && method === 'GET') {
+      const url = new URL(endpoint, 'https://local.invalid');
+      return this.jsonRequest('/v4/platform/users/by-email', 'GET', undefined, {
+        ...params,
+        email: url.searchParams.get('email') || '',
+      });
+    }
+
+    const provisionUserMatch = endpoint.match(/^\/v1\/users\/([^/]+)\/provision$/);
+    if (provisionUserMatch?.[1] && method === 'POST') {
+      const requestBody = body && typeof body === 'object' && !Array.isArray(body)
+        ? body as Record<string, unknown>
+        : {};
+      const targetTenantId = typeof requestBody.tenant_id === 'string'
+        ? requestBody.tenant_id
+        : this.tenantId;
+      return this.jsonRequest(
+        `/v4/platform/tenants/${encodeURIComponent(targetTenantId)}/users/${encodeURIComponent(provisionUserMatch[1])}/provision`,
+        'POST',
+        requestBody,
+        params,
+      );
+    }
+
+    const deleteTenantMatch = endpoint.match(/^\/v1\/accounts\/([^/]+)\/delete$/);
+    if (deleteTenantMatch?.[1] && method === 'POST') {
+      return this.jsonRequest(`/v4/platform/tenants/${encodeURIComponent(deleteTenantMatch[1])}/delete`, 'POST', body, params);
+    }
+
+    const bootstrapMatch = endpoint.match(/^\/v1\/tenants\/([^/]+)\/children\/([^/]+)\/bootstrap-admin$/);
+    if (bootstrapMatch?.[1] && bootstrapMatch?.[2] && method === 'POST') {
+      return this.jsonRequest(
+        `/v4/platform/tenants/${encodeURIComponent(bootstrapMatch[1])}/children/${encodeURIComponent(bootstrapMatch[2])}/bootstrap-admin`,
+        'POST',
+        body,
+        params,
+      );
+    }
+
+    const childTenantMatch = endpoint.match(/^\/v1\/tenants\/([^/]+)\/children$/);
+    if (childTenantMatch?.[1] && method === 'POST') {
+      return this.jsonRequest(
+        `/v4/platform/tenants/${encodeURIComponent(childTenantMatch[1])}/children`,
+        'POST',
+        body,
+        params,
+      );
+    }
+
+    throw new PlatformAPIRequestError({
+      operation: `Unsupported public v4 admin request (${method} ${endpoint})`,
+      status: 400,
+      statusText: 'Unsupported legacy admin proxy route',
+    });
   }
 
   // --------------- Tenants ---------------
@@ -938,11 +1035,11 @@ export class PlatformAPIClient {
     if (parentId) {
       params['where[parentTenant][equals]'] = parentId;
     }
-    return this._route('payload', '/custom-tenants', 'GET', undefined, params);
+    return this.jsonRequest('/v4/platform/tenants', 'GET', undefined, params);
   }
 
   async getTenant(id: string): Promise<Response> {
-    return this._route('payload', `/custom-tenants/${id}`);
+    return this.jsonRequest(`/v4/platform/tenants/${encodeURIComponent(id)}`, 'GET');
   }
 
   async createTenant(data: {
@@ -964,7 +1061,7 @@ export class PlatformAPIClient {
       });
     }
 
-    return this._route('payload', '/tenant-management', 'POST', {
+    return this.jsonRequest('/v4/platform/tenants', 'POST', {
       displayName: data.name,
       name: data.name,
       slug: data.slug,
@@ -993,7 +1090,7 @@ export class PlatformAPIClient {
   }
 
   async evaluateCapability(request: CapabilityEvaluationRequest): Promise<CapabilityDecision> {
-    const response = await fetch(`${this.baseUrl}/v3/capabilities/evaluate`, {
+    const response = await fetch(`${this.baseUrl}/v4/platform/capabilities/evaluate`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -1006,7 +1103,7 @@ export class PlatformAPIClient {
     if (!response.ok) {
       const context = await extractServerErrorContext(response);
       throw new PlatformAPIRequestError({
-        operation: `POST /v3/capabilities/evaluate (${request.targetCapability})`,
+        operation: `POST /v4/platform/capabilities/evaluate (${request.targetCapability})`,
         status: response.status,
         statusText: response.statusText,
         serverMessage: context.serverMessage,
@@ -1026,7 +1123,7 @@ export class PlatformAPIClient {
   }
 
   async provisionMe(): Promise<Response> {
-    return fetch(`${this.baseUrl}/v3/users/provisionme`, {
+    return fetch(`${this.baseUrl}/v4/identity/me/provision`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({ tenant_id: this.tenantId }),
@@ -1038,7 +1135,7 @@ export class PlatformAPIClient {
   }
 
   async listCurrentUserTenants(): Promise<Response> {
-    return fetch(`${this.baseUrl}/v3/users/me/tenants`, {
+    return fetch(`${this.baseUrl}/v4/identity/tenants`, {
       method: 'GET',
       headers: await this.headers(),
     });
@@ -1052,7 +1149,7 @@ export class PlatformAPIClient {
     }
 
     const body: Record<string, string> = { tenant_id: tenantId };
-    return fetch(`${this.baseUrl}/v3/users/provisionme`, {
+    return fetch(`${this.baseUrl}/v4/identity/me/provision`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify(body),
@@ -1083,7 +1180,7 @@ export class PlatformAPIClient {
       idempotent: request.idempotent ?? false,
     };
 
-    const endpoint = '/v3/provision/entra-app';
+    const endpoint = '/v4/platform/provisioning/entra-apps';
     const url = `${this.baseUrl}${endpoint}`;
     const res = await fetch(url, {
       method: 'POST',
@@ -1148,7 +1245,7 @@ export class PlatformAPIClient {
     clientId: string;
   }): Promise<RotateEntraSecretResult> {
     const response = await fetch(
-      `${this.baseUrl}/v3/provision/entra-app/${encodeURIComponent(request.clientId)}/rotate-secret`,
+      `${this.baseUrl}/v4/platform/provisioning/entra-apps/${encodeURIComponent(request.clientId)}/rotate-secret`,
       {
         method: 'POST',
         headers: await this.headers(),
