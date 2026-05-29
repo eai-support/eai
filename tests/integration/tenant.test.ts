@@ -350,7 +350,43 @@ describe('main company tenant resolution', () => {
     ).resolves.toBe('builder-workspace');
   });
 
-  test('HP002 resolves Team and Enterprise child tenants to the true customer root', async () => {
+  test('HP002 infers Builder workspace from the EAI Developers root when tenant tier is omitted', async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.endsWith('/v4/platform/tenants/builder-workspace')) {
+        return new Response(
+          JSON.stringify({
+            id: 'builder-workspace',
+            displayName: 'Builder Workspace',
+            slug: 'builder-workspace',
+            parentTenant: 'eai-developers',
+            ultimateParent: 'eai-developers',
+          }),
+          { status: 200 },
+        );
+      }
+      if (href.endsWith('/v4/platform/tenants/eai-developers')) {
+        return new Response(
+          JSON.stringify({
+            id: 'eai-developers',
+            displayName: 'EAI Developers',
+            slug: 'eai-developers',
+            parentTenant: null,
+            ultimateParent: 'eai-developers',
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      resolveMainCompanyTenantId('https://test-api.example.com', 'builder-workspace'),
+    ).resolves.toBe('builder-workspace');
+  });
+
+  test('HP003 resolves Team and Enterprise child tenants to the true customer root', async () => {
     const fetchMock = vi.fn(async () => new Response(
       JSON.stringify({
         id: 'team-child',

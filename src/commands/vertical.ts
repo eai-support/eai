@@ -6,8 +6,12 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import { PlatformAPIClient } from '../lib/api.js';
-import { resolveMainCompanyTenantId } from '../lib/tenant-context.js';
-import { patchEnvFile } from '../lib/config.js';
+import {
+  resolveActiveTenantContext,
+  resolveMainCompanyTenantId,
+  resolvePublicApiUrl,
+} from '../lib/tenant-context.js';
+import { findProjectRoot, patchEnvFile } from '../lib/config.js';
 import {
   errMsg,
   isRecord,
@@ -84,6 +88,25 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+async function resolveAppManagementContext(options?: {
+  tenantId?: string;
+  interactive?: boolean;
+}) {
+  const root = await findProjectRoot();
+  const publicApiUrl = await resolvePublicApiUrl(root ?? undefined);
+  const context = await resolveActiveTenantContext({
+    projectRoot: root ?? undefined,
+    publicApiUrl,
+    tenantId: options?.tenantId,
+    interactive: options?.interactive,
+  });
+
+  return {
+    publicApiUrl: context.publicApiUrl,
+    tenantId: context.activeTenant.id,
+  };
+}
+
 async function validateVerticalEnrollment(
   verticalKey: string,
   ctx: Awaited<ReturnType<typeof resolveCommandContext>>,
@@ -112,11 +135,15 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
-    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const companyTenantId = options.tenantId
+      ? ctx.tenantId
+      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
     const format = normalizeFormat(options);
     const spinner = makeSpinner(format, 'Listing apps...');
 
-    const res = await ctx.client.listResources(VERTICAL_ENROLLMENT_TYPE, {
+    const res = await client.listResources(VERTICAL_ENROLLMENT_TYPE, {
       limit: Number.parseInt(options.limit, 10),
       sort: 'verticalKey',
     });
@@ -129,7 +156,7 @@ verticalCommand
 
     const docs = extractDocs(payload);
     if (format === 'json') {
-      out.json({ tenantId: ctx.tenantId, apps: docs });
+      out.json({ tenantId: companyTenantId, apps: docs });
       return;
     }
 
@@ -159,8 +186,10 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (name: string, options: VerticalCreateOptions & { tenantId?: string }) => {
-    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const companyTenantId = options.tenantId
+      ? ctx.tenantId
+      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
     const immediateParentTenantId =
       options.parentTenant?.trim() || (options.tenantId ? companyTenantId : ctx.tenantId);
     const format = normalizeFormat(options);

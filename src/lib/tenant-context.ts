@@ -96,9 +96,22 @@ function tenantUltimateParentId(tenant: TenantHierarchyRecord): string | null {
   );
 }
 
+function tenantTier(tenant: TenantHierarchyRecord): string {
+  return typeof tenant.tier === 'string' ? tenant.tier.toLowerCase() : '';
+}
+
 function isBuilderSandboxTier(tenant: TenantHierarchyRecord): boolean {
-  const tier = typeof tenant.tier === 'string' ? tenant.tier.toLowerCase() : '';
+  const tier = tenantTier(tenant);
   return tier === 'developer' || tier === 'builder';
+}
+
+function isDeveloperPlatformRootTenant(tenant: TenantHierarchyRecord): boolean {
+  const slug = typeof tenant.slug === 'string' ? tenant.slug.toLowerCase() : '';
+  const displayName = typeof tenant.displayName === 'string' ? tenant.displayName.toLowerCase() : '';
+  const description = typeof tenant.description === 'string' ? tenant.description.toLowerCase() : '';
+  return slug === 'eai-developers'
+    || displayName === 'eai developers'
+    || description.includes('developer workspaces');
 }
 
 async function readTenantHierarchyRecord(
@@ -157,6 +170,47 @@ async function resolveBuilderWorkspaceTenantId(
   return workspaceTenantId;
 }
 
+async function resolveDeveloperWorkspaceTenantId(
+  client: PlatformAPIClient,
+  tenantId: string,
+  tenant: TenantHierarchyRecord,
+): Promise<string | null> {
+  let workspaceTenantId = tenantId;
+  let parentId = tenantParentId(tenant);
+  const seen = new Set<string>([tenantId]);
+
+  for (let depth = 0; parentId && depth < 20; depth += 1) {
+    if (seen.has(parentId)) {
+      throw new Error(`Tenant hierarchy cycle detected while resolving ${tenantId}.`);
+    }
+    seen.add(parentId);
+
+    let parent: TenantHierarchyRecord;
+    try {
+      parent = await readTenantHierarchyRecord(client, parentId);
+    } catch {
+      return null;
+    }
+
+    if (isDeveloperPlatformRootTenant(parent)) {
+      return workspaceTenantId;
+    }
+
+    const grandParentId = tenantParentId(parent);
+    if (!grandParentId) {
+      return null;
+    }
+
+    workspaceTenantId = parentId;
+    parentId = grandParentId;
+  }
+
+  if (parentId) {
+    throw new Error(`Tenant hierarchy is too deep while resolving ${tenantId}.`);
+  }
+  return null;
+}
+
 export async function resolveMainCompanyTenantId(
   publicApiUrl: string,
   tenantId: string,
@@ -171,6 +225,13 @@ export async function resolveMainCompanyTenantId(
 
   if (isBuilderSandboxTier(tenant)) {
     return resolveBuilderWorkspaceTenantId(client, tenantId, tenant);
+  }
+
+  if (!tenantTier(tenant)) {
+    const developerWorkspaceTenantId = await resolveDeveloperWorkspaceTenantId(client, tenantId, tenant);
+    if (developerWorkspaceTenantId) {
+      return developerWorkspaceTenantId;
+    }
   }
 
   return tenantUltimateParentId(tenant) || parentId;
