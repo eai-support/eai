@@ -527,9 +527,9 @@ describe('eai provision entra', () => {
     });
 
     mockServer.server.use(
-      http.get(`${API_BASE}/v4/platform/users/test-oid/memberships`, () =>
+      http.get(`${API_BASE}/v4/identity/tenants`, () =>
         HttpResponse.json(
-          { detail: 'AdminAPI /v1/users/test-oid/memberships failed for tenant test-tenant-id' },
+          { detail: 'Identity tenant membership lookup failed for tenant test-tenant-id' },
           { status: 500 },
         ),
       ),
@@ -549,7 +549,7 @@ describe('eai provision entra', () => {
     const output = joinedConsoleOutput(errSpy, logSpy);
     expect(output).toContain('Failed to resolve active tenant.');
     expectNoProvisionInternals(output);
-    expect(output).not.toContain('/v1/users/test-oid/memberships');
+    expect(output).not.toContain('tenant membership lookup failed');
   });
 
   test('HTTP 403: exits with code 1 and reports permission denied', { timeout: 10000 }, async () => {

@@ -146,14 +146,11 @@ describe('runContractAudit', () => {
           docs: [{ id: 'ot-1', name: 'Customer', status: 'published', properties: [], linkTypes: [], actions: [] }],
         });
       }),
-      http.get('https://test-api.example.com/v4/platform/tenants/tenant-1', () => {
-        return HttpResponse.json({
-          id: 'tenant-1',
-          displayName: 'Tenant One',
-          slug: 'tenant-one',
-        });
-      }),
-      http.get('https://test-api.example.com/v4/platform/users/by-email', () => {
+      http.get('https://test-api.example.com/v4/platform/users/by-email', ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get('email') !== 'jane@example.com') {
+          return HttpResponse.json({ error: 'unexpected email' }, { status: 404 });
+        }
         return HttpResponse.json({
           id: 'user-1',
           email: 'jane@example.com',
@@ -238,13 +235,12 @@ describe('runContractAudit', () => {
       }),
       http.get('https://test-api.example.com/v4/data/resources/object-types', ({ request }) => {
         const url = new URL(request.url);
-        if (url.searchParams.get('where[tenant][equals]') === 'tenant-override') {
-          return HttpResponse.json({
-            docs: [{ id: 'ot-1', name: 'Customer', status: 'published', properties: [], linkTypes: [], actions: [] }],
-          });
+        if (url.searchParams.get('where[tenant][equals]') !== 'tenant-override') {
+          return HttpResponse.json({ error: 'unexpected tenant filter' }, { status: 404 });
         }
-
-        return HttpResponse.json({ error: 'unexpected query' }, { status: 404 });
+        return HttpResponse.json({
+          docs: [{ id: 'ot-1', name: 'Customer', status: 'published', properties: [], linkTypes: [], actions: [] }],
+        });
       }),
     );
 

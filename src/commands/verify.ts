@@ -1003,8 +1003,7 @@ export async function runContractAudit(
       id: "user-provisioning",
       label: "User provisioning contracts",
       method: "POST",
-      endpoint:
-        "/v4/identity/me/provision and /v4/platform/tenants/{tenantId}/users/{oid}/provision",
+      endpoint: "/v4/identity/me/provision and /v4/platform/tenants/{tenantId}/users/{oid}/provision",
       details: "Not auto-executed because they change tenant membership.",
     },
     {

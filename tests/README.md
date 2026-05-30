@@ -197,7 +197,7 @@ await expectFileContains(ctx, '.env.local', 'BASE_URL=')
 await expectEnvVarSet(ctx, '.env.local', 'KEY', 'value')
 
 // API calls
-expectAPICalledGET(ctx, '/object-types')
+expectAPICalledGET(ctx, '/v4/data/resources/object-types')
 expectAPICalledPOST(ctx, '/resources/tenant/Customer', { data: {...} })
 expectNoAPICallsMade(ctx)
 
