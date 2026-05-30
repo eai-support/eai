@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-28T02:08:40.783Z"
-source_commit: "29c4364bd6047c47380a9f8bb07f4051a1b27372"
+generated_at: "2026-05-30T07:39:49.032Z"
+source_commit: "eb36f91b2b8bb0eb07acce4e966cda6a8df6f46d"
 ---
 # EAI CLI — Overview
 
@@ -10,17 +10,17 @@ source_commit: "29c4364bd6047c47380a9f8bb07f4051a1b27372"
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.9.2 |
+| **Version** | 2.9.3 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
-| **Current Status** | Active development (v2.9.2 released 2026-05-28) |
-| **Last Material Change** | v2.9.2: Use thread_id chat contract (2026-05-28) |
+| **Current Status** | Active development (v2.9.3 released 2026-05-30) |
+| **Last Material Change** | v2.9.3: Bundle eai-gofer v3.5.0 (2026-05-30) |
 
 ## Service Identity
 
 **Name**: `@eai-tools/cli` (eai)  
-**Version**: 2.9.2  
+**Version**: 2.9.3  
 **Purpose**: Command-line interface for the Enterprise AI Platform that wraps all platform API calls, providing developers with simple commands to scaffold projects, authenticate users, manage data models, perform CRUD operations, deploy to Azure, and integrate AI capabilities.
 
 ## Description
