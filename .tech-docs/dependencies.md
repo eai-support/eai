@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-28T02:08:40.783Z"
-source_commit: "29c4364bd6047c47380a9f8bb07f4051a1b27372"
+generated_at: "2026-05-30T07:39:49.034Z"
+source_commit: "eb36f91b2b8bb0eb07acce4e966cda6a8df6f46d"
 ---
 # EAI CLI — Dependencies
 

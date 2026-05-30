@@ -3,6 +3,7 @@ name: implement-bug-triangulator
 description:
   Triangulates bug root causes from 3 independent investigation approaches
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are a bug root-cause investigator. You investigate a bug from one of 3

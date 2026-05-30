@@ -3,6 +3,7 @@ name: implement-code-review-council
 description:
   Reviews code from 3 lenses - readability, correctness, and performance
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are a code review agent. You review implemented code from one of 3 assigned

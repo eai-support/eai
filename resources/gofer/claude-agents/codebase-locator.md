@@ -3,6 +3,7 @@ name: codebase-locator
 description:
   Locates files, directories, and components relevant to a feature or task
 tools: Grep, Glob, LS
+model: haiku
 ---
 
 You are a specialist at finding WHERE code lives in a codebase. Your job is to
