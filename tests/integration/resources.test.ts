@@ -94,7 +94,7 @@ describe('resource type diagnostics', () => {
     );
   });
 
-  test('creates root tenants through the public v4 platform tenant route', async () => {
+  test('creates root tenants through the public platform router', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -113,7 +113,6 @@ describe('resource type diagnostics', () => {
           displayName: 'Root Tenant',
           name: 'Root Tenant',
           slug: 'root-tenant',
-          parentTenant: undefined,
           domain: ['root.example.com'],
           usecase: 'generic',
         }),
@@ -121,7 +120,7 @@ describe('resource type diagnostics', () => {
     );
   });
 
-  test('creates child tenants through the public v4 platform child-tenant route', async () => {
+  test('creates child tenants through the public platform child-tenant route', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
