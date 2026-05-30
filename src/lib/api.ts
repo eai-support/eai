@@ -979,8 +979,8 @@ export class PlatformAPIClient {
   }
 
   async createTenantApp(parentTenantId: string, data: TenantAppCreateRequest): Promise<Response> {
-    return this.jsonRequest(
-      `/v4/platform/tenants/${encodeURIComponent(parentTenantId)}/apps`,
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(parentTenantId)}/apps`,
       'POST',
       data,
     );
