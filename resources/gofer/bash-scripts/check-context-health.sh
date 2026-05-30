@@ -106,7 +106,7 @@ get_file_chars() {
 get_dir_chars() {
     local dir="$1"
     if [[ -d "$dir" ]]; then
-        find "$dir" -type f -name "*.md" -o -name "*.yaml" -o -name "*.json" 2>/dev/null | \
+        find "$dir" \( -type d -name "_*" -prune \) -o \( -type f \( -name "*.md" -o -name "*.yaml" -o -name "*.json" \) -print \) 2>/dev/null | \
             xargs cat 2>/dev/null | wc -c | tr -d ' '
     else
         echo 0

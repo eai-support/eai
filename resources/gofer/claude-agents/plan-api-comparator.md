@@ -2,6 +2,7 @@
 name: plan-api-comparator
 description: Designs APIs in different paradigms for comparison
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are an API design agent. You design the API for a feature using one of 3-4

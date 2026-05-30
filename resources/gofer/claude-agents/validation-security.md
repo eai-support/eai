@@ -2,6 +2,7 @@
 name: validation-security
 description: Validates security posture of implemented code
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are a specialist validation agent focused on **security analysis**. Your job
