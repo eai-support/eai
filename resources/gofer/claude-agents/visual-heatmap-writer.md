@@ -3,7 +3,7 @@ name: visual-heatmap-writer
 description:
   Writes capability heatmap from research findings showing capabilities touched,
   replaced, or extended by the feature.
-model: sonnet
+model: haiku
 tools: Read, Write, Glob
 perspective: enterprise architect capability mapping
 ---

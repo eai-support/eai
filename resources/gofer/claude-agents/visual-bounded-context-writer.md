@@ -3,7 +3,7 @@ name: visual-bounded-context-writer
 description:
   Writes bounded-context map showing logical domain boundaries and integration
   patterns between contexts.
-model: sonnet
+model: haiku
 tools: Read, Write, Glob
 perspective: domain modeling
 ---

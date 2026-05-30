@@ -12,16 +12,58 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: enterpriseai
   canonicalSource: .specify/commands/1_gofer_research.md
-  canonicalChecksum: 63bc89a4ff3725f3a1fbc4a196da0edb17eabda22cbf9efcf363e9348f57e094
+  canonicalChecksum: 54ffb2c8a5d45810a6db1c918fa067fd023e7995ca1d9c23fcd489a5454daf4b
   metadataSource: scripts/generate-commands.ts
 ---
+
+## Workspace Preflight
+
+Before doing stage/helper work:
+
+1. Resolve the repository root.
+2. Check the core Gofer sentinels:
+   - `.specify/.gofer-version`
+   - `.specify/commands/0_business_scenario.md`
+   - `.specify/templates/spec-template.md`
+   - `.specify/scripts/bash/create-new-feature.sh`
+   - `.specify/scripts/node/parse-stage-command.mjs`
+   - `.specify/scripts/hooks/post-tool-use.mjs`
+   - `.specify/scripts/powershell/install-optional-tools.ps1`
+   - `.specify/templates/gofer-model-policy.yaml`
+   - `.specify/memory/gofer-model-policy.yaml`
+   - `.specify/specs/`
+   - `.specify/memory/`
+3. Check host-specific repo-owned files when relevant:
+   - Claude: `AGENTS.md`, `CLAUDE.md`, `.claude/settings.json`
+   - Codex: `AGENTS.md`
+   - Copilot: `.github/copilot-instructions.md`
+   - VS Code extension mirrors Claude/Copilot/Gemini resources itself and should still keep the core scaffold healthy
+4. If the repo already has the workspace checker script, prefer running:
+   - `node .specify/scripts/node/gofer-workspace-check.mjs --host copilot --json`
+5. If the workspace is missing or stale, ask exactly:
+   - **"This repo is missing or stale for Gofer. Initialize/update it now?"**
+6. If the user says yes, run the Gofer workspace bootstrap helper and then resume this command from the top.
+7. If the user says no, stop and explain that Gofer stage/helper work depends on the repo-owned scaffold.
 
 
 # Gofer Research
 
-You are conducting comprehensive research to understand the codebase before
-specifying a new feature. This combines deep codebase exploration with
-technology research.
+## Token And Cost Policy
+<!-- gofer:token-cost-policy:start -->
+
+Before spawning agents, calling tools, or loading large files:
+
+1. Treat `.specify/memory/gofer-model-policy.yaml` as the repo-owned source of truth for simple, medium, hard, and arbiter model routing. If it is missing, run `/gofer:bootstrap-workspace` before continuing.
+2. Use the cheapest capable model first.
+   - Claude: Haiku for scouting/extraction; Sonnet for normal implementation, synthesis, validation, and security; Opus for high-risk arbitration or release-critical failures.
+   - Codex/OpenAI: GPT mini for simple coding; GPT nano only for locate/classify/summarize/mechanical work; GPT-5.3-Codex or flagship GPT for tool-heavy coding, architecture, and release-critical validation.
+   - Gemini: Flash-Lite for cheap large-context scan/summarize; Flash for default research synthesis; Pro for large-context architecture or high-risk arbitration.
+   - Copilot: prefer Auto for simple and default work; ask the user before choosing a paid/high-tier picker model for hard security, architecture, or release gates.
+3. Keep raw tool output out of the main conversation context. Save stable findings to `.specify/specs/{feature}/context-bundle.md`, then work from summaries.
+4. Use provider prompt/context caching only for stable, non-secret prefixes: Gofer scaffold, AGENTS/CLAUDE/Copilot instructions, constitution, repo map, stage contracts, and validation rubric.
+5. Before continuing after large research, planning, implementation, or validation bursts, checkpoint the durable artifacts and compact/clear/resume context when the host supports it.
+6. Escalate model tier only when a cheaper pass is low-confidence, contradictory, security-sensitive, or blocking release quality.
+<!-- gofer:token-cost-policy:end -->
 
 ## User Input
 
@@ -30,6 +72,50 @@ $ARGUMENTS
 ```
 
 You **MUST** consider the user input before proceeding (if not empty).
+
+## Execution Profile And Public Risk Labels
+
+Classify the request before spawning agents. Choose exactly one effective
+execution profile. This is a per-run depth decision: it controls research
+depth, agent fanout, and artifact production for this feature. It does not
+change the repo's broader workflow/content family, such as the optional VS Code
+`gofer.workflowProfile` setting.
+
+Use repository-neutral labels only: `docs-only`, `single-repo-code`,
+`cross-repo`, `api-contract`, `auth-security`, `data-model`, `infra-config`,
+`release-critical`, `broad-fanout`, `unknown-blast-radius`, or `unknown`.
+
+- **fast**: docs-only, small clarification work, or clearly bounded low-risk
+  single-repo work. Use one locator/summarizer, keep existing required
+  artifacts concise, and skip optional councils unless evidence contradicts the
+  request.
+- **standard**: ordinary single-repository feature work. Standard is the
+  catch-all for work that is not fast, full, or dynamic.
+- **full**: bounded high-risk work such as known cross-repo impact, API
+  contracts, auth/security, data model, infra/config, release risk, or migration
+  risk. Use specialist fan-out, explicit evidence, blast-radius notes, and
+  richer test/release obligations.
+- **dynamic**: explicit dynamic workflow requests, workspace-wide
+  audits/sweeps/migrations, unknown blast radius, broad fanout, or work spanning
+  more than three repos/workstreams. Do not launch broad shard fanout during
+  research; identify shard candidates and confirmation gates first.
+
+Use this priority order so profiles are mutually exclusive and collectively
+exhaustive: dynamic first, then full, then fast, then standard as the catch-all.
+Users may request a deeper profile. Do not run below the computed
+`profileFloor` without explicit approval.
+
+Record the decision in `.specify/specs/{feature}/execution-profile.md` with
+frontmatter fields: `classificationVersion`, `requestedProfile`,
+`profileFloor`, `effectiveProfile`, `riskLabels`, `overrideStatus`,
+`requiresConfirmation`, and `classificationReason`. If `dynamic` is selected by
+the classifier but was not explicitly requested, set `requiresConfirmation:
+true` and stop for confirmation before broad fanout work.
+
+Artifact-churn rule: preserve existing required artifacts, but do not create
+large optional diagrams, councils, issue lists, workflow DAGs, or extended
+reports unless the classified risk or user request justifies them. Mark weak
+claims as inferred or unknown instead of inventing certainty.
 
 ## Outline
 
@@ -40,12 +126,12 @@ This is the **first stage** of the unified Gofer pipeline. Your job is to:
 3. Research the codebase to find where it should be implemented
 4. Identify patterns, existing code, and integration points
 5. Document technology decisions, business scenarios, and architecture options
-6. Prepare a user-facing review before specification begins
+6. Prepare any supporting review context needed before specification begins
 
 **Output**:
 
 - `.specify/specs/{feature}/research.md`
-- `.specify/specs/{feature}/proposal-review.md`
+- `.specify/specs/{feature}/proposal-review.md` (optional supporting review context)
 - `.specify/specs/{feature}/journeys/base-journey.md` (application delivery default)
 - `.specify/specs/{feature}/ui-preview-brief.md` (application delivery default)
 - `.specify/specs/{feature}/context-bundle.md` (EnterpriseAI default)
@@ -158,7 +244,11 @@ Show: similar implementations we should model after.
 Include: file paths, code snippets, conventions used."
 ```
 
-**Run all three agents in parallel** for maximum efficiency.
+**Run all three agents in parallel** for maximum efficiency in standard/full
+mode. In fast mode, collapse this into one concise locator/summarizer unless
+the feature touches a full-depth risk label. In dynamic mode, do not start broad
+fanout yet; have these agents identify candidate shards, unresolved ownership,
+and evidence needed before P3 builds the workflow DAG.
 
 ---
 
@@ -166,7 +256,8 @@ Include: file paths, code snippets, conventions used."
 
 After the core research agents complete, optionally run additional perspective
 strategies for deeper analysis. **Skip this step if the feature is
-straightforward or time-constrained.**
+straightforward or time-constrained.** For dynamic mode, use this step to test
+the proposed shard boundaries and stop conditions, not to execute the shards.
 
 ### Strategy #6: Research Perspective Multiplier
 
@@ -187,7 +278,7 @@ Context: [summary of feature and existing research findings]"
 Run all 5 perspectives in parallel, then synthesize with judge:
 
 ```
-Task: subagent_type="multi-perspective-judge", model="sonnet"
+Task: subagent_type="multi-perspective-judge", model="opus"
 Prompt: "Judge verdict type: research synthesis.
 Synthesize these 5 research perspectives into a unified recommendation.
 [paste all 5 agent outputs]"
@@ -209,7 +300,7 @@ Needed functionality: [what we need from it]"
 Run all 3 perspectives in parallel, then synthesize with judge:
 
 ```
-Task: subagent_type="multi-perspective-judge", model="sonnet"
+Task: subagent_type="multi-perspective-judge", model="opus"
 Prompt: "Judge verdict type: dependency decision.
 Decide whether to adopt, find alternative, or build in-house.
 [paste all 3 agent outputs]"
@@ -220,7 +311,7 @@ Decide whether to adopt, find alternative, or build in-house.
 For features touching evolving technology areas:
 
 ```
-Task: subagent_type="research-horizon-scanner", model="sonnet"
+Task: subagent_type="research-horizon-scanner", model="haiku"
 Prompt: "Scan for emerging alternatives and approaches relevant to [TOPIC].
 Current approach: [what we're considering]
 Tech stack: [relevant technologies]"
@@ -562,7 +653,7 @@ Why relevant: [Explanation]
 
 ---
 
-## Step 5.5: Generate Proposal Review Document
+## Step 5.5: Generate Supporting Proposal Review Document
 
 Write to `{FEATURE_DIR}/proposal-review.md`:
 
@@ -570,7 +661,7 @@ Write to `{FEATURE_DIR}/proposal-review.md`:
 ---
 feature: '[Feature Name]'
 created: [ISO timestamp]
-status: pending_review
+status: supporting_context
 recommendedScenario: '[short label]'
 recommendedArchitecture: '[short label]'
 selectedOption: ''
@@ -630,13 +721,13 @@ approvedAt: ''
 
 ## Approval
 
-- Status: pending_review
-- Next action: user approves or requests changes before `#2_gofer_specify`
+- Status: supporting_context
+- Next action: carry any user feedback into `#2_gofer_specify`
 `````
 
 ---
 
-## Step 6: Review, Discuss, and Gate Specification
+## Step 6: Review, Discuss, and Hand Off To Specification
 
 After saving `research.md` and `proposal-review.md`:
 
@@ -648,12 +739,10 @@ After saving `research.md` and `proposal-review.md`:
    - Options and trade-offs
    - Any open questions needing input
 
-2. **Ask the user to choose one path**:
-   - Approve and continue to specification
-   - Revise the business scenario
-   - Revise the architecture recommendation
-   - Explore an alternative option
-   - Stop after research
+2. **Ask focused follow-up questions only if needed**:
+   - Clarify the preferred business scenario if the research found real alternatives
+   - Clarify the preferred architecture direction if the trade-off is still ambiguous
+   - Confirm whether the user wants to stop after research or continue into specification
 
 3. **Run architecture questions one-by-one (MANDATORY when architecture options
    exist)**:
@@ -671,23 +760,22 @@ After saving `research.md` and `proposal-review.md`:
    2. Confirm the key trade-off priority (speed, flexibility, reliability, cost)
    3. Confirm non-negotiable constraints/integration boundaries
 
-4. **If the user approves**:
-   - Update `proposal-review.md` with `status: approved`
-   - Record `approvedBy`, `approvedAt`, and any selected option or override
-   - Immediately invoke `#2_gofer_specify`
-
-5. **If the user requests changes**:
+4. **If the user requests changes**:
    - Update `proposal-review.md` with the feedback in
      `User Feedback and Overrides`
-   - Set `status: needs_revision` if the recommendation must change
-   - Revise the recommendation and stop until the user approves
+   - Set `status: revised_supporting_context` if the recommendation must change
+   - Revise the recommendation before continuing
+
+5. **If the user wants to stop after research**:
+   - End after summarizing the current findings
+   - Do not auto-chain until the user explicitly asks to continue
 
 6. **Signal completion**:
 
 ```
 
 ✓ Research complete: {FEATURE_DIR}/research.md
-✓ Proposal review ready: {FEATURE_DIR}/proposal-review.md
+✓ Supporting review context ready: {FEATURE_DIR}/proposal-review.md
 
 Key findings:
 
@@ -914,11 +1002,10 @@ Logs to: `.specify/logs/pipeline.jsonl`
 - **Structured Problem Statement + Persona + Value Proposition are required** in
   `research.md`
 - **Research must remain usable by novices without external docs**
-- **Research should inform the proposal review and specification** - focus on
-  what helps users discuss the business scenario and architecture before
-  `spec.md` is written
+- **Research should inform specification directly** - focus on what helps users
+  discuss the business scenario and architecture before `spec.md` is written
 - **Maximum 5 open questions** - make informed decisions for the rest
-- **Do not continue to specification until `proposal-review.md` is approved**
+- **Use `proposal-review.md` as optional supporting context, not as a blocking stage**
 - **Log stage completion** for observability tracking
 
 ---

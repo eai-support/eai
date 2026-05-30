@@ -6,11 +6,16 @@
 # The council pattern enables parallel execution across multiple AI providers,
 # with the requesting LLM (e.g., Claude Code) acting as Chairman to synthesize
 # diverse perspectives into unified outputs.
+#
+# Cost posture: use the repo-owned model routes in
+# .specify/memory/gofer-model-policy.yaml. Keep council disabled or low-cost by
+# default unless a stage is high-risk, ambiguous, security-sensitive, or
+# release-critical.
 
 council:
   # Global enable/disable for council mode
   # When false, all stages use single-provider mode
-  enabled: true
+  enabled: false
 
   # Enable optional peer review stage where each AI evaluates others' responses
   # Requires at least 3 enabled providers
@@ -32,13 +37,13 @@ council:
   providers:
     anthropic:
       enabled: true
-      model: claude-opus-4-5-20251101 # Latest Claude Opus 4.5
+      model: claude-haiku-4-5
     google:
-      enabled: true
-      model: gemini-2.5-flash # Stable Gemini 2.5 (gemini-3-flash-preview often overloaded)
+      enabled: false
+      model: gemini-3.1-flash-lite
     openai:
-      enabled: true
-      model: gpt-5.2 # GPT-5.2 (requires max_completion_tokens)
+      enabled: false
+      model: gpt-5.4-mini
 
   # Per-stage council mode configuration
   # Options: 'council' (multi-provider) or 'single' (primary provider only)

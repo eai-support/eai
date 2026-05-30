@@ -4,7 +4,7 @@ description:
   Writes C4 Context and C4 Container diagrams for feature visuals from
   spec/research/plan input. Outputs Mermaid C4 blocks with named external
   systems.
-model: sonnet
+model: haiku
 tools: Read, Write, Glob
 perspective: developer architectural overview
 ---

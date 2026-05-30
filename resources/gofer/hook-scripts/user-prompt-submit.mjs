@@ -20,6 +20,8 @@ const PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const MEMORY_PATH = join(PROJECT_DIR, '.specify', 'memory', 'local.json');
 const BRIDGE_PATH = join(PROJECT_DIR, '.specify', 'hooks', 'context-bridge.json');
 const DEBUG_LOG = join(PROJECT_DIR, '.specify', 'hooks', 'hook-debug.log');
+const PERF_LOG = join(PROJECT_DIR, '.specify', 'hooks', 'hook-perf.jsonl');
+const PERF_ENABLED = process.env.GOFER_PERF_LOG === '1' || process.env.GOFER_PERF_MODE === '1';
 const MAX_MEMORIES = 5;
 const MAX_CONTEXT_CHARS = 3000; // ~750 tokens
 
@@ -28,6 +30,26 @@ function debug(msg) {
     const ts = new Date().toISOString();
     appendFileSync(DEBUG_LOG, `[${ts}] [user-prompt-submit] ${msg}\n`);
   } catch { /* ignore */ }
+}
+
+function perf(operation, start, extra = {}) {
+  if (!PERF_ENABLED) return;
+
+  try {
+    mkdirSync(dirname(PERF_LOG), { recursive: true });
+    appendFileSync(
+      PERF_LOG,
+      `${JSON.stringify({
+        hook: 'user-prompt-submit',
+        operation,
+        durationMs: Math.round((Date.now() - start) * 100) / 100,
+        timestamp: new Date().toISOString(),
+        ...extra,
+      })}\n`
+    );
+  } catch {
+    // Performance logging must never affect prompt handling.
+  }
 }
 
 function readStdin() {
@@ -106,8 +128,42 @@ function formatMemoriesForContext(memories) {
   return lines.length > 1 ? lines.join('\n') : '';
 }
 
+function stripRuntimeBridgeFields(value) {
+  const copy = JSON.parse(JSON.stringify(value ?? {}));
+  delete copy.timestamp;
+  if (copy.session) {
+    delete copy.session.lastActivity;
+  }
+  if (copy.lastPrompt) {
+    delete copy.lastPrompt.timestamp;
+  }
+  return copy;
+}
+
+function bridgeEquivalent(left, right) {
+  return JSON.stringify(stripRuntimeBridgeFields(left)) === JSON.stringify(stripRuntimeBridgeFields(right));
+}
+
+function atomicWriteIfChanged(filePath, data) {
+  mkdirSync(dirname(filePath), { recursive: true });
+  try {
+    const existing = JSON.parse(readFileSync(filePath, 'utf-8'));
+    if (bridgeEquivalent(existing, data)) {
+      return false;
+    }
+  } catch {
+    // Missing or invalid existing data should be replaced.
+  }
+
+  const tmpPath = filePath + '.tmp';
+  writeFileSync(tmpPath, JSON.stringify(data, null, 2));
+  renameSync(tmpPath, filePath);
+  return true;
+}
+
 function updateBridge(sessionId, prompt) {
   try {
+    const start = Date.now();
     let existing = {};
     try {
       existing = JSON.parse(readFileSync(BRIDGE_PATH, 'utf-8'));
@@ -131,11 +187,9 @@ function updateBridge(sessionId, prompt) {
       },
     };
 
-    mkdirSync(dirname(BRIDGE_PATH), { recursive: true });
-    const tmpPath = BRIDGE_PATH + '.tmp';
-    writeFileSync(tmpPath, JSON.stringify(bridge, null, 2));
-    renameSync(tmpPath, BRIDGE_PATH);
-    debug(`Bridge updated: session=${bridge.sessionId}`);
+    const written = atomicWriteIfChanged(BRIDGE_PATH, bridge);
+    debug(`Bridge ${written ? 'updated' : 'unchanged'}: session=${bridge.sessionId}`);
+    perf('bridge-write', start, { written });
   } catch (err) {
     debug(`Bridge write error: ${err.message}`);
   }
@@ -149,6 +203,7 @@ debug(`stdin: session_id=${input.session_id}, prompt_length=${(input.prompt || '
 
 const prompt = input.prompt || '';
 const sessionId = input.session_id || '';
+const hookStart = Date.now();
 
 // Update bridge with activity and prompt topic
 updateBridge(sessionId, prompt);
@@ -158,6 +213,7 @@ const memories = loadMemories();
 const relevant = selectRelevantMemories(memories, prompt);
 const additionalContext = formatMemoriesForContext(relevant);
 debug(`memories: loaded=${memories.length}, relevant=${relevant.length}, hasContext=${!!additionalContext}`);
+perf('memory-select', hookStart, { loaded: memories.length, relevant: relevant.length });
 
 // Output for Claude Code to inject
 if (additionalContext) {
@@ -169,3 +225,4 @@ if (additionalContext) {
   };
   process.stdout.write(JSON.stringify(output));
 }
+perf('hook-total', hookStart, { sessionId: sessionId || undefined, hasContext: !!additionalContext });

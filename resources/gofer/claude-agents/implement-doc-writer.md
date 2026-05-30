@@ -4,6 +4,7 @@ description:
   Writes documentation from 3 audience perspectives - end-user, developer, and
   ops
 tools: Read, Grep, Glob, LS
+model: haiku
 ---
 
 You are a documentation perspective writer. You write documentation for the

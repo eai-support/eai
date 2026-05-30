@@ -3,14 +3,57 @@ name: 5_gofer_implement
 description: "Execute all tasks from tasks.md phase by phase with feedback loops and engineering review."
 ---
 
+## Workspace Preflight
+
+Before doing stage/helper work:
+
+1. Resolve the repository root.
+2. Check the core Gofer sentinels:
+   - `.specify/.gofer-version`
+   - `.specify/commands/0_business_scenario.md`
+   - `.specify/templates/spec-template.md`
+   - `.specify/scripts/bash/create-new-feature.sh`
+   - `.specify/scripts/node/parse-stage-command.mjs`
+   - `.specify/scripts/hooks/post-tool-use.mjs`
+   - `.specify/scripts/powershell/install-optional-tools.ps1`
+   - `.specify/templates/gofer-model-policy.yaml`
+   - `.specify/memory/gofer-model-policy.yaml`
+   - `.specify/specs/`
+   - `.specify/memory/`
+3. Check host-specific repo-owned files when relevant:
+   - Claude: `AGENTS.md`, `CLAUDE.md`, `.claude/settings.json`
+   - Codex: `AGENTS.md`
+   - Copilot: `.github/copilot-instructions.md`
+   - VS Code extension mirrors Claude/Copilot/Gemini resources itself and should still keep the core scaffold healthy
+4. If the repo already has the workspace checker script, prefer running:
+   - `node .specify/scripts/node/gofer-workspace-check.mjs --host codex --json`
+5. If the workspace is missing or stale, ask exactly:
+   - **"This repo is missing or stale for Gofer. Initialize/update it now?"**
+6. If the user says yes, run the Gofer workspace bootstrap helper and then resume this command from the top.
+7. If the user says no, stop and explain that Gofer stage/helper work depends on the repo-owned scaffold.
+
 ---
 description: Execute tasks from tasks.md to implement the feature
 ---
 
 # Gofer Implement
 
-You are executing the implementation plan by processing all tasks from tasks.md.
-This is the **fifth stage** of the unified Gofer pipeline.
+## Token And Cost Policy
+<!-- gofer:token-cost-policy:start -->
+
+Before spawning agents, calling tools, or loading large files:
+
+1. Treat `.specify/memory/gofer-model-policy.yaml` as the repo-owned source of truth for simple, medium, hard, and arbiter model routing. If it is missing, run `/gofer:bootstrap-workspace` before continuing.
+2. Use the cheapest capable model first.
+   - Claude: Haiku for scouting/extraction; Sonnet for normal implementation, synthesis, validation, and security; Opus for high-risk arbitration or release-critical failures.
+   - Codex/OpenAI: GPT mini for simple coding; GPT nano only for locate/classify/summarize/mechanical work; GPT-5.3-Codex or flagship GPT for tool-heavy coding, architecture, and release-critical validation.
+   - Gemini: Flash-Lite for cheap large-context scan/summarize; Flash for default research synthesis; Pro for large-context architecture or high-risk arbitration.
+   - Copilot: prefer Auto for simple and default work; ask the user before choosing a paid/high-tier picker model for hard security, architecture, or release gates.
+3. Keep raw tool output out of the main conversation context. Save stable findings to `.specify/specs/{feature}/context-bundle.md`, then work from summaries.
+4. Use provider prompt/context caching only for stable, non-secret prefixes: Gofer scaffold, AGENTS/CLAUDE/Copilot instructions, constitution, repo map, stage contracts, and validation rubric.
+5. Before continuing after large research, planning, implementation, or validation bursts, checkpoint the durable artifacts and compact/clear/resume context when the host supports it.
+6. Escalate model tier only when a cheaper pass is low-confidence, contradictory, security-sensitive, or blocking release quality.
+<!-- gofer:token-cost-policy:end -->
 
 ## User Input
 
@@ -19,6 +62,26 @@ $ARGUMENTS
 ```
 
 You **MUST** consider the user input before proceeding (if not empty).
+
+## Execution Profile During Implementation
+
+Before editing, re-check the planned depth and generic risk labels from
+`tasks.md` / `plan.md`:
+
+- **fast**: for `docs-only` or very small low-risk changes, make the smallest
+  scoped edit, run focused checks, and avoid regenerating optional artifacts
+  unless they are directly affected.
+- **standard**: implement phase by phase with normal focused test evidence.
+- **full**: open the relevant contracts, security, data, infra, release, and
+  rollback artifacts before code changes; update tests before or alongside the
+  fix.
+- **dynamic**: confirm `workflow-dag.md` exists and `requiresConfirmation` is
+  false before executing shard-oriented work. Run each shard against its declared
+  inputs/outputs, then run the reducer and verifier/refuter pass before marking
+  tasks complete.
+
+If the implementation reveals a higher-risk surface than planned, stop and
+upgrade the depth before continuing. Do not silently broaden scope.
 
 ## Prerequisites
 
@@ -348,12 +411,12 @@ explore different approaches, then a judge synthesizes the best result.
 
 | Strategy                 | Agent                            | When to Trigger                                                            | Converge Model |
 | ------------------------ | -------------------------------- | -------------------------------------------------------------------------- | -------------- |
-| #1 Variant Generator     | `implement-variant-generator`    | Multiple valid coding paradigms exist for a task (e.g., functional vs OOP) | opus           |
-| #3 Bug Triangulator      | `implement-bug-triangulator`     | Debugging a defect with unclear root cause                                 | opus           |
+| #1 Variant Generator     | `implement-variant-generator`    | Multiple valid coding paradigms exist for a task (e.g., functional vs OOP) | sonnet         |
+| #3 Bug Triangulator      | `implement-bug-triangulator`     | Debugging a defect with unclear root cause                                 | sonnet         |
 | #4 Test Diversifier      | `implement-test-diversifier`     | Writing tests for critical or complex logic                                | sonnet         |
 | #8 Error Hardener        | `implement-error-hardener`       | Implementing error-prone code (I/O, external APIs, resource mgmt)          | sonnet         |
-| #11 Performance Explorer | `implement-performance-explorer` | Optimizing a hot path or resource-intensive operation                      | opus           |
-| #15 Code Review Council  | `implement-code-review-council`  | After completing a complex task, before marking done                       | opus           |
+| #11 Performance Explorer | `implement-performance-explorer` | Optimizing a hot path or resource-intensive operation                      | sonnet         |
+| #15 Code Review Council  | `implement-code-review-council`  | After completing a complex task, before marking done                       | sonnet         |
 | #17 Doc Writer           | `implement-doc-writer`           | Writing documentation for a user-facing feature                            | sonnet         |
 
 **Invocation pattern** (example for #1 Variant Generator):

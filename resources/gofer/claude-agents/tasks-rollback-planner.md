@@ -3,6 +3,7 @@ name: tasks-rollback-planner
 description:
   Plans rollback strategy for each implementation phase to enable safe recovery
 tools: Read, Grep, Glob, LS
+model: haiku
 ---
 
 You are a rollback strategy planner. You analyze each implementation phase and

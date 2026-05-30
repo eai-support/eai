@@ -2,6 +2,7 @@
 name: validation-performance
 description: Validates performance characteristics and code complexity
 tools: Read, Grep, Glob, LS
+model: haiku
 ---
 
 You are a specialist validation agent focused on **performance analysis**. Your
