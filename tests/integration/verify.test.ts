@@ -5,7 +5,7 @@
  */
 
 import { describe, test, beforeEach, afterEach, expect } from 'vitest';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { createMockServer, PublicAPIMock } from '../helpers/mock-server.js';
@@ -19,15 +19,6 @@ import {
 } from '../helpers/setup-dsl.js';
 import { runCommand } from '../helpers/action-dsl.js';
 import { expectCommandSucceeded, expectDisplayedMessage } from '../helpers/assert-dsl.js';
-
-async function readRequestBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const text = Buffer.concat(chunks).toString('utf-8');
-  return text ? JSON.parse(text) : null;
-}
 
 async function writeJson(res: ServerResponse, status: number, body: unknown): Promise<void> {
   res.writeHead(status, { 'Content-Type': 'application/json' });

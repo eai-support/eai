@@ -712,7 +712,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai types seed')
 //
-// expectAPICalledPOST('/object-types', { name: 'Customer', tenant: 'my-vertical' })
+// expectAPICalledPOST('/v4/data/resources/object-types', { name: 'Customer', tenant: 'my-vertical' })
 // expectSuccessMessage('Seeded 1 type(s) to platform')
 ```
 
@@ -730,8 +730,8 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai types seed')
 //
-// expectAPICalledGET('/object-types', { where: { name: { equals: 'Customer' } } })
-// expectAPICalledPATCH('/object-types/type-id-123', { displayName: 'Customer Updated' })
+// expectAPICalledGET('/v4/data/resources/object-types', { where: { name: { equals: 'Customer' } } })
+// expectAPICalledPATCH('/v4/data/resources/object-types/type-id-123', { displayName: 'Customer Updated' })
 // expectSuccessMessage('Updated 1 type(s)')
 ```
 
@@ -1342,8 +1342,8 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai user invite --email new.user@company.com --tenant tenant-id')
 //
-// expectAPICalledGET('/custom-users/by-email?email=new.user@company.com')
-// expectAPICalledPOST('/custom-users/provisionme', {
+// expectAPICalledGET('/v4/platform/users/by-email?email=new.user@company.com')
+// expectAPICalledPOST('/v4/platform/tenants/tenant-id/users/user-oid-123/provision', {
 //   tenant_id: 'tenant-id',
 //   user_oid: 'user-oid-123'
 // })
@@ -1981,7 +1981,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 | `publicAPIReturns400(err)` | Mock 400 error | P1 |
 | `publicAPIReturns404(err)` | Mock 404 error | P1 |
 | `publicAPIReturns409(err)` | Mock 409 error | P1 |
-| `typeExistsOnPlatform(name, id, def)` | Mock GET /object-types | P0 |
+| `typeExistsOnPlatform(name, id, def)` | Mock GET /v4/data/resources/object-types | P0 |
 | `resourceExists(type, id, data)` | Mock GET /resources | P0 |
 | `tenantHasResources(type, count)` | Mock resource list | P1 |
 | `tenantExists(id, def)` | Mock GET /tenants/{id} | P1 |
