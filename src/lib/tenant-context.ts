@@ -5,7 +5,7 @@ import { PlatformAPIClient } from './api.js';
 import { isRecord } from './utils.js';
 import { getActiveProfile, loadProfileConfig } from './profile.js';
 
-export const DEFAULT_PUBLIC_API_URL = 'https://api.ae.myenterprise.ai/public';
+export const DEFAULT_PUBLIC_API_URL = 'https://api.au.myenterprise.ai/public';
 
 export interface TenantRoleAssignment {
   baseRole?: string;

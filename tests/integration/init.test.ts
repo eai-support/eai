@@ -51,7 +51,7 @@ const pkg = require("../../package.json") as { version: string };
 const linkedSources = require("../../resources/linked-sources.json") as {
   verticalTemplate: { commit: string };
 };
-const TEST_PUBLIC_API_URL = "https://test-api.ae.myenterprise.ai/public";
+const TEST_PUBLIC_API_URL = "https://test-api.au.myenterprise.ai/public";
 
 function allowedCapability() {
   return {
@@ -177,7 +177,7 @@ describe("eai init", () => {
     const tenantCtxSpy = vi
       .spyOn(tenantContext, "resolveActiveTenantContext")
       .mockResolvedValue({
-        publicApiUrl: "https://test-api.ae.myenterprise.ai/public",
+        publicApiUrl: "https://test-api.au.myenterprise.ai/public",
         tokens: {
           accessToken: "access",
           expiresAt: Date.now() + 60_000,
@@ -375,7 +375,7 @@ describe("eai init", () => {
     const tenantCtxSpy = vi
       .spyOn(tenantContext, "resolveActiveTenantContext")
       .mockResolvedValue({
-        publicApiUrl: "https://test-api.ae.myenterprise.ai/public",
+        publicApiUrl: "https://test-api.au.myenterprise.ai/public",
         tokens: {
           accessToken: "access",
           expiresAt: Date.now() + 60_000,
@@ -748,11 +748,11 @@ describe("eai init", () => {
     const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(false);
     const publicApiSpy = vi
       .spyOn(tenantContext, "resolvePublicApiUrl")
-      .mockResolvedValue("https://test-api.ae.myenterprise.ai/public");
+      .mockResolvedValue("https://test-api.au.myenterprise.ai/public");
     const tenantSpy = vi
       .spyOn(tenantContext, "resolveActiveTenantContext")
       .mockResolvedValue({
-        publicApiUrl: "https://test-api.ae.myenterprise.ai/public",
+        publicApiUrl: "https://test-api.au.myenterprise.ai/public",
         tokens: {
           accessToken: "access",
           expiresAt: Date.now() + 60_000,
@@ -824,7 +824,7 @@ describe("eai init", () => {
         "utf-8",
       );
       expect(envContent).toContain(
-        "BASE_URL_PUBLIC_API=https://test-api.ae.myenterprise.ai/public",
+        "BASE_URL_PUBLIC_API=https://test-api.au.myenterprise.ai/public",
       );
       expect(envContent).toContain(
         "ENTRA_TENANT_NAME=enterpriseaitestplatform",
