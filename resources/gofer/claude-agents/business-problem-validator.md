@@ -4,6 +4,7 @@ description:
   Validates business problem statements using 5 Whys root cause analysis,
   stakeholder impact mapping, and business case assessment
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are a specialist at **validating business problems** before any solution

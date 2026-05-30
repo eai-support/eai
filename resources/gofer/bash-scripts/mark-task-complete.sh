@@ -27,7 +27,7 @@ fi
 # - [ ] T001 Description
 # - [ ] #T001 Description
 # - [ ] **T001**: Description
-TASK_PATTERN="^[[:space:]]*-[[:space:]]+\\[[ Xx\\-!bB>]\\][[:space:]]+(\\*\\*${TASK_ID}\\*\\*:?([[:space:]]+|$)|#${TASK_ID}\\b|${TASK_ID}\\b)"
+TASK_PATTERN="^[[:space:]]*-[[:space:]]+\\[[ Xx!bB>-]\\][[:space:]]+(\\*\\*${TASK_ID}\\*\\*:?([[:space:]]+|$)|#${TASK_ID}\\b|${TASK_ID}\\b)"
 COMPLETED_PATTERN="^[[:space:]]*-[[:space:]]+\\[[Xx]\\][[:space:]]+(\\*\\*${TASK_ID}\\*\\*:?([[:space:]]+|$)|#${TASK_ID}\\b|${TASK_ID}\\b)"
 
 if ! grep -Eq "$TASK_PATTERN" "$TASKS_FILE"; then
@@ -40,15 +40,30 @@ if grep -Eq "$COMPLETED_PATTERN" "$TASKS_FILE"; then
   exit 0
 fi
 
-# Mark task complete while preserving the rest of the line
-sed -E -i.backup \
-  "s/^([[:space:]]*-[[:space:]]+)\\[[ Xx\\-!bB>]\\]([[:space:]]+(\\*\\*${TASK_ID}\\*\\*:?([[:space:]]+|$)|#${TASK_ID}\\b|${TASK_ID}\\b).*)$/\\1[X]\\2/" \
-  "$TASKS_FILE"
-rm -f "$TASKS_FILE.backup"
+# Mark task complete while preserving the rest of the line. Use awk instead of
+# sed capture groups so this stays portable across BSD and GNU userlands.
+awk -v task_id="$TASK_ID" '
+  BEGIN { changed = 0 }
+  {
+    line = $0
+    if (!changed && line ~ /^[[:space:]]*-[[:space:]]+\[[ Xx!bB>-]\][[:space:]]+/) {
+      rest = line
+      sub(/^[[:space:]]*-[[:space:]]+\[[ Xx!bB>-]\][[:space:]]+/, "", rest)
+      matches_task = rest ~ ("^\\*\\*" task_id "\\*\\*:?([[:space:]]+|$)") ||
+        rest ~ ("^#" task_id "([^[:alnum:]_]|$)") ||
+        rest ~ ("^" task_id "([^[:alnum:]_]|$)")
+      if (matches_task) {
+        sub(/\[[ Xx!bB>-]\]/, "[X]", line)
+        changed = 1
+      }
+    }
+    print line
+  }
+' "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
 
 # Update task count in frontmatter if present
-COMPLETED=$(grep -E -c "^[[:space:]]*-[[:space:]]+\\[[Xx]\\]" "$TASKS_FILE" || echo "0")
-INCOMPLETE=$(grep -E -c "^[[:space:]]*-[[:space:]]+\\[[[:space:]]\\]" "$TASKS_FILE" || echo "0")
+COMPLETED=$(grep -E -c "^[[:space:]]*-[[:space:]]+\\[[Xx]\\]" "$TASKS_FILE" || true)
+INCOMPLETE=$(grep -E -c "^[[:space:]]*-[[:space:]]+\\[[[:space:]]\\]" "$TASKS_FILE" || true)
 TOTAL=$((COMPLETED + INCOMPLETE))
 
 if [[ "$TOTAL" -gt 0 ]] && grep -q "^tasksCompleted:" "$TASKS_FILE"; then
