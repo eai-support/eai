@@ -2,7 +2,7 @@
  * Tenant command filtering tests.
  */
 
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   buildTenantCreateStatusMessages,
   buildTenantListZeroState,
@@ -14,6 +14,7 @@ import {
   evaluateTenantUsability,
   filterTenantAdminEntries,
   normalizeTenantEntries,
+  resolveMainCompanyTenantId,
   tenantEntryHasTenantAdminRole,
   type TenantMembership,
   type TenantEntry,
@@ -33,6 +34,10 @@ function createTenantEntry(
     ...overrides,
   };
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('tenant list filtering', () => {
   test('recognises tenant-admin via role assignments', () => {
@@ -307,5 +312,102 @@ describe('tenant list filtering', () => {
       id: 'tenant-1',
       slug: 'tenant-one',
     });
+  });
+});
+
+describe('main company tenant resolution', () => {
+  test('HP001 resolves nested Builder tenants to the Builder workspace instead of EAI Developers', async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.endsWith('/v4/platform/tenants/builder-child')) {
+        return new Response(
+          JSON.stringify({
+            id: 'builder-child',
+            tier: 'developer',
+            parentTenantId: 'builder-workspace',
+            ultimateParentId: 'eai-developers',
+          }),
+          { status: 200 },
+        );
+      }
+      if (href.endsWith('/v4/platform/tenants/builder-workspace')) {
+        return new Response(
+          JSON.stringify({
+            id: 'builder-workspace',
+            tier: 'developer',
+            parentTenantId: 'eai-developers',
+            ultimateParentId: 'eai-developers',
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('platform parent hidden from Builder users', { status: 403 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      resolveMainCompanyTenantId('https://test-api.example.com', 'builder-child'),
+    ).resolves.toBe('builder-workspace');
+  });
+
+  test('HP002 infers Builder workspace from the EAI Developers root when tenant tier is omitted', async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.endsWith('/v4/platform/tenants/builder-workspace')) {
+        return new Response(
+          JSON.stringify({
+            id: 'builder-workspace',
+            displayName: 'Builder Workspace',
+            slug: 'builder-workspace',
+            parentTenant: 'eai-developers',
+            ultimateParent: 'eai-developers',
+          }),
+          { status: 200 },
+        );
+      }
+      if (href.endsWith('/v4/platform/tenants/eai-developers')) {
+        return new Response(
+          JSON.stringify({
+            id: 'eai-developers',
+            displayName: 'EAI Developers',
+            slug: 'eai-developers',
+            parentTenant: null,
+            ultimateParent: 'eai-developers',
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      resolveMainCompanyTenantId('https://test-api.example.com', 'builder-workspace'),
+    ).resolves.toBe('builder-workspace');
+  });
+
+  test('HP003 resolves Team and Enterprise child tenants to the true customer root', async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({
+        id: 'team-child',
+        tier: 'business',
+        parentTenantId: 'team-department',
+        ultimateParentId: 'team-root',
+      }),
+      { status: 200 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      resolveMainCompanyTenantId('https://test-api.example.com', 'team-child'),
+    ).resolves.toBe('team-root');
+  });
+
+  test('BP001 rejects unresolved selected tenants instead of guessing a company root', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('missing', { status: 404 })));
+
+    await expect(
+      resolveMainCompanyTenantId('https://test-api.example.com', 'missing-tenant'),
+    ).rejects.toThrow('Tenant missing-tenant could not be resolved (404). missing');
   });
 });

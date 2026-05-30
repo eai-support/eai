@@ -17,8 +17,8 @@ import { getActiveProfile, setActiveProfile } from '../../src/lib/profile.js';
 import { DEFAULT_PUBLIC_API_URL } from '../../src/lib/tenant-context.js';
 
 const API_BASE = 'https://test-api.example.com';
-const PROFILE_API_BASE = 'https://test-api.ae.myenterprise.ai/public';
-const DEV_PROFILE_API_BASE = 'https://dev-api.ae.myenterprise.ai/public';
+const PROFILE_API_BASE = 'https://test-api.au.myenterprise.ai/public';
+const DEV_PROFILE_API_BASE = 'https://dev-api.au.myenterprise.ai/public';
 
 function setTestHome(dir: string): void {
   process.env.HOME = dir;

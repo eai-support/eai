@@ -195,6 +195,7 @@ describe('dedicated tenant lifecycle', () => {
       'create',
       '--name', 'Dedicated Tenant',
       '--slug', CREATED_TENANT_SLUG,
+      '--allow-root',
       '--format', 'json',
     ], { from: 'user' });
 

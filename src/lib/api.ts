@@ -38,6 +38,19 @@ export interface ChildTenantBootstrapResult {
   reason?: string | null;
 }
 
+export interface TenantAppCreateRequest {
+  appDisplayName: string;
+  verticalKey: string;
+  parentTenantId?: string;
+  childTenantDisplayName?: string;
+  childTenantSlug?: string;
+  templateKey?: string;
+  source?: string;
+  appUrl?: string;
+  usecase?: TenantUsecase;
+  industry?: string;
+}
+
 export interface CapabilityEvaluationRequest {
   tenantId: string;
   targetCapability: 'child-tenants' | 'ai-chat' | 'documents' | 'auth-b2b' | 'auth-dual';
@@ -963,6 +976,14 @@ export class PlatformAPIClient {
 
   async getTenant(id: string): Promise<Response> {
     return this.publicRequest(`${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(id)}`, 'GET');
+  }
+
+  async createTenantApp(parentTenantId: string, data: TenantAppCreateRequest): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(parentTenantId)}/apps`,
+      'POST',
+      data,
+    );
   }
 
   async createTenant(data: {
