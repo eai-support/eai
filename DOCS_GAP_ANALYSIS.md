@@ -23,7 +23,7 @@ reference is a single page, [`.tech-docs/api-reference.md`](.tech-docs/api-refer
 | `--format json` machine-readable output not documented | Covered by the **Machine-Readable Output** section of `.tech-docs/api-reference.md` |
 | Per-command `*.mdx` pages need global-options links | Not applicable — single-page reference, no per-command pages in this layout |
 
-## Anti-drift recommendation (open follow-up)
+## Anti-drift guard (implemented)
 
 `.tech-docs/api-reference.md` carries `generated: true` frontmatter but is **not
 produced by any committed generator** — [`scripts/generate-release-docs.cjs`](scripts/generate-release-docs.cjs)
@@ -32,9 +32,18 @@ only bundles `.tech-docs/*` into `llms*.txt`/`cli-help.txt`, and
 only re-stamps overview/changelog/architecture/dependencies. That is why the
 reference silently drifted from `/v3/*` to `/v4/*` across a PublicAPI migration.
 
-Recommended fix (not yet implemented): add `scripts/generate-api-reference.cjs`
-that renders `.tech-docs/api-reference.md` from `node dist/index.js --describe`
-plus the `PlatformAPIClient` route map in `src/lib/api.ts`, and wire it into the
-existing `--check` gate in [`.github/workflows/release.yml`](.github/workflows/release.yml)
-so a stale reference fails CI. Keep `release.sh`, `release.yml`, and `docs.yml`
-in sync per `AGENTS.md`.
+The fix is a **route-drift verifier**, not a full-document generator: the docs
+are hand-curated (per-command "what it does", behavior notes, error tables) and
+regenerating them from `--describe` would discard that prose. The recurrence
+risk was specifically *route* drift, so [`scripts/verify-api-reference.cjs`](scripts/verify-api-reference.cjs)
+extracts the authoritative API version + domain prefixes from the
+`PlatformAPIClient` route constants in `src/lib/api.ts` and fails if any
+`.tech-docs/*` reference uses a version or domain the code no longer exposes.
+
+- `npm run docs:verify-api` — local check (`--check`)
+- `node scripts/verify-api-reference.cjs` — check + summary
+- `node scripts/verify-api-reference.cjs --print-endpoints` — list current routes
+
+Wired into [`ci.yml`](.github/workflows/ci.yml) (every PR/push), the release gate
+in [`release.yml`](.github/workflows/release.yml), and
+[`scripts/release-preflight.sh`](scripts/release-preflight.sh) (`npm run release:check`).
