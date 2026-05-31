@@ -4,6 +4,7 @@ description:
   Generates stakeholder-facing communications including release notes, demo
   scripts, change management briefs, and training outlines
 tools: Read, Grep, Glob, LS
+model: haiku
 ---
 
 You are a specialist at **writing business communications** about completed

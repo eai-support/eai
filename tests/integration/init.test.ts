@@ -33,16 +33,14 @@ import {
   networkIsAvailable,
   directoryExists,
 } from "../helpers/setup-dsl.js";
-import { runCommand, respondToPrompt } from "../helpers/action-dsl.js";
+import { runCommand } from "../helpers/action-dsl.js";
 import {
-  expectCommandSucceeded,
   expectCommandFailed,
   expectDirectoryCreated,
   expectFileExists,
   expectFileNotExists,
   expectFileContains,
   expectErrorMessage,
-  expectSuccessMessage,
   expectNoPrompts,
   expectExitCode,
 } from "../helpers/assert-dsl.js";
@@ -53,6 +51,16 @@ const pkg = require("../../package.json") as { version: string };
 const linkedSources = require("../../resources/linked-sources.json") as {
   verticalTemplate: { commit: string };
 };
+const TEST_PUBLIC_API_URL = "https://test-api.au.myenterprise.ai/public";
+
+function allowedCapability() {
+  return {
+    outcome: "allow" as const,
+    reasonCode: "allowed",
+    reasonMessage: "Capability is included in the current plan.",
+    upgradeUrl: null,
+  };
+}
 
 async function createLocalTemplateRepo(baseDir: string): Promise<string> {
   const templateDir = join(baseDir, "vertical-template");
@@ -90,8 +98,12 @@ describe("eai init", () => {
   let mockServer: ReturnType<typeof createMockServer>;
   let ctx: TestContext;
   let templateRepo: string;
+  let originalPublicApiUrl: string | undefined;
 
   beforeEach(async () => {
+    originalPublicApiUrl = process.env.BASE_URL_PUBLIC_API;
+    process.env.BASE_URL_PUBLIC_API = TEST_PUBLIC_API_URL;
+
     env = await createTestEnvironment();
     mockServer = createMockServer();
     mockServer.start();
@@ -116,6 +128,11 @@ describe("eai init", () => {
   afterEach(async () => {
     mockServer.stop();
     await env.cleanup();
+    if (originalPublicApiUrl === undefined) {
+      delete process.env.BASE_URL_PUBLIC_API;
+    } else {
+      process.env.BASE_URL_PUBLIC_API = originalPublicApiUrl;
+    }
   });
 
   test("TC001: Initialize new vertical interactively", async () => {
@@ -153,13 +170,14 @@ describe("eai init", () => {
         description: "My Vertical vertical application",
       })
       .mockResolvedValueOnce({ mode: "default" })
+      .mockResolvedValueOnce({ appTenantScope: "current" })
       .mockResolvedValueOnce({ includeChat: true })
       .mockResolvedValueOnce({ includeDocs: true })
       .mockResolvedValueOnce({ authProvider: "ciam" });
     const tenantCtxSpy = vi
       .spyOn(tenantContext, "resolveActiveTenantContext")
       .mockResolvedValue({
-        publicApiUrl: "https://test-api.ae.myenterprise.ai/public",
+        publicApiUrl: "https://test-api.au.myenterprise.ai/public",
         tokens: {
           accessToken: "access",
           expiresAt: Date.now() + 60_000,
@@ -178,17 +196,64 @@ describe("eai init", () => {
         memberships: [],
       });
     const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(false);
+    const loadTokensSpy = vi.spyOn(auth, "loadTokens").mockResolvedValue({
+      accessToken: "access",
+      expiresAt: Date.now() + 60_000,
+      tenantId: "ciam-guid",
+      tenantName: "enterpriseaitestplatform",
+      clientId: "client-id",
+    });
+    const capabilitySpy = vi
+      .spyOn(PlatformAPIClient.prototype, "evaluateCapability")
+      .mockResolvedValue(allowedCapability());
+    const getTenantSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "getTenant")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "tenant-123",
+            displayName: "Test Tenant",
+            ultimateParentId: "tenant-123",
+          }),
+          { status: 200 },
+        ),
+      );
+    const createTenantAppSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "createTenantApp")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            childTenant: null,
+          }),
+          { status: 201 },
+        ),
+      );
     const consoleCapture = captureConsole();
 
     try {
       await initCommand.parseAsync(["my-vertical", "--from", templateRepo], {
         from: "user",
       });
+      expect(createTenantAppSpy).toHaveBeenCalledWith(
+        "tenant-123",
+        expect.objectContaining({
+          appDisplayName: "My Vertical",
+          verticalKey: "my-vertical",
+          source: "eai-cli",
+        }),
+      );
+      expect(createTenantAppSpy.mock.calls[0]?.[1]).not.toHaveProperty(
+        "childTenantDisplayName",
+      );
     } finally {
       consoleCapture.restore();
       authSpy.mockRestore();
+      loadTokensSpy.mockRestore();
       promptSpy.mockRestore();
       tenantCtxSpy.mockRestore();
+      capabilitySpy.mockRestore();
+      getTenantSpy.mockRestore();
+      createTenantAppSpy.mockRestore();
     }
 
     await expectDirectoryCreated(ctx, "my-vertical");
@@ -199,6 +264,16 @@ describe("eai init", () => {
       '"name": "@eai-tools/my-vertical"',
     );
     await expectFileExists(ctx, "my-vertical/.env.local");
+    await expectFileContains(
+      ctx,
+      "my-vertical/.env.local",
+      "EAI_PARENT_TENANT_ID=tenant-123",
+    );
+    await expectFileContains(
+      ctx,
+      "my-vertical/.env.local",
+      "EAI_TENANT_ID=tenant-123",
+    );
     await expectFileContains(
       ctx,
       "my-vertical/.env.local",
@@ -291,14 +366,16 @@ describe("eai init", () => {
         displayName: "Child Vertical",
         description: "Child Vertical vertical application",
       })
-      .mockResolvedValueOnce({ mode: "child" })
+      .mockResolvedValueOnce({ mode: "default" })
+      .mockResolvedValueOnce({ appTenantScope: "child" })
+      .mockResolvedValueOnce({ childTenantDisplayName: "Child Vertical" })
       .mockResolvedValueOnce({ includeChat: true })
       .mockResolvedValueOnce({ includeDocs: true })
       .mockResolvedValueOnce({ authProvider: "ciam" });
     const tenantCtxSpy = vi
       .spyOn(tenantContext, "resolveActiveTenantContext")
       .mockResolvedValue({
-        publicApiUrl: "https://test-api.ae.myenterprise.ai/public",
+        publicApiUrl: "https://test-api.au.myenterprise.ai/public",
         tokens: {
           accessToken: "access",
           expiresAt: Date.now() + 60_000,
@@ -328,32 +405,31 @@ describe("eai init", () => {
     });
     const capabilitySpy = vi
       .spyOn(PlatformAPIClient.prototype, "evaluateCapability")
-      .mockResolvedValue({
-        outcome: "allow",
-        reasonCode: "allowed",
-        reasonMessage: "Capability is included in the current plan.",
-        upgradeUrl: null,
-      });
-    const createTenantSpy = vi
-      .spyOn(PlatformAPIClient.prototype, "createTenant")
+      .mockResolvedValue(allowedCapability());
+    const getTenantSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "getTenant")
       .mockResolvedValue(
         new Response(
           JSON.stringify({
-            id: "tenant-child",
-            displayName: "Child Vertical",
-            slug: "child-vertical",
-          }),
-          { status: 201 },
-        ),
-      );
-    const bootstrapSpy = vi
-      .spyOn(PlatformAPIClient.prototype, "bootstrapChildTenantAdmin")
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            usable: true,
+            id: "tenant-parent",
+            displayName: "Parent Tenant",
+            ultimateParentId: "tenant-parent",
           }),
           { status: 200 },
+        ),
+      );
+    const createTenantAppSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "createTenantApp")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            childTenant: {
+              id: "tenant-child",
+              displayName: "Child Vertical",
+              slug: "child-vertical",
+            },
+          }),
+          { status: 201 },
         ),
       );
 
@@ -366,21 +442,16 @@ describe("eai init", () => {
         "utf-8",
       );
       expect(envContent).toContain("EAI_TENANT_ID=tenant-child");
+      expect(envContent).toContain("EAI_PARENT_TENANT_ID=tenant-parent");
       expect(envContent).toContain("TENANT_CHILD_VERTICAL_ID=tenant-child");
-      expect(createTenantSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: "Child Vertical",
-          slug: "child-vertical",
-          parent: "tenant-parent",
-        }),
-      );
-      expect(bootstrapSpy).toHaveBeenCalledWith(
+      expect(createTenantAppSpy).toHaveBeenCalledWith(
         "tenant-parent",
-        "tenant-child",
-        {
-          userOid: "user-oid",
-          userEmail: "user@example.com",
-        },
+        expect.objectContaining({
+          appDisplayName: "Child Vertical",
+          verticalKey: "child-vertical",
+          childTenantDisplayName: "Child Vertical",
+          source: "eai-cli",
+        }),
       );
       expect(capabilitySpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -394,8 +465,8 @@ describe("eai init", () => {
       tenantCtxSpy.mockRestore();
       loadTokensSpy.mockRestore();
       capabilitySpy.mockRestore();
-      createTenantSpy.mockRestore();
-      bootstrapSpy.mockRestore();
+      getTenantSpy.mockRestore();
+      createTenantAppSpy.mockRestore();
     }
   }, 30_000);
 
@@ -414,10 +485,90 @@ describe("eai init", () => {
 
     workingDirectoryIs(ctx, env.dir);
 
-    const result = await runCommand(
-      ctx,
-      `eai init quick-app --skip-prompts --from ${templateRepo}`,
-    );
+    const promptSpy = vi
+      .spyOn(inquirer, "prompt")
+      .mockRejectedValue(new Error("Unexpected prompt during --skip-prompts"));
+    const tenantCtxSpy = vi
+      .spyOn(tenantContext, "resolveActiveTenantContext")
+      .mockResolvedValue({
+        publicApiUrl: TEST_PUBLIC_API_URL,
+        tokens: {
+          accessToken: "access",
+          expiresAt: Date.now() + 60_000,
+          tenantId: "ciam-guid",
+          tenantName: "enterpriseaitestplatform",
+          clientId: "client-id",
+        },
+        activeTenant: {
+          id: "tenant-parent",
+          displayName: "Parent Tenant",
+          slug: "parent-tenant",
+          domain: "parent.example.com",
+          isActive: true,
+          roles: ["tenant-admin"],
+        },
+        memberships: [],
+      });
+    const loadTokensSpy = vi.spyOn(auth, "loadTokens").mockResolvedValue({
+      accessToken: "access",
+      expiresAt: Date.now() + 60_000,
+      tenantId: "ciam-guid",
+      tenantName: "enterpriseaitestplatform",
+      clientId: "client-id",
+    });
+    const capabilitySpy = vi
+      .spyOn(PlatformAPIClient.prototype, "evaluateCapability")
+      .mockResolvedValue(allowedCapability());
+    const getTenantSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "getTenant")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "tenant-parent",
+            displayName: "Parent Tenant",
+            ultimateParentId: "tenant-parent",
+          }),
+          { status: 200 },
+        ),
+      );
+    const createTenantAppSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "createTenantApp")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            childTenant: {
+              id: "tenant-quick-app",
+              displayName: "Quick App",
+              slug: "quick-app",
+            },
+          }),
+          { status: 201 },
+        ),
+      );
+
+    try {
+      await initCommand.parseAsync(
+        [
+          "quick-app",
+          "--skip-prompts",
+          "--company-tenant",
+          "tenant-parent",
+          "--child-tenant",
+          "Quick App",
+          "--from",
+          templateRepo,
+        ],
+        { from: "user" },
+      );
+      expect(promptSpy).not.toHaveBeenCalled();
+    } finally {
+      promptSpy.mockRestore();
+      tenantCtxSpy.mockRestore();
+      loadTokensSpy.mockRestore();
+      capabilitySpy.mockRestore();
+      getTenantSpy.mockRestore();
+      createTenantAppSpy.mockRestore();
+    }
 
     await expectDirectoryCreated(ctx, "quick-app");
     await expectFileContains(
@@ -479,16 +630,96 @@ describe("eai init", () => {
     );
     expect(objectTypes).toContain("tableName: 'tenant_resources'");
     expectNoPrompts(ctx);
-    expectCommandSucceeded(result);
   }, 30_000);
 
   test("TC002b: Init can skip Gofer asset installation", async () => {
     workingDirectoryIs(ctx, env.dir);
 
-    const result = await runCommand(
-      ctx,
-      `eai init plain-app --skip-prompts --no-gofer --from ${templateRepo}`,
-    );
+    const promptSpy = vi
+      .spyOn(inquirer, "prompt")
+      .mockRejectedValue(new Error("Unexpected prompt during --skip-prompts"));
+    const tenantCtxSpy = vi
+      .spyOn(tenantContext, "resolveActiveTenantContext")
+      .mockResolvedValue({
+        publicApiUrl: TEST_PUBLIC_API_URL,
+        tokens: {
+          accessToken: "access",
+          expiresAt: Date.now() + 60_000,
+          tenantId: "ciam-guid",
+          tenantName: "enterpriseaitestplatform",
+          clientId: "client-id",
+        },
+        activeTenant: {
+          id: "tenant-parent",
+          displayName: "Parent Tenant",
+          slug: "parent-tenant",
+          domain: "parent.example.com",
+          isActive: true,
+          roles: ["tenant-admin"],
+        },
+        memberships: [],
+      });
+    const loadTokensSpy = vi.spyOn(auth, "loadTokens").mockResolvedValue({
+      accessToken: "access",
+      expiresAt: Date.now() + 60_000,
+      tenantId: "ciam-guid",
+      tenantName: "enterpriseaitestplatform",
+      clientId: "client-id",
+    });
+    const capabilitySpy = vi
+      .spyOn(PlatformAPIClient.prototype, "evaluateCapability")
+      .mockResolvedValue(allowedCapability());
+    const getTenantSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "getTenant")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "tenant-parent",
+            displayName: "Parent Tenant",
+            ultimateParentId: "tenant-parent",
+          }),
+          { status: 200 },
+        ),
+      );
+    const createTenantAppSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "createTenantApp")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            childTenant: {
+              id: "tenant-plain-app",
+              displayName: "Plain App",
+              slug: "plain-app",
+            },
+          }),
+          { status: 201 },
+        ),
+      );
+
+    try {
+      await initCommand.parseAsync(
+        [
+          "plain-app",
+          "--skip-prompts",
+          "--no-gofer",
+          "--company-tenant",
+          "tenant-parent",
+          "--child-tenant",
+          "Plain App",
+          "--from",
+          templateRepo,
+        ],
+        { from: "user" },
+      );
+      expect(promptSpy).not.toHaveBeenCalled();
+    } finally {
+      promptSpy.mockRestore();
+      tenantCtxSpy.mockRestore();
+      loadTokensSpy.mockRestore();
+      capabilitySpy.mockRestore();
+      getTenantSpy.mockRestore();
+      createTenantAppSpy.mockRestore();
+    }
 
     await expectDirectoryCreated(ctx, "plain-app");
     await expectFileContains(
@@ -509,7 +740,6 @@ describe("eai init", () => {
       "plain-app/.agents/skills/1_gofer_research/SKILL.md",
     );
     await expectFileNotExists(ctx, "plain-app/.gemini/extension.json");
-    expectCommandSucceeded(result);
   });
 
   test("init pre-populates known env values from active profile and tenant context", async () => {
@@ -518,11 +748,11 @@ describe("eai init", () => {
     const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(false);
     const publicApiSpy = vi
       .spyOn(tenantContext, "resolvePublicApiUrl")
-      .mockResolvedValue("https://test-api.ae.myenterprise.ai/public");
+      .mockResolvedValue("https://test-api.au.myenterprise.ai/public");
     const tenantSpy = vi
       .spyOn(tenantContext, "resolveActiveTenantContext")
       .mockResolvedValue({
-        publicApiUrl: "https://test-api.ae.myenterprise.ai/public",
+        publicApiUrl: "https://test-api.au.myenterprise.ai/public",
         tokens: {
           accessToken: "access",
           expiresAt: Date.now() + 60_000,
@@ -547,10 +777,46 @@ describe("eai init", () => {
       tenantName: "enterpriseaitestplatform",
       clientId: "client-id",
     });
+    const capabilitySpy = vi
+      .spyOn(PlatformAPIClient.prototype, "evaluateCapability")
+      .mockResolvedValue(allowedCapability());
+    const getTenantSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "getTenant")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "tenant-123",
+            displayName: "Test Tenant",
+            ultimateParentId: "tenant-123",
+          }),
+          { status: 200 },
+        ),
+      );
+    const createTenantAppSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "createTenantApp")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            childTenant: {
+              id: "tenant-prefilled-app",
+              displayName: "Prefilled App",
+              slug: "prefilled-app",
+            },
+          }),
+          { status: 201 },
+        ),
+      );
 
     try {
       await initCommand.parseAsync(
-        ["prefilled-app", "--skip-prompts", "--from", templateRepo],
+        [
+          "prefilled-app",
+          "--skip-prompts",
+          "--child-tenant",
+          "Prefilled App",
+          "--from",
+          templateRepo,
+        ],
         { from: "user" },
       );
       const envContent = await readFile(
@@ -558,18 +824,25 @@ describe("eai init", () => {
         "utf-8",
       );
       expect(envContent).toContain(
-        "BASE_URL_PUBLIC_API=https://test-api.ae.myenterprise.ai/public",
+        "BASE_URL_PUBLIC_API=https://test-api.au.myenterprise.ai/public",
       );
       expect(envContent).toContain(
         "ENTRA_TENANT_NAME=enterpriseaitestplatform",
       );
       expect(envContent).toContain("ENTRA_TENANT_ID=ciam-guid");
-      expect(envContent).toContain("TENANT_PREFILLED_APP_ID=tenant-123");
+      expect(envContent).toContain("EAI_PARENT_TENANT_ID=tenant-123");
+      expect(envContent).toContain("EAI_TENANT_ID=tenant-prefilled-app");
+      expect(envContent).toContain(
+        "TENANT_PREFILLED_APP_ID=tenant-prefilled-app",
+      );
     } finally {
       authSpy.mockRestore();
       publicApiSpy.mockRestore();
       tenantSpy.mockRestore();
       loadTokensSpy.mockRestore();
+      capabilitySpy.mockRestore();
+      getTenantSpy.mockRestore();
+      createTenantAppSpy.mockRestore();
     }
   }, 30_000);
 

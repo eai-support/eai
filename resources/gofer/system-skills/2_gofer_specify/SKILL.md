@@ -1,7 +1,36 @@
 ---
 name: 2_gofer_specify
-description: "Generate a feature specification from research findings and approved proposal review."
+description: "Generate a feature specification from research findings and any supporting review context."
 ---
+
+## Workspace Preflight
+
+Before doing stage/helper work:
+
+1. Resolve the repository root.
+2. Check the core Gofer sentinels:
+   - `.specify/.gofer-version`
+   - `.specify/commands/0_business_scenario.md`
+   - `.specify/templates/spec-template.md`
+   - `.specify/scripts/bash/create-new-feature.sh`
+   - `.specify/scripts/node/parse-stage-command.mjs`
+   - `.specify/scripts/hooks/post-tool-use.mjs`
+   - `.specify/scripts/powershell/install-optional-tools.ps1`
+   - `.specify/templates/gofer-model-policy.yaml`
+   - `.specify/memory/gofer-model-policy.yaml`
+   - `.specify/specs/`
+   - `.specify/memory/`
+3. Check host-specific repo-owned files when relevant:
+   - Claude: `AGENTS.md`, `CLAUDE.md`, `.claude/settings.json`
+   - Codex: `AGENTS.md`
+   - Copilot: `.github/copilot-instructions.md`
+   - VS Code extension mirrors Claude/Copilot/Gemini resources itself and should still keep the core scaffold healthy
+4. If the repo already has the workspace checker script, prefer running:
+   - `node .specify/scripts/node/gofer-workspace-check.mjs --host codex --json`
+5. If the workspace is missing or stale, ask exactly:
+   - **"This repo is missing or stale for Gofer. Initialize/update it now?"**
+6. If the user says yes, run the Gofer workspace bootstrap helper and then resume this command from the top.
+7. If the user says no, stop and explain that Gofer stage/helper work depends on the repo-owned scaffold.
 
 ---
 description: Create feature specification informed by codebase research
@@ -9,8 +38,22 @@ description: Create feature specification informed by codebase research
 
 # Gofer Specify
 
-You are creating a feature specification informed by prior codebase research.
-This is the **second stage** of the unified Gofer pipeline.
+## Token And Cost Policy
+<!-- gofer:token-cost-policy:start -->
+
+Before spawning agents, calling tools, or loading large files:
+
+1. Treat `.specify/memory/gofer-model-policy.yaml` as the repo-owned source of truth for simple, medium, hard, and arbiter model routing. If it is missing, run `/gofer:bootstrap-workspace` before continuing.
+2. Use the cheapest capable model first.
+   - Claude: Haiku for scouting/extraction; Sonnet for normal implementation, synthesis, validation, and security; Opus for high-risk arbitration or release-critical failures.
+   - Codex/OpenAI: GPT mini for simple coding; GPT nano only for locate/classify/summarize/mechanical work; GPT-5.3-Codex or flagship GPT for tool-heavy coding, architecture, and release-critical validation.
+   - Gemini: Flash-Lite for cheap large-context scan/summarize; Flash for default research synthesis; Pro for large-context architecture or high-risk arbitration.
+   - Copilot: prefer Auto for simple and default work; ask the user before choosing a paid/high-tier picker model for hard security, architecture, or release gates.
+3. Keep raw tool output out of the main conversation context. Save stable findings to `.specify/specs/{feature}/context-bundle.md`, then work from summaries.
+4. Use provider prompt/context caching only for stable, non-secret prefixes: Gofer scaffold, AGENTS/CLAUDE/Copilot instructions, constitution, repo map, stage contracts, and validation rubric.
+5. Before continuing after large research, planning, implementation, or validation bursts, checkpoint the durable artifacts and compact/clear/resume context when the host supports it.
+6. Escalate model tier only when a cheaper pass is low-confidence, contradictory, security-sensitive, or blocking release quality.
+<!-- gofer:token-cost-policy:end -->
 
 ## User Input
 
@@ -20,13 +63,39 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+## Execution Profile And Artifact Churn
+
+Carry forward the `fast` / `standard` / `full` / `dynamic` profile chosen in
+research. Keep labels generic: `docs-only`, `single-repo-code`, `cross-repo`,
+`api-contract`, `auth-security`, `data-model`, `infra-config`,
+`release-critical`, `broad-fanout`, `unknown-blast-radius`, `unknown`.
+
+Also read `execution-profile.md` when present. Keep the same
+`effectiveProfile` unless new evidence changes the risk labels; if that
+happens, update the file and explain the new `profileFloor`,
+`effectiveProfile`, and reason in `traceability.md`.
+
+- **fast** specs should be short and scoped, with no new optional artifact set
+  unless research found implementation risk.
+- **standard** specs should include normal user stories, acceptance criteria,
+  test expectations, and protected boundaries.
+- **full** specs must explicitly capture contract, security, data, infra,
+  rollout, and validation obligations with evidence references.
+- **dynamic** specs must capture decomposition boundaries, shard ownership,
+  unresolved blast-radius questions, reducer evidence expectations, and
+  confirmation gates.
+
+Do not rediscover context already summarized in `research.md` or
+`proposal-review.md`; consume it, cite it, and only reopen files when a claim is
+ambiguous.
+
 ## Prerequisites
 
 This command expects:
 
 - Feature directory already created at `.specify/specs/{feature}/`
 - `research.md` completed from `/1_gofer_research`
-- `proposal-review.md` approved from `/1_gofer_research`
+- `proposal-review.md` if research created supporting review context
 
 If these don't exist, prompt user to run `/1_gofer_research` first.
 
@@ -35,7 +104,7 @@ If these don't exist, prompt user to run `/1_gofer_research` first.
 ## Outline
 
 1. Context health check
-2. Validate approved proposal review and load existing findings
+2. Validate any supporting proposal review context and load existing findings
 3. Dispatch specification agents (sub-agents handle heavy generation)
 4. Review agent output, handle clarifications
 5. Optional multi-perspective review
@@ -90,16 +159,16 @@ Before starting specification, assess context window health:
 
 ---
 
-## Step 1.25: Proposal Approval Gate
+## Step 1.25: Optional Proposal Review Context
 
-`proposal-review.md` is the approval gate between research and specification.
+`proposal-review.md` is optional supporting context between research and specification.
 
-- If `proposal-review.md` is missing: STOP and tell the user to run
-  `/1_gofer_research` so the review can be created.
-- If `proposal-review.md` exists but `status` is not `approved`: STOP and tell
-  the user to finish the review conversation before writing `spec.md`.
-- If `proposal-review.md` is approved: capture the approved business scenario,
-  architecture direction, selected option, and any user overrides.
+- If `proposal-review.md` is missing: continue using `research.md` as the
+  source of truth.
+- If `proposal-review.md` exists: capture any business-scenario guidance,
+  architecture direction, selected option, and user overrides it records.
+- If `proposal-review.md` records a clear user-approved direction: treat that as
+  authoritative. Otherwise, treat it as advisory context.
 
 ---
 
@@ -122,7 +191,7 @@ If discovery.md exists, pass this mapping to the spec writer agent:
 discovery.md doesn't exist, the agent generates spec content from research.md
 and user input.
 
-If proposal-review.md exists and is approved, also pass this mapping:
+If proposal-review.md exists, also pass this mapping:
 
 ### Proposal Review → Spec Mapping
 
@@ -152,7 +221,7 @@ Feature directory: {FEATURE_DIR}
 
 Read these files for full context:
 - {FEATURE_DIR}/research.md — Codebase analysis, integration points, patterns, constraints
-- {FEATURE_DIR}/proposal-review.md — Approved business scenario, architecture direction, options, overrides
+- {FEATURE_DIR}/proposal-review.md — Supporting business scenario, architecture direction, options, overrides (read if exists, skip if not)
 - .specify/templates/spec-template.md — Template structure to follow
 - {FEATURE_DIR}/discovery.md — Business discovery findings (read if exists, skip if not)
 - {FEATURE_DIR}/journeys/base-journey.md — AI-augmented four-step application journey (read if exists, skip if not)
@@ -227,10 +296,10 @@ If service-fit-matrix.md exists, use it to:
 - Keep non-selected or blocked capabilities in Out of Scope, Assumptions, or
   Risks as appropriate
 
-If proposal-review.md exists and status is approved, use it to:
-- Treat Recommended Business Scenario as the authoritative scope for the spec
-- Reflect the approved architecture direction in Assumptions, Dependencies, and NFR framing
-- Carry forward any approved user overrides before finalizing requirements
+If proposal-review.md exists, use it to:
+- Treat explicitly user-approved directions as authoritative scope for the spec
+- Reflect the strongest architecture direction in Assumptions, Dependencies, and NFR framing
+- Carry forward any user overrides before finalizing requirements
 - Place non-selected options in Out of Scope or Assumptions where appropriate
 
 Rules:
@@ -239,7 +308,7 @@ Rules:
 - Maximum 3 [NEEDS CLARIFICATION] markers for genuinely ambiguous items
 - Acknowledge ALL constraints from research.md in Assumptions or NFRs
 - Reference ALL integration points from research.md in Dependencies
-- Honor the approved direction in proposal-review.md over unapproved alternatives
+- Prefer explicit user-approved directions in proposal-review.md when present; otherwise treat it as advisory context
 - Each functional requirement must include Validation and Integration references
 - Explicit non-app work MUST keep the shared numbered stages but MUST NOT be
   forced to create app-only preview, approval, branding, or service-fit
@@ -268,7 +337,7 @@ findings and generate a quality checklist.
 Read:
 - {FEATURE_DIR}/spec.md — The specification to validate
 - {FEATURE_DIR}/research.md — Research findings to cross-reference
-- {FEATURE_DIR}/proposal-review.md — Approved review decisions to cross-reference
+- {FEATURE_DIR}/proposal-review.md — Supporting review decisions to cross-reference when present
 
 Part 1: Research Integration Validation (GAP-04)
 For EACH integration point in research.md, check if it's addressed in spec:
@@ -276,7 +345,7 @@ For EACH integration point in research.md, check if it's addressed in spec:
 For EACH constraint from research.md, check if acknowledged in spec:
 - In Assumptions or Non-Functional Requirements
 For EACH technology decision, check if reflected in Dependencies.
-For EACH approved decision or override in proposal-review.md, check if it is
+For EACH decision or override captured in proposal-review.md, check if it is
 represented in Overview, Requirements, Assumptions, Dependencies, or Out of Scope.
 
 Build a coverage matrix:
@@ -310,8 +379,7 @@ After both agents complete:
    - All user stories have acceptance criteria
    - Success criteria are measurable and technology-agnostic
    - Dependencies reference correct codebase components from research
-   - Approved scenario and architecture choices from proposal-review.md are
-     reflected
+  - Scenario and architecture choices from proposal-review.md are reflected
    - Research traceability matrix is complete
 
 2. **Check research coverage** — From the validator agent:
@@ -375,7 +443,7 @@ Persona 4: Adversarial — tries to break things, unexpected inputs"
 Run all 4 personas in parallel, then synthesize with judge:
 
 ```
-Task: subagent_type="multi-perspective-judge", model="sonnet"
+Task: subagent_type="multi-perspective-judge", model="opus"
 Prompt: "Judge verdict type: journey gap analysis.
 Synthesize 4 persona journey reports. Flag gaps found by 2+ personas as HIGH priority.
 [paste all 4 agent outputs]"
@@ -622,9 +690,11 @@ At minimum the map must name:
 1. **Vertical App**: the student-facing or business-facing vertical being
    delivered (maps to the `vertical-template` reference).
 2. **EAI Services**: the EnterpriseAI platform services the vertical consumes
-   (maps to entries in `.specify/references/eai/eai.md`).
+   (maps to the current public platform documentation or explicitly provided
+   project references).
 3. **Deployment Target**: the deployment environment and pipeline that will host
-   the running vertical (maps to `.specify/references/eai/deployment-repo.md`).
+   the running vertical (maps to the configured deployment documentation for the
+   target project).
 
 Each link in the chain must reference the internal API contract that carries the
 integration payload (for example `IAP-001` → `IAP-002` → `IAP-003`) so the plan

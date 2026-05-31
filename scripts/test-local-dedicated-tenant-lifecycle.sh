@@ -193,24 +193,17 @@ const publicApiUrl = process.argv[4];
   profile.setActiveProfile(profileName);
   const { getAccessToken } = await import('/Users/os/Desktop/EAI/Code/cloud-stack/eai/dist/lib/auth.js');
   const token = await getAccessToken();
-  const response = await fetch(`${publicApiUrl}/v3/orchestrate`, {
-    method: 'POST',
+  const url = new URL(`${publicApiUrl}/v4/data/resources/object-types`);
+  url.searchParams.set('where[tenant][equals]', tenantId);
+  url.searchParams.set('where[status][equals]', 'published');
+  url.searchParams.set('limit', '20');
+  url.searchParams.set('depth', '0');
+  const response = await fetch(url, {
+    method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
       'X-Tenant-Id': tenantId,
     },
-    body: JSON.stringify({
-      target_backend: 'payload',
-      endpoint: '/object-types',
-      method: 'GET',
-      params: {
-        'where[tenant][equals]': tenantId,
-        'where[status][equals]': 'published',
-        limit: 20,
-        depth: 0,
-      },
-    }),
   });
   process.stdout.write(await response.text());
 })().catch((error) => {

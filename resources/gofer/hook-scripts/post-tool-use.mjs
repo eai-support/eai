@@ -23,6 +23,8 @@ const HOOKS_DIR = join(PROJECT_DIR, '.specify', 'hooks');
 const BRIDGE_PATH = join(HOOKS_DIR, 'context-bridge.json');
 const OBSERVATIONS_DIR = join(PROJECT_DIR, '.specify', 'hooks', 'observations');
 const DEBUG_LOG = join(PROJECT_DIR, '.specify', 'hooks', 'hook-debug.log');
+const PERF_LOG = join(PROJECT_DIR, '.specify', 'hooks', 'hook-perf.jsonl');
+const PERF_ENABLED = process.env.GOFER_PERF_LOG === '1' || process.env.GOFER_PERF_MODE === '1';
 const TAIL_BYTES = 20 * 1024; // Read last 20KB of transcript
 const MAX_OBSERVATION_BYTES = 10240; // 10KB cap per observation
 
@@ -33,11 +35,38 @@ function debug(msg) {
   } catch { /* ignore */ }
 }
 
+function perf(operation, start, extra = {}) {
+  if (!PERF_ENABLED) return;
+
+  try {
+    mkdirSync(dirname(PERF_LOG), { recursive: true });
+    const durationMs = Math.round((Date.now() - start) * 100) / 100;
+    appendFileSync(
+      PERF_LOG,
+      `${JSON.stringify({
+        hook: 'post-tool-use',
+        operation,
+        durationMs,
+        timestamp: new Date().toISOString(),
+        ...extra,
+      })}\n`
+    );
+  } catch {
+    // Performance logging must never affect hook behavior.
+  }
+}
+
 // Model context limits (tokens)
 const MODEL_LIMITS = {
-  'claude-opus-4-5-20251101': 200000,
+  'claude-opus-4-8': 1000000,
+  'claude-opus-4-7': 1000000,
+  'claude-opus-4-6': 1000000,
+  'claude-opus-4-5': 200000,
+  'claude-sonnet-4-6': 1000000,
+  'claude-sonnet-4-5': 200000,
   'claude-sonnet-4-5-20250514': 200000,
   'claude-sonnet-4-20250514': 200000,
+  'claude-haiku-4-5': 200000,
   'claude-haiku-3-5-20241022': 200000,
 };
 
@@ -164,20 +193,65 @@ function atomicWrite(filePath, data) {
   renameSync(tmpPath, filePath);
 }
 
+function stripRuntimeBridgeFields(value) {
+  const copy = JSON.parse(JSON.stringify(value ?? {}));
+  delete copy.timestamp;
+  if (copy.session) {
+    delete copy.session.lastActivity;
+  }
+  if (copy.lastToolUse) {
+    delete copy.lastToolUse.timestamp;
+  }
+  return copy;
+}
+
+function bridgeEquivalent(left, right) {
+  return JSON.stringify(stripRuntimeBridgeFields(left)) === JSON.stringify(stripRuntimeBridgeFields(right));
+}
+
+function atomicWriteIfChanged(filePath, data, equivalent = (left, right) => JSON.stringify(left) === JSON.stringify(right)) {
+  mkdirSync(dirname(filePath), { recursive: true });
+  try {
+    const existing = JSON.parse(readFileSync(filePath, 'utf-8'));
+    if (equivalent(existing, data)) {
+      return false;
+    }
+  } catch {
+    // Missing or invalid existing data should be replaced.
+  }
+
+  const tmpPath = filePath + '.tmp';
+  writeFileSync(tmpPath, JSON.stringify(data, null, 2));
+  renameSync(tmpPath, filePath);
+  return true;
+}
+
 function writeBridge(data) {
   try {
+    const start = Date.now();
+    let writes = 0;
+
     // Write per-session bridge file if sessionId is present
     if (data.sessionId) {
       // Sanitize sessionId to prevent path traversal
       const safeSessionId = data.sessionId.replace(/[^a-zA-Z0-9_-]/g, '');
       const perSessionPath = join(HOOKS_DIR, `context-bridge-${safeSessionId}.json`);
-      atomicWrite(perSessionPath, data);
-      debug(`Per-session bridge written: session=${data.sessionId}, path=${perSessionPath}`);
+      if (atomicWriteIfChanged(perSessionPath, data, bridgeEquivalent)) {
+        writes += 1;
+        debug(`Per-session bridge written: session=${data.sessionId}, path=${perSessionPath}`);
+      } else {
+        debug(`Per-session bridge unchanged: session=${data.sessionId}, path=${perSessionPath}`);
+      }
     }
 
     // Always write legacy bridge file for backward compat
-    atomicWrite(BRIDGE_PATH, data);
-    debug(`Legacy bridge written: session=${data.sessionId}, tool=${data.lastToolUse?.toolName}, obsId=${data.lastToolUse?.observationId || 'none'}`);
+    if (atomicWriteIfChanged(BRIDGE_PATH, data, bridgeEquivalent)) {
+      writes += 1;
+      debug(`Legacy bridge written: session=${data.sessionId}, tool=${data.lastToolUse?.toolName}, obsId=${data.lastToolUse?.observationId || 'none'}`);
+    } else {
+      debug(`Legacy bridge unchanged: session=${data.sessionId}, tool=${data.lastToolUse?.toolName}, obsId=${data.lastToolUse?.observationId || 'none'}`);
+    }
+    perf('bridge-write', start, { writes });
   } catch (err) {
     debug(`Bridge write error: ${err.message}`);
     process.stderr.write(`[post-tool-use] bridge write error: ${err.message}\n`);
@@ -210,8 +284,10 @@ debug(`usage: ${usage ? `inputTokens=${usage.inputTokens}, cache=${usage.cacheRe
 // Write observation file if tool_response is available (new Claude Code payload)
 let observationId;
 if (toolResponse) {
+  const observationStart = Date.now();
   observationId = randomUUID();
   writeObservation(observationId, toolName, toolInput, toolResponse);
+  perf('observation-write', observationStart, { written: true });
 }
 
 const existing = readExistingBridge();
@@ -261,3 +337,4 @@ const bridge = {
 };
 
 writeBridge(bridge);
+perf('hook-total', now, { sessionId: sessionId || undefined, toolName: toolName || undefined });

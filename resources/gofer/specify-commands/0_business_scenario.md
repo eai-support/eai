@@ -21,6 +21,52 @@ description: Triage business scenario and orchestrate the unified Gofer pipeline
 
 # Gofer Orchestrator
 
+## Token And Cost Policy
+<!-- gofer:token-cost-policy:start -->
+
+Before spawning agents, calling tools, or loading large files:
+
+1. Treat `.specify/memory/gofer-model-policy.yaml` as the repo-owned source of truth for simple, medium, hard, and arbiter model routing. If it is missing, run `/gofer:bootstrap-workspace` before continuing.
+2. Use the cheapest capable model first.
+   - Claude: Haiku for scouting/extraction; Sonnet for normal implementation, synthesis, validation, and security; Opus for high-risk arbitration or release-critical failures.
+   - Codex/OpenAI: GPT mini for simple coding; GPT nano only for locate/classify/summarize/mechanical work; GPT-5.3-Codex or flagship GPT for tool-heavy coding, architecture, and release-critical validation.
+   - Gemini: Flash-Lite for cheap large-context scan/summarize; Flash for default research synthesis; Pro for large-context architecture or high-risk arbitration.
+   - Copilot: prefer Auto for simple and default work; ask the user before choosing a paid/high-tier picker model for hard security, architecture, or release gates.
+3. Keep raw tool output out of the main conversation context. Save stable findings to `.specify/specs/{feature}/context-bundle.md`, then work from summaries.
+4. Use provider prompt/context caching only for stable, non-secret prefixes: Gofer scaffold, AGENTS/CLAUDE/Copilot instructions, constitution, repo map, stage contracts, and validation rubric.
+5. Before continuing after large research, planning, implementation, or validation bursts, checkpoint the durable artifacts and compact/clear/resume context when the host supports it.
+6. Escalate model tier only when a cheaper pass is low-confidence, contradictory, security-sensitive, or blocking release quality.
+<!-- gofer:token-cost-policy:end -->
+
+## Workspace Preflight
+
+Before doing stage/helper work:
+
+1. Resolve the repository root.
+2. Check the core Gofer sentinels:
+   - `.specify/.gofer-version`
+   - `.specify/commands/0_business_scenario.md`
+   - `.specify/templates/spec-template.md`
+   - `.specify/scripts/bash/create-new-feature.sh`
+   - `.specify/scripts/node/parse-stage-command.mjs`
+   - `.specify/scripts/hooks/post-tool-use.mjs`
+   - `.specify/scripts/powershell/install-optional-tools.ps1`
+   - `.specify/templates/gofer-model-policy.yaml`
+   - `.specify/memory/gofer-model-policy.yaml`
+   - `.specify/specs/`
+   - `.specify/memory/`
+3. Check host-specific repo-owned files when relevant:
+   - Claude: `AGENTS.md`, `CLAUDE.md`, `.claude/settings.json`
+   - Codex: `AGENTS.md`
+   - Copilot: `.github/copilot-instructions.md`
+   - VS Code extension mirrors Claude/Copilot/Gemini resources itself and should still keep the core scaffold healthy
+4. If the repo already has the workspace checker script, prefer running:
+   - `node .specify/scripts/node/gofer-workspace-check.mjs --host auto --json`
+5. If the workspace is missing or stale, ask exactly:
+   - **"This repo is missing or stale for Gofer. Initialize/update it now?"**
+6. If the user says yes, run the Gofer workspace bootstrap helper and then resume this command from the top.
+7. If the user says no, stop and explain that Gofer stage/helper work depends on the repo-owned scaffold.
+
 You are the Gofer orchestrator. Your job is to understand the user's business
 scenario and route them through the **unified Gofer pipeline**.
 
@@ -31,29 +77,26 @@ scenario and route them through the **unified Gofer pipeline**.
 │                    UNIFIED GOFER PIPELINE                        │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  1. /1_gofer_research    → research.md, proposal-review.md      │
-│     Deep codebase exploration + business/technology synthesis    │
-│                         ↓ REVIEW                                 │
-│  1a. User approval gate   → approved proposal-review.md          │
-│      Confirm scenarios, architecture, options, and changes       │
-│                         ↓ AUTO AFTER APPROVAL                    │
+│  0. /0_business_scenario → kickoff, routing, discovery          │
+│     Business scenario intake + optional problem validation       │
+│                         ↓ AUTO                                   │
+│  1. /1_gofer_research    → research.md                           │
+│     Deep codebase exploration + supporting review context        │
+│                         ↓ AUTO                                   │
 │  2. /2_gofer_specify     → spec.md                              │
 │     Feature specification informed by research                   │
 │                         ↓ AUTO                                   │
 │  3. /3_gofer_plan        → plan.md, data-model.md, contracts/   │
 │     Technical architecture and design                            │
 │                         ↓ AUTO                                   │
-│  4. /4_gofer_tasks       → tasks.md, issues.md                  │
+│  4. /4_gofer_tasks       → tasks.md, traceability.md, issues.md │
 │     Dependency-ordered task breakdown                            │
 │                         ↓ AUTO                                   │
 │  5. /5_gofer_implement   → [source code]                        │
 │     Execute tasks phase by phase                                 │
 │                         ↓ AUTO                                   │
-│  6. /6_gofer_validate    → validation-report.md                 │
-│     Verify implementation matches plan and spec                  │
-│                         ↓ AUTO                                   │
-│  6a. /6a_gofer_engineering_review → engineering-review-report.md │
-│      Post-implementation review with iterative fix cycles        │
+│  6. /6_gofer_validate    → validation artifacts                 │
+│     Validation, blast radius, and final engineering review       │
 │                                                                  │
 │  All artifacts go to: .specify/specs/{feature}/                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -61,14 +104,18 @@ scenario and route them through the **unified Gofer pipeline**.
 
 ## Auxiliary Gofer Commands
 
-| Command               | Purpose                                    |
-| --------------------- | ------------------------------------------ |
-| `/7_gofer_save`       | Save session checkpoint mid-implementation |
-| `/8_gofer_resume`     | Resume work from saved checkpoint          |
-| `/9_gofer_tests`      | Define acceptance test cases using DSL     |
-| `/10_gofer_cloud`     | READ-ONLY cloud infrastructure analysis    |
-| `/gofer_hydrate`      | Reverse-engineer spec from existing code   |
-| `/gofer_constitution` | Create/update project constitution         |
+| Command                       | Purpose                                                 |
+| ----------------------------- | ------------------------------------------------------- |
+| `/0a_problem_validation`      | Optional deeper problem framing before research         |
+| `/7_gofer_save`               | Save session checkpoint mid-implementation              |
+| `/8_gofer_resume`             | Resume work from saved checkpoint                       |
+| `/9_gofer_tests`              | Define acceptance test cases using DSL                  |
+| `/10_gofer_cloud`             | READ-ONLY cloud infrastructure analysis                 |
+| `/7a_stakeholder_comms`       | Optional post-validation communications package         |
+| `/gofer_hydrate`              | Reverse-engineer spec from existing code                |
+| `/gofer_constitution`         | Create/update project constitution                      |
+| `/gofer:check-workspace`      | Check whether the repo scaffold is healthy              |
+| `/gofer:bootstrap-workspace`  | Create or update the repo-owned Gofer scaffold          |
 
 ---
 
@@ -93,7 +140,7 @@ ls -la .specify/memory/constitution.md 2>/dev/null
 | ----------------------- | --------------------------- | ---------------------------- |
 | `spec.md`               | `.specify/specs/{feature}/` | Feature specified            |
 | `research.md`           | `.specify/specs/{feature}/` | Research complete            |
-| `proposal-review.md`    | `.specify/specs/{feature}/` | Research reviewed / approved |
+| `proposal-review.md`    | `.specify/specs/{feature}/` | Optional supporting review context |
 | `plan.md`               | `.specify/specs/{feature}/` | Planning complete            |
 | `tasks.md`              | `.specify/specs/{feature}/` | Ready for implement          |
 | `session-checkpoint.md` | `.specify/specs/{feature}/` | Work paused (resumable)      |
@@ -670,8 +717,8 @@ exists):
 | tasks.md (unchecked)                      | -                           | `/5_gofer_implement` |
 | plan.md                                   | tasks.md                    | `/4_gofer_tasks`     |
 | spec.md                                   | plan.md                     | `/3_gofer_plan`      |
-| research.md + approved proposal-review.md | spec.md                     | `/2_gofer_specify`   |
-| research.md                               | approved proposal-review.md | `/1_gofer_research`  |
+| research.md                               | spec.md                     | `/2_gofer_specify`   |
+| Nothing                                   | research.md                 | `/1_gofer_research`  |
 | Nothing                                   | Everything                  | `/1_gofer_research`  |
 
 #### For New Features
@@ -686,8 +733,8 @@ Output:
 ROUTING: GOFER PIPELINE
 FEATURE: {feature-name}
 STARTING: /1_gofer_research
-AUTO-CHAIN: research → proposal review → specify → plan → tasks → implement → validate → engineering-review
-APPROVAL GATE: proposal-review.md must be approved before `/2_gofer_specify`
+AUTO-CHAIN: research → specify → plan → tasks → implement → validate
+NOTE: research may also create optional supporting review artifacts
 REASON: [explanation]
 ```
 
@@ -716,7 +763,7 @@ Start with `/1_gofer_research` without auto-chaining:
 ```
 ROUTING: GOFER RESEARCH (STANDALONE)
 COMMAND: /1_gofer_research
-AUTO-CHAIN: disabled until proposal-review.md is approved
+AUTO-CHAIN: disabled after research until the user asks to continue
 REASON: User wants to explore the codebase first
 ```
 
@@ -771,13 +818,12 @@ After determining the route:
 The unified Gofer pipeline automatically chains commands:
 
 ```text
-/1_gofer_research completes → stops for proposal review and approval
-Approved proposal-review.md → auto-invokes /2_gofer_specify
+/1_gofer_research completes  → auto-invokes /2_gofer_specify unless user pauses
 /2_gofer_specify completes  → auto-invokes /3_gofer_plan
 /3_gofer_plan completes     → auto-invokes /4_gofer_tasks
 /4_gofer_tasks completes    → auto-invokes /5_gofer_implement
 /5_gofer_implement completes→ auto-invokes /6_gofer_validate
-/6_gofer_validate completes → auto-invokes /6a_gofer_engineering_review
+/6_gofer_validate completes → pipeline complete
 ```
 
 **The user only needs to run `/0_business_scenario` once** - the orchestrator
@@ -815,31 +861,34 @@ If context window is filling up:
 
 ---
 
-## Quick Reference: All Gofer Commands
+## Quick Reference: Core Pipeline And Helpers
 
-### Core Pipeline (Approval-Gated)
+### Core Pipeline
 
-| #   | Command                        | Output                          | Description                         |
-| --- | ------------------------------ | ------------------------------- | ----------------------------------- |
-| 1   | `/1_gofer_research`            | research.md, proposal-review.md | Research + review prep              |
-| 1a  | User approval gate             | approved proposal-review.md     | Business and architecture alignment |
-| 2   | `/2_gofer_specify`             | spec.md                         | Feature specification               |
-| 3   | `/3_gofer_plan`                | plan.md, data-model.md          | Technical architecture              |
-| 4   | `/4_gofer_tasks`               | tasks.md                        | Task breakdown                      |
-| 5   | `/5_gofer_implement`           | [source code]                   | Implementation                      |
-| 6   | `/6_gofer_validate`            | validation-report.md            | Verification                        |
-| 6a  | `/6a_gofer_engineering_review` | engineering-review-report.md    | Post-impl review + fixes            |
+| Stage | Command               | Main output                        | Description                               |
+| ----- | --------------------- | ---------------------------------- | ----------------------------------------- |
+| 0     | `/0_business_scenario`| Full pipeline kickoff              | Business scenario intake and routing      |
+| 1     | `/1_gofer_research`   | research.md                        | Research and supporting review prep       |
+| 2     | `/2_gofer_specify`    | spec.md                            | Feature specification                     |
+| 3     | `/3_gofer_plan`       | plan.md, data-model.md, contracts/ | Technical architecture and contracts      |
+| 4     | `/4_gofer_tasks`      | tasks.md, traceability.md, issues.md | Dependency-ordered task breakdown       |
+| 5     | `/5_gofer_implement`  | Code and doc changes               | Execute the planned work                  |
+| 6     | `/6_gofer_validate`   | Validation artifacts               | Terminal quality gate, including review   |
 
-### Auxiliary Commands
+### Helper Commands
 
-| Command               | Purpose                                   |
-| --------------------- | ----------------------------------------- |
-| `/7_gofer_save`       | Save session checkpoint                   |
-| `/8_gofer_resume`     | Resume from checkpoint                    |
-| `/9_gofer_tests`      | Define test cases (DSL approach)          |
-| `/10_gofer_cloud`     | Cloud infrastructure analysis (READ-ONLY) |
-| `/gofer_hydrate`      | Reverse-engineer spec from code           |
-| `/gofer_constitution` | Project principles and standards          |
+| Command                        | Purpose                                          |
+| ----------------------------- | ------------------------------------------------ |
+| `/0a_problem_validation`      | Optional deeper problem framing before research  |
+| `/7_gofer_save`               | Save session checkpoint                          |
+| `/7a_stakeholder_comms`       | Post-validation communications                   |
+| `/8_gofer_resume`             | Resume from checkpoint                           |
+| `/9_gofer_tests`              | Define test cases (DSL approach)                 |
+| `/10_gofer_cloud`             | Cloud infrastructure analysis (READ-ONLY)        |
+| `/gofer_hydrate`              | Reverse-engineer spec from code                  |
+| `/gofer_constitution`         | Project principles and standards                 |
+| `/gofer:check-workspace`      | Check whether the repo scaffold is healthy       |
+| `/gofer:bootstrap-workspace`  | Create or update the repo-owned scaffold         |
 
 ---
 

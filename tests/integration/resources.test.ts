@@ -11,6 +11,7 @@ import {
   normalizeBatchUpdateItems,
 } from '../../src/commands/resources.js';
 import { buildVerticalEnrollmentData } from '../../src/commands/vertical.js';
+import { normalizeChildTenantDisplayNameOption, normalizeChildTenantSlugOption } from '../../src/lib/utils.js';
 
 vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => undefined),
@@ -84,7 +85,7 @@ describe('resource type diagnostics', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://test-api.example.com/v3/resources/tenant-1/conversation-message?limit=5&cursor=cursor-1',
+      'https://test-api.example.com/v4/data/resources/tenant-1/conversation-message?limit=5&cursor=cursor-1',
       expect.objectContaining({
         headers: expect.objectContaining({
           'Content-Type': 'application/json',
@@ -93,7 +94,7 @@ describe('resource type diagnostics', () => {
     );
   });
 
-  test('creates root tenants through payload tenant-management', async () => {
+  test('creates root tenants through the public platform router', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -105,28 +106,21 @@ describe('resource type diagnostics', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://test-api.example.com/v3/orchestrate',
+      'https://test-api.example.com/v4/platform/tenants',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
-          target_backend: 'payload',
-          endpoint: '/tenant-management',
-          method: 'POST',
-          body: {
-            displayName: 'Root Tenant',
-            name: 'Root Tenant',
-            slug: 'root-tenant',
-            parentTenant: undefined,
-            domain: ['root.example.com'],
-            usecase: 'generic',
-          },
-          params: undefined,
+          displayName: 'Root Tenant',
+          name: 'Root Tenant',
+          slug: 'root-tenant',
+          domain: ['root.example.com'],
+          usecase: 'generic',
         }),
       }),
     );
   });
 
-  test('creates child tenants through the admin child-tenant route', async () => {
+  test('creates child tenants through the public platform child-tenant route', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -141,21 +135,15 @@ describe('resource type diagnostics', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://test-api.example.com/v3/orchestrate',
+      'https://test-api.example.com/v4/platform/tenants/parent-tenant/children',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
-          target_backend: 'admin',
-          endpoint: '/v1/tenants/parent-tenant/children',
-          method: 'POST',
-          body: {
-            displayName: 'Child Tenant',
-            slug: 'child-tenant',
-            usecase: 'retail',
-            industry: 'retail',
-            starterTemplate: 'blank-vertical-template',
-          },
-          params: undefined,
+          displayName: 'Child Tenant',
+          slug: 'child-tenant',
+          usecase: 'retail',
+          industry: 'retail',
+          starterTemplate: 'blank-vertical-template',
         }),
       }),
     );
@@ -175,6 +163,19 @@ describe('resource type diagnostics', () => {
     });
   });
 
+  test('normalizes explicit child-tenant CLI option values', () => {
+    expect(normalizeChildTenantDisplayNameOption(undefined)).toBeUndefined();
+    expect(normalizeChildTenantDisplayNameOption('  Child Company  ')).toBe('Child Company');
+    expect(() => normalizeChildTenantDisplayNameOption('   ')).toThrow(
+      'A child company tenant name is required',
+    );
+    expect(normalizeChildTenantSlugOption(undefined)).toBeUndefined();
+    expect(normalizeChildTenantSlugOption('  child-company  ')).toBe('child-company');
+    expect(() => normalizeChildTenantSlugOption('   ')).toThrow(
+      'A child company tenant slug is required',
+    );
+  });
+
   test('creates tenant vertical enrollment through ResourceAPI resources route', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -189,7 +190,7 @@ describe('resource type diagnostics', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://test-api.example.com/v3/resources/company-tenant/tenant-vertical-enrollment',
+      'https://test-api.example.com/v4/data/resources/company-tenant/tenant-vertical-enrollment',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
@@ -217,7 +218,7 @@ describe('resource type diagnostics', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://test-api.example.com/v3/resources/tenant-1/storage/provision',
+      'https://test-api.example.com/v4/data/resources/tenant-1/storage/provision',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
@@ -242,7 +243,7 @@ describe('resource type diagnostics', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://test-api.example.com/v3/resources/company-tenant/storage/provision',
+      'https://test-api.example.com/v4/data/resources/company-tenant/storage/provision',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
@@ -265,12 +266,12 @@ describe('resource type diagnostics', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'https://test-api.example.com/v3/resources/tenant-1/storage',
+      'https://test-api.example.com/v4/data/resources/tenant-1/storage',
       expect.objectContaining({ method: 'GET' }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://test-api.example.com/v3/resources/tenant-1/storage/doctor',
+      'https://test-api.example.com/v4/data/resources/tenant-1/storage/doctor',
       expect.objectContaining({ method: 'GET' }),
     );
   });
@@ -289,7 +290,7 @@ describe('resource type diagnostics', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://test-api.example.com/v3/resources/tenant-1/search',
+      'https://test-api.example.com/v4/data/resources/tenant-1/search',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
@@ -316,7 +317,7 @@ describe('resource type diagnostics', () => {
       await client.uploadResourceFile('FileAsset', 'resource-1', 'attachment', filePath);
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://test-api.example.com/v3/resources/tenant-1/file-asset/resource-1/files/attachment?filename=source%20note.txt',
+        'https://test-api.example.com/v4/data/resources/tenant-1/file-asset/resource-1/files/attachment?filename=source%20note.txt',
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({

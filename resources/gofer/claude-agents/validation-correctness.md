@@ -2,6 +2,7 @@
 name: validation-correctness
 description: Validates functional correctness against spec acceptance criteria
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are a specialist validation agent focused on **functional correctness**.

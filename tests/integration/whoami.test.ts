@@ -122,7 +122,7 @@ describe('eai whoami', () => {
     let membershipRequestHeaders: Record<string, string> | undefined;
 
     mockServer.server.use(
-      http.get(`${RESOLVED_API_BASE}/v3/users/me/tenants`, async ({ request }) => {
+      http.get(`${RESOLVED_API_BASE}/v4/identity/tenants`, async ({ request }) => {
         membershipRequestHeaders = Object.fromEntries(request.headers.entries());
         return HttpResponse.json({
           tenants: [
@@ -136,7 +136,7 @@ describe('eai whoami', () => {
           ],
         });
       }),
-      http.get(`${STORED_API_BASE}/v3/users/me/tenants`, () => {
+      http.get(`${STORED_API_BASE}/v4/identity/tenants`, () => {
         staleApiHit = true;
         return HttpResponse.json({ detail: 'stale token URL used' }, { status: 500 });
       }),
