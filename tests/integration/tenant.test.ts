@@ -14,8 +14,10 @@ import {
   evaluateTenantUsability,
   filterTenantAdminEntries,
   normalizeTenantEntries,
+  publicApiUrlForHomeRegion,
   resolveMainCompanyTenantId,
   tenantEntryHasTenantAdminRole,
+  toTenantMembership,
   type TenantMembership,
   type TenantEntry,
 } from '../../src/lib/tenant-context.js';
@@ -176,6 +178,29 @@ describe('tenant list filtering', () => {
       roles: undefined,
       isTenantAdmin: undefined,
     }]);
+  });
+
+  test('HP003 preserves homeRegion so Canada accounts use the Canada PublicAPI URL', () => {
+    const [entry] = normalizeTenantEntries({
+      tenants: [{
+        id: 'tenant-ca',
+        displayName: 'Canada Workspace',
+        slug: 'canada-workspace',
+        role: 'tenant-admin',
+        depth: 1,
+        createdAt: '2026-05-08T00:00:00Z',
+        homeRegion: 'ca',
+        hqCountryCode: 'CA',
+      }],
+    });
+
+    expect(entry).toBeDefined();
+    const membership = toTenantMembership(entry!);
+
+    expect(membership.homeRegion).toBe('ca');
+    expect(publicApiUrlForHomeRegion(membership.homeRegion)).toBe(
+      'https://api.ca.myenterprise.ai/public',
+    );
   });
 
   test('evaluates a created-only tenant as not yet usable', () => {
