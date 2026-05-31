@@ -1,11 +1,33 @@
 import inquirer from 'inquirer';
 import { findProjectRoot, loadEnvFile } from './config.js';
-import { loadTokens, storeTokens, type StoredTokens } from './auth.js';
+import { getAccessToken, loadTokens, storeTokens, type StoredTokens } from './auth.js';
 import { PlatformAPIClient } from './api.js';
 import { isRecord } from './utils.js';
 import { getActiveProfile, loadProfileConfig } from './profile.js';
 
 export const DEFAULT_PUBLIC_API_URL = 'https://api.au.myenterprise.ai/public';
+
+const REGION_PUBLIC_API_URLS = {
+  au: DEFAULT_PUBLIC_API_URL,
+  ca: 'https://api.ca.myenterprise.ai/public',
+  eu: 'https://api.eu.myenterprise.ai/public',
+} as const;
+
+type HomeRegion = keyof typeof REGION_PUBLIC_API_URLS;
+
+const TRUSTED_SESSION_PUBLIC_API_HOSTS = new Set([
+  'api.au.myenterprise.ai',
+  'api.ca.myenterprise.ai',
+  'api.eu.myenterprise.ai',
+  'test-api.au.myenterprise.ai',
+  'test-api.ca.myenterprise.ai',
+  'test-api.eu.myenterprise.ai',
+  'dev-api.au.myenterprise.ai',
+  'dev-api.ca.myenterprise.ai',
+  'dev-api.eu.myenterprise.ai',
+]);
+
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 export interface TenantRoleAssignment {
   baseRole?: string;
@@ -21,6 +43,8 @@ export interface TenantEntry {
     isActive: boolean;
     parent?: { id?: string } | string | null;
     parentId?: string | null;
+    homeRegion?: string | null;
+    hqCountryCode?: string | null;
   };
   roleAssignments?: TenantRoleAssignment[];
   isTenantAdmin?: boolean;
@@ -36,6 +60,8 @@ interface AdminTenantMembership {
   isActive?: boolean;
   parent?: { id?: string } | string | null;
   parentId?: string | null;
+  homeRegion?: string | null;
+  hqCountryCode?: string | null;
   role?: string;
   roles?: string[];
   isTenantAdmin?: boolean;
@@ -48,6 +74,8 @@ export interface TenantMembership {
   domain?: string;
   isActive: boolean;
   roles: string[];
+  homeRegion?: string | null;
+  hqCountryCode?: string | null;
 }
 
 export interface ActiveTenantContext {
@@ -68,6 +96,100 @@ export interface TenantUsabilityStatus {
 }
 
 type TenantHierarchyRecord = Record<string, unknown>;
+
+interface SessionResolveResponse {
+  status?: string;
+  apiBaseUrl?: unknown;
+}
+
+function normalizeBaseUrl(value: string): string {
+  return value.trim().replace(/\/+$/g, '');
+}
+
+export function normalizeHomeRegion(value: string | null | undefined): HomeRegion | null {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === 'au' || normalized === 'ca' || normalized === 'eu'
+    ? normalized
+    : null;
+}
+
+export function publicApiUrlForHomeRegion(value: string | null | undefined): string | null {
+  const region = normalizeHomeRegion(value);
+  return region ? REGION_PUBLIC_API_URLS[region] : null;
+}
+
+function normalizeCliPublicApiUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    const pathWithoutTrailingSlash = url.pathname.replace(/\/+$/g, '');
+    if (!pathWithoutTrailingSlash && /\.myenterprise\.ai$/i.test(url.hostname)) {
+      url.pathname = '/public';
+    } else {
+      url.pathname = pathWithoutTrailingSlash;
+    }
+    return url.toString().replace(/\/+$/g, '');
+  } catch {
+    return normalizeBaseUrl(value);
+  }
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return LOOPBACK_HOSTS.has(hostname.toLowerCase());
+}
+
+function normalizeTrustedSessionPublicApiUrl(value: unknown): string | null {
+  const normalized = normalizeCliPublicApiUrl(value);
+  if (!normalized) return null;
+
+  try {
+    const url = new URL(normalized);
+    const hostname = url.hostname.toLowerCase();
+    const isLoopback = isLoopbackHost(hostname);
+    if (url.username || url.password) return null;
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopback)) {
+      return null;
+    }
+    if (!isLoopback && !TRUSTED_SESSION_PUBLIC_API_HOSTS.has(hostname)) {
+      return null;
+    }
+    return normalizeCliPublicApiUrl(url.toString());
+  } catch {
+    return null;
+  }
+}
+
+function buildSessionResolveUrl(baseUrl: string): string {
+  return `${normalizeBaseUrl(baseUrl)}/v4/identity/session/resolve`;
+}
+
+async function resolveRegionalPublicApiUrlFromSession(requestedTenantId?: string | null): Promise<string | null> {
+  const accessToken = await getAccessToken();
+  if (!accessToken) return null;
+
+  const bootstrapBaseUrl = process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL?.trim()
+    || DEFAULT_PUBLIC_API_URL;
+  try {
+    const response = await fetch(buildSessionResolveUrl(bootstrapBaseUrl), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        product: 'eai-cli',
+        requestedTenantId: requestedTenantId || undefined,
+      }),
+    });
+    if (!response.ok) return null;
+
+    const payload = await response.json() as SessionResolveResponse;
+    if (payload.status !== 'resolved') return null;
+    return normalizeTrustedSessionPublicApiUrl(payload.apiBaseUrl);
+  } catch {
+    return null;
+  }
+}
 
 function unique(values: Array<string | undefined>): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
@@ -277,6 +399,8 @@ function toTenantEntry(value: AdminTenantMembership | TenantEntry): TenantEntry 
       isActive: value.isActive !== false,
       parent: value.parent,
       parentId: value.parentId,
+      homeRegion: value.homeRegion,
+      hqCountryCode: value.hqCountryCode,
     },
     role: value.role,
     roles: value.roles,
@@ -309,6 +433,8 @@ export function toTenantMembership(entry: TenantEntry): TenantMembership {
     domain: entry.tenant.domain,
     isActive: entry.tenant.isActive,
     roles: getTenantRoles(entry),
+    homeRegion: entry.tenant.homeRegion,
+    hqCountryCode: entry.tenant.hqCountryCode,
   };
 }
 
@@ -348,7 +474,9 @@ export function evaluateTenantUsability(
  * Priority:
  *  1. Profile config (non-default profiles only)
  *  2. BASE_URL_PUBLIC_API from project .env.local or process env
- *  3. DEFAULT_PUBLIC_API_URL fallback
+ *  3. Active tenant homeRegion from stored login context
+ *  4. PublicAPI session routing bootstrap for authenticated default profiles
+ *  5. DEFAULT_PUBLIC_API_URL fallback
  */
 async function loadContextEnv(projectRoot?: string): Promise<Record<string, string>> {
   const root = projectRoot ?? await findProjectRoot() ?? undefined;
@@ -372,8 +500,17 @@ export async function resolvePublicApiUrl(projectRoot?: string): Promise<string>
     return env.BASE_URL_PUBLIC_API;
   }
 
-  // 3. Default/no profile must target production. Do not let stale login metadata
-  // override the current environment selection.
+  const tokens = await loadTokens();
+  const storedRegionalUrl = publicApiUrlForHomeRegion(tokens?.activeTenantHomeRegion);
+  if (storedRegionalUrl) {
+    return storedRegionalUrl;
+  }
+
+  const routedUrl = await resolveRegionalPublicApiUrlFromSession(tokens?.activeTenantId);
+  if (routedUrl) {
+    return routedUrl;
+  }
+
   return DEFAULT_PUBLIC_API_URL;
 }
 
@@ -389,6 +526,8 @@ export function getStoredActiveTenant(tokens: StoredTokens): TenantMembership | 
     domain: tokens.activeTenantDomain,
     isActive: true,
     roles: ['tenant-admin'],
+    homeRegion: tokens.activeTenantHomeRegion,
+    hqCountryCode: tokens.activeTenantHqCountryCode,
   };
 }
 
@@ -437,6 +576,8 @@ export async function saveActiveTenantSelection(
     activeTenantName: tenant.displayName,
     activeTenantSlug: tenant.slug,
     activeTenantDomain: tenant.domain,
+    activeTenantHomeRegion: tenant.homeRegion,
+    activeTenantHqCountryCode: tenant.hqCountryCode,
     publicApiUrl: publicApiUrl || tokens.publicApiUrl,
     membershipsCachedAt: Date.now(),
   };
@@ -531,6 +672,8 @@ export async function resolveActiveTenantContext(options?: {
         domain: cached.activeTenantDomain,
         isActive: true,
         roles: ['tenant-admin'],
+        homeRegion: cached.activeTenantHomeRegion,
+        hqCountryCode: cached.activeTenantHqCountryCode,
       };
       const publicApiUrl = options?.publicApiUrl || await resolvePublicApiUrl(options?.projectRoot);
       return { publicApiUrl, tokens: cached, activeTenant, memberships: [activeTenant] };
