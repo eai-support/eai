@@ -86,6 +86,11 @@ const config = {
           label: 'Scenarios',
         },
         {
+          href: 'https://github.com/eai-tools/eai/releases',
+          label: 'Releases',
+          position: 'left',
+        },
+        {
           href: 'https://github.com/eai-tools/eai',
           label: 'GitHub',
           position: 'right',
