@@ -134,6 +134,11 @@ Each command follows a consistent pattern:
 - Validates tenant membership via platform API
 - Functions: `getActiveTenant()`, `setActiveTenant()`, `loadTenantContext()`
 
+**PublicAPI regional routing boundary**
+- `resolvePublicApiUrl()` chooses the PublicAPI base URL in this order: named profile override, project/process `BASE_URL_PUBLIC_API`, stored active tenant `homeRegion`, authenticated session routing, then the AU production default.
+- Session routing uses the current bearer token from `auth.ts` only against the configured bootstrap resolver. The returned `apiBaseUrl` is accepted only when it is a trusted EAI regional PublicAPI host (`dev-api.*`, `test-api.*`, or `api.*`) or a loopback host for local dev-stack.
+- Host-only regional responses such as `https://api.ca.myenterprise.ai` are normalized to the PublicAPI gateway path (`/public`) before later CLI calls attach bearer tokens.
+
 **`schema-builder.ts` - CLI Introspection**
 - Generates JSON schema from Commander.js program structure
 - Enables AI agents to discover CLI capabilities at runtime
