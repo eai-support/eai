@@ -119,7 +119,7 @@ function normalizeCliPublicApiUrl(value: unknown): string | null {
 }
 
 function buildSessionResolveUrl(baseUrl: string): string {
-  return `${normalizeBaseUrl(baseUrl)}/v3/session/resolve`;
+  return `${normalizeBaseUrl(baseUrl)}/v4/identity/session/resolve`;
 }
 
 async function resolveRegionalPublicApiUrlFromSession(requestedTenantId?: string | null): Promise<string | null> {

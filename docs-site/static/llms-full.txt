@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v2.9.4.
+> Release-aligned documentation bundle for `@eai-tools/cli` v2.9.5.
 > Generated from `.tech-docs/` plus current CLI help output.
 
 ## Install
@@ -267,17 +267,17 @@ Notes:
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.9.4 |
+| **Version** | 2.9.5 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
-| **Current Status** | Active development (v2.9.4 released 2026-05-30) |
-| **Last Material Change** | v2.9.4: Align app creation with company hierarchy (2026-05-30) |
+| **Current Status** | Active development (v2.9.5 released 2026-05-31) |
+| **Last Material Change** | v2.9.5: Resolve PublicAPI by tenant home region (2026-05-31) |
 
 ## Service Identity
 
 **Name**: `@eai-tools/cli` (eai)  
-**Version**: 2.9.4  
+**Version**: 2.9.5
 **Purpose**: Command-line interface for the Enterprise AI Platform that wraps all platform API calls, providing developers with simple commands to scaffold projects, authenticate users, manage data models, perform CRUD operations, deploy to Azure, and integrate AI capabilities.
 
 ## Description
