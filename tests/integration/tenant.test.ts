@@ -2,7 +2,11 @@
  * Tenant command filtering tests.
  */
 
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import * as auth from '../../src/lib/auth.js';
+import type { StoredTokens } from '../../src/lib/auth.js';
+import * as config from '../../src/lib/config.js';
+import * as profile from '../../src/lib/profile.js';
 import {
   buildTenantCreateStatusMessages,
   buildTenantListZeroState,
@@ -11,10 +15,12 @@ import {
   type TenantCreateOutcome,
 } from '../../src/commands/tenant.js';
 import {
+  DEFAULT_PUBLIC_API_URL,
   evaluateTenantUsability,
   filterTenantAdminEntries,
   normalizeTenantEntries,
   publicApiUrlForHomeRegion,
+  resolvePublicApiUrl,
   resolveMainCompanyTenantId,
   tenantEntryHasTenantAdminRole,
   toTenantMembership,
@@ -37,8 +43,44 @@ function createTenantEntry(
   };
 }
 
+const originalBaseUrlPublicApi = process.env.BASE_URL_PUBLIC_API;
+const originalRoutingBootstrapPublicApiUrl = process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL;
+
+function storedTokens(overrides: Partial<StoredTokens> = {}): StoredTokens {
+  return {
+    accessToken: 'cached-token',
+    expiresAt: Date.now() + 60_000,
+    tenantId: 'auth-tenant',
+    tenantName: 'Auth Tenant',
+    clientId: 'client-id',
+    ...overrides,
+  };
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
+
+beforeEach(() => {
+  delete process.env.BASE_URL_PUBLIC_API;
+  delete process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL;
+  vi.spyOn(profile, 'getActiveProfile').mockReturnValue('default');
+  vi.spyOn(profile, 'loadProfileConfig').mockResolvedValue(null);
+  vi.spyOn(config, 'findProjectRoot').mockResolvedValue(null);
+  vi.spyOn(config, 'loadEnvFile').mockResolvedValue({});
+  vi.spyOn(auth, 'loadTokens').mockResolvedValue(null);
+  vi.spyOn(auth, 'getAccessToken').mockResolvedValue(null);
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  restoreEnv('BASE_URL_PUBLIC_API', originalBaseUrlPublicApi);
+  restoreEnv('ROUTING_BOOTSTRAP_PUBLIC_API_URL', originalRoutingBootstrapPublicApiUrl);
 });
 
 describe('tenant list filtering', () => {
@@ -337,6 +379,126 @@ describe('tenant list filtering', () => {
       id: 'tenant-1',
       slug: 'tenant-one',
     });
+  });
+});
+
+describe('PublicAPI URL routing order', () => {
+  test('uses named profile PublicAPI URL before environment or tenant routing', async () => {
+    process.env.BASE_URL_PUBLIC_API = 'https://env.example.test/public';
+    vi.mocked(profile.getActiveProfile).mockReturnValue('canada');
+    vi.mocked(profile.loadProfileConfig).mockResolvedValue({
+      publicApiUrl: 'https://profile.example.test/public',
+      authTenantName: 'Profile Tenant',
+      authTenantId: 'profile-tenant',
+      authClientId: 'profile-client',
+    });
+
+    await expect(resolvePublicApiUrl('/workspace')).resolves.toBe(
+      'https://profile.example.test/public',
+    );
+    expect(config.loadEnvFile).not.toHaveBeenCalled();
+    expect(auth.loadTokens).not.toHaveBeenCalled();
+  });
+
+  test('uses BASE_URL_PUBLIC_API before stored tenant region routing', async () => {
+    vi.mocked(config.findProjectRoot).mockResolvedValue('/workspace');
+    vi.mocked(config.loadEnvFile).mockResolvedValue({
+      BASE_URL_PUBLIC_API: 'https://env.example.test/public',
+    });
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({
+      activeTenantHomeRegion: 'ca',
+    }));
+
+    await expect(resolvePublicApiUrl()).resolves.toBe(
+      'https://env.example.test/public',
+    );
+    expect(auth.loadTokens).not.toHaveBeenCalled();
+  });
+
+  test('uses stored active tenant home region before session routing', async () => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({
+      activeTenantId: 'tenant-eu',
+      activeTenantHomeRegion: 'eu',
+    }));
+
+    await expect(resolvePublicApiUrl('/workspace')).resolves.toBe(
+      'https://api.eu.myenterprise.ai/public',
+    );
+    expect(auth.getAccessToken).not.toHaveBeenCalled();
+  });
+
+  test('uses trusted session routing when no override or stored home region exists', async () => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({
+      activeTenantId: 'tenant-ca',
+    }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('session-token');
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({
+        status: 'resolved',
+        apiBaseUrl: 'https://api.ca.myenterprise.ai',
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(resolvePublicApiUrl('/workspace')).resolves.toBe(
+      'https://api.ca.myenterprise.ai/public',
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${DEFAULT_PUBLIC_API_URL}/v4/identity/session/resolve`,
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer session-token',
+        }),
+        body: JSON.stringify({
+          product: 'eai-cli',
+          requestedTenantId: 'tenant-ca',
+        }),
+      }),
+    );
+  });
+
+  test('allows loopback session routing for local dev-stack smoke tests', async () => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({
+      activeTenantId: 'tenant-local',
+    }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('session-token');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({
+        status: 'resolved',
+        apiBaseUrl: 'http://localhost:8000',
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+
+    await expect(resolvePublicApiUrl('/workspace')).resolves.toBe(
+      'http://localhost:8000',
+    );
+  });
+
+  test('falls back to AU when session routing returns an untrusted host', async () => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({
+      activeTenantId: 'tenant-ca',
+    }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('session-token');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({
+        status: 'resolved',
+        apiBaseUrl: 'https://attacker.example/public',
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+
+    await expect(resolvePublicApiUrl('/workspace')).resolves.toBe(
+      DEFAULT_PUBLIC_API_URL,
+    );
+  });
+
+  test('falls back to AU when no routing input is available', async () => {
+    await expect(resolvePublicApiUrl('/workspace')).resolves.toBe(
+      DEFAULT_PUBLIC_API_URL,
+    );
   });
 });
 

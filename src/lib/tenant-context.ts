@@ -15,6 +15,14 @@ const REGION_PUBLIC_API_URLS = {
 
 type HomeRegion = keyof typeof REGION_PUBLIC_API_URLS;
 
+const TRUSTED_SESSION_PUBLIC_API_HOSTS = new Set([
+  'api.au.myenterprise.ai',
+  'api.ca.myenterprise.ai',
+  'api.eu.myenterprise.ai',
+]);
+
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
 export interface TenantRoleAssignment {
   baseRole?: string;
   displayName?: string;
@@ -108,13 +116,40 @@ function normalizeCliPublicApiUrl(value: unknown): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
   try {
     const url = new URL(value.trim());
-    url.pathname = url.pathname.replace(/\/+$/g, '');
-    if (!url.pathname && /\.myenterprise\.ai$/i.test(url.hostname)) {
+    const pathWithoutTrailingSlash = url.pathname.replace(/\/+$/g, '');
+    if (!pathWithoutTrailingSlash && /\.myenterprise\.ai$/i.test(url.hostname)) {
       url.pathname = '/public';
+    } else {
+      url.pathname = pathWithoutTrailingSlash;
     }
     return url.toString().replace(/\/+$/g, '');
   } catch {
     return normalizeBaseUrl(value);
+  }
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return LOOPBACK_HOSTS.has(hostname.toLowerCase());
+}
+
+function normalizeTrustedSessionPublicApiUrl(value: unknown): string | null {
+  const normalized = normalizeCliPublicApiUrl(value);
+  if (!normalized) return null;
+
+  try {
+    const url = new URL(normalized);
+    const hostname = url.hostname.toLowerCase();
+    const isLoopback = isLoopbackHost(hostname);
+    if (url.username || url.password) return null;
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopback)) {
+      return null;
+    }
+    if (!isLoopback && !TRUSTED_SESSION_PUBLIC_API_HOSTS.has(hostname)) {
+      return null;
+    }
+    return normalizeCliPublicApiUrl(url.toString());
+  } catch {
+    return null;
   }
 }
 
@@ -144,7 +179,7 @@ async function resolveRegionalPublicApiUrlFromSession(requestedTenantId?: string
 
     const payload = await response.json() as SessionResolveResponse;
     if (payload.status !== 'resolved') return null;
-    return normalizeCliPublicApiUrl(payload.apiBaseUrl);
+    return normalizeTrustedSessionPublicApiUrl(payload.apiBaseUrl);
   } catch {
     return null;
   }
