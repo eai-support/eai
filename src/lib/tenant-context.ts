@@ -19,6 +19,12 @@ const TRUSTED_SESSION_PUBLIC_API_HOSTS = new Set([
   'api.au.myenterprise.ai',
   'api.ca.myenterprise.ai',
   'api.eu.myenterprise.ai',
+  'test-api.au.myenterprise.ai',
+  'test-api.ca.myenterprise.ai',
+  'test-api.eu.myenterprise.ai',
+  'dev-api.au.myenterprise.ai',
+  'dev-api.ca.myenterprise.ai',
+  'dev-api.eu.myenterprise.ai',
 ]);
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
