@@ -49,3 +49,6 @@ jobs:
 
       - name: Test
         run: npm run test
+
+      - name: Verify API reference routes match code
+        run: npm run docs:verify-api

@@ -252,7 +252,7 @@ sequenceDiagram
     CLI->>Context: getActiveTenant()
     Context->>CLI: tenant_id
     CLI->>API: createAPIClient(token)
-    API->>Platform: GET /v3/resources/User?tenant_id=...
+    API->>Platform: GET /v4/data/resources/{tenant_id}/user
     Platform->>API: { resources: [...] }
     API->>CLI: Parsed response
     CLI->>Dev: Formatted output (text/JSON)
@@ -272,11 +272,11 @@ sequenceDiagram
     CLI->>FS: Read src/eai.config/object-types.ts
     FS->>CLI: Type definitions
     CLI->>CLI: Validate schemas locally
-    CLI->>API: POST /v3/object-types (batch)
+    CLI->>API: POST /v4/data/resources/object-types
     API->>Platform: Create/update types
     Platform->>API: Success + remote state
     API->>CLI: Confirmation
-    CLI->>API: GET /v3/object-types (verify convergence)
+    CLI->>API: GET /v4/data/resources/object-types (verify convergence)
     API->>Platform: Fetch remote types
     Platform->>API: Remote state
     API->>CLI: Remote types
@@ -368,10 +368,9 @@ CLI commands act as facades over platform API endpoints, hiding complexity:
 // User sees:
 eai resources list User --format json
 
-// CLI translates to:
-GET /v3/resources/User
+// CLI translates to (tenant is part of the v4 path):
+GET /v4/data/resources/<active-tenant>/user
 Authorization: Bearer <token>
-X-Tenant-ID: <active-tenant>
 ```
 
 ### 2. Strategy Pattern
@@ -427,8 +426,8 @@ Command execution follows a template:
 - **Protocol**: REST over HTTPS
 - **Authentication**: Bearer token (JWT from Entra CIAM)
 - **Base URL**: `BASE_URL_PUBLIC_API` environment variable
-- **Versioning**: `/v3/` prefix
-- **Endpoints**: Object Types, Resources, Tenants, AI workflows, Documents
+- **Versioning**: `/v4/` prefix, grouped by domain (`/v4/platform`, `/v4/identity`, `/v4/data/resources`, `/v4/data/documents`, `/v4/ai`, `/v4/workflows`, `/v4/integrations`)
+- **Endpoints**: Object Types, Resources, Tenants, Identity, AI chat, Workflows, Documents
 
 ### Azure Services
 - **App Configuration**: Environment variable sync

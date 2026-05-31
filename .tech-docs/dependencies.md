@@ -21,9 +21,8 @@ graph TB
         Entra[Entra CIAM<br/>OAuth 2.0 PKCE]
     end
     
-    subgraph "Platform API v3"
-        PublicAPI[Platform PublicAPI<br/>/v3/*]
-        AdminAPI[Admin API<br/>/admin/*]
+    subgraph "Platform API v4"
+        PublicAPI[Platform PublicAPI<br/>/v4/*]
     end
     
     subgraph "Azure Services"
@@ -48,7 +47,6 @@ graph TB
     
     CLI -->|Browser PKCE Flow| Entra
     CLI -->|Bearer Token Auth| PublicAPI
-    CLI -->|Bearer Token Auth| AdminAPI
     CLI -->|Pull Config| AppConfig
     CLI -->|Pull Secrets| KeyVault
     CLI -->|Deploy Trigger| AppService
@@ -86,59 +84,73 @@ Services and APIs that the CLI calls:
 
 ---
 
-### 2. EAI Platform API (PublicAPI v3)
+### 2. EAI Platform API (PublicAPI v4)
 
 **Type**: REST API  
 **Base URL**: Configured via `BASE_URL_PUBLIC_API` (e.g., `https://api.ae.myenterprise.ai/public`)  
 **Authentication**: Bearer token (from Entra CIAM)  
 
-**Endpoints Used**:
+**Endpoints Used** (grouped by v4 domain):
+
 | Endpoint | Used By | Purpose |
 |----------|---------|---------|
-| `GET /v3/health` | `eai verify` | Platform health check |
-| `GET /v3/tenants/memberships` | `eai tenant list`, `eai tenant select` | Fetch user tenant memberships |
-| `GET /v3/tenants/{id}` | `eai tenant info` | Get tenant details |
-| `POST /v3/tenants` | `eai tenant create` | Create tenant |
-| `POST /v3/tenants/{id}/bootstrap-first-admin` | `eai tenant create` (child) | Bootstrap first admin |
-| `POST /v3/tenants/{id}/users/invite` | `eai user invite` | Invite user to tenant |
-| `POST /v3/tenants/{id}/users/provision` | `eai user provision-me` | Provision user |
-| `GET /v3/object-types` | `eai types diff`, `eai types pull` | Fetch Object Types |
-| `POST /v3/object-types/batch` | `eai types seed` | Publish Object Types |
-| `GET /v3/resources/{tenant}/{type}` | `eai resources list` | List resources |
-| `GET /v3/resources/{tenant}/{type}/{id}` | `eai resources get` | Get resource |
-| `POST /v3/resources/{tenant}/{type}` | `eai resources create` | Create resource |
-| `PUT /v3/resources/{tenant}/{type}/{id}` | `eai resources update` | Update resource |
-| `DELETE /v3/resources/{tenant}/{type}/{id}` | `eai resources delete` | Delete resource |
-| `POST /v3/resources/query` | `eai resources query` | Cross-type query |
-| `GET /v3/resources/schema` | `eai resources schema` | Get schema |
-| `POST /v3/ai/chat` | `eai chat send` | Send chat message |
-| `POST /v3/ai/chat/stream` | `eai chat stream` | Stream chat response |
-| `GET /v3/ai/workflows/readiness` | `eai workflow readiness` | Check workflow readiness |
-| `GET /v3/ai/workflows/{key}/status` | `eai workflow status` | Check workflow status |
-| `POST /v3/ai/workflows/{key}/request` | `eai workflow request` | Request workflow |
-| `POST /v3/documents/upload` | `eai docs upload` | Upload document |
-| `POST /v3/documents/classify` | `eai docs classify` | Classify document |
-| `POST /v3/documents/{id}/index` | `eai docs index` | Index document |
-| `GET /v3/config/environment` | `eai env pull` | Fetch environment variables |
-| `GET /v3/config/secrets` | `eai env pull --include-secrets` | Fetch secrets |
-| `POST /v3/config/environment` | `eai env push` | Upload environment variables |
-| `POST /v3/verticals` | `eai vertical create` | Create vertical |
+| `GET /health` | `eai verify`, `eai verify calls` | Gateway health check |
+| `GET /v4/identity/tenants` | `eai tenant list/select/info` | Fetch user tenant memberships |
+| `POST /v4/identity/me/provision` | `eai user provision-me` | Self-provision to a tenant |
+| `POST /v4/platform/tenants/{parentId}/children` | `eai tenant create` (child) | Create child tenant |
+| `POST /v4/platform/tenants` | `eai tenant create --allow-root` | Create root tenant |
+| `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` | `eai tenant create` | Bootstrap admin on child tenant |
+| `POST /v4/platform/tenants/{tenantId}/delete` | `eai tenant delete` | Soft-delete tenant |
+| `POST /v4/platform/tenants/{companyTenantId}/apps` | `eai vertical create` | Create app (vertical enrollment) |
+| `GET /v4/platform/users/by-email` | `eai user invite` | Look up a user by email |
+| `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` | `eai user invite` | Provision a user into a tenant |
+| `POST /v4/platform/provisioning/entra-apps[/{clientId}/rotate-secret]` | `eai provision entra` | Create/confirm/rotate Entra app registration |
+| `GET /v4/data/resources/object-types` | `eai types diff/pull/seed` | Fetch Object Types |
+| `POST /v4/data/resources/object-types` | `eai types seed` | Create an Object Type |
+| `PATCH /v4/data/resources/object-types/{id}` | `eai types seed` | Update an Object Type |
+| `GET /v4/data/resources/schema/{tenantId}` | `eai resources schema` | Get published schema |
+| `GET /v4/data/resources/{tenantId}/{type}` | `eai resources list` | List resources |
+| `GET /v4/data/resources/{tenantId}/{type}/{id}` | `eai resources get` | Get resource |
+| `POST /v4/data/resources/{tenantId}/{type}` | `eai resources create` | Create resource |
+| `PUT /v4/data/resources/{tenantId}/{type}/{id}` | `eai resources update` | Update resource |
+| `DELETE /v4/data/resources/{tenantId}/{type}/{id}` | `eai resources delete` | Delete resource |
+| `POST /v4/data/resources/{tenantId}/query` | `eai resources query` | Cross-type query |
+| `POST /v4/data/resources/{tenantId}/{type}/aggregate` | `eai resources aggregate` | Aggregate query |
+| `POST /v4/data/resources/{tenantId}/search` | `eai resources search` | Search projections |
+| `POST /v4/data/resources/{tenantId}/{type}/batch/{create\|update\|delete}` | `eai resources batch-*` | Bulk operations |
+| `*/v4/data/resources/{tenantId}/{type}/{id}/files/{prop}` | `eai resources file *` | File property upload/download/delete |
+| `*/v4/data/resources/{tenantId}/storage[/doctor\|/provision\|/sync-schema]` | `eai resources storage*`, `eai provision storage`, `eai vertical provision` | Storage status/diagnostics/provision/reconcile |
+| `GET /v4/data/resources/{tenantId}/tenant-vertical-enrollment` | `eai vertical list/select/provision` | List/validate app enrollments |
+| `*/v4/data/resources/{tenantId}/shared-workflow-config` (+ `vertical-product-config`, `shared-ai-profile`, `shared-chatbot-config`) | `eai workflow provision` | Upsert workflow/AI runtime config |
+| `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` | `eai chat send` | Send chat message |
+| `POST /v4/ai/chat/stream/{tenantId}/{workflowId}/{stage}` | `eai chat stream` | Stream chat response (SSE) |
+| `GET /v4/integrations/builder/readiness` | `eai workflow readiness` | Check workflow readiness |
+| `GET /v4/workflows/runtime/{key}/status` | `eai workflow status` | Check runtime workflow status |
+| `POST /v4/workflows/runtime-requests` | `eai workflow request` | Request operator-assisted binding |
+| `POST /v4/data/documents/upload` | `eai docs upload` | Upload document |
+| `POST /v4/data/documents/classify` | `eai docs classify` | Classify document |
+| `GET /v4/data/documents/records/{id}` + `POST /v4/data/documents/rag-index` | `eai docs index` | Index document for RAG |
+
+> `eai env pull` / `eai env push` are **not** in this table — they use Azure App Configuration / Key Vault directly (see sections 4–5), not the platform API.
 
 **Failure Impact**: **Critical** — Most CLI commands require platform API  
 **Fallback**: Local-only operations (init, dev, verify connection check)
 
 ---
 
-### 3. EAI AdminAPI
+### 3. Entra App Provisioning (via PublicAPI)
 
-**Type**: REST API  
-**Base URL**: Resolved from PublicAPI environment  
+**Type**: REST API (PublicAPI `/v4/platform`)  
+**Base URL**: Configured via `BASE_URL_PUBLIC_API`  
 **Authentication**: Bearer token (from Entra CIAM)
+
+Entra app provisioning is served by PublicAPI under `/v4/platform/provisioning` — there is no separate AdminAPI dependency for the CLI.
 
 **Endpoints Used**:
 | Endpoint | Used By | Purpose |
 |----------|---------|---------|
-| `POST /admin/entra/provision` | `eai provision entra` | Create/update Entra app registration |
+| `POST /v4/platform/provisioning/entra-apps` | `eai provision entra` | Create/confirm Entra app registration |
+| `POST /v4/platform/provisioning/entra-apps/{clientId}/rotate-secret` | `eai provision entra --rotate-secret` | Rotate the app secret |
 
 **Failure Impact**: **Medium** — Only affects Entra provisioning  
 **Fallback**: Manual Entra app registration via Azure Portal
