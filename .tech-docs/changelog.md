@@ -241,7 +241,7 @@ The v2.8.x series maintains backward compatibility with v2.7.x. All changes are 
 
 **Token Caching**:
 - Reduced unnecessary token refreshes by validating `expiresAt` before API calls
-- Membership cache TTL prevents excessive `/v3/tenants/memberships` calls
+- Membership cache TTL prevents excessive `/v4/identity/tenants` calls
 
 **Update Check Throttling**:
 - Update checks limited to once per 24 hours
