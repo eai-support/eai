@@ -4,6 +4,24 @@ Scaffold, seed, deploy, and manage vertical applications on the EAI platform.
 
 Every command wraps platform API calls — developers work with **resources, types, tenants, and chat** using simple, intuitive commands.
 
+## Public Repository
+
+This repository is the public source for the EnterpriseAI CLI. The README is the
+fast path for developers who want to install the tool, understand what it does,
+and find the maintained documentation.
+
+| Surface | URL | Purpose |
+|---------|-----|---------|
+| Source | https://github.com/eai-tools/eai | CLI source, issues, pull requests, and release tags |
+| Documentation | https://eai-tools.github.io/eai/ | Docusaurus documentation, scenarios, and command reference |
+| Static npm registry | https://eai-tools.github.io/eai/registry/ | GitHub Pages registry used by `npm install -g @eai-tools/cli` |
+| Releases | https://github.com/eai-tools/eai/releases | Versioned GitHub releases and packaged tarballs |
+
+Public-readiness rule for maintainers: everything committed here should be safe
+for a public audience. Do not commit secrets, customer data, private tenant
+details, local `.env` files, unpublished internal architecture notes, or
+temporary build output.
+
 ## Install
 
 Configure the scoped EAI registry once per user:
@@ -334,6 +352,25 @@ npm run typecheck    # Type check without emitting
 npm run lint         # Run ESLint
 ```
 
+## Documentation and GitHub Pages
+
+The documentation site lives in `docs-site/` and renders the source content from
+`.tech-docs/`, the scenario library, and the generated command/API reference.
+GitHub Pages is the public deployment target for both the documentation site and
+the static npm registry used by the install flow.
+
+The `Deploy Docs` workflow builds `docs-site/` on `main` when documentation,
+release-doc, registry, or LLM-help assets change. It uploads `docs-site/build`
+with the official GitHub Pages artifact action and deploys it to the
+`github-pages` environment.
+
+Pages serves these public artifacts:
+
+- `/docs/` and `/scenarios/` — documentation and scenario library
+- `/registry/` — static npm registry metadata and tarballs
+- `/llms.txt`, `/llms-full.txt`, and `/cli-help.txt` — release-facing AI/help
+  surfaces generated from the current CLI
+
 ## Releasing
 
 Releases are managed with `release.sh`. It validates the release candidate locally, bumps the version, refreshes the release-facing docs/help surfaces, regenerates the static registry artifacts, pushes `main` plus the annotated tag, waits for GitHub Actions to create the GitHub release, waits for the docs deployment that updates the static registry, and then verifies the public static registry exposes the new version.
@@ -384,6 +421,17 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 If the static registry does not converge to the new version, the script exits non-zero so the release is treated as incomplete.
 
 The release path publishes the repository exactly as committed. Bundled Gofer and linked-source refreshes happen separately via `npm run sync:gofer` / `npm run sync:linked-sources` and should be committed before you cut a release instead of being fetched during publish time.
+
+Before making or keeping the repository public, run a public-readiness check:
+
+```bash
+npm run release:check
+git grep -n -E "SECRET|TOKEN|PASSWORD|PRIVATE KEY|CLIENT_SECRET|API_KEY|connection string|AccountKey|Bearer "
+```
+
+GitHub secret scanning and push protection should also be enabled for the
+repository so accidental credential commits are blocked or alerted before they
+become a public incident.
 
 Helpful maintainer commands:
 
