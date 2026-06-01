@@ -29,7 +29,8 @@
   },
   "files": [
     "dist",
-    "resources"
+    "resources",
+    "NOTICE"
   ],
   "keywords": [
     "cli",
@@ -42,7 +43,7 @@
     "commander"
   ],
   "author": "EAI Tools",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/eai-tools/eai.git"

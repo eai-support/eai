@@ -16,11 +16,18 @@ and find the maintained documentation.
 | Documentation | https://eai-tools.github.io/eai/ | Docusaurus documentation, scenarios, and command reference |
 | Static npm registry | https://eai-tools.github.io/eai/registry/ | GitHub Pages registry used by `npm install -g @eai-tools/cli` |
 | Releases | https://github.com/eai-tools/eai/releases | Versioned GitHub releases and packaged tarballs |
+| Security | [SECURITY.md](SECURITY.md) | Private vulnerability reporting and supported versions |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) | Public-safe contribution and release workflow |
+| License | [Apache-2.0](LICENSE) | Open source license and patent grant |
 
 Public-readiness rule for maintainers: everything committed here should be safe
 for a public audience. Do not commit secrets, customer data, private tenant
 details, local `.env` files, unpublished internal architecture notes, or
 temporary build output.
+
+Generated Gofer specs, memory files, logs, checkpoints, and local runtime state
+are intentionally ignored. The committed `.specify` directory contains only the
+reusable scripts and templates needed by `eai init` and `eai gofer refresh`.
 
 ## Install
 
