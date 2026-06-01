@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/eai-tools/eai/actions/workflows/ci.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/eai-tools/eai/actions/workflows/codeql.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/eai-tools/eai/badge)](https://securityscorecards.dev/viewer/?uri=github.com/eai-tools/eai)
 [![Docs](https://github.com/eai-tools/eai/actions/workflows/docs.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/docs.yml)
 [![License](https://img.shields.io/github/license/eai-tools/eai)](LICENSE)
 
