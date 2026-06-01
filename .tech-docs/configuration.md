@@ -7,181 +7,58 @@ source_commit: "public-safe"
 
 ## Overview
 
-The EAI CLI uses project-local configuration and environment variables for
-normal public use. Public documentation must not include private environment
-names, internal endpoint hostnames, tenant IDs, client IDs, or developer
-profile setup details.
+For normal public use, the EAI CLI should need very little configuration.
+After `eai login`, the CLI uses your signed-in account and selected tenant to
+route requests automatically. Public documentation must not describe private
+environment names, endpoint hostnames, internal routing, cloud resources, or
+platform infrastructure behind the public API.
 
-The supported public configuration layers are:
+Use this page for safe, user-facing configuration only:
 
-1. **CLI flags** - command-line overrides such as `--format json`
-2. **Environment variables** - runtime overrides via `process.env`
-3. **`eai.config.ts`** - optional project configuration
-4. **`.env.local`** - optional project-local environment values
-5. **Built-in defaults** - public production defaults compiled into the CLI
+1. Output and accessibility preferences
+2. Project-local app metadata
+3. Local files that must not be committed
+4. Troubleshooting commands that do not expose infrastructure details
 
 ---
 
 ## Configuration Sources
 
-Configuration is loaded with the following precedence, highest to lowest:
+Configuration is loaded with this public-facing precedence:
 
 | Source | Purpose |
 |--------|---------|
-| CLI flags | One-off command overrides |
-| Environment variables | Runtime and CI/CD configuration |
-| `eai.config.ts` | Type-safe project configuration |
-| `.env.local` | Developer-local project configuration |
-| Built-in defaults | Public production login and API defaults |
+| CLI flags | One-off command behavior, such as JSON output |
+| Environment variables | Generic runtime behavior, such as color handling |
+| `eai.config.ts` | Optional project metadata |
+| `.env.local` | Optional developer-local app values |
+| CLI defaults | Built-in public behavior |
 
-Do not commit `.env.local`, local tokens, generated secrets, or tenant-specific
-values.
+The CLI may keep local auth and tenant state on your machine after login. Treat
+that state as private and manage it through CLI commands such as `eai login`,
+`eai logout`, `eai whoami`, and `eai tenant select`.
 
 ---
 
-## Project Configuration
+## Sign-In Context
 
-### `.env.local`
-
-**File**: `.env.local` in the project root
-
-**Format**: dotenv `KEY=value`
-
-**Purpose**: Project-specific configuration and secrets that are not committed.
-
-Common variables:
-
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `BASE_URL_PUBLIC_API` | No | Platform API base URL override | `https://api.example.com/public` |
-| `ENTRA_TENANT_ID` | For Entra provisioning | Entra tenant ID for the app being provisioned | `<tenant-id>` |
-| `ENTRA_CLIENT_ID` | For Entra provisioning | Entra client ID for the app being provisioned | `<client-id>` |
-| `ENTRA_CLIENT_SECRET` | For app auth | Entra client secret for the app being provisioned | `<client-secret>` |
-| `AZURE_APP_CONFIG_ENDPOINT` | For env sync | Azure App Configuration endpoint | `https://example.azconfig.io` |
-| `AZURE_KEY_VAULT_URL` | For secret sync | Azure Key Vault URL | `https://example.vault.azure.net/` |
-| `GITHUB_TOKEN` | For deploy automation | GitHub token with the required workflow permissions | `<github-token>` |
-| `GITHUB_REPOSITORY` | For deploy automation | GitHub repository in `owner/repo` form | `org/my-app` |
-| `NEXT_PUBLIC_APP_NAME` | No | Application display name | `My App` |
-| `NODE_ENV` | No | Node environment | `development` |
-
-Example:
+Most configuration starts with sign-in:
 
 ```bash
-# Platform API override, only when your organization gives you one.
-BASE_URL_PUBLIC_API=https://api.example.com/public
-
-# Entra CIAM app registration values for your project.
-ENTRA_TENANT_ID=<tenant-id>
-ENTRA_CLIENT_ID=<client-id>
-ENTRA_CLIENT_SECRET=<client-secret>
-
-# Azure resources.
-AZURE_APP_CONFIG_ENDPOINT=https://example.azconfig.io
-AZURE_KEY_VAULT_URL=https://example.vault.azure.net/
-
-# GitHub automation.
-GITHUB_TOKEN=<github-token>
-GITHUB_REPOSITORY=org/my-app
-
-# Application.
-NEXT_PUBLIC_APP_NAME=My App
-NODE_ENV=development
+eai login
+eai tenant select
+eai whoami
 ```
 
-Security rules:
-
-1. Add `.env.local` to `.gitignore`.
-2. Never commit secrets or tokens.
-3. Prefer `eai env pull --include-secrets` when syncing secrets from Key Vault.
-4. Rotate app secrets when people leave a project or after accidental exposure.
-
-### `eai.config.ts`
-
-**File**: `eai.config.ts` in the project root
-
-**Format**: TypeScript module with a default export
-
-**Purpose**: Type-safe project configuration.
-
-Example:
-
-```typescript
-export default {
-  appName: 'My App',
-  apiUrl: process.env.BASE_URL_PUBLIC_API,
-  features: {
-    chat: true,
-    documents: true,
-  },
-};
-```
-
-The CLI loads this file through `src/lib/config.ts` and merges it with
-environment values.
-
-### `.eai-manifest.json`
-
-**File**: `.eai-manifest.json` in the project root
-
-**Format**: JSON
-
-**Purpose**: Track Gofer assets and managed files installed by the CLI.
-
-Example:
-
-```json
-{
-  "version": "1.0.0",
-  "cliVersion": "2.8.13",
-  "installedAt": 1748025600000,
-  "managedFiles": {
-    ".claude/commands/0_business_scenario.md": {
-      "path": ".claude/commands/0_business_scenario.md",
-      "hash": "sha256:abc123...",
-      "source": "gofer",
-      "installedAt": 1748025600000,
-      "modifiedLocally": false
-    }
-  }
-}
-```
-
-Do not edit the manifest manually; it is managed by `eai init`,
-`eai gofer refresh`, and `eai doctor --check-updates`.
-
----
-
-## Environment Variables
-
-### CLI Runtime
-
-| Variable | Type | Description | Default |
-|----------|------|-------------|---------|
-| `EAI_ACCESS_TOKEN` | string | Access token override for CI/CD or headless use | none |
-| `EAI_PROFILE` | string | Optional local profile selector for private/internal setups | `default` |
-| `BASE_URL_PUBLIC_API` | string | Platform API base URL override | public production default |
-| `NO_COLOR` | string | Disable colored output | not set |
-| `FORCE_COLOR` | string | Force colored output | not set |
-| `NODE_ENV` | string | Node environment | `production` |
-
-### Project Commands
-
-| Variable | Used By | Description |
-|----------|---------|-------------|
-| `BASE_URL_PUBLIC_API` | API commands | Platform API base URL override |
-| `ENTRA_TENANT_ID` | `eai provision entra` | Entra tenant ID |
-| `ENTRA_CLIENT_ID` | `eai provision entra` | Entra client ID |
-| `ENTRA_CLIENT_SECRET` | `eai provision entra` | Entra client secret |
-| `AZURE_APP_CONFIG_ENDPOINT` | `eai env pull` | Azure App Configuration endpoint |
-| `AZURE_KEY_VAULT_URL` | `eai env pull --include-secrets` | Azure Key Vault URL |
-| `GITHUB_TOKEN` | `eai deploy trigger` | GitHub token |
-| `GITHUB_REPOSITORY` | `eai deploy trigger` | GitHub repository |
+`eai whoami` is the safest way to confirm which account and tenant the CLI is
+using. If you need to change tenant, run `eai tenant select`. If you need to
+clear local sign-in state, run `eai logout`.
 
 ---
 
 ## CLI Flags
 
-All commands support these global flags:
+All commands support these public global flags:
 
 | Flag | Type | Description | Default |
 |------|------|-------------|---------|
@@ -189,29 +66,101 @@ All commands support these global flags:
 | `--simple` | boolean | Plain text output for screen readers | `false` |
 | `--no-color` | boolean | Disable colored output | `false` |
 | `--color` | boolean | Force colored output | `false` |
-| `--describe` | boolean | Output JSON schema for commands | `false` |
-| `--profile <name>` | string | Use a locally configured private profile | `default` |
+| `--describe` | boolean | Output machine-readable command metadata | `false` |
 
-CLI flags override every other source.
+Examples:
+
+```bash
+eai whoami --format json
+eai tenant list --simple
+eai doctor --no-color
+```
+
+---
+
+## Environment Variables
+
+Public documentation only describes generic runtime environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `NO_COLOR` | Disable colored terminal output |
+| `FORCE_COLOR` | Force colored terminal output |
+| `NODE_ENV` | Standard Node.js runtime mode |
+
+Do not put credentials, tokens, endpoint URLs, or tenant-specific values into
+committed files. Automation credentials should be stored in your CI provider's
+secret store and supplied according to your organization's onboarding guide.
+
+---
+
+## Project Files
+
+### `.env.local`
+
+**File**: `.env.local` in the project root
+
+**Purpose**: Optional developer-local app values. This file is private to your
+machine and should not be committed.
+
+Public-safe example:
+
+```bash
+NEXT_PUBLIC_APP_NAME=My App
+NODE_ENV=development
+```
+
+Rules:
+
+1. Keep `.env.local` in `.gitignore`.
+2. Do not commit tokens, API keys, client secrets, tenant-specific values, or
+   endpoint URLs.
+3. Use your deployment provider's secret management for deployed applications.
+
+### `eai.config.ts`
+
+**File**: `eai.config.ts` in the project root
+
+**Purpose**: Optional type-safe project metadata.
+
+Public-safe example:
+
+```typescript
+export default {
+  appName: 'My App',
+  features: {
+    chat: true,
+    documents: true,
+  },
+};
+```
+
+Keep this file free of secrets and environment-specific endpoints.
+
+### `.eai-manifest.json`
+
+**File**: `.eai-manifest.json` in the project root
+
+**Purpose**: Track Gofer-managed files installed by the CLI.
+
+This file is managed by CLI commands such as `eai init`, `eai gofer refresh`,
+and `eai doctor --check-updates`. Do not edit it manually.
 
 ---
 
 ## Secrets
 
-| Secret | Storage | Required For |
-|--------|---------|--------------|
-| Access token | CLI-managed local token cache | Authenticated API calls |
-| Entra client secret | `.env.local` or Key Vault | App authentication |
-| Azure App Config connection string | `.env.local` or Key Vault | Environment sync |
-| GitHub token | `.env.local` or CI secret storage | Deployment automation |
+Never commit secrets. That includes:
 
-Best practices:
+1. Access tokens
+2. API keys
+3. Client secrets
+4. Private endpoint URLs
+5. Tenant-specific identifiers
+6. Generated credentials
 
-1. Never commit `.env.local`, tokens, API keys, client secrets, or generated
-   credentials.
-2. Use GitHub Actions secrets for CI/CD.
-3. Use Azure Key Vault for deployed app secrets.
-4. Use `eai env list` to inspect configuration; secret values are masked.
+For local development, keep private values in ignored local files. For CI/CD and
+hosted deployments, use the secret store provided by your deployment platform.
 
 ---
 
@@ -221,93 +170,73 @@ Best practices:
 flowchart TB
     Start[Command execution]
     Flags[Parse CLI flags]
-    EnvVars[Read environment variables]
+    EnvVars[Read generic environment variables]
     EaiConfig[Load eai.config.ts]
     EnvLocal[Load .env.local]
-    Defaults[Apply built-in defaults]
-    Merge[Merge configuration]
-    End[Final configuration]
+    Defaults[Apply CLI defaults]
+    End[Final command settings]
 
     Start --> Flags
     Flags --> EnvVars
     EnvVars --> EaiConfig
     EaiConfig --> EnvLocal
     EnvLocal --> Defaults
-    Defaults --> Merge
-    Merge --> End
+    Defaults --> End
 ```
-
-Precedence:
-
-1. CLI flags
-2. Environment variables
-3. `eai.config.ts`
-4. `.env.local`
-5. Built-in defaults
-
----
-
-## Validation
-
-The CLI validates configuration at runtime:
-
-| Command Area | Validation |
-|--------------|------------|
-| API commands | Platform API URL, authentication token, tenant context |
-| `eai types seed` | Object Type schema shape and JSON Schema compatibility |
-| `eai provision entra` | Entra tenant/client values and redirect URI settings |
-| `eai env pull` | Azure App Configuration endpoint, Key Vault URL, Azure CLI auth |
 
 ---
 
 ## Troubleshooting
 
-**Error: `E002: BASE_URL_PUBLIC_API environment variable not set`**
+**Not sure which account or tenant is active?**
 
-Cause: the command needs a Platform API URL and no default or override was
-available.
+Run:
 
-Fix: set `BASE_URL_PUBLIC_API` to the public API URL supplied by your
-organization.
+```bash
+eai whoami
+```
 
-**Error: `E101: Not logged in`**
+**Need to switch tenant?**
 
-Cause: no valid access token is available.
+Run:
 
-Fix: run `eai login`.
+```bash
+eai tenant select
+```
 
-**Error: `E104: Authentication failed`**
+**Need to clear local sign-in state?**
 
-Cause: the token expired or is invalid.
+Run:
 
-Fix: run `eai login` again.
+```bash
+eai logout
+```
 
-**Error: `ENTRA_CLIENT_ID environment variable not set`**
+**Need a quick health check?**
 
-Cause: Entra credentials are missing for the current project.
-
-Fix: run `eai provision entra` or add the required values to `.env.local`.
-
-### Diagnostics
+Run:
 
 ```bash
 eai doctor
-eai doctor --check-updates
-eai whoami
-eai env list
 ```
 
-`eai env list` masks secrets in text and JSON output.
+**Need machine-readable output for automation?**
+
+Run commands with JSON output:
+
+```bash
+eai whoami --format json
+```
 
 ---
 
-## Configuration Files Summary
+## Public Checklist
 
-| File | Purpose | Format | Source |
-|------|---------|--------|--------|
-| CLI token cache | Access and refresh tokens | JSON | CLI-managed |
-| CLI tenant context cache | Active tenant and memberships | JSON | CLI-managed |
-| CLI update cache | Update check timestamp | Plain text | CLI-managed |
-| `.env.local` | Project configuration and secrets | dotenv | User-managed |
-| `eai.config.ts` | TypeScript project configuration | TypeScript | User-managed |
-| `.eai-manifest.json` | Gofer managed file tracking | JSON | CLI-managed |
+Before committing a project that uses the EAI CLI:
+
+1. `.env.local` is ignored.
+2. No secrets or tokens are committed.
+3. No private endpoint URLs are committed.
+4. No tenant-specific identifiers are committed.
+5. `eai.config.ts` contains only public-safe project metadata.
+6. `eai doctor` runs successfully for your local setup.
