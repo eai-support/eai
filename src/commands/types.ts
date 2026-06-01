@@ -581,7 +581,7 @@ Workflow:
 typesCommand
   .command('seed')
   .description('Push Object Types to platform')
-  .option('--env <environment>', 'Target environment', 'dev')
+  .option('--env <label>', 'Optional deployment label for compatibility')
   .option('--tenant-key <key>', 'Specific tenant key from object-types.ts')
   .option('--tenant-id <id>', 'Override the resolved tenant ID (use with --tenant-key)')
   .option('--dry-run', 'Show what would be seeded without making changes', false)
@@ -592,7 +592,7 @@ Examples:
   $ eai types seed
   $ eai types seed --dry-run
   $ eai types seed --tenant-key trial-portal
-  $ eai types seed --tenant-key template --tenant-id 50808ce0-f31b-4fd0-9861-74b83b8c112a
+  $ eai types seed --tenant-key template --tenant-id 00000000-0000-4000-8000-000000000000
   $ eai types seed --format json | jq
   `)
   .action(async (options) => {

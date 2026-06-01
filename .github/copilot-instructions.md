@@ -44,4 +44,4 @@ or workflow logs.
 - `eai update` upgrades the installed CLI package only
 - `eai gofer refresh --check` previews safe Gofer-managed repo updates
 - `eai doctor --check-updates` reports CLI, Gofer, and template drift
-- `eai template check` previews vertical-template and UI drift before manual updates
+- `eai template check` previews app-template and UI drift before manual updates

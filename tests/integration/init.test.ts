@@ -51,7 +51,7 @@ const pkg = require("../../package.json") as { version: string };
 const linkedSources = require("../../resources/linked-sources.json") as {
   verticalTemplate: { commit: string };
 };
-const TEST_PUBLIC_API_URL = "https://test-api.au.myenterprise.ai/public";
+const TEST_PUBLIC_API_URL = "https://profile-test.example.test/public";
 
 function allowedCapability() {
   return {
@@ -177,12 +177,12 @@ describe("eai init", () => {
     const tenantCtxSpy = vi
       .spyOn(tenantContext, "resolveActiveTenantContext")
       .mockResolvedValue({
-        publicApiUrl: "https://test-api.au.myenterprise.ai/public",
+        publicApiUrl: "https://profile-test.example.test/public",
         tokens: {
           accessToken: "access",
           expiresAt: Date.now() + 60_000,
           tenantId: "ciam-guid",
-          tenantName: "enterpriseaitestplatform",
+          tenantName: "profile-test-tenant",
           clientId: "client-id",
         },
         activeTenant: {
@@ -200,7 +200,7 @@ describe("eai init", () => {
       accessToken: "access",
       expiresAt: Date.now() + 60_000,
       tenantId: "ciam-guid",
-      tenantName: "enterpriseaitestplatform",
+      tenantName: "profile-test-tenant",
       clientId: "client-id",
     });
     const capabilitySpy = vi
@@ -375,12 +375,12 @@ describe("eai init", () => {
     const tenantCtxSpy = vi
       .spyOn(tenantContext, "resolveActiveTenantContext")
       .mockResolvedValue({
-        publicApiUrl: "https://test-api.au.myenterprise.ai/public",
+        publicApiUrl: "https://profile-test.example.test/public",
         tokens: {
           accessToken: "access",
           expiresAt: Date.now() + 60_000,
           tenantId: "ciam-guid",
-          tenantName: "enterpriseaitestplatform",
+          tenantName: "profile-test-tenant",
           clientId: "client-id",
         },
         activeTenant: {
@@ -398,7 +398,7 @@ describe("eai init", () => {
       accessToken: "access",
       expiresAt: Date.now() + 60_000,
       tenantId: "ciam-guid",
-      tenantName: "enterpriseaitestplatform",
+      tenantName: "profile-test-tenant",
       clientId: "client-id",
       oid: "user-oid",
       upn: "user@example.com",
@@ -496,7 +496,7 @@ describe("eai init", () => {
           accessToken: "access",
           expiresAt: Date.now() + 60_000,
           tenantId: "ciam-guid",
-          tenantName: "enterpriseaitestplatform",
+          tenantName: "profile-test-tenant",
           clientId: "client-id",
         },
         activeTenant: {
@@ -513,7 +513,7 @@ describe("eai init", () => {
       accessToken: "access",
       expiresAt: Date.now() + 60_000,
       tenantId: "ciam-guid",
-      tenantName: "enterpriseaitestplatform",
+      tenantName: "profile-test-tenant",
       clientId: "client-id",
     });
     const capabilitySpy = vi
@@ -646,7 +646,7 @@ describe("eai init", () => {
           accessToken: "access",
           expiresAt: Date.now() + 60_000,
           tenantId: "ciam-guid",
-          tenantName: "enterpriseaitestplatform",
+          tenantName: "profile-test-tenant",
           clientId: "client-id",
         },
         activeTenant: {
@@ -663,7 +663,7 @@ describe("eai init", () => {
       accessToken: "access",
       expiresAt: Date.now() + 60_000,
       tenantId: "ciam-guid",
-      tenantName: "enterpriseaitestplatform",
+      tenantName: "profile-test-tenant",
       clientId: "client-id",
     });
     const capabilitySpy = vi
@@ -748,16 +748,16 @@ describe("eai init", () => {
     const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(false);
     const publicApiSpy = vi
       .spyOn(tenantContext, "resolvePublicApiUrl")
-      .mockResolvedValue("https://test-api.au.myenterprise.ai/public");
+      .mockResolvedValue("https://profile-test.example.test/public");
     const tenantSpy = vi
       .spyOn(tenantContext, "resolveActiveTenantContext")
       .mockResolvedValue({
-        publicApiUrl: "https://test-api.au.myenterprise.ai/public",
+        publicApiUrl: "https://profile-test.example.test/public",
         tokens: {
           accessToken: "access",
           expiresAt: Date.now() + 60_000,
           tenantId: "ciam-guid",
-          tenantName: "enterpriseaitestplatform",
+          tenantName: "profile-test-tenant",
           clientId: "client-id",
         },
         activeTenant: {
@@ -774,7 +774,7 @@ describe("eai init", () => {
       accessToken: "access",
       expiresAt: Date.now() + 60_000,
       tenantId: "ciam-guid",
-      tenantName: "enterpriseaitestplatform",
+      tenantName: "profile-test-tenant",
       clientId: "client-id",
     });
     const capabilitySpy = vi
@@ -824,10 +824,10 @@ describe("eai init", () => {
         "utf-8",
       );
       expect(envContent).toContain(
-        "BASE_URL_PUBLIC_API=https://test-api.au.myenterprise.ai/public",
+        "BASE_URL_PUBLIC_API=https://profile-test.example.test/public",
       );
       expect(envContent).toContain(
-        "ENTRA_TENANT_NAME=enterpriseaitestplatform",
+        "ENTRA_TENANT_NAME=profile-test-tenant",
       );
       expect(envContent).toContain("ENTRA_TENANT_ID=ciam-guid");
       expect(envContent).toContain("EAI_PARENT_TENANT_ID=tenant-123");

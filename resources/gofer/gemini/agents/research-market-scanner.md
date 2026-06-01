@@ -51,7 +51,7 @@ solutions already exist before committing to building custom software.
 Break the problem statement into searchable components:
 
 - Core problem keywords
-- Industry vertical keywords
+- Industry keywords
 - Technology domain keywords
 - Solution category keywords (e.g., "CRM", "workflow automation")
 

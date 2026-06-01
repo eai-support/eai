@@ -87,7 +87,7 @@ Services and APIs that the CLI calls:
 ### 2. EAI Platform API (PublicAPI v4)
 
 **Type**: REST API  
-**Base URL**: Configured via `BASE_URL_PUBLIC_API` (e.g., `https://api.ae.myenterprise.ai/public`)  
+**Base URL**: Configured via `BASE_URL_PUBLIC_API` when an override is required
 **Authentication**: Bearer token (from Entra CIAM)  
 
 **Endpoints Used** (grouped by v4 domain):
@@ -101,7 +101,7 @@ Services and APIs that the CLI calls:
 | `POST /v4/platform/tenants` | `eai tenant create --allow-root` | Create root tenant |
 | `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` | `eai tenant create` | Bootstrap admin on child tenant |
 | `POST /v4/platform/tenants/{tenantId}/delete` | `eai tenant delete` | Soft-delete tenant |
-| `POST /v4/platform/tenants/{companyTenantId}/apps` | `eai vertical create` | Create app (vertical enrollment) |
+| `POST /v4/platform/tenants/{companyTenantId}/apps` | `eai vertical create` | Create app enrollment |
 | `GET /v4/platform/users/by-email` | `eai user invite` | Look up a user by email |
 | `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` | `eai user invite` | Provision a user into a tenant |
 | `POST /v4/platform/provisioning/entra-apps[/{clientId}/rotate-secret]` | `eai provision entra` | Create/confirm/rotate Entra app registration |
@@ -189,8 +189,8 @@ Entra app provisioning is served by PublicAPI under `/v4/platform/provisioning` 
 **Deployment**: Via GitHub Actions (not directly by CLI)
 
 **Used By**: `eai deploy` (indirectly via GitHub Actions)  
-**Purpose**: Deployment target for vertical applications  
-**Failure Impact**: **Medium** — Affects vertical app deployment only  
+**Purpose**: Deployment target for applications
+**Failure Impact**: **Medium** — Affects app deployment only
 **Fallback**: Manual Azure Portal deployment
 
 ---

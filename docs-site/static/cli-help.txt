@@ -10,8 +10,7 @@ eai --help
 
 Usage: eai [options] [command]
 
-Enterprise AI Platform CLI — scaffold, seed, deploy, and manage vertical
-applications
+Enterprise AI Platform CLI — scaffold, seed, deploy, and manage applications
 
 Options:
   -V, --cli-version      output the version number
@@ -19,12 +18,12 @@ Options:
                          readers)
   --no-color             Disable colored output
   --color                Force colored output
-  --profile <name>       Use a named environment profile (e.g. dev, test)
+  --profile <name>       Use a locally configured private profile
   --describe             Output JSON schema of all commands
   -h, --help             display help for command
 
 Commands:
-  init [options] [name]  Scaffold a new vertical application
+  init [options] [name]  Scaffold a new application
   dev [options]          Start local development server
   login [options]        Authenticate with Entra CIAM
   logout                 Clear stored authentication tokens
@@ -35,23 +34,23 @@ Commands:
   resources              CRUD operations on platform resources
   vertical               Manage apps under the active company tenant
   chat                   Chat with AI workflows
-  workflow               Provision vertical workflow configs and inspect AI
-                         runtime workflow bindings
+  workflow               Provision app workflow configs and inspect AI runtime
+                         workflow bindings
   docs                   Document upload, classification, and indexing
   deploy                 Deployment management
   verify [options]       Run platform connectivity checks
   doctor [options]       Diagnose common issues and suggest fixes
   whoami                 Show auth status and tenant info
   update [options]       Check for and install CLI updates
-  provision              Provision platform resources for this vertical
+  provision              Provision platform resources for this app
   gofer                  Inspect and refresh Gofer-managed project assets
-  template               Preview vertical template and UI component drift for
+  template               Preview application template and UI component drift for
                          the current project
   blocks                 Discover AI-readable EAI UI block manifests
   help [command]         display help for command
 
 Getting Started:
-  eai init my-vertical     Scaffold a vertical app with Gofer AI CLI assets
+  eai init my-app     Scaffold an app with Gofer AI CLI assets
   eai login                Authenticate with Entra CIAM
   eai provision entra      Create Entra app registration for end-user auth
   eai env pull             Sync app config from cloud
@@ -110,10 +109,10 @@ Updates:
   eai gofer refresh --check preview managed Gofer asset updates for this repo
   eai gofer refresh        apply safe Gofer-managed asset updates with backups
 
-  # Preview vertical-template and UI component drift before copying changes
-  eai template check       review potential vertical or UI file updates without overwriting local work
+  # Preview app-template and UI component drift before copying changes
+  eai template check       review potential app or UI file updates without overwriting local work
 
-  # Discover AI-readable UI blocks for Gofer and vertical apps
+  # Discover AI-readable UI blocks for Gofer and apps
   eai blocks list --readiness public-ready
                                   list foundation, product, addon, and demo block IDs
   eai blocks describe core.button
@@ -146,7 +145,7 @@ Notes:
   - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
   - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
   - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
-  - Use `eai template check` to preview vertical-template and UI drift before copying changes manually.
+  - Use `eai template check` to preview app-template and UI drift before copying changes manually.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
 
 ---
@@ -171,7 +170,7 @@ Examples:
 Notes:
   - `eai update` upgrades the installed CLI package only.
   - `eai gofer refresh --check` previews safe repo-local Gofer asset updates.
-  - `eai template check` previews vertical-template and UI drift without writing files.
+  - `eai template check` previews app-template and UI drift without writing files.
   - Template and UI component changes are not auto-merged into existing repos yet.
 
 ---
@@ -216,7 +215,7 @@ eai template --help
 
 Usage: eai template [options] [command]
 
-Preview vertical template and UI component drift for the current project
+Preview application template and UI component drift for the current project
 
 Options:
   -h, --help       display help for command

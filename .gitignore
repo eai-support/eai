@@ -4,6 +4,7 @@ dist/
 .env
 .env.local
 .DS_Store
+/*.tgz
 
 # IDE / local tooling
 .claude/

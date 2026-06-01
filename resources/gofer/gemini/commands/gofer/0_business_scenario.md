@@ -370,13 +370,13 @@ In EnterpriseAI mode, assume the request is application delivery unless the
 user's intent is clearly non-app. Roughly 90% of Gofer business requests should
 be treated this way: the user is trying to improve a customer journey or
 business process by building an app, workflow, portal, dashboard, mobile
-experience, form, assistant, or vertical application.
+experience, form, assistant, or application.
 
 ### Application Signals
 
 Treat the request as application delivery when it includes any of these signals:
 
-- Build an app, tool, dashboard, portal, workflow, form, chatbot, or vertical.
+- Build an app, tool, dashboard, portal, workflow, form, chatbot, or guided application.
 - Improve how a customer, employee, advisor, agent, or operator completes work.
 - Replace a manual process with a guided digital process.
 - Use EnterpriseAI data, object types, screens, APIs, or tenant context.
@@ -417,7 +417,7 @@ remove existing non-app functionality or fork Gofer into unrelated products.
 
 | Mode | Stage Behavior |
 | ---- | -------------- |
-| Application delivery | Shared stages gain a UI-first interview, a Vertical Template constrained preview loop, preview self-review, optional branding intake, an explicit UI approval gate, and a post-approval EnterpriseAI service-fit gate before plan/tasks are finalized |
+| Application delivery | Shared stages gain a UI-first interview, an Application Template constrained preview loop, preview self-review, optional branding intake, an explicit UI approval gate, and a post-approval EnterpriseAI service-fit gate before plan/tasks are finalized |
 | Non-app work | Shared stages preserve the current research, documentation, exploration, bug-fix, migration, audit, and other non-app workflows without app-only preview, branding, or service-fit requirements |
 
 ---
@@ -439,8 +439,7 @@ For app delivery, the default early process is:
 1. **Interview and visual brief** — understand the MVP outcome, must-have
    screens, target users, workflow goals, and whether client branding or logos
    must be applied.
-2. **Constrained MVP preview** — generate the first preview from the Vertical
-   Template blocks already installed in the project by `eai`, rather than
+2. **Constrained MVP preview** — generate the first preview from the Application Template blocks already installed in the project by `eai`, rather than
    from an unconstrained custom UI.
 3. **Preview self-review and approval** — use screenshot or Playwright-style
    local review before showing the preview, then iterate with the stakeholder
@@ -458,10 +457,10 @@ and coupling path before research starts:
 | Intake Field | Required Decision |
 | ------------ | ----------------- |
 | Profile choice | External, internal, or hybrid package profile |
-| Package lane | Public reusable block package, internal vertical app, hybrid adapter, or app-local implementation |
+| Package lane | Public reusable block package, internal app, hybrid adapter, or app-local implementation |
 | Coupling status | DAISY-coupled, DAISY-decoupled, or hybrid adapter boundary |
 | Public-readiness target | Whether the first delivery must be ready for external package consumers |
-| Block porting need | Reuse existing block, port a Vertical Template block, or request a custom-block exception |
+| Block porting need | Reuse existing block, port an Application Template block, or request a custom-block exception |
 
 External and hybrid profile choices require explicit public-readiness,
 block-porting, DAISY decoupling, Storybook, and theme-override evidence in the
@@ -892,7 +891,7 @@ When the workflow profile is `enterpriseai` or no profile is specified:
 - Non-EAI platforms must never be presented as primary recommendations during
   discovery. They may only appear as optional reference material in the research
   stage, clearly labelled as non-primary.
-- All recommended scenarios must map to an EnterpriseAI vertical application
+- All recommended scenarios must map to an EnterpriseAI application
   (business analysis → EAI services → deployment target).
 - Maintain a running domain model using the user's vocabulary. Ask adaptive
   follow-up questions that clarify actors, object types, workflows, tenant
@@ -909,7 +908,7 @@ stages to create these artifacts without re-interviewing the user:
 | Artifact | Required Content |
 | -------- | ---------------- |
 | `journeys/base-journey.md` | Application classification, four-step-or-fewer AI-augmented customer journey, step goals, AI assistance, context used, controls, completion criteria |
-| `ui-preview-brief.md` | App-delivery-only preview brief: target screens, Vertical Template component constraints, branding inputs, preview validation expectations |
+| `ui-preview-brief.md` | App-delivery-only preview brief: target screens, Application Template component constraints, branding inputs, preview validation expectations |
 | `ui-review-log.md` | App-delivery-only iteration log: preview evidence, requested changes, accepted changes, unresolved issues |
 | `ui-approval.md` | App-delivery-only approval gate: approved preview, approved branding, approved component exceptions, approver and timestamp |
 | `service-fit-matrix.md` | App-delivery-only service selection evidence: desired platform capability, evidence source, accessible now vs purchasable vs unavailable, selected direction |

@@ -7,7 +7,7 @@ source_commit: "df335d77f761962bcc84d71b2c2025c700aaff47"
 
 ## Overview
 
-The EAI CLI groups its commands into scaffolding, authentication, tenant and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, vertical/app management, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
+The EAI CLI groups its commands into scaffolding, authentication, tenant and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, app management, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
 
 The v4 surface is grouped by domain prefix:
 
@@ -35,7 +35,7 @@ The v4 surface is grouped by domain prefix:
 ### Scaffolding Commands
 
 #### `eai init`
-Scaffold a new vertical application from the EAI app template.
+Scaffold a new application from the EAI app template.
 
 **Options**:
 - `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-tools/eai-app-template.git`)
@@ -155,7 +155,7 @@ Create a new tenant and bootstrap admin access.
 - `--domain <domains>` — Comma-separated domain list
 - `--usecase <usecase>` — `council|retail|healthcare|finance|manufacturing|generic` (default: `generic`)
 - `--industry <industry>` — Signup/onboarding industry segment
-- `--starter-template <key>` — Starter vertical template key (default: `blank-vertical-template`)
+- `--starter-template <key>` — Starter application template key (default: `blank-vertical-template`)
 - `--allow-root` — Allow root tenant creation for administrative backfills
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -588,12 +588,12 @@ Stream a chat response over SSE.
 ### Workflow Commands
 
 #### `eai workflow provision <workflow-key>`
-Provision a usecase-agnostic workflow config and bind it to a tenant vertical. Optionally creates the AI runtime records.
+Provision a usecase-agnostic workflow config and bind it to a tenant app. Optionally creates the AI runtime records.
 
 **Arguments**: `<workflow-key>`
 
 **Key options**:
-- `--vertical <key>` — Tenant vertical/app key that consumes this workflow (required)
+- `--vertical <key>` — Tenant app key that consumes this workflow (required)
 - `--tenant <id>` — Tenant to provision against (default: active tenant)
 - `--display-name <name>` — Workflow display name
 - `--usecase <usecase>` — Workflow usecase namespace (default: `generic`)
@@ -626,7 +626,7 @@ Provision a usecase-agnostic workflow config and bind it to a tenant vertical. O
 ---
 
 #### `eai workflow readiness [workflow-keys...]`
-Check tenant, plan, and workflow readiness for building a vertical.
+Check tenant, plan, and workflow readiness for building an app.
 
 **Arguments**: `[workflow-keys...]` (optional)
 
@@ -783,7 +783,7 @@ Validate the installed block catalog, or a manifest JSON file.
 
 ---
 
-### Vertical Commands
+### App Commands (`eai vertical`)
 
 #### `eai vertical list`
 List apps for the active company tenant.
@@ -809,7 +809,7 @@ Create an app under a company tenant.
 - `--child-tenant <name>` — Create or reuse a child company tenant (display name)
 - `--child-tenant-slug <slug>` — Child company tenant key
 - `--key <key>` — Stable app key (defaults to kebab-case of `<name>`)
-- `--template <templateKey>` — Optional vertical-catalog template key
+- `--template <templateKey>` — Optional app-catalog template key
 - `--source <source>` — Creation source (default: `eai-cli`)
 - `--app-url <url>` — Optional app URL
 - `--status <status>` — Initial lifecycle status (default: `pending`)
@@ -938,7 +938,7 @@ Safely refresh Gofer-managed assets in the current project.
 ---
 
 #### `eai template check`
-Preview file-level vertical-template / UI drift without writing to the repo.
+Preview file-level app-template / UI drift without writing to the repo.
 
 **Options**:
 - `--format <format>` — Output format (text|json, default: text)
@@ -960,7 +960,7 @@ Preview file-level vertical-template / UI drift without writing to the repo.
 - `POST /v4/platform/tenants/{parentId}/children` — Create child tenant
 - `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` — Bootstrap admin on a child tenant
 - `POST /v4/platform/tenants/{tenantId}/delete` — Soft-delete tenant
-- `POST /v4/platform/tenants/{companyTenantId}/apps` — Create app (vertical enrollment)
+- `POST /v4/platform/tenants/{companyTenantId}/apps` — Create app enrollment
 
 ### Platform — Users & Capabilities
 - `GET /v4/platform/users/by-email` — Look up a user by email
@@ -1035,7 +1035,7 @@ These flags are available on the root `eai` command:
 | `--simple` | boolean | Plain text output without colors or symbols (for screen readers) |
 | `--no-color` | boolean | Disable colored output |
 | `--color` | boolean | Force colored output |
-| `--profile <name>` | string | Use a named environment profile (e.g. dev, test) |
+| `--profile <name>` | string | Use a locally configured private profile |
 | `--describe` | boolean | Output a JSON schema of the command structure (for AI agents) |
 
 Most data-returning subcommands additionally accept `--format <format>` (`text` default, or `json`). A legacy `--json` boolean is accepted on many commands but is deprecated in favor of `--format json`.

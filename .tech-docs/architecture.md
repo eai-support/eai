@@ -72,7 +72,7 @@ Commands are organized by functional domain:
 | **Deploy** | `deploy.ts` | GitHub Actions deployment orchestration |
 | **Diagnostics** | `verify.ts` | Platform connectivity, health checks, doctor mode |
 | **Maintenance** | `update.ts`, `gofer.ts`, `template.ts` | CLI updates, Gofer asset refresh, template drift |
-| **Blocks** | `blocks.ts`, `vertical.ts` | UI block catalog management, vertical metadata |
+| **Blocks** | `blocks.ts`, `vertical.ts` | UI block catalog management, app metadata |
 
 Each command follows a consistent pattern:
 1. Parse options and validate prerequisites
@@ -136,8 +136,8 @@ Each command follows a consistent pattern:
 
 **PublicAPI regional routing boundary**
 - `resolvePublicApiUrl()` chooses the PublicAPI base URL in this order: named profile override, project/process `BASE_URL_PUBLIC_API`, stored active tenant `homeRegion`, authenticated session routing, then the AU production default.
-- Session routing uses the current bearer token from `auth.ts` only against the configured bootstrap resolver. The returned `apiBaseUrl` is accepted only when it is a trusted EAI regional PublicAPI host (`dev-api.*`, `test-api.*`, or `api.*`) or a loopback host for local dev-stack.
-- Host-only regional responses such as `https://api.ca.myenterprise.ai` are normalized to the PublicAPI gateway path (`/public`) before later CLI calls attach bearer tokens.
+- Session routing uses the current bearer token from `auth.ts` only against the configured bootstrap resolver. The returned `apiBaseUrl` is accepted only when it is a trusted PublicAPI host or a loopback host for local dev-stack.
+- Host-only regional responses are normalized to the PublicAPI gateway path (`/public`) before later CLI calls attach bearer tokens.
 
 **`schema-builder.ts` - CLI Introspection**
 - Generates JSON schema from Commander.js program structure
@@ -190,7 +190,7 @@ Each command follows a consistent pattern:
 - Functions: `pullEnv()`, `pushEnv()`, `listEnv()`
 
 **`profile.ts` - Profile Management**
-- Multi-environment profile support (dev, test, prod)
+- Private profile support for locally configured contexts
 - Profile-specific configuration loading
 - Functions: `loadProfile()`, `listProfiles()`, `setActiveProfile()`
 

@@ -1,6 +1,11 @@
 # eai — Enterprise AI Platform CLI
 
-Scaffold, seed, deploy, and manage vertical applications on the EAI platform.
+[![CI](https://github.com/eai-tools/eai/actions/workflows/ci.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/eai-tools/eai/badge)](https://securityscorecards.dev/viewer/?uri=github.com/eai-tools/eai)
+[![Docs](https://github.com/eai-tools/eai/actions/workflows/docs.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/docs.yml)
+[![License](https://img.shields.io/github/license/eai-tools/eai)](LICENSE)
+
+Scaffold, seed, deploy, and manage applications on the EAI platform.
 
 Every command wraps platform API calls — developers work with **resources, types, tenants, and chat** using simple, intuitive commands.
 
@@ -54,9 +59,9 @@ npm install -g ./docs-site/static/registry/-/@eai-tools/cli-latest.tgz
 ## Quick Start
 
 ```bash
-# 1. Create a new vertical
-eai init my-vertical
-cd my-vertical
+# 1. Create a new app
+eai init my-app
+cd my-app
 npm install
 
 # 2. Authenticate
@@ -84,11 +89,11 @@ eai types seed
 eai dev
 ```
 
-`eai init` installs Gofer AI terminal assets by default. New vertical repos include
+`eai init` installs Gofer AI terminal assets by default. New app repos include
 Claude commands and agents, Codex skills, Gemini commands, Copilot prompts and
 CLI skills, and the `.specify` commands/scripts/templates/hooks required to run
 the Gofer pipeline.
-Use `eai init my-vertical --no-gofer` only when you need a bare scaffold.
+Use `eai init my-app --no-gofer` only when you need a bare scaffold.
 
 ## Global Flags
 
@@ -96,7 +101,7 @@ All commands support these global flags:
 
 | Flag | Description |
 |------|-------------|
-| `--profile <name>` | Use a named environment profile (e.g. dev, test) |
+| `--profile <name>` | Use a locally configured private profile |
 | `--simple` | Plain text output without colors or symbols (for screen readers) |
 | `--no-color` | Disable colored output |
 | `--color` | Force colored output (for testing) |
@@ -109,7 +114,7 @@ All commands support these global flags:
 
 | Command | Description |
 |---------|-------------|
-| `eai init [name]` | Interactive scaffold from the CLI-pinned public EAI vertical template with Gofer AI CLI assets |
+| `eai init [name]` | Interactive scaffold from the CLI-pinned public EAI application template with Gofer AI CLI assets |
 | `eai dev` | Start local dev server with connectivity checks |
 
 The bundled default template is versioned with the installed CLI. Use `--from`
@@ -122,7 +127,7 @@ to override it with a different repository or a local template path.
 | `eai login` | Authenticate with Entra CIAM (browser-based PKCE flow) |
 | `eai logout` | Clear stored tokens |
 | `eai whoami` | Show auth status and project context |
-| `eai provision entra` | Create or confirm the vertical's Entra app registration in the CIAM for the active platform environment |
+| `eai provision entra` | Create or confirm the app's Entra app registration in the CIAM for the active platform environment |
 | `eai provision entra --rotate-secret` | Rotate the existing app registration secret and write the new value to `.env.local` |
 | `eai user invite --email <email>` | Add an existing user to the active tenant or an explicit tenant |
 | `eai user provision-me` | Provision yourself to the active tenant or an explicit tenant |
@@ -194,7 +199,7 @@ to override it with a different repository or a local template path.
 | `eai verify calls` | Audit platform API contracts used by the CLI (supports read-only `--tenant-id`) |
 | `eai doctor` | Comprehensive diagnostics with fix suggestions |
 | `eai gofer refresh` | Safely refresh repo-local Gofer-managed assets with backups and conflict detection |
-| `eai template check` | Preview vertical-template and UI drift without writing files |
+| `eai template check` | Preview app-template and UI drift without writing files |
 
 ## Tenant Lifecycle Truth
 
@@ -304,13 +309,13 @@ terminals used in this workspace:
 The shared workflow artifacts live under `.specify/`: commands, scripts,
 templates, hooks, memory, logs, and generated feature specs. Runtime state is
 added to `.gitignore`; command definitions and templates are committed with the
-vertical.
+app.
 
 ### Updating an existing repo safely
 
 `eai update` updates the installed CLI package only. It does **not** blindly
 rewrite Gofer assets, template files, or UI components inside an existing
-vertical repo.
+app repo.
 
 Use these commands instead:
 
@@ -324,7 +329,7 @@ eai doctor --check-updates
 # Preview safe Gofer-managed asset updates for the current repo
 eai gofer refresh --check
 
-# Preview vertical-template and UI component drift before copying changes manually
+# Preview app-template and UI component drift before copying changes manually
 eai template check
 
 # Apply only the safe Gofer-managed file updates, with backups for replaced files
@@ -340,7 +345,7 @@ Important boundaries:
   local edits and avoid overwriting them accidentally.
 - If a tracked managed file has local edits, refresh leaves it untouched unless
   you explicitly pass `--force`, and even then it backs the file up first.
-- `eai template check` previews file-level drift against the current vertical
+- `eai template check` previews file-level drift against the current app
   template snapshot and highlights which files are new versus which need manual
   review, including likely UI paths under `src/app` and `src/components`.
 - Template or UI component changes are **not** auto-merged into existing repos

@@ -90,34 +90,6 @@ interface TenantMembership {
 
 ---
 
-### Profile Configuration
-
-**File**: `~/.eai/config.json`
-
-**Format**: Plain JSON
-
-**Schema**:
-```typescript
-interface GlobalConfig {
-  activeProfile?: string;      // Currently active profile name
-  profiles?: Record<string, ProfileConfig>;
-}
-
-interface ProfileConfig {
-  name: string;                // Profile name (dev, test, prod)
-  baseUrl?: string;            // Platform API base URL
-  description?: string;        // Optional description
-}
-```
-
-**Lifecycle**:
-- Created on first CLI use or `eai login --profile <name>`
-- Updated on profile switching
-
-**Location**: `~/.eai/config.json`
-
----
-
 ### Update Check Cache
 
 **File**: `~/.eai/last-update-check`
@@ -147,23 +119,23 @@ interface ProfileConfig {
 **Common Variables**:
 ```bash
 # Platform API
-BASE_URL_PUBLIC_API=https://api.ae.myenterprise.ai/public
+BASE_URL_PUBLIC_API=https://api.example.com/public
 
-# Entra CIAM (vertical app registration)
-ENTRA_TENANT_ID=abc-123-def-456
-ENTRA_CLIENT_ID=client-id-from-entra
-ENTRA_CLIENT_SECRET=secret-from-entra
+# Entra CIAM (app registration)
+ENTRA_TENANT_ID=<tenant-id>
+ENTRA_CLIENT_ID=<client-id>
+ENTRA_CLIENT_SECRET=<client-secret>
 
 # Azure Resources
 AZURE_APP_CONFIG_ENDPOINT=https://my-appconfig.azconfig.io
 AZURE_KEY_VAULT_URL=https://my-vault.vault.azure.net/
 
 # GitHub
-GITHUB_TOKEN=ghp_xxxxx
+GITHUB_TOKEN=<github-token>
 GITHUB_REPOSITORY=org/repo
 
 # Application
-NEXT_PUBLIC_APP_NAME=My Vertical App
+NEXT_PUBLIC_APP_NAME=My App
 ```
 
 **Lifecycle**:
@@ -189,7 +161,7 @@ NEXT_PUBLIC_APP_NAME=My Vertical App
 **Example**:
 ```typescript
 export default {
-  appName: 'My Vertical App',
+  appName: 'My App',
   apiUrl: process.env.BASE_URL_PUBLIC_API,
   features: {
     chat: true,

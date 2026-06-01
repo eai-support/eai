@@ -33,7 +33,7 @@ deployCommand
     if (!root) { exitWithError(ErrorCode.E001); }
 
     const envVars = await loadEnvFile(root);
-    const appName = envVars.NEXT_PUBLIC_APP_NAME || 'my-vertical';
+    const appName = envVars.NEXT_PUBLIC_APP_NAME || 'my-app';
 
     // Check if workflow already exists
     const workflowPath = join(root, '.github', 'workflows', 'deploy-demo.yml');

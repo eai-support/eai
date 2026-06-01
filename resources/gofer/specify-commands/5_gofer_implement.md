@@ -629,7 +629,7 @@ are present at the workspace root and pass their readiness checks:
 
 | Required File  | Purpose                                                 |
 | -------------- | ------------------------------------------------------- |
-| `manifest.yml` | Vertical application manifest (from `eai init`) |
+| `manifest.yml` | Application manifest (from `eai init`) |
 | `config.json`  | Runtime configuration bundle (environment-specific)     |
 
 ### Gate behaviour
@@ -655,7 +655,7 @@ separation from `tasks.md`:
   `{FEATURE_DIR}/ui-approval.md` is missing or not approved. App-delivery runs
   MUST NOT continue as though the UI is settled when approval has not been
   recorded.
-- For application delivery, use the Vertical Template already installed in the
+- For application delivery, use the Application Template already installed in the
   workspace as the default UI lego-block source. Any create-new UI concept must
   be justified in the approved plan and approval artifacts.
 - Before implementing UI, run or inspect `eai --describe`, `eai blocks list`,

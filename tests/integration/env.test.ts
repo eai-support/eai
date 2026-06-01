@@ -9,6 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { patchEnvFile } from '../../src/lib/config.js';
 import { getAzureCliInvocation } from '../../src/lib/azure-cli.js';
+import { resolveAppConfigStore } from '../../src/lib/cloud-env.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { createMockServer, PublicAPIMock } from '../helpers/mock-server.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
@@ -122,5 +123,45 @@ describe('getAzureCliInvocation', () => {
       file: 'cmd.exe',
       args: ['/c', 'az', 'group', 'list'],
     });
+  });
+});
+
+describe('resolveAppConfigStore', () => {
+  const originalStore = process.env.EAI_APP_CONFIG_STORE;
+  const originalCustomStore = process.env.EAI_APP_CONFIG_STORE_CUSTOM;
+
+  afterEach(() => {
+    if (originalStore === undefined) {
+      delete process.env.EAI_APP_CONFIG_STORE;
+    } else {
+      process.env.EAI_APP_CONFIG_STORE = originalStore;
+    }
+
+    if (originalCustomStore === undefined) {
+      delete process.env.EAI_APP_CONFIG_STORE_CUSTOM;
+    } else {
+      process.env.EAI_APP_CONFIG_STORE_CUSTOM = originalCustomStore;
+    }
+  });
+
+  test('requires an explicit cloud config store', () => {
+    delete process.env.EAI_APP_CONFIG_STORE;
+    delete process.env.EAI_APP_CONFIG_STORE_CUSTOM;
+
+    expect(() => resolveAppConfigStore()).toThrow('Cloud configuration store is not configured');
+  });
+
+  test('uses the default cloud config store override', () => {
+    process.env.EAI_APP_CONFIG_STORE = 'customer-owned-store';
+    delete process.env.EAI_APP_CONFIG_STORE_CUSTOM;
+
+    expect(resolveAppConfigStore()).toBe('customer-owned-store');
+  });
+
+  test('uses the environment-specific cloud config store override', () => {
+    process.env.EAI_APP_CONFIG_STORE = 'fallback-store';
+    process.env.EAI_APP_CONFIG_STORE_CUSTOM = 'custom-store';
+
+    expect(resolveAppConfigStore('custom')).toBe('custom-store');
   });
 });

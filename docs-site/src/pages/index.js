@@ -31,7 +31,7 @@ export default function Home() {
         <section className={styles.highlights}>
           <article className={styles.panel}>
             <h2>Documentation</h2>
-            <p>Architecture, configuration, profiles, deployment, API reference, and generated code review notes.</p>
+            <p>Architecture, configuration, deployment, API reference, and generated code review notes.</p>
             <Link to="/docs/overview">Start with the overview</Link>
           </article>
 

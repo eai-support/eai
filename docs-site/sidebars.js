@@ -11,7 +11,7 @@ const sidebars = {
       type: 'category',
       label: 'Getting Started',
       collapsed: false,
-      items: ['overview', 'configuration', 'profiles'],
+      items: ['overview', 'configuration'],
     },
     {
       type: 'category',

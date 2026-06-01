@@ -15,7 +15,7 @@ status: pending
 
 ## Approved Design Constraints
 
-- **Vertical Template baseline preserved**: {{yes-no}}
+- **Application Template baseline preserved**: {{yes-no}}
 - **Approved profile choice**: {{external-internal-hybrid}}
 - **Approved package lane**: {{public-package-internal-app-hybrid-adapter-app-local}}
 - **Approved coupling status**: {{daisy-coupled-daisy-decoupled-hybrid-adapter}}
