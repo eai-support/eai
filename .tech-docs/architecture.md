@@ -72,7 +72,7 @@ Commands are organized by functional domain:
 | **Deploy** | `deploy.ts` | GitHub Actions deployment orchestration |
 | **Diagnostics** | `verify.ts` | Platform connectivity, health checks, doctor mode |
 | **Maintenance** | `update.ts`, `gofer.ts`, `template.ts` | CLI updates, Gofer asset refresh, template drift |
-| **Blocks** | `blocks.ts`, `vertical.ts` | UI block catalog management, vertical metadata |
+| **Blocks** | `blocks.ts`, `vertical.ts` | UI block catalog management, app metadata |
 
 Each command follows a consistent pattern:
 1. Parse options and validate prerequisites

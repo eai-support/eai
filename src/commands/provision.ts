@@ -1,5 +1,5 @@
 /**
- * eai provision — provision platform resources for a vertical.
+ * eai provision — provision platform resources for an app.
  */
 
 import { Command } from 'commander';
@@ -141,7 +141,7 @@ async function formatProvisionResponseError(response: Response): Promise<string>
 }
 
 export const provisionCommand = new Command('provision')
-  .description('Provision platform resources for this vertical');
+  .description('Provision platform resources for this app');
 
 // ─── eai provision entra ──────────────────────────────────────────────────
 
@@ -179,7 +179,7 @@ Diagnostics:
     const verticalName = env.NEXT_PUBLIC_APP_NAME;
 
     if (!verticalName) {
-      out.error('NEXT_PUBLIC_APP_NAME is not set in .env.local. Run `eai init` to scaffold a vertical first.');
+      out.error('NEXT_PUBLIC_APP_NAME is not set in .env.local. Run `eai init` to scaffold an app first.');
       process.exit(1);
     }
 
@@ -367,7 +367,7 @@ Diagnostics:
     // permission merge / admin consent / preAuthorizedApplications steps
     // failed silently, the app reg looks "created" but cannot reach
     // PublicAPI from a user session — sign-in then fails with AADSTS650057
-    // the moment the vertical's BFF proxy makes its first call. Refusing to
+    // the moment the app's BFF proxy makes its first call. Refusing to
     // exit 0 here turns that silent failure into a loud, actionable one.
     reportSigninCompleteness(result.signinCompleteness, result.clientId);
   });
@@ -422,7 +422,7 @@ function reportSigninCompleteness(
     return;
   }
   // Not ready — emit a structured error block and exit non-zero so
-  // onboarding scripts fail fast instead of producing a broken vertical.
+  // onboarding scripts fail fast instead of producing a broken app.
   out.error('Sign-in wiring incomplete — provisioning succeeded but the new app reg cannot reach PublicAPI from a user session.');
   out.warn('  ✗ Without the steps below, browser sign-in will fail with AADSTS650057 the moment the BFF proxy calls PublicAPI.');
   const stepRow = (label: string, ok: boolean): [string, string] => [

@@ -493,7 +493,7 @@ tasks in the following ordered chain. Each task is independently runnable and
 the ordering enforces scaffold before deployment so that configuration and
 manifest artifacts exist before any deploy command runs.
 
-1. **Vertical Template scaffolding -> `eai init`**
+1. **Application Template scaffolding -> `eai init`**
    - Command: `eai init <app-name>`
    - Produces the working directory, `manifest.yml`, and `config.json` expected
      by subsequent tasks.
@@ -518,7 +518,7 @@ precondition to downstream implementation tasks:
 - If `{FEATURE_DIR}/service-fit-matrix.md` is missing or does not distinguish
   accessible now vs purchasable vs unavailable platform capabilities, emit a
   blocking service-fit task group before normal build tasks.
-- Use the Vertical Template already scaffolded by `eai` as the default UI
+- Use the Application Template already scaffolded by `eai` as the default UI
   lego-block source. Any create-new UI concept must appear as an explicit
   exception task with rationale.
 - Add a block-catalog task before any UI implementation task. It MUST run
@@ -529,7 +529,7 @@ precondition to downstream implementation tasks:
 - Add package-profile tasks that lock the external/internal/hybrid profile
   choice and the package lane before any public, shared, or app-local block
   implementation begins.
-- Add block-porting tasks for every selected Vertical Template block that must
+- Add block-porting tasks for every selected Application Template block that must
   move into a reusable package lane, including Storybook story ID coverage,
   theme override points, exports, and compatibility checks.
 - Add DAISY decoupling tasks whenever a block or package lane is not
@@ -555,7 +555,7 @@ precondition to downstream implementation tasks:
   accessibility/translation support, contextual prefill, completion validation,
   human review, audit trail, and fallback/escalation.
 - App-delivery preview/approval tasks that:
-  - build the first MVP from Vertical Template blocks
+  - build the first MVP from Application Template blocks
   - select only known `eai blocks` IDs unless a custom-block exception exists
   - preserve package lane, external/internal/hybrid profile choice, coupling
     status, Storybook story IDs, and theme override points from the approved

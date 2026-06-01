@@ -102,7 +102,7 @@ class PlatformAPIClient {
 
 **Benefits**:
 - Flexible output formatting for different consumers (humans, scripts, AI agents)
-- Supports multiple project structures (Vertical-Template, custom)
+- Supports multiple project structures (Application Template, custom)
 
 **File References**:
 - `src/lib/output.ts:50-150`
@@ -556,7 +556,7 @@ export function validateTenantId(id: string): string {
 ### Long Term (v3.1.0+)
 
 1. ✅ Plugin system for custom commands
-2. ✅ Workspace support (monorepo multi-vertical)
+2. ✅ Workspace support (monorepo multi-app)
 3. ✅ Built-in health monitoring dashboard
 4. ✅ Advanced caching layer (Redis/Memcached)
 

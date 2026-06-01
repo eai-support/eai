@@ -55,7 +55,7 @@ export const whoamiCommand = new Command('whoami')
       }
     }
 
-    // Show project context if in a vertical project
+    // Show project context if in an app project
     const root = await findProjectRoot();
     if (root) {
       const env = await loadEnvFile(root);

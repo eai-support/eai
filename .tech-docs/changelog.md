@@ -138,7 +138,7 @@ source_commit: "c104ef3a24ede34f769d5eaf587ba58df8b0ebb6"
 - **Feature**: `eai blocks` command for AI agents to discover and interact with UI components
 - **Commands**: `eai blocks list`, `eai blocks validate`
 - **Purpose**: Enable AI agents (Claude, Codex, Gemini, Copilot) to scaffold UI using catalog
-- **Impact**: Streamlines vertical app UI development with AI assistance
+- **Impact**: Streamlines app UI development with AI assistance
 
 ### Profile-Based Multi-Environment Support (v2.7.x series)
 - **Feature**: `--profile` flag for locally configured private contexts
@@ -159,7 +159,7 @@ source_commit: "c104ef3a24ede34f769d5eaf587ba58df8b0ebb6"
 
 ### Template Drift Detection (v2.4.x series)
 - **Feature**: `eai template check` previews template changes without writing files
-- **Purpose**: Let developers see what changed in vertical template before merging
+- **Purpose**: Let developers see what changed in application template before merging
 - **Impact**: Reduces risk of accidentally overwriting custom code
 
 ---
@@ -370,7 +370,7 @@ eai resources list User
 - [ ] **Breaking**: Remove `TENANT_ID` environment variable support
 - [ ] **Breaking**: Require Node.js 22+
 - [ ] Plugin system for custom commands
-- [ ] Workspace support (monorepo multi-vertical)
+- [ ] Workspace support (monorepo multi-app)
 - [ ] Built-in health monitoring dashboard
 
 ---

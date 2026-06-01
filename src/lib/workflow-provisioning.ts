@@ -153,7 +153,7 @@ export function buildWorkflowProvisionPayloads(
     throw new Error("Workflow key is required.");
   }
   if (!verticalKey) {
-    throw new Error("Vertical key is required.");
+    throw new Error("App key is required.");
   }
   if (!displayName) {
     throw new Error("Workflow display name is required.");

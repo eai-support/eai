@@ -10,7 +10,7 @@ source_commit: "3f2653e8e0c12fcd8b9be770d495dbf8269079f1"
 The EAI CLI has two distinct deployment contexts:
 
 1. **CLI Distribution** — How the `eai` CLI tool itself is published and installed by developers
-2. **Vertical Application Deployment** — How the CLI orchestrates deployment of vertical apps to Azure App Service
+2. **Application Deployment** — How the CLI orchestrates deployment of apps to Azure App Service
 
 ---
 
@@ -220,7 +220,7 @@ flowchart TB
     end
 ```
 
-### Vertical App Deployment (via `eai deploy`)
+### App Deployment (via `eai deploy`)
 
 ```mermaid
 flowchart TB
@@ -240,14 +240,14 @@ flowchart TB
 
 ---
 
-## Vertical Application Deployment
+## Application Deployment
 
-The CLI provides commands to orchestrate deployment of vertical apps to Azure App Service via GitHub Actions.
+The CLI provides commands to orchestrate deployment of apps to Azure App Service via GitHub Actions.
 
 ### Setup Deployment
 
 ```bash
-eai deploy setup --repo org/my-vertical
+eai deploy setup --repo org/my-app
 ```
 
 **What it does**:
@@ -328,9 +328,9 @@ eai deploy status
 
 ---
 
-### Azure App Service (for vertical apps)
+### Azure App Service (for apps)
 
-Vertical applications deployed via `eai deploy` typically use:
+Applications deployed via `eai deploy` typically use:
 
 **Resource**: Azure App Service (Linux)  
 **Runtime**: Node.js 20.x or later  
@@ -395,13 +395,13 @@ Expected packument format:
 }
 ```
 
-### Vertical App Health
+### App Health
 
-Vertical apps deployed to Azure should expose health endpoints:
+Apps deployed to Azure should expose health endpoints:
 
 ```bash
 # Check app health
-curl https://my-vertical.azurewebsites.net/api/health
+curl https://my-app.azurewebsites.net/api/health
 
 # Check via CLI
 eai verify
@@ -428,7 +428,7 @@ eai verify
 - [ ] Verify public registry shows new version
 - [ ] Test installation: `npm install -g @eai-tools/cli@latest`
 
-### For Vertical App Deployments
+### For App Deployments
 
 - [ ] Environment variables configured in `.env.local`
 - [ ] GitHub secrets configured (`AZURE_WEBAPP_PUBLISH_PROFILE`, `AZURE_WEBAPP_NAME`)
@@ -463,9 +463,9 @@ If a release has issues:
 
 4. **Fix issue and re-release**
 
-### Vertical App Rollback
+### App Rollback
 
-If a vertical app deployment fails:
+If an app deployment fails:
 
 1. **Check deployment logs** in GitHub Actions
 
@@ -491,7 +491,7 @@ If a vertical app deployment fails:
 - **Release workflow status**: Check GitHub Actions runs
 - **User feedback**: Monitor GitHub Issues
 
-### Vertical App Monitoring
+### App Monitoring
 
 Applications deployed via `eai deploy` should use:
 
@@ -516,7 +516,7 @@ Applications deployed via `eai deploy` should use:
 ## Future Deployment Enhancements
 
 - [ ] Automated semantic versioning based on commit messages
-- [ ] Blue-green deployments for vertical apps
+- [ ] Blue-green deployments for apps
 - [ ] Canary releases for CLI distribution
 - [ ] Automated rollback on health check failures
 - [ ] Multi-region registry distribution (CDN)

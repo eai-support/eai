@@ -277,7 +277,7 @@ If journeys/base-journey.md exists and is classified as app delivery, use it to:
   editability, and accessibility at each AI-assisted step
 
 If ui-preview-brief.md exists, use it to:
-- Require the first MVP preview to stay inside the approved Vertical Template
+- Require the first MVP preview to stay inside the approved Application Template
   blocks before any create-new UI concept is proposed
 - Require the specification to preserve the selected external/internal/hybrid
   profile choice, package lane, coupling status, public-readiness target, and
@@ -685,22 +685,22 @@ only when the user explicitly opts out.
 
 When the workflow profile is `enterpriseai`, `spec.md` MUST include an explicit
 **Integration Map** section that traces the flow from end-user interaction to
-the deployed EnterpriseAI vertical application and back. The map must be
+the deployed EnterpriseAI application and back. The map must be
 expressed as an ordered dependency chain following the pattern:
 
 ```
-Vertical App -> EAI Services -> Deployment Target
+Application -> EAI Services -> Deployment Target
 ```
 
 At minimum the map must name:
 
-1. **Vertical App**: the student-facing or business-facing vertical being
-   delivered (maps to the `vertical-template` reference).
-2. **EAI Services**: the EnterpriseAI platform services the vertical consumes
+1. **Application**: the student-facing or business-facing app being
+   delivered (maps to the `app-template` reference).
+2. **EAI Services**: the EnterpriseAI platform services the app consumes
    (maps to the current public platform documentation or explicitly provided
    project references).
 3. **Deployment Target**: the deployment environment and pipeline that will host
-   the running vertical (maps to the configured deployment documentation for the
+   the running app (maps to the configured deployment documentation for the
    target project).
 
 Each link in the chain must reference the internal API contract that carries the
@@ -719,7 +719,7 @@ When EnterpriseAI is active or no profile is specified, generate
 | Actors | Business users, administrators, approvers, external systems, support roles |
 | Object Types | Reused, extended, and newly proposed EnterpriseAI object types with owners |
 | Workflows and Journeys | External user journeys and internal orchestration flows as separate views; app delivery must include the four-step-or-fewer AI-augmented journey |
-| UI Preview and Approval | For app delivery: preview brief, Vertical Template constraints, branding inputs, preview validation evidence expectations, review-log requirements, approval gate rules; for non-app work: mark not applicable |
+| UI Preview and Approval | For app delivery: preview brief, Application Template constraints, branding inputs, preview validation evidence expectations, review-log requirements, approval gate rules; for non-app work: mark not applicable |
 | AI Assistance Contract | Step goal, assistance mode, context used, generated output, user controls, confidence/evidence, audit trail, completion signal, and escalation for each app step |
 | EnterpriseAI Service Fit | For app delivery: desired capabilities, evidence source, accessible now vs purchasable vs unavailable classification, selected direction, and blocked-capability handling |
 | Public Platform Boundary | Public docs/help/CLI/PublicAPI behavior the builder may rely on; private platform details intentionally excluded; upgrade/operator-required paths expressed as product-safe user actions |
@@ -738,7 +738,7 @@ For EnterpriseAI public-facing work, the contract pack must also separate:
 - **Private platform knowledge**: internal service topology, direct downstream
   credentials, private provisioning paths, and any bypass around plan limits or
   AuthZ. These may inform internal implementation tasks, but must not be copied
-  into public docs, generated help, templates, or vertical guidance.
+  into public docs, generated help, templates, or app guidance.
 
 ---
 

@@ -11,7 +11,7 @@ source_commit: "c104ef3a24ede34f769d5eaf587ba58df8b0ebb6"
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
 | **Version** | 2.9.5 |
-| **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
+| **Primary Capability** | Developer CLI for scaffolding, managing, and deploying applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
 | **Current Status** | Active development (v2.9.5 released 2026-05-31) |
@@ -27,7 +27,7 @@ source_commit: "c104ef3a24ede34f769d5eaf587ba58df8b0ebb6"
 
 The EAI CLI is a TypeScript-based command-line tool that serves as the primary developer interface to the EAI Platform. It abstracts platform complexity by providing intuitive commands organized into functional groups:
 
-- **Project Scaffolding**: Initialize new vertical applications with integrated Gofer AI terminal assets (Claude, Codex, Gemini, Copilot)
+- **Project Scaffolding**: Initialize new applications with integrated Gofer AI terminal assets (Claude, Codex, Gemini, Copilot)
 - **Authentication**: Browser-based PKCE flow via Entra CIAM with secure local token storage
 - **Tenant Management**: Context-driven tenant selection based on user membership
 - **Object Types**: Validate, seed, diff, and pull data model definitions
@@ -36,7 +36,7 @@ The EAI CLI is a TypeScript-based command-line tool that serves as the primary d
 - **Environment Sync**: Azure App Config and Key Vault integration
 - **Deployment**: GitHub Actions orchestration to Azure App Service
 - **Diagnostics**: Platform connectivity checks, health validation, and automated fix suggestions
-- **Block Catalog**: AI-readable UI component catalog for vertical development with foundation, product, addon, and demo blocks
+- **Block Catalog**: AI-readable UI component catalog for application development with foundation, product, addon, and demo blocks
 
 The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.json`, and uses platform membership to establish working context via `eai tenant select`. Every command is a thin, typed wrapper around platform API endpoints with structured error codes (E001-E399) and machine-readable output formats (JSON, YAML, text).
 
@@ -129,8 +129,8 @@ npm test
 ### Basic Usage
 ```bash
 # Create new project
-eai init my-vertical
-cd my-vertical
+eai init my-app
+cd my-app
 npm install
 
 # Authenticate
@@ -196,7 +196,7 @@ As documented in `CLAUDE.md` and `AGENTS.md`:
    - Workflow status checks
 
 ### Downstream Dependents (Services Calling This)
-- **Vertical Application Developers**: Primary users scaffolding and managing EAI applications
+- **Application Developers**: Primary users scaffolding and managing EAI applications
 - **CI/CD Pipelines**: Automated deployment workflows using CLI commands
 - **AI Terminal Tools**: Claude, Codex, Gemini, Copilot agents using CLI via Gofer pipeline
 

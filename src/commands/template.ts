@@ -354,7 +354,7 @@ function describeManifestSourceNote(
 }
 
 export const templateCommand = new Command("template").description(
-  "Preview vertical template and UI component drift for the current project",
+  "Preview application template and UI component drift for the current project",
 );
 
 templateCommand
@@ -404,7 +404,7 @@ Notes:
       out.blank();
       out.success(plan.skipped);
       out.info(
-        "No newer bundled vertical-template/UI snapshot is available in this installed CLI.",
+        "No newer bundled app-template/UI snapshot is available in this installed CLI.",
       );
       out.info(
         "After your next CLI update, run `eai template check` again to preview file-level drift.",

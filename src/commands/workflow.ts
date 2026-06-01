@@ -1,5 +1,5 @@
 /**
- * eai workflow — provision vertical workflow configs and inspect runtime bindings.
+ * eai workflow — provision app workflow configs and inspect runtime bindings.
  */
 
 import { Command } from 'commander';
@@ -32,7 +32,7 @@ import { isRecord } from '../lib/utils.js';
 import * as out from '../lib/output.js';
 
 export const workflowCommand = new Command('workflow')
-  .description('Provision vertical workflow configs and inspect AI runtime workflow bindings');
+  .description('Provision app workflow configs and inspect AI runtime workflow bindings');
 
 interface ResourceDoc {
   id?: string;
@@ -191,8 +191,8 @@ function handleWorkflowError(err: unknown): never {
 
 workflowCommand
   .command('provision <workflow-key>')
-  .description('Provision a usecase-agnostic workflow config and bind it to a tenant vertical')
-  .requiredOption('--vertical <key>', 'Tenant vertical/app key that consumes this workflow')
+  .description('Provision a usecase-agnostic workflow config and bind it to a tenant app')
+  .requiredOption('--vertical <key>', 'Tenant app key that consumes this workflow')
   .option('--tenant <id>', 'Tenant id to provision against (defaults to active tenant)')
   .option('--display-name <name>', 'Workflow display name (defaults to humanized workflow key)')
   .option('--usecase <usecase>', 'Workflow usecase namespace', 'generic')
@@ -209,7 +209,7 @@ workflowCommand
   .option('--write-local-env', 'Patch .env.local with generated env values', false)
   .option('--write-app-config', 'Write generated env values to Azure App Configuration', false)
   .option('--env <label>', 'Cloud config environment label for EAI_APP_CONFIG_STORE_<LABEL>')
-  .option('--label <label>', 'Azure App Configuration label (defaults to NEXT_PUBLIC_APP_NAME or vertical key)')
+  .option('--label <label>', 'Azure App Configuration label (defaults to NEXT_PUBLIC_APP_NAME or app key)')
   .option('--format <format>', 'Output format: text or json', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', `
@@ -411,7 +411,7 @@ Examples:
 
 workflowCommand
   .command('readiness')
-  .description('Check tenant, plan, and workflow readiness for building a vertical')
+  .description('Check tenant, plan, and workflow readiness for building an app')
   .argument('[workflow-keys...]', 'Optional public workflow keys to include in readiness checks')
   .option('--tenant <id>', 'Tenant id to check (defaults to active tenant)')
   .option('--format <format>', 'Output format: text or json', 'text')

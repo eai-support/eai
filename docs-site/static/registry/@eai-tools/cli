@@ -7,7 +7,7 @@
     "2.9.5": {
       "name": "@eai-tools/cli",
       "version": "2.9.5",
-      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+      "description": "EAI Platform CLI — scaffold, seed, deploy, and manage applications",
       "bin": {
         "eai": "dist/index.js"
       },
@@ -23,14 +23,14 @@
       },
       "dist": {
         "tarball": "https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-2.9.5.tgz",
-        "shasum": "290e34841cf039c67e376b2d3caf8f23865a8ba5",
-        "integrity": "sha512-tMPMLKksTGbEvpJ7VGbHUpuyh+9GBmF53QIlrGlhXBQ8QXrKwqMqzbI4ga3pERKrhg/GTxuGFSsPmbWtqiCxaQ=="
+        "shasum": "0f94bf7c0f2943a65412a09b3dfc2d5a23f911d4",
+        "integrity": "sha512-2T6855ZBodTgFAqVAg2YmEox10BDnIwMHuiAuYiGnZgd+UxkTZBxYzJzMNE/1q5UdCX8uWFVRn5ATF/YDS0Uzg=="
       }
     }
   },
-  "modified": "2026-06-01T07:38:54.180Z",
+  "modified": "2026-06-01T08:31:11.839Z",
   "time": {
     "2.9.5": "2026-06-01T07:38:54.180Z",
-    "modified": "2026-06-01T07:38:54.180Z"
+    "modified": "2026-06-01T08:31:11.839Z"
   }
 }

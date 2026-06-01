@@ -42,7 +42,7 @@ export const BUILTIN_BLOCKS: BlockCatalogEntry[] = [
     ],
   }),
   block('design.hero', 'Hero', '@enterpriseaigroup/blocks', 'Hero', 'foundation', 'external-safe', ['marketing', 'layout'], {
-    description: 'Public-safe hero section for product and vertical entry pages.',
+    description: 'Public-safe hero section for product and app entry pages.',
     overridePoints: [
       { name: 'headline', path: 'presentationConfig.headline', kind: 'copy', required: true },
       { name: 'cta', path: 'actionsConfig.primary', kind: 'actions', required: false },

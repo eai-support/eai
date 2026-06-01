@@ -121,7 +121,7 @@ interface TenantMembership {
 # Platform API
 BASE_URL_PUBLIC_API=https://api.example.com/public
 
-# Entra CIAM (vertical app registration)
+# Entra CIAM (app registration)
 ENTRA_TENANT_ID=<tenant-id>
 ENTRA_CLIENT_ID=<client-id>
 ENTRA_CLIENT_SECRET=<client-secret>
@@ -135,7 +135,7 @@ GITHUB_TOKEN=<github-token>
 GITHUB_REPOSITORY=org/repo
 
 # Application
-NEXT_PUBLIC_APP_NAME=My Vertical App
+NEXT_PUBLIC_APP_NAME=My App
 ```
 
 **Lifecycle**:
@@ -161,7 +161,7 @@ NEXT_PUBLIC_APP_NAME=My Vertical App
 **Example**:
 ```typescript
 export default {
-  appName: 'My Vertical App',
+  appName: 'My App',
   apiUrl: process.env.BASE_URL_PUBLIC_API,
   features: {
     chat: true,

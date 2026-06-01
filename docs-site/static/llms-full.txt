@@ -13,7 +13,7 @@ npm install -g @eai-tools/cli
 
 - `eai update` reinstalls the latest CLI from the scoped EAI registry.
 - `eai gofer refresh` updates Gofer-managed assets without blindly overwriting local work.
-- `eai template check` previews vertical-template and UI drift without writing files.
+- `eai template check` previews app-template and UI drift without writing files.
 - Template and UI drift are reported by `eai doctor --check-updates` and still require manual review.
 
 # CLI Help
@@ -23,8 +23,7 @@ npm install -g @eai-tools/cli
 ```text
 Usage: eai [options] [command]
 
-Enterprise AI Platform CLI — scaffold, seed, deploy, and manage vertical
-applications
+Enterprise AI Platform CLI — scaffold, seed, deploy, and manage applications
 
 Options:
   -V, --cli-version      output the version number
@@ -37,7 +36,7 @@ Options:
   -h, --help             display help for command
 
 Commands:
-  init [options] [name]  Scaffold a new vertical application
+  init [options] [name]  Scaffold a new application
   dev [options]          Start local development server
   login [options]        Authenticate with Entra CIAM
   logout                 Clear stored authentication tokens
@@ -48,23 +47,23 @@ Commands:
   resources              CRUD operations on platform resources
   vertical               Manage apps under the active company tenant
   chat                   Chat with AI workflows
-  workflow               Provision vertical workflow configs and inspect AI
-                         runtime workflow bindings
+  workflow               Provision app workflow configs and inspect AI runtime
+                         workflow bindings
   docs                   Document upload, classification, and indexing
   deploy                 Deployment management
   verify [options]       Run platform connectivity checks
   doctor [options]       Diagnose common issues and suggest fixes
   whoami                 Show auth status and tenant info
   update [options]       Check for and install CLI updates
-  provision              Provision platform resources for this vertical
+  provision              Provision platform resources for this app
   gofer                  Inspect and refresh Gofer-managed project assets
-  template               Preview vertical template and UI component drift for
+  template               Preview application template and UI component drift for
                          the current project
   blocks                 Discover AI-readable EAI UI block manifests
   help [command]         display help for command
 
 Getting Started:
-  eai init my-vertical     Scaffold a vertical app with Gofer AI CLI assets
+  eai init my-app     Scaffold an app with Gofer AI CLI assets
   eai login                Authenticate with Entra CIAM
   eai provision entra      Create Entra app registration for end-user auth
   eai env pull             Sync app config from cloud
@@ -123,10 +122,10 @@ Updates:
   eai gofer refresh --check preview managed Gofer asset updates for this repo
   eai gofer refresh        apply safe Gofer-managed asset updates with backups
 
-  # Preview vertical-template and UI component drift before copying changes
-  eai template check       review potential vertical or UI file updates without overwriting local work
+  # Preview app-template and UI component drift before copying changes
+  eai template check       review potential app or UI file updates without overwriting local work
 
-  # Discover AI-readable UI blocks for Gofer and vertical apps
+  # Discover AI-readable UI blocks for Gofer and apps
   eai blocks list --readiness public-ready
                                   list foundation, product, addon, and demo block IDs
   eai blocks describe core.button
@@ -158,7 +157,7 @@ Notes:
   - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
   - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
   - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
-  - Use `eai template check` to preview vertical-template and UI drift before copying changes manually.
+  - Use `eai template check` to preview app-template and UI drift before copying changes manually.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
 ```
 
@@ -182,7 +181,7 @@ Examples:
 Notes:
   - `eai update` upgrades the installed CLI package only.
   - `eai gofer refresh --check` previews safe repo-local Gofer asset updates.
-  - `eai template check` previews vertical-template and UI drift without writing files.
+  - `eai template check` previews app-template and UI drift without writing files.
   - Template and UI component changes are not auto-merged into existing repos yet.
 ```
 
@@ -224,7 +223,7 @@ Options:
 ```text
 Usage: eai template [options] [command]
 
-Preview vertical template and UI component drift for the current project
+Preview application template and UI component drift for the current project
 
 Options:
   -h, --help       display help for command
@@ -268,7 +267,7 @@ Notes:
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
 | **Version** | 2.9.5 |
-| **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
+| **Primary Capability** | Developer CLI for scaffolding, managing, and deploying applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
 | **Current Status** | Active development (v2.9.5 released 2026-05-31) |
@@ -284,7 +283,7 @@ Notes:
 
 The EAI CLI is a TypeScript-based command-line tool that serves as the primary developer interface to the EAI Platform. It abstracts platform complexity by providing intuitive commands organized into functional groups:
 
-- **Project Scaffolding**: Initialize new vertical applications with integrated Gofer AI terminal assets (Claude, Codex, Gemini, Copilot)
+- **Project Scaffolding**: Initialize new applications with integrated Gofer AI terminal assets (Claude, Codex, Gemini, Copilot)
 - **Authentication**: Browser-based PKCE flow via Entra CIAM with secure local token storage
 - **Tenant Management**: Context-driven tenant selection based on user membership
 - **Object Types**: Validate, seed, diff, and pull data model definitions
@@ -293,7 +292,7 @@ The EAI CLI is a TypeScript-based command-line tool that serves as the primary d
 - **Environment Sync**: Azure App Config and Key Vault integration
 - **Deployment**: GitHub Actions orchestration to Azure App Service
 - **Diagnostics**: Platform connectivity checks, health validation, and automated fix suggestions
-- **Block Catalog**: AI-readable UI component catalog for vertical development with foundation, product, addon, and demo blocks
+- **Block Catalog**: AI-readable UI component catalog for application development with foundation, product, addon, and demo blocks
 
 The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.json`, and uses platform membership to establish working context via `eai tenant select`. Every command is a thin, typed wrapper around platform API endpoints with structured error codes (E001-E399) and machine-readable output formats (JSON, YAML, text).
 
@@ -386,8 +385,8 @@ npm test
 ### Basic Usage
 ```bash
 # Create new project
-eai init my-vertical
-cd my-vertical
+eai init my-app
+cd my-app
 npm install
 
 # Authenticate
@@ -453,7 +452,7 @@ As documented in `CLAUDE.md` and `AGENTS.md`:
    - Workflow status checks
 
 ### Downstream Dependents (Services Calling This)
-- **Vertical Application Developers**: Primary users scaffolding and managing EAI applications
+- **Application Developers**: Primary users scaffolding and managing EAI applications
 - **CI/CD Pipelines**: Automated deployment workflows using CLI commands
 - **AI Terminal Tools**: Claude, Codex, Gemini, Copilot agents using CLI via Gofer pipeline
 
@@ -584,7 +583,7 @@ Commands are organized by functional domain:
 | **Deploy** | `deploy.ts` | GitHub Actions deployment orchestration |
 | **Diagnostics** | `verify.ts` | Platform connectivity, health checks, doctor mode |
 | **Maintenance** | `update.ts`, `gofer.ts`, `template.ts` | CLI updates, Gofer asset refresh, template drift |
-| **Blocks** | `blocks.ts`, `vertical.ts` | UI block catalog management, vertical metadata |
+| **Blocks** | `blocks.ts`, `vertical.ts` | UI block catalog management, app metadata |
 
 Each command follows a consistent pattern:
 1. Parse options and validate prerequisites
@@ -1329,7 +1328,7 @@ Before committing a project that uses the EAI CLI:
 
 ## Overview
 
-The EAI CLI groups its commands into scaffolding, authentication, tenant and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, vertical/app management, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
+The EAI CLI groups its commands into scaffolding, authentication, tenant and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, app management, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
 
 The v4 surface is grouped by domain prefix:
 
@@ -1357,7 +1356,7 @@ The v4 surface is grouped by domain prefix:
 ### Scaffolding Commands
 
 #### `eai init`
-Scaffold a new vertical application from the EAI app template.
+Scaffold a new application from the EAI app template.
 
 **Options**:
 - `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-tools/eai-app-template.git`)
@@ -1477,7 +1476,7 @@ Create a new tenant and bootstrap admin access.
 - `--domain <domains>` — Comma-separated domain list
 - `--usecase <usecase>` — `council|retail|healthcare|finance|manufacturing|generic` (default: `generic`)
 - `--industry <industry>` — Signup/onboarding industry segment
-- `--starter-template <key>` — Starter vertical template key (default: `blank-vertical-template`)
+- `--starter-template <key>` — Starter application template key (default: `blank-vertical-template`)
 - `--allow-root` — Allow root tenant creation for administrative backfills
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -1910,12 +1909,12 @@ Stream a chat response over SSE.
 ### Workflow Commands
 
 #### `eai workflow provision <workflow-key>`
-Provision a usecase-agnostic workflow config and bind it to a tenant vertical. Optionally creates the AI runtime records.
+Provision a usecase-agnostic workflow config and bind it to a tenant app. Optionally creates the AI runtime records.
 
 **Arguments**: `<workflow-key>`
 
 **Key options**:
-- `--vertical <key>` — Tenant vertical/app key that consumes this workflow (required)
+- `--vertical <key>` — Tenant app key that consumes this workflow (required)
 - `--tenant <id>` — Tenant to provision against (default: active tenant)
 - `--display-name <name>` — Workflow display name
 - `--usecase <usecase>` — Workflow usecase namespace (default: `generic`)
@@ -1948,7 +1947,7 @@ Provision a usecase-agnostic workflow config and bind it to a tenant vertical. O
 ---
 
 #### `eai workflow readiness [workflow-keys...]`
-Check tenant, plan, and workflow readiness for building a vertical.
+Check tenant, plan, and workflow readiness for building an app.
 
 **Arguments**: `[workflow-keys...]` (optional)
 
@@ -2105,7 +2104,7 @@ Validate the installed block catalog, or a manifest JSON file.
 
 ---
 
-### Vertical Commands
+### App Commands (`eai vertical`)
 
 #### `eai vertical list`
 List apps for the active company tenant.
@@ -2131,7 +2130,7 @@ Create an app under a company tenant.
 - `--child-tenant <name>` — Create or reuse a child company tenant (display name)
 - `--child-tenant-slug <slug>` — Child company tenant key
 - `--key <key>` — Stable app key (defaults to kebab-case of `<name>`)
-- `--template <templateKey>` — Optional vertical-catalog template key
+- `--template <templateKey>` — Optional app-catalog template key
 - `--source <source>` — Creation source (default: `eai-cli`)
 - `--app-url <url>` — Optional app URL
 - `--status <status>` — Initial lifecycle status (default: `pending`)
@@ -2260,7 +2259,7 @@ Safely refresh Gofer-managed assets in the current project.
 ---
 
 #### `eai template check`
-Preview file-level vertical-template / UI drift without writing to the repo.
+Preview file-level app-template / UI drift without writing to the repo.
 
 **Options**:
 - `--format <format>` — Output format (text|json, default: text)
@@ -2282,7 +2281,7 @@ Preview file-level vertical-template / UI drift without writing to the repo.
 - `POST /v4/platform/tenants/{parentId}/children` — Create child tenant
 - `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` — Bootstrap admin on a child tenant
 - `POST /v4/platform/tenants/{tenantId}/delete` — Soft-delete tenant
-- `POST /v4/platform/tenants/{companyTenantId}/apps` — Create app (vertical enrollment)
+- `POST /v4/platform/tenants/{companyTenantId}/apps` — Create app enrollment
 
 ### Platform — Users & Capabilities
 - `GET /v4/platform/users/by-email` — Look up a user by email
@@ -2567,7 +2566,7 @@ interface TenantMembership {
 # Platform API
 BASE_URL_PUBLIC_API=https://api.example.com/public
 
-# Entra CIAM (vertical app registration)
+# Entra CIAM (app registration)
 ENTRA_TENANT_ID=<tenant-id>
 ENTRA_CLIENT_ID=<client-id>
 ENTRA_CLIENT_SECRET=<client-secret>
@@ -2581,7 +2580,7 @@ GITHUB_TOKEN=<github-token>
 GITHUB_REPOSITORY=org/repo
 
 # Application
-NEXT_PUBLIC_APP_NAME=My Vertical App
+NEXT_PUBLIC_APP_NAME=My App
 ```
 
 **Lifecycle**:
@@ -2607,7 +2606,7 @@ NEXT_PUBLIC_APP_NAME=My Vertical App
 **Example**:
 ```typescript
 export default {
-  appName: 'My Vertical App',
+  appName: 'My App',
   apiUrl: process.env.BASE_URL_PUBLIC_API,
   features: {
     chat: true,
@@ -3081,7 +3080,7 @@ Services and APIs that the CLI calls:
 | `POST /v4/platform/tenants` | `eai tenant create --allow-root` | Create root tenant |
 | `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` | `eai tenant create` | Bootstrap admin on child tenant |
 | `POST /v4/platform/tenants/{tenantId}/delete` | `eai tenant delete` | Soft-delete tenant |
-| `POST /v4/platform/tenants/{companyTenantId}/apps` | `eai vertical create` | Create app (vertical enrollment) |
+| `POST /v4/platform/tenants/{companyTenantId}/apps` | `eai vertical create` | Create app enrollment |
 | `GET /v4/platform/users/by-email` | `eai user invite` | Look up a user by email |
 | `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` | `eai user invite` | Provision a user into a tenant |
 | `POST /v4/platform/provisioning/entra-apps[/{clientId}/rotate-secret]` | `eai provision entra` | Create/confirm/rotate Entra app registration |
@@ -3169,8 +3168,8 @@ Entra app provisioning is served by PublicAPI under `/v4/platform/provisioning` 
 **Deployment**: Via GitHub Actions (not directly by CLI)
 
 **Used By**: `eai deploy` (indirectly via GitHub Actions)  
-**Purpose**: Deployment target for vertical applications  
-**Failure Impact**: **Medium** — Affects vertical app deployment only  
+**Purpose**: Deployment target for applications
+**Failure Impact**: **Medium** — Affects app deployment only
 **Fallback**: Manual Azure Portal deployment
 
 ---
@@ -3448,7 +3447,7 @@ Major version updates require:
 The EAI CLI has two distinct deployment contexts:
 
 1. **CLI Distribution** — How the `eai` CLI tool itself is published and installed by developers
-2. **Vertical Application Deployment** — How the CLI orchestrates deployment of vertical apps to Azure App Service
+2. **Application Deployment** — How the CLI orchestrates deployment of apps to Azure App Service
 
 ---
 
@@ -3658,7 +3657,7 @@ flowchart TB
     end
 ```
 
-### Vertical App Deployment (via `eai deploy`)
+### App Deployment (via `eai deploy`)
 
 ```mermaid
 flowchart TB
@@ -3678,14 +3677,14 @@ flowchart TB
 
 ---
 
-## Vertical Application Deployment
+## Application Deployment
 
-The CLI provides commands to orchestrate deployment of vertical apps to Azure App Service via GitHub Actions.
+The CLI provides commands to orchestrate deployment of apps to Azure App Service via GitHub Actions.
 
 ### Setup Deployment
 
 ```bash
-eai deploy setup --repo org/my-vertical
+eai deploy setup --repo org/my-app
 ```
 
 **What it does**:
@@ -3766,9 +3765,9 @@ eai deploy status
 
 ---
 
-### Azure App Service (for vertical apps)
+### Azure App Service (for apps)
 
-Vertical applications deployed via `eai deploy` typically use:
+Applications deployed via `eai deploy` typically use:
 
 **Resource**: Azure App Service (Linux)  
 **Runtime**: Node.js 20.x or later  
@@ -3833,13 +3832,13 @@ Expected packument format:
 }
 ```
 
-### Vertical App Health
+### App Health
 
-Vertical apps deployed to Azure should expose health endpoints:
+Apps deployed to Azure should expose health endpoints:
 
 ```bash
 # Check app health
-curl https://my-vertical.azurewebsites.net/api/health
+curl https://my-app.azurewebsites.net/api/health
 
 # Check via CLI
 eai verify
@@ -3866,7 +3865,7 @@ eai verify
 - [ ] Verify public registry shows new version
 - [ ] Test installation: `npm install -g @eai-tools/cli@latest`
 
-### For Vertical App Deployments
+### For App Deployments
 
 - [ ] Environment variables configured in `.env.local`
 - [ ] GitHub secrets configured (`AZURE_WEBAPP_PUBLISH_PROFILE`, `AZURE_WEBAPP_NAME`)
@@ -3901,9 +3900,9 @@ If a release has issues:
 
 4. **Fix issue and re-release**
 
-### Vertical App Rollback
+### App Rollback
 
-If a vertical app deployment fails:
+If an app deployment fails:
 
 1. **Check deployment logs** in GitHub Actions
 
@@ -3929,7 +3928,7 @@ If a vertical app deployment fails:
 - **Release workflow status**: Check GitHub Actions runs
 - **User feedback**: Monitor GitHub Issues
 
-### Vertical App Monitoring
+### App Monitoring
 
 Applications deployed via `eai deploy` should use:
 
@@ -3954,7 +3953,7 @@ Applications deployed via `eai deploy` should use:
 ## Future Deployment Enhancements
 
 - [ ] Automated semantic versioning based on commit messages
-- [ ] Blue-green deployments for vertical apps
+- [ ] Blue-green deployments for apps
 - [ ] Canary releases for CLI distribution
 - [ ] Automated rollback on health check failures
 - [ ] Multi-region registry distribution (CDN)
@@ -4099,7 +4098,7 @@ Applications deployed via `eai deploy` should use:
 - **Feature**: `eai blocks` command for AI agents to discover and interact with UI components
 - **Commands**: `eai blocks list`, `eai blocks validate`
 - **Purpose**: Enable AI agents (Claude, Codex, Gemini, Copilot) to scaffold UI using catalog
-- **Impact**: Streamlines vertical app UI development with AI assistance
+- **Impact**: Streamlines app UI development with AI assistance
 
 ### Profile-Based Multi-Environment Support (v2.7.x series)
 - **Feature**: `--profile` flag for locally configured private contexts
@@ -4120,7 +4119,7 @@ Applications deployed via `eai deploy` should use:
 
 ### Template Drift Detection (v2.4.x series)
 - **Feature**: `eai template check` previews template changes without writing files
-- **Purpose**: Let developers see what changed in vertical template before merging
+- **Purpose**: Let developers see what changed in application template before merging
 - **Impact**: Reduces risk of accidentally overwriting custom code
 
 ---
@@ -4331,7 +4330,7 @@ eai resources list User
 - [ ] **Breaking**: Remove `TENANT_ID` environment variable support
 - [ ] **Breaking**: Require Node.js 22+
 - [ ] Plugin system for custom commands
-- [ ] Workspace support (monorepo multi-vertical)
+- [ ] Workspace support (monorepo multi-app)
 - [ ] Built-in health monitoring dashboard
 
 ---

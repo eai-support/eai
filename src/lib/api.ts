@@ -1239,7 +1239,7 @@ export class PlatformAPIClient {
  * preAuthorizedApplications). PublicAPI relays this verbatim. `signin_ready`
  * is True only when every step the user-session sign-in path depends on
  * landed; False is the silent-failure pattern that produces AADSTS650057
- * the moment a vertical's BFF proxy tries to call PublicAPI.
+ * the moment an app's BFF proxy tries to call PublicAPI.
  */
 export interface SigninCompletenessSummary {
   graphPermsAdded: boolean;

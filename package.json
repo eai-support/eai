@@ -1,7 +1,7 @@
 {
   "name": "@eai-tools/cli",
   "version": "2.9.5",
-  "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
+  "description": "EAI Platform CLI — scaffold, seed, deploy, and manage applications",
   "type": "module",
   "bin": {
     "eai": "dist/index.js"
@@ -36,7 +36,7 @@
     "cli",
     "enterprise",
     "ai",
-    "vertical",
+    "application",
     "platform",
     "eai",
     "typescript",

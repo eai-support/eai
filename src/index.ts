@@ -3,7 +3,7 @@
 /**
  * eai — Enterprise AI Platform CLI
  *
- * Scaffold, seed, deploy, and manage vertical applications.
+ * Scaffold, seed, deploy, and manage applications.
  * Every command wraps platform API calls — developers work with resources,
  * types, tenants, and chat using simple commands.
  */
@@ -50,7 +50,7 @@ const program = new Command();
 
 program
   .name('eai')
-  .description('Enterprise AI Platform CLI — scaffold, seed, deploy, and manage vertical applications')
+  .description('Enterprise AI Platform CLI — scaffold, seed, deploy, and manage applications')
   .version(pkg.version, '-V, --cli-version')
   .option('--simple', 'Plain text output without colors or symbols (for screen readers)')
   .option('--no-color', 'Disable colored output')
@@ -114,7 +114,7 @@ program.addCommand(blocksCommand);
 // Custom help footer
 program.addHelpText('after', `
 ${chalk.bold('Getting Started:')}
-  ${chalk.cyan('eai init my-vertical')}     Scaffold a vertical app with Gofer AI CLI assets
+  ${chalk.cyan('eai init my-app')}     Scaffold an app with Gofer AI CLI assets
   ${chalk.cyan('eai login')}                Authenticate with Entra CIAM
   ${chalk.cyan('eai provision entra')}      Create Entra app registration for end-user auth
   ${chalk.cyan('eai env pull')}             Sync app config from cloud
@@ -173,10 +173,10 @@ ${chalk.bold('Updates:')}
   ${chalk.cyan('eai gofer refresh --check')} ${chalk.dim('preview managed Gofer asset updates for this repo')}
   ${chalk.cyan('eai gofer refresh')}        ${chalk.dim('apply safe Gofer-managed asset updates with backups')}
 
-  ${chalk.dim('# Preview vertical-template and UI component drift before copying changes')}
-  ${chalk.cyan('eai template check')}       ${chalk.dim('review potential vertical or UI file updates without overwriting local work')}
+  ${chalk.dim('# Preview app-template and UI component drift before copying changes')}
+  ${chalk.cyan('eai template check')}       ${chalk.dim('review potential app or UI file updates without overwriting local work')}
 
-  ${chalk.dim('# Discover AI-readable UI blocks for Gofer and vertical apps')}
+  ${chalk.dim('# Discover AI-readable UI blocks for Gofer and apps')}
   ${chalk.cyan('eai blocks list --readiness public-ready')}
                                   ${chalk.dim('list foundation, product, addon, and demo block IDs')}
   ${chalk.cyan('eai blocks describe core.button')}
