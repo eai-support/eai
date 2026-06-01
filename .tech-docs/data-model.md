@@ -243,7 +243,7 @@ interface ManagedFile {
 
 ### Object Type
 
-**Source**: Platform API (`GET /v3/object-types`)
+**Source**: Platform API (`GET /v4/data/resources/object-types`)
 
 **Schema**:
 ```typescript
@@ -304,7 +304,7 @@ interface Permission {
 
 ### Resource
 
-**Source**: Platform API (`GET /v3/resources/{tenant_id}/{object_type}/{id}`)
+**Source**: Platform API (`GET /v4/data/resources/{tenant_id}/{object_type}/{id}`)
 
 **Schema**:
 ```typescript
@@ -326,7 +326,7 @@ interface Resource {
 
 ### Tenant
 
-**Source**: Platform API (`GET /v3/tenants/{id}`)
+**Source**: Platform API (`GET /v4/platform/tenants/{id}`)
 
 **Schema**:
 ```typescript
@@ -353,7 +353,7 @@ interface Tenant {
 
 ### Tenant Membership
 
-**Source**: Platform API (`GET /v3/tenants/memberships`)
+**Source**: Platform API (`GET /v4/identity/tenants`)
 
 **Schema**:
 ```typescript
@@ -374,7 +374,7 @@ interface TenantMembership {
 
 ### Workflow Status
 
-**Source**: Platform API (`GET /v3/ai/workflows/{key}/status`)
+**Source**: Platform API (`GET /v4/workflows/runtime/{key}/status`)
 
 **Schema**:
 ```typescript
@@ -492,7 +492,7 @@ flowchart TB
     
     User -->|eai tenant select| CLI
     CLI -->|Read access token| TokenFile
-    CLI -->|GET /v3/tenants/memberships| Platform
+    CLI -->|GET /v4/identity/tenants| Platform
     Platform -->|Return memberships| CLI
     CLI -->|User selects tenant| User
     User -->|Selection| CLI
@@ -513,7 +513,7 @@ flowchart TB
     User -->|eai resources create User --data ...| CLI
     CLI -->|Read access token| TokenFile
     CLI -->|Read active tenant| ContextFile
-    CLI -->|POST /v3/resources/{tenant}/{type}| Platform
+    CLI -->|POST /v4/data/resources/{tenant}/{type}| Platform
     Platform -->|Return created resource| CLI
     CLI -->|Success message + resource ID| User
 ```

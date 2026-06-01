@@ -35,25 +35,34 @@ Then add:
 {
   "profiles": {
     "dev": {
-      "publicApiUrl": "https://dev-api.ae.myenterprise.ai/public",
+      "publicApiUrl": "https://dev-api.au.myenterprise.ai/public",
       "authTenantName": "eaidevmyentepriseai",
       "authTenantId": "50808ce0-f31b-4fd0-9861-74b83b8c112a",
       "authClientId": "c3c10ee2-aeeb-4a64-8eea-5ca43a3252af",
-      "authScope": "openid profile email offline_access"
+      "authScope": "openid profile email offline_access api://32191e63-e253-48de-9ea1-a5337e236fe6/access_token"
     },
     "test": {
-      "publicApiUrl": "https://test-api.ae.myenterprise.ai/public",
+      "publicApiUrl": "https://test-api.au.myenterprise.ai/public",
       "authTenantName": "enterpriseaitestplatform",
       "authTenantId": "dffacd2b-7705-43f2-86ae-75d1ef003a71",
       "authClientId": "861ad00a-aba1-47e4-baf2-3e3f6ef4a69e",
       "authScope": "openid profile email offline_access api://97f59e40-0d86-4c6d-8ac6-80659fea1a4e/access_token"
+    },
+    "prod": {
+      "publicApiUrl": "https://api.au.myenterprise.ai/public",
+      "authTenantName": "enterpriseaiplatform",
+      "authTenantId": "f3035369-5c1a-45f7-8ca5-5cb0ad291d26",
+      "authClientId": "d704bde5-fe36-44ff-9a26-221d53772dd0",
+      "authScope": "openid profile email offline_access api://833fc5ab-f1c9-4c60-b344-64e366f241cc/access_token"
     }
-  }
+  },
+  "activeProfile": "test"
 }
 ```
 
-Production values are hardcoded in the CLI source (`src/commands/login.ts` and `src/lib/tenant-context.ts`).
-No profile is needed for prod — `eai login` works out of the box.
+These are the canonical `dev`, `test`, and `prod` profiles (a `local` profile pointing at `http://localhost:8000` is also valid for local stack work, but is omitted here). The `authClientId` and `authTenantId` values are **public** OAuth/CIAM identifiers for the PKCE CLI client — not secrets. `activeProfile` is managed automatically on login.
+
+Production values are also built into the CLI source (`src/commands/login.ts` and `src/lib/tenant-context.ts`), so the `prod` profile entry above is **optional** — `eai login` works against production out of the box without any config file.
 
 `eai provision entra` follows the same model. Default/no profile routes to the production platform API and the production CIAM selected by that deployment. `--profile test` and `--profile dev` route to their configured platform APIs, and those services choose the matching test or dev CIAM from deployment configuration. Do not add a CLI request field for CIAM or environment selection.
 

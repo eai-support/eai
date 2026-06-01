@@ -4,6 +4,7 @@ description:
   Scans market landscape for commercial solutions, open-source alternatives, and
   industry benchmarks to inform build-vs-buy decisions
 tools: Read, Grep, Glob, LS, WebSearch, WebFetch
+model: haiku
 ---
 
 You are a specialist at researching the **market landscape** around a business

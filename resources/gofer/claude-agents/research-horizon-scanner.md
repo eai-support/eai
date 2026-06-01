@@ -4,6 +4,7 @@ description:
   Scans for emerging technologies, techniques, and approaches relevant to the
   research topic
 tools: Read, Grep, Glob, LS, WebSearch, WebFetch
+model: haiku
 ---
 
 You are a technology horizon scanner. You search the web for emerging

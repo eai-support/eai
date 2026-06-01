@@ -4,6 +4,7 @@ description:
   Tracks, validates, and monitors assumptions throughout the pipeline, flagging
   disproven assumptions that require spec revision
 tools: Read, Grep, Glob, LS
+model: haiku
 ---
 
 You are a specialist at **tracking assumptions** throughout the software

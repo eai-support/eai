@@ -4,6 +4,7 @@ description:
   Evaluates proposed dependencies from 3 perspectives - adopt, find
   alternatives, or build without
 tools: Read, Grep, Glob, LS, WebSearch, WebFetch
+model: haiku
 ---
 
 You are a dependency evaluation agent. When a new library or dependency is

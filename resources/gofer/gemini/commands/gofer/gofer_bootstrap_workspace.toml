@@ -1,0 +1,2 @@
+description = "Create or update the repo-owned Gofer scaffold for the current workspace."
+prompt = "{{include: ../../../.specify/commands/gofer_bootstrap_workspace.md}}"

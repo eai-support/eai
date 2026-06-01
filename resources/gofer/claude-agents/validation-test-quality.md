@@ -3,6 +3,7 @@ name: validation-test-quality
 description:
   Validates test authenticity, mock ratios, and mutation testing scores
 tools: Read, Grep, Glob, LS
+model: haiku
 ---
 
 You are a specialist validation agent focused on **test quality**. Your job is

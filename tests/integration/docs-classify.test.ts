@@ -62,7 +62,7 @@ describe('PlatformAPIClient.classifyDocument', () => {
     await writeFile(filePath, 'pdf-bytes');
 
     mockServer.server.use(
-      http.post('https://test-api.example.com/v3/documents/classify', async ({ request }) => {
+      http.post('https://test-api.example.com/v4/data/documents/classify', async ({ request }) => {
         expect(request.headers.get('authorization')).toBe('Bearer test-access-token');
         expect(request.headers.get('x-tenant-id')).toBe('tenant-one');
 

@@ -381,11 +381,11 @@ Comparison of `.specify/specs/` against implementation:
 
 ### 901-cli-platform-alignment ✅
 
-**Spec**: Align CLI with platform API v3  
+**Spec**: Align CLI with platform API v4  
 **Status**: **Aligned**
 
 **Evidence**:
-- All commands use `/v3/` endpoints
+- All commands use `/v4/` endpoints
 - Bearer token authentication implemented
 - Tenant-scoped operations via `--tenant-id` or active context
 - Resource CRUD matches platform API contracts
