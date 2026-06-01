@@ -28,3 +28,5 @@ jobs:
         uses: ossf/scorecard-action@v2.4.3
         with:
           publish_results: true
+          results_file: scorecard-results.sarif
+          results_format: sarif
