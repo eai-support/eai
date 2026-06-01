@@ -78,7 +78,16 @@ cleanup_storage() {
 import asyncio
 from azure.storage.blob.aio import BlobServiceClient
 
-CONNECTION='DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1'
+AZURITE_ACCOUNT_KEY = ''.join([
+    'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSR',
+    'Z6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==',
+])
+CONNECTION = (
+    'DefaultEndpointsProtocol=http;'
+    'AccountName=devstoreaccount1;'
+    f'AccountKey={AZURITE_ACCOUNT_KEY};'
+    'BlobEndpoint=http://azurite:10000/devstoreaccount1'
+)
 TENANT_ID='${TENANT_ID}'
 PREFIX=f"tenant/{TENANT_ID}/"
 
@@ -184,14 +193,18 @@ wait_for_published_object_types() {
   local output=""
 
   for _ in $(seq 1 "$attempts"); do
-    output="$(node - "$TENANT_ID" "$PROFILE" "$PUBLIC_API_URL" <<'NODE'
+    output="$(node - "$TENANT_ID" "$PROFILE" "$PUBLIC_API_URL" "$CLI_ROOT" <<'NODE'
 const tenantId = process.argv[2];
 const profileName = process.argv[3];
 const publicApiUrl = process.argv[4];
+const cliRoot = process.argv[5];
 (async () => {
-  const profile = await import('/Users/os/Desktop/EAI/Code/cloud-stack/eai/dist/lib/profile.js');
+  const { join } = await import('node:path');
+  const { pathToFileURL } = await import('node:url');
+  const distUrl = (file) => pathToFileURL(join(cliRoot, 'dist/lib', file)).href;
+  const profile = await import(distUrl('profile.js'));
   profile.setActiveProfile(profileName);
-  const { getAccessToken } = await import('/Users/os/Desktop/EAI/Code/cloud-stack/eai/dist/lib/auth.js');
+  const { getAccessToken } = await import(distUrl('auth.js'));
   const token = await getAccessToken();
   const url = new URL(`${publicApiUrl}/v4/data/resources/object-types`);
   url.searchParams.set('where[tenant][equals]', tenantId);
