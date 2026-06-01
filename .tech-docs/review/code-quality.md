@@ -1,328 +1,239 @@
 ---
 generated: true
-generated_at: "2026-05-23T18:05:52.673Z"
-source_commit: "3f2653e8e0c12fcd8b9be770d495dbf8269079f1"
+generated_at: "2026-06-01T08:48:50.000Z"
+source_commit: "302da4e9a1a3771338ace8dcfa025026db313887"
 ---
 # EAI CLI — Code Quality Review
 
 ## Overview
 
-This document assesses the code quality of the EAI CLI (v2.8.13) based on comprehensive analysis of the TypeScript source code, test coverage, architectural patterns, and alignment with specifications in `.specify/specs/`.
+This document reviews the EAI CLI codebase at `@eai-tools/cli` v2.9.5. It is
+written for a public repository audience, so it avoids private environment
+names, tenant-specific values, and internal infrastructure details.
 
----
+The review is based on the current TypeScript source, package manifest,
+Docusaurus documentation surface, integration tests, and Gofer workspace
+preflight evidence.
 
-## Readability: 9/10
+## Gofer Validation Note
+
+The public repo contains part of the Gofer scaffold, but the full stage-command
+workspace is not present. In particular, the local preflight found these
+missing pieces:
+
+- `.specify/commands/0_business_scenario.md`
+- `.specify/scripts/node/parse-stage-command.mjs`
+- `.specify/specs/`
+- `.specify/memory/`
+
+Because this is a docs-only public-repo cleanup, this review used a fast Gofer
+validation lane rather than bootstrapping private/internal Gofer structure into
+the public repository:
+
+1. Compare the live docs page with the current source.
+2. Recompute source, test, dependency, and route-version evidence.
+3. Refresh the public-facing review document.
+4. Run focused docs, build, lint, typecheck, and test validation.
+5. Confirm blast radius is limited to documentation.
+
+## Current Codebase Snapshot
+
+| Metric | Current value | Assessment |
+| --- | ---: | --- |
+| Package version | `2.9.5` | Current public release line |
+| TypeScript source files | 45 | Healthy for a focused CLI |
+| Command modules | 20 | Clear command-level ownership |
+| Library modules | 24 | Good separation of shared behavior |
+| Integration test files | 23 | Strong behavior coverage for CLI workflows |
+| Total test/support files | 35 | Appropriate for release-facing CLI tooling |
+| Production dependencies | 5 | Small runtime dependency footprint |
+| Development dependencies | 8 | Reasonable for TypeScript, linting, and Vitest |
+
+Largest files by line count:
+
+| File | Lines | Review note |
+| --- | ---: | --- |
+| `src/commands/verify.ts` | 1,702 | Broad diagnostic command; good candidate for helper extraction |
+| `src/commands/init.ts` | 1,692 | Large scaffolding workflow; should continue moving reusable logic into libraries |
+| `src/lib/api.ts` | 1,279 | Central PublicAPI client; should be split by API surface as v4 grows |
+| `src/commands/types.ts` | 1,234 | Data-model command surface is mature but dense |
+| `src/commands/resources.ts` | 1,055 | Resource workflows are feature-rich; keep extracting format/validation helpers |
+
+## Readability: 8/10
 
 ### Strengths
 
-✅ **Consistent Command Module Pattern**:
-All 20 command modules follow identical structure:
-```typescript
-export const commandName = new Command('command-name')
-  .description('Brief description')
-  .option('--format <format>', 'Output format (text|json)', 'text')
-  .action(async (options) => {
-    // 1. Validate prerequisites
-    // 2. Authenticate (if needed)
-    // 3. Execute operation
-    // 4. Format output
-    // 5. Handle errors
-  });
-```
+- Command modules still follow a predictable Commander.js pattern: declare the
+  command, parse options, validate prerequisites, call the API/client helper,
+  and format the result.
+- Shared concerns are separated into `src/lib/` modules for API calls, auth,
+  tenant context, output formatting, cloud configuration, Gofer integration,
+  update checks, and error codes.
+- Most public behavior is discoverable from command help, integration tests,
+  and focused helper names.
+- Output helpers centralize redaction and TTY-aware formatting, which keeps
+  command code more consistent.
+- TypeScript strict mode remains the main readability guard: data shapes are
+  explicit, and unsafe `unknown` handling is usually narrowed before use.
 
-✅ **Clear Separation of Concerns**:
-- **Commands** (`src/commands/`) — User interaction, prompts, output formatting
-- **API Client** (`src/lib/api.ts`) — HTTP requests to platform API
-- **Auth** (`src/lib/auth.ts`) — Entra CIAM PKCE flow, token management
-- **Config** (`src/lib/config.ts`) — Multi-source configuration loading
-- **Context** (`src/lib/context.ts`, `src/lib/tenant-context.ts`) — Project and tenant resolution
-- **Output** (`src/lib/output.ts`) — TTY-aware symbols, colors, formatting
-- **Error Codes** (`src/lib/error-codes.ts`) — Structured error catalog
+### Areas To Improve
 
-✅ **Descriptive Naming**:
-- Functions: `getAccessToken()`, `loadObjectTypes()`, `findProjectRoot()`, `createAPIClient()`, `bootstrapFirstAdmin()`
-- Variables: `tenantId`, `publicApiUrl`, `objectTypes`, `activeTenant`, `membershipsCachedAt`
-- Files: `auth.ts`, `config.ts`, `api.ts`, `tenant-context.ts`, `gofer-refresh.ts` (self-documenting)
-
-✅ **Comprehensive JSDoc Documentation**:
-```typescript
-/**
- * Authentication module — Entra CIAM browser auth (authorization code + PKCE)
- * plus token storage/refresh.
- *
- * Tokens are stored per-profile: ~/.eai/tokens.json (default) or
- * ~/.eai/tokens/{profile}.json (named profiles).
- */
-```
-
-✅ **Type Safety with TypeScript Strict Mode**:
-- `strict: true` in `tsconfig.json`
-- Explicit return types on public functions
-- No `any` types (uses `unknown` where needed)
-- Interface-driven design
-
-✅ **Structured Error Handling**:
-- Error codes catalog (E001-E399)
-- Contextual error messages with fix suggestions
-- Format-aware error output (text/JSON)
-
-### Areas for Improvement
-
-⚠️ **Long Command Handlers**:
-Some command actions exceed 100 lines (`types.ts seed`, `tenant.ts create`, `resources.ts update`):
-- **Recommendation**: Extract helper functions for validation, API orchestration, output formatting
-- **Example**: `validateAndSeedTypes()`, `bootstrapAndVerifyTenant()`, `fetchAndMergeResource()`
-
-⚠️ **Magic Numbers**:
-Hardcoded timeouts and buffers:
-```typescript
-// Should be constants
-5000 // timeout
-300_000 // 5 minute token refresh buffer
-3476 // OAuth callback port
-```
-- **Recommendation**:
-  ```typescript
-  const UPDATE_CHECK_TIMEOUT_MS = 5000;
-  const TOKEN_REFRESH_BUFFER_MS = 300_000;
-  const OAUTH_CALLBACK_PORT = 3476;
-  ```
-
-⚠️ **Inline String Literals for File Paths**:
-Repeated file paths like `~/.eai/tokens.json`, `~/.eai/context.json`:
-- **Recommendation**: Centralize in constants file:
-  ```typescript
-  const EAI_HOME = path.join(os.homedir(), '.eai');
-  const TOKENS_FILE = path.join(EAI_HOME, 'tokens.json');
-  ```
-
-**Overall Readability Score: 9/10** — Highly readable with excellent structure, naming, and documentation. Minor refactoring would reduce cognitive load.
-
----
+- `verify.ts`, `init.ts`, and `api.ts` are now large enough that local changes
+  require more context than they should. Split by concern before adding more
+  diagnostics, scaffolding branches, or PublicAPI v4 routes.
+- Some compatibility language remains in command names and payload fields, such
+  as `vertical`, `verticalKey`, and `tenant-vertical-enrollment`. These are
+  current contract names rather than preferred public wording, but new docs and
+  user-facing copy should prefer `application` and `app`.
+- `src/lib/api.ts` uses clean v4 path constants, but the class still owns many
+  unrelated API groups. Splitting it into resource, identity, platform,
+  workflow, AI, document, and integration clients would make the v4 surface
+  easier to review.
 
 ## Correctness: 9/10
 
 ### Strengths
 
-✅ **Type Safety**:
-- Full TypeScript with `strict: true`
-- All interfaces properly typed (`Resource`, `ObjectType`, `TenantMembership`, `StoredTokens`)
-- No `any` types; uses `unknown` with proper type narrowing
-- Explicit return types prevent accidental type drift
+- Runtime PublicAPI calls are v4-native. The client defines v4 path groups such
+  as `/v4/platform`, `/v4/identity`, `/v4/data/resources`, `/v4/data/documents`,
+  `/v4/workflows`, `/v4/ai`, and `/v4/integrations`.
+- `tests/integration/no-v3-runtime.test.ts` guards against reintroducing
+  `/v3/` routes in runtime source files.
+- Tenant context is explicit. Commands resolve a tenant from authenticated
+  membership data, stored active-tenant metadata, or an explicit command
+  option.
+- Authentication uses browser-based authorization code flow with PKCE and
+  stores local tokens through the auth/profile layer.
+- API error parsing preserves status, server code, server message, request ID,
+  and raw response text for debug paths.
+- Integration tests exercise resource CRUD, workflow/provisioning flows,
+  tenant behavior, login, verification, document classification, and v4 route
+  guards.
 
-✅ **Authentication Security**:
-- **PKCE Flow**: Uses code verifier + SHA-256 challenge to prevent authorization code interception
-- **Token Storage**: File permissions set to `0o600` (owner read/write only)
-- **Token Refresh**: 5-minute buffer prevents mid-request expiration
-- **Per-Profile Isolation**: Tokens stored separately per profile to prevent cross-environment leakage
+### Areas To Improve
 
-✅ **Tenant Isolation**:
-- All resource operations scoped to active tenant
-- Membership validation via platform API before tenant selection
-- Override requires explicit `--tenant-id` flag (not auto-inferred)
+- Several methods in `src/lib/api.ts` still issue direct `fetch()` calls rather
+  than going through one shared request helper. Consolidating request behavior
+  would make headers, retries, tracing, and error translation harder to forget.
+- Token refresh is still process-local. Multiple CLI processes can refresh at
+  the same time; file locking or a small cross-process refresh guard would make
+  this more robust.
+- File-path handling is mostly local-user tooling, not a server-side boundary,
+  but commands that read user-supplied files should continue moving toward
+  explicit path normalization and clearer error messages.
 
-✅ **Optimistic Locking**:
-Resource updates use version field:
-```typescript
-const current = await client.get(`/v4/data/resources/${tenant}/${type}/${id}`);
-await client.put(`/v4/data/resources/${tenant}/${type}/${id}`, {
-  data: mergedData,
-  version: current.version, // Prevents concurrent update conflicts
-});
-```
+## Security And Public Readiness: 9/10
 
-✅ **Input Validation**:
-- JSON schema validation for Object Types (`eai types validate`)
-- Type checking for resource data before API calls
-- Sanitization of user input (no shell injection via `child_process.exec`)
+### Strengths
 
-✅ **Error Handling**:
-- All API calls wrapped in try-catch
-- Structured error codes with suggestions
-- No silent failures (all errors exit with non-zero code or log warnings)
+- Public documentation no longer needs private profile examples, environment
+  hostnames, or tenant-specific infrastructure details.
+- The default PublicAPI URL in source is the public Australia endpoint:
+  `https://api.au.myenterprise.ai/public`.
+- Private profile support remains in code for organization-managed setups, but
+  it is intentionally not promoted in public docs.
+- Output redaction covers bearer tokens, JWT-looking values, and common
+  sensitive assignments before printing text or JSON.
+- Cloud configuration commands require an explicit app-configuration store
+  environment variable. They do not embed private store names in source.
+- Runtime dependencies are deliberately small: `chalk`, `commander`, `dotenv`,
+  `inquirer`, and `ora`.
 
-✅ **Test Coverage**:
-- Vitest test suite covers core functionality
-- API mocking with MSW for integration tests
-- Smoke tests for CLI binary (`eai --version`, `eai --help`)
+### Areas To Improve
 
-### Areas for Improvement
-
-⚠️ **No Input Sanitization for File Paths**:
-User-provided file paths passed directly to `fs.readFileSync()`:
-```typescript
-const data = fs.readFileSync(options.file, 'utf-8'); // Potential path traversal
-```
-- **Recommendation**: Validate file paths are within project directory:
-  ```typescript
-  const safePath = path.resolve(projectRoot, options.file);
-  if (!safePath.startsWith(projectRoot)) {
-    throw new Error('File path outside project directory');
-  }
-  ```
-
-⚠️ **Race Condition in Token Refresh**:
-Multiple concurrent commands may trigger simultaneous token refreshes:
-- **Recommendation**: Add file locking or in-memory mutex to prevent concurrent refreshes
-
-⚠️ **No Retry Logic for Transient Failures**:
-Network errors fail immediately without retries:
-- **Recommendation**: Add exponential backoff for 5xx errors and network timeouts
-
-**Overall Correctness Score: 9/10** — Highly correct with strong type safety, authentication security, and error handling. Minor edge cases around file path validation and race conditions.
-
----
+- Keep scanning docs, tests, fixtures, release assets, and GitHub Actions for
+  accidental private environment references before every public release.
+- Avoid documenting local profile internals beyond the minimum needed for user
+  safety. The profile file exists, but public docs should describe supported
+  CLI behavior rather than internal environment-switching details.
+- Consider a release check that fails if public docs contain known private
+  host patterns or unsupported environment names.
 
 ## Performance: 8/10
 
 ### Strengths
 
-✅ **Token Caching**:
-- Tokens cached locally to avoid repeated auth flows
-- Refresh tokens used to obtain new access tokens (no browser re-auth)
-- Only re-authenticate when refresh fails
+- The CLI has a small runtime dependency set and low startup overhead.
+- Update checks are non-blocking, skipped in CI/non-TTY contexts, and cached in
+  `~/.eai/update-check.json` for 24 hours.
+- Tenant membership data and active tenant selection avoid prompting on every
+  command once the user has selected a tenant.
+- Resource APIs support pagination, cursors, streaming endpoints, batch
+  create/update/delete, aggregate queries, and cross-type query endpoints.
 
-✅ **Membership Caching**:
-- Tenant memberships cached with 1-hour TTL
-- Reduces unnecessary `/v4/identity/tenants` API calls
+### Areas To Improve
 
-✅ **Update Check Throttling**:
-- Update checks limited to once per 24 hours
-- Stored in `~/.eai/last-update-check`
-- Non-blocking background checks
+- Add retry/backoff for transient network failures where commands call
+  PublicAPI. This should be shared request behavior, not copied into each
+  command.
+- Parallelize independent readiness checks in diagnostic flows where the user
+  experience benefits and the APIs can handle it.
+- Keep large response handling paginated or streaming by default. Avoid adding
+  commands that load unbounded result sets into memory.
 
-✅ **Efficient File I/O**:
-- Config files read once and cached in memory per command execution
-- No unnecessary file re-reads within a single command
+## Maintainability: 7/10
 
-✅ **Batch Operations**:
-- Object Types seeded via `/v4/data/resources/object-types` (create/update per type)
-- Cross-type queries via single `/v4/data/resources/{tenantId}/query` endpoint
+The repo is healthy, but maintainability is the main area to watch. The command
+surface has grown faster than the internal API-client shape.
 
-✅ **Minimal Runtime Dependencies**:
-- Only 5 production dependencies (commander, chalk, dotenv, inquirer, ora)
-- Small bundle size (~500KB unpacked)
-- Fast startup time (~200ms cold start on modern hardware)
+Recommended next refactors:
 
-### Areas for Improvement
+1. Split `src/lib/api.ts` by v4 public interface group.
+2. Extract `verify.ts` diagnostics into focused check modules.
+3. Extract `init.ts` scaffolding steps into reusable workflow helpers.
+4. Add a shared PublicAPI request helper with retry, tracing, redaction-safe
+   debug output, and consistent error translation.
+5. Keep compatibility command names stable until a deliberate migration plan
+   removes them, but make all new public wording application/app-oriented.
 
-⚠️ **No Parallel API Calls**:
-Commands make sequential API calls even when independent:
-```typescript
-const tenant = await client.get('/v4/platform/tenants/123');
-const types = await client.get('/v4/data/resources/object-types');
-// Could be parallel with Promise.all()
-```
-- **Recommendation**: Use `Promise.all()` for independent requests
+## Test And Validation Expectations
 
-⚠️ **No Request Deduplication**:
-Multiple concurrent commands may fetch same data (e.g., memberships):
-- **Recommendation**: Add in-memory cache with short TTL (30 seconds)
+For docs-only changes to this page, the expected validation set is:
 
-⚠️ **Gofer Manifest Hash Computation**:
-Full file reads for hash computation on every `gofer refresh --check`:
-- **Recommendation**: Cache hashes or use file mtimes for quick change detection
+- `npm run docs:release-assets:check`
+- `npm --prefix docs-site run build`
+- `npm run typecheck`
+- `npm run lint`
+- `npm run test`
+- `git diff --check`
+- Search checks for stale version labels, old update-cache filenames, private
+  hostnames, and old environment examples
 
-⚠️ **No Streaming for Large Responses**:
-Large resource lists loaded entirely into memory:
-- **Recommendation**: Add streaming support for paginated responses
-
-**Overall Performance Score: 8/10** — Good performance with efficient caching and throttling. Opportunities for parallelization and streaming.
-
----
+For code changes that touch CLI behavior, add or update integration tests near
+the affected command. For API-contract changes, update the route guard and
+PublicAPI-facing tests in the same PR.
 
 ## Key Recommendations
 
 ### High Priority
 
-1. **Add Input Path Validation** (Security)
-   - Validate user-provided file paths are within project directory
-   - Prevent path traversal attacks
-
-2. **Implement Token Refresh Mutex** (Correctness)
-   - Prevent concurrent token refreshes from multiple CLI processes
-   - Use file locking or in-memory coordination
-
-3. **Extract Long Command Handlers** (Maintainability)
-   - Break 100+ line handlers into smaller helper functions
-   - Improves testability and readability
+1. Split the PublicAPI client by v4 route family so route ownership stays clear
+   as more interfaces move to v4.
+2. Extract the largest command files before adding more user workflows.
+3. Add a docs/public-readiness scanner to release checks so private environment
+   details cannot drift back into public pages.
 
 ### Medium Priority
 
-4. **Add Retry Logic for Network Failures** (Reliability)
-   - Exponential backoff for transient 5xx errors
-   - Configurable retry attempts (default: 3)
-
-5. **Parallelize Independent API Calls** (Performance)
-   - Use `Promise.all()` for concurrent requests
-   - Reduce latency for multi-step operations
-
-6. **Centralize Magic Numbers** (Maintainability)
-   - Extract timeouts, ports, buffers to named constants
-   - Improve configurability
+4. Add shared retry/backoff for transient PublicAPI failures.
+5. Add cross-process coordination for token refresh.
+6. Continue replacing new public-facing "vertical" wording with
+   application/app language while preserving compatibility where needed.
 
 ### Low Priority
 
-7. **Add Request Deduplication** (Performance)
-   - Short-lived in-memory cache for duplicate requests
-   - Reduces unnecessary API calls
-
-8. **Add Streaming for Large Responses** (Performance)
-   - Stream paginated resource lists
-   - Reduce memory usage for large datasets
-
----
-
-## Test Coverage Summary
-
-### Unit Tests
-- **Location**: `tests/` directory
-- **Framework**: Vitest
-- **Coverage**: ~70% line coverage (estimated from test files)
-- **Mocking**: MSW for API mocking
-
-### Integration Tests
-- **Smoke Tests**: CLI binary (`eai --version`, `eai --help`)
-- **E2E Tests**: `scripts/test-local-dedicated-tenant-lifecycle.sh`
-
-### Missing Coverage
-- Token refresh race conditions
-- File path traversal scenarios
-- Network retry logic (not implemented yet)
-- Concurrent command execution
-
----
-
-## Code Metrics
-
-| Metric | Value | Assessment |
-|--------|-------|------------|
-| **Total Source Files** | ~30 (commands + lib) | Reasonable |
-| **Average File Length** | ~150-200 lines | Good |
-| **Longest File** | `resources.ts` (~400 lines) | Could be split |
-| **Cyclomatic Complexity** | Low-Medium (< 15 per function) | Good |
-| **Type Coverage** | 100% (strict mode) | Excellent |
-| **Production Dependencies** | 5 | Excellent |
-| **Dev Dependencies** | 8 | Reasonable |
-| **Bundle Size** | ~500KB | Small |
-
----
+7. Consider coverage thresholds once the test suite stabilizes around v4.
+8. Add a lightweight complexity report to keep future large-file growth visible.
 
 ## Conclusion
 
-The EAI CLI codebase demonstrates **high quality** with strong type safety, consistent structure, comprehensive documentation, and secure authentication practices. The code is highly readable, largely correct, and performs well for typical use cases.
+Overall code quality is strong for a public TypeScript CLI. The strongest
+signals are strict typing, a small dependency footprint, secure auth patterns,
+v4 PublicAPI route guards, redacted output helpers, and broad integration tests.
 
-**Strengths**:
-- Excellent TypeScript usage with strict mode
-- Consistent command module pattern
-- Secure authentication with PKCE flow
-- Structured error handling
-- Clear separation of concerns
+The main risk is not correctness today; it is future change cost. The CLI is
+ready to be public-facing, but the next engineering pass should reduce the size
+of the largest command modules and split the v4 API client before the route
+surface grows again.
 
-**Areas for Improvement**:
-- Input path validation
-- Token refresh synchronization
-- Parallelization of independent API calls
-- Extraction of long command handlers
-
-**Overall Code Quality: 9/10** — Production-ready with minor opportunities for hardening and optimization.
+**Overall Code Quality: 8.5/10**.
