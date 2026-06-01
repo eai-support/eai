@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-31T01:12:39.542Z"
-source_commit: "c104ef3a24ede34f769d5eaf587ba58df8b0ebb6"
+generated_at: "2026-06-01T09:00:09.000Z"
+source_commit: "5a2b88a3a98c40d9b88476b34bd8fc66aa2d5037"
 ---
 # EAI CLI — Dependencies
 
@@ -15,7 +15,7 @@ The EAI CLI is a **client-side tool** that depends on external services for auth
 
 ```mermaid
 graph TB
-    CLI[eai CLI<br/>v2.8.13]
+    CLI[eai CLI<br/>v2.9.5]
     
     subgraph "Authentication"
         Entra[Entra CIAM<br/>OAuth 2.0 PKCE]

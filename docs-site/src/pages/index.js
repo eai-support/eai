@@ -37,7 +37,7 @@ export default function Home() {
 
           <article className={styles.panel}>
             <h2>Scenarios</h2>
-            <p>13 industries and 90 detailed example workflows showing how to model vertical applications with `eai`.</p>
+            <p>13 industries and 90 detailed example workflows showing how to model applications with `eai`.</p>
             <Link to="/scenarios/">Open the scenario library</Link>
           </article>
 

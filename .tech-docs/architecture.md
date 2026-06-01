@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-31T01:12:39.543Z"
-source_commit: "c104ef3a24ede34f769d5eaf587ba58df8b0ebb6"
+generated_at: "2026-06-01T09:00:09.000Z"
+source_commit: "5a2b88a3a98c40d9b88476b34bd8fc66aa2d5037"
 ---
 # EAI CLI — Architecture
 
@@ -79,7 +79,7 @@ Each command follows a consistent pattern:
 2. Authenticate (if needed) via `getToken()`
 3. Create API client with `createAPIClient(token)`
 4. Execute operation with structured error handling
-5. Format output based on `--format` flag (text/JSON/YAML)
+5. Format output based on `--format` flag (text/JSON; YAML is not implemented)
 6. Exit with structured error codes on failure
 
 ### Library Layer (`src/lib/`)
@@ -87,17 +87,17 @@ Each command follows a consistent pattern:
 #### Core Libraries
 
 **`api.ts` - Platform API Client**
-- Fetch-based HTTP client with Bearer token authentication
-- Methods: `get()`, `post()`, `put()`, `delete()`
-- Base URL from `BASE_URL_PUBLIC_API` environment variable
-- Automatic JSON serialization/deserialization
-- Error handling with structured responses
+- Fetch-based PublicAPI v4 client with Bearer token authentication
+- Route families: platform, identity, resources, documents, workflows, AI, and integrations
+- Base URL from active profile, project/process `BASE_URL_PUBLIC_API`, tenant regional routing, or public default
+- Automatic JSON serialization/deserialization where streaming behavior does not require direct `fetch()`
+- Error handling with structured server context
 
 **`auth.ts` - Authentication**
 - Entra CIAM browser-based PKCE flow
-- Local token storage in `~/.eai/tokens.json`
+- Encrypted local token storage in `~/.eai/tokens.json` or profile-specific token files
 - Token refresh logic
-- Functions: `getToken()`, `saveToken()`, `clearToken()`, `isTokenExpired()`
+- Functions include token load/store, browser login, logout, access-token resolution, and refresh
 
 **`config.ts` - Configuration Loader**
 - Multi-source configuration merging (`.env.local` → `eai.config.ts` → `process.env`)
@@ -130,9 +130,9 @@ Each command follows a consistent pattern:
 
 **`tenant-context.ts` - Tenant Context**
 - Manages active tenant selection
-- Stores context in `~/.eai/context.json`
-- Validates tenant membership via platform API
-- Functions: `getActiveTenant()`, `setActiveTenant()`, `loadTenantContext()`
+- Stores active tenant metadata alongside the active profile token record
+- Validates tenant membership via PublicAPI
+- Functions include PublicAPI URL resolution, membership fetch, tenant selection, and usability refresh
 
 **PublicAPI regional routing boundary**
 - `resolvePublicApiUrl()` chooses the PublicAPI base URL in this order: named profile override, project/process `BASE_URL_PUBLIC_API`, stored active tenant `homeRegion`, authenticated session routing, then the AU production default.
@@ -146,9 +146,9 @@ Each command follows a consistent pattern:
 - Functions: `describeProgram()`, `describeCommand()`
 
 **`update-check.ts` - Version Management**
-- Checks GitHub Releases API for updates
+- Checks the static EAI release registry for updates
 - Rate-limited to once per day
-- Stores last check in `~/.eai/last-update-check`
+- Stores last check in `~/.eai/update-check.json`
 - Non-blocking notifications
 - Functions: `checkForUpdate()`, `notifyIfUpdateAvailable()`
 
@@ -499,7 +499,7 @@ Command execution follows a template:
 ### 2. Update Check Throttling
 - Update checks limited to once per 24 hours
 - Non-blocking background checks
-- Cached in `~/.eai/last-update-check`
+- Cached in `~/.eai/update-check.json`
 
 ### 3. API Request Optimization
 - Batch operations where supported (e.g., type seeding)
