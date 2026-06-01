@@ -1,5 +1,10 @@
 # eai — Enterprise AI Platform CLI
 
+[![CI](https://github.com/eai-tools/eai/actions/workflows/ci.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/eai-tools/eai/actions/workflows/codeql.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/codeql.yml)
+[![Docs](https://github.com/eai-tools/eai/actions/workflows/docs.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/docs.yml)
+[![License](https://img.shields.io/github/license/eai-tools/eai)](LICENSE)
+
 Scaffold, seed, deploy, and manage vertical applications on the EAI platform.
 
 Every command wraps platform API calls — developers work with **resources, types, tenants, and chat** using simple, intuitive commands.
