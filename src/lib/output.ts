@@ -33,6 +33,31 @@ export function isSimpleMode(): boolean {
 
 const useColor = shouldUseColor();
 
+const SENSITIVE_ASSIGNMENT_PATTERN =
+  /((?:["']?[\w.-]*(?:token|secret|password|passwd|pwd|api[_-]?key|cookie|credential|client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token)[\w.-]*["']?\s*[:=]\s*["']?))([^"',\s}]+)/gi;
+const SENSITIVE_KEY_PATTERN =
+  /(?:token|secret|password|passwd|pwd|api[_-]?key|authorization|cookie|credential|client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token)/i;
+const AUTH_HEADER_PATTERN = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
+const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g;
+
+export function redactSensitiveText(msg: string): string {
+  return msg
+    .replace(AUTH_HEADER_PATTERN, '$1 [redacted]')
+    .replace(JWT_PATTERN, '[redacted-jwt]')
+    .replace(SENSITIVE_ASSIGNMENT_PATTERN, '$1[redacted]');
+}
+
+function redactingJsonReplacer(key: string, value: unknown): unknown {
+  if (key && SENSITIVE_KEY_PATTERN.test(key)) {
+    return '[redacted]';
+  }
+
+  if (typeof value === 'string') {
+    return redactSensitiveText(value);
+  }
+  return value;
+}
+
 export const symbols = {
   success: useColor ? chalk.green('✓') : '✓',
   error: useColor ? chalk.red('✗') : '✗',
@@ -47,61 +72,68 @@ export const symbols = {
 } as const;
 
 export function success(msg: string): void {
+  const safeMsg = redactSensitiveText(msg);
   if (simpleMode) {
-    console.log(`SUCCESS: ${msg}`);
+    console.log(`SUCCESS: ${safeMsg}`);
   } else {
-    console.log(`${symbols.success} ${msg}`);
+    console.log(`${symbols.success} ${safeMsg}`);
   }
 }
 
 export function error(msg: string): void {
+  const safeMsg = redactSensitiveText(msg);
   if (simpleMode) {
-    console.error(`ERROR: ${msg}`);
+    console.error(`ERROR: ${safeMsg}`);
   } else {
-    console.error(`${symbols.error} ${msg}`);
+    console.error(`${symbols.error} ${safeMsg}`);
   }
 }
 
 export function warn(msg: string): void {
+  const safeMsg = redactSensitiveText(msg);
   if (simpleMode) {
-    console.warn(`WARNING: ${msg}`);
+    console.warn(`WARNING: ${safeMsg}`);
   } else {
-    console.warn(`${symbols.warning} ${msg}`);
+    console.warn(`${symbols.warning} ${safeMsg}`);
   }
 }
 
 export function info(msg: string): void {
+  const safeMsg = redactSensitiveText(msg);
   if (simpleMode) {
-    console.log(`-> ${msg}`);
+    console.log(`-> ${safeMsg}`);
   } else {
-    console.log(`${symbols.info} ${chalk.dim(msg)}`);
+    console.log(`${symbols.info} ${chalk.dim(safeMsg)}`);
   }
 }
 
 export function heading(msg: string): void {
+  const safeMsg = redactSensitiveText(msg);
   if (useColor && !simpleMode) {
-    console.log(chalk.bold(msg));
+    console.log(chalk.bold(safeMsg));
   } else {
-    console.log(msg);
+    console.log(safeMsg);
   }
 }
 
 export function dim(msg: string): void {
+  const safeMsg = redactSensitiveText(msg);
   if (useColor && !simpleMode) {
-    console.log(chalk.dim(msg));
+    console.log(chalk.dim(safeMsg));
   } else {
-    console.log(msg);
+    console.log(safeMsg);
   }
 }
 
 export function table(rows: Array<[string, string]>): void {
   const maxLabel = Math.max(...rows.map(([label]) => label.length));
   for (const [label, value] of rows) {
-    const paddedLabel = label.padEnd(maxLabel);
+    const paddedLabel = redactSensitiveText(label.padEnd(maxLabel));
+    const safeValue = redactSensitiveText(value);
     if (useColor && !simpleMode) {
-      console.log(`  ${chalk.dim(paddedLabel)}  ${value}`);
+      console.log(`  ${chalk.dim(paddedLabel)}  ${safeValue}`);
     } else {
-      console.log(`  ${paddedLabel}  ${value}`);
+      console.log(`  ${paddedLabel}  ${safeValue}`);
     }
   }
 }
@@ -111,7 +143,7 @@ export function blank(): void {
 }
 
 export function json(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
+  console.log(JSON.stringify(data, redactingJsonReplacer, 2));
 }
 
 export function formatOutput(data: unknown, format: 'text' | 'json' | 'yaml'): void {
