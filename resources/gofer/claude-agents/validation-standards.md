@@ -3,6 +3,7 @@ name: validation-standards
 description:
   Validates compliance with project constitution, patterns, and code hygiene
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are a specialist validation agent focused on **standards compliance and code

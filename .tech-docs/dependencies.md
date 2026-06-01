@@ -1,13 +1,13 @@
 ---
 generated: true
-generated_at: "2026-05-19T18:18:09.974Z"
-source_commit: "0efc50cec82087eead261426a4146d5ba45b902d"
+generated_at: "2026-05-31T01:12:39.542Z"
+source_commit: "c104ef3a24ede34f769d5eaf587ba58df8b0ebb6"
 ---
 # EAI CLI — Dependencies
 
 ## Overview
 
-The EAI CLI is a **client-side tool with no downstream dependents**. It depends on external services for authentication, platform API access, and deployment.
+The EAI CLI is a **client-side tool** that depends on external services for authentication, platform API access, Azure resources, and deployment. It has **no downstream dependents** — it is a terminal application used directly by developers.
 
 ---
 
@@ -15,425 +15,444 @@ The EAI CLI is a **client-side tool with no downstream dependents**. It depends 
 
 ```mermaid
 graph TB
-    CLI[eai CLI v2.8.13]
-
+    CLI[eai CLI<br/>v2.8.13]
+    
     subgraph "Authentication"
-        EntraCIAM[Entra CIAM<br/>Browser PKCE Flow<br/>localhost:8888 callback]
+        Entra[Entra CIAM<br/>OAuth 2.0 PKCE]
     end
-
-    subgraph "Platform Services"
-        PublicAPI[Platform API v3<br/>/v3/resources<br/>/v3/chat<br/>/v3/orchestrate]
-        AdminAPI[Admin API<br/>/api/admin/tenants<br/>/api/admin/users]
-        TypeRegistry[Type Registry]
-        DataService[Data Service]
-        AIService[AI Service]
+    
+    subgraph "Platform API v4"
+        PublicAPI[Platform PublicAPI<br/>/v4/*]
     end
-
+    
     subgraph "Azure Services"
-        AppConfig[Azure App Config]
+        AppConfig[Azure App Configuration]
         KeyVault[Azure Key Vault]
         AppService[Azure App Service]
     end
-
-    subgraph "External Tools"
-        GitHubCLI[GitHub CLI<br/>gh]
-        AzureCLI[Azure CLI<br/>az]
-        Git[Git]
+    
+    subgraph "GitHub Services"
+        ActionsAPI[GitHub Actions API]
+        ReleasesAPI[GitHub Releases API]
+        Pages[GitHub Pages Registry]
     end
-
-    subgraph "Registry"
-        GitHubPages[GitHub Pages<br/>Static NPM Registry]
+    
+    subgraph "Runtime Dependencies (npm)"
+        Commander[commander@13.1.0]
+        Chalk[chalk@5.6.2]
+        Dotenv[dotenv@16.6.1]
+        Inquirer[inquirer@12.11.1]
+        Ora[ora@8.2.0]
     end
-
-    CLI -->|1. Browser Login| EntraCIAM
-    CLI -->|2. Fetch Memberships| AdminAPI
-    CLI -->|3. API Calls| PublicAPI
-    PublicAPI --> TypeRegistry
-    PublicAPI --> DataService
-    PublicAPI --> AIService
-
-    CLI -->|4. Sync Config| AppConfig
-    CLI -->|5. Fetch Secrets| KeyVault
-    CLI -->|6. Deploy| AppService
-
-    CLI -->|7. Trigger Workflows| GitHubCLI
-    CLI -->|8. Deploy Commands| AzureCLI
-    CLI -->|9. Version Control| Git
-
-    CLI -->|10. Update Check| GitHubPages
+    
+    CLI -->|Browser PKCE Flow| Entra
+    CLI -->|Bearer Token Auth| PublicAPI
+    CLI -->|Pull Config| AppConfig
+    CLI -->|Pull Secrets| KeyVault
+    CLI -->|Deploy Trigger| AppService
+    CLI -->|Workflow Dispatch| ActionsAPI
+    CLI -->|Version Check| ReleasesAPI
+    CLI -->|Install/Update| Pages
+    CLI --> Commander
+    CLI --> Chalk
+    CLI --> Dotenv
+    CLI --> Inquirer
+    CLI --> Ora
+    
+    style CLI fill:#e1f5ff
+    style Pages fill:#d4edda
 ```
 
 ---
 
 ## Upstream Dependencies
 
-### 1. Entra CIAM (Microsoft Entra)
+Services and APIs that the CLI calls:
 
-**Type**: Authentication Service
+### 1. Entra CIAM (Microsoft Identity Platform)
 
-**Dependency Level**: Critical
-
-**Protocol**: OAuth 2.0 Authorization Code Flow with PKCE (RFC 7636)
-
+**Type**: Authentication Service  
+**Protocol**: OAuth 2.0 Authorization Code Flow with PKCE  
 **Endpoints**:
-- Authorization: `https://{tenantName}.ciamlogin.com/{tenantId}/oauth2/v2.0/authorize`
-- Token Exchange: `https://{tenantName}.ciamlogin.com/{tenantId}/oauth2/v2.0/token`
-- Token Refresh: `https://{tenantName}.ciamlogin.com/{tenantId}/oauth2/v2.0/token` (refresh_token grant)
+- Authorization: `https://{tenant}.ciamlogin.com/{tenant-id}/oauth2/v2.0/authorize`
+- Token: `https://{tenant}.ciamlogin.com/{tenant-id}/oauth2/v2.0/token`
 
-**Commands Affected**:
-- `eai login` — Browser-based authentication
-- Any command requiring authentication (when token &lt;5 min remaining → auto-refresh)
-
-**Profile-Specific**:
-- Each profile (`dev`, `test`, `prod`) may use a different CIAM tenant
-- Platform resolves correct CIAM from environment/profile
-
-**Failure Impact**:
-- Users cannot authenticate
-- Token refresh fails → must re-login
-- Headless/CI environments unaffected (can use `EAI_ACCESS_TOKEN` env var)
-
-**Fallback**: Use `EAI_ACCESS_TOKEN` environment variable for headless scenarios
+**Used By**: `eai login` command  
+**Purpose**: Obtain access tokens for platform API authentication  
+**Failure Impact**: **Critical** — Users cannot authenticate  
+**Fallback**: None (authentication is required)
 
 ---
 
-### 2. Platform API v3 (PublicAPI)
+### 2. EAI Platform API (PublicAPI v4)
 
-**Type**: REST API
+**Type**: REST API  
+**Base URL**: Configured via `BASE_URL_PUBLIC_API` (e.g., `https://api.ae.myenterprise.ai/public`)  
+**Authentication**: Bearer token (from Entra CIAM)  
 
-**Dependency Level**: Critical
+**Endpoints Used** (grouped by v4 domain):
 
-**Base URL**: Profile-specific or from `BASE_URL_PUBLIC_API` (e.g., `https://api.ae.myenterprise.ai/public`)
+| Endpoint | Used By | Purpose |
+|----------|---------|---------|
+| `GET /health` | `eai verify`, `eai verify calls` | Gateway health check |
+| `GET /v4/identity/tenants` | `eai tenant list/select/info` | Fetch user tenant memberships |
+| `POST /v4/identity/me/provision` | `eai user provision-me` | Self-provision to a tenant |
+| `POST /v4/platform/tenants/{parentId}/children` | `eai tenant create` (child) | Create child tenant |
+| `POST /v4/platform/tenants` | `eai tenant create --allow-root` | Create root tenant |
+| `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` | `eai tenant create` | Bootstrap admin on child tenant |
+| `POST /v4/platform/tenants/{tenantId}/delete` | `eai tenant delete` | Soft-delete tenant |
+| `POST /v4/platform/tenants/{companyTenantId}/apps` | `eai vertical create` | Create app (vertical enrollment) |
+| `GET /v4/platform/users/by-email` | `eai user invite` | Look up a user by email |
+| `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` | `eai user invite` | Provision a user into a tenant |
+| `POST /v4/platform/provisioning/entra-apps[/{clientId}/rotate-secret]` | `eai provision entra` | Create/confirm/rotate Entra app registration |
+| `GET /v4/data/resources/object-types` | `eai types diff/pull/seed` | Fetch Object Types |
+| `POST /v4/data/resources/object-types` | `eai types seed` | Create an Object Type |
+| `PATCH /v4/data/resources/object-types/{id}` | `eai types seed` | Update an Object Type |
+| `GET /v4/data/resources/schema/{tenantId}` | `eai resources schema` | Get published schema |
+| `GET /v4/data/resources/{tenantId}/{type}` | `eai resources list` | List resources |
+| `GET /v4/data/resources/{tenantId}/{type}/{id}` | `eai resources get` | Get resource |
+| `POST /v4/data/resources/{tenantId}/{type}` | `eai resources create` | Create resource |
+| `PUT /v4/data/resources/{tenantId}/{type}/{id}` | `eai resources update` | Update resource |
+| `DELETE /v4/data/resources/{tenantId}/{type}/{id}` | `eai resources delete` | Delete resource |
+| `POST /v4/data/resources/{tenantId}/query` | `eai resources query` | Cross-type query |
+| `POST /v4/data/resources/{tenantId}/{type}/aggregate` | `eai resources aggregate` | Aggregate query |
+| `POST /v4/data/resources/{tenantId}/search` | `eai resources search` | Search projections |
+| `POST /v4/data/resources/{tenantId}/{type}/batch/{create\|update\|delete}` | `eai resources batch-*` | Bulk operations |
+| `*/v4/data/resources/{tenantId}/{type}/{id}/files/{prop}` | `eai resources file *` | File property upload/download/delete |
+| `*/v4/data/resources/{tenantId}/storage[/doctor\|/provision\|/sync-schema]` | `eai resources storage*`, `eai provision storage`, `eai vertical provision` | Storage status/diagnostics/provision/reconcile |
+| `GET /v4/data/resources/{tenantId}/tenant-vertical-enrollment` | `eai vertical list/select/provision` | List/validate app enrollments |
+| `*/v4/data/resources/{tenantId}/shared-workflow-config` (+ `vertical-product-config`, `shared-ai-profile`, `shared-chatbot-config`) | `eai workflow provision` | Upsert workflow/AI runtime config |
+| `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` | `eai chat send` | Send chat message |
+| `POST /v4/ai/chat/stream/{tenantId}/{workflowId}/{stage}` | `eai chat stream` | Stream chat response (SSE) |
+| `GET /v4/integrations/builder/readiness` | `eai workflow readiness` | Check workflow readiness |
+| `GET /v4/workflows/runtime/{key}/status` | `eai workflow status` | Check runtime workflow status |
+| `POST /v4/workflows/runtime-requests` | `eai workflow request` | Request operator-assisted binding |
+| `POST /v4/data/documents/upload` | `eai docs upload` | Upload document |
+| `POST /v4/data/documents/classify` | `eai docs classify` | Classify document |
+| `GET /v4/data/documents/records/{id}` + `POST /v4/data/documents/rag-index` | `eai docs index` | Index document for RAG |
+
+> `eai env pull` / `eai env push` are **not** in this table — they use Azure App Configuration / Key Vault directly (see sections 4–5), not the platform API.
+
+**Failure Impact**: **Critical** — Most CLI commands require platform API  
+**Fallback**: Local-only operations (init, dev, verify connection check)
+
+---
+
+### 3. Entra App Provisioning (via PublicAPI)
+
+**Type**: REST API (PublicAPI `/v4/platform`)  
+**Base URL**: Configured via `BASE_URL_PUBLIC_API`  
+**Authentication**: Bearer token (from Entra CIAM)
+
+Entra app provisioning is served by PublicAPI under `/v4/platform/provisioning` — there is no separate AdminAPI dependency for the CLI.
 
 **Endpoints Used**:
-- `/v3/resources/{tenant}/{type}` — Resource CRUD
-- `/v3/resources/{tenant}/query` — Cross-type queries
-- `/v3/resources/schema/{tenant}` — Published Object Types
-- `/v3/chat/{tenant}/{workflow}/{stage}` — AI chat
-- `/v3/chat/stream/{tenant}/{workflow}/{stage}` — Streaming chat (SSE)
-- `/v3/documents/classify` — Document classification
-- `/v3/documents/rag-index` — RAG indexing
-- `/v3/orchestrate` — Internal routing to backend services
+| Endpoint | Used By | Purpose |
+|----------|---------|---------|
+| `POST /v4/platform/provisioning/entra-apps` | `eai provision entra` | Create/confirm Entra app registration |
+| `POST /v4/platform/provisioning/entra-apps/{clientId}/rotate-secret` | `eai provision entra --rotate-secret` | Rotate the app secret |
 
-**Commands Affected**:
-- `eai resources` (all subcommands)
-- `eai types seed/diff/pull`
-- `eai chat send/stream`
-- `eai docs classify/index`
-- `eai verify`, `eai doctor`
-
-**Failure Impact**:
-- All resource operations fail
-- Type seeding fails
-- AI workflows unavailable
-- CLI remains usable for local tasks (`eai init`, `eai login`, etc.)
-
-**Health Check**: `eai verify` tests API connectivity and token validity
+**Failure Impact**: **Medium** — Only affects Entra provisioning  
+**Fallback**: Manual Entra app registration via Azure Portal
 
 ---
 
-### 3. Admin API
+### 4. Azure App Configuration
 
-**Type**: REST API
+**Type**: Azure PaaS Service  
+**Endpoint**: `AZURE_APP_CONFIG_ENDPOINT` environment variable  
+**Authentication**: Azure CLI credentials or managed identity
 
-**Dependency Level**: Critical (for tenant/user management)
-
-**Base URL**: Resolved at runtime from PublicAPI environment (e.g., `https://api.ae.myenterprise.ai/admin`)
-
-**Endpoints Used**:
-- `/api/admin/current-user/tenant-memberships` — Tenant-admin membership list
-- `/api/admin/tenants` — Tenant creation
-- `/api/admin/tenants/{id}/bootstrap-admin` — First-admin bootstrap for child tenants
-- `/api/admin/tenants/{id}/users` — User provisioning
-- `/api/admin/users/lookup` — User lookup by email
-- `/api/admin/platform-ops/entra/confirm-app-registration` — Entra provisioning
-
-**Commands Affected**:
-- `eai tenant list/select/create`
-- `eai user invite`
-- `eai user provision-me`
-- `eai provision entra`
-
-**Failure Impact**:
-- Cannot list or select tenants
-- Cannot create child tenants or provision users
-- Cannot create Entra app registrations
-
-**Auth**: Requires authenticated user with appropriate roles (`tenant-admin` for tenant operations)
-
----
-
-### 4. Azure App Config
-
-**Type**: Configuration Service
-
-**Dependency Level**: Optional (for `eai env` commands)
-
-**Connection**: Via `AZURE_APP_CONFIG_CONNECTION_STRING` or Azure SDK
-
-**Operations**:
-- `GET` — Fetch environment variables
-- `SET` — Push local overrides (admin only)
-
-**Commands Affected**:
-- `eai env pull`
-- `eai env list`
-- `eai env push`
-
-**Failure Impact**:
-- Cannot sync environment configuration
-- Projects can still use local `.env.local` files
+**Used By**: `eai env pull`  
+**Purpose**: Sync environment variables from cloud to `.env.local`  
+**Failure Impact**: **Low** — Manual configuration possible  
+**Fallback**: Manually edit `.env.local`
 
 ---
 
 ### 5. Azure Key Vault
 
-**Type**: Secret Management Service
+**Type**: Azure PaaS Service  
+**Endpoint**: `AZURE_KEY_VAULT_URL` environment variable  
+**Authentication**: Azure CLI credentials or managed identity
 
-**Dependency Level**: Optional (for secret-enabled `eai env pull`)
-
-**Connection**: Via Azure SDK (authenticated via Azure CLI or managed identity)
-
-**Operations**:
-- `GET secret` — Fetch secrets referenced in App Config
-
-**Commands Affected**:
-- `eai env pull --include-secrets`
-
-**Failure Impact**:
-- Secrets are not synced
-- Non-secret config still works
+**Used By**: `eai env pull --include-secrets`  
+**Purpose**: Fetch secrets for `.env.local`  
+**Failure Impact**: **Low** — Manual secret management possible  
+**Fallback**: Manually add secrets to `.env.local`
 
 ---
 
-### 6. GitHub CLI (`gh`)
+### 6. Azure App Service
 
-**Type**: External CLI Tool
+**Type**: Azure PaaS Service  
+**Deployment**: Via GitHub Actions (not directly by CLI)
 
-**Dependency Level**: Optional (for deployment)
-
-**Version**: ≥2.0.0
-
-**Operations**:
-- `gh workflow run` — Trigger deployment workflows
-- `gh run list` — Check deployment status
-
-**Commands Affected**:
-- `eai deploy trigger`
-- `eai deploy status`
-
-**Failure Impact**:
-- Cannot trigger or monitor GitHub Actions deployments
-- Manual workflow triggers still work via GitHub UI
-
-**Installation Check**: `which gh` or `gh --version`
+**Used By**: `eai deploy` (indirectly via GitHub Actions)  
+**Purpose**: Deployment target for vertical applications  
+**Failure Impact**: **Medium** — Affects vertical app deployment only  
+**Fallback**: Manual Azure Portal deployment
 
 ---
 
-### 7. Azure CLI (`az`)
+### 7. GitHub Actions API
 
-**Type**: External CLI Tool
+**Type**: REST API  
+**Base URL**: `https://api.github.com`  
+**Authentication**: `GITHUB_TOKEN` environment variable
 
-**Dependency Level**: Optional (for Azure App Config/Key Vault auth)
+**Endpoints Used**:
+| Endpoint | Used By | Purpose |
+|----------|---------|---------|
+| `POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches` | `eai deploy trigger` | Trigger deployment workflow |
+| `GET /repos/{owner}/{repo}/actions/runs` | `eai deploy status` | Check workflow status |
 
-**Version**: ≥2.0.0
-
-**Operations**:
-- `az login` — Authenticate to Azure
-- `az account get-access-token` — Get token for Azure SDK
-
-**Commands Affected**:
-- `eai env pull` (if using Azure identity)
-- `eai env push`
-
-**Failure Impact**:
-- Cannot authenticate to Azure services
-- Fallback: Use connection strings or service principal
-
-**Installation Check**: `which az` or `az --version`
+**Failure Impact**: **Medium** — Only affects deployment automation  
+**Fallback**: Manual workflow trigger via GitHub UI
 
 ---
 
-### 8. Git
+### 8. GitHub Releases API
 
-**Type**: Version Control System
+**Type**: REST API  
+**Base URL**: `https://api.github.com`  
+**Authentication**: None (public API)
 
-**Dependency Level**: Recommended (for `eai deploy`)
+**Endpoints Used**:
+| Endpoint | Used By | Purpose |
+|----------|---------|---------|
+| `GET /repos/eai-tools/eai/releases/latest` | `eai update --check` | Check for CLI updates |
 
-**Version**: ≥2.0.0
-
-**Operations**:
-- Repository detection for deploy commands
-
-**Commands Affected**:
-- `eai deploy setup`
-
-**Failure Impact**:
-- Cannot auto-detect repository info
-- Users must manually specify `--repo` flag
+**Failure Impact**: **Low** — Only affects update notifications  
+**Fallback**: Manual version check via GitHub web UI
 
 ---
 
-### 9. GitHub Pages Registry
+### 9. GitHub Pages Static Registry
 
-**Type**: Static NPM Registry
+**Type**: Static file hosting  
+**URL**: `https://eai-tools.github.io/eai/registry`
 
-**Dependency Level**: Low (for update checks)
+**Files Served**:
+- `/@eai-tools/cli` — Packument metadata
+- `/-/@eai-tools/cli-{version}.tgz` — Tarball releases
+- `/-/@eai-tools/cli-latest.tgz` — Latest tarball
 
-**URL**: `https://eai-tools.github.io/eai/registry/@eai-tools/cli`
-
-**Operations**:
-- `GET` — Fetch latest version metadata (24h cache)
-
-**Commands Affected**:
-- Background update check (all commands)
-- `eai update`
-
-**Failure Impact**:
-- Update notifications not displayed
-- Manual updates still work via `npm install -g @eai-tools/cli` after configuring the scoped EAI registry, or simply `eai update`
-
-**Timeout**: 5 seconds (non-blocking)
+**Used By**: `npm install -g @eai-tools/cli`, `eai update`  
+**Purpose**: Distribute CLI package without npmjs dependency  
+**Failure Impact**: **Critical** — Users cannot install or update CLI  
+**Fallback**: Install from tarball file directly
 
 ---
 
 ## Downstream Dependents
 
-**None**. The CLI is a terminal application with no services or tools depending on it.
+The EAI CLI has **no downstream dependents**. It is a terminal application used directly by developers. It does not expose APIs or services that other systems depend on.
 
-**Usage Context**: Developers run the CLI interactively or in CI/CD scripts to interact with the EAI platform.
+**Users of the CLI**:
+- Enterprise AI application developers (direct users)
+- CI/CD pipelines (invoking CLI commands)
+- AI terminal tools (Claude, Codex, Gemini, Copilot using CLI via Gofer pipeline)
 
 ---
 
-## NPM Package Dependencies
+## npm Runtime Dependencies
 
-### Production Dependencies
+Production dependencies (shipped with CLI):
+
+| Package | Version | Purpose | License |
+|---------|---------|---------|---------|
+| `commander` | 13.1.0 | CLI framework, command parsing, help generation | MIT |
+| `chalk` | 5.6.2 | Terminal output coloring | MIT |
+| `dotenv` | 16.6.1 | `.env.local` file parsing | BSD-2-Clause |
+| `inquirer` | 12.11.1 | Interactive prompts (tenant selection, confirmations) | MIT |
+| `ora` | 8.2.0 | Loading spinners and status indicators | MIT |
+
+**Total Production Dependencies**: 5 (plus transitive dependencies)
+
+---
+
+## npm Development Dependencies
+
+Development-only dependencies (not shipped):
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `chalk` | ^5.3.0 | Terminal colors and styling |
-| `commander` | ^13.1.0 | CLI framework and argument parsing |
-| `dotenv` | ^16.4.7 | `.env.local` file parsing |
-| `inquirer` | ^12.3.2 | Interactive prompts (tenant selection, confirmations) |
-| `ora` | ^8.1.1 | Loading spinners |
+| `typescript` | 5.9.3 | TypeScript compiler |
+| `@types/node` | 22.19.15 | Node.js type definitions |
+| `eslint` | 10.0.3 | Linting |
+| `@eslint/js` | 10.0.1 | ESLint JavaScript config |
+| `typescript-eslint` | 8.56.1 | TypeScript ESLint plugin |
+| `vitest` | 4.1.3 | Test framework |
+| `@vitest/ui` | 4.1.3 | Vitest UI |
+| `msw` | 2.12.10 | API mocking for tests |
 
-**Total Dependencies**: 5 packages (ESM-only)
-
-**Bundle Size**: ~3.5 MB (including node_modules)
-
----
-
-### Development Dependencies
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `@eslint/js` | ^10.0.1 | ESLint core config |
-| `@types/node` | ^22.13.0 | Node.js type definitions |
-| `@vitest/ui` | ^4.1.3 | Vitest UI for test debugging |
-| `eslint` | ^10.0.3 | Linting |
-| `msw` | ^2.6.0 | Mock Service Worker for API testing |
-| `typescript` | ^5.7.3 | TypeScript compiler |
-| `typescript-eslint` | ^8.56.1 | TypeScript ESLint plugin |
-| `vitest` | ^4.1.3 | Test framework |
+**Total Dev Dependencies**: 8
 
 ---
 
-## External Service Contracts
+## External Tool Dependencies
 
-### Entra CIAM Contract
+Optional tools that enhance CLI functionality:
 
-**OAuth 2.0 Endpoints**: As specified in RFC 6749 + RFC 7636 (PKCE)
-
-**Token Format**: JWT (RFC 7519)
-
-**Token Claims**:
-- `oid` — User object ID
-- `upn` — User principal name (email)
-- `tid` — Tenant ID
-- `exp` — Expiration timestamp
-
-**Expected Behavior**:
-- Redirect URI: `http://localhost:8888` (fixed, no wildcard)
-- PKCE code challenge method: `S256` (SHA-256)
-- Scope: Configurable per profile (default: `api://{clientId}/.default offline_access`)
+| Tool | Required | Used By | Purpose |
+|------|----------|---------|---------|
+| `git` | Yes | `eai init`, `eai deploy` | Version control operations |
+| `npm` | Yes | All installation | Package management |
+| `gh` (GitHub CLI) | No | `eai deploy` | GitHub API calls (alternative to GITHUB_TOKEN) |
+| `az` (Azure CLI) | No | `eai env pull`, `eai provision entra` | Azure resource access |
 
 ---
 
-### Platform API Contract
+## Dependency Health
 
-**Authentication**: `Authorization: Bearer {access_token}`
+### Security
 
-**Content-Type**: `application/json`
+All dependencies are regularly updated via Renovate bot:
+- Security patches applied automatically
+- Dependency updates tested in CI before merge
+- No known critical vulnerabilities (as of 2026-05-23)
 
-**Response Format**: JSON (with structured error responses)
+### Versioning
 
-**Pagination**: `page` and `limit` query parameters
+Dependencies follow semantic versioning:
+- Exact versions pinned in `package.json` (no `^` or `~`)
+- `package-lock.json` committed for reproducible builds
+- Updates reviewed via pull requests
 
-**Error Format**:
-```json
-{
-  "detail": {
-    "error": "ERROR_CODE",
-    "message": "Human-readable message"
-  }
-}
+### License Compatibility
+
+All dependencies use permissive licenses compatible with MIT:
+- MIT: commander, chalk, inquirer, ora
+- BSD-2-Clause: dotenv
+- No GPL or viral licenses
+
+---
+
+## Network Topology
+
+```mermaid
+flowchart TB
+    Dev[Developer Machine]
+    CLI[EAI CLI]
+    
+    subgraph Internet
+        Entra[Entra CIAM]
+        Platform[Platform API]
+        GitHub[GitHub API]
+        Pages[GitHub Pages]
+    end
+    
+    subgraph Azure Cloud
+        AppConfig[App Configuration]
+        KeyVault[Key Vault]
+        AppService[App Service]
+    end
+    
+    Dev -->|Run| CLI
+    CLI -->|HTTPS| Entra
+    CLI -->|HTTPS| Platform
+    CLI -->|HTTPS| GitHub
+    CLI -->|HTTPS| Pages
+    CLI -->|HTTPS| AppConfig
+    CLI -->|HTTPS| KeyVault
+    CLI -->|HTTPS via Actions| AppService
+    
+    style Dev fill:#e1f5ff
+    style CLI fill:#fff3cd
 ```
 
-**Rate Limiting**: 100 requests/minute per token (not enforced in CLI)
-
-**Versioning**: `/v3/` prefix in all endpoints
-
-**Contract Verification**: `eai verify calls --format json` audits actual API surface used by CLI
-
----
-
-### Admin API Contract
-
-**Authentication**: `Authorization: Bearer {access_token}` (same as PublicAPI)
-
-**Authorization**: Role-based access control
-- `tenant-admin` required for tenant operations
-- Membership-based scoping (user can only access tenants where they are `tenant-admin`)
-
-**Error Handling**: Sanitized errors (no backend URL exposure, no raw tenant IDs)
-
-**Tenant Usability Check**: Child tenant creation includes membership verification before marking as `usable`
+**Network Requirements**:
+- Outbound HTTPS (port 443) required
+- No inbound connections (except localhost:3476 for OAuth callback)
+- Proxy support via `HTTP_PROXY`, `HTTPS_PROXY` environment variables
 
 ---
 
-## Dependency Health Monitoring
+## Dependency Risks
 
-**Not implemented**. The CLI does not monitor dependency health proactively.
+### High Risk
 
-**User-Facing Health Checks**:
-- `eai verify` — Tests PublicAPI connectivity and auth token validity
-- `eai verify calls` — Audits API contract surface
-- `eai doctor` — Comprehensive diagnostics with fix suggestions
+| Dependency | Risk | Mitigation |
+|------------|------|------------|
+| EAI Platform API | Service outage breaks most commands | Implement graceful degradation, cache tenant context |
+| Entra CIAM | Auth failures prevent all operations | Token refresh logic, clear error messages |
+| GitHub Pages Registry | Install/update failures | Fallback to tarball installation, local cache |
 
-**Failure Modes**:
-- Network errors → Display E201 (Platform unreachable)
-- Auth failures → Display E101-E104 (Auth errors)
-- API errors → Display E202-E205 (Platform errors)
+### Medium Risk
+
+| Dependency | Risk | Mitigation |
+|------------|------|------------|
+| GitHub Actions API | Deployment automation broken | Manual workflow trigger via GitHub UI |
+| Azure App Configuration | Config sync failures | Manual `.env.local` editing |
+| npm Ecosystem | Dependency vulnerabilities | Automated security updates via Renovate |
+
+### Low Risk
+
+| Dependency | Risk | Mitigation |
+|------------|------|------------|
+| GitHub Releases API | Update check failures | Silent failure, non-blocking |
+| Azure Key Vault | Secret sync failures | Manual secret management |
 
 ---
 
-## Security Considerations
+## Dependency Update Strategy
 
-1. **Token Storage**: Tokens encrypted at rest, file mode `0o600`
-2. **HTTPS Only**: All API calls use HTTPS (no plaintext HTTP)
-3. **PKCE Flow**: Prevents authorization code interception
-4. **No Secrets in Repo**: `.env.local` is gitignored
-5. **Sanitized Errors**: `eai provision entra` never exposes backend details
-6. **Profile Isolation**: Per-profile token storage prevents credential leakage
+### Automated Updates
+
+Renovate bot monitors dependencies and creates PRs for:
+- Security patches (auto-merged if CI passes)
+- Minor version updates (reviewed before merge)
+- Major version updates (requires manual testing)
+
+### Manual Updates
+
+Major version updates require:
+1. Review changelog for breaking changes
+2. Update code if necessary
+3. Run full test suite
+4. Smoke test CLI commands
+5. Update documentation if APIs changed
+
+### Update Frequency
+
+- **Security patches**: Immediate (within 24 hours)
+- **Minor updates**: Weekly batch
+- **Major updates**: Quarterly review
+- **Dev dependencies**: As needed
 
 ---
 
-## Upgrade Path
+## Dependency Alternatives
 
-**CLI Updates**: `eai update` (fetches latest from GitHub Pages registry)
+### Current vs. Alternative Choices
 
-**Breaking Changes**: Announced in `CHANGELOG.md` and GitHub releases
+| Current | Alternative | Reason for Current Choice |
+|---------|-------------|---------------------------|
+| Commander.js | yargs, oclif | Industry standard, simple API, excellent TypeScript support |
+| chalk | kleur, picocolors | Feature-rich, widely adopted, stable |
+| dotenv | cross-env, env-cmd | Simple, standard `.env` parsing |
+| inquirer | prompts, enquirer | Comprehensive prompt types, battle-tested |
+| ora | cli-spinners, listr | Simple API, visual appeal |
+| Vitest | Jest, Mocha | ESM-first, fast, modern |
+| GitHub Pages Registry | npmjs, GitHub Packages | No external account required, full control, free |
 
-**Backward Compatibility**: CLI maintains compatibility with PublicAPI v3 contract
+---
 
-**Token Migration**: Automatic migration from old token format to profile-based storage (introduced in v2.0.0)
+## Future Dependency Changes
+
+### Planned Additions
+
+- [ ] `axios` or `ky` — Replace native `fetch()` for better error handling (if needed)
+- [ ] `zod` — Runtime validation for API responses (if schemas stabilize)
+- [ ] `winston` or `pino` — Structured logging (if debug mode added)
+
+### Planned Removals
+
+- None currently planned
+
+### Upgrade Roadmap
+
+- Node.js 22: Planned for Q3 2026
+- TypeScript 6.0: When released
+- Commander.js 14: Monitor for breaking changes

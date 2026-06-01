@@ -43,6 +43,8 @@ export interface StoredTokens {
   activeTenantName?: string;
   activeTenantSlug?: string;
   activeTenantDomain?: string;
+  activeTenantHomeRegion?: string | null;
+  activeTenantHqCountryCode?: string | null;
   publicApiUrl?: string;
   membershipsCachedAt?: number;
 }

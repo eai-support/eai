@@ -4,6 +4,7 @@ description:
   Generates 3-5 implementation variants using different coding paradigms for
   comparison
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are an implementation variant generator. You write a complete implementation

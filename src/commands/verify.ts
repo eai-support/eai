@@ -392,16 +392,16 @@ export async function runContractAudit(
       [
         "current-user",
         "Tenant membership contract",
-        "POST",
-        "/v3/orchestrate -> admin:/v1/users/{oid}/memberships",
+        "GET",
+        "/v4/platform/users/{oid}/memberships",
       ],
       [
         "object-types",
         "Object Types list contract",
-        "POST",
-        "/v3/orchestrate -> payload:/object-types",
+        "GET",
+        "/v4/data/resources/object-types",
       ],
-      ["schema", "Schema contract", "GET", "/v3/resources/schema/{tenantId}"],
+      ["schema", "Schema contract", "GET", "/v4/data/resources/schema/{tenantId}"],
     ] as const;
 
     for (const [id, label, method, endpoint] of skippedDueToAuth) {
@@ -419,16 +419,16 @@ export async function runContractAudit(
       [
         "current-user",
         "Tenant membership contract",
-        "POST",
-        "/v3/orchestrate -> admin:/v1/users/{oid}/memberships",
+        "GET",
+        "/v4/platform/users/{oid}/memberships",
       ],
       [
         "object-types",
         "Object Types list contract",
-        "POST",
-        "/v3/orchestrate -> payload:/object-types",
+        "GET",
+        "/v4/data/resources/object-types",
       ],
-      ["schema", "Schema contract", "GET", "/v3/resources/schema/{tenantId}"],
+      ["schema", "Schema contract", "GET", "/v4/data/resources/schema/{tenantId}"],
     ] as const;
 
     for (const [id, label, method, endpoint] of skippedDueToTenant) {
@@ -456,8 +456,8 @@ export async function runContractAudit(
       addCheck(checks, {
         id: "current-user",
         label: "Tenant membership contract",
-        method: "POST",
-        endpoint: "/v3/orchestrate -> admin:/v1/users/{oid}/memberships",
+        method: "GET",
+        endpoint: "/v4/platform/users/{oid}/memberships",
         status: "passed",
         details: `Tenant entries: ${tenantEntries.length}`,
       });
@@ -465,8 +465,8 @@ export async function runContractAudit(
       addCheck(checks, {
         id: "current-user",
         label: "Tenant membership contract",
-        method: "POST",
-        endpoint: "/v3/orchestrate -> admin:/v1/users/{oid}/memberships",
+        method: "GET",
+        endpoint: "/v4/platform/users/{oid}/memberships",
         status: "failed",
         details: err instanceof Error ? err.message : String(err),
       });
@@ -484,8 +484,8 @@ export async function runContractAudit(
       addCheck(checks, {
         id: "object-types",
         label: "Object Types list contract",
-        method: "POST",
-        endpoint: "/v3/orchestrate -> payload:/object-types",
+        method: "GET",
+        endpoint: "/v4/data/resources/object-types",
         status: "passed",
         details: `Response includes docs[] (${payload.docs.length} item(s) in sample)`,
       });
@@ -494,8 +494,8 @@ export async function runContractAudit(
       addCheck(checks, {
         id: "object-types",
         label: "Object Types list contract",
-        method: "POST",
-        endpoint: "/v3/orchestrate -> payload:/object-types",
+        method: "GET",
+        endpoint: "/v4/data/resources/object-types",
         status: "failed",
         details: err instanceof Error ? err.message : String(err),
       });
@@ -519,7 +519,7 @@ export async function runContractAudit(
         id: "schema",
         label: "Schema contract",
         method: "GET",
-        endpoint: `/v3/resources/schema/${context.tenantId}`,
+        endpoint: `/v4/data/resources/schema/${context.tenantId}`,
         status: "passed",
         details: `Published schema present (${typeCount} published type(s))`,
       });
@@ -528,7 +528,7 @@ export async function runContractAudit(
         id: "schema",
         label: "Schema contract",
         method: "GET",
-        endpoint: `/v3/resources/schema/${context.tenantId}`,
+        endpoint: `/v4/data/resources/schema/${context.tenantId}`,
         status: "failed",
         details: err instanceof Error ? err.message : String(err),
       });
@@ -541,7 +541,7 @@ export async function runContractAudit(
         id: "resource-list",
         label: "Resource list contract",
         method: "GET",
-        endpoint: "/v3/resources/{tenantId}/{objectType}",
+        endpoint: "/v4/data/resources/{tenantId}/{objectType}",
         status: "skipped",
         details:
           "Skipped because the active tenant has no published Object Types remotely.",
@@ -550,7 +550,7 @@ export async function runContractAudit(
         id: "resource-query",
         label: "Resource query contract",
         method: "POST",
-        endpoint: "/v3/resources/{tenantId}/query",
+        endpoint: "/v4/data/resources/{tenantId}/query",
         status: "skipped",
         details:
           "Skipped because the active tenant has no published Object Types remotely.",
@@ -559,7 +559,7 @@ export async function runContractAudit(
         id: "resource-cursor",
         label: "Resource cursor contract",
         method: "GET",
-        endpoint: "/v3/resources/{tenantId}/{objectType}?cursor=...",
+        endpoint: "/v4/data/resources/{tenantId}/{objectType}?cursor=...",
         status: "skipped",
         details:
           "Skipped because the active tenant has no published Object Types remotely.",
@@ -568,7 +568,7 @@ export async function runContractAudit(
         id: "resource-aggregate",
         label: "Resource aggregate contract",
         method: "POST",
-        endpoint: "/v3/resources/{tenantId}/{objectType}/aggregate",
+        endpoint: "/v4/data/resources/{tenantId}/{objectType}/aggregate",
         status: "skipped",
         details:
           "Skipped because the active tenant has no published Object Types remotely.",
@@ -593,7 +593,7 @@ export async function runContractAudit(
           id: "resource-list",
           label: "Resource list contract",
           method: "GET",
-          endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}`,
+          endpoint: `/v4/data/resources/${context.tenantId}/${options.resourceType}`,
           status: "passed",
           details: `docs[] present (${payload.docs.length} item(s) in sample)`,
         });
@@ -602,7 +602,7 @@ export async function runContractAudit(
           id: "resource-list",
           label: "Resource list contract",
           method: "GET",
-          endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}`,
+          endpoint: `/v4/data/resources/${context.tenantId}/${options.resourceType}`,
           status: "failed",
           details: err instanceof Error ? err.message : String(err),
         });
@@ -617,7 +617,7 @@ export async function runContractAudit(
           id: "resource-cursor",
           label: "Resource cursor contract",
           method: "GET",
-          endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}?cursor=...`,
+          endpoint: `/v4/data/resources/${context.tenantId}/${options.resourceType}?cursor=...`,
           status: "skipped",
           details:
             "Skipped because the sample list response did not return a nextCursor.",
@@ -644,7 +644,7 @@ export async function runContractAudit(
             id: "resource-cursor",
             label: "Resource cursor contract",
             method: "GET",
-            endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}?cursor=...`,
+            endpoint: `/v4/data/resources/${context.tenantId}/${options.resourceType}?cursor=...`,
             status: "passed",
             details: `Cursor-aware list response shape: ${describeShape(payload)}`,
           });
@@ -653,7 +653,7 @@ export async function runContractAudit(
             id: "resource-cursor",
             label: "Resource cursor contract",
             method: "GET",
-            endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}?cursor=...`,
+            endpoint: `/v4/data/resources/${context.tenantId}/${options.resourceType}?cursor=...`,
             status: "failed",
             details: err instanceof Error ? err.message : String(err),
           });
@@ -678,7 +678,7 @@ export async function runContractAudit(
           id: "resource-query",
           label: "Resource query contract",
           method: "POST",
-          endpoint: `/v3/resources/${context.tenantId}/query`,
+          endpoint: `/v4/data/resources/${context.tenantId}/query`,
           status: "passed",
           details: describeShape(payload),
         });
@@ -687,7 +687,7 @@ export async function runContractAudit(
           id: "resource-query",
           label: "Resource query contract",
           method: "POST",
-          endpoint: `/v3/resources/${context.tenantId}/query`,
+          endpoint: `/v4/data/resources/${context.tenantId}/query`,
           status: "failed",
           details: err instanceof Error ? err.message : String(err),
         });
@@ -712,7 +712,7 @@ export async function runContractAudit(
           id: "resource-aggregate",
           label: "Resource aggregate contract",
           method: "POST",
-          endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}/aggregate`,
+          endpoint: `/v4/data/resources/${context.tenantId}/${options.resourceType}/aggregate`,
           status: "passed",
           details: `rows[] present (${payload.rows.length} row(s) in sample)`,
         });
@@ -721,7 +721,7 @@ export async function runContractAudit(
           id: "resource-aggregate",
           label: "Resource aggregate contract",
           method: "POST",
-          endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}/aggregate`,
+          endpoint: `/v4/data/resources/${context.tenantId}/${options.resourceType}/aggregate`,
           status: "failed",
           details: err instanceof Error ? err.message : String(err),
         });
@@ -732,7 +732,7 @@ export async function runContractAudit(
       id: "resource-list",
       label: "Resource list contract",
       method: "GET",
-      endpoint: "/v3/resources/{tenantId}/{objectType}",
+      endpoint: "/v4/data/resources/{tenantId}/{objectType}",
       status: "skipped",
       details: "Provide --resource-type to exercise list/query contracts.",
     });
@@ -740,7 +740,7 @@ export async function runContractAudit(
       id: "resource-query",
       label: "Resource query contract",
       method: "POST",
-      endpoint: "/v3/resources/{tenantId}/query",
+      endpoint: "/v4/data/resources/{tenantId}/query",
       status: "skipped",
       details: "Provide --resource-type to exercise query contract.",
     });
@@ -748,7 +748,7 @@ export async function runContractAudit(
       id: "resource-cursor",
       label: "Resource cursor contract",
       method: "GET",
-      endpoint: "/v3/resources/{tenantId}/{objectType}?cursor=...",
+      endpoint: "/v4/data/resources/{tenantId}/{objectType}?cursor=...",
       status: "skipped",
       details: "Provide --resource-type to exercise cursor contract.",
     });
@@ -756,7 +756,7 @@ export async function runContractAudit(
       id: "resource-aggregate",
       label: "Resource aggregate contract",
       method: "POST",
-      endpoint: "/v3/resources/{tenantId}/{objectType}/aggregate",
+      endpoint: "/v4/data/resources/{tenantId}/{objectType}/aggregate",
       status: "skipped",
       details: "Provide --resource-type to exercise aggregate contract.",
     });
@@ -768,7 +768,7 @@ export async function runContractAudit(
         id: "resource-get",
         label: "Resource get contract",
         method: "GET",
-        endpoint: "/v3/resources/{tenantId}/{objectType}/{id}",
+        endpoint: "/v4/data/resources/{tenantId}/{objectType}/{id}",
         status: "skipped",
         details:
           "Skipped because the active tenant has no published Object Types remotely.",
@@ -797,7 +797,7 @@ export async function runContractAudit(
           id: "resource-get",
           label: "Resource get contract",
           method: "GET",
-          endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}/${options.resourceId}`,
+          endpoint: `/v4/data/resources/${context.tenantId}/${options.resourceType}/${options.resourceId}`,
           status: "passed",
           details: "Resource payload includes id, data, and version",
         });
@@ -806,7 +806,7 @@ export async function runContractAudit(
           id: "resource-get",
           label: "Resource get contract",
           method: "GET",
-          endpoint: `/v3/resources/${context.tenantId}/${options.resourceType}/${options.resourceId}`,
+          endpoint: `/v4/data/resources/${context.tenantId}/${options.resourceType}/${options.resourceId}`,
           status: "failed",
           details: err instanceof Error ? err.message : String(err),
         });
@@ -817,7 +817,7 @@ export async function runContractAudit(
       id: "resource-get",
       label: "Resource get contract",
       method: "GET",
-      endpoint: "/v3/resources/{tenantId}/{objectType}/{id}",
+      endpoint: "/v4/data/resources/{tenantId}/{objectType}/{id}",
       status: "skipped",
       details:
         "Provide both --resource-type and --resource-id to exercise get/update version contract.",
@@ -845,8 +845,8 @@ export async function runContractAudit(
       addCheck(checks, {
         id: "tenant-info",
         label: "Tenant info resolution",
-        method: "POST",
-        endpoint: "/v3/orchestrate -> admin:/v1/users/{oid}/memberships",
+        method: "GET",
+        endpoint: "/v4/platform/users/{oid}/memberships",
         status: "passed",
         details: `Resolved ${tenant.tenant.displayName} (${tenant.tenant.slug})`,
       });
@@ -854,8 +854,8 @@ export async function runContractAudit(
       addCheck(checks, {
         id: "tenant-info",
         label: "Tenant info resolution",
-        method: "POST",
-        endpoint: "/v3/orchestrate -> admin:/v1/users/{oid}/memberships",
+        method: "GET",
+        endpoint: "/v4/platform/users/{oid}/memberships",
         status: "failed",
         details: err instanceof Error ? err.message : String(err),
       });
@@ -864,8 +864,8 @@ export async function runContractAudit(
     addCheck(checks, {
       id: "tenant-info",
       label: "Tenant info resolution",
-      method: "POST",
-      endpoint: "/v3/orchestrate -> admin:/v1/users/{oid}/memberships",
+      method: "GET",
+      endpoint: "/v4/platform/users/{oid}/memberships",
       status: "skipped",
       details: "Provide --tenant-record to exercise tenant info lookup.",
     });
@@ -895,8 +895,8 @@ export async function runContractAudit(
       addCheck(checks, {
         id: "user-lookup",
         label: "User lookup contract",
-        method: "POST",
-        endpoint: "/v3/orchestrate -> admin:/v1/users/by-email?email=...",
+        method: "GET",
+        endpoint: "/v4/platform/users/by-email?email=...",
         status: "passed",
         details: `${describeShape(payload)} (resolved user id ${userId})`,
       });
@@ -904,8 +904,8 @@ export async function runContractAudit(
       addCheck(checks, {
         id: "user-lookup",
         label: "User lookup contract",
-        method: "POST",
-        endpoint: "/v3/orchestrate -> admin:/v1/users/by-email?email=...",
+        method: "GET",
+        endpoint: "/v4/platform/users/by-email?email=...",
         status: "failed",
         details: err instanceof Error ? err.message : String(err),
       });
@@ -914,8 +914,8 @@ export async function runContractAudit(
     addCheck(checks, {
       id: "user-lookup",
       label: "User lookup contract",
-      method: "POST",
-      endpoint: "/v3/orchestrate -> admin:/v1/users/by-email?email=...",
+      method: "GET",
+      endpoint: "/v4/platform/users/by-email?email=...",
       status: "skipped",
       details: "Provide --user-email to exercise user lookup.",
     });
@@ -927,7 +927,7 @@ export async function runContractAudit(
         id: "chat-send",
         label: "Chat send contract",
         method: "POST",
-        endpoint: "/v3/chat/{tenantId}/{workflowId}/{stage}",
+        endpoint: "/v4/ai/chat/{tenantId}/{workflowId}/{stage}",
         status: "skipped",
         details: "Provide --workflow or WORKFLOW_*_ID to exercise chat.",
       });
@@ -956,7 +956,7 @@ export async function runContractAudit(
           id: "chat-send",
           label: "Chat send contract",
           method: "POST",
-          endpoint: `/v3/chat/${context.tenantId}/${workflowId}/${stage}`,
+          endpoint: `/v4/ai/chat/${context.tenantId}/${workflowId}/${stage}`,
           status: "passed",
           details: "Chat response payload includes response/message text",
         });
@@ -965,7 +965,7 @@ export async function runContractAudit(
           id: "chat-send",
           label: "Chat send contract",
           method: "POST",
-          endpoint: `/v3/chat/${context.tenantId || "{tenantId}"}/${workflowId}/${stage}`,
+          endpoint: `/v4/ai/chat/${context.tenantId || "{tenantId}"}/${workflowId}/${stage}`,
           status: "failed",
           details: err instanceof Error ? err.message : String(err),
         });
@@ -976,7 +976,7 @@ export async function runContractAudit(
       id: "chat-send",
       label: "Chat send contract",
       method: "POST",
-      endpoint: "/v3/chat/{tenantId}/{workflowId}/{stage}",
+      endpoint: "/v4/ai/chat/{tenantId}/{workflowId}/{stage}",
       status: "skipped",
       details:
         "Opt in with --include-chat. This creates a conversation record.",
@@ -988,14 +988,14 @@ export async function runContractAudit(
       id: "resource-mutations",
       label: "Resource create/update/delete contracts",
       method: "POST/PUT/DELETE",
-      endpoint: "/v3/resources/{tenantId}/{objectType}[/{id}]",
+      endpoint: "/v4/data/resources/{tenantId}/{objectType}[/{id}]",
       details: "Not auto-executed because they mutate data.",
     },
     {
       id: "document-contracts",
       label: "Document upload/classify/index contracts",
       method: "POST",
-      endpoint: "/v3/documents/*",
+      endpoint: "/v4/data/documents/*",
       details:
         "Not auto-executed because they upload files or trigger indexing.",
     },
@@ -1003,22 +1003,21 @@ export async function runContractAudit(
       id: "user-provisioning",
       label: "User provisioning contracts",
       method: "POST",
-      endpoint:
-        "/v3/users/provisionme and /v3/orchestrate -> payload:/custom-users/provisionme",
+      endpoint: "/v4/identity/me/provision and /v4/platform/tenants/{tenantId}/users/{oid}/provision",
       details: "Not auto-executed because they change tenant membership.",
     },
     {
       id: "tenant-create",
       label: "Tenant create contract",
       method: "POST",
-      endpoint: "/v3/orchestrate -> payload:/tenants",
+      endpoint: "/v4/platform/tenants",
       details: "Not auto-executed because it creates tenants.",
     },
     {
       id: "chat-stream",
       label: "Chat stream contract",
       method: "POST",
-      endpoint: "/v3/chat/stream/{tenantId}/{workflowId}/{stage}",
+      endpoint: "/v4/ai/chat/stream/{tenantId}/{workflowId}/{stage}",
       details:
         "Not auto-executed because it requires streaming response handling.",
     },

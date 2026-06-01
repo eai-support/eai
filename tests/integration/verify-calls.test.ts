@@ -80,7 +80,7 @@ describe('runContractAudit', () => {
     await userIsLoggedIn(ctx, { email: 'jane@example.com' });
 
     mockServer.server.use(
-      http.get('https://test-api.example.com/v3/users/me/tenants', () => {
+      http.get('https://test-api.example.com/v4/identity/tenants', () => {
         return HttpResponse.json({
           tenants: [
             {
@@ -97,7 +97,7 @@ describe('runContractAudit', () => {
       http.get('https://test-api.example.com/health', () => {
         return HttpResponse.json({ status: 'ok' });
       }),
-      http.get('https://test-api.example.com/v3/resources/tenant-1/customer', ({ request }) => {
+      http.get('https://test-api.example.com/v4/data/resources/tenant-1/customer', ({ request }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get('cursor');
         return HttpResponse.json({
@@ -108,65 +108,53 @@ describe('runContractAudit', () => {
           nextCursor: cursor ? null : 'cursor-1',
         });
       }),
-      http.get('https://test-api.example.com/v3/resources/schema/tenant-1', () => {
+      http.get('https://test-api.example.com/v4/data/resources/schema/tenant-1', () => {
         return HttpResponse.json({
           tenant_id: 'tenant-1',
           object_types: [{ id: 'ot-1', name: 'Customer', slug: 'customer', properties: [], linkTypes: [], actions: [] }],
           generated_at: '2026-04-05T00:00:00Z',
         });
       }),
-      http.get('https://test-api.example.com/v3/resources/tenant-1/customer/cust-1', () => {
+      http.get('https://test-api.example.com/v4/data/resources/tenant-1/customer/cust-1', () => {
         return HttpResponse.json({
           id: 'cust-1',
           data: { name: 'Example Customer' },
           version: 1,
         });
       }),
-      http.post('https://test-api.example.com/v3/resources/tenant-1/query', () => {
+      http.post('https://test-api.example.com/v4/data/resources/tenant-1/query', () => {
         return HttpResponse.json({ docs: [] });
       }),
-      http.post('https://test-api.example.com/v3/resources/tenant-1/customer/aggregate', () => {
+      http.post('https://test-api.example.com/v4/data/resources/tenant-1/customer/aggregate', () => {
         return HttpResponse.json({ rows: [], totalRows: 0 });
       }),
-      http.post('https://test-api.example.com/v3/orchestrate', async ({ request }) => {
-        const body = await request.json() as {
-          endpoint?: string;
-          target_backend?: string;
-        };
-
-        if (body.target_backend === 'admin' && body.endpoint === '/v1/users/test-user-oid/memberships') {
-          return HttpResponse.json({
-            tenants: [
-              {
-                id: 'tenant-1',
-                displayName: 'Tenant One',
-                slug: 'tenant-one',
-                isTenantAdmin: true,
-                roles: ['tenant-admin'],
-              },
-            ],
-          });
-        }
-
-        switch (body.endpoint) {
-          case '/object-types':
-            return HttpResponse.json({
-              docs: [{ id: 'ot-1', name: 'Customer', status: 'published', properties: [], linkTypes: [], actions: [] }],
-            });
-          case '/api/custom-tenants/tenant-1':
-            return HttpResponse.json({
+      http.get('https://test-api.example.com/v4/platform/users/test-user-oid/memberships', () => {
+        return HttpResponse.json({
+          tenants: [
+            {
               id: 'tenant-1',
               displayName: 'Tenant One',
               slug: 'tenant-one',
-            });
-          case '/v1/users/by-email?email=jane%40example.com':
-            return HttpResponse.json({
-              id: 'user-1',
-              email: 'jane@example.com',
-            });
-          default:
-            return HttpResponse.json({ error: 'unexpected endpoint' }, { status: 404 });
+              isTenantAdmin: true,
+              roles: ['tenant-admin'],
+            },
+          ],
+        });
+      }),
+      http.get('https://test-api.example.com/v4/data/resources/object-types', () => {
+        return HttpResponse.json({
+          docs: [{ id: 'ot-1', name: 'Customer', status: 'published', properties: [], linkTypes: [], actions: [] }],
+        });
+      }),
+      http.get('https://test-api.example.com/v4/platform/users/by-email', ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get('email') !== 'jane@example.com') {
+          return HttpResponse.json({ error: 'unexpected email' }, { status: 404 });
         }
+        return HttpResponse.json({
+          id: 'user-1',
+          email: 'jane@example.com',
+        });
       }),
     );
 
@@ -208,7 +196,7 @@ describe('runContractAudit', () => {
     await userIsLoggedIn(ctx, { email: 'jane@example.com' });
 
     mockServer.server.use(
-      http.get('https://test-api.example.com/v3/users/me/tenants', () => {
+      http.get('https://test-api.example.com/v4/identity/tenants', () => {
         return HttpResponse.json({
           tenants: [
             {
@@ -225,41 +213,34 @@ describe('runContractAudit', () => {
       http.get('https://test-api.example.com/health', () => {
         return HttpResponse.json({ status: 'ok' });
       }),
-      http.get('https://test-api.example.com/v3/resources/schema/tenant-override', () => {
+      http.get('https://test-api.example.com/v4/data/resources/schema/tenant-override', () => {
         return HttpResponse.json({
           tenant_id: 'tenant-override',
           object_types: [{ id: 'ot-1', name: 'Customer', slug: 'customer', properties: [], linkTypes: [], actions: [] }],
           generated_at: '2026-04-05T00:00:00Z',
         });
       }),
-      http.post('https://test-api.example.com/v3/orchestrate', async ({ request }) => {
-        const body = await request.json() as {
-          endpoint?: string;
-          target_backend?: string;
-          params?: Record<string, unknown>;
-        };
-
-        if (body.target_backend === 'admin' && body.endpoint === '/v1/users/test-user-oid/memberships') {
-          return HttpResponse.json({
-            tenants: [
-              {
-                id: 'tenant-override',
-                displayName: 'Tenant Override',
-                slug: 'tenant-override',
-                isTenantAdmin: true,
-                roles: ['tenant-admin'],
-              },
-            ],
-          });
+      http.get('https://test-api.example.com/v4/platform/users/test-user-oid/memberships', () => {
+        return HttpResponse.json({
+          tenants: [
+            {
+              id: 'tenant-override',
+              displayName: 'Tenant Override',
+              slug: 'tenant-override',
+              isTenantAdmin: true,
+              roles: ['tenant-admin'],
+            },
+          ],
+        });
+      }),
+      http.get('https://test-api.example.com/v4/data/resources/object-types', ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get('where[tenant][equals]') !== 'tenant-override') {
+          return HttpResponse.json({ error: 'unexpected tenant filter' }, { status: 404 });
         }
-
-        if (body.endpoint === '/object-types' && body.params?.['where[tenant][equals]'] === 'tenant-override') {
-          return HttpResponse.json({
-            docs: [{ id: 'ot-1', name: 'Customer', status: 'published', properties: [], linkTypes: [], actions: [] }],
-          });
-        }
-
-        return HttpResponse.json({ error: 'unexpected endpoint' }, { status: 404 });
+        return HttpResponse.json({
+          docs: [{ id: 'ot-1', name: 'Customer', status: 'published', properties: [], linkTypes: [], actions: [] }],
+        });
       }),
     );
 

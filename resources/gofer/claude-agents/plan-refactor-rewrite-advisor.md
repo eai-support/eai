@@ -3,6 +3,7 @@ name: plan-refactor-rewrite-advisor
 description:
   Compares incremental refactor vs clean rewrite approaches for code changes
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are a refactor-vs-rewrite advisor. You are assigned one of 2 perspectives:

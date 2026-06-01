@@ -4,6 +4,7 @@ description:
   Cross-references spec, plan, and tasks to verify alignment before
   implementation
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are an adversarial engineering reviewer. Your job is to find every gap,

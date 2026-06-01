@@ -122,32 +122,15 @@ describe('dedicated tenant lifecycle', () => {
     const provisionRequests: Array<Record<string, unknown>> = [];
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/orchestrate`, async ({ request }) => {
-        const body = await request.json() as {
-          target_backend?: string;
-          endpoint?: string;
-          method?: string;
-          body?: Record<string, unknown>;
-        };
-
-        if (
-          body.target_backend === 'payload'
-          && body.endpoint === '/tenant-management'
-          && body.method === 'POST'
-        ) {
-          return HttpResponse.json({
-            id: CREATED_TENANT_ID,
-            slug: CREATED_TENANT_SLUG,
-            displayName: body.body?.displayName,
-          }, { status: 201 });
-        }
-
-        return HttpResponse.json(
-          { error: `Unhandled orchestrate route: ${body.target_backend} ${body.endpoint}` },
-          { status: 500 },
-        );
+      http.post(`${API_BASE}/v4/platform/tenants`, async ({ request }) => {
+        const body = await request.json() as Record<string, unknown>;
+        return HttpResponse.json({
+          id: CREATED_TENANT_ID,
+          slug: CREATED_TENANT_SLUG,
+          displayName: body.displayName,
+        }, { status: 201 });
       }),
-      http.get(`${API_BASE}/v3/users/me/tenants`, async ({ request }) => {
+      http.get(`${API_BASE}/v4/identity/tenants`, async ({ request }) => {
         expect(request.headers.get('authorization')).toBe('Bearer test-access-token');
         return HttpResponse.json({
           tenants: [
@@ -162,7 +145,7 @@ describe('dedicated tenant lifecycle', () => {
           ],
         });
       }),
-      http.post(`${API_BASE}/v3/resources/${CREATED_TENANT_ID}/storage/provision`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/data/resources/${CREATED_TENANT_ID}/storage/provision`, async ({ request }) => {
         const body = await request.json() as Record<string, unknown>;
         provisionRequests.push(body);
         return HttpResponse.json({
@@ -176,7 +159,7 @@ describe('dedicated tenant lifecycle', () => {
           ],
         });
       }),
-      http.post(`${API_BASE}/v3/resources/${CREATED_TENANT_ID}/${OBJECT_TYPE_SLUG}`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/data/resources/${CREATED_TENANT_ID}/${OBJECT_TYPE_SLUG}`, async ({ request }) => {
         const body = await request.json() as { data?: Record<string, unknown> };
         resourceState.data = body.data || {};
         resourceState.version = 1;
@@ -186,14 +169,14 @@ describe('dedicated tenant lifecycle', () => {
           version: resourceState.version,
         }, { status: 201 });
       }),
-      http.get(`${API_BASE}/v3/resources/${CREATED_TENANT_ID}/${OBJECT_TYPE_SLUG}/${RESOURCE_ID}`, async () => {
+      http.get(`${API_BASE}/v4/data/resources/${CREATED_TENANT_ID}/${OBJECT_TYPE_SLUG}/${RESOURCE_ID}`, async () => {
         return HttpResponse.json({
           id: RESOURCE_ID,
           data: resourceState.data,
           version: resourceState.version,
         });
       }),
-      http.put(`${API_BASE}/v3/resources/${CREATED_TENANT_ID}/${OBJECT_TYPE_SLUG}/${RESOURCE_ID}`, async ({ request }) => {
+      http.put(`${API_BASE}/v4/data/resources/${CREATED_TENANT_ID}/${OBJECT_TYPE_SLUG}/${RESOURCE_ID}`, async ({ request }) => {
         const body = await request.json() as { data?: Record<string, unknown>; version?: number };
         resourceState.data = body.data || {};
         resourceState.version = Number(body.version || resourceState.version) + 1;
@@ -203,7 +186,7 @@ describe('dedicated tenant lifecycle', () => {
           version: resourceState.version,
         });
       }),
-      http.delete(`${API_BASE}/v3/resources/${CREATED_TENANT_ID}/${OBJECT_TYPE_SLUG}/${RESOURCE_ID}`, async () => {
+      http.delete(`${API_BASE}/v4/data/resources/${CREATED_TENANT_ID}/${OBJECT_TYPE_SLUG}/${RESOURCE_ID}`, async () => {
         return new HttpResponse(null, { status: 204 });
       }),
     );
@@ -212,6 +195,7 @@ describe('dedicated tenant lifecycle', () => {
       'create',
       '--name', 'Dedicated Tenant',
       '--slug', CREATED_TENANT_SLUG,
+      '--allow-root',
       '--format', 'json',
     ], { from: 'user' });
 
@@ -281,10 +265,10 @@ describe('dedicated tenant lifecycle', () => {
 
   test('creates a child tenant with active tenant context without redundant bootstrap when already usable', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const orchestrateHeaders: Array<Record<string, string>> = [];
+    const platformHeaders: Array<Record<string, string>> = [];
 
     mockServer.server.use(
-      http.get(`${API_BASE}/v3/users/me/tenants`, async ({ request }) => {
+      http.get(`${API_BASE}/v4/identity/tenants`, async ({ request }) => {
         expect(request.headers.get('authorization')).toBe('Bearer test-access-token');
         return HttpResponse.json({
           tenants: [
@@ -307,31 +291,14 @@ describe('dedicated tenant lifecycle', () => {
           ],
         });
       }),
-      http.post(`${API_BASE}/v3/orchestrate`, async ({ request }) => {
-        orchestrateHeaders.push(Object.fromEntries(request.headers.entries()));
-        const body = await request.json() as {
-          target_backend?: string;
-          endpoint?: string;
-          method?: string;
-          body?: Record<string, unknown>;
-        };
-
-        if (
-          body.target_backend === 'admin'
-          && body.endpoint === `/v1/tenants/${PARENT_TENANT_ID}/children`
-          && body.method === 'POST'
-        ) {
-          return HttpResponse.json({
-            id: CREATED_TENANT_ID,
-            slug: CREATED_TENANT_SLUG,
-            displayName: body.body?.displayName,
-          }, { status: 201 });
-        }
-
-        return HttpResponse.json(
-          { error: `Unhandled orchestrate route: ${body.target_backend} ${body.endpoint}` },
-          { status: 500 },
-        );
+      http.post(`${API_BASE}/v4/platform/tenants/${PARENT_TENANT_ID}/children`, async ({ request }) => {
+        platformHeaders.push(Object.fromEntries(request.headers.entries()));
+        const body = await request.json() as Record<string, unknown>;
+        return HttpResponse.json({
+          id: CREATED_TENANT_ID,
+          slug: CREATED_TENANT_SLUG,
+          displayName: body.displayName,
+        }, { status: 201 });
       }),
     );
 
@@ -355,7 +322,7 @@ describe('dedicated tenant lifecycle', () => {
         usable: true,
       }),
     });
-    expect(orchestrateHeaders).toHaveLength(1);
-    expect(orchestrateHeaders[0]['x-tenant-id']).toBe(PARENT_TENANT_ID);
+    expect(platformHeaders).toHaveLength(1);
+    expect(platformHeaders[0]['x-tenant-id']).toBe(PARENT_TENANT_ID);
   });
 });

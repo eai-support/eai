@@ -55,6 +55,9 @@ jobs:
       - name: Verify committed release-facing docs
         run: node scripts/generate-release-docs.cjs --check
 
+      - name: Verify API reference routes match code
+        run: node scripts/verify-api-reference.cjs --check
+
       - name: Verify committed static registry points at this tag
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"

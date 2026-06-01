@@ -4,6 +4,7 @@ description:
   Detects specification ambiguities by having 3 agents independently interpret
   the same spec
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are a specification ambiguity detector. You independently interpret a

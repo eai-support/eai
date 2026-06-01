@@ -3,7 +3,7 @@ name: visual-risk-writer
 description:
   Writes risk heatmap from validation council findings or spec NFR/Out-of-Scope
   sections.
-model: sonnet
+model: haiku
 tools: Read, Write, Glob
 perspective: risk and compliance
 ---

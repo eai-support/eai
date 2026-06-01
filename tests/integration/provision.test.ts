@@ -17,8 +17,8 @@ import { getActiveProfile, setActiveProfile } from '../../src/lib/profile.js';
 import { DEFAULT_PUBLIC_API_URL } from '../../src/lib/tenant-context.js';
 
 const API_BASE = 'https://test-api.example.com';
-const PROFILE_API_BASE = 'https://test-api.ae.myenterprise.ai/public';
-const DEV_PROFILE_API_BASE = 'https://dev-api.ae.myenterprise.ai/public';
+const PROFILE_API_BASE = 'https://test-api.au.myenterprise.ai/public';
+const DEV_PROFILE_API_BASE = 'https://dev-api.au.myenterprise.ai/public';
 
 function setTestHome(dir: string): void {
   process.env.HOME = dir;
@@ -59,7 +59,7 @@ function joinedConsoleOutput(...spies: Array<{ mock: { calls: unknown[][] } }>):
 
 function expectNoProvisionInternals(output: string): void {
   expect(output).not.toContain(API_BASE);
-  expect(output).not.toContain('/v3/provision/entra-app');
+  expect(output).not.toContain('/v4/platform/provisioning/entra-apps');
   expect(output).not.toContain('POST ');
   expect(output).not.toContain('PublicAPI');
   expect(output).not.toContain('AdminAPI');
@@ -123,7 +123,7 @@ describe('eai provision entra', () => {
     let requestBody: unknown;
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({ client_id: 'cid-1', client_secret: 'secret-1', existing: false });
       }),
@@ -141,14 +141,140 @@ describe('eai provision entra', () => {
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=cid-1');
     expect(content).toContain('ENTRA_CLIENT_SECRET=secret-1');
+    expect(content).toContain('AUTH_URL=http://localhost:3000');
+    expect(content).toContain('NEXTAUTH_URL=http://localhost:3000');
+    expect(content).toContain('AUTH_TRUST_HOST=true');
     expect(content).toContain('NEXT_PUBLIC_APP_NAME=my-vertical');
+  });
+
+  test('HP001 provision entra basePath projects register and persist matching Auth.js URLs', { timeout: 10000 }, async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      [
+        `BASE_URL_PUBLIC_API=${API_BASE}`,
+        'NEXT_PUBLIC_APP_NAME=no-code-builder',
+        'APP_BASE_PATH=/no-code-builder',
+        'NEXTAUTH_URL=http://localhost:3000',
+        '',
+      ].join('\n'),
+    );
+
+    let requestBody: unknown;
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          client_id: 'cid-basepath',
+          client_secret: 'secret-basepath',
+          existing: false,
+          redirectUris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'no-code-builder',
+      redirect_uris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('ENTRA_REDIRECT_URIS=http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id');
+  });
+
+  test('HP002 provision entra persists requested callback when platform response contains stale defaults', { timeout: 10000 }, async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      [
+        `BASE_URL_PUBLIC_API=${API_BASE}`,
+        'NEXT_PUBLIC_APP_NAME=no-code-builder',
+        'APP_BASE_PATH=/no-code-builder',
+        'AUTH_URL=http://localhost:3000/no-code-builder',
+        'ENTRA_REDIRECT_URIS=http://localhost:3000/api/auth/callback/microsoft-entra-id',
+        '',
+      ].join('\n'),
+    );
+
+    let requestBody: unknown;
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          client_id: 'cid-stale-response',
+          client_secret: null,
+          existing: true,
+          redirectUris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'no-code-builder',
+      redirect_uris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('ENTRA_REDIRECT_URIS=http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id');
+  });
+
+  test('BP001 provision entra falls back to localhost basePath when Auth.js URL is malformed', { timeout: 10000 }, async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      [
+        `BASE_URL_PUBLIC_API=${API_BASE}`,
+        'NEXT_PUBLIC_APP_NAME=no-code-builder',
+        'APP_BASE_PATH=/no-code-builder',
+        'NEXTAUTH_URL=not-a-url',
+        '',
+      ].join('\n'),
+    );
+
+    let requestBody: unknown;
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          client_id: 'cid-bad-url',
+          client_secret: 'secret-bad-url',
+          existing: false,
+          redirectUris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'no-code-builder',
+      redirect_uris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
   });
 
   test('storage provisioning dogfoods the PublicAPI provision route', { timeout: 10000 }, async () => {
     let requestBody: unknown;
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/resources/test-tenant-id/storage/provision`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/data/resources/test-tenant-id/storage/provision`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({
           tenantId: 'test-tenant-id',
@@ -206,11 +332,11 @@ describe('eai provision entra', () => {
     let staleTokenApiHit = false;
 
     mockServer.server.use(
-      http.post(`${DEFAULT_PUBLIC_API_URL}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${DEFAULT_PUBLIC_API_URL}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({ client_id: 'prod-client-id', client_secret: 'prod-secret', existing: false });
       }),
-      http.post(`${API_BASE}/v3/provision/entra-app`, () => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => {
         staleTokenApiHit = true;
         return HttpResponse.json({ detail: 'stale token URL used' }, { status: 500 });
       }),
@@ -238,7 +364,7 @@ describe('eai provision entra', () => {
     );
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.json({ client_id: 'cid-1', client_secret: null, existing: true }),
       ),
     );
@@ -259,7 +385,7 @@ describe('eai provision entra', () => {
     );
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({ client_id: 'remote-client', client_secret: null, existing: true });
       }),
@@ -288,7 +414,7 @@ describe('eai provision entra', () => {
     );
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app/client-1/rotate-secret`, async ({ request }) => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/client-1/rotate-secret`, async ({ request }) => {
         rotateBody = await request.json();
         return HttpResponse.json({
           client_id: 'client-1',
@@ -297,7 +423,7 @@ describe('eai provision entra', () => {
           expires_at: '2026-12-31T00:00:00Z',
         });
       }),
-      http.post(`${API_BASE}/v3/provision/entra-app`, () => {
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => {
         createEndpointHit = true;
         return HttpResponse.json({ detail: 'should not create' }, { status: 500 });
       }),
@@ -334,7 +460,7 @@ describe('eai provision entra', () => {
     let requestBody: unknown;
 
     mockServer.server.use(
-      http.post(`${PROFILE_API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${PROFILE_API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({ client_id: 'profile-client-id', client_secret: 'profile-secret', existing: false });
       }),
@@ -371,7 +497,7 @@ describe('eai provision entra', () => {
     let requestBody: unknown;
 
     mockServer.server.use(
-      http.post(`${DEV_PROFILE_API_BASE}/v3/provision/entra-app`, async ({ request }) => {
+      http.post(`${DEV_PROFILE_API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({ client_id: 'dev-client-id', client_secret: 'dev-secret', existing: false });
       }),
@@ -401,9 +527,9 @@ describe('eai provision entra', () => {
     });
 
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/orchestrate`, () =>
+      http.get(`${API_BASE}/v4/identity/tenants`, () =>
         HttpResponse.json(
-          { detail: 'AdminAPI /v1/users/test-oid/memberships failed for tenant test-tenant-id' },
+          { detail: 'Identity tenant membership lookup failed for tenant test-tenant-id' },
           { status: 500 },
         ),
       ),
@@ -423,12 +549,12 @@ describe('eai provision entra', () => {
     const output = joinedConsoleOutput(errSpy, logSpy);
     expect(output).toContain('Failed to resolve active tenant.');
     expectNoProvisionInternals(output);
-    expect(output).not.toContain('/v1/users/test-oid/memberships');
+    expect(output).not.toContain('tenant membership lookup failed');
   });
 
   test('HTTP 403: exits with code 1 and reports permission denied', { timeout: 10000 }, async () => {
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.json({ error: 'forbidden' }, { status: 403 }),
       ),
     );
@@ -448,7 +574,7 @@ describe('eai provision entra', () => {
 
   test('HTTP 409: exits with code 1 and reports quota exceeded', { timeout: 10000 }, async () => {
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.json({ error: 'conflict' }, { status: 409 }),
       ),
     );
@@ -468,7 +594,7 @@ describe('eai provision entra', () => {
 
   test('HTTP 404: exits with code 1 and reports product-safe diagnostics', { timeout: 10000 }, async () => {
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.json(
           { error: { code: 'tenant_not_found', message: 'Tenant test-tenant-id was not found' } },
           { status: 404 },
@@ -496,7 +622,7 @@ describe('eai provision entra', () => {
 
   test('HTTP 501: exits with code 1 and does not expose implementation details', { timeout: 10000 }, async () => {
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.text('not implemented', { status: 501 }),
       ),
     );
@@ -523,7 +649,7 @@ describe('eai provision entra', () => {
     ['empty client id', { client_id: '', client_secret: 'secret-with-empty-client-id', existing: false }],
   ])('malformed success response with %s exits safely without writing credentials', async (_case, responseBody) => {
     mockServer.server.use(
-      http.post(`${API_BASE}/v3/provision/entra-app`, () =>
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.json(responseBody),
       ),
     );
