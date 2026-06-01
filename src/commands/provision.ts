@@ -4,12 +4,14 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { readFile, writeFile } from 'node:fs/promises';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import { PlatformAPIClient, PlatformAPIRequestError, type SigninCompletenessSummary } from '../lib/api.js';
-import { loadTokens } from '../lib/auth.js';
+import { getAccessToken, loadTokens } from '../lib/auth.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
+import { buildPassiveResourceApiBundle } from '../lib/resourceapi-bundle.js';
 
 interface ErrorContext {
   status?: number;
@@ -116,6 +118,28 @@ function handleSecretRotationError(err: unknown, diag: DiagnosticsContext): neve
   out.info('Reference: EAI-PROVISION-ROTATE-SECRET-FAILED');
   out.info('Confirm you are a tenant admin and ENTRA_CLIENT_ID belongs to the active tenant.');
   process.exit(1);
+}
+
+async function formatJsonResponseError(response: Response, label: string): Promise<string> {
+  const text = await response.text();
+  if (!text) {
+    return `${label} failed: ${response.status} ${response.statusText}`;
+  }
+
+  try {
+    const payload = JSON.parse(text) as {
+      detail?: { message?: string; error?: string } | string;
+      error?: string;
+      message?: string;
+    };
+    const detail = payload.detail;
+    const message = typeof detail === 'object'
+      ? detail.message || detail.error
+      : detail || payload.message || payload.error;
+    return `${label} failed: ${response.status} ${response.statusText}${message ? ` — ${message}` : ''}`;
+  } catch {
+    return `${label} failed: ${response.status} ${response.statusText} — ${text.slice(0, 300)}`;
+  }
 }
 
 async function formatProvisionResponseError(response: Response): Promise<string> {
@@ -524,4 +548,156 @@ provisionCommand
         out.dim(`  ${action}`);
       }
     }
+  });
+
+// ─── eai provision resourceapi-bundle ────────────────────────────────────
+
+provisionCommand
+  .command('resourceapi-bundle')
+  .description('Prepare a customer-hosted ResourceAPI passive schema bundle')
+  .option('--schema <file>', 'Configurator object-types export JSON for local bundle generation')
+  .option('--tenant-id <id>', 'Tenant ID the bundle is scoped to')
+  .option('--install-id <id>', 'Customer ResourceAPI install registry ID')
+  .option('--admin-api-url <url>', 'AdminAPI URL for Configurator-backed orchestration')
+  .option('--apply', 'Ask AdminAPI to push the signed bundle to the customer ResourceAPI install', false)
+  .option('--dry-run', 'Plan ResourceAPI schema application without applying customer storage changes', false)
+  .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
+  .option('--rebuild-search', 'Request search projection rebuild after schema sync', false)
+  .option('--product <key>', 'Product/app key this bundle enables')
+  .option('--schema-version <version>', 'Tenant schema version to stamp into metadata', '1')
+  .option('--out <file>', 'Write bundle JSON to this file')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+Examples:
+  $ eai provision resourceapi-bundle --schema object-types.json --tenant-id <tenantId> --install-id <installId> --out resourceapi-bundle.json
+  $ eai provision resourceapi-bundle --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply
+  $ eai provision resourceapi-bundle --schema object-types.json --tenant-id <tenantId> --install-id <installId> --product daisy-assist --format json
+
+Notes:
+  - With --admin-api-url, AdminAPI reads Configurator as source of truth, signs the bundle, and can push it.
+  - Local --schema mode is for offline inspection only and does not own provisioning policy.
+  `)
+  .action(async (options) => {
+    const jsonOutput = options.json || options.format === 'json';
+    const adminApiUrl = String(options.adminApiUrl || '').trim().replace(/\/+$/, '');
+
+    if (adminApiUrl) {
+      const root = await findProjectRoot();
+      if (!root) {
+        exitWithError(ErrorCode.E001);
+      }
+      const publicApiUrl = await resolvePublicApiUrl(root);
+      let tenantId: string = options.tenantId;
+      try {
+        const context = await resolveActiveTenantContext({
+          projectRoot: root,
+          publicApiUrl,
+          tenantId,
+          interactive: !tenantId,
+          forceRefresh: Boolean(tenantId),
+        });
+        tenantId = context.activeTenant.id;
+      } catch (err) {
+        out.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+
+      const token = await getAccessToken();
+      if (!token) {
+        out.error('Not logged in. Run `eai login` before calling AdminAPI provisioning.');
+        process.exit(1);
+      }
+
+      const response = await fetch(
+        `${adminApiUrl}/v1/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-bundle`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            installId: options.installId,
+            productKey: options.product,
+            schemaVersion: options.schemaVersion,
+            apply: Boolean(options.apply),
+            dryRun: Boolean(options.dryRun),
+            backend: options.backend,
+            rebuildSearch: Boolean(options.rebuildSearch),
+          }),
+        },
+      );
+      if (!response.ok) {
+        out.error(await formatJsonResponseError(response, 'ResourceAPI passive provisioning'));
+        process.exit(1);
+      }
+
+      const payload = await response.json() as {
+        tenantId: string;
+        installId: string;
+        objectTypeCount: number;
+        storageBackends: string[];
+        bundle: Record<string, unknown>;
+        applyResult?: Record<string, unknown> | null;
+      };
+
+      if (options.out) {
+        await writeFile(options.out, `${JSON.stringify(payload.bundle, null, 2)}\n`, 'utf-8');
+      }
+
+      if (jsonOutput) {
+        out.json(payload);
+        return;
+      }
+
+      if (options.apply) {
+        out.success('ResourceAPI passive bundle applied through AdminAPI');
+      } else if (options.out) {
+        out.success(`ResourceAPI passive bundle written to ${chalk.cyan(options.out)}`);
+      } else {
+        out.success('ResourceAPI passive bundle prepared through AdminAPI');
+      }
+      out.info(`Tenant: ${chalk.cyan(payload.tenantId)}`);
+      out.info(`Install: ${chalk.dim(payload.installId)}`);
+      out.info(`Object Types: ${payload.objectTypeCount}`);
+      out.info(`Storage Backends: ${payload.storageBackends.join(', ')}`);
+      return;
+    }
+
+    const schemaPath = String(options.schema || '').trim();
+    if (!schemaPath || !options.tenantId || !options.installId) {
+      out.error('--schema, --tenant-id, and --install-id are required for local bundle generation.');
+      out.info('Use --admin-api-url to let AdminAPI build the bundle from Configurator source of truth.');
+      process.exit(1);
+    }
+
+    const raw = await readFile(schemaPath, 'utf-8');
+    const schemaExport = JSON.parse(raw) as unknown;
+    const bundle = buildPassiveResourceApiBundle(schemaExport, {
+      tenantId: options.tenantId,
+      installId: options.installId,
+      productKey: options.product,
+      schemaVersion: options.schemaVersion,
+      source: schemaPath,
+    });
+
+    if (options.out) {
+      await writeFile(options.out, `${JSON.stringify(bundle, null, 2)}\n`, 'utf-8');
+    }
+
+    if (jsonOutput) {
+      out.json(bundle);
+      return;
+    }
+
+    if (options.out) {
+      out.success(`ResourceAPI passive bundle written to ${chalk.cyan(options.out)}`);
+    } else {
+      out.info(JSON.stringify(bundle, null, 2));
+    }
+    out.info(`Tenant: ${chalk.cyan(bundle.tenantId)}`);
+    out.info(`Install: ${chalk.dim(bundle.installId)}`);
+    out.info(`Object Types: ${bundle.objectTypes.length}`);
+    out.info(`Storage Backends: ${bundle.storageBackends.join(', ')}`);
   });
