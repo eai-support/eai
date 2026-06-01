@@ -87,7 +87,7 @@ Services and APIs that the CLI calls:
 ### 2. EAI Platform API (PublicAPI v4)
 
 **Type**: REST API  
-**Base URL**: Configured via `BASE_URL_PUBLIC_API` (e.g., `https://api.ae.myenterprise.ai/public`)  
+**Base URL**: Configured via `BASE_URL_PUBLIC_API` when an override is required
 **Authentication**: Bearer token (from Entra CIAM)  
 
 **Endpoints Used** (grouped by v4 domain):

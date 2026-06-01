@@ -159,8 +159,8 @@ describe('eai login', () => {
     const { browserLogin, loadTokens, storeTokens } = await import('../../src/lib/auth.js');
 
     const tokens = await browserLogin(
-      'eaidevmyentepriseai',
-      '50808ce0-f31b-4fd0-9861-74b83b8c112a',
+      'profile-dev-tenant',
+      'dev-tenant-id',
       'client-id-123',
       'openid profile email offline_access',
     );
@@ -199,8 +199,8 @@ describe('eai login', () => {
     const { browserLogin } = await import('../../src/lib/auth.js');
 
     await expect(browserLogin(
-      'eaidevmyentepriseai',
-      '50808ce0-f31b-4fd0-9861-74b83b8c112a',
+      'profile-dev-tenant',
+      'dev-tenant-id',
       'client-id-123',
       'openid profile email offline_access',
     )).rejects.toThrow('Token exchange failed: invalid_grant');
@@ -215,7 +215,7 @@ describe('eai login', () => {
     const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
     const restoreHome = setTestHome(tempHome);
 
-    const authScope = 'openid profile email offline_access api://97f59e40-0d86-4c6d-8ac6-80659fea1a4e/access_token';
+    const authScope = 'openid profile email offline_access api://profile-test-api/access_token';
     const refreshedAccessToken = createJwt({
       preferred_username: 'browser@example.com',
       oid: 'oid-123',
@@ -245,9 +245,9 @@ describe('eai login', () => {
       accessToken: 'expired-access-token',
       refreshToken: 'refresh-token',
       expiresAt: Date.now() - 1000,
-      tenantId: 'dffacd2b-7705-43f2-86ae-75d1ef003a71',
-      tenantName: 'enterpriseaitestplatform',
-      clientId: '861ad00a-aba1-47e4-baf2-3e3f6ef4a69e',
+      tenantId: 'test-tenant-id',
+      tenantName: 'profile-test-tenant',
+      clientId: 'test-client-id',
       authScope,
     });
 

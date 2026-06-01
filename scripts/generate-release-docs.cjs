@@ -15,7 +15,6 @@ const DOC_ORDER = [
   'overview.md',
   'architecture.md',
   'configuration.md',
-  'profiles.md',
   'api-reference.md',
   'data-model.md',
   'dependencies.md',

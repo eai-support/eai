@@ -22,7 +22,7 @@ The EAI CLI uses a **static npm registry hosted on GitHub Pages**, eliminating t
 
 **Registry URL**: [https://eai-tools.github.io/eai/registry](https://eai-tools.github.io/eai/registry)  
 **Package Name**: `@eai-tools/cli`  
-**Current Version**: 2.8.13  
+**Current Version**: 2.9.5
 **Package Metadata**: [https://eai-tools.github.io/eai/registry/@eai-tools/cli](https://eai-tools.github.io/eai/registry/@eai-tools/cli)
 
 ### Installation
@@ -49,13 +49,13 @@ Users update the CLI via:
 eai update --check
 
 # Install latest version
-eai update
+eai update  # Reinstalls the latest CLI from the scoped EAI registry
 
 # Or manually
 npm install -g @eai-tools/cli@latest
 ```
 
-The CLI checks for updates once per 24 hours via GitHub Releases API and notifies users if a newer version is available.
+The CLI checks the scoped static registry once per 24 hours and notifies users if a newer version is available.
 
 ---
 

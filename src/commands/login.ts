@@ -44,7 +44,7 @@ What happens next:
 
     if (!tenantName || !tenantId || !clientId) {
       out.error(`Profile "${profile}" is missing authTenantName, authTenantId, or authClientId.`);
-      out.info('Check ~/.eai/config.json and ensure all required fields are set.');
+      out.info('Check your local profile settings and ensure all required fields are set.');
       process.exit(1);
     }
 

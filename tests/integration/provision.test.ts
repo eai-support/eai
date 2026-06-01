@@ -17,8 +17,8 @@ import { getActiveProfile, setActiveProfile } from '../../src/lib/profile.js';
 import { DEFAULT_PUBLIC_API_URL } from '../../src/lib/tenant-context.js';
 
 const API_BASE = 'https://test-api.example.com';
-const PROFILE_API_BASE = 'https://test-api.au.myenterprise.ai/public';
-const DEV_PROFILE_API_BASE = 'https://dev-api.au.myenterprise.ai/public';
+const PROFILE_API_BASE = 'https://profile-test.example.test/public';
+const DEV_PROFILE_API_BASE = 'https://profile-dev.example.test/public';
 
 function setTestHome(dir: string): void {
   process.env.HOME = dir;
@@ -448,7 +448,7 @@ describe('eai provision entra', () => {
         profiles: {
           test: {
             publicApiUrl: PROFILE_API_BASE,
-            authTenantName: 'enterpriseaitestplatform',
+            authTenantName: 'profile-test-tenant',
             authTenantId: 'test-ciam-tenant-id',
             authClientId: 'test-cli-client-id',
           },
@@ -485,7 +485,7 @@ describe('eai provision entra', () => {
         profiles: {
           dev: {
             publicApiUrl: DEV_PROFILE_API_BASE,
-            authTenantName: 'enterpriseaidevplatform',
+            authTenantName: 'profile-dev-tenant',
             authTenantId: 'dev-ciam-tenant-id',
             authClientId: 'dev-cli-client-id',
           },
