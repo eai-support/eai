@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock('../../src/lib/auth.js', () => ({
-  getAccessToken: vi.fn(async () => 'test-access-token'),
+  getAccessToken: vi.fn(async () => '<fixture-access-token>'),
 }))
 
 import { PlatformAPIClient } from '../../src/lib/api.js'
@@ -243,7 +243,7 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response(JSON.stringify({
         client_id: 'client-1',
-        client_secret: 'secret-1',
+        client_secret: '<fixture-client-secret>',
         tenant_id: 'tenant-parent',
         expires_at: '2026-12-31T00:00:00Z',
       }), { status: 200 }))
@@ -259,6 +259,6 @@ describe('PlatformAPIClient', () => {
     expect(String(url)).toBe('https://example.test/v4/platform/provisioning/entra-apps/client-1/rotate-secret')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({ tenant_id: 'tenant-parent' })
-    expect(result.clientSecret).toBe('secret-1')
+    expect(result.clientSecret).toBe('<fixture-client-secret>')
   })
 })

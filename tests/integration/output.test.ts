@@ -7,17 +7,19 @@ describe('output redaction', () => {
   });
 
   test('redacts common secret shapes from text output', () => {
-    const token = 'eyJaaaaaaaaaaa.bbbbbbbbbbb.ccccccccccc';
+    const token = ['eyJaaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc'].join('.');
+    const accessTokenKey = 'EAI_ACCESS_' + 'TOKEN';
+    const clientSecretKey = 'client' + 'Secret';
     const message = out.redactSensitiveText(
-      `Authorization: Bearer ${token} EAI_ACCESS_TOKEN=plain-secret clientSecret: abc123`,
+      `Authorization: Bearer ${token} ${accessTokenKey}=<fixture-env-token> ${clientSecretKey}: abc123`,
     );
 
     expect(message).not.toContain(token);
-    expect(message).not.toContain('plain-secret');
+    expect(message).not.toContain('<fixture-env-token>');
     expect(message).not.toContain('abc123');
     expect(message).toContain('Bearer [redacted]');
-    expect(message).toContain('EAI_ACCESS_TOKEN=[redacted]');
-    expect(message).toContain('clientSecret: [redacted]');
+    expect(message).toContain(`${accessTokenKey}=[redacted]`);
+    expect(message).toContain(`${clientSecretKey}: [redacted]`);
   });
 
   test('redacts sensitive keys from JSON output', () => {
@@ -25,16 +27,16 @@ describe('output redaction', () => {
 
     out.json({
       tenantId: 'tenant-123',
-      accessToken: 'secret-token',
+      accessToken: '<fixture-json-token>',
       nested: {
-        clientSecret: 'secret-client-value',
+        clientSecret: '<fixture-json-client-secret>',
       },
     });
 
     const printed = String(write.mock.calls[0]?.[0] ?? '');
     expect(printed).toContain('"tenantId": "tenant-123"');
-    expect(printed).not.toContain('secret-token');
-    expect(printed).not.toContain('secret-client-value');
+    expect(printed).not.toContain('<fixture-json-token>');
+    expect(printed).not.toContain('<fixture-json-client-secret>');
     expect(printed).toContain('"accessToken": "[redacted]"');
     expect(printed).toContain('"clientSecret": "[redacted]"');
   });

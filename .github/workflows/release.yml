@@ -46,6 +46,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Public hygiene
+        run: npm run security:public-hygiene
+
       - name: Build
         run: npm run build
 

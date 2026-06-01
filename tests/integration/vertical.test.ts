@@ -29,8 +29,8 @@ function requestMethod(init?: Parameters<typeof fetch>[1]): string {
 
 async function seedLoggedInTenant(): Promise<void> {
   await storeTokens({
-    accessToken: 'test-access-token',
-    refreshToken: 'test-refresh-token',
+    accessToken: '<fixture-access-token>',
+    refreshToken: '<fixture-refresh-token>',
     expiresAt: Date.now() + 3600000,
     tenantId: 'auth-tenant',
     tenantName: 'auth-tenant',
@@ -69,7 +69,7 @@ describe('eai vertical', () => {
     process.env.HOME = env.dir;
     process.env.USERPROFILE = env.dir;
     process.env.BASE_URL_PUBLIC_API = API_BASE;
-    process.env.EAI_ACCESS_TOKEN = 'test-access-token';
+    process.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });

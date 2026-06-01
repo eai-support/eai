@@ -37,8 +37,8 @@ async function setupProject(dir: string): Promise<void> {
 async function storeTestTokens(dir: string): Promise<void> {
   setTestHome(dir);
   await storeTokens({
-    accessToken: 'test-access-token',
-    refreshToken: 'test-refresh-token',
+    accessToken: '<fixture-access-token>',
+    refreshToken: '<fixture-refresh-token>',
     expiresAt: Date.now() + 3600000,
     upn: 'test@example.com',
     oid: 'test-oid',
@@ -89,7 +89,7 @@ describe('eai provision entra', () => {
     mockServer = createMockServer();
     mockServer.start();
 
-    process.env.EAI_ACCESS_TOKEN = 'test-access-token';
+    process.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
     await storeTestTokens(env.dir);
     await setupProject(env.dir);
     process.chdir(env.dir);
@@ -125,7 +125,7 @@ describe('eai provision entra', () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
-        return HttpResponse.json({ client_id: 'cid-1', client_secret: 'secret-1', existing: false });
+        return HttpResponse.json({ client_id: 'cid-1', client_secret: '<fixture-client-secret>', existing: false });
       }),
     );
 
@@ -140,7 +140,7 @@ describe('eai provision entra', () => {
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=cid-1');
-    expect(content).toContain('ENTRA_CLIENT_SECRET=secret-1');
+    expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-client-secret>');
     expect(content).toContain('AUTH_URL=http://localhost:3000');
     expect(content).toContain('NEXTAUTH_URL=http://localhost:3000');
     expect(content).toContain('AUTH_TRUST_HOST=true');
@@ -166,7 +166,7 @@ describe('eai provision entra', () => {
         requestBody = await request.json();
         return HttpResponse.json({
           client_id: 'cid-basepath',
-          client_secret: 'secret-basepath',
+          client_secret: '<fixture-basepath-credential>',
           existing: false,
           redirectUris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
         });
@@ -249,7 +249,7 @@ describe('eai provision entra', () => {
         requestBody = await request.json();
         return HttpResponse.json({
           client_id: 'cid-bad-url',
-          client_secret: 'secret-bad-url',
+          client_secret: '<fixture-bad-url-credential>',
           existing: false,
           redirectUris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
         });
@@ -312,8 +312,8 @@ describe('eai provision entra', () => {
   test('default profile provisions through the prod PublicAPI when no local API URL is configured', { timeout: 10000 }, async () => {
     await clearTokens();
     await storeTokens({
-      accessToken: 'test-access-token',
-      refreshToken: 'test-refresh-token',
+      accessToken: '<fixture-access-token>',
+      refreshToken: '<fixture-refresh-token>',
       expiresAt: Date.now() + 3600000,
       upn: 'test@example.com',
       oid: 'test-oid',
@@ -334,7 +334,7 @@ describe('eai provision entra', () => {
     mockServer.server.use(
       http.post(`${DEFAULT_PUBLIC_API_URL}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
-        return HttpResponse.json({ client_id: 'prod-client-id', client_secret: 'prod-secret', existing: false });
+        return HttpResponse.json({ client_id: 'prod-client-id', client_secret: '<fixture-prod-credential>', existing: false });
       }),
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => {
         staleTokenApiHit = true;
@@ -354,7 +354,7 @@ describe('eai provision entra', () => {
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=prod-client-id');
-    expect(content).toContain('ENTRA_CLIENT_SECRET=prod-secret');
+    expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-prod-credential>');
   });
 
   test('existing registration: preserves .env.local keys and confirms ENTRA_CLIENT_ID', { timeout: 10000 }, async () => {
@@ -418,7 +418,7 @@ describe('eai provision entra', () => {
         rotateBody = await request.json();
         return HttpResponse.json({
           client_id: 'client-1',
-          client_secret: 'rotated-secret',
+          client_secret: '<fixture-rotated-credential>',
           tenant_id: 'test-tenant-id',
           expires_at: '2026-12-31T00:00:00Z',
         });
@@ -436,7 +436,7 @@ describe('eai provision entra', () => {
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=client-1');
-    expect(content).toContain('ENTRA_CLIENT_SECRET=rotated-secret');
+    expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-rotated-credential>');
   });
 
   test('named profile API URL overrides local env when provisioning', { timeout: 10000 }, async () => {
@@ -462,7 +462,7 @@ describe('eai provision entra', () => {
     mockServer.server.use(
       http.post(`${PROFILE_API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
-        return HttpResponse.json({ client_id: 'profile-client-id', client_secret: 'profile-secret', existing: false });
+        return HttpResponse.json({ client_id: 'profile-client-id', client_secret: '<fixture-profile-credential>', existing: false });
       }),
     );
 
@@ -499,7 +499,7 @@ describe('eai provision entra', () => {
     mockServer.server.use(
       http.post(`${DEV_PROFILE_API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
-        return HttpResponse.json({ client_id: 'dev-client-id', client_secret: 'dev-secret', existing: false });
+        return HttpResponse.json({ client_id: 'dev-client-id', client_secret: '<fixture-dev-credential>', existing: false });
       }),
     );
 
@@ -515,8 +515,8 @@ describe('eai provision entra', () => {
 
   test('tenant-context failures do not expose platform response details', { timeout: 10000 }, async () => {
     await storeTokens({
-      accessToken: 'test-access-token',
-      refreshToken: 'test-refresh-token',
+      accessToken: '<fixture-access-token>',
+      refreshToken: '<fixture-refresh-token>',
       expiresAt: Date.now() + 3600000,
       upn: 'test@example.com',
       oid: 'test-oid',
@@ -645,8 +645,8 @@ describe('eai provision entra', () => {
   });
 
   test.each([
-    ['missing client id', { client_secret: 'secret-without-client-id', existing: false }],
-    ['empty client id', { client_id: '', client_secret: 'secret-with-empty-client-id', existing: false }],
+    ['missing client id', { client_secret: '<fixture-missing-client-credential>', existing: false }],
+    ['empty client id', { client_id: '', client_secret: '<fixture-empty-client-credential>', existing: false }],
   ])('malformed success response with %s exits safely without writing credentials', async (_case, responseBody) => {
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>

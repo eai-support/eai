@@ -41,7 +41,7 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
   expired?: boolean;
 }): Promise<void> {
   // Use environment variable approach for testing - CLI checks this first
-  ctx.env.EAI_ACCESS_TOKEN = 'test-access-token';
+  ctx.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
   ctx.env.HOME ||= ctx.workingDir;
 
   // Also write tokens file to home directory for full integration
@@ -50,8 +50,8 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
   await mkdir(tokensDir, { recursive: true });
 
   const tokens = {
-    accessToken: 'test-access-token',
-    refreshToken: 'test-refresh-token',
+    accessToken: '<fixture-access-token>',
+    refreshToken: '<fixture-refresh-token>',
     expiresAt: opts?.expired ? Date.now() - 1000 : Date.now() + 3600000,
     upn: opts?.email || 'test@example.com',
     oid: 'test-user-oid',

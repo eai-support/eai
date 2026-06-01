@@ -146,7 +146,7 @@ describe('eai login', () => {
           preferred_username: 'browser@example.com',
           oid: 'oid-123',
         }),
-        refresh_token: 'refresh-token',
+        refresh_token: '<fixture-refresh-token>',
         expires_in: 3600,
         token_type: 'Bearer',
       }), {
@@ -229,7 +229,7 @@ describe('eai login', () => {
 
       return new Response(JSON.stringify({
         access_token: refreshedAccessToken,
-        refresh_token: 'new-refresh-token',
+        refresh_token: '<fixture-updated-refresh-value>',
         expires_in: 3600,
         token_type: 'Bearer',
       }), {
@@ -242,8 +242,8 @@ describe('eai login', () => {
     const { storeTokens, getAccessToken, loadTokens } = await import('../../src/lib/auth.js');
 
     await storeTokens({
-      accessToken: 'expired-access-token',
-      refreshToken: 'refresh-token',
+      accessToken: '<fixture-expired-access-value>',
+      refreshToken: '<fixture-refresh-token>',
       expiresAt: Date.now() - 1000,
       tenantId: 'test-tenant-id',
       tenantName: 'profile-test-tenant',
@@ -255,7 +255,7 @@ describe('eai login', () => {
     expect(nextToken).toBe(refreshedAccessToken);
 
     const stored = await loadTokens();
-    expect(stored?.refreshToken).toBe('new-refresh-token');
+    expect(stored?.refreshToken).toBe('<fixture-updated-refresh-value>');
     expect(stored?.authScope).toBe(authScope);
 
     restoreHome();

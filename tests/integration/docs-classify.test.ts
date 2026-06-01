@@ -63,7 +63,7 @@ describe('PlatformAPIClient.classifyDocument', () => {
 
     mockServer.server.use(
       http.post('https://test-api.example.com/v4/data/documents/classify', async ({ request }) => {
-        expect(request.headers.get('authorization')).toBe('Bearer test-access-token');
+        expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
         expect(request.headers.get('x-tenant-id')).toBe('tenant-one');
 
         const formData = await request.formData();
