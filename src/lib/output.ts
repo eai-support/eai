@@ -143,6 +143,8 @@ export function blank(): void {
 }
 
 export function json(data: unknown): void {
+  // JSON output is redacted by redactingJsonReplacer before it reaches the CLI sink.
+  // codeql[js/clear-text-logging]
   console.log(JSON.stringify(data, redactingJsonReplacer, 2));
 }
 
