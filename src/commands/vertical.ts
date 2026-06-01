@@ -179,7 +179,7 @@ verticalCommand
   .option('--child-tenant <name>', 'Create or reuse a child company tenant display name')
   .option('--child-tenant-slug <slug>', 'Child company tenant key')
   .option('--key <key>', 'Stable app key (defaults to kebab-case name)')
-  .option('--template <templateKey>', 'Optional vertical-catalog template key')
+  .option('--template <templateKey>', 'Optional app-catalog template key')
   .option('--source <source>', 'Creation source', DEFAULT_VERTICAL_SOURCE)
   .option('--app-url <url>', 'Optional app URL')
   .option('--status <status>', 'Initial lifecycle status', 'pending')

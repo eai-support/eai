@@ -30,7 +30,7 @@ status: draft
 | Coupling status | {{daisy-coupled-daisy-decoupled-hybrid-adapter}} |
 | Public-readiness target | {{required-deferred-not-applicable}} |
 
-## Vertical Template Constraints
+## Application Template Constraints
 
 | Constraint                    | Decision                                          |
 | ----------------------------- | ------------------------------------------------- |

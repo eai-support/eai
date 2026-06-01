@@ -9,7 +9,7 @@ import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-c
 import { getActiveProfile, loadProfileConfig, saveActiveProfileToConfig, DEFAULT_PROD_AUTH_SCOPE } from '../lib/profile.js';
 import * as out from '../lib/output.js';
 
-// Production CIAM defaults — hardcoded so `eai login` works without config files
+// Public auth defaults let `eai login` work without local setup.
 const PROD_TENANT_NAME = 'enterpriseaiplatform';
 const PROD_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
 const PROD_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
@@ -24,7 +24,6 @@ export const loginCommand = new Command('login')
 Examples:
   $ eai login
   $ eai login --tenant-name myorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
-  $ eai --profile dev login
   $ eai whoami
 
 What happens next:
@@ -36,7 +35,7 @@ What happens next:
     const profile = getActiveProfile();
     const profileConfig = await loadProfileConfig(profile);
 
-    // Resolve auth config: command flags → profile config → prod defaults
+    // Resolve auth config: command flags → profile config → public defaults
     const tenantName = options.tenantName || profileConfig?.authTenantName || PROD_TENANT_NAME;
     const tenantId = options.tenantId || profileConfig?.authTenantId || PROD_TENANT_ID;
     const clientId = profileConfig?.authClientId || PROD_CLIENT_ID;
@@ -44,7 +43,7 @@ What happens next:
 
     if (!tenantName || !tenantId || !clientId) {
       out.error(`Profile "${profile}" is missing authTenantName, authTenantId, or authClientId.`);
-      out.info('Check ~/.eai/config.json and ensure all required fields are set.');
+      out.info('Check your local profile settings and ensure all required fields are set.');
       process.exit(1);
     }
 

@@ -15,7 +15,6 @@ const DOC_ORDER = [
   'overview.md',
   'architecture.md',
   'configuration.md',
-  'profiles.md',
   'api-reference.md',
   'data-model.md',
   'dependencies.md',
@@ -176,7 +175,7 @@ ${INSTALL_CMD}
 
 - \`eai update\` reinstalls the latest CLI from the scoped EAI registry.
 - \`eai gofer refresh\` updates Gofer-managed assets without blindly overwriting local work.
-- \`eai template check\` previews vertical-template and UI drift without writing files.
+- \`eai template check\` previews app-template and UI drift without writing files.
 - Template and UI drift are reported by \`eai doctor --check-updates\` and still require manual review.
 
 # CLI Help

@@ -114,7 +114,7 @@ describe('dedicated tenant lifecycle', () => {
   });
 
   test('creates a tenant, provisions dedicated storage, and CRUDs resources via ResourceAPI', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const resourceState = {
       version: 1,
       data: { title: 'Initial tenant case', status: 'draft' },
@@ -237,7 +237,7 @@ describe('dedicated tenant lifecycle', () => {
     const deleteResponse = await client.deleteResource(OBJECT_TYPE, RESOURCE_ID);
     expect(deleteResponse.status).toBe(204);
 
-    const jsonOutputs = parseJsonOutput(logSpy);
+    const jsonOutputs = parseJsonOutput(outputSpy);
     expect(jsonOutputs[0]).toMatchObject({
       tenant: expect.objectContaining({
         id: CREATED_TENANT_ID,
@@ -264,7 +264,7 @@ describe('dedicated tenant lifecycle', () => {
   });
 
   test('creates a child tenant with active tenant context without redundant bootstrap when already usable', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const platformHeaders: Array<Record<string, string>> = [];
 
     mockServer.server.use(
@@ -310,7 +310,7 @@ describe('dedicated tenant lifecycle', () => {
       '--format', 'json',
     ], { from: 'user' });
 
-    const jsonOutputs = parseJsonOutput(logSpy);
+    const jsonOutputs = parseJsonOutput(outputSpy);
     expect(jsonOutputs[0]).toMatchObject({
       tenant: expect.objectContaining({
         id: CREATED_TENANT_ID,

@@ -1,4 +1,4 @@
-# Vertical Template Reference
+# Application Template Reference
 
 Use this fallback when project-specific template documentation is unavailable.
 

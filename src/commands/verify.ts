@@ -1527,7 +1527,7 @@ Examples:
 Notes:
   - \`eai update\` upgrades the installed CLI package only.
   - \`eai gofer refresh --check\` previews safe repo-local Gofer asset updates.
-  - \`eai template check\` previews vertical-template and UI drift without writing files.
+  - \`eai template check\` previews app-template and UI drift without writing files.
   - Template and UI component changes are not auto-merged into existing repos yet.
   `,
   )

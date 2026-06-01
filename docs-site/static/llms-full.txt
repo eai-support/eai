@@ -13,7 +13,7 @@ npm install -g @eai-tools/cli
 
 - `eai update` reinstalls the latest CLI from the scoped EAI registry.
 - `eai gofer refresh` updates Gofer-managed assets without blindly overwriting local work.
-- `eai template check` previews vertical-template and UI drift without writing files.
+- `eai template check` previews app-template and UI drift without writing files.
 - Template and UI drift are reported by `eai doctor --check-updates` and still require manual review.
 
 # CLI Help
@@ -23,8 +23,7 @@ npm install -g @eai-tools/cli
 ```text
 Usage: eai [options] [command]
 
-Enterprise AI Platform CLI — scaffold, seed, deploy, and manage vertical
-applications
+Enterprise AI Platform CLI — scaffold, seed, deploy, and manage applications
 
 Options:
   -V, --cli-version      output the version number
@@ -32,12 +31,12 @@ Options:
                          readers)
   --no-color             Disable colored output
   --color                Force colored output
-  --profile <name>       Use a named environment profile (e.g. dev, test)
+  --profile <name>       Use a locally configured private profile
   --describe             Output JSON schema of all commands
   -h, --help             display help for command
 
 Commands:
-  init [options] [name]  Scaffold a new vertical application
+  init [options] [name]  Scaffold a new application
   dev [options]          Start local development server
   login [options]        Authenticate with Entra CIAM
   logout                 Clear stored authentication tokens
@@ -48,23 +47,23 @@ Commands:
   resources              CRUD operations on platform resources
   vertical               Manage apps under the active company tenant
   chat                   Chat with AI workflows
-  workflow               Provision vertical workflow configs and inspect AI
-                         runtime workflow bindings
+  workflow               Provision app workflow configs and inspect AI runtime
+                         workflow bindings
   docs                   Document upload, classification, and indexing
   deploy                 Deployment management
   verify [options]       Run platform connectivity checks
   doctor [options]       Diagnose common issues and suggest fixes
   whoami                 Show auth status and tenant info
   update [options]       Check for and install CLI updates
-  provision              Provision platform resources for this vertical
+  provision              Provision platform resources for this app
   gofer                  Inspect and refresh Gofer-managed project assets
-  template               Preview vertical template and UI component drift for
+  template               Preview application template and UI component drift for
                          the current project
   blocks                 Discover AI-readable EAI UI block manifests
   help [command]         display help for command
 
 Getting Started:
-  eai init my-vertical     Scaffold a vertical app with Gofer AI CLI assets
+  eai init my-app     Scaffold an app with Gofer AI CLI assets
   eai login                Authenticate with Entra CIAM
   eai provision entra      Create Entra app registration for end-user auth
   eai env pull             Sync app config from cloud
@@ -123,10 +122,10 @@ Updates:
   eai gofer refresh --check preview managed Gofer asset updates for this repo
   eai gofer refresh        apply safe Gofer-managed asset updates with backups
 
-  # Preview vertical-template and UI component drift before copying changes
-  eai template check       review potential vertical or UI file updates without overwriting local work
+  # Preview app-template and UI component drift before copying changes
+  eai template check       review potential app or UI file updates without overwriting local work
 
-  # Discover AI-readable UI blocks for Gofer and vertical apps
+  # Discover AI-readable UI blocks for Gofer and apps
   eai blocks list --readiness public-ready
                                   list foundation, product, addon, and demo block IDs
   eai blocks describe core.button
@@ -158,7 +157,7 @@ Notes:
   - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
   - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
   - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
-  - Use `eai template check` to preview vertical-template and UI drift before copying changes manually.
+  - Use `eai template check` to preview app-template and UI drift before copying changes manually.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
 ```
 
@@ -182,7 +181,7 @@ Examples:
 Notes:
   - `eai update` upgrades the installed CLI package only.
   - `eai gofer refresh --check` previews safe repo-local Gofer asset updates.
-  - `eai template check` previews vertical-template and UI drift without writing files.
+  - `eai template check` previews app-template and UI drift without writing files.
   - Template and UI component changes are not auto-merged into existing repos yet.
 ```
 
@@ -224,7 +223,7 @@ Options:
 ```text
 Usage: eai template [options] [command]
 
-Preview vertical template and UI component drift for the current project
+Preview application template and UI component drift for the current project
 
 Options:
   -h, --help       display help for command
@@ -268,7 +267,7 @@ Notes:
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
 | **Version** | 2.9.5 |
-| **Primary Capability** | Developer CLI for scaffolding, managing, and deploying vertical applications on the EAI Platform |
+| **Primary Capability** | Developer CLI for scaffolding, managing, and deploying applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
 | **Current Status** | Active development (v2.9.5 released 2026-05-31) |
@@ -284,7 +283,7 @@ Notes:
 
 The EAI CLI is a TypeScript-based command-line tool that serves as the primary developer interface to the EAI Platform. It abstracts platform complexity by providing intuitive commands organized into functional groups:
 
-- **Project Scaffolding**: Initialize new vertical applications with integrated Gofer AI terminal assets (Claude, Codex, Gemini, Copilot)
+- **Project Scaffolding**: Initialize new applications with integrated Gofer AI terminal assets (Claude, Codex, Gemini, Copilot)
 - **Authentication**: Browser-based PKCE flow via Entra CIAM with secure local token storage
 - **Tenant Management**: Context-driven tenant selection based on user membership
 - **Object Types**: Validate, seed, diff, and pull data model definitions
@@ -293,7 +292,7 @@ The EAI CLI is a TypeScript-based command-line tool that serves as the primary d
 - **Environment Sync**: Azure App Config and Key Vault integration
 - **Deployment**: GitHub Actions orchestration to Azure App Service
 - **Diagnostics**: Platform connectivity checks, health validation, and automated fix suggestions
-- **Block Catalog**: AI-readable UI component catalog for vertical development with foundation, product, addon, and demo blocks
+- **Block Catalog**: AI-readable UI component catalog for application development with foundation, product, addon, and demo blocks
 
 The CLI authenticates once with `eai login`, stores tokens in `~/.eai/tokens.json`, and uses platform membership to establish working context via `eai tenant select`. Every command is a thin, typed wrapper around platform API endpoints with structured error codes (E001-E399) and machine-readable output formats (JSON, YAML, text).
 
@@ -386,8 +385,8 @@ npm test
 ### Basic Usage
 ```bash
 # Create new project
-eai init my-vertical
-cd my-vertical
+eai init my-app
+cd my-app
 npm install
 
 # Authenticate
@@ -453,7 +452,7 @@ As documented in `CLAUDE.md` and `AGENTS.md`:
    - Workflow status checks
 
 ### Downstream Dependents (Services Calling This)
-- **Vertical Application Developers**: Primary users scaffolding and managing EAI applications
+- **Application Developers**: Primary users scaffolding and managing EAI applications
 - **CI/CD Pipelines**: Automated deployment workflows using CLI commands
 - **AI Terminal Tools**: Claude, Codex, Gemini, Copilot agents using CLI via Gofer pipeline
 
@@ -584,7 +583,7 @@ Commands are organized by functional domain:
 | **Deploy** | `deploy.ts` | GitHub Actions deployment orchestration |
 | **Diagnostics** | `verify.ts` | Platform connectivity, health checks, doctor mode |
 | **Maintenance** | `update.ts`, `gofer.ts`, `template.ts` | CLI updates, Gofer asset refresh, template drift |
-| **Blocks** | `blocks.ts`, `vertical.ts` | UI block catalog management, vertical metadata |
+| **Blocks** | `blocks.ts`, `vertical.ts` | UI block catalog management, app metadata |
 
 Each command follows a consistent pattern:
 1. Parse options and validate prerequisites
@@ -648,8 +647,8 @@ Each command follows a consistent pattern:
 
 **PublicAPI regional routing boundary**
 - `resolvePublicApiUrl()` chooses the PublicAPI base URL in this order: named profile override, project/process `BASE_URL_PUBLIC_API`, stored active tenant `homeRegion`, authenticated session routing, then the AU production default.
-- Session routing uses the current bearer token from `auth.ts` only against the configured bootstrap resolver. The returned `apiBaseUrl` is accepted only when it is a trusted EAI regional PublicAPI host (`dev-api.*`, `test-api.*`, or `api.*`) or a loopback host for local dev-stack.
-- Host-only regional responses such as `https://api.ca.myenterprise.ai` are normalized to the PublicAPI gateway path (`/public`) before later CLI calls attach bearer tokens.
+- Session routing uses the current bearer token from `auth.ts` only against the configured bootstrap resolver. The returned `apiBaseUrl` is accepted only when it is a trusted PublicAPI host or a loopback host for local dev-stack.
+- Host-only regional responses are normalized to the PublicAPI gateway path (`/public`) before later CLI calls attach bearer tokens.
 
 **`schema-builder.ts` - CLI Introspection**
 - Generates JSON schema from Commander.js program structure
@@ -702,7 +701,7 @@ Each command follows a consistent pattern:
 - Functions: `pullEnv()`, `pushEnv()`, `listEnv()`
 
 **`profile.ts` - Profile Management**
-- Multi-environment profile support (dev, test, prod)
+- Private profile support for locally configured contexts
 - Profile-specific configuration loading
 - Functions: `loadProfile()`, `listProfiles()`, `setActiveProfile()`
 
@@ -1081,375 +1080,166 @@ Command execution follows a template:
 
 ---
 
-# EAI CLI — Configuration
+# EAI CLI - Configuration
 
-# EAI CLI — Configuration
+# EAI CLI - Configuration
 
 ## Overview
 
-The EAI CLI uses a **multi-layered configuration system** that combines:
+For normal public use, the EAI CLI should need very little configuration.
+After `eai login`, the CLI uses your signed-in account and selected tenant to
+route requests automatically. Public documentation must not describe private
+environment names, endpoint hostnames, internal routing, cloud resources, or
+platform infrastructure behind the public API.
 
-1. **Global CLI configuration** — `~/.eai/config.json` for profiles and preferences
-2. **Profile-based authentication** — Per-environment token storage
-3. **Project configuration** — `.env.local` and `eai.config.ts` for project-specific settings
-4. **Environment variables** — Runtime overrides via `process.env`
-5. **CLI flags** — Command-line flag overrides (highest precedence)
+Use this page for safe, user-facing configuration only:
 
----
-
-## Configuration Sources (Precedence Order)
-
-Configuration is loaded with the following precedence (highest to lowest):
-
-1. **CLI Flags** — `--format json`, `--profile dev`, `--tenant-id xxx`
-2. **Environment Variables** — `EAI_PROFILE`, `BASE_URL_PUBLIC_API`, `NO_COLOR`, `FORCE_COLOR`
-3. **`eai.config.ts`** — TypeScript configuration exports (project-specific)
-4. **`.env.local`** — Dotenv file (project-specific)
-5. **`~/.eai/config.json`** — Global CLI configuration (user-specific)
-6. **Defaults** — Hardcoded defaults in source code
+1. Output and accessibility preferences
+2. Project-local app metadata
+3. Local files that must not be committed
+4. Troubleshooting commands that do not expose infrastructure details
 
 ---
 
-## Global CLI Configuration
+## Configuration Sources
 
-### Profile System
+Configuration is loaded with this public-facing precedence:
 
-**File**: `~/.eai/config.json`
+| Source | Purpose |
+|--------|---------|
+| CLI flags | One-off command behavior, such as JSON output |
+| Environment variables | Generic runtime behavior, such as color handling |
+| `eai.config.ts` | Optional project metadata |
+| `.env.local` | Optional developer-local app values |
+| CLI defaults | Built-in public behavior |
 
-**Format**: JSON
-
-**Schema**:
-```json
-{
-  "activeProfile": "dev",
-  "profiles": {
-    "dev": {
-      "name": "dev",
-      "baseUrl": "https://dev-api.ae.myenterprise.ai/public",
-      "description": "Development environment"
-    },
-    "test": {
-      "name": "test",
-      "baseUrl": "https://test-api.ae.myenterprise.ai/public",
-      "description": "Testing environment"
-    },
-    "prod": {
-      "name": "prod",
-      "baseUrl": "https://api.ae.myenterprise.ai/public",
-      "description": "Production environment"
-    }
-  }
-}
-```
-
-**Managed by**:
-- Created automatically on first `eai login --profile <name>`
-- Updated by `eai login` when switching profiles
-- Read by all CLI commands to determine active environment
-
-**Profile Fields**:
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Profile identifier (dev, test, prod, etc.) |
-| `baseUrl` | string | Yes | Platform API base URL |
-| `description` | string | No | Human-readable description |
-
-**Profile Selection**:
-1. `--profile <name>` flag (highest priority)
-2. `EAI_PROFILE` environment variable
-3. `activeProfile` in `~/.eai/config.json`
-4. `default` (falls back to environment variables or errors)
+The CLI may keep local auth and tenant state on your machine after login. Treat
+that state as private and manage it through CLI commands such as `eai login`,
+`eai logout`, `eai whoami`, and `eai tenant select`.
 
 ---
 
-### Token Storage
+## Sign-In Context
 
-**File**: `~/.eai/tokens.json` (default) or `~/.eai/tokens/{profile}.json` (named profiles)
+Most configuration starts with sign-in:
 
-**Format**: JSON (plain text, file permissions `0o600`)
-
-**Schema**:
-```json
-{
-  "accessToken": "eyJhbGciOiJSUzI1NiIs...",
-  "refreshToken": "0.AXEA...",
-  "expiresAt": 1748025600000,
-  "tokenType": "Bearer",
-  "scope": "openid profile email offline_access",
-  "idToken": "eyJhbGciOiJSUzI1NiIs..."
-}
-```
-
-**Security**:
-- File mode set to `0o600` (owner read/write only)
-- Contains sensitive Bearer tokens
-- Should never be committed to version control
-- Future: AES-256-CBC encryption planned
-
-**Lifecycle**:
-- Created by `eai login`
-- Updated on token refresh (auto-refresh when < 5 minutes remaining)
-- Deleted by `eai logout`
-
----
-
-### Tenant Context
-
-**File**: `~/.eai/context.json` (default) or `~/.eai/context/{profile}.json` (named profiles)
-
-**Format**: JSON
-
-**Schema**:
-```json
-{
-  "activeTenant": {
-    "id": "tenant-123",
-    "displayName": "Acme Corp",
-    "slug": "acme-corp",
-    "domain": "acme.example.com",
-    "isActive": true,
-    "roles": ["tenant-admin"]
-  },
-  "memberships": [
-    {
-      "id": "tenant-123",
-      "displayName": "Acme Corp",
-      "slug": "acme-corp",
-      "roles": ["tenant-admin"],
-      "isActive": true
-    }
-  ],
-  "lastUpdated": 1748025600000
-}
-```
-
-**Lifecycle**:
-- Created/updated by `eai tenant select`
-- Read by all tenant-scoped commands
-- Cleared by `eai logout`
-- Membership cache TTL: 1 hour
-
----
-
-## Project Configuration
-
-### `.env.local` (Dotenv)
-
-**File**: `.env.local` (project root)
-
-**Format**: KEY=value (dotenv format)
-
-**Purpose**: Project-specific configuration and secrets
-
-**Common Variables**:
-
-#### Platform API Configuration
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `BASE_URL_PUBLIC_API` | Yes | Platform API base URL | `https://api.ae.myenterprise.ai/public` |
-
-#### Entra CIAM Configuration (for vertical app)
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `ENTRA_TENANT_ID` | Yes* | Entra CIAM tenant ID | `abc-123-def-456` |
-| `ENTRA_CLIENT_ID` | Yes* | Client ID for vertical app | `client-id-from-entra` |
-| `ENTRA_CLIENT_SECRET` | Yes* | Client secret for vertical app | `secret-from-entra` |
-
-*Required for `eai provision entra` command
-
-#### Azure Resource Configuration
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `AZURE_APP_CONFIG_ENDPOINT` | No | Azure App Configuration endpoint | `https://my-appconfig.azconfig.io` |
-| `AZURE_KEY_VAULT_URL` | No | Azure Key Vault URL | `https://my-vault.vault.azure.net/` |
-
-#### GitHub Configuration
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `GITHUB_TOKEN` | No | GitHub personal access token | `ghp_xxxxx` |
-| `GITHUB_REPOSITORY` | No | GitHub repository (owner/repo) | `org/my-vertical` |
-
-#### Application Configuration
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `NEXT_PUBLIC_APP_NAME` | No | Application display name | `My Vertical App` |
-| `NODE_ENV` | No | Node environment | `development` |
-
-**Example `.env.local`**:
 ```bash
-# Platform API
-BASE_URL_PUBLIC_API=https://api.ae.myenterprise.ai/public
-
-# Entra CIAM (vertical app registration)
-ENTRA_TENANT_ID=abc-123-def-456
-ENTRA_CLIENT_ID=client-id-from-entra
-ENTRA_CLIENT_SECRET=secret-from-entra
-
-# Azure Resources
-AZURE_APP_CONFIG_ENDPOINT=https://my-appconfig.azconfig.io
-AZURE_KEY_VAULT_URL=https://my-vault.vault.azure.net/
-
-# GitHub
-GITHUB_TOKEN=ghp_xxxxx
-GITHUB_REPOSITORY=org/my-vertical
-
-# Application
-NEXT_PUBLIC_APP_NAME=My Vertical App
-NODE_ENV=development
+eai login
+eai tenant select
+eai whoami
 ```
 
-**Security**:
-- Add `.env.local` to `.gitignore`
-- Never commit secrets or tokens
-- Use `eai env pull --include-secrets` to sync from Azure Key Vault
-
----
-
-### `eai.config.ts` (TypeScript Configuration)
-
-**File**: `eai.config.ts` (project root)
-
-**Format**: TypeScript module with default export
-
-**Purpose**: Type-safe project configuration with TypeScript support
-
-**Example**:
-```typescript
-export default {
-  appName: 'My Vertical App',
-  apiUrl: process.env.BASE_URL_PUBLIC_API,
-  features: {
-    chat: true,
-    documents: true,
-    workflows: ['strategy-monitor', 'compliance-audit'],
-  },
-  ui: {
-    theme: 'modern',
-    primaryColor: '#0066cc',
-  },
-};
-```
-
-**Loading**:
-- Loaded by `src/lib/config.ts`
-- Merged with `.env.local` and environment variables
-- TypeScript allows imports, type checking, and complex logic
-
----
-
-### `.eai-manifest.json` (Gofer Manifest)
-
-**File**: `.eai-manifest.json` (project root)
-
-**Format**: JSON
-
-**Purpose**: Track Gofer AI assets and managed files for safe updates
-
-**Schema**:
-```json
-{
-  "version": "1.0.0",
-  "cliVersion": "2.8.13",
-  "installedAt": 1748025600000,
-  "managedFiles": {
-    ".claude/commands/0_business_scenario.md": {
-      "path": ".claude/commands/0_business_scenario.md",
-      "hash": "sha256:abc123...",
-      "source": "gofer",
-      "installedAt": 1748025600000,
-      "modifiedLocally": false
-    }
-  }
-}
-```
-
-**Managed by**:
-- Created by `eai init` (if Gofer assets installed)
-- Updated by `eai gofer refresh`
-- Read by `eai doctor --check-updates` to detect drift
-
-**Never edit manually** — managed by CLI
-
----
-
-## Environment Variables
-
-### CLI Runtime Variables
-
-| Variable | Type | Description | Default |
-|----------|------|-------------|---------|
-| `EAI_PROFILE` | string | Active profile name | `default` |
-| `EAI_ACCESS_TOKEN` | string | Override access token (for CI/CD) | (none) |
-| `EAI_APP_CONFIG_STORE` | string | Azure App Config endpoint | (from `.env.local`) |
-| `NO_COLOR` | string | Disable colored output | (not set) |
-| `FORCE_COLOR` | string | Force colored output | (not set) |
-| `NODE_ENV` | string | Node environment | `production` |
-
-### Project Configuration Variables
-
-These are read from `.env.local` and used by CLI commands:
-
-| Variable | Used By | Description |
-|----------|---------|-------------|
-| `BASE_URL_PUBLIC_API` | All API commands | Platform API base URL |
-| `ENTRA_TENANT_ID` | `eai provision entra` | Entra CIAM tenant ID |
-| `ENTRA_CLIENT_ID` | `eai provision entra` | Entra client ID |
-| `ENTRA_CLIENT_SECRET` | `eai provision entra` | Entra client secret |
-| `AZURE_APP_CONFIG_ENDPOINT` | `eai env pull` | Azure App Configuration endpoint |
-| `AZURE_KEY_VAULT_URL` | `eai env pull --include-secrets` | Azure Key Vault URL |
-| `GITHUB_TOKEN` | `eai deploy trigger` | GitHub personal access token |
-| `GITHUB_REPOSITORY` | `eai deploy trigger` | GitHub repository (owner/repo) |
+`eai whoami` is the safest way to confirm which account and tenant the CLI is
+using. If you need to change tenant, run `eai tenant select`. If you need to
+clear local sign-in state, run `eai logout`.
 
 ---
 
 ## CLI Flags
 
-All commands support these global flags:
+All commands support these public global flags:
 
 | Flag | Type | Description | Default |
 |------|------|-------------|---------|
-| `--profile <name>` | string | Use named profile (dev, test, prod) | `default` |
-| `--format <format>` | string | Output format (text\|json\|yaml) | `text` |
+| `--format <format>` | string | Output format: `text`, `json`, or `yaml` | `text` |
 | `--simple` | boolean | Plain text output for screen readers | `false` |
 | `--no-color` | boolean | Disable colored output | `false` |
 | `--color` | boolean | Force colored output | `false` |
-| `--describe` | boolean | Output JSON schema of commands | `false` |
+| `--describe` | boolean | Output machine-readable command metadata | `false` |
 
-**Precedence**: CLI flags override all other configuration sources.
+Examples:
 
----
-
-## Feature Flags
-
-The CLI does not currently use feature flags. All features are enabled by default.
-
-**Future**: Feature flags may be added to `eai.config.ts` for opt-in/opt-out of experimental features.
+```bash
+eai whoami --format json
+eai tenant list --simple
+eai doctor --no-color
+```
 
 ---
 
-## Required Secrets
+## Environment Variables
 
-### For CLI Operation
+Public documentation only describes generic runtime environment variables:
 
-| Secret | Storage | Required For | How to Obtain |
-|--------|---------|--------------|---------------|
-| Access Token | `~/.eai/tokens.json` | All API calls | `eai login` |
+| Variable | Description |
+|----------|-------------|
+| `NO_COLOR` | Disable colored terminal output |
+| `FORCE_COLOR` | Force colored terminal output |
+| `NODE_ENV` | Standard Node.js runtime mode |
 
-### For Vertical App Operation
+Do not put credentials, tokens, endpoint URLs, or tenant-specific values into
+committed files. Automation credentials should be stored in your CI provider's
+secret store and supplied according to your organization's onboarding guide.
 
-| Secret | Storage | Required For | How to Obtain |
-|--------|---------|--------------|---------------|
-| Entra Client Secret | `.env.local` | End-user authentication | `eai provision entra` or Azure Portal |
-| Azure App Config Connection String | `.env.local` | `eai env pull` | Azure Portal |
-| Azure Key Vault Access | Azure CLI credentials | `eai env pull --include-secrets` | `az login` |
-| GitHub Token | `.env.local` | `eai deploy trigger` | GitHub Settings → Developer settings → Personal access tokens |
+---
 
-**Security Best Practices**:
-1. Never commit `.env.local` to version control
-2. Use `eai env pull --include-secrets` instead of manually copying secrets
-3. Rotate secrets regularly via `eai provision entra --rotate-secret`
-4. Use Azure Key Vault for production secrets
-5. Use GitHub Secrets for CI/CD workflows
+## Project Files
+
+### `.env.local`
+
+**File**: `.env.local` in the project root
+
+**Purpose**: Optional developer-local app values. This file is private to your
+machine and should not be committed.
+
+Public-safe example:
+
+```bash
+NEXT_PUBLIC_APP_NAME=My App
+NODE_ENV=development
+```
+
+Rules:
+
+1. Keep `.env.local` in `.gitignore`.
+2. Do not commit tokens, API keys, client secrets, tenant-specific values, or
+   endpoint URLs.
+3. Use your deployment provider's secret management for deployed applications.
+
+### `eai.config.ts`
+
+**File**: `eai.config.ts` in the project root
+
+**Purpose**: Optional type-safe project metadata.
+
+Public-safe example:
+
+```typescript
+export default {
+  appName: 'My App',
+  features: {
+    chat: true,
+    documents: true,
+  },
+};
+```
+
+Keep this file free of secrets and environment-specific endpoints.
+
+### `.eai-manifest.json`
+
+**File**: `.eai-manifest.json` in the project root
+
+**Purpose**: Track Gofer-managed files installed by the CLI.
+
+This file is managed by CLI commands such as `eai init`, `eai gofer refresh`,
+and `eai doctor --check-updates`. Do not edit it manually.
+
+---
+
+## Secrets
+
+Never commit secrets. That includes:
+
+1. Access tokens
+2. API keys
+3. Client secrets
+4. Private endpoint URLs
+5. Tenant-specific identifiers
+6. Generated credentials
+
+For local development, keep private values in ignored local files. For CI/CD and
+hosted deployments, use the secret store provided by your deployment platform.
 
 ---
 
@@ -1457,332 +1247,78 @@ The CLI does not currently use feature flags. All features are enabled by defaul
 
 ```mermaid
 flowchart TB
-    Start[Command Execution]
-    Flags[Parse CLI Flags]
-    EnvVars[Read Environment Variables]
+    Start[Command execution]
+    Flags[Parse CLI flags]
+    EnvVars[Read generic environment variables]
     EaiConfig[Load eai.config.ts]
     EnvLocal[Load .env.local]
-    GlobalConfig[Load ~/.eai/config.json]
-    Merge[Merge Configuration]
-    End[Final Configuration]
-    
+    Defaults[Apply CLI defaults]
+    End[Final command settings]
+
     Start --> Flags
     Flags --> EnvVars
     EnvVars --> EaiConfig
     EaiConfig --> EnvLocal
-    EnvLocal --> GlobalConfig
-    GlobalConfig --> Merge
-    Merge --> End
-    
-    style Flags fill:#e1f5ff
-    style End fill:#d4edda
+    EnvLocal --> Defaults
+    Defaults --> End
 ```
-
-**Precedence (highest to lowest)**:
-1. CLI Flags (`--profile dev`)
-2. Environment Variables (`EAI_PROFILE=dev`)
-3. `eai.config.ts` exports
-4. `.env.local` variables
-5. `~/.eai/config.json` profile settings
-6. Hardcoded defaults
 
 ---
 
-## Configuration Validation
+## Troubleshooting
 
-The CLI validates configuration at runtime:
+**Not sure which account or tenant is active?**
 
-### On Every Command
-- Checks if `BASE_URL_PUBLIC_API` is set (for API commands)
-- Validates token expiry
-- Validates profile exists (if `--profile` specified)
-
-### On `eai types seed`
-- Validates Object Type schemas
-- Checks for required fields
-- Validates field types match JSON Schema spec
-
-### On `eai provision entra`
-- Validates `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` are set
-- Validates format of Entra CIAM credentials
-
-### On `eai env pull`
-- Validates `AZURE_APP_CONFIG_ENDPOINT` is set
-- Validates `AZURE_KEY_VAULT_URL` is set (if `--include-secrets`)
-- Checks Azure CLI authentication
-
----
-
-## Troubleshooting Configuration
-
-### Common Issues
-
-**Error: `E002: BASE_URL_PUBLIC_API environment variable not set`**
-- **Cause**: Platform API URL not configured
-- **Fix**: Add `BASE_URL_PUBLIC_API=https://api.ae.myenterprise.ai/public` to `.env.local`
-
-**Error: `E101: Not logged in`**
-- **Cause**: No valid access token
-- **Fix**: Run `eai login`
-
-**Error: `E104: Authentication failed`**
-- **Cause**: Token expired or invalid
-- **Fix**: Run `eai login` to re-authenticate
-
-**Error: `Profile 'dev' not found`**
-- **Cause**: Profile specified but not configured
-- **Fix**: Run `eai login --profile dev` to create profile
-
-**Error: `ENTRA_CLIENT_ID environment variable not set`**
-- **Cause**: Entra credentials missing
-- **Fix**: Run `eai provision entra` or add manually to `.env.local`
-
-### Diagnostics
-
-Use `eai doctor` for comprehensive diagnostics:
+Run:
 
 ```bash
-# Check all configuration
-eai doctor
-
-# Check with update drift detection
-eai doctor --check-updates
-```
-
-Use `eai whoami` to check authentication status:
-
-```bash
-# Check login status
 eai whoami
+```
 
-# Check with JSON output
+**Need to switch tenant?**
+
+Run:
+
+```bash
+eai tenant select
+```
+
+**Need to clear local sign-in state?**
+
+Run:
+
+```bash
+eai logout
+```
+
+**Need a quick health check?**
+
+Run:
+
+```bash
+eai doctor
+```
+
+**Need machine-readable output for automation?**
+
+Run commands with JSON output:
+
+```bash
 eai whoami --format json
 ```
 
-Use `eai env list` to view current configuration:
-
-```bash
-# List all environment variables
-eai env list
-
-# List with JSON output (secrets masked)
-eai env list --format json
-```
-
 ---
 
-## Configuration Files Summary
+## Public Checklist
 
-| File | Purpose | Format | Source |
-|------|---------|--------|--------|
-| `~/.eai/config.json` | Global CLI configuration (profiles) | JSON | User-managed |
-| `~/.eai/tokens.json` | Access tokens (default profile) | JSON | CLI-managed |
-| `~/.eai/tokens/{profile}.json` | Access tokens (named profile) | JSON | CLI-managed |
-| `~/.eai/context.json` | Tenant context (default profile) | JSON | CLI-managed |
-| `~/.eai/context/{profile}.json` | Tenant context (named profile) | JSON | CLI-managed |
-| `~/.eai/last-update-check` | Update check timestamp | Plain text | CLI-managed |
-| `.env.local` | Project configuration and secrets | Dotenv | User-managed |
-| `eai.config.ts` | TypeScript project configuration | TypeScript | User-managed |
-| `.eai-manifest.json` | Gofer managed files tracking | JSON | CLI-managed |
+Before committing a project that uses the EAI CLI:
 
----
-
-# Environment Profiles
-
-# Environment Profiles
-
-Profiles let you switch between dev, test, and prod environments without changing environment variables or `.env.local` files. This is an internal feature — customers use the default profile (production) and never see the profile system.
-
-## How It Works
-
-- **No `--profile` flag** = default profile = production. Same behavior as before profiles existed. No config file needed.
-- **`--profile dev`** = reads the profile config file (`~/.eai/config.json` on macOS/Linux, `%USERPROFILE%\.eai\config.json` on Windows) for auth and API config, and stores tokens in the matching profile token file (`~/.eai/tokens/dev.json` or `%USERPROFILE%\.eai\tokens\dev.json`).
-
-Profiles are completely isolated — logging into dev does not affect your prod session.
-
-## Setup
-
-Create the profile config file with one or more named profiles:
-
-| OS            | Config file path                  |
-| ------------- | --------------------------------- |
-| macOS / Linux | `~/.eai/config.json`              |
-| Windows       | `%USERPROFILE%\.eai\config.json`  |
-
-Notes:
-
-- On macOS, `~` usually expands to `/Users/<your-username>`.
-- On Windows, `%USERPROFILE%` usually expands to `C:\Users\<your-username>`.
-- Create the `.eai` directory first if it does not already exist.
-
-Then add:
-
-```json
-{
-  "profiles": {
-    "dev": {
-      "publicApiUrl": "https://dev-api.au.myenterprise.ai/public",
-      "authTenantName": "eaidevmyentepriseai",
-      "authTenantId": "50808ce0-f31b-4fd0-9861-74b83b8c112a",
-      "authClientId": "c3c10ee2-aeeb-4a64-8eea-5ca43a3252af",
-      "authScope": "openid profile email offline_access api://32191e63-e253-48de-9ea1-a5337e236fe6/access_token"
-    },
-    "test": {
-      "publicApiUrl": "https://test-api.au.myenterprise.ai/public",
-      "authTenantName": "enterpriseaitestplatform",
-      "authTenantId": "dffacd2b-7705-43f2-86ae-75d1ef003a71",
-      "authClientId": "861ad00a-aba1-47e4-baf2-3e3f6ef4a69e",
-      "authScope": "openid profile email offline_access api://97f59e40-0d86-4c6d-8ac6-80659fea1a4e/access_token"
-    },
-    "prod": {
-      "publicApiUrl": "https://api.au.myenterprise.ai/public",
-      "authTenantName": "enterpriseaiplatform",
-      "authTenantId": "f3035369-5c1a-45f7-8ca5-5cb0ad291d26",
-      "authClientId": "d704bde5-fe36-44ff-9a26-221d53772dd0",
-      "authScope": "openid profile email offline_access api://833fc5ab-f1c9-4c60-b344-64e366f241cc/access_token"
-    }
-  },
-  "activeProfile": "test"
-}
-```
-
-These are the canonical `dev`, `test`, and `prod` profiles (a `local` profile pointing at `http://localhost:8000` is also valid for local stack work, but is omitted here). The `authClientId` and `authTenantId` values are **public** OAuth/CIAM identifiers for the PKCE CLI client — not secrets. `activeProfile` is managed automatically on login.
-
-Production values are also built into the CLI source (`src/commands/login.ts` and `src/lib/tenant-context.ts`), so the `prod` profile entry above is **optional** — `eai login` works against production out of the box without any config file.
-
-`eai provision entra` follows the same model. Default/no profile routes to the production platform API and the production CIAM selected by that deployment. `--profile test` and `--profile dev` route to their configured platform APIs, and those services choose the matching test or dev CIAM from deployment configuration. Do not add a CLI request field for CIAM or environment selection.
-
-### Required Fields
-
-| Field            | Description                                                  | Where to find it                                                     |
-| ---------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
-| `publicApiUrl`   | Platform API gateway URL for the environment                 | Azure Portal → App Service or API Management                         |
-| `authTenantName` | Entra CIAM tenant subdomain (before `.ciamlogin.com`)        | Entra admin center → Tenant overview                                 |
-| `authTenantId`   | Entra CIAM tenant GUID                                       | Entra admin center → Tenant overview → Tenant ID                     |
-| `authClientId`   | OAuth client ID for the CLI app registration (public client) | Entra admin center → App registrations → "EAI CLI - Developer Tools" |
-
-### Optional Fields
-
-| Field       | Default                               |
-| ----------- | ------------------------------------- |
-| `authScope` | `openid profile email offline_access` |
-
-For environments where the CLI calls PublicAPI directly, set `authScope` to include that environment's Public API scope. For the current test tenant:
-
-```json
-"authScope": "openid profile email offline_access api://97f59e40-0d86-4c6d-8ac6-80659fea1a4e/access_token"
-```
-
-## Usage
-
-Logging in with a profile makes it the active profile for all subsequent commands:
-
-```bash
-# Login to dev — sets "dev" as the active profile
-eai --profile dev login
-
-# These now use dev automatically (no --profile needed)
-eai whoami
-eai resources list User
-eai tenant list
-
-# Switch to test — sets "test" as the active profile
-eai --profile test login
-
-# These now use test
-eai whoami
-eai resources list User
-
-# Switch back to prod
-eai login
-
-# Back to prod (default)
-eai whoami
-```
-
-You can also override the active profile for a single command without changing it:
-
-```bash
-# Active profile is dev, but run this one command against test
-eai --profile test resources list User
-
-# Still on dev for everything else
-eai whoami    # → dev
-```
-
-## EAI_PROFILE Environment Variable
-
-Set `EAI_PROFILE` in your shell to avoid typing `--profile` on every command:
-
-```bash
-# For a session
-export EAI_PROFILE=dev
-eai login
-eai whoami
-eai resources list User
-
-# Or per-command
-EAI_PROFILE=dev eai whoami
-```
-
-The `--profile` flag takes precedence over `EAI_PROFILE`.
-
-## Precedence
-
-Profile resolution order (highest to lowest):
-
-1. `--profile <name>` flag
-2. `EAI_PROFILE` environment variable
-3. `activeProfile` in the profile config file (`~/.eai/config.json` on macOS/Linux, `%USERPROFILE%\.eai\config.json` on Windows), set automatically on login
-4. `default` (production — no config file, uses the default token cache: `~/.eai/tokens.json` on macOS/Linux or `%USERPROFILE%\.eai\tokens.json` on Windows)
-
-## File Layout
-
-macOS / Linux:
-
-```
-~/.eai/
-  config.json           # Profile configurations (only if profiles are set up)
-  tokens.json           # Default (prod) tokens (unchanged from before)
-  tokens/
-    dev.json            # Dev profile tokens
-    test.json           # Test profile tokens
-  update-check.json     # Update cache (not profile-scoped)
-```
-
-Windows:
-
-```
-%USERPROFILE%\.eai\
-  config.json           # Profile configurations (only if profiles are set up)
-  tokens.json           # Default (prod) tokens (unchanged from before)
-  tokens\
-    dev.json            # Dev profile tokens
-    test.json           # Test profile tokens
-  update-check.json     # Update cache (not profile-scoped)
-```
-
-## Deprecated: EAI_CIAM_* Environment Variables
-
-Previously, auth config was set via environment variables:
-
-```bash
-# DEPRECATED — use profiles instead
-export EAI_CIAM_TENANT_NAME=myorg
-export EAI_CIAM_TENANT_ID=12345678-...
-export EAI_CIAM_CLIENT_ID=87654321-...
-```
-
-These still work as a fallback for the default profile but will show a deprecation warning. Move to profiles for a cleaner setup.
-
-## CI/Headless Usage
-
-The `EAI_ACCESS_TOKEN` environment variable bypass is unchanged. Profiles are for interactive developer use. CI pipelines should continue using `EAI_ACCESS_TOKEN`:
-
-```bash
-export EAI_ACCESS_TOKEN=<bearer-token>
-eai resources list User   # Works without login, no profile needed
-```
+1. `.env.local` is ignored.
+2. No secrets or tokens are committed.
+3. No private endpoint URLs are committed.
+4. No tenant-specific identifiers are committed.
+5. `eai.config.ts` contains only public-safe project metadata.
+6. `eai doctor` runs successfully for your local setup.
 
 ---
 
@@ -1792,7 +1328,7 @@ eai resources list User   # Works without login, no profile needed
 
 ## Overview
 
-The EAI CLI groups its commands into scaffolding, authentication, tenant and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, vertical/app management, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
+The EAI CLI groups its commands into scaffolding, authentication, tenant and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, app management, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
 
 The v4 surface is grouped by domain prefix:
 
@@ -1820,7 +1356,7 @@ The v4 surface is grouped by domain prefix:
 ### Scaffolding Commands
 
 #### `eai init`
-Scaffold a new vertical application from the EAI app template.
+Scaffold a new application from the EAI app template.
 
 **Options**:
 - `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-tools/eai-app-template.git`)
@@ -1940,7 +1476,7 @@ Create a new tenant and bootstrap admin access.
 - `--domain <domains>` — Comma-separated domain list
 - `--usecase <usecase>` — `council|retail|healthcare|finance|manufacturing|generic` (default: `generic`)
 - `--industry <industry>` — Signup/onboarding industry segment
-- `--starter-template <key>` — Starter vertical template key (default: `blank-vertical-template`)
+- `--starter-template <key>` — Starter application template key (default: `blank-vertical-template`)
 - `--allow-root` — Allow root tenant creation for administrative backfills
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -2373,12 +1909,12 @@ Stream a chat response over SSE.
 ### Workflow Commands
 
 #### `eai workflow provision <workflow-key>`
-Provision a usecase-agnostic workflow config and bind it to a tenant vertical. Optionally creates the AI runtime records.
+Provision a usecase-agnostic workflow config and bind it to a tenant app. Optionally creates the AI runtime records.
 
 **Arguments**: `<workflow-key>`
 
 **Key options**:
-- `--vertical <key>` — Tenant vertical/app key that consumes this workflow (required)
+- `--vertical <key>` — Tenant app key that consumes this workflow (required)
 - `--tenant <id>` — Tenant to provision against (default: active tenant)
 - `--display-name <name>` — Workflow display name
 - `--usecase <usecase>` — Workflow usecase namespace (default: `generic`)
@@ -2411,7 +1947,7 @@ Provision a usecase-agnostic workflow config and bind it to a tenant vertical. O
 ---
 
 #### `eai workflow readiness [workflow-keys...]`
-Check tenant, plan, and workflow readiness for building a vertical.
+Check tenant, plan, and workflow readiness for building an app.
 
 **Arguments**: `[workflow-keys...]` (optional)
 
@@ -2568,7 +2104,7 @@ Validate the installed block catalog, or a manifest JSON file.
 
 ---
 
-### Vertical Commands
+### App Commands (`eai vertical`)
 
 #### `eai vertical list`
 List apps for the active company tenant.
@@ -2594,7 +2130,7 @@ Create an app under a company tenant.
 - `--child-tenant <name>` — Create or reuse a child company tenant (display name)
 - `--child-tenant-slug <slug>` — Child company tenant key
 - `--key <key>` — Stable app key (defaults to kebab-case of `<name>`)
-- `--template <templateKey>` — Optional vertical-catalog template key
+- `--template <templateKey>` — Optional app-catalog template key
 - `--source <source>` — Creation source (default: `eai-cli`)
 - `--app-url <url>` — Optional app URL
 - `--status <status>` — Initial lifecycle status (default: `pending`)
@@ -2723,7 +2259,7 @@ Safely refresh Gofer-managed assets in the current project.
 ---
 
 #### `eai template check`
-Preview file-level vertical-template / UI drift without writing to the repo.
+Preview file-level app-template / UI drift without writing to the repo.
 
 **Options**:
 - `--format <format>` — Output format (text|json, default: text)
@@ -2745,7 +2281,7 @@ Preview file-level vertical-template / UI drift without writing to the repo.
 - `POST /v4/platform/tenants/{parentId}/children` — Create child tenant
 - `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` — Bootstrap admin on a child tenant
 - `POST /v4/platform/tenants/{tenantId}/delete` — Soft-delete tenant
-- `POST /v4/platform/tenants/{companyTenantId}/apps` — Create app (vertical enrollment)
+- `POST /v4/platform/tenants/{companyTenantId}/apps` — Create app enrollment
 
 ### Platform — Users & Capabilities
 - `GET /v4/platform/users/by-email` — Look up a user by email
@@ -2820,7 +2356,7 @@ These flags are available on the root `eai` command:
 | `--simple` | boolean | Plain text output without colors or symbols (for screen readers) |
 | `--no-color` | boolean | Disable colored output |
 | `--color` | boolean | Force colored output |
-| `--profile <name>` | string | Use a named environment profile (e.g. dev, test) |
+| `--profile <name>` | string | Use a locally configured private profile |
 | `--describe` | boolean | Output a JSON schema of the command structure (for AI agents) |
 
 Most data-returning subcommands additionally accept `--format <format>` (`text` default, or `json`). A legacy `--json` boolean is accepted on many commands but is deprecated in favor of `--format json`.
@@ -2999,34 +2535,6 @@ interface TenantMembership {
 
 ---
 
-### Profile Configuration
-
-**File**: `~/.eai/config.json`
-
-**Format**: Plain JSON
-
-**Schema**:
-```typescript
-interface GlobalConfig {
-  activeProfile?: string;      // Currently active profile name
-  profiles?: Record<string, ProfileConfig>;
-}
-
-interface ProfileConfig {
-  name: string;                // Profile name (dev, test, prod)
-  baseUrl?: string;            // Platform API base URL
-  description?: string;        // Optional description
-}
-```
-
-**Lifecycle**:
-- Created on first CLI use or `eai login --profile <name>`
-- Updated on profile switching
-
-**Location**: `~/.eai/config.json`
-
----
-
 ### Update Check Cache
 
 **File**: `~/.eai/last-update-check`
@@ -3056,23 +2564,23 @@ interface ProfileConfig {
 **Common Variables**:
 ```bash
 # Platform API
-BASE_URL_PUBLIC_API=https://api.ae.myenterprise.ai/public
+BASE_URL_PUBLIC_API=https://api.example.com/public
 
-# Entra CIAM (vertical app registration)
-ENTRA_TENANT_ID=abc-123-def-456
-ENTRA_CLIENT_ID=client-id-from-entra
-ENTRA_CLIENT_SECRET=secret-from-entra
+# Entra CIAM (app registration)
+ENTRA_TENANT_ID=<tenant-id>
+ENTRA_CLIENT_ID=<client-id>
+ENTRA_CLIENT_SECRET=<client-secret>
 
 # Azure Resources
 AZURE_APP_CONFIG_ENDPOINT=https://my-appconfig.azconfig.io
 AZURE_KEY_VAULT_URL=https://my-vault.vault.azure.net/
 
 # GitHub
-GITHUB_TOKEN=ghp_xxxxx
+GITHUB_TOKEN=<github-token>
 GITHUB_REPOSITORY=org/repo
 
 # Application
-NEXT_PUBLIC_APP_NAME=My Vertical App
+NEXT_PUBLIC_APP_NAME=My App
 ```
 
 **Lifecycle**:
@@ -3098,7 +2606,7 @@ NEXT_PUBLIC_APP_NAME=My Vertical App
 **Example**:
 ```typescript
 export default {
-  appName: 'My Vertical App',
+  appName: 'My App',
   apiUrl: process.env.BASE_URL_PUBLIC_API,
   features: {
     chat: true,
@@ -3558,7 +3066,7 @@ Services and APIs that the CLI calls:
 ### 2. EAI Platform API (PublicAPI v4)
 
 **Type**: REST API  
-**Base URL**: Configured via `BASE_URL_PUBLIC_API` (e.g., `https://api.ae.myenterprise.ai/public`)  
+**Base URL**: Configured via `BASE_URL_PUBLIC_API` when an override is required
 **Authentication**: Bearer token (from Entra CIAM)  
 
 **Endpoints Used** (grouped by v4 domain):
@@ -3572,7 +3080,7 @@ Services and APIs that the CLI calls:
 | `POST /v4/platform/tenants` | `eai tenant create --allow-root` | Create root tenant |
 | `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` | `eai tenant create` | Bootstrap admin on child tenant |
 | `POST /v4/platform/tenants/{tenantId}/delete` | `eai tenant delete` | Soft-delete tenant |
-| `POST /v4/platform/tenants/{companyTenantId}/apps` | `eai vertical create` | Create app (vertical enrollment) |
+| `POST /v4/platform/tenants/{companyTenantId}/apps` | `eai vertical create` | Create app enrollment |
 | `GET /v4/platform/users/by-email` | `eai user invite` | Look up a user by email |
 | `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` | `eai user invite` | Provision a user into a tenant |
 | `POST /v4/platform/provisioning/entra-apps[/{clientId}/rotate-secret]` | `eai provision entra` | Create/confirm/rotate Entra app registration |
@@ -3660,8 +3168,8 @@ Entra app provisioning is served by PublicAPI under `/v4/platform/provisioning` 
 **Deployment**: Via GitHub Actions (not directly by CLI)
 
 **Used By**: `eai deploy` (indirectly via GitHub Actions)  
-**Purpose**: Deployment target for vertical applications  
-**Failure Impact**: **Medium** — Affects vertical app deployment only  
+**Purpose**: Deployment target for applications
+**Failure Impact**: **Medium** — Affects app deployment only
 **Fallback**: Manual Azure Portal deployment
 
 ---
@@ -3939,7 +3447,7 @@ Major version updates require:
 The EAI CLI has two distinct deployment contexts:
 
 1. **CLI Distribution** — How the `eai` CLI tool itself is published and installed by developers
-2. **Vertical Application Deployment** — How the CLI orchestrates deployment of vertical apps to Azure App Service
+2. **Application Deployment** — How the CLI orchestrates deployment of apps to Azure App Service
 
 ---
 
@@ -3951,7 +3459,7 @@ The EAI CLI uses a **static npm registry hosted on GitHub Pages**, eliminating t
 
 **Registry URL**: [https://eai-tools.github.io/eai/registry](https://eai-tools.github.io/eai/registry)  
 **Package Name**: `@eai-tools/cli`  
-**Current Version**: 2.8.13  
+**Current Version**: 2.9.5
 **Package Metadata**: [https://eai-tools.github.io/eai/registry/@eai-tools/cli](https://eai-tools.github.io/eai/registry/@eai-tools/cli)
 
 ### Installation
@@ -3978,13 +3486,13 @@ Users update the CLI via:
 eai update --check
 
 # Install latest version
-eai update
+eai update  # Reinstalls the latest CLI from the scoped EAI registry
 
 # Or manually
 npm install -g @eai-tools/cli@latest
 ```
 
-The CLI checks for updates once per 24 hours via GitHub Releases API and notifies users if a newer version is available.
+The CLI checks the scoped static registry once per 24 hours and notifies users if a newer version is available.
 
 ---
 
@@ -4149,7 +3657,7 @@ flowchart TB
     end
 ```
 
-### Vertical App Deployment (via `eai deploy`)
+### App Deployment (via `eai deploy`)
 
 ```mermaid
 flowchart TB
@@ -4169,14 +3677,14 @@ flowchart TB
 
 ---
 
-## Vertical Application Deployment
+## Application Deployment
 
-The CLI provides commands to orchestrate deployment of vertical apps to Azure App Service via GitHub Actions.
+The CLI provides commands to orchestrate deployment of apps to Azure App Service via GitHub Actions.
 
 ### Setup Deployment
 
 ```bash
-eai deploy setup --repo org/my-vertical
+eai deploy setup --repo org/my-app
 ```
 
 **What it does**:
@@ -4257,9 +3765,9 @@ eai deploy status
 
 ---
 
-### Azure App Service (for vertical apps)
+### Azure App Service (for apps)
 
-Vertical applications deployed via `eai deploy` typically use:
+Applications deployed via `eai deploy` typically use:
 
 **Resource**: Azure App Service (Linux)  
 **Runtime**: Node.js 20.x or later  
@@ -4324,13 +3832,13 @@ Expected packument format:
 }
 ```
 
-### Vertical App Health
+### App Health
 
-Vertical apps deployed to Azure should expose health endpoints:
+Apps deployed to Azure should expose health endpoints:
 
 ```bash
 # Check app health
-curl https://my-vertical.azurewebsites.net/api/health
+curl https://my-app.azurewebsites.net/api/health
 
 # Check via CLI
 eai verify
@@ -4357,7 +3865,7 @@ eai verify
 - [ ] Verify public registry shows new version
 - [ ] Test installation: `npm install -g @eai-tools/cli@latest`
 
-### For Vertical App Deployments
+### For App Deployments
 
 - [ ] Environment variables configured in `.env.local`
 - [ ] GitHub secrets configured (`AZURE_WEBAPP_PUBLISH_PROFILE`, `AZURE_WEBAPP_NAME`)
@@ -4392,9 +3900,9 @@ If a release has issues:
 
 4. **Fix issue and re-release**
 
-### Vertical App Rollback
+### App Rollback
 
-If a vertical app deployment fails:
+If an app deployment fails:
 
 1. **Check deployment logs** in GitHub Actions
 
@@ -4420,7 +3928,7 @@ If a vertical app deployment fails:
 - **Release workflow status**: Check GitHub Actions runs
 - **User feedback**: Monitor GitHub Issues
 
-### Vertical App Monitoring
+### App Monitoring
 
 Applications deployed via `eai deploy` should use:
 
@@ -4445,7 +3953,7 @@ Applications deployed via `eai deploy` should use:
 ## Future Deployment Enhancements
 
 - [ ] Automated semantic versioning based on commit messages
-- [ ] Blue-green deployments for vertical apps
+- [ ] Blue-green deployments for apps
 - [ ] Canary releases for CLI distribution
 - [ ] Automated rollback on health check failures
 - [ ] Multi-region registry distribution (CDN)
@@ -4590,12 +4098,12 @@ Applications deployed via `eai deploy` should use:
 - **Feature**: `eai blocks` command for AI agents to discover and interact with UI components
 - **Commands**: `eai blocks list`, `eai blocks validate`
 - **Purpose**: Enable AI agents (Claude, Codex, Gemini, Copilot) to scaffold UI using catalog
-- **Impact**: Streamlines vertical app UI development with AI assistance
+- **Impact**: Streamlines app UI development with AI assistance
 
 ### Profile-Based Multi-Environment Support (v2.7.x series)
-- **Feature**: `--profile` flag for switching between dev, test, prod environments
+- **Feature**: `--profile` flag for locally configured private contexts
 - **Storage**: Per-profile token and context isolation
-- **Purpose**: Developers can work across multiple platform environments
+- **Purpose**: Developers can keep private contexts isolated when needed
 - **Impact**: Eliminates need for multiple CLI installations
 
 ### Static npm Registry on GitHub Pages (v2.6.x series)
@@ -4611,7 +4119,7 @@ Applications deployed via `eai deploy` should use:
 
 ### Template Drift Detection (v2.4.x series)
 - **Feature**: `eai template check` previews template changes without writing files
-- **Purpose**: Let developers see what changed in vertical template before merging
+- **Purpose**: Let developers see what changed in application template before merging
 - **Impact**: Reduces risk of accidentally overwriting custom code
 
 ---
@@ -4754,14 +4262,13 @@ The v2.8.x series maintains backward compatibility with v2.7.x. All changes are 
 
 **Optional Enhancements**:
 
-1. **Use Profile System** (if working with multiple environments):
+1. **Use Profile System** (if you have private profile settings):
    ```bash
-   # Create dev profile
-   eai login --profile dev
+   # Sign in with a private profile
+   eai login --profile <name>
    
-   # Switch between profiles
-   eai --profile dev tenant list
-   eai --profile prod tenant list
+   # Run a command with that profile
+   eai --profile <name> tenant list
    ```
 
 2. **Update Gofer Assets** (if using AI terminals):
@@ -4823,7 +4330,7 @@ eai resources list User
 - [ ] **Breaking**: Remove `TENANT_ID` environment variable support
 - [ ] **Breaking**: Require Node.js 22+
 - [ ] Plugin system for custom commands
-- [ ] Workspace support (monorepo multi-vertical)
+- [ ] Workspace support (monorepo multi-app)
 - [ ] Built-in health monitoring dashboard
 
 ---

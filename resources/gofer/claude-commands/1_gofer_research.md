@@ -383,7 +383,7 @@ the standard profile, generate:
    - Package profile: selected external/internal/hybrid profile choice, package
      lane, coupling status, public-readiness target, and why that lane is
      appropriate for this feature.
-   - Vertical Template constraint map: which approved template blocks or layout
+   - Application Template constraint map: which approved template blocks or layout
      patterns the preview should use before any create-new UI concept is
      considered.
    - Block catalog evidence: run `eai --describe`, `eai blocks list`,
@@ -440,7 +440,7 @@ Once all agents complete:
    - Why this should be EnterpriseAI-first
 4. **Application-Delivery Gate Summary** (app delivery only)
    - Preview-first rationale and the smallest useful MVP to show first
-   - Vertical Template reuse constraints and any approved extension gaps
+   - Application Template reuse constraints and any approved extension gaps
    - External/internal/hybrid profile choice, package lane, coupling status,
      public-readiness target, block-porting needs, and DAISY decoupling status
    - Candidate capability-discovery inputs for the later service-fit gate

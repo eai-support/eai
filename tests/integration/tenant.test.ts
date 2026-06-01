@@ -134,11 +134,11 @@ describe('tenant list filtering', () => {
 
   test('builds a clear zero-state for users without tenant-admin memberships', () => {
     expect(buildTenantListZeroState({
-      tenantName: 'eaidevmyentepriseai',
-      tenantId: '50808ce0-f31b-4fd0-9861-74b83b8c112a',
+      tenantName: 'profile-dev-tenant',
+      tenantId: 'dev-tenant-id',
     })).toEqual({
       headline: 'No active tenant-admin memberships found for the current login.',
-      tenantContext: 'Authenticated tenant context: eaidevmyentepriseai (50808ce0-f31b-4fd0-9861-74b83b8c112a)',
+      tenantContext: 'Authenticated tenant context: profile-dev-tenant (dev-tenant-id)',
       hint: 'Use `eai whoami` to inspect the authenticated tenant context.',
     });
   });

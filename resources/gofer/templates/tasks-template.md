@@ -33,7 +33,7 @@ implementation:
 - `ui-approval.md` exists and is approved
 - `service-fit-matrix.md` exists and distinguishes accessible now, purchasable,
   and unavailable platform capabilities
-- preview work stays inside approved Vertical Template blocks unless an
+- preview work stays inside approved Application Template blocks unless an
   exception task is recorded
 - package lane, coupling status, Storybook story IDs, theme override points,
   custom-block exceptions, and external/internal/hybrid profile choice are

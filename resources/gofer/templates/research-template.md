@@ -94,7 +94,7 @@ Why relevant: [Explanation]
 - **Package lane**: [public-package / internal-app / hybrid-adapter / app-local]
 - **Coupling status**: [DAISY-coupled / DAISY-decoupled / hybrid-adapter]
 - **Public-readiness target**: [required / deferred / not applicable]
-- **Vertical Template constraints**: [approved blocks/patterns to reuse first]
+- **Application Template constraints**: [approved blocks/patterns to reuse first]
 - **Block catalog discovery**: [`eai --describe`, `eai blocks list`, candidate
   `eai blocks describe <id>` results, and `eai resources schema` evidence]
 - **Selected block IDs**: [stable IDs, required resources, bindings, override

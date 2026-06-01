@@ -243,7 +243,7 @@ resourcesCommand
 Examples:
   $ eai resources list User
   $ eai resources list Project --limit 10
-  $ eai resources list User --tenant-id 50808ce0-f31b-4fd0-9861-74b83b8c112a
+  $ eai resources list User --tenant-id 00000000-0000-4000-8000-000000000000
   $ eai resources list User --format json | jq '.resources[] | .id'
   `)
   .action(async (type, options) => {
@@ -503,7 +503,7 @@ resourcesCommand
 Examples:
   $ eai resources create Project --data '{"name":"Demo","description":"Test project"}'
   $ eai resources create User --file user.json
-  $ eai resources create Project --tenant-id 50808ce0-f31b-4fd0-9861-74b83b8c112a --data '{"name":"Demo"}'
+  $ eai resources create Project --tenant-id 00000000-0000-4000-8000-000000000000 --data '{"name":"Demo"}'
   $ eai resources create Project --data '{"name":"Demo"}' --format json
   `)
   .action(async (type, options) => {

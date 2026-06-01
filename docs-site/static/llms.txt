@@ -19,8 +19,7 @@ npm install -g @eai-tools/cli
 
 - [EAI CLI — Overview](/eai/docs/overview)
 - [EAI CLI — Architecture](/eai/docs/architecture)
-- [EAI CLI — Configuration](/eai/docs/configuration)
-- [Environment Profiles](/eai/docs/profiles)
+- [EAI CLI - Configuration](/eai/docs/configuration)
 - [EAI CLI — API Reference](/eai/docs/api-reference)
 - [EAI CLI — Data Model](/eai/docs/data-model)
 - [EAI CLI — Dependencies](/eai/docs/dependencies)

@@ -1,10 +1,9 @@
 /**
- * Profile management — environment switching for dev/test/prod.
+ * Profile management for private environment switching.
  *
- * Default profile ("default") uses legacy behavior: no config file,
- * tokens at ~/.eai/tokens.json. Named profiles (e.g. "dev", "test")
- * read config from ~/.eai/config.json and store tokens at
- * ~/.eai/tokens/{name}.json.
+ * Default profile ("default") uses public production behavior. Named profiles
+ * are intentionally undocumented in public docs and are only for private
+ * organization-managed setups.
  *
  * Module-level state pattern (same as setSimpleMode in output.ts)
  * avoids threading profile through 20+ command action handlers.
@@ -67,9 +66,9 @@ export function getProfileTokensFile(name: string): string {
 // ── Config loading ───────────────────────────────────────────────────────────
 
 /**
- * Load config for a named profile from ~/.eai/config.json.
+ * Load config for a named profile from the local CLI profile settings file.
  *
- * Returns null for the "default" profile (legacy behavior — no config needed).
+ * Returns null for the "default" profile (no config needed).
  * Throws if the config file or requested profile is missing.
  */
 export async function loadProfileConfig(name: string): Promise<ProfileConfig | null> {
@@ -81,8 +80,7 @@ export async function loadProfileConfig(name: string): Promise<ProfileConfig | n
     raw = await readFile(configPath, 'utf-8');
   } catch {
     throw new Error(
-      `Profile "${name}" requires ~/.eai/config.json but the file does not exist.\n` +
-      `See .tech-docs/profiles.md for setup instructions.`,
+      `Profile "${name}" requires local profile settings but they are not configured.`,
     );
   }
 
@@ -90,14 +88,14 @@ export async function loadProfileConfig(name: string): Promise<ProfileConfig | n
   try {
     file = JSON.parse(raw) as ProfilesFile;
   } catch {
-    throw new Error(`~/.eai/config.json contains invalid JSON.`);
+    throw new Error('Local profile settings contain invalid JSON.');
   }
 
   const config = file.profiles?.[name];
   if (!config) {
     const available = Object.keys(file.profiles ?? {});
     throw new Error(
-      `Profile "${name}" not found in ~/.eai/config.json.\n` +
+      `Profile "${name}" is not configured locally.\n` +
       (available.length > 0
         ? `Available profiles: ${available.join(', ')}`
         : `No profiles are configured.`),
@@ -108,7 +106,7 @@ export async function loadProfileConfig(name: string): Promise<ProfileConfig | n
 }
 
 /**
- * Save or update a profile in ~/.eai/config.json.
+ * Save or update a local profile.
  * Creates the file and directory if they don't exist.
  */
 export async function saveProfileConfig(name: string, config: ProfileConfig): Promise<void> {
@@ -139,7 +137,7 @@ export async function saveProfileConfig(name: string, config: ProfileConfig): Pr
 }
 
 /**
- * Read the activeProfile field from ~/.eai/config.json.
+ * Read the activeProfile field from local profile settings.
  * Returns "default" if the file doesn't exist or has no activeProfile.
  */
 export async function loadActiveProfileFromConfig(): Promise<string> {
@@ -153,8 +151,8 @@ export async function loadActiveProfileFromConfig(): Promise<string> {
 }
 
 /**
- * Persist the active profile name in ~/.eai/config.json.
- * Called on `eai --profile dev login` so subsequent commands remember the profile.
+ * Persist the active profile name in local profile settings.
+ * Called after login with a private profile so subsequent commands remember it.
  * Setting to "default" removes the activeProfile field.
  */
 export async function saveActiveProfileToConfig(name: string): Promise<void> {
