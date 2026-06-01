@@ -1,0 +1,61 @@
+---
+title: Scenarios
+description: Browse industry-specific example applications you can build with the EAI CLI.
+sidebar_position: 1
+---
+
+The scenario library shows how the EAI CLI can be used to build applications across industries. It now includes both the original industry examples and the additional service-industry opportunities from the opportunity map, grouped into a practical documentation taxonomy.
+
+
+
+<!-- four-step-index-note:start -->
+## Four-Step Pattern
+
+Every detailed scenario in this library is now framed as the same four-step application pattern:
+
+1. Capture demand and context.
+2. Prepare the decision.
+3. Execute and collaborate.
+4. Resolve, explain, and improve.
+
+Each scenario page calls out the goal of each step, the data needed to achieve it, the AI support that improves the experience, the business impact, and whether the current EAI delivery model is sufficient or needs extension.
+<!-- four-step-index-note:end -->
+## Browse by Industry
+
+<CardGrid>
+  <LinkCard title="Healthcare" href="/scenarios/healthcare/" description="Patient intake, clinical trials, telemedicine, pharmacy inventory, and mental health."></LinkCard>
+  <LinkCard title="Finance" href="/scenarios/finance/" description="KYC, loan processing, transaction monitoring, claims, and portfolio workflows."></LinkCard>
+  <LinkCard title="Government" href="/scenarios/government/" description="Citizen services, permits, records, grants, and regulatory compliance."></LinkCard>
+  <LinkCard title="Retail" href="/scenarios/retail/" description="Product compliance, loyalty, inventory, returns, and supplier onboarding."></LinkCard>
+  <LinkCard title="Education" href="/scenarios/education/" description="Admissions, course management, accreditation, analytics, and research grants."></LinkCard>
+  <LinkCard title="Real Estate" href="/scenarios/real-estate/" description="Property management, leasing, inspections, maintenance, and CRM workflows."></LinkCard>
+  <LinkCard title="Manufacturing" href="/scenarios/manufacturing/" description="Quality control, production, defects, supply chain, and equipment maintenance."></LinkCard>
+  <LinkCard title="Legal" href="/scenarios/legal/" description="Case management, contract review, compliance, e-discovery, and billing workflows."></LinkCard>
+  <LinkCard title="Non-Profit" href="/scenarios/non-profit/" description="Donors, beneficiaries, volunteer coordination, impact measurement, and grant reporting."></LinkCard>
+  <LinkCard title="Logistics" href="/scenarios/logistics/" description="Shipment tracking, route optimisation, warehousing, fleet, and last-mile delivery."></LinkCard>
+  <LinkCard title="Business Services" href="/scenarios/business-services/" description="Recruitment, executive search, consulting, training, and administrative service operations."></LinkCard>
+  <LinkCard title="Marketing & Creative" href="/scenarios/marketing-creative/" description="Advertising, design operations, PR campaigns, SEO/SEM, and market research delivery."></LinkCard>
+  <LinkCard title="Technology Services" href="/scenarios/technology-services/" description="Managed services, cybersecurity, ERP delivery, SaaS support, and IT asset lifecycle operations."></LinkCard>
+</CardGrid>
+
+## How to Use These Pages
+
+1. Pick an industry that matches the kind of application you are building.
+2. Open the industry landing page to see the main scenario categories.
+3. Choose a scenario page for a more detailed walkthrough with object types, CLI steps, and example commands.
+
+Today the library covers **13 industries** and **90 detailed scenarios**.
+
+## Common Pattern Across All Scenarios
+
+Most scenario walkthroughs follow the same CLI path:
+
+```bash
+eai login
+eai env pull --include-secrets
+eai types validate
+eai types seed
+eai dev
+```
+
+You can adapt the object types, workflows, and integrations to fit your own domain while keeping the same overall development flow.

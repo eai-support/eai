@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "generated": "2026-05-30T05:31:19.423Z",
+  "commands": [
+    "0_business_scenario",
+    "0a_problem_validation",
+    "10_gofer_cloud",
+    "1_gofer_research",
+    "2_gofer_specify",
+    "3_gofer_plan",
+    "4_gofer_tasks",
+    "5_gofer_implement",
+    "6_gofer_validate",
+    "7_gofer_save",
+    "7a_stakeholder_comms",
+    "8_gofer_resume",
+    "9_gofer_tests",
+    "gofer:bootstrap-workspace",
+    "gofer:check-workspace",
+    "gofer:diagnose",
+    "gofer:personality",
+    "gofer:plan",
+    "gofer:side",
+    "gofer:spec-summary",
+    "gofer:tdd",
+    "gofer:vocabulary",
+    "gofer:zoom-out",
+    "gofer_constitution",
+    "gofer_hydrate"
+  ]
+}

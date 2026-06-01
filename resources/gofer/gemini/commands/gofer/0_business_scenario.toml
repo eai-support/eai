@@ -1,0 +1,2 @@
+description = "Define the business problem and scenario for Gofer to analyse and solve."
+prompt = "{{include: ../../../.specify/commands/0_business_scenario.md}}"

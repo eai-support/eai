@@ -1,0 +1,2 @@
+description = "Generate stakeholder-facing communications: release notes, demo scripts, and change briefs."
+prompt = "{{include: ../../../.specify/commands/7a_stakeholder_comms.md}}"

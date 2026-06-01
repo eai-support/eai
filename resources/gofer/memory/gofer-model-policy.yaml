@@ -1,0 +1,97 @@
+# Gofer model policy for this repository.
+#
+# This repo copy is user-owned. `gofer:bootstrap-workspace` and VS Code
+# `gofer.initialize` create it when missing, but should not overwrite local
+# edits. See `.specify/templates/gofer-model-policy.yaml` for the shipped
+# default.
+#
+# Last verified against public provider docs: 2026-05-30.
+version: 1
+lastVerified: "2026-05-30"
+profile: balanced
+
+principles:
+  - Use the cheapest capable model first for repetitive scouting, extraction, and summarization.
+  - Use the default workhorse model for normal implementation, synthesis, and validation.
+  - Use the best available model for security, architecture, release-critical review, or repeated failure.
+  - Use provider prompt/context caching only for stable, non-secret prefixes.
+  - Compact or checkpoint after large research, planning, implementation, and validation bursts.
+
+contextPolicy:
+  healthyBelowPercent: 40
+  summarizeAtPercent: 55
+  compactAtPercent: 70
+  checkpointAtPercent: 85
+  durableArtifact: .specify/specs/{feature}/context-bundle.md
+
+surfaces:
+  claude:
+    simple:
+      model: claude-haiku-4-5
+      claudeCodeAlias: haiku
+      contextWindowTokens: 200000
+      useFor: scouting, extraction, summarization, low-risk helpers
+    medium:
+      model: claude-sonnet-4-6
+      claudeCodeAlias: sonnet
+      contextWindowTokens: 1000000
+      useFor: default implementation, synthesis, validation, everyday coding
+    hard:
+      model: claude-opus-4-8
+      claudeCodeAlias: opus
+      contextWindowTokens: 1000000
+      useFor: hardest bugs, security review, architecture arbitration, release-critical validation
+  codex:
+    simple:
+      model: gpt-5.4-mini
+      reasoningEffort: low
+      contextWindowTokens: 400000
+      useFor: simple coding, focused edits, routine test fixes
+    mechanical:
+      model: gpt-5.4-nano
+      reasoningEffort: low
+      contextWindowTokens: 400000
+      useFor: locate, classify, summarize, transform text
+    medium:
+      model: gpt-5.4
+      reasoningEffort: medium
+      contextWindowTokens: 1000000
+      useFor: default planning, implementation, research synthesis
+    hard:
+      model: gpt-5.3-codex
+      reasoningEffort: high
+      contextWindowTokens: 400000
+      useFor: agentic terminal coding, tool-heavy debugging, code review
+    arbiter:
+      model: gpt-5.5
+      reasoningEffort: high
+      contextWindowTokens: 1050000
+      useFor: broad frontier reasoning, complex architecture, final arbitration
+  gemini:
+    simple:
+      model: gemini-3.1-flash-lite
+      contextWindowTokens: 1000000
+      useFor: cheap large-context scans, summarization, extraction
+    medium:
+      model: gemini-3-flash-preview
+      contextWindowTokens: 1000000
+      useFor: default research and broad synthesis when cost matters
+    hard:
+      model: gemini-3.1-pro-preview
+      contextWindowTokens: 1000000
+      useFor: large-context architecture, cross-repo reasoning, high-risk research
+    highThroughputCoding:
+      model: gemini-3.5-flash
+      contextWindowTokens: 1000000
+      useFor: fast tool/coding workflows when account pricing makes it worthwhile
+  copilot:
+    simple:
+      model: Auto
+      useFor: default Copilot Chat, routine coding, completion, and quick fixes
+    medium:
+      model: Auto
+      useFor: normal Gofer stage prompts and workspace questions
+    hard:
+      model: "Best available in picker: GPT-5.3-Codex, GPT-5.5, Claude Opus, or Gemini Pro"
+      useFor: explicit hard review, security, architecture, or release gates
+    note: Copilot model availability depends on plan, organization policy, client, and feature surface.

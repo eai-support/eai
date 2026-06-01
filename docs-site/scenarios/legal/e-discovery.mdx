@@ -1,0 +1,242 @@
+---
+title: E-Discovery
+description: Build a document collection, review, and production workflow for legal e-discovery using the EAI CLI.
+---
+
+## Persona
+
+**Role**: Litigation support developer at a law firm managing e-discovery for complex commercial disputes.
+
+The firm handles discovery requests involving thousands of documents from multiple custodians. Collection tracking is done through email chains, document review happens in spreadsheets with inconsistent tagging, and production logs are maintained in word processors. The firm needs a structured e-discovery workflow that tracks documents from collection through review to production.
+
+## Business Problem
+
+E-discovery is one of the most expensive phases of litigation. Without structured workflows, documents are collected redundantly, review assignments overlap, and production sets are assembled manually from inconsistent review records. Defensibility requires demonstrating that every responsive document was reviewed and that privilege calls were made consistently. This scenario builds an e-discovery platform that manages collections by custodian, assigns documents for review with structured tagging, and tracks productions with delivery confirmation.
+
+<!-- four-step-application:start -->
+## Four-Step Application
+
+This scenario works best as a four-step, human-in-the-loop application. The existing object model already gives this scenario a strong delivery backbone through Collection, ReviewItem, and Production.
+
+- **Mission metric focus:** faster matter turnaround, stronger risk control, and higher knowledge reuse.
+- **Human + AI pattern:** Each step combines structured workflow data with chat assistance, background generation, document understanding, and accessible interaction patterns when they improve the experience.
+
+### Step 1. Capture demand and context
+
+- **Goal:** Make it easy for the user to start the E-Discovery journey with complete, trusted context.
+- **Required data:** Collection context such as case, custodian, dateRange, and documentCount.
+- **AI support:** Use chat to guide intake, generate clearer prompts, create accessible summaries, and assist with voice or vision-led capture when a form alone is not the best experience. EAI can support structured intake, chat workflows, and document-centred capture today; richer native multimodal capture may still need workflow extensions or connected services.
+- **Business impact:** Improve completion rate, reduce first-touch effort, and raise customer or staff confidence in the UX from the very first interaction.
+- **EAI delivery:** Model the intake as tenant-isolated object types and resources, then use actions, chat workflows, and document indexing or classification to keep the initial record complete and usable.
+
+### Step 2. Prepare the decision
+
+- **Goal:** Turn the captured context into the next best action for E-Discovery without forcing the human reviewer to assemble the case manually.
+- **Required data:** Collection state and history; ReviewItem fields such as document, reviewer, tags, and decision.
+- **AI support:** Run background summarisation, extraction, classification, recommendation drafting, and answer generation so a reviewer sees a prepared case instead of raw fragments. EAI delivers the structured records and AI workflow hooks for this today; specialised scoring engines, external rules, or advanced reasoning controls may still need integration work.
+- **Business impact:** Reduce cycle time, improve quality and consistency, and protect the mission-critical metric before the case moves into execution.
+- **EAI delivery:** Link records across the scenario, persist decision state as resources, and use workflow actions plus chat assistance to keep humans in control while AI prepares the work.
+
+### Step 3. Execute and collaborate
+
+- **Goal:** Coordinate the actual work, handoffs, approvals, and user updates needed to deliver the service or outcome.
+- **Required data:** ReviewItem actions such as makeDecision; Production fields such as case, itemCount, format, and deliveredDate.
+- **AI support:** Draft replies, produce work packets, monitor exceptions in the background, and surface the next action for each operator. EAI can orchestrate tenant-isolated records, actions, chats, and document workflows today; deeper system-to-system automation may require additional connectors or workflow capability.
+- **Business impact:** Increase operator productivity, reduce rework across handoffs, and improve service consistency across the application journey.
+- **EAI delivery:** Use linked object types, actions, resource updates, and workflow-triggered AI assistance so the team can execute in one model instead of splitting work across disconnected tools.
+
+### Step 4. Resolve, explain, and improve
+
+- **Goal:** Close the loop with a clear outcome, an understandable explanation, and feedback that improves the next case.
+- **Required data:** final status, outcome, audit history, and follow-up signals across Collection, ReviewItem, and Production.
+- **AI support:** Generate outcome summaries, customer-friendly answers, compliance-ready notes, management insights, and accessible follow-up content. EAI can store outcome records and support answer generation today, while richer proactive agents, advanced analytics, or channel-specific accessibility features may need additional product capability.
+- **Business impact:** Increase trust, quality, and measurable business value through faster matter turnaround, stronger risk control, and higher knowledge reuse.
+- **EAI delivery:** Keep the full audit trail in structured resources, use AI workflows to explain outcomes, and feed the resulting signals into future product, service, and operational improvement work.
+
+<!-- four-step-application:end -->
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **Collection** | `case` (text), `custodian` (text), `dateRange` (text), `documentCount` (number), `status` (select: pending, in-progress, completed, verified) | one-to-many → ReviewItem | `completeCollection` |
+| **ReviewItem** | `document` (text), `reviewer` (text), `tags` (text), `decision` (select: responsive, non-responsive, privileged, needs-redaction), `reviewedDate` (date) | many-to-one → Collection | `makeDecision` |
+| **Production** | `case` (text), `itemCount` (number), `format` (select: native, tiff, pdf), `deliveredDate` (date), `status` (select: preparing, delivered, acknowledged) | -- | `markDelivered` |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the project**
+
+   ```bash
+   eai init e-discovery
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+   <Aside type="note">
+     If you are an external developer, see [Configuration](/docs/configuration) for login and local environment setup.
+   </Aside>
+
+3. **Define your Object Types**
+
+   Create the Collection, ReviewItem, and Production types in `src/eai.config/object-types.ts` (see code example below).
+
+4. **Validate the type definitions**
+
+   ```bash
+   eai types validate
+   ```
+
+   ```
+   Tenant: e-discovery
+   ✔ Collection — 5 props, 1 link, 1 action
+   ✔ ReviewItem — 5 props, 1 link, 1 action
+   ✔ Production — 5 props, 0 links, 1 action
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Seed types to the platform**
+
+   ```bash
+   eai types seed
+   ```
+
+6. **Create sample resources**
+
+   ```bash
+   eai resources create Collection --data '{"case": "Smith v. Acme Industries", "custodian": "J. Anderson", "dateRange": "2023-01-01 to 2025-06-30", "documentCount": 1250, "status": "pending"}'
+   ```
+
+7. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'e-discovery': [
+    {
+      name: 'Collection',
+      displayName: 'Collection',
+      description: 'A document collection from a specific custodian for a case',
+      properties: [
+        { name: 'case', type: 'text' as const, required: true, indexed: true },
+        { name: 'custodian', type: 'text' as const, required: true, indexed: true },
+        { name: 'dateRange', type: 'text' as const, required: true },
+        { name: 'documentCount', type: 'number' as const, required: false },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'pending', options: [
+          { label: 'Pending', value: 'pending' },
+          { label: 'In Progress', value: 'in-progress' },
+          { label: 'Completed', value: 'completed' },
+          { label: 'Verified', value: 'verified' },
+        ]},
+      ],
+      linkTypes: [
+        { name: 'reviewItems', targetObjectType: 'ReviewItem', cardinality: 'one-to-many' as const },
+      ],
+      actions: [
+        {
+          name: 'completeCollection',
+          displayName: 'Complete Collection',
+          description: 'Mark a document collection as completed',
+          requiredRole: 'tenant-staff',
+          validationRules: { requiredFields: ['custodian', 'documentCount'], requiredStatus: 'in-progress' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'completed' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'ReviewItem',
+      displayName: 'Review Item',
+      description: 'A document assigned for review within a collection',
+      properties: [
+        { name: 'document', type: 'text' as const, required: true, indexed: true },
+        { name: 'reviewer', type: 'text' as const, required: true },
+        { name: 'tags', type: 'text' as const, required: false },
+        { name: 'decision', type: 'select' as const, required: false, options: [
+          { label: 'Responsive', value: 'responsive' },
+          { label: 'Non-Responsive', value: 'non-responsive' },
+          { label: 'Privileged', value: 'privileged' },
+          { label: 'Needs Redaction', value: 'needs-redaction' },
+        ]},
+        { name: 'reviewedDate', type: 'date' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'collection', targetObjectType: 'Collection', cardinality: 'many-to-one' as const },
+      ],
+      actions: [
+        {
+          name: 'makeDecision',
+          displayName: 'Make Decision',
+          description: 'Record a review decision on a document',
+          requiredRole: 'tenant-user',
+          validationRules: { requiredFields: ['document', 'reviewer'] },
+          sideEffects: [
+            { type: 'set_timestamp', field: 'reviewedDate' },
+            { type: 'set_user', field: 'reviewer' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Production',
+      displayName: 'Production',
+      description: 'A set of documents produced to opposing counsel',
+      properties: [
+        { name: 'case', type: 'text' as const, required: true, indexed: true },
+        { name: 'itemCount', type: 'number' as const, required: true },
+        { name: 'format', type: 'select' as const, required: true, options: [
+          { label: 'Native', value: 'native' },
+          { label: 'TIFF', value: 'tiff' },
+          { label: 'PDF', value: 'pdf' },
+        ]},
+        { name: 'deliveredDate', type: 'date' as const, required: false },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'preparing', options: [
+          { label: 'Preparing', value: 'preparing' },
+          { label: 'Delivered', value: 'delivered' },
+          { label: 'Acknowledged', value: 'acknowledged' },
+        ]},
+      ],
+      linkTypes: [],
+      actions: [
+        {
+          name: 'markDelivered',
+          displayName: 'Mark Delivered',
+          description: 'Record that a production has been delivered to opposing counsel',
+          requiredRole: 'tenant-staff',
+          validationRules: { requiredFields: ['itemCount', 'format'], requiredStatus: 'preparing' },
+          sideEffects: [
+            { type: 'set_field', field: 'status', value: 'delivered' },
+            { type: 'set_timestamp', field: 'deliveredDate' },
+          ],
+        },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Custodian-based collections**: Documents are organized by custodian and date range, providing clear provenance for every collected item.
+- **Structured review decisions**: Standardized decision categories (responsive, non-responsive, privileged, needs-redaction) ensure consistent review across multiple reviewers.
+- **Production tracking**: Each production set records its format, item count, and delivery date, creating a defensible record of what was produced and when.
+- **Defensibility by design**: The complete chain from collection through review to production with timestamped decisions demonstrates a reasonable and proportional discovery process.

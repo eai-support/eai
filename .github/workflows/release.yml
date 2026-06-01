@@ -1,0 +1,171 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validate version matches tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package.json ($PKG_VERSION)"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Public hygiene
+        run: npm run security:public-hygiene
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm run test
+
+      - name: Verify committed release-facing docs
+        run: node scripts/generate-release-docs.cjs --check
+
+      - name: Verify API reference routes match code
+        run: node scripts/verify-api-reference.cjs --check
+
+      - name: Verify committed static registry points at this tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAG_VERSION="$TAG_VERSION" node <<'EOF'
+          const fs = require('node:fs');
+          const packument = JSON.parse(fs.readFileSync('docs-site/static/registry/@eai-tools/cli', 'utf8'));
+          const expected = process.env.TAG_VERSION;
+          if (packument['dist-tags']?.latest !== expected) {
+            throw new Error(`packument latest ${packument['dist-tags']?.latest ?? 'missing'} does not match ${expected}`);
+          }
+          if (!packument.versions?.[expected]) {
+            throw new Error(`packument missing version ${expected}`);
+          }
+          EOF
+
+      - name: Create npm tarball
+        run: npm pack
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREVIOUS_TAG=$(git tag --sort=-v:refname | head -n 2 | tail -n 1)
+          if [ -z "$PREVIOUS_TAG" ] || [ "$PREVIOUS_TAG" = "${{ github.ref_name }}" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" HEAD)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" "${PREVIOUS_TAG}..HEAD")
+          fi
+          {
+            echo "changelog<<EOF"
+            echo "$CHANGELOG"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          body: |
+            ## What's Changed
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## Installation
+
+            Configure the scoped EAI registry once per user:
+
+            ```bash
+            npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
+            ```
+
+            Install or update the EnterpriseAI CLI:
+
+            ```bash
+            npm install -g @eai-tools/cli
+            ```
+
+            See the [full documentation](https://eai-tools.github.io/eai) for details.
+          files: |
+            *.tgz
+          make_latest: true
+
+      - name: Mint eai-testing-dev dispatch token
+        id: testing-app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.EAI_TESTING_APP_ID }}
+          private-key: ${{ secrets.EAI_TESTING_APP_PRIVATE_KEY }}
+          owner: enterpriseaigroup
+          repositories: |
+            eai-testing-dev
+          permission-contents: write
+
+      - name: Build eai-cli cross-service dispatch payload
+        id: dispatch-payload
+        env:
+          CROSS_SERVICE_TEST_SURFACE: eai-cli
+        run: |
+          set -euo pipefail
+
+          # deploy-completed uses the canonical eai-testing-dev test surface.
+          PAYLOAD="$(jq -cn \
+            --arg environment "dev" \
+            --arg repository "eai" \
+            --arg service "${CROSS_SERVICE_TEST_SURFACE}" \
+            --arg sha "${GITHUB_SHA}" \
+            --arg tag "${GITHUB_REF_NAME}" \
+            --arg deploy_run_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{environment:$environment, repository:$repository, service:$service, sha:$sha, tag:$tag, deploy_run_url:$deploy_run_url, suite:"core"}')"
+
+          {
+            echo "payload<<EOF"
+            echo "${PAYLOAD}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Notify eai-testing-dev of eai-cli release
+        if: success() && steps.testing-app-token.outputs.token != ''
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ steps.testing-app-token.outputs.token }}
+          repository: enterpriseaigroup/eai-testing-dev
+          event-type: deploy-completed
+          client-payload: ${{ steps.dispatch-payload.outputs.payload }}
+
+      - name: Warn when eai-cli cross-service dispatch was skipped
+        if: success() && steps.testing-app-token.outputs.token == ''
+        run: |
+          echo "::warning::Skipped eai-testing-dev eai-cli core dispatch because EAI_TESTING_APP_ID/EAI_TESTING_APP_PRIVATE_KEY is not configured."

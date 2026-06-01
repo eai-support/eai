@@ -1,0 +1,27 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+.DS_Store
+/*.tgz
+
+# IDE / local tooling
+.claude/
+.vscode/
+mcp_sharepoint.log
+
+# Astro build cache
+docs/.astro/
+
+# Homebrew tap (separate repository: eai-tools/homebrew-tap)
+homebrew-tap/
+
+# Gofer runtime files (auto-generated, should not be committed)
+.specify/hooks/
+.specify/memory/
+.specify/specs/
+.specify/logs/
+
+# QAgent runtime artifacts
+.qagent/

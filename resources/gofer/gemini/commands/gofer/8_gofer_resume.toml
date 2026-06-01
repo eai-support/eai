@@ -1,0 +1,2 @@
+description = "Resume a previous Gofer session from a saved checkpoint file."
+prompt = "{{include: ../../../.specify/commands/8_gofer_resume.md}}"

@@ -1,0 +1,100 @@
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 2rem;
+}
+
+.cardLink {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.cardLink:hover {
+  text-decoration: none;
+}
+
+.card {
+  height: 100%;
+  padding: 1.2rem;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(46, 133, 85, 0.08), transparent 90%);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.card h3 {
+  margin-bottom: 0.55rem;
+  font-size: 1.05rem;
+}
+
+.card p {
+  margin: 0;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.cardLink:hover .card,
+.cardLink:focus-visible .card {
+  transform: translateY(-2px);
+  border-color: var(--ifm-color-primary);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+.steps {
+  margin: 1.5rem 0 2rem;
+}
+
+.steps > ol {
+  list-style: none;
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+}
+
+.steps > ol > li {
+  counter-increment: step;
+  position: relative;
+  margin: 0 0 1.4rem 1.1rem;
+  padding: 0 0 1.4rem 2.8rem;
+  border-left: 1px solid var(--ifm-color-emphasis-300);
+}
+
+.steps > ol > li::before {
+  content: counter(step);
+  position: absolute;
+  left: -1.15rem;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  background: var(--ifm-color-primary);
+  color: var(--ifm-color-white);
+  font-weight: 700;
+  box-shadow: 0 10px 24px rgba(46, 133, 85, 0.22);
+}
+
+.steps > ol > li:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-left-color: transparent;
+}
+
+.steps :global(.theme-admonition) {
+  margin-top: 1rem;
+}
+
+[data-theme='dark'] .card {
+  background: linear-gradient(180deg, rgba(37, 194, 160, 0.14), transparent 90%);
+}
+
+[data-theme='dark'] .cardLink:hover .card,
+[data-theme='dark'] .cardLink:focus-visible .card {
+  box-shadow: none;
+}

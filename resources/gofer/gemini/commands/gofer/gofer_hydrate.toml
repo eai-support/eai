@@ -1,0 +1,2 @@
+description = "Reverse-engineer specification from existing code (Hydration)."
+prompt = "{{include: ../../../.specify/commands/gofer_hydrate.md}}"

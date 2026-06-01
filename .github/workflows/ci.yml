@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: CLI Checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # windows-latest is intentionally excluded: the bundled Gofer
+        # resources include namespaced files like
+        # `resources/gofer/claude-commands/gofer:plan.md`, and NTFS
+        # forbids `:` in filenames. `actions/checkout` aborts before
+        # any CLI step runs, even with sparse-checkout configured (git
+        # still validates index paths). Re-enable once the colon-named
+        # files are renamed in the Gofer source-of-truth.
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Public hygiene
+        run: npm run security:public-hygiene
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Verify API reference routes match code
+        run: npm run docs:verify-api

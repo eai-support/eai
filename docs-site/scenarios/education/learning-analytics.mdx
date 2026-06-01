@@ -1,0 +1,243 @@
+---
+title: Learning Analytics
+description: Track student performance, trigger interventions, and measure outcomes for academic success programs using the EAI CLI.
+---
+
+## Persona
+
+**Role:** Director of Student Success at a community college.
+
+You lead a team of academic advisors responsible for identifying at-risk students and coordinating interventions. The college serves 15,000 students, and early intervention has been shown to improve retention rates by up to 20 percent. However, your team currently relies on midterm grade reports and instructor referrals -- both of which arrive too late for many students.
+
+## Business Problem
+
+Student performance data is locked inside the learning management system with no structured export. Advisors learn about struggling students only after midterm grades are posted, by which point some students have already disengaged. Interventions are tracked in advisor notebooks with no central record of what was tried or whether it worked. You need:
+
+- Continuous performance tracking with configurable risk-level indicators.
+- Structured intervention records with type, assignment, and status tracking.
+- Outcome measurement that links interventions to measurable results.
+
+<!-- four-step-application:start -->
+## Four-Step Application
+
+This scenario works best as a four-step, human-in-the-loop application. The existing object model already gives this scenario a strong delivery backbone through StudentPerformance, Intervention, and Outcome.
+
+- **Mission metric focus:** faster decisions, better learner experience, and stronger enrollment or completion outcomes.
+- **Human + AI pattern:** Each step combines structured workflow data with chat assistance, background generation, document understanding, and accessible interaction patterns when they improve the experience.
+
+### Step 1. Capture demand and context
+
+- **Goal:** Make it easy for the user to start the Learning Analytics journey with complete, trusted context.
+- **Required data:** StudentPerformance context such as the core workflow data.
+- **AI support:** Use chat to guide intake, generate clearer prompts, create accessible summaries, and assist with voice or vision-led capture when a form alone is not the best experience. EAI can support structured intake, chat workflows, and document-centred capture today; richer native multimodal capture may still need workflow extensions or connected services.
+- **Business impact:** Improve completion rate, reduce first-touch effort, and raise customer or staff confidence in the UX from the very first interaction.
+- **EAI delivery:** Model the intake as tenant-isolated object types and resources, then use actions, chat workflows, and document indexing or classification to keep the initial record complete and usable.
+
+### Step 2. Prepare the decision
+
+- **Goal:** Turn the captured context into the next best action for Learning Analytics without forcing the human reviewer to assemble the case manually.
+- **Required data:** StudentPerformance state and history.
+- **AI support:** Run background summarisation, extraction, classification, recommendation drafting, and answer generation so a reviewer sees a prepared case instead of raw fragments. EAI delivers the structured records and AI workflow hooks for this today; specialised scoring engines, external rules, or advanced reasoning controls may still need integration work.
+- **Business impact:** Reduce cycle time, improve quality and consistency, and protect the mission-critical metric before the case moves into execution.
+- **EAI delivery:** Link records across the scenario, persist decision state as resources, and use workflow actions plus chat assistance to keep humans in control while AI prepares the work.
+
+### Step 3. Execute and collaborate
+
+- **Goal:** Coordinate the actual work, handoffs, approvals, and user updates needed to deliver the service or outcome.
+- **Required data:** Intervention execution state.
+- **AI support:** Draft replies, produce work packets, monitor exceptions in the background, and surface the next action for each operator. EAI can orchestrate tenant-isolated records, actions, chats, and document workflows today; deeper system-to-system automation may require additional connectors or workflow capability.
+- **Business impact:** Increase operator productivity, reduce rework across handoffs, and improve service consistency across the application journey.
+- **EAI delivery:** Use linked object types, actions, resource updates, and workflow-triggered AI assistance so the team can execute in one model instead of splitting work across disconnected tools.
+
+### Step 4. Resolve, explain, and improve
+
+- **Goal:** Close the loop with a clear outcome, an understandable explanation, and feedback that improves the next case.
+- **Required data:** final status, outcome, audit history, and follow-up signals across StudentPerformance, Intervention, and Outcome.
+- **AI support:** Generate outcome summaries, customer-friendly answers, compliance-ready notes, management insights, and accessible follow-up content. EAI can store outcome records and support answer generation today, while richer proactive agents, advanced analytics, or channel-specific accessibility features may need additional product capability.
+- **Business impact:** Increase trust, quality, and measurable business value through faster decisions, better learner experience, and stronger enrollment or completion outcomes.
+- **EAI delivery:** Keep the full audit trail in structured resources, use AI workflows to explain outcomes, and feed the resulting signals into future product, service, and operational improvement work.
+
+<!-- four-step-application:end -->
+## Object Types
+
+| Name | Key Properties | Links | Actions |
+|------|---------------|-------|---------|
+| **StudentPerformance** | student, course, metrics, riskLevel | has many Interventions | assess, flag-risk, clear-risk |
+| **Intervention** | student, type, assignedTo, status | belongs to StudentPerformance, has one Outcome | create, assign, close |
+| **Outcome** | intervention, result, followUpDate | belongs to Intervention | record, review, archive |
+
+## CLI Workflow
+
+<Steps>
+
+1. **Scaffold the app**
+
+   ```bash
+   eai init learning-analytics
+   ```
+
+2. **Authenticate and pull environment**
+
+   ```bash
+   eai login
+   eai env pull --include-secrets
+   ```
+
+   <Aside type="note">
+     If you are an external developer, see [Configuration](/docs/configuration) for login and local environment setup.
+   </Aside>
+
+3. **Define Object Types**
+
+   Add StudentPerformance, Intervention, and Outcome to `src/eai.config/object-types.ts`.
+
+4. **Validate and seed**
+
+   ```bash
+   eai types validate
+   eai types seed
+   ```
+
+   ```
+   Tenant: learning-analytics
+   ✔ StudentPerformance — 4 props, 1 link, 3 actions
+   ✔ Intervention — 4 props, 2 links, 3 actions
+   ✔ Outcome — 3 props, 1 link, 3 actions
+
+   ✔ All Object Types are valid
+   ```
+
+5. **Record a student performance entry**
+
+   ```bash
+   eai resources create StudentPerformance \
+     --data '{"student": "taylor.nguyen@college.edu", "course": "MATH-101", "metrics": "attendance: 65%, assignments: 3/8 submitted", "riskLevel": "high"}'
+   ```
+
+6. **Create an intervention**
+
+   ```bash
+   eai resources create Intervention \
+     --data '{"student": "taylor.nguyen@college.edu", "type": "advising-session", "assignedTo": "advisor.jones@college.edu", "status": "scheduled"}'
+   ```
+
+7. **List high-risk students**
+
+   ```bash
+   eai resources list StudentPerformance --filter 'riskLevel=high'
+   ```
+
+8. **Start local development**
+
+   ```bash
+   eai dev
+   ```
+
+</Steps>
+
+## Code Example
+
+```typescript
+// src/eai.config/object-types.ts
+export const objectTypes = {
+  'learning-analytics': [
+    {
+      name: 'StudentPerformance',
+      displayName: 'Student Performance',
+      description: 'A performance summary for a student in a specific course with risk assessment',
+      properties: [
+        { name: 'student', type: 'text' as const, required: true, indexed: true },
+        { name: 'course', type: 'text' as const, required: true, indexed: true },
+        { name: 'metrics', type: 'text' as const, required: true },
+        { name: 'riskLevel', type: 'select' as const, required: true, defaultValue: 'low',
+          options: [
+            { label: 'Low', value: 'low' },
+            { label: 'Medium', value: 'medium' },
+            { label: 'High', value: 'high' },
+            { label: 'Critical', value: 'critical' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'interventions', target: 'Intervention', cardinality: 'many' as const },
+      ],
+      actions: [
+        { name: 'assess', displayName: 'Assess Performance' },
+        { name: 'flag-risk', displayName: 'Flag At-Risk' },
+        { name: 'clear-risk', displayName: 'Clear Risk Flag' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Intervention',
+      displayName: 'Intervention',
+      description: 'An academic support action taken for an at-risk student',
+      properties: [
+        { name: 'student', type: 'text' as const, required: true, indexed: true },
+        { name: 'type', type: 'select' as const, required: true,
+          options: [
+            { label: 'Advising Session', value: 'advising-session' },
+            { label: 'Tutoring Referral', value: 'tutoring-referral' },
+            { label: 'Peer Mentoring', value: 'peer-mentoring' },
+            { label: 'Financial Aid Review', value: 'financial-aid-review' },
+            { label: 'Wellness Referral', value: 'wellness-referral' },
+          ],
+        },
+        { name: 'assignedTo', type: 'text' as const, required: true },
+        { name: 'status', type: 'select' as const, required: true, defaultValue: 'scheduled',
+          options: [
+            { label: 'Scheduled', value: 'scheduled' },
+            { label: 'In Progress', value: 'in-progress' },
+            { label: 'Completed', value: 'completed' },
+            { label: 'Cancelled', value: 'cancelled' },
+            { label: 'No Show', value: 'no-show' },
+          ],
+        },
+      ],
+      linkTypes: [
+        { name: 'studentPerformance', target: 'StudentPerformance', cardinality: 'one' as const },
+        { name: 'outcome', target: 'Outcome', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'create', displayName: 'Create Intervention' },
+        { name: 'assign', displayName: 'Assign Advisor' },
+        { name: 'close', displayName: 'Close Intervention' },
+      ],
+      status: 'published' as const,
+    },
+    {
+      name: 'Outcome',
+      displayName: 'Outcome',
+      description: 'The measured result of an intervention with follow-up tracking',
+      properties: [
+        { name: 'intervention', type: 'text' as const, required: true },
+        { name: 'result', type: 'select' as const, required: true,
+          options: [
+            { label: 'Improved', value: 'improved' },
+            { label: 'No Change', value: 'no-change' },
+            { label: 'Declined', value: 'declined' },
+            { label: 'Withdrawn', value: 'withdrawn' },
+          ],
+        },
+        { name: 'followUpDate', type: 'date' as const, required: false },
+      ],
+      linkTypes: [
+        { name: 'intervention', target: 'Intervention', cardinality: 'one' as const },
+      ],
+      actions: [
+        { name: 'record', displayName: 'Record Outcome' },
+        { name: 'review', displayName: 'Review Outcome' },
+        { name: 'archive', displayName: 'Archive Outcome' },
+      ],
+      status: 'published' as const,
+    },
+  ],
+};
+```
+
+## Key Takeaways
+
+- **Early risk detection saves students.** Configurable risk levels on StudentPerformance records allow advisors to intervene weeks before midterm grades are posted.
+- **Intervention type diversity addresses root causes.** Structured intervention types -- from tutoring to wellness referrals -- ensure that advisors match the right support to each student's situation.
+- **Outcome measurement proves program effectiveness.** Linking Outcomes to Interventions creates the evidence base needed to justify funding and scale successful programs.
+- **Follow-up tracking prevents students from slipping back.** The followUpDate on Outcomes ensures that improved students continue to receive attention until they are stable.
