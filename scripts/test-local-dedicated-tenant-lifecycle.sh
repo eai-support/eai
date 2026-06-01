@@ -31,10 +31,15 @@ ensure_local_search_key_loaded() {
     return 1
   fi
 
+  if [[ -z "${EAI_E2E_SEARCH_SERVICE_NAME:-}" || -z "${EAI_E2E_SEARCH_RESOURCE_GROUP:-}" ]]; then
+    echo "Set EAI_E2E_SEARCH_SERVICE_NAME and EAI_E2E_SEARCH_RESOURCE_GROUP to load a Search admin key." >&2
+    return 1
+  fi
+
   local search_key=""
   search_key="$(az search admin-key show \
-    --service-name srch-cnfg-dev-back-ae-01 \
-    --resource-group rg-cnfg-dev-back-ae-01 \
+    --service-name "$EAI_E2E_SEARCH_SERVICE_NAME" \
+    --resource-group "$EAI_E2E_SEARCH_RESOURCE_GROUP" \
     --query primaryKey \
     -o tsv 2>/dev/null || true)"
 
