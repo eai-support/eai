@@ -57,3 +57,22 @@ The release path also verifies that the committed AI-facing docs and CLI help sn
 
 - Follow [Semantic Versioning](https://semver.org/): `vMAJOR.MINOR.PATCH`
 - Let `release.sh` manage the version bump and tag creation.
+
+## Public Repository Safety
+
+Before switching repository visibility to public, verify:
+
+1. `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md`,
+   `LICENSE`, and issue/PR templates are present.
+2. Secret scanning and push protection are enabled in **Settings > Code security
+   and analysis**.
+3. Private vulnerability reporting is enabled.
+4. Generated `.specify/specs/`, `.specify/memory/`, logs, checkpoints, local
+   `.env` files, and customer/tenant data are not tracked.
+5. Rewritten history has been checked for personal paths, obvious token shapes,
+   private keys, and cloud account-key literals.
+6. The static registry still reports the latest version:
+
+```bash
+curl https://eai-tools.github.io/eai/registry/@eai-tools/cli
+```

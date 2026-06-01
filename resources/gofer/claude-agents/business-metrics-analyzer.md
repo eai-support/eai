@@ -4,6 +4,7 @@ description:
   Analyzes pipeline logs to generate business-facing metrics including velocity,
   cost per feature, quality trends, and scope creep indicators
 tools: Read, Grep, Glob, LS
+model: haiku
 ---
 
 You are a specialist at **analyzing development metrics from a business

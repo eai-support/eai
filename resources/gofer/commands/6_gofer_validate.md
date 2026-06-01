@@ -23,26 +23,22 @@ description:
 
 # Gofer Validate
 
-You are validating that the implementation meets engineering quality standards
-across **three phases**:
+## Token And Cost Policy
+<!-- gofer:token-cost-policy:start -->
 
-- **Phase A — Rubric Validation**: 10-category engineering rubric scored only
-  from real evidence (Categories 1-10, up to 100 points)
-- **Phase B — Blast Radius Analysis**: risk to other code, interface contracts,
-  error logging/observability, submodule and repo-wide impact, dependency risk,
-  rollback readiness, release-checklist compliance (Category 11, 10 points)
-- **Phase C — Engineering Review Loop**: iterative review-fix cycles (up to 5)
-  to catch issues rubric-based validation might miss
+Before spawning agents, calling tools, or loading large files:
 
-This is the **sixth stage** of the unified Gofer pipeline. It consolidates the
-former `/6_gofer_validate` and `/6a_gofer_engineering_review` stages into a
-single command; `/6a_gofer_engineering_review` is retained as a
-backwards-compatibility stub that delegates here.
-
-A score of **110/110 on the rubric (Phases A + B) is required to pass**. Any
-rubric category scoring 0 triggers failure and a brownfield restart loop. Phase
-C then runs 1-5 iterative review-fix cycles until all Red/Yellow findings are
-resolved or 5 cycles complete.
+1. Treat `.specify/memory/gofer-model-policy.yaml` as the repo-owned source of truth for simple, medium, hard, and arbiter model routing. If it is missing, run `/gofer:bootstrap-workspace` before continuing.
+2. Use the cheapest capable model first.
+   - Claude: Haiku for scouting/extraction; Sonnet for normal implementation, synthesis, validation, and security; Opus for high-risk arbitration or release-critical failures.
+   - Codex/OpenAI: GPT mini for simple coding; GPT nano only for locate/classify/summarize/mechanical work; GPT-5.3-Codex or flagship GPT for tool-heavy coding, architecture, and release-critical validation.
+   - Gemini: Flash-Lite for cheap large-context scan/summarize; Flash for default research synthesis; Pro for large-context architecture or high-risk arbitration.
+   - Copilot: prefer Auto for simple and default work; ask the user before choosing a paid/high-tier picker model for hard security, architecture, or release gates.
+3. Keep raw tool output out of the main conversation context. Save stable findings to `.specify/specs/{feature}/context-bundle.md`, then work from summaries.
+4. Use provider prompt/context caching only for stable, non-secret prefixes: Gofer scaffold, AGENTS/CLAUDE/Copilot instructions, constitution, repo map, stage contracts, and validation rubric.
+5. Before continuing after large research, planning, implementation, or validation bursts, checkpoint the durable artifacts and compact/clear/resume context when the host supports it.
+6. Escalate model tier only when a cheaper pass is low-confidence, contradictory, security-sensitive, or blocking release quality.
+<!-- gofer:token-cost-policy:end -->
 
 ## User Input
 
@@ -51,6 +47,25 @@ $ARGUMENTS
 ```
 
 You **MUST** consider the user input before proceeding (if not empty).
+
+## Execution Profile And Validation Cost
+
+Validation must respect the final risk label:
+
+- **fast**: for `docs-only` or very small low-risk changes, run focused checks
+  and verify no unnecessary artifact churn or unrelated files were changed.
+- **standard**: run the normal rubric, focused build/test/lint/typecheck
+  evidence, and traceability checks.
+- **full**: preserve the existing blast-radius, evidence gates, review loop,
+  scoring, and release-readiness checks; require evidence for contract,
+  security, data, infra/config, rollback, and cross-repository claims.
+- **dynamic**: preserve the full validation behavior, then also verify
+  `execution-profile.md`, `workflow-dag.md`, shard outputs, reducer synthesis,
+  verifier/refuter evidence, budget/stop-condition evidence, and any explicit
+  user confirmation required before broad fanout work.
+
+Archived specs under `.specify/specs/_*/` are historical context and must not
+inflate active context-health estimates or current blast-radius manifests.
 
 ## Prerequisites
 
@@ -312,17 +327,17 @@ strategy (#13):
 
 ```
 # Diverge: 3 attack perspectives
-Task: subagent_type="validate-security-red-team", model="sonnet"
+Task: subagent_type="validate-security-red-team", model="opus"
 Prompt: "Perspective 1: OWASP Top 10 attack analysis for feature [FEATURE_NAME].
 Scan all new/modified files from tasks.md. Attack from OWASP perspective.
 Return findings with exploit steps (<2000 tokens)."
 
-Task: subagent_type="validate-security-red-team", model="sonnet"
+Task: subagent_type="validate-security-red-team", model="opus"
 Prompt: "Perspective 2: Business logic abuse analysis for feature [FEATURE_NAME].
 Scan all new/modified files from tasks.md. Attack business logic.
 Return findings with exploit steps (<2000 tokens)."
 
-Task: subagent_type="validate-security-red-team", model="sonnet"
+Task: subagent_type="validate-security-red-team", model="opus"
 Prompt: "Perspective 3: CVE search for feature [FEATURE_NAME].
 Check package.json dependencies for known CVEs.
 Return findings with advisory references (<2000 tokens)."
@@ -542,7 +557,7 @@ Logs', 'PII Risk', 'Metric Coverage Delta', 'Trace Propagation'."
 ### Agent 11: Dependency & Submodule Impact (with npm audit delta)
 
 ```
-Task: subagent_type="research-dependency-evaluator", model="sonnet"
+Task: subagent_type="research-dependency-evaluator", model="haiku"
 Prompt: "Dependency and submodule blast-radius analysis for feature
 [FEATURE_NAME].
 
@@ -573,7 +588,7 @@ Bumps', 'Lockfile Drift', 'CVE Delta', 'Submodule Boundary Crossings'."
 ### Agent 12: Rollback Readiness & Release Checklist
 
 ```
-Task: subagent_type="tasks-rollback-planner", model="sonnet"
+Task: subagent_type="tasks-rollback-planner", model="haiku"
 Prompt: "Rollback readiness + release-checklist review for feature
 [FEATURE_NAME].
 
@@ -1025,7 +1040,7 @@ frontmatter `pass:` marker is bumped from 1 to 2 so downstream consumers can
 tell which pass produced the artefact.
 
 ```
-Task: subagent_type="visual-canvas-writer", model="sonnet"
+Task: subagent_type="visual-canvas-writer", model="haiku"
 Prompt: "Pass-2 refresh for {FEATURE_DIR}/visuals/impact-canvas.md.
 Read validation council output from {FEATURE_DIR}/validation.md.
 Replace ONLY the topThreeRisks section with the council's top three risks.
@@ -1055,7 +1070,7 @@ top-quadrant entries that pass-1 (run from this same stage before validation)
 populated from the spec NFR / Out-of-Scope sections.
 
 ```
-Task: subagent_type="visual-risk-writer", model="sonnet"
+Task: subagent_type="visual-risk-writer", model="haiku"
 Prompt: "Pass 2: refresh risk heatmap for feature [FEATURE_NAME].
 
 Feature directory: {FEATURE_DIR}
@@ -1299,9 +1314,7 @@ Proceed to **Phase C: Engineering Review Loop** (inline, Step 10a below), then
 **Step 11: Attribution Logging** and **Step 12: Memory Update Check**.
 
 **No external auto-chain is needed** — Phase C runs inline in this command.
-After Phase C completes, the feature pipeline is complete. The legacy
-`/6a_gofer_engineering_review` stub will detect the
-`engineering-review-report.md` artifact and no-op if invoked.
+After Phase C completes, the feature pipeline is complete.
 
 ### If TOTAL < 110: FAIL
 
@@ -2053,8 +2066,8 @@ This also logs quality metrics (rubric scores, finding counts) to:
   brownfield restart instead
 - **This stage is the pipeline terminal** — "PIPELINE COMPLETE" only appears at
   the end of Phase C
-- **Legacy `/6a` is a stub** — it detects `engineering-review-report.md` and
-  no-ops if Phase C already ran
+- **Engineering review is inline** — there is no separate follow-up stage after
+  validation
 
 ### Across All Phases
 

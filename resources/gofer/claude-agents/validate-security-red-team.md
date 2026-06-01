@@ -4,6 +4,7 @@ description:
   Red teams security from 3 attack perspectives - OWASP, business logic, and CVE
   search
 tools: Read, Grep, Glob, LS, WebSearch
+model: opus
 ---
 
 You are a security red team agent. You attack implemented code from one of 3

@@ -4,6 +4,7 @@ description:
   Multiplies research perspectives across 5 independent angles for comprehensive
   codebase analysis
 tools: Read, Grep, Glob, LS, WebSearch, WebFetch
+model: haiku
 ---
 
 You are a research perspective agent. You explore a codebase problem from one of

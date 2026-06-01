@@ -402,10 +402,17 @@ tenantCommand
   )
   .option('--industry <industry>', 'Signup/onboarding industry segment')
   .option('--starter-template <key>', 'Starter vertical template key', 'blank-vertical-template')
+  .option('--allow-root', 'Allow root tenant creation for administrative backfills', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     if (options.json) options.format = 'json';
+    if (!options.parent && !options.allowRoot) {
+      out.error(
+        'Root tenant creation is guarded. Complete onboarding for the main company tenant, then use `eai init --parent-tenant <id>` or pass --parent for child tenants.',
+      );
+      process.exit(1);
+    }
 
     const root = await findProjectRoot();
     const publicApiUrl = await resolvePublicApiUrl(root || undefined);

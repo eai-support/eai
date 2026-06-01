@@ -124,8 +124,8 @@ Repeated file paths like `~/.eai/tokens.json`, `~/.eai/context.json`:
 ✅ **Optimistic Locking**:
 Resource updates use version field:
 ```typescript
-const current = await client.get(`/v3/resources/${tenant}/${type}/${id}`);
-await client.put(`/v3/resources/${tenant}/${type}/${id}`, {
+const current = await client.get(`/v4/data/resources/${tenant}/${type}/${id}`);
+await client.put(`/v4/data/resources/${tenant}/${type}/${id}`, {
   data: mergedData,
   version: current.version, // Prevents concurrent update conflicts
 });
@@ -184,7 +184,7 @@ Network errors fail immediately without retries:
 
 ✅ **Membership Caching**:
 - Tenant memberships cached with 1-hour TTL
-- Reduces unnecessary `/v3/tenants/memberships` API calls
+- Reduces unnecessary `/v4/identity/tenants` API calls
 
 ✅ **Update Check Throttling**:
 - Update checks limited to once per 24 hours
@@ -196,8 +196,8 @@ Network errors fail immediately without retries:
 - No unnecessary file re-reads within a single command
 
 ✅ **Batch Operations**:
-- Object Types seeded in batch via `/v3/object-types/batch` (not one-by-one)
-- Cross-type queries via single `/v3/resources/query` endpoint
+- Object Types seeded via `/v4/data/resources/object-types` (create/update per type)
+- Cross-type queries via single `/v4/data/resources/{tenantId}/query` endpoint
 
 ✅ **Minimal Runtime Dependencies**:
 - Only 5 production dependencies (commander, chalk, dotenv, inquirer, ora)
@@ -209,8 +209,8 @@ Network errors fail immediately without retries:
 ⚠️ **No Parallel API Calls**:
 Commands make sequential API calls even when independent:
 ```typescript
-const tenant = await client.get('/v3/tenants/123');
-const types = await client.get('/v3/object-types');
+const tenant = await client.get('/v4/platform/tenants/123');
+const types = await client.get('/v4/data/resources/object-types');
 // Could be parallel with Promise.all()
 ```
 - **Recommendation**: Use `Promise.all()` for independent requests

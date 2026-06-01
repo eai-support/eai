@@ -712,7 +712,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai types seed')
 //
-// expectAPICalledPOST('/object-types', { name: 'Customer', tenant: 'my-vertical' })
+// expectAPICalledPOST('/v4/data/resources/object-types', { name: 'Customer', tenant: 'my-vertical' })
 // expectSuccessMessage('Seeded 1 type(s) to platform')
 ```
 
@@ -730,8 +730,8 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai types seed')
 //
-// expectAPICalledGET('/object-types', { where: { name: { equals: 'Customer' } } })
-// expectAPICalledPATCH('/object-types/type-id-123', { displayName: 'Customer Updated' })
+// expectAPICalledGET('/v4/data/resources/object-types', { where: { name: { equals: 'Customer' } } })
+// expectAPICalledPATCH('/v4/data/resources/object-types/type-id-123', { displayName: 'Customer Updated' })
 // expectSuccessMessage('Updated 1 type(s)')
 ```
 
@@ -903,7 +903,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai resources list Customer --page 1 --limit 20')
 //
-// expectAPICalledGET('/v3/resources/{tenantId}/Customer?page=1&limit=20')
+// expectAPICalledGET('/v4/data/resources/{tenantId}/Customer?page=1&limit=20')
 // expectDisplayed20Resources()
 // expectDisplayedMessage('Page 1 of 3')
 // expectDisplayedMessage('Total: 50 resources')
@@ -922,7 +922,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai resources list Order --sort -created_at')
 //
-// expectAPICalledGET('/v3/resources/{tenantId}/Order?sort=-created_at')
+// expectAPICalledGET('/v4/data/resources/{tenantId}/Order?sort=-created_at')
 // expectResourcesSortedBy('created_at', 'desc')
 ```
 
@@ -939,7 +939,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai resources get Customer cust-123')
 //
-// expectAPICalledGET('/v3/resources/{tenantId}/Customer/cust-123')
+// expectAPICalledGET('/v4/data/resources/{tenantId}/Customer/cust-123')
 // expectDisplayedMessage('ID: cust-123')
 // expectDisplayedMessage('Name: Acme Corp')
 // expectDisplayedMessage('Email: acme@example.com')
@@ -975,7 +975,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai resources create Customer --data \'{"name":"New Corp","email":"new@example.com"}\'')
 //
-// expectAPICalledPOST('/v3/resources/{tenantId}/Customer', {
+// expectAPICalledPOST('/v4/data/resources/{tenantId}/Customer', {
 //   data: { name: 'New Corp', email: 'new@example.com' }
 // })
 // expectSuccessMessage('Created resource: cust-new-id')
@@ -995,7 +995,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // runCommand('eai resources create Customer --file customer.json')
 //
 // expectFileRead('customer.json')
-// expectAPICalledPOST('/v3/resources/{tenantId}/Customer', {
+// expectAPICalledPOST('/v4/data/resources/{tenantId}/Customer', {
 //   data: { name: 'File Corp', email: 'file@example.com' }
 // })
 ```
@@ -1031,7 +1031,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai resources update Customer cust-123 --data \'{"status":"active"}\' --version 3')
 //
-// expectAPICalledPUT('/v3/resources/{tenantId}/Customer/cust-123', {
+// expectAPICalledPUT('/v4/data/resources/{tenantId}/Customer/cust-123', {
 //   data: { status: 'active' },
 //   version: 3
 // })
@@ -1051,8 +1051,8 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai resources update Customer cust-123 --data \'{"status":"active"}\'')
 //
-// expectAPICalledGET('/v3/resources/{tenantId}/Customer/cust-123')
-// expectAPICalledPUT('/v3/resources/{tenantId}/Customer/cust-123', {
+// expectAPICalledGET('/v4/data/resources/{tenantId}/Customer/cust-123')
+// expectAPICalledPUT('/v4/data/resources/{tenantId}/Customer/cust-123', {
 //   version: 5
 // })
 ```
@@ -1090,7 +1090,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // runCommand('eai resources delete Customer cust-123')
 // respondToPrompt('Confirm delete', 'yes')
 //
-// expectAPICalledDELETE('/v3/resources/{tenantId}/Customer/cust-123')
+// expectAPICalledDELETE('/v4/data/resources/{tenantId}/Customer/cust-123')
 // expectSuccessMessage('Deleted resource: cust-123')
 ```
 
@@ -1108,7 +1108,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // runCommand('eai resources delete Customer cust-123 --force')
 //
 // expectNoPrompts()
-// expectAPICalledDELETE('/v3/resources/{tenantId}/Customer/cust-123')
+// expectAPICalledDELETE('/v4/data/resources/{tenantId}/Customer/cust-123')
 ```
 
 ### Scenario 58: Delete Cancelled by User
@@ -1142,7 +1142,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai resources query --types Customer,Order --where \'{"status":{"equals":"active"}}\' --limit 50')
 //
-// expectAPICalledPOST('/v3/resources/{tenantId}/query', {
+// expectAPICalledPOST('/v4/data/resources/{tenantId}/query', {
 //   object_types: ['Customer', 'Order'],
 //   where: { status: { equals: 'active' } },
 //   limit: 50
@@ -1163,7 +1163,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai resources schema')
 //
-// expectAPICalledGET('/v3/resources/schema/{tenantId}')
+// expectAPICalledGET('/v4/data/resources/schema/{tenantId}')
 // expectDisplayedMessage('Published types: Customer, Order, Product')
 ```
 
@@ -1342,8 +1342,8 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai user invite --email new.user@company.com --tenant tenant-id')
 //
-// expectAPICalledGET('/custom-users/by-email?email=new.user@company.com')
-// expectAPICalledPOST('/custom-users/provisionme', {
+// expectAPICalledGET('/v4/platform/users/by-email?email=new.user@company.com')
+// expectAPICalledPOST('/v4/platform/tenants/tenant-id/users/user-oid-123/provision', {
 //   tenant_id: 'tenant-id',
 //   user_oid: 'user-oid-123'
 // })
@@ -1387,9 +1387,9 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai chat send "What is the status?" --workflow workflow-123')
 //
-// expectAPICalledPOST('/v3/chat/{tenantId}/workflow-123/chat', {
+// expectAPICalledPOST('/v4/ai/chat/{tenantId}/workflow-123/chat', {
 //   message: 'What is the status?',
-//   conversation_id: expectUUID()
+//   thread_id: expectUUID()
 // })
 // expectDisplayedMessage('Response: The status is...')
 ```
@@ -1408,26 +1408,26 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai chat stream "Hello" --workflow workflow-123')
 //
-// expectSSEStreamOpened('/v3/chat/stream/{tenantId}/workflow-123/chat')
+// expectSSEStreamOpened('/v4/ai/chat/stream/{tenantId}/workflow-123/chat')
 // expectStreamedOutput('Hello world')
 // expectStreamStoppedOn('[DONE]')
 ```
 
-### Scenario 73: Chat with Custom Conversation ID
+### Scenario 73: Chat with Custom Thread ID
 **Priority**: P2
-**User Story**: As a developer, I want to continue conversations
+**User Story**: As a developer, I want to continue threads
 
 ```javascript
-// TC073: Chat with custom conversation ID
+// TC073: Chat with custom thread ID
 // Traces to: Chat-US1-AC3
 //
 // userIsLoggedIn()
-// conversationExists('conv-456')
+// threadExists('thread-456')
 //
-// runCommand('eai chat send "Follow up" --workflow workflow-123 --conversation conv-456')
+// runCommand('eai chat send "Follow up" --workflow workflow-123 --thread thread-456')
 //
-// expectAPICalledWithConversationID('conv-456')
-// expectConversationContextPreserved()
+// expectAPICalledWithThreadID('thread-456')
+// expectThreadContextPreserved()
 ```
 
 ### Scenario 74: Chat with Custom Stage
@@ -1443,7 +1443,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai chat send "Analyze this" --workflow workflow-123 --stage analysis')
 //
-// expectAPICalledPOST('/v3/chat/{tenantId}/workflow-123/analysis')
+// expectAPICalledPOST('/v4/ai/chat/{tenantId}/workflow-123/analysis')
 ```
 
 ### Scenario 75: Chat Fails - Workflow Not Found
@@ -1502,20 +1502,20 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // expectPartialOutputDisplayed()
 ```
 
-### Scenario 78: Chat Auto-Generates Conversation ID
+### Scenario 78: Chat Auto-Generates Thread ID
 **Priority**: P2
-**User Story**: As a developer, conversation ID should be optional
+**User Story**: As a developer, thread ID should be optional
 
 ```javascript
-// TC078: Chat auto-generates conversation ID
+// TC078: Chat auto-generates thread ID
 // Traces to: Chat-US1-AC5
 //
 // userIsLoggedIn()
 //
 // runCommand('eai chat send "Hello" --workflow workflow-123')
 //
-// expectAPICalledWithConversationID(expectUUID())
-// expectConversationIDLogged()
+// expectAPICalledWithThreadID(expectUUID())
+// expectThreadIDLogged()
 ```
 
 ---
@@ -1535,7 +1535,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai docs upload /tmp/contract.pdf')
 //
-// expectAPICalledPOST('/v3/documents/upload', FormData({ file: '/tmp/contract.pdf' }))
+// expectAPICalledPOST('/v4/data/documents/upload', FormData({ file: '/tmp/contract.pdf' }))
 // expectSuccessMessage('Uploaded document: doc-id-123')
 ```
 
@@ -1571,7 +1571,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai docs classify /tmp/invoice.pdf')
 //
-// expectAPICalledPOST('/v3/documents/classify', FormData({ file: '/tmp/invoice.pdf' }))
+// expectAPICalledPOST('/v4/data/documents/classify', FormData({ file: '/tmp/invoice.pdf' }))
 // expectDisplayedMessage('Category: invoice')
 // expectDisplayedMessage('Confidence: 95%')
 ```
@@ -1589,7 +1589,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai docs index doc-id-123')
 //
-// expectAPICalledPOST('/v3/documents/rag-index', { document_id: 'doc-id-123' })
+// expectAPICalledPOST('/v4/data/documents/rag-index', { document_id: 'doc-id-123' })
 // expectSuccessMessage('Document indexed for RAG')
 ```
 
@@ -1981,7 +1981,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 | `publicAPIReturns400(err)` | Mock 400 error | P1 |
 | `publicAPIReturns404(err)` | Mock 404 error | P1 |
 | `publicAPIReturns409(err)` | Mock 409 error | P1 |
-| `typeExistsOnPlatform(name, id, def)` | Mock GET /object-types | P0 |
+| `typeExistsOnPlatform(name, id, def)` | Mock GET /v4/data/resources/object-types | P0 |
 | `resourceExists(type, id, data)` | Mock GET /resources | P0 |
 | `tenantHasResources(type, count)` | Mock resource list | P1 |
 | `tenantExists(id, def)` | Mock GET /tenants/{id} | P1 |

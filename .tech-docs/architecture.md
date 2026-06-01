@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-26T21:12:00.989Z"
-source_commit: "7e20706d07902843ffa4898e3bb29006ca3d7835"
+generated_at: "2026-05-31T01:12:39.543Z"
+source_commit: "c104ef3a24ede34f769d5eaf587ba58df8b0ebb6"
 ---
 # EAI CLI — Architecture
 
@@ -134,6 +134,11 @@ Each command follows a consistent pattern:
 - Validates tenant membership via platform API
 - Functions: `getActiveTenant()`, `setActiveTenant()`, `loadTenantContext()`
 
+**PublicAPI regional routing boundary**
+- `resolvePublicApiUrl()` chooses the PublicAPI base URL in this order: named profile override, project/process `BASE_URL_PUBLIC_API`, stored active tenant `homeRegion`, authenticated session routing, then the AU production default.
+- Session routing uses the current bearer token from `auth.ts` only against the configured bootstrap resolver. The returned `apiBaseUrl` is accepted only when it is a trusted EAI regional PublicAPI host (`dev-api.*`, `test-api.*`, or `api.*`) or a loopback host for local dev-stack.
+- Host-only regional responses such as `https://api.ca.myenterprise.ai` are normalized to the PublicAPI gateway path (`/public`) before later CLI calls attach bearer tokens.
+
 **`schema-builder.ts` - CLI Introspection**
 - Generates JSON schema from Commander.js program structure
 - Enables AI agents to discover CLI capabilities at runtime
@@ -247,7 +252,7 @@ sequenceDiagram
     CLI->>Context: getActiveTenant()
     Context->>CLI: tenant_id
     CLI->>API: createAPIClient(token)
-    API->>Platform: GET /v3/resources/User?tenant_id=...
+    API->>Platform: GET /v4/data/resources/{tenant_id}/user
     Platform->>API: { resources: [...] }
     API->>CLI: Parsed response
     CLI->>Dev: Formatted output (text/JSON)
@@ -267,11 +272,11 @@ sequenceDiagram
     CLI->>FS: Read src/eai.config/object-types.ts
     FS->>CLI: Type definitions
     CLI->>CLI: Validate schemas locally
-    CLI->>API: POST /v3/object-types (batch)
+    CLI->>API: POST /v4/data/resources/object-types
     API->>Platform: Create/update types
     Platform->>API: Success + remote state
     API->>CLI: Confirmation
-    CLI->>API: GET /v3/object-types (verify convergence)
+    CLI->>API: GET /v4/data/resources/object-types (verify convergence)
     API->>Platform: Fetch remote types
     Platform->>API: Remote state
     API->>CLI: Remote types
@@ -363,10 +368,9 @@ CLI commands act as facades over platform API endpoints, hiding complexity:
 // User sees:
 eai resources list User --format json
 
-// CLI translates to:
-GET /v3/resources/User
+// CLI translates to (tenant is part of the v4 path):
+GET /v4/data/resources/<active-tenant>/user
 Authorization: Bearer <token>
-X-Tenant-ID: <active-tenant>
 ```
 
 ### 2. Strategy Pattern
@@ -422,8 +426,8 @@ Command execution follows a template:
 - **Protocol**: REST over HTTPS
 - **Authentication**: Bearer token (JWT from Entra CIAM)
 - **Base URL**: `BASE_URL_PUBLIC_API` environment variable
-- **Versioning**: `/v3/` prefix
-- **Endpoints**: Object Types, Resources, Tenants, AI workflows, Documents
+- **Versioning**: `/v4/` prefix, grouped by domain (`/v4/platform`, `/v4/identity`, `/v4/data/resources`, `/v4/data/documents`, `/v4/ai`, `/v4/workflows`, `/v4/integrations`)
+- **Endpoints**: Object Types, Resources, Tenants, Identity, AI chat, Workflows, Documents
 
 ### Azure Services
 - **App Configuration**: Environment variable sync

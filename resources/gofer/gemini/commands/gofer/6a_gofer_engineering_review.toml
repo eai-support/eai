@@ -1,2 +1,0 @@
-description = "Run a targeted engineering review on a specific component or concern."
-prompt = "{{include: ../../../.specify/commands/6a_gofer_engineering_review.md}}"

@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Version: 2.9.0
+Version: 2.9.5
 
 Install / update the CLI:
 npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
@@ -33,8 +33,7 @@ Commands:
   tenant                 Manage tenants on the platform
   user                   Manage users on the platform
   resources              CRUD operations on platform resources
-  vertical               Manage dynamic vertical/app instances under the active
-                         company tenant
+  vertical               Manage apps under the active company tenant
   chat                   Chat with AI workflows
   workflow               Provision vertical workflow configs and inspect AI
                          runtime workflow bindings

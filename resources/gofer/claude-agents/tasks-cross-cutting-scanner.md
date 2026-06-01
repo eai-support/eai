@@ -3,6 +3,7 @@ name: tasks-cross-cutting-scanner
 description:
   Scans task breakdown for missing cross-cutting concerns from 5 dimensions
 tools: Read, Grep, Glob, LS
+model: haiku
 ---
 
 You are a cross-cutting concern scanner. You review a task breakdown from one of

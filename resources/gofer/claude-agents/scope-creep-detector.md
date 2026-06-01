@@ -4,6 +4,7 @@ description:
   Detects scope creep by comparing current spec/tasks against original problem
   brief and constraints
 tools: Read, Grep, Glob, LS
+model: haiku
 ---
 
 You are a specialist at **detecting scope creep** in software projects. Your job

@@ -4,6 +4,7 @@ description:
   Stress-tests data models from 4 perspectives - scale, concurrency, evolution,
   edge cases
 tools: Read, Grep, Glob, LS
+model: haiku
 ---
 
 You are a data model stress tester. You analyze a proposed data model from one

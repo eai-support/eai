@@ -4,6 +4,7 @@ description:
   Hardens error handling from 2 perspectives - fault injection and incident
   analysis
 tools: Read, Grep, Glob, LS, WebSearch
+model: sonnet
 ---
 
 You are an error handling hardener. You analyze implemented code from one of 2
