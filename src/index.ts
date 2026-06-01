@@ -55,7 +55,7 @@ program
   .option('--simple', 'Plain text output without colors or symbols (for screen readers)')
   .option('--no-color', 'Disable colored output')
   .option('--color', 'Force colored output')
-  .option('--profile <name>', 'Use a named environment profile (e.g. dev, test)')
+  .option('--profile <name>', 'Use a locally configured private profile')
   .option('--describe', 'Output JSON schema of all commands')
   .hook('preAction', async (thisCommand) => {
     const opts = thisCommand.opts();

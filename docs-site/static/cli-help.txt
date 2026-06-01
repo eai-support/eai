@@ -19,7 +19,7 @@ Options:
                          readers)
   --no-color             Disable colored output
   --color                Force colored output
-  --profile <name>       Use a named environment profile (e.g. dev, test)
+  --profile <name>       Use a locally configured private profile
   --describe             Output JSON schema of all commands
   -h, --help             display help for command
 

@@ -208,7 +208,7 @@ workflowCommand
   .option('--status <status>', 'active or draft', 'active')
   .option('--write-local-env', 'Patch .env.local with generated env values', false)
   .option('--write-app-config', 'Write generated env values to Azure App Configuration', false)
-  .option('--env <environment>', 'Azure App Configuration environment', 'dev')
+  .option('--env <label>', 'Cloud config environment label for EAI_APP_CONFIG_STORE_<LABEL>')
   .option('--label <label>', 'Azure App Configuration label (defaults to NEXT_PUBLIC_APP_NAME or vertical key)')
   .option('--format <format>', 'Output format: text or json', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)

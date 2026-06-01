@@ -581,7 +581,7 @@ Workflow:
 typesCommand
   .command('seed')
   .description('Push Object Types to platform')
-  .option('--env <environment>', 'Target environment', 'dev')
+  .option('--env <label>', 'Optional deployment label for compatibility')
   .option('--tenant-key <key>', 'Specific tenant key from object-types.ts')
   .option('--tenant-id <id>', 'Override the resolved tenant ID (use with --tenant-key)')
   .option('--dry-run', 'Show what would be seeded without making changes', false)

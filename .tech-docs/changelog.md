@@ -141,9 +141,9 @@ source_commit: "c104ef3a24ede34f769d5eaf587ba58df8b0ebb6"
 - **Impact**: Streamlines vertical app UI development with AI assistance
 
 ### Profile-Based Multi-Environment Support (v2.7.x series)
-- **Feature**: `--profile` flag for switching between dev, test, prod environments
+- **Feature**: `--profile` flag for locally configured private contexts
 - **Storage**: Per-profile token and context isolation
-- **Purpose**: Developers can work across multiple platform environments
+- **Purpose**: Developers can keep private contexts isolated when needed
 - **Impact**: Eliminates need for multiple CLI installations
 
 ### Static npm Registry on GitHub Pages (v2.6.x series)
@@ -302,14 +302,13 @@ The v2.8.x series maintains backward compatibility with v2.7.x. All changes are 
 
 **Optional Enhancements**:
 
-1. **Use Profile System** (if working with multiple environments):
+1. **Use Profile System** (if you have private profile settings):
    ```bash
-   # Create dev profile
-   eai login --profile dev
+   # Sign in with a private profile
+   eai login --profile <name>
    
-   # Switch between profiles
-   eai --profile dev tenant list
-   eai --profile prod tenant list
+   # Run a command with that profile
+   eai --profile <name> tenant list
    ```
 
 2. **Update Gofer Assets** (if using AI terminals):

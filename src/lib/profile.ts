@@ -152,7 +152,7 @@ export async function loadActiveProfileFromConfig(): Promise<string> {
 
 /**
  * Persist the active profile name in local profile settings.
- * Called on `eai --profile dev login` so subsequent commands remember the profile.
+ * Called after login with a private profile so subsequent commands remember it.
  * Setting to "default" removes the activeProfile field.
  */
 export async function saveActiveProfileToConfig(name: string): Promise<void> {

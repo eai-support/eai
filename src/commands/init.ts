@@ -1520,8 +1520,8 @@ function generateDeployWorkflow(opts: InitOptions): string {
 #   AZUREAPPSERVICE_CLIENTID     — Azure AD app registration client ID
 #   AZUREAPPSERVICE_TENANTID     — Azure AD tenant ID
 #   AZUREAPPSERVICE_SUBSCRIPTIONID — Azure subscription ID
-#   AZURE_RESOURCE_GROUP         — e.g., rg-demo-infrastructure
-#   AZURE_WEBAPP_NAME            — e.g., app-demo-eai-dev
+#   AZURE_RESOURCE_GROUP         — Azure resource group name
+#   AZURE_WEBAPP_NAME            — Azure App Service name
 
 name: Deploy ${opts.displayName}
 

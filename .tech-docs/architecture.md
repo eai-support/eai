@@ -190,7 +190,7 @@ Each command follows a consistent pattern:
 - Functions: `pullEnv()`, `pushEnv()`, `listEnv()`
 
 **`profile.ts` - Profile Management**
-- Multi-environment profile support (dev, test, prod)
+- Private profile support for locally configured contexts
 - Profile-specific configuration loading
 - Functions: `loadProfile()`, `listProfiles()`, `setActiveProfile()`
 

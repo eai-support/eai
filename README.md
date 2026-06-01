@@ -101,7 +101,7 @@ All commands support these global flags:
 
 | Flag | Description |
 |------|-------------|
-| `--profile <name>` | Use a named environment profile (e.g. dev, test) |
+| `--profile <name>` | Use a locally configured private profile |
 | `--simple` | Plain text output without colors or symbols (for screen readers) |
 | `--no-color` | Disable colored output |
 | `--color` | Force colored output (for testing) |

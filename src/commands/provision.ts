@@ -165,7 +165,7 @@ What happens:
 
 Diagnostics:
   - Uses the PublicAPI URL from the active profile, .env.local BASE_URL_PUBLIC_API, environment, or the default API
-  - Default/no profile targets production; --profile test and --profile dev target their configured platform APIs
+  - Default/no profile uses the public API; private profiles use their locally configured API
   - The platform chooses the matching CIAM from its deployment configuration; the CLI never sends a CIAM selector
   - Errors are product-safe and include a support reference without exposing platform internals
   `)

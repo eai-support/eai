@@ -32,13 +32,13 @@ export const envCommand = new Command('env')
 envCommand
   .command('pull')
   .description('Sync cloud config to local .env.local')
-  .option('--env <environment>', 'Environment (dev, test, prod)', 'dev')
+  .option('--env <label>', 'Cloud config environment label for EAI_APP_CONFIG_STORE_<LABEL>')
   .option('--label <label>', 'App Config label (defaults to app name)')
   .option('--include-secrets', 'Resolve Key Vault references', false)
   .addHelpText('after', `
 Examples:
   $ eai env pull
-  $ eai env pull --env prod --include-secrets
+  $ eai env pull --include-secrets
   `)
   .action(async (options) => {
     const root = await findProjectRoot();
@@ -53,7 +53,14 @@ Examples:
       exitWithError(ErrorCode.E303, { field: '--label or NEXT_PUBLIC_APP_NAME in .env.local' });
     }
 
-    const store = resolveAppConfigStore(options.env);
+    let store: string;
+    try {
+      store = resolveAppConfigStore(options.env);
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+
     const spinner = ora(`Pulling config from ${store} (label: ${label})`).start();
 
     try {
@@ -158,6 +165,7 @@ envCommand
 envCommand
   .command('push')
   .description('Push local config overrides to cloud (admin)')
+  .option('--env <label>', 'Cloud config environment label for EAI_APP_CONFIG_STORE_<LABEL>')
   .option('--label <label>', 'App Config label')
   .option('--key <key>', 'Push a single key')
   .action(async (options) => {
@@ -174,7 +182,14 @@ envCommand
     }
 
     const keysToSync = options.key ? [options.key] : Object.keys(env);
-    const store = resolveAppConfigStore('dev');
+    let store: string;
+    try {
+      store = resolveAppConfigStore(options.env);
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+
     const spinner = ora(`Pushing ${keysToSync.length} values to ${store} (label: ${label})`).start();
 
     let pushed = 0;

@@ -32,7 +32,7 @@ Options:
                          readers)
   --no-color             Disable colored output
   --color                Force colored output
-  --profile <name>       Use a named environment profile (e.g. dev, test)
+  --profile <name>       Use a locally configured private profile
   --describe             Output JSON schema of all commands
   -h, --help             display help for command
 
@@ -702,7 +702,7 @@ Each command follows a consistent pattern:
 - Functions: `pullEnv()`, `pushEnv()`, `listEnv()`
 
 **`profile.ts` - Profile Management**
-- Multi-environment profile support (dev, test, prod)
+- Private profile support for locally configured contexts
 - Profile-specific configuration loading
 - Functions: `loadProfile()`, `listProfiles()`, `setActiveProfile()`
 
@@ -2357,7 +2357,7 @@ These flags are available on the root `eai` command:
 | `--simple` | boolean | Plain text output without colors or symbols (for screen readers) |
 | `--no-color` | boolean | Disable colored output |
 | `--color` | boolean | Force colored output |
-| `--profile <name>` | string | Use a named environment profile (e.g. dev, test) |
+| `--profile <name>` | string | Use a locally configured private profile |
 | `--describe` | boolean | Output a JSON schema of the command structure (for AI agents) |
 
 Most data-returning subcommands additionally accept `--format <format>` (`text` default, or `json`). A legacy `--json` boolean is accepted on many commands but is deprecated in favor of `--format json`.
@@ -4102,9 +4102,9 @@ Applications deployed via `eai deploy` should use:
 - **Impact**: Streamlines vertical app UI development with AI assistance
 
 ### Profile-Based Multi-Environment Support (v2.7.x series)
-- **Feature**: `--profile` flag for switching between dev, test, prod environments
+- **Feature**: `--profile` flag for locally configured private contexts
 - **Storage**: Per-profile token and context isolation
-- **Purpose**: Developers can work across multiple platform environments
+- **Purpose**: Developers can keep private contexts isolated when needed
 - **Impact**: Eliminates need for multiple CLI installations
 
 ### Static npm Registry on GitHub Pages (v2.6.x series)
@@ -4263,14 +4263,13 @@ The v2.8.x series maintains backward compatibility with v2.7.x. All changes are 
 
 **Optional Enhancements**:
 
-1. **Use Profile System** (if working with multiple environments):
+1. **Use Profile System** (if you have private profile settings):
    ```bash
-   # Create dev profile
-   eai login --profile dev
+   # Sign in with a private profile
+   eai login --profile <name>
    
-   # Switch between profiles
-   eai --profile dev tenant list
-   eai --profile prod tenant list
+   # Run a command with that profile
+   eai --profile <name> tenant list
    ```
 
 2. **Update Gofer Assets** (if using AI terminals):

@@ -1035,7 +1035,7 @@ These flags are available on the root `eai` command:
 | `--simple` | boolean | Plain text output without colors or symbols (for screen readers) |
 | `--no-color` | boolean | Disable colored output |
 | `--color` | boolean | Force colored output |
-| `--profile <name>` | string | Use a named environment profile (e.g. dev, test) |
+| `--profile <name>` | string | Use a locally configured private profile |
 | `--describe` | boolean | Output a JSON schema of the command structure (for AI agents) |
 
 Most data-returning subcommands additionally accept `--format <format>` (`text` default, or `json`). A legacy `--json` boolean is accepted on many commands but is deprecated in favor of `--format json`.

@@ -4,8 +4,6 @@ import { getAzureCliInvocation } from './azure-cli.js';
 
 const exec = promisify(execFile);
 
-const DEFAULT_APP_CONFIG_STORE = 'appcs-demo-eai-dev';
-
 export interface CloudEnvPullOptions {
   environment?: string;
   label: string;
@@ -29,10 +27,15 @@ function resolveStoreOverride(environment: string): string | undefined {
   return process.env[`EAI_APP_CONFIG_STORE_${normalized}`];
 }
 
-export function resolveAppConfigStore(environment = 'dev'): string {
-  return resolveStoreOverride(environment)
-    || process.env.EAI_APP_CONFIG_STORE
-    || DEFAULT_APP_CONFIG_STORE;
+export function resolveAppConfigStore(environment?: string): string {
+  const environmentOverride = environment ? resolveStoreOverride(environment) : undefined;
+  const store = environmentOverride || process.env.EAI_APP_CONFIG_STORE;
+  if (!store) {
+    throw new Error(
+      'Cloud configuration store is not configured. Set EAI_APP_CONFIG_STORE or EAI_APP_CONFIG_STORE_<LABEL> before using cloud environment sync.',
+    );
+  }
+  return store;
 }
 
 async function execAzureCli(args: string[]): Promise<{ stdout: string; stderr: string }> {
@@ -41,7 +44,7 @@ async function execAzureCli(args: string[]): Promise<{ stdout: string; stderr: s
 }
 
 export async function pullCloudEnvValues(options: CloudEnvPullOptions): Promise<CloudEnvPullResult> {
-  const store = resolveAppConfigStore(options.environment || 'dev');
+  const store = resolveAppConfigStore(options.environment);
   const includeSecrets = options.includeSecrets ?? false;
 
   const { stdout } = await execAzureCli([
@@ -88,7 +91,7 @@ export async function pullCloudEnvValues(options: CloudEnvPullOptions): Promise<
 }
 
 export async function setCloudEnvValues(options: CloudEnvSetOptions): Promise<{ store: string; count: number }> {
-  const store = resolveAppConfigStore(options.environment || 'dev');
+  const store = resolveAppConfigStore(options.environment);
   let count = 0;
 
   for (const [key, value] of Object.entries(options.values)) {
