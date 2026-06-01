@@ -21,7 +21,7 @@ describe('output redaction', () => {
   });
 
   test('redacts sensitive keys from JSON output', () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
     out.json({
       tenantId: 'tenant-123',
@@ -31,7 +31,7 @@ describe('output redaction', () => {
       },
     });
 
-    const printed = String(log.mock.calls[0]?.[0] ?? '');
+    const printed = String(write.mock.calls[0]?.[0] ?? '');
     expect(printed).toContain('"tenantId": "tenant-123"');
     expect(printed).not.toContain('secret-token');
     expect(printed).not.toContain('secret-client-value');

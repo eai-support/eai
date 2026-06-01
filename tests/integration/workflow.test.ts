@@ -111,7 +111,7 @@ describe("eai workflow", () => {
     { timeout: 10000 },
     async () => {
       let requestUrl = "";
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
       mockServer.server.use(
         http.get(
@@ -135,7 +135,7 @@ describe("eai workflow", () => {
       );
 
       expect(requestUrl).toContain("tenant_id=test-tenant-id");
-      const output = logSpy.mock.calls.flat().join("\n");
+      const output = outputSpy.mock.calls.flat().join("\n");
       expect(output).toContain('"workflowKey": "strategy-monitor"');
       expect(output).toContain('"status": "operator_required"');
     },
@@ -146,7 +146,7 @@ describe("eai workflow", () => {
     { timeout: 10000 },
     async () => {
       let requestUrl = "";
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
       mockServer.server.use(
         http.get(`${API_BASE}/v4/integrations/builder/readiness`, ({ request }) => {
@@ -173,7 +173,7 @@ describe("eai workflow", () => {
 
       expect(requestUrl).toContain("tenant_id=test-tenant-id");
       expect(requestUrl).toContain("workflow_keys=strategy-monitor");
-      const output = logSpy.mock.calls.flat().join("\n");
+      const output = outputSpy.mock.calls.flat().join("\n");
       expect(output).toContain('"tenantId": "test-tenant-id"');
       expect(output).toContain('"key": "workflow:strategy-monitor"');
     },
@@ -226,7 +226,7 @@ describe("eai workflow", () => {
     "HP001 FL-WORKFLOW-001: provision creates shared workflow and vertical config records",
     { timeout: 10000 },
     async () => {
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
       const listRequests: string[] = [];
       let sharedCreateBody: unknown;
       let verticalCreateBody: unknown;
@@ -353,7 +353,7 @@ describe("eai workflow", () => {
         }),
       });
 
-      const output = logSpy.mock.calls.flat().join("\n");
+      const output = outputSpy.mock.calls.flat().join("\n");
       expect(output).toContain(
         '"NEXT_PUBLIC_WORKFLOW_CONFIGURATOR_ID": "workflow-record-1"',
       );
@@ -365,7 +365,7 @@ describe("eai workflow", () => {
     "HP002 FL-WORKFLOW-002: provision can bind AI runtime records for workflow stages",
     { timeout: 10000 },
     async () => {
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
       const createdProfiles: unknown[] = [];
       const createdPrompts: unknown[] = [];
 
@@ -531,7 +531,7 @@ describe("eai workflow", () => {
         ]),
       );
 
-      const output = logSpy.mock.calls.flat().join("\n");
+      const output = outputSpy.mock.calls.flat().join("\n");
       expect(output).toContain('"objectType": "shared-ai-profile"');
       expect(output).toContain('"objectType": "shared-chatbot-config"');
     },
