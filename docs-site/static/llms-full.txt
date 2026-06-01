@@ -590,7 +590,7 @@ Each command follows a consistent pattern:
 2. Authenticate (if needed) via `getToken()`
 3. Create API client with `createAPIClient(token)`
 4. Execute operation with structured error handling
-5. Format output based on `--format` flag (text/JSON/YAML)
+5. Format output based on `--format` flag (text/JSON; YAML is not implemented)
 6. Exit with structured error codes on failure
 
 ### Library Layer (`src/lib/`)
@@ -598,17 +598,17 @@ Each command follows a consistent pattern:
 #### Core Libraries
 
 **`api.ts` - Platform API Client**
-- Fetch-based HTTP client with Bearer token authentication
-- Methods: `get()`, `post()`, `put()`, `delete()`
-- Base URL from `BASE_URL_PUBLIC_API` environment variable
-- Automatic JSON serialization/deserialization
-- Error handling with structured responses
+- Fetch-based PublicAPI v4 client with Bearer token authentication
+- Route families: platform, identity, resources, documents, workflows, AI, and integrations
+- Base URL from active profile, project/process `BASE_URL_PUBLIC_API`, tenant regional routing, or public default
+- Automatic JSON serialization/deserialization where streaming behavior does not require direct `fetch()`
+- Error handling with structured server context
 
 **`auth.ts` - Authentication**
 - Entra CIAM browser-based PKCE flow
-- Local token storage in `~/.eai/tokens.json`
+- Encrypted local token storage in `~/.eai/tokens.json` or profile-specific token files
 - Token refresh logic
-- Functions: `getToken()`, `saveToken()`, `clearToken()`, `isTokenExpired()`
+- Functions include token load/store, browser login, logout, access-token resolution, and refresh
 
 **`config.ts` - Configuration Loader**
 - Multi-source configuration merging (`.env.local` → `eai.config.ts` → `process.env`)
@@ -641,9 +641,9 @@ Each command follows a consistent pattern:
 
 **`tenant-context.ts` - Tenant Context**
 - Manages active tenant selection
-- Stores context in `~/.eai/context.json`
-- Validates tenant membership via platform API
-- Functions: `getActiveTenant()`, `setActiveTenant()`, `loadTenantContext()`
+- Stores active tenant metadata alongside the active profile token record
+- Validates tenant membership via PublicAPI
+- Functions include PublicAPI URL resolution, membership fetch, tenant selection, and usability refresh
 
 **PublicAPI regional routing boundary**
 - `resolvePublicApiUrl()` chooses the PublicAPI base URL in this order: named profile override, project/process `BASE_URL_PUBLIC_API`, stored active tenant `homeRegion`, authenticated session routing, then the AU production default.
@@ -657,9 +657,9 @@ Each command follows a consistent pattern:
 - Functions: `describeProgram()`, `describeCommand()`
 
 **`update-check.ts` - Version Management**
-- Checks GitHub Releases API for updates
+- Checks the static EAI release registry for updates
 - Rate-limited to once per day
-- Stores last check in `~/.eai/last-update-check`
+- Stores last check in `~/.eai/update-check.json`
 - Non-blocking notifications
 - Functions: `checkForUpdate()`, `notifyIfUpdateAvailable()`
 
@@ -1010,7 +1010,7 @@ Command execution follows a template:
 ### 2. Update Check Throttling
 - Update checks limited to once per 24 hours
 - Non-blocking background checks
-- Cached in `~/.eai/last-update-check`
+- Cached in `~/.eai/update-check.json`
 
 ### 3. API Request Optimization
 - Batch operations where supported (e.g., type seeding)
@@ -2454,7 +2454,7 @@ eai types --describe  # Describe the types subcommands
 
 The EAI CLI is a **stateless client** that does not maintain a local database. All persistent state resides either:
 
-1. **Locally** in `~/.eai/` directory (tokens, context, cache)
+1. **Locally** in `~/.eai/` directory (encrypted tokens, active tenant metadata, cache)
 2. **On the Platform** via the EAI Platform API (resources, types, tenants)
 3. **In Project** via configuration files (`.env.local`, `eai.config.ts`, `.eai-manifest.json`)
 
@@ -2466,7 +2466,7 @@ The EAI CLI is a **stateless client** that does not maintain a local database. A
 
 **File**: `~/.eai/tokens.json` (default profile) or `~/.eai/tokens/{profile}.json` (named profiles)
 
-**Format**: Plain JSON (future: encrypted)
+**Format**: Encrypted token payload managed by `src/lib/auth.ts`
 
 **Schema**:
 ```typescript
@@ -2474,9 +2474,15 @@ interface StoredTokens {
   accessToken: string;           // Bearer token for platform API auth
   refreshToken?: string;          // Refresh token for auto-refresh
   expiresAt: number;              // Unix timestamp (ms)
-  idToken?: string;               // OpenID Connect ID token
-  scope?: string;                 // OAuth scopes granted
-  tokenType: 'Bearer';            // Token type
+  tenantId: string;                // CIAM authority tenant ID
+  tenantName: string;              // CIAM authority tenant name
+  clientId: string;                // Public client ID used for PKCE
+  authScope?: string;              // OAuth scopes granted
+  upn?: string;                    // Signed-in user principal name
+  oid?: string;                    // Signed-in user object ID
+  activeTenantId?: string;         // Selected platform tenant ID
+  activeTenantName?: string;       // Selected platform tenant name
+  publicApiUrl?: string;           // Resolved PublicAPI base URL when known
 }
 ```
 
@@ -2495,34 +2501,33 @@ interface StoredTokens {
 
 ---
 
-### Tenant Context
+### Active Tenant Selection
 
-**File**: `~/.eai/context.json` (default profile) or `~/.eai/context/{profile}.json` (named profiles)
+**File**: Stored with the active profile's token record in `~/.eai/tokens.json`
+or `~/.eai/tokens/{profile}.json`.
 
-**Format**: Plain JSON
+**Format**: Encrypted token payload managed by `src/lib/auth.ts`
 
 **Schema**:
 ```typescript
-interface TenantContext {
-  activeTenant?: {
-    id: string;              // Platform tenant ID
-    displayName: string;     // Tenant display name
-    slug: string;            // URL-friendly tenant slug
-    domain?: string;         // Custom domain (if configured)
-    isActive: boolean;       // Tenant active status
-    roles: string[];         // User roles in this tenant
-  };
-  memberships?: TenantMembership[];  // Cached tenant-admin memberships
-  lastUpdated?: number;               // Unix timestamp (ms)
-}
-
-interface TenantMembership {
-  id: string;
-  displayName: string;
-  slug: string;
-  domain?: string;
-  roles: string[];
-  isActive: boolean;
+interface StoredTokens {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+  tenantId: string;
+  tenantName: string;
+  clientId: string;
+  authScope?: string;
+  upn?: string;
+  oid?: string;
+  activeTenantId?: string;
+  activeTenantName?: string;
+  activeTenantSlug?: string;
+  activeTenantDomain?: string;
+  activeTenantHomeRegion?: string | null;
+  activeTenantHqCountryCode?: string | null;
+  publicApiUrl?: string;
+  membershipsCachedAt?: number;
 }
 ```
 
@@ -2531,15 +2536,15 @@ interface TenantMembership {
 - Cleared on `eai logout`
 - Cached memberships refreshed periodically (1 hour TTL)
 
-**Location**: `~/.eai/context.json` or `~/.eai/context/{profile}.json`
+**Location**: Active profile token storage
 
 ---
 
 ### Update Check Cache
 
-**File**: `~/.eai/last-update-check`
+**File**: `~/.eai/update-check.json`
 
-**Format**: Plain text (Unix timestamp in milliseconds)
+**Format**: JSON
 
 **Purpose**: Throttle update checks to once per 24 hours
 
@@ -2547,7 +2552,7 @@ interface TenantMembership {
 - Created/updated on CLI version check
 - Read by `update-check.ts` to determine if check is needed
 
-**Location**: `~/.eai/last-update-check`
+**Location**: `~/.eai/update-check.json`
 
 ---
 
@@ -2904,7 +2909,6 @@ flowchart TB
     User[User Terminal]
     CLI[EAI CLI]
     TokenFile[~/.eai/tokens.json]
-    ContextFile[~/.eai/context.json]
     Platform[Platform API]
     
     User -->|eai tenant select| CLI
@@ -2913,7 +2917,7 @@ flowchart TB
     Platform -->|Return memberships| CLI
     CLI -->|User selects tenant| User
     User -->|Selection| CLI
-    CLI -->|Save active tenant| ContextFile
+    CLI -->|Save active tenant metadata| TokenFile
     CLI -->|Success message| User
 ```
 
@@ -2924,12 +2928,11 @@ flowchart TB
     User[User Terminal]
     CLI[EAI CLI]
     TokenFile[~/.eai/tokens.json]
-    ContextFile[~/.eai/context.json]
     Platform[Platform API]
     
     User -->|eai resources create User --data ...| CLI
     CLI -->|Read access token| TokenFile
-    CLI -->|Read active tenant| ContextFile
+    CLI -->|Read active tenant metadata| TokenFile
     CLI -->|POST /v4/data/resources/{tenant}/{type}| Platform
     Platform -->|Return created resource| CLI
     CLI -->|Success message + resource ID| User
@@ -2994,7 +2997,7 @@ The EAI CLI is a **client-side tool** that depends on external services for auth
 
 ```mermaid
 graph TB
-    CLI[eai CLI<br/>v2.8.13]
+    CLI[eai CLI<br/>v2.9.5]
     
     subgraph "Authentication"
         Entra[Entra CIAM<br/>OAuth 2.0 PKCE]
@@ -3965,296 +3968,466 @@ Applications deployed via `eai deploy` should use:
 
 # EAI CLI — Changelog
 
+The current stable CLI release is **2.9.5**. The public documentation, static
+registry, and release-facing AI help surfaces are expected to track this version.
+
 ## Recent Changes Since Last Documentation Update
 
-**Previous Documentation**: 2026-05-22 18:14 UTC (commit 793141a)  
-**Current Documentation**: 2026-05-23 17:49 UTC (commit 3f2653e)  
-**Current Version**: 2.8.13 (stable)
+**Previous documented version**: 2.8.13
+**Current stable version**: 2.9.5
+**Current documentation refresh**: 2026-06-01 UTC
+**Latest release tag**: v2.9.5, released 2026-05-31
 
-### Changes in This Update
+### Changes in This Documentation Update
 
-#### Nightly Documentation Update (commit 3f2653e)
-- Automated nightly `.tech-docs/` refresh
-- Updated all technical documentation with latest repository state
-- Synchronized documentation timestamps and commit references to current HEAD
-- Validated all command modules, library structure, and dependency versions
-- Repository remains stable at v2.8.13 with no functional changes
+- Added release notes for v2.8.14, v2.8.15, and the full v2.9.x series.
+- Updated the current stable version from 2.8.13 to 2.9.5.
+- Moved v2.9.0 out of roadmap/future language because it has shipped.
+- Refreshed public wording to application/app terminology while preserving compatibility identifiers where they are part of current CLI/API contracts.
 
 ---
 
 ## Version History
 
+### [2.9.5] - 2026-05-31
+
+**Features**:
+- Resolved the PublicAPI base URL from the active tenant's home region.
+- Added region-aware routing so users in different tenant homes can reach the correct PublicAPI endpoint without hard-coding a single public host.
+
+**Impact**:
+- Improves support for multi-region tenants.
+- Reduces the chance of tenants in non-default regions accidentally targeting the wrong regional PublicAPI.
+
+---
+
+### [2.9.4] - 2026-05-31
+
+**Features**:
+- Aligned app creation with the company hierarchy.
+- Improved app enrollment behavior so created apps attach to the correct company tenant context.
+
+**Impact**:
+- Better tenant isolation for app onboarding.
+- Cleaner relationship between company tenants, child tenants, and app records.
+
+---
+
+### [2.9.3] - 2026-05-30
+
+**Features**:
+- Bundled eai-gofer v3.5.0 with the CLI.
+- Completed the public PublicAPI v4 migration in the CLI.
+- Refactored CLI calls to use native PublicAPI v4 routes rather than old v1/v3 vocabulary mapped onto v4 URLs.
+
+**Impact**:
+- New projects receive the current Gofer assets.
+- CLI platform calls are aligned with the PublicAPI v4 surface.
+- Reduces migration risk as older PublicAPI interfaces are deprecated.
+
+---
+
+### [2.9.2] - 2026-05-28
+
+**Features**:
+- Updated chat requests to use the `thread_id` contract.
+- Aligned CLI chat behavior with the current PublicAPI/AICore chat session model.
+
+**Impact**:
+- More reliable continuation of chat conversations.
+- Better compatibility with v4 chat orchestration.
+
+---
+
+### [2.9.1] - 2026-05-28
+
+**Features**:
+- Added AI runtime binding during workflow provisioning.
+- Extended workflow provisioning so AI profile and chatbot runtime records can be created or linked with the workflow configuration.
+
+**Impact**:
+- Workflow setup can now prepare the runtime AI pieces required by app experiences.
+- Reduces manual post-provisioning setup.
+
+---
+
+### [2.9.0] - 2026-05-27
+
+**Features**:
+- Added workflow provisioning commands.
+- Introduced workflow config creation and app binding through `eai workflow provision`.
+- Added readiness checks for tenant, plan, and workflow setup.
+
+**Impact**:
+- The CLI can bootstrap shared workflow configuration for application delivery.
+- Provides a named home for workflow setup in the v4 PublicAPI era.
+
+---
+
+### [2.8.15] - 2026-05-26
+
+**Bug Fixes**:
+- Persisted the requested Entra redirect URI during provisioning.
+
+**Impact**:
+- Reduces mismatch between requested callback configuration and the app registration state.
+- Improves reliability of browser sign-in after provisioning.
+
+---
+
+### [2.8.14] - 2026-05-26
+
+**Bug Fixes**:
+- Fixed Entra callback provisioning for projects that run behind a configured auth base path.
+
+**Impact**:
+- Sign-in callback URLs are generated correctly for apps mounted below a base path.
+- Avoids broken auth flows for non-root app deployments.
+
+---
+
 ### [2.8.13] - 2026-05-11
 
 **Enhancements**:
-- Improved profile-based tenant context management
-- Enhanced error messages for tenant selection failures
-- Refined Gofer asset refresh conflict detection
-- Added better documentation for `eai doctor --check-updates`
+- Improved profile-based tenant context management.
+- Enhanced error messages for tenant selection failures.
+- Refined Gofer asset refresh conflict detection.
+- Added better documentation for `eai doctor --check-updates`.
 
 **Bug Fixes**:
-- Fixed tenant context persistence across profile switches
-- Resolved edge case in first-admin bootstrap validation
-- Corrected Gofer manifest hash comparison for modified files
+- Fixed tenant context persistence across profile switches.
+- Resolved edge case in first-admin bootstrap validation.
+- Corrected Gofer manifest hash comparison for modified files.
 
 ---
 
 ### [2.8.12] - 2026-05-11
 
 **Features**:
-- Added tenant app registration persistence spec in `.specify/`
-- Improved Entra app registration lifecycle management
-- Enhanced `eai provision entra` output formatting
+- Added tenant app registration persistence spec in `.specify/`.
+- Improved Entra app registration lifecycle management.
+- Enhanced `eai provision entra` output formatting.
 
 **Documentation**:
-- Updated `.specify/` with tenant app registration workflow spec
-- Clarified Entra provisioning requirements in README
+- Updated `.specify/` with tenant app registration workflow spec.
+- Clarified Entra provisioning requirements in README.
 
 ---
 
 ### [2.8.11] - 2026-05-11
 
 **Features**:
-- Added tenant app registration persistence specification
-- Introduced structured approach to managing Entra app lifecycle
+- Added tenant app registration persistence specification.
+- Introduced structured approach to managing Entra app lifecycle.
 
 **Internal**:
-- Aligned `.specify/` specs with latest platform capabilities
+- Aligned `.specify/` specs with latest platform capabilities.
 
 ---
 
 ### [2.8.10] - 2026-05-11
 
 **Bug Fixes**:
-- Fixed legacy template provenance detection in `eai init`
-- Resolved template source resolution for older project structures
+- Fixed legacy template provenance detection in `eai init`.
+- Resolved template source resolution for older project structures.
 
 **Improvements**:
-- Better error messages when template provenance cannot be determined
+- Better error messages when template provenance cannot be determined.
 
 ---
 
 ### [2.8.9] - 2026-05-11
 
 **Documentation**:
-- Highlighted update workflows in CLI help output
-- Added examples for `eai update`, `eai gofer refresh`, `eai template check`
-- Improved discoverability of maintenance commands
+- Highlighted update workflows in CLI help output.
+- Added examples for `eai update`, `eai gofer refresh`, `eai template check`.
+- Improved discoverability of maintenance commands.
 
 **Help Text**:
-- Enhanced CLI help footer with update workflow examples
-- Clarified when to use each update command
+- Enhanced CLI help footer with update workflow examples.
+- Clarified when to use each update command.
 
 ---
 
 ### [2.8.8] - 2026-05-11
 
 **Features**:
-- Added template drift preview via `eai template check`
-- Allows developers to see template changes before manually copying
-- Shows which files are new vs. which require manual review
+- Added template drift preview via `eai template check`.
+- Allows developers to see template changes before manually copying.
+- Shows which files are new vs. which require manual review.
 
 **Infrastructure**:
-- Moved all GitHub Actions workflows to Node.js 24
-- Updated `actions/setup-node` to v6
-- Set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` in workflow environments
+- Moved all GitHub Actions workflows to Node.js 24.
+- Updated `actions/setup-node` to v6.
+- Set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` in workflow environments.
 
 ---
 
 ### [2.8.7] - 2026-05-11
 
 **Improvements**:
-- Made release-facing docs generation deterministic
-- Ensures consistent `llms.txt`, `llms-full.txt`, `cli-help.txt` output
-- Stable hashes for reproducible builds
+- Made release-facing docs generation deterministic.
+- Ensures consistent `llms.txt`, `llms-full.txt`, `cli-help.txt` output.
+- Stable hashes for reproducible builds.
 
 **Internal**:
-- Refactored `scripts/generate-release-docs.cjs` for determinism
-- Sorted command output for consistent file generation
+- Refactored `scripts/generate-release-docs.cjs` for determinism.
+- Sorted command output for consistent file generation.
 
 ---
 
 ### [2.8.6] - 2026-05-11
 
 **Documentation**:
-- Refreshed release docs and CLI help automation
-- Updated `docs-site/static/llms.txt` and `cli-help.txt`
-- Aligned with latest CLI command structure
+- Refreshed release docs and CLI help automation.
+- Updated `docs-site/static/llms.txt` and `cli-help.txt`.
+- Aligned with latest CLI command structure.
 
 ---
 
 ### [2.8.5] - 2026-05-11
 
 **Improvements**:
-- Aligned release docs and CLI help automation with static registry flow
-- Ensured `npm run docs:release-assets` generates correct metadata
-- Validated registry artifacts before deployment
+- Aligned release docs and CLI help automation with static registry flow.
+- Ensured `npm run docs:release-assets` generates correct metadata.
+- Validated registry artifacts before deployment.
 
 ---
 
-## Major Feature Additions (Recent Months)
+## Major Feature Additions
+
+### PublicAPI v4 Native CLI Surface (v2.9.x series)
+- **Feature**: CLI platform calls use named PublicAPI v4 routes for legitimate user workflows.
+- **Commands affected**: tenant, user, chat, resources, docs, workflow, provisioning, and diagnostics commands.
+- **Purpose**: Prepare the CLI for older v1/v3 PublicAPI interface deprecation.
+- **Impact**: Public CLI behavior is now aligned with the v4 tenant/app/user OBO model.
+
+### Regional PublicAPI Resolution (v2.9.5)
+- **Feature**: Tenant home region determines which PublicAPI host the CLI targets.
+- **Purpose**: Support public users whose tenant home is outside the default region.
+- **Impact**: Reduces wrong-region failures and keeps public routing tenant-aware.
+
+### Workflow Provisioning (v2.9.0 - v2.9.2)
+- **Feature**: `eai workflow provision` and `eai workflow readiness`.
+- **Purpose**: Bootstrap shared workflow configuration, app bindings, AI profile records, and chatbot runtime records.
+- **Impact**: Makes app workflow setup repeatable from the CLI.
+
+### Gofer v3.5.0 Bundle (v2.9.3)
+- **Feature**: Updated bundled Gofer AI assets.
+- **Purpose**: Keep `eai init` aligned with the current Gofer pipeline.
+- **Impact**: New projects get the latest commands, agents, skills, templates, and workflow guidance.
 
 ### AI-Readable UI Blocks Bridge (v2.8.x series)
-- **Feature**: `eai blocks` command for AI agents to discover and interact with UI components
-- **Commands**: `eai blocks list`, `eai blocks validate`
-- **Purpose**: Enable AI agents (Claude, Codex, Gemini, Copilot) to scaffold UI using catalog
-- **Impact**: Streamlines app UI development with AI assistance
-
-### Profile-Based Multi-Environment Support (v2.7.x series)
-- **Feature**: `--profile` flag for locally configured private contexts
-- **Storage**: Per-profile token and context isolation
-- **Purpose**: Developers can keep private contexts isolated when needed
-- **Impact**: Eliminates need for multiple CLI installations
+- **Feature**: `eai blocks` command for AI agents to discover and interact with UI components.
+- **Commands**: `eai blocks list`, `eai blocks validate`.
+- **Purpose**: Enable AI agents to scaffold UI using catalog metadata.
+- **Impact**: Streamlines app UI development with AI assistance.
 
 ### Static npm Registry on GitHub Pages (v2.6.x series)
-- **Feature**: Self-hosted npm registry at `https://eai-tools.github.io/eai/registry`
-- **Purpose**: Eliminate npmjs dependency, full control over distribution
-- **Impact**: Simplified release process, no external account required
-
-### Gofer AI Asset Management (v2.5.x series)
-- **Feature**: `eai gofer refresh` for safe Gofer asset updates
-- **Commands**: `eai gofer refresh --check`, `eai gofer refresh --force`
-- **Purpose**: Update AI terminal assets (Claude, Codex, Gemini, Copilot) without overwriting local edits
-- **Impact**: Safe evolution of Gofer pipeline as CLI improves
-
-### Template Drift Detection (v2.4.x series)
-- **Feature**: `eai template check` previews template changes without writing files
-- **Purpose**: Let developers see what changed in application template before merging
-- **Impact**: Reduces risk of accidentally overwriting custom code
+- **Feature**: Self-hosted npm registry at `https://eai-tools.github.io/eai/registry`.
+- **Purpose**: Eliminate npmjs dependency and keep full control over distribution.
+- **Impact**: Simplified release process with no external npm account required.
 
 ---
 
 ## Breaking Changes
 
-### None in v2.8.x Series
+### None in v2.9.x Series
 
-The v2.8.x series maintains backward compatibility with v2.7.x. All changes are additive or internal improvements.
+The v2.9.x series maintains backward compatibility with v2.8.x. Stable
+compatibility identifiers such as `eai vertical`, `--vertical`,
+`EAI_VERTICAL_KEY`, `verticalKey`, `tenant-vertical-enrollment`,
+`vertical-product-config`, and `blank-vertical-template` remain available while
+the public documentation moves toward application/app terminology.
 
 ### Last Breaking Change: v2.6.0 (2026-04-15)
-- Switched from npmjs to GitHub Pages static registry
-- Requires one-time registry configuration: `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
-- Old installations continue to work but won't receive updates until registry is reconfigured
+- Switched from npmjs to GitHub Pages static registry.
+- Requires one-time registry configuration: `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`.
+- Old installations continue to work but will not receive updates until the scoped registry is configured.
 
 ---
 
 ## Deprecations
 
-### Deprecated in v2.7.0
-- **Deprecated**: Passing tenant ID via `TENANT_ID` environment variable
-- **Replacement**: Use `eai tenant select` to establish tenant context
-- **Reason**: Membership-driven tenant selection is more secure and accurate
-- **Timeline**: Environment variable fallback will be removed in v3.0.0
+### No New Deprecations in v2.9.x
 
-### Deprecated in v2.5.0
-- **Deprecated**: `eai init --no-gofer` default behavior
-- **Replacement**: Gofer assets now installed by default
-- **Reason**: Most users want AI terminal integration
-- **Timeline**: No removal planned, flag remains for bare scaffolds
+The v2.9.x work focused on PublicAPI v4 alignment, workflow provisioning, and
+regional routing without removing existing CLI entry points.
+
+### Deprecated in v2.7.0
+- **Deprecated**: Passing tenant ID via `TENANT_ID` environment variable.
+- **Replacement**: Use `eai tenant select` to establish tenant context.
+- **Reason**: Membership-driven tenant selection is more secure and accurate.
+- **Timeline**: Environment variable fallback is expected to be removed in v3.0.0.
+
+### Supported Compatibility Names
+- `eai vertical` remains the current command for app enrollment management.
+- `--vertical`, `EAI_VERTICAL_KEY`, and `verticalKey` remain current contract names for workflow/app binding.
+- Public documentation now describes these concepts as app/application concepts where possible.
 
 ---
 
 ## Known Issues
 
-### Current (v2.8.13)
+### Current (v2.9.5)
 
 **Issue**: `eai env pull --include-secrets` requires Azure CLI authentication  
 **Impact**: Medium — Users must run `az login` before pulling secrets  
 **Workaround**: Authenticate with `az login`, or manually add secrets to `.env.local`  
-**Status**: Working as designed (Azure CLI is the secure auth method)
+**Status**: Working as designed. Azure CLI is the secure auth method.
 
-**Issue**: `eai deploy trigger` fails if `GITHUB_TOKEN` not set  
+**Issue**: `eai deploy trigger` fails if `GITHUB_TOKEN` is not set
 **Impact**: Low — Only affects deployment automation  
 **Workaround**: Set `GITHUB_TOKEN` in `.env.local` or use GitHub UI  
-**Status**: Working as designed (token required for API access)
+**Status**: Working as designed. A token is required for GitHub API access.
 
 **Issue**: Update check may fail on networks with strict egress filtering  
-**Impact**: Low — Update notifications won't appear, but CLI functions normally  
-**Workaround**: Check for updates manually via GitHub Releases  
-**Status**: No fix planned (silent failure is acceptable)
+**Impact**: Low — Update notifications will not appear, but CLI functions normally
+**Workaround**: Check for updates manually via GitHub Releases or the static registry
+**Status**: No fix planned. Silent failure is acceptable for background update checks.
 
 ---
 
 ## Architectural Changes
 
-### Recent (v2.7.0 → v2.8.13)
+### Recent (v2.8.13 → v2.9.5)
 
-**Profile Isolation**:
-- Moved from shared `~/.eai/tokens.json` to per-profile `~/.eai/tokens/{profile}.json`
-- Improved tenant context caching with 1-hour TTL
-- Enhanced membership validation on tenant selection
+**PublicAPI v4 Migration**:
+- CLI platform calls now target PublicAPI v4 routes for user-facing workflows.
+- Older v1/v3 client vocabulary was removed from public CLI call sites where v4 homes exist.
+- Chat now uses the `thread_id` contract.
 
-**Gofer Manifest Evolution**:
-- Added `modifiedLocally` flag to track user edits
-- Improved hash comparison for conflict detection
-- Better backup strategy for replaced files
+**Tenant-Scoped Regional Routing**:
+- PublicAPI host selection can use the tenant home region.
+- This supports multi-region public deployments while keeping tenant context central.
 
-**Block Catalog Integration**:
-- Added `src/lib/block-catalog.ts` for parsing UI component metadata
-- Introduced `src/lib/block-catalog-validation.ts` for schema validation
-- New `src/commands/blocks.ts` command module
+**Workflow Runtime Provisioning**:
+- Workflow provisioning can create or bind shared workflow, AI profile, chatbot, and app binding records.
+- Readiness checks help detect missing tenant/workflow setup before app implementation.
+
+**Company/App Hierarchy Alignment**:
+- App creation now respects company hierarchy and child company tenant context.
+- App enrollment records are better aligned with the tenant model.
+
+**Gofer Bundle Evolution**:
+- Bundled Gofer assets updated to v3.5.0.
+- `eai init` installs the current commands, agents, skills, and templates for supported AI terminals.
 
 ---
 
 ## Performance Improvements
 
+### v2.9.x Series
+
+**Regional Resolution**:
+- Tenant-aware PublicAPI routing avoids unnecessary retries against the wrong regional host.
+
+**Workflow Provisioning**:
+- Bundles related workflow/runtime setup into repeatable CLI commands instead of requiring manual multi-step setup.
+
 ### v2.8.x Series
 
 **Token Caching**:
-- Reduced unnecessary token refreshes by validating `expiresAt` before API calls
-- Membership cache TTL prevents excessive `/v4/identity/tenants` calls
+- Reduced unnecessary token refreshes by validating `expiresAt` before API calls.
+- Membership cache TTL prevents excessive `/v4/identity/tenants` calls.
 
 **Update Check Throttling**:
-- Update checks limited to once per 24 hours
-- Non-blocking background checks don't delay command execution
+- Update checks limited to once per 24 hours.
+- Non-blocking background checks do not delay command execution.
 
 **Gofer Refresh Optimization**:
-- Hash-based change detection avoids full file comparisons
-- Only modified files are backed up (not entire repo)
+- Hash-based change detection avoids full file comparisons.
+- Only modified files are backed up, not entire repos.
 
 ---
 
 ## Security Updates
 
+### v2.9.x Series
+
+**PublicAPI v4 Alignment**:
+- CLI user workflows now follow the current PublicAPI v4 OBO model.
+- Tenant and app context are kept explicit in public workflow/app provisioning paths.
+
+**Public Repository Hardening**:
+- Public-facing documentation removes private dev/test profile examples and internal cloud-store defaults.
+- CLI output redacts token/secret-like values before printing JSON output.
+- GitHub CodeQL default setup and OpenSSF Scorecard are enabled for public trust signals.
+
 ### v2.8.x Series
 
-**Supply Chain Hardening** (commit 24134b4):
-- Enhanced npm dependency integrity checks
-- Validated package hashes before installation
-- Improved security posture for npm ecosystem risks
+**Supply Chain Hardening**:
+- Enhanced npm dependency integrity checks.
+- Validated package hashes before installation.
+- Improved security posture for npm ecosystem risks.
 
 **Token File Permissions**:
-- Enforced `0o600` file mode on `~/.eai/tokens.json`
-- Validated file ownership on read
-- Prevented accidental permission escalation
+- Enforced restrictive file modes for local token files.
+- Improved token storage isolation through profile-aware paths.
 
 ---
 
 ## Documentation Updates
 
-### v2.8.13
+### v2.9.5
 
 **Technical Documentation**:
-- Comprehensive `.tech-docs/` refresh with all 10 files
-- Updated architecture diagrams with Mermaid
-- Clarified API endpoints and request/response schemas
-- Added data model entity relationship diagrams
-- Enhanced configuration documentation with all sources
-- Detailed deployment process with CI/CD workflows
-- Complete dependency graph with risk assessment
-- Code quality and patterns review
+- Updated changelog through v2.9.5.
+- Clarified PublicAPI v4, regional routing, workflow provisioning, and current compatibility identifiers.
+- Removed stale roadmap language that treated v2.9.0 as unreleased.
 
-**AI-Readable Documentation**:
-- Regenerated `llms.txt` with latest command structure
-- Updated `llms-full.txt` with comprehensive CLI reference
-- Refreshed `cli-help.txt` with all command help output
+**Public Release Surfaces**:
+- Regenerated `llms.txt`, `llms-full.txt`, and `cli-help.txt`.
+- Included the code-quality and patterns review pages in the release-facing AI documentation bundle.
+- Static registry metadata and tarballs remain aligned with package version 2.9.5.
 
 **GitHub Pages**:
-- Deployed latest documentation site to `https://eai-tools.github.io/eai`
-- Updated 93 pages of user-facing docs
+- Published documentation site: `https://eai-tools.github.io/eai`.
+- Changelog page: `https://eai-tools.github.io/eai/docs/changelog`.
 
 ---
 
 ## Migration Guides
+
+### Migrating from v2.8.x to v2.9.x
+
+**No Breaking Changes** — v2.9.x is intended to be backward compatible.
+
+**Recommended Actions**:
+
+1. **Update the CLI**
+   ```bash
+   npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
+   npm install -g @eai-tools/cli
+   eai --version
+   ```
+
+2. **Verify Tenant Context**
+   ```bash
+   eai login
+   eai tenant select
+   eai whoami
+   ```
+
+3. **Check PublicAPI Routing**
+   ```bash
+   eai verify
+   eai doctor --check-updates
+   ```
+
+4. **Refresh Gofer Assets When Ready**
+   ```bash
+   eai gofer refresh --check
+   eai gofer refresh
+   ```
+
+5. **Use Workflow Provisioning for App Workflows**
+   ```bash
+   eai workflow readiness
+   eai workflow provision <workflow-key> --vertical <app-key>
+   ```
+
+---
 
 ### Migrating from v2.7.x to v2.8.x
 
@@ -4264,28 +4437,19 @@ The v2.8.x series maintains backward compatibility with v2.7.x. All changes are 
 
 1. **Use Profile System** (if you have private profile settings):
    ```bash
-   # Sign in with a private profile
    eai login --profile <name>
-   
-   # Run a command with that profile
    eai --profile <name> tenant list
    ```
 
 2. **Update Gofer Assets** (if using AI terminals):
    ```bash
-   # Preview changes
    eai gofer refresh --check
-   
-   # Apply safe updates
    eai gofer refresh
    ```
 
-3. **Check Template Drift** (if project is older than CLI version):
+3. **Check Template Drift**:
    ```bash
-   # See what changed in template
    eai template check
-   
-   # Manually review and copy changes
    ```
 
 ---
@@ -4296,50 +4460,48 @@ The v2.8.x series maintains backward compatibility with v2.7.x. All changes are 
 
 **Before (v2.6.x)**:
 ```bash
-# Set tenant ID in .env.local
 echo "TENANT_ID=tenant-123" >> .env.local
 eai resources list User
 ```
 
 **After (v2.7.x)**:
 ```bash
-# Select tenant via CLI (membership-driven)
 eai login
 eai tenant select
 eai resources list User
 ```
 
 **Migration Steps**:
-1. Run `eai login` to authenticate
-2. Run `eai tenant select` and choose your tenant
-3. Remove `TENANT_ID` from `.env.local` (optional, still works but deprecated)
+1. Run `eai login` to authenticate.
+2. Run `eai tenant select` and choose your tenant.
+3. Remove `TENANT_ID` from `.env.local` when practical.
 
 ---
 
 ## Roadmap
 
-### Planned for v2.9.0 (Q3 2026)
+### Planned for v2.10.x
 
-- [ ] Offline mode for `eai dev` (local mock gateway)
-- [ ] Interactive Object Type builder (`eai types define`)
-- [ ] Bulk resource import (`eai resources import --file data.json`)
-- [ ] Cloudflare tunnel integration (`eai tunnel`)
+- [ ] More first-class app/application command aliases alongside existing compatibility commands.
+- [ ] Improved regional endpoint diagnostics in `eai verify`.
+- [ ] Expanded workflow templates and readiness checks.
+- [ ] Bulk resource import (`eai resources import --file data.json`).
 
-### Planned for v3.0.0 (Q4 2026)
+### Planned for v3.0.0
 
-- [ ] **Breaking**: Remove `TENANT_ID` environment variable support
-- [ ] **Breaking**: Require Node.js 22+
-- [ ] Plugin system for custom commands
-- [ ] Workspace support (monorepo multi-app)
-- [ ] Built-in health monitoring dashboard
+- [ ] **Breaking**: Remove `TENANT_ID` environment variable support.
+- [ ] **Breaking**: Consider replacing legacy vertical CLI vocabulary with app/application command aliases after migration.
+- [ ] Plugin system for custom commands.
+- [ ] Workspace support for multi-app repos.
+- [ ] Built-in health monitoring dashboard.
 
 ---
 
 ## Contributors
 
-- **EAI Tools Team** — Core development and maintenance
-- **Nightly Documentation Pipeline** — Automated technical documentation
-- **Renovate Bot** — Dependency updates and security patches
+- **EAI Tools Team** — Core development and maintenance.
+- **Gofer Pipeline** — AI-assisted implementation, validation, and public documentation hygiene.
+- **Renovate Bot** — Dependency updates and security patches.
 
 ---
 
@@ -4368,16 +4530,606 @@ The central nightly `tech-docs` process treats `.tech-docs/` as the canonical ge
 | Path | Role | Central nightly aggregation |
 |---|---|---|
 | `docs-site/` | Docs-site framework project | No; should be summarized into `.tech-docs/` |
+| `docs-site/static/llms.txt` | Release-facing AI documentation index generated from `.tech-docs/` and current CLI help | No; generated in this repo |
+| `docs-site/static/llms-full.txt` | Full release-facing AI documentation bundle generated from `.tech-docs/` and current CLI help | No; generated in this repo |
+| `docs-site/static/cli-help.txt` | Current CLI help snapshot generated from the built CLI | No; generated in this repo |
 
 ## Documentation Workflows
 
 | Workflow | Triggers | Purpose |
 |---|---|---|
 | `.github/workflows/docs.yml` | push, manual | Repo-local docs publishing or pages deployment |
+| `.github/workflows/release.yml` | release dispatch, manual | Registry, release assets, docs/help bundles, and release notifications |
 
 ## Consolidation Status
 
 - Repo: `tech-docs`
 - Canonical nightly-generated surface: `.tech-docs/`
-- Additional surfaces detected: 1
-- Additional docs workflows detected: 1
+- Public docs site source: `.tech-docs/`
+- Review pages included in docs site: `.tech-docs/review/code-quality.md`, `.tech-docs/review/patterns.md`
+- Release-facing AI bundle includes review pages through `scripts/generate-release-docs.cjs`
+- Additional surfaces detected: 4
+- Additional docs/release workflows detected: 2
+
+---
+
+# EAI CLI — Code Quality Review
+
+# EAI CLI — Code Quality Review
+
+## Overview
+
+This document reviews the EAI CLI codebase at `@eai-tools/cli` v2.9.5. It is
+written for a public repository audience, so it avoids private environment
+names, tenant-specific values, and internal infrastructure details.
+
+The review is based on the current TypeScript source, package manifest,
+Docusaurus documentation surface, integration tests, and Gofer workspace
+preflight evidence.
+
+## Gofer Validation Note
+
+The public repo contains part of the Gofer scaffold, but the full stage-command
+workspace is not present. In particular, the local preflight found these
+missing pieces:
+
+- `.specify/commands/0_business_scenario.md`
+- `.specify/scripts/node/parse-stage-command.mjs`
+- `.specify/specs/`
+- `.specify/memory/`
+
+Because this is a docs-only public-repo cleanup, this review used a fast Gofer
+validation lane rather than bootstrapping private/internal Gofer structure into
+the public repository:
+
+1. Compare the live docs page with the current source.
+2. Recompute source, test, dependency, and route-version evidence.
+3. Refresh the public-facing review document.
+4. Run focused docs, build, lint, typecheck, and test validation.
+5. Confirm blast radius is limited to documentation.
+
+## Current Codebase Snapshot
+
+| Metric | Current value | Assessment |
+| --- | ---: | --- |
+| Package version | `2.9.5` | Current public release line |
+| TypeScript source files | 45 | Healthy for a focused CLI |
+| Command modules | 20 | Clear command-level ownership |
+| Library modules | 24 | Good separation of shared behavior |
+| Integration test files | 23 | Strong behavior coverage for CLI workflows |
+| Total test/support files | 35 | Appropriate for release-facing CLI tooling |
+| Production dependencies | 5 | Small runtime dependency footprint |
+| Development dependencies | 8 | Reasonable for TypeScript, linting, and Vitest |
+
+Largest files by line count:
+
+| File | Lines | Review note |
+| --- | ---: | --- |
+| `src/commands/verify.ts` | 1,702 | Broad diagnostic command; good candidate for helper extraction |
+| `src/commands/init.ts` | 1,692 | Large scaffolding workflow; should continue moving reusable logic into libraries |
+| `src/lib/api.ts` | 1,279 | Central PublicAPI client; should be split by API surface as v4 grows |
+| `src/commands/types.ts` | 1,234 | Data-model command surface is mature but dense |
+| `src/commands/resources.ts` | 1,055 | Resource workflows are feature-rich; keep extracting format/validation helpers |
+
+## Readability: 8/10
+
+### Strengths
+
+- Command modules still follow a predictable Commander.js pattern: declare the
+  command, parse options, validate prerequisites, call the API/client helper,
+  and format the result.
+- Shared concerns are separated into `src/lib/` modules for API calls, auth,
+  tenant context, output formatting, cloud configuration, Gofer integration,
+  update checks, and error codes.
+- Most public behavior is discoverable from command help, integration tests,
+  and focused helper names.
+- Output helpers centralize redaction and TTY-aware formatting, which keeps
+  command code more consistent.
+- TypeScript strict mode remains the main readability guard: data shapes are
+  explicit, and unsafe `unknown` handling is usually narrowed before use.
+
+### Areas To Improve
+
+- `verify.ts`, `init.ts`, and `api.ts` are now large enough that local changes
+  require more context than they should. Split by concern before adding more
+  diagnostics, scaffolding branches, or PublicAPI v4 routes.
+- Some compatibility language remains in command names and payload fields, such
+  as `vertical`, `verticalKey`, and `tenant-vertical-enrollment`. These are
+  current contract names rather than preferred public wording, but new docs and
+  user-facing copy should prefer `application` and `app`.
+- `src/lib/api.ts` uses clean v4 path constants, but the class still owns many
+  unrelated API groups. Splitting it into resource, identity, platform,
+  workflow, AI, document, and integration clients would make the v4 surface
+  easier to review.
+
+## Correctness: 9/10
+
+### Strengths
+
+- Runtime PublicAPI calls are v4-native. The client defines v4 path groups such
+  as `/v4/platform`, `/v4/identity`, `/v4/data/resources`, `/v4/data/documents`,
+  `/v4/workflows`, `/v4/ai`, and `/v4/integrations`.
+- `tests/integration/no-v3-runtime.test.ts` guards against reintroducing
+  `/v3/` routes in runtime source files.
+- Tenant context is explicit. Commands resolve a tenant from authenticated
+  membership data, stored active-tenant metadata, or an explicit command
+  option.
+- Authentication uses browser-based authorization code flow with PKCE and
+  stores local tokens through the auth/profile layer.
+- API error parsing preserves status, server code, server message, request ID,
+  and raw response text for debug paths.
+- Integration tests exercise resource CRUD, workflow/provisioning flows,
+  tenant behavior, login, verification, document classification, and v4 route
+  guards.
+
+### Areas To Improve
+
+- Several methods in `src/lib/api.ts` still issue direct `fetch()` calls rather
+  than going through one shared request helper. Consolidating request behavior
+  would make headers, retries, tracing, and error translation harder to forget.
+- Token refresh is still process-local. Multiple CLI processes can refresh at
+  the same time; file locking or a small cross-process refresh guard would make
+  this more robust.
+- File-path handling is mostly local-user tooling, not a server-side boundary,
+  but commands that read user-supplied files should continue moving toward
+  explicit path normalization and clearer error messages.
+
+## Security And Public Readiness: 9/10
+
+### Strengths
+
+- Public documentation no longer needs private profile examples, environment
+  hostnames, or tenant-specific infrastructure details.
+- The default PublicAPI URL in source is the public Australia endpoint:
+  `https://api.au.myenterprise.ai/public`.
+- Private profile support remains in code for organization-managed setups, but
+  it is intentionally not promoted in public docs.
+- Output redaction covers bearer tokens, JWT-looking values, and common
+  sensitive assignments before printing text or JSON.
+- Cloud configuration commands require an explicit app-configuration store
+  environment variable. They do not embed private store names in source.
+- Runtime dependencies are deliberately small: `chalk`, `commander`, `dotenv`,
+  `inquirer`, and `ora`.
+
+### Areas To Improve
+
+- Keep scanning docs, tests, fixtures, release assets, and GitHub Actions for
+  accidental private environment references before every public release.
+- Avoid documenting local profile internals beyond the minimum needed for user
+  safety. The profile file exists, but public docs should describe supported
+  CLI behavior rather than internal environment-switching details.
+- Consider a release check that fails if public docs contain known private
+  host patterns or unsupported environment names.
+
+## Performance: 8/10
+
+### Strengths
+
+- The CLI has a small runtime dependency set and low startup overhead.
+- Update checks are non-blocking, skipped in CI/non-TTY contexts, and cached in
+  `~/.eai/update-check.json` for 24 hours.
+- Tenant membership data and active tenant selection avoid prompting on every
+  command once the user has selected a tenant.
+- Resource APIs support pagination, cursors, streaming endpoints, batch
+  create/update/delete, aggregate queries, and cross-type query endpoints.
+
+### Areas To Improve
+
+- Add retry/backoff for transient network failures where commands call
+  PublicAPI. This should be shared request behavior, not copied into each
+  command.
+- Parallelize independent readiness checks in diagnostic flows where the user
+  experience benefits and the APIs can handle it.
+- Keep large response handling paginated or streaming by default. Avoid adding
+  commands that load unbounded result sets into memory.
+
+## Maintainability: 7/10
+
+The repo is healthy, but maintainability is the main area to watch. The command
+surface has grown faster than the internal API-client shape.
+
+Recommended next refactors:
+
+1. Split `src/lib/api.ts` by v4 public interface group.
+2. Extract `verify.ts` diagnostics into focused check modules.
+3. Extract `init.ts` scaffolding steps into reusable workflow helpers.
+4. Add a shared PublicAPI request helper with retry, tracing, redaction-safe
+   debug output, and consistent error translation.
+5. Keep compatibility command names stable until a deliberate migration plan
+   removes them, but make all new public wording application/app-oriented.
+
+## Test And Validation Expectations
+
+For docs-only changes to this page, the expected validation set is:
+
+- `npm run docs:release-assets:check`
+- `npm --prefix docs-site run build`
+- `npm run typecheck`
+- `npm run lint`
+- `npm run test`
+- `git diff --check`
+- Search checks for stale version labels, old update-cache filenames, private
+  hostnames, and old environment examples
+
+For code changes that touch CLI behavior, add or update integration tests near
+the affected command. For API-contract changes, update the route guard and
+PublicAPI-facing tests in the same PR.
+
+## Key Recommendations
+
+### High Priority
+
+1. Split the PublicAPI client by v4 route family so route ownership stays clear
+   as more interfaces move to v4.
+2. Extract the largest command files before adding more user workflows.
+3. Add a docs/public-readiness scanner to release checks so private environment
+   details cannot drift back into public pages.
+
+### Medium Priority
+
+4. Add shared retry/backoff for transient PublicAPI failures.
+5. Add cross-process coordination for token refresh.
+6. Continue replacing new public-facing "vertical" wording with
+   application/app language while preserving compatibility where needed.
+
+### Low Priority
+
+7. Consider coverage thresholds once the test suite stabilizes around v4.
+8. Add a lightweight complexity report to keep future large-file growth visible.
+
+## Conclusion
+
+Overall code quality is strong for a public TypeScript CLI. The strongest
+signals are strict typing, a small dependency footprint, secure auth patterns,
+v4 PublicAPI route guards, redacted output helpers, and broad integration tests.
+
+The main risk is not correctness today; it is future change cost. The CLI is
+ready to be public-facing, but the next engineering pass should reduce the size
+of the largest command modules and split the v4 API client before the route
+surface grows again.
+
+**Overall Code Quality: 8.5/10**.
+
+---
+
+# EAI CLI — Patterns & Tech Debt
+
+# EAI CLI — Patterns & Tech Debt
+
+## Overview
+
+This document reviews the design patterns, anti-patterns, and technical debt in
+the EAI CLI codebase at `@eai-tools/cli` v2.9.5. It is public-facing, so it
+avoids private environment details and focuses on patterns visible in the
+repository.
+
+The companion code-quality review covers scores and validation evidence. This
+page focuses on how the code is shaped and where the next refactors should
+reduce change cost.
+
+## Current Shape
+
+| Area | Current evidence | Pattern health |
+| --- | ---: | --- |
+| Command modules | 20 files in `src/commands/` | Strong command ownership |
+| Shared library modules | 24 files in `src/lib/` | Good separation by concern |
+| PublicAPI client | 1,279 lines in `src/lib/api.ts` | Useful facade, now too large |
+| Largest commands | `verify.ts` 1,702 lines, `init.ts` 1,692 lines | Mature workflows, high change cost |
+| Runtime dependencies | 5 production npm dependencies | Small and easy to audit |
+| Integration tests | 23 integration test files | Good behavioral safety net |
+
+## Positive Patterns
+
+### 1. Command Module Pattern
+
+**Location**: `src/commands/*.ts`
+
+Each command group is a focused Commander.js module exported from its own file.
+This keeps the CLI entrypoint small and makes command ownership easy to scan.
+
+Current command groups:
+
+- `init`, `dev`, `login`, `whoami`, `tenant`, `user`, `provision`
+- `types`, `resources`, `chat`, `docs`, `workflow`
+- `env`, `deploy`, `verify`, `update`
+- `gofer`, `template`, `blocks`, `vertical`
+
+**Why it works**:
+
+- Commands are discoverable by filename.
+- Help text lives close to command behavior.
+- Integration tests can target user workflows without reaching into private
+  helpers.
+
+**Watch point**:
+
+- The pattern is still good, but large command files should keep extracting
+  workflow helpers as behavior grows.
+
+### 2. Facade Pattern For PublicAPI
+
+**Location**: `src/lib/api.ts`
+
+`PlatformAPIClient` hides route paths, headers, request bodies, and response
+translation behind typed methods. Commands can call a named method instead of
+constructing raw URLs.
+
+**Current v4 route families**:
+
+- `/v4/platform`
+- `/v4/identity`
+- `/v4/data/resources`
+- `/v4/data/documents`
+- `/v4/workflows`
+- `/v4/ai`
+- `/v4/integrations`
+
+**Why it works**:
+
+- The v4 route constants make old API-version vocabulary easier to detect.
+- The `tests/integration/no-v3-runtime.test.ts` guard prevents runtime source
+  from calling `/v3/` routes.
+- Shared server-error parsing preserves status, server code, message, request
+  ID, and debug body context.
+
+**Watch point**:
+
+- At 1,279 lines, this facade is becoming a god module. The next healthy shape
+  is a small shared request core plus separate clients for resources, identity,
+  platform, workflows, AI, documents, and integrations.
+
+### 3. Strategy Pattern For Context Resolution
+
+**Locations**: `src/lib/config.ts`, `src/lib/tenant-context.ts`,
+`src/lib/context.ts`
+
+The CLI resolves project, tenant, and PublicAPI context through ordered
+strategies instead of hard-coding one source.
+
+Examples:
+
+- Project discovery checks project config files and package metadata.
+- PublicAPI resolution checks named profile override, project/process
+  `BASE_URL_PUBLIC_API`, stored tenant home region, authenticated session
+  routing, then the public default.
+- Command context resolution centralizes active tenant and API URL discovery.
+
+**Why it works**:
+
+- Local app projects, public users, and organization-managed setups can share
+  one CLI without embedding private defaults.
+- Tenant-aware regional routing stays behind one boundary.
+
+**Watch point**:
+
+- Keep the order documented in public terms. Avoid exposing private profile
+  examples or internal environment names.
+
+### 4. Repository Pattern For Local State
+
+**Locations**: `src/lib/auth.ts`, `src/lib/profile.ts`,
+`src/lib/project-manifest.ts`
+
+Local state is behind helper functions rather than being read and written
+directly from commands.
+
+Examples:
+
+- Token storage is handled by the auth/profile layer.
+- Profile settings are loaded through `profile.ts`.
+- Gofer/template refresh state is tracked through `.eai-manifest.json` helpers.
+
+**Why it works**:
+
+- Commands do not need to know where tokens or manifests live.
+- File modes and redaction rules can be improved centrally.
+- Tests can mock behavior at module boundaries.
+
+**Watch point**:
+
+- Token refresh is still process-local. Cross-process coordination would make
+  concurrent CLI usage safer.
+
+### 5. Introspection Builder Pattern
+
+**Location**: `src/lib/schema-builder.ts`
+
+The `--describe` surface is built from the Commander.js command tree. This
+lets tools and agents inspect commands, options, defaults, enum choices, and
+subcommands without scraping human help output.
+
+**Why it works**:
+
+- The schema stays aligned with real command registration.
+- Automation gets a stable JSON-oriented entrypoint.
+- The implementation is small and isolated.
+
+**Watch point**:
+
+- Keep this schema backward compatible if external agents begin depending on
+  it directly.
+
+### 6. Output Adapter Pattern
+
+**Location**: `src/lib/output.ts`
+
+Output helpers centralize text formatting, JSON formatting, color behavior,
+screen-reader-friendly simple mode, and sensitive-value redaction.
+
+**Why it works**:
+
+- Commands get consistent output behavior.
+- Secret-like values are redacted before text or JSON output.
+- Public trust is better because debug/output paths do not casually leak
+  bearer tokens or JWT-looking strings.
+
+**Watch point**:
+
+- YAML output is intentionally not implemented. New docs and examples should
+  describe supported output as text and JSON unless a command explicitly
+  supports more.
+
+### 7. Manifest-Backed Refresh Pattern
+
+**Locations**: `src/lib/gofer-refresh.ts`, `src/lib/gofer-installer.ts`,
+`src/lib/project-manifest.ts`
+
+Gofer assets are refreshed by comparing manifests and file hashes rather than
+blindly overwriting local work.
+
+**Why it works**:
+
+- `eai gofer refresh --check` gives a preview before writes.
+- Modified managed files are detected.
+- Forced replacements create backups before overwrite.
+
+**Watch point**:
+
+- The refresh options are still centered around a `force` flag. That is
+  understandable at the command line, but internal helper APIs would be clearer
+  with a named options shape such as `overwriteModified`.
+
+## Anti-Patterns And Technical Debt
+
+### 1. Oversized PublicAPI Facade
+
+**Location**: `src/lib/api.ts`
+
+**Issue**: `PlatformAPIClient` owns every v4 route family and has grown to
+1,279 lines.
+
+**Impact**: Medium/high. It is still functional, but route changes now require
+reviewers to hold too much unrelated context.
+
+**Recommendation**:
+
+- Keep a shared request helper for headers, tracing, retries, redaction-safe
+  debug output, and error parsing.
+- Split domain clients by v4 route family:
+  - `resources-client.ts`
+  - `identity-client.ts`
+  - `platform-client.ts`
+  - `workflow-client.ts`
+  - `ai-client.ts`
+  - `documents-client.ts`
+  - `integrations-client.ts`
+
+### 2. Oversized Workflow Commands
+
+**Locations**: `src/commands/verify.ts`, `src/commands/init.ts`,
+`src/commands/types.ts`, `src/commands/resources.ts`
+
+**Issue**: The largest command modules mix orchestration, validation, output,
+and API calls.
+
+**Impact**: Medium. These commands are important and well-tested, but future
+changes will be slower and riskier unless helpers continue moving into
+`src/lib/`.
+
+**Recommendation**:
+
+- Extract diagnostic checks from `verify.ts` into focused modules.
+- Extract scaffold steps from `init.ts` into reusable workflow helpers.
+- Keep command files responsible for command wiring and user-facing output.
+
+### 3. Mixed Direct Fetch And Helper-Based Requests
+
+**Location**: `src/lib/api.ts`
+
+**Issue**: Some API methods use `publicRequest()`, while others still issue
+direct `fetch()` calls.
+
+**Impact**: Medium. This increases the chance that future retries, trace
+headers, timeout behavior, or error translation are applied inconsistently.
+
+**Recommendation**:
+
+- Move all PublicAPI calls through one shared request path.
+- Keep direct `fetch()` only where streaming behavior genuinely requires it,
+  and document that exception near the method.
+
+### 4. Compatibility Vocabulary Debt
+
+**Locations**: `src/commands/vertical.ts`, workflow/app provisioning payloads,
+tests, and compatibility command help
+
+**Issue**: Current contracts still contain terms such as `vertical`,
+`verticalKey`, and `tenant-vertical-enrollment`.
+
+**Impact**: Medium for public docs; low for runtime correctness. These names
+are compatibility contracts and should not be broken casually, but new public
+wording should use application/app terminology.
+
+**Recommendation**:
+
+- Keep compatibility identifiers until a planned migration removes them.
+- Prefer application/app wording in new docs, UI copy, and future command
+  aliases.
+- Add aliases before removing any existing command names.
+
+### 5. Token Refresh Coordination
+
+**Location**: `src/lib/auth.ts`
+
+**Issue**: Token refresh is coordinated inside a single CLI process, but not
+across multiple simultaneous CLI processes.
+
+**Impact**: Low/medium. This is an edge case for normal users but can appear in
+automation.
+
+**Recommendation**:
+
+- Add a lightweight file lock or cross-process guard around refresh writes.
+- Keep refresh failure non-destructive; failed refresh should fall back to
+  login guidance.
+
+## Refactoring Roadmap
+
+### Now
+
+1. Keep public docs current with v2.9.5 and PublicAPI v4.
+2. Add a release/public-readiness scanner for known private host patterns and
+   stale doc markers.
+3. Route all generated/public docs surfaces through the same source set.
+
+### Next
+
+1. Split `src/lib/api.ts` by v4 route family.
+2. Extract `verify.ts` checks into small diagnostic modules.
+3. Extract `init.ts` scaffold stages into workflow helpers.
+4. Normalize direct fetch calls behind one request helper.
+
+### Later
+
+1. Add public app/application command aliases alongside compatibility commands.
+2. Add cross-process token refresh coordination.
+3. Add complexity or large-file reporting to CI so growth remains visible.
+
+## Spec And Docs Alignment
+
+The public repo currently has partial `.specify` assets but not the full Gofer
+stage-command workspace. For public docs, the reliable source of truth is the
+combination of:
+
+- TypeScript source under `src/`
+- Integration tests under `tests/integration/`
+- Release docs under `.tech-docs/`
+- Published Docusaurus pages under `docs-site/`
+- Generated release assets under `docs-site/static/`
+
+For this docs refresh, route-version alignment is additionally guarded by
+`scripts/verify-api-reference.cjs`, which checks the review docs against
+`src/lib/api.ts`.
+
+## Conclusion
+
+The CLI has strong patterns: command modules, shared library boundaries, a v4
+PublicAPI facade, centralized output redaction, manifest-backed refreshes, and
+runtime introspection for agents. The main technical debt is not a broken
+architecture; it is scale pressure in the biggest modules.
+
+The recommended direction is evolutionary: keep public behavior stable, split
+large modules by current v4 boundaries, and keep generated documentation tied
+to the same source files that reviewers and agents read.
+
+**Overall Pattern Score: 8/10**.

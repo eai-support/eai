@@ -48,7 +48,7 @@ const originalRoutingBootstrapPublicApiUrl = process.env.ROUTING_BOOTSTRAP_PUBLI
 
 function storedTokens(overrides: Partial<StoredTokens> = {}): StoredTokens {
   return {
-    accessToken: 'cached-token',
+    accessToken: '<fixture-cached-access-value>',
     expiresAt: Date.now() + 60_000,
     tenantId: 'auth-tenant',
     tenantName: 'Auth Tenant',

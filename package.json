@@ -24,8 +24,9 @@
     "docs:release-assets": "node scripts/generate-release-docs.cjs",
     "docs:release-assets:check": "node scripts/generate-release-docs.cjs --check",
     "docs:verify-api": "node scripts/verify-api-reference.cjs --check",
+    "security:public-hygiene": "node scripts/verify-public-hygiene.cjs",
     "release:check": "bash scripts/release-preflight.sh",
-    "prepublishOnly": "npm run lint:no-placeholder && npm run typecheck && npm run lint && npm run build && npm run test"
+    "prepublishOnly": "npm run lint:no-placeholder && npm run security:public-hygiene && npm run typecheck && npm run lint && npm run build && npm run test"
   },
   "files": [
     "dist",

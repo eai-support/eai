@@ -180,8 +180,8 @@ export async function expectTokenStored(ctx: TestContext, path: string): Promise
 export async function expectTokenEncrypted(ctx: TestContext, path: string): Promise<void> {
   const fullPath = join(ctx.workingDir, path);
   const content = await readFile(fullPath, 'utf-8');
-  // Token file should not contain plaintext "test-access-token"
-  expect(content).not.toContain('test-access-token');
+  // Token file should not contain plaintext "<fixture-access-token>"
+  expect(content).not.toContain('<fixture-access-token>');
 }
 
 /**

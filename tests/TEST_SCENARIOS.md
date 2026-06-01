@@ -386,9 +386,9 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // TC019: Token auto-refreshes on API call
 // Traces to: Auth-US4-AC1
 //
-// userIsLoggedIn({ refresh_token: 'refresh123' })
+// userIsLoggedIn({ refresh_token: '<fixture-refresh-token>' })
 // accessTokenExpired()
-// entraTokenEndpointRespondsToRefresh({ access_token: 'new_token', expires_in: 3600 })
+// entraTokenEndpointRespondsToRefresh({ access_token: '<fixture-access-token>', expires_in: 3600 })
 //
 // runCommand('eai resources list MyType')
 //
@@ -447,13 +447,13 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // Traces to: Env-US1-AC2
 //
 // azureCLIInstalled()
-// keyVaultHasSecret('my-vault', 'auth-secret', 'super-secret-value')
+// keyVaultHasSecret('my-vault', 'auth-secret', '<fixture-sensitive-value>')
 // appConfigHasKeyVaultRef('AUTH_SECRET', 'https://my-vault.vault.azure.net/secrets/auth-secret')
 //
 // runCommand('eai env pull --include-secrets')
 //
 // expectKeyVaultSecretFetched('my-vault', 'auth-secret')
-// expectEnvVarSet('.env.local', 'AUTH_SECRET', 'super-secret-value')
+// expectEnvVarSet('.env.local', 'AUTH_SECRET', '<fixture-sensitive-value>')
 // expectWarningMessage('Secrets stored in .env.local. Do not commit!')
 ```
 
@@ -498,11 +498,11 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // TC025: List env with --show-secrets
 // Traces to: Env-US2-AC2
 //
-// projectHasEnvFile({ AUTH_SECRET: 'super-secret-value' })
+// projectHasEnvFile({ AUTH_SECRET: '<fixture-sensitive-value>' })
 //
 // runCommand('eai env list --show-secrets')
 //
-// expectDisplayedMessage('AUTH_SECRET=super-secret-value')
+// expectDisplayedMessage('AUTH_SECRET=<fixture-sensitive-value>')
 // expectWarningMessage('Secrets are visible. Do not share this output.')
 ```
 

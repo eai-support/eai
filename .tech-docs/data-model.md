@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-23T18:05:52.673Z"
-source_commit: "3f2653e8e0c12fcd8b9be770d495dbf8269079f1"
+generated_at: "2026-06-01T09:00:09.000Z"
+source_commit: "5a2b88a3a98c40d9b88476b34bd8fc66aa2d5037"
 ---
 # EAI CLI — Data Model
 
@@ -9,7 +9,7 @@ source_commit: "3f2653e8e0c12fcd8b9be770d495dbf8269079f1"
 
 The EAI CLI is a **stateless client** that does not maintain a local database. All persistent state resides either:
 
-1. **Locally** in `~/.eai/` directory (tokens, context, cache)
+1. **Locally** in `~/.eai/` directory (encrypted tokens, active tenant metadata, cache)
 2. **On the Platform** via the EAI Platform API (resources, types, tenants)
 3. **In Project** via configuration files (`.env.local`, `eai.config.ts`, `.eai-manifest.json`)
 
@@ -21,7 +21,7 @@ The EAI CLI is a **stateless client** that does not maintain a local database. A
 
 **File**: `~/.eai/tokens.json` (default profile) or `~/.eai/tokens/{profile}.json` (named profiles)
 
-**Format**: Plain JSON (future: encrypted)
+**Format**: Encrypted token payload managed by `src/lib/auth.ts`
 
 **Schema**:
 ```typescript
@@ -29,9 +29,15 @@ interface StoredTokens {
   accessToken: string;           // Bearer token for platform API auth
   refreshToken?: string;          // Refresh token for auto-refresh
   expiresAt: number;              // Unix timestamp (ms)
-  idToken?: string;               // OpenID Connect ID token
-  scope?: string;                 // OAuth scopes granted
-  tokenType: 'Bearer';            // Token type
+  tenantId: string;                // CIAM authority tenant ID
+  tenantName: string;              // CIAM authority tenant name
+  clientId: string;                // Public client ID used for PKCE
+  authScope?: string;              // OAuth scopes granted
+  upn?: string;                    // Signed-in user principal name
+  oid?: string;                    // Signed-in user object ID
+  activeTenantId?: string;         // Selected platform tenant ID
+  activeTenantName?: string;       // Selected platform tenant name
+  publicApiUrl?: string;           // Resolved PublicAPI base URL when known
 }
 ```
 
@@ -50,34 +56,33 @@ interface StoredTokens {
 
 ---
 
-### Tenant Context
+### Active Tenant Selection
 
-**File**: `~/.eai/context.json` (default profile) or `~/.eai/context/{profile}.json` (named profiles)
+**File**: Stored with the active profile's token record in `~/.eai/tokens.json`
+or `~/.eai/tokens/{profile}.json`.
 
-**Format**: Plain JSON
+**Format**: Encrypted token payload managed by `src/lib/auth.ts`
 
 **Schema**:
 ```typescript
-interface TenantContext {
-  activeTenant?: {
-    id: string;              // Platform tenant ID
-    displayName: string;     // Tenant display name
-    slug: string;            // URL-friendly tenant slug
-    domain?: string;         // Custom domain (if configured)
-    isActive: boolean;       // Tenant active status
-    roles: string[];         // User roles in this tenant
-  };
-  memberships?: TenantMembership[];  // Cached tenant-admin memberships
-  lastUpdated?: number;               // Unix timestamp (ms)
-}
-
-interface TenantMembership {
-  id: string;
-  displayName: string;
-  slug: string;
-  domain?: string;
-  roles: string[];
-  isActive: boolean;
+interface StoredTokens {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+  tenantId: string;
+  tenantName: string;
+  clientId: string;
+  authScope?: string;
+  upn?: string;
+  oid?: string;
+  activeTenantId?: string;
+  activeTenantName?: string;
+  activeTenantSlug?: string;
+  activeTenantDomain?: string;
+  activeTenantHomeRegion?: string | null;
+  activeTenantHqCountryCode?: string | null;
+  publicApiUrl?: string;
+  membershipsCachedAt?: number;
 }
 ```
 
@@ -86,15 +91,15 @@ interface TenantMembership {
 - Cleared on `eai logout`
 - Cached memberships refreshed periodically (1 hour TTL)
 
-**Location**: `~/.eai/context.json` or `~/.eai/context/{profile}.json`
+**Location**: Active profile token storage
 
 ---
 
 ### Update Check Cache
 
-**File**: `~/.eai/last-update-check`
+**File**: `~/.eai/update-check.json`
 
-**Format**: Plain text (Unix timestamp in milliseconds)
+**Format**: JSON
 
 **Purpose**: Throttle update checks to once per 24 hours
 
@@ -102,7 +107,7 @@ interface TenantMembership {
 - Created/updated on CLI version check
 - Read by `update-check.ts` to determine if check is needed
 
-**Location**: `~/.eai/last-update-check`
+**Location**: `~/.eai/update-check.json`
 
 ---
 
@@ -459,7 +464,6 @@ flowchart TB
     User[User Terminal]
     CLI[EAI CLI]
     TokenFile[~/.eai/tokens.json]
-    ContextFile[~/.eai/context.json]
     Platform[Platform API]
     
     User -->|eai tenant select| CLI
@@ -468,7 +472,7 @@ flowchart TB
     Platform -->|Return memberships| CLI
     CLI -->|User selects tenant| User
     User -->|Selection| CLI
-    CLI -->|Save active tenant| ContextFile
+    CLI -->|Save active tenant metadata| TokenFile
     CLI -->|Success message| User
 ```
 
@@ -479,12 +483,11 @@ flowchart TB
     User[User Terminal]
     CLI[EAI CLI]
     TokenFile[~/.eai/tokens.json]
-    ContextFile[~/.eai/context.json]
     Platform[Platform API]
     
     User -->|eai resources create User --data ...| CLI
     CLI -->|Read access token| TokenFile
-    CLI -->|Read active tenant| ContextFile
+    CLI -->|Read active tenant metadata| TokenFile
     CLI -->|POST /v4/data/resources/{tenant}/{type}| Platform
     Platform -->|Return created resource| CLI
     CLI -->|Success message + resource ID| User

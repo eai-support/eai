@@ -21,6 +21,8 @@ const DOC_ORDER = [
   'deployment.md',
   'changelog.md',
   'documentation-surfaces.md',
+  'review/code-quality.md',
+  'review/patterns.md',
 ];
 const HELP_COMMANDS = [
   { label: 'eai --help', args: ['dist/index.js', '--help'] },

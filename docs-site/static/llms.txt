@@ -26,6 +26,8 @@ npm install -g @eai-tools/cli
 - [EAI CLI — Deployment](/eai/docs/deployment)
 - [EAI CLI — Changelog](/eai/docs/changelog)
 - [Documentation Surfaces](/eai/docs/documentation-surfaces)
+- [EAI CLI — Code Quality Review](/eai/docs/review/code-quality)
+- [EAI CLI — Patterns & Tech Debt](/eai/docs/review/patterns)
 
 ## Help & AI Bundles
 

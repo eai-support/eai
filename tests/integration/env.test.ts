@@ -75,14 +75,14 @@ describe('eai env', () => {
 
   test('patchEnvFile merges new keys without overwriting existing ones', async () => {
     await projectHasEnvFile(ctx, {
-      AUTH_SECRET: 'existing-secret',
+      AUTH_SECRET: '<fixture-existing-auth-value>',
       OTHER_KEY: 'keep-me',
     });
 
     await patchEnvFile(env.dir, { NEW_KEY: 'new-value' });
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
-    expect(content).toContain('AUTH_SECRET=existing-secret');
+    expect(content).toContain('AUTH_SECRET=<fixture-existing-auth-value>');
     expect(content).toContain('OTHER_KEY=keep-me');
     expect(content).toContain('NEW_KEY=new-value');
   });

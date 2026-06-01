@@ -102,10 +102,10 @@ describe('eai whoami', () => {
     await projectHasEnvFile(ctx, { BASE_URL_PUBLIC_API: RESOLVED_API_BASE });
     process.env.HOME = env.dir;
     process.env.USERPROFILE = env.dir;
-    process.env.EAI_ACCESS_TOKEN = 'test-access-token';
+    process.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
     await storeTokens({
-      accessToken: 'test-access-token',
-      refreshToken: 'test-refresh-token',
+      accessToken: '<fixture-access-token>',
+      refreshToken: '<fixture-refresh-token>',
       expiresAt: Date.now() + 3600000,
       upn: 'test@example.com',
       oid: 'test-user-oid',
@@ -148,7 +148,7 @@ describe('eai whoami', () => {
     await whoamiCommand.parseAsync([], { from: 'user' });
 
     expect(staleApiHit).toBe(false);
-    expect(membershipRequestHeaders?.authorization).toBe('Bearer test-access-token');
+    expect(membershipRequestHeaders?.authorization).toBe('Bearer <fixture-access-token>');
   });
 
   test('TC018: Whoami when not logged in', { timeout: 15000 }, async () => {

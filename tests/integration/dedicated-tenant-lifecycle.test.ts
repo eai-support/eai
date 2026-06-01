@@ -34,8 +34,8 @@ async function setupProject(dir: string): Promise<void> {
 async function storeTestTokens(dir: string): Promise<void> {
   setTestHome(dir);
   await storeTokens({
-    accessToken: 'test-access-token',
-    refreshToken: 'test-refresh-token',
+    accessToken: '<fixture-access-token>',
+    refreshToken: '<fixture-refresh-token>',
     expiresAt: Date.now() + 3600000,
     upn: 'test@example.com',
     oid: 'test-oid',
@@ -84,7 +84,7 @@ describe('dedicated tenant lifecycle', () => {
     mockServer = createMockServer();
     mockServer.start();
 
-    process.env.EAI_ACCESS_TOKEN = 'test-access-token';
+    process.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
     await storeTestTokens(env.dir);
     await setupProject(env.dir);
     process.chdir(env.dir);
@@ -131,7 +131,7 @@ describe('dedicated tenant lifecycle', () => {
         }, { status: 201 });
       }),
       http.get(`${API_BASE}/v4/identity/tenants`, async ({ request }) => {
-        expect(request.headers.get('authorization')).toBe('Bearer test-access-token');
+        expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
         return HttpResponse.json({
           tenants: [
             {
@@ -269,7 +269,7 @@ describe('dedicated tenant lifecycle', () => {
 
     mockServer.server.use(
       http.get(`${API_BASE}/v4/identity/tenants`, async ({ request }) => {
-        expect(request.headers.get('authorization')).toBe('Bearer test-access-token');
+        expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
         return HttpResponse.json({
           tenants: [
             {
