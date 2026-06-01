@@ -21,8 +21,22 @@ description: Generate actionable task breakdown from implementation plan
 
 # Gofer Tasks
 
-You are generating an actionable, dependency-ordered task breakdown. This is the
-**fourth stage** of the unified Gofer pipeline.
+## Token And Cost Policy
+<!-- gofer:token-cost-policy:start -->
+
+Before spawning agents, calling tools, or loading large files:
+
+1. Treat `.specify/memory/gofer-model-policy.yaml` as the repo-owned source of truth for simple, medium, hard, and arbiter model routing. If it is missing, run `/gofer:bootstrap-workspace` before continuing.
+2. Use the cheapest capable model first.
+   - Claude: Haiku for scouting/extraction; Sonnet for normal implementation, synthesis, validation, and security; Opus for high-risk arbitration or release-critical failures.
+   - Codex/OpenAI: GPT mini for simple coding; GPT nano only for locate/classify/summarize/mechanical work; GPT-5.3-Codex or flagship GPT for tool-heavy coding, architecture, and release-critical validation.
+   - Gemini: Flash-Lite for cheap large-context scan/summarize; Flash for default research synthesis; Pro for large-context architecture or high-risk arbitration.
+   - Copilot: prefer Auto for simple and default work; ask the user before choosing a paid/high-tier picker model for hard security, architecture, or release gates.
+3. Keep raw tool output out of the main conversation context. Save stable findings to `.specify/specs/{feature}/context-bundle.md`, then work from summaries.
+4. Use provider prompt/context caching only for stable, non-secret prefixes: Gofer scaffold, AGENTS/CLAUDE/Copilot instructions, constitution, repo map, stage contracts, and validation rubric.
+5. Before continuing after large research, planning, implementation, or validation bursts, checkpoint the durable artifacts and compact/clear/resume context when the host supports it.
+6. Escalate model tier only when a cheaper pass is low-confidence, contradictory, security-sensitive, or blocking release quality.
+<!-- gofer:token-cost-policy:end -->
 
 ## User Input
 
@@ -31,6 +45,27 @@ $ARGUMENTS
 ```
 
 You **MUST** consider the user input before proceeding (if not empty).
+
+## Execution Profile And Task Sizing
+
+Preserve the selected depth from earlier stages:
+
+- **fast**: for `docs-only` or very small low-risk changes, generate a short
+  task list with only the work needed to deliver the change and its
+  verification.
+- **standard**: generate normal dependency-ordered tasks with tests and
+  traceability.
+- **full**: add tasks for contract compatibility, security review, migration or
+  config safety, rollout/rollback, and blast-radius verification.
+- **dynamic**: require `workflow-dag.md`, then generate shard-aligned tasks,
+  reducer tasks, verifier/refuter tasks, budget/stop-condition checks, and a
+  resumable progress ledger before implementation starts.
+
+Every task should name a real file or directory when known. If ownership or
+files are unknown, mark that as `unknown` and add a discovery task instead of
+fabricating a path. Keep optional artifacts out of the plan unless they support
+the selected risk label. Do not convert dynamic shard tasks into implementation
+work until the DAG confirmation gate is resolved.
 
 ## Prerequisites
 
@@ -300,7 +335,7 @@ Spec: [FEATURE_DIR]/spec.md"
 Run all 5 in parallel, then synthesize with judge:
 
 ```
-Task: subagent_type="multi-perspective-judge", model="sonnet"
+Task: subagent_type="multi-perspective-judge", model="opus"
 Prompt: "Judge verdict type: cross-cutting concern gap analysis.
 Identify which missing concerns should be added as tasks before implementation.
 [paste all 5 agent outputs]"
@@ -313,7 +348,7 @@ Add HIGH priority missing tasks to tasks.md if the judge recommends them.
 Plan rollback for each implementation phase:
 
 ```
-Task: subagent_type="tasks-rollback-planner", model="sonnet"
+Task: subagent_type="tasks-rollback-planner", model="haiku"
 Prompt: "Analyze tasks.md at [FEATURE_DIR]/tasks.md.
 For each phase, design a rollback plan. Identify irreversible steps that need checkpoints."
 ```

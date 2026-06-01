@@ -396,7 +396,7 @@ async function archiveDuplicateRemoteTypes(
       continue;
     }
 
-    const response = await client.platformRequest(`/object-types/${duplicate.id}`, 'PATCH', {
+    const response = await client.updateObjectType(duplicate.id, {
       status: 'draft',
     });
 
@@ -740,7 +740,7 @@ Examples:
 
           if (existing?.id) {
             // Update
-            const updateRes = await client.platformRequest(`/object-types/${existing.id}`, 'PATCH', {
+            const updateRes = await client.updateObjectType(existing.id, {
               name: type.name,
               slug: toObjectTypeSlug(type.name),
               tenant: tenantId,
@@ -791,7 +791,7 @@ Examples:
             }
           } else {
             // Create
-            const createRes = await client.platformRequest('/object-types', 'POST', {
+            const createRes = await client.createObjectType({
               name: type.name,
               slug: toObjectTypeSlug(type.name),
               displayName: type.displayName,

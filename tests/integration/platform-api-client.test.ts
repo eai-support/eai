@@ -20,16 +20,50 @@ describe('PlatformAPIClient', () => {
     await client.getPublishedObjectTypes({ limit: 200 })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [, init] = fetchMock.mock.calls[0]
-    const body = JSON.parse(String(init?.body))
+    const [url, init] = fetchMock.mock.calls[0]
+    const calledUrl = new URL(String(url))
 
-    expect(body.target_backend).toBe('payload')
-    expect(body.endpoint).toBe('/object-types')
-    expect(body.params.limit).toBe(100)
-    expect(body.params['where[tenant][equals]']).toBe('tenant-123')
+    expect(calledUrl.origin).toBe('https://example.test')
+    expect(calledUrl.pathname).toBe('/v4/data/resources/object-types')
+    expect(calledUrl.searchParams.get('limit')).toBe('100')
+    expect(calledUrl.searchParams.get('where[tenant][equals]')).toBe('tenant-123')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
   })
 
-  test('routes tenant deletion through the admin backend', async () => {
+  test('creates object types through the public data resources router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 201 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.createObjectType({ name: 'Customer', tenant: 'tenant-123' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/data/resources/object-types')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({ name: 'Customer', tenant: 'tenant-123' })
+  })
+
+  test('updates object types through the public data resources router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.updateObjectType('type-id-123', { status: 'draft' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/data/resources/object-types/type-id-123')
+    expect(init?.method).toBe('PATCH')
+    expect(JSON.parse(String(init?.body))).toEqual({ status: 'draft' })
+  })
+
+  test('routes tenant deletion through the public platform router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
@@ -39,12 +73,38 @@ describe('PlatformAPIClient', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
-    const body = JSON.parse(String(init?.body))
 
-    expect(String(url)).toBe('https://example.test/v3/orchestrate')
-    expect(body.target_backend).toBe('admin')
-    expect(body.endpoint).toBe('/v1/accounts/tenant-child/delete')
-    expect(body.method).toBe('POST')
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/delete')
+    expect(init?.method).toBe('POST')
+    expect(init?.body).toBeUndefined()
+  })
+
+  test('creates apps through the public company app route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 201 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.createTenantApp('tenant-parent', {
+      appDisplayName: 'DEF',
+      verticalKey: 'def',
+      parentTenantId: 'tenant-def',
+      childTenantDisplayName: 'IJK',
+      source: 'eai-cli',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      appDisplayName: 'DEF',
+      verticalKey: 'def',
+      parentTenantId: 'tenant-def',
+      childTenantDisplayName: 'IJK',
+      source: 'eai-cli',
+    })
   })
 
   test('posts capability evaluation requests to the public capability router', async () => {
@@ -65,7 +125,7 @@ describe('PlatformAPIClient', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
-    expect(String(url)).toBe('https://example.test/v3/capabilities/evaluate')
+    expect(String(url)).toBe('https://example.test/v4/platform/capabilities/evaluate')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({
       tenant_id: 'tenant-parent',
@@ -92,7 +152,7 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
     expect(String(url)).toBe(
-      'https://example.test/v3/workflows/runtime/strategy-monitor/status?tenant_id=tenant-parent',
+      'https://example.test/v4/workflows/runtime/strategy-monitor/status?tenant_id=tenant-parent',
     )
     expect(init?.method).toBe('GET')
     expect(result.status).toBe('operator_required')
@@ -123,7 +183,7 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
     expect(String(url)).toBe(
-      'https://example.test/v3/builder/readiness?tenant_id=tenant-parent&workflow_keys=strategy-monitor&workflow_keys=advisory',
+      'https://example.test/v4/integrations/builder/readiness?tenant_id=tenant-parent&workflow_keys=strategy-monitor&workflow_keys=advisory',
     )
     expect(init?.method).toBe('GET')
     expect(result.checks[0]?.key).toBe('tenant-access')
@@ -149,7 +209,7 @@ describe('PlatformAPIClient', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
-    expect(String(url)).toBe('https://example.test/v3/workflows/runtime-requests')
+    expect(String(url)).toBe('https://example.test/v4/workflows/runtime-requests')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({
       tenant_id: 'tenant-parent',
@@ -169,7 +229,7 @@ describe('PlatformAPIClient', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
-    expect(String(url)).toBe('https://example.test/v3/chat/stream/tenant-parent/workflow-1/analyze-process')
+    expect(String(url)).toBe('https://example.test/v4/ai/chat/stream/tenant-parent/workflow-1/analyze-process')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({
       message: 'Hello',
@@ -196,7 +256,7 @@ describe('PlatformAPIClient', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
-    expect(String(url)).toBe('https://example.test/v3/provision/entra-app/client-1/rotate-secret')
+    expect(String(url)).toBe('https://example.test/v4/platform/provisioning/entra-apps/client-1/rotate-secret')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({ tenant_id: 'tenant-parent' })
     expect(result.clientSecret).toBe('secret-1')

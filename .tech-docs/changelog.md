@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-05-28T02:08:40.784Z"
-source_commit: "29c4364bd6047c47380a9f8bb07f4051a1b27372"
+generated_at: "2026-05-31T01:12:39.542Z"
+source_commit: "c104ef3a24ede34f769d5eaf587ba58df8b0ebb6"
 ---
 # EAI CLI — Changelog
 
@@ -241,7 +241,7 @@ The v2.8.x series maintains backward compatibility with v2.7.x. All changes are 
 
 **Token Caching**:
 - Reduced unnecessary token refreshes by validating `expiresAt` before API calls
-- Membership cache TTL prevents excessive `/v3/tenants/memberships` calls
+- Membership cache TTL prevents excessive `/v4/identity/tenants` calls
 
 **Update Check Throttling**:
 - Update checks limited to once per 24 hours

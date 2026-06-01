@@ -3,6 +3,7 @@ name: specify-journey-stress-tester
 description:
   Stress-tests user journeys from 4 persona perspectives to find spec gaps
 tools: Read, Grep, Glob, LS
+model: haiku
 ---
 
 You are a user journey stress tester. You walk through the specified user

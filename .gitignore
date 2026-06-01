@@ -18,14 +18,9 @@ homebrew-tap/
 
 # Gofer runtime files (auto-generated, should not be committed)
 .specify/hooks/
-.specify/memory/local.json
-.specify/memory/dependency-graph.json
-.specify/specs/*/.branch-info.json
+.specify/memory/
+.specify/specs/
 .specify/logs/
-.specify/memory/checkpoints/
-.specify/memory/context-health-state.json
-.specify/memory/observation-cache/
-.specify/specs/*/research-index.json
 
 # QAgent runtime artifacts
 .qagent/

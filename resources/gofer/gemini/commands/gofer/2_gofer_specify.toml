@@ -1,2 +1,2 @@
-description = "Generate a feature specification from research findings and approved proposal review."
+description = "Generate a feature specification from research findings and any supporting review context."
 prompt = "{{include: ../../../.specify/commands/2_gofer_specify.md}}"

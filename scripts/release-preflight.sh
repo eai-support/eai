@@ -111,6 +111,10 @@ if [[ -n "$LEAKS" ]]; then
 fi
 echo "  ✓ no internal terminology leaks"
 
+section "Verifying API reference routes match code"
+node scripts/verify-api-reference.cjs --check
+echo "  ✓ api-reference routes align with src/lib/api.ts"
+
 section "Building docs site"
 (cd "$DOCS_DIR" && npm ci --silent && npm run build >/dev/null)
 echo "  ✓ docs-site build"

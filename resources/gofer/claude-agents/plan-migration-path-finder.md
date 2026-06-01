@@ -3,6 +3,7 @@ name: plan-migration-path-finder
 description:
   Finds migration paths using 4 different strategies for changing existing code
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are a migration path agent. When a feature requires changing existing code,

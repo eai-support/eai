@@ -12,8 +12,13 @@ This project uses Gofer for structured feature development. Gofer prompts are
 available in `.github/prompts/` and `.github/instructions/` for use with GitHub
 Copilot Chat.
 
-Key Gofer artifacts are stored in `.specify/specs/{feature}/` and include:
-research.md, spec.md, plan.md, and tasks.md.
+The committed `.specify` directory contains reusable Gofer scripts and
+templates. Generated feature specs, memory files, logs, checkpoints, and other
+runtime state are local-only and ignored by git.
+
+Never include secrets, private tenant data, customer data, private URLs, or
+local `.env` files in generated Gofer output, issues, pull requests, commits,
+or workflow logs.
 
 ## Code Quality
 

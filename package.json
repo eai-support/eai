@@ -1,6 +1,6 @@
 {
   "name": "@eai-tools/cli",
-  "version": "2.9.2",
+  "version": "2.9.5",
   "description": "EAI Platform CLI — scaffold, seed, deploy, and manage vertical applications",
   "type": "module",
   "bin": {
@@ -23,12 +23,14 @@
     "sync:linked-sources": "node scripts/sync-linked-sources.js",
     "docs:release-assets": "node scripts/generate-release-docs.cjs",
     "docs:release-assets:check": "node scripts/generate-release-docs.cjs --check",
+    "docs:verify-api": "node scripts/verify-api-reference.cjs --check",
     "release:check": "bash scripts/release-preflight.sh",
     "prepublishOnly": "npm run lint:no-placeholder && npm run typecheck && npm run lint && npm run build && npm run test"
   },
   "files": [
     "dist",
-    "resources"
+    "resources",
+    "NOTICE"
   ],
   "keywords": [
     "cli",
@@ -41,7 +43,7 @@
     "commander"
   ],
   "author": "EAI Tools",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/eai-tools/eai.git"

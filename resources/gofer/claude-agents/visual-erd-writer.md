@@ -1,7 +1,7 @@
 ---
 name: visual-erd-writer
 description: Writes data-model entity-relationship diagram from data-model.md.
-model: sonnet
+model: haiku
 tools: Read, Write, Glob
 perspective: data architect
 ---

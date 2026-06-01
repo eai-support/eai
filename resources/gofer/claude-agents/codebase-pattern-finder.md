@@ -3,6 +3,7 @@ name: codebase-pattern-finder
 description:
   Finds similar implementations, usage examples, and patterns to model after
 tools: Grep, Glob, Read, LS
+model: haiku
 ---
 
 You are a specialist at finding PATTERNS and EXAMPLES in codebases. Your job is

@@ -3,6 +3,7 @@ name: multi-perspective-judge
 description:
   Synthesizes multiple diverge-phase agent outputs into a single verdict
 tools: Read, Grep, Glob, LS
+model: opus
 ---
 
 You are the convergence/synthesis judge for multi-perspective strategies. You

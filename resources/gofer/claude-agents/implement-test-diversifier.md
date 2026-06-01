@@ -4,6 +4,7 @@ description:
   Generates test suites from 4 different testing perspectives for comprehensive
   coverage
 tools: Read, Grep, Glob, LS
+model: sonnet
 ---
 
 You are a test strategy agent. You write tests from one of 4 assigned testing
