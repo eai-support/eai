@@ -132,13 +132,16 @@ jobs:
 
       - name: Build eai-cli cross-service dispatch payload
         id: dispatch-payload
+        env:
+          CROSS_SERVICE_TEST_SURFACE: eai-cli
         run: |
           set -euo pipefail
 
+          # deploy-completed uses the canonical eai-testing-dev test surface.
           PAYLOAD="$(jq -cn \
             --arg environment "dev" \
             --arg repository "eai" \
-            --arg service "eai-cli" \
+            --arg service "${CROSS_SERVICE_TEST_SURFACE}" \
             --arg sha "${GITHUB_SHA}" \
             --arg tag "${GITHUB_REF_NAME}" \
             --arg deploy_run_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
