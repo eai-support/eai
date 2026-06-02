@@ -54,6 +54,16 @@ function mockBrowserLauncher(
   }));
 }
 
+function mockBrowserLauncherFailure(): void {
+  vi.doMock('node:child_process', () => ({
+    spawn: () => {
+      const child = new EventEmitter();
+      queueMicrotask(() => child.emit('close', 1));
+      return child;
+    },
+  }));
+}
+
 function setTestHome(path: string): () => void {
   const originalHome = process.env.HOME;
   const originalUserProfile = process.env.USERPROFILE;
@@ -101,9 +111,9 @@ describe('eai login', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Authenticate with Entra CIAM');
-    expect(result.stdout).toContain('--redirect-uri');
     expect(result.stdout).toContain('--callback-port');
     expect(result.stdout).not.toContain('--client-id');
+    expect(result.stdout).not.toContain('--redirect-uri');
     expect(result.stdout).not.toContain('ENTRA_CLIENT_ID');
   });
 
@@ -187,16 +197,15 @@ describe('eai login', () => {
     await rm(tempHome, { recursive: true, force: true });
   });
 
-  test('browserLogin supports custom HTTPS redirect URIs with an explicit callback port', async () => {
+  test('browserLogin supports fixed localhost callback ports', async () => {
     const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
     const restoreHome = setTestHome(tempHome);
-    const callbackPort = 3476;
-    const redirectUri = 'https://codespace-3476.app.github.dev/oauth/callback';
+    const callbackPort = 3477;
 
     mockBrowserLauncher(async (authUrl) => {
-      expect(authUrl.searchParams.get('redirect_uri')).toBe(redirectUri);
+      expect(authUrl.searchParams.get('redirect_uri')).toBe(`http://localhost:${callbackPort}`);
 
-      const redirect = new URL(`http://127.0.0.1:${callbackPort}/oauth/callback`);
+      const redirect = new URL(`http://localhost:${callbackPort}`);
       redirect.searchParams.set('code', 'test-auth-code');
       redirect.searchParams.set('state', authUrl.searchParams.get('state') || '');
       await completeBrowserCallback(redirect.toString());
@@ -205,7 +214,7 @@ describe('eai login', () => {
     vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
       expect(init?.body).toBeInstanceOf(URLSearchParams);
       const body = init?.body as URLSearchParams;
-      expect(body.get('redirect_uri')).toBe(redirectUri);
+      expect(body.get('redirect_uri')).toBe(`http://localhost:${callbackPort}`);
 
       return new Response(JSON.stringify({
         access_token: createJwt({
@@ -230,11 +239,68 @@ describe('eai login', () => {
       'client-id-123',
       'openid profile email offline_access',
       {
-        redirectUri,
         callbackPort,
       },
     );
 
+    expect(tokens.upn).toBe('browser@example.com');
+    expect(tokens.oid).toBe('oid-123');
+
+    restoreHome();
+    await rm(tempHome, { recursive: true, force: true });
+  });
+
+  test('browserLogin waits for manual callback when remote browser opening fails', async () => {
+    const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
+    const restoreHome = setTestHome(tempHome);
+    const callbackPort = 3476;
+    let displayedAuthorizeUrl = '';
+
+    mockBrowserLauncherFailure();
+
+    vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
+      expect(init?.body).toBeInstanceOf(URLSearchParams);
+      const body = init?.body as URLSearchParams;
+      expect(body.get('redirect_uri')).toBe(`http://localhost:${callbackPort}`);
+
+      return new Response(JSON.stringify({
+        access_token: createJwt({
+          preferred_username: 'browser@example.com',
+          oid: 'oid-123',
+        }),
+        refresh_token: '<fixture-refresh-token>',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    vi.resetModules();
+    const { browserLogin } = await import('../../src/lib/auth.js');
+
+    const tokens = await browserLogin(
+      'profile-dev-tenant',
+      'dev-tenant-id',
+      'client-id-123',
+      'openid profile email offline_access',
+      {
+        callbackPort,
+        onAuthorizeUrl: (url) => {
+          displayedAuthorizeUrl = url;
+          const authUrl = new URL(url);
+          const redirect = new URL(authUrl.searchParams.get('redirect_uri') || '');
+          redirect.searchParams.set('code', 'test-auth-code');
+          redirect.searchParams.set('state', authUrl.searchParams.get('state') || '');
+          setTimeout(() => {
+            void completeBrowserCallback(redirect.toString());
+          }, 0);
+        },
+      },
+    );
+
+    expect(displayedAuthorizeUrl).toContain('/oauth2/v2.0/authorize');
     expect(tokens.upn).toBe('browser@example.com');
     expect(tokens.oid).toBe('oid-123');
 
@@ -274,7 +340,7 @@ describe('eai login', () => {
     await rm(tempHome, { recursive: true, force: true });
   });
 
-  test('browserLogin rejects non-localhost HTTP redirect URIs', async () => {
+  test('browserLogin rejects invalid callback ports', async () => {
     vi.resetModules();
     const { browserLogin } = await import('../../src/lib/auth.js');
 
@@ -284,25 +350,9 @@ describe('eai login', () => {
       'client-id-123',
       'openid profile email offline_access',
       {
-        redirectUri: 'http://codespace-3476.app.github.dev/callback',
-        callbackPort: 3476,
+        callbackPort: 0,
       },
-    )).rejects.toThrow('Non-localhost redirect URIs must use https.');
-  });
-
-  test('browserLogin requires a callback port when the redirect URI does not include one', async () => {
-    vi.resetModules();
-    const { browserLogin } = await import('../../src/lib/auth.js');
-
-    await expect(browserLogin(
-      'profile-dev-tenant',
-      'dev-tenant-id',
-      'client-id-123',
-      'openid profile email offline_access',
-      {
-        redirectUri: 'https://codespace-3476.app.github.dev/callback',
-      },
-    )).rejects.toThrow('Custom redirect URI must include an explicit port or be paired with --callback-port.');
+    )).rejects.toThrow('Callback port must be an integer between 1 and 65535.');
   });
 
   test('refresh flow includes the stored auth scope', async () => {

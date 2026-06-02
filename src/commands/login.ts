@@ -31,18 +31,18 @@ export const loginCommand = new Command('login')
   .option('--tenant-name <name>', 'CIAM tenant name')
   .option('--tenant-id <id>', 'CIAM tenant ID')
   .option('--scope <scope>', 'OAuth scopes')
-  .option('--redirect-uri <uri>', 'Custom OAuth callback URI (for example a Codespaces forwarded URL)')
-  .option('--callback-port <port>', 'Local port to listen on for the OAuth callback')
+  .option('--callback-port <port>', 'Localhost port to listen on for the OAuth callback')
   .addHelpText('after', `
 Examples:
   $ eai login
   $ eai login --tenant-name myorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
-  $ eai login --redirect-uri https://$CODESPACE_NAME-3476.$GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN/callback --callback-port 3476
+  $ eai login --callback-port 3476
   $ eai whoami
 
 What happens next:
   - The CLI opens your browser to sign you in.
-  - Custom redirect URIs must already be allowed by the Entra app registration.
+  - With --callback-port, the CLI still uses localhost and listens on that exact port.
+  - For Codespaces, run 'gh codespace ports forward -c <codespace> 3476:3476' on your local machine and keep it running while you sign in.
   - If you only have one tenant-admin membership, it becomes active automatically.
   - If you have more than one, run 'eai tenant select' to choose the tenant to work with.
   `)
@@ -76,8 +76,10 @@ What happens next:
         clientId,
         scope,
         {
-          redirectUri: options.redirectUri,
           callbackPort,
+          onAuthorizeUrl: callbackPort === undefined
+            ? undefined
+            : (url) => out.info(`Open this URL in your local browser: ${chalk.cyan(url)}`),
         },
       );
 

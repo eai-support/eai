@@ -124,7 +124,7 @@ to override it with a different repository or a local template path.
 
 | Command | Description |
 |---------|-------------|
-| `eai login` | Authenticate with Entra CIAM (browser-based PKCE flow with localhost or custom callback URI) |
+| `eai login` | Authenticate with Entra CIAM (browser-based PKCE flow with localhost callback) |
 | `eai logout` | Clear stored tokens |
 | `eai whoami` | Show auth status and project context |
 | `eai provision entra` | Create or confirm the app's Entra app registration in the CIAM for the active platform environment |
@@ -132,19 +132,22 @@ to override it with a different repository or a local template path.
 | `eai user invite --email <email>` | Add an existing user to the active tenant or an explicit tenant |
 | `eai user provision-me` | Provision yourself to the active tenant or an explicit tenant |
 
-Codespaces and other remote dev environments can use a forwarded callback URL when
-the Entra app registration already allows that redirect URI:
+Codespaces and other remote dev environments can keep the standard localhost
+callback by forwarding a fixed callback port from the Codespace to your local
+machine:
 
 ```bash
-eai login \
-  --redirect-uri "https://$CODESPACE_NAME-3476.$GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN/callback" \
-  --callback-port 3476
+# Local machine, keep this running in a separate terminal
+gh codespace ports forward -c <codespace-name> 3476:3476
+
+# Codespace terminal
+eai login --callback-port 3476
 ```
 
-`--redirect-uri` must be an allowed redirect URI on the Entra app registration.
-For non-loopback hosts it must use HTTPS. `--callback-port` is required for
-Codespaces-style forwarded URLs because the forwarded port is encoded in the
-hostname instead of the URI port.
+`eai login --callback-port <port>` still uses `http://localhost:<port>` for the
+OAuth callback; it just pins the port instead of choosing a random one. That
+keeps the public Entra app registration unchanged while allowing your local
+machine to tunnel the callback into the Codespace.
 
 ### Environment
 
@@ -237,7 +240,7 @@ The first-admin bootstrap path is intentionally narrow:
 ```
 Developer Terminal                    EAI Platform
 ──────────────────                    ────────────
-eai login ──────────────────────────→ Entra CIAM (browser PKCE + localhost or configured callback)
+eai login ──────────────────────────→ Entra CIAM (browser PKCE + localhost callback)
 eai tenant select ──────────────────→ Current-user memberships → active tenant context
 eai env pull ───────────────────────→ Azure App Config + Key Vault
 eai types seed ─────────────────────→ Platform API → Type Registry

@@ -76,17 +76,9 @@ interface CallbackServer {
 }
 
 export interface BrowserLoginOptions {
-  redirectUri?: string;
   callbackPort?: number;
+  onAuthorizeUrl?: (url: string) => void;
 }
-
-interface CallbackServerConfig {
-  readonly listenHost: string;
-  readonly listenPort: number;
-  readonly redirectUri: string;
-}
-
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 function getEncryptionKey(source = getEncryptionKeySource()): Buffer {
   return createHash('sha256').update(source).digest();
@@ -269,75 +261,12 @@ function isValidCallbackPort(port: number): boolean {
   return Number.isInteger(port) && port >= 1 && port <= 65535;
 }
 
-function normaliseHostname(hostname: string): string {
-  const withoutBrackets = hostname.startsWith('[') && hostname.endsWith(']')
-    ? hostname.slice(1, -1)
-    : hostname;
-  return withoutBrackets.toLowerCase();
-}
-
-function isLoopbackHostname(hostname: string): boolean {
-  return LOOPBACK_HOSTS.has(normaliseHostname(hostname));
-}
-
-function getLoopbackListenHost(hostname: string): string {
-  const normalised = normaliseHostname(hostname);
-  return normalised === '::1' ? '::1' : hostname;
-}
-
-function resolveCallbackServerConfig(options: BrowserLoginOptions = {}): CallbackServerConfig {
+function resolveCallbackPort(options: BrowserLoginOptions = {}): number {
   if (options.callbackPort !== undefined && !isValidCallbackPort(options.callbackPort)) {
     throw new Error('Callback port must be an integer between 1 and 65535.');
   }
 
-  if (!options.redirectUri) {
-    return {
-      listenHost: 'localhost',
-      listenPort: options.callbackPort ?? 0,
-      redirectUri: `http://localhost:${options.callbackPort ?? 0}`,
-    };
-  }
-
-  let redirectUrl: URL;
-  try {
-    redirectUrl = new URL(options.redirectUri);
-  } catch {
-    throw new Error(`Invalid redirect URI: ${options.redirectUri}`);
-  }
-
-  if (!['http:', 'https:'].includes(redirectUrl.protocol)) {
-    throw new Error('Redirect URI must use http or https.');
-  }
-
-  const loopbackHost = isLoopbackHostname(redirectUrl.hostname);
-  if (redirectUrl.protocol === 'http:' && !loopbackHost) {
-    throw new Error('Non-localhost redirect URIs must use https.');
-  }
-
-  const redirectPort = redirectUrl.port ? Number.parseInt(redirectUrl.port, 10) : undefined;
-  if (redirectPort !== undefined && !isValidCallbackPort(redirectPort)) {
-    throw new Error(`Invalid redirect URI port: ${redirectUrl.port}`);
-  }
-
-  if (options.callbackPort !== undefined && redirectPort !== undefined && options.callbackPort !== redirectPort) {
-    throw new Error(
-      `Redirect URI port ${redirectPort} does not match callback port ${options.callbackPort}.`,
-    );
-  }
-
-  const listenPort = options.callbackPort ?? redirectPort;
-  if (listenPort === undefined) {
-    throw new Error(
-      'Custom redirect URI must include an explicit port or be paired with --callback-port. ' +
-      'Codespaces forwarded URLs encode the port in the hostname, so use --callback-port to tell the CLI which local port to listen on.',
-    );
-  }
-
-  return {
-    listenHost: loopbackHost ? getLoopbackListenHost(redirectUrl.hostname) : '0.0.0.0',
-    listenPort,
-    redirectUri: redirectUrl.toString(),
-  };
+  return options.callbackPort ?? 0;
 }
 
 export function getBrowserOpenCommand(
@@ -374,7 +303,7 @@ async function startBrowserCallbackServer(
   let closed = false;
   let settled = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const callbackConfig = resolveCallbackServerConfig(options);
+  const callbackPort = resolveCallbackPort(options);
 
   let resolveResult!: (value: BrowserLoginResult) => void;
   let rejectResult!: (reason?: Error) => void;
@@ -437,10 +366,23 @@ async function startBrowserCallbackServer(
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(callbackConfig.listenPort, callbackConfig.listenHost, () => {
+    server.listen(callbackPort, 'localhost', () => {
       server.off('error', reject);
       resolve();
     });
+  }).catch((error: unknown) => {
+    if (
+      callbackPort !== 0 &&
+      error instanceof Error &&
+      'code' in error &&
+      (error as NodeJS.ErrnoException).code === 'EADDRINUSE'
+    ) {
+      throw new Error(
+        `Callback port ${callbackPort} is already in use. Choose a different port, ` +
+        `restart your local port forward, and retry login.`,
+      );
+    }
+    throw error;
   });
 
   const address = server.address();
@@ -452,7 +394,13 @@ async function startBrowserCallbackServer(
   timer = setTimeout(() => {
     if (!settled) {
       settled = true;
-      rejectResult(new Error('Timed out waiting for browser authentication callback.'));
+      rejectResult(new Error(
+        callbackPort === 0
+          ? 'Timed out waiting for browser authentication callback.'
+          : `Timed out waiting for browser authentication callback on localhost:${callbackPort}. ` +
+            `If you are in Codespaces, make sure \`gh codespace ports forward ${callbackPort}:${callbackPort}\` ` +
+            'is still running on your local machine.',
+      ));
       void close();
     }
   }, timeoutMs);
@@ -466,9 +414,7 @@ async function startBrowserCallbackServer(
   });
 
   return {
-    redirectUri: options.redirectUri
-      ? callbackConfig.redirectUri
-      : `http://localhost:${(address as AddressInfo).port}`,
+    redirectUri: `http://localhost:${(address as AddressInfo).port}`,
     waitForResult,
     close,
   };
@@ -499,14 +445,20 @@ export async function browserLogin(
     authorizeUrl.searchParams.set('state', state);
     authorizeUrl.searchParams.set('code_challenge', codeChallenge);
     authorizeUrl.searchParams.set('code_challenge_method', 'S256');
+    options.onAuthorizeUrl?.(authorizeUrl.toString());
 
     try {
       await openBrowser(authorizeUrl.toString());
     } catch (err) {
-      throw new Error(
-        `Failed to open browser automatically. Open this URL manually: ${authorizeUrl.toString()}`,
-        { cause: err },
-      );
+      // The caller has already shown the URL. Keep the callback server alive
+      // for remote terminals, such as Codespaces, where automatic browser
+      // opening may fail but the user can paste the URL into a local browser.
+      if (!options.onAuthorizeUrl) {
+        throw new Error(
+          `Failed to open browser automatically. Open this URL manually: ${authorizeUrl.toString()}`,
+          { cause: err },
+        );
+      }
     }
 
     const result = await callbackServer.waitForResult;
