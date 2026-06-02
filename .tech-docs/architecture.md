@@ -419,7 +419,7 @@ Command execution follows a template:
 ### Entra CIAM (Microsoft Identity Platform)
 - **Protocol**: OAuth 2.0 Authorization Code Flow with PKCE
 - **Endpoints**: Token endpoint, authorization endpoint
-- **Flow**: Browser-based with localhost callback
+- **Flow**: Browser-based with localhost-by-default callback and optional custom redirect URI
 - **Storage**: Tokens in `~/.eai/tokens.json` (encrypted)
 
 ### EAI Platform API
@@ -443,7 +443,7 @@ Command execution follows a template:
 ## Trust Boundaries
 
 ### 1. Authentication Boundary
-- **Untrusted**: User's browser, localhost callback
+- **Untrusted**: User's browser, OAuth callback endpoint
 - **Trusted**: Entra CIAM token endpoint
 - **Control**: PKCE prevents authorization code interception
 

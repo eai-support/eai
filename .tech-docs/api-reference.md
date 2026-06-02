@@ -79,10 +79,12 @@ Authenticate with Entra CIAM using a browser-based PKCE flow.
 - `--tenant-name <name>` — CIAM tenant name
 - `--tenant-id <id>` — CIAM tenant ID
 - `--scope <scopes>` — OAuth scopes
+- `--redirect-uri <uri>` — override the OAuth callback URI (for example a forwarded Codespaces URL)
+- `--callback-port <port>` — local port to listen on for the callback server
 
 **What it does**:
 1. Generates PKCE `code_verifier` / `code_challenge`
-2. Opens the browser to the Entra CIAM authorization endpoint and listens on a localhost callback
+2. Opens the browser to the Entra CIAM authorization endpoint and listens on a localhost callback by default, or on a configured callback URI/port when requested
 3. Exchanges the authorization code for tokens and saves them to `~/.eai/tokens.json`
 
 **External endpoint**: Entra CIAM `POST /oauth2/v2.0/token` (token exchange) — not a platform API call
