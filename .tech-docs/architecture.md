@@ -135,7 +135,7 @@ Each command follows a consistent pattern:
 - Functions include PublicAPI URL resolution, membership fetch, tenant selection, and usability refresh
 
 **PublicAPI regional routing boundary**
-- `resolvePublicApiUrl()` chooses the PublicAPI base URL in this order: named profile override, project/process `BASE_URL_PUBLIC_API`, stored active tenant `homeRegion`, authenticated session routing, then the AU production default.
+- `resolvePublicApiUrl()` chooses the PublicAPI base URL in this order: named profile override, project/process `BASE_URL_PUBLIC_API`, stored active tenant `homeRegion`, tenant management `homeRegion`, authenticated session routing, then the AU production default.
 - Session routing uses the current bearer token from `auth.ts` only against the configured bootstrap resolver. The returned `apiBaseUrl` is accepted only when it is a trusted PublicAPI host or a loopback host for local dev-stack.
 - Host-only regional responses are normalized to the PublicAPI gateway path (`/public`) before later CLI calls attach bearer tokens.
 

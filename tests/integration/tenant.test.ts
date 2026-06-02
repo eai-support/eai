@@ -20,6 +20,7 @@ import {
   filterTenantAdminEntries,
   normalizeTenantEntries,
   publicApiUrlForHomeRegion,
+  fetchTenantAdminMemberships,
   resolvePublicApiUrl,
   resolveMainCompanyTenantId,
   tenantEntryHasTenantAdminRole,
@@ -243,6 +244,103 @@ describe('tenant list filtering', () => {
     expect(publicApiUrlForHomeRegion(membership.homeRegion)).toBe(
       'https://api.ca.myenterprise.ai/public',
     );
+  });
+
+  test('HP004 hydrates missing membership homeRegion from tenant management details', async () => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/identity/tenants`) {
+        return new Response(
+          JSON.stringify({
+            tenants: [{
+              id: 'tenant-eu',
+              displayName: 'Denmark Workspace',
+              slug: 'denmark-workspace',
+              role: 'tenant-admin',
+              isActive: true,
+            }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/tenant-eu/management`) {
+        return new Response(
+          JSON.stringify({
+            id: 'tenant-eu',
+            displayName: 'Denmark Workspace',
+            slug: 'denmark-workspace',
+            homeRegion: 'eu',
+            hqCountryCode: 'DK',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(`Unhandled request: ${href}`, { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchTenantAdminMemberships(DEFAULT_PUBLIC_API_URL);
+
+    expect(result.memberships[0]?.homeRegion).toBe('eu');
+    expect(result.memberships[0]?.hqCountryCode).toBe('DK');
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/tenant-eu/management`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  test('HP005 resolves PublicAPI URL from tenant management when cached homeRegion is missing', async () => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({
+      oid: 'user-oid',
+      activeTenantId: 'tenant-eu',
+      activeTenantName: 'Denmark Workspace',
+      activeTenantSlug: 'denmark-workspace',
+      activeTenantHomeRegion: null,
+      membershipsCachedAt: Date.now(),
+    }));
+    const storeTokensSpy = vi.spyOn(auth, 'storeTokens').mockResolvedValue();
+    vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/identity/tenants`) {
+        return new Response(
+          JSON.stringify({
+            tenants: [{
+              id: 'tenant-eu',
+              displayName: 'Denmark Workspace',
+              slug: 'denmark-workspace',
+              role: 'tenant-admin',
+              isActive: true,
+            }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/tenant-eu/management`) {
+        return new Response(
+          JSON.stringify({
+            id: 'tenant-eu',
+            displayName: 'Denmark Workspace',
+            slug: 'denmark-workspace',
+            homeRegion: 'eu',
+            hqCountryCode: 'DK',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(`Unhandled request: ${href}`, { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(resolvePublicApiUrl()).resolves.toBe('https://api.eu.myenterprise.ai/public');
+
+    expect(storeTokensSpy).toHaveBeenCalledWith(expect.objectContaining({
+      activeTenantHomeRegion: 'eu',
+      activeTenantHqCountryCode: 'DK',
+    }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test('evaluates a created-only tenant as not yet usable', () => {
@@ -506,7 +604,7 @@ describe('main company tenant resolution', () => {
   test('HP001 resolves nested Builder tenants to the Builder workspace instead of EAI Developers', async () => {
     const fetchMock = vi.fn(async (url: string | URL | Request) => {
       const href = String(url);
-      if (href.endsWith('/v4/platform/tenants/builder-child')) {
+      if (href.endsWith('/v4/platform/tenants/builder-child/management')) {
         return new Response(
           JSON.stringify({
             id: 'builder-child',
@@ -517,7 +615,7 @@ describe('main company tenant resolution', () => {
           { status: 200 },
         );
       }
-      if (href.endsWith('/v4/platform/tenants/builder-workspace')) {
+      if (href.endsWith('/v4/platform/tenants/builder-workspace/management')) {
         return new Response(
           JSON.stringify({
             id: 'builder-workspace',
@@ -540,7 +638,7 @@ describe('main company tenant resolution', () => {
   test('HP002 infers Builder workspace from the EAI Developers root when tenant tier is omitted', async () => {
     const fetchMock = vi.fn(async (url: string | URL | Request) => {
       const href = String(url);
-      if (href.endsWith('/v4/platform/tenants/builder-workspace')) {
+      if (href.endsWith('/v4/platform/tenants/builder-workspace/management')) {
         return new Response(
           JSON.stringify({
             id: 'builder-workspace',
@@ -552,7 +650,7 @@ describe('main company tenant resolution', () => {
           { status: 200 },
         );
       }
-      if (href.endsWith('/v4/platform/tenants/eai-developers')) {
+      if (href.endsWith('/v4/platform/tenants/eai-developers/management')) {
         return new Response(
           JSON.stringify({
             id: 'eai-developers',
