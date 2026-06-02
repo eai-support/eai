@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v2.9.6.
+> Release-aligned documentation bundle for `@eai-tools/cli` v2.9.7.
 > Generated from `.tech-docs/` plus current CLI help output.
 
 ## Install
@@ -266,12 +266,12 @@ Notes:
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.9.6 |
+| **Version** | 2.9.7 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
-| **Current Status** | Active development (v2.9.6 released 2026-06-01) |
-| **Last Material Change** | v2.9.6: Reset public history to sanitized release (2026-06-01) |
+| **Current Status** | Active development (v2.9.7 released 2026-06-02) |
+| **Last Material Change** | v2.9.7: Add Codespaces login callback support (2026-06-02) |
 
 ## Service Identity
 
@@ -930,7 +930,7 @@ Command execution follows a template:
 ### Entra CIAM (Microsoft Identity Platform)
 - **Protocol**: OAuth 2.0 Authorization Code Flow with PKCE
 - **Endpoints**: Token endpoint, authorization endpoint
-- **Flow**: Browser-based with localhost callback
+- **Flow**: Browser-based with localhost-by-default callback and optional custom redirect URI
 - **Storage**: Tokens in `~/.eai/tokens.json` (encrypted)
 
 ### EAI Platform API
@@ -954,7 +954,7 @@ Command execution follows a template:
 ## Trust Boundaries
 
 ### 1. Authentication Boundary
-- **Untrusted**: User's browser, localhost callback
+- **Untrusted**: User's browser, OAuth callback endpoint
 - **Trusted**: Entra CIAM token endpoint
 - **Control**: PKCE prevents authorization code interception
 
@@ -1400,10 +1400,12 @@ Authenticate with Entra CIAM using a browser-based PKCE flow.
 - `--tenant-name <name>` — CIAM tenant name
 - `--tenant-id <id>` — CIAM tenant ID
 - `--scope <scopes>` — OAuth scopes
+- `--redirect-uri <uri>` — override the OAuth callback URI (for example a forwarded Codespaces URL)
+- `--callback-port <port>` — local port to listen on for the callback server
 
 **What it does**:
 1. Generates PKCE `code_verifier` / `code_challenge`
-2. Opens the browser to the Entra CIAM authorization endpoint and listens on a localhost callback
+2. Opens the browser to the Entra CIAM authorization endpoint and listens on a localhost callback by default, or on a configured callback URI/port when requested
 3. Exchanges the authorization code for tokens and saves them to `~/.eai/tokens.json`
 
 **External endpoint**: Entra CIAM `POST /oauth2/v2.0/token` (token exchange) — not a platform API call
@@ -3346,7 +3348,7 @@ flowchart TB
 
 **Network Requirements**:
 - Outbound HTTPS (port 443) required
-- No inbound connections (except localhost:3476 for OAuth callback)
+- No inbound connections beyond the local OAuth callback listener used during `eai login`
 - Proxy support via `HTTP_PROXY`, `HTTPS_PROXY` environment variables
 
 ---

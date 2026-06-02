@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-06-01T10:38:42.563Z"
-source_commit: "df12df8e25bb4006e0ab638fdd1e7519fe7eb399"
+generated_at: "2026-06-02T11:20:48.941Z"
+source_commit: "0f996ac7f0632fd345e82905c54d5f36b63a6b03"
 ---
 # EAI CLI — Overview
 
@@ -10,12 +10,12 @@ source_commit: "df12df8e25bb4006e0ab638fdd1e7519fe7eb399"
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.9.6 |
+| **Version** | 2.9.7 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
-| **Current Status** | Active development (v2.9.6 released 2026-06-01) |
-| **Last Material Change** | v2.9.6: Reset public history to sanitized release (2026-06-01) |
+| **Current Status** | Active development (v2.9.7 released 2026-06-02) |
+| **Last Material Change** | v2.9.7: Add Codespaces login callback support (2026-06-02) |
 
 ## Service Identity
 
