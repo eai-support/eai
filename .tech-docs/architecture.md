@@ -419,7 +419,7 @@ Command execution follows a template:
 ### Entra CIAM (Microsoft Identity Platform)
 - **Protocol**: OAuth 2.0 Authorization Code Flow with PKCE
 - **Endpoints**: Token endpoint, authorization endpoint
-- **Flow**: Browser-based with localhost-by-default callback and optional custom redirect URI
+- **Flow**: Browser-based with localhost callback (random port by default, fixed port when requested)
 - **Storage**: Tokens in `~/.eai/tokens.json` (encrypted)
 
 ### EAI Platform API

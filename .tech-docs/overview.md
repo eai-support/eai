@@ -15,7 +15,7 @@ source_commit: "0f996ac7f0632fd345e82905c54d5f36b63a6b03"
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
 | **Current Status** | Active development (v2.9.7 released 2026-06-02) |
-| **Last Material Change** | v2.9.7: Add Codespaces login callback support (2026-06-02) |
+| **Last Material Change** | v2.9.7: Add fixed localhost callback port support for Codespaces login (2026-06-02) |
 
 ## Service Identity
 
