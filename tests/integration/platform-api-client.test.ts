@@ -63,6 +63,22 @@ describe('PlatformAPIClient', () => {
     expect(JSON.parse(String(init?.body))).toEqual({ status: 'draft' })
   })
 
+  test('reads tenant details through the public management tenant route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.getTenant('tenant-123')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-123/management')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
   test('routes tenant deletion through the public platform router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

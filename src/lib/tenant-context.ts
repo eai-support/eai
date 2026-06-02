@@ -185,6 +185,37 @@ async function resolveRegionalPublicApiUrlFromSession(requestedTenantId?: string
   }
 }
 
+async function resolveRegionalPublicApiUrlFromTenantManagement(tokens: StoredTokens | null): Promise<string | null> {
+  if (!tokens?.activeTenantId) return null;
+
+  const bootstrapBaseUrl = process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL?.trim()
+    || DEFAULT_PUBLIC_API_URL;
+  try {
+    const client = new PlatformAPIClient(normalizeBaseUrl(bootstrapBaseUrl), tokens.activeTenantId);
+    const response = await client.getTenant(tokens.activeTenantId);
+    if (!response.ok) return null;
+
+    const detail = tenantManagementDetailRecord(await response.json());
+    if (!detail) return null;
+
+    const homeRegion = optionalStringOrNull(detail.homeRegion);
+    const regionalUrl = publicApiUrlForHomeRegion(homeRegion);
+    if (!regionalUrl) return null;
+
+    const hqCountryCode = optionalStringOrNull(detail.hqCountryCode);
+    await storeTokens({
+      ...tokens,
+      activeTenantHomeRegion: homeRegion,
+      activeTenantHqCountryCode: hqCountryCode === undefined
+        ? tokens.activeTenantHqCountryCode
+        : hqCountryCode,
+    });
+    return regionalUrl;
+  } catch {
+    return null;
+  }
+}
+
 function unique(values: Array<string | undefined>): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
 }
@@ -432,6 +463,55 @@ export function toTenantMembership(entry: TenantEntry): TenantMembership {
   };
 }
 
+function optionalStringOrNull(value: unknown): string | null | undefined {
+  if (typeof value === 'string') return value;
+  if (value === null) return null;
+  return undefined;
+}
+
+function tenantManagementDetailRecord(payload: unknown): Record<string, unknown> | null {
+  if (!isRecord(payload)) return null;
+  return isRecord(payload.tenant) ? payload.tenant : payload;
+}
+
+function mergeTenantManagementDetails(
+  membership: TenantMembership,
+  payload: unknown,
+): TenantMembership {
+  const detail = tenantManagementDetailRecord(payload);
+  if (!detail) return membership;
+
+  const homeRegion = optionalStringOrNull(detail.homeRegion);
+  const hqCountryCode = optionalStringOrNull(detail.hqCountryCode);
+
+  return {
+    ...membership,
+    homeRegion: homeRegion === undefined ? membership.homeRegion : homeRegion,
+    hqCountryCode: hqCountryCode === undefined ? membership.hqCountryCode : hqCountryCode,
+  };
+}
+
+async function hydrateTenantMembershipManagementDetails(
+  client: PlatformAPIClient,
+  memberships: TenantMembership[],
+): Promise<TenantMembership[]> {
+  return Promise.all(memberships.map(async (membership) => {
+    if (membership.homeRegion && membership.hqCountryCode) {
+      return membership;
+    }
+
+    try {
+      const response = await client.getTenant(membership.id);
+      if (!response.ok) {
+        return membership;
+      }
+      return mergeTenantManagementDetails(membership, await response.json());
+    } catch {
+      return membership;
+    }
+  }));
+}
+
 export function findTenantMembership(
   memberships: TenantMembership[],
   tenantId: string,
@@ -469,8 +549,9 @@ export function evaluateTenantUsability(
  *  1. Profile config (non-default profiles only)
  *  2. BASE_URL_PUBLIC_API from project .env.local or process env
  *  3. Active tenant homeRegion from stored login context
- *  4. PublicAPI session routing bootstrap for authenticated default profiles
- *  5. DEFAULT_PUBLIC_API_URL fallback
+ *  4. Tenant management homeRegion from PublicAPI
+ *  5. PublicAPI session routing bootstrap for authenticated default profiles
+ *  6. DEFAULT_PUBLIC_API_URL fallback
  */
 async function loadContextEnv(projectRoot?: string): Promise<Record<string, string>> {
   const root = projectRoot ?? await findProjectRoot() ?? undefined;
@@ -498,6 +579,11 @@ export async function resolvePublicApiUrl(projectRoot?: string): Promise<string>
   const storedRegionalUrl = publicApiUrlForHomeRegion(tokens?.activeTenantHomeRegion);
   if (storedRegionalUrl) {
     return storedRegionalUrl;
+  }
+
+  const tenantManagementRegionalUrl = await resolveRegionalPublicApiUrlFromTenantManagement(tokens);
+  if (tenantManagementRegionalUrl) {
+    return tenantManagementRegionalUrl;
   }
 
   const routedUrl = await resolveRegionalPublicApiUrlFromSession(tokens?.activeTenantId);
@@ -545,7 +631,10 @@ export async function fetchTenantAdminMemberships(publicApiUrl?: string): Promis
   }
 
   const payload = await response.json();
-  const memberships = filterTenantAdminEntries(normalizeTenantEntries(payload)).map(toTenantMembership);
+  const memberships = await hydrateTenantMembershipManagementDetails(
+    client,
+    filterTenantAdminEntries(normalizeTenantEntries(payload)).map(toTenantMembership),
+  );
 
   return {
     publicApiUrl: resolvedPublicApiUrl,

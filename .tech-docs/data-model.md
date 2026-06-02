@@ -303,7 +303,7 @@ interface Resource {
 
 ### Tenant
 
-**Source**: Platform API (`GET /v4/platform/tenants/{id}`)
+**Source**: Platform API (`GET /v4/platform/tenants/{id}/management`)
 
 **Schema**:
 ```typescript

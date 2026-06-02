@@ -175,7 +175,7 @@ describe('eai vertical', () => {
         });
       }
 
-      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}` && method === 'GET') {
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/management` && method === 'GET') {
         return jsonResponse({
           id: COMPANY_TENANT_ID,
           displayName: 'Builder Workspace',
@@ -185,7 +185,7 @@ describe('eai vertical', () => {
         });
       }
 
-      if (url === `${API_BASE}/v4/platform/tenants/${PLATFORM_PARENT_ID}` && method === 'GET') {
+      if (url === `${API_BASE}/v4/platform/tenants/${PLATFORM_PARENT_ID}/management` && method === 'GET') {
         return jsonResponse({
           id: PLATFORM_PARENT_ID,
           displayName: 'EAI Developers',
