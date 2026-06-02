@@ -554,13 +554,13 @@ provisionCommand
 
 provisionCommand
   .command('resourceapi-bundle')
-  .description('Prepare a customer-hosted ResourceAPI passive schema bundle')
-  .option('--schema <file>', 'Configurator object-types export JSON for local bundle generation')
+  .description('Prepare a customer-hosted storage schema bundle')
+  .option('--schema <file>', 'Object-types export JSON for local bundle generation')
   .option('--tenant-id <id>', 'Tenant ID the bundle is scoped to')
-  .option('--install-id <id>', 'Customer ResourceAPI install registry ID')
-  .option('--admin-api-url <url>', 'AdminAPI URL for Configurator-backed orchestration')
-  .option('--apply', 'Ask AdminAPI to push the signed bundle to the customer ResourceAPI install', false)
-  .option('--dry-run', 'Plan ResourceAPI schema application without applying customer storage changes', false)
+  .option('--install-id <id>', 'Customer storage install registry ID')
+  .option('--admin-api-url <url>', 'Management service URL for server-backed orchestration')
+  .option('--apply', 'Ask the management service to push the signed bundle to the customer storage install', false)
+  .option('--dry-run', 'Plan schema application without applying customer storage changes', false)
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--rebuild-search', 'Request search projection rebuild after schema sync', false)
   .option('--product <key>', 'Product/app key this bundle enables')
@@ -575,7 +575,7 @@ Examples:
   $ eai provision resourceapi-bundle --schema object-types.json --tenant-id <tenantId> --install-id <installId> --product daisy-assist --format json
 
 Notes:
-  - With --admin-api-url, AdminAPI reads Configurator as source of truth, signs the bundle, and can push it.
+  - With --admin-api-url, the management service reads the platform schema source of truth, signs the bundle, and can push it.
   - Local --schema mode is for offline inspection only and does not own provisioning policy.
   `)
   .action(async (options) => {
@@ -605,7 +605,7 @@ Notes:
 
       const token = await getAccessToken();
       if (!token) {
-        out.error('Not logged in. Run `eai login` before calling AdminAPI provisioning.');
+        out.error('Not logged in. Run `eai login` before calling server-backed provisioning.');
         process.exit(1);
       }
 
@@ -629,7 +629,7 @@ Notes:
         },
       );
       if (!response.ok) {
-        out.error(await formatJsonResponseError(response, 'ResourceAPI passive provisioning'));
+        out.error(await formatJsonResponseError(response, 'storage schema bundle provisioning'));
         process.exit(1);
       }
 
@@ -652,11 +652,11 @@ Notes:
       }
 
       if (options.apply) {
-        out.success('ResourceAPI passive bundle applied through AdminAPI');
+        out.success('Storage schema bundle applied through the management service');
       } else if (options.out) {
-        out.success(`ResourceAPI passive bundle written to ${chalk.cyan(options.out)}`);
+        out.success(`Storage schema bundle written to ${chalk.cyan(options.out)}`);
       } else {
-        out.success('ResourceAPI passive bundle prepared through AdminAPI');
+        out.success('Storage schema bundle prepared through the management service');
       }
       out.info(`Tenant: ${chalk.cyan(payload.tenantId)}`);
       out.info(`Install: ${chalk.dim(payload.installId)}`);
@@ -668,7 +668,7 @@ Notes:
     const schemaPath = String(options.schema || '').trim();
     if (!schemaPath || !options.tenantId || !options.installId) {
       out.error('--schema, --tenant-id, and --install-id are required for local bundle generation.');
-      out.info('Use --admin-api-url to let AdminAPI build the bundle from Configurator source of truth.');
+      out.info('Use --admin-api-url to let the management service build the bundle from the platform schema source of truth.');
       process.exit(1);
     }
 
@@ -692,7 +692,7 @@ Notes:
     }
 
     if (options.out) {
-      out.success(`ResourceAPI passive bundle written to ${chalk.cyan(options.out)}`);
+      out.success(`Storage schema bundle written to ${chalk.cyan(options.out)}`);
     } else {
       out.info(JSON.stringify(bundle, null, 2));
     }
