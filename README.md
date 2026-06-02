@@ -124,13 +124,27 @@ to override it with a different repository or a local template path.
 
 | Command | Description |
 |---------|-------------|
-| `eai login` | Authenticate with Entra CIAM (browser-based PKCE flow) |
+| `eai login` | Authenticate with Entra CIAM (browser-based PKCE flow with localhost or custom callback URI) |
 | `eai logout` | Clear stored tokens |
 | `eai whoami` | Show auth status and project context |
 | `eai provision entra` | Create or confirm the app's Entra app registration in the CIAM for the active platform environment |
 | `eai provision entra --rotate-secret` | Rotate the existing app registration secret and write the new value to `.env.local` |
 | `eai user invite --email <email>` | Add an existing user to the active tenant or an explicit tenant |
 | `eai user provision-me` | Provision yourself to the active tenant or an explicit tenant |
+
+Codespaces and other remote dev environments can use a forwarded callback URL when
+the Entra app registration already allows that redirect URI:
+
+```bash
+eai login \
+  --redirect-uri "https://$CODESPACE_NAME-3476.$GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN/callback" \
+  --callback-port 3476
+```
+
+`--redirect-uri` must be an allowed redirect URI on the Entra app registration.
+For non-loopback hosts it must use HTTPS. `--callback-port` is required for
+Codespaces-style forwarded URLs because the forwarded port is encoded in the
+hostname instead of the URI port.
 
 ### Environment
 
@@ -223,7 +237,7 @@ The first-admin bootstrap path is intentionally narrow:
 ```
 Developer Terminal                    EAI Platform
 ──────────────────                    ────────────
-eai login ──────────────────────────→ Entra CIAM (browser PKCE + localhost callback)
+eai login ──────────────────────────→ Entra CIAM (browser PKCE + localhost or configured callback)
 eai tenant select ──────────────────→ Current-user memberships → active tenant context
 eai env pull ───────────────────────→ Azure App Config + Key Vault
 eai types seed ─────────────────────→ Platform API → Type Registry

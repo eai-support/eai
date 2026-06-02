@@ -364,7 +364,7 @@ flowchart TB
 
 **Network Requirements**:
 - Outbound HTTPS (port 443) required
-- No inbound connections (except localhost:3476 for OAuth callback)
+- No inbound connections beyond the local OAuth callback listener used during `eai login`
 - Proxy support via `HTTP_PROXY`, `HTTPS_PROXY` environment variables
 
 ---

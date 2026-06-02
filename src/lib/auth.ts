@@ -75,6 +75,19 @@ interface CallbackServer {
   close: () => Promise<void>;
 }
 
+export interface BrowserLoginOptions {
+  redirectUri?: string;
+  callbackPort?: number;
+}
+
+interface CallbackServerConfig {
+  readonly listenHost: string;
+  readonly listenPort: number;
+  readonly redirectUri: string;
+}
+
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
 function getEncryptionKey(source = getEncryptionKeySource()): Buffer {
   return createHash('sha256').update(source).digest();
 }
@@ -252,6 +265,81 @@ function generatePkce(): PkceValues {
   return { codeVerifier, codeChallenge };
 }
 
+function isValidCallbackPort(port: number): boolean {
+  return Number.isInteger(port) && port >= 1 && port <= 65535;
+}
+
+function normaliseHostname(hostname: string): string {
+  const withoutBrackets = hostname.startsWith('[') && hostname.endsWith(']')
+    ? hostname.slice(1, -1)
+    : hostname;
+  return withoutBrackets.toLowerCase();
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return LOOPBACK_HOSTS.has(normaliseHostname(hostname));
+}
+
+function getLoopbackListenHost(hostname: string): string {
+  const normalised = normaliseHostname(hostname);
+  return normalised === '::1' ? '::1' : hostname;
+}
+
+function resolveCallbackServerConfig(options: BrowserLoginOptions = {}): CallbackServerConfig {
+  if (options.callbackPort !== undefined && !isValidCallbackPort(options.callbackPort)) {
+    throw new Error('Callback port must be an integer between 1 and 65535.');
+  }
+
+  if (!options.redirectUri) {
+    return {
+      listenHost: 'localhost',
+      listenPort: options.callbackPort ?? 0,
+      redirectUri: `http://localhost:${options.callbackPort ?? 0}`,
+    };
+  }
+
+  let redirectUrl: URL;
+  try {
+    redirectUrl = new URL(options.redirectUri);
+  } catch {
+    throw new Error(`Invalid redirect URI: ${options.redirectUri}`);
+  }
+
+  if (!['http:', 'https:'].includes(redirectUrl.protocol)) {
+    throw new Error('Redirect URI must use http or https.');
+  }
+
+  const loopbackHost = isLoopbackHostname(redirectUrl.hostname);
+  if (redirectUrl.protocol === 'http:' && !loopbackHost) {
+    throw new Error('Non-localhost redirect URIs must use https.');
+  }
+
+  const redirectPort = redirectUrl.port ? Number.parseInt(redirectUrl.port, 10) : undefined;
+  if (redirectPort !== undefined && !isValidCallbackPort(redirectPort)) {
+    throw new Error(`Invalid redirect URI port: ${redirectUrl.port}`);
+  }
+
+  if (options.callbackPort !== undefined && redirectPort !== undefined && options.callbackPort !== redirectPort) {
+    throw new Error(
+      `Redirect URI port ${redirectPort} does not match callback port ${options.callbackPort}.`,
+    );
+  }
+
+  const listenPort = options.callbackPort ?? redirectPort;
+  if (listenPort === undefined) {
+    throw new Error(
+      'Custom redirect URI must include an explicit port or be paired with --callback-port. ' +
+      'Codespaces forwarded URLs encode the port in the hostname, so use --callback-port to tell the CLI which local port to listen on.',
+    );
+  }
+
+  return {
+    listenHost: loopbackHost ? getLoopbackListenHost(redirectUrl.hostname) : '0.0.0.0',
+    listenPort,
+    redirectUri: redirectUrl.toString(),
+  };
+}
+
 export function getBrowserOpenCommand(
   url: string,
   platform: NodeJS.Platform = process.platform,
@@ -278,11 +366,15 @@ async function openBrowser(url: string): Promise<void> {
   });
 }
 
-async function startBrowserCallbackServer(timeoutMs: number): Promise<CallbackServer> {
+async function startBrowserCallbackServer(
+  timeoutMs: number,
+  options: BrowserLoginOptions = {},
+): Promise<CallbackServer> {
   const server = createServer();
   let closed = false;
   let settled = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  const callbackConfig = resolveCallbackServerConfig(options);
 
   let resolveResult!: (value: BrowserLoginResult) => void;
   let rejectResult!: (reason?: Error) => void;
@@ -345,7 +437,7 @@ async function startBrowserCallbackServer(timeoutMs: number): Promise<CallbackSe
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(0, 'localhost', () => {
+    server.listen(callbackConfig.listenPort, callbackConfig.listenHost, () => {
       server.off('error', reject);
       resolve();
     });
@@ -374,7 +466,9 @@ async function startBrowserCallbackServer(timeoutMs: number): Promise<CallbackSe
   });
 
   return {
-    redirectUri: `http://localhost:${(address as AddressInfo).port}`,
+    redirectUri: options.redirectUri
+      ? callbackConfig.redirectUri
+      : `http://localhost:${(address as AddressInfo).port}`,
     waitForResult,
     close,
   };
@@ -388,12 +482,13 @@ export async function browserLogin(
   tenantId: string,
   clientId: string,
   scope: string,
+  options: BrowserLoginOptions = {},
 ): Promise<StoredTokens> {
   const authority = `https://${tenantName}.ciamlogin.com/${tenantId}`;
   const state = base64UrlEncode(randomBytes(16));
   const { codeVerifier, codeChallenge } = generatePkce();
 
-  const callbackServer = await startBrowserCallbackServer(300_000);
+  const callbackServer = await startBrowserCallbackServer(300_000, options);
   try {
     const authorizeUrl = new URL(`${authority}/oauth2/v2.0/authorize`);
     authorizeUrl.searchParams.set('client_id', clientId);

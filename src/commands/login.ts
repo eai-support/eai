@@ -15,19 +15,34 @@ const PROD_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
 const PROD_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
 const DEFAULT_SCOPE = DEFAULT_PROD_AUTH_SCOPE;
 
+function parseCallbackPort(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+
+  const port = Number.parseInt(value, 10);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid callback port: ${value}`);
+  }
+
+  return port;
+}
+
 export const loginCommand = new Command('login')
   .description('Authenticate with Entra CIAM')
   .option('--tenant-name <name>', 'CIAM tenant name')
   .option('--tenant-id <id>', 'CIAM tenant ID')
   .option('--scope <scope>', 'OAuth scopes')
+  .option('--redirect-uri <uri>', 'Custom OAuth callback URI (for example a Codespaces forwarded URL)')
+  .option('--callback-port <port>', 'Local port to listen on for the OAuth callback')
   .addHelpText('after', `
 Examples:
   $ eai login
   $ eai login --tenant-name myorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
+  $ eai login --redirect-uri https://$CODESPACE_NAME-3476.$GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN/callback --callback-port 3476
   $ eai whoami
 
 What happens next:
   - The CLI opens your browser to sign you in.
+  - Custom redirect URIs must already be allowed by the Entra app registration.
   - If you only have one tenant-admin membership, it becomes active automatically.
   - If you have more than one, run 'eai tenant select' to choose the tenant to work with.
   `)
@@ -40,7 +55,6 @@ What happens next:
     const tenantId = options.tenantId || profileConfig?.authTenantId || PROD_TENANT_ID;
     const clientId = profileConfig?.authClientId || PROD_CLIENT_ID;
     const scope = options.scope || profileConfig?.authScope || DEFAULT_SCOPE;
-
     if (!tenantName || !tenantId || !clientId) {
       out.error(`Profile "${profile}" is missing authTenantName, authTenantId, or authClientId.`);
       out.info('Check your local profile settings and ensure all required fields are set.');
@@ -55,11 +69,16 @@ What happens next:
     out.info('Opening your browser to complete sign-in...');
 
     try {
+      const callbackPort = parseCallbackPort(options.callbackPort);
       const tokens = await browserLogin(
         tenantName,
         tenantId,
         clientId,
         scope,
+        {
+          redirectUri: options.redirectUri,
+          callbackPort,
+        },
       );
 
       // Store bare tokens now so the cache is populated for the tenant resolution call
