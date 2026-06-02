@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v2.9.7.
+> Release-aligned documentation bundle for `@eai-tools/cli` v2.9.8.
 > Generated from `.tech-docs/` plus current CLI help output.
 
 ## Install
@@ -266,12 +266,12 @@ Notes:
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.9.7 |
+| **Version** | 2.9.8 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
-| **Current Status** | Active development (v2.9.7 released 2026-06-02) |
-| **Last Material Change** | v2.9.7: Add fixed localhost callback port support for Codespaces login (2026-06-02) |
+| **Current Status** | Active development (v2.9.8 released 2026-06-02) |
+| **Last Material Change** | v2.9.8: Fix Codespaces localhost callback login (2026-06-02) |
 
 ## Service Identity
 
