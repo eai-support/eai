@@ -622,6 +622,17 @@ async function provisionEntraInline(
       idempotent: true,
     });
 
+    if (
+      result.tenantAuthorization?.warning
+      || (result.tenantAuthorization && !result.tenantAuthorization.added && !result.tenantAuthorization.alreadyAuthorized)
+    ) {
+      spinner.fail("Tenant data-plane authorization incomplete.");
+      out.warn(
+        `The app registration ${result.clientId} exists, but the tenant allowlist was not updated. Run \`eai provision entra --force --debug\` after platform access is fixed.`,
+      );
+      return false;
+    }
+
     if (result.clientSecret) {
       await patchEnvFile(targetDir, {
         ENTRA_CLIENT_ID: result.clientId,
