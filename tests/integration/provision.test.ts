@@ -20,6 +20,20 @@ const API_BASE = 'https://test-api.example.com';
 const ADMIN_API_BASE = 'https://test-admin-api.example.com';
 const PROFILE_API_BASE = 'https://profile-test.example.test/public';
 const DEV_PROFILE_API_BASE = 'https://profile-dev.example.test/public';
+const TENANT_AUTH_ADDED = {
+  tenant_authorization: {
+    added: true,
+    already_authorized: false,
+    warning: null,
+  },
+};
+const TENANT_AUTH_EXISTING = {
+  tenant_authorization: {
+    added: false,
+    already_authorized: true,
+    warning: null,
+  },
+};
 
 function setTestHome(dir: string): void {
   process.env.HOME = dir;
@@ -126,7 +140,12 @@ describe('eai provision entra', () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
-        return HttpResponse.json({ client_id: 'cid-1', client_secret: '<fixture-client-secret>', existing: false });
+        return HttpResponse.json({
+          client_id: 'cid-1',
+          client_secret: '<fixture-client-secret>',
+          existing: false,
+          ...TENANT_AUTH_ADDED,
+        });
       }),
     );
 
@@ -170,6 +189,7 @@ describe('eai provision entra', () => {
           client_secret: '<fixture-basepath-credential>',
           existing: false,
           redirectUris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+          ...TENANT_AUTH_ADDED,
         });
       }),
     );
@@ -212,6 +232,7 @@ describe('eai provision entra', () => {
           client_secret: null,
           existing: true,
           redirectUris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+          ...TENANT_AUTH_EXISTING,
         });
       }),
     );
@@ -253,6 +274,7 @@ describe('eai provision entra', () => {
           client_secret: '<fixture-bad-url-credential>',
           existing: false,
           redirectUris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
+          ...TENANT_AUTH_ADDED,
         });
       }),
     );
@@ -405,7 +427,12 @@ describe('eai provision entra', () => {
     mockServer.server.use(
       http.post(`${DEFAULT_PUBLIC_API_URL}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
-        return HttpResponse.json({ client_id: 'prod-client-id', client_secret: '<fixture-prod-credential>', existing: false });
+        return HttpResponse.json({
+          client_id: 'prod-client-id',
+          client_secret: '<fixture-prod-credential>',
+          existing: false,
+          ...TENANT_AUTH_ADDED,
+        });
       }),
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => {
         staleTokenApiHit = true;
@@ -436,7 +463,12 @@ describe('eai provision entra', () => {
 
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
-        HttpResponse.json({ client_id: 'cid-1', client_secret: null, existing: true }),
+        HttpResponse.json({
+          client_id: 'cid-1',
+          client_secret: null,
+          existing: true,
+          ...TENANT_AUTH_EXISTING,
+        }),
       ),
     );
 
@@ -445,6 +477,38 @@ describe('eai provision entra', () => {
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=cid-1');
     expect(content).toContain('EXISTING_KEY=keep-me');
+  });
+
+  test('tenant authorization warning exits before reporting provisioning as usable', { timeout: 10000 }, async () => {
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
+        HttpResponse.json({
+          client_id: 'cid-tenant-blocked',
+          client_secret: null,
+          existing: true,
+          tenant_authorization: {
+            added: false,
+            already_authorized: false,
+            warning: 'tenant_authorize_status_404',
+          },
+        }),
+      ),
+    );
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await expect(
+      provisionCommand.parseAsync(['entra', '--force'], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy, warnSpy);
+    expect(output).toContain('Tenant data-plane authorization incomplete');
+    expect(output).toContain('tenant_authorize_status_404');
   });
 
   test('force re-checks an existing local ENTRA_CLIENT_ID without expecting a new secret', { timeout: 10000 }, async () => {
@@ -458,7 +522,12 @@ describe('eai provision entra', () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
-        return HttpResponse.json({ client_id: 'remote-client', client_secret: null, existing: true });
+        return HttpResponse.json({
+          client_id: 'remote-client',
+          client_secret: null,
+          existing: true,
+          ...TENANT_AUTH_EXISTING,
+        });
       }),
     );
 
@@ -533,7 +602,12 @@ describe('eai provision entra', () => {
     mockServer.server.use(
       http.post(`${PROFILE_API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
-        return HttpResponse.json({ client_id: 'profile-client-id', client_secret: '<fixture-profile-credential>', existing: false });
+        return HttpResponse.json({
+          client_id: 'profile-client-id',
+          client_secret: '<fixture-profile-credential>',
+          existing: false,
+          ...TENANT_AUTH_ADDED,
+        });
       }),
     );
 
@@ -570,7 +644,12 @@ describe('eai provision entra', () => {
     mockServer.server.use(
       http.post(`${DEV_PROFILE_API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
-        return HttpResponse.json({ client_id: 'dev-client-id', client_secret: '<fixture-dev-credential>', existing: false });
+        return HttpResponse.json({
+          client_id: 'dev-client-id',
+          client_secret: '<fixture-dev-credential>',
+          existing: false,
+          ...TENANT_AUTH_ADDED,
+        });
       }),
     );
 
