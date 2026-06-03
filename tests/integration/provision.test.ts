@@ -17,6 +17,7 @@ import { getActiveProfile, setActiveProfile } from '../../src/lib/profile.js';
 import { DEFAULT_PUBLIC_API_URL } from '../../src/lib/tenant-context.js';
 
 const API_BASE = 'https://test-api.example.com';
+const ADMIN_API_BASE = 'https://test-admin-api.example.com';
 const PROFILE_API_BASE = 'https://profile-test.example.test/public';
 const DEV_PROFILE_API_BASE = 'https://profile-dev.example.test/public';
 
@@ -306,6 +307,76 @@ describe('eai provision entra', () => {
       dry_run: true,
       rebuild_search: true,
       provisioning_mode: 'dedicated-tenant-storage',
+    });
+  });
+
+  test('resourceapi bundle provisioning uses the AdminAPI v4 passive route', { timeout: 10000 }, async () => {
+    let requestBody: unknown;
+
+    mockServer.server.use(
+      http.get(`${API_BASE}/v4/identity/tenants`, async ({ request }) => {
+        expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
+        return HttpResponse.json({
+          tenants: [
+            {
+              id: 'test-tenant-id',
+              displayName: 'Test Tenant',
+              slug: 'test-tenant',
+              isActive: true,
+              roles: ['tenant-admin'],
+              isTenantAdmin: true,
+              homeRegion: 'au',
+              hqCountryCode: 'AU',
+            },
+          ],
+        });
+      }),
+      http.post(
+        `${ADMIN_API_BASE}/v4/platform/tenants/test-tenant-id/resourceapi/passive-bundle`,
+        async ({ request }) => {
+          expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
+          requestBody = await request.json();
+          return HttpResponse.json({
+            tenantId: 'test-tenant-id',
+            installId: 'install-1',
+            objectTypeCount: 2,
+            storageBackends: ['documentdb', 'search'],
+            bundle: { tenantId: 'test-tenant-id' },
+            applyResult: { results: [] },
+          });
+        },
+      ),
+    );
+
+    await provisionCommand.parseAsync([
+      'resourceapi-bundle',
+      '--admin-api-url',
+      ADMIN_API_BASE,
+      '--tenant-id',
+      'test-tenant-id',
+      '--install-id',
+      'install-1',
+      '--product',
+      'daisy-assist',
+      '--schema-version',
+      '42',
+      '--apply',
+      '--dry-run',
+      '--backend',
+      'all',
+      '--rebuild-search',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      installId: 'install-1',
+      productKey: 'daisy-assist',
+      schemaVersion: '42',
+      apply: true,
+      dryRun: true,
+      backend: 'all',
+      rebuildSearch: true,
     });
   });
 

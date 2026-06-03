@@ -610,7 +610,7 @@ Notes:
       }
 
       const response = await fetch(
-        `${adminApiUrl}/v1/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-bundle`,
+        `${adminApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-bundle`,
         {
           method: 'POST',
           headers: {
