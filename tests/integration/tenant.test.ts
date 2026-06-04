@@ -601,7 +601,7 @@ describe('PublicAPI URL routing order', () => {
 });
 
 describe('main company tenant resolution', () => {
-  test('HP001 resolves nested Builder tenants to the Builder workspace instead of EAI Developers', async () => {
+  test('HP001 uses the selected tenant even when public metadata includes parent fields', async () => {
     const fetchMock = vi.fn(async (url: string | URL | Request) => {
       const href = String(url);
       if (href.endsWith('/v4/platform/tenants/builder-child/management')) {
@@ -615,27 +615,17 @@ describe('main company tenant resolution', () => {
           { status: 200 },
         );
       }
-      if (href.endsWith('/v4/platform/tenants/builder-workspace/management')) {
-        return new Response(
-          JSON.stringify({
-            id: 'builder-workspace',
-            tier: 'developer',
-            parentTenantId: 'eai-developers',
-            ultimateParentId: 'eai-developers',
-          }),
-          { status: 200 },
-        );
-      }
-      return new Response('platform parent hidden from Builder users', { status: 403 });
+      return new Response('unexpected parent lookup', { status: 500 });
     });
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
       resolveMainCompanyTenantId('https://test-api.example.com', 'builder-child'),
-    ).resolves.toBe('builder-workspace');
+    ).resolves.toBe('builder-child');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  test('HP002 infers Builder workspace from the EAI Developers root when tenant tier is omitted', async () => {
+  test('HP002 uses the selected Builder workspace when tenant tier is omitted', async () => {
     const fetchMock = vi.fn(async (url: string | URL | Request) => {
       const href = String(url);
       if (href.endsWith('/v4/platform/tenants/builder-workspace/management')) {
@@ -650,28 +640,17 @@ describe('main company tenant resolution', () => {
           { status: 200 },
         );
       }
-      if (href.endsWith('/v4/platform/tenants/eai-developers/management')) {
-        return new Response(
-          JSON.stringify({
-            id: 'eai-developers',
-            displayName: 'EAI Developers',
-            slug: 'eai-developers',
-            parentTenant: null,
-            ultimateParent: 'eai-developers',
-          }),
-          { status: 200 },
-        );
-      }
-      return new Response('missing', { status: 404 });
+      return new Response('unexpected parent lookup', { status: 500 });
     });
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
       resolveMainCompanyTenantId('https://test-api.example.com', 'builder-workspace'),
     ).resolves.toBe('builder-workspace');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  test('HP003 resolves Team and Enterprise child tenants to the true customer root', async () => {
+  test('HP003 ignores ultimateParentId in public management metadata', async () => {
     const fetchMock = vi.fn(async () => new Response(
       JSON.stringify({
         id: 'team-child',
@@ -685,7 +664,7 @@ describe('main company tenant resolution', () => {
 
     await expect(
       resolveMainCompanyTenantId('https://test-api.example.com', 'team-child'),
-    ).resolves.toBe('team-root');
+    ).resolves.toBe('team-child');
   });
 
   test('BP001 rejects unresolved selected tenants instead of guessing a company root', async () => {
