@@ -15,13 +15,13 @@ async function collectSourceFiles(dir: string): Promise<string[]> {
 }
 
 describe('PublicAPI v4 migration guard', () => {
-  test('CLI runtime source does not call public v3 routes', async () => {
+  test('CLI runtime source does not call public v1 or v3 routes', async () => {
     const files = await collectSourceFiles(join(process.cwd(), 'src'));
     const offenders: string[] = [];
 
     for (const file of files) {
       const content = await readFile(file, 'utf-8');
-      if (content.includes('/v3/')) {
+      if (content.includes('/v1/') || content.includes('/v3/')) {
         offenders.push(file);
       }
     }

@@ -1121,6 +1121,7 @@ export class PlatformAPIClient {
     redirectUris: string[];
     environment: string | null;
     tenantId: string | null;
+    tenantAuthorization: TenantAuthorizationSummary | null;
     signinCompleteness: SigninCompletenessSummary | null;
   }> {
     const body = {
@@ -1160,6 +1161,8 @@ export class PlatformAPIClient {
       environment?: unknown;
       tenant_id?: unknown;
       tenantId?: unknown;
+      tenant_authorization?: unknown;
+      tenantAuthorization?: unknown;
       signin_completeness?: unknown;
       signinCompleteness?: unknown;
     };
@@ -1186,6 +1189,7 @@ export class PlatformAPIClient {
       tenantId: typeof (data.tenantId ?? data.tenant_id) === 'string'
         ? (data.tenantId ?? data.tenant_id) as string
         : null,
+      tenantAuthorization: parseTenantAuthorization(data.tenantAuthorization ?? data.tenant_authorization),
       signinCompleteness: parseSigninCompleteness(data.signinCompleteness ?? data.signin_completeness),
     };
   }
@@ -1248,6 +1252,25 @@ export interface SigninCompletenessSummary {
   publicapiPreauthorized: boolean;
   signinReady: boolean;
   warnings: string[];
+}
+
+export interface TenantAuthorizationSummary {
+  added: boolean;
+  alreadyAuthorized: boolean;
+  warning: string | null;
+}
+
+function parseTenantAuthorization(value: unknown): TenantAuthorizationSummary | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const v = value as Record<string, unknown>;
+  const warning = v.warning;
+  return {
+    added: Boolean(v.added),
+    alreadyAuthorized: Boolean(v.already_authorized ?? v.alreadyAuthorized),
+    warning: typeof warning === 'string' && warning.trim() !== '' ? warning : null,
+  };
 }
 
 function parseSigninCompleteness(value: unknown): SigninCompletenessSummary | null {

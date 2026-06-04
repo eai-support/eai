@@ -7,7 +7,12 @@ import chalk from 'chalk';
 import { readFile, writeFile } from 'node:fs/promises';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
-import { PlatformAPIClient, PlatformAPIRequestError, type SigninCompletenessSummary } from '../lib/api.js';
+import {
+  PlatformAPIClient,
+  PlatformAPIRequestError,
+  type SigninCompletenessSummary,
+  type TenantAuthorizationSummary,
+} from '../lib/api.js';
 import { getAccessToken, loadTokens } from '../lib/auth.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
@@ -276,6 +281,7 @@ Diagnostics:
       redirectUris: string[];
       environment: string | null;
       tenantId: string | null;
+      tenantAuthorization: TenantAuthorizationSummary | null;
       signinCompleteness: SigninCompletenessSummary | null;
     };
     const authRuntime = resolveAuthRuntime(env);
@@ -341,6 +347,7 @@ Diagnostics:
       } else {
         out.warn('Platform response did not include scopes/redirect URIs — set ENTRA_SCOPES manually.');
       }
+      reportTenantAuthorization(result.tenantAuthorization, result.clientId);
       reportSigninCompleteness(result.signinCompleteness, result.clientId);
       return;
     }
@@ -393,6 +400,7 @@ Diagnostics:
     // PublicAPI from a user session — sign-in then fails with AADSTS650057
     // the moment the app's BFF proxy makes its first call. Refusing to
     // exit 0 here turns that silent failure into a loud, actionable one.
+    reportTenantAuthorization(result.tenantAuthorization, result.clientId);
     reportSigninCompleteness(result.signinCompleteness, result.clientId);
   });
 
@@ -472,6 +480,33 @@ function reportSigninCompleteness(
   out.warn('  4. Re-run sign-in (clear localhost cookie / use Incognito)');
   out.warn('Or: ask your platform team to review the public provisioning support reference for this tenant.');
   process.exit(1);
+}
+
+function reportTenantAuthorization(
+  summary: TenantAuthorizationSummary | null,
+  clientId: string,
+): void {
+  if (!summary) {
+    out.warn('Tenant data-plane authorization status was not reported by PublicAPI.');
+    out.warn('Run `eai user provision-me` after provisioning to verify tenant access.');
+    return;
+  }
+
+  if (summary.warning || (!summary.added && !summary.alreadyAuthorized)) {
+    out.error('Tenant data-plane authorization incomplete — the app registration exists but PublicAPI will reject this app for the selected tenant.');
+    if (summary.warning) {
+      out.warn(`Reason: ${summary.warning}`);
+    }
+    out.warn(`App client ID: ${chalk.cyan(clientId)}`);
+    out.warn('Re-run `eai provision entra --force --debug` after the platform route is fixed, then run `eai user provision-me`.');
+    process.exit(1);
+  }
+
+  out.success(
+    summary.added
+      ? 'Tenant data-plane authorization complete: app was added to the tenant allowlist.'
+      : 'Tenant data-plane authorization complete: app was already on the tenant allowlist.',
+  );
 }
 
 // ─── eai provision storage ───────────────────────────────────────────────
@@ -610,7 +645,7 @@ Notes:
       }
 
       const response = await fetch(
-        `${adminApiUrl}/v1/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-bundle`,
+        `${adminApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-bundle`,
         {
           method: 'POST',
           headers: {
