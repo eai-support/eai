@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v2.9.9.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.0.0.
 > Generated from `.tech-docs/` plus current CLI help output.
 
 ## Install
@@ -266,12 +266,12 @@ Notes:
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.9.9 |
+| **Version** | 3.0.0 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
-| **Current Status** | Active development (v2.9.9 released 2026-06-02) |
-| **Last Material Change** | v2.9.9: Fix tenant region resolution from management endpoint (2026-06-02) |
+| **Current Status** | Active development (v3.0.0 released 2026-06-04) |
+| **Last Material Change** | v3.0.0: Release v3.0.0 (2026-06-04) |
 
 ## Service Identity
 
