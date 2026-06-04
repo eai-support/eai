@@ -289,7 +289,10 @@ JSON format (for automation):
 
 ## Machine-Readable Output
 
-All commands that return structured data support `--format json` for automation:
+Most data-returning commands that advertise `--format <format>` support
+`--format json` for automation. Check `eai --describe` or command help before
+scripting a subcommand; status-only commands such as `eai whoami` and quick
+`eai verify` are plain text today.
 
 ```bash
 # Get JSON output
@@ -299,8 +302,8 @@ eai resources list User --format json
 eai tenant list --format json | jq '.tenants[] | .slug'
 
 # Use in scripts
-if eai verify --format json | jq -e '.healthy' > /dev/null; then
-  echo "Platform is healthy"
+if eai verify calls --format json | jq -e '.summary.failed == 0' > /dev/null; then
+  echo "Platform contracts are healthy"
 fi
 ```
 
