@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-06-02T22:58:36.653Z"
-source_commit: "97b78bd4de872d51f056d78365684db512bb24bf"
+generated_at: "2026-06-04T02:49:01.157Z"
+source_commit: "946f82f568ea1a6a58bcb553b4b44e9a54fe9a69"
 ---
 # EAI CLI — Overview
 
@@ -10,12 +10,12 @@ source_commit: "97b78bd4de872d51f056d78365684db512bb24bf"
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 2.9.9 |
+| **Version** | 3.0.0 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
-| **Current Status** | Active development (v2.9.9 released 2026-06-02) |
-| **Last Material Change** | v2.9.9: Fix tenant region resolution from management endpoint (2026-06-02) |
+| **Current Status** | Active development (v3.0.0 released 2026-06-04) |
+| **Last Material Change** | v3.0.0: Release v3.0.0 (2026-06-04) |
 
 ## Service Identity
 

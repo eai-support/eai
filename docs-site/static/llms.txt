@@ -1,6 +1,6 @@
 # EAI CLI Documentation
 
-> Release-aligned documentation surfaces for `@eai-tools/cli` v2.9.9.
+> Release-aligned documentation surfaces for `@eai-tools/cli` v3.0.0.
 
 ## Install
 
