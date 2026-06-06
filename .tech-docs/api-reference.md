@@ -7,7 +7,7 @@ source_commit: "df335d77f761962bcc84d71b2c2025c700aaff47"
 
 ## Overview
 
-The EAI CLI groups its commands into scaffolding, authentication, tenant and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, app management, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
+The EAI CLI groups its commands into scaffolding, authentication, tenant and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, app management, advanced PublicAPI V4 access, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
 
 The v4 surface is grouped by domain prefix:
 
@@ -20,6 +20,10 @@ The v4 surface is grouped by domain prefix:
 | `/v4/ai` | Chat (scoped by tenant / workflow / stage) |
 | `/v4/workflows` | Runtime workflow status and binding requests |
 | `/v4/integrations` | Builder readiness |
+| `/v4/geo` | Geospatial lookup, reports, and dataset ingestion |
+| `/v4/realtime` | Realtime negotiation and alerts |
+| `/v4/verticals/daisy` | DAISY-specific runtime diagnostics |
+| `/v4/webhooks` | Controlled inbound webhook surfaces |
 
 **Base URL**: Configured via `BASE_URL_PUBLIC_API` environment variable or profile  
 **Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)  
@@ -705,6 +709,54 @@ Index a document for RAG (two-step).
 
 ---
 
+### Advanced PublicAPI V4 Commands
+
+Use named commands first for normal workflows. The `publicapi` command is the
+advanced V4-only access layer for authorized users and operators when a route
+family does not yet have a polished command.
+
+#### `eai publicapi get <path>` · `post <path>` · `patch <path>` · `put <path>` · `delete <path>`
+Call an authorized PublicAPI V4 path using the current login and active tenant
+context.
+
+**Arguments**:
+- `<path>` — PublicAPI path. It must start with `/v4/`.
+
+**Options**:
+- `--tenant-id <tenantId>` — Use a specific tenant instead of the active tenant
+- `--data <json>` — JSON request body
+- `--file <path>` — Read JSON request body from a file
+- `--param <key=value>` — Query parameter; repeat for multiple values
+- `--include-headers` — Include response headers in JSON output
+- `--format <format>` / `--json` — Output format
+
+**Examples**:
+```bash
+eai publicapi get /v4/identity/me --format json
+eai publicapi get /v4/platform/capabilities/catalog --format json
+eai publicapi post /v4/geo/resolve-location --data '{"query":"Copenhagen"}'
+eai publicapi patch /v4/identity/me/profile --file profile.json
+```
+
+**Platform API Endpoints Used**:
+- Any authorized route under `/v4/identity`
+- Any authorized route under `/v4/platform`
+- Any authorized route under `/v4/workflows`
+- Any authorized route under `/v4/ai`
+- Any authorized route under `/v4/data/resources`
+- Any authorized route under `/v4/data/documents`
+- Any authorized route under `/v4/geo`
+- Any authorized route under `/v4/realtime`
+- Any authorized route under `/v4/integrations`
+- Any authorized route under `/v4/verticals/daisy`
+- Any authorized route under `/v4/webhooks`
+
+The command does not bypass authorization. PublicAPI still validates the bearer
+token, tenant context, route policy, and platform tenant authorization for the
+called interface.
+
+---
+
 ### Deployment Commands
 
 #### `eai deploy setup`
@@ -1019,6 +1071,12 @@ Preview file-level app-template / UI drift without writing to the repo.
 
 ### Integrations
 - `GET /v4/integrations/builder/readiness` — Builder readiness check
+
+### Advanced V4 Route Families
+- `GET|POST|PATCH|PUT|DELETE /v4/geo/...` — Geospatial lookup, reports, and dataset operations through `eai publicapi`
+- `GET|POST /v4/realtime/...` — Realtime negotiation and alert diagnostics through `eai publicapi`
+- `GET|POST|PATCH|DELETE /v4/verticals/daisy/...` — DAISY-specific runtime diagnostics through `eai publicapi`
+- `POST /v4/webhooks/...` — Controlled webhook ingress; use only where the caller is authorized and the route is intended for manual diagnostics or replay
 
 ### GitHub (deploy commands)
 - `POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches` — Trigger a workflow

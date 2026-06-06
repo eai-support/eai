@@ -276,6 +276,37 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('calls arbitrary allowed PublicAPI V4 paths through the guarded request helper', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.requestPublicApi('/v4/geo/resolve-location', {
+      method: 'POST',
+      body: { query: 'Copenhagen' },
+      params: { locale: 'da-DK' },
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/geo/resolve-location?locale=da-DK')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({ query: 'Copenhagen' })
+  })
+
+  test('rejects non-v4 paths in the public request helper', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await expect(client.requestPublicApi('/v3/orchestrate', { method: 'POST' }))
+      .rejects
+      .toThrow('Only PublicAPI V4 paths are supported')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   test('rotates Entra app secrets through the public provision router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

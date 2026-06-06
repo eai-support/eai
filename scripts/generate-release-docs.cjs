@@ -16,6 +16,7 @@ const DOC_ORDER = [
   'architecture.md',
   'configuration.md',
   'api-reference.md',
+  'publicapi-v4-coverage.md',
   'data-model.md',
   'dependencies.md',
   'deployment.md',

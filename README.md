@@ -7,7 +7,7 @@
 
 Scaffold, seed, deploy, and manage applications on the EAI platform.
 
-Every command wraps platform API calls — developers work with **resources, types, tenants, and chat** using simple, intuitive commands.
+Every command wraps platform API calls — developers work with **resources, types, tenants, chat, and authorized PublicAPI V4 interfaces** using simple, intuitive commands.
 
 ## Public Repository
 
@@ -200,6 +200,22 @@ machine to tunnel the callback into the Codespace.
 | `eai docs upload <file>` | Upload a document |
 | `eai docs classify <file>` | Classify a document |
 | `eai docs index <id>` | Index a document for RAG |
+
+### PublicAPI V4
+
+| Command | Description |
+|---------|-------------|
+| `eai publicapi get <path>` | Call an authorized PublicAPI V4 GET route |
+| `eai publicapi post <path>` | Call an authorized PublicAPI V4 POST route with optional `--data` or `--file` JSON |
+| `eai publicapi patch <path>` | Call an authorized PublicAPI V4 PATCH route |
+| `eai publicapi put <path>` | Call an authorized PublicAPI V4 PUT route |
+| `eai publicapi delete <path>` | Call an authorized PublicAPI V4 DELETE route |
+
+Use named commands first for normal workflows. `eai publicapi` is the advanced
+V4-only surface for route families that do not yet have a polished command,
+such as geo, realtime, platform administration, integrations, or DAISY-specific
+diagnostics. It still uses your current login and tenant context, and PublicAPI
+still enforces platform tenant authorization.
 
 ### Deployment
 
