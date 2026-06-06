@@ -186,6 +186,7 @@ machine to tunnel the callback into the Codespace.
 | `eai tenant select [tenant]` | Choose the active tenant for platform operations |
 | `eai tenant info <id>` | Show tenant details |
 | `eai tenant create` | Create a new tenant and verify child usability truthfully |
+| `eai tenant bootstrap-admin --parent <id> --child <id>` | Repair first child-tenant admin access when the parent admin should be able to administer an existing child |
 
 ### AI & Documents
 
@@ -234,6 +235,14 @@ The first-admin bootstrap path is intentionally narrow:
 - the target must be an immediate child of that parent
 - the child must not already have a tenant admin
 - parent child allowance is enforced from `limits.tenants`
+
+For existing child tenants that were created before the bootstrap completed, a parent tenant admin can run:
+
+```bash
+eai tenant bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id>
+```
+
+By default this bootstraps the current login. To repair another known parent member, pass `--user-oid <entra-user-oid>` and optionally `--user-email <email>`.
 
 ## Architecture
 

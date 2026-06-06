@@ -95,6 +95,28 @@ describe('PlatformAPIClient', () => {
     expect(init?.body).toBeUndefined()
   })
 
+  test('routes child tenant admin bootstrap through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.bootstrapChildTenantAdmin('tenant-parent', 'tenant-child', {
+      userOid: 'user-oid',
+      userEmail: 'user@example.com',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/children/tenant-child/bootstrap-admin')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      userOid: 'user-oid',
+      userEmail: 'user@example.com',
+    })
+  })
+
   test('creates apps through the public company app route', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
