@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-06-06T00:59:21.355Z"
-source_commit: "ce6a749a29291e943dfe8dc74c6bb7e6e64fa430"
+generated_at: "2026-06-06T04:58:00.059Z"
+source_commit: "d14ed092286e34e7c7a1752d1d969134d9e19661"
 ---
 # EAI CLI — Overview
 
@@ -10,12 +10,12 @@ source_commit: "ce6a749a29291e943dfe8dc74c6bb7e6e64fa430"
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 3.0.1 |
+| **Version** | 3.1.0 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
-| **Current Status** | Active development (v3.0.1 released 2026-06-06) |
-| **Last Material Change** | v3.0.1: Add child tenant admin bootstrap command (2026-06-06) |
+| **Current Status** | Active development (v3.1.0 released 2026-06-06) |
+| **Last Material Change** | v3.1.0: Add PublicAPI v4 command access (2026-06-06) |
 
 ## Service Identity
 
