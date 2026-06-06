@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.0.0.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.0.1.
 > Generated from `.tech-docs/` plus current CLI help output.
 
 ## Install
@@ -266,12 +266,12 @@ Notes:
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 3.0.0 |
+| **Version** | 3.0.1 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
-| **Current Status** | Active development (v3.0.0 released 2026-06-04) |
-| **Last Material Change** | v3.0.0: Release v3.0.0 (2026-06-04) |
+| **Current Status** | Active development (v3.0.1 released 2026-06-06) |
+| **Last Material Change** | v3.0.1: Add child tenant admin bootstrap command (2026-06-06) |
 
 ## Service Identity
 
