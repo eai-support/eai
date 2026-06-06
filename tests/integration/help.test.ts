@@ -39,6 +39,7 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain('eai gofer refresh --check');
     expect(result.stdout).toContain('eai gofer refresh');
     expect(result.stdout).toContain('eai template check');
+    expect(result.stdout).toContain('eai publicapi get /v4/identity/me --format json');
   });
 
   test('login help explains the sign-in and tenant selection flow', async () => {
@@ -76,11 +77,12 @@ describe('CLI help output', () => {
     expect(typeof schema).toBe('object');
   });
 
-  test('verify, doctor, gofer, template, and update help include concrete examples', async () => {
+  test('verify, doctor, gofer, template, publicapi, and update help include concrete examples', async () => {
     const verifyResult = await runCommand(ctx, 'eai verify --help');
     const doctorResult = await runCommand(ctx, 'eai doctor --help');
     const goferResult = await runCommand(ctx, 'eai gofer --help');
     const templateResult = await runCommand(ctx, 'eai template --help');
+    const publicApiResult = await runCommand(ctx, 'eai publicapi --help');
     const updateResult = await runCommand(ctx, 'eai update --help');
 
     expect(verifyResult.exitCode).toBe(0);
@@ -96,6 +98,10 @@ describe('CLI help output', () => {
 
     expect(templateResult.exitCode).toBe(0);
     expect(templateResult.stdout).toContain('check');
+
+    expect(publicApiResult.exitCode).toBe(0);
+    expect(publicApiResult.stdout).toContain('eai publicapi get /v4/identity/me');
+    expect(publicApiResult.stdout).toContain('Only /v4 PublicAPI paths are accepted.');
 
     expect(updateResult.exitCode).toBe(0);
     expect(updateResult.stdout).toContain('eai update --check');

@@ -16,7 +16,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Reference',
-      items: ['api-reference', 'data-model'],
+      items: ['api-reference', 'publicapi-v4-coverage', 'data-model'],
     },
     {
       type: 'category',
