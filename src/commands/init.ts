@@ -1627,6 +1627,15 @@ Browser → Next.js App → BFF Proxy (/api/eai/*) → EAI Platform API
 
 Tokens are injected server-side by the BFF proxy. Never exposed to the browser.
 
+## App Router Rule
+
+For \`src/app/**/route.ts\` files, export only:
+
+- HTTP methods such as \`GET\`, \`POST\`, \`PUT\`, and \`PATCH\`
+- supported route config fields such as \`dynamic\`, \`runtime\`, and \`revalidate\`
+
+Do not export helper functions, dependency interfaces, or test seams from \`route.ts\`. Put those in a sibling \`handler.ts\` or a module under \`src/lib/\`, then keep \`route.ts\` as a thin wrapper.
+
 ## Object Types
 
 Defined in \`src/eai.config/object-types.ts\`. Each type maps to a platform resource with typed validation, actions, and relationship links.
