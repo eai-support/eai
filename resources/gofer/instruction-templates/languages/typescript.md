@@ -9,6 +9,17 @@
 
 ### Next.js App Router Guardrail
 
+- In `src/app/**/route.ts`, export only HTTP methods such as `GET`, `POST`,
+  `PUT`, `PATCH`, `DELETE`, `HEAD`, and `OPTIONS`
+- Only export supported route config fields such as `dynamic`, `runtime`, and
+  `revalidate`
+- Do not export helper functions, dependency interfaces, or test seams from
+  `route.ts`
+- Put reusable logic in a sibling `handler.ts` or a module under `src/lib/`,
+  then keep `route.ts` as a thin wrapper
+
+### Next.js App Router Guardrail
+
 - In `src/app/**/route.ts`, export only HTTP methods such as `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, and `OPTIONS`
 - Only export supported route config fields such as `dynamic`, `runtime`, and `revalidate`
 - Do not export helper functions, dependency interfaces, or test seams from `route.ts`
