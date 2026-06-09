@@ -223,7 +223,7 @@ export class PublicAPIMock {
    */
   mockChatSend(tenantId: string, workflowId: string, stage: string, response: string) {
     this.mockServer.mockPOST(`${this.baseURL}/v4/ai/chat/${tenantId}/${workflowId}/${stage}`, {
-      body: { response, thread_id: 'test-thread-id', stage },
+      body: { response, conversation_id: 'test-conversation-id', stage },
     });
   }
 
