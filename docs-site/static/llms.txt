@@ -1,6 +1,6 @@
 # EAI CLI Documentation
 
-> Release-aligned documentation surfaces for `@eai-tools/cli` v3.0.0.
+> Release-aligned documentation surfaces for `@eai-tools/cli` v3.1.0.
 
 ## Install
 
@@ -21,6 +21,7 @@ npm install -g @eai-tools/cli
 - [EAI CLI — Architecture](/eai/docs/architecture)
 - [EAI CLI - Configuration](/eai/docs/configuration)
 - [EAI CLI — API Reference](/eai/docs/api-reference)
+- [PublicAPI V4 Coverage Matrix](/eai/docs/publicapi-v4-coverage)
 - [EAI CLI — Data Model](/eai/docs/data-model)
 - [EAI CLI — Dependencies](/eai/docs/dependencies)
 - [EAI CLI — Deployment](/eai/docs/deployment)

@@ -95,6 +95,28 @@ describe('PlatformAPIClient', () => {
     expect(init?.body).toBeUndefined()
   })
 
+  test('routes child tenant admin bootstrap through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.bootstrapChildTenantAdmin('tenant-parent', 'tenant-child', {
+      userOid: 'user-oid',
+      userEmail: 'user@example.com',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/children/tenant-child/bootstrap-admin')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      userOid: 'user-oid',
+      userEmail: 'user@example.com',
+    })
+  })
+
   test('creates apps through the public company app route', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
@@ -235,13 +257,13 @@ describe('PlatformAPIClient', () => {
     expect(result.requestId).toBe('rwf_123')
   })
 
-  test('posts chat requests with PublicAPI thread id', async () => {
+  test('posts chat requests with PublicAPI conversation id', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
     const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
-    await client.streamChat('workflow-1', 'analyze-process', 'Hello', 'thread-123', { topic: 'onboarding' })
+    await client.streamChat('workflow-1', 'analyze-process', 'Hello', 'conv-123', { topic: 'onboarding' })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
@@ -249,9 +271,59 @@ describe('PlatformAPIClient', () => {
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({
       message: 'Hello',
-      thread_id: 'thread-123',
+      conversation_id: 'conv-123',
       params: { topic: 'onboarding' },
     })
+  })
+
+  test('posts non-streaming chat requests with PublicAPI conversation id', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.sendChat('workflow-1', 'analyze-process', 'Hello', 'conv-123', { topic: 'onboarding' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/ai/chat/tenant-parent/workflow-1/analyze-process')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      message: 'Hello',
+      conversation_id: 'conv-123',
+      params: { topic: 'onboarding' },
+    })
+  })
+
+  test('calls arbitrary allowed PublicAPI V4 paths through the guarded request helper', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.requestPublicApi('/v4/geo/resolve-location', {
+      method: 'POST',
+      body: { query: 'Copenhagen' },
+      params: { locale: 'da-DK' },
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/geo/resolve-location?locale=da-DK')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({ query: 'Copenhagen' })
+  })
+
+  test('rejects non-v4 paths in the public request helper', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await expect(client.requestPublicApi('/v3/orchestrate', { method: 'POST' }))
+      .rejects
+      .toThrow('Only PublicAPI V4 paths are supported')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test('rotates Entra app secrets through the public provision router', async () => {

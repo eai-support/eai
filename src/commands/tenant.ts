@@ -50,6 +50,15 @@ export interface TenantCreateOutcome {
   usability: TenantUsabilityStatus;
 }
 
+interface TenantBootstrapAdminCommandOptions {
+  parent: string;
+  child: string;
+  userOid?: string;
+  userEmail?: string;
+  format: string;
+  json?: boolean;
+}
+
 export function extractCreatedTenantRecord(payload: Record<string, unknown>): Record<string, unknown> {
   const nestedDoc = payload.doc;
   if (nestedDoc && typeof nestedDoc === 'object' && !Array.isArray(nestedDoc)) {
@@ -100,6 +109,34 @@ export function buildTenantCreateStatusMessages(outcome: TenantCreateOutcome): s
   } else {
     messages.push('Usable: not yet confirmed. The tenant exists, but direct tenant-admin membership is not visible yet.');
   }
+
+  return messages;
+}
+
+export function buildTenantBootstrapAdminStatusMessages(result: ChildTenantBootstrapResult): string[] {
+  const messages: string[] = [];
+
+  if (result.status === 'bootstrapped') {
+    messages.push('Bootstrap: tenant-admin access was provisioned for the target user.');
+  } else if (result.status === 'already-usable') {
+    messages.push('Bootstrap: the target user already had direct tenant-admin on the child tenant.');
+  }
+
+  messages.push(
+    result.membershipCreated
+      ? 'Membership: child tenant membership was created.'
+      : 'Membership: child tenant membership already existed or did not need creation.',
+  );
+  messages.push(
+    result.adminAssigned
+      ? 'Role: tenant-admin was assigned on the child tenant.'
+      : 'Role: tenant-admin was already assigned or did not need assignment.',
+  );
+  messages.push(
+    result.usable
+      ? 'Usable: direct tenant-admin confirmed for the child tenant.'
+      : 'Usable: not yet confirmed. Re-run `eai tenant list` or `eai whoami` after membership propagation.',
+  );
 
   return messages;
 }
@@ -401,7 +438,7 @@ tenantCommand
     'generic',
   )
   .option('--industry <industry>', 'Signup/onboarding industry segment')
-  .option('--starter-template <key>', 'Starter application template key', 'blank-vertical-template')
+  .option('--starter-template <key>', 'Starter application template key', 'eai-app-template')
   .option('--allow-root', 'Allow root tenant creation for administrative backfills', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -543,6 +580,109 @@ tenantCommand
         );
         for (const message of buildTenantCreateStatusMessages(outcome)) {
           if (message.startsWith('Usable: not yet confirmed') || message.startsWith('Bootstrap not confirmed')) {
+            out.warn(message);
+          } else if (message.startsWith('Usable:')) {
+            out.success(message);
+          } else {
+            out.info(message);
+          }
+        }
+      }
+    } catch (err) {
+      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+// ─── eai tenant bootstrap-admin ──────────────────────────────────────────
+
+tenantCommand
+  .command('bootstrap-admin')
+  .description('Bootstrap first tenant-admin access for an existing child tenant')
+  .requiredOption('--parent <id>', 'Direct parent tenant ID')
+  .requiredOption('--child <id>', 'Immediate child tenant ID')
+  .option('--user-oid <oid>', 'Target user object ID (defaults to the current login)')
+  .option('--user-email <email>', 'Target user email (defaults to the current login email when available)')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+Examples:
+  $ eai tenant bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id>
+  $ eai tenant bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id> --user-oid <entra-user-oid> --user-email user@example.com
+`)
+  .action(async (options: TenantBootstrapAdminCommandOptions) => {
+    if (options.json) options.format = 'json';
+    if (!['text', 'json'].includes(options.format)) {
+      out.error('Unsupported format. Use text or json.');
+      process.exit(1);
+    }
+
+    const root = await findProjectRoot();
+    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
+    const tokens = await loadTokens();
+    const userOid = options.userOid || tokens?.oid;
+    const userEmail = options.userEmail || tokens?.upn;
+
+    if (!userOid) {
+      const message = 'The current login is missing an oid claim. Pass --user-oid <entra-user-oid> or run `eai login` again.';
+      if (options.format === 'json') {
+        out.json({
+          parentTenantId: options.parent,
+          childTenantId: options.child,
+          bootstrapped: false,
+          error: {
+            code: 'OID_MISSING',
+            message,
+          },
+        });
+      } else {
+        out.error(message);
+      }
+      process.exit(1);
+    }
+
+    const spinner = options.format === 'json'
+      ? null
+      : ora(`Bootstrapping tenant-admin for ${userEmail || userOid} on child tenant ${options.child}...`).start();
+
+    try {
+      await resolveActiveTenantContext({
+        projectRoot: root || undefined,
+        publicApiUrl,
+        interactive: true,
+        tenantId: options.parent,
+      });
+      const client = new PlatformAPIClient(publicApiUrl, options.parent);
+      const response = await client.bootstrapChildTenantAdmin(options.parent, options.child, {
+        userOid,
+        userEmail,
+      });
+
+      if (!response.ok) {
+        const error = await parseApiError(response);
+        if (options.format === 'json') {
+          out.json({
+            parentTenantId: options.parent,
+            childTenantId: options.child,
+            userOid,
+            userEmail,
+            bootstrapped: false,
+            error,
+          });
+        } else if (spinner) {
+          const prefix = error.code ? `${error.code}: ` : '';
+          spinner.fail(`${error.status}: ${prefix}${error.message}`);
+        }
+        process.exit(1);
+      }
+
+      const result = await response.json() as ChildTenantBootstrapResult;
+      if (options.format === 'json') {
+        out.json(result);
+      } else {
+        spinner!.succeed(`Checked child tenant admin access for ${chalk.cyan(userEmail || userOid)}`);
+        for (const message of buildTenantBootstrapAdminStatusMessages(result)) {
+          if (message.startsWith('Usable: not yet confirmed')) {
             out.warn(message);
           } else if (message.startsWith('Usable:')) {
             out.success(message);

@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-06-04T02:49:01.159Z"
-source_commit: "946f82f568ea1a6a58bcb553b4b44e9a54fe9a69"
+generated_at: "2026-06-06T04:58:00.060Z"
+source_commit: "d14ed092286e34e7c7a1752d1d969134d9e19661"
 ---
 # EAI CLI — Changelog
 
@@ -67,7 +67,7 @@ registry, and release-facing AI help surfaces are expected to track this version
 ### [2.9.2] - 2026-05-28
 
 **Features**:
-- Updated chat requests to use the `thread_id` contract.
+- Updated chat requests to use the `conversation_id` contract.
 - Aligned CLI chat behavior with the current PublicAPI/AICore chat session model.
 
 **Impact**:
@@ -332,7 +332,7 @@ regional routing without removing existing CLI entry points.
 **PublicAPI v4 Migration**:
 - CLI platform calls now target PublicAPI v4 routes for user-facing workflows.
 - Older v1/v3 client vocabulary was removed from public CLI call sites where v4 homes exist.
-- Chat now uses the `thread_id` contract.
+- Chat now uses the `conversation_id` contract.
 
 **Tenant-Scoped Regional Routing**:
 - PublicAPI host selection can use the tenant home region.

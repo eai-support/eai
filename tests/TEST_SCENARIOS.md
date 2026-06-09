@@ -1389,7 +1389,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // expectAPICalledPOST('/v4/ai/chat/{tenantId}/workflow-123/chat', {
 //   message: 'What is the status?',
-//   thread_id: expectUUID()
+//   conversation_id: expectUUID()
 // })
 // expectDisplayedMessage('Response: The status is...')
 ```
@@ -1413,21 +1413,21 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // expectStreamStoppedOn('[DONE]')
 ```
 
-### Scenario 73: Chat with Custom Thread ID
+### Scenario 73: Chat with Custom Conversation ID
 **Priority**: P2
-**User Story**: As a developer, I want to continue threads
+**User Story**: As a developer, I want to continue conversations
 
 ```javascript
-// TC073: Chat with custom thread ID
+// TC073: Chat with custom conversation ID
 // Traces to: Chat-US1-AC3
 //
 // userIsLoggedIn()
-// threadExists('thread-456')
+// conversationExists('conv-456')
 //
-// runCommand('eai chat send "Follow up" --workflow workflow-123 --thread thread-456')
+// runCommand('eai chat send "Follow up" --workflow workflow-123 --conversation-id conv-456')
 //
-// expectAPICalledWithThreadID('thread-456')
-// expectThreadContextPreserved()
+// expectAPICalledWithConversationID('conv-456')
+// expectConversationContextPreserved()
 ```
 
 ### Scenario 74: Chat with Custom Stage
@@ -1502,20 +1502,20 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // expectPartialOutputDisplayed()
 ```
 
-### Scenario 78: Chat Auto-Generates Thread ID
+### Scenario 78: Chat Auto-Generates Conversation ID
 **Priority**: P2
-**User Story**: As a developer, thread ID should be optional
+**User Story**: As a developer, conversation ID should be optional
 
 ```javascript
-// TC078: Chat auto-generates thread ID
+// TC078: Chat auto-generates conversation ID
 // Traces to: Chat-US1-AC5
 //
 // userIsLoggedIn()
 //
 // runCommand('eai chat send "Hello" --workflow workflow-123')
 //
-// expectAPICalledWithThreadID(expectUUID())
-// expectThreadIDLogged()
+// expectAPICalledWithConversationID(expectUUID())
+// expectConversationIDLogged()
 ```
 
 ---

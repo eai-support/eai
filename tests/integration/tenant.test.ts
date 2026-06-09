@@ -8,6 +8,7 @@ import type { StoredTokens } from '../../src/lib/auth.js';
 import * as config from '../../src/lib/config.js';
 import * as profile from '../../src/lib/profile.js';
 import {
+  buildTenantBootstrapAdminStatusMessages,
   buildTenantCreateStatusMessages,
   buildTenantListZeroState,
   extractCreatedTenantRecord,
@@ -455,6 +456,40 @@ describe('tenant list filtering', () => {
     expect(buildTenantCreateStatusMessages(outcome)).toEqual([
       'Bootstrap not confirmed: TENANT_ACCESS_DENIED: User does not have access to tenant tenant-1',
       'Usable: direct tenant-admin confirmed and the new tenant was selected.',
+    ]);
+  });
+
+  test('describes retrospective child tenant admin bootstrap truthfully', () => {
+    expect(buildTenantBootstrapAdminStatusMessages({
+      parentTenantId: 'parent-1',
+      childTenantId: 'child-1',
+      userOid: 'user-1',
+      membershipCreated: true,
+      adminAssigned: true,
+      usable: true,
+      status: 'bootstrapped',
+      reason: null,
+    })).toEqual([
+      'Bootstrap: tenant-admin access was provisioned for the target user.',
+      'Membership: child tenant membership was created.',
+      'Role: tenant-admin was assigned on the child tenant.',
+      'Usable: direct tenant-admin confirmed for the child tenant.',
+    ]);
+
+    expect(buildTenantBootstrapAdminStatusMessages({
+      parentTenantId: 'parent-1',
+      childTenantId: 'child-1',
+      userOid: 'user-1',
+      membershipCreated: false,
+      adminAssigned: false,
+      usable: true,
+      status: 'already-usable',
+      reason: 'target_user_already_child_tenant_admin',
+    })).toEqual([
+      'Bootstrap: the target user already had direct tenant-admin on the child tenant.',
+      'Membership: child tenant membership already existed or did not need creation.',
+      'Role: tenant-admin was already assigned or did not need assignment.',
+      'Usable: direct tenant-admin confirmed for the child tenant.',
     ]);
   });
 

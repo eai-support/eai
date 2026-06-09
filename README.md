@@ -7,7 +7,7 @@
 
 Scaffold, seed, deploy, and manage applications on the EAI platform.
 
-Every command wraps platform API calls — developers work with **resources, types, tenants, and chat** using simple, intuitive commands.
+Every command wraps platform API calls — developers work with **resources, types, tenants, chat, and authorized PublicAPI V4 interfaces** using simple, intuitive commands.
 
 ## Public Repository
 
@@ -186,6 +186,7 @@ machine to tunnel the callback into the Codespace.
 | `eai tenant select [tenant]` | Choose the active tenant for platform operations |
 | `eai tenant info <id>` | Show tenant details |
 | `eai tenant create` | Create a new tenant and verify child usability truthfully |
+| `eai tenant bootstrap-admin --parent <id> --child <id>` | Repair first child-tenant admin access when the parent admin should be able to administer an existing child |
 
 ### AI & Documents
 
@@ -199,6 +200,22 @@ machine to tunnel the callback into the Codespace.
 | `eai docs upload <file>` | Upload a document |
 | `eai docs classify <file>` | Classify a document |
 | `eai docs index <id>` | Index a document for RAG |
+
+### PublicAPI V4
+
+| Command | Description |
+|---------|-------------|
+| `eai publicapi get <path>` | Call an authorized PublicAPI V4 GET route |
+| `eai publicapi post <path>` | Call an authorized PublicAPI V4 POST route with optional `--data` or `--file` JSON |
+| `eai publicapi patch <path>` | Call an authorized PublicAPI V4 PATCH route |
+| `eai publicapi put <path>` | Call an authorized PublicAPI V4 PUT route |
+| `eai publicapi delete <path>` | Call an authorized PublicAPI V4 DELETE route |
+
+Use named commands first for normal workflows. `eai publicapi` is the advanced
+V4-only surface for route families that do not yet have a polished command,
+such as geo, realtime, platform administration, integrations, or DAISY-specific
+diagnostics. It still uses your current login and tenant context, and PublicAPI
+still enforces platform tenant authorization.
 
 ### Deployment
 
@@ -234,6 +251,14 @@ The first-admin bootstrap path is intentionally narrow:
 - the target must be an immediate child of that parent
 - the child must not already have a tenant admin
 - parent child allowance is enforced from `limits.tenants`
+
+For existing child tenants that were created before the bootstrap completed, a parent tenant admin can run:
+
+```bash
+eai tenant bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id>
+```
+
+By default this bootstraps the current login. To repair another known parent member, pass `--user-oid <entra-user-oid>` and optionally `--user-email <email>`.
 
 ## Architecture
 
