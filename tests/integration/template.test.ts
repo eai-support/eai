@@ -35,7 +35,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
 
 async function createTemplateRepo(repoRoot: string): Promise<{ initialCommit: string; latestCommit: string }> {
   await mkdir(repoRoot, { recursive: true });
-  await writeFileRecursive(repoRoot, 'package.json', JSON.stringify({ name: '@eai-tools/vertical-template-fixture', version: '0.1.0' }, null, 2) + '\n');
+  await writeFileRecursive(repoRoot, 'package.json', JSON.stringify({ name: '@eai-tools/eai-app-template-fixture', version: '0.1.0' }, null, 2) + '\n');
   await writeFileRecursive(repoRoot, 'src/components/Hero.tsx', 'export function Hero() { return <div>Hero v1</div>; }\n');
   await writeFileRecursive(repoRoot, 'src/app/page.tsx', 'export default function Page() { return <Hero />; }\n');
 

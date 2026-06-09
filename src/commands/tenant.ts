@@ -438,7 +438,7 @@ tenantCommand
     'generic',
   )
   .option('--industry <industry>', 'Signup/onboarding industry segment')
-  .option('--starter-template <key>', 'Starter application template key', 'blank-vertical-template')
+  .option('--starter-template <key>', 'Starter application template key', 'eai-app-template')
   .option('--allow-root', 'Allow root tenant creation for administrative backfills', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
