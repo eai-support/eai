@@ -49,7 +49,7 @@ const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pkg = require("../../package.json") as { version: string };
 const linkedSources = require("../../resources/linked-sources.json") as {
-  verticalTemplate: { commit: string };
+  appTemplate: { commit: string };
 };
 const TEST_PUBLIC_API_URL = "https://profile-test.example.test/public";
 
@@ -63,13 +63,13 @@ function allowedCapability() {
 }
 
 async function createLocalTemplateRepo(baseDir: string): Promise<string> {
-  const templateDir = join(baseDir, "vertical-template");
+  const templateDir = join(baseDir, "eai-app-template");
   await mkdir(join(templateDir, "src", "eai.config"), { recursive: true });
   await writeFile(
     join(templateDir, "package.json"),
     JSON.stringify(
       {
-        name: "vertical-template",
+        name: "eai-app-template",
         version: "0.0.1",
         type: "module",
       },
@@ -917,18 +917,17 @@ describe("describeCloneFailure", () => {
 });
 
 describe("resolveTemplateClonePlan", () => {
-  test("treats both canonical and legacy template URLs as the default source", () => {
-    const legacyTemplateName = ["Vertical", "Template"].join("-");
-    expect(
-      isDefaultTemplateSource(
-        `https://github.com/eai-tools/${legacyTemplateName}.git`,
-      ),
-    ).toBe(true);
+  test("treats only the canonical app template URL as the default source", () => {
     expect(
       isDefaultTemplateSource(
         "https://github.com/eai-tools/eai-app-template.git",
       ),
     ).toBe(true);
+    expect(
+      isDefaultTemplateSource(
+        "https://github.com/eai-tools/old-internal-template.git",
+      ),
+    ).toBe(false);
   });
 
   test("returns the linked-source pin for the default template", () => {
@@ -938,9 +937,9 @@ describe("resolveTemplateClonePlan", () => {
     expect(plan.cloneSource).toBe(
       "https://github.com/eai-tools/eai-app-template.git",
     );
-    expect(plan.pinnedCommit).toBe(linkedSources.verticalTemplate.commit);
+    expect(plan.pinnedCommit).toBe(linkedSources.appTemplate.commit);
     expect(plan.displaySource).toBe(
-      `eai-tools/eai-app-template@${linkedSources.verticalTemplate.commit.slice(0, 7)}`,
+      `eai-tools/eai-app-template@${linkedSources.appTemplate.commit.slice(0, 7)}`,
     );
   });
 

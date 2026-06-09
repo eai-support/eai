@@ -196,7 +196,7 @@ function syncGoferResourcesFromCheckout(workdir, commit, describe) {
 function main() {
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "eai-linked-sources-"));
   const goferDir = path.join(tmpRoot, "gofer");
-  const templateDir = path.join(tmpRoot, "vertical-template");
+  const templateDir = path.join(tmpRoot, "eai-app-template");
 
   try {
     console.log(`▸ Cloning ${GOFER_REPO}`);
@@ -213,7 +213,7 @@ function main() {
         commit: goferCommit,
         describe: goferDescribe,
       },
-      verticalTemplate: buildTemplateMetadata(templateDir),
+      appTemplate: buildTemplateMetadata(templateDir),
     };
 
     const currentManifest = fs.existsSync(LINKED_SOURCES_FILE)

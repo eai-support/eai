@@ -5,9 +5,9 @@
     "commit": "6b457ddd796d13c0da957e8a57840f3ca1e8b190",
     "describe": "6b457dd"
   },
-  "verticalTemplate": {
+  "appTemplate": {
     "repo": "https://github.com/eai-tools/eai-app-template.git",
-    "commit": "517f255b35782519f4345f649681d9d4d624d128",
+    "commit": "ff28a586c2ece511fe7aaa9eb74955b43ab54560",
     "packageLockSha256": "c38d5bcf2d67dfd8229a95b1bcc0e29a03a9282df272c6c3f57e6df867e06eb6",
     "enterpriseRegistry": "https://enterpriseaigroup.github.io/enterpriseai-packages/registry",
     "enterprisePackageFingerprint": "e83d46555d947c1911b19ddafe03bff99555e633ccbe0007f190ed450dfd11ed",

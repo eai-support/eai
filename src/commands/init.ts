@@ -39,13 +39,11 @@ const require = createRequire(import.meta.url);
 const pkg = require("../../package.json") as { version: string };
 
 const TEMPLATE_REPO = "https://github.com/eai-tools/eai-app-template.git";
-const LEGACY_TEMPLATE_REPO_NAME = ["Vertical", "Template"].join("-");
-const LEGACY_TEMPLATE_REPO = `https://github.com/eai-tools/${LEGACY_TEMPLATE_REPO_NAME}.git`;
 const GITHUB_ORG = "eai-tools";
 const TEMPLATE_REPO_LABEL = `${GITHUB_ORG}/eai-app-template`;
 
 interface LinkedSourcesManifest {
-  readonly verticalTemplate?: {
+  readonly appTemplate?: {
     readonly repo?: string;
     readonly commit?: string;
   };
@@ -155,9 +153,7 @@ function loadLinkedSourcesManifest(): LinkedSourcesManifest | null {
 }
 
 export function isDefaultTemplateSource(templateSource: string): boolean {
-  return (
-    templateSource === TEMPLATE_REPO || templateSource === LEGACY_TEMPLATE_REPO
-  );
+  return templateSource === TEMPLATE_REPO;
 }
 
 export function resolveTemplateClonePlan(
@@ -171,8 +167,8 @@ export function resolveTemplateClonePlan(
   }
 
   const linkedSources = loadLinkedSourcesManifest();
-  const cloneSource = linkedSources?.verticalTemplate?.repo || TEMPLATE_REPO;
-  const pinnedCommit = linkedSources?.verticalTemplate?.commit;
+  const cloneSource = linkedSources?.appTemplate?.repo || TEMPLATE_REPO;
+  const pinnedCommit = linkedSources?.appTemplate?.commit;
 
   return {
     cloneSource,
@@ -910,7 +906,7 @@ async function createTenantAppForInit(
       ? { parentTenantId: immediateParentTenantId }
       : {}),
     ...(childTenantDisplayName ? { childTenantDisplayName } : {}),
-    templateKey: "blank-vertical-template",
+    templateKey: "eai-app-template",
     source: "eai-cli",
     usecase: "generic",
   });
