@@ -67,7 +67,7 @@ registry, and release-facing AI help surfaces are expected to track this version
 ### [2.9.2] - 2026-05-28
 
 **Features**:
-- Updated chat requests to use the `thread_id` contract.
+- Updated chat requests to use the `conversation_id` contract.
 - Aligned CLI chat behavior with the current PublicAPI/AICore chat session model.
 
 **Impact**:
@@ -332,7 +332,7 @@ regional routing without removing existing CLI entry points.
 **PublicAPI v4 Migration**:
 - CLI platform calls now target PublicAPI v4 routes for user-facing workflows.
 - Older v1/v3 client vocabulary was removed from public CLI call sites where v4 homes exist.
-- Chat now uses the `thread_id` contract.
+- Chat now uses the `conversation_id` contract.
 
 **Tenant-Scoped Regional Routing**:
 - PublicAPI host selection can use the tenant home region.

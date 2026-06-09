@@ -801,7 +801,7 @@ export class PlatformAPIClient {
     workflowId: string,
     stage: string,
     message: string,
-    threadId: string,
+    conversationId: string,
     params?: Record<string, unknown>,
   ): Promise<Response> {
     return fetch(
@@ -811,7 +811,7 @@ export class PlatformAPIClient {
         headers: await this.headers(),
         body: JSON.stringify({
           message,
-          thread_id: threadId,
+          conversation_id: conversationId,
           params: params || {},
         }),
       },
@@ -822,7 +822,7 @@ export class PlatformAPIClient {
     workflowId: string,
     stage: string,
     message: string,
-    threadId: string,
+    conversationId: string,
     params?: Record<string, unknown>,
   ): Promise<Response> {
     return fetch(
@@ -832,7 +832,7 @@ export class PlatformAPIClient {
         headers: await this.headers(),
         body: JSON.stringify({
           message,
-          thread_id: threadId,
+          conversation_id: conversationId,
           params: params || {},
         }),
       },

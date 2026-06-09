@@ -558,7 +558,7 @@ Inspect and reconcile tenant storage.
 
 ### AI Chat Commands
 
-Chat is scoped by **tenant / workflow / stage**. The tenant comes from the active context; `--workflow` is required; `--stage` defaults to `chat`. A `thread_id` (from `--thread`, or an auto-generated UUID) is sent in the request body.
+Chat is scoped by **tenant / workflow / stage**. The tenant comes from the active context; `--workflow` is required; `--stage` defaults to `chat`. A `conversation_id` (from `--conversation-id`, or an auto-generated UUID) is sent in the request body.
 
 #### `eai chat send <message>`
 Send a single chat message.
@@ -568,10 +568,10 @@ Send a single chat message.
 **Options**:
 - `--workflow <id>` — Workflow ID (required)
 - `--stage <stage>` — Chat stage (default: `chat`)
-- `--thread <id>` — Thread ID (auto-generated UUID if omitted)
+- `--conversation-id <id>` — Conversation ID (auto-generated UUID if omitted)
 
 **Platform API Endpoints Used**:
-- `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` — body `{ message, thread_id, params }`
+- `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` — body `{ message, conversation_id, params }`
 
 ---
 
@@ -583,7 +583,7 @@ Stream a chat response over SSE.
 **Options**:
 - `--workflow <id>` — Workflow ID (required)
 - `--stage <stage>` — Chat stage (default: `chat`)
-- `--thread <id>` — Thread ID (auto-generated UUID if omitted)
+- `--conversation-id <id>` — Conversation ID (auto-generated UUID if omitted)
 
 **Platform API Endpoints Used**:
 - `POST /v4/ai/chat/stream/{tenantId}/{workflowId}/{stage}` — SSE; terminated by a `data: [DONE]` sentinel
