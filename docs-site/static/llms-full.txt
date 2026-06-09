@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.1.0.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.1.1.
 > Generated from `.tech-docs/` plus current CLI help output.
 
 ## Install
@@ -271,12 +271,12 @@ Notes:
 | Property | Value |
 |----------|-------|
 | **Service Name** | `@eai-tools/cli` (eai) |
-| **Version** | 3.1.0 |
+| **Version** | 3.1.1 |
 | **Primary Capability** | Developer CLI for scaffolding, managing, and deploying applications on the EAI Platform |
 | **Primary Users** | Enterprise AI application developers, DevOps engineers, and platform operators |
 | **Data Sensitivity** | Low (CLI tool; stores encrypted auth tokens locally in `~/.eai/`; no persistent user data storage) |
-| **Current Status** | Active development (v3.1.0 released 2026-06-06) |
-| **Last Material Change** | v3.1.0: Add PublicAPI v4 command access (2026-06-06) |
+| **Current Status** | Active development (v3.1.1 released 2026-06-09) |
+| **Last Material Change** | v3.1.1: Standardize chat identity on conversation_id (2026-06-09) |
 
 ## Service Identity
 
@@ -1486,7 +1486,7 @@ Create a new tenant and bootstrap admin access.
 - `--domain <domains>` — Comma-separated domain list
 - `--usecase <usecase>` — `council|retail|healthcare|finance|manufacturing|generic` (default: `generic`)
 - `--industry <industry>` — Signup/onboarding industry segment
-- `--starter-template <key>` — Starter application template key (default: `eai-app-template`)
+- `--starter-template <key>` — Starter application template key (default: `blank-vertical-template`)
 - `--allow-root` — Allow root tenant creation for administrative backfills
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -4401,7 +4401,7 @@ registry, and release-facing AI help surfaces are expected to track this version
 The v2.9.x series maintains backward compatibility with v2.8.x. Stable
 compatibility identifiers such as `eai vertical`, `--vertical`,
 `EAI_VERTICAL_KEY`, `verticalKey`, `tenant-vertical-enrollment`,
-`vertical-product-config`, and `eai-app-template` remain available while
+`vertical-product-config`, and `blank-vertical-template` remain available while
 the public documentation moves toward application/app terminology.
 
 ### Last Breaking Change: v2.6.0 (2026-04-15)
