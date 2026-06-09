@@ -55,6 +55,23 @@ function findChatRequest(fetchMock: ReturnType<typeof vi.fn>) {
   return call!;
 }
 
+async function expectRetiredThreadOptionRejected(args: string[]) {
+  const fetchMock = vi.fn();
+  const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  vi.stubGlobal('fetch', fetchMock);
+  const [commandName, ...commandArgs] = args;
+  const command = chatCommand.commands.find((candidate) => candidate.name() === commandName);
+  expect(command).toBeDefined();
+  command!.exitOverride();
+
+  await expect(command!.parseAsync(commandArgs, { from: 'user' })).rejects.toMatchObject({
+    code: 'commander.unknownOption',
+    message: expect.stringContaining("--thread"),
+  });
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining("unknown option '--thread'"));
+}
+
 describe('chat command conversation identity', () => {
   let env: TestEnvironment | undefined;
   let ctx: TestContext | undefined;
@@ -192,5 +209,27 @@ describe('chat command conversation identity', () => {
 
     expect(help).toContain('--conversation-id');
     expect(help).not.toContain('--thread');
+  });
+
+  test('BP002 CHAT-CMD-001: send rejects retired --thread before making a chat request', async () => {
+    await expectRetiredThreadOptionRejected([
+      'send',
+      'Hello',
+      '--workflow',
+      'workflow-1',
+      '--thread',
+      'legacy-thread',
+    ]);
+  });
+
+  test('BP003 CHAT-CMD-001: stream rejects retired --thread before making a chat request', async () => {
+    await expectRetiredThreadOptionRejected([
+      'stream',
+      'Hello',
+      '--workflow',
+      'workflow-1',
+      '--thread',
+      'legacy-thread',
+    ]);
   });
 });
