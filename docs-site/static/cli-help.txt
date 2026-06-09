@@ -64,7 +64,7 @@ Development Workflows:
 
   # See what is published for the active tenant
   eai resources schema
-  eai vertical create "My App" --template blank-vertical-template
+  eai vertical create "My App" --template eai-app-template
 
   # Query resources and inspect data
   eai resources list User --limit 10

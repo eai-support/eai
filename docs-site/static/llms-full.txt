@@ -77,7 +77,7 @@ Development Workflows:
 
   # See what is published for the active tenant
   eai resources schema
-  eai vertical create "My App" --template blank-vertical-template
+  eai vertical create "My App" --template eai-app-template
 
   # Query resources and inspect data
   eai resources list User --limit 10
@@ -1486,7 +1486,7 @@ Create a new tenant and bootstrap admin access.
 - `--domain <domains>` — Comma-separated domain list
 - `--usecase <usecase>` — `council|retail|healthcare|finance|manufacturing|generic` (default: `generic`)
 - `--industry <industry>` — Signup/onboarding industry segment
-- `--starter-template <key>` — Starter application template key (default: `blank-vertical-template`)
+- `--starter-template <key>` — Starter application template key (default: `eai-app-template`)
 - `--allow-root` — Allow root tenant creation for administrative backfills
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -4401,7 +4401,7 @@ registry, and release-facing AI help surfaces are expected to track this version
 The v2.9.x series maintains backward compatibility with v2.8.x. Stable
 compatibility identifiers such as `eai vertical`, `--vertical`,
 `EAI_VERTICAL_KEY`, `verticalKey`, `tenant-vertical-enrollment`,
-`vertical-product-config`, and `blank-vertical-template` remain available while
+`vertical-product-config`, and `eai-app-template` remain available while
 the public documentation moves toward application/app terminology.
 
 ### Last Breaking Change: v2.6.0 (2026-04-15)

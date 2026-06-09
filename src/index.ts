@@ -129,7 +129,7 @@ ${chalk.bold('Development Workflows:')}
 
   ${chalk.dim('# See what is published for the active tenant')}
   ${chalk.cyan('eai resources schema')}
-  ${chalk.cyan('eai vertical create "My App" --template blank-vertical-template')}
+  ${chalk.cyan('eai vertical create "My App" --template eai-app-template')}
 
   ${chalk.dim('# Query resources and inspect data')}
   ${chalk.cyan('eai resources list User --limit 10')}
