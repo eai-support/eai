@@ -136,4 +136,49 @@ describe('eai template check', () => {
     expectDisplayedMessage(result, 'src/components/Hero.tsx');
     expectDisplayedMessage(result, 'src/components/Badge.tsx');
   });
+
+  test('warns when App Router route.ts files export unsupported symbols', async () => {
+    const templateRepo = join(tmpdir(), `eai-template-source-${Date.now()}-routes`);
+    const { initialCommit } = await createTemplateRepo(templateRepo);
+
+    await writeFileRecursive(env.dir, 'package.json', JSON.stringify({
+      name: '@eai-tools/template-check-routes-fixture',
+      version: '0.0.1',
+      dependencies: {
+        '@enterpriseaigroup/core': '1.0.0',
+      },
+    }, null, 2) + '\n');
+    await writeFileRecursive(env.dir, 'src/eai.config/object-types.ts', 'export const objectTypes = {};\n');
+    await writeFileRecursive(env.dir, 'src/app/api/demo/route.ts', [
+      "import { NextRequest, NextResponse } from 'next/server';",
+      '',
+      'export interface DemoDeps {',
+      '  readonly name: string;',
+      '}',
+      '',
+      'export async function runDemo(_request: NextRequest): Promise<NextResponse> {',
+      "  return NextResponse.json({ ok: true });",
+      '}',
+      '',
+      'export async function GET(request: NextRequest): Promise<NextResponse> {',
+      '  return runDemo(request);',
+      '}',
+      '',
+    ].join('\n'));
+    await writeFileRecursive(env.dir, '.eai-manifest.json', JSON.stringify({
+      schemaVersion: 1,
+      template: {
+        repo: templateRepo,
+        commit: initialCommit,
+        displaySource: `${templateRepo}@${initialCommit.slice(0, 7)}`,
+      },
+    }, null, 2) + '\n');
+
+    const result = await runCommand(ctx, 'eai template check');
+
+    expectCommandSucceeded(result);
+    expectDisplayedMessage(result, 'App Router route export audit found unsupported exports');
+    expectDisplayedMessage(result, 'src/app/api/demo/route.ts: DemoDeps, runDemo');
+    expectDisplayedMessage(result, 'Move reusable helpers, dependency interfaces, and test seams into a sibling `handler.ts` or a lib module.');
+  });
 });
