@@ -54,7 +54,7 @@ chatCommand
 
 chatCommand
   .command('stream')
-  .description('Stream a chat thread (interactive)')
+  .description('Stream a chat conversation (interactive)')
   .argument('<message>', 'Initial message')
   .requiredOption('--workflow <id>', 'Workflow ID')
   .option('--stage <stage>', 'Chat stage', 'chat')

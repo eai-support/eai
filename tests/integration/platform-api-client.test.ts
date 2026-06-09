@@ -276,6 +276,25 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('posts non-streaming chat requests with PublicAPI conversation id', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.sendChat('workflow-1', 'analyze-process', 'Hello', 'conv-123', { topic: 'onboarding' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/ai/chat/tenant-parent/workflow-1/analyze-process')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      message: 'Hello',
+      conversation_id: 'conv-123',
+      params: { topic: 'onboarding' },
+    })
+  })
+
   test('calls arbitrary allowed PublicAPI V4 paths through the guarded request helper', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
