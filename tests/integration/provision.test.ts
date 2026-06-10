@@ -234,7 +234,7 @@ describe('eai provision entra', () => {
         'NEXT_PUBLIC_APP_NAME=no-code-builder',
         'APP_BASE_PATH=/no-code-builder',
         'AUTH_URL=http://localhost:3000/no-code-builder',
-        'ENTRA_CLIENT_SECRET=<fixture-existing-secret>',
+        'ENTRA_CLIENT_SECRET=<fixture-existing-credential>',
         'ENTRA_REDIRECT_URIS=http://localhost:3000/api/auth/callback/microsoft-entra-id',
         '',
       ].join('\n'),
@@ -476,7 +476,7 @@ describe('eai provision entra', () => {
   test('existing registration: preserves .env.local keys and confirms ENTRA_CLIENT_ID when a local secret is already present', { timeout: 10000 }, async () => {
     await writeFile(
       join(env.dir, '.env.local'),
-      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_SECRET=<fixture-existing-secret>\nEXISTING_KEY=keep-me\n`,
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\nEXISTING_KEY=keep-me\n`,
     );
 
     mockServer.server.use(
@@ -494,7 +494,7 @@ describe('eai provision entra', () => {
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=cid-1');
-    expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-existing-secret>');
+    expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-existing-credential>');
     expect(content).toContain('EXISTING_KEY=keep-me');
   });
 
@@ -568,7 +568,7 @@ describe('eai provision entra', () => {
   test('tenant authorization warning exits before reporting provisioning as usable', { timeout: 10000 }, async () => {
     await writeFile(
       join(env.dir, '.env.local'),
-      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_SECRET=<fixture-existing-secret>\n`,
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\n`,
     );
 
     mockServer.server.use(
@@ -607,7 +607,7 @@ describe('eai provision entra', () => {
 
     await writeFile(
       join(env.dir, '.env.local'),
-      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_ID=local-client\nENTRA_CLIENT_SECRET=<fixture-existing-secret>\n`,
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_ID=local-client\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\n`,
     );
 
     mockServer.server.use(
