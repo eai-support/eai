@@ -16,6 +16,10 @@ export interface TestContext {
   prompts: Array<{ question: string; answer: string }>;
 }
 
+const PROD_AUTH_TENANT_NAME = 'enterpriseaiplatform';
+const PROD_AUTH_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
+const PROD_AUTH_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
+
 function resolveTestHome(ctx?: TestContext): string {
   return ctx?.env.HOME || ctx?.workingDir || requireCurrentHome();
 }
@@ -55,9 +59,9 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
     expiresAt: opts?.expired ? Date.now() - 1000 : Date.now() + 3600000,
     upn: opts?.email || 'test@example.com',
     oid: 'test-user-oid',
-    tenantId: opts?.tenant || 'test-tenant-id',
-    tenantName: opts?.tenant || 'test-tenant',
-    clientId: 'test-client-id',
+    tenantId: PROD_AUTH_TENANT_ID,
+    tenantName: PROD_AUTH_TENANT_NAME,
+    clientId: PROD_AUTH_CLIENT_ID,
     activeTenantId: opts?.tenant || 'test-tenant-id',
     activeTenantName: opts?.tenant || 'test-tenant',
     activeTenantSlug: opts?.tenant || 'test-tenant',

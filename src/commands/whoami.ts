@@ -4,7 +4,7 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { loadTokens, isAuthenticated } from '../lib/auth.js';
+import { loadTokens, isAuthenticated, getActiveAuthConfigMismatch, resolveAuthConfig } from '../lib/auth.js';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import { fetchTenantAdminMemberships, getStoredActiveTenant, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import { getActiveProfile } from '../lib/profile.js';
@@ -32,9 +32,13 @@ export const whoamiCommand = new Command('whoami')
     }
 
     const activeTenant = getStoredActiveTenant(tokens);
-    const publicApiUrl = await resolvePublicApiUrl();
+    const root = await findProjectRoot();
+    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
+    const authConfig = await resolveAuthConfig(root || undefined, profileName);
     out.table([
       ['Profile', profileName === 'default' ? chalk.dim('default') : chalk.cyan(profileName)],
+      ['Login Target', `${authConfig.tenantName} ${chalk.dim(`(${authConfig.tenantId})`)}`],
+      ['CLI Client ID', chalk.dim(authConfig.clientId)],
       ['Authority Tenant', tokens.tenantName],
       ['Authority Tenant ID', chalk.dim(tokens.tenantId)],
       ['Active Tenant', activeTenant ? activeTenant.displayName : chalk.dim('not selected')],
@@ -43,6 +47,11 @@ export const whoamiCommand = new Command('whoami')
       ['Expires', new Date(tokens.expiresAt).toLocaleString()],
       ['Status', authenticated ? chalk.green('Active') : chalk.red('Expired')],
     ]);
+
+    const authMismatch = await getActiveAuthConfigMismatch(tokens, root || undefined);
+    if (authMismatch) {
+      out.warn(authMismatch);
+    }
 
     if (!activeTenant) {
       out.info(`Run ${chalk.cyan('eai tenant select')} to choose the tenant to work with.`);
@@ -56,7 +65,6 @@ export const whoamiCommand = new Command('whoami')
     }
 
     // Show project context if in an app project
-    const root = await findProjectRoot();
     if (root) {
       const env = await loadEnvFile(root);
       const appName = env.NEXT_PUBLIC_APP_NAME;
