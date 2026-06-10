@@ -1,5 +1,14 @@
 # CLAUDE.md
 
+## Feature Test Ownership
+
+- When creating, updating, or removing feature behavior, update the owned tests in the same repo and PR. Do not hand feature testing to `eai-testing-dev` unless the deployed canary, route/config contract, auth/tenant smoke, or release evidence surface changes.
+- Broad browser click-through paths belong in the owning frontend repo's Playwright CI/preview suite with controlled fixtures. Keep them out of prod cross-service checks except for stable read-only canaries and monitoring.
+- Provider/data oddities belong in provider contract tests, mocked edge-case tests, and safe non-prod live provider smokes owned by the repo that implements the provider surface.
+- Entra UI/session/cookie changes require controlled auth UI/session tests in the owning frontend repo. Deployed login-smoke plus role/tenant canaries live in `enterpriseaigroup/eai-testing-dev`.
+- EAI CLI behavior is owned by `enterpriseaigroup/eai` through `ci/eai-cli-tests`; `eai-testing-dev` only keeps deployed read-only CLI canaries and release-observability evidence aligned.
+- Release/SRP evidence changes must keep CI check names, required-test metadata, coverage mappings, and any `eai-testing-dev` dispatch aliases in sync before promotion enforcement is tightened.
+
 See @AGENTS.md for project conventions, commands, and code style.
 
 ## Workflow
