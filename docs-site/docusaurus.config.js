@@ -1,21 +1,29 @@
 // @ts-check
 
-import { themes as prismThemes } from 'prism-react-renderer';
+import { themes as prismThemes } from "prism-react-renderer";
+
+const siteUrl =
+  process.env.EAI_DOCS_SITE_URL || "https://eai-tools.github.io";
+const baseUrl = process.env.EAI_DOCS_BASE_URL || "/eai/";
+const normalizedSiteUrl = siteUrl.replace(/\/$/, "");
+const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+const absoluteSitePath = (path) =>
+  `${normalizedSiteUrl}${normalizedBaseUrl}${path.replace(/^\//, "")}`;
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: 'EAI CLI',
-  tagline: 'Technical documentation and scenario library for the EAI CLI',
-  favicon: 'img/favicon.ico',
-  url: 'https://eai-tools.github.io',
-  baseUrl: '/eai/',
-  organizationName: 'eai-tools',
-  projectName: 'eai',
-  deploymentBranch: 'gh-pages',
+  title: "EAI Documentation",
+  tagline: "CLI, gofer, app template, examples, and business scenarios",
+  favicon: "img/favicon.ico",
+  url: siteUrl,
+  baseUrl,
+  organizationName: "eai-tools",
+  projectName: "eai",
+  deploymentBranch: "gh-pages",
   trailingSlash: false,
-  onBrokenLinks: 'warn',
+  onBrokenLinks: "warn",
   markdown: {
-    format: 'md',
+    format: "md",
     mermaid: false,
     mdx1Compat: {
       comments: true,
@@ -23,93 +31,113 @@ const config = {
       headingIds: true,
     },
     hooks: {
-      onBrokenMarkdownLinks: 'warn',
-      onBrokenMarkdownImages: 'warn',
+      onBrokenMarkdownLinks: "warn",
+      onBrokenMarkdownImages: "warn",
     },
   },
   i18n: {
-    defaultLocale: 'en',
-    locales: ['en'],
+    defaultLocale: "en",
+    locales: ["en"],
   },
   presets: [
     [
-      'classic',
+      "classic",
       {
         docs: {
-          path: '../.tech-docs',
-          sidebarPath: './sidebars.js',
-          exclude: ['legacy-src/**'],
-          onInlineTags: 'ignore',
+          path: "../.tech-docs",
+          sidebarPath: "./sidebars.js",
+          exclude: [
+            "legacy-src/**",
+            "architecture.md",
+            "changelog.md",
+            "data-model.md",
+            "dependencies.md",
+            "deployment.md",
+            "documentation-surfaces.md",
+            "overview.md",
+            "publicapi-v4-coverage.md",
+            "review/**",
+          ],
+          onInlineTags: "ignore",
         },
         blog: false,
         pages: false,
         theme: {
-          customCss: './src/css/custom.css',
+          customCss: "./src/css/custom.css",
         },
       },
     ],
   ],
   plugins: [
     [
-      '@docusaurus/plugin-content-docs',
+      "@docusaurus/plugin-content-docs",
       {
-        id: 'scenarios',
-        path: 'scenarios',
-        routeBasePath: 'scenarios',
-        sidebarPath: './sidebars.scenarios.js',
-        onInlineTags: 'ignore',
+        id: "scenarios",
+        path: "scenarios",
+        routeBasePath: "scenarios",
+        sidebarPath: "./sidebars.scenarios.js",
+        onInlineTags: "ignore",
       },
     ],
     [
-      '@docusaurus/plugin-content-pages',
+      "@docusaurus/plugin-content-pages",
       {
-        path: 'src/pages',
-        routeBasePath: '/',
+        path: "src/pages",
+        routeBasePath: "/",
       },
     ],
   ],
   themeConfig: {
     navbar: {
-      title: 'EAI CLI',
+      title: "EAI Docs",
       items: [
         {
-          type: 'docSidebar',
-          sidebarId: 'docsSidebar',
-          position: 'left',
-          label: 'Documentation',
+          type: "docSidebar",
+          sidebarId: "docsSidebar",
+          position: "left",
+          label: "Docs",
         },
         {
-          type: 'doc',
-          docId: 'index',
-          docsPluginId: 'scenarios',
-          position: 'left',
-          label: 'Scenarios',
+          type: "doc",
+          docId: "examples/index",
+          position: "left",
+          label: "Examples",
         },
         {
-          href: 'https://github.com/eai-tools/eai/releases',
-          label: 'Releases',
-          position: 'left',
+          type: "doc",
+          docId: "index",
+          docsPluginId: "scenarios",
+          position: "left",
+          label: "Scenarios",
         },
         {
-          href: 'https://github.com/eai-tools/eai',
-          label: 'GitHub',
-          position: 'right',
+          href: "https://github.com/eai-tools/eai/releases",
+          label: "Releases",
+          position: "left",
+        },
+        {
+          href: "https://github.com/eai-tools/eai",
+          label: "GitHub",
+          position: "right",
         },
       ],
     },
     footer: {
-      style: 'dark',
+      style: "dark",
       links: [
         {
-          title: 'Docs',
+          title: "Docs",
           items: [
-            {label: 'Overview', to: '/docs/overview'},
-            {label: 'API Reference', to: '/docs/api-reference'},
-            {label: 'Configuration', to: '/docs/configuration'},
-            {label: 'Scenarios', to: '/scenarios'},
+            { label: "Start Here", to: "/docs/start-here" },
+            { label: "EAI CLI", to: "/docs/eai-cli" },
+            { label: "eai-gofer", to: "/docs/eai-gofer" },
+            { label: "EAI App Template", to: "/docs/eai-app-template" },
+            { label: "Examples", to: "/docs/examples/" },
+            { label: "API Reference", to: "/docs/api-reference" },
+            { label: "Scenarios", to: "/scenarios" },
             {
-              label: 'Registry',
-              href: 'https://eai-tools.github.io/eai/registry/',
+              label: "Registry",
+              href: absoluteSitePath("registry/"),
             },
           ],
         },
@@ -119,7 +147,7 @@ const config = {
     prism: {
       theme: prismThemes.github,
       darkTheme: prismThemes.dracula,
-      additionalLanguages: ['bash', 'json', 'typescript'],
+      additionalLanguages: ["bash", "json", "typescript"],
     },
   },
 };

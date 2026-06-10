@@ -22,15 +22,13 @@ The v4 surface is grouped by domain prefix:
 | `/v4/integrations` | Builder readiness |
 | `/v4/geo` | Geospatial lookup, reports, and dataset ingestion |
 | `/v4/realtime` | Realtime negotiation and alerts |
-| `/v4/verticals/daisy` | DAISY-specific runtime diagnostics |
 | `/v4/webhooks` | Controlled inbound webhook surfaces |
 
-**Base URL**: Configured via `BASE_URL_PUBLIC_API` environment variable or profile  
-**Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)  
-**Client Class**: `PlatformAPIClient` in `src/lib/api.ts`  
+- **Base URL**: Configured via `BASE_URL_PUBLIC_API` environment variable or profile
+- **Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)
 **Global Flags**: `--simple`, `--no-color`, `--color`, `--profile <name>`, `--describe`, `-V`
 
-> **Note on `eai env`:** `env pull` and `env push` do **not** call the platform API. They talk to **Azure App Configuration** and **Azure Key Vault** directly (via the Azure SDK / `az` CLI). They are configuration-plane operations, not PublicAPI calls.
+> **Note on `eai env`:** `env pull` and `env push` are configuration-plane operations. They do not call PublicAPI and may require organization-specific cloud access.
 
 ---
 
@@ -253,22 +251,22 @@ Provision platform storage backends for the active tenant.
 
 ### Environment Commands
 
-> `env pull` / `env push` use Azure App Configuration and Key Vault directly — **not** the platform API.
+> `env pull` / `env push` use the configured cloud configuration and secret stores directly. They are **not** platform API calls.
 
 #### `eai env pull`
 Sync cloud config into the local `.env.local`.
 
 **Options**:
-- `--env <environment>` — `dev`, `test`, or `prod` (default: `dev`)
-- `--label <label>` — App Config label (defaults to the app name)
-- `--include-secrets` — Resolve Key Vault references
+- `--env <environment>` — Environment profile, such as `dev`, `test`, or `prod` (default: `dev`)
+- `--label <label>` — Configuration label (defaults to the app name)
+- `--include-secrets` — Resolve secret references when authorized
 
 **What it does**:
-1. Reads non-secret config from Azure App Configuration (Azure SDK)
-2. Resolves Key Vault references when `--include-secrets` is set
+1. Reads non-secret config from the organization cloud configuration store
+2. Resolves secret references when `--include-secrets` is set
 3. Writes the merged values to `.env.local`
 
-**No platform API calls** — Azure App Configuration / Key Vault only
+**No platform API calls** — configuration plane only
 
 ---
 
@@ -287,12 +285,12 @@ Show current environment variables (secrets masked by default).
 Push local config overrides to the cloud (admin).
 
 **Options**:
-- `--label <label>` — App Config label
+- `--label <label>` — Configuration label
 - `--key <key>` — Push a single key
 
-**What it does**: Writes values to Azure App Configuration via the `az` CLI.
+**What it does**: Writes values to the configured cloud configuration store.
 
-**No platform API calls** — Azure App Configuration only
+**No platform API calls** — configuration plane only
 
 ---
 
@@ -613,15 +611,15 @@ Provision a usecase-agnostic workflow config and bind it to a tenant app. Option
 - `--ai-profile-key <key>` — Reusable `shared-ai-profile` key
 - `--status <status>` — `active` or `draft` (default: `active`)
 - `--write-local-env` — Patch `.env.local` with generated env values
-- `--write-app-config` — Write generated env values to Azure App Configuration
-- `--env <environment>` / `--label <label>` — Azure App Configuration target (default env: `dev`)
+- `--write-app-config` — Write generated env values to the configured cloud configuration store
+- `--env <environment>` / `--label <label>` — Cloud configuration target (default env: `dev`)
 - `--format <format>` — Output format (text|json, default: text)
 
 **What it does** (upsert pattern — list, then create or update):
 1. Upserts a `shared-workflow-config` resource record
 2. Upserts a `vertical-product-config` binding record
 3. With `--bind-ai-runtime`, also upserts `shared-ai-profile` and `shared-chatbot-config` records
-4. With `--write-app-config`, writes env values to Azure App Configuration (Azure SDK, not PublicAPI)
+4. With `--write-app-config`, writes env values to the cloud configuration store (not PublicAPI)
 
 **Platform API Endpoints Used**:
 - `GET` then `POST`/`PUT` `/v4/data/resources/{tenantId}/shared-workflow-config`
@@ -1075,14 +1073,13 @@ Preview file-level app-template / UI drift without writing to the repo.
 ### Advanced V4 Route Families
 - `GET|POST|PATCH|PUT|DELETE /v4/geo/...` — Geospatial lookup, reports, and dataset operations through `eai publicapi`
 - `GET|POST /v4/realtime/...` — Realtime negotiation and alert diagnostics through `eai publicapi`
-- `GET|POST|PATCH|DELETE /v4/verticals/daisy/...` — DAISY-specific runtime diagnostics through `eai publicapi`
 - `POST /v4/webhooks/...` — Controlled webhook ingress; use only where the caller is authorized and the route is intended for manual diagnostics or replay
 
 ### GitHub (deploy commands)
 - `POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches` — Trigger a workflow
 - `GET /repos/{owner}/{repo}/actions/runs` — Fetch workflow runs
 
-> **Configuration plane (not PublicAPI):** `eai env pull` / `eai env push` use **Azure App Configuration** and **Azure Key Vault** directly.
+> **Configuration plane (not PublicAPI):** `eai env pull` / `eai env push` use the configured cloud configuration and secret stores directly.
 
 ## Global Flags
 

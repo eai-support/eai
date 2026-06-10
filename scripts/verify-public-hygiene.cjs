@@ -55,6 +55,47 @@ const SKIP_PATHS = [
   /\.woff2?$/,
 ];
 
+const INTERNAL_DOC_PATHS = [
+  '.tech-docs/architecture.md',
+  '.tech-docs/changelog.md',
+  '.tech-docs/data-model.md',
+  '.tech-docs/dependencies.md',
+  '.tech-docs/deployment.md',
+  '.tech-docs/documentation-surfaces.md',
+  '.tech-docs/overview.md',
+  '.tech-docs/publicapi-v4-coverage.md',
+  '.tech-docs/review/code-quality.md',
+  '.tech-docs/review/patterns.md',
+];
+
+const PUBLIC_SURFACE_FILES = [
+  'docs-site/sidebars.js',
+  'scripts/generate-release-docs.cjs',
+  '.github/workflows/docs.yml',
+  'docs-site/static/llms.txt',
+  'docs-site/static/llms-full.txt',
+];
+
+const FORBIDDEN_PUBLIC_SURFACE_PATTERNS = [
+  ['internal docs path', /\.tech-docs\/review\b/g],
+  ['review route', /\breview\/(?:code-quality|patterns)\b/g],
+  ['architecture route', /(?:docs\/architecture|architecture\.md|["']architecture["'])/g],
+  ['data model route', /(?:docs\/data-model|data-model\.md|["']data-model["'])/g],
+  ['dependency route', /(?:docs\/dependencies|dependencies\.md|["']dependencies["'])/g],
+  ['deployment route', /(?:docs\/deployment|deployment\.md|["']deployment["'])/g],
+  ['documentation surfaces route', /(?:docs\/documentation-surfaces|documentation-surfaces\.md|["']documentation-surfaces["'])/g],
+  ['overview route', /(?:docs\/overview|overview\.md|["']overview["'])/g],
+  ['coverage route', /(?:docs\/publicapi-v4-coverage|publicapi-v4-coverage\.md|["']publicapi-v4-coverage["'])/g],
+  ['architecture title', /EAI CLI — Architecture/g],
+  ['data model title', /EAI CLI — Data Model/g],
+  ['dependency title', /EAI CLI — Dependencies/g],
+  ['deployment title', /EAI CLI — Deployment/g],
+  ['documentation surfaces title', /Documentation Surfaces/g],
+  ['coverage title', /PublicAPI V4 Coverage Matrix/g],
+  ['code quality review title', /Code Quality Review/g],
+  ['patterns review title', /Patterns & Tech Debt/g],
+];
+
 function trackedFiles() {
   const output = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT });
   return output.toString('utf8').split('\0').filter(Boolean);
@@ -66,6 +107,9 @@ function shouldSkip(file) {
 
 function readTextFile(file) {
   const absolutePath = path.join(ROOT, file);
+  if (!fs.existsSync(absolutePath)) {
+    return null;
+  }
   const buffer = fs.readFileSync(absolutePath);
   if (buffer.includes(0)) {
     return null;
@@ -79,7 +123,32 @@ function lineNumberForOffset(text, offset) {
 
 const findings = [];
 
-for (const file of trackedFiles()) {
+const files = trackedFiles();
+
+for (const internalPath of INTERNAL_DOC_PATHS) {
+  if (fs.existsSync(path.join(ROOT, internalPath))) {
+    findings.push({
+      file: internalPath,
+      line: 1,
+      label: 'Internal generated documentation must not live in the public docs source',
+    });
+  }
+}
+
+for (const file of files) {
+  if (
+    INTERNAL_DOC_PATHS.includes(file) &&
+    fs.existsSync(path.join(ROOT, file))
+  ) {
+    findings.push({
+      file,
+      line: 1,
+      label: 'Internal generated documentation must not be tracked in the public repository',
+    });
+  }
+}
+
+for (const file of files) {
   if (shouldSkip(file)) {
     continue;
   }
@@ -114,8 +183,27 @@ for (const file of trackedFiles()) {
   }
 }
 
+for (const file of PUBLIC_SURFACE_FILES) {
+  const text = readTextFile(file);
+  if (text === null) {
+    continue;
+  }
+
+  for (const [label, pattern] of FORBIDDEN_PUBLIC_SURFACE_PATTERNS) {
+    pattern.lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      findings.push({
+        file,
+        line: lineNumberForOffset(text, match.index),
+        label: `Forbidden public docs exposure: ${label}`,
+      });
+    }
+  }
+}
+
 if (findings.length > 0) {
-  console.error('Public hygiene check failed. Replace secret-looking literals with obvious placeholders.');
+  console.error('Public hygiene check failed. Remove private docs exposure and replace secret-looking literals with obvious placeholders.');
   for (const finding of findings) {
     console.error(`- ${finding.file}:${finding.line} ${finding.label}`);
   }

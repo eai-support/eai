@@ -49,7 +49,7 @@ jobs:
         run: |
           REQUIRED_FILES=(
             "docs-site/build/index.html"
-            "docs-site/build/docs/overview.html"
+            "docs-site/build/docs/start-here.html"
             "docs-site/build/registry/index.html"
             "docs-site/build/llms.txt"
             "docs-site/build/llms-full.txt"
@@ -74,3 +74,66 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+
+      - name: Mint website docs PR token
+        id: website-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.EAI_WEBSITE_DOCS_APP_ID || vars.EAI_DEPLOY_APP_ID || vars.EAI_TESTING_APP_ID }}
+          private-key: ${{ secrets.EAI_WEBSITE_DOCS_APP_PRIVATE_KEY || secrets.EAI_DEPLOY_APP_PRIVATE_KEY || secrets.EAI_TESTING_APP_PRIVATE_KEY }}
+          owner: EAI-Website
+          repositories: |
+            com.enterpriseaigroup
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Checkout enterpriseaigroup.com website
+        if: steps.website-token.outcome == 'success' && steps.website-token.outputs.token != ''
+        uses: actions/checkout@v6
+        with:
+          repository: EAI-Website/com.enterpriseaigroup
+          token: ${{ steps.website-token.outputs.token }}
+          path: website
+
+      - name: Build website-hosted Docusaurus copy
+        if: steps.website-token.outcome == 'success' && steps.website-token.outputs.token != ''
+        env:
+          EAI_DOCS_SITE_URL: https://www.enterpriseaigroup.com
+          EAI_DOCS_BASE_URL: /docs/eai/
+        run: cd docs-site && npm run build
+
+      - name: Sync generated EAI docs into website repo
+        if: steps.website-token.outcome == 'success' && steps.website-token.outputs.token != ''
+        run: |
+          rm -rf website/public/docs/eai
+          mkdir -p website/public/docs/eai
+          cp -R docs-site/build/. website/public/docs/eai/
+
+      - name: Create website EAI docs sync PR
+        if: steps.website-token.outcome == 'success' && steps.website-token.outputs.token != ''
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ steps.website-token.outputs.token }}
+          path: website
+          branch: codex/sync-eai-docs
+          delete-branch: true
+          commit-message: "docs: sync EAI documentation site"
+          title: "docs: sync EAI documentation site"
+          body: |
+            Syncs the generated EAI Docusaurus documentation site into `public/docs/eai`
+            for hosting at `https://www.enterpriseaigroup.com/docs/eai/`.
+
+            Source deployment: `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`
+            Source commit: `${{ github.sha }}`
+
+            The source of truth remains `eai-tools/eai`; this PR only updates the
+            website-hosted static copy.
+          labels: |
+            documentation
+            automation
+
+      - name: Warn when website docs sync was skipped
+        if: steps.website-token.outcome != 'success' || steps.website-token.outputs.token == ''
+        run: |
+          echo "::warning::Skipped enterpriseaigroup.com docs sync because the website GitHub App token is not configured or could not be minted."
