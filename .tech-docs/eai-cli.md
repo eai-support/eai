@@ -14,10 +14,11 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.0 |
+| Version | 3.2.1 |
 | Released | 2026-06-10 |
-| Last Material Change | Pin latest app template and Gofer release sources |
-| Source Commit | `381af9872f4f17a329f3393619227cdf1f2c3537` |
+| Last Material Change | Harden auth config and provisioning safety |
+| Source Commit | `208b85d9aa3a399c46c55d6a7d0b11492c3b17a6` |
+
 
 ## Common Workflow
 

@@ -14,7 +14,8 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.0** (2026-06-10): Pin latest app template and Gofer release sources.
+The current CLI release is **v3.2.1** (2026-06-10): Harden auth config and provisioning safety.
+
 
 ## What The Pieces Do
 
