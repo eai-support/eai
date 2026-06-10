@@ -20,6 +20,13 @@ const API_BASE = 'https://test-api.example.com';
 const ADMIN_API_BASE = 'https://test-admin-api.example.com';
 const PROFILE_API_BASE = 'https://profile-test.example.test/public';
 const DEV_PROFILE_API_BASE = 'https://profile-dev.example.test/public';
+const PROD_AUTH_TENANT_NAME = 'enterpriseaiplatform';
+const PROD_AUTH_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
+const PROD_AUTH_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
+const EXAMPLE_AUTH_TENANT_NAME = 'example-ciam';
+const EXAMPLE_AUTH_TENANT_ID = '00000000-0000-4000-8000-000000000001';
+const EXAMPLE_PUBLIC_API_SCOPE = 'api://00000000-0000-4000-8000-000000000002/.default';
+const EXAMPLE_CLI_CLIENT_ID = '00000000-0000-4000-8000-000000000003';
 const TENANT_AUTH_ADDED = {
   tenant_authorization: {
     added: true,
@@ -35,6 +42,12 @@ const TENANT_AUTH_EXISTING = {
   },
 };
 
+function createJwt(payload: Record<string, string>): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  return `${header}.${body}.signature`;
+}
+
 function setTestHome(dir: string): void {
   process.env.HOME = dir;
   process.env.USERPROFILE = dir;
@@ -49,22 +62,26 @@ async function setupProject(dir: string): Promise<void> {
   );
 }
 
-async function storeTestTokens(dir: string): Promise<void> {
+async function storeTestTokens(
+  dir: string,
+  overrides?: Partial<Parameters<typeof storeTokens>[0]>,
+): Promise<void> {
   setTestHome(dir);
   await storeTokens({
-    accessToken: '<fixture-access-token>',
+    accessToken: overrides?.accessToken ?? '<fixture-access-token>',
     refreshToken: '<fixture-refresh-token>',
     expiresAt: Date.now() + 3600000,
     upn: 'test@example.com',
     oid: 'test-oid',
-    tenantId: 'test-tenant-id',
-    tenantName: 'test-tenant',
-    clientId: 'test-client-id',
+    tenantId: PROD_AUTH_TENANT_ID,
+    tenantName: PROD_AUTH_TENANT_NAME,
+    clientId: PROD_AUTH_CLIENT_ID,
     activeTenantId: 'test-tenant-id',
     activeTenantName: 'Test Tenant',
     activeTenantSlug: 'test-tenant',
     publicApiUrl: API_BASE,
     membershipsCachedAt: Date.now(),
+    ...overrides,
   });
 }
 
@@ -217,6 +234,7 @@ describe('eai provision entra', () => {
         'NEXT_PUBLIC_APP_NAME=no-code-builder',
         'APP_BASE_PATH=/no-code-builder',
         'AUTH_URL=http://localhost:3000/no-code-builder',
+        'ENTRA_CLIENT_SECRET=<fixture-existing-credential>',
         'ENTRA_REDIRECT_URIS=http://localhost:3000/api/auth/callback/microsoft-entra-id',
         '',
       ].join('\n'),
@@ -410,9 +428,9 @@ describe('eai provision entra', () => {
       expiresAt: Date.now() + 3600000,
       upn: 'test@example.com',
       oid: 'test-oid',
-      tenantId: 'test-tenant-id',
-      tenantName: 'test-tenant',
-      clientId: 'test-client-id',
+      tenantId: PROD_AUTH_TENANT_ID,
+      tenantName: PROD_AUTH_TENANT_NAME,
+      clientId: PROD_AUTH_CLIENT_ID,
       activeTenantId: 'test-tenant-id',
       activeTenantName: 'Test Tenant',
       activeTenantSlug: 'test-tenant',
@@ -455,10 +473,10 @@ describe('eai provision entra', () => {
     expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-prod-credential>');
   });
 
-  test('existing registration: preserves .env.local keys and confirms ENTRA_CLIENT_ID', { timeout: 10000 }, async () => {
+  test('existing registration: preserves .env.local keys and confirms ENTRA_CLIENT_ID when a local secret is already present', { timeout: 10000 }, async () => {
     await writeFile(
       join(env.dir, '.env.local'),
-      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nEXISTING_KEY=keep-me\n`,
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\nEXISTING_KEY=keep-me\n`,
     );
 
     mockServer.server.use(
@@ -476,10 +494,83 @@ describe('eai provision entra', () => {
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=cid-1');
+    expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-existing-credential>');
     expect(content).toContain('EXISTING_KEY=keep-me');
   });
 
+  test('existing registration without a usable local secret exits with a rotate-secret instruction', { timeout: 10000 }, async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_SECRET=empty\n`,
+    );
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
+        HttpResponse.json({
+          client_id: 'cid-1',
+          client_secret: null,
+          existing: true,
+          ...TENANT_AUTH_EXISTING,
+        }),
+      ),
+    );
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      provisionCommand.parseAsync(['entra', '--force'], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).toContain('No usable ENTRA_CLIENT_SECRET is available locally');
+    expect(output).toContain('eai provision entra --rotate-secret');
+  });
+
+  test('placeholder ENTRA_CLIENT_ID values do not short-circuit provisioning', { timeout: 10000 }, async () => {
+    let requestBody: unknown;
+
+    await writeFile(
+      join(env.dir, '.env.local'),
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_ID=empty\nENTRA_CLIENT_SECRET=empty\n`,
+    );
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          client_id: 'fresh-client-id',
+          client_secret: '<fixture-fresh-secret>',
+          existing: false,
+          ...TENANT_AUTH_ADDED,
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra'], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'my-vertical',
+      redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      idempotent: true,
+    });
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('ENTRA_CLIENT_ID=fresh-client-id');
+    expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-fresh-secret>');
+  });
+
   test('tenant authorization warning exits before reporting provisioning as usable', { timeout: 10000 }, async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\n`,
+    );
+
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.json({
@@ -516,7 +607,7 @@ describe('eai provision entra', () => {
 
     await writeFile(
       join(env.dir, '.env.local'),
-      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_ID=local-client\n`,
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_ID=local-client\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\n`,
     );
 
     mockServer.server.use(
@@ -595,7 +686,11 @@ describe('eai provision entra', () => {
         },
       }, null, 2),
     );
-    await storeTestTokens(env.dir);
+    await storeTestTokens(env.dir, {
+      tenantName: 'profile-test-tenant',
+      tenantId: 'test-ciam-tenant-id',
+      clientId: 'test-cli-client-id',
+    });
 
     let requestBody: unknown;
 
@@ -637,7 +732,11 @@ describe('eai provision entra', () => {
         },
       }, null, 2),
     );
-    await storeTestTokens(env.dir);
+    await storeTestTokens(env.dir, {
+      tenantName: 'profile-dev-tenant',
+      tenantId: 'dev-ciam-tenant-id',
+      clientId: 'dev-cli-client-id',
+    });
 
     let requestBody: unknown;
 
@@ -670,9 +769,9 @@ describe('eai provision entra', () => {
       expiresAt: Date.now() + 3600000,
       upn: 'test@example.com',
       oid: 'test-oid',
-      tenantId: 'test-tenant-id',
-      tenantName: 'test-tenant',
-      clientId: 'test-client-id',
+      tenantId: PROD_AUTH_TENANT_ID,
+      tenantName: PROD_AUTH_TENANT_NAME,
+      clientId: PROD_AUTH_CLIENT_ID,
       publicApiUrl: API_BASE,
     });
 
@@ -700,6 +799,53 @@ describe('eai provision entra', () => {
     expect(output).toContain('Failed to resolve active tenant.');
     expectNoProvisionInternals(output);
     expect(output).not.toContain('tenant membership lookup failed');
+  });
+
+  test('auth-config mismatch exits before tenant resolution with a re-login instruction', { timeout: 10000 }, async () => {
+    await storeTokens({
+      accessToken: createJwt({
+        aud: '833fc5ab-f1c9-4c60-b344-64e366f241cc',
+        preferred_username: 'test@example.com',
+        oid: 'test-oid',
+      }),
+      refreshToken: '<fixture-refresh-token>',
+      expiresAt: Date.now() + 3600000,
+      upn: 'test@example.com',
+      oid: 'test-oid',
+      tenantId: 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26',
+      tenantName: 'enterpriseaiplatform',
+      clientId: 'd704bde5-fe36-44ff-9a26-221d53772dd0',
+    });
+
+    await writeFile(
+      join(env.dir, '.env.local'),
+      [
+        `BASE_URL_PUBLIC_API=${API_BASE}`,
+        'NEXT_PUBLIC_APP_NAME=my-vertical',
+        `ENTRA_TENANT_NAME=${EXAMPLE_AUTH_TENANT_NAME}`,
+        `ENTRA_TENANT_ID=${EXAMPLE_AUTH_TENANT_ID}`,
+        `ENTRA_SCOPES=openid profile email offline_access ${EXAMPLE_PUBLIC_API_SCOPE}`,
+        '',
+      ].join('\n'),
+    );
+    process.env.EAI_CLI_CLIENT_ID = EXAMPLE_CLI_CLIENT_ID;
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      provisionCommand.parseAsync(['entra'], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).toContain('Stored CLI login does not match the active auth configuration');
+    expect(output).toContain('Run `eai login` again');
+
+    delete process.env.EAI_CLI_CLIENT_ID;
   });
 
   test('HTTP 403: exits with code 1 and reports permission denied', { timeout: 10000 }, async () => {

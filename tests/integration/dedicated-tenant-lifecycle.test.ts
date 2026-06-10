@@ -5,6 +5,11 @@ import { join } from 'node:path';
 import { createMockServer } from '../helpers/mock-server.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { storeTokens, clearTokens } from '../../src/lib/auth.js';
+import {
+  DEFAULT_PROD_AUTH_CLIENT_ID,
+  DEFAULT_PROD_AUTH_TENANT_ID,
+  DEFAULT_PROD_AUTH_TENANT_NAME,
+} from '../../src/lib/profile.js';
 import { tenantCommand } from '../../src/commands/tenant.js';
 import { provisionCommand } from '../../src/commands/provision.js';
 import { PlatformAPIClient } from '../../src/lib/api.js';
@@ -39,9 +44,9 @@ async function storeTestTokens(dir: string): Promise<void> {
     expiresAt: Date.now() + 3600000,
     upn: 'test@example.com',
     oid: 'test-oid',
-    tenantId: 'root-tenant-id',
-    tenantName: 'root-tenant',
-    clientId: 'test-client-id',
+    tenantId: DEFAULT_PROD_AUTH_TENANT_ID,
+    tenantName: DEFAULT_PROD_AUTH_TENANT_NAME,
+    clientId: DEFAULT_PROD_AUTH_CLIENT_ID,
     activeTenantId: 'root-tenant-id',
     activeTenantName: 'Root Tenant',
     activeTenantSlug: 'root-tenant',

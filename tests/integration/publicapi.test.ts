@@ -5,6 +5,11 @@ import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
 import { publicApiCommand } from '../../src/commands/publicapi.js';
 import type { PlatformMethod } from '../../src/lib/api.js';
+import {
+  DEFAULT_PROD_AUTH_CLIENT_ID,
+  DEFAULT_PROD_AUTH_TENANT_ID,
+  DEFAULT_PROD_AUTH_TENANT_NAME,
+} from '../../src/lib/profile.js';
 
 const API_BASE = 'https://test-api.example.com';
 const TENANT_ID = 'tenant-publicapi';
@@ -28,9 +33,9 @@ async function storeTestTokens(dir: string): Promise<void> {
     expiresAt: Date.now() + 3600000,
     upn: 'test@example.com',
     oid: 'test-oid',
-    tenantId: TENANT_ID,
-    tenantName: 'Test Tenant',
-    clientId: 'test-client-id',
+    tenantId: DEFAULT_PROD_AUTH_TENANT_ID,
+    tenantName: DEFAULT_PROD_AUTH_TENANT_NAME,
+    clientId: DEFAULT_PROD_AUTH_CLIENT_ID,
     activeTenantId: TENANT_ID,
     activeTenantName: 'Test Tenant',
     activeTenantSlug: 'test-tenant',

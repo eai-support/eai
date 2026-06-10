@@ -15,7 +15,17 @@ import { createServer } from 'node:http';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import type { AddressInfo } from 'node:net';
-import { getActiveProfile, getProfileTokensFile, loadProfileConfig, DEFAULT_AUTH_SCOPE, DEFAULT_PROD_AUTH_SCOPE } from './profile.js';
+import { findProjectRoot, loadEnvFile } from './config.js';
+import {
+  getActiveProfile,
+  getProfileTokensFile,
+  loadProfileConfig,
+  DEFAULT_AUTH_SCOPE,
+  DEFAULT_PROD_AUTH_SCOPE,
+  DEFAULT_PROD_AUTH_TENANT_NAME,
+  DEFAULT_PROD_AUTH_TENANT_ID,
+  DEFAULT_PROD_AUTH_CLIENT_ID,
+} from './profile.js';
 
 function getTokensFile(profile = getActiveProfile()): string {
   return getProfileTokensFile(profile);
@@ -80,20 +90,231 @@ export interface BrowserLoginOptions {
   onAuthorizeUrl?: (url: string) => void;
 }
 
+export interface ResolvedAuthConfig {
+  tenantName: string;
+  tenantId: string;
+  clientId: string;
+  authScope: string;
+  source: 'default-prod' | 'runtime-env' | 'profile';
+  clientIdSource: 'default-prod' | 'runtime-env' | 'profile';
+}
+
 function getEncryptionKey(source = getEncryptionKeySource()): Buffer {
   return createHash('sha256').update(source).digest();
 }
 
-async function resolveAuthScope(profile: string): Promise<string> {
-  if (profile === 'default') {
-    return DEFAULT_PROD_AUTH_SCOPE;
+function normalizeEnvValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function normalizeAuthScope(scope: string): string {
+  return scope
+    .split(/[\s,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function readFirstEnvValue(env: Record<string, string>, keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const value = normalizeEnvValue(env[key]);
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function buildDefaultAuthScopeForAudience(audienceScope: string): string {
+  return normalizeAuthScope(`${DEFAULT_AUTH_SCOPE} ${audienceScope}`);
+}
+
+async function loadRuntimeAuthEnv(projectRoot?: string): Promise<Record<string, string>> {
+  const root = projectRoot ?? await findProjectRoot() ?? undefined;
+  const envVars = root ? await loadEnvFile(root) : {};
+  return { ...envVars, ...process.env } as Record<string, string>;
+}
+
+function resolveDefaultProfileAuthScopeFromEnv(env: Record<string, string>): string | undefined {
+  const explicitScope = readFirstEnvValue(env, [
+    'EAI_AUTH_SCOPE',
+    'ENTRA_SCOPES',
+    'ENTRA_DEFAULT_SCOPES',
+  ]);
+  if (explicitScope) {
+    return normalizeAuthScope(explicitScope);
   }
 
-  try {
+  const delegatedScope = readFirstEnvValue(env, [
+    'EXTERNAL_PUBLIC_API_SCOPE',
+    'PUBLIC_API_SCOPE',
+  ]);
+  if (delegatedScope) {
+    return buildDefaultAuthScopeForAudience(delegatedScope);
+  }
+
+  return undefined;
+}
+
+function resolveDefaultProfileClientId(env: Record<string, string>): {
+  clientId: string;
+  source: ResolvedAuthConfig['clientIdSource'];
+} {
+  const explicitClientId = readFirstEnvValue(env, [
+    'EAI_CLI_CLIENT_ID',
+    'EAI_AUTH_CLIENT_ID',
+  ]);
+  if (explicitClientId) {
+    return { clientId: explicitClientId, source: 'runtime-env' };
+  }
+  return { clientId: DEFAULT_PROD_AUTH_CLIENT_ID, source: 'default-prod' };
+}
+
+export function extractAudienceHintsFromScope(scope: string): string[] {
+  const hints = new Set<string>();
+
+  for (const rawPart of normalizeAuthScope(scope).split(' ')) {
+    if (!rawPart || ['openid', 'profile', 'email', 'offline_access'].includes(rawPart)) {
+      continue;
+    }
+
+    let normalized = rawPart;
+    if (normalized.endsWith('/.default')) {
+      normalized = normalized.slice(0, -'/.default'.length);
+    } else if (normalized.endsWith('/access_token')) {
+      normalized = normalized.slice(0, -'/access_token'.length);
+    }
+
+    hints.add(normalized);
+    if (normalized.startsWith('api://')) {
+      const withoutScheme = normalized.slice('api://'.length);
+      if (withoutScheme) {
+        hints.add(withoutScheme);
+      }
+    }
+  }
+
+  return [...hints];
+}
+
+export async function resolveAuthConfig(
+  projectRoot?: string,
+  profile = getActiveProfile(),
+): Promise<ResolvedAuthConfig> {
+  if (profile !== 'default') {
     const config = await loadProfileConfig(profile);
-    return config?.authScope || DEFAULT_AUTH_SCOPE;
+    if (!config) {
+      throw new Error(`Profile "${profile}" is not configured locally.`);
+    }
+    return {
+      tenantName: config.authTenantName,
+      tenantId: config.authTenantId,
+      clientId: config.authClientId,
+      authScope: normalizeAuthScope(config.authScope || DEFAULT_AUTH_SCOPE),
+      source: 'profile',
+      clientIdSource: 'profile',
+    };
+  }
+
+  const env = await loadRuntimeAuthEnv(projectRoot);
+  const tenantName = readFirstEnvValue(env, [
+    'EAI_AUTH_TENANT_NAME',
+    'ENTRA_TENANT_NAME',
+  ]) || DEFAULT_PROD_AUTH_TENANT_NAME;
+  const tenantId = readFirstEnvValue(env, [
+    'EAI_AUTH_TENANT_ID',
+    'ENTRA_TENANT_ID',
+  ]) || DEFAULT_PROD_AUTH_TENANT_ID;
+  const authScope = resolveDefaultProfileAuthScopeFromEnv(env) || DEFAULT_PROD_AUTH_SCOPE;
+  const { clientId, source: clientIdSource } = resolveDefaultProfileClientId(env);
+
+  const source = (
+    tenantName !== DEFAULT_PROD_AUTH_TENANT_NAME
+    || tenantId !== DEFAULT_PROD_AUTH_TENANT_ID
+    || authScope !== DEFAULT_PROD_AUTH_SCOPE
+    || clientIdSource === 'runtime-env'
+  ) ? 'runtime-env' : 'default-prod';
+
+  return {
+    tenantName,
+    tenantId,
+    clientId,
+    authScope,
+    source,
+    clientIdSource,
+  };
+}
+
+export function validateResolvedAuthConfig(config: ResolvedAuthConfig): string | null {
+  const isNonProdOverride = config.source === 'runtime-env' && (
+    config.tenantName !== DEFAULT_PROD_AUTH_TENANT_NAME
+    || config.tenantId !== DEFAULT_PROD_AUTH_TENANT_ID
+    || config.authScope !== DEFAULT_PROD_AUTH_SCOPE
+  );
+
+  if (isNonProdOverride && config.clientIdSource === 'default-prod') {
+    return [
+      'This environment overrides Entra/PublicAPI auth away from the public production defaults,',
+      'but no CLI public client ID was provided.',
+      'Set `EAI_CLI_CLIENT_ID` (or `EAI_AUTH_CLIENT_ID`) in your shell/devcontainer,',
+      'or use a named `eai --profile ...` config with `authClientId`.',
+    ].join(' ');
+  }
+
+  return null;
+}
+
+export async function getActiveAuthConfigMismatch(
+  tokens?: StoredTokens,
+  projectRoot?: string,
+): Promise<string | null> {
+  const currentTokens = tokens ?? await loadTokens();
+  if (!currentTokens) {
+    return null;
+  }
+
+  const authConfig = await resolveAuthConfig(projectRoot);
+  const loginIssue = validateResolvedAuthConfig(authConfig);
+  if (loginIssue) {
+    return loginIssue;
+  }
+
+  const mismatches: string[] = [];
+  if (currentTokens.tenantId !== authConfig.tenantId) {
+    mismatches.push(`authority tenant id ${currentTokens.tenantId} != ${authConfig.tenantId}`);
+  }
+  if (currentTokens.tenantName !== authConfig.tenantName) {
+    mismatches.push(`authority tenant ${currentTokens.tenantName} != ${authConfig.tenantName}`);
+  }
+  if (currentTokens.clientId !== authConfig.clientId) {
+    mismatches.push(`client id ${currentTokens.clientId} != ${authConfig.clientId}`);
+  }
+
+  const tokenAudience = parseJwtClaim(currentTokens.accessToken, 'aud');
+  const expectedAudiences = extractAudienceHintsFromScope(authConfig.authScope);
+  if (tokenAudience && expectedAudiences.length > 0 && !expectedAudiences.includes(tokenAudience)) {
+    mismatches.push(`token audience ${tokenAudience} is not one of ${expectedAudiences.join(', ')}`);
+  }
+
+  if (mismatches.length === 0) {
+    return null;
+  }
+
+  return [
+    'Stored CLI login does not match the active auth configuration for this environment.',
+    `Current auth target: tenant=${authConfig.tenantName} (${authConfig.tenantId}), client=${authConfig.clientId}`,
+    tokenAudience ? `Stored token audience: ${tokenAudience}` : 'Stored token audience: unavailable',
+    `Mismatch: ${mismatches.join('; ')}`,
+    'Run `eai login` again for this environment before using tenant or provisioning commands.',
+  ].join(' ');
+}
+
+async function resolveAuthScope(profile: string): Promise<string> {
+  try {
+    return (await resolveAuthConfig(undefined, profile)).authScope;
   } catch {
-    return DEFAULT_AUTH_SCOPE;
+    return profile === 'default' ? DEFAULT_PROD_AUTH_SCOPE : DEFAULT_AUTH_SCOPE;
   }
 }
 
