@@ -13,8 +13,18 @@
             "package.json"
           ],
           "required_repo_tests": [
-            "tests/**/*.test.ts",
-            "src/**/*.test.ts"
+            "tests/integration/login.test.ts",
+            "tests/integration/whoami.test.ts",
+            "tests/integration/tenant.test.ts",
+            "tests/integration/init.test.ts",
+            "tests/integration/help.test.ts",
+            "tests/integration/output.test.ts",
+            "tests/integration/publicapi.test.ts",
+            "tests/integration/platform-api-client.test.ts",
+            "tests/integration/dedicated-tenant-lifecycle.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
           ],
           "required_cross_service_surfaces": [
             "eai-cli"
@@ -27,6 +37,14 @@
             {
               "repository": "eai-testing-dev",
               "path": "tests/cross-service/contracts/eai-cli/error-codes.spec.ts"
+            },
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/smoke/eai-cli/smoke.spec.ts"
+            },
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/eai-cli/preview-lifecycle.spec.ts"
             }
           ]
         }

@@ -83,6 +83,17 @@ Before editing, re-check the planned depth and generic risk labels from
 If the implementation reveals a higher-risk surface than planned, stop and
 upgrade the depth before continuing. Do not silently broaden scope.
 
+## SRP Coverage Alignment
+
+- Broad frontend click-through paths belong in the owning frontend repo's
+  CI/preview Playwright or journey suite, not in prod cross-service.
+- Provider/data oddities belong in owning-repo contract tests, mocked edge cases,
+  and safe non-prod live smokes.
+- `eai-testing-dev` owns deployed read-only canaries, auth/tenant/login smoke,
+  EAI CLI deployed contracts, config drift, and release-observability evidence.
+- EAI CLI behavior changes must keep `eai` repo `ci/eai-cli-tests` evidence and
+  the `eai-testing-dev` read-only `eai-cli` surface aligned.
+
 ## Prerequisites
 
 This command expects in `.specify/specs/{feature}/`:

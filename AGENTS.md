@@ -10,6 +10,7 @@
 
 - **Build**: `npm run build`
 - **Lint**: `npm run lint`
+- **Focused SRP CLI evidence**: `npm run test:eai-cli:ci`
 - **Release preflight**: `npm run release:check`
 
 ## Project Structure
@@ -147,6 +148,8 @@ const config = await loadConfig();
   - `src/lib/update-check.ts`
   - `README.md`
 - Every release should refresh `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`
+- CLI auth, tenant context, command schema, error envelope, PublicAPI, and preview-lifecycle behavior must keep `ci/eai-cli-tests` green. That check is the repo-owned SRP evidence for the EAI CLI surface.
+- The release workflow dispatches `eai-testing-dev` with `service=eai-cli` for deployed read-only schema/error/auth smoke. Keep prod canaries read-only; preview lifecycle is opt-in and cleanup-backed.
 - GitHub Pages static registry is the release/install channel
 - Before changing release behavior, verify the public packument still works:
   - `curl https://eai-tools.github.io/eai/registry/@eai-tools/cli`

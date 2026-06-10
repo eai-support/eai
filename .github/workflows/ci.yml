@@ -58,3 +58,35 @@ jobs:
 
       - name: Verify API reference routes match code
         run: npm run docs:verify-api
+
+  eai-cli-tests:
+    name: ci/eai-cli-tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run focused EAI CLI contract tests
+        run: npm run test:eai-cli:ci
+
+      - name: Upload EAI CLI test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eai-cli-test-results
+          path: test-results/eai-cli-results.xml
+          if-no-files-found: error
+          retention-days: 30

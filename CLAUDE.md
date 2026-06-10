@@ -52,6 +52,11 @@ See @AGENTS.md for project conventions, commands, and code style.
 - Keep `release.sh`, `.github/workflows/release.yml`, `.github/workflows/docs.yml`,
   `src/commands/update.ts`, `src/lib/update-check.ts`, and `README.md` in sync
 - Validate release work with `npm run release:check`
+- Keep `ci/eai-cli-tests` green for CLI auth, tenant, schema, error envelope,
+  PublicAPI, and preview-lifecycle behavior. It is the repo-owned SRP evidence
+  for the EAI CLI surface.
+- Keep deployed CLI canaries in `eai-testing-dev` read-only for prod; preview
+  lifecycle checks must stay explicit and cleanup-backed.
 - Refresh `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt` as part of every release
 - GitHub Pages static registry is the release and update channel, and it must
   keep matching the current tag

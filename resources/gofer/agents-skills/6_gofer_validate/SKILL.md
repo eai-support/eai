@@ -84,6 +84,18 @@ Validation must respect the final risk label:
 Archived specs under `.specify/specs/_*/` are historical context and must not
 inflate active context-health estimates or current blast-radius manifests.
 
+## SRP Evidence Checks
+
+- Broad frontend journeys need owning-repo `ci/journey-tests` or Playwright
+  CI/preview evidence.
+- Provider/data edge cases need owning-repo contract, mocked edge-case, or safe
+  non-prod live-smoke evidence.
+- Deployed auth/session/tenant, EAI CLI, route, config, and prod drift claims
+  need `eai-testing-dev` release-observability artifacts or read-only canary
+  results.
+- Missing, stale, skipped, silent-green, or unmapped required evidence remains
+  validation risk.
+
 ## Prerequisites
 
 This command expects in `.specify/specs/{feature}/`:
