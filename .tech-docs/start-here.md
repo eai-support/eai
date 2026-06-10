@@ -12,6 +12,10 @@ scenario library.
 Use this page when you are starting a new app, connecting an existing app to the
 platform, or trying to understand which part of the toolchain to use.
 
+## Current Release
+
+The current CLI release is **v3.2.0** (2026-06-10): Pin latest app template and Gofer release sources.
+
 ## What The Pieces Do
 
 | Piece            | Use It For                                                                                                                                         |

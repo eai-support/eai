@@ -1,12 +1,12 @@
 {
   "name": "@eai-tools/cli",
   "dist-tags": {
-    "latest": "3.1.0"
+    "latest": "3.2.0"
   },
   "versions": {
-    "3.1.0": {
+    "3.2.0": {
       "name": "@eai-tools/cli",
-      "version": "3.1.0",
+      "version": "3.2.0",
       "description": "EAI Platform CLI — scaffold, seed, deploy, and manage applications",
       "bin": {
         "eai": "dist/index.js"
@@ -22,15 +22,15 @@
         "ora": "8.2.0"
       },
       "dist": {
-        "tarball": "https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-3.1.0.tgz",
-        "shasum": "7db553a3443535f0f653098a23b045206a958824",
-        "integrity": "sha512-cyK4rq6vMd1fXNQHSIvmDpCsknVxzW8MFf203L6VpuaANtT3IJgwz3et5JUjaYyJjohmc+hh8anN1T/xRhiRpg=="
+        "tarball": "https://eai-tools.github.io/eai/registry/-/@eai-tools/cli-3.2.0.tgz",
+        "shasum": "41e67524554cbddab36cf96bd5f77397b10c2a6a",
+        "integrity": "sha512-tCu6/T6L5ea+8M9SUukIdpxmj8CyzJ9sk9JYL3UF6UGinE4/VEip6Ob72uIqRoAl0rvAyBaRrEGlAzxAGzbxhg=="
       }
     }
   },
-  "modified": "2026-06-06T04:58:01.561Z",
+  "modified": "2026-06-10T04:18:31.525Z",
   "time": {
-    "3.1.0": "2026-06-06T04:58:01.561Z",
-    "modified": "2026-06-06T04:58:01.561Z"
+    "3.2.0": "2026-06-10T04:18:31.525Z",
+    "modified": "2026-06-10T04:18:31.525Z"
   }
 }
