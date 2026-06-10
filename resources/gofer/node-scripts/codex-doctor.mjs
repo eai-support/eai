@@ -107,14 +107,12 @@ function parseFrontmatter(src) {
 }
 
 async function readSkillRow(tenantPath, stageName, skillFile) {
-  let skillStat;
+  let src;
   try {
-    skillStat = fs.statSync(skillFile);
+    src = await fsp.readFile(skillFile, 'utf8');
   } catch {
     return null;
   }
-  if (!skillStat.isFile()) return null;
-  const src = await fsp.readFile(skillFile, 'utf8');
   const fm = parseFrontmatter(src);
   const rawName = fm.name || stageName;
   const name = rawName.startsWith('gofer/') ? rawName.slice('gofer/'.length) : rawName;

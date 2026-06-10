@@ -22,7 +22,6 @@ management and reporting.
 
 2. **Cost Analysis**
    - Token usage per feature (from context-usage.jsonl)
-   - Council mode cost impact (from council-usage.jsonl)
    - Cost trends over time
    - Cost per stage breakdown
 
@@ -52,7 +51,6 @@ Read from `.specify/logs/`:
 
 - `pipeline.jsonl` — Stage completion events
 - `context-usage.jsonl` — Token consumption
-- `council-usage.jsonl` — Multi-LLM costs
 - `validation-findings.jsonl` — Quality data
 - `quality-metrics.jsonl` — Rubric scores
 
@@ -135,7 +133,7 @@ Identify patterns:
 |--------|-------|-------|
 | Avg tokens per feature | [N]k | [up/down/stable] |
 | Estimated cost per feature | $[N] | [up/down/stable] |
-| Council mode premium | +[N]% | [up/down/stable] |
+| Subagent/CLI fan-out cost | +[N]% | [up/down/stable] |
 
 ### Portfolio Status
 
@@ -169,15 +167,3 @@ Identify patterns:
 - **Be actionable** — every insight should have a recommended action
 - **Use relative comparisons** — "20% faster than last month" > "took 3 hours"
 - **Include confidence levels** — based on data completeness
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your metrics with other providers' analysis
-- Different LLMs may identify different trends and insights
-- Your response may be peer-reviewed by other council members
-
-Focus on clear, business-oriented metrics regardless of council mode.

@@ -1,6 +1,7 @@
 ---
 name: plan-migration-path-finder
-description: Finds migration paths using 4 different strategies for changing existing code
+description:
+  Finds migration paths using 4 different strategies for changing existing code
 kind: local
 model: gemini-3-flash-preview
 temperature: 0.2
@@ -95,15 +96,3 @@ strategies and selects the best fit for the risk tolerance and constraints.
   risk.
 - **Recommended model**: sonnet (migration planning requires reasoning about
   state transitions).
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your migration path with other providers'
-  findings
-- Your response may be peer-reviewed by other council members
-
-Focus on strategy-committed migration planning regardless of council mode.

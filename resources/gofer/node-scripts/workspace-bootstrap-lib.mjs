@@ -173,19 +173,18 @@ export async function detectGoferVersion(sourceRoot) {
 
 export async function findWorkspaceRoot(startDir = process.cwd()) {
   let current = path.resolve(startDir);
-  let lastMatch = current;
+  const fallbackRoot = current;
 
   while (true) {
     for (const marker of WORKSPACE_MARKERS) {
       if (await pathExists(path.join(current, marker))) {
-        lastMatch = current;
         return current;
       }
     }
 
     const parent = path.dirname(current);
     if (parent === current) {
-      return lastMatch;
+      return fallbackRoot;
     }
     current = parent;
   }

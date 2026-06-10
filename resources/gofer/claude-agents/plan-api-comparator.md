@@ -88,14 +88,3 @@ selects the best fit.
 - **Be concrete** — show actual endpoint definitions, not abstract descriptions.
 - **Recommended model**: sonnet (API design requires reasoning about
   trade-offs).
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your API design with other providers' findings
-- Your response may be peer-reviewed by other council members
-
-Focus on paradigm-committed API design regardless of council mode.

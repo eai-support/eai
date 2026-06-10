@@ -1,6 +1,7 @@
 ---
 name: plan-refactor-rewrite-advisor
-description: Compares incremental refactor vs clean rewrite approaches for code changes
+description:
+  Compares incremental refactor vs clean rewrite approaches for code changes
 kind: local
 model: gemini-3-flash-preview
 temperature: 0.2
@@ -97,14 +98,3 @@ selects the better fit based on the specific feature context and risk tolerance.
 - **Be honest about costs** — every approach has downsides. State them clearly.
 - **Recommended model**: sonnet (requires analysis of existing code and
   planning).
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your approach with other providers' findings
-- Your response may be peer-reviewed by other council members
-
-Focus on perspective-committed analysis regardless of council mode.

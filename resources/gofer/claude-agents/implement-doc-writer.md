@@ -87,15 +87,3 @@ into a complete documentation package.
 - **Include examples** — documentation without examples is incomplete.
 - **Recommended model**: haiku for structured docs (1, 3), sonnet for API
   reference (2).
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your documentation with other providers'
-  findings
-- Your response may be peer-reviewed by other council members
-
-Focus on audience-committed documentation regardless of council mode.

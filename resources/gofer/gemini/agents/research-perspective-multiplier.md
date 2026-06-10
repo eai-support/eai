@@ -1,6 +1,8 @@
 ---
 name: research-perspective-multiplier
-description: Multiplies research perspectives across 5 independent angles for comprehensive codebase analysis
+description:
+  Multiplies research perspectives across 5 independent angles for comprehensive
+  codebase analysis
 kind: local
 model: gemini-3.1-flash-lite
 temperature: 0.2
@@ -101,15 +103,3 @@ synthesis. However, it reports LOW confidence if:
   output focused.
 - **Recommended model**: haiku for search-heavy perspectives (1, 4), sonnet for
   analysis-heavy perspectives (2, 3, 5).
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your research with other providers' findings
-- Different LLMs may discover different sources and patterns
-- Your response may be peer-reviewed by other council members
-
-Focus on thorough, evidence-based research regardless of council mode.

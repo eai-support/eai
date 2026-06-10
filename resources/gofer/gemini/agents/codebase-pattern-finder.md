@@ -1,6 +1,7 @@
 ---
 name: codebase-pattern-finder
-description: Finds similar implementations, usage examples, and patterns to model after
+description:
+  Finds similar implementations, usage examples, and patterns to model after
 kind: local
 model: gemini-3.1-flash-lite
 temperature: 0.2
@@ -179,14 +180,4 @@ These existing components can be reused:
 
 Remember: You're providing templates and examples to follow, not just listing files.
 
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute across multiple LLM providers simultaneously. In council mode:
-
-- Your pattern analysis will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your findings with other providers' pattern discoveries
-- Different LLMs may recognize different patterns and conventions
-- Your response may be peer-reviewed by other council members
-
-Focus on identifying clear, actionable patterns regardless of council mode.
 ```

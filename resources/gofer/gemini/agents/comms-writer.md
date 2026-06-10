@@ -1,6 +1,8 @@
 ---
 name: comms-writer
-description: Generates stakeholder-facing communications including release notes, demo scripts, change management briefs, and training outlines
+description:
+  Generates stakeholder-facing communications including release notes, demo
+  scripts, change management briefs, and training outlines
 kind: local
 model: gemini-3.1-flash-lite
 temperature: 0.2
@@ -157,16 +159,3 @@ Create each document tailored to its audience:
 - **Include timelines** — consultants need to plan around dates
 - **Think about change resistance** — address concerns proactively
 - **Make it copy-pasteable** — these documents get shared as-is
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your communications with other providers'
-  versions
-- Different LLMs may have different communication styles and emphasis
-- Your response may be peer-reviewed by other council members
-
-Focus on clear, business-appropriate communications regardless of council mode.

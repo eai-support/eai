@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "gofer": {
     "repo": "https://github.com/eai-tools/eai-gofer.git",
-    "commit": "6b457ddd796d13c0da957e8a57840f3ca1e8b190",
-    "describe": "6b457dd"
+    "commit": "3bead4fe74611a36bfa8d89bdf0ce2792a63dc56",
+    "describe": "3bead4f"
   },
   "appTemplate": {
     "repo": "https://github.com/eai-tools/eai-app-template.git",
-    "commit": "ff28a586c2ece511fe7aaa9eb74955b43ab54560",
-    "packageLockSha256": "c38d5bcf2d67dfd8229a95b1bcc0e29a03a9282df272c6c3f57e6df867e06eb6",
+    "commit": "97967992f025ab8e488593c3184ac2f199d191ce",
+    "packageLockSha256": "f98694ef60427494a3d3ecb22951959f10dde1046f3230eb66a67053cbd9a5e5",
     "enterpriseRegistry": "https://enterpriseaigroup.github.io/enterpriseai-packages/registry",
     "enterprisePackageFingerprint": "e83d46555d947c1911b19ddafe03bff99555e633ccbe0007f190ed450dfd11ed",
     "enterprisePackages": {

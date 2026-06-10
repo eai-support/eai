@@ -264,8 +264,9 @@ Gofer AI CLI assets are installed by default:
   .gemini/commands/gofer and .gemini/extension.json for Gemini CLI
   .github/prompts, .github/instructions, and .github/skills for GitHub Copilot
 
-The default public template is pinned to the version bundled with this CLI.
-Use --from to override it with another repo or local path.
+The default public template is pinned to the latest eai-app-template main
+commit captured when this CLI release was cut. Use --from to override it with
+another repo or local path.
 
 Use --no-gofer only when you need a bare app scaffold.
 `,

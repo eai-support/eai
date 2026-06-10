@@ -104,17 +104,3 @@ This agent blocks validation (scores 0 in Functional Correctness) if:
 - **Be specific** — cite file paths and line numbers for all evidence
 - **Distinguish real from theatrical** — a passing test is not the same as a
   verified criterion
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your correctness analysis with other providers'
-  findings
-- Different LLMs may identify different gaps in acceptance criteria coverage
-- Your response may be peer-reviewed by other council members
-
-Focus on thorough, evidence-based correctness validation regardless of council
-mode.

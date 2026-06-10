@@ -1,15 +1,16 @@
 {
   "name": "eai-gofer",
-  "version": "3.5.0",
+  "version": "3.5.7",
   "description": "Gofer core pipeline and helper commands as a Gemini CLI extension",
+  "license": "Apache-2.0",
   "commands": ".gemini/commands/gofer/",
   "gofer": {
     "bundle_url": "https://eai-tools.github.io/eai-gofer/releases/plugins/eai-gofer",
     "manifest_url": "https://eai-tools.github.io/eai-gofer/releases/plugins/eai-gofer/gemini-extension.json",
     "commands_manifest_url": "https://eai-tools.github.io/eai-gofer/releases/plugins/eai-gofer/gemini-commands-manifest.json",
-    "download_url": "https://eai-tools.github.io/eai-gofer/releases/eai-gofer-agent-plugin-3.5.0.zip",
+    "download_url": "https://eai-tools.github.io/eai-gofer/releases/eai-gofer-agent-plugin-3.5.7.zip",
     "latest_download_url": "https://eai-tools.github.io/eai-gofer/releases/eai-gofer-agent-plugin-latest.zip",
-    "vsix_url": "https://eai-tools.github.io/eai-gofer/releases/eai-gofer-3.5.0.vsix",
+    "vsix_url": "https://eai-tools.github.io/eai-gofer/releases/eai-gofer-3.5.7.vsix",
     "latest_vsix_url": "https://eai-tools.github.io/eai-gofer/releases/eai-gofer-latest.vsix"
   }
 }
