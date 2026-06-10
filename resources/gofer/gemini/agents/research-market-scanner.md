@@ -1,6 +1,8 @@
 ---
 name: research-market-scanner
-description: Scans market landscape for commercial solutions, open-source alternatives, and industry benchmarks to inform build-vs-buy decisions
+description:
+  Scans market landscape for commercial solutions, open-source alternatives, and
+  industry benchmarks to inform build-vs-buy decisions
 kind: local
 model: gemini-3.1-flash-lite
 temperature: 0.2
@@ -51,7 +53,7 @@ solutions already exist before committing to building custom software.
 Break the problem statement into searchable components:
 
 - Core problem keywords
-- Industry keywords
+- Industry vertical keywords
 - Technology domain keywords
 - Solution category keywords (e.g., "CRM", "workflow automation")
 
@@ -136,16 +138,3 @@ Use Grep/Glob to check:
 - **Flag uncertainty** — clearly mark estimates vs confirmed data
 - **Focus on fit** — a great product that doesn't fit is useless
 - **Consider total cost of ownership** — not just sticker price
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your market analysis with other providers'
-  findings
-- Different LLMs may find different commercial solutions and alternatives
-- Your response may be peer-reviewed by other council members
-
-Focus on thorough, evidence-based market research regardless of council mode.

@@ -71,7 +71,7 @@ xychart-beta
 | -------------------------- | ------- | ------ |
 | Avg tokens per feature     | {{N}}k  | stable |
 | Estimated cost per feature | ${{N}}  | stable |
-| Council mode premium       | +{{N}}% | stable |
+| Subagent/CLI fan-out cost  | +{{N}}% | stable |
 
 ---
 

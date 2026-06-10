@@ -118,17 +118,3 @@ This agent blocks validation (scores 0 in Performance Baseline) if ANY:
 - **Focus on new/modified files** — don't audit the entire codebase
 - **AI code loves execSync** — this is the #1 performance anti-pattern in
   AI-generated code
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your performance analysis with other providers'
-  findings
-- Different LLMs may identify different performance anti-patterns
-- Your response may be peer-reviewed by other council members
-
-Focus on thorough, evidence-based performance validation regardless of council
-mode.

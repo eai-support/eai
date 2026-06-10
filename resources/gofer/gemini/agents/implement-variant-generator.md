@@ -1,6 +1,8 @@
 ---
 name: implement-variant-generator
-description: Generates 3-5 implementation variants using different coding paradigms for comparison
+description:
+  Generates 3-5 implementation variants using different coding paradigms for
+  comparison
 kind: local
 model: gemini-3-flash-preview
 temperature: 0.2
@@ -78,14 +80,4 @@ This agent does not block. The judge selects the best variant or synthesizes a h
 - **Match codebase style** — use the same formatting, naming, and import conventions.
 - **Recommended model**: sonnet (code generation requires strong reasoning).
 
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your implementation with other providers' findings
-- Your response may be peer-reviewed by other council members
-
-Focus on paradigm-committed implementation regardless of council mode.
 ```

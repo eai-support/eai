@@ -8,9 +8,8 @@ template for EnterpriseAI app-delivery work.
 - New apps are scaffolded with `eai init`, which defaults to the EAI App
   Template.
 - Runnable service patterns live in the template, especially
-  `docs/platform/config-driven-ui.md`,
-  `docs/platform/eai-service-patterns.md`, `src/hooks`, and
-  `packages/platform-sdk`.
+  `docs/platform/config-driven-ui.md`, `docs/platform/eai-service-patterns.md`,
+  `src/hooks`, and `packages/platform-sdk`.
 - Config-driven UI composition lives in `src/eai.config/default.ts`,
   `src/eai.config/index.ts`, and `src/eai.blocks.tsx`.
 - eai-gofer should use those public template patterns and the installed `eai`

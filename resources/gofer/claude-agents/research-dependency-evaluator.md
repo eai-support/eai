@@ -104,15 +104,3 @@ Reports LOW confidence if:
 - **Be honest about unknowns** — if you can't find data for a metric, say so
   rather than guessing.
 - **Recommended model**: haiku (search-optimized, data gathering focus).
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your evaluation with other providers' findings
-- Different LLMs may find different metrics and alternatives
-- Your response may be peer-reviewed by other council members
-
-Focus on objective, data-driven evaluation regardless of council mode.

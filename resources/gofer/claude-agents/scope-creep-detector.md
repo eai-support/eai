@@ -150,16 +150,3 @@ Evidence:
   discovery, it's not creep even if it's not in the problem brief
 - **Don't block on Gray findings** — some scope evolution is natural
 - **Write for the consultant** — they need to explain this to their client
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your scope analysis with other providers'
-  findings
-- Different LLMs may identify different scope boundaries
-- Your response may be peer-reviewed by other council members
-
-Focus on thorough, evidence-based scope analysis regardless of council mode.

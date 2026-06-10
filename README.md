@@ -117,8 +117,9 @@ All commands support these global flags:
 | `eai init [name]` | Interactive scaffold from the CLI-pinned public EAI application template with Gofer AI CLI assets |
 | `eai dev` | Start local dev server with connectivity checks |
 
-The bundled default template is versioned with the installed CLI. Use `--from`
-to override it with a different repository or a local template path.
+The bundled default template is pinned to the latest `eai-app-template` `main`
+commit captured when this CLI release was cut. Use `--from` to override it with
+a different repository or a local template path.
 
 ### Authentication
 
@@ -387,9 +388,10 @@ Important boundaries:
   local edits and avoid overwriting them accidentally.
 - If a tracked managed file has local edits, refresh leaves it untouched unless
   you explicitly pass `--force`, and even then it backs the file up first.
-- `eai template check` previews file-level drift against the current app
-  template snapshot and highlights which files are new versus which need manual
-  review, including likely UI paths under `src/app` and `src/components`.
+- `eai template check` previews file-level drift against the app-template
+  `main` snapshot pinned in the installed CLI release and highlights which
+  files are new versus which need manual review, including likely UI paths under
+  `src/app` and `src/components`.
 - Template or UI component changes are **not** auto-merged into existing repos
   yet. Copy additions first, then diff/review existing files that `eai template
   check` marks for manual review.

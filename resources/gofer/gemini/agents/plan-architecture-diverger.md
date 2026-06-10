@@ -101,18 +101,3 @@ selects the best fit for the specific feature and codebase context.
   code?
 - **Recommended model**: sonnet (architectural reasoning requires strong
   analysis capability).
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your architecture with other providers'
-  findings
-- Different LLMs may produce different architectural nuances for the same
-  pattern
-- Your response may be peer-reviewed by other council members
-
-Focus on concrete, pattern-committed architectural design regardless of council
-mode.

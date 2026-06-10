@@ -1,6 +1,7 @@
 ---
 name: validation-test-quality
-description: Validates test authenticity, mock ratios, and mutation testing scores
+description:
+  Validates test authenticity, mock ratios, and mutation testing scores
 kind: local
 model: gemini-3.1-flash-lite
 temperature: 0.2
@@ -146,17 +147,3 @@ This agent blocks validation (scores 0 in Test Authenticity) if ANY:
   the entire test suite
 - **Quality over quantity** — 5 real tests beat 50 placeholder tests
 - **Report the worst offenders first** — sort findings by severity
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your test quality analysis with other
-  providers' findings
-- Different LLMs may evaluate test authenticity differently
-- Your response may be peer-reviewed by other council members
-
-Focus on thorough, evidence-based test quality validation regardless of council
-mode.

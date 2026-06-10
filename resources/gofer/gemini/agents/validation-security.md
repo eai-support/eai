@@ -116,17 +116,3 @@ This agent blocks validation (scores 0 in Security Posture) if ANY:
 - **Check both new and modified files** — security regressions in modified code
   are equally critical
 - **Be specific** — exact file path, line number, and the problematic pattern
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your security analysis with other providers'
-  findings
-- Different LLMs may detect different vulnerability patterns
-- Your response may be peer-reviewed by other council members
-
-Focus on thorough, evidence-based security validation regardless of council
-mode.

@@ -109,7 +109,7 @@ If these don't exist, prompt user to run `/1_gofer_research` first.
 4. Review agent output, handle clarifications
 5. Optional multi-perspective review
 6. Output: `.specify/specs/{feature}/spec.md`
-7. EnterpriseAI default output: `.specify/specs/{feature}/contract-pack.md`
+7. EnterpriseAI profile output: `.specify/specs/{feature}/contract-pack.md`
 
 ---
 
@@ -246,8 +246,9 @@ Generate the COMPLETE spec.md following this structure:
 11. Research Traceability — Matrix mapping each research finding to a spec section
 12. AI-Augmented 4-Step Journey — required for app delivery, not applicable for explicit non-app work
 13. UI Preview And Approval Gate — required for app delivery, not applicable for explicit non-app work
-14. EnterpriseAI Service Fit — required for app delivery, not applicable for explicit non-app work
-15. EnterpriseAI Contract Pack Summary — actors, object types, workflows, permissions, APIs/events, runtime assumptions, acceptance tests
+14. EAI Platform/Azure App Stack Policy — required for app delivery, not applicable for explicit non-app work
+15. EnterpriseAI Service Fit — required for app delivery, not applicable for explicit non-app work
+16. EnterpriseAI Contract Pack Summary — actors, object types, workflows, permissions, APIs/events, runtime assumptions, acceptance tests
 
 If discovery.md exists, use it to:
 - Use Problem Statement for Overview motivation
@@ -267,7 +268,7 @@ If journeys/base-journey.md exists and is classified as app delivery, use it to:
   editability, and accessibility at each AI-assisted step
 
 If ui-preview-brief.md exists, use it to:
-- Require the first MVP preview to stay inside the approved Application Template
+- Require the first MVP preview to stay inside the approved EAI App Template
   blocks before any create-new UI concept is proposed
 - Require the specification to preserve the selected external/internal/hybrid
   profile choice, package lane, coupling status, public-readiness target, and
@@ -279,8 +280,8 @@ If ui-preview-brief.md exists, use it to:
 - Require Storybook story IDs and theme override points for every reusable or
   ported block; if no story exists, make story creation or an approved exception
   part of the requirements
-- Require DAISY-coupled blocks to define the decoupling boundary through
-  `eai resources schema`, an adapter, or an explicit internal-only exception
+- Require source-platform-coupled blocks to define the decoupling boundary through
+  `eai resources schema`, an adapter, or an explicit restricted-source exception
 - Carry forward branding/logo requirements as explicit scope, not as implied
   polish
 - Require preview self-review evidence such as screenshot, local render proof,
@@ -315,7 +316,7 @@ Rules:
   sections beyond marking them "Not applicable"
 
 Write the complete specification to {FEATURE_DIR}/spec.md.
-When EnterpriseAI is active or no profile is specified, also write
+When `workflowProfile` is explicitly `enterpriseai`, also write
 {FEATURE_DIR}/contract-pack.md using the contract pack requirements below.
 
 Return a structured summary:
@@ -673,27 +674,27 @@ Success criteria must be:
 
 ## EnterpriseAI Integration Map Requirements
 
-EnterpriseAI is the default profile. Standard-profile outputs remain unchanged
-only when the user explicitly opts out.
+The standard Gofer workflow is the public default. EnterpriseAI profile outputs
+remain opt-in and migration-only.
 
 When the workflow profile is `enterpriseai`, `spec.md` MUST include an explicit
 **Integration Map** section that traces the flow from end-user interaction to
-the deployed EnterpriseAI application and back. The map must be
+the deployed EnterpriseAI vertical application and back. The map must be
 expressed as an ordered dependency chain following the pattern:
 
 ```
-Application -> EAI Services -> Deployment Target
+Vertical App -> EAI Services -> Deployment Target
 ```
 
 At minimum the map must name:
 
-1. **Application**: the student-facing or business-facing app being
-   delivered (maps to the `app-template` reference).
-2. **EAI Services**: the EnterpriseAI platform services the app consumes
+1. **Vertical App**: the student-facing or business-facing vertical being
+   delivered (maps to the `eai-app-template` reference).
+2. **EAI Services**: the EnterpriseAI platform services the vertical consumes
    (maps to the current public platform documentation or explicitly provided
    project references).
 3. **Deployment Target**: the deployment environment and pipeline that will host
-   the running app (maps to the configured deployment documentation for the
+   the running vertical (maps to the configured deployment documentation for the
    target project).
 
 Each link in the chain must reference the internal API contract that carries the
@@ -704,7 +705,7 @@ stage can bind implementation tasks directly to specification clauses.
 
 ## EnterpriseAI Contract Pack Requirements
 
-When EnterpriseAI is active or no profile is specified, generate
+When `workflowProfile` is explicitly `enterpriseai`, generate
 `{FEATURE_DIR}/contract-pack.md` with these required sections:
 
 | Section | Required Content |
@@ -712,7 +713,9 @@ When EnterpriseAI is active or no profile is specified, generate
 | Actors | Business users, administrators, approvers, external systems, support roles |
 | Object Types | Reused, extended, and newly proposed EnterpriseAI object types with owners |
 | Workflows and Journeys | External user journeys and internal orchestration flows as separate views; app delivery must include the four-step-or-fewer AI-augmented journey |
-| UI Preview and Approval | For app delivery: preview brief, Application Template constraints, branding inputs, preview validation evidence expectations, review-log requirements, approval gate rules; for non-app work: mark not applicable |
+| UI Preview and Approval | For app delivery: preview brief, EAI App Template constraints, branding inputs, preview validation evidence expectations, review-log requirements, approval gate rules; for non-app work: mark not applicable |
+| EAI App Delivery Preflight | For EAI app delivery: CLI version/install state, account/login state, tenant role, template initialization readiness, app enrollment readiness, block catalog readiness, and blocked/deferred decisions |
+| EAI Platform/Azure Stack Policy | For app delivery: EAI Platform as primary app substrate, Azure as preferred cloud/supporting substrate, custom code constrained to the EAI template, and non-EAI stacks only as approved exceptions |
 | AI Assistance Contract | Step goal, assistance mode, context used, generated output, user controls, confidence/evidence, audit trail, completion signal, and escalation for each app step |
 | EnterpriseAI Service Fit | For app delivery: desired capabilities, evidence source, accessible now vs purchasable vs unavailable classification, selected direction, and blocked-capability handling |
 | Public Platform Boundary | Public docs/help/CLI/PublicAPI behavior the builder may rely on; private platform details intentionally excluded; upgrade/operator-required paths expressed as product-safe user actions |
@@ -731,7 +734,7 @@ For EnterpriseAI public-facing work, the contract pack must also separate:
 - **Private platform knowledge**: internal service topology, direct downstream
   credentials, private provisioning paths, and any bypass around plan limits or
   AuthZ. These may inform internal implementation tasks, but must not be copied
-  into public docs, generated help, templates, or app guidance.
+  into public docs, generated help, templates, or vertical guidance.
 
 ---
 

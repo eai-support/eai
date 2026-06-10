@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.1.0.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.2.0.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -273,6 +273,10 @@ scenario library.
 Use this page when you are starting a new app, connecting an existing app to the
 platform, or trying to understand which part of the toolchain to use.
 
+## Current Release
+
+The current CLI release is **v3.2.0** (2026-06-10): Pin latest app template and Gofer release sources.
+
 ## What The Pieces Do
 
 | Piece            | Use It For                                                                                                                                         |
@@ -356,6 +360,15 @@ and public-safe platform references aligned with the CLI and app template.
 the EAI platform. It wraps authentication, tenant context, Object Types,
 ResourceAPI data, document processing, chat workflows, deployment, diagnostics,
 and gofer asset refresh.
+
+## Release Snapshot
+
+| Field | Value |
+| --- | --- |
+| Version | 3.2.0 |
+| Released | 2026-06-10 |
+| Last Material Change | Pin latest app template and Gofer release sources |
+| Source Commit | `381af9872f4f17a329f3393619227cdf1f2c3537` |
 
 ## Common Workflow
 

@@ -90,16 +90,3 @@ gaps are flagged as MEDIUM priority.
   "error handling is weak."
 - **Recommended model**: haiku for persona walkthrough (pattern-following),
   sonnet for synthesis.
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your persona analysis with other providers'
-  findings
-- Different LLMs may identify different persona-specific gaps
-- Your response may be peer-reviewed by other council members
-
-Focus on thorough persona-based journey testing regardless of council mode.

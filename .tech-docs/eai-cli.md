@@ -10,6 +10,15 @@ the EAI platform. It wraps authentication, tenant context, Object Types,
 ResourceAPI data, document processing, chat workflows, deployment, diagnostics,
 and gofer asset refresh.
 
+## Release Snapshot
+
+| Field | Value |
+| --- | --- |
+| Version | 3.2.0 |
+| Released | 2026-06-10 |
+| Last Material Change | Pin latest app template and Gofer release sources |
+| Source Commit | `381af9872f4f17a329f3393619227cdf1f2c3537` |
+
 ## Common Workflow
 
 ```bash

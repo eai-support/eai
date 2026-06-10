@@ -112,15 +112,3 @@ This agent reports a LOW confidence verdict (does not block, but warns) if:
 - **Match the verdict type** — the parent orchestrator specifies what kind of
   judgment to make (architecture, code, tests, etc.). Tailor your verdict format
   to the domain.
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your verdict with other providers' findings
-- Different LLMs may weight diverge-phase evidence differently
-- Your response may be peer-reviewed by other council members
-
-Focus on evidence-based, decisive synthesis regardless of council mode.

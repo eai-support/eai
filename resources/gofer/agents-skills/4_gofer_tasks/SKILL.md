@@ -488,30 +488,37 @@ NOW.
 
 ---
 
-## LLM Council Integration (Optional)
-
-When council mode is enabled for task generation:
-
-1. Multiple LLMs analyze the plan for task completeness
-2. Different perspectives on dependency ordering
-3. Chairman synthesizes optimal task breakdown
-4. Usage logged to `.specify/logs/council-usage.jsonl`
-
----
-
 ## Ordered Runnable Task-Generation Guidance
 
-EnterpriseAI is the default profile. Standard profile task generation is used
-only when the user explicitly opts out.
+The standard Gofer workflow is the public default. EnterpriseAI task generation
+is migration-only and used only when `workflowProfile` is explicitly
+`enterpriseai`.
 
-When the workflow profile is `enterpriseai` or no profile is specified,
+When the workflow profile is explicitly `enterpriseai`,
 `tasks.md` MUST emit deployment
 tasks in the following ordered chain. Each task is independently runnable and
 the ordering enforces scaffold before deployment so that configuration and
 manifest artifacts exist before any deploy command runs.
 
-1. **Application Template scaffolding -> `eai init`**
-   - Command: `eai init <app-name>`
+0. **EAI readiness unblock -> `eai-preflight.md`**
+   - If `{FEATURE_DIR}/eai-preflight.md` is missing, stale, or blocked, emit
+     only the smallest runnable unblock tasks before normal build tasks:
+     install/update `eai`, run `eai login`, run `eai tenant select`, confirm a
+     tenant-admin membership with `eai tenant list --format json`, initialize
+     the EAI app template with `eai init <app-name> --skip-prompts
+     --company-tenant <tenant-id>` when confirmed, and confirm app enrollment
+     with `eai vertical list/create/select`.
+   - Do not emit object-type, UI, implementation, deployment, or service-fit
+     tasks until EAI readiness is `ready` or explicitly deferred by the user.
+   - Never invent tenant IDs, app keys, app URLs, or platform capabilities.
+     Use `eai --describe`, public EAI docs, and the user's confirmed tenant/app
+     selection as evidence.
+   - Do not emit tasks that establish a non-EAI primary runtime, database,
+     hosting platform, or app framework. Non-EAI technologies can appear only as
+     approved integration/migration/exception tasks after the EAI Platform/Azure
+     fit is recorded.
+1. **EAI App Template scaffolding -> `eai init`**
+   - Command: `eai init <app-name> --skip-prompts --company-tenant <tenant-id>`
    - Produces the working directory, `manifest.yml`, and `config.json` expected
      by subsequent tasks.
 2. **Local validation -> `eai verify`**
@@ -535,23 +542,27 @@ precondition to downstream implementation tasks:
 - If `{FEATURE_DIR}/service-fit-matrix.md` is missing or does not distinguish
   accessible now vs purchasable vs unavailable platform capabilities, emit a
   blocking service-fit task group before normal build tasks.
-- Use the Application Template already scaffolded by `eai` as the default UI
+- The first normal build tasks must use the EAI app template, EAI CLI, EAI
+  platform services, and Azure-compatible deployment/supporting services before
+  any custom or third-party implementation task.
+- Use the EAI App Template already scaffolded by `eai` as the default UI
   lego-block source. Any create-new UI concept must appear as an explicit
   exception task with rationale.
 - Add a block-catalog task before any UI implementation task. It MUST run
   `eai --describe`, `eai blocks list`, `eai blocks describe <id>` for selected
-  blocks, and `eai resources schema`; task notes must cite block IDs, resource
-  fields, data/action bindings, package lane, coupling status, Storybook story
-  IDs, theme override points, and approved custom-block exceptions.
+  blocks, and `eai resources schema --format json`; task notes must cite block
+  IDs, resource fields, data/action bindings, package lane, coupling status,
+  Storybook story IDs, theme override points, and approved custom-block
+  exceptions.
 - Add package-profile tasks that lock the external/internal/hybrid profile
   choice and the package lane before any public, shared, or app-local block
   implementation begins.
-- Add block-porting tasks for every selected Application Template block that must
+- Add block-porting tasks for every selected EAI App Template block that must
   move into a reusable package lane, including Storybook story ID coverage,
   theme override points, exports, and compatibility checks.
-- Add DAISY decoupling tasks whenever a block or package lane is not
-  internal-only and still depends on DAISY internals; the task must define the
-  resource-schema or adapter boundary and the regression proof that DAISY is no
+- Add source-platform decoupling tasks whenever a block or package lane is not
+  restricted-source and still depends on source-platform internals; the task must define the
+  resource-schema or adapter boundary and the regression proof that source-platform coupling is no
   longer required by the public surface.
 - Add public-readiness tasks for external and hybrid profiles covering public
   exports, docs/examples where already part of the package surface,
@@ -572,7 +583,7 @@ precondition to downstream implementation tasks:
   accessibility/translation support, contextual prefill, completion validation,
   human review, audit trail, and fallback/escalation.
 - App-delivery preview/approval tasks that:
-  - build the first MVP from Application Template blocks
+  - build the first MVP from EAI App Template blocks
   - select only known `eai blocks` IDs unless a custom-block exception exists
   - preserve package lane, external/internal/hybrid profile choice, coupling
     status, Storybook story IDs, and theme override points from the approved
@@ -583,8 +594,9 @@ precondition to downstream implementation tasks:
   - block downstream work until `ui-approval.md` is approved
 - App-delivery service-fit tasks that update `service-fit-matrix.md` using
   tenant-aware evidence from `eai --describe`, `eai whoami`, `eai tenant
-  select`, `eai resources schema`, `eai verify calls --format json`, or
-  equivalent approved platform evidence.
+  select`, `eai resources schema --format json`, `eai workflow readiness
+  --format json`, `eai verify calls --format json`, or equivalent approved
+  platform evidence.
 - A scope-control task that checks whether any user-facing app process exceeds
   four steps and either combines/automates extra steps or records the approved
   exception and rationale.
