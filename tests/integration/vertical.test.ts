@@ -3,7 +3,12 @@ import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env
 import type { TestContext } from '../helpers/setup-dsl.js';
 import { cleanupTestTokens, workingDirectoryIs } from '../helpers/setup-dsl.js';
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
-import { setActiveProfile } from '../../src/lib/profile.js';
+import {
+  DEFAULT_PROD_AUTH_CLIENT_ID,
+  DEFAULT_PROD_AUTH_TENANT_ID,
+  DEFAULT_PROD_AUTH_TENANT_NAME,
+  setActiveProfile,
+} from '../../src/lib/profile.js';
 import { verticalCommand } from '../../src/commands/vertical.js';
 
 const API_BASE = 'https://test-api.example.com';
@@ -32,9 +37,9 @@ async function seedLoggedInTenant(): Promise<void> {
     accessToken: '<fixture-access-token>',
     refreshToken: '<fixture-refresh-token>',
     expiresAt: Date.now() + 3600000,
-    tenantId: 'auth-tenant',
-    tenantName: 'auth-tenant',
-    clientId: 'test-client-id',
+    tenantId: DEFAULT_PROD_AUTH_TENANT_ID,
+    tenantName: DEFAULT_PROD_AUTH_TENANT_NAME,
+    clientId: DEFAULT_PROD_AUTH_CLIENT_ID,
     oid: 'test-user-oid',
     upn: 'builder@example.com',
     activeTenantId: COMPANY_TENANT_ID,
