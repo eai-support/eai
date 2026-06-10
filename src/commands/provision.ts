@@ -46,6 +46,25 @@ interface DiagnosticsContext {
   debug: boolean;
 }
 
+function normalizeLocalEntraSetting(value: string | undefined): string | null {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (['empty', 'changeme', 'placeholder', '<empty>'].includes(normalized.toLowerCase())) {
+    return null;
+  }
+  return normalized;
+}
+
+function hasUsableLocalEntraSecret(env: Record<string, string>): boolean {
+  return normalizeLocalEntraSetting(env.ENTRA_CLIENT_SECRET) !== null;
+}
+
+function hasUsableLocalEntraClientId(env: Record<string, string>): boolean {
+  return normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID) !== null;
+}
+
 function printServerDetail(ctx: ErrorContext, diag: DiagnosticsContext): void {
   if (ctx.serverMessage) {
     out.info(`Server: ${ctx.serverMessage}`);
@@ -73,6 +92,11 @@ function tenantLabel(diag: DiagnosticsContext): string {
     return `${chalk.cyan(diag.tenantSlug)} (${chalk.dim(diag.tenantId)})`;
   }
   return chalk.cyan(diag.tenantSlug ?? diag.tenantId ?? 'unknown');
+}
+
+function isAuthConfigErrorMessage(message: string): boolean {
+  return message.includes('Stored CLI login does not match the active auth configuration')
+    || message.includes('no CLI public client ID was provided');
 }
 
 function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
@@ -213,7 +237,7 @@ Diagnostics:
     }
 
     // Check if ENTRA_CLIENT_ID already exists
-    if (env.ENTRA_CLIENT_ID && !options.force && !options.rotateSecret) {
+    if (hasUsableLocalEntraClientId(env) && !options.force && !options.rotateSecret) {
       out.warn(`ENTRA_CLIENT_ID is already set for ${chalk.cyan(verticalName)}.`);
       out.info(`Use ${chalk.cyan('eai provision entra --force')} to re-check the remote registration and confirm ENTRA_CLIENT_ID.`);
       out.info(`Use ${chalk.cyan('eai provision entra --rotate-secret')} to rotate and write a new ENTRA_CLIENT_SECRET.`);
@@ -231,7 +255,13 @@ Diagnostics:
       tenantSlug = (context.activeTenant as { slug?: string }).slug;
       userOid = (context as { user?: { oid?: string; id?: string } }).user?.oid
         ?? (context as { user?: { id?: string } }).user?.id;
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isAuthConfigErrorMessage(message)) {
+        out.error(message);
+        out.info('Run `eai login` again after sourcing the intended environment, then retry provisioning.');
+        process.exit(1);
+      }
       out.error('Failed to resolve active tenant.');
       out.info(`Run ${chalk.cyan('eai login')} and ${chalk.cyan('eai tenant select')} first.`);
       process.exit(1);
@@ -242,7 +272,7 @@ Diagnostics:
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
 
     if (options.rotateSecret) {
-      if (!env.ENTRA_CLIENT_ID) {
+      if (!hasUsableLocalEntraClientId(env)) {
         out.error('ENTRA_CLIENT_ID is not set in .env.local. Run `eai provision entra` first.');
         process.exit(1);
       }
@@ -250,7 +280,7 @@ Diagnostics:
       try {
         const rotated = await client.rotateEntraAppSecret({
           tenantId,
-          clientId: env.ENTRA_CLIENT_ID,
+          clientId: normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID)!,
         });
         await patchEnvFile(root, {
           ENTRA_CLIENT_ID: rotated.clientId,
@@ -334,11 +364,12 @@ Diagnostics:
 
     if (result.existing && !result.clientSecret) {
       out.info(`App registration already exists for ${chalk.cyan(verticalName)}.`);
-      if (env.ENTRA_CLIENT_SECRET) {
+      if (hasUsableLocalEntraSecret(env)) {
         out.info('Your existing ENTRA_CLIENT_SECRET in .env.local remains valid.');
       } else {
-        out.warn('No new ENTRA_CLIENT_SECRET was returned for the existing registration.');
-        out.warn('Set ENTRA_CLIENT_SECRET in .env.local manually if it is missing locally.');
+        out.error('No usable ENTRA_CLIENT_SECRET is available locally for the existing app registration.');
+        out.info('Run `eai provision entra --rotate-secret` to generate a new local secret, or set ENTRA_CLIENT_SECRET in .env.local.');
+        process.exit(1);
       }
       await patchEnvFile(root, { ENTRA_CLIENT_ID: result.clientId, ...optionalEnv });
       out.success(`ENTRA_CLIENT_ID confirmed: ${chalk.dim(result.clientId)}`);

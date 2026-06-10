@@ -52,9 +52,9 @@ function storedTokens(overrides: Partial<StoredTokens> = {}): StoredTokens {
   return {
     accessToken: '<fixture-cached-access-value>',
     expiresAt: Date.now() + 60_000,
-    tenantId: 'auth-tenant',
-    tenantName: 'Auth Tenant',
-    clientId: 'client-id',
+    tenantId: profile.DEFAULT_PROD_AUTH_TENANT_ID,
+    tenantName: profile.DEFAULT_PROD_AUTH_TENANT_NAME,
+    clientId: profile.DEFAULT_PROD_AUTH_CLIENT_ID,
     ...overrides,
   };
 }

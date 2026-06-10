@@ -1,6 +1,12 @@
 import inquirer from 'inquirer';
 import { findProjectRoot, loadEnvFile } from './config.js';
-import { getAccessToken, loadTokens, storeTokens, type StoredTokens } from './auth.js';
+import {
+  getAccessToken,
+  getActiveAuthConfigMismatch,
+  loadTokens,
+  storeTokens,
+  type StoredTokens,
+} from './auth.js';
 import { PlatformAPIClient } from './api.js';
 import { isRecord } from './utils.js';
 import { getActiveProfile, loadProfileConfig } from './profile.js';
@@ -484,6 +490,10 @@ export async function fetchTenantAdminMemberships(publicApiUrl?: string): Promis
   if (!tokens?.oid) {
     throw new Error('Not logged in. Run `eai login` to authenticate.');
   }
+  const authMismatch = await getActiveAuthConfigMismatch(tokens);
+  if (authMismatch) {
+    throw new Error(authMismatch);
+  }
 
   const resolvedPublicApiUrl = publicApiUrl || await resolvePublicApiUrl();
   const client = new PlatformAPIClient(resolvedPublicApiUrl, 'system');
@@ -603,6 +613,11 @@ export async function resolveActiveTenantContext(options?: {
   forceRefresh?: boolean;
   tenantId?: string;
 }): Promise<ActiveTenantContext> {
+  const authMismatch = await getActiveAuthConfigMismatch(undefined, options?.projectRoot);
+  if (authMismatch) {
+    throw new Error(authMismatch);
+  }
+
   // Short-circuit: if tenant context is cached and TTL is valid, skip Admin API call
   if (!options?.forceRefresh && !options?.forcePrompt && !options?.tenantId) {
     const cached = await loadTokens();
