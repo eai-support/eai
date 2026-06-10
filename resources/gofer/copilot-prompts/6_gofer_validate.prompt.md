@@ -10,9 +10,9 @@ tools:
   - WebSearch
 argument-hint: feature-name-or-description
 gofer:
-  workflowProfile: enterpriseai
+  workflowProfile: standard
   canonicalSource: .specify/commands/6_gofer_validate.md
-  canonicalChecksum: ff8ad74f8a361b053f9f7ff5419446469758aab669114cad22c567bf99bc408b
+  canonicalChecksum: 7b873eb84544f7c2ea402a5d3892e52631dc411862d39b823f563601fe8251dd
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -1926,22 +1926,28 @@ For application delivery, validation MUST also check
   with screenshot, local render proof, Playwright-style evidence, or an
   explicit reasoned exception.
 - `{FEATURE_DIR}/ui-approval.md` records the approved preview, approved
-  branding/logo decisions, any approved Application Template exceptions, the
+  branding/logo decisions, any approved EAI App Template exceptions, the
   approver, and approval timestamp.
 - `{FEATURE_DIR}/service-fit-matrix.md` records each desired platform
   capability, the evidence source used to evaluate it, and whether it is
   accessible now, purchasable but unavailable now, or unavailable without new
   platform work.
+- The delivered app uses EAI Platform, including the EAI app template, as the
+  primary app substrate and Azure as the preferred cloud/supporting substrate.
+  Any Firebase, Supabase, Vercel primary runtime, AWS, GCP, bespoke backend,
+  unmanaged database, or unrelated SaaS dependency is rejected unless it is
+  recorded as an approved integration/migration/exception with rationale, owner,
+  expiry, and validation evidence.
 - The approved external/internal/hybrid profile choice, package lane, coupling
   status, Storybook story IDs, theme override points, public-readiness target,
   and custom-block exceptions are present in the preview/approval/service-fit
   artifacts and match the delivered implementation.
-- Validation confirms that app-delivery runs used Application Template blocks by
+- Validation confirms that app-delivery runs used EAI App Template blocks by
   default and that any create-new UI concept was explicitly approved rather
   than silently introduced.
 - Validation confirms that block-porting tasks produced the expected package
-  surface and that public or hybrid lanes do not directly depend on DAISY
-  internals unless an approved internal-only exception is recorded.
+  surface and that public or hybrid lanes do not directly depend on source platform
+  internals unless an approved restricted-source exception is recorded.
 - Chatbot, voice, accessibility, translation, contextual prefill, validation,
   and step-goal assistance claims are covered by acceptance tests where they are
   in scope.
@@ -2022,20 +2028,6 @@ Before completing validation, verify:
 - [ ] Any significant decisions made -> recorded in decisions/?
 - [ ] Any gotchas or workarounds -> documented for future reference?
 - [ ] Feature-specific learnings -> captured in research.md?
-
----
-
-## LLM Council Integration (Optional)
-
-When council mode is enabled for `gofer_validate` stage:
-
-1. Multiple LLMs review the implementation independently
-2. Each provider scores the rubric from their perspective
-3. Chairman synthesizes scores — uses the **lowest** score for each category
-   (conservative approach)
-4. Highlights consensus issues (high confidence)
-5. Notes divergent assessments needing human judgment
-6. Usage logged to `.specify/logs/council-usage.jsonl`
 
 ---
 

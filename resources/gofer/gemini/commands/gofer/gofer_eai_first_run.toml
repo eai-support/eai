@@ -1,0 +1,2 @@
+description = "Prepare a new machine or repo for the first EAI Gofer app build."
+prompt = "{{include: ../../../.specify/commands/gofer_eai_first_run.md}}"

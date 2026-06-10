@@ -17,8 +17,8 @@ an app based on `https://github.com/eai-tools/eai-app-template`.
 
 ## Construction Rules
 
-1. Keep tenant-specific values in config: branding, feature flags, API endpoints,
-   storage keys, store slices, and layout slots.
+1. Keep tenant-specific values in config: branding, feature flags, API
+   endpoints, storage keys, store slices, and layout slots.
 2. Register renderable components before referencing them from config.
 3. Reference components by their registered string name.
 4. Use `storeBindings` to map global store paths into component props.

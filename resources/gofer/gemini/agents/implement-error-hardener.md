@@ -1,6 +1,8 @@
 ---
 name: implement-error-hardener
-description: Hardens error handling from 2 perspectives - fault injection and incident analysis
+description:
+  Hardens error handling from 2 perspectives - fault injection and incident
+  analysis
 kind: local
 model: gemini-3-flash-preview
 temperature: 0.2
@@ -83,15 +85,3 @@ prioritizes which gaps to fix.
   current context.
 - **Recommended model**: haiku for fault injection (pattern scanning), sonnet
   for incident analysis (web search + reasoning).
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your hardening analysis with other providers'
-  findings
-- Your response may be peer-reviewed by other council members
-
-Focus on perspective-committed error analysis regardless of council mode.

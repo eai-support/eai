@@ -92,9 +92,10 @@ Why relevant: [Explanation]
 - **Smallest useful MVP to show first**: [description]
 - **Profile choice**: [external / internal / hybrid]
 - **Package lane**: [public-package / internal-app / hybrid-adapter / app-local]
-- **Coupling status**: [DAISY-coupled / DAISY-decoupled / hybrid-adapter]
+- **Coupling status**: [source-platform-coupled / source-platform-decoupled /
+  hybrid-adapter]
 - **Public-readiness target**: [required / deferred / not applicable]
-- **Application Template constraints**: [approved blocks/patterns to reuse first]
+- **EAI App Template constraints**: [approved blocks/patterns to reuse first]
 - **Block catalog discovery**: [`eai --describe`, `eai blocks list`, candidate
   `eai blocks describe <id>` results, and `eai resources schema` evidence]
 - **Selected block IDs**: [stable IDs, required resources, bindings, override
@@ -102,8 +103,8 @@ Why relevant: [Explanation]
   status, and custom-block exceptions]
 - **Block porting plan**: [reuse as-is, port to package, or custom-block
   exception with owner and approval path]
-- **DAISY decoupling plan**: [adapter/resource-schema boundary or approved
-  internal-only exception]
+- **source-platform decoupling plan**: [adapter/resource-schema boundary or
+  approved restricted-source exception]
 - **Branding inputs**: [logos, colors, voice, or "not in scope"]
 - **Preview validation expectation**: [screenshot, local render proof,
   Playwright-style checks]

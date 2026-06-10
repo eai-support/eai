@@ -88,9 +88,9 @@ Before implementation proceeds, the following decisions are needed:
 
 ## Enterprise Decision Rights
 
-EnterpriseAI is the default delivery profile. The summary must identify the
-decision-rights audiences and the information each needs before the feature can
-move forward.
+Standard Gofer delivery is the public default. For explicit EnterpriseAI profile
+runs, the summary must identify the decision-rights audiences and the
+information each needs before the feature can move forward.
 
 | Persona                 | Decision They Own                                | Evidence Required                            |
 | ----------------------- | ------------------------------------------------ | -------------------------------------------- |

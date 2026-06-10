@@ -46,4 +46,4 @@ The Language Server provides dual protocol support:
 ## Dependencies
 
 - vscode-languageserver 9.0.1
-- @anthropic-ai/sdk 0.35.0 (for validation)
+- Static validation service (no direct model SDK/API key dependency)

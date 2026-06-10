@@ -115,24 +115,28 @@ _Example of marking unclear requirements:_
 - **Mode**: [application delivery | non-app work]
 - **Shared numbered stages preserved**: yes
 - **Journey requirement**: [four-step AI-augmented journey | not applicable]
+- **App stack policy**: [EAI Platform including app template first, Azure second
+  | approved non-EAI exception | not applicable]
 
 ## UI Preview & Approval Gate _(application delivery only)_
 
 - **First MVP preview**: [what must be shown first]
 - **Profile choice**: [external / internal / hybrid]
 - **Package lane**: [public-package / internal-app / hybrid-adapter / app-local]
-- **Coupling status**: [DAISY-coupled / DAISY-decoupled / hybrid-adapter]
+- **Coupling status**: [source-platform-coupled / source-platform-decoupled /
+  hybrid-adapter]
 - **Public-readiness target**: [required / deferred / not applicable]
-- **Application Template constraints**: [which approved blocks/patterns must be
+- **EAI App Template constraints**: [which approved blocks/patterns must be
   reused]
 - **Block catalog evidence**: [`eai blocks list`, `eai blocks describe <id>`,
   selected block IDs, and any custom-block exception]
 - **Resource bindings**: [`eai resources schema` fields/actions/events used by
   selected blocks]
-- **Storybook story IDs**: [story IDs for reusable/ported blocks, or approved exception]
+- **Storybook story IDs**: [story IDs for reusable/ported blocks, or approved
+  exception]
 - **Theme override points**: [tokens, slots, CSS variables, data/action hooks]
-- **Block porting and DAISY decoupling**: [reuse/port/custom decision and
-  adapter/resource-schema boundary]
+- **Block porting and source-platform decoupling**: [reuse/port/custom decision
+  and adapter/resource-schema boundary]
 - **Branding scope**: [logos/styling in scope or not]
 - **Preview validation requirement**: [screenshot, local render proof,
   Playwright-style checks]
@@ -147,6 +151,8 @@ _Example of marking unclear requirements:_
   equivalent]
 - **Decision states**: [accessible now | purchasable but unavailable now |
   unavailable without new platform work]
+- **Non-EAI stack handling**: [not used | integration target | migration
+  reference | approved exception with owner/expiry]
 
 ## Success Criteria _(mandatory)_
 

@@ -15,10 +15,12 @@ status: pending
 
 ## Approved Design Constraints
 
-- **Application Template baseline preserved**: {{yes-no}}
+- **EAI App Template baseline preserved**: {{yes-no}}
 - **Approved profile choice**: {{external-internal-hybrid}}
-- **Approved package lane**: {{public-package-internal-app-hybrid-adapter-app-local}}
-- **Approved coupling status**: {{daisy-coupled-daisy-decoupled-hybrid-adapter}}
+- **Approved package lane**:
+  {{public-package-internal-app-hybrid-adapter-app-local}}
+- **Approved coupling status**:
+  {{source-platform-coupled-source-platform-decoupled-hybrid-adapter}}
 - **Approved Storybook story IDs**: {{storybook-story-ids-or-exceptions}}
 - **Approved theme override points**: {{theme-override-points}}
 - **Approved create-new exceptions**: {{exceptions-or-none}}

@@ -93,14 +93,3 @@ and flags weaknesses found by 2+ perspectives as HIGH priority.
 - **Stay in your perspective** — don't cross into other stress areas.
 - **Recommended model**: haiku for pattern-based stress testing (1, 4), sonnet
   for reasoning-heavy perspectives (2, 3).
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your stress test with other providers' findings
-- Your response may be peer-reviewed by other council members
-
-Focus on perspective-committed stress testing regardless of council mode.

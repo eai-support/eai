@@ -98,16 +98,3 @@ Reports LOW confidence if:
   and constraints.
 - **Recommended model**: sonnet (requires reasoning about technology trends and
   maturity assessment).
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your horizon scan with other providers'
-  findings
-- Different LLMs may discover different emerging trends
-- Your response may be peer-reviewed by other council members
-
-Focus on evidence-based horizon scanning regardless of council mode.

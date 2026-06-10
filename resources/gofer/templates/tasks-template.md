@@ -33,14 +33,18 @@ implementation:
 - `ui-approval.md` exists and is approved
 - `service-fit-matrix.md` exists and distinguishes accessible now, purchasable,
   and unavailable platform capabilities
-- preview work stays inside approved Application Template blocks unless an
-  exception task is recorded
+- normal build tasks use the EAI app template, EAI platform services, and
+  Azure-compatible support services before any custom or third-party app
+  substrate
+- preview work stays inside approved EAI App Template blocks unless an exception
+  task is recorded
 - package lane, coupling status, Storybook story IDs, theme override points,
   custom-block exceptions, and external/internal/hybrid profile choice are
   recorded before UI implementation tasks begin
 
 External and hybrid profiles must include first-class public-readiness,
-block-porting, and DAISY decoupling tasks before user-story implementation.
+block-porting, and source-platform decoupling tasks before user-story
+implementation.
 
 For explicit non-app work, mark this section "Not applicable" and continue with
 the shared stages without app-only gates.
@@ -105,12 +109,12 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] T009 Setup environment configuration management
 - [ ] T010 Lock external/internal/hybrid package profile and package lane from
       `ui-preview-brief.md`
-- [ ] T011 Run `eai --describe`, `eai blocks list`,
-      `eai blocks describe <id>`, and `eai resources schema`; record block IDs,
-      resource bindings, coupling status, Storybook story IDs, theme override
-      points, and custom-block exceptions
-- [ ] T012 Add block-porting, DAISY decoupling, and public-readiness work for
-      external or hybrid package lanes
+- [ ] T011 Run `eai --describe`, `eai blocks list`, `eai blocks describe <id>`,
+      and `eai resources schema`; record block IDs, resource bindings, coupling
+      status, Storybook story IDs, theme override points, and custom-block
+      exceptions
+- [ ] T012 Add block-porting, source-platform decoupling, and public-readiness
+      work for external or hybrid package lanes
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in
 parallel

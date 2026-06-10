@@ -10,9 +10,9 @@ tools:
   - WebSearch
 argument-hint: feature-name-or-description
 gofer:
-  workflowProfile: enterpriseai
+  workflowProfile: standard
   canonicalSource: .specify/commands/7a_stakeholder_comms.md
-  canonicalChecksum: ba13942d20f532020d8d2a6e655134d4c97e45f70ff66ea800442dc09b125c64
+  canonicalChecksum: 37523a42cbe6efaf26039f2ac994a2c2a73bd8529118cced78cd559ce4e1106b
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -314,8 +314,8 @@ stakeholder communications explaining what changed and why.
 
 ## Marp Presentation Deck (EnterpriseAI Profile Extension)
 
-EnterpriseAI is the default profile. Marp output is opt-in per run and remains
-the default recommendation for `workflowProfile=enterpriseai`. When Marp output
+The standard Gofer workflow is the public default. Marp output is opt-in per run
+and remains recommended only for `workflowProfile=enterpriseai`. When Marp output
 is enabled, generate the general stakeholder deck and the persona deck pack.
 Standard-profile runs skip this step only when the user explicitly opts out;
 Release Notes and the Demo Script (5-minute walkthrough) remain the core
@@ -439,15 +439,3 @@ visual generators if needed.
 - **Include timelines** — consultants need to plan around dates
 - **Quantify everything** — numbers > adjectives
 - **Demo script must work** — test it mentally before writing
-
----
-
-## LLM Council Integration
-
-When council mode is configured in `.specify/memory/council-config.yaml` for
-stakeholder communications:
-
-1. Multiple LLMs draft communications independently
-2. Chairman synthesizes best elements from each
-3. Ensures diverse writing styles and perspectives
-4. Usage logged to `.specify/logs/council-usage.jsonl`

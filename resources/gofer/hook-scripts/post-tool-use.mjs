@@ -186,13 +186,6 @@ function writeObservation(id, toolName, toolInput, toolResponse) {
   }
 }
 
-function atomicWrite(filePath, data) {
-  mkdirSync(dirname(filePath), { recursive: true });
-  const tmpPath = filePath + '.tmp';
-  writeFileSync(tmpPath, JSON.stringify(data, null, 2));
-  renameSync(tmpPath, filePath);
-}
-
 function stripRuntimeBridgeFields(value) {
   const copy = JSON.parse(JSON.stringify(value ?? {}));
   delete copy.timestamp;

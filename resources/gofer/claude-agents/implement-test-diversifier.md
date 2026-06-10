@@ -79,14 +79,4 @@ This agent does not block. The judge merges test suites from all 4 perspectives.
 - **Match existing test conventions** — use the same imports, patterns, and assertions.
 - **Recommended model**: haiku for simple perspectives (1), sonnet for complex perspectives (2, 3, 4).
 
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your test suite with other providers' findings
-- Your response may be peer-reviewed by other council members
-
-Focus on perspective-committed test writing regardless of council mode.
 ```

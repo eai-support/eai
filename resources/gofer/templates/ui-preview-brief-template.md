@@ -23,14 +23,14 @@ status: draft
 
 ## Package Profile
 
-| Field | Decision |
-| ----- | -------- |
-| Profile choice | {{external-internal-hybrid}} |
-| Package lane | {{public-package-internal-app-hybrid-adapter-app-local}} |
-| Coupling status | {{daisy-coupled-daisy-decoupled-hybrid-adapter}} |
-| Public-readiness target | {{required-deferred-not-applicable}} |
+| Field                   | Decision                                                             |
+| ----------------------- | -------------------------------------------------------------------- |
+| Profile choice          | {{external-internal-hybrid}}                                         |
+| Package lane            | {{public-package-internal-app-hybrid-adapter-app-local}}             |
+| Coupling status         | {{source-platform-coupled-source-platform-decoupled-hybrid-adapter}} |
+| Public-readiness target | {{required-deferred-not-applicable}}                                 |
 
-## Application Template Constraints
+## EAI App Template Constraints
 
 | Constraint                    | Decision                                          |
 | ----------------------------- | ------------------------------------------------- |
@@ -42,11 +42,11 @@ status: draft
 | Allowed create-new exceptions | {{approved-exceptions-or-none}}                   |
 | Accessibility baseline        | {{expectation}}                                   |
 
-## Block Porting And DAISY Decoupling
+## Block Porting And source platform Decoupling
 
-| Block ID | Package Lane | Storybook Story ID | Coupling Status | Porting Decision | Theme Override Points | Custom-Block Exception |
-| -------- | ------------ | ------------------ | --------------- | ---------------- | --------------------- | ---------------------- |
-| {{block-id}} | {{lane}} | {{story-id-or-na}} | {{status}} | Reuse / Port / Custom Exception | {{tokens-slots-css-vars}} | {{none-or-approval-path}} |
+| Block ID     | Package Lane | Storybook Story ID | Coupling Status | Porting Decision                | Theme Override Points     | Custom-Block Exception    |
+| ------------ | ------------ | ------------------ | --------------- | ------------------------------- | ------------------------- | ------------------------- |
+| {{block-id}} | {{lane}}     | {{story-id-or-na}} | {{status}}      | Reuse / Port / Custom Exception | {{tokens-slots-css-vars}} | {{none-or-approval-path}} |
 
 ## Branding Inputs
 

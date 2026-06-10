@@ -27,6 +27,8 @@ CLARIFICATION]
 **Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
 **Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
 **Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
+**App Stack Policy**: [For app delivery: EAI Platform including app template
+first, Azure second, all other technology only as an approved exception]
 **Project Type**: [single/web/mobile - determines source structure]  
 **Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps
 or NEEDS CLARIFICATION]  
@@ -140,45 +142,15 @@ work, state why this gate is not applicable.
 | UI approval       | `ui-approval.md`                               | [who approves and when]                                                                                  |
 | Service fit       | `service-fit-matrix.md`                        | [how accessible vs purchasable vs unavailable is proved]                                                 |
 
-## Config-Driven UI Gate
-
-For application delivery based on the EAI App Template, document how the UI is
-composed from config before implementation is complete.
-
-| Decision                  | Required Evidence                                                   |
-| ------------------------- | ------------------------------------------------------------------- |
-| Slot layout               | [header/leftPane/middlePane/rightPane or app-specific slot map]     |
-| Registered components     | [component names from `src/eai.blocks.tsx` or package registry]     |
-| Store slices              | [store paths created or reused for bindings]                        |
-| Store bindings            | [component prop to store path mappings]                             |
-| Visibility rules          | [showWhen paths and expected states]                                |
-| Runtime override boundary | [callbacks, auth actions, router handlers, analytics, render props] |
-
-## EAI Service Usage Gate
-
-For application delivery, classify each platform capability against the EAI App
-Template service guide before inventing code. For non-app work, state why this
-gate is not applicable.
-
-| Need                                   | Preferred Path                                                            | Evidence                                                    |
-| -------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Frontend composition                   | Config slots and registered components                                    | [slot shape, registry names, bindings, overrides]           |
-| Tenant data or business records        | ResourceAPI/Object Types via `eai types`                                  | [object type, fields, actions, events, roles]               |
-| Documents, extraction, or document RAG | `useDocuments` / `eai docs`                                               | [document type, processing state, source/index evidence]    |
-| Chat or AI workflow                    | `useChat` / `eai chat`                                                    | [conversation ID, persona/context, tool or retrieval needs] |
-| Tenant resource search                 | ResourceAPI/PublicAPI search                                              | [query, filters, tenant scope, index/search evidence]       |
-| Advanced platform route                | `eai publicapi`                                                           | [route, payload, auth scope, reason no named helper fits]   |
-| Storage backend                        | ResourceAPI storage type: `postgresql`, `documentdb`, `blob`, or `search` | [backend selected and reason]                               |
-
 ## AI-Readable Blocks Bridge
 
-| Workstream       | Required Decision                                            | Plan Reference                            |
-| ---------------- | ------------------------------------------------------------ | ----------------------------------------- |
-| Package profile  | [external / internal / hybrid]                               | [where tasks will enforce profile choice] |
-| Package lane     | [public package / internal app / hybrid adapter / app-local] | [package/export path]                     |
-| Block porting    | [reuse / port / custom-block exception]                      | [block IDs and story IDs]                 |
-| DAISY decoupling | [coupled / decoupled / adapter boundary]                     | [resource schema or adapter path]         |
-| Public-readiness | [required / deferred / not applicable]                       | [consumer-facing checks]                  |
+| Workstream                 | Required Decision                                            | Plan Reference                            |
+| -------------------------- | ------------------------------------------------------------ | ----------------------------------------- |
+| Package profile            | [external / internal / hybrid]                               | [where tasks will enforce profile choice] |
+| Package lane               | [public package / internal app / hybrid adapter / app-local] | [package/export path]                     |
+| Block porting              | [reuse / port / custom-block exception]                      | [block IDs and story IDs]                 |
+| source-platform decoupling | [coupled / decoupled / adapter boundary]                     | [eai resources schema or adapter path]    |
+| Public-readiness           | [required / deferred / not applicable]                       | [consumer-facing checks]                  |
 
 ## Complexity Tracking
 
@@ -200,6 +172,8 @@ gate is not applicable.
 - **EAI App Template Reference**: `[eai-app-template tag or SHA]`
 - **Deployment Repo Reference**: `[deployment-repo tag or SHA]`
 - **Package Profile Choice**: `[external | internal | hybrid]`
-- **Package Lane**: `[public-package | internal-app | hybrid-adapter | app-local]`
-- **Coupling Status**: `[daisy-coupled | daisy-decoupled | hybrid-adapter]`
+- **Package Lane**:
+  `[public-package | internal-app | hybrid-adapter | app-local]`
+- **Coupling Status**:
+  `[source-platform-coupled | source-platform-decoupled | hybrid-adapter]`
 - **Public-Readiness Target**: `[required | deferred | not-applicable]`
