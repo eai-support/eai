@@ -17,18 +17,17 @@ npm install -g @eai-tools/cli
 
 ## Documentation
 
-- [EAI CLI — Overview](/eai/docs/overview)
-- [EAI CLI — Architecture](/eai/docs/architecture)
+- [Start Here](/eai/docs/start-here)
+- [EAI CLI](/eai/docs/eai-cli)
+- [eai-gofer](/eai/docs/eai-gofer)
+- [EAI App Template](/eai/docs/eai-app-template)
+- [Examples](/eai/docs/examples/index)
+- [Build A Task Tracker](/eai/docs/examples/task-tracker)
+- [Add AI Chat](/eai/docs/examples/ai-chat)
+- [Platform Service Patterns](/eai/docs/app-template/service-patterns)
+- [Config-Driven UI](/eai/docs/app-template/config-driven-ui)
 - [EAI CLI - Configuration](/eai/docs/configuration)
 - [EAI CLI — API Reference](/eai/docs/api-reference)
-- [PublicAPI V4 Coverage Matrix](/eai/docs/publicapi-v4-coverage)
-- [EAI CLI — Data Model](/eai/docs/data-model)
-- [EAI CLI — Dependencies](/eai/docs/dependencies)
-- [EAI CLI — Deployment](/eai/docs/deployment)
-- [EAI CLI — Changelog](/eai/docs/changelog)
-- [Documentation Surfaces](/eai/docs/documentation-surfaces)
-- [EAI CLI — Code Quality Review](/eai/docs/review/code-quality)
-- [EAI CLI — Patterns & Tech Debt](/eai/docs/review/patterns)
 
 ## Help & AI Bundles
 

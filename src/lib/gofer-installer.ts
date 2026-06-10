@@ -88,6 +88,7 @@ const GOFER_GITIGNORE_ENTRIES = [
 export const GOFER_RESOURCE_MAPPINGS: readonly GoferManagedResourceMapping[] = [
   { sourceSubdirectory: 'commands', targetSegments: ['.specify', 'commands'] },
   { sourceSubdirectory: 'templates', targetSegments: ['.specify', 'templates'] },
+  { sourceSubdirectory: 'references', targetSegments: ['.specify', 'references'] },
   { sourceSubdirectory: 'bash-scripts', targetSegments: ['.specify', 'scripts', 'bash'], makeExecutable: true },
   { sourceSubdirectory: 'powershell-scripts', targetSegments: ['.specify', 'scripts', 'powershell'] },
   { sourceSubdirectory: 'node-scripts', targetSegments: ['.specify', 'scripts', 'node'], makeExecutable: true },
@@ -165,6 +166,7 @@ async function createGoferDirectories(workspacePath: string): Promise<void> {
     join(workspacePath, '.specify', 'scripts', 'hooks'),
     join(workspacePath, '.specify', 'specs'),
     join(workspacePath, '.specify', 'templates'),
+    join(workspacePath, '.specify', 'references'),
     join(workspacePath, '.specify', 'logs'),
     join(workspacePath, '.claude', 'commands'),
     join(workspacePath, '.claude', 'agents'),

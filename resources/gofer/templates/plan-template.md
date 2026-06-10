@@ -130,25 +130,55 @@ For application delivery, the plan must lock the approved preview and service
 selection before downstream implementation is treated as complete. For non-app
 work, state why this gate is not applicable.
 
-| Gate              | Required Artifact                              | Validation                                                   |
-| ----------------- | ---------------------------------------------- | ------------------------------------------------------------ |
-| Preview scope     | `ui-preview-brief.md`                          | [how the MVP preview scope is defined]                       |
-| Platform describe | `eai --describe`                               | [CLI version, tenant/platform capability notes, package lane] |
+| Gate              | Required Artifact                              | Validation                                                                                               |
+| ----------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Preview scope     | `ui-preview-brief.md`                          | [how the MVP preview scope is defined]                                                                   |
+| Platform describe | `eai --describe`                               | [CLI version, tenant/platform capability notes, package lane]                                            |
 | Block catalog     | `eai blocks list` / `eai blocks describe <id>` | [selected IDs, Storybook story IDs, theme override points, coupling status, and custom-block exceptions] |
-| Resource bindings | `eai resources schema`                         | [object fields/actions/events feeding selected blocks]       |
-| Preview evidence  | `ui-review-log.md`                             | [screenshot, local render, or Playwright-style proof]        |
-| UI approval       | `ui-approval.md`                               | [who approves and when]                                      |
-| Service fit       | `service-fit-matrix.md`                        | [how accessible vs purchasable vs unavailable is proved]     |
+| Resource bindings | `eai resources schema`                         | [object fields/actions/events feeding selected blocks]                                                   |
+| Preview evidence  | `ui-review-log.md`                             | [screenshot, local render, or Playwright-style proof]                                                    |
+| UI approval       | `ui-approval.md`                               | [who approves and when]                                                                                  |
+| Service fit       | `service-fit-matrix.md`                        | [how accessible vs purchasable vs unavailable is proved]                                                 |
+
+## Config-Driven UI Gate
+
+For application delivery based on the EAI App Template, document how the UI is
+composed from config before implementation is complete.
+
+| Decision                  | Required Evidence                                                   |
+| ------------------------- | ------------------------------------------------------------------- |
+| Slot layout               | [header/leftPane/middlePane/rightPane or app-specific slot map]     |
+| Registered components     | [component names from `src/eai.blocks.tsx` or package registry]     |
+| Store slices              | [store paths created or reused for bindings]                        |
+| Store bindings            | [component prop to store path mappings]                             |
+| Visibility rules          | [showWhen paths and expected states]                                |
+| Runtime override boundary | [callbacks, auth actions, router handlers, analytics, render props] |
+
+## EAI Service Usage Gate
+
+For application delivery, classify each platform capability against the EAI App
+Template service guide before inventing code. For non-app work, state why this
+gate is not applicable.
+
+| Need                                   | Preferred Path                                                            | Evidence                                                    |
+| -------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Frontend composition                   | Config slots and registered components                                    | [slot shape, registry names, bindings, overrides]           |
+| Tenant data or business records        | ResourceAPI/Object Types via `eai types`                                  | [object type, fields, actions, events, roles]               |
+| Documents, extraction, or document RAG | `useDocuments` / `eai docs`                                               | [document type, processing state, source/index evidence]    |
+| Chat or AI workflow                    | `useChat` / `eai chat`                                                    | [conversation ID, persona/context, tool or retrieval needs] |
+| Tenant resource search                 | ResourceAPI/PublicAPI search                                              | [query, filters, tenant scope, index/search evidence]       |
+| Advanced platform route                | `eai publicapi`                                                           | [route, payload, auth scope, reason no named helper fits]   |
+| Storage backend                        | ResourceAPI storage type: `postgresql`, `documentdb`, `blob`, or `search` | [backend selected and reason]                               |
 
 ## AI-Readable Blocks Bridge
 
-| Workstream | Required Decision | Plan Reference |
-| ---------- | ----------------- | -------------- |
-| Package profile | [external / internal / hybrid] | [where tasks will enforce profile choice] |
-| Package lane | [public package / internal app / hybrid adapter / app-local] | [package/export path] |
-| Block porting | [reuse / port / custom-block exception] | [block IDs and story IDs] |
-| DAISY decoupling | [coupled / decoupled / adapter boundary] | [resource schema or adapter path] |
-| Public-readiness | [required / deferred / not applicable] | [consumer-facing checks] |
+| Workstream       | Required Decision                                            | Plan Reference                            |
+| ---------------- | ------------------------------------------------------------ | ----------------------------------------- |
+| Package profile  | [external / internal / hybrid]                               | [where tasks will enforce profile choice] |
+| Package lane     | [public package / internal app / hybrid adapter / app-local] | [package/export path]                     |
+| Block porting    | [reuse / port / custom-block exception]                      | [block IDs and story IDs]                 |
+| DAISY decoupling | [coupled / decoupled / adapter boundary]                     | [resource schema or adapter path]         |
+| Public-readiness | [required / deferred / not applicable]                       | [consumer-facing checks]                  |
 
 ## Complexity Tracking
 
@@ -167,7 +197,7 @@ work, state why this gate is not applicable.
 - **EAI CLI Version Pin**: `[major.minor, e.g. 2.0]` — the installed `eai`
   version is recorded here at plan generation time. Deployment tasks reference
   this pin to prevent drift between local and CI environments.
-- **Application Template Reference**: `[application-template tag or SHA]`
+- **EAI App Template Reference**: `[eai-app-template tag or SHA]`
 - **Deployment Repo Reference**: `[deployment-repo tag or SHA]`
 - **Package Profile Choice**: `[external | internal | hybrid]`
 - **Package Lane**: `[public-package | internal-app | hybrid-adapter | app-local]`
