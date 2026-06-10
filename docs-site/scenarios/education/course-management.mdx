@@ -58,6 +58,37 @@ This scenario works best as a four-step, human-in-the-loop application. The exis
 - **EAI delivery:** Keep the full audit trail in structured resources, use AI workflows to explain outcomes, and feed the resulting signals into future product, service, and operational improvement work.
 
 <!-- four-step-application:end -->
+
+## EAI Platform Support By Step
+
+EAI provides the safe service boundary for Course Management through Object Types, tenant-scoped resources, document processing, chat workflows, and CLI verification. For this scenario, the main records are `Course`, `Enrollment`, and `Grade`.
+
+| Process step | What EAI provides | Calling pattern |
+| ------------ | ----------------- | --------------- |
+| Step 1. Capture demand and context | Tenant-scoped intake resources for Course context such as the core workflow data. Object Type validation, starter forms, optional document intake, and chat-guided capture keep the first record complete. | Define fields in `src/eai.config/object-types.ts`, run `eai types validate` and `eai types seed`, create initial `Course` records with `useResources('Course')` or `eai resources create Course`, and keep browser calls behind `/api/eai/...`. |
+| Step 2. Prepare the decision | Linked resource queries over Course state and history. Search, schema checks, document classification or RAG indexing, and chat summaries turn raw context into a prepared decision. | Use `useResources('Course')` list/query/search patterns, verify shape with `eai resources schema`, use `useDocuments().upload/classify/ragIndex`, `eai docs upload`, `eai docs classify`, and `eai docs index` where supporting material exists, and send decision-support prompts through `useChat(workflowId, 'chat')` or `eai chat send`. |
+| Step 3. Execute and collaborate | Resource updates and actions for Enrollment execution state. Status changes, assignments, notes, generated work packets, and chat support keep humans in control during execution. | Model actions in the Object Type code, call `client.resources.executeAction(type, id, action)` or the app hook equivalent, update records through the app service layer, and verify with `eai resources get/list/query`. |
+| Step 4. Resolve, explain, and improve | Outcome resources for final status, outcome, audit history, and follow-up signals across Course, Enrollment, and Grade. Audit-friendly links, indexed final documents, reporting snapshots, and answer generation make the result explainable and reusable. | Persist outcomes as resources, index final material with `eai docs index` or `useDocuments().ragIndex`, send explanation prompts with `useChat` or `eai chat stream`, and use `eai resources aggregate/search` for reporting checks. |
+
+## Prompt, Code, And Service Pattern Mapping
+
+The Object Type code example on this page is the implementation contract for the EAI platform services. eai-gofer should read that code as the source of truth for which resource, document, and chat calls belong in the app.
+
+Use this prompt shape when asking eai-gofer or another coding agent to implement the scenario:
+
+```text
+Use the EAI App Template. Model Course Management with Object Types for Course, Enrollment, Grade. Use useResources for records and actions, useDocuments for uploads/classification/RAG where documents appear, useChat for workflow assistance, and verify with eai types/resources/docs/chat commands. Use eai publicapi only when no named command covers the required platform call.
+```
+
+| Scenario artifact | How it maps to EAI service calls |
+| ----------------- | -------------------------------- |
+| Four-step process | Step 1 becomes resource creation, Step 2 becomes resource query/search plus optional document or chat preparation, Step 3 becomes resource update/action calls, and Step 4 becomes outcome persistence plus explanation/reporting calls. |
+| Object Type definitions | `eai types validate`, `eai types seed`, and `eai resources schema` make the model available and checkable before UI work starts. |
+| Properties and indexes | Fields become `useResources` payloads, filters, list views, and `eai resources create/list/query/search` checks. Indexed fields should support lookup and triage, not duplicate canonical records. |
+| Links between Object Types | Relationships become linked-resource UI, timeline context, and audit trails that app code loads through resource queries rather than separate bespoke stores. |
+| Actions and status fields | Workflow buttons and operator transitions call resource action/update helpers, then verify state with `eai resources get/list/query`. |
+| Document and chat prompts | Prompts should call the platform documents and chat patterns: `useDocuments().upload/classify/ragIndex`, `eai docs upload`, `eai docs classify`, and `eai docs index` for documents, and `useChat`, `eai chat send`, or `eai chat stream` for conversational assistance. |
+
 ## Object Types
 
 | Name | Key Properties | Links | Actions |
