@@ -8,12 +8,11 @@
           "description": "CLI command contracts, local stack compatibility, and deployed read-only CLI smoke.",
           "owned_paths": [
             "src/**",
-            "packages/**",
             "tests/**",
+            "resources/**",
             "package.json"
           ],
           "required_repo_tests": [
-            "tests/**/*.spec.ts",
             "tests/**/*.test.ts",
             "src/**/*.test.ts"
           ],
@@ -21,8 +20,14 @@
             "eai-cli"
           ],
           "required_deployed_contracts": [
-            "tests/cross-service/contracts/eai-cli/describe-schema.spec.ts",
-            "tests/cross-service/contracts/eai-cli/error-codes.spec.ts"
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/eai-cli/describe-schema.spec.ts"
+            },
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/eai-cli/error-codes.spec.ts"
+            }
           ]
         }
       ]
