@@ -50,6 +50,9 @@ npm run test:ui
 # Generate coverage report
 npm run test:coverage
 
+# Run the focused SRP EAI CLI evidence set
+npm run test:eai-cli:ci
+
 # Run specific test file
 npm test -- init.test.ts
 
@@ -231,6 +234,7 @@ expectNoErrorsOrWarnings(result)
 
 Tests run automatically on:
 - Pull requests (all tests)
+- Pull requests (`ci/eai-cli-tests`, focused SRP evidence for auth, tenant, schema, error, PublicAPI, and preview-lifecycle contracts)
 - Main branch pushes (all tests + coverage)
 - Release tags (all tests + coverage + smoke tests)
 

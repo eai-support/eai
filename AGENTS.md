@@ -1,5 +1,14 @@
 # AGENTS.md
 
+## Feature Test Ownership
+
+- When creating, updating, or removing feature behavior, update the owned tests in the same repo and PR. Do not hand feature testing to `eai-testing-dev` unless the deployed canary, route/config contract, auth/tenant smoke, or release evidence surface changes.
+- Broad browser click-through paths belong in the owning frontend repo's Playwright CI/preview suite with controlled fixtures. Keep them out of prod cross-service checks except for stable read-only canaries and monitoring.
+- Provider/data oddities belong in provider contract tests, mocked edge-case tests, and safe non-prod live provider smokes owned by the repo that implements the provider surface.
+- Entra UI/session/cookie changes require controlled auth UI/session tests in the owning frontend repo. Deployed login-smoke plus role/tenant canaries live in `enterpriseaigroup/eai-testing-dev`.
+- EAI CLI behavior is owned by `enterpriseaigroup/eai` through `ci/eai-cli-tests`; `eai-testing-dev` only keeps deployed read-only CLI canaries and release-observability evidence aligned.
+- Release/SRP evidence changes must keep CI check names, required-test metadata, coverage mappings, and any `eai-testing-dev` dispatch aliases in sync before promotion enforcement is tightened.
+
 ## Project Overview
 
 - **Project**: eai
@@ -10,6 +19,7 @@
 
 - **Build**: `npm run build`
 - **Lint**: `npm run lint`
+- **Focused SRP CLI evidence**: `npm run test:eai-cli:ci`
 - **Release preflight**: `npm run release:check`
 
 ## Project Structure
@@ -147,6 +157,8 @@ const config = await loadConfig();
   - `src/lib/update-check.ts`
   - `README.md`
 - Every release should refresh `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`
+- CLI auth, tenant context, command schema, error envelope, PublicAPI, and preview-lifecycle behavior must keep `ci/eai-cli-tests` green. That check is the repo-owned SRP evidence for the EAI CLI surface.
+- The release workflow dispatches `eai-testing-dev` with `service=eai-cli` for deployed read-only schema/error/auth smoke. Keep prod canaries read-only; preview lifecycle is opt-in and cleanup-backed.
 - GitHub Pages static registry is the release/install channel
 - Before changing release behavior, verify the public packument still works:
   - `curl https://eai-tools.github.io/eai/registry/@eai-tools/cli`

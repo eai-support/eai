@@ -458,6 +458,8 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 4. Lint (`eslint`)
 5. Build (`tsc`)
 6. Test (`vitest run`)
+   - Focused SRP CLI evidence also runs as `npm run test:eai-cli:ci` in
+     GitHub Actions check `ci/eai-cli-tests`
 7. Smoke tests — `eai --version`, `eai --help`, and the shipped command groups
 8. Docs site build
 9. Release-facing docs/help generation (`llms.txt`, `llms-full.txt`, `cli-help.txt`)
@@ -475,6 +477,12 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 7. `release.sh` waits for both workflows and verifies `https://eai-tools.github.io/eai/registry/@eai-tools/cli`
 
 If the static registry does not converge to the new version, the script exits non-zero so the release is treated as incomplete.
+
+The EAI CLI is also part of SRP release evidence. Repo-local CLI behavior is
+owned here through `ci/eai-cli-tests`; deployed read-only CLI schema, error,
+auth, and preview canaries live in `enterpriseaigroup/eai-testing-dev` under the
+`eai-cli` cross-service surface. Keep prod CLI canaries read-only; preview
+lifecycle checks must stay explicit and cleanup-backed.
 
 The release path publishes the repository exactly as committed. Bundled Gofer and linked-source refreshes happen separately via `npm run sync:gofer` / `npm run sync:linked-sources` and should be committed before you cut a release instead of being fetched during publish time.
 
