@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.2 |
+| Version | 3.2.3 |
 | Released | 2026-06-13 |
-| Last Material Change | Add passive customer storage schema refresh support |
-| Source Commit | `1467b6a23ef403b16680251154338fceccd89b73` |
+| Last Material Change | Update bundled Gofer assets to v3.6.0 |
+| Source Commit | `3d59ed9d851f09f2b04990af8de9a82081164768` |
 
 
 ## Common Workflow

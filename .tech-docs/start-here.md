@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.2** (2026-06-13): Add passive customer storage schema refresh support.
+The current CLI release is **v3.2.3** (2026-06-13): Update bundled Gofer assets to v3.6.0.
 
 
 ## What The Pieces Do
