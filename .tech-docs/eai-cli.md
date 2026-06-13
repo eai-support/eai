@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.1 |
-| Released | 2026-06-10 |
-| Last Material Change | Harden auth config and provisioning safety |
-| Source Commit | `208b85d9aa3a399c46c55d6a7d0b11492c3b17a6` |
+| Version | 3.2.2 |
+| Released | 2026-06-13 |
+| Last Material Change | Add passive customer storage schema refresh support |
+| Source Commit | `1467b6a23ef403b16680251154338fceccd89b73` |
 
 
 ## Common Workflow

@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.1** (2026-06-10): Harden auth config and provisioning safety.
+The current CLI release is **v3.2.2** (2026-06-13): Add passive customer storage schema refresh support.
 
 
 ## What The Pieces Do
