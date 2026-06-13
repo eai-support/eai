@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "featureId": "{{feature-id}}",
+  "featureName": "{{feature-name}}",
+  "status": "draft",
+  "lastRebaselineAt": "{{ISO-timestamp}}",
+  "objectiveConfidence": "medium",
+  "goals": [
+    {
+      "id": "G1",
+      "goal": "{{business-outcome}}",
+      "metric": "{{primary-metric}}",
+      "target": "{{target-threshold}}",
+      "owner": "{{owner}}",
+      "status": "proposed",
+      "confidence": "medium",
+      "lastChangedAt": "{{ISO-timestamp}}",
+      "trace": {
+        "stories": ["US1"],
+        "requirements": ["FR-001", "SC-001"],
+        "tasks": ["T001"],
+        "code": ["src/example.ts"],
+        "tests": ["tests/example.test.ts"]
+      }
+    }
+  ],
+  "deliveryStates": [
+    {
+      "capability": "{{capability-name}}",
+      "currentState": "mock",
+      "targetState": "live",
+      "owner": "{{owner}}",
+      "promotionCriteria": ["{{criterion-1}}"],
+      "blockedBy": []
+    }
+  ],
+  "assumptionDrift": [
+    {
+      "assumptionId": "A1",
+      "owner": "{{owner}}",
+      "expiresAt": "{{ISO-timestamp}}",
+      "revalidateTrigger": "{{trigger}}",
+      "reopenStage": "2_specify"
+    }
+  ],
+  "reloopTriggers": [
+    {
+      "id": "R1",
+      "label": "Goal ledger moved after spec approval",
+      "watch": ["goal-ledger.json"],
+      "baselineArtifact": "spec.md",
+      "reopenStage": "2_specify"
+    },
+    {
+      "id": "R2",
+      "label": "Spec or contract drift after planning",
+      "watch": ["spec.md", "contract-pack.md", "contracts"],
+      "baselineArtifact": "tasks.md",
+      "reopenStage": "4_tasks"
+    },
+    {
+      "id": "R3",
+      "label": "UX or implementation changed after validation",
+      "watch": ["ui-preview-brief.md", "ui-approval.md", "src", "tests"],
+      "baselineArtifact": "validation-report.md",
+      "reopenStage": "6_validate"
+    }
+  ]
+}

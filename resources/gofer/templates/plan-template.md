@@ -49,6 +49,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ```text
 .specify/specs/[###-feature]/
+├── goal-ledger.json      # Machine-readable goals, metrics, and re-loop triggers
 ├── spec.md              # Feature specification (/2_gofer_specify)
 ├── research.md          # Codebase research (/1_gofer_research)
 ├── journeys/
@@ -62,6 +63,9 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 ├── quickstart.md        # Quick start guide (/3_gofer_plan)
 ├── contracts/           # API contracts (/3_gofer_plan)
 ├── tasks.md             # Task breakdown (/4_gofer_tasks)
+├── traceability.md      # Spec -> task -> code -> test coverage (/4,/6)
+├── validation-report.md # Objective/rubric quality gate (/6_gofer_validate)
+├── goal-rebaseline-report.md # Closed-loop drift report (/6 or CI)
 └── issues.md            # GitHub issues (/4_gofer_tasks)
 ```
 
@@ -151,6 +155,15 @@ work, state why this gate is not applicable.
 | Block porting              | [reuse / port / custom-block exception]                      | [block IDs and story IDs]                 |
 | source-platform decoupling | [coupled / decoupled / adapter boundary]                     | [eai resources schema or adapter path]    |
 | Public-readiness           | [required / deferred / not applicable]                       | [consumer-facing checks]                  |
+
+## Dual-State Delivery Discipline
+
+Track capabilities that move from mock-safe behavior to hybrid or live
+integration. This table should match `goal-ledger.json`.
+
+| Capability | Current State (mock/hybrid/live) | Target State | Promotion Criteria | Validation Owner |
+| ---------- | -------------------------------- | ------------ | ------------------ | ---------------- |
+| [name]     | [mock]                           | [live]       | [evidence]         | [owner]          |
 
 ## Complexity Tracking
 

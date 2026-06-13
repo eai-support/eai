@@ -121,6 +121,7 @@ This is the **first stage** of the unified Gofer pipeline. Your job is to:
 **Output**:
 
 - `.specify/specs/{feature}/research.md`
+- `.specify/specs/{feature}/goal-ledger.json`
 - `.specify/specs/{feature}/proposal-review.md` (optional supporting review context)
 - `.specify/specs/{feature}/journeys/base-journey.md` (application delivery default)
 - `.specify/specs/{feature}/eai-preflight.md` (EAI app delivery default)
@@ -496,6 +497,11 @@ Once all agents complete:
      public-readiness target, block-porting needs, and source-platform decoupling status
    - Candidate capability-discovery inputs for the later service-fit gate
    - Non-app runs must explicitly state "Not applicable"
+5. **Goal Ledger Seed**
+   - Goal IDs, business outcomes, metrics, targets, owners, and confidence
+   - Delivery states for any capability that starts mock/hybrid before going live
+   - Re-loop triggers for objective drift, assumption expiry, contract drift,
+     UX scope changes, and post-validation code/test movement
 
 ### Novice Walkthrough Guardrail (MANDATORY)
 
@@ -560,6 +566,15 @@ status: complete
 ## Feature Summary
 
 [Brief description of what we're building]
+
+## Goal Ledger Seed
+
+Reference `.specify/specs/{feature}/goal-ledger.json` and capture:
+
+- Goal IDs with business outcomes, metrics, targets, owners, and confidence
+- Delivery-state discipline (`mock`, `hybrid`, `live`) for each risky capability
+- Re-loop triggers that should reopen `/2_gofer_specify`, `/3_gofer_plan`,
+  `/4_gofer_tasks`, or `/6_gofer_validate`
 
 ## Structured Discovery Output
 
@@ -769,7 +784,7 @@ approvedAt: ''
 
 ## Step 6: Review, Discuss, and Hand Off To Specification
 
-After saving `research.md` and `proposal-review.md`:
+After saving `research.md`, `goal-ledger.json`, and `proposal-review.md`:
 
 1. **Present summary** to user:
    - What was found
@@ -815,6 +830,7 @@ After saving `research.md` and `proposal-review.md`:
 ```
 
 ✓ Research complete: {FEATURE_DIR}/research.md
+✓ Goal ledger seeded: {FEATURE_DIR}/goal-ledger.json
 ✓ Supporting review context ready: {FEATURE_DIR}/proposal-review.md
 
 Key findings:

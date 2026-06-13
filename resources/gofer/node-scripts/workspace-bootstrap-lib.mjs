@@ -10,7 +10,9 @@ export const CORE_SENTINELS = [
   GOFER_VERSION_FILE,
   path.join('.specify', 'commands', '0_business_scenario.md'),
   path.join('.specify', 'templates', 'spec-template.md'),
+  path.join('.specify', 'templates', 'goal-ledger-template.json'),
   path.join('.specify', 'scripts', 'bash', 'create-new-feature.sh'),
+  path.join('.specify', 'scripts', 'node', 'gofer-closed-loop-audit.mjs'),
   path.join('.specify', 'scripts', 'node', 'parse-stage-command.mjs'),
   path.join('.specify', 'scripts', 'hooks', 'post-tool-use.mjs'),
   path.join('.specify', 'scripts', 'powershell', 'install-optional-tools.ps1'),
@@ -697,7 +699,7 @@ This folder contains all project specifications for AI-driven feature developmen
 
 - **memory/** - Constitution, decisions, and project principles
 - **specs/** - Feature specifications (numbered: 001-feature-name/)
-- **templates/** - Templates for specs, plans, and tasks
+- **templates/** - Templates for specs, plans, tasks, and goal ledgers
 - **scripts/** - Helper scripts for workflow automation
 - **logs/** - Execution logs and support artifacts
 
@@ -709,7 +711,9 @@ Run the unified Gofer pipeline with:
 /0_business_scenario Add user authentication with OAuth2 and JWT
 \`\`\`
 
-Artifacts are stored in \`.specify/specs/{feature}/\`.
+Artifacts are stored in \`.specify/specs/{feature}/\`, including
+\`goal-ledger.json\`, \`traceability.md\`, and \`goal-rebaseline-report.md\`
+for closed-loop delivery checks.
 
 ## Model Policy
 

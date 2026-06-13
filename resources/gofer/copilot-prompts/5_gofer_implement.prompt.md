@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/5_gofer_implement.md
-  canonicalChecksum: dbc5ea4e0eeeb0b225c4021a6ba42e48d185a341056a2ee7c2d7c35cb719696f
+  canonicalChecksum: c0f1809905ff9583bc5cec8c161e09c592980995db5d0300aa94b23e0468b265
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -663,7 +663,7 @@ separation from `tasks.md`:
 - Run the spec-derived tests before implementation and record the expected
   failure when the implementation is missing or incomplete.
 - Implement only against the approved `contract-pack.md`, `context-bundle.md`,
-  `reuse-scan.md`, `journeys/base-journey.md`, and `plan.md`.
+  `reuse-scan.md`, `journeys/base-journey.md`, `plan.md`, and `goal-ledger.json`.
 - For application delivery, stop and return to the preview loop if
   `{FEATURE_DIR}/ui-approval.md` is missing or not approved. App-delivery runs
   MUST NOT continue as though the UI is settled when approval has not been
@@ -687,10 +687,12 @@ separation from `tasks.md`:
 - Reject unknown component names during implementation unless `tasks.md` and
   `ui-approval.md` explicitly authorize a custom extension block and manifest.
 - Treat package-profile, block-porting, source-platform decoupling, and public-readiness
-  tasks as first-class implementation tasks, not polish. External and hybrid
-  profile work is incomplete until package exports, Storybook stories, theme
-  overrides, consumer smoke checks, and unsupported custom-block exceptions are
-  resolved or explicitly deferred by approval artifacts.
+  tasks as first-class implementation tasks, not polish. Update
+  `{FEATURE_DIR}/goal-ledger.json` whenever a task changes an owner, target
+  metric, delivery state, promotion criterion, or re-loop trigger. External and
+  hybrid profile work is incomplete until package exports, Storybook stories,
+  theme overrides, consumer smoke checks, and unsupported custom-block
+  exceptions are resolved or explicitly deferred by approval artifacts.
 - Do not let public or hybrid package lanes import source-platform internals directly.
   Use `eai resources schema`, an adapter boundary, or an approved
   restricted-source exception; record the coupling status in implementation
@@ -699,6 +701,9 @@ separation from `tasks.md`:
   process as the user-facing spine. Each step must preserve its business goal,
   AI assistance mode, contextual prefill or conversational support, completion
   criteria, human controls, audit trail, and fallback/escalation path.
+- Preserve dual-state delivery discipline: when a capability stays in `mock` or
+  `hybrid`, record why, what promotion criteria remain, and what validation
+  evidence is still required before it can move to `live`.
 - For application delivery, before showing any new MVP preview to the
   stakeholder, collect screenshot, local render proof, or Playwright-style
   self-review evidence and append it to `{FEATURE_DIR}/ui-review-log.md`.

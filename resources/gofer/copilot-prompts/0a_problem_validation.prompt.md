@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/0a_problem_validation.md
-  canonicalChecksum: 80c7a7e4ffccbf73140648cadf74a48c69e8cf18b9ff0ce3775500b0fdee6d38
+  canonicalChecksum: f9d4a9c5bb67dbc651f38e1427b28ef181bf8ac83bf94b7493d4da7d96c31a60
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -289,6 +289,9 @@ Extract assumptions from:
 - Stakeholder mapping (user behavior assumptions)
 
 Mark ALL assumptions as `UNVALIDATED` at this stage.
+Populate the **Drift Controls** table with an owner, expiry/revalidation date,
+trigger, and reopen stage for every assumption that could invalidate the plan
+later.
 
 ---
 
