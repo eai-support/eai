@@ -420,6 +420,86 @@ describe('eai provision entra', () => {
     });
   });
 
+  test('resourceapi refresh uses the AdminAPI v4 super-admin repair route', { timeout: 10000 }, async () => {
+    let requestBody: unknown;
+
+    mockServer.server.use(
+      http.get(`${API_BASE}/v4/identity/tenants`, async ({ request }) => {
+        expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
+        return HttpResponse.json({
+          tenants: [
+            {
+              id: 'test-tenant-id',
+              displayName: 'Test Tenant',
+              slug: 'test-tenant',
+              isActive: true,
+              roles: ['tenant-admin'],
+              isTenantAdmin: true,
+              homeRegion: 'au',
+              hqCountryCode: 'AU',
+            },
+          ],
+        });
+      }),
+      http.post(
+        `${ADMIN_API_BASE}/v4/platform/tenants/test-tenant-id/resourceapi/passive-refresh`,
+        async ({ request }) => {
+          expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
+          requestBody = await request.json();
+          return HttpResponse.json({
+            tenantId: 'test-tenant-id',
+            installId: 'install-1',
+            schemaHash: 'snapshot-hash',
+            objectTypeCount: 2,
+            storageBackends: ['documentdb', 'search'],
+            verified: true,
+            installRegistryUpdated: true,
+            currentDiff: { missingObjectTypes: ['tenant-common-config'] },
+            verifyDiff: { missingObjectTypes: [], schemaHashMatches: true },
+          });
+        },
+      ),
+    );
+
+    await provisionCommand.parseAsync([
+      'resourceapi-refresh',
+      '--admin-api-url',
+      ADMIN_API_BASE,
+      '--tenant-id',
+      'test-tenant-id',
+      '--install-id',
+      'install-1',
+      '--product',
+      'daisy-assist',
+      '--schema-version',
+      '42',
+      '--apply',
+      '--dry-run',
+      '--backend',
+      'all',
+      '--rebuild-search',
+      '--force-overwrite',
+      '--reason',
+      'Repair passive schema drift',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      installId: 'install-1',
+      productKey: 'daisy-assist',
+      schemaVersion: '42',
+      apply: true,
+      dryRun: true,
+      backend: 'all',
+      rebuildSearch: true,
+      forceOverwrite: true,
+      verify: true,
+      updateInstallRegistry: true,
+      reason: 'Repair passive schema drift',
+    });
+  });
+
   test('default profile provisions through the prod PublicAPI when no local API URL is configured', { timeout: 10000 }, async () => {
     await clearTokens();
     await storeTokens({
