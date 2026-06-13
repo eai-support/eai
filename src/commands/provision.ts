@@ -435,6 +435,127 @@ Diagnostics:
     reportSigninCompleteness(result.signinCompleteness, result.clientId);
   });
 
+// ─── eai provision resourceapi-refresh ──────────────────────────────────
+
+provisionCommand
+  .command('resourceapi-refresh')
+  .description('Refresh a passive ResourceAPI schema snapshot through AdminAPI')
+  .requiredOption('--admin-api-url <url>', 'Management service URL for server-backed orchestration')
+  .option('--tenant-id <id>', 'Tenant ID the refresh is scoped to')
+  .option('--install-id <id>', 'Customer storage install registry ID')
+  .option('--apply', 'Apply the refreshed snapshot after planning', false)
+  .option('--dry-run', 'With --apply, ask ResourceAPI to plan schema application without writing', false)
+  .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
+  .option('--rebuild-search', 'Request search projection rebuild after schema sync', false)
+  .option('--force-overwrite', 'Allow the passive snapshot to overwrite an existing schema version', false)
+  .option('--no-verify', 'Skip ResourceAPI schema-status verification after apply')
+  .option('--no-update-install-registry', 'Do not update Configurator resourceApiInstalls schemaHash after apply')
+  .option('--reason <text>', 'Human-readable reason for a real schema refresh apply')
+  .option('--change-ticket <id>', 'Support/change ticket for audit trail')
+  .option('--product <key>', 'Product/app key this refresh enables')
+  .option('--schema-version <version>', 'Tenant schema version to stamp into metadata', '1')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+Examples:
+  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId>
+  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply --dry-run --force-overwrite
+  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply --force-overwrite --reason "Repair passive schema drift"
+
+Notes:
+  - This is a super-admin repair path for passive ResourceAPI schema metadata.
+  - It updates Configurator's install schemaHash only after ResourceAPI accepts and verifies the refreshed snapshot.
+  `)
+  .action(async (options) => {
+    const jsonOutput = options.json || options.format === 'json';
+    const adminApiUrl = String(options.adminApiUrl || '').trim().replace(/\/+$/, '');
+    const root = await findProjectRoot();
+    if (!root) {
+      exitWithError(ErrorCode.E001);
+    }
+
+    const publicApiUrl = await resolvePublicApiUrl(root);
+    let tenantId: string = options.tenantId;
+    try {
+      const context = await resolveActiveTenantContext({
+        projectRoot: root,
+        publicApiUrl,
+        tenantId,
+        interactive: !tenantId,
+        forceRefresh: Boolean(tenantId),
+      });
+      tenantId = context.activeTenant.id;
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      out.error('Not logged in. Run `eai login` before calling server-backed provisioning.');
+      process.exit(1);
+    }
+
+    const response = await fetch(
+      `${adminApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-refresh`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          installId: options.installId,
+          productKey: options.product,
+          schemaVersion: options.schemaVersion,
+          apply: Boolean(options.apply),
+          dryRun: Boolean(options.dryRun),
+          backend: options.backend,
+          rebuildSearch: Boolean(options.rebuildSearch),
+          forceOverwrite: Boolean(options.forceOverwrite),
+          verify: options.verify !== false,
+          updateInstallRegistry: options.updateInstallRegistry !== false,
+          reason: options.reason,
+          changeTicket: options.changeTicket,
+        }),
+      },
+    );
+    if (!response.ok) {
+      out.error(await formatJsonResponseError(response, 'passive ResourceAPI schema refresh'));
+      process.exit(1);
+    }
+
+    const payload = await response.json() as {
+      tenantId: string;
+      installId: string;
+      schemaHash: string;
+      objectTypeCount: number;
+      storageBackends: string[];
+      verified: boolean;
+      installRegistryUpdated: boolean;
+      currentDiff?: { missingObjectTypes?: string[] };
+      verifyDiff?: { missingObjectTypes?: string[] } | null;
+    };
+
+    if (jsonOutput) {
+      out.json(payload);
+      return;
+    }
+
+    out.success(options.apply ? 'Passive ResourceAPI schema refresh applied' : 'Passive ResourceAPI schema refresh planned');
+    out.info(`Tenant: ${chalk.cyan(payload.tenantId)}`);
+    out.info(`Install: ${chalk.dim(payload.installId)}`);
+    out.info(`Object Types: ${payload.objectTypeCount}`);
+    out.info(`Storage Backends: ${payload.storageBackends.join(', ')}`);
+    out.info(`Schema Hash: ${chalk.dim(payload.schemaHash)}`);
+    out.info(`Verified: ${payload.verified ? 'yes' : 'no'}`);
+    out.info(`Install Registry Updated: ${payload.installRegistryUpdated ? 'yes' : 'no'}`);
+    const missing = payload.verifyDiff?.missingObjectTypes || payload.currentDiff?.missingObjectTypes || [];
+    if (missing.length) {
+      out.warn(`Missing Object Types: ${missing.join(', ')}`);
+    }
+  });
+
 function normaliseBasePath(value: string | undefined): string {
   const trimmed = (value ?? '').trim();
   if (!trimmed || trimmed === '/') {
