@@ -16,69 +16,79 @@ its lifecycle.
 
 ## Status Legend
 
-| Status           | Meaning                                    | Action Required        |
-| ---------------- | ------------------------------------------ | ---------------------- |
-| VALIDATED        | Confirmed true through evidence            | None                   |
-| UNVALIDATED      | Assumed true, not yet checked              | Verify before launch   |
-| DISPROVEN        | Found to be false                          | Spec revision needed   |
-| PARTIALLY_VALID  | True under some conditions only            | Scope adjustment       |
+| Status          | Meaning                         | Action Required      |
+| --------------- | ------------------------------- | -------------------- |
+| VALIDATED       | Confirmed true through evidence | None                 |
+| UNVALIDATED     | Assumed true, not yet checked   | Verify before launch |
+| DISPROVEN       | Found to be false               | Spec revision needed |
+| PARTIALLY_VALID | True under some conditions only | Scope adjustment     |
 
 ## Critical Assumptions (High Risk)
 
 These assumptions, if wrong, would significantly impact the solution:
 
-| ID  | Assumption | Type       | Status      | Evidence           | Impact if Wrong      |
-| --- | ---------- | ---------- | ----------- | ------------------ | -------------------- |
-| A1  | {{text}}   | Business   | UNVALIDATED | {{source-or-none}} | {{impact-statement}} |
-| A2  | {{text}}   | Technical  | UNVALIDATED | {{source-or-none}} | {{impact-statement}} |
+| ID  | Assumption | Type      | Status      | Evidence           | Impact if Wrong      |
+| --- | ---------- | --------- | ----------- | ------------------ | -------------------- |
+| A1  | {{text}}   | Business  | UNVALIDATED | {{source-or-none}} | {{impact-statement}} |
+| A2  | {{text}}   | Technical | UNVALIDATED | {{source-or-none}} | {{impact-statement}} |
 
 ## Business Assumptions
 
-| ID   | Assumption | Status      | Evidence | Added During      |
-| ---- | ---------- | ----------- | -------- | ----------------- |
-| BA1  | {{text}}   | UNVALIDATED | —        | Problem Validation|
-| BA2  | {{text}}   | UNVALIDATED | —        | Discovery         |
+| ID  | Assumption | Status      | Evidence | Added During       |
+| --- | ---------- | ----------- | -------- | ------------------ |
+| BA1 | {{text}}   | UNVALIDATED | —        | Problem Validation |
+| BA2 | {{text}}   | UNVALIDATED | —        | Discovery          |
 
 ## Technical Assumptions
 
-| ID   | Assumption | Status      | Evidence | Added During |
-| ---- | ---------- | ----------- | -------- | ------------ |
-| TA1  | {{text}}   | UNVALIDATED | —        | Research     |
-| TA2  | {{text}}   | UNVALIDATED | —        | Planning     |
+| ID  | Assumption | Status      | Evidence | Added During |
+| --- | ---------- | ----------- | -------- | ------------ |
+| TA1 | {{text}}   | UNVALIDATED | —        | Research     |
+| TA2 | {{text}}   | UNVALIDATED | —        | Planning     |
 
 ## User Behavior Assumptions
 
-| ID   | Assumption | Status      | Evidence | Added During   |
-| ---- | ---------- | ----------- | -------- | -------------- |
-| UA1  | {{text}}   | UNVALIDATED | —        | Discovery      |
+| ID  | Assumption | Status      | Evidence | Added During |
+| --- | ---------- | ----------- | -------- | ------------ |
+| UA1 | {{text}}   | UNVALIDATED | —        | Discovery    |
 
 ## Data Assumptions
 
-| ID   | Assumption | Status      | Evidence | Added During |
-| ---- | ---------- | ----------- | -------- | ------------ |
-| DA1  | {{text}}   | UNVALIDATED | —        | Research     |
+| ID  | Assumption | Status      | Evidence | Added During |
+| --- | ---------- | ----------- | -------- | ------------ |
+| DA1 | {{text}}   | UNVALIDATED | —        | Research     |
 
 ## Regulatory Assumptions
 
-| ID   | Assumption | Status      | Evidence | Added During      |
-| ---- | ---------- | ----------- | -------- | ----------------- |
-| RA1  | {{text}}   | UNVALIDATED | —        | Problem Validation|
+| ID  | Assumption | Status      | Evidence | Added During       |
+| --- | ---------- | ----------- | -------- | ------------------ |
+| RA1 | {{text}}   | UNVALIDATED | —        | Problem Validation |
 
 ## Disproven Assumptions (Action Log)
 
-| ID  | Assumption | Disproven When | Evidence Against     | Affected Specs    | Corrective Action    | Status    |
-| --- | ---------- | -------------- | -------------------- | ----------------- | -------------------- | --------- |
-| —   | —          | —              | —                    | —                 | —                    | —         |
+| ID  | Assumption | Disproven When | Evidence Against | Affected Specs | Corrective Action | Status |
+| --- | ---------- | -------------- | ---------------- | -------------- | ----------------- | ------ |
+| —   | —          | —              | —                | —              | —                 | —      |
 
 ## Validation Schedule
 
-| Assumption ID | Verify By     | Method                  | Owner       |
-| ------------- | ------------- | ----------------------- | ----------- |
-| A1            | Before coding | {{verification-method}} | {{who}}     |
-| A2            | During testing| {{verification-method}} | {{who}}     |
+| Assumption ID | Verify By      | Method                  | Owner   |
+| ------------- | -------------- | ----------------------- | ------- |
+| A1            | Before coding  | {{verification-method}} | {{who}} |
+| A2            | During testing | {{verification-method}} | {{who}} |
+
+## Drift Controls
+
+Use this table to force a mini-loop when assumptions expire, are disproven, or
+are invalidated by new product/platform evidence.
+
+| Assumption ID | Status      | Owner   | Expires At        | Revalidate Trigger         | Reopen Stage |
+| ------------- | ----------- | ------- | ----------------- | -------------------------- | ------------ |
+| A1            | UNVALIDATED | {{who}} | {{ISO-timestamp}} | {{event-or-change-signal}} | 1_research   |
+| A2            | UNVALIDATED | {{who}} | {{ISO-timestamp}} | {{event-or-change-signal}} | 2_specify    |
 
 ## Review History
 
-| Date           | Reviewer | Changes Made              |
-| -------------- | -------- | ------------------------- |
-| {{ISO-date}}   | Claude   | Initial assumption capture|
+| Date         | Reviewer | Changes Made               |
+| ------------ | -------- | -------------------------- |
+| {{ISO-date}} | Claude   | Initial assumption capture |

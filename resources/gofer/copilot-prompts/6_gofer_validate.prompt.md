@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/6_gofer_validate.md
-  canonicalChecksum: 7b873eb84544f7c2ea402a5d3892e52631dc411862d39b823f563601fe8251dd
+  canonicalChecksum: 94c6243f8d55b966276400f4f60138b0f83d28c86ce577de81c891bf5eab43c8
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -100,6 +100,8 @@ This command expects in `.specify/specs/{feature}/`:
 - `spec.md` - Feature specification (from #2_gofer_specify)
 - `plan.md` - Implementation plan (from #3_gofer_plan)
 - `tasks.md` - Task breakdown (from #4_gofer_tasks)
+- `goal-ledger.json` - Goal, metric, delivery-state, and re-loop contract
+- `traceability.md` - Requirement -> task -> code -> test matrix
 - Implemented code (from #5_gofer_implement)
 
 ---
@@ -108,24 +110,25 @@ This command expects in `.specify/specs/{feature}/`:
 
 1. Context health check
 2. Load implementation context
-3. **Phase A** — Spawn 6 specialist rubric validation agents in parallel
+3. Closed-loop objective audit
+4. **Phase A** — Spawn 6 specialist rubric validation agents in parallel
 4. Evidence gate pre-check and pending-gate tracking
 5. **Phase B** — Spawn 5 blast-radius analysis agents in parallel
-6. Blast-radius synthesis (change graph, interface diff, observability,
+7. Blast-radius synthesis (change graph, interface diff, observability,
     dependency/submodule impact, rollback readiness, release checklist)
-7. Run automated checks (build, test, lint, typecheck)
-8. Mutation testing gate
-9. Mock ratio analysis
-10. Semantic slop detection
-11. Score the 11-category rubric (110 points)
-12. Generate enhanced validation report + blast-radius report
-13. Determine rubric PASS/FAIL outcome
-14. Brownfield restart on failure
-15. **Phase C** — Engineering review loop (3 agents × up to 5 cycles with
+8. Run automated checks (build, test, lint, typecheck)
+9. Mutation testing gate
+10. Mock ratio analysis
+11. Semantic slop detection
+12. Score the 11-category rubric (110 points)
+13. Generate enhanced validation report + blast-radius report
+14. Determine rubric PASS/FAIL outcome
+15. Brownfield restart on failure
+16. **Phase C** — Engineering review loop (3 agents × up to 5 cycles with
     auto-fix)
-16. Generate engineering review report
-17. Attribution logging to JSONL
-18. Memory update check
+17. Generate engineering review report
+18. Attribution logging to JSONL
+19. Memory update check
 
 ---
 
@@ -179,7 +182,7 @@ Angular, Svelte) and no Playwright/Cypress tests exist, this is a no-UI feature.
 - A category scores 0 if its agent reports any **Red (blocking)** finding.
 - A category scores 0 if its automated check fails.
 - **Total score** = sum of all category scores (max **110**, was 100).
-- **PASS** = 110/110. Anything less = FAIL.
+- **PASS** = 110/110 and a passing objective outcome gate. Anything less = FAIL.
 - Legacy consumers reading `status: PASS` / `score: 100` from historical reports
   should migrate to the 110-point scale. The report keeps the `score` field as
   the numerator and `score_max` to disambiguate.
@@ -223,6 +226,8 @@ Validation loads all artifacts and spawns 6 agents — context pressure is high.
    - spec.md (user stories, acceptance criteria)
    - plan.md (architecture, file structure, tech stack)
    - tasks.md (task completion status)
+   - goal-ledger.json (goal IDs, metrics, delivery states, re-loop triggers)
+   - traceability.md (requirement-to-code/test evidence matrix)
    - research.md (codebase patterns to follow)
 
 3. **Detect iteration count**:
@@ -254,6 +259,28 @@ present) for the following signals:
 Set `DEPLOY_IN_SCOPE = true` if ANY signal is present.
 Set `DEPLOY_IN_SCOPE = false` if NO signal is present.
 Record the determination in the validation report preamble.
+
+## Step 1.5: Closed-Loop Objective Audit
+
+Before rubric scoring, run the closed-loop audit and write a fresh rebaseline
+report:
+
+```bash
+node .specify/scripts/node/gofer-closed-loop-audit.mjs --feature-dir {FEATURE_DIR} --json --strict
+```
+
+Also write/update `{FEATURE_DIR}/goal-rebaseline-report.md`.
+
+Validation MUST treat the closed-loop audit as an objective gate:
+
+- If the audit reports missing goal coverage, missing code/test evidence,
+  expired assumptions, or invalid goal-ledger structure, validation FAILS.
+- If the audit recommends reopening `#2_gofer_specify`, `#3_gofer_plan`,
+  `#4_gofer_tasks`, or `#6_gofer_validate`, record that as a blocking drift
+  finding and FAIL the run. The feature is no longer in a closed state even if
+  the code still compiles.
+- If the audit only reports low-severity warnings with no recommended reopen
+  stage, continue but record them in the validation report.
 
 ---
 
@@ -1133,6 +1160,8 @@ score_max: 110
 iteration: [N]
 has_ui: [true/false]
 deploy_in_scope: [true/false]
+objective_gate_status: [PASS/FAIL]
+goal_rebaseline_report: goal-rebaseline-report.md
 blast_radius_verdict: [CONTAINED | BREACHED]
 blast_radius_report: blast-radius-report.md
 GeneratedAt: [ISO timestamp]
@@ -1142,6 +1171,14 @@ OverwriteNoticeWhenApplicable: [new file or overwrite note]
 ---
 
 # Validation Report: [Feature Name]
+
+## Objective Outcome Gate
+
+- Goal ledger: `goal-ledger.json`
+- Rebaseline report: `goal-rebaseline-report.md`
+- Outcome gate status: [PASS/FAIL]
+- Recommended reopen stage: [none | 2_specify | 3_plan | 4_tasks | 6_validate]
+- Summary: [why objectives remain aligned or why the loop must reopen]
 
 ## Rubric Score
 
@@ -1168,6 +1205,12 @@ OverwriteNoticeWhenApplicable: [new file or overwrite note]
 | Tests     | npm test      | [PASS/FAIL]         |
 | Lint      | npm run lint  | [PASS/FAIL + count] |
 | TypeCheck | tsc --noEmit  | [PASS/FAIL]         |
+
+## Closed-Loop Traceability
+
+| Requirement ID | Goal ID | Code Evidence | Test Evidence | Status |
+| -------------- | ------- | ------------- | ------------- | ------ |
+| [FR-001]       | [G1]    | [path]        | [path]        | [PASS/FAIL] |
 
 ## Mutation Testing
 
@@ -1306,7 +1349,7 @@ the matching not-in-scope reason.
 
 ## Step 9: Determine Outcome
 
-### If TOTAL = 110: PASS (Phase A + B)
+### If TOTAL = 110 and objective_gate_status = PASS: PASS (Phase A + B)
 
 ```
 ════════════════════════════════════════════════════════════════
@@ -1341,7 +1384,7 @@ Proceed to **Phase C: Engineering Review Loop** (inline, Step 10a below), then
 **No external auto-chain is needed** — Phase C runs inline in this command.
 After Phase C completes, the feature pipeline is complete.
 
-### If TOTAL < 110: FAIL
+### If TOTAL < 110 or objective_gate_status = FAIL: FAIL
 
 Proceed to **Step 10: Brownfield Restart** (Phase C does not run when the rubric
 fails — fix the rubric first).
@@ -1515,7 +1558,8 @@ the feature pipeline is complete.
 
 ## Step 10a: Initialize Phase C
 
-1. **Guard**: only proceed if rubric `status == PASS` (Step 9 TOTAL = 110). If
+1. **Guard**: only proceed if rubric `status == PASS` and the objective outcome
+   gate passes (Step 9 TOTAL = 110 and Step 1.5 PASS). If
    FAIL, skip Phase C entirely — brownfield restart (Step 10) already triggered.
 
 2. **Initialize cycle counter**: `CYCLE = 1`

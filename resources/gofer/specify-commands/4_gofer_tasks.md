@@ -74,6 +74,7 @@ This command expects in `.specify/specs/{feature}/`:
 - `research.md` - Codebase analysis (from /1_gofer_research)
 - `spec.md` - Feature specification (from /2_gofer_specify)
 - `plan.md` - Implementation plan (from /3_gofer_plan)
+- `goal-ledger.json` - Goal and re-loop contract (from /1 and /2)
 
 If missing, prompt user to run the prerequisite stage.
 
@@ -210,31 +211,37 @@ Feature directory: {FEATURE_DIR}
 Read these files:
 - {FEATURE_DIR}/spec.md — User stories, acceptance criteria, functional requirements
 - {FEATURE_DIR}/plan.md — Implementation phases, components
+- {FEATURE_DIR}/goal-ledger.json — goals, metrics, delivery states, re-loop triggers
 - {FEATURE_DIR}/tasks.md — Task breakdown (read after Agent 1 writes it)
 - {FEATURE_DIR}/data-model.md — Entity definitions (read if exists)
 - {FEATURE_DIR}/contracts/ — API contracts (read if exists)
 
 Generate {FEATURE_DIR}/traceability.md with:
 
-1. Spec → Plan → Tasks Mapping:
-   | User Story | Priority | Plan Phase | Tasks | AC Status |
+1. Goal → Story → Requirement Mapping:
+   | Goal ID | Metric / Target | User Story | Requirement IDs | Task IDs |
 
-2. Acceptance Criteria Detail:
-   | ID | Criterion | Task(s) | Phase |
+2. Requirement Trace Matrix:
+   | Requirement ID | Goal ID | Plan Phase | Task IDs | Planned Code | Planned Tests | Status |
 
-3. Plan Phase Coverage:
+3. Acceptance Criteria Detail:
+   | ID | Criterion | Task(s) | Planned Code | Planned Tests | Phase |
+
+4. Plan Phase Coverage:
    | Phase | Task Count | Coverage % |
 
-4. Data Entity Coverage (if data-model.md exists):
+5. Data Entity Coverage (if data-model.md exists):
    | Entity | Implementing Task(s) | Fields Covered? |
 
-5. API Contract Coverage (if contracts/ exists):
+6. API Contract Coverage (if contracts/ exists):
    | Endpoint | Contract File | Implementing Task(s) |
 
-6. Coverage Summary:
+7. Coverage Summary:
    - Plan Phases: N/N covered
    - User Stories: N/N covered
    - Acceptance Criteria: N/N covered
+   - Requirements with code targets: N/N covered
+   - Requirements with test targets: N/N covered
    - Data Entities: N/N covered
    - API Endpoints: N/N covered
    - Status: VALIDATION PASSED or VALIDATION FAILED
@@ -261,6 +268,7 @@ After both agents complete:
    - If VALIDATION FAILED: identify which coverage gaps exist
    - Add missing tasks for uncovered acceptance criteria
    - Add missing tasks for uncovered plan phases
+   - Add missing planned code/test targets for uncovered requirements
    - Re-run Agent 2 if tasks.md was modified
 
 3. **Fix coverage gaps** — Max 3 correction iterations
