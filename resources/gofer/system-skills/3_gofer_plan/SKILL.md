@@ -90,6 +90,7 @@ This command expects in `.specify/specs/{feature}/`:
 
 - `research.md` - Codebase analysis (from /1_gofer_research)
 - `spec.md` - Feature specification (from /2_gofer_specify)
+- `goal-ledger.json` - Objective ledger and re-loop triggers (from /1 and /2)
 
 If missing, prompt user to run the prerequisite stage.
 
@@ -150,6 +151,8 @@ Planning dispatches multiple agents — keep main context lightweight.
    - Note external/internal/hybrid profile choice, package lane, coupling
      status, Storybook story IDs, theme override points, custom-block
      exceptions, and public-readiness status when app delivery applies
+   - Note whether `goal-ledger.json` exists and which goals, delivery states,
+     and re-loop triggers must remain valid through planning
    - Note whether `{FEATURE_DIR}/sequence-diagrams/selected-option.md` exists
 
 3. **Note template path**: `.specify/templates/plan-template.md`
@@ -174,6 +177,7 @@ Feature directory: {FEATURE_DIR}
 Read these files for full context:
 - {FEATURE_DIR}/research.md — Technology decisions, integration points, patterns, constraints
 - {FEATURE_DIR}/spec.md — User stories, requirements, success criteria
+- {FEATURE_DIR}/goal-ledger.json — business goals, metrics, delivery states, and re-loop triggers
 - {FEATURE_DIR}/ui-preview-brief.md — app-delivery preview brief (read if exists, skip if not)
 - {FEATURE_DIR}/ui-review-log.md — app-delivery preview iteration history (read if exists, skip if not)
 - {FEATURE_DIR}/ui-approval.md — app-delivery approval state (read if exists, skip if not)
@@ -207,7 +211,12 @@ Generate the COMPLETE plan.md with these sections:
    - User Story Coverage (Story | Status | Plan References)
    - Requirement Coverage (FR-ID | Status | Plan Reference)
    Verify 100% coverage of all user stories and functional requirements.
-9. AI-Readable Blocks Bridge:
+9. Goal Reconciliation And Dual-State Delivery:
+   - Goal IDs, outcome metrics, target thresholds, and where they are delivered
+   - Delivery states (`mock`, `hybrid`, `live`) plus promotion criteria
+   - Re-loop triggers that should send the feature back to specify, plan, tasks,
+     or validate when contracts, UX scope, assumptions, or implementation drift
+10. AI-Readable Blocks Bridge:
    - Package profile choice: external, internal, or hybrid
    - Package lane for each UI block or package surface
    - Coupling status, including source-platform decoupling boundary or approved
@@ -227,6 +236,8 @@ Rules:
 - App-delivery plans MUST make public-readiness, block porting, source platform
   decoupling, Storybook coverage, theme overrides, and package-profile work
   visible enough for `/4_gofer_tasks` to emit first-class runnable tasks
+- Keep `goal-ledger.json` aligned with any planning-level changes to goals,
+  delivery states, or re-loop triggers
 
 Write the complete plan to {FEATURE_DIR}/plan.md.
 

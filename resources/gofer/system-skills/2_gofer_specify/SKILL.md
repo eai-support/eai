@@ -95,6 +95,7 @@ This command expects:
 
 - Feature directory already created at `.specify/specs/{feature}/`
 - `research.md` completed from `/1_gofer_research`
+- `goal-ledger.json` seeded from `/1_gofer_research`
 - `proposal-review.md` if research created supporting review context
 
 If these don't exist, prompt user to run `/1_gofer_research` first.
@@ -143,6 +144,8 @@ Before starting specification, assess context window health:
    - Note the feature name and description
    - Note whether discovery.md exists
    - Note whether proposal-review.md exists
+   - Note whether goal-ledger.json exists and which goals, metrics, delivery
+     states, and re-loop triggers it records
 
 3. **Note template path**: `.specify/templates/spec-template.md`
 
@@ -221,6 +224,7 @@ Feature directory: {FEATURE_DIR}
 
 Read these files for full context:
 - {FEATURE_DIR}/research.md — Codebase analysis, integration points, patterns, constraints
+- {FEATURE_DIR}/goal-ledger.json — machine-readable goals, metrics, delivery states, and re-loop triggers
 - {FEATURE_DIR}/proposal-review.md — Supporting business scenario, architecture direction, options, overrides (read if exists, skip if not)
 - .specify/templates/spec-template.md — Template structure to follow
 - {FEATURE_DIR}/discovery.md — Business discovery findings (read if exists, skip if not)
@@ -244,17 +248,19 @@ Generate the COMPLETE spec.md following this structure:
 9. Out of Scope — Clear boundaries
 10. Glossary — Key terms
 11. Research Traceability — Matrix mapping each research finding to a spec section
-12. AI-Augmented 4-Step Journey — required for app delivery, not applicable for explicit non-app work
-13. UI Preview And Approval Gate — required for app delivery, not applicable for explicit non-app work
-14. EAI Platform/Azure App Stack Policy — required for app delivery, not applicable for explicit non-app work
-15. EnterpriseAI Service Fit — required for app delivery, not applicable for explicit non-app work
-16. EnterpriseAI Contract Pack Summary — actors, object types, workflows, permissions, APIs/events, runtime assumptions, acceptance tests
+12. Goal Ledger Alignment — Goal IDs, outcomes, metrics/targets, linked stories, linked requirements
+13. AI-Augmented 4-Step Journey — required for app delivery, not applicable for explicit non-app work
+14. UI Preview And Approval Gate — required for app delivery, not applicable for explicit non-app work
+15. EAI Platform/Azure App Stack Policy — required for app delivery, not applicable for explicit non-app work
+16. EnterpriseAI Service Fit — required for app delivery, not applicable for explicit non-app work
+17. EnterpriseAI Contract Pack Summary — actors, object types, workflows, permissions, APIs/events, runtime assumptions, acceptance tests
 
 If discovery.md exists, use it to:
 - Use Problem Statement for Overview motivation
 - Use Target Users persona for 'As a [user type]' in stories
 - Use Success Metrics as targets in Success Criteria
 - Use Value Proposition for primary value framing
+- Keep goal-ledger.json aligned with the measurable outcomes and scope decisions
 - Use Application Classification to decide whether the app journey is mandatory
 
 If journeys/base-journey.md exists and is classified as app delivery, use it to:
@@ -626,6 +632,7 @@ After spec.md is complete:
 
 ```
 ✓ Specification complete: {FEATURE_DIR}/spec.md
+✓ Goal ledger aligned: {FEATURE_DIR}/goal-ledger.json
 
 Summary:
 - [N] User Stories defined

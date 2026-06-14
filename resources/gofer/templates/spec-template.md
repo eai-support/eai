@@ -9,6 +9,16 @@
   Location: .specify/specs/[###-feature-name]/spec.md
 -->
 
+## Goal Ledger Alignment
+
+Keep `.specify/specs/[###-feature-name]/goal-ledger.json` aligned with this
+specification so downstream stages can detect objective drift and reopen the
+right mini-loop automatically.
+
+| Goal ID | Outcome   | Metric / Target   | Linked Stories | Linked Requirements |
+| ------- | --------- | ----------------- | -------------- | ------------------- |
+| G1      | [Outcome] | [Metric / target] | [US1]          | [FR-001, SC-001]    |
+
 ## User Scenarios & Testing _(mandatory)_
 
 <!--
