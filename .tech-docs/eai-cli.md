@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.3 |
-| Released | 2026-06-13 |
-| Last Material Change | Update bundled Gofer assets to v3.6.0 |
-| Source Commit | `3d59ed9d851f09f2b04990af8de9a82081164768` |
+| Version | 3.2.4 |
+| Released | 2026-06-15 |
+| Last Material Change | Fix packaged CLI runtime dependency |
+| Source Commit | `227247b4fec1341db3f2fb4e6103a317c8ed4a3f` |
 
 
 ## Common Workflow
