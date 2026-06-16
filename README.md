@@ -7,7 +7,7 @@
 
 Scaffold, seed, deploy, and manage applications on the EAI platform.
 
-Every command wraps platform API calls — developers work with **resources, types, tenants, and chat** using simple, intuitive commands.
+Every command wraps platform API calls — developers work with **resources, types, tenants, chat, and authorized PublicAPI V4 interfaces** using simple, intuitive commands.
 
 ## Public Repository
 
@@ -95,6 +95,11 @@ CLI skills, and the `.specify` commands/scripts/templates/hooks required to run
 the Gofer pipeline.
 Use `eai init my-app --no-gofer` only when you need a bare scaffold.
 
+By default, `eai init my-app` creates a new `./my-app` folder. If you already
+created and entered an empty project folder, run `eai init`, enter the app name,
+and answer yes when asked to use the current folder. For automation, pass
+`--current-dir` with the kebab-case app name.
+
 ## Global Flags
 
 All commands support these global flags:
@@ -117,8 +122,9 @@ All commands support these global flags:
 | `eai init [name]` | Interactive scaffold from the CLI-pinned public EAI application template with Gofer AI CLI assets |
 | `eai dev` | Start local dev server with connectivity checks |
 
-The bundled default template is versioned with the installed CLI. Use `--from`
-to override it with a different repository or a local template path.
+The bundled default template is pinned to the latest `eai-app-template` `main`
+commit captured when this CLI release was cut. Use `--from` to override it with
+a different repository or a local template path.
 
 ### Authentication
 
@@ -186,6 +192,7 @@ machine to tunnel the callback into the Codespace.
 | `eai tenant select [tenant]` | Choose the active tenant for platform operations |
 | `eai tenant info <id>` | Show tenant details |
 | `eai tenant create` | Create a new tenant and verify child usability truthfully |
+| `eai tenant bootstrap-admin --parent <id> --child <id>` | Repair first child-tenant admin access when the parent admin should be able to administer an existing child |
 
 ### AI & Documents
 
@@ -199,6 +206,22 @@ machine to tunnel the callback into the Codespace.
 | `eai docs upload <file>` | Upload a document |
 | `eai docs classify <file>` | Classify a document |
 | `eai docs index <id>` | Index a document for RAG |
+
+### PublicAPI V4
+
+| Command | Description |
+|---------|-------------|
+| `eai publicapi get <path>` | Call an authorized PublicAPI V4 GET route |
+| `eai publicapi post <path>` | Call an authorized PublicAPI V4 POST route with optional `--data` or `--file` JSON |
+| `eai publicapi patch <path>` | Call an authorized PublicAPI V4 PATCH route |
+| `eai publicapi put <path>` | Call an authorized PublicAPI V4 PUT route |
+| `eai publicapi delete <path>` | Call an authorized PublicAPI V4 DELETE route |
+
+Use named commands first for normal workflows. `eai publicapi` is the advanced
+V4-only surface for route families that do not yet have a polished command,
+such as geo, realtime, platform administration, integrations, or DAISY-specific
+diagnostics. It still uses your current login and tenant context, and PublicAPI
+still enforces platform tenant authorization.
 
 ### Deployment
 
@@ -234,6 +257,14 @@ The first-admin bootstrap path is intentionally narrow:
 - the target must be an immediate child of that parent
 - the child must not already have a tenant admin
 - parent child allowance is enforced from `limits.tenants`
+
+For existing child tenants that were created before the bootstrap completed, a parent tenant admin can run:
+
+```bash
+eai tenant bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id>
+```
+
+By default this bootstraps the current login. To repair another known parent member, pass `--user-oid <entra-user-oid>` and optionally `--user-email <email>`.
 
 ## Architecture
 
@@ -365,9 +396,10 @@ Important boundaries:
   local edits and avoid overwriting them accidentally.
 - If a tracked managed file has local edits, refresh leaves it untouched unless
   you explicitly pass `--force`, and even then it backs the file up first.
-- `eai template check` previews file-level drift against the current app
-  template snapshot and highlights which files are new versus which need manual
-  review, including likely UI paths under `src/app` and `src/components`.
+- `eai template check` previews file-level drift against the app-template
+  `main` snapshot pinned in the installed CLI release and highlights which
+  files are new versus which need manual review, including likely UI paths under
+  `src/app` and `src/components`.
 - Template or UI component changes are **not** auto-merged into existing repos
   yet. Copy additions first, then diff/review existing files that `eai template
   check` marks for manual review.
@@ -434,6 +466,8 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 4. Lint (`eslint`)
 5. Build (`tsc`)
 6. Test (`vitest run`)
+   - Focused SRP CLI evidence also runs as `npm run test:eai-cli:ci` in
+     GitHub Actions check `ci/eai-cli-tests`
 7. Smoke tests — `eai --version`, `eai --help`, and the shipped command groups
 8. Docs site build
 9. Release-facing docs/help generation (`llms.txt`, `llms-full.txt`, `cli-help.txt`)
@@ -451,6 +485,12 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 7. `release.sh` waits for both workflows and verifies `https://eai-tools.github.io/eai/registry/@eai-tools/cli`
 
 If the static registry does not converge to the new version, the script exits non-zero so the release is treated as incomplete.
+
+The EAI CLI is also part of SRP release evidence. Repo-local CLI behavior is
+owned here through `ci/eai-cli-tests`; deployed read-only CLI schema, error,
+auth, and preview canaries live in `enterpriseaigroup/eai-testing-dev` under the
+`eai-cli` cross-service surface. Keep prod CLI canaries read-only; preview
+lifecycle checks must stay explicit and cleanup-backed.
 
 The release path publishes the repository exactly as committed. Bundled Gofer and linked-source refreshes happen separately via `npm run sync:gofer` / `npm run sync:linked-sources` and should be committed before you cut a release instead of being fetched during publish time.
 

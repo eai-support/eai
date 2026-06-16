@@ -4,16 +4,15 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { browserLogin, clearTokens, storeTokens } from '../lib/auth.js';
-import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
-import { getActiveProfile, loadProfileConfig, saveActiveProfileToConfig, DEFAULT_PROD_AUTH_SCOPE } from '../lib/profile.js';
+import { browserLogin, clearTokens, storeTokens, resolveAuthConfig, validateResolvedAuthConfig } from '../lib/auth.js';
+import { findProjectRoot } from '../lib/config.js';
+import {
+  buildPublicApiEnvSyncNotice,
+  resolveActiveTenantContext,
+  resolvePublicApiUrl,
+} from '../lib/tenant-context.js';
+import { getActiveProfile, saveActiveProfileToConfig } from '../lib/profile.js';
 import * as out from '../lib/output.js';
-
-// Public auth defaults let `eai login` work without local setup.
-const PROD_TENANT_NAME = 'enterpriseaiplatform';
-const PROD_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
-const PROD_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
-const DEFAULT_SCOPE = DEFAULT_PROD_AUTH_SCOPE;
 
 function parseCallbackPort(value: string | undefined): number | undefined {
   if (!value) return undefined;
@@ -48,13 +47,19 @@ What happens next:
   `)
   .action(async (options) => {
     const profile = getActiveProfile();
-    const profileConfig = await loadProfileConfig(profile);
+    const projectRoot = await findProjectRoot();
+    const resolvedConfig = await resolveAuthConfig(projectRoot || undefined, profile);
+    const configIssue = validateResolvedAuthConfig(resolvedConfig);
+    if (configIssue) {
+      out.error(configIssue);
+      process.exit(1);
+    }
 
-    // Resolve auth config: command flags → profile config → public defaults
-    const tenantName = options.tenantName || profileConfig?.authTenantName || PROD_TENANT_NAME;
-    const tenantId = options.tenantId || profileConfig?.authTenantId || PROD_TENANT_ID;
-    const clientId = profileConfig?.authClientId || PROD_CLIENT_ID;
-    const scope = options.scope || profileConfig?.authScope || DEFAULT_SCOPE;
+    // Resolve auth config: command flags → runtime/profile config → public defaults
+    const tenantName = options.tenantName || resolvedConfig.tenantName;
+    const tenantId = options.tenantId || resolvedConfig.tenantId;
+    const clientId = resolvedConfig.clientId;
+    const scope = options.scope || resolvedConfig.authScope;
     if (!tenantName || !tenantId || !clientId) {
       out.error(`Profile "${profile}" is missing authTenantName, authTenantId, or authClientId.`);
       out.info('Check your local profile settings and ensure all required fields are set.');
@@ -94,12 +99,20 @@ What happens next:
       out.info(`Token expires: ${new Date(tokens.expiresAt).toLocaleString()}`);
 
       try {
-        const publicApiUrl = await resolvePublicApiUrl();
+        const projectRoot = await findProjectRoot();
+        const publicApiUrl = await resolvePublicApiUrl(projectRoot || undefined);
         const context = await resolveActiveTenantContext({
+          projectRoot: projectRoot || undefined,
           publicApiUrl,
           interactive: true,
         });
         out.info(`Active tenant: ${chalk.cyan(context.activeTenant.displayName)} ${chalk.dim(`(${context.activeTenant.slug})`)}`);
+        const notice = buildPublicApiEnvSyncNotice(context.publicApiEnvSync);
+        if (notice?.level === 'warn') {
+          out.warn(notice.message);
+        } else if (notice) {
+          out.success(notice.message);
+        }
       } catch (selectionError) {
         out.warn(selectionError instanceof Error ? selectionError.message : String(selectionError));
         out.info(`Run ${chalk.cyan('eai tenant select')} after login to choose the tenant to work with.`);

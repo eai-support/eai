@@ -31,8 +31,6 @@ if (args.length === 0) {
 
 const featureDir = args[0];
 const tasksPath = path.join(featureDir, 'tasks.md');
-const specPath = path.join(featureDir, 'spec.md');
-const planPath = path.join(featureDir, 'plan.md');
 const issuesPath = path.join(featureDir, 'issues.md');
 
 // Validate inputs
@@ -48,16 +46,6 @@ const featureNameMatch = tasksContent.match(/^# Task Breakdown: (.+)$/m);
 const featureIdMatch = tasksContent.match(/\*\*Feature ID\*\*: (.+)$/m);
 const featureName = featureNameMatch ? featureNameMatch[1] : 'Unknown Feature';
 const featureId = featureIdMatch ? featureIdMatch[1].trim() : 'unknown';
-
-// Load spec.md and plan.md if available for context
-let specContent = '';
-let planContent = '';
-if (fs.existsSync(specPath)) {
-  specContent = fs.readFileSync(specPath, 'utf-8');
-}
-if (fs.existsSync(planPath)) {
-  planContent = fs.readFileSync(planPath, 'utf-8');
-}
 
 // Parse tasks from tasks.md
 // Format: - [ ] T001 [P?] [US?] Description with file path
@@ -119,14 +107,11 @@ for (const task of tasks) {
   phaseSummary[task.phase]++;
 }
 
-for (const [phase, count] of Object.entries(phaseSummary)) {
-}
-
 /**
  * Generate a single GitHub issue from a task
  */
 function generateIssue(issueNumber, task, featureName, featureId) {
-  const { taskId, isParallel, storyLabel, description, filePath, phase, fullDescription } = task;
+  const { taskId, isParallel, storyLabel, description, filePath, phase } = task;
 
   // Determine labels based on phase and story
   const labels = ['enhancement'];

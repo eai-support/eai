@@ -4,7 +4,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execSync } = require('node:child_process');
 
-const ROOT = path.join(__dirname, '..');
+const ROOT = process.env.EAI_RELEASE_METADATA_ROOT
+  ? path.resolve(process.env.EAI_RELEASE_METADATA_ROOT)
+  : path.join(__dirname, '..');
 const version = process.argv[2];
 const releaseMessage = process.argv.slice(3).join(' ').trim();
 
@@ -16,7 +18,11 @@ if (!version || !releaseMessage) {
 const today = new Date().toISOString().slice(0, 10);
 let sourceCommit = 'unknown';
 try {
-  sourceCommit = execSync('git rev-parse HEAD', { cwd: ROOT, encoding: 'utf-8' }).trim();
+  sourceCommit = execSync('git rev-parse HEAD', {
+    cwd: ROOT,
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim();
 } catch {
   sourceCommit = 'unknown';
 }
@@ -27,62 +33,70 @@ function updateFile(relativePath, transform) {
   fs.writeFileSync(absolutePath, transform(original), 'utf-8');
 }
 
+function updateExistingFile(relativePath, transform) {
+  const absolutePath = path.join(ROOT, relativePath);
+  if (!fs.existsSync(absolutePath)) {
+    return false;
+  }
+
+  updateFile(relativePath, transform);
+  return true;
+}
+
 function updateGeneratedHeader(markdown) {
   return markdown
     .replace(/generated_at:\s*".*?"/, `generated_at: "${new Date().toISOString()}"`)
     .replace(/source_commit:\s*".*?"/, `source_commit: "${sourceCommit}"`);
 }
 
-updateFile('.tech-docs/overview.md', (markdown) => (
-  (() => {
-    let next = updateGeneratedHeader(markdown)
-    .replace(/\| \*\*Version\*\* \| .*? \|/, `| **Version** | ${version} |`)
-    .replace(/\| \*\*Current Status\*\* \| .*? \|/, `| **Current Status** | Active development (v${version} released ${today}) |`)
-    .replace(/\| \*\*Last Material Change\*\* \| .*? \|/, `| **Last Material Change** | v${version}: ${releaseMessage} (${today}) |`)
-    .replace(/\*\*Version\*\*: .*?\s{2}/, `**Version**: ${version}  `)
-    .replace(/\| `src\/lib\/update-check\.ts` \| .*?\|/, '| `src/lib/update-check.ts` | Auto-update checker using the static EAI registry packument |')
-    .replace(/- \*\*Background Checks\*\*: .*?\n/, '- **Background Checks**: Queries the static EAI registry packument every 24 hours (cached in `~/.eai/update-check.json`)\n')
-    .replace(/- \*\*Manual Upgrade\*\*: .*?\n/, '- **Manual Upgrade**: Users run `eai update` or `npm install -g @eai-tools/cli` after configuring the scoped EAI registry\n')
-    .replace(/- \*\*Version\*\*: .*?\n/, `- **Version**: ${version} (released ${today})\n`);
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-    if (!next.includes(`### v${version} (${today})`)) {
-      next = next.replace(
-        '## Recent Enhancements\n\n',
-        `## Recent Enhancements\n\n### v${version} (${today})\n- **${releaseMessage}**\n\n`,
-      );
-    }
+function upsertSection(markdown, heading, body, beforeHeading) {
+  const section = `## ${heading}\n\n${body.trim()}\n`;
+  const existing = new RegExp(
+    `\\n## ${escapeRegExp(heading)}\\n[\\s\\S]*?(?=\\n## |\\s*$)`,
+  );
 
-    return next;
-  })()
-));
-
-updateFile('.tech-docs/dependencies.md', (markdown) => (
-  updateGeneratedHeader(markdown)
-    .replace(/CLI\[eai CLI v[\d.]+\]/, `CLI[eai CLI v${version}]`)
-));
-
-updateFile('.tech-docs/changelog.md', (markdown) => {
-  const updated = updateGeneratedHeader(markdown)
-    .replace(/\*\*Version\*\*: .*?\n/, `**Version**: ${version} (stable)\n`);
-
-  if (updated.includes(`## [${version}] - ${today}`)) {
-    return updated;
+  if (existing.test(markdown)) {
+    return markdown.replace(existing, `\n${section}\n`);
   }
 
-  return updated.replace(
-    '## Previous Updates\n\n---',
-    `## [${version}] - ${today}\n\n- ${releaseMessage}\n\n## Previous Updates\n\n---`,
-  );
-});
+  if (beforeHeading && markdown.includes(`\n${beforeHeading}`)) {
+    return markdown.replace(`\n${beforeHeading}`, `\n${section}\n${beforeHeading}`);
+  }
 
-updateFile('.tech-docs/architecture.md', (markdown) => (
-  updateGeneratedHeader(markdown)
-    .replace(
-      /\| \*\*update-check\.ts\*\* \| `checkForUpdate`, `notifyIfUpdateAvailable` \| .*?\|/,
-      '| **update-check.ts** | `checkForUpdate`, `notifyIfUpdateAvailable` | Static EAI registry integration for version checks |',
-    )
-    .replace(/Update checks cached for 24 hours in `~\/\.eai\/last-update-check`/, 'Update checks cached for 24 hours in `~/.eai/update-check.json`')
+  return `${markdown.trimEnd()}\n\n${section}\n`;
+}
+
+const currentReleaseBody = `
+The current CLI release is **v${version}** (${today}): ${releaseMessage}.
+`;
+
+const releaseSnapshotBody = `
+| Field | Value |
+| --- | --- |
+| Version | ${version} |
+| Released | ${today} |
+| Last Material Change | ${releaseMessage} |
+| Source Commit | \`${sourceCommit}\` |
+`;
+
+updateFile('.tech-docs/start-here.md', (markdown) => (
+  upsertSection(markdown, 'Current Release', currentReleaseBody, '## What The Pieces Do')
 ));
+
+updateFile('.tech-docs/eai-cli.md', (markdown) => (
+  upsertSection(markdown, 'Release Snapshot', releaseSnapshotBody, '## Common Workflow')
+));
+
+for (const generatedDocPath of [
+  '.tech-docs/api-reference.md',
+  '.tech-docs/configuration.md',
+]) {
+  updateExistingFile(generatedDocPath, updateGeneratedHeader);
+}
 
 console.log('✓ Updated release metadata in .tech-docs');
 console.log(`  Version: ${version}`);

@@ -13,6 +13,11 @@ function createJwt(payload: Record<string, string>): string {
   return `${header}.${body}.signature`;
 }
 
+const EXAMPLE_AUTH_TENANT_NAME = 'example-ciam';
+const EXAMPLE_AUTH_TENANT_ID = '00000000-0000-4000-8000-000000000001';
+const EXAMPLE_PUBLIC_API_SCOPE = 'api://00000000-0000-4000-8000-000000000002/.default';
+const EXAMPLE_CLI_CLIENT_ID = '00000000-0000-4000-8000-000000000003';
+
 async function completeBrowserCallback(url: string): Promise<void> {
   const { get } = await import('node:http');
 
@@ -150,6 +155,44 @@ describe('eai login', () => {
     expect(DEFAULT_PROD_AUTH_SCOPE).toContain('openid profile email offline_access');
     expect(DEFAULT_PROD_AUTH_SCOPE).toContain(PROD_PUBLIC_API_SCOPE);
     expect(PROD_PUBLIC_API_SCOPE).toBe('api://833fc5ab-f1c9-4c60-b344-64e366f241cc/access_token');
+  });
+
+  test('default profile resolves auth target from runtime env overrides', async () => {
+    process.env.ENTRA_TENANT_NAME = EXAMPLE_AUTH_TENANT_NAME;
+    process.env.ENTRA_TENANT_ID = EXAMPLE_AUTH_TENANT_ID;
+    process.env.ENTRA_SCOPES = `openid profile email offline_access ${EXAMPLE_PUBLIC_API_SCOPE}`;
+    process.env.EAI_CLI_CLIENT_ID = EXAMPLE_CLI_CLIENT_ID;
+
+    vi.resetModules();
+    const { resolveAuthConfig, validateResolvedAuthConfig } = await import('../../src/lib/auth.js');
+
+    const config = await resolveAuthConfig();
+    expect(config.tenantName).toBe(EXAMPLE_AUTH_TENANT_NAME);
+    expect(config.tenantId).toBe(EXAMPLE_AUTH_TENANT_ID);
+    expect(config.clientId).toBe(EXAMPLE_CLI_CLIENT_ID);
+    expect(config.authScope).toBe(`openid profile email offline_access ${EXAMPLE_PUBLIC_API_SCOPE}`);
+    expect(validateResolvedAuthConfig(config)).toBeNull();
+
+    delete process.env.ENTRA_TENANT_NAME;
+    delete process.env.ENTRA_TENANT_ID;
+    delete process.env.ENTRA_SCOPES;
+    delete process.env.EAI_CLI_CLIENT_ID;
+  });
+
+  test('default profile flags non-prod auth overrides without a CLI client ID', async () => {
+    process.env.ENTRA_TENANT_NAME = EXAMPLE_AUTH_TENANT_NAME;
+    process.env.ENTRA_TENANT_ID = EXAMPLE_AUTH_TENANT_ID;
+    process.env.ENTRA_SCOPES = `openid profile email offline_access ${EXAMPLE_PUBLIC_API_SCOPE}`;
+
+    vi.resetModules();
+    const { resolveAuthConfig, validateResolvedAuthConfig } = await import('../../src/lib/auth.js');
+
+    const config = await resolveAuthConfig();
+    expect(validateResolvedAuthConfig(config)).toContain('EAI_CLI_CLIENT_ID');
+
+    delete process.env.ENTRA_TENANT_NAME;
+    delete process.env.ENTRA_TENANT_ID;
+    delete process.env.ENTRA_SCOPES;
   });
 
   test('browserLogin completes callback flow and stores tokens', async () => {

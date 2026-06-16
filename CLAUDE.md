@@ -1,5 +1,14 @@
 # CLAUDE.md
 
+## Feature Test Ownership
+
+- When creating, updating, or removing feature behavior, update the owned tests in the same repo and PR. Do not hand feature testing to `eai-testing-dev` unless the deployed canary, route/config contract, auth/tenant smoke, or release evidence surface changes.
+- Broad browser click-through paths belong in the owning frontend repo's Playwright CI/preview suite with controlled fixtures. Keep them out of prod cross-service checks except for stable read-only canaries and monitoring.
+- Provider/data oddities belong in provider contract tests, mocked edge-case tests, and safe non-prod live provider smokes owned by the repo that implements the provider surface.
+- Entra UI/session/cookie changes require controlled auth UI/session tests in the owning frontend repo. Deployed login-smoke plus role/tenant canaries live in `enterpriseaigroup/eai-testing-dev`.
+- EAI CLI behavior is owned by `enterpriseaigroup/eai` through `ci/eai-cli-tests`; `eai-testing-dev` only keeps deployed read-only CLI canaries and release-observability evidence aligned.
+- Release/SRP evidence changes must keep CI check names, required-test metadata, coverage mappings, and any `eai-testing-dev` dispatch aliases in sync before promotion enforcement is tightened.
+
 See @AGENTS.md for project conventions, commands, and code style.
 
 ## Workflow
@@ -52,6 +61,11 @@ See @AGENTS.md for project conventions, commands, and code style.
 - Keep `release.sh`, `.github/workflows/release.yml`, `.github/workflows/docs.yml`,
   `src/commands/update.ts`, `src/lib/update-check.ts`, and `README.md` in sync
 - Validate release work with `npm run release:check`
+- Keep `ci/eai-cli-tests` green for CLI auth, tenant, schema, error envelope,
+  PublicAPI, and preview-lifecycle behavior. It is the repo-owned SRP evidence
+  for the EAI CLI surface.
+- Keep deployed CLI canaries in `eai-testing-dev` read-only for prod; preview
+  lifecycle checks must stay explicit and cleanup-backed.
 - Refresh `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt` as part of every release
 - GitHub Pages static registry is the release and update channel, and it must
   keep matching the current tag

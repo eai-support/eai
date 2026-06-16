@@ -158,8 +158,8 @@ eai chat send "Summarise this project" --workflow <id>
 # Streaming (real-time SSE)
 eai chat stream "Tell me about X" --workflow <id>
 
-# Continue a thread
-eai chat send "Follow-up" --workflow <id> --thread <threadId>
+# Continue a conversation
+eai chat send "Follow-up" --workflow <id> --conversation-id <conversationId>
 ```
 
 ---

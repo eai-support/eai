@@ -1,6 +1,8 @@
 ---
 name: implement-performance-explorer
-description: Explores 3 performance optimization approaches - caching, lazy loading, and parallelization
+description:
+  Explores 3 performance optimization approaches - caching, lazy loading, and
+  parallelization
 kind: local
 model: gemini-3-flash-preview
 temperature: 0.2
@@ -94,15 +96,3 @@ This agent does not block. The judge selects the highest-impact optimizations.
 - **Respect existing architecture** — don't propose rewrites for marginal gains.
 - **Recommended model**: sonnet (performance analysis requires reasoning about
   execution paths).
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your optimization analysis with other
-  providers' findings
-- Your response may be peer-reviewed by other council members
-
-Focus on approach-committed performance analysis regardless of council mode.

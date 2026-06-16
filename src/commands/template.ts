@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { Command } from "commander";
 import chalk from "chalk";
 import { findProjectRoot } from "../lib/config.js";
+import { scanAppRouterRouteExports } from "../lib/next-route-exports.js";
 import {
   resolveProjectManifest,
   type ProjectManifestSource,
@@ -58,6 +59,10 @@ interface TemplateCheckPlan {
   readonly projectTemplateLabel: string;
   readonly currentTemplateLabel: string;
   readonly items: readonly TemplateCheckItem[];
+  readonly routeExportViolations: readonly {
+    readonly routeFile: string;
+    readonly invalidExports: readonly string[];
+  }[];
   readonly summary: TemplateCheckSummary;
 }
 
@@ -197,9 +202,14 @@ async function planTemplateCheck(
       readonly skipped: string;
       readonly projectTemplateLabel: string;
       readonly currentTemplateLabel: string;
+      readonly routeExportViolations: readonly {
+        readonly routeFile: string;
+        readonly invalidExports: readonly string[];
+      }[];
     }
 > {
   const resolvedManifest = await resolveProjectManifest(projectRoot);
+  const routeExportViolations = await scanAppRouterRouteExports(projectRoot);
   const manifest = resolvedManifest.manifest;
   if (!manifest?.template) {
     out.error("This project does not record template provenance yet.");
@@ -232,6 +242,7 @@ async function planTemplateCheck(
       skipped: "Bundled default template commit matches this project snapshot.",
       projectTemplateLabel,
       currentTemplateLabel,
+      routeExportViolations,
     };
   }
 
@@ -327,6 +338,7 @@ async function planTemplateCheck(
       projectTemplateLabel,
       currentTemplateLabel,
       items,
+      routeExportViolations,
       summary,
     };
   } finally {
@@ -385,15 +397,16 @@ Notes:
     const plan = await planTemplateCheck(root);
     if ("skipped" in plan) {
       if (options.format === "json") {
-        out.json({
-          mode: "check",
-          projectRoot: root,
-          status: "current",
-          projectTemplate: plan.projectTemplateLabel,
-          currentTemplate: plan.currentTemplateLabel,
-          message: plan.skipped,
-        });
-        return;
+      out.json({
+        mode: "check",
+        projectRoot: root,
+        status: "current",
+        projectTemplate: plan.projectTemplateLabel,
+        currentTemplate: plan.currentTemplateLabel,
+        routeExportViolations: plan.routeExportViolations,
+        message: plan.skipped,
+      });
+      return;
       }
 
       out.heading("Template Check");
@@ -409,6 +422,18 @@ Notes:
       out.info(
         "After your next CLI update, run `eai template check` again to preview file-level drift.",
       );
+      if (plan.routeExportViolations.length > 0) {
+        out.blank();
+        out.warn("App Router route export audit found unsupported exports:");
+        for (const violation of plan.routeExportViolations) {
+          out.warn(
+            `${violation.routeFile}: ${violation.invalidExports.join(", ")}`,
+          );
+        }
+        out.info(
+          "Move reusable helpers, dependency interfaces, and test seams into a sibling `handler.ts` or a lib module.",
+        );
+      }
       return;
     }
 
@@ -423,6 +448,7 @@ Notes:
           usesBundledDefault: plan.usesBundledDefault,
           manifestSource: plan.manifestSource,
         },
+        routeExportViolations: plan.routeExportViolations,
         summary: plan.summary,
         items: plan.items,
       });
@@ -441,6 +467,19 @@ Notes:
     out.info(
       "This preview does not write files. Review changes before copying any template or UI updates into your repo.",
     );
+
+    if (plan.routeExportViolations.length > 0) {
+      out.blank();
+      out.warn("App Router route export audit found unsupported exports:");
+      for (const violation of plan.routeExportViolations) {
+        out.warn(
+          `${violation.routeFile}: ${violation.invalidExports.join(", ")}`,
+        );
+      }
+      out.info(
+        "Move reusable helpers, dependency interfaces, and test seams into a sibling `handler.ts` or a lib module.",
+      );
+    }
 
     if (plan.items.length === 0) {
       out.blank();

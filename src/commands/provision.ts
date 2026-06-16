@@ -46,6 +46,25 @@ interface DiagnosticsContext {
   debug: boolean;
 }
 
+function normalizeLocalEntraSetting(value: string | undefined): string | null {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (['empty', 'changeme', 'placeholder', '<empty>'].includes(normalized.toLowerCase())) {
+    return null;
+  }
+  return normalized;
+}
+
+function hasUsableLocalEntraSecret(env: Record<string, string>): boolean {
+  return normalizeLocalEntraSetting(env.ENTRA_CLIENT_SECRET) !== null;
+}
+
+function hasUsableLocalEntraClientId(env: Record<string, string>): boolean {
+  return normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID) !== null;
+}
+
 function printServerDetail(ctx: ErrorContext, diag: DiagnosticsContext): void {
   if (ctx.serverMessage) {
     out.info(`Server: ${ctx.serverMessage}`);
@@ -73,6 +92,11 @@ function tenantLabel(diag: DiagnosticsContext): string {
     return `${chalk.cyan(diag.tenantSlug)} (${chalk.dim(diag.tenantId)})`;
   }
   return chalk.cyan(diag.tenantSlug ?? diag.tenantId ?? 'unknown');
+}
+
+function isAuthConfigErrorMessage(message: string): boolean {
+  return message.includes('Stored CLI login does not match the active auth configuration')
+    || message.includes('no CLI public client ID was provided');
 }
 
 function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
@@ -213,7 +237,7 @@ Diagnostics:
     }
 
     // Check if ENTRA_CLIENT_ID already exists
-    if (env.ENTRA_CLIENT_ID && !options.force && !options.rotateSecret) {
+    if (hasUsableLocalEntraClientId(env) && !options.force && !options.rotateSecret) {
       out.warn(`ENTRA_CLIENT_ID is already set for ${chalk.cyan(verticalName)}.`);
       out.info(`Use ${chalk.cyan('eai provision entra --force')} to re-check the remote registration and confirm ENTRA_CLIENT_ID.`);
       out.info(`Use ${chalk.cyan('eai provision entra --rotate-secret')} to rotate and write a new ENTRA_CLIENT_SECRET.`);
@@ -231,7 +255,13 @@ Diagnostics:
       tenantSlug = (context.activeTenant as { slug?: string }).slug;
       userOid = (context as { user?: { oid?: string; id?: string } }).user?.oid
         ?? (context as { user?: { id?: string } }).user?.id;
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isAuthConfigErrorMessage(message)) {
+        out.error(message);
+        out.info('Run `eai login` again after sourcing the intended environment, then retry provisioning.');
+        process.exit(1);
+      }
       out.error('Failed to resolve active tenant.');
       out.info(`Run ${chalk.cyan('eai login')} and ${chalk.cyan('eai tenant select')} first.`);
       process.exit(1);
@@ -242,7 +272,7 @@ Diagnostics:
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
 
     if (options.rotateSecret) {
-      if (!env.ENTRA_CLIENT_ID) {
+      if (!hasUsableLocalEntraClientId(env)) {
         out.error('ENTRA_CLIENT_ID is not set in .env.local. Run `eai provision entra` first.');
         process.exit(1);
       }
@@ -250,7 +280,7 @@ Diagnostics:
       try {
         const rotated = await client.rotateEntraAppSecret({
           tenantId,
-          clientId: env.ENTRA_CLIENT_ID,
+          clientId: normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID)!,
         });
         await patchEnvFile(root, {
           ENTRA_CLIENT_ID: rotated.clientId,
@@ -334,11 +364,12 @@ Diagnostics:
 
     if (result.existing && !result.clientSecret) {
       out.info(`App registration already exists for ${chalk.cyan(verticalName)}.`);
-      if (env.ENTRA_CLIENT_SECRET) {
+      if (hasUsableLocalEntraSecret(env)) {
         out.info('Your existing ENTRA_CLIENT_SECRET in .env.local remains valid.');
       } else {
-        out.warn('No new ENTRA_CLIENT_SECRET was returned for the existing registration.');
-        out.warn('Set ENTRA_CLIENT_SECRET in .env.local manually if it is missing locally.');
+        out.error('No usable ENTRA_CLIENT_SECRET is available locally for the existing app registration.');
+        out.info('Run `eai provision entra --rotate-secret` to generate a new local secret, or set ENTRA_CLIENT_SECRET in .env.local.');
+        process.exit(1);
       }
       await patchEnvFile(root, { ENTRA_CLIENT_ID: result.clientId, ...optionalEnv });
       out.success(`ENTRA_CLIENT_ID confirmed: ${chalk.dim(result.clientId)}`);
@@ -394,14 +425,135 @@ Diagnostics:
       out.warn('Platform response did not include redirect URIs — set ENTRA_REDIRECT_URIS manually.');
     }
 
-    // Surface AdminAPI's post-provision sign-in wiring rollup. When the API
+    // Surface the management API's post-provision sign-in wiring rollup. When the API
     // permission merge / admin consent / preAuthorizedApplications steps
     // failed silently, the app reg looks "created" but cannot reach
-    // PublicAPI from a user session — sign-in then fails with AADSTS650057
+    // platform API from a user session — sign-in then fails with AADSTS650057
     // the moment the app's BFF proxy makes its first call. Refusing to
     // exit 0 here turns that silent failure into a loud, actionable one.
     reportTenantAuthorization(result.tenantAuthorization, result.clientId);
     reportSigninCompleteness(result.signinCompleteness, result.clientId);
+  });
+
+// ─── eai provision resourceapi-refresh ──────────────────────────────────
+
+provisionCommand
+  .command('resourceapi-refresh')
+  .description('Refresh a passive customer storage schema snapshot through the management service')
+  .requiredOption('--admin-api-url <url>', 'Management service URL for server-backed orchestration')
+  .option('--tenant-id <id>', 'Tenant ID the refresh is scoped to')
+  .option('--install-id <id>', 'Customer storage install registry ID')
+  .option('--apply', 'Apply the refreshed snapshot after planning', false)
+  .option('--dry-run', 'With --apply, ask the storage service to plan schema application without writing', false)
+  .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
+  .option('--rebuild-search', 'Request search projection rebuild after schema sync', false)
+  .option('--force-overwrite', 'Allow the passive snapshot to overwrite an existing schema version', false)
+  .option('--no-verify', 'Skip storage schema-status verification after apply')
+  .option('--no-update-install-registry', 'Do not update the tenant install registry schema hash after apply')
+  .option('--reason <text>', 'Human-readable reason for a real schema refresh apply')
+  .option('--change-ticket <id>', 'Support/change ticket for audit trail')
+  .option('--product <key>', 'Product/app key this refresh enables')
+  .option('--schema-version <version>', 'Tenant schema version to stamp into metadata', '1')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+Examples:
+  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId>
+  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply --dry-run --force-overwrite
+  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply --force-overwrite --reason "Repair passive schema drift"
+
+Notes:
+  - This is a super-admin repair path for passive customer storage schema metadata.
+  - It updates the tenant install registry only after the storage service accepts and verifies the refreshed snapshot.
+  `)
+  .action(async (options) => {
+    const jsonOutput = options.json || options.format === 'json';
+    const adminApiUrl = String(options.adminApiUrl || '').trim().replace(/\/+$/, '');
+    const root = await findProjectRoot();
+    if (!root) {
+      exitWithError(ErrorCode.E001);
+    }
+
+    const publicApiUrl = await resolvePublicApiUrl(root);
+    let tenantId: string = options.tenantId;
+    try {
+      const context = await resolveActiveTenantContext({
+        projectRoot: root,
+        publicApiUrl,
+        tenantId,
+        interactive: !tenantId,
+        forceRefresh: Boolean(tenantId),
+      });
+      tenantId = context.activeTenant.id;
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      out.error('Not logged in. Run `eai login` before calling server-backed provisioning.');
+      process.exit(1);
+    }
+
+    const response = await fetch(
+      `${adminApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-refresh`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          installId: options.installId,
+          productKey: options.product,
+          schemaVersion: options.schemaVersion,
+          apply: Boolean(options.apply),
+          dryRun: Boolean(options.dryRun),
+          backend: options.backend,
+          rebuildSearch: Boolean(options.rebuildSearch),
+          forceOverwrite: Boolean(options.forceOverwrite),
+          verify: options.verify !== false,
+          updateInstallRegistry: options.updateInstallRegistry !== false,
+          reason: options.reason,
+          changeTicket: options.changeTicket,
+        }),
+      },
+    );
+    if (!response.ok) {
+      out.error(await formatJsonResponseError(response, 'passive customer storage schema refresh'));
+      process.exit(1);
+    }
+
+    const payload = await response.json() as {
+      tenantId: string;
+      installId: string;
+      schemaHash: string;
+      objectTypeCount: number;
+      storageBackends: string[];
+      verified: boolean;
+      installRegistryUpdated: boolean;
+      currentDiff?: { missingObjectTypes?: string[] };
+      verifyDiff?: { missingObjectTypes?: string[] } | null;
+    };
+
+    if (jsonOutput) {
+      out.json(payload);
+      return;
+    }
+
+    out.success(options.apply ? 'Passive customer storage schema refresh applied' : 'Passive customer storage schema refresh planned');
+    out.info(`Tenant: ${chalk.cyan(payload.tenantId)}`);
+    out.info(`Install: ${chalk.dim(payload.installId)}`);
+    out.info(`Object Types: ${payload.objectTypeCount}`);
+    out.info(`Storage Backends: ${payload.storageBackends.join(', ')}`);
+    out.info(`Schema Hash: ${chalk.dim(payload.schemaHash)}`);
+    out.info(`Verified: ${payload.verified ? 'yes' : 'no'}`);
+    out.info(`Install Registry Updated: ${payload.installRegistryUpdated ? 'yes' : 'no'}`);
+    const missing = payload.verifyDiff?.missingObjectTypes || payload.currentDiff?.missingObjectTypes || [];
+    if (missing.length) {
+      out.warn(`Missing Object Types: ${missing.join(', ')}`);
+    }
   });
 
 function normaliseBasePath(value: string | undefined): string {

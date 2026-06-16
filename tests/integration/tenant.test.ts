@@ -3,11 +3,15 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import * as auth from '../../src/lib/auth.js';
 import type { StoredTokens } from '../../src/lib/auth.js';
 import * as config from '../../src/lib/config.js';
 import * as profile from '../../src/lib/profile.js';
 import {
+  buildTenantBootstrapAdminStatusMessages,
   buildTenantCreateStatusMessages,
   buildTenantListZeroState,
   extractCreatedTenantRecord,
@@ -15,6 +19,7 @@ import {
   type TenantCreateOutcome,
 } from '../../src/commands/tenant.js';
 import {
+  buildPublicApiEnvSyncNotice,
   DEFAULT_PUBLIC_API_URL,
   evaluateTenantUsability,
   filterTenantAdminEntries,
@@ -22,7 +27,9 @@ import {
   publicApiUrlForHomeRegion,
   fetchTenantAdminMemberships,
   resolvePublicApiUrl,
+  resolveActiveTenantContext,
   resolveMainCompanyTenantId,
+  syncProjectPublicApiUrlForTenant,
   tenantEntryHasTenantAdminRole,
   toTenantMembership,
   type TenantMembership,
@@ -51,9 +58,9 @@ function storedTokens(overrides: Partial<StoredTokens> = {}): StoredTokens {
   return {
     accessToken: '<fixture-cached-access-value>',
     expiresAt: Date.now() + 60_000,
-    tenantId: 'auth-tenant',
-    tenantName: 'Auth Tenant',
-    clientId: 'client-id',
+    tenantId: profile.DEFAULT_PROD_AUTH_TENANT_ID,
+    tenantName: profile.DEFAULT_PROD_AUTH_TENANT_NAME,
+    clientId: profile.DEFAULT_PROD_AUTH_CLIENT_ID,
     ...overrides,
   };
 }
@@ -458,6 +465,40 @@ describe('tenant list filtering', () => {
     ]);
   });
 
+  test('describes retrospective child tenant admin bootstrap truthfully', () => {
+    expect(buildTenantBootstrapAdminStatusMessages({
+      parentTenantId: 'parent-1',
+      childTenantId: 'child-1',
+      userOid: 'user-1',
+      membershipCreated: true,
+      adminAssigned: true,
+      usable: true,
+      status: 'bootstrapped',
+      reason: null,
+    })).toEqual([
+      'Bootstrap: tenant-admin access was provisioned for the target user.',
+      'Membership: child tenant membership was created.',
+      'Role: tenant-admin was assigned on the child tenant.',
+      'Usable: direct tenant-admin confirmed for the child tenant.',
+    ]);
+
+    expect(buildTenantBootstrapAdminStatusMessages({
+      parentTenantId: 'parent-1',
+      childTenantId: 'child-1',
+      userOid: 'user-1',
+      membershipCreated: false,
+      adminAssigned: false,
+      usable: true,
+      status: 'already-usable',
+      reason: 'target_user_already_child_tenant_admin',
+    })).toEqual([
+      'Bootstrap: the target user already had direct tenant-admin on the child tenant.',
+      'Membership: child tenant membership already existed or did not need creation.',
+      'Role: tenant-admin was already assigned or did not need assignment.',
+      'Usable: direct tenant-admin confirmed for the child tenant.',
+    ]);
+  });
+
   test('extracts the created tenant record from nested create responses', () => {
     expect(extractCreatedTenantRecord({
       doc: {
@@ -600,8 +641,104 @@ describe('PublicAPI URL routing order', () => {
   });
 });
 
+describe('active tenant PublicAPI env sync', () => {
+  test('HP001 TENANT-REGION-001: selecting an EU tenant updates stale AU BASE_URL_PUBLIC_API', async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), 'eai-tenant-region-'));
+    await writeFile(
+      join(projectRoot, '.env.local'),
+      `BASE_URL_PUBLIC_API=${DEFAULT_PUBLIC_API_URL}\nNEXT_PUBLIC_APP_NAME=molt\n`,
+    );
+    vi.mocked(config.loadEnvFile).mockResolvedValue({
+      BASE_URL_PUBLIC_API: DEFAULT_PUBLIC_API_URL,
+      NEXT_PUBLIC_APP_NAME: 'molt',
+    });
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
+    const storeTokensSpy = vi.spyOn(auth, 'storeTokens').mockResolvedValue();
+    vi.spyOn(auth, 'getActiveAuthConfigMismatch').mockResolvedValue(null);
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/identity/tenants`) {
+        return new Response(
+          JSON.stringify({
+            tenants: [{
+              id: 'tenant-eu',
+              displayName: 'MOLT',
+              slug: 'molt',
+              role: 'tenant-admin',
+              isActive: true,
+              homeRegion: 'eu',
+              hqCountryCode: 'DK',
+            }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(`Unhandled request: ${href}`, { status: 500 });
+    }));
+
+    try {
+      const context = await resolveActiveTenantContext({
+        projectRoot,
+        publicApiUrl: DEFAULT_PUBLIC_API_URL,
+        interactive: false,
+        tenantId: 'tenant-eu',
+      });
+
+      expect(context.publicApiEnvSync).toMatchObject({
+        status: 'updated',
+        projectRoot,
+        publicApiUrl: 'https://api.eu.myenterprise.ai/public',
+        previousPublicApiUrl: DEFAULT_PUBLIC_API_URL,
+        homeRegion: 'eu',
+      });
+      expect(buildPublicApiEnvSyncNotice(context.publicApiEnvSync)).toEqual({
+        level: 'warn',
+        message:
+          '.env.local BASE_URL_PUBLIC_API=https://api.eu.myenterprise.ai/public ' +
+          `for active tenant homeRegion eu (was ${DEFAULT_PUBLIC_API_URL}).`,
+      });
+      expect(storeTokensSpy).toHaveBeenCalledWith(expect.objectContaining({
+        activeTenantId: 'tenant-eu',
+        activeTenantHomeRegion: 'eu',
+      }));
+      await expect(readFile(join(projectRoot, '.env.local'), 'utf-8')).resolves.toContain(
+        'BASE_URL_PUBLIC_API=https://api.eu.myenterprise.ai/public',
+      );
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('BP001 TENANT-REGION-001: unsupported homeRegion leaves BASE_URL_PUBLIC_API unchanged', async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), 'eai-tenant-region-'));
+    await writeFile(
+      join(projectRoot, '.env.local'),
+      `BASE_URL_PUBLIC_API=${DEFAULT_PUBLIC_API_URL}\n`,
+    );
+    vi.mocked(config.loadEnvFile).mockResolvedValue({
+      BASE_URL_PUBLIC_API: DEFAULT_PUBLIC_API_URL,
+    });
+
+    try {
+      await expect(
+        syncProjectPublicApiUrlForTenant({ homeRegion: 'manual_review' }, projectRoot),
+      ).resolves.toEqual({
+        status: 'skipped',
+        reason: 'unresolved-home-region',
+        homeRegion: 'manual_review',
+      });
+      await expect(readFile(join(projectRoot, '.env.local'), 'utf-8')).resolves.toContain(
+        `BASE_URL_PUBLIC_API=${DEFAULT_PUBLIC_API_URL}`,
+      );
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('main company tenant resolution', () => {
-  test('HP001 resolves nested Builder tenants to the Builder workspace instead of EAI Developers', async () => {
+  test('HP001 uses the selected tenant even when public metadata includes parent fields', async () => {
     const fetchMock = vi.fn(async (url: string | URL | Request) => {
       const href = String(url);
       if (href.endsWith('/v4/platform/tenants/builder-child/management')) {
@@ -615,27 +752,17 @@ describe('main company tenant resolution', () => {
           { status: 200 },
         );
       }
-      if (href.endsWith('/v4/platform/tenants/builder-workspace/management')) {
-        return new Response(
-          JSON.stringify({
-            id: 'builder-workspace',
-            tier: 'developer',
-            parentTenantId: 'eai-developers',
-            ultimateParentId: 'eai-developers',
-          }),
-          { status: 200 },
-        );
-      }
-      return new Response('platform parent hidden from Builder users', { status: 403 });
+      return new Response('unexpected parent lookup', { status: 500 });
     });
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
       resolveMainCompanyTenantId('https://test-api.example.com', 'builder-child'),
-    ).resolves.toBe('builder-workspace');
+    ).resolves.toBe('builder-child');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  test('HP002 infers Builder workspace from the EAI Developers root when tenant tier is omitted', async () => {
+  test('HP002 uses the selected Builder workspace when tenant tier is omitted', async () => {
     const fetchMock = vi.fn(async (url: string | URL | Request) => {
       const href = String(url);
       if (href.endsWith('/v4/platform/tenants/builder-workspace/management')) {
@@ -650,28 +777,17 @@ describe('main company tenant resolution', () => {
           { status: 200 },
         );
       }
-      if (href.endsWith('/v4/platform/tenants/eai-developers/management')) {
-        return new Response(
-          JSON.stringify({
-            id: 'eai-developers',
-            displayName: 'EAI Developers',
-            slug: 'eai-developers',
-            parentTenant: null,
-            ultimateParent: 'eai-developers',
-          }),
-          { status: 200 },
-        );
-      }
-      return new Response('missing', { status: 404 });
+      return new Response('unexpected parent lookup', { status: 500 });
     });
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
       resolveMainCompanyTenantId('https://test-api.example.com', 'builder-workspace'),
     ).resolves.toBe('builder-workspace');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  test('HP003 resolves Team and Enterprise child tenants to the true customer root', async () => {
+  test('HP003 ignores ultimateParentId in public management metadata', async () => {
     const fetchMock = vi.fn(async () => new Response(
       JSON.stringify({
         id: 'team-child',
@@ -685,7 +801,7 @@ describe('main company tenant resolution', () => {
 
     await expect(
       resolveMainCompanyTenantId('https://test-api.example.com', 'team-child'),
-    ).resolves.toBe('team-root');
+    ).resolves.toBe('team-child');
   });
 
   test('BP001 rejects unresolved selected tenants instead of guessing a company root', async () => {

@@ -1,6 +1,12 @@
 import inquirer from 'inquirer';
-import { findProjectRoot, loadEnvFile } from './config.js';
-import { getAccessToken, loadTokens, storeTokens, type StoredTokens } from './auth.js';
+import { findProjectRoot, loadEnvFile, patchEnvFile } from './config.js';
+import {
+  getAccessToken,
+  getActiveAuthConfigMismatch,
+  loadTokens,
+  storeTokens,
+  type StoredTokens,
+} from './auth.js';
 import { PlatformAPIClient } from './api.js';
 import { isRecord } from './utils.js';
 import { getActiveProfile, loadProfileConfig } from './profile.js';
@@ -13,7 +19,7 @@ const REGION_PUBLIC_API_URLS = {
   eu: 'https://api.eu.myenterprise.ai/public',
 } as const;
 
-type HomeRegion = keyof typeof REGION_PUBLIC_API_URLS;
+export type HomeRegion = keyof typeof REGION_PUBLIC_API_URLS;
 
 const TRUSTED_SESSION_PUBLIC_API_HOSTS = new Set([
   'api.au.myenterprise.ai',
@@ -77,6 +83,32 @@ export interface ActiveTenantContext {
   tokens: StoredTokens;
   activeTenant: TenantMembership;
   memberships: TenantMembership[];
+  publicApiEnvSync?: PublicApiEnvSyncResult;
+}
+
+export type PublicApiEnvSyncResult =
+  | {
+      status: 'updated';
+      projectRoot: string;
+      publicApiUrl: string;
+      previousPublicApiUrl?: string;
+      homeRegion: HomeRegion;
+    }
+  | {
+      status: 'already-current';
+      projectRoot: string;
+      publicApiUrl: string;
+      homeRegion: HomeRegion;
+    }
+  | {
+      status: 'skipped';
+      reason: 'no-project-root' | 'unresolved-home-region';
+      homeRegion?: string | null;
+    };
+
+export interface PublicApiEnvSyncNotice {
+  level: 'success' | 'warn';
+  message: string;
 }
 
 export interface TenantUsabilityStatus {
@@ -110,6 +142,68 @@ export function normalizeHomeRegion(value: string | null | undefined): HomeRegio
 export function publicApiUrlForHomeRegion(value: string | null | undefined): string | null {
   const region = normalizeHomeRegion(value);
   return region ? REGION_PUBLIC_API_URLS[region] : null;
+}
+
+export async function syncProjectPublicApiUrlForTenant(
+  tenant: Pick<TenantMembership, 'homeRegion'>,
+  projectRoot?: string | null,
+): Promise<PublicApiEnvSyncResult> {
+  const homeRegion = normalizeHomeRegion(tenant.homeRegion);
+  if (!homeRegion) {
+    return {
+      status: 'skipped',
+      reason: 'unresolved-home-region',
+      homeRegion: tenant.homeRegion,
+    };
+  }
+
+  const root = projectRoot ?? await findProjectRoot();
+  if (!root) {
+    return { status: 'skipped', reason: 'no-project-root', homeRegion };
+  }
+
+  const publicApiUrl = REGION_PUBLIC_API_URLS[homeRegion];
+  const env = await loadEnvFile(root);
+  const previousPublicApiUrl = env.BASE_URL_PUBLIC_API?.trim();
+  if (previousPublicApiUrl === publicApiUrl) {
+    return {
+      status: 'already-current',
+      projectRoot: root,
+      publicApiUrl,
+      homeRegion,
+    };
+  }
+
+  await patchEnvFile(root, { BASE_URL_PUBLIC_API: publicApiUrl });
+  return {
+    status: 'updated',
+    projectRoot: root,
+    publicApiUrl,
+    previousPublicApiUrl: previousPublicApiUrl || undefined,
+    homeRegion,
+  };
+}
+
+export function buildPublicApiEnvSyncNotice(
+  result: PublicApiEnvSyncResult | undefined,
+): PublicApiEnvSyncNotice | null {
+  if (!result || result.status !== 'updated') return null;
+
+  const target = `BASE_URL_PUBLIC_API=${result.publicApiUrl}`;
+  if (result.previousPublicApiUrl) {
+    return {
+      level: 'warn',
+      message:
+        `.env.local ${target} for active tenant homeRegion ${result.homeRegion} ` +
+        `(was ${result.previousPublicApiUrl}).`,
+    };
+  }
+
+  return {
+    level: 'success',
+    message:
+      `.env.local ${target} for active tenant homeRegion ${result.homeRegion}.`,
+  };
 }
 
 function normalizeCliPublicApiUrl(value: unknown): string | null {
@@ -220,48 +314,7 @@ function unique(values: Array<string | undefined>): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
 }
 
-function tenantRefId(value: unknown): string | null {
-  if (typeof value === 'string' && value) return value;
-  if (value && typeof value === 'object' && 'id' in value) {
-    const id = (value as { id?: unknown }).id;
-    return typeof id === 'string' && id ? id : null;
-  }
-  return null;
-}
-
-function tenantParentId(tenant: TenantHierarchyRecord): string | null {
-  return (
-    (typeof tenant.parentTenantId === 'string' && tenant.parentTenantId) ||
-    tenantRefId(tenant.parentTenant)
-  );
-}
-
-function tenantUltimateParentId(tenant: TenantHierarchyRecord): string | null {
-  return (
-    (typeof tenant.ultimateParentId === 'string' && tenant.ultimateParentId) ||
-    tenantRefId(tenant.ultimateParent)
-  );
-}
-
-function tenantTier(tenant: TenantHierarchyRecord): string {
-  return typeof tenant.tier === 'string' ? tenant.tier.toLowerCase() : '';
-}
-
-function isBuilderSandboxTier(tenant: TenantHierarchyRecord): boolean {
-  const tier = tenantTier(tenant);
-  return tier === 'developer' || tier === 'builder';
-}
-
-function isDeveloperPlatformRootTenant(tenant: TenantHierarchyRecord): boolean {
-  const slug = typeof tenant.slug === 'string' ? tenant.slug.toLowerCase() : '';
-  const displayName = typeof tenant.displayName === 'string' ? tenant.displayName.toLowerCase() : '';
-  const description = typeof tenant.description === 'string' ? tenant.description.toLowerCase() : '';
-  return slug === 'eai-developers'
-    || displayName === 'eai developers'
-    || description.includes('developer workspaces');
-}
-
-async function readTenantHierarchyRecord(
+async function readTenantManagementRecord(
   client: PlatformAPIClient,
   tenantId: string,
 ): Promise<TenantHierarchyRecord> {
@@ -280,108 +333,13 @@ async function readTenantHierarchyRecord(
   return payload;
 }
 
-async function resolveBuilderWorkspaceTenantId(
-  client: PlatformAPIClient,
-  tenantId: string,
-  tenant: TenantHierarchyRecord,
-): Promise<string> {
-  let workspaceTenantId = tenantId;
-  let parentId = tenantParentId(tenant);
-  const seen = new Set<string>([tenantId]);
-
-  for (let depth = 0; parentId && depth < 20; depth += 1) {
-    if (seen.has(parentId)) {
-      throw new Error(`Tenant hierarchy cycle detected while resolving ${tenantId}.`);
-    }
-    seen.add(parentId);
-
-    let parent: TenantHierarchyRecord;
-    try {
-      parent = await readTenantHierarchyRecord(client, parentId);
-    } catch {
-      return workspaceTenantId;
-    }
-
-    const grandParentId = tenantParentId(parent);
-    if (!grandParentId) {
-      return workspaceTenantId;
-    }
-
-    workspaceTenantId = parentId;
-    parentId = grandParentId;
-  }
-
-  if (parentId) {
-    throw new Error(`Tenant hierarchy is too deep while resolving ${tenantId}.`);
-  }
-  return workspaceTenantId;
-}
-
-async function resolveDeveloperWorkspaceTenantId(
-  client: PlatformAPIClient,
-  tenantId: string,
-  tenant: TenantHierarchyRecord,
-): Promise<string | null> {
-  let workspaceTenantId = tenantId;
-  let parentId = tenantParentId(tenant);
-  const seen = new Set<string>([tenantId]);
-
-  for (let depth = 0; parentId && depth < 20; depth += 1) {
-    if (seen.has(parentId)) {
-      throw new Error(`Tenant hierarchy cycle detected while resolving ${tenantId}.`);
-    }
-    seen.add(parentId);
-
-    let parent: TenantHierarchyRecord;
-    try {
-      parent = await readTenantHierarchyRecord(client, parentId);
-    } catch {
-      return null;
-    }
-
-    if (isDeveloperPlatformRootTenant(parent)) {
-      return workspaceTenantId;
-    }
-
-    const grandParentId = tenantParentId(parent);
-    if (!grandParentId) {
-      return null;
-    }
-
-    workspaceTenantId = parentId;
-    parentId = grandParentId;
-  }
-
-  if (parentId) {
-    throw new Error(`Tenant hierarchy is too deep while resolving ${tenantId}.`);
-  }
-  return null;
-}
-
 export async function resolveMainCompanyTenantId(
   publicApiUrl: string,
   tenantId: string,
 ): Promise<string> {
   const client = new PlatformAPIClient(publicApiUrl, tenantId);
-  const tenant = await readTenantHierarchyRecord(client, tenantId);
-  const parentId = tenantParentId(tenant);
-
-  if (!parentId) {
-    return tenantId;
-  }
-
-  if (isBuilderSandboxTier(tenant)) {
-    return resolveBuilderWorkspaceTenantId(client, tenantId, tenant);
-  }
-
-  if (!tenantTier(tenant)) {
-    const developerWorkspaceTenantId = await resolveDeveloperWorkspaceTenantId(client, tenantId, tenant);
-    if (developerWorkspaceTenantId) {
-      return developerWorkspaceTenantId;
-    }
-  }
-
-  return tenantUltimateParentId(tenant) || parentId;
+  await readTenantManagementRecord(client, tenantId);
+  return tenantId;
 }
 
 export function getTenantRoles(entry: TenantEntry): string[] {
@@ -620,6 +578,10 @@ export async function fetchTenantAdminMemberships(publicApiUrl?: string): Promis
   if (!tokens?.oid) {
     throw new Error('Not logged in. Run `eai login` to authenticate.');
   }
+  const authMismatch = await getActiveAuthConfigMismatch(tokens);
+  if (authMismatch) {
+    throw new Error(authMismatch);
+  }
 
   const resolvedPublicApiUrl = publicApiUrl || await resolvePublicApiUrl();
   const client = new PlatformAPIClient(resolvedPublicApiUrl, 'system');
@@ -695,6 +657,7 @@ export async function refreshTenantUsabilityStatus(
 
   if (options?.autoSelect && membership && status.usable) {
     tokens = await saveActiveTenantSelection(membership, fetched.publicApiUrl);
+    await syncProjectPublicApiUrlForTenant(membership);
     status = {
       ...status,
       autoSelected: true,
@@ -739,6 +702,11 @@ export async function resolveActiveTenantContext(options?: {
   forceRefresh?: boolean;
   tenantId?: string;
 }): Promise<ActiveTenantContext> {
+  const authMismatch = await getActiveAuthConfigMismatch(undefined, options?.projectRoot);
+  if (authMismatch) {
+    throw new Error(authMismatch);
+  }
+
   // Short-circuit: if tenant context is cached and TTL is valid, skip Admin API call
   if (!options?.forceRefresh && !options?.forcePrompt && !options?.tenantId) {
     const cached = await loadTokens();
@@ -791,10 +759,15 @@ export async function resolveActiveTenantContext(options?: {
   }
 
   const updatedTokens = await saveActiveTenantSelection(selected, fetched.publicApiUrl, tokens);
+  const publicApiEnvSync = await syncProjectPublicApiUrlForTenant(
+    selected,
+    options?.projectRoot,
+  );
   return {
     publicApiUrl: fetched.publicApiUrl,
     tokens: updatedTokens,
     activeTenant: selected,
     memberships,
+    publicApiEnvSync,
   };
 }

@@ -1,13 +1,13 @@
 ---
 generated: true
-generated_at: "2026-06-01T00:00:00.000Z"
-source_commit: "df335d77f761962bcc84d71b2c2025c700aaff47"
+generated_at: "2026-06-16T12:06:05.773Z"
+source_commit: "d079520b98aad722d2eb32b1b71424dc40efa336"
 ---
 # EAI CLI — API Reference
 
 ## Overview
 
-The EAI CLI groups its commands into scaffolding, authentication, tenant and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, app management, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
+The EAI CLI groups its commands into scaffolding, authentication, tenant and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, app management, advanced PublicAPI V4 access, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
 
 The v4 surface is grouped by domain prefix:
 
@@ -20,13 +20,15 @@ The v4 surface is grouped by domain prefix:
 | `/v4/ai` | Chat (scoped by tenant / workflow / stage) |
 | `/v4/workflows` | Runtime workflow status and binding requests |
 | `/v4/integrations` | Builder readiness |
+| `/v4/geo` | Geospatial lookup, reports, and dataset ingestion |
+| `/v4/realtime` | Realtime negotiation and alerts |
+| `/v4/webhooks` | Controlled inbound webhook surfaces |
 
-**Base URL**: Configured via `BASE_URL_PUBLIC_API` environment variable or profile  
-**Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)  
-**Client Class**: `PlatformAPIClient` in `src/lib/api.ts`  
+- **Base URL**: Configured via `BASE_URL_PUBLIC_API` environment variable or profile
+- **Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)
 **Global Flags**: `--simple`, `--no-color`, `--color`, `--profile <name>`, `--describe`, `-V`
 
-> **Note on `eai env`:** `env pull` and `env push` do **not** call the platform API. They talk to **Azure App Configuration** and **Azure Key Vault** directly (via the Azure SDK / `az` CLI). They are configuration-plane operations, not PublicAPI calls.
+> **Note on `eai env`:** `env pull` and `env push` are configuration-plane operations. They do not call PublicAPI and may require organization-specific cloud access.
 
 ---
 
@@ -40,6 +42,7 @@ Scaffold a new application from the EAI app template.
 **Options**:
 - `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-tools/eai-app-template.git`)
 - `--skip-prompts` — Use defaults without interactive prompts
+- `--current-dir` — Scaffold into the current empty directory instead of creating `./<name>`
 - `--company-tenant <id>` — Main company tenant ID that owns this app
 - `--tenant <id>` — Deprecated alias for `--company-tenant`
 - `--parent-tenant <id>` — Immediate parent company tenant ID for the new child company
@@ -54,7 +57,13 @@ Scaffold a new application from the EAI app template.
 3. Initializes git repository and installs npm dependencies
 4. Records the company/child tenant boundary and package profile in the project manifest
 
-**No API calls** — local operation only
+By default, `eai init my-app` creates a new `./my-app` folder. Interactive init
+can scaffold into the current empty folder when selected, and automation can use
+`eai init my-app --current-dir`.
+
+**API calls** — when authenticated, `eai init` creates or binds the app under
+the selected company tenant and evaluates the tenant capabilities used by the
+generated scaffold.
 
 ---
 
@@ -249,22 +258,22 @@ Provision platform storage backends for the active tenant.
 
 ### Environment Commands
 
-> `env pull` / `env push` use Azure App Configuration and Key Vault directly — **not** the platform API.
+> `env pull` / `env push` use the configured cloud configuration and secret stores directly. They are **not** platform API calls.
 
 #### `eai env pull`
 Sync cloud config into the local `.env.local`.
 
 **Options**:
-- `--env <environment>` — `dev`, `test`, or `prod` (default: `dev`)
-- `--label <label>` — App Config label (defaults to the app name)
-- `--include-secrets` — Resolve Key Vault references
+- `--env <environment>` — Environment profile, such as `dev`, `test`, or `prod` (default: `dev`)
+- `--label <label>` — Configuration label (defaults to the app name)
+- `--include-secrets` — Resolve secret references when authorized
 
 **What it does**:
-1. Reads non-secret config from Azure App Configuration (Azure SDK)
-2. Resolves Key Vault references when `--include-secrets` is set
+1. Reads non-secret config from the organization cloud configuration store
+2. Resolves secret references when `--include-secrets` is set
 3. Writes the merged values to `.env.local`
 
-**No platform API calls** — Azure App Configuration / Key Vault only
+**No platform API calls** — configuration plane only
 
 ---
 
@@ -283,12 +292,12 @@ Show current environment variables (secrets masked by default).
 Push local config overrides to the cloud (admin).
 
 **Options**:
-- `--label <label>` — App Config label
+- `--label <label>` — Configuration label
 - `--key <key>` — Push a single key
 
-**What it does**: Writes values to Azure App Configuration via the `az` CLI.
+**What it does**: Writes values to the configured cloud configuration store.
 
-**No platform API calls** — Azure App Configuration only
+**No platform API calls** — configuration plane only
 
 ---
 
@@ -554,7 +563,7 @@ Inspect and reconcile tenant storage.
 
 ### AI Chat Commands
 
-Chat is scoped by **tenant / workflow / stage**. The tenant comes from the active context; `--workflow` is required; `--stage` defaults to `chat`. A `thread_id` (from `--thread`, or an auto-generated UUID) is sent in the request body.
+Chat is scoped by **tenant / workflow / stage**. The tenant comes from the active context; `--workflow` is required; `--stage` defaults to `chat`. A `conversation_id` (from `--conversation-id`, or an auto-generated UUID) is sent in the request body.
 
 #### `eai chat send <message>`
 Send a single chat message.
@@ -564,10 +573,10 @@ Send a single chat message.
 **Options**:
 - `--workflow <id>` — Workflow ID (required)
 - `--stage <stage>` — Chat stage (default: `chat`)
-- `--thread <id>` — Thread ID (auto-generated UUID if omitted)
+- `--conversation-id <id>` — Conversation ID (auto-generated UUID if omitted)
 
 **Platform API Endpoints Used**:
-- `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` — body `{ message, thread_id, params }`
+- `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` — body `{ message, conversation_id, params }`
 
 ---
 
@@ -579,7 +588,7 @@ Stream a chat response over SSE.
 **Options**:
 - `--workflow <id>` — Workflow ID (required)
 - `--stage <stage>` — Chat stage (default: `chat`)
-- `--thread <id>` — Thread ID (auto-generated UUID if omitted)
+- `--conversation-id <id>` — Conversation ID (auto-generated UUID if omitted)
 
 **Platform API Endpoints Used**:
 - `POST /v4/ai/chat/stream/{tenantId}/{workflowId}/{stage}` — SSE; terminated by a `data: [DONE]` sentinel
@@ -609,15 +618,15 @@ Provision a usecase-agnostic workflow config and bind it to a tenant app. Option
 - `--ai-profile-key <key>` — Reusable `shared-ai-profile` key
 - `--status <status>` — `active` or `draft` (default: `active`)
 - `--write-local-env` — Patch `.env.local` with generated env values
-- `--write-app-config` — Write generated env values to Azure App Configuration
-- `--env <environment>` / `--label <label>` — Azure App Configuration target (default env: `dev`)
+- `--write-app-config` — Write generated env values to the configured cloud configuration store
+- `--env <environment>` / `--label <label>` — Cloud configuration target (default env: `dev`)
 - `--format <format>` — Output format (text|json, default: text)
 
 **What it does** (upsert pattern — list, then create or update):
 1. Upserts a `shared-workflow-config` resource record
 2. Upserts a `vertical-product-config` binding record
 3. With `--bind-ai-runtime`, also upserts `shared-ai-profile` and `shared-chatbot-config` records
-4. With `--write-app-config`, writes env values to Azure App Configuration (Azure SDK, not PublicAPI)
+4. With `--write-app-config`, writes env values to the cloud configuration store (not PublicAPI)
 
 **Platform API Endpoints Used**:
 - `GET` then `POST`/`PUT` `/v4/data/resources/{tenantId}/shared-workflow-config`
@@ -702,6 +711,54 @@ Index a document for RAG (two-step).
 **Platform API Endpoints Used**:
 - `GET /v4/data/documents/records/{documentId}` — fetch the record to resolve its storage path
 - `POST /v4/data/documents/rag-index` — submit the indexing job
+
+---
+
+### Advanced PublicAPI V4 Commands
+
+Use named commands first for normal workflows. The `publicapi` command is the
+advanced V4-only access layer for authorized users and operators when a route
+family does not yet have a polished command.
+
+#### `eai publicapi get <path>` · `post <path>` · `patch <path>` · `put <path>` · `delete <path>`
+Call an authorized PublicAPI V4 path using the current login and active tenant
+context.
+
+**Arguments**:
+- `<path>` — PublicAPI path. It must start with `/v4/`.
+
+**Options**:
+- `--tenant-id <tenantId>` — Use a specific tenant instead of the active tenant
+- `--data <json>` — JSON request body
+- `--file <path>` — Read JSON request body from a file
+- `--param <key=value>` — Query parameter; repeat for multiple values
+- `--include-headers` — Include response headers in JSON output
+- `--format <format>` / `--json` — Output format
+
+**Examples**:
+```bash
+eai publicapi get /v4/identity/me --format json
+eai publicapi get /v4/platform/capabilities/catalog --format json
+eai publicapi post /v4/geo/resolve-location --data '{"query":"Copenhagen"}'
+eai publicapi patch /v4/identity/me/profile --file profile.json
+```
+
+**Platform API Endpoints Used**:
+- Any authorized route under `/v4/identity`
+- Any authorized route under `/v4/platform`
+- Any authorized route under `/v4/workflows`
+- Any authorized route under `/v4/ai`
+- Any authorized route under `/v4/data/resources`
+- Any authorized route under `/v4/data/documents`
+- Any authorized route under `/v4/geo`
+- Any authorized route under `/v4/realtime`
+- Any authorized route under `/v4/integrations`
+- Any authorized route under `/v4/verticals/daisy`
+- Any authorized route under `/v4/webhooks`
+
+The command does not bypass authorization. PublicAPI still validates the bearer
+token, tenant context, route policy, and platform tenant authorization for the
+called interface.
 
 ---
 
@@ -1020,11 +1077,16 @@ Preview file-level app-template / UI drift without writing to the repo.
 ### Integrations
 - `GET /v4/integrations/builder/readiness` — Builder readiness check
 
+### Advanced V4 Route Families
+- `GET|POST|PATCH|PUT|DELETE /v4/geo/...` — Geospatial lookup, reports, and dataset operations through `eai publicapi`
+- `GET|POST /v4/realtime/...` — Realtime negotiation and alert diagnostics through `eai publicapi`
+- `POST /v4/webhooks/...` — Controlled webhook ingress; use only where the caller is authorized and the route is intended for manual diagnostics or replay
+
 ### GitHub (deploy commands)
 - `POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches` — Trigger a workflow
 - `GET /repos/{owner}/{repo}/actions/runs` — Fetch workflow runs
 
-> **Configuration plane (not PublicAPI):** `eai env pull` / `eai env push` use **Azure App Configuration** and **Azure Key Vault** directly.
+> **Configuration plane (not PublicAPI):** `eai env pull` / `eai env push` use the configured cloud configuration and secret stores directly.
 
 ## Global Flags
 

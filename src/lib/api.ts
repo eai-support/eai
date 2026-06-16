@@ -9,16 +9,40 @@
 import { getAccessToken } from './auth.js';
 import { toObjectTypeSlug } from './utils.js';
 
-type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+export type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 type ResourceWhere = Record<string, unknown>;
 
 const PUBLIC_AI_PATH = '/v4/ai';
 const PUBLIC_DATA_DOCUMENTS_PATH = '/v4/data/documents';
 const PUBLIC_DATA_RESOURCES_PATH = '/v4/data/resources';
+const PUBLIC_GEO_PATH = '/v4/geo';
 const PUBLIC_IDENTITY_PATH = '/v4/identity';
 const PUBLIC_INTEGRATIONS_PATH = '/v4/integrations';
 const PUBLIC_PLATFORM_PATH = '/v4/platform';
+const PUBLIC_REALTIME_PATH = '/v4/realtime';
+const PUBLIC_VERTICALS_DAISY_PATH = '/v4/verticals/daisy';
+const PUBLIC_WEBHOOKS_PATH = '/v4/webhooks';
 const PUBLIC_WORKFLOWS_PATH = '/v4/workflows';
+
+const PUBLIC_API_V4_PATH_PREFIXES = [
+  PUBLIC_AI_PATH,
+  PUBLIC_DATA_DOCUMENTS_PATH,
+  PUBLIC_DATA_RESOURCES_PATH,
+  PUBLIC_GEO_PATH,
+  PUBLIC_IDENTITY_PATH,
+  PUBLIC_INTEGRATIONS_PATH,
+  PUBLIC_PLATFORM_PATH,
+  PUBLIC_REALTIME_PATH,
+  PUBLIC_VERTICALS_DAISY_PATH,
+  PUBLIC_WEBHOOKS_PATH,
+  PUBLIC_WORKFLOWS_PATH,
+] as const;
+
+export interface PublicApiRequestOptions {
+  method?: PlatformMethod;
+  body?: unknown;
+  params?: Record<string, unknown>;
+}
 
 export interface ChildTenantBootstrapRequest {
   userOid: string;
@@ -249,6 +273,27 @@ function appendParams(path: string, params?: Record<string, unknown>): string {
   return qs ? `${path}?${qs}` : path;
 }
 
+function normalizePublicApiV4Path(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    throw new Error('PublicAPI path is required.');
+  }
+
+  const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  if (!normalized.startsWith('/v4/')) {
+    throw new Error('Only PublicAPI V4 paths are supported. Start the path with /v4/.');
+  }
+
+  const allowed = PUBLIC_API_V4_PATH_PREFIXES.some((prefix) => (
+    normalized === prefix || normalized.startsWith(`${prefix}/`)
+  ));
+  if (!allowed) {
+    throw new Error(`Unsupported PublicAPI V4 path: ${normalized}`);
+  }
+
+  return normalized;
+}
+
 export async function parseApiError(response: Response): Promise<ParsedApiError> {
   const bodyText = await response.text();
 
@@ -400,6 +445,15 @@ export class PlatformAPIClient {
       headers: await this.headers(),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+  }
+
+  async requestPublicApi(path: string, options?: PublicApiRequestOptions): Promise<Response> {
+    return this.publicRequest(
+      normalizePublicApiV4Path(path),
+      options?.method ?? 'GET',
+      options?.body,
+      options?.params,
+    );
   }
 
   // --------------- Resources ---------------
@@ -747,7 +801,7 @@ export class PlatformAPIClient {
     workflowId: string,
     stage: string,
     message: string,
-    threadId: string,
+    conversationId: string,
     params?: Record<string, unknown>,
   ): Promise<Response> {
     return fetch(
@@ -757,7 +811,7 @@ export class PlatformAPIClient {
         headers: await this.headers(),
         body: JSON.stringify({
           message,
-          thread_id: threadId,
+          conversation_id: conversationId,
           params: params || {},
         }),
       },
@@ -768,7 +822,7 @@ export class PlatformAPIClient {
     workflowId: string,
     stage: string,
     message: string,
-    threadId: string,
+    conversationId: string,
     params?: Record<string, unknown>,
   ): Promise<Response> {
     return fetch(
@@ -778,7 +832,7 @@ export class PlatformAPIClient {
         headers: await this.headers(),
         body: JSON.stringify({
           message,
-          thread_id: threadId,
+          conversation_id: conversationId,
           params: params || {},
         }),
       },

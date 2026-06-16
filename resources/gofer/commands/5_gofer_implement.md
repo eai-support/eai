@@ -606,21 +606,11 @@ If implementation was interrupted:
 
 ---
 
-## LLM Council Integration (Optional)
-
-When council mode is enabled:
-
-1. Complex implementation decisions go to all providers
-2. Different approaches compared
-3. Chairman synthesizes best solution
-4. Usage logged to `.specify/logs/council-usage.jsonl`
-
----
-
 ## EnterpriseAI Deployment Preflight Gate (Manifest/Config)
 
-EnterpriseAI is the default profile. Standard profile runs skip this gate only
-when the user explicitly opts out.
+The standard Gofer workflow is the public default. EnterpriseAI deployment
+preflight is migration-only and runs only when `workflowProfile` is explicitly
+`enterpriseai`.
 
 Before any deployment task emitted by `/4_gofer_tasks` completes, this stage
 MUST execute deployment preflight checks (manifest/config gate). A task that
@@ -629,7 +619,7 @@ are present at the workspace root and pass their readiness checks:
 
 | Required File  | Purpose                                                 |
 | -------------- | ------------------------------------------------------- |
-| `manifest.yml` | Application manifest (from `eai init`) |
+| `manifest.yml` | Vertical application manifest (from `eai init`) |
 | `config.json`  | Runtime configuration bundle (environment-specific)     |
 
 ### Gate behaviour
@@ -650,42 +640,56 @@ separation from `tasks.md`:
 - Run the spec-derived tests before implementation and record the expected
   failure when the implementation is missing or incomplete.
 - Implement only against the approved `contract-pack.md`, `context-bundle.md`,
-  `reuse-scan.md`, `journeys/base-journey.md`, and `plan.md`.
+  `reuse-scan.md`, `journeys/base-journey.md`, `plan.md`, and `goal-ledger.json`.
 - For application delivery, stop and return to the preview loop if
   `{FEATURE_DIR}/ui-approval.md` is missing or not approved. App-delivery runs
   MUST NOT continue as though the UI is settled when approval has not been
   recorded.
-- For application delivery, use the Application Template already installed in the
+- For application delivery, use the EAI App Template already installed in the
   workspace as the default UI lego-block source. Any create-new UI concept must
   be justified in the approved plan and approval artifacts.
+- For application delivery, implement on EAI Platform first, including the EAI
+  app template, and Azure second: use the EAI scaffold, PublicAPI/object
+  types/workflows/block catalog, ResourceAPI/`eai resources schema`, tenant/app
+  enrollment, provisioning, diagnostics, and Azure-compatible
+  deployment/supporting services before any non-EAI exception. Do not introduce a
+  non-EAI primary runtime, database, hosting platform, or app stack unless
+  `plan.md`, `service-fit-matrix.md`, and approval artifacts record it as an
+  explicit exception.
 - Before implementing UI, run or inspect `eai --describe`, `eai blocks list`,
   `eai blocks describe <id>` for every selected block, and
-  `eai resources schema`. Implementation notes must cite the block IDs,
+  `eai resources schema --format json`. Implementation notes must cite the block IDs,
   required resources, bindings, package lane, coupling status, Storybook story
   IDs, theme override points, and any approved custom-block exception.
 - Reject unknown component names during implementation unless `tasks.md` and
   `ui-approval.md` explicitly authorize a custom extension block and manifest.
-- Treat package-profile, block-porting, DAISY decoupling, and public-readiness
-  tasks as first-class implementation tasks, not polish. External and hybrid
-  profile work is incomplete until package exports, Storybook stories, theme
-  overrides, consumer smoke checks, and unsupported custom-block exceptions are
-  resolved or explicitly deferred by approval artifacts.
-- Do not let public or hybrid package lanes import DAISY internals directly.
-  Use `eai resources schema`, an adapter boundary, or an approved internal-only
-  exception; record the coupling status in implementation notes and
-  `ui-review-log.md`.
+- Treat package-profile, block-porting, source-platform decoupling, and public-readiness
+  tasks as first-class implementation tasks, not polish. Update
+  `{FEATURE_DIR}/goal-ledger.json` whenever a task changes an owner, target
+  metric, delivery state, promotion criterion, or re-loop trigger. External and
+  hybrid profile work is incomplete until package exports, Storybook stories,
+  theme overrides, consumer smoke checks, and unsupported custom-block
+  exceptions are resolved or explicitly deferred by approval artifacts.
+- Do not let public or hybrid package lanes import source-platform internals directly.
+  Use `eai resources schema`, an adapter boundary, or an approved
+  restricted-source exception; record the coupling status in implementation
+  notes and `ui-review-log.md`.
 - For application delivery, implement the four-step-or-fewer AI-augmented
   process as the user-facing spine. Each step must preserve its business goal,
   AI assistance mode, contextual prefill or conversational support, completion
   criteria, human controls, audit trail, and fallback/escalation path.
+- Preserve dual-state delivery discipline: when a capability stays in `mock` or
+  `hybrid`, record why, what promotion criteria remain, and what validation
+  evidence is still required before it can move to `live`.
 - For application delivery, before showing any new MVP preview to the
   stakeholder, collect screenshot, local render proof, or Playwright-style
   self-review evidence and append it to `{FEATURE_DIR}/ui-review-log.md`.
 - For application delivery, after UI approval and before treating platform
   selection as complete, update `{FEATURE_DIR}/service-fit-matrix.md` with
   tenant-aware evidence from `eai --describe`, `eai whoami`, `eai tenant
-  select`, `eai resources schema`, `eai verify calls --format json`, or
-  equivalent approved platform evidence. The matrix must distinguish
+  select`, `eai resources schema --format json`, `eai workflow readiness
+  --format json`, `eai verify calls --format json`, or equivalent approved
+  platform evidence. The matrix must distinguish
   accessible now, purchasable but unavailable now, and unavailable without new
   platform work.
 - For non-app work, skip the preview, approval, branding, and service-fit gates

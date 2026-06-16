@@ -92,15 +92,3 @@ root cause.
 - **Don't guess** — if your approach doesn't find evidence, say so.
 - **Recommended model**: sonnet (bug investigation requires reasoning about code
   behavior).
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your investigation with other providers'
-  findings
-- Your response may be peer-reviewed by other council members
-
-Focus on approach-committed investigation regardless of council mode.

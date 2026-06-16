@@ -27,6 +27,9 @@ import { whoamiCommand } from '../../src/commands/whoami.js';
 
 const STORED_API_BASE = 'https://test-api.example.com';
 const RESOLVED_API_BASE = 'https://current-api.example.com';
+const PROD_AUTH_TENANT_NAME = 'enterpriseaiplatform';
+const PROD_AUTH_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
+const PROD_AUTH_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
 
 describe('eai whoami', () => {
   let env: TestEnvironment;
@@ -109,9 +112,9 @@ describe('eai whoami', () => {
       expiresAt: Date.now() + 3600000,
       upn: 'test@example.com',
       oid: 'test-user-oid',
-      tenantId: 'test-tenant',
-      tenantName: 'test-tenant',
-      clientId: 'test-client-id',
+      tenantId: PROD_AUTH_TENANT_ID,
+      tenantName: PROD_AUTH_TENANT_NAME,
+      clientId: PROD_AUTH_CLIENT_ID,
       activeTenantId: 'test-tenant',
       activeTenantName: 'test-tenant',
       activeTenantSlug: 'test-tenant',

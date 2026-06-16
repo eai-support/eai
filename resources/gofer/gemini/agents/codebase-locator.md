@@ -1,6 +1,7 @@
 ---
 name: codebase-locator
-description: Locates files, directories, and components relevant to a feature or task
+description:
+  Locates files, directories, and components relevant to a feature or task
 kind: local
 model: gemini-3.1-flash-lite
 temperature: 0.2
@@ -95,17 +96,3 @@ contents.
 
 Remember: You're a file finder, not a code analyzer. Help users quickly
 understand WHERE everything is.
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your file discoveries with other providers'
-  findings
-- Different LLMs may use different search strategies and find complementary
-  files
-- Your response may be peer-reviewed by other council members
-
-Focus on thorough, systematic file location regardless of council mode.

@@ -10,9 +10,9 @@ tools:
   - WebSearch
 argument-hint: feature-name-or-description
 gofer:
-  workflowProfile: enterpriseai
+  workflowProfile: standard
   canonicalSource: .specify/commands/1_gofer_research.md
-  canonicalChecksum: 54ffb2c8a5d45810a6db1c918fa067fd023e7995ca1d9c23fcd489a5454daf4b
+  canonicalChecksum: 3462f953709b1414be6b6545abcc4db5905673657faa7187d969c1fb675df1d8
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -131,11 +131,13 @@ This is the **first stage** of the unified Gofer pipeline. Your job is to:
 **Output**:
 
 - `.specify/specs/{feature}/research.md`
+- `.specify/specs/{feature}/goal-ledger.json`
 - `.specify/specs/{feature}/proposal-review.md` (optional supporting review context)
 - `.specify/specs/{feature}/journeys/base-journey.md` (application delivery default)
+- `.specify/specs/{feature}/eai-preflight.md` (EAI app delivery default)
 - `.specify/specs/{feature}/ui-preview-brief.md` (application delivery default)
-- `.specify/specs/{feature}/context-bundle.md` (EnterpriseAI default)
-- `.specify/specs/{feature}/reuse-scan.md` (EnterpriseAI default)
+- `.specify/specs/{feature}/context-bundle.md` (EnterpriseAI profile only)
+- `.specify/specs/{feature}/reuse-scan.md` (EnterpriseAI profile only)
 
 ---
 
@@ -161,6 +163,7 @@ Check if discovery.md exists for this feature:
 
 ```bash
 ls -la .specify/specs/{feature}/discovery.md 2>/dev/null
+ls -la .specify/specs/{feature}/eai-preflight.md 2>/dev/null
 ```
 
 If discovery.md exists:
@@ -174,6 +177,8 @@ If discovery.md exists:
      app journey is required
    - AI-Augmented Journey → If app delivery, preserve the four-step-or-fewer
      journey as the scope spine for research
+   - EAI Preflight → If present, preserve CLI install/login/tenant/template/app
+     readiness decisions and do not re-ask for information already confirmed
    - Shared numbered-stage contract → if non-app, preserve the current shared
      stages without adding app-only preview or service-fit requirements
 
@@ -366,8 +371,8 @@ When enabled, `market-analysis.md` must include:
 
 ## Step 3.6: Context Bundle and Reuse-Before-Create Scan
 
-EnterpriseAI is the default profile. Unless the user explicitly opts out with
-the standard profile, generate:
+The standard Gofer workflow is the public default. When `workflowProfile` is
+explicitly `enterpriseai`, generate:
 
 1. `{FEATURE_DIR}/context-bundle.md`
    - Feature summary and approved business scenario.
@@ -377,6 +382,10 @@ the standard profile, generate:
      choice, package lane, coupling status, public-readiness target, and block
      porting posture.
    - Relevant existing specs, code paths, platform references, and API surfaces.
+   - EAI preflight summary: CLI version, login/account status, tenant readiness,
+     template initialization state, app enrollment readiness, block catalog
+     readiness, and next action. Do not include tokens, secrets, tenant-private
+     payloads, or `.env.local` values.
    - EnterpriseAI object types, tenant assumptions, deployment target, and
      validation criteria.
    - A compact "what the next agent needs" section to avoid dumping entire
@@ -388,7 +397,10 @@ the standard profile, generate:
      translation, contextual prefill, recommendation, validation, completion
      checks, audit logging, and escalation.
    - Existing UI block/package assets, Storybook story IDs, theme override
-     points, and DAISY dependencies that affect reuse, porting, or decoupling.
+     points, and source-platform dependencies that affect reuse, porting, or decoupling.
+   - EAI Platform/Azure stack fit for every app-delivery capability. Treat EAI
+     Platform services as primary evidence, Azure as the preferred supporting
+     substrate, and unrelated app stacks as exceptions only.
    - Decision for each candidate: reuse, extend, or create new.
    - Rationale, evidence path, and stakeholder/architecture owner if a new
      platform concept is recommended.
@@ -398,18 +410,18 @@ the standard profile, generate:
    - Package profile: selected external/internal/hybrid profile choice, package
      lane, coupling status, public-readiness target, and why that lane is
      appropriate for this feature.
-   - Application Template constraint map: which approved template blocks or layout
+   - EAI App Template constraint map: which approved template blocks or layout
      patterns the preview should use before any create-new UI concept is
      considered.
    - Block catalog evidence: run `eai --describe`, `eai blocks list`,
      `eai blocks describe <id>` for each candidate, and
-     `eai resources schema`; record stable block IDs, required resources,
+     `eai resources schema --format json`; record stable block IDs, required resources,
      data/action bindings, Storybook story IDs, theme override points, package
      lane, coupling status, and any custom-block exception that needs approval.
-   - Block porting and DAISY decoupling evidence: identify whether each selected
-     block is reused as-is, ported into a package lane, or blocked by DAISY
-     coupling; define the adapter/resource-schema boundary for any decoupling
-     work.
+   - Block porting and source-platform decoupling evidence: identify whether
+     each selected block is reused as-is, ported into a package lane, or
+     blocked by source-platform coupling; define the adapter/resource-schema
+     boundary for any decoupling work.
    - Public-readiness evidence: for external or hybrid profiles, capture package
      exports, consumer-facing constraints, accessibility/theming expectations,
      and what still prevents public consumption.
@@ -420,9 +432,44 @@ the standard profile, generate:
      preview to the stakeholder.
    - Non-app runs MUST skip this artifact and record "Not applicable" in
      `research.md`.
+4. `{FEATURE_DIR}/eai-preflight.md` (EAI app delivery only, created by
+   `#0_business_scenario` when possible and updated here when missing or stale)
+   - Verify the safe public EAI source set used for research:
+     `https://eai-tools.github.io/eai/docs/overview`,
+     `https://eai-tools.github.io/eai/docs/api-reference`,
+     `https://eai-tools.github.io/eai/registry/`,
+     `https://eai-tools.github.io/eai/scenarios`, and
+     `https://github.com/eai-tools/eai-app-template`.
+   - Record whether `eai --describe` found the expected scaffolding,
+     authentication, tenant, vertical app, resource schema, workflow
+     readiness, block catalog, diagnostics, Gofer-refresh, and template-check
+     commands.
+   - Record whether `eai update --check` reports the installed CLI is current
+     or requires an upgrade before app delivery proceeds.
+   - Record whether the app template markers exist:
+     `src/eai.config/object-types.ts`, `src/eai.config/register.ts`,
+     `.env.example`, `.npmrc`, and `package.json`.
+   - Record whether the current repo is ready for `eai verify`, needs
+     `eai init <app-name>`, or must avoid scaffolding because it is a non-empty
+     non-EAI repo.
+   - Record whether `eai template check --format json` and `eai gofer refresh
+     --check --format json` succeed, report drift, or return `E001` because the
+     repo is not yet an EAI app project.
+   - Record the app stack policy decision: EAI Platform including the EAI app
+     template first, Azure second, or approved non-EAI exception.
+   - Record the selected package profile and block-catalog readiness evidence
+     from `eai blocks list`, `eai blocks readiness`, and selected
+     `eai blocks describe <id>` calls.
+   - Record only product-safe status labels such as `ready`,
+     `account_required`, `login_required`, `tenant_required`,
+     `operator_required`, `template_required`, `user_confirmation_required`,
+     or `not_applicable`.
 
 Do not recommend a new EnterpriseAI object type, API/event, workflow, or module
-until the reuse-before-create scan is complete.
+until the reuse-before-create scan is complete. Do not recommend a non-EAI app
+runtime, database, hosting platform, or primary service as the default app
+substrate; use it only as an explicit integration/migration reference or
+approved exception after the EAI Platform/Azure fit has been evaluated.
 
 ---
 
@@ -455,11 +502,16 @@ Once all agents complete:
    - Why this should be EnterpriseAI-first
 4. **Application-Delivery Gate Summary** (app delivery only)
    - Preview-first rationale and the smallest useful MVP to show first
-   - Application Template reuse constraints and any approved extension gaps
+   - EAI App Template reuse constraints and any approved extension gaps
    - External/internal/hybrid profile choice, package lane, coupling status,
-     public-readiness target, block-porting needs, and DAISY decoupling status
+     public-readiness target, block-porting needs, and source-platform decoupling status
    - Candidate capability-discovery inputs for the later service-fit gate
    - Non-app runs must explicitly state "Not applicable"
+5. **Goal Ledger Seed**
+   - Goal IDs, business outcomes, metrics, targets, owners, and confidence
+   - Delivery states for any capability that starts mock/hybrid before going live
+   - Re-loop triggers for objective drift, assumption expiry, contract drift,
+     UX scope changes, and post-validation code/test movement
 
 ### Novice Walkthrough Guardrail (MANDATORY)
 
@@ -525,6 +577,15 @@ status: complete
 
 [Brief description of what we're building]
 
+## Goal Ledger Seed
+
+Reference `.specify/specs/{feature}/goal-ledger.json` and capture:
+
+- Goal IDs with business outcomes, metrics, targets, owners, and confidence
+- Delivery-state discipline (`mock`, `hybrid`, `live`) for each risky capability
+- Re-loop triggers that should reopen `#2_gofer_specify`, `#3_gofer_plan`,
+  `#4_gofer_tasks`, or `#6_gofer_validate`
+
 ## Structured Discovery Output
 
 ### Problem Statement
@@ -545,12 +606,16 @@ status: complete
 - **Primary Value**: [Core value delivered]
 - **Measurable Goal**: [Quantified target]
 - **EnterpriseAI-First Rationale**: [Why EAI is the primary fit]
+- **EAI Platform/Azure Stack Fit**: [EAI services and Azure capabilities to use;
+  exceptions only if approved]
 
 ## Context Bundle Summary
 
 - **Relevant Specs**: [Existing specs to carry forward]
 - **Relevant Code Paths**: [Files/directories and why they matter]
 - **EnterpriseAI Object Types**: [Known or candidate object types]
+- **EAI Platform Services and Azure Capabilities**: [Primary platform services,
+  supporting Azure services, and any blocked capabilities]
 - **Tenant and Deployment Assumptions**: [Tenant, identity, runtime, target environment]
 - **Validation Criteria**: [Business, security, data, architecture, and operational checks]
 
@@ -729,7 +794,7 @@ approvedAt: ''
 
 ## Step 6: Review, Discuss, and Hand Off To Specification
 
-After saving `research.md` and `proposal-review.md`:
+After saving `research.md`, `goal-ledger.json`, and `proposal-review.md`:
 
 1. **Present summary** to user:
    - What was found
@@ -775,6 +840,7 @@ After saving `research.md` and `proposal-review.md`:
 ```
 
 ✓ Research complete: {FEATURE_DIR}/research.md
+✓ Goal ledger seeded: {FEATURE_DIR}/goal-ledger.json
 ✓ Supporting review context ready: {FEATURE_DIR}/proposal-review.md
 
 Key findings:
@@ -784,18 +850,6 @@ Key findings:
 
 ```
 
-
----
-
-## LLM Council Integration (Optional)
-
-When council mode is enabled in `.specify/memory/council-config.yaml` for
-`research_codebase` stage:
-
-1. Each parallel agent queries ALL configured LLM providers
-2. Different LLMs may find different patterns and connections
-3. Chairman synthesizes diverse findings for comprehensive research
-4. Usage logged to `.specify/logs/council-usage.jsonl`
 
 ---
 

@@ -131,7 +131,7 @@ describe('resource type diagnostics', () => {
       parent: 'parent-tenant',
       usecase: 'retail',
       industry: 'retail',
-      starterTemplate: 'blank-vertical-template',
+      starterTemplate: 'eai-app-template',
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -143,7 +143,7 @@ describe('resource type diagnostics', () => {
           slug: 'child-tenant',
           usecase: 'retail',
           industry: 'retail',
-          starterTemplate: 'blank-vertical-template',
+          starterTemplate: 'eai-app-template',
         }),
       }),
     );
@@ -151,7 +151,7 @@ describe('resource type diagnostics', () => {
 
   test('builds dynamic vertical enrollment payloads without child tenant fields', () => {
     expect(buildVerticalEnrollmentData('TikTok V1', 'company-tenant', {
-      template: 'blank-vertical-template',
+      template: 'eai-app-template',
       source: 'eai',
     })).toEqual({
       tenantId: 'company-tenant',
@@ -159,7 +159,7 @@ describe('resource type diagnostics', () => {
       displayName: 'TikTok V1',
       status: 'pending',
       source: 'eai',
-      templateKey: 'blank-vertical-template',
+      templateKey: 'eai-app-template',
     });
   });
 

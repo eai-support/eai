@@ -1,6 +1,8 @@
 ---
 name: specify-ambiguity-detector
-description: Detects specification ambiguities by having 3 agents independently interpret the same spec
+description:
+  Detects specification ambiguities by having 3 agents independently interpret
+  the same spec
 kind: local
 model: gemini-3-flash-preview
 temperature: 0.2
@@ -93,15 +95,4 @@ HIGH ambiguity if agents' pseudocode diverges on more than 30% of criteria.
 - **Focus on behavior, not structure** — your pseudocode should show what happens, not how code is organized.
 - **Recommended model**: sonnet (requires reasoning about specification semantics).
 
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your interpretation with other providers' findings
-- Different LLMs naturally interpret specs differently, making this strategy especially effective in council mode
-- Your response may be peer-reviewed by other council members
-
-Focus on independent, literal interpretation regardless of council mode.
 ```

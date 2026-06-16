@@ -100,15 +100,3 @@ perspectives and determines if any finding is critical enough to block.
   in context.
 - **Recommended model**: sonnet for OWASP/business logic (1, 2), sonnet for CVE
   search (3) with WebSearch.
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your security analysis with other providers'
-  findings
-- Your response may be peer-reviewed by other council members
-
-Focus on perspective-committed security analysis regardless of council mode.

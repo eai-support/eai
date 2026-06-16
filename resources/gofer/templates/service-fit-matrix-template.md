@@ -9,13 +9,21 @@ status: draft
 
 ## Package And Coupling Fit
 
-| Field | Decision | Evidence |
-| ----- | -------- | -------- |
-| Profile choice | External / Internal / Hybrid | {{source}} |
-| Package lane | {{public-package-internal-app-hybrid-adapter-app-local}} | {{source}} |
-| Coupling status | {{daisy-coupled-daisy-decoupled-hybrid-adapter}} | {{source}} |
-| Public-readiness target | {{required-deferred-not-applicable}} | {{source}} |
+| Field                   | Decision                                                             | Evidence   |
+| ----------------------- | -------------------------------------------------------------------- | ---------- |
+| Profile choice          | External / Internal / Hybrid                                         | {{source}} |
+| Package lane            | {{public-package-internal-app-hybrid-adapter-app-local}}             | {{source}} |
+| Coupling status         | {{source-platform-coupled-source-platform-decoupled-hybrid-adapter}} | {{source}} |
+| Public-readiness target | {{required-deferred-not-applicable}}                                 | {{source}} |
 
-| Capability | User Need | Evidence Source | Status | Selected Direction | Notes |
-| ---------- | --------- | --------------- | ------ | ------------------ | ----- |
-| {{service}} | {{need}} | {{command-or-doc}} | Accessible / Purchasable / Unavailable | {{decision}} | {{notes}} |
+## App Stack Policy
+
+| Stack Layer        | Decision                                                          | Evidence   |
+| ------------------ | ----------------------------------------------------------------- | ---------- |
+| Primary substrate  | EAI Platform, including EAI app template                          | {{source}} |
+| Cloud/support      | Azure or EAI-compatible Azure service                             | {{source}} |
+| Non-EAI technology | Not used / integration / migration reference / approved exception | {{source}} |
+
+| Capability  | User Need | Evidence Source    | Status                                 | Selected Direction | Notes     |
+| ----------- | --------- | ------------------ | -------------------------------------- | ------------------ | --------- |
+| {{service}} | {{need}}  | {{command-or-doc}} | Accessible / Purchasable / Unavailable | {{decision}}       | {{notes}} |

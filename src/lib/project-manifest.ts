@@ -7,8 +7,6 @@ export const PROJECT_MANIFEST_RELATIVE_PATH = ".eai-manifest.json";
 const DEFAULT_TEMPLATE_REPO =
   "https://github.com/eai-tools/eai-app-template.git";
 const DEFAULT_TEMPLATE_REPO_NAME = "eai-app-template";
-const LEGACY_TEMPLATE_REPO_NAME = ["Vertical", "Template"].join("-");
-const LEGACY_DEFAULT_TEMPLATE_REPO = `https://github.com/eai-tools/${LEGACY_TEMPLATE_REPO_NAME}.git`;
 const execFileAsync = promisify(execFile);
 
 export interface GoferManagedFileState {
@@ -85,17 +83,13 @@ function coerceTemplateRepoFromDisplaySource(displaySource: string): {
   const trimmed = displaySource.trim();
   const defaultMatch = trimmed.match(
     new RegExp(
-      `^(eai-tools\\/(?:${LEGACY_TEMPLATE_REPO_NAME}|${DEFAULT_TEMPLATE_REPO_NAME}))(?:@([0-9a-f]{7,40}))?$`,
+      `^(eai-tools\\/${DEFAULT_TEMPLATE_REPO_NAME})(?:@([0-9a-f]{7,40}))?$`,
       "i",
     ),
   );
   if (defaultMatch) {
-    const matchedRepo = defaultMatch[1].toLowerCase();
     return {
-      repo:
-        matchedRepo === `eai-tools/${LEGACY_TEMPLATE_REPO_NAME}`.toLowerCase()
-          ? LEGACY_DEFAULT_TEMPLATE_REPO
-          : DEFAULT_TEMPLATE_REPO,
+      repo: DEFAULT_TEMPLATE_REPO,
       commit: defaultMatch[2],
     };
   }

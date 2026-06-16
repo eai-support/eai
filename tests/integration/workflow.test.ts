@@ -8,6 +8,11 @@ import {
   type TestEnvironment,
 } from "../helpers/test-env.js";
 import { clearTokens, storeTokens } from "../../src/lib/auth.js";
+import {
+  DEFAULT_PROD_AUTH_CLIENT_ID,
+  DEFAULT_PROD_AUTH_TENANT_ID,
+  DEFAULT_PROD_AUTH_TENANT_NAME,
+} from "../../src/lib/profile.js";
 import { workflowCommand } from "../../src/commands/workflow.js";
 import {
   buildWorkflowAiRuntimeBindingPayloads,
@@ -48,9 +53,9 @@ async function storeTestTokens(dir: string): Promise<void> {
     expiresAt: Date.now() + 3600000,
     upn: "test@example.com",
     oid: "test-oid",
-    tenantId: "test-tenant-id",
-    tenantName: "test-tenant",
-    clientId: "test-client-id",
+    tenantId: DEFAULT_PROD_AUTH_TENANT_ID,
+    tenantName: DEFAULT_PROD_AUTH_TENANT_NAME,
+    clientId: DEFAULT_PROD_AUTH_CLIENT_ID,
     activeTenantId: "test-tenant-id",
     activeTenantName: "Test Tenant",
     activeTenantSlug: "test-tenant",

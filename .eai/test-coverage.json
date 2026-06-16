@@ -1,0 +1,54 @@
+{
+  "schema": "eai.test_coverage_map.v1",
+  "repositories": {
+    "eai": {
+      "features": [
+        {
+          "id": "eai-cli-command-contracts",
+          "description": "CLI command contracts, local stack compatibility, and deployed read-only CLI smoke.",
+          "owned_paths": [
+            "src/**",
+            "tests/**",
+            "resources/**",
+            "package.json"
+          ],
+          "required_repo_tests": [
+            "tests/integration/login.test.ts",
+            "tests/integration/whoami.test.ts",
+            "tests/integration/tenant.test.ts",
+            "tests/integration/init.test.ts",
+            "tests/integration/help.test.ts",
+            "tests/integration/output.test.ts",
+            "tests/integration/publicapi.test.ts",
+            "tests/integration/platform-api-client.test.ts",
+            "tests/integration/dedicated-tenant-lifecycle.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli"
+          ],
+          "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/eai-cli/describe-schema.spec.ts"
+            },
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/eai-cli/error-codes.spec.ts"
+            },
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/smoke/eai-cli/smoke.spec.ts"
+            },
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/eai-cli/preview-lifecycle.spec.ts"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

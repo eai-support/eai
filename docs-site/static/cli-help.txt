@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Version: 3.0.0
+Version: 3.2.5
 
 Install / update the CLI:
 npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
@@ -47,6 +47,7 @@ Commands:
   template               Preview application template and UI component drift for
                          the current project
   blocks                 Discover AI-readable EAI UI block manifests
+  publicapi              Call authorized PublicAPI V4 routes directly
   help [command]         display help for command
 
 Getting Started:
@@ -63,7 +64,7 @@ Development Workflows:
 
   # See what is published for the active tenant
   eai resources schema
-  eai vertical create "My App" --template blank-vertical-template
+  eai vertical create "My App" --template eai-app-template
 
   # Query resources and inspect data
   eai resources list User --limit 10
@@ -117,6 +118,10 @@ Updates:
                                   list foundation, product, addon, and demo block IDs
   eai blocks describe core.button
   eai blocks readiness     summarize public readiness and package-profile compatibility
+
+  # Call any authorized PublicAPI V4 interface
+  eai publicapi get /v4/identity/me --format json
+  eai publicapi post /v4/geo/resolve-location --data '{"query":"Copenhagen"}'
 
 Accessibility:
   # Screen reader friendly output

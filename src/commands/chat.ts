@@ -19,12 +19,12 @@ chatCommand
   .argument('<message>', 'Message to send')
   .requiredOption('--workflow <id>', 'Workflow ID')
   .option('--stage <stage>', 'Chat stage', 'chat')
-  .option('--thread <id>', 'Thread ID (auto-generated if omitted)')
+  .option('--conversation-id <id>', 'Conversation ID (auto-generated if omitted)')
   .action(async (message, options) => {
     const { client } = await resolveCommandContext();
-    const threadId = options.thread || randomUUID();
+    const conversationId = options.conversationId || randomUUID();
 
-    out.info(`Thread: ${chalk.dim(threadId)}`);
+    out.info(`Conversation: ${chalk.dim(conversationId)}`);
     out.blank();
 
     try {
@@ -32,7 +32,7 @@ chatCommand
         options.workflow,
         options.stage,
         message,
-        threadId,
+        conversationId,
       );
 
       if (!res.ok) {
@@ -54,16 +54,16 @@ chatCommand
 
 chatCommand
   .command('stream')
-  .description('Stream a chat thread (interactive)')
+  .description('Stream a chat conversation (interactive)')
   .argument('<message>', 'Initial message')
   .requiredOption('--workflow <id>', 'Workflow ID')
   .option('--stage <stage>', 'Chat stage', 'chat')
-  .option('--thread <id>', 'Thread ID (auto-generated if omitted)')
+  .option('--conversation-id <id>', 'Conversation ID (auto-generated if omitted)')
   .action(async (message, options) => {
     const { client } = await resolveCommandContext();
-    const threadId = options.thread || randomUUID();
+    const conversationId = options.conversationId || randomUUID();
 
-    out.info(`Streaming thread: ${chalk.dim(threadId)}`);
+    out.info(`Streaming conversation: ${chalk.dim(conversationId)}`);
     out.blank();
 
     try {
@@ -71,7 +71,7 @@ chatCommand
         options.workflow,
         options.stage,
         message,
-        threadId,
+        conversationId,
       );
 
       if (!res.ok) {

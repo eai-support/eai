@@ -13,7 +13,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
-import { CANONICAL_DESCRIPTIONS, validateDescriptions } from './canonical-descriptions.mjs';
+import { validateDescriptions } from './canonical-descriptions.mjs';
 import { parseStageCommand } from './parse-stage-command.mjs';
 
 // ---------------------------------------------------------------------------
@@ -56,6 +56,7 @@ const WORKSPACE_PREFLIGHT_EXCLUDED_COMMANDS = new Set([
   'gofer:personality',
   'gofer:check-workspace',
   'gofer:bootstrap-workspace',
+  'gofer:eai-first-run',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -117,6 +118,7 @@ function buildGeminiExtensionManifest(version) {
     name: 'eai-gofer',
     version,
     description: 'Gofer core pipeline and helper commands as a Gemini CLI extension',
+    license: 'Apache-2.0',
     commands: '.gemini/commands/gofer/',
     gofer: {
       bundle_url: PUBLIC_PLUGIN_URL,
@@ -391,7 +393,7 @@ function buildCopilotPromptContent(stage, host = SURFACE_WORKSPACE_HOSTS['copilo
     '  - WebSearch',
     'argument-hint: feature-name-or-description',
     'gofer:',
-    '  workflowProfile: enterpriseai',
+    '  workflowProfile: standard',
     `  canonicalSource: .specify/commands/${sourceFileName}`,
     `  canonicalChecksum: ${canonicalChecksum}`,
     '  metadataSource: scripts/generate-commands.ts',

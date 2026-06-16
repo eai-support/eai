@@ -388,7 +388,7 @@ graph TB
 
 | Resource  | Type | Configuration        | Security     |
 | --------- | ---- | -------------------- | ------------ |
-| app-vnet | VNet | <private-cidr>          | NSG attached |
+| prod-vnet | VNet | 10.0.0.0/16          | NSG attached |
 | prod-lb   | LB   | Standard, Zone-aware | HTTPS only   |
 
 **Observations**:

@@ -27,6 +27,8 @@ CLARIFICATION]
 **Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
 **Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
 **Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
+**App Stack Policy**: [For app delivery: EAI Platform including app template
+first, Azure second, all other technology only as an approved exception]
 **Project Type**: [single/web/mobile - determines source structure]  
 **Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps
 or NEEDS CLARIFICATION]  
@@ -47,6 +49,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ```text
 .specify/specs/[###-feature]/
+├── goal-ledger.json      # Machine-readable goals, metrics, and re-loop triggers
 ├── spec.md              # Feature specification (/2_gofer_specify)
 ├── research.md          # Codebase research (/1_gofer_research)
 ├── journeys/
@@ -60,6 +63,9 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 ├── quickstart.md        # Quick start guide (/3_gofer_plan)
 ├── contracts/           # API contracts (/3_gofer_plan)
 ├── tasks.md             # Task breakdown (/4_gofer_tasks)
+├── traceability.md      # Spec -> task -> code -> test coverage (/4,/6)
+├── validation-report.md # Objective/rubric quality gate (/6_gofer_validate)
+├── goal-rebaseline-report.md # Closed-loop drift report (/6 or CI)
 └── issues.md            # GitHub issues (/4_gofer_tasks)
 ```
 
@@ -130,25 +136,34 @@ For application delivery, the plan must lock the approved preview and service
 selection before downstream implementation is treated as complete. For non-app
 work, state why this gate is not applicable.
 
-| Gate              | Required Artifact                              | Validation                                                   |
-| ----------------- | ---------------------------------------------- | ------------------------------------------------------------ |
-| Preview scope     | `ui-preview-brief.md`                          | [how the MVP preview scope is defined]                       |
-| Platform describe | `eai --describe`                               | [CLI version, tenant/platform capability notes, package lane] |
+| Gate              | Required Artifact                              | Validation                                                                                               |
+| ----------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Preview scope     | `ui-preview-brief.md`                          | [how the MVP preview scope is defined]                                                                   |
+| Platform describe | `eai --describe`                               | [CLI version, tenant/platform capability notes, package lane]                                            |
 | Block catalog     | `eai blocks list` / `eai blocks describe <id>` | [selected IDs, Storybook story IDs, theme override points, coupling status, and custom-block exceptions] |
-| Resource bindings | `eai resources schema`                         | [object fields/actions/events feeding selected blocks]       |
-| Preview evidence  | `ui-review-log.md`                             | [screenshot, local render, or Playwright-style proof]        |
-| UI approval       | `ui-approval.md`                               | [who approves and when]                                      |
-| Service fit       | `service-fit-matrix.md`                        | [how accessible vs purchasable vs unavailable is proved]     |
+| Resource bindings | `eai resources schema`                         | [object fields/actions/events feeding selected blocks]                                                   |
+| Preview evidence  | `ui-review-log.md`                             | [screenshot, local render, or Playwright-style proof]                                                    |
+| UI approval       | `ui-approval.md`                               | [who approves and when]                                                                                  |
+| Service fit       | `service-fit-matrix.md`                        | [how accessible vs purchasable vs unavailable is proved]                                                 |
 
 ## AI-Readable Blocks Bridge
 
-| Workstream | Required Decision | Plan Reference |
-| ---------- | ----------------- | -------------- |
-| Package profile | [external / internal / hybrid] | [where tasks will enforce profile choice] |
-| Package lane | [public package / internal app / hybrid adapter / app-local] | [package/export path] |
-| Block porting | [reuse / port / custom-block exception] | [block IDs and story IDs] |
-| DAISY decoupling | [coupled / decoupled / adapter boundary] | [resource schema or adapter path] |
-| Public-readiness | [required / deferred / not applicable] | [consumer-facing checks] |
+| Workstream                 | Required Decision                                            | Plan Reference                            |
+| -------------------------- | ------------------------------------------------------------ | ----------------------------------------- |
+| Package profile            | [external / internal / hybrid]                               | [where tasks will enforce profile choice] |
+| Package lane               | [public package / internal app / hybrid adapter / app-local] | [package/export path]                     |
+| Block porting              | [reuse / port / custom-block exception]                      | [block IDs and story IDs]                 |
+| source-platform decoupling | [coupled / decoupled / adapter boundary]                     | [eai resources schema or adapter path]    |
+| Public-readiness           | [required / deferred / not applicable]                       | [consumer-facing checks]                  |
+
+## Dual-State Delivery Discipline
+
+Track capabilities that move from mock-safe behavior to hybrid or live
+integration. This table should match `goal-ledger.json`.
+
+| Capability | Current State (mock/hybrid/live) | Target State | Promotion Criteria | Validation Owner |
+| ---------- | -------------------------------- | ------------ | ------------------ | ---------------- |
+| [name]     | [mock]                           | [live]       | [evidence]         | [owner]          |
 
 ## Complexity Tracking
 
@@ -167,9 +182,11 @@ work, state why this gate is not applicable.
 - **EAI CLI Version Pin**: `[major.minor, e.g. 2.0]` — the installed `eai`
   version is recorded here at plan generation time. Deployment tasks reference
   this pin to prevent drift between local and CI environments.
-- **Application Template Reference**: `[application-template tag or SHA]`
+- **EAI App Template Reference**: `[eai-app-template tag or SHA]`
 - **Deployment Repo Reference**: `[deployment-repo tag or SHA]`
 - **Package Profile Choice**: `[external | internal | hybrid]`
-- **Package Lane**: `[public-package | internal-app | hybrid-adapter | app-local]`
-- **Coupling Status**: `[daisy-coupled | daisy-decoupled | hybrid-adapter]`
+- **Package Lane**:
+  `[public-package | internal-app | hybrid-adapter | app-local]`
+- **Coupling Status**:
+  `[source-platform-coupled | source-platform-decoupled | hybrid-adapter]`
 - **Public-Readiness Target**: `[required | deferred | not-applicable]`

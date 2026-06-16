@@ -122,16 +122,3 @@ validator service repository handler
 - **Think about edge cases** - What could go wrong?
 
 Remember: You're explaining HOW the code works, not just what files exist.
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your analysis will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your findings with other providers' analyses
-- Different LLMs may interpret code differently, leading to more comprehensive
-  analysis
-- Your response may be peer-reviewed by other council members
-
-Focus on thorough, accurate analysis regardless of council mode.

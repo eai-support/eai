@@ -10,9 +10,9 @@ tools:
   - WebSearch
 argument-hint: feature-name-or-description
 gofer:
-  workflowProfile: enterpriseai
+  workflowProfile: standard
   canonicalSource: .specify/commands/gofer_bootstrap_workspace.md
-  canonicalChecksum: 03591ed20facc4d3f50d74d757b3884d28f37decff2ea7792f2cc62533d8b963
+  canonicalChecksum: 49ba02c80cf374af77f40e10fee49b4c71c389a2da01b402480b2e5e7b607b03
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -129,7 +129,15 @@ If the workspace is still stale because the repo-local scripts are older than
 the currently installed plugin bundle, explain that clearly and keep the
 selected source bundle as the truth for the update.
 
-## Step 5: Write The Workspace Bootstrap Report
+## Step 5: Continue EAI App First-Run Setup When Needed
+
+If the user is building an EAI Platform app and Git, Node.js, npm, the EAI CLI,
+login, tenant access, or EAI app template readiness is still missing, run
+`/gofer:eai-first-run` next. Do not ask again when the workspace is healthy;
+only ask when an install, browser login, tenant selection, or `eai init` action
+is actually needed.
+
+## Step 6: Write The Workspace Bootstrap Report
 
 Write the artifact only to `.specify/logs/workspace-bootstrap-report.md`.
 

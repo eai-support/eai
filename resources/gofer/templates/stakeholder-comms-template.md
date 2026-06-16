@@ -98,8 +98,9 @@ rationale and omit app-specific controls.
 ## Marp Presentation Deck (Optional, Recommended for EnterpriseAI)
 
 If this run enables Marp output, generate `{FEATURE_DIR}/presentation.marp.md`
-and the persona deck pack in `{FEATURE_DIR}/presentations/`. EnterpriseAI is the
-default profile; standard profile skips Marp only when explicitly requested.
+and the persona deck pack in `{FEATURE_DIR}/presentations/`. Standard Gofer is
+the public default; EnterpriseAI Marp guidance is migration-only and used only
+when explicitly requested.
 
 The general deck uses this required structure:
 
@@ -146,7 +147,7 @@ title: '{{feature-name}} Stakeholder Presentation'
 ````
 
 - Diagram: {{architecture-diagram-path-or-link}}
-- Components: {{app}} -> {{eai-services}} -> {{deployment-target}}
+- Components: {{vertical-app}} -> {{eai-services}} -> {{deployment-target}}
 - Decision rationale: {{why-this-architecture}}
 
 ---

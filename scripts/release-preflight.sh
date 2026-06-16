@@ -6,6 +6,7 @@ DOCS_DIR="$ROOT/docs-site"
 PACKUMENT="$ROOT/docs-site/static/registry/@eai-tools/cli"
 GENERATED_TARBALL=""
 BACKUP_DIR=""
+PACKED_INSTALL_PREFIX=""
 
 section() {
   echo ""
@@ -30,6 +31,9 @@ cleanup() {
     done
 
     rm -rf "$BACKUP_DIR"
+  fi
+  if [[ -n "$PACKED_INSTALL_PREFIX" && -d "$PACKED_INSTALL_PREFIX" ]]; then
+    rm -rf "$PACKED_INSTALL_PREFIX"
   fi
 }
 
@@ -126,6 +130,39 @@ node scripts/generate-release-docs.cjs >/dev/null
 echo "  ✓ npm pack -> $GENERATED_TARBALL"
 echo "  ✓ static registry metadata regenerated"
 echo "  ✓ release-facing docs regenerated"
+
+section "Smoke testing packed CLI tarball"
+PACKED_INSTALL_PREFIX="$(mktemp -d)"
+npm install --global --omit=dev --prefix "$PACKED_INSTALL_PREFIX" "$ROOT/$GENERATED_TARBALL" --silent
+PACKED_EAI="$PACKED_INSTALL_PREFIX/bin/eai"
+PACKED_VERSION="$("$PACKED_EAI" --version 2>&1 | tr -d '\r')"
+EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+if [[ "$PACKED_VERSION" != "$EXPECTED_VERSION" ]]; then
+  echo "✗ packed eai --version returned $PACKED_VERSION, expected $EXPECTED_VERSION"
+  exit 1
+fi
+echo "  ✓ packed eai --version -> $PACKED_VERSION"
+
+PACKED_HELP="$("$PACKED_EAI" --help 2>&1)"
+if ! grep -q "Enterprise AI Platform CLI" <<<"$PACKED_HELP"; then
+  echo "✗ packed eai --help is missing the expected product banner"
+  exit 1
+fi
+for command_name in update template doctor gofer publicapi; do
+  if ! "$PACKED_EAI" "$command_name" --help >/dev/null 2>&1; then
+    echo "✗ packed eai $command_name --help failed"
+    exit 1
+  fi
+done
+if ! "$PACKED_EAI" template check --help >/dev/null 2>&1; then
+  echo "✗ packed eai template check --help failed"
+  exit 1
+fi
+if ! "$PACKED_EAI" gofer refresh --help >/dev/null 2>&1; then
+  echo "✗ packed eai gofer refresh --help failed"
+  exit 1
+fi
+echo "  ✓ packed CLI starts with production dependencies only"
 
 section "Validating static registry metadata"
 node <<'EOF'

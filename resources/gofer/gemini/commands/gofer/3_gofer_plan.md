@@ -85,6 +85,7 @@ This command expects in `.specify/specs/{feature}/`:
 
 - `research.md` - Codebase analysis (from /1_gofer_research)
 - `spec.md` - Feature specification (from /2_gofer_specify)
+- `goal-ledger.json` - Objective ledger and re-loop triggers (from /1 and /2)
 
 If missing, prompt user to run the prerequisite stage.
 
@@ -99,10 +100,10 @@ If missing, prompt user to run the prerequisite stage.
 5. Optional multi-perspective review
 6. Spec coverage validation
 7. Output: `plan.md`, `data-model.md`, `contracts/`, `quickstart.md`
-8. EnterpriseAI default output: task-ready references to `context-bundle.md`,
+8. EnterpriseAI profile output: task-ready references to `context-bundle.md`,
    `contract-pack.md`, `reuse-scan.md`, `audit-history.md`, and for app
    delivery `ui-review-log.md`, `ui-approval.md`, and
-   `service-fit-matrix.md`, including public-readiness, block-porting, DAISY
+   `service-fit-matrix.md`, including public-readiness, block-porting, source platform
    decoupling, Storybook, theme override, and package-profile decisions
 9. Dynamic-only output: `workflow-dag.md` with shards, inputs, outputs,
    reducer expectations, verifier/refuter evidence, budget limits, stop
@@ -145,6 +146,8 @@ Planning dispatches multiple agents — keep main context lightweight.
    - Note external/internal/hybrid profile choice, package lane, coupling
      status, Storybook story IDs, theme override points, custom-block
      exceptions, and public-readiness status when app delivery applies
+   - Note whether `goal-ledger.json` exists and which goals, delivery states,
+     and re-loop triggers must remain valid through planning
    - Note whether `{FEATURE_DIR}/sequence-diagrams/selected-option.md` exists
 
 3. **Note template path**: `.specify/templates/plan-template.md`
@@ -169,6 +172,7 @@ Feature directory: {FEATURE_DIR}
 Read these files for full context:
 - {FEATURE_DIR}/research.md — Technology decisions, integration points, patterns, constraints
 - {FEATURE_DIR}/spec.md — User stories, requirements, success criteria
+- {FEATURE_DIR}/goal-ledger.json — business goals, metrics, delivery states, and re-loop triggers
 - {FEATURE_DIR}/ui-preview-brief.md — app-delivery preview brief (read if exists, skip if not)
 - {FEATURE_DIR}/ui-review-log.md — app-delivery preview iteration history (read if exists, skip if not)
 - {FEATURE_DIR}/ui-approval.md — app-delivery approval state (read if exists, skip if not)
@@ -202,11 +206,16 @@ Generate the COMPLETE plan.md with these sections:
    - User Story Coverage (Story | Status | Plan References)
    - Requirement Coverage (FR-ID | Status | Plan Reference)
    Verify 100% coverage of all user stories and functional requirements.
-9. AI-Readable Blocks Bridge:
+9. Goal Reconciliation And Dual-State Delivery:
+   - Goal IDs, outcome metrics, target thresholds, and where they are delivered
+   - Delivery states (`mock`, `hybrid`, `live`) plus promotion criteria
+   - Re-loop triggers that should send the feature back to specify, plan, tasks,
+     or validate when contracts, UX scope, assumptions, or implementation drift
+10. AI-Readable Blocks Bridge:
    - Package profile choice: external, internal, or hybrid
    - Package lane for each UI block or package surface
-   - Coupling status, including DAISY decoupling boundary or approved
-     internal-only exception
+   - Coupling status, including source-platform decoupling boundary or approved
+     restricted-source exception
    - Block porting plan with stable block IDs, Storybook story IDs, theme
      override points, and custom-block exceptions
    - Public-readiness tasks required before an external or hybrid package is
@@ -219,9 +228,11 @@ Rules:
 - Reference specific file paths for all components
 - Plan must be specific enough for task generation
 - Resolve all unknowns — no NEEDS CLARIFICATION in the plan
-- App-delivery plans MUST make public-readiness, block porting, DAISY
+- App-delivery plans MUST make public-readiness, block porting, source platform
   decoupling, Storybook coverage, theme overrides, and package-profile work
   visible enough for `/4_gofer_tasks` to emit first-class runnable tasks
+- Keep `goal-ledger.json` aligned with any planning-level changes to goals,
+  delivery states, or re-loop triggers
 
 Write the complete plan to {FEATURE_DIR}/plan.md.
 
@@ -622,17 +633,6 @@ confirmation. Do NOT output "Ready for next stage". Just invoke the skill NOW.
 
 ---
 
-## LLM Council Integration (Optional)
-
-When council mode is enabled for `gofer_plan` stage:
-
-1. Technical research queries go to all configured LLM providers
-2. Different perspectives on architecture decisions
-3. Chairman synthesizes best practices from multiple sources
-4. Usage logged to `.specify/logs/council-usage.jsonl`
-
----
-
 ## EnterpriseAI Deployment Convention and EAI CLI Pinning Requirements
 
 > When `gofer.workflowProfile=enterpriseai`, the following conventions apply.
@@ -646,27 +646,52 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
    pin to the `EnterpriseAI Profile Metadata` block of `plan-template.md` so
    every downstream task is reproducible. Plans MUST apply
    `pin guidance to `major.minor`` and never to a specific patch release.
-2. **Deployment convention** — reference the configured deployment
+   If `{FEATURE_DIR}/eai-preflight.md` exists, use its CLI version/install
+   evidence as the primary source and re-run `eai --version` only to confirm
+   local drift.
+2. **EAI app-readiness handoff** — for EAI app delivery, reference
+   `{FEATURE_DIR}/eai-preflight.md` before making platform or template
+   assumptions. The plan MUST preserve:
+   - whether the user is logged in or still needs an EAI Platform account
+   - the selected tenant role/readiness and whether app enrollment is allowed
+   - whether the repo already has EAI template markers or still needs
+     `eai init <app-name>`
+   - whether app creation/selection is confirmed, deferred, or blocked
+   - block-catalog readiness and package-profile compatibility evidence
+   If EAI readiness is blocked, plan only the smallest unblock task group and
+   do not invent object types, tenant IDs, app keys, or platform capabilities.
+3. **EAI Platform/Azure app stack decision** — for app delivery, the plan MUST
+   use EAI Platform, including the EAI app template, as the primary app
+   substrate and Azure as the preferred cloud/supporting substrate. The plan MUST
+   NOT select Firebase, Supabase, Vercel as the primary runtime, AWS, GCP,
+   bespoke backends, unmanaged databases, or unrelated SaaS platforms as the
+   default app stack. Any non-EAI technology must be recorded as an integration
+   target, migration reference, or approved exception with rationale, owner,
+   expiry, and validation evidence.
+   Capabilities unavailable in EAI Platform/Azure must be recorded in
+   `{FEATURE_DIR}/service-fit-matrix.md` as platform work, operator-required, or
+   upgrade-required rather than substituted silently.
+4. **Deployment convention** — reference the configured deployment
    documentation for the target project and note which environment
    (dev/staging/prod) each deliverable targets.
-3. **Integration map handoff** — restate the Application → EAI Services →
+5. **Integration map handoff** — restate the Vertical App → EAI Services →
    Deployment Target chain from `spec.md` and bind each link to a task
    identifier in `tasks.md`.
-4. **Contract pack handoff** — reference `{FEATURE_DIR}/contract-pack.md` and
+6. **Contract pack handoff** — reference `{FEATURE_DIR}/contract-pack.md` and
    bind each actor, object type, workflow/journey, permission boundary,
    API/event, runtime assumption, and acceptance test to plan sections and
    downstream tasks.
-5. **AI-augmented journey handoff** — for app delivery, reference
+7. **AI-augmented journey handoff** — for app delivery, reference
    `{FEATURE_DIR}/journeys/base-journey.md` and plan the four-step-or-fewer
    user-facing process as the default scope spine. Each step must include the
    business goal, generative AI assistance mode, screen/user/data context used,
    completion signal, user controls, audit trail, and fallback/escalation path.
    If the plan expands beyond four user-facing steps, document why those steps
    cannot be combined, automated, or handled by the AI assistant.
-6. **UI-first approval gate handoff** — for app delivery, reference
+8. **UI-first approval gate handoff** — for app delivery, reference
    `{FEATURE_DIR}/ui-preview-brief.md` and require the planning stage to lock
    the preview loop before plan/tasks are considered complete. The plan MUST:
-   - keep the first preview constrained to Application Template blocks unless an
+   - keep the first preview constrained to EAI App Template blocks unless an
      approved extension is recorded
    - cite `eai blocks describe <id>` evidence for every selected block ID,
      plus the ResourceAPI/Object Type fields from `eai resources schema` that
@@ -678,26 +703,27 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
      evidence before stakeholder presentation
    - update `{FEATURE_DIR}/ui-review-log.md` for each iteration and require
      explicit stakeholder approval in `{FEATURE_DIR}/ui-approval.md`
-7. **EnterpriseAI service-fit handoff** — for app delivery, the plan MUST
+9. **EnterpriseAI service-fit handoff** — for app delivery, the plan MUST
    produce or update `{FEATURE_DIR}/service-fit-matrix.md` after UI approval and
    before tasks are treated as complete. The matrix must distinguish:
    - accessible now
    - purchasable but unavailable now
    - unavailable without new platform work
    The plan must source this evidence from `eai --describe`, `eai whoami`,
-   `eai tenant select`, `eai resources schema`, `eai verify calls --format
-   json`, `eai workflow readiness <workflow-key>`, `eai workflow status
-   <workflow-key>`, `eai workflow request <workflow-key>`, `eai provision
-   entra --rotate-secret`, or documented equivalent public platform evidence.
-8. **Reuse-before-create decision log** — reference `{FEATURE_DIR}/reuse-scan.md`
+   `eai tenant select`, `eai resources schema --format json`,
+   `eai verify calls --format json`, `eai workflow readiness [workflow-key]
+   --format json`, `eai workflow status <workflow-key>`, `eai workflow request
+   <workflow-key>`, `eai provision entra --rotate-secret`, or documented
+   equivalent public platform evidence.
+10. **Reuse-before-create decision log** — reference `{FEATURE_DIR}/reuse-scan.md`
    for every new or extended EnterpriseAI object type, API/event, workflow, or
    module.
-9. **Audit history seed** — create or update `{FEATURE_DIR}/audit-history.md`
+11. **Audit history seed** — create or update `{FEATURE_DIR}/audit-history.md`
    with stable finding IDs, decision exceptions, owner, expiry, and review
    cadence so validation can track recurring issues.
-10. **Public/private knowledge split** — identify which implementation facts
-    are safe for public docs, Gofer guidance, EAI CLI help, or Application Template
-    comments, and which facts are internal-only. Plans must express blocked
+12. **Public/private knowledge split** — identify which implementation facts
+    are safe for public docs, Gofer guidance, EAI CLI help, or EAI App Template
+    comments, and which facts are restricted-source. Plans must express blocked
     states as public-safe actions (`operator_required`, `upgrade_required`, or
     documented support URL) rather than exposing private service topology.
 

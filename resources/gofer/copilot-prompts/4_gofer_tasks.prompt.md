@@ -10,9 +10,9 @@ tools:
   - WebSearch
 argument-hint: feature-name-or-description
 gofer:
-  workflowProfile: enterpriseai
+  workflowProfile: standard
   canonicalSource: .specify/commands/4_gofer_tasks.md
-  canonicalChecksum: 8115e7a70d469a7494feacfb4e41c7755c53b71dc91caae0a8fa1b2af6daccb1
+  canonicalChecksum: 69275e2ac5bbfa7f92a048f99caad28b50a27701a8d8b4465b281be8e3089a5a
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -101,6 +101,7 @@ This command expects in `.specify/specs/{feature}/`:
 - `research.md` - Codebase analysis (from #1_gofer_research)
 - `spec.md` - Feature specification (from #2_gofer_specify)
 - `plan.md` - Implementation plan (from #3_gofer_plan)
+- `goal-ledger.json` - Goal and re-loop contract (from /1 and /2)
 
 If missing, prompt user to run the prerequisite stage.
 
@@ -237,31 +238,37 @@ Feature directory: {FEATURE_DIR}
 Read these files:
 - {FEATURE_DIR}/spec.md — User stories, acceptance criteria, functional requirements
 - {FEATURE_DIR}/plan.md — Implementation phases, components
+- {FEATURE_DIR}/goal-ledger.json — goals, metrics, delivery states, re-loop triggers
 - {FEATURE_DIR}/tasks.md — Task breakdown (read after Agent 1 writes it)
 - {FEATURE_DIR}/data-model.md — Entity definitions (read if exists)
 - {FEATURE_DIR}/contracts/ — API contracts (read if exists)
 
 Generate {FEATURE_DIR}/traceability.md with:
 
-1. Spec → Plan → Tasks Mapping:
-   | User Story | Priority | Plan Phase | Tasks | AC Status |
+1. Goal → Story → Requirement Mapping:
+   | Goal ID | Metric / Target | User Story | Requirement IDs | Task IDs |
 
-2. Acceptance Criteria Detail:
-   | ID | Criterion | Task(s) | Phase |
+2. Requirement Trace Matrix:
+   | Requirement ID | Goal ID | Plan Phase | Task IDs | Planned Code | Planned Tests | Status |
 
-3. Plan Phase Coverage:
+3. Acceptance Criteria Detail:
+   | ID | Criterion | Task(s) | Planned Code | Planned Tests | Phase |
+
+4. Plan Phase Coverage:
    | Phase | Task Count | Coverage % |
 
-4. Data Entity Coverage (if data-model.md exists):
+5. Data Entity Coverage (if data-model.md exists):
    | Entity | Implementing Task(s) | Fields Covered? |
 
-5. API Contract Coverage (if contracts/ exists):
+6. API Contract Coverage (if contracts/ exists):
    | Endpoint | Contract File | Implementing Task(s) |
 
-6. Coverage Summary:
+7. Coverage Summary:
    - Plan Phases: N/N covered
    - User Stories: N/N covered
    - Acceptance Criteria: N/N covered
+   - Requirements with code targets: N/N covered
+   - Requirements with test targets: N/N covered
    - Data Entities: N/N covered
    - API Endpoints: N/N covered
    - Status: VALIDATION PASSED or VALIDATION FAILED
@@ -288,6 +295,7 @@ After both agents complete:
    - If VALIDATION FAILED: identify which coverage gaps exist
    - Add missing tasks for uncovered acceptance criteria
    - Add missing tasks for uncovered plan phases
+   - Add missing planned code/test targets for uncovered requirements
    - Re-run Agent 2 if tasks.md was modified
 
 3. **Fix coverage gaps** — Max 3 correction iterations
@@ -494,30 +502,37 @@ Engineering Review: PASSED (cycle [N] of 5)
 
 ---
 
-## LLM Council Integration (Optional)
-
-When council mode is enabled for task generation:
-
-1. Multiple LLMs analyze the plan for task completeness
-2. Different perspectives on dependency ordering
-3. Chairman synthesizes optimal task breakdown
-4. Usage logged to `.specify/logs/council-usage.jsonl`
-
----
-
 ## Ordered Runnable Task-Generation Guidance
 
-EnterpriseAI is the default profile. Standard profile task generation is used
-only when the user explicitly opts out.
+The standard Gofer workflow is the public default. EnterpriseAI task generation
+is migration-only and used only when `workflowProfile` is explicitly
+`enterpriseai`.
 
-When the workflow profile is `enterpriseai` or no profile is specified,
+When the workflow profile is explicitly `enterpriseai`,
 `tasks.md` MUST emit deployment
 tasks in the following ordered chain. Each task is independently runnable and
 the ordering enforces scaffold before deployment so that configuration and
 manifest artifacts exist before any deploy command runs.
 
-1. **Application Template scaffolding -> `eai init`**
-   - Command: `eai init <app-name>`
+0. **EAI readiness unblock -> `eai-preflight.md`**
+   - If `{FEATURE_DIR}/eai-preflight.md` is missing, stale, or blocked, emit
+     only the smallest runnable unblock tasks before normal build tasks:
+     install/update `eai`, run `eai login`, run `eai tenant select`, confirm a
+     tenant-admin membership with `eai tenant list --format json`, initialize
+     the EAI app template with `eai init <app-name> --skip-prompts
+     --company-tenant <tenant-id>` when confirmed, and confirm app enrollment
+     with `eai vertical list/create/select`.
+   - Do not emit object-type, UI, implementation, deployment, or service-fit
+     tasks until EAI readiness is `ready` or explicitly deferred by the user.
+   - Never invent tenant IDs, app keys, app URLs, or platform capabilities.
+     Use `eai --describe`, public EAI docs, and the user's confirmed tenant/app
+     selection as evidence.
+   - Do not emit tasks that establish a non-EAI primary runtime, database,
+     hosting platform, or app framework. Non-EAI technologies can appear only as
+     approved integration/migration/exception tasks after the EAI Platform/Azure
+     fit is recorded.
+1. **EAI App Template scaffolding -> `eai init`**
+   - Command: `eai init <app-name> --skip-prompts --company-tenant <tenant-id>`
    - Produces the working directory, `manifest.yml`, and `config.json` expected
      by subsequent tasks.
 2. **Local validation -> `eai verify`**
@@ -541,23 +556,27 @@ precondition to downstream implementation tasks:
 - If `{FEATURE_DIR}/service-fit-matrix.md` is missing or does not distinguish
   accessible now vs purchasable vs unavailable platform capabilities, emit a
   blocking service-fit task group before normal build tasks.
-- Use the Application Template already scaffolded by `eai` as the default UI
+- The first normal build tasks must use the EAI app template, EAI CLI, EAI
+  platform services, and Azure-compatible deployment/supporting services before
+  any custom or third-party implementation task.
+- Use the EAI App Template already scaffolded by `eai` as the default UI
   lego-block source. Any create-new UI concept must appear as an explicit
   exception task with rationale.
 - Add a block-catalog task before any UI implementation task. It MUST run
   `eai --describe`, `eai blocks list`, `eai blocks describe <id>` for selected
-  blocks, and `eai resources schema`; task notes must cite block IDs, resource
-  fields, data/action bindings, package lane, coupling status, Storybook story
-  IDs, theme override points, and approved custom-block exceptions.
+  blocks, and `eai resources schema --format json`; task notes must cite block
+  IDs, resource fields, data/action bindings, package lane, coupling status,
+  Storybook story IDs, theme override points, and approved custom-block
+  exceptions.
 - Add package-profile tasks that lock the external/internal/hybrid profile
   choice and the package lane before any public, shared, or app-local block
   implementation begins.
-- Add block-porting tasks for every selected Application Template block that must
+- Add block-porting tasks for every selected EAI App Template block that must
   move into a reusable package lane, including Storybook story ID coverage,
   theme override points, exports, and compatibility checks.
-- Add DAISY decoupling tasks whenever a block or package lane is not
-  internal-only and still depends on DAISY internals; the task must define the
-  resource-schema or adapter boundary and the regression proof that DAISY is no
+- Add source-platform decoupling tasks whenever a block or package lane is not
+  restricted-source and still depends on source-platform internals; the task must define the
+  resource-schema or adapter boundary and the regression proof that source-platform coupling is no
   longer required by the public surface.
 - Add public-readiness tasks for external and hybrid profiles covering public
   exports, docs/examples where already part of the package surface,
@@ -578,7 +597,7 @@ precondition to downstream implementation tasks:
   accessibility/translation support, contextual prefill, completion validation,
   human review, audit trail, and fallback/escalation.
 - App-delivery preview/approval tasks that:
-  - build the first MVP from Application Template blocks
+  - build the first MVP from EAI App Template blocks
   - select only known `eai blocks` IDs unless a custom-block exception exists
   - preserve package lane, external/internal/hybrid profile choice, coupling
     status, Storybook story IDs, and theme override points from the approved
@@ -589,8 +608,9 @@ precondition to downstream implementation tasks:
   - block downstream work until `ui-approval.md` is approved
 - App-delivery service-fit tasks that update `service-fit-matrix.md` using
   tenant-aware evidence from `eai --describe`, `eai whoami`, `eai tenant
-  select`, `eai resources schema`, `eai verify calls --format json`, or
-  equivalent approved platform evidence.
+  select`, `eai resources schema --format json`, `eai workflow readiness
+  --format json`, `eai verify calls --format json`, or equivalent approved
+  platform evidence.
 - A scope-control task that checks whether any user-facing app process exceeds
   four steps and either combines/automates extra steps or records the approved
   exception and rationale.

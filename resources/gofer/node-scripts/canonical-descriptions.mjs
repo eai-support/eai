@@ -41,6 +41,8 @@ export const CANONICAL_DESCRIPTIONS = {
     'Check whether the repo scaffold is missing or stale.',
   'gofer:bootstrap-workspace':
     'Create or update the repo-owned Gofer scaffold.',
+  'gofer:eai-first-run':
+    'Prepare tools, login, tenant, template, and Gofer for a first EAI app.',
   'gofer:vocabulary':
     'Extract domain terms into a canonical glossary.',
   'gofer:diagnose':

@@ -1,6 +1,7 @@
 ---
 name: validation-standards
-description: Validates compliance with project constitution, patterns, and code hygiene
+description:
+  Validates compliance with project constitution, patterns, and code hygiene
 kind: local
 model: gemini-3-flash-preview
 temperature: 0.2
@@ -151,17 +152,3 @@ This agent blocks validation if:
 - **New code only** — don't flag existing code that predates this feature
 - **Be constructive** — for each finding, suggest what the code should look like
   instead
-
-## LLM Council Mode
-
-When council mode is enabled for the parent workflow, this agent may execute
-across multiple LLM providers simultaneously. In council mode:
-
-- Your findings will be anonymized as "Member A", "Member B", etc.
-- A Chairman LLM will synthesize your standards analysis with other providers'
-  findings
-- Different LLMs may have different perspectives on code hygiene and AI slop
-- Your response may be peer-reviewed by other council members
-
-Focus on thorough, evidence-based standards validation regardless of council
-mode.
