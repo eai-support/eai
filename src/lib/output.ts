@@ -39,12 +39,37 @@ const SENSITIVE_KEY_PATTERN =
   /(?:token|secret|password|passwd|pwd|api[_-]?key|authorization|cookie|credential|client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token)/i;
 const AUTH_HEADER_PATTERN = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
 const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g;
+// Strips userinfo credentials from connection URIs, e.g. mongodb://user:pass@host.
+const URI_CREDENTIAL_PATTERN = /\b([a-z][a-z0-9+.-]*:\/\/)[^:@\s/]+:[^@\s/]+@/gi;
 
 export function redactSensitiveText(msg: string): string {
   return msg
     .replace(AUTH_HEADER_PATTERN, '$1 [redacted]')
     .replace(JWT_PATTERN, '[redacted-jwt]')
+    .replace(URI_CREDENTIAL_PATTERN, '$1[redacted]@')
     .replace(SENSITIVE_ASSIGNMENT_PATTERN, '$1[redacted]');
+}
+
+/**
+ * Recursively redact secrets from an arbitrary JSON-like value: string leaves
+ * pass through redactSensitiveText, and values under sensitive keys are masked.
+ * Used to harden diagnostics from upstream services before they are emitted.
+ */
+export function redactSensitiveDeep<T>(value: T): T {
+  if (typeof value === 'string') {
+    return redactSensitiveText(value) as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSensitiveDeep(item)) as unknown as T;
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = SENSITIVE_KEY_PATTERN.test(key) ? '[redacted]' : redactSensitiveDeep(item);
+    }
+    return out as unknown as T;
+  }
+  return value;
 }
 
 function redactingJsonReplacer(key: string, value: unknown): unknown {
