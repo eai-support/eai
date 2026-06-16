@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.3 |
-| Released | 2026-06-13 |
-| Last Material Change | Update bundled Gofer assets to v3.6.0 |
-| Source Commit | `3d59ed9d851f09f2b04990af8de9a82081164768` |
+| Version | 3.2.5 |
+| Released | 2026-06-16 |
+| Last Material Change | Allow init in current directory |
+| Source Commit | `d079520b98aad722d2eb32b1b71424dc40efa336` |
 
 
 ## Common Workflow
@@ -69,7 +69,7 @@ Prefer product-shaped commands before `eai publicapi`:
 
 | Need                 | Preferred CLI                                            |
 | -------------------- | -------------------------------------------------------- |
-| Scaffold app         | `eai init <name>`                                        |
+| Scaffold app         | `eai init <name>` or `eai init <name> --current-dir`     |
 | Select tenant        | `eai tenant list`, `eai tenant select <slug>`            |
 | Publish Object Types | `eai types validate`, `eai types seed`, `eai types diff` |
 | Inspect schemas      | `eai resources schema --tenant-id <tenant-id>`           |
