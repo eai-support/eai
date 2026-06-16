@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
-import { readFile, writeFile, access, mkdir, rm, cp, mkdtemp } from "node:fs/promises";
+import { readFile, writeFile, access, mkdir, rm, cp, mkdtemp, chmod } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import ora from "ora";
@@ -233,10 +233,11 @@ async function copyTemplateIntoTargetDir(
 ): Promise<TemplateClonePlan> {
   const templateDir = await mkdtemp(join(tmpdir(), "eai-template-"));
   try {
+    await chmod(templateDir, 0o700);
     const plan = await cloneTemplate(templateSource, templateDir);
     await rm(join(templateDir, ".git"), { recursive: true, force: true });
-    // Current-directory init applies template files over matching existing paths
-    // while preserving unrelated files and existing repository metadata.
+    // Current-directory init updates matching scaffold-managed files while
+    // preserving unrelated files and existing repository metadata.
     await cp(templateDir, targetDir, { recursive: true, force: true });
     return plan;
   } finally {
