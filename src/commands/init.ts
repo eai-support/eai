@@ -17,6 +17,7 @@ import { installGoferResources } from "../lib/gofer-installer.js";
 import { applyGoferRefresh, planGoferRefresh } from "../lib/gofer-refresh.js";
 import { isAuthenticated, loadTokens } from "../lib/auth.js";
 import {
+  publicApiUrlForHomeRegion,
   resolveActiveTenantContext,
   resolveMainCompanyTenantId,
   resolvePublicApiUrl,
@@ -87,6 +88,7 @@ interface InitOptions {
   description: string;
   parentTenantId: string;
   tenantId: string;
+  tenantHomeRegion?: string | null;
   includeChat: boolean;
   includeDocs: boolean;
   authProvider: "ciam" | "b2b" | "dual";
@@ -319,6 +321,7 @@ Use --no-gofer only when you need a bare app scaffold.
         description: `${toDisplayName(nameArg)} application`,
         parentTenantId,
         tenantId,
+        tenantHomeRegion: binding.runtimeTenantHomeRegion ?? activeTenant?.homeRegion,
         includeChat: capabilities["ai-chat"].outcome === "allow",
         includeDocs: capabilities.documents.outcome === "allow",
         authProvider: "ciam",
@@ -396,6 +399,7 @@ Use --no-gofer only when you need a bare app scaffold.
         }),
         parentTenantId,
         tenantId,
+        tenantHomeRegion: binding.runtimeTenantHomeRegion ?? activeTenant?.homeRegion,
         ...(featureAnswers as {
           includeChat: boolean;
           includeDocs: boolean;
@@ -450,6 +454,7 @@ Use --no-gofer only when you need a bare app scaffold.
         initOptions.name,
         initOptions.parentTenantId,
         initOptions.tenantId,
+        initOptions.tenantHomeRegion,
       );
       envSpinner.succeed("Generated .env.local");
     } catch (_err) {
@@ -765,6 +770,7 @@ interface InitTenantAppBinding {
   parentTenantId: string;
   runtimeTenantId: string;
   childTenantId?: string;
+  runtimeTenantHomeRegion?: string | null;
 }
 
 async function promptCompanyTenantForInit(
@@ -958,16 +964,23 @@ async function createTenantAppForInit(
     return {
       parentTenantId: companyTenantId,
       runtimeTenantId: immediateParentTenantId,
+      runtimeTenantHomeRegion: activeTenant?.homeRegion,
     };
   }
 
   out.info(
     `Created app ${chalk.cyan(appSeed.slug)} under main company ${chalk.cyan(companyTenantId)} with child company ${chalk.cyan(childTenantId)}.`,
   );
+  const childTenantHomeRegion = childTenant && typeof childTenant === "object"
+    ? (childTenant as Record<string, unknown>).homeRegion
+    : undefined;
   return {
     parentTenantId: companyTenantId,
     runtimeTenantId: childTenantId,
     childTenantId,
+    runtimeTenantHomeRegion: typeof childTenantHomeRegion === "string"
+      ? childTenantHomeRegion
+      : activeTenant?.homeRegion,
   };
 }
 
@@ -976,14 +989,20 @@ async function hydrateEnvFromLoginContext(
   verticalName: string,
   parentTenantId: string,
   platformTenantId: string,
+  tenantHomeRegion?: string | null,
 ): Promise<void> {
   const patches: Record<string, string> = {};
   const envKey = verticalName.replace(/-/g, "_").toUpperCase();
 
-  try {
-    patches.BASE_URL_PUBLIC_API = await resolvePublicApiUrl(targetDir);
-  } catch {
-    // Best-effort bootstrap only.
+  const regionalPublicApiUrl = publicApiUrlForHomeRegion(tenantHomeRegion);
+  if (regionalPublicApiUrl) {
+    patches.BASE_URL_PUBLIC_API = regionalPublicApiUrl;
+  } else {
+    try {
+      patches.BASE_URL_PUBLIC_API = await resolvePublicApiUrl(targetDir);
+    } catch {
+      // Best-effort bootstrap only.
+    }
   }
 
   try {
