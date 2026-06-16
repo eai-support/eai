@@ -592,7 +592,7 @@ export async function summarizeResourceApiSchemaSync(
     || missingObjectTypes.length > 0
     || skippedRequestedResults.length > 0;
   // Redact secrets (connection strings, credential-bearing details.issues/
-  // reason/error) that ResourceAPI failed results can surface before they land
+  // reason/error) that resource-store failed results can surface before they land
   // in CLI JSON output, logs, or release evidence. The AdminAPI manifest path
   // already sanitizes this shape; this hardens the direct fallback path too.
   return {
@@ -945,7 +945,7 @@ Examples:
             }
             const syncStatus = appPublishOutcome.result.resourceApiSchemaSync?.status;
             if (typeof syncStatus === 'string' && syncStatus) {
-              out.info(`ResourceAPI schema sync: ${chalk.cyan(syncStatus)}`);
+              out.info(`Resource schema sync: ${chalk.cyan(syncStatus)}`);
             }
             out.blank();
           }
@@ -1181,7 +1181,7 @@ Examples:
         }
         const syncStatus = resourceApiSchemaSync?.status;
         if (typeof syncStatus === 'string' && syncStatus) {
-          const line = `ResourceAPI schema sync: ${chalk.cyan(syncStatus)}`;
+          const line = `Resource schema sync: ${chalk.cyan(syncStatus)}`;
           if (syncStatus === 'failed') {
             out.warn(line);
           } else {
