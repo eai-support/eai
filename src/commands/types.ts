@@ -432,7 +432,7 @@ export async function appObjectTypePublishFallbackReason(
   response: Response,
   phase: 'save' | 'publish',
 ): Promise<string | null> {
-  if (response.status === 404 || response.status === 405) {
+  if (response.status === 405) {
     return `app object-type manifest ${phase} route unavailable`;
   }
   return null;
@@ -537,19 +537,22 @@ export async function trySeedViaAppManifestPublish(
   }
 
   const result = summarizeAppObjectTypePublish(tenantKey, tenantId, types, await publishResponse.json());
-  if (result.verification?.converged) {
-    result.resourceApiSchemaSync = await summarizeResourceApiSchemaSync(
-      await client.syncStorageSchema({
-        dryRun: false,
-        objectTypes: types.map((type) => toObjectTypeSlug(type.name)),
-      }),
-    );
-  }
 
   return { result };
 }
 
-export async function summarizeResourceApiSchemaSync(response: Response): Promise<Record<string, unknown>> {
+const RESOURCEAPI_SYNC_SUCCESS_STATUSES = new Set(['applied', 'already_applied', 'planned', 'provisioned', 'synced']);
+
+function syncResultObjectTypeSlug(result: Record<string, unknown>): string | null {
+  return typeof result.objectType === 'string' && result.objectType
+    ? toObjectTypeSlug(result.objectType)
+    : null;
+}
+
+export async function summarizeResourceApiSchemaSync(
+  response: Response,
+  requestedObjectTypes: string[] = [],
+): Promise<Record<string, unknown>> {
   if (!response.ok) {
     return {
       status: 'failed',
@@ -559,10 +562,30 @@ export async function summarizeResourceApiSchemaSync(response: Response): Promis
 
   const payload = await response.json() as unknown;
   const results = isRecord(payload) && Array.isArray(payload.results) ? payload.results.filter(isRecord) : [];
+  const requestedSlugs = new Set(requestedObjectTypes.map((objectType) => toObjectTypeSlug(objectType)));
+  const successfulResultSlugs = new Set(
+    results
+      .filter((result) => typeof result.status === 'string' && RESOURCEAPI_SYNC_SUCCESS_STATUSES.has(result.status))
+      .map(syncResultObjectTypeSlug)
+      .filter((slug): slug is string => typeof slug === 'string'),
+  );
+  const missingObjectTypes = [...requestedSlugs].filter((slug) => !successfulResultSlugs.has(slug));
   const failedResults = results.filter((result) => result.status === 'failed');
+  const skippedRequestedResults = results.filter((result) => {
+    const slug = syncResultObjectTypeSlug(result);
+    return slug !== null
+      && requestedSlugs.has(slug)
+      && !RESOURCEAPI_SYNC_SUCCESS_STATUSES.has(String(result.status ?? ''));
+  });
+  const failed =
+    results.length === 0
+    || failedResults.length > 0
+    || missingObjectTypes.length > 0
+    || skippedRequestedResults.length > 0;
   return {
     ...(isRecord(payload) ? payload : {}),
-    status: failedResults.length > 0 ? 'failed' : 'synced',
+    ...(missingObjectTypes.length > 0 ? { missingObjectTypes } : {}),
+    status: failed ? 'failed' : 'synced',
   };
 }
 
@@ -1127,6 +1150,7 @@ Examples:
             dryRun: false,
             objectTypes: types.map((type) => toObjectTypeSlug(type.name)),
           }),
+          types.map((type) => toObjectTypeSlug(type.name)),
         );
       }
 

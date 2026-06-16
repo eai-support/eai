@@ -161,7 +161,11 @@ describe('app object-type publish helpers', () => {
     await expect(appObjectTypePublishFallbackReason(new Response('{}', { status: 422 }), 'publish')).resolves.toBeNull();
   });
 
-  test('runs scoped ResourceAPI schema sync after manifest publication converges', async () => {
+  test('does not fall back to direct object-type writes when manifest route is missing', async () => {
+    await expect(appObjectTypePublishFallbackReason(new Response('{}', { status: 404 }), 'publish')).resolves.toBeNull();
+  });
+
+  test('uses AdminAPI resource schema sync metadata from manifest publication', async () => {
     const objectType = {
       name: 'SubmissionFile',
       displayName: 'Submission file',
@@ -196,25 +200,16 @@ describe('app object-type publish helpers', () => {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
-      syncStorageSchema: async (options?: { dryRun?: boolean; objectTypes?: string[] }) => new Response(JSON.stringify({
-        tenantId: 'tenant-1',
-        dryRun: false,
-        requestedObjectTypes: options?.objectTypes,
-        results: [
-          { objectType: 'submission-file', backend: 'blob', status: 'provisioned' },
-        ],
-      }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+      syncStorageSchema: async () => {
+        throw new Error('app manifest path must not call direct ResourceAPI sync');
+      },
     } as unknown as PlatformAPIClient;
 
     const outcome = await trySeedViaAppManifestPublish(client, 'no-code-builder', 'tenant-1', [objectType]);
 
     expect(outcome.fallbackReason).toBeUndefined();
     expect(outcome.result?.resourceApiSchemaSync).toMatchObject({
-      status: 'synced',
-      requestedObjectTypes: ['submission-file'],
+      status: 'queued',
     });
   });
 });
@@ -232,13 +227,28 @@ describe('ResourceAPI schema sync summary', () => {
       headers: { 'content-type': 'application/json' },
     });
 
-    await expect(summarizeResourceApiSchemaSync(response)).resolves.toEqual({
+    await expect(summarizeResourceApiSchemaSync(response, ['project'])).resolves.toEqual({
       tenantId: 'tenant-1',
       dryRun: false,
       results: [
         { objectType: 'Project', backend: 'postgresql', status: 'provisioned' },
       ],
       status: 'synced',
+    });
+  });
+
+  test('marks schema sync as failed when no result proves requested bindings', async () => {
+    const response = new Response(JSON.stringify({
+      tenantId: 'tenant-1',
+      results: [],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    await expect(summarizeResourceApiSchemaSync(response, ['Project'])).resolves.toMatchObject({
+      status: 'failed',
+      missingObjectTypes: ['project'],
     });
   });
 
@@ -255,6 +265,23 @@ describe('ResourceAPI schema sync summary', () => {
 
     await expect(summarizeResourceApiSchemaSync(response)).resolves.toMatchObject({
       status: 'failed',
+    });
+  });
+
+  test('marks schema sync as failed when requested binding is skipped', async () => {
+    const response = new Response(JSON.stringify({
+      tenantId: 'tenant-1',
+      results: [
+        { objectType: 'Project', backend: 'postgresql', status: 'skipped' },
+      ],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    await expect(summarizeResourceApiSchemaSync(response, ['Project'])).resolves.toMatchObject({
+      status: 'failed',
+      missingObjectTypes: ['project'],
     });
   });
 
