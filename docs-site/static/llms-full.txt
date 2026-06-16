@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.2.4.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.2.5.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -275,7 +275,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.4** (2026-06-15): Fix packaged CLI runtime dependency.
+The current CLI release is **v3.2.5** (2026-06-16): Allow init in current directory.
 
 
 ## What The Pieces Do
@@ -305,6 +305,9 @@ npm install
 
 `eai init` uses `https://github.com/eai-tools/eai-app-template` by default and
 installs gofer workflow assets unless you pass `--no-gofer`.
+If you already created and entered an empty project folder, run `eai init`,
+enter the kebab-case app name, and choose the current-folder option. Scripts can
+use `eai init task-tracker --current-dir`.
 
 ## Connect To A Tenant
 
@@ -366,10 +369,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.4 |
-| Released | 2026-06-15 |
-| Last Material Change | Fix packaged CLI runtime dependency |
-| Source Commit | `227247b4fec1341db3f2fb4e6103a317c8ed4a3f` |
+| Version | 3.2.5 |
+| Released | 2026-06-16 |
+| Last Material Change | Allow init in current directory |
+| Source Commit | `d079520b98aad722d2eb32b1b71424dc40efa336` |
 
 
 ## Common Workflow
@@ -421,7 +424,7 @@ Prefer product-shaped commands before `eai publicapi`:
 
 | Need                 | Preferred CLI                                            |
 | -------------------- | -------------------------------------------------------- |
-| Scaffold app         | `eai init <name>`                                        |
+| Scaffold app         | `eai init <name>` or `eai init <name> --current-dir`     |
 | Select tenant        | `eai tenant list`, `eai tenant select <slug>`            |
 | Publish Object Types | `eai types validate`, `eai types seed`, `eai types diff` |
 | Inspect schemas      | `eai resources schema --tenant-id <tenant-id>`           |
@@ -1534,6 +1537,7 @@ Scaffold a new application from the EAI app template.
 **Options**:
 - `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-tools/eai-app-template.git`)
 - `--skip-prompts` — Use defaults without interactive prompts
+- `--current-dir` — Scaffold into the current empty directory instead of creating `./<name>`
 - `--company-tenant <id>` — Main company tenant ID that owns this app
 - `--tenant <id>` — Deprecated alias for `--company-tenant`
 - `--parent-tenant <id>` — Immediate parent company tenant ID for the new child company
@@ -1548,7 +1552,13 @@ Scaffold a new application from the EAI app template.
 3. Initializes git repository and installs npm dependencies
 4. Records the company/child tenant boundary and package profile in the project manifest
 
-**No API calls** — local operation only
+By default, `eai init my-app` creates a new `./my-app` folder. Interactive init
+can scaffold into the current empty folder when selected, and automation can use
+`eai init my-app --current-dir`.
+
+**API calls** — when authenticated, `eai init` creates or binds the app under
+the selected company tenant and evaluates the tenant capabilities used by the
+generated scaffold.
 
 ---
 
