@@ -6,7 +6,11 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { browserLogin, clearTokens, storeTokens, resolveAuthConfig, validateResolvedAuthConfig } from '../lib/auth.js';
 import { findProjectRoot } from '../lib/config.js';
-import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import {
+  buildPublicApiEnvSyncNotice,
+  resolveActiveTenantContext,
+  resolvePublicApiUrl,
+} from '../lib/tenant-context.js';
 import { getActiveProfile, saveActiveProfileToConfig } from '../lib/profile.js';
 import * as out from '../lib/output.js';
 
@@ -95,12 +99,20 @@ What happens next:
       out.info(`Token expires: ${new Date(tokens.expiresAt).toLocaleString()}`);
 
       try {
-        const publicApiUrl = await resolvePublicApiUrl();
+        const projectRoot = await findProjectRoot();
+        const publicApiUrl = await resolvePublicApiUrl(projectRoot || undefined);
         const context = await resolveActiveTenantContext({
+          projectRoot: projectRoot || undefined,
           publicApiUrl,
           interactive: true,
         });
         out.info(`Active tenant: ${chalk.cyan(context.activeTenant.displayName)} ${chalk.dim(`(${context.activeTenant.slug})`)}`);
+        const notice = buildPublicApiEnvSyncNotice(context.publicApiEnvSync);
+        if (notice?.level === 'warn') {
+          out.warn(notice.message);
+        } else if (notice) {
+          out.success(notice.message);
+        }
       } catch (selectionError) {
         out.warn(selectionError instanceof Error ? selectionError.message : String(selectionError));
         out.info(`Run ${chalk.cyan('eai tenant select')} after login to choose the tenant to work with.`);

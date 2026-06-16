@@ -992,7 +992,7 @@ describe("eai init", () => {
     await expectFileNotExists(ctx, "plain-app/.gemini/extension.json");
   });
 
-  test("init pre-populates known env values from active profile and tenant context", async () => {
+  test("HP001 INIT-REGION-001: init stamps BASE_URL_PUBLIC_API from active tenant homeRegion", async () => {
     workingDirectoryIs(ctx, env.dir);
 
     const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(false);
@@ -1017,6 +1017,7 @@ describe("eai init", () => {
           domain: "test.example.com",
           isActive: true,
           roles: ["tenant-admin"],
+          homeRegion: "eu",
         },
         memberships: [],
       });
@@ -1074,7 +1075,7 @@ describe("eai init", () => {
         "utf-8",
       );
       expect(envContent).toContain(
-        "BASE_URL_PUBLIC_API=https://profile-test.example.test/public",
+        "BASE_URL_PUBLIC_API=https://api.eu.myenterprise.ai/public",
       );
       expect(envContent).toContain(
         "ENTRA_TENANT_NAME=profile-test-tenant",

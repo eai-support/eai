@@ -1,5 +1,5 @@
 import inquirer from 'inquirer';
-import { findProjectRoot, loadEnvFile } from './config.js';
+import { findProjectRoot, loadEnvFile, patchEnvFile } from './config.js';
 import {
   getAccessToken,
   getActiveAuthConfigMismatch,
@@ -19,7 +19,7 @@ const REGION_PUBLIC_API_URLS = {
   eu: 'https://api.eu.myenterprise.ai/public',
 } as const;
 
-type HomeRegion = keyof typeof REGION_PUBLIC_API_URLS;
+export type HomeRegion = keyof typeof REGION_PUBLIC_API_URLS;
 
 const TRUSTED_SESSION_PUBLIC_API_HOSTS = new Set([
   'api.au.myenterprise.ai',
@@ -83,6 +83,32 @@ export interface ActiveTenantContext {
   tokens: StoredTokens;
   activeTenant: TenantMembership;
   memberships: TenantMembership[];
+  publicApiEnvSync?: PublicApiEnvSyncResult;
+}
+
+export type PublicApiEnvSyncResult =
+  | {
+      status: 'updated';
+      projectRoot: string;
+      publicApiUrl: string;
+      previousPublicApiUrl?: string;
+      homeRegion: HomeRegion;
+    }
+  | {
+      status: 'already-current';
+      projectRoot: string;
+      publicApiUrl: string;
+      homeRegion: HomeRegion;
+    }
+  | {
+      status: 'skipped';
+      reason: 'no-project-root' | 'unresolved-home-region';
+      homeRegion?: string | null;
+    };
+
+export interface PublicApiEnvSyncNotice {
+  level: 'success' | 'warn';
+  message: string;
 }
 
 export interface TenantUsabilityStatus {
@@ -116,6 +142,68 @@ export function normalizeHomeRegion(value: string | null | undefined): HomeRegio
 export function publicApiUrlForHomeRegion(value: string | null | undefined): string | null {
   const region = normalizeHomeRegion(value);
   return region ? REGION_PUBLIC_API_URLS[region] : null;
+}
+
+export async function syncProjectPublicApiUrlForTenant(
+  tenant: Pick<TenantMembership, 'homeRegion'>,
+  projectRoot?: string | null,
+): Promise<PublicApiEnvSyncResult> {
+  const homeRegion = normalizeHomeRegion(tenant.homeRegion);
+  if (!homeRegion) {
+    return {
+      status: 'skipped',
+      reason: 'unresolved-home-region',
+      homeRegion: tenant.homeRegion,
+    };
+  }
+
+  const root = projectRoot ?? await findProjectRoot();
+  if (!root) {
+    return { status: 'skipped', reason: 'no-project-root', homeRegion };
+  }
+
+  const publicApiUrl = REGION_PUBLIC_API_URLS[homeRegion];
+  const env = await loadEnvFile(root);
+  const previousPublicApiUrl = env.BASE_URL_PUBLIC_API?.trim();
+  if (previousPublicApiUrl === publicApiUrl) {
+    return {
+      status: 'already-current',
+      projectRoot: root,
+      publicApiUrl,
+      homeRegion,
+    };
+  }
+
+  await patchEnvFile(root, { BASE_URL_PUBLIC_API: publicApiUrl });
+  return {
+    status: 'updated',
+    projectRoot: root,
+    publicApiUrl,
+    previousPublicApiUrl: previousPublicApiUrl || undefined,
+    homeRegion,
+  };
+}
+
+export function buildPublicApiEnvSyncNotice(
+  result: PublicApiEnvSyncResult | undefined,
+): PublicApiEnvSyncNotice | null {
+  if (!result || result.status !== 'updated') return null;
+
+  const target = `BASE_URL_PUBLIC_API=${result.publicApiUrl}`;
+  if (result.previousPublicApiUrl) {
+    return {
+      level: 'warn',
+      message:
+        `.env.local ${target} for active tenant homeRegion ${result.homeRegion} ` +
+        `(was ${result.previousPublicApiUrl}).`,
+    };
+  }
+
+  return {
+    level: 'success',
+    message:
+      `.env.local ${target} for active tenant homeRegion ${result.homeRegion}.`,
+  };
 }
 
 function normalizeCliPublicApiUrl(value: unknown): string | null {
@@ -569,6 +657,7 @@ export async function refreshTenantUsabilityStatus(
 
   if (options?.autoSelect && membership && status.usable) {
     tokens = await saveActiveTenantSelection(membership, fetched.publicApiUrl);
+    await syncProjectPublicApiUrlForTenant(membership);
     status = {
       ...status,
       autoSelected: true,
@@ -670,10 +759,15 @@ export async function resolveActiveTenantContext(options?: {
   }
 
   const updatedTokens = await saveActiveTenantSelection(selected, fetched.publicApiUrl, tokens);
+  const publicApiEnvSync = await syncProjectPublicApiUrlForTenant(
+    selected,
+    options?.projectRoot,
+  );
   return {
     publicApiUrl: fetched.publicApiUrl,
     tokens: updatedTokens,
     activeTenant: selected,
     memberships,
+    publicApiEnvSync,
   };
 }
