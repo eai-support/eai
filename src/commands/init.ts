@@ -235,6 +235,8 @@ async function copyTemplateIntoTargetDir(
   try {
     const plan = await cloneTemplate(templateSource, templateDir);
     await rm(join(templateDir, ".git"), { recursive: true, force: true });
+    // Current-directory init applies template files over matching existing paths
+    // while preserving unrelated files and existing repository metadata.
     await cp(templateDir, targetDir, { recursive: true, force: true });
     return plan;
   } finally {

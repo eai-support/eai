@@ -469,12 +469,6 @@ describe("eai init", () => {
     await mkdir(projectDir, { recursive: true });
     await writeFile(join(projectDir, "notes.md"), "keep me\n", "utf-8");
     await exec("git", ["init"], { cwd: projectDir });
-    await exec("git", ["config", "user.email", "tests@example.com"], {
-      cwd: projectDir,
-    });
-    await exec("git", ["config", "user.name", "EAI CLI Tests"], {
-      cwd: projectDir,
-    });
     workingDirectoryIs(ctx, projectDir);
 
     const promptSpy = vi

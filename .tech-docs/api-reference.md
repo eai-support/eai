@@ -59,7 +59,9 @@ Scaffold a new application from the EAI app template.
 
 By default, `eai init my-app` creates a new `./my-app` folder. Interactive init
 can scaffold into the current folder when selected, and automation can use
-`eai init my-app --current-dir`.
+`eai init my-app --current-dir`. Current-folder init preserves unrelated
+existing files and Git metadata, and updates files that are part of the
+generated scaffold.
 
 **API calls** — when authenticated, `eai init` creates or binds the app under
 the selected company tenant and evaluates the tenant capabilities used by the

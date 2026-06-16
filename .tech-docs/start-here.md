@@ -46,7 +46,9 @@ npm install
 installs gofer workflow assets unless you pass `--no-gofer`.
 If you already created and entered a project folder, run `eai init`, enter the
 kebab-case app name, and choose the current-folder option. Scripts can use
-`eai init task-tracker --current-dir`.
+`eai init task-tracker --current-dir`. Current-folder init preserves unrelated
+existing files and Git metadata, and updates files that are part of the
+generated scaffold.
 
 ## Connect To A Tenant
 
