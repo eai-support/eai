@@ -468,6 +468,13 @@ describe("eai init", () => {
     const projectDir = join(env.dir, "existing-work");
     await mkdir(projectDir, { recursive: true });
     await writeFile(join(projectDir, "notes.md"), "keep me\n", "utf-8");
+    await exec("git", ["init"], { cwd: projectDir });
+    await exec("git", ["config", "user.email", "tests@example.com"], {
+      cwd: projectDir,
+    });
+    await exec("git", ["config", "user.name", "EAI CLI Tests"], {
+      cwd: projectDir,
+    });
     workingDirectoryIs(ctx, projectDir);
 
     const promptSpy = vi
@@ -564,6 +571,7 @@ describe("eai init", () => {
 
     await expectFileExists(ctx, "notes.md");
     await expectFileContains(ctx, "notes.md", "keep me");
+    await expectFileExists(ctx, ".git");
     await expectFileExists(ctx, "package.json");
     await expectFileContains(
       ctx,

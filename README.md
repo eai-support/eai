@@ -96,8 +96,8 @@ the Gofer pipeline.
 Use `eai init my-app --no-gofer` only when you need a bare scaffold.
 
 By default, `eai init my-app` creates a new `./my-app` folder. If you already
-created and entered an empty project folder, run `eai init`, enter the app name,
-and answer yes when asked to use the current folder. For automation, pass
+created and entered a project folder, run `eai init`, enter the app name, and
+answer yes when asked to use the current folder. For automation, pass
 `--current-dir` with the kebab-case app name.
 
 ## Global Flags

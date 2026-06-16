@@ -44,9 +44,9 @@ npm install
 
 `eai init` uses `https://github.com/eai-tools/eai-app-template` by default and
 installs gofer workflow assets unless you pass `--no-gofer`.
-If you already created and entered an empty project folder, run `eai init`,
-enter the kebab-case app name, and choose the current-folder option. Scripts can
-use `eai init task-tracker --current-dir`.
+If you already created and entered a project folder, run `eai init`, enter the
+kebab-case app name, and choose the current-folder option. Scripts can use
+`eai init task-tracker --current-dir`.
 
 ## Connect To A Tenant
 
