@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.5** (2026-06-16): Allow init in current directory.
+The current CLI release is **v3.2.6** (2026-06-16): Fix CLI tenant-region PublicAPI env sync so .env.local follows active tenant homeRegion and EU tenants no longer hit AU ResourceAPI passive schema snapshots.
 
 
 ## What The Pieces Do
