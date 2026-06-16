@@ -14,6 +14,7 @@ import {
 } from '../lib/api.js';
 import { loadTokens } from '../lib/auth.js';
 import {
+  buildPublicApiEnvSyncNotice,
   fetchTenantAdminMemberships,
   filterTenantAdminEntries,
   getTenantRoles,
@@ -111,6 +112,19 @@ export function buildTenantCreateStatusMessages(outcome: TenantCreateOutcome): s
   }
 
   return messages;
+}
+
+function reportPublicApiEnvSync(
+  result: Awaited<ReturnType<typeof resolveActiveTenantContext>>['publicApiEnvSync'],
+): void {
+  const notice = buildPublicApiEnvSyncNotice(result);
+  if (!notice) return;
+
+  if (notice.level === 'warn') {
+    out.warn(notice.message);
+  } else {
+    out.success(notice.message);
+  }
 }
 
 export function buildTenantBootstrapAdminStatusMessages(result: ChildTenantBootstrapResult): string[] {
@@ -381,6 +395,7 @@ tenantCommand
       });
 
       out.success(`Active tenant set to ${chalk.cyan(context.activeTenant.slug)} (${chalk.dim(context.activeTenant.id)})`);
+      reportPublicApiEnvSync(context.publicApiEnvSync);
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
