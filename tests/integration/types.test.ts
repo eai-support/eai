@@ -299,6 +299,36 @@ describe('ResourceAPI schema sync summary', () => {
       error: expect.stringContaining('500 Internal Server Error'),
     });
   });
+
+  test('redacts secrets in failed ResourceAPI result details', async () => {
+    const response = new Response(JSON.stringify({
+      tenantId: 'tenant-1',
+      results: [
+        {
+          objectType: 'Project',
+          backend: 'documentdb',
+          status: 'failed',
+          reason: 'connect failed for mongodb://admin:s3cr3t@cluster.example:27017/db',
+          details: {
+            issues: ['auth rejected, password=hunter2 supplied'],
+          },
+          error: 'mongodb://user:pass@host/db unreachable',
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const summary = await summarizeResourceApiSchemaSync(response, ['Project']);
+    const serialized = JSON.stringify(summary);
+
+    expect(summary).toMatchObject({ status: 'failed' });
+    expect(serialized).not.toContain('s3cr3t');
+    expect(serialized).not.toContain('hunter2');
+    expect(serialized).not.toContain('user:pass');
+    expect(serialized).toContain('[redacted]');
+  });
 });
 
 describe('verifyTypeSeedConvergence', () => {

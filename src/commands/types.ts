@@ -591,8 +591,12 @@ export async function summarizeResourceApiSchemaSync(
     || failedResults.length > 0
     || missingObjectTypes.length > 0
     || skippedRequestedResults.length > 0;
+  // Redact secrets (connection strings, credential-bearing details.issues/
+  // reason/error) that ResourceAPI failed results can surface before they land
+  // in CLI JSON output, logs, or release evidence. The AdminAPI manifest path
+  // already sanitizes this shape; this hardens the direct fallback path too.
   return {
-    ...(isRecord(payload) ? payload : {}),
+    ...(isRecord(payload) ? out.redactSensitiveDeep(payload) : {}),
     ...(missingObjectTypes.length > 0 ? { missingObjectTypes } : {}),
     status: failed ? 'failed' : 'synced',
   };
