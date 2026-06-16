@@ -73,12 +73,17 @@ export function shouldFailTypeSeedRun(
     const syncStatus = isRecord(result.resourceApiSchemaSync)
       ? String(result.resourceApiSchemaSync.status ?? '').toLowerCase()
       : undefined;
-    return !result.verification?.converged || (
-      syncStatus !== undefined
-      && syncStatus !== ''
-      && syncStatus !== 'synced'
-    );
+    return !result.verification?.converged || isBlockingResourceApiSchemaSyncStatus(syncStatus);
   });
+}
+
+const RESOURCEAPI_SCHEMA_SYNC_NON_FAILURE_STATUSES = new Set(['pending', 'queued', 'synced']);
+
+function isBlockingResourceApiSchemaSyncStatus(status: string | undefined): boolean {
+  if (status === undefined || status === '') {
+    return false;
+  }
+  return !RESOURCEAPI_SCHEMA_SYNC_NON_FAILURE_STATUSES.has(status);
 }
 
 export interface TypeDefaultValueValidationIssue {

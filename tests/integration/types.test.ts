@@ -680,7 +680,7 @@ describe('shouldFailTypeSeedRun', () => {
     ])).toBe(true);
   });
 
-  test('returns true when ResourceAPI schema sync is queued after convergence', () => {
+  test('returns false when ResourceAPI schema sync is queued after convergence', () => {
     expect(shouldFailTypeSeedRun([
       {
         verification: {
@@ -698,7 +698,28 @@ describe('shouldFailTypeSeedRun', () => {
           status: 'queued',
         },
       },
-    ])).toBe(true);
+    ])).toBe(false);
+  });
+
+  test('returns false when ResourceAPI schema sync is pending after convergence', () => {
+    expect(shouldFailTypeSeedRun([
+      {
+        verification: {
+          tenantId: 'tenant-1',
+          requestedTypes: ['Customer'],
+          matchedTypes: ['Customer'],
+          missingTypes: [],
+          driftedTypes: [],
+          createdCount: 1,
+          updatedCount: 0,
+          failedCount: 0,
+          converged: true,
+        },
+        resourceApiSchemaSync: {
+          status: 'pending',
+        },
+      },
+    ])).toBe(false);
   });
 
   test('returns true when ResourceAPI schema sync is skipped after convergence', () => {
@@ -717,6 +738,27 @@ describe('shouldFailTypeSeedRun', () => {
         },
         resourceApiSchemaSync: {
           status: 'skipped',
+        },
+      },
+    ])).toBe(true);
+  });
+
+  test('returns true when ResourceAPI schema sync is blocked after convergence', () => {
+    expect(shouldFailTypeSeedRun([
+      {
+        verification: {
+          tenantId: 'tenant-1',
+          requestedTypes: ['Customer'],
+          matchedTypes: ['Customer'],
+          missingTypes: [],
+          driftedTypes: [],
+          createdCount: 1,
+          updatedCount: 0,
+          failedCount: 0,
+          converged: true,
+        },
+        resourceApiSchemaSync: {
+          status: 'blocked',
         },
       },
     ])).toBe(true);
