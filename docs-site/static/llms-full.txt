@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.2.4.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.2.5.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -275,7 +275,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.4** (2026-06-15): Fix packaged CLI runtime dependency.
+The current CLI release is **v3.2.5** (2026-06-16): Allow init in current directory.
 
 
 ## What The Pieces Do
@@ -369,10 +369,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.4 |
-| Released | 2026-06-15 |
-| Last Material Change | Fix packaged CLI runtime dependency |
-| Source Commit | `227247b4fec1341db3f2fb4e6103a317c8ed4a3f` |
+| Version | 3.2.5 |
+| Released | 2026-06-16 |
+| Last Material Change | Allow init in current directory |
+| Source Commit | `d079520b98aad722d2eb32b1b71424dc40efa336` |
 
 
 ## Common Workflow

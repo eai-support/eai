@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.4 |
-| Released | 2026-06-15 |
-| Last Material Change | Fix packaged CLI runtime dependency |
-| Source Commit | `227247b4fec1341db3f2fb4e6103a317c8ed4a3f` |
+| Version | 3.2.5 |
+| Released | 2026-06-16 |
+| Last Material Change | Allow init in current directory |
+| Source Commit | `d079520b98aad722d2eb32b1b71424dc40efa336` |
 
 
 ## Common Workflow

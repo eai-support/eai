@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.4** (2026-06-15): Fix packaged CLI runtime dependency.
+The current CLI release is **v3.2.5** (2026-06-16): Allow init in current directory.
 
 
 ## What The Pieces Do
