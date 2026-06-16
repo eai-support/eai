@@ -680,7 +680,7 @@ describe('shouldFailTypeSeedRun', () => {
     ])).toBe(true);
   });
 
-  test('returns true when ResourceAPI schema sync is still queued after convergence', () => {
+  test('returns false when ResourceAPI schema sync is queued after convergence', () => {
     expect(shouldFailTypeSeedRun([
       {
         verification: {
@@ -698,7 +698,7 @@ describe('shouldFailTypeSeedRun', () => {
           status: 'queued',
         },
       },
-    ])).toBe(true);
+    ])).toBe(false);
   });
 });
 

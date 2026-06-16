@@ -43,6 +43,13 @@
               "repository": "eai-testing-dev",
               "path": "tests/cross-service/smoke/eai-cli/smoke.spec.ts"
             }
+          ],
+          "intentional_skipped_tests": [
+            {
+              "path": "eai-testing-dev deployed eai types seed -> ResourceAPI schema-sync handoff",
+              "reason": "This mutates tenant Object Type metadata and ResourceAPI runtime schema; eai-cli integration tests cover the command contract until a stable disposable deployed fixture exists.",
+              "owner": "eai-cli"
+            }
           ]
         }
       ]

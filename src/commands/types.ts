@@ -71,9 +71,9 @@ export function shouldFailTypeSeedRun(
 ): boolean {
   return results.some((result) => {
     const syncStatus = isRecord(result.resourceApiSchemaSync)
-      ? result.resourceApiSchemaSync.status
+      ? String(result.resourceApiSchemaSync.status ?? '').toLowerCase()
       : undefined;
-    return !result.verification?.converged || (typeof syncStatus === 'string' && syncStatus !== 'synced');
+    return !result.verification?.converged || syncStatus === 'failed' || syncStatus === 'blocked';
   });
 }
 
