@@ -464,7 +464,7 @@ describe("eai init", () => {
     await expectFileNotExists(ctx, "civica-migration/package.json");
   }, 30_000);
 
-  test("BP001: Refuses to scaffold into a non-empty current folder", async () => {
+  test("BP001: Scaffolds into a non-empty current folder", async () => {
     const projectDir = join(env.dir, "existing-work");
     await mkdir(projectDir, { recursive: true });
     await writeFile(join(projectDir, "notes.md"), "keep me\n", "utf-8");
@@ -477,38 +477,104 @@ describe("eai init", () => {
         displayName: "Existing Work",
         description: "Existing Work application",
       })
-      .mockResolvedValueOnce({ useCurrentDirectory: true });
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
-      code?: string | number | null,
-    ) => {
-      throw new Error(`process.exit:${String(code)}`);
-    }) as typeof process.exit);
-    const createTenantAppSpy = vi.spyOn(
-      PlatformAPIClient.prototype,
-      "createTenantApp",
-    );
+      .mockResolvedValueOnce({ useCurrentDirectory: true })
+      .mockResolvedValueOnce({ mode: "default" })
+      .mockResolvedValueOnce({ appTenantScope: "current" })
+      .mockResolvedValueOnce({ includeChat: true })
+      .mockResolvedValueOnce({ includeDocs: true })
+      .mockResolvedValueOnce({ authProvider: "ciam" });
+    const tenantCtxSpy = vi
+      .spyOn(tenantContext, "resolveActiveTenantContext")
+      .mockResolvedValue({
+        publicApiUrl: "https://profile-test.example.test/public",
+        tokens: {
+          accessToken: "access",
+          expiresAt: Date.now() + 60_000,
+          tenantId: "ciam-guid",
+          tenantName: "profile-test-tenant",
+          clientId: "client-id",
+        },
+        activeTenant: {
+          id: "tenant-123",
+          displayName: "Test Tenant",
+          slug: "test-tenant",
+          domain: "test.example.com",
+          isActive: true,
+          roles: ["tenant-admin"],
+        },
+        memberships: [],
+      });
+    const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(false);
+    const loadTokensSpy = vi.spyOn(auth, "loadTokens").mockResolvedValue({
+      accessToken: "access",
+      expiresAt: Date.now() + 60_000,
+      tenantId: "ciam-guid",
+      tenantName: "profile-test-tenant",
+      clientId: "client-id",
+    });
+    const capabilitySpy = vi
+      .spyOn(PlatformAPIClient.prototype, "evaluateCapability")
+      .mockResolvedValue(allowedCapability());
+    const getTenantSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "getTenant")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "tenant-123",
+            displayName: "Test Tenant",
+            ultimateParentId: "tenant-123",
+          }),
+          { status: 200 },
+        ),
+      );
+    const createTenantAppSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "createTenantApp")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            childTenant: null,
+          }),
+          { status: 201 },
+        ),
+      );
     const consoleCapture = captureConsole();
 
     try {
-      await expect(
-        initCommand.parseAsync(["--from", templateRepo], {
-          from: "user",
+      await initCommand.parseAsync(["--from", templateRepo], {
+        from: "user",
+      });
+      expect(createTenantAppSpy).toHaveBeenCalledWith(
+        "tenant-123",
+        expect.objectContaining({
+          appDisplayName: "Existing Work",
+          verticalKey: "existing-work",
+          source: "eai-cli",
         }),
-      ).rejects.toThrow("process.exit:1");
-      expect(createTenantAppSpy).not.toHaveBeenCalled();
-      expect(consoleCapture.stderr.join("\n")).toContain(
-        "Current folder",
       );
-      expect(consoleCapture.stderr.join("\n")).toContain("not empty");
     } finally {
       consoleCapture.restore();
       promptSpy.mockRestore();
-      exitSpy.mockRestore();
+      authSpy.mockRestore();
+      loadTokensSpy.mockRestore();
+      tenantCtxSpy.mockRestore();
+      capabilitySpy.mockRestore();
+      getTenantSpy.mockRestore();
       createTenantAppSpy.mockRestore();
     }
 
     await expectFileExists(ctx, "notes.md");
-    await expectFileNotExists(ctx, "package.json");
+    await expectFileContains(ctx, "notes.md", "keep me");
+    await expectFileExists(ctx, "package.json");
+    await expectFileContains(
+      ctx,
+      "package.json",
+      '"name": "@eai-tools/existing-work"',
+    );
+    await expectFileExists(ctx, ".env.local");
+    await expectFileExists(ctx, "src/eai.config/object-types.ts");
+    await expectFileExists(ctx, ".eai-manifest.json");
+    await expectFileNotExists(ctx, "existing-work/package.json");
+    expect(consoleCapture.stdout.join("\n")).toContain("Created Existing Work");
   });
 
   test("TC002c: --current-dir works with --skip-prompts for automation", async () => {
