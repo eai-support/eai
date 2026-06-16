@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/0_business_scenario.md
-  canonicalChecksum: a1091d96d3cb39b07f0269e73fdb0e04611ca4519f7318bfdbd5bd5baaf9e852
+  canonicalChecksum: e5789e41fbcbdae9354f3bc6ceb57a0e4d4181efd6e7ce64a4ff8c16740b1e14
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -313,6 +313,8 @@ ls -la .specify/memory/constitution.md 2>/dev/null
 | `proposal-review.md`    | `.specify/specs/{feature}/` | Optional supporting review context |
 | `plan.md`               | `.specify/specs/{feature}/` | Planning complete            |
 | `tasks.md`              | `.specify/specs/{feature}/` | Ready for implement          |
+| `goal-ledger.json`      | `.specify/specs/{feature}/` | Active objective ledger and drift triggers |
+| `goal-rebaseline-report.md` | `.specify/specs/{feature}/` | Latest closed-loop audit result |
 | `session-checkpoint.md` | `.specify/specs/{feature}/` | Work paused (resumable)      |
 | `validation-report.md`  | `.specify/specs/{feature}/` | Feature validated            |
 | `constitution.md`       | `.specify/memory/`          | Project principles set       |
@@ -878,6 +880,21 @@ focus:
 
 #### Determine Starting Point
 
+**Closed-Loop Audit (Highest Priority when feature artifacts exist)**:
+
+Before pipeline-state routing, run the closed-loop audit when the selected
+feature directory already exists:
+
+```bash
+node .specify/scripts/node/gofer-closed-loop-audit.mjs --feature-dir {FEATURE_DIR} --json
+```
+
+If the audit recommends a `recommendedStartStage`, resume from that stage even
+when later artifacts exist. This is how Gofer behaves like a goal-seeking loop:
+goal drift, expired assumptions, contract drift, UX scope changes, or
+post-validation code/test movement reopen the smallest valid mini-loop instead
+of pretending the pipeline is still complete.
+
 **Pipeline State Check (Priority)**:
 
 Before file-existence checks, read `pipeline-state.json` for authoritative
@@ -890,6 +907,10 @@ resume information:
 If `pipeline-state.json` exists and `status` is `in_progress`, resume from
 `currentStage`. This takes priority over file-existence heuristics because
 pipeline-state.json is updated atomically by each stage on completion.
+
+If the closed-loop audit recommends an earlier stage than `currentStage`, the
+audit wins. Pipeline state tracks progress; the audit tracks whether progress is
+still valid.
 
 **Fallback — File-existence heuristics** (used when no pipeline-state.json
 exists):

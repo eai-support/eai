@@ -425,14 +425,135 @@ Diagnostics:
       out.warn('Platform response did not include redirect URIs — set ENTRA_REDIRECT_URIS manually.');
     }
 
-    // Surface AdminAPI's post-provision sign-in wiring rollup. When the API
+    // Surface the management API's post-provision sign-in wiring rollup. When the API
     // permission merge / admin consent / preAuthorizedApplications steps
     // failed silently, the app reg looks "created" but cannot reach
-    // PublicAPI from a user session — sign-in then fails with AADSTS650057
+    // platform API from a user session — sign-in then fails with AADSTS650057
     // the moment the app's BFF proxy makes its first call. Refusing to
     // exit 0 here turns that silent failure into a loud, actionable one.
     reportTenantAuthorization(result.tenantAuthorization, result.clientId);
     reportSigninCompleteness(result.signinCompleteness, result.clientId);
+  });
+
+// ─── eai provision resourceapi-refresh ──────────────────────────────────
+
+provisionCommand
+  .command('resourceapi-refresh')
+  .description('Refresh a passive customer storage schema snapshot through the management service')
+  .requiredOption('--admin-api-url <url>', 'Management service URL for server-backed orchestration')
+  .option('--tenant-id <id>', 'Tenant ID the refresh is scoped to')
+  .option('--install-id <id>', 'Customer storage install registry ID')
+  .option('--apply', 'Apply the refreshed snapshot after planning', false)
+  .option('--dry-run', 'With --apply, ask the storage service to plan schema application without writing', false)
+  .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
+  .option('--rebuild-search', 'Request search projection rebuild after schema sync', false)
+  .option('--force-overwrite', 'Allow the passive snapshot to overwrite an existing schema version', false)
+  .option('--no-verify', 'Skip storage schema-status verification after apply')
+  .option('--no-update-install-registry', 'Do not update the tenant install registry schema hash after apply')
+  .option('--reason <text>', 'Human-readable reason for a real schema refresh apply')
+  .option('--change-ticket <id>', 'Support/change ticket for audit trail')
+  .option('--product <key>', 'Product/app key this refresh enables')
+  .option('--schema-version <version>', 'Tenant schema version to stamp into metadata', '1')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+Examples:
+  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId>
+  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply --dry-run --force-overwrite
+  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply --force-overwrite --reason "Repair passive schema drift"
+
+Notes:
+  - This is a super-admin repair path for passive customer storage schema metadata.
+  - It updates the tenant install registry only after the storage service accepts and verifies the refreshed snapshot.
+  `)
+  .action(async (options) => {
+    const jsonOutput = options.json || options.format === 'json';
+    const adminApiUrl = String(options.adminApiUrl || '').trim().replace(/\/+$/, '');
+    const root = await findProjectRoot();
+    if (!root) {
+      exitWithError(ErrorCode.E001);
+    }
+
+    const publicApiUrl = await resolvePublicApiUrl(root);
+    let tenantId: string = options.tenantId;
+    try {
+      const context = await resolveActiveTenantContext({
+        projectRoot: root,
+        publicApiUrl,
+        tenantId,
+        interactive: !tenantId,
+        forceRefresh: Boolean(tenantId),
+      });
+      tenantId = context.activeTenant.id;
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      out.error('Not logged in. Run `eai login` before calling server-backed provisioning.');
+      process.exit(1);
+    }
+
+    const response = await fetch(
+      `${adminApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-refresh`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          installId: options.installId,
+          productKey: options.product,
+          schemaVersion: options.schemaVersion,
+          apply: Boolean(options.apply),
+          dryRun: Boolean(options.dryRun),
+          backend: options.backend,
+          rebuildSearch: Boolean(options.rebuildSearch),
+          forceOverwrite: Boolean(options.forceOverwrite),
+          verify: options.verify !== false,
+          updateInstallRegistry: options.updateInstallRegistry !== false,
+          reason: options.reason,
+          changeTicket: options.changeTicket,
+        }),
+      },
+    );
+    if (!response.ok) {
+      out.error(await formatJsonResponseError(response, 'passive customer storage schema refresh'));
+      process.exit(1);
+    }
+
+    const payload = await response.json() as {
+      tenantId: string;
+      installId: string;
+      schemaHash: string;
+      objectTypeCount: number;
+      storageBackends: string[];
+      verified: boolean;
+      installRegistryUpdated: boolean;
+      currentDiff?: { missingObjectTypes?: string[] };
+      verifyDiff?: { missingObjectTypes?: string[] } | null;
+    };
+
+    if (jsonOutput) {
+      out.json(payload);
+      return;
+    }
+
+    out.success(options.apply ? 'Passive customer storage schema refresh applied' : 'Passive customer storage schema refresh planned');
+    out.info(`Tenant: ${chalk.cyan(payload.tenantId)}`);
+    out.info(`Install: ${chalk.dim(payload.installId)}`);
+    out.info(`Object Types: ${payload.objectTypeCount}`);
+    out.info(`Storage Backends: ${payload.storageBackends.join(', ')}`);
+    out.info(`Schema Hash: ${chalk.dim(payload.schemaHash)}`);
+    out.info(`Verified: ${payload.verified ? 'yes' : 'no'}`);
+    out.info(`Install Registry Updated: ${payload.installRegistryUpdated ? 'yes' : 'no'}`);
+    const missing = payload.verifyDiff?.missingObjectTypes || payload.currentDiff?.missingObjectTypes || [];
+    if (missing.length) {
+      out.warn(`Missing Object Types: ${missing.join(', ')}`);
+    }
   });
 
 function normaliseBasePath(value: string | undefined): string {

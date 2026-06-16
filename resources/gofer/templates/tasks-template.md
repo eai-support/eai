@@ -7,7 +7,7 @@ description: 'Task list template for feature implementation'
 **Input**: Design documents from `.specify/specs/[###-feature-name]/`
 
 **Prerequisites**: plan.md (required), spec.md (required for user stories),
-research.md, data-model.md, contracts/
+research.md, goal-ledger.json, data-model.md, contracts/
 
 **Note**: This template is filled in by `/4_gofer_tasks` (or legacy
 `/4_gofer_tasks`). Recommended: Use `/0_business_scenario` to auto-chain the
@@ -30,6 +30,8 @@ When the feature is classified as application delivery, tasks must preserve the
 shared numbered stages **and** enforce these prerequisites before downstream
 implementation:
 
+- `goal-ledger.json` exists and records goals, metrics, delivery states, and
+  re-loop triggers
 - `ui-approval.md` exists and is approved
 - `service-fit-matrix.md` exists and distinguishes accessible now, purchasable,
   and unavailable platform capabilities
@@ -113,7 +115,9 @@ Examples of foundational tasks (adjust based on your project):
       and `eai resources schema`; record block IDs, resource bindings, coupling
       status, Storybook story IDs, theme override points, and custom-block
       exceptions
-- [ ] T012 Add block-porting, source-platform decoupling, and public-readiness
+- [ ] T012 Update `goal-ledger.json` with planned requirement, task, code, and
+      test links plus any new delivery-state promotion criteria
+- [ ] T013 Add block-porting, source-platform decoupling, and public-readiness
       work for external or hybrid package lanes
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in
@@ -238,6 +242,11 @@ independently
   with US1/US2 but should be independently testable
 
 ### Within Each User Story
+
+- Reference the supporting goal IDs, requirement IDs, and planned code/test
+  files in `traceability.md`
+- Keep `goal-ledger.json` current whenever a task changes the target metric,
+  owner, delivery state, or re-loop trigger
 
 - Tests (if included) MUST be written and FAIL before implementation
 - Models before services

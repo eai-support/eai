@@ -276,6 +276,9 @@ Extract assumptions from:
 - Stakeholder mapping (user behavior assumptions)
 
 Mark ALL assumptions as `UNVALIDATED` at this stage.
+Populate the **Drift Controls** table with an owner, expiry/revalidation date,
+trigger, and reopen stage for every assumption that could invalidate the plan
+later.
 
 ---
 

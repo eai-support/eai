@@ -6,8 +6,8 @@ import { Command } from "commander";
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
-import { readFile, writeFile, access, mkdir, rm } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { readFile, writeFile, access, mkdir, rm, readdir } from "node:fs/promises";
+import { basename, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import ora from "ora";
 import chalk from "chalk";
@@ -17,6 +17,7 @@ import { installGoferResources } from "../lib/gofer-installer.js";
 import { applyGoferRefresh, planGoferRefresh } from "../lib/gofer-refresh.js";
 import { isAuthenticated, loadTokens } from "../lib/auth.js";
 import {
+  publicApiUrlForHomeRegion,
   resolveActiveTenantContext,
   resolveMainCompanyTenantId,
   resolvePublicApiUrl,
@@ -87,6 +88,7 @@ interface InitOptions {
   description: string;
   parentTenantId: string;
   tenantId: string;
+  tenantHomeRegion?: string | null;
   includeChat: boolean;
   includeDocs: boolean;
   authProvider: "ciam" | "b2b" | "dual";
@@ -182,6 +184,7 @@ export function resolveTemplateClonePlan(
 async function cloneTemplate(
   templateSource: string,
   targetDir: string,
+  options: { allowTargetRemoval?: boolean } = {},
 ): Promise<TemplateClonePlan> {
   const plan = resolveTemplateClonePlan(templateSource);
 
@@ -211,7 +214,11 @@ async function cloneTemplate(
     ]);
     await exec("git", ["-C", targetDir, "checkout", "FETCH_HEAD"]);
     return plan;
-  } catch {
+  } catch (error) {
+    if (options.allowTargetRemoval === false) {
+      await rm(join(targetDir, ".git"), { recursive: true, force: true });
+      throw error;
+    }
     await rm(targetDir, { recursive: true, force: true });
     await exec("git", ["clone", plan.cloneSource, targetDir]);
     await exec("git", ["-C", targetDir, "checkout", plan.pinnedCommit]);
@@ -228,6 +235,11 @@ export const initCommand = new Command("init")
     TEMPLATE_REPO,
   )
   .option("--skip-prompts", "Use defaults without interactive prompts", false)
+  .option(
+    "--current-dir",
+    "Scaffold into the current directory instead of creating ./<name>",
+    false,
+  )
   .option(
     "--tenant <id>",
     "Main company tenant ID (deprecated alias for --company-tenant)",
@@ -279,11 +291,12 @@ Use --no-gofer only when you need a bare app scaffold.
     let parentTenantId: string;
     let initOptions: InitOptions;
     let targetDir: string;
+    let targetUsesCurrentDir: boolean;
     const packageProfile = resolvePackageProfile(options.packageProfile);
 
     if (options.skipPrompts && nameArg) {
-      targetDir = resolve(process.cwd(), nameArg);
-      await ensureTargetDirAvailable(targetDir, nameArg);
+      targetUsesCurrentDir = Boolean(options.currentDir);
+      targetDir = await resolveInitTargetDir(nameArg, targetUsesCurrentDir);
       const binding = await createTenantAppForInit(
         publicApiUrl,
         activeTenant,
@@ -308,6 +321,7 @@ Use --no-gofer only when you need a bare app scaffold.
         description: `${toDisplayName(nameArg)} application`,
         parentTenantId,
         tenantId,
+        tenantHomeRegion: binding.runtimeTenantHomeRegion ?? activeTenant?.homeRegion,
         includeChat: capabilities["ai-chat"].outcome === "allow",
         includeDocs: capabilities.documents.outcome === "allow",
         authProvider: "ciam",
@@ -342,8 +356,22 @@ Use --no-gofer only when you need a bare app scaffold.
         },
       ]);
 
-      targetDir = resolve(process.cwd(), String(baseAnswers.name));
-      await ensureTargetDirAvailable(targetDir, String(baseAnswers.name));
+      const appName = String(baseAnswers.name);
+      if (options.currentDir) {
+        targetUsesCurrentDir = true;
+      } else {
+        const locationAnswer = await inquirer.prompt([
+          {
+            type: "confirm",
+            name: "useCurrentDirectory",
+            message: `Use current folder "${basename(process.cwd())}" instead of creating ./${appName}?`,
+            default: basename(process.cwd()).toLowerCase() === appName,
+          },
+        ]);
+        targetUsesCurrentDir = Boolean(locationAnswer.useCurrentDirectory);
+      }
+
+      targetDir = await resolveInitTargetDir(appName, targetUsesCurrentDir);
 
       const binding = await createTenantAppForInit(
         publicApiUrl,
@@ -371,6 +399,7 @@ Use --no-gofer only when you need a bare app scaffold.
         }),
         parentTenantId,
         tenantId,
+        tenantHomeRegion: binding.runtimeTenantHomeRegion ?? activeTenant?.homeRegion,
         ...(featureAnswers as {
           includeChat: boolean;
           includeDocs: boolean;
@@ -387,7 +416,9 @@ Use --no-gofer only when you need a bare app scaffold.
     const cloneSpinner = ora("Cloning template...").start();
     const templatePlan = resolveTemplateClonePlan(options.from);
     try {
-      await cloneTemplate(options.from, targetDir);
+      await cloneTemplate(options.from, targetDir, {
+        allowTargetRemoval: !targetUsesCurrentDir,
+      });
       // Remove .git to start fresh
       await rm(join(targetDir, ".git"), { recursive: true, force: true });
       cloneSpinner.succeed(
@@ -423,6 +454,7 @@ Use --no-gofer only when you need a bare app scaffold.
         initOptions.name,
         initOptions.parentTenantId,
         initOptions.tenantId,
+        initOptions.tenantHomeRegion,
       );
       envSpinner.succeed("Generated .env.local");
     } catch (_err) {
@@ -738,6 +770,7 @@ interface InitTenantAppBinding {
   parentTenantId: string;
   runtimeTenantId: string;
   childTenantId?: string;
+  runtimeTenantHomeRegion?: string | null;
 }
 
 async function promptCompanyTenantForInit(
@@ -931,16 +964,23 @@ async function createTenantAppForInit(
     return {
       parentTenantId: companyTenantId,
       runtimeTenantId: immediateParentTenantId,
+      runtimeTenantHomeRegion: activeTenant?.homeRegion,
     };
   }
 
   out.info(
     `Created app ${chalk.cyan(appSeed.slug)} under main company ${chalk.cyan(companyTenantId)} with child company ${chalk.cyan(childTenantId)}.`,
   );
+  const childTenantHomeRegion = childTenant && typeof childTenant === "object"
+    ? (childTenant as Record<string, unknown>).homeRegion
+    : undefined;
   return {
     parentTenantId: companyTenantId,
     runtimeTenantId: childTenantId,
     childTenantId,
+    runtimeTenantHomeRegion: typeof childTenantHomeRegion === "string"
+      ? childTenantHomeRegion
+      : activeTenant?.homeRegion,
   };
 }
 
@@ -949,14 +989,20 @@ async function hydrateEnvFromLoginContext(
   verticalName: string,
   parentTenantId: string,
   platformTenantId: string,
+  tenantHomeRegion?: string | null,
 ): Promise<void> {
   const patches: Record<string, string> = {};
   const envKey = verticalName.replace(/-/g, "_").toUpperCase();
 
-  try {
-    patches.BASE_URL_PUBLIC_API = await resolvePublicApiUrl(targetDir);
-  } catch {
-    // Best-effort bootstrap only.
+  const regionalPublicApiUrl = publicApiUrlForHomeRegion(tenantHomeRegion);
+  if (regionalPublicApiUrl) {
+    patches.BASE_URL_PUBLIC_API = regionalPublicApiUrl;
+  } else {
+    try {
+      patches.BASE_URL_PUBLIC_API = await resolvePublicApiUrl(targetDir);
+    } catch {
+      // Best-effort bootstrap only.
+    }
   }
 
   try {
@@ -1037,6 +1083,33 @@ async function ensureTargetDirAvailable(
   } catch {
     // good — doesn't exist
   }
+}
+
+async function ensureCurrentDirAvailable(targetDir: string): Promise<void> {
+  const entries = await readdir(targetDir);
+  if (entries.length === 0) {
+    return;
+  }
+
+  out.error(
+    `Current folder "${targetDir}" is not empty. Choose the new-folder option or run eai init from an empty folder.`,
+  );
+  process.exit(1);
+}
+
+async function resolveInitTargetDir(
+  projectName: string,
+  useCurrentDir: boolean,
+): Promise<string> {
+  if (useCurrentDir) {
+    const targetDir = resolve(process.cwd());
+    await ensureCurrentDirAvailable(targetDir);
+    return targetDir;
+  }
+
+  const targetDir = resolve(process.cwd(), projectName);
+  await ensureTargetDirAvailable(targetDir, projectName);
+  return targetDir;
 }
 
 // ─── Generators ────────────────────────────────────────────────────────────
