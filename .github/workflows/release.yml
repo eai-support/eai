@@ -158,7 +158,7 @@ jobs:
 
       - name: Notify eai-testing-dev of eai-cli release
         if: success() && steps.testing-app-token.outputs.token != ''
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ steps.testing-app-token.outputs.token }}
           repository: enterpriseaigroup/eai-testing-dev
