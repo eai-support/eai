@@ -19,6 +19,7 @@
             "tests/integration/init.test.ts",
             "tests/integration/help.test.ts",
             "tests/integration/output.test.ts",
+            "tests/integration/types.test.ts",
             "tests/integration/publicapi.test.ts",
             "tests/integration/platform-api-client.test.ts",
             "tests/integration/dedicated-tenant-lifecycle.test.ts"
@@ -41,10 +42,13 @@
             {
               "repository": "eai-testing-dev",
               "path": "tests/cross-service/smoke/eai-cli/smoke.spec.ts"
-            },
+            }
+          ],
+          "intentional_skipped_tests": [
             {
-              "repository": "eai-testing-dev",
-              "path": "tests/cross-service/contracts/eai-cli/preview-lifecycle.spec.ts"
+              "path": "eai-testing-dev deployed eai types seed -> ResourceAPI schema-sync handoff",
+              "reason": "This mutates tenant Object Type metadata and ResourceAPI runtime schema; eai-cli integration tests cover the command contract until a stable disposable deployed fixture exists.",
+              "owner": "eai-cli"
             }
           ]
         }

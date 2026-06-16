@@ -652,6 +652,24 @@ export class PlatformAPIClient {
     );
   }
 
+  async saveAppObjectTypeManifest(
+    verticalKey: string,
+    objectTypes: Record<string, unknown>[],
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/object-types/manifest`,
+      'PUT',
+      { objectTypes },
+    );
+  }
+
+  async publishAppObjectTypes(verticalKey: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/object-types/publish`,
+      'POST',
+    );
+  }
+
   async getSchema(): Promise<Response> {
     return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/schema/${this.tenantId}`, {
       method: 'GET',
@@ -703,6 +721,7 @@ export class PlatformAPIClient {
   async syncStorageSchema(options?: {
     backend?: string;
     dryRun?: boolean;
+    objectTypes?: string[];
   }): Promise<Response> {
     return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage/sync-schema`, {
       method: 'POST',
@@ -710,6 +729,7 @@ export class PlatformAPIClient {
       body: JSON.stringify({
         backend: options?.backend,
         dry_run: options?.dryRun ?? false,
+        objectTypes: options?.objectTypes,
       }),
     });
   }
