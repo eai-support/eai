@@ -73,7 +73,7 @@ export function shouldFailTypeSeedRun(
     const syncStatus = isRecord(result.resourceApiSchemaSync)
       ? result.resourceApiSchemaSync.status
       : undefined;
-    return !result.verification?.converged || syncStatus === 'failed';
+    return !result.verification?.converged || (typeof syncStatus === 'string' && syncStatus !== 'synced');
   });
 }
 
@@ -428,15 +428,12 @@ async function archiveDuplicateRemoteTypes(
   return archived;
 }
 
-async function appObjectTypePublishFallbackReason(
+export async function appObjectTypePublishFallbackReason(
   response: Response,
   phase: 'save' | 'publish',
 ): Promise<string | null> {
   if (response.status === 404 || response.status === 405) {
     return `app object-type manifest ${phase} route unavailable`;
-  }
-  if (response.status === 422) {
-    return `app object-type manifest ${phase} validation rejected current definitions: ${await describeFailedPlatformResponse(response)}`;
   }
   return null;
 }
@@ -512,7 +509,7 @@ export function summarizeAppObjectTypePublish(
   };
 }
 
-async function trySeedViaAppManifestPublish(
+export async function trySeedViaAppManifestPublish(
   client: PlatformAPIClient,
   tenantKey: string,
   tenantId: string,
@@ -539,7 +536,17 @@ async function trySeedViaAppManifestPublish(
     throw new Error(`app manifest publish failed: ${await describeFailedPlatformResponse(publishResponse)}`);
   }
 
-  return { result: summarizeAppObjectTypePublish(tenantKey, tenantId, types, await publishResponse.json()) };
+  const result = summarizeAppObjectTypePublish(tenantKey, tenantId, types, await publishResponse.json());
+  if (result.verification?.converged) {
+    result.resourceApiSchemaSync = await summarizeResourceApiSchemaSync(
+      await client.syncStorageSchema({
+        dryRun: false,
+        objectTypes: types.map((type) => toObjectTypeSlug(type.name)),
+      }),
+    );
+  }
+
+  return { result };
 }
 
 export async function summarizeResourceApiSchemaSync(response: Response): Promise<Record<string, unknown>> {
