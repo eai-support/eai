@@ -1027,6 +1027,35 @@ describe('eai provision entra', () => {
     expectNoProvisionInternals(output);
   });
 
+  test('HTTP 404 with --debug reports support-safe request diagnostics', { timeout: 10000 }, async () => {
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
+        HttpResponse.json(
+          { error: { code: 'tenant_not_found', message: 'Tenant test-tenant-id was not found' } },
+          { status: 404, headers: { 'x-request-id': 'req-404' } },
+        ),
+      ),
+    );
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      provisionCommand.parseAsync(['entra', '--debug'], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).toContain('Entra provisioning is not available');
+    expect(output).toContain('Request ID: req-404');
+    expect(output).toContain('HTTP status: 404');
+    expect(output).not.toContain('Server code');
+    expectNoProvisionInternals(output);
+  });
+
   test('HTTP 501: exits with code 1 and does not expose implementation details', { timeout: 10000 }, async () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>

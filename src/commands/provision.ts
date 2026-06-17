@@ -26,6 +26,11 @@ interface ErrorContext {
   rawBody?: string;
 }
 
+interface ServerDetailOptions {
+  includeServerMessage?: boolean;
+  includeServerCode?: boolean;
+}
+
 function readErrorContext(err: unknown): ErrorContext {
   if (err instanceof PlatformAPIRequestError) {
     return {
@@ -65,8 +70,15 @@ function hasUsableLocalEntraClientId(env: Record<string, string>): boolean {
   return normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID) !== null;
 }
 
-function printServerDetail(ctx: ErrorContext, diag: DiagnosticsContext): void {
-  if (ctx.serverMessage) {
+function printServerDetail(
+  ctx: ErrorContext,
+  diag: DiagnosticsContext,
+  options: ServerDetailOptions = {},
+): void {
+  const includeServerMessage = options.includeServerMessage ?? true;
+  const includeServerCode = options.includeServerCode ?? true;
+
+  if (includeServerMessage && ctx.serverMessage) {
     out.info(`Server: ${ctx.serverMessage}`);
   }
   if (ctx.requestId) {
@@ -75,7 +87,7 @@ function printServerDetail(ctx: ErrorContext, diag: DiagnosticsContext): void {
   if (diag.debug && ctx.status) {
     out.info(`HTTP status: ${ctx.status}`);
   }
-  if (diag.debug && ctx.serverCode) {
+  if (diag.debug && includeServerCode && ctx.serverCode) {
     out.info(`Server code: ${ctx.serverCode}`);
   }
 }
@@ -105,13 +117,13 @@ function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
 
   if (status === 404) {
     out.error('Entra provisioning is not available for this tenant or platform instance.');
-    printServerDetail(ctx, diag);
+    printServerDetail(ctx, diag, { includeServerMessage: false, includeServerCode: false });
     printProvisionFallback('EAI-PROVISION-UNAVAILABLE');
     process.exit(1);
   }
   if (status === 501) {
     out.error('Entra provisioning is not available on this platform instance.');
-    printServerDetail(ctx, diag);
+    printServerDetail(ctx, diag, { includeServerMessage: false, includeServerCode: false });
     printProvisionFallback('EAI-PROVISION-UNAVAILABLE');
     process.exit(1);
   }
