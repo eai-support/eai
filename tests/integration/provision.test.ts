@@ -184,6 +184,37 @@ describe('eai provision entra', () => {
     expect(content).toContain('NEXT_PUBLIC_APP_NAME=my-vertical');
   });
 
+  test('--redirect-uri registers deployed callbacks alongside the local one', { timeout: 10000 }, async () => {
+    let requestBody: unknown;
+    const deployed = 'https://abc.com/api/auth/callback/microsoft-entra-id';
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          client_id: 'cid-1',
+          client_secret: '<fixture-client-secret>',
+          existing: false,
+          ...TENANT_AUTH_ADDED,
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra', '--redirect-uri', deployed], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      vertical_name: 'my-vertical',
+      redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id', deployed],
+      idempotent: true,
+    });
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain(
+      `ENTRA_REDIRECT_URIS=http://localhost:3000/api/auth/callback/microsoft-entra-id ${deployed}`,
+    );
+  });
+
   test('HP001 provision entra basePath projects register and persist matching Auth.js URLs', { timeout: 10000 }, async () => {
     await writeFile(
       join(env.dir, '.env.local'),
