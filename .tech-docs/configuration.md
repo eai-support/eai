@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-06-15T02:45:59.993Z"
-source_commit: "227247b4fec1341db3f2fb4e6103a317c8ed4a3f"
+generated_at: "2026-06-17T00:11:46.801Z"
+source_commit: "95bef9c1e5f07cf2c9b44e25bf6355190ce92a59"
 ---
 # EAI CLI - Configuration
 
@@ -62,16 +62,20 @@ All commands support these public global flags:
 
 | Flag | Type | Description | Default |
 |------|------|-------------|---------|
-| `--format <format>` | string | Output format: `text`, `json`, or `yaml` | `text` |
 | `--simple` | boolean | Plain text output for screen readers | `false` |
 | `--no-color` | boolean | Disable colored output | `false` |
 | `--color` | boolean | Force colored output | `false` |
 | `--describe` | boolean | Output machine-readable command metadata | `false` |
 
+Data-returning subcommands may also expose `--format <format>` for
+machine-readable output. Check `eai --describe` or the command help before
+scripting JSON output because status-only commands such as `eai whoami` are
+plain text today.
+
 Examples:
 
 ```bash
-eai whoami --format json
+eai tenant list --format json
 eai tenant list --simple
 eai doctor --no-color
 ```
@@ -222,10 +226,10 @@ eai doctor
 
 **Need machine-readable output for automation?**
 
-Run commands with JSON output:
+Run a data-returning subcommand that advertises JSON output:
 
 ```bash
-eai whoami --format json
+eai tenant list --format json
 ```
 
 ---

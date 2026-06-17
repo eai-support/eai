@@ -9,6 +9,7 @@ import { buildPayloadEqualsParams, PlatformAPIClient } from '../../src/lib/api.j
 import { loadObjectTypes, type ObjectTypeDefinition, type ObjectTypeProperty } from '../../src/lib/config.js';
 import { validateObjectTypeDefaultValues } from '../../src/lib/object-type-defaults.js';
 import {
+  appObjectTypePublishFallbackReason,
   collectTypeDefaultValueValidationIssues,
   collectTypeStorageValidationIssues,
   describeFailedPlatformResponse,
@@ -16,6 +17,10 @@ import {
   resolveDefaultTenantKey,
   resolveTenantIdForKey,
   shouldFailTypeSeedRun,
+  summarizeAppObjectTypePublish,
+  summarizeResourceApiSchemaSync,
+  toAppManifestObjectTypes,
+  trySeedViaAppManifestPublish,
   validateObjectTypeStorageMetadata,
   verifyTypeSeedConvergence,
   verifyTypeSeedConvergenceWithRetry,
@@ -77,6 +82,252 @@ describe('resolveDefaultTenantKey', () => {
       template: [],
       default: [],
     })).toBe('template');
+  });
+});
+
+describe('app object-type publish helpers', () => {
+  test('marks manifest object types as published when status is omitted', () => {
+    const objectType = {
+      name: 'SubmissionFile',
+      displayName: 'Submission file',
+      properties: [],
+      linkTypes: [],
+      actions: [],
+      storageBackend: 'blob',
+      storageMetadataStatus: 'ready',
+    } as unknown as ObjectTypeDefinition;
+
+    expect(toAppManifestObjectTypes([objectType])).toEqual([
+      {
+        ...objectType,
+        status: 'published',
+      },
+    ]);
+  });
+
+  test('summarizes platform publish results including ResourceAPI sync metadata', () => {
+    const objectType = {
+      name: 'SubmissionFile',
+      displayName: 'Submission file',
+      properties: [],
+      linkTypes: [],
+      actions: [],
+      status: 'published',
+    } as ObjectTypeDefinition;
+
+    expect(summarizeAppObjectTypePublish('no-code-builder', 'tenant-1', [objectType], {
+      results: [
+        { name: 'SubmissionFile', status: 'created' },
+      ],
+      verification: {
+        tenantId: 'tenant-1',
+        requestedTypes: ['SubmissionFile'],
+        matchedTypes: ['SubmissionFile'],
+        missingTypes: [],
+        driftedTypes: [],
+        createdCount: 1,
+        updatedCount: 0,
+        failedCount: 0,
+        converged: true,
+      },
+      resourceApiSchemaSync: {
+        status: 'queued',
+      },
+    })).toEqual({
+      tenantKey: 'no-code-builder',
+      tenantId: 'tenant-1',
+      created: 1,
+      updated: 0,
+      failed: 0,
+      publishingMode: 'app-manifest',
+      resourceApiSchemaSync: {
+        status: 'queued',
+      },
+      verification: {
+        tenantId: 'tenant-1',
+        requestedTypes: ['SubmissionFile'],
+        matchedTypes: ['SubmissionFile'],
+        missingTypes: [],
+        driftedTypes: [],
+        createdCount: 1,
+        updatedCount: 0,
+        failedCount: 0,
+        converged: true,
+      },
+    });
+  });
+
+  test('does not fall back to direct object-type writes when manifest validation fails', async () => {
+    await expect(appObjectTypePublishFallbackReason(new Response('{}', { status: 422 }), 'publish')).resolves.toBeNull();
+  });
+
+  test('does not fall back to direct object-type writes when manifest route is missing', async () => {
+    await expect(appObjectTypePublishFallbackReason(new Response('{}', { status: 404 }), 'publish')).resolves.toBeNull();
+  });
+
+  test('uses AdminAPI resource schema sync metadata from manifest publication', async () => {
+    const objectType = {
+      name: 'SubmissionFile',
+      displayName: 'Submission file',
+      properties: [],
+      linkTypes: [],
+      actions: [],
+      storageBackend: 'blob',
+      storageMetadataStatus: 'ready',
+      status: 'published',
+    } as ObjectTypeDefinition;
+    const client = {
+      saveAppObjectTypeManifest: async () => new Response('{}', { status: 200 }),
+      publishAppObjectTypes: async () => new Response(JSON.stringify({
+        results: [
+          { name: 'SubmissionFile', status: 'created' },
+        ],
+        verification: {
+          tenantId: 'tenant-1',
+          requestedTypes: ['SubmissionFile'],
+          matchedTypes: ['SubmissionFile'],
+          missingTypes: [],
+          driftedTypes: [],
+          createdCount: 1,
+          updatedCount: 0,
+          failedCount: 0,
+          converged: true,
+        },
+        resourceApiSchemaSync: {
+          status: 'queued',
+        },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+      syncStorageSchema: async () => {
+        throw new Error('app manifest path must not call direct ResourceAPI sync');
+      },
+    } as unknown as PlatformAPIClient;
+
+    const outcome = await trySeedViaAppManifestPublish(client, 'no-code-builder', 'tenant-1', [objectType]);
+
+    expect(outcome.fallbackReason).toBeUndefined();
+    expect(outcome.result?.resourceApiSchemaSync).toMatchObject({
+      status: 'queued',
+    });
+  });
+});
+
+describe('ResourceAPI schema sync summary', () => {
+  test('marks a successful schema sync payload as synced', async () => {
+    const response = new Response(JSON.stringify({
+      tenantId: 'tenant-1',
+      dryRun: false,
+      results: [
+        { objectType: 'Project', backend: 'postgresql', status: 'provisioned' },
+      ],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    await expect(summarizeResourceApiSchemaSync(response, ['project'])).resolves.toEqual({
+      tenantId: 'tenant-1',
+      dryRun: false,
+      results: [
+        { objectType: 'Project', backend: 'postgresql', status: 'provisioned' },
+      ],
+      status: 'synced',
+    });
+  });
+
+  test('marks schema sync as failed when no result proves requested bindings', async () => {
+    const response = new Response(JSON.stringify({
+      tenantId: 'tenant-1',
+      results: [],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    await expect(summarizeResourceApiSchemaSync(response, ['Project'])).resolves.toMatchObject({
+      status: 'failed',
+      missingObjectTypes: ['project'],
+    });
+  });
+
+  test('marks schema sync as failed when any binding fails', async () => {
+    const response = new Response(JSON.stringify({
+      tenantId: 'tenant-1',
+      results: [
+        { objectType: 'Project', backend: 'postgresql', status: 'failed' },
+      ],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    await expect(summarizeResourceApiSchemaSync(response)).resolves.toMatchObject({
+      status: 'failed',
+    });
+  });
+
+  test('marks schema sync as failed when requested binding is skipped', async () => {
+    const response = new Response(JSON.stringify({
+      tenantId: 'tenant-1',
+      results: [
+        { objectType: 'Project', backend: 'postgresql', status: 'skipped' },
+      ],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    await expect(summarizeResourceApiSchemaSync(response, ['Project'])).resolves.toMatchObject({
+      status: 'failed',
+      missingObjectTypes: ['project'],
+    });
+  });
+
+  test('captures non-2xx schema sync responses as failed', async () => {
+    const response = new Response(JSON.stringify({
+      detail: 'storage sync failed',
+    }), {
+      status: 500,
+      statusText: 'Internal Server Error',
+      headers: { 'content-type': 'application/json' },
+    });
+
+    await expect(summarizeResourceApiSchemaSync(response)).resolves.toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('500 Internal Server Error'),
+    });
+  });
+
+  test('redacts secrets in failed ResourceAPI result details', async () => {
+    const response = new Response(JSON.stringify({
+      tenantId: 'tenant-1',
+      results: [
+        {
+          objectType: 'Project',
+          backend: 'documentdb',
+          status: 'failed',
+          reason: 'connect failed for mongodb://admin:s3cr3t@cluster.example:27017/db',
+          details: {
+            issues: ['auth rejected, password=hunter2 supplied'],
+          },
+          error: 'mongodb://user:pass@host/db unreachable',
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const summary = await summarizeResourceApiSchemaSync(response, ['Project']);
+    const serialized = JSON.stringify(summary);
+
+    expect(summary).toMatchObject({ status: 'failed' });
+    expect(serialized).not.toContain('s3cr3t');
+    expect(serialized).not.toContain('hunter2');
+    expect(serialized).not.toContain('user:pass');
+    expect(serialized).toContain('[redacted]');
   });
 });
 
@@ -207,43 +458,28 @@ describe('verifyTypeSeedConvergence', () => {
 
 describe('verifyTypeSeedConvergenceWithRetry', () => {
   test('waits for payload publication before checking schema convergence', async () => {
-    const publishedPayloads = [
-      {
-        docs: [],
-      },
-      {
-        docs: [
-          { name: 'Customer', slug: 'customer', status: 'published' },
-        ],
-      },
-      {
-        docs: [
-          { name: 'Customer', slug: 'customer', status: 'published' },
-        ],
-      },
-    ];
-
-    const schemaPayloads = [
-      {
-        docs: [
-          { name: 'Customer', slug: 'customer', status: 'published' },
-        ],
-      },
-    ];
+    let bulkCalls = 0;
 
     const client = {
-      getPublishedObjectTypes: async () => ({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        json: async () => publishedPayloads.shift(),
-      }),
-      getSchema: async () => ({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        json: async () => schemaPayloads.shift(),
-      }),
+      getPublishedObjectTypes: async (options?: { name?: string }) => {
+        if (!options?.name) {
+          bulkCalls += 1;
+        }
+        const published = bulkCalls >= 2;
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => ({
+            docs: published
+              ? [{ name: 'Customer', slug: 'customer', status: 'published' }]
+              : [],
+          }),
+        };
+      },
+      getSchema: async () => {
+        throw new Error('schema fallback should not run after published convergence');
+      },
     } as unknown as PlatformAPIClient;
 
     const verification = await verifyTypeSeedConvergenceWithRetry(
@@ -263,6 +499,51 @@ describe('verifyTypeSeedConvergenceWithRetry', () => {
 
     expect(verification.converged).toBe(true);
     expect(verification.matchedTypes).toEqual(['Customer']);
+    expect(bulkCalls).toBe(2);
+  });
+
+  test('uses precise published lookups when the bulk page misses requested types', async () => {
+    const calls: Array<{ name?: string; limit?: number }> = [];
+    const client = {
+      getPublishedObjectTypes: async (options?: { name?: string; limit?: number }) => {
+        calls.push(options ?? {});
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => ({
+            docs: options?.name === 'Customer'
+              ? [{ name: 'Customer', slug: 'customer', status: 'published' }]
+              : [{ name: 'OtherType', slug: 'other-type', status: 'published' }],
+          }),
+        };
+      },
+      getSchema: async () => {
+        throw new Error('schema fallback should not run after precise published convergence');
+      },
+    } as unknown as PlatformAPIClient;
+
+    const verification = await verifyTypeSeedConvergenceWithRetry(
+      client,
+      'tenant-1',
+      ['Customer'],
+      {
+        createdCount: 1,
+        updatedCount: 0,
+        failedCount: 0,
+      },
+      {
+        attempts: 1,
+        delayMs: 0,
+      },
+    );
+
+    expect(verification.converged).toBe(true);
+    expect(verification.matchedTypes).toEqual(['Customer']);
+    expect(calls).toEqual([
+      { limit: 20 },
+      { name: 'Customer', limit: 10 },
+    ]);
   });
 
   test('retries until published types converge', async () => {
@@ -403,6 +684,111 @@ describe('shouldFailTypeSeedRun', () => {
           updatedCount: 0,
           failedCount: 0,
           converged: false,
+        },
+      },
+    ])).toBe(true);
+  });
+
+  test('returns true when ResourceAPI schema sync failed after convergence', () => {
+    expect(shouldFailTypeSeedRun([
+      {
+        verification: {
+          tenantId: 'tenant-1',
+          requestedTypes: ['Customer'],
+          matchedTypes: ['Customer'],
+          missingTypes: [],
+          driftedTypes: [],
+          createdCount: 1,
+          updatedCount: 0,
+          failedCount: 0,
+          converged: true,
+        },
+        resourceApiSchemaSync: {
+          status: 'failed',
+        },
+      },
+    ])).toBe(true);
+  });
+
+  test('returns false when ResourceAPI schema sync is queued after convergence', () => {
+    expect(shouldFailTypeSeedRun([
+      {
+        verification: {
+          tenantId: 'tenant-1',
+          requestedTypes: ['Customer'],
+          matchedTypes: ['Customer'],
+          missingTypes: [],
+          driftedTypes: [],
+          createdCount: 1,
+          updatedCount: 0,
+          failedCount: 0,
+          converged: true,
+        },
+        resourceApiSchemaSync: {
+          status: 'queued',
+        },
+      },
+    ])).toBe(false);
+  });
+
+  test('returns false when ResourceAPI schema sync is pending after convergence', () => {
+    expect(shouldFailTypeSeedRun([
+      {
+        verification: {
+          tenantId: 'tenant-1',
+          requestedTypes: ['Customer'],
+          matchedTypes: ['Customer'],
+          missingTypes: [],
+          driftedTypes: [],
+          createdCount: 1,
+          updatedCount: 0,
+          failedCount: 0,
+          converged: true,
+        },
+        resourceApiSchemaSync: {
+          status: 'pending',
+        },
+      },
+    ])).toBe(false);
+  });
+
+  test('returns true when ResourceAPI schema sync is skipped after convergence', () => {
+    expect(shouldFailTypeSeedRun([
+      {
+        verification: {
+          tenantId: 'tenant-1',
+          requestedTypes: ['Customer'],
+          matchedTypes: ['Customer'],
+          missingTypes: [],
+          driftedTypes: [],
+          createdCount: 1,
+          updatedCount: 0,
+          failedCount: 0,
+          converged: true,
+        },
+        resourceApiSchemaSync: {
+          status: 'skipped',
+        },
+      },
+    ])).toBe(true);
+  });
+
+  test('returns true when ResourceAPI schema sync is blocked after convergence', () => {
+    expect(shouldFailTypeSeedRun([
+      {
+        verification: {
+          tenantId: 'tenant-1',
+          requestedTypes: ['Customer'],
+          matchedTypes: ['Customer'],
+          missingTypes: [],
+          driftedTypes: [],
+          createdCount: 1,
+          updatedCount: 0,
+          failedCount: 0,
+          converged: true,
+        },
+        resourceApiSchemaSync: {
+          status: 'blocked',
         },
       },
     ])).toBe(true);

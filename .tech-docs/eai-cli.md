@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.4 |
-| Released | 2026-06-15 |
-| Last Material Change | Fix packaged CLI runtime dependency |
-| Source Commit | `227247b4fec1341db3f2fb4e6103a317c8ed4a3f` |
+| Version | 3.2.7 |
+| Released | 2026-06-17 |
+| Last Material Change | Release additive Entra redirect URIs and current-folder init |
+| Source Commit | `95bef9c1e5f07cf2c9b44e25bf6355190ce92a59` |
 
 
 ## Common Workflow
@@ -69,7 +69,7 @@ Prefer product-shaped commands before `eai publicapi`:
 
 | Need                 | Preferred CLI                                            |
 | -------------------- | -------------------------------------------------------- |
-| Scaffold app         | `eai init <name>`                                        |
+| Scaffold app         | `eai init <name>` or `eai init <name> --current-dir`     |
 | Select tenant        | `eai tenant list`, `eai tenant select <slug>`            |
 | Publish Object Types | `eai types validate`, `eai types seed`, `eai types diff` |
 | Inspect schemas      | `eai resources schema --tenant-id <tenant-id>`           |

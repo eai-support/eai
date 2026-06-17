@@ -63,6 +63,66 @@ describe('PlatformAPIClient', () => {
     expect(JSON.parse(String(init?.body))).toEqual({ status: 'draft' })
   })
 
+  test('scopes ResourceAPI schema sync to requested object types', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.syncStorageSchema({
+      dryRun: false,
+      objectTypes: ['draft-workflow', 'submission-file'],
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/data/resources/tenant-123/storage/sync-schema')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      dry_run: false,
+      objectTypes: ['draft-workflow', 'submission-file'],
+    })
+  })
+
+  test('saves app object type manifests through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.saveAppObjectTypeManifest('no-code-builder', [
+      { name: 'SubmissionFile', status: 'published' },
+    ])
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-123/apps/no-code-builder/object-types/manifest')
+    expect(init?.method).toBe('PUT')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      objectTypes: [
+        { name: 'SubmissionFile', status: 'published' },
+      ],
+    })
+  })
+
+  test('publishes app object types through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.publishAppObjectTypes('no-code-builder')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-123/apps/no-code-builder/object-types/publish')
+    expect(init?.method).toBe('POST')
+    expect(init?.body).toBeUndefined()
+  })
+
   test('reads tenant details through the public management tenant route', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

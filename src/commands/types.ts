@@ -37,6 +37,19 @@ export interface TypeSeedVerificationResult {
   converged: boolean;
 }
 
+export interface TypeSeedResult {
+  tenantKey: string;
+  tenantId: string;
+  created: number;
+  updated: number;
+  failed: number;
+  verification?: TypeSeedVerificationResult;
+  publishingMode?: 'app-manifest' | 'direct-object-types';
+  resourceApiSchemaSync?: Record<string, unknown>;
+  appManifestFallbackReason?: string;
+  error?: string;
+}
+
 interface RemoteObjectTypeDocument {
   id?: string;
   name: string;
@@ -54,9 +67,23 @@ interface RemoteObjectTypeDocument {
 }
 
 export function shouldFailTypeSeedRun(
-  results: Array<{ verification?: TypeSeedVerificationResult }>,
+  results: Array<Pick<TypeSeedResult, 'verification' | 'resourceApiSchemaSync'>>,
 ): boolean {
-  return results.some((result) => !result.verification?.converged);
+  return results.some((result) => {
+    const syncStatus = isRecord(result.resourceApiSchemaSync)
+      ? String(result.resourceApiSchemaSync.status ?? '').toLowerCase()
+      : undefined;
+    return !result.verification?.converged || isBlockingResourceApiSchemaSyncStatus(syncStatus);
+  });
+}
+
+const RESOURCEAPI_SCHEMA_SYNC_NON_FAILURE_STATUSES = new Set(['pending', 'queued', 'synced']);
+
+function isBlockingResourceApiSchemaSyncStatus(status: string | undefined): boolean {
+  if (status === undefined || status === '') {
+    return false;
+  }
+  return !RESOURCEAPI_SCHEMA_SYNC_NON_FAILURE_STATUSES.has(status);
 }
 
 export interface TypeDefaultValueValidationIssue {
@@ -410,6 +437,171 @@ async function archiveDuplicateRemoteTypes(
   return archived;
 }
 
+export async function appObjectTypePublishFallbackReason(
+  response: Response,
+  phase: 'save' | 'publish',
+): Promise<string | null> {
+  if (response.status === 405) {
+    return `app object-type manifest ${phase} route unavailable`;
+  }
+  return null;
+}
+
+export function toAppManifestObjectTypes(types: ObjectTypeDefinition[]): Record<string, unknown>[] {
+  return types.map((type) => ({
+    ...type,
+    status: type.status ?? 'published',
+  }));
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function readTypeSeedVerification(
+  tenantId: string,
+  requestedTypes: string[],
+  value: unknown,
+  counts: { createdCount: number; updatedCount: number; failedCount: number },
+): TypeSeedVerificationResult {
+  if (!isRecord(value)) {
+    return {
+      tenantId,
+      requestedTypes,
+      matchedTypes: [],
+      missingTypes: requestedTypes,
+      driftedTypes: [],
+      ...counts,
+      converged: false,
+    };
+  }
+
+  return {
+    tenantId: typeof value.tenantId === 'string' ? value.tenantId : tenantId,
+    requestedTypes: readStringArray(value.requestedTypes),
+    matchedTypes: readStringArray(value.matchedTypes),
+    missingTypes: readStringArray(value.missingTypes),
+    driftedTypes: readStringArray(value.driftedTypes),
+    createdCount: typeof value.createdCount === 'number' ? value.createdCount : counts.createdCount,
+    updatedCount: typeof value.updatedCount === 'number' ? value.updatedCount : counts.updatedCount,
+    failedCount: typeof value.failedCount === 'number' ? value.failedCount : counts.failedCount,
+    converged: value.converged === true,
+  };
+}
+
+export function summarizeAppObjectTypePublish(
+  tenantKey: string,
+  tenantId: string,
+  types: ObjectTypeDefinition[],
+  payload: unknown,
+): TypeSeedResult {
+  const body = isRecord(payload) ? payload : {};
+  const results = Array.isArray(body.results) ? body.results.filter(isRecord) : [];
+  const created = results.filter((result) => result.status === 'created').length;
+  const updated = results.filter((result) => result.status === 'updated').length;
+  const failed = results.filter((result) => result.status === 'failed').length;
+  const counts = {
+    createdCount: created,
+    updatedCount: updated,
+    failedCount: failed,
+  };
+
+  return {
+    tenantKey,
+    tenantId,
+    created,
+    updated,
+    failed,
+    verification: readTypeSeedVerification(tenantId, types.map((type) => type.name), body.verification, counts),
+    publishingMode: 'app-manifest',
+    resourceApiSchemaSync: isRecord(body.resourceApiSchemaSync) ? body.resourceApiSchemaSync : undefined,
+  };
+}
+
+export async function trySeedViaAppManifestPublish(
+  client: PlatformAPIClient,
+  tenantKey: string,
+  tenantId: string,
+  types: ObjectTypeDefinition[],
+): Promise<{ result?: TypeSeedResult; fallbackReason?: string }> {
+  const manifestResponse = await client.saveAppObjectTypeManifest(
+    tenantKey,
+    toAppManifestObjectTypes(types),
+  );
+  const manifestFallbackReason = await appObjectTypePublishFallbackReason(manifestResponse, 'save');
+  if (manifestFallbackReason) {
+    return { fallbackReason: manifestFallbackReason };
+  }
+  if (!manifestResponse.ok) {
+    throw new Error(`app manifest save failed: ${await describeFailedPlatformResponse(manifestResponse)}`);
+  }
+
+  const publishResponse = await client.publishAppObjectTypes(tenantKey);
+  const publishFallbackReason = await appObjectTypePublishFallbackReason(publishResponse, 'publish');
+  if (publishFallbackReason) {
+    return { fallbackReason: publishFallbackReason };
+  }
+  if (!publishResponse.ok) {
+    throw new Error(`app manifest publish failed: ${await describeFailedPlatformResponse(publishResponse)}`);
+  }
+
+  const result = summarizeAppObjectTypePublish(tenantKey, tenantId, types, await publishResponse.json());
+
+  return { result };
+}
+
+const RESOURCEAPI_SYNC_SUCCESS_STATUSES = new Set(['applied', 'already_applied', 'planned', 'provisioned', 'synced']);
+
+function syncResultObjectTypeSlug(result: Record<string, unknown>): string | null {
+  return typeof result.objectType === 'string' && result.objectType
+    ? toObjectTypeSlug(result.objectType)
+    : null;
+}
+
+export async function summarizeResourceApiSchemaSync(
+  response: Response,
+  requestedObjectTypes: string[] = [],
+): Promise<Record<string, unknown>> {
+  if (!response.ok) {
+    return {
+      status: 'failed',
+      error: await describeFailedPlatformResponse(response),
+    };
+  }
+
+  const payload = await response.json() as unknown;
+  const results = isRecord(payload) && Array.isArray(payload.results) ? payload.results.filter(isRecord) : [];
+  const requestedSlugs = new Set(requestedObjectTypes.map((objectType) => toObjectTypeSlug(objectType)));
+  const successfulResultSlugs = new Set(
+    results
+      .filter((result) => typeof result.status === 'string' && RESOURCEAPI_SYNC_SUCCESS_STATUSES.has(result.status))
+      .map(syncResultObjectTypeSlug)
+      .filter((slug): slug is string => typeof slug === 'string'),
+  );
+  const missingObjectTypes = [...requestedSlugs].filter((slug) => !successfulResultSlugs.has(slug));
+  const failedResults = results.filter((result) => result.status === 'failed');
+  const skippedRequestedResults = results.filter((result) => {
+    const slug = syncResultObjectTypeSlug(result);
+    return slug !== null
+      && requestedSlugs.has(slug)
+      && !RESOURCEAPI_SYNC_SUCCESS_STATUSES.has(String(result.status ?? ''));
+  });
+  const failed =
+    results.length === 0
+    || failedResults.length > 0
+    || missingObjectTypes.length > 0
+    || skippedRequestedResults.length > 0;
+  // Redact secrets (connection strings, credential-bearing details.issues/
+  // reason/error) that resource-store failed results can surface before they land
+  // in CLI JSON output, logs, or release evidence. The AdminAPI manifest path
+  // already sanitizes this shape; this hardens the direct fallback path too.
+  return {
+    ...(isRecord(payload) ? out.redactSensitiveDeep(payload) : {}),
+    ...(missingObjectTypes.length > 0 ? { missingObjectTypes } : {}),
+    status: failed ? 'failed' : 'synced',
+  };
+}
+
 export function verifyTypeSeedConvergence(
   tenantId: string,
   requestedTypes: string[],
@@ -478,17 +670,47 @@ export async function verifyTypeSeedConvergenceWithRetry(
       }
 
       const publishedPayload = await publishedResponse.json() as unknown;
-      const publishedVerification = verifyTypeSeedConvergence(
+      let publishedVerification = verifyTypeSeedConvergence(
         tenantId,
         requestedTypes,
         publishedPayload,
         counts,
       );
 
+      if (!publishedVerification.converged && publishedVerification.failedCount === 0) {
+        const preciseDocs: RemoteObjectTypeDocument[] = [];
+        for (const requestedType of requestedTypes) {
+          const preciseResponse = await client.getPublishedObjectTypes({
+            name: requestedType,
+            limit: 10,
+          });
+          if (!preciseResponse.ok) {
+            throw new Error(`published type re-fetch failed for ${requestedType}: ${preciseResponse.status} ${preciseResponse.statusText}`);
+          }
+          preciseDocs.push(...extractRemoteObjectTypeDocs(await preciseResponse.json() as unknown));
+        }
+
+        const preciseVerification = verifyTypeSeedConvergence(
+          tenantId,
+          requestedTypes,
+          { docs: preciseDocs },
+          counts,
+        );
+        if (
+          preciseVerification.converged
+          || preciseVerification.matchedTypes.length > publishedVerification.matchedTypes.length
+        ) {
+          publishedVerification = preciseVerification;
+        }
+      }
+
+      lastVerification = publishedVerification;
+      if (publishedVerification.converged || publishedVerification.failedCount > 0) {
+        return publishedVerification;
+      }
+
       if (
-        !publishedVerification.converged
-        && publishedVerification.failedCount === 0
-        && attempt < attempts
+        attempt < attempts
       ) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
         continue;
@@ -665,14 +887,7 @@ Examples:
       out.blank();
     }
 
-    const jsonResults: Array<{
-      tenantKey: string;
-      tenantId: string;
-      created: number;
-      updated: number;
-      failed: number;
-      verification?: TypeSeedVerificationResult;
-    }> = [];
+    const jsonResults: TypeSeedResult[] = [];
 
     for (const tenantKey of keysToSeed) {
       const types = objectTypes[tenantKey];
@@ -709,6 +924,66 @@ Examples:
       const client = new PlatformAPIClient(publicApiUrl, tenantId);
       let created = 0, updated = 0, failed = 0;
       let remoteDocs: RemoteObjectTypeDocument[] = [];
+      let appManifestFallbackReason: string | undefined;
+
+      try {
+        const appPublishOutcome = await trySeedViaAppManifestPublish(client, tenantKey, tenantId, types);
+        if (appPublishOutcome.result) {
+          if (options.format !== 'json') {
+            out.success('Published via app object-type manifest');
+            out.info(`Result: ${chalk.green(`${appPublishOutcome.result.created} created`)}, ${chalk.cyan(`${appPublishOutcome.result.updated} updated`)}, ${chalk.red(`${appPublishOutcome.result.failed} failed`)}`);
+            const verification = appPublishOutcome.result.verification;
+            if (verification?.converged) {
+              out.success(`Verification: converged (${verification.matchedTypes.length}/${verification.requestedTypes.length} published remotely)`);
+            } else if (verification) {
+              const issues = [
+                verification.missingTypes.length > 0 ? `${verification.missingTypes.length} missing` : null,
+                verification.driftedTypes.length > 0 ? `${verification.driftedTypes.length} drifted` : null,
+                verification.failedCount > 0 ? `${verification.failedCount} failed writes` : null,
+              ].filter(Boolean).join(', ');
+              out.warn(`Verification: partial (${issues || 'remote schema did not converge'})`);
+            }
+            const syncStatus = appPublishOutcome.result.resourceApiSchemaSync?.status;
+            if (typeof syncStatus === 'string' && syncStatus) {
+              out.info(`Resource schema sync: ${chalk.cyan(syncStatus)}`);
+            }
+            out.blank();
+          }
+          jsonResults.push(appPublishOutcome.result);
+          continue;
+        }
+
+        appManifestFallbackReason = appPublishOutcome.fallbackReason;
+        if (options.format !== 'json') {
+          out.warn(`${appManifestFallbackReason ?? 'App manifest publish unavailable'}; falling back to direct Object Type writes.`);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (options.format !== 'json') {
+          out.error(message);
+        }
+        jsonResults.push({
+          tenantKey,
+          tenantId,
+          created: 0,
+          updated: 0,
+          failed: types.length,
+          publishingMode: 'app-manifest',
+          error: message,
+          verification: {
+            tenantId,
+            requestedTypes: types.map((type) => type.name),
+            matchedTypes: [],
+            missingTypes: types.map((type) => type.name),
+            driftedTypes: [],
+            createdCount: 0,
+            updatedCount: 0,
+            failedCount: types.length,
+            converged: false,
+          },
+        });
+        continue;
+      }
 
       try {
         const remoteRes = await client.getPublishedObjectTypes({ limit: 200 });
@@ -848,6 +1123,7 @@ Examples:
         out.blank();
       }
       let verification: TypeSeedVerificationResult | undefined;
+      let resourceApiSchemaSync: Record<string, unknown> | undefined;
       try {
         verification = await verifyTypeSeedConvergenceWithRetry(
           client,
@@ -881,6 +1157,16 @@ Examples:
         }
       }
 
+      if (verification.converged) {
+        resourceApiSchemaSync = await summarizeResourceApiSchemaSync(
+          await client.syncStorageSchema({
+            dryRun: false,
+            objectTypes: types.map((type) => toObjectTypeSlug(type.name)),
+          }),
+          types.map((type) => toObjectTypeSlug(type.name)),
+        );
+      }
+
       if (options.format !== 'json') {
         out.info(`Result: ${chalk.green(`${created} created`)}, ${chalk.cyan(`${updated} updated`)}, ${chalk.red(`${failed} failed`)}`);
         if (verification.converged) {
@@ -893,8 +1179,27 @@ Examples:
           ].filter(Boolean).join(', ');
           out.warn(`Verification: partial (${issues || 'remote schema did not converge'})`);
         }
+        const syncStatus = resourceApiSchemaSync?.status;
+        if (typeof syncStatus === 'string' && syncStatus) {
+          const line = `Resource schema sync: ${chalk.cyan(syncStatus)}`;
+          if (syncStatus === 'failed') {
+            out.warn(line);
+          } else {
+            out.info(line);
+          }
+        }
       }
-      jsonResults.push({ tenantKey, tenantId: tenantId!, created, updated, failed, verification });
+      jsonResults.push({
+        tenantKey,
+        tenantId: tenantId!,
+        created,
+        updated,
+        failed,
+        verification,
+        publishingMode: 'direct-object-types',
+        resourceApiSchemaSync,
+        appManifestFallbackReason,
+      });
     }
 
     if (options.format === 'json') {

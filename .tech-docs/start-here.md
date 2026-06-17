@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.4** (2026-06-15): Fix packaged CLI runtime dependency.
+The current CLI release is **v3.2.7** (2026-06-17): Release additive Entra redirect URIs and current-folder init.
 
 
 ## What The Pieces Do
@@ -44,6 +44,11 @@ npm install
 
 `eai init` uses `https://github.com/eai-tools/eai-app-template` by default and
 installs gofer workflow assets unless you pass `--no-gofer`.
+If you already created and entered a project folder, run `eai init`, enter the
+kebab-case app name, and choose the current-folder option. Scripts can use
+`eai init task-tracker --current-dir`. Current-folder init preserves unrelated
+existing files and Git metadata, and updates files that are part of the
+generated scaffold.
 
 ## Connect To A Tenant
 

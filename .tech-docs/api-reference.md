@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-06-15T02:45:59.992Z"
-source_commit: "227247b4fec1341db3f2fb4e6103a317c8ed4a3f"
+generated_at: "2026-06-17T00:11:46.800Z"
+source_commit: "95bef9c1e5f07cf2c9b44e25bf6355190ce92a59"
 ---
 # EAI CLI — API Reference
 
@@ -42,6 +42,7 @@ Scaffold a new application from the EAI app template.
 **Options**:
 - `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-tools/eai-app-template.git`)
 - `--skip-prompts` — Use defaults without interactive prompts
+- `--current-dir` — Scaffold into the current directory instead of creating `./<name>`
 - `--company-tenant <id>` — Main company tenant ID that owns this app
 - `--tenant <id>` — Deprecated alias for `--company-tenant`
 - `--parent-tenant <id>` — Immediate parent company tenant ID for the new child company
@@ -56,7 +57,15 @@ Scaffold a new application from the EAI app template.
 3. Initializes git repository and installs npm dependencies
 4. Records the company/child tenant boundary and package profile in the project manifest
 
-**No API calls** — local operation only
+By default, `eai init my-app` creates a new `./my-app` folder. Interactive init
+can scaffold into the current folder when selected, and automation can use
+`eai init my-app --current-dir`. Current-folder init preserves unrelated
+existing files and Git metadata, and updates files that are part of the
+generated scaffold.
+
+**API calls** — when authenticated, `eai init` creates or binds the app under
+the selected company tenant and evaluates the tenant capabilities used by the
+generated scaffold.
 
 ---
 
@@ -1157,7 +1166,10 @@ When a command is run with `--format json`, errors are emitted as:
 
 ## Machine-Readable Output
 
-Commands that return structured data support `--format json` for automation:
+Most data-returning commands that advertise `--format <format>` support
+`--format json` for automation. Check `eai --describe` or command help before
+scripting a subcommand; status-only commands such as `eai whoami` and quick
+`eai verify` are plain text today.
 
 ```bash
 # Get JSON output
@@ -1167,8 +1179,8 @@ eai resources list User --format json
 eai tenant list --format json | jq '.tenants[].slug'
 
 # Use in scripts
-if eai verify --format json | jq -e '.healthy' > /dev/null; then
-  echo "Platform is healthy"
+if eai verify calls --format json | jq -e '.summary.failed == 0' > /dev/null; then
+  echo "Platform contracts are healthy"
 fi
 ```
 
