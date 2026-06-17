@@ -28,6 +28,27 @@ interface PublishedTypeMatch {
   matchedType?: SchemaTypeSummary;
 }
 
+export function buildCreateResourceOutput(
+  type: string,
+  submittedData: Record<string, unknown>,
+  created: unknown,
+): Record<string, unknown> {
+  const createdResource = isRecord(created) ? created : {};
+  const id = typeof createdResource.id === 'string'
+    ? createdResource.id
+    : isRecord(createdResource.data) && typeof createdResource.data.id === 'string'
+      ? createdResource.data.id
+      : undefined;
+  const createdData = isRecord(createdResource.data) ? createdResource.data : submittedData;
+
+  return {
+    type,
+    ...createdResource,
+    id,
+    data: createdData,
+  };
+}
+
 function extractPublishedSchemaTypes(payload: unknown): SchemaTypeSummary[] {
   if (!isRecord(payload)) {
     return [];
@@ -531,12 +552,15 @@ Examples:
         process.exit(1);
       }
 
-      const created = await res.json() as { id: string };
+      const created = await res.json();
+
+      const output = buildCreateResourceOutput(type, data, created);
 
       if (options.format === 'json') {
-        out.json({ type, id: created.id, data });
+        out.json(output);
       } else {
-        succeedCommand(spinner,`Created ${type} ${chalk.dim(created.id)}`);
+        const createdId = typeof output.id === 'string' ? output.id : undefined;
+        succeedCommand(spinner,`Created ${type} ${chalk.dim(createdId ?? '')}`);
       }
     } catch (err) {
       failCommand(spinner, err instanceof Error ? err.message : String(err));

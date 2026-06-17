@@ -9,6 +9,7 @@
           "owned_paths": [
             "src/**",
             "tests/**",
+            "scripts/smoke-resourceapi-schema-sync-lifecycle.sh",
             "resources/**",
             "package.json"
           ],

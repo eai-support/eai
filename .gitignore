@@ -25,3 +25,6 @@ homebrew-tap/
 
 # QAgent runtime artifacts
 .qagent/
+
+# Durable local smoke-test output
+.smoke/
