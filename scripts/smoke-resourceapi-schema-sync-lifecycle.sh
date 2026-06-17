@@ -372,7 +372,7 @@ run_app_provisioning_job() {
 app_enrollment_is_ready() {
   local file="$1"
   json_check "$file" \
-    "(() => { const docs = data.resources || data.docs || data.body?.docs || []; const item = docs[0] || {}; const record = item.data || item; const metadata = record.metadata || {}; return record.provisioningState === 'ready' || record.readiness?.ready === true || record.readiness?.status === 'ready' || metadata.appProvisioning?.status === 'ready' || metadata.resourceApiSchemaSync?.status === 'synced'; })()"
+    "(() => { const docs = data.resources || data.docs || data.body?.docs || []; const item = docs[0] || {}; const record = item.data || item; const metadata = record.metadata || {}; return record.provisioningState === 'ready' || record.readiness?.ready === true || record.readiness?.status === 'ready' || metadata.appProvisioning?.status === 'ready'; })()"
 }
 
 ensure_app_provisioning_ready() {
