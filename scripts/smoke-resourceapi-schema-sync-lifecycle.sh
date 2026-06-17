@@ -564,10 +564,41 @@ cleanup_delete_object_type() {
   local tenant_id="$2"
   local vertical_key="$3"
   local type_name="$4"
-  cleanup_run_command "$scenario" "delete-object-type-$type_name" \
-    "$EAI_CLI_BIN" --profile "$PROFILE" publicapi delete "/v4/platform/tenants/$tenant_id/apps/$vertical_key/object-types/$type_name" \
+  local list_name="lookup-object-type-$type_name"
+
+  cleanup_run_command "$scenario" "$list_name" \
+    "$EAI_CLI_BIN" --profile "$PROFILE" publicapi get "/v4/data/resources/object-types" \
       --tenant-id "$tenant_id" \
+      --param "where[name][equals]=$type_name" \
+      --param "where[tenant][equals]=$tenant_id" \
+      --param "limit=10" \
       --format json
+
+  local list_file="$RUN_DIR/cleanup/$scenario-$list_name.stdout"
+  node - "$list_file" "$type_name" <<'NODE' | while IFS= read -r object_type_id; do
+const fs = require('node:fs');
+const file = process.argv[2];
+const typeName = process.argv[3];
+let data;
+try {
+  data = JSON.parse(fs.readFileSync(file, 'utf8'));
+} catch {
+  process.exit(0);
+}
+const body = data.body ?? data;
+const rows = body.docs || body.resources || body.body?.docs || body.body?.resources || [];
+for (const row of rows) {
+  const name = row.name || row.doc?.name || row.resource?.name;
+  const slug = row.slug || row.doc?.slug || row.resource?.slug;
+  const id = row.id || row.doc?.id || row.resource?.id;
+  if (id && (name === typeName || slug === typeName)) console.log(id);
+}
+NODE
+    cleanup_run_command "$scenario" "delete-object-type-$type_name-$object_type_id" \
+      "$EAI_CLI_BIN" --profile "$PROFILE" publicapi delete "/v4/data/resources/object-types/$object_type_id" \
+        --tenant-id "$tenant_id" \
+        --format json
+  done
 }
 
 cleanup_created_resources_from_run_dir() {
