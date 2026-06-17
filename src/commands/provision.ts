@@ -203,18 +203,26 @@ provisionCommand
   .description('Create an Entra app registration for end-user auth (Auth.js)')
   .option('--force', 'Re-check the remote app registration even if ENTRA_CLIENT_ID already exists locally', false)
   .option('--rotate-secret', 'Rotate the existing ENTRA_CLIENT_ID secret and write the new value to .env.local', false)
+  .option(
+    '--redirect-uri <uri>',
+    'Additional OAuth redirect URI to register (e.g. a deployed callback). Repeatable. Registered alongside the local callback; the platform merges with existing URIs.',
+    (val: string, prev: string[]) => prev.concat(val),
+    [] as string[],
+  )
   .option('--debug', 'Print product-safe diagnostic status and request identifiers on failure', false)
   .addHelpText('after', `
 Examples:
   $ eai provision entra
   $ eai provision entra --force
   $ eai provision entra --rotate-secret
+  $ eai provision entra --redirect-uri https://abc.com/api/auth/callback/microsoft-entra-id
 
 What happens:
   - Calls the platform provisioning API to create an Entra app registration
   - Writes ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET to .env.local
   - If the registration already exists, confirms ENTRA_CLIENT_ID without rotating the secret
   - With --rotate-secret, rotates the existing app registration secret through the platform API
+  - With --redirect-uri, registers the given deployed callback(s) in addition to the local one (the platform merges them with any already registered)
 
 Diagnostics:
   - Uses the PublicAPI URL from the active profile, .env.local BASE_URL_PUBLIC_API, environment, or the default API
@@ -316,12 +324,17 @@ Diagnostics:
     };
     const authRuntime = resolveAuthRuntime(env);
     const localCallback = `${authRuntime.siteUrl}/api/auth/callback/microsoft-entra-id`;
+    // Local callback first, then any deployed callbacks passed via --redirect-uri,
+    // deduped. The platform merges these with already-registered URIs (additive),
+    // so this never drops a previously-registered deployed callback.
+    const extraRedirectUris = (options.redirectUri as string[] | undefined) ?? [];
+    const redirectUris = [localCallback, ...extraRedirectUris.filter((u) => u !== localCallback)];
 
     try {
       result = await client.provisionEntraApp({
         tenantId,
         verticalName,
-        redirectUris: [localCallback],
+        redirectUris,
         // The platform route is intentionally idempotent: it creates on first run and
         // returns the existing app ID on later runs without attempting secret rotation.
         idempotent: true,
@@ -339,7 +352,7 @@ Diagnostics:
     if (result.scopes.length > 0) {
       optionalEnv.ENTRA_SCOPES = result.scopes.join(' ');
     }
-    optionalEnv.ENTRA_REDIRECT_URIS = localCallback;
+    optionalEnv.ENTRA_REDIRECT_URIS = redirectUris.join(' ');
     optionalEnv.AUTH_URL = authRuntime.siteUrl;
     optionalEnv.NEXTAUTH_URL = authRuntime.siteUrl;
     optionalEnv.AUTH_TRUST_HOST = 'true';
