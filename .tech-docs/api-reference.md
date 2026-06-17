@@ -42,7 +42,7 @@ Scaffold a new application from the EAI app template.
 **Options**:
 - `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-tools/eai-app-template.git`)
 - `--skip-prompts` — Use defaults without interactive prompts
-- `--current-dir` — Scaffold into the current empty directory instead of creating `./<name>`
+- `--current-dir` — Scaffold into the current directory instead of creating `./<name>`
 - `--company-tenant <id>` — Main company tenant ID that owns this app
 - `--tenant <id>` — Deprecated alias for `--company-tenant`
 - `--parent-tenant <id>` — Immediate parent company tenant ID for the new child company
@@ -58,8 +58,10 @@ Scaffold a new application from the EAI app template.
 4. Records the company/child tenant boundary and package profile in the project manifest
 
 By default, `eai init my-app` creates a new `./my-app` folder. Interactive init
-can scaffold into the current empty folder when selected, and automation can use
-`eai init my-app --current-dir`.
+can scaffold into the current folder when selected, and automation can use
+`eai init my-app --current-dir`. Current-folder init preserves unrelated
+existing files and Git metadata, and updates files that are part of the
+generated scaffold.
 
 **API calls** — when authenticated, `eai init` creates or binds the app under
 the selected company tenant and evaluates the tenant capabilities used by the

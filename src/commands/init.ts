@@ -5,8 +5,9 @@
 import { Command } from "commander";
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { promisify } from "node:util";
-import { readFile, writeFile, access, mkdir, rm, readdir } from "node:fs/promises";
+import { readFile, writeFile, access, mkdir, rm, cp, mkdtemp, chmod } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import ora from "ora";
@@ -226,6 +227,24 @@ async function cloneTemplate(
   }
 }
 
+async function copyTemplateIntoTargetDir(
+  templateSource: string,
+  targetDir: string,
+): Promise<TemplateClonePlan> {
+  const templateDir = await mkdtemp(join(tmpdir(), "eai-template-"));
+  try {
+    await chmod(templateDir, 0o700);
+    const plan = await cloneTemplate(templateSource, templateDir);
+    await rm(join(templateDir, ".git"), { recursive: true, force: true });
+    // Current-directory init updates matching scaffold-managed files while
+    // preserving unrelated files and existing repository metadata.
+    await cp(templateDir, targetDir, { recursive: true, force: true });
+    return plan;
+  } finally {
+    await rm(templateDir, { recursive: true, force: true });
+  }
+}
+
 export const initCommand = new Command("init")
   .description("Scaffold a new application")
   .argument("[name]", "Name for the app (kebab-case)")
@@ -416,11 +435,17 @@ Use --no-gofer only when you need a bare app scaffold.
     const cloneSpinner = ora("Cloning template...").start();
     const templatePlan = resolveTemplateClonePlan(options.from);
     try {
-      await cloneTemplate(options.from, targetDir, {
-        allowTargetRemoval: !targetUsesCurrentDir,
-      });
+      if (targetUsesCurrentDir) {
+        await copyTemplateIntoTargetDir(options.from, targetDir);
+      } else {
+        await cloneTemplate(options.from, targetDir, {
+          allowTargetRemoval: true,
+        });
+      }
       // Remove .git to start fresh
-      await rm(join(targetDir, ".git"), { recursive: true, force: true });
+      if (!targetUsesCurrentDir) {
+        await rm(join(targetDir, ".git"), { recursive: true, force: true });
+      }
       cloneSpinner.succeed(
         `Cloned from ${chalk.dim(templatePlan.displaySource)}`,
       );
@@ -1085,26 +1110,12 @@ async function ensureTargetDirAvailable(
   }
 }
 
-async function ensureCurrentDirAvailable(targetDir: string): Promise<void> {
-  const entries = await readdir(targetDir);
-  if (entries.length === 0) {
-    return;
-  }
-
-  out.error(
-    `Current folder "${targetDir}" is not empty. Choose the new-folder option or run eai init from an empty folder.`,
-  );
-  process.exit(1);
-}
-
 async function resolveInitTargetDir(
   projectName: string,
   useCurrentDir: boolean,
 ): Promise<string> {
   if (useCurrentDir) {
-    const targetDir = resolve(process.cwd());
-    await ensureCurrentDirAvailable(targetDir);
-    return targetDir;
+    return resolve(process.cwd());
   }
 
   const targetDir = resolve(process.cwd(), projectName);
