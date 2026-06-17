@@ -252,6 +252,22 @@ describe('resource type diagnostics', () => {
     });
   });
 
+  test('resource create output extracts id from nested server data', () => {
+    const output = buildCreateResourceOutput(
+      'tenant-integration-source',
+      { integrationKey: 'ai-provider' },
+      {
+        data: {
+          id: 'resource-1',
+          integrationKey: 'ai-provider',
+          isServiceManaged: false,
+        },
+      },
+    );
+
+    expect(output.id).toBe('resource-1');
+  });
+
   test('provisions storage through the PublicAPI storage route', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);

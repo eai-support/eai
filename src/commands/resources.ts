@@ -554,10 +554,12 @@ Examples:
 
       const created = await res.json();
 
+      const output = buildCreateResourceOutput(type, data, created);
+
       if (options.format === 'json') {
-        out.json(buildCreateResourceOutput(type, data, created));
+        out.json(output);
       } else {
-        const createdId = isRecord(created) && typeof created.id === 'string' ? created.id : undefined;
+        const createdId = typeof output.id === 'string' ? output.id : undefined;
         succeedCommand(spinner,`Created ${type} ${chalk.dim(createdId ?? '')}`);
       }
     } catch (err) {
