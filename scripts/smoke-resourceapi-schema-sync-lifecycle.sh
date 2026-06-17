@@ -338,6 +338,33 @@ run_app_provisioning_job() {
       --format json
 }
 
+app_enrollment_is_ready() {
+  local file="$1"
+  json_check "$file" \
+    "(() => { const docs = data.resources || data.docs || data.body?.docs || []; const item = docs[0] || {}; const record = item.data || item; const metadata = record.metadata || {}; return record.provisioningState === 'ready' || record.readiness?.ready === true || record.readiness?.status === 'ready' || metadata.appProvisioning?.status === 'ready' || metadata.resourceApiSchemaSync?.status === 'synced'; })()"
+}
+
+ensure_app_provisioning_ready() {
+  local scenario="$1"
+  local tenant_id="$2"
+  local key="$3"
+  local precheck="app-provisioning-precheck-$key"
+
+  run_capture "$scenario" "$precheck" \
+    "$EAI_CLI_BIN" --profile "$PROFILE" resources list tenant-vertical-enrollment \
+      --tenant-id "$tenant_id" \
+      --where "{\"verticalKey\":{\"equals\":\"$key\"}}" \
+      --limit 5 \
+      --format json >/dev/null
+
+  if app_enrollment_is_ready "$RUN_DIR/$scenario/$precheck.stdout"; then
+    log "$scenario :: app $key already has ready resources; skipping provisioning job"
+    return 0
+  fi
+
+  run_app_provisioning_job "$scenario" "$tenant_id" "$key"
+}
+
 seed_types() {
   local scenario="$1"
   local tenant_id="$2"
@@ -448,7 +475,7 @@ scenario_new_tenant_new_vertical() {
 
   ensure_vertical_exists "$scenario" "$NEW_TENANT_ID" "$NEW_TENANT_KEY" "Codex New Tenant Smoke" || return 1
   provision_vertical_storage "$scenario" "$NEW_TENANT_ID" "$NEW_TENANT_KEY" || return 1
-  run_app_provisioning_job "$scenario" "$NEW_TENANT_ID" "$NEW_TENANT_KEY" || return 1
+  ensure_app_provisioning_ready "$scenario" "$NEW_TENANT_ID" "$NEW_TENANT_KEY" || return 1
   seed_types "$scenario" "$NEW_TENANT_ID" "$NEW_TENANT_KEY" || return 1
   wait_for_sync "$scenario" "$NEW_TENANT_ID" "$NEW_TENANT_KEY" || return 1
 
@@ -464,7 +491,7 @@ scenario_existing_tenant_new_vertical() {
 
   ensure_vertical_exists "$scenario" "$PARENT_TENANT_ID" "$NEW_VERTICAL_KEY" "Codex Existing Tenant Smoke" || return 1
   provision_vertical_storage "$scenario" "$PARENT_TENANT_ID" "$NEW_VERTICAL_KEY" || return 1
-  run_app_provisioning_job "$scenario" "$PARENT_TENANT_ID" "$NEW_VERTICAL_KEY" || return 1
+  ensure_app_provisioning_ready "$scenario" "$PARENT_TENANT_ID" "$NEW_VERTICAL_KEY" || return 1
   seed_types "$scenario" "$PARENT_TENANT_ID" "$NEW_VERTICAL_KEY" || return 1
   wait_for_sync "$scenario" "$PARENT_TENANT_ID" "$NEW_VERTICAL_KEY" || return 1
 
@@ -479,7 +506,7 @@ scenario_existing_tenant_existing_vertical() {
   [[ "${EAI_SMOKE_SKIP_EXISTING_EXISTING:-}" == "1" ]] && { log "$scenario :: skipped"; return 0; }
 
   provision_vertical_storage "$scenario" "$PARENT_TENANT_ID" "$EXISTING_VERTICAL_KEY" || return 1
-  run_app_provisioning_job "$scenario" "$PARENT_TENANT_ID" "$EXISTING_VERTICAL_KEY" || return 1
+  ensure_app_provisioning_ready "$scenario" "$PARENT_TENANT_ID" "$EXISTING_VERTICAL_KEY" || return 1
   seed_types "$scenario" "$PARENT_TENANT_ID" "$EXISTING_VERTICAL_KEY" || return 1
   wait_for_sync "$scenario" "$PARENT_TENANT_ID" "$EXISTING_VERTICAL_KEY" || return 1
 
