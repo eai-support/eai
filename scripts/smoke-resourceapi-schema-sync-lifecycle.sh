@@ -177,6 +177,32 @@ resolve_parent_tenant() {
   fi
 }
 
+storage_tenant_scope() {
+  local tenant_id="$1"
+  local scope
+  scope="$(printf '%s' "$tenant_id" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+//g')"
+  scope="${scope: -12}"
+  if [[ -z "$scope" ]]; then
+    scope="tenant"
+  fi
+  if [[ ! "$scope" =~ ^[a-z] ]]; then
+    scope="t$scope"
+  fi
+  printf '%s' "$scope"
+}
+
+storage_app_key() {
+  printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/-/_/g; s/[^a-z0-9_]+/_/g; s/^_+//; s/_+$//'
+}
+
+storage_name_prefix() {
+  local tenant_id="$1"
+  local app_key="$2"
+  printf '%s_%s' "$(storage_tenant_scope "$tenant_id")" "$(storage_app_key "$app_key")"
+}
+
 write_project_config() {
   cat > "$PROJECT_DIR/.env.local" <<EOF
 NEXT_PUBLIC_APP_NAME=resourceapi-schema-sync-smoke
@@ -184,8 +210,13 @@ EAI_VERTICAL_KEY=$EXISTING_VERTICAL_KEY
 EOF
 
   local suffix="${SMOKE_ID//[^a-zA-Z0-9]/}"
-  local pg_table="codex_pg_${suffix}"
-  local doc_collection="codex_doc_${suffix}"
+  local new_tenant_id="${NEW_TENANT_ID:-$PARENT_TENANT_ID}"
+  local new_tenant_prefix
+  local new_vertical_prefix
+  local existing_vertical_prefix
+  new_tenant_prefix="$(storage_name_prefix "$new_tenant_id" "$NEW_TENANT_KEY")"
+  new_vertical_prefix="$(storage_name_prefix "$PARENT_TENANT_ID" "$NEW_VERTICAL_KEY")"
+  existing_vertical_prefix="$(storage_name_prefix "$PARENT_TENANT_ID" "$EXISTING_VERTICAL_KEY")"
 
   cat > "$PROJECT_DIR/src/eai.config/object-types.ts" <<EOF
 export const objectTypes = {
@@ -208,8 +239,8 @@ export const objectTypes = {
         documentdb: {
           databaseAlias: 'tenant-documentdb',
           databaseName: 'tenant-control-plane',
-          collectionName: '${doc_collection}_new_tenant',
-          partitionKey: 'tenantId',
+          collectionName: '${new_tenant_prefix}_doc_new',
+          partitionKey: '/tenantId',
         },
       },
     },
@@ -234,7 +265,7 @@ export const objectTypes = {
           databaseAlias: 'tenant-postgres',
           tenantSchemaStrategy: 'per-tenant-database',
           schemaName: 'resources',
-          tableName: '${pg_table}_new_vertical',
+          tableName: '${new_vertical_prefix}_pg_new',
         },
       },
     },
@@ -259,7 +290,7 @@ export const objectTypes = {
           databaseAlias: 'tenant-postgres',
           tenantSchemaStrategy: 'per-tenant-database',
           schemaName: 'resources',
-          tableName: '${pg_table}_existing_vertical',
+          tableName: '${existing_vertical_prefix}_pg_existing',
         },
       },
     },
@@ -281,8 +312,8 @@ export const objectTypes = {
         documentdb: {
           databaseAlias: 'tenant-documentdb',
           databaseName: 'tenant-control-plane',
-          collectionName: '${doc_collection}_existing_vertical',
-          partitionKey: 'tenantId',
+          collectionName: '${existing_vertical_prefix}_doc_existing',
+          partitionKey: '/tenantId',
         },
       },
     },
@@ -476,6 +507,7 @@ scenario_new_tenant_new_vertical() {
   ensure_vertical_exists "$scenario" "$NEW_TENANT_ID" "$NEW_TENANT_KEY" "Codex New Tenant Smoke" || return 1
   provision_vertical_storage "$scenario" "$NEW_TENANT_ID" "$NEW_TENANT_KEY" || return 1
   ensure_app_provisioning_ready "$scenario" "$NEW_TENANT_ID" "$NEW_TENANT_KEY" || return 1
+  write_project_config
   seed_types "$scenario" "$NEW_TENANT_ID" "$NEW_TENANT_KEY" || return 1
   wait_for_sync "$scenario" "$NEW_TENANT_ID" "$NEW_TENANT_KEY" || return 1
 
