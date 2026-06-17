@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.2.6.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.2.7.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -275,7 +275,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.6** (2026-06-16): Fix CLI tenant-region PublicAPI env sync so .env.local follows active tenant homeRegion and EU tenants no longer hit AU ResourceAPI passive schema snapshots.
+The current CLI release is **v3.2.7** (2026-06-17): Release additive Entra redirect URIs and current-folder init.
 
 
 ## What The Pieces Do
@@ -305,9 +305,11 @@ npm install
 
 `eai init` uses `https://github.com/eai-tools/eai-app-template` by default and
 installs gofer workflow assets unless you pass `--no-gofer`.
-If you already created and entered an empty project folder, run `eai init`,
-enter the kebab-case app name, and choose the current-folder option. Scripts can
-use `eai init task-tracker --current-dir`.
+If you already created and entered a project folder, run `eai init`, enter the
+kebab-case app name, and choose the current-folder option. Scripts can use
+`eai init task-tracker --current-dir`. Current-folder init preserves unrelated
+existing files and Git metadata, and updates files that are part of the
+generated scaffold.
 
 ## Connect To A Tenant
 
@@ -369,10 +371,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.6 |
-| Released | 2026-06-16 |
-| Last Material Change | Fix CLI tenant-region PublicAPI env sync so .env.local follows active tenant homeRegion and EU tenants no longer hit AU ResourceAPI passive schema snapshots |
-| Source Commit | `4e28aeeb7b11532abbf38d50204ee22099b61666` |
+| Version | 3.2.7 |
+| Released | 2026-06-17 |
+| Last Material Change | Release additive Entra redirect URIs and current-folder init |
+| Source Commit | `95bef9c1e5f07cf2c9b44e25bf6355190ce92a59` |
 
 
 ## Common Workflow
@@ -1541,7 +1543,7 @@ Scaffold a new application from the EAI app template.
 **Options**:
 - `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-tools/eai-app-template.git`)
 - `--skip-prompts` — Use defaults without interactive prompts
-- `--current-dir` — Scaffold into the current empty directory instead of creating `./<name>`
+- `--current-dir` — Scaffold into the current directory instead of creating `./<name>`
 - `--company-tenant <id>` — Main company tenant ID that owns this app
 - `--tenant <id>` — Deprecated alias for `--company-tenant`
 - `--parent-tenant <id>` — Immediate parent company tenant ID for the new child company
@@ -1557,8 +1559,10 @@ Scaffold a new application from the EAI app template.
 4. Records the company/child tenant boundary and package profile in the project manifest
 
 By default, `eai init my-app` creates a new `./my-app` folder. Interactive init
-can scaffold into the current empty folder when selected, and automation can use
-`eai init my-app --current-dir`.
+can scaffold into the current folder when selected, and automation can use
+`eai init my-app --current-dir`. Current-folder init preserves unrelated
+existing files and Git metadata, and updates files that are part of the
+generated scaffold.
 
 **API calls** — when authenticated, `eai init` creates or binds the app under
 the selected company tenant and evaluates the tenant capabilities used by the

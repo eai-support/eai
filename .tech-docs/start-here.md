@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.6** (2026-06-16): Fix CLI tenant-region PublicAPI env sync so .env.local follows active tenant homeRegion and EU tenants no longer hit AU ResourceAPI passive schema snapshots.
+The current CLI release is **v3.2.7** (2026-06-17): Release additive Entra redirect URIs and current-folder init.
 
 
 ## What The Pieces Do

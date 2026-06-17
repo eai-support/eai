@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.6 |
-| Released | 2026-06-16 |
-| Last Material Change | Fix CLI tenant-region PublicAPI env sync so .env.local follows active tenant homeRegion and EU tenants no longer hit AU ResourceAPI passive schema snapshots |
-| Source Commit | `4e28aeeb7b11532abbf38d50204ee22099b61666` |
+| Version | 3.2.7 |
+| Released | 2026-06-17 |
+| Last Material Change | Release additive Entra redirect URIs and current-folder init |
+| Source Commit | `95bef9c1e5f07cf2c9b44e25bf6355190ce92a59` |
 
 
 ## Common Workflow
