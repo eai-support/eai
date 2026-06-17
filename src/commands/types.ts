@@ -444,6 +444,23 @@ export async function appObjectTypePublishFallbackReason(
   if (response.status === 405) {
     return `app object-type manifest ${phase} route unavailable`;
   }
+  // Newer platforms expose the manifest route but return 404 "App was not found
+  // for this company" when the tenant has no app enrollment for this vertical
+  // (e.g. a freshly created tenant seeded straight from the repo). That is not a
+  // hard failure — fall back to direct (tenant-scoped) Object Type writes, the
+  // same behaviour older platforms gave via 405. Body-gated so genuine
+  // route/resource 404s still surface.
+  if (response.status === 404) {
+    let body = '';
+    try {
+      body = await response.clone().text();
+    } catch {
+      body = '';
+    }
+    if (/app was not found|not found for this company/i.test(body)) {
+      return `app object-type manifest ${phase} route unavailable (tenant has no app enrollment)`;
+    }
+  }
   return null;
 }
 

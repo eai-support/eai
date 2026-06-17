@@ -165,6 +165,11 @@ describe('app object-type publish helpers', () => {
     await expect(appObjectTypePublishFallbackReason(new Response('{}', { status: 404 }), 'publish')).resolves.toBeNull();
   });
 
+  test('falls back to direct object-type writes when the tenant has no app enrollment (404 app not found)', async () => {
+    const res = new Response('App was not found for this company.', { status: 404 });
+    await expect(appObjectTypePublishFallbackReason(res, 'save')).resolves.toMatch(/no app enrollment/);
+  });
+
   test('uses AdminAPI resource schema sync metadata from manifest publication', async () => {
     const objectType = {
       name: 'SubmissionFile',
