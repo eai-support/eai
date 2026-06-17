@@ -1093,6 +1093,25 @@ describe('describeFailedPlatformResponse', () => {
       '400 Bad Request - Properties 1 > Default Value: This field has an invalid input. (request request-123)',
     );
   });
+
+  test('does not throw when the server nests a structured object in message', async () => {
+    // Regression: a non-string `message` previously crashed on `.trim()`
+    // (the post-seed schema-sync summary observed this against ResourceAPI).
+    const response = new Response(
+      JSON.stringify({ message: { reason: 'conflict', fields: ['slug'] } }),
+      { status: 409, statusText: 'Conflict', headers: { 'x-request-id': 'req-9' } },
+    );
+
+    const detail = await describeFailedPlatformResponse(response);
+    expect(detail).toContain('409 Conflict');
+    expect(detail).toContain('conflict');
+    expect(detail).toContain('(request req-9)');
+  });
+
+  test('falls back to status when there is no body', async () => {
+    const response = new Response('', { status: 404, statusText: 'Not Found' });
+    await expect(describeFailedPlatformResponse(response)).resolves.toBe('404 Not Found');
+  });
 });
 
 describe('buildPayloadEqualsParams', () => {

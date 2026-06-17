@@ -399,7 +399,9 @@ function findMatchingRemoteType(
 export async function describeFailedPlatformResponse(response: Response): Promise<string> {
   const context = await extractServerErrorContext(response);
   const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
-  const detail = (context.serverMessage ?? context.rawBody).trim();
+  // String() guards against a non-string slipping through (defense in depth;
+  // extractServerErrorContext already coerces, but this line must never throw).
+  const detail = String(context.serverMessage ?? context.rawBody ?? '').trim();
 
   if (!detail) {
     return status;
@@ -451,7 +453,7 @@ export async function appObjectTypePublishFallbackReason(
   // same behaviour older platforms gave via 405. Body-gated so genuine
   // route/resource 404s still surface.
   if (response.status === 404) {
-    let body = '';
+    let body: string;
     try {
       body = await response.clone().text();
     } catch {

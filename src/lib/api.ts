@@ -193,6 +193,26 @@ export class PlatformAPIRequestError extends Error {
  * Always returns the raw text so ``--debug`` can show the full body, even
  * when no message field could be parsed.
  */
+/**
+ * Coerce a server-provided error field to a string. Platform responses
+ * sometimes nest a structured object in message/error/detail/code despite the
+ * declared string shape; returning a non-string here previously crashed
+ * callers that assume a string (e.g. `.trim()`).
+ */
+function coerceServerMessage(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value == null) {
+    return undefined;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 export async function extractServerErrorContext(res: Response): Promise<{
   serverMessage?: string;
   serverCode?: string;
@@ -219,17 +239,17 @@ export async function extractServerErrorContext(res: Response): Promise<{
     if (typeof parsed.detail === 'string') {
       serverMessage = parsed.detail;
     } else if (parsed.detail && typeof parsed.detail === 'object') {
-      serverMessage = parsed.detail.message ?? parsed.detail.error;
-      serverCode = parsed.detail.code;
+      serverMessage = coerceServerMessage(parsed.detail.message ?? parsed.detail.error);
+      serverCode = coerceServerMessage(parsed.detail.code);
     }
     if (!serverMessage) {
-      serverMessage = parsed.message ?? parsed.error;
+      serverMessage = coerceServerMessage(parsed.message ?? parsed.error);
     }
     if (!serverMessage && Array.isArray(parsed.errors) && parsed.errors[0]?.message) {
-      serverMessage = parsed.errors[0].message;
-      serverCode = serverCode ?? parsed.errors[0].code;
+      serverMessage = coerceServerMessage(parsed.errors[0].message);
+      serverCode = serverCode ?? coerceServerMessage(parsed.errors[0].code);
     }
-    serverCode = serverCode ?? parsed.code;
+    serverCode = serverCode ?? coerceServerMessage(parsed.code);
 
     return { serverMessage, serverCode, requestId, rawBody };
   } catch {
