@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.2.7.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.2.8.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -275,7 +275,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.7** (2026-06-17): Release additive Entra redirect URIs and current-folder init.
+The current CLI release is **v3.2.8** (2026-06-17): Release resource lifecycle smoke coverage.
 
 
 ## What The Pieces Do
@@ -371,10 +371,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.7 |
+| Version | 3.2.8 |
 | Released | 2026-06-17 |
-| Last Material Change | Release additive Entra redirect URIs and current-folder init |
-| Source Commit | `95bef9c1e5f07cf2c9b44e25bf6355190ce92a59` |
+| Last Material Change | Release resource lifecycle smoke coverage |
+| Source Commit | `10868de11d693882437323c6898dc6852f81288f` |
 
 
 ## Common Workflow

@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.7 |
+| Version | 3.2.8 |
 | Released | 2026-06-17 |
-| Last Material Change | Release additive Entra redirect URIs and current-folder init |
-| Source Commit | `95bef9c1e5f07cf2c9b44e25bf6355190ce92a59` |
+| Last Material Change | Release resource lifecycle smoke coverage |
+| Source Commit | `10868de11d693882437323c6898dc6852f81288f` |
 
 
 ## Common Workflow
