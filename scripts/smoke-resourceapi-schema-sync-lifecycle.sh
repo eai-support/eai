@@ -505,6 +505,7 @@ scenario_existing_tenant_existing_vertical() {
   local scenario="existing-tenant-existing-vertical-mixed"
   [[ "${EAI_SMOKE_SKIP_EXISTING_EXISTING:-}" == "1" ]] && { log "$scenario :: skipped"; return 0; }
 
+  ensure_vertical_exists "$scenario" "$PARENT_TENANT_ID" "$EXISTING_VERTICAL_KEY" "Codex Existing Vertical Smoke" || return 1
   provision_vertical_storage "$scenario" "$PARENT_TENANT_ID" "$EXISTING_VERTICAL_KEY" || return 1
   ensure_app_provisioning_ready "$scenario" "$PARENT_TENANT_ID" "$EXISTING_VERTICAL_KEY" || return 1
   seed_types "$scenario" "$PARENT_TENANT_ID" "$EXISTING_VERTICAL_KEY" || return 1
