@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PlatformAPIClient } from '../../src/lib/api.js';
 import {
+  buildCreateResourceOutput,
   buildMissingPublishedTypeMessage,
   matchPublishedType,
   normalizeBatchCreateItems,
@@ -204,6 +205,51 @@ describe('resource type diagnostics', () => {
         }),
       }),
     );
+  });
+
+  test('resource create JSON output uses server defaulted data when returned', () => {
+    const output = buildCreateResourceOutput(
+      'tenant-integration-source',
+      { integrationKey: 'ai-provider' },
+      {
+        id: 'resource-1',
+        tenant_id: 'tenant-1',
+        object_type: 'tenant-integration-source',
+        data: {
+          integrationKey: 'ai-provider',
+          isServiceManaged: false,
+        },
+        version: 1,
+      },
+    );
+
+    expect(output).toEqual({
+      type: 'tenant-integration-source',
+      id: 'resource-1',
+      tenant_id: 'tenant-1',
+      object_type: 'tenant-integration-source',
+      data: {
+        integrationKey: 'ai-provider',
+        isServiceManaged: false,
+      },
+      version: 1,
+    });
+  });
+
+  test('resource create JSON output falls back to submitted data for minimal create responses', () => {
+    const output = buildCreateResourceOutput(
+      'tenant-integration-source',
+      { integrationKey: 'ai-provider' },
+      { id: 'resource-1' },
+    );
+
+    expect(output).toEqual({
+      type: 'tenant-integration-source',
+      id: 'resource-1',
+      data: {
+        integrationKey: 'ai-provider',
+      },
+    });
   });
 
   test('provisions storage through the PublicAPI storage route', async () => {
