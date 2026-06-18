@@ -24,6 +24,7 @@ import {
   validateObjectTypeStorageMetadata,
   verifyTypeSeedConvergence,
   verifyTypeSeedConvergenceWithRetry,
+  waitForResourceApiSchemaVisibility,
 } from '../../src/commands/types.js';
 import { createTestEnvironment } from '../helpers/test-env.js';
 
@@ -163,6 +164,11 @@ describe('app object-type publish helpers', () => {
 
   test('does not fall back to direct object-type writes when manifest route is missing', async () => {
     await expect(appObjectTypePublishFallbackReason(new Response('{}', { status: 404 }), 'publish')).resolves.toBeNull();
+  });
+
+  test('falls back to direct object-type writes when the tenant has no app enrollment (404 app not found)', async () => {
+    const res = new Response('App was not found for this company.', { status: 404 });
+    await expect(appObjectTypePublishFallbackReason(res, 'save')).resolves.toMatch(/no app enrollment/);
   });
 
   test('uses AdminAPI resource schema sync metadata from manifest publication', async () => {
@@ -617,6 +623,122 @@ describe('verifyTypeSeedConvergenceWithRetry', () => {
 
     expect(verification.converged).toBe(false);
     expect(verification.driftedTypes).toEqual(['Customer']);
+  });
+});
+
+describe('waitForResourceApiSchemaVisibility', () => {
+  test('waits for queued app-manifest ResourceAPI sync to become schema-visible', async () => {
+    let schemaCalls = 0;
+    const client = {
+      getResourceStorageSchemaStatus: async () => ({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+      }),
+      getSchema: async () => {
+        schemaCalls += 1;
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => ({
+            objectTypes: schemaCalls >= 2
+              ? [{ name: 'Customer', slug: 'customer' }]
+              : [],
+          }),
+        };
+      },
+    } as unknown as PlatformAPIClient;
+
+    await expect(waitForResourceApiSchemaVisibility(
+      client,
+      'tenant-1',
+      ['Customer'],
+      { status: 'queued', objectTypes: ['customer'] },
+      { attempts: 3, delayMs: 0 },
+    )).resolves.toMatchObject({
+      status: 'synced',
+      schemaVisibility: 'visible',
+    });
+    expect(schemaCalls).toBe(2);
+  });
+
+  test('accepts passive storage schema-status objectTypeSlugs as schema-visible', async () => {
+    const client = {
+      getResourceStorageSchemaStatus: async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          objectTypeSlugs: ['customer', 'order-line'],
+        }),
+      }),
+      getSchema: async () => {
+        throw new Error('generic schema should not be polled after schema-status converges');
+      },
+    } as unknown as PlatformAPIClient;
+
+    await expect(waitForResourceApiSchemaVisibility(
+      client,
+      'tenant-1',
+      ['Customer', 'OrderLine'],
+      { status: 'queued', objectTypes: ['customer', 'order-line'] },
+      { attempts: 3, delayMs: 0 },
+    )).resolves.toMatchObject({
+      status: 'synced',
+      schemaVisibility: 'visible',
+      schemaVisibilitySource: 'storage.schema-status',
+    });
+  });
+
+  test('marks queued app-manifest sync as failed when ResourceAPI schema stays stale', async () => {
+    const client = {
+      getResourceStorageSchemaStatus: async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({ objectTypeSlugs: [] }),
+      }),
+      getSchema: async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({ objectTypes: [] }),
+      }),
+    } as unknown as PlatformAPIClient;
+
+    await expect(waitForResourceApiSchemaVisibility(
+      client,
+      'tenant-1',
+      ['Customer'],
+      { status: 'queued', objectTypes: ['customer'] },
+      { attempts: 2, delayMs: 0 },
+    )).resolves.toMatchObject({
+      status: 'failed',
+      errorCode: 'RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT',
+      details: {
+        missingTypes: ['Customer'],
+      },
+    });
+  });
+
+  test('does not poll ResourceAPI schema for terminal sync metadata', async () => {
+    const client = {
+      getResourceStorageSchemaStatus: async () => {
+        throw new Error('schema status should not be polled for terminal metadata');
+      },
+      getSchema: async () => {
+        throw new Error('schema should not be polled for terminal metadata');
+      },
+    } as unknown as PlatformAPIClient;
+
+    await expect(waitForResourceApiSchemaVisibility(
+      client,
+      'tenant-1',
+      ['Customer'],
+      { status: 'synced' },
+      { attempts: 1, delayMs: 0 },
+    )).resolves.toEqual({ status: 'synced' });
   });
 });
 
@@ -1087,6 +1209,25 @@ describe('describeFailedPlatformResponse', () => {
     await expect(describeFailedPlatformResponse(response)).resolves.toBe(
       '400 Bad Request - Properties 1 > Default Value: This field has an invalid input. (request request-123)',
     );
+  });
+
+  test('does not throw when the server nests a structured object in message', async () => {
+    // Regression: a non-string `message` previously crashed on `.trim()`
+    // (the post-seed schema-sync summary observed this against ResourceAPI).
+    const response = new Response(
+      JSON.stringify({ message: { reason: 'conflict', fields: ['slug'] } }),
+      { status: 409, statusText: 'Conflict', headers: { 'x-request-id': 'req-9' } },
+    );
+
+    const detail = await describeFailedPlatformResponse(response);
+    expect(detail).toContain('409 Conflict');
+    expect(detail).toContain('conflict');
+    expect(detail).toContain('(request req-9)');
+  });
+
+  test('falls back to status when there is no body', async () => {
+    const response = new Response('', { status: 404, statusText: 'Not Found' });
+    await expect(describeFailedPlatformResponse(response)).resolves.toBe('404 Not Found');
   });
 });
 

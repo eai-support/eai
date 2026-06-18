@@ -35,6 +35,9 @@ Environment knobs:
   EAI_SMOKE_EXISTING_VERTICAL_KEY     Existing app key for scenario 3. Default: codex-resourceapi-smoke
   EAI_SMOKE_ID                        Stable ID. Reuse to test update/idempotency. Default: UTC timestamp
   EAI_SMOKE_OUTPUT_ROOT               Output root. Default: .smoke/resourceapi-schema-sync-lifecycle
+  EAI_SMOKE_CLEANUP=1                 Delete smoke-created resources after the run.
+  EAI_SMOKE_CLEANUP_ONLY=1            Delete artifacts for EAI_SMOKE_ID without running scenarios.
+  EAI_SMOKE_CLEANUP_NEW_TENANT_ID     Optional tenant id for cleanup when tenant-create output is unavailable.
   EAI_SMOKE_SKIP_NEW_TENANT=1         Skip scenario 1.
   EAI_SMOKE_SKIP_EXISTING_NEW=1       Skip scenario 2.
   EAI_SMOKE_SKIP_EXISTING_EXISTING=1  Skip scenario 3.
@@ -44,13 +47,25 @@ Examples:
   npm run smoke:resourceapi-lifecycle
   EAI_CLI_BIN=/opt/homebrew/bin/eai EAI_SMOKE_PROFILE=dev npm run smoke:resourceapi-lifecycle
   EAI_SMOKE_ID=20260617 npm run smoke:resourceapi-lifecycle
+  EAI_SMOKE_ID=20260617 EAI_SMOKE_CLEANUP_ONLY=1 npm run smoke:resourceapi-lifecycle
 EOF
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
-fi
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  --cleanup)
+    EAI_SMOKE_CLEANUP=1
+    shift
+    ;;
+  --cleanup-only)
+    EAI_SMOKE_CLEANUP=1
+    EAI_SMOKE_CLEANUP_ONLY=1
+    shift
+    ;;
+esac
 
 mkdir -p "$RUN_DIR" "$PROJECT_DIR/src/eai.config"
 
@@ -372,7 +387,7 @@ run_app_provisioning_job() {
 app_enrollment_is_ready() {
   local file="$1"
   json_check "$file" \
-    "(() => { const docs = data.resources || data.docs || data.body?.docs || []; const item = docs[0] || {}; const record = item.data || item; const metadata = record.metadata || {}; return record.provisioningState === 'ready' || record.readiness?.ready === true || record.readiness?.status === 'ready' || metadata.appProvisioning?.status === 'ready' || metadata.resourceApiSchemaSync?.status === 'synced'; })()"
+    "(() => { const docs = data.resources || data.docs || data.body?.docs || []; const item = docs[0] || {}; const record = item.data || item; const metadata = record.metadata || {}; return record.provisioningState === 'ready' || record.readiness?.ready === true || record.readiness?.status === 'ready' || metadata.appProvisioning?.status === 'ready'; })()"
 }
 
 ensure_app_provisioning_ready() {
@@ -482,6 +497,162 @@ create_and_delete_resource() {
       --format json || return 1
 }
 
+cleanup_run_command() {
+  local scenario="$1"
+  local name="$2"
+  shift 2
+  local dir="$RUN_DIR/cleanup"
+  mkdir -p "$dir"
+  local stdout_file="$dir/$scenario-$name.stdout"
+  local stderr_file="$dir/$scenario-$name.stderr"
+
+  log "cleanup :: $scenario :: $name"
+  set +e
+  "$@" >"$stdout_file" 2>"$stderr_file"
+  local status=$?
+  set -e
+  if [[ "$status" -ne 0 ]]; then
+    if grep -Eiq '404|not found|does not exist|No resources found' "$stdout_file" "$stderr_file"; then
+      log "cleanup :: $scenario :: $name already absent"
+      return 0
+    fi
+    printf '[smoke][cleanup][warn] %s: %s failed; see %s and %s\n' "$scenario" "$name" "$stdout_file" "$stderr_file" >&2
+    return 0
+  fi
+}
+
+cleanup_delete_resource_records() {
+  local scenario="$1"
+  local tenant_id="$2"
+  local object_type="$3"
+  local where_json="$4"
+  local name="$5"
+  local list_name="cleanup-list-$object_type-$name"
+  cleanup_run_command "$scenario" "$list_name" \
+    "$EAI_CLI_BIN" --profile "$PROFILE" resources list "$object_type" \
+      --tenant-id "$tenant_id" \
+      --where "$where_json" \
+      --limit 50 \
+      --format json
+
+  local list_file="$RUN_DIR/cleanup/$scenario-$list_name.stdout"
+  node - "$list_file" <<'NODE' | while IFS= read -r resource_id; do
+const fs = require('node:fs');
+const file = process.argv[2];
+let data;
+try {
+  data = JSON.parse(fs.readFileSync(file, 'utf8'));
+} catch {
+  process.exit(0);
+}
+const rows = data.resources || data.docs || data.body?.resources || data.body?.docs || [];
+for (const row of rows) {
+  const id = row.id || row.resource?.id || row.doc?.id;
+  if (id) console.log(id);
+}
+NODE
+    cleanup_run_command "$scenario" "delete-$object_type-$resource_id" \
+      "$EAI_CLI_BIN" --profile "$PROFILE" resources delete "$object_type" "$resource_id" \
+        --tenant-id "$tenant_id" \
+        --force \
+        --format json
+  done
+}
+
+cleanup_delete_object_type() {
+  local scenario="$1"
+  local tenant_id="$2"
+  local vertical_key="$3"
+  local type_name="$4"
+  local list_name="lookup-object-type-$type_name"
+
+  cleanup_run_command "$scenario" "$list_name" \
+    "$EAI_CLI_BIN" --profile "$PROFILE" publicapi get "/v4/data/resources/object-types" \
+      --tenant-id "$tenant_id" \
+      --param "where[name][equals]=$type_name" \
+      --param "where[tenant][equals]=$tenant_id" \
+      --param "limit=10" \
+      --format json
+
+  local list_file="$RUN_DIR/cleanup/$scenario-$list_name.stdout"
+  node - "$list_file" "$type_name" <<'NODE' | while IFS= read -r object_type_id; do
+const fs = require('node:fs');
+const file = process.argv[2];
+const typeName = process.argv[3];
+let data;
+try {
+  data = JSON.parse(fs.readFileSync(file, 'utf8'));
+} catch {
+  process.exit(0);
+}
+const body = data.body ?? data;
+const rows = body.docs || body.resources || body.body?.docs || body.body?.resources || [];
+for (const row of rows) {
+  const name = row.name || row.doc?.name || row.resource?.name;
+  const slug = row.slug || row.doc?.slug || row.resource?.slug;
+  const id = row.id || row.doc?.id || row.resource?.id;
+  if (id && (name === typeName || slug === typeName)) console.log(id);
+}
+NODE
+    cleanup_run_command "$scenario" "delete-object-type-$type_name-$object_type_id" \
+      "$EAI_CLI_BIN" --profile "$PROFILE" publicapi delete "/v4/data/resources/object-types/$object_type_id" \
+        --tenant-id "$tenant_id" \
+        --format json
+  done
+}
+
+cleanup_created_resources_from_run_dir() {
+  local scenario="$1"
+  local tenant_id="$2"
+  shopt -s nullglob
+  for stdout_file in "$RUN_DIR/$scenario"/resource-create-*.stdout; do
+    local type_name
+    type_name="$(basename "$stdout_file" | sed -E 's/^resource-create-//; s/\.stdout$//')"
+    local resource_id
+    resource_id="$(json_read "$stdout_file" "data.id || data.resource?.id || data.body?.id" || true)"
+    if [[ -n "$resource_id" ]]; then
+      cleanup_run_command "$scenario" "delete-created-resource-$type_name-$resource_id" \
+        "$EAI_CLI_BIN" --profile "$PROFILE" resources delete "$type_name" "$resource_id" \
+          --tenant-id "$tenant_id" \
+          --force \
+          --format json
+    fi
+  done
+  shopt -u nullglob
+}
+
+cleanup_smoke_artifacts() {
+  local suffix="${SMOKE_ID//[^a-zA-Z0-9]/}"
+  local new_tenant_id="${NEW_TENANT_ID:-${EAI_SMOKE_CLEANUP_NEW_TENANT_ID:-}}"
+  if [[ -z "$new_tenant_id" && -f "$RUN_DIR/new-tenant-new-vertical-documentdb/tenant-create.stdout" ]]; then
+    new_tenant_id="$(json_read "$RUN_DIR/new-tenant-new-vertical-documentdb/tenant-create.stdout" \
+      "data.tenant?.doc?.id || data.tenant?.id || data.doc?.id || data.id || data.status?.tenantId" \
+      || true)"
+  fi
+
+  log "cleanup :: run id $SMOKE_ID"
+
+  cleanup_delete_object_type "existing-tenant-new-vertical-postgresql" "$PARENT_TENANT_ID" "$NEW_VERTICAL_KEY" "CodexExistingTenantPostgresql$suffix"
+  cleanup_delete_resource_records "existing-tenant-new-vertical-postgresql" "$PARENT_TENANT_ID" "vertical-product-config" "{\"productKey\":{\"equals\":\"$NEW_VERTICAL_KEY\"}}" "$NEW_VERTICAL_KEY"
+  cleanup_delete_resource_records "existing-tenant-new-vertical-postgresql" "$PARENT_TENANT_ID" "tenant-vertical-enrollment" "{\"verticalKey\":{\"equals\":\"$NEW_VERTICAL_KEY\"}}" "$NEW_VERTICAL_KEY"
+  cleanup_created_resources_from_run_dir "existing-tenant-new-vertical-postgresql" "$PARENT_TENANT_ID"
+
+  cleanup_delete_object_type "existing-tenant-existing-vertical-mixed" "$PARENT_TENANT_ID" "$EXISTING_VERTICAL_KEY" "CodexExistingVerticalPostgresql$suffix"
+  cleanup_delete_object_type "existing-tenant-existing-vertical-mixed" "$PARENT_TENANT_ID" "$EXISTING_VERTICAL_KEY" "CodexExistingVerticalDocumentDb$suffix"
+  cleanup_created_resources_from_run_dir "existing-tenant-existing-vertical-mixed" "$PARENT_TENANT_ID"
+
+  if [[ -n "$new_tenant_id" ]]; then
+    cleanup_delete_object_type "new-tenant-new-vertical-documentdb" "$new_tenant_id" "$NEW_TENANT_KEY" "CodexNewTenantDocumentDb$suffix"
+    cleanup_delete_resource_records "new-tenant-new-vertical-documentdb" "$new_tenant_id" "vertical-product-config" "{\"productKey\":{\"equals\":\"$NEW_TENANT_KEY\"}}" "$NEW_TENANT_KEY"
+    cleanup_delete_resource_records "new-tenant-new-vertical-documentdb" "$new_tenant_id" "tenant-vertical-enrollment" "{\"verticalKey\":{\"equals\":\"$NEW_TENANT_KEY\"}}" "$NEW_TENANT_KEY"
+    cleanup_created_resources_from_run_dir "new-tenant-new-vertical-documentdb" "$new_tenant_id"
+    cleanup_run_command "new-tenant-new-vertical-documentdb" "delete-tenant-$new_tenant_id" \
+      "$EAI_CLI_BIN" --profile "$PROFILE" tenant delete "$new_tenant_id" --force --format json
+  else
+    log "cleanup :: no new tenant id available; set EAI_SMOKE_CLEANUP_NEW_TENANT_ID if tenant-create succeeded without a captured stdout"
+  fi
+}
+
 scenario_new_tenant_new_vertical() {
   local scenario="new-tenant-new-vertical-documentdb"
   [[ "${EAI_SMOKE_SKIP_NEW_TENANT:-}" == "1" ]] && { log "$scenario :: skipped"; return 0; }
@@ -566,12 +737,22 @@ main() {
 
   write_project_config
   cd "$PROJECT_DIR" || exit 1
+
+  if [[ "${EAI_SMOKE_CLEANUP_ONLY:-}" == "1" ]]; then
+    cleanup_smoke_artifacts
+    exit 0
+  fi
+
   run_required "setup" "types-validate" "$EAI_CLI_BIN" --profile "$PROFILE" types validate || true
 
   if [[ "${#FAILURES[@]}" -eq 0 ]]; then
     scenario_new_tenant_new_vertical || true
     scenario_existing_tenant_new_vertical || true
     scenario_existing_tenant_existing_vertical || true
+  fi
+
+  if [[ "${EAI_SMOKE_CLEANUP:-}" == "1" ]]; then
+    cleanup_smoke_artifacts
   fi
 
   {

@@ -85,6 +85,22 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('reads ResourceAPI passive schema status through the public data router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.getResourceStorageSchemaStatus()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/data/resources/tenant-123/storage/schema-status')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
   test('saves app object type manifests through the public platform router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
