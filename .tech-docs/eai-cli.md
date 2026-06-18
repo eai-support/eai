@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.8 |
-| Released | 2026-06-17 |
-| Last Material Change | Release resource lifecycle smoke coverage |
-| Source Commit | `10868de11d693882437323c6898dc6852f81288f` |
+| Version | 3.2.9 |
+| Released | 2026-06-18 |
+| Last Material Change | Release tenant home region and Gofer updates |
+| Source Commit | `0aa39723963e414c593cfe811899482f780a106e` |
 
 
 ## Common Workflow
