@@ -125,14 +125,17 @@ describe('dedicated tenant lifecycle', () => {
       data: { title: 'Initial tenant case', status: 'draft' },
     };
     const provisionRequests: Array<Record<string, unknown>> = [];
+    const tenantCreateRequests: Array<Record<string, unknown>> = [];
 
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/tenants`, async ({ request }) => {
         const body = await request.json() as Record<string, unknown>;
+        tenantCreateRequests.push(body);
         return HttpResponse.json({
           id: CREATED_TENANT_ID,
           slug: CREATED_TENANT_SLUG,
           displayName: body.displayName,
+          homeRegion: body.homeRegion,
         }, { status: 201 });
       }),
       http.get(`${API_BASE}/v4/identity/tenants`, async ({ request }) => {
@@ -201,6 +204,7 @@ describe('dedicated tenant lifecycle', () => {
       '--name', 'Dedicated Tenant',
       '--slug', CREATED_TENANT_SLUG,
       '--allow-root',
+      '--home-region', 'eu',
       '--format', 'json',
     ], { from: 'user' });
 
@@ -266,11 +270,19 @@ describe('dedicated tenant lifecycle', () => {
         provisioning_mode: 'dedicated-tenant-storage',
       },
     ]);
+    expect(tenantCreateRequests).toEqual([
+      expect.objectContaining({
+        displayName: 'Dedicated Tenant',
+        slug: CREATED_TENANT_SLUG,
+        homeRegion: 'eu',
+      }),
+    ]);
   });
 
   test('creates a child tenant with active tenant context without redundant bootstrap when already usable', async () => {
     const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const platformHeaders: Array<Record<string, string>> = [];
+    const platformBodies: Array<Record<string, unknown>> = [];
 
     mockServer.server.use(
       http.get(`${API_BASE}/v4/identity/tenants`, async ({ request }) => {
@@ -284,6 +296,8 @@ describe('dedicated tenant lifecycle', () => {
               isActive: true,
               roles: ['tenant-admin'],
               isTenantAdmin: true,
+              homeRegion: 'eu',
+              hqCountryCode: 'DK',
             },
             {
               id: CREATED_TENANT_ID,
@@ -299,10 +313,12 @@ describe('dedicated tenant lifecycle', () => {
       http.post(`${API_BASE}/v4/platform/tenants/${PARENT_TENANT_ID}/children`, async ({ request }) => {
         platformHeaders.push(Object.fromEntries(request.headers.entries()));
         const body = await request.json() as Record<string, unknown>;
+        platformBodies.push(body);
         return HttpResponse.json({
           id: CREATED_TENANT_ID,
           slug: CREATED_TENANT_SLUG,
           displayName: body.displayName,
+          homeRegion: body.homeRegion,
         }, { status: 201 });
       }),
     );
@@ -320,6 +336,7 @@ describe('dedicated tenant lifecycle', () => {
       tenant: expect.objectContaining({
         id: CREATED_TENANT_ID,
         slug: CREATED_TENANT_SLUG,
+        homeRegion: 'eu',
       }),
       bootstrap: null,
       usability: expect.objectContaining({
@@ -329,5 +346,14 @@ describe('dedicated tenant lifecycle', () => {
     });
     expect(platformHeaders).toHaveLength(1);
     expect(platformHeaders[0]['x-tenant-id']).toBe(PARENT_TENANT_ID);
+    expect(platformBodies).toEqual([
+      {
+        displayName: 'Dedicated Tenant',
+        slug: CREATED_TENANT_SLUG,
+        usecase: 'generic',
+        homeRegion: 'eu',
+        starterTemplate: 'eai-app-template',
+      },
+    ]);
   });
 });

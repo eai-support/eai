@@ -5,11 +5,13 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
+import inquirer from 'inquirer';
 import { findProjectRoot } from '../lib/config.js';
 import {
   PlatformAPIClient,
   parseApiError,
   type ChildTenantBootstrapResult,
+  type TenantHomeRegion,
   type ParsedApiError,
 } from '../lib/api.js';
 import { loadTokens } from '../lib/auth.js';
@@ -18,6 +20,7 @@ import {
   fetchTenantAdminMemberships,
   filterTenantAdminEntries,
   getTenantRoles,
+  normalizeHomeRegion,
   normalizeTenantEntries,
   refreshTenantUsabilityStatus,
   resolveActiveTenantContext,
@@ -51,6 +54,12 @@ export interface TenantCreateOutcome {
   usability: TenantUsabilityStatus;
 }
 
+const HOME_REGION_CHOICES: Array<{ name: string; value: TenantHomeRegion }> = [
+  { name: 'Australia / New Zealand (au)', value: 'au' },
+  { name: 'Canada / Americas (ca)', value: 'ca' },
+  { name: 'Europe / UK (eu)', value: 'eu' },
+];
+
 interface TenantBootstrapAdminCommandOptions {
   parent: string;
   child: string;
@@ -67,6 +76,38 @@ export function extractCreatedTenantRecord(payload: Record<string, unknown>): Re
   }
 
   return payload;
+}
+
+function normalizeTenantCreateHomeRegion(value: unknown): TenantHomeRegion | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const region = normalizeHomeRegion(String(value));
+  if (!region) {
+    throw new Error('home-region must be one of au, ca, or eu.');
+  }
+  return region;
+}
+
+async function resolveChildTenantHomeRegion(options: {
+  requested?: unknown;
+  parentHomeRegion?: string | null;
+  interactive: boolean;
+}): Promise<TenantHomeRegion | undefined> {
+  const requested = normalizeTenantCreateHomeRegion(options.requested);
+  if (requested) return requested;
+
+  const parentRegion = normalizeHomeRegion(options.parentHomeRegion);
+  if (!options.interactive) return parentRegion || undefined;
+
+  const answer = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'homeRegion',
+      message: 'Child tenant home region:',
+      default: parentRegion || undefined,
+      choices: HOME_REGION_CHOICES,
+    },
+  ]);
+  return normalizeTenantCreateHomeRegion(answer.homeRegion);
 }
 
 export function buildTenantListZeroState(tokens: {
@@ -454,6 +495,7 @@ tenantCommand
   )
   .option('--industry <industry>', 'Signup/onboarding industry segment')
   .option('--starter-template <key>', 'Starter application template key', 'eai-app-template')
+  .option('--home-region <region>', 'Tenant home region: au|ca|eu')
   .option('--allow-root', 'Allow root tenant creation for administrative backfills', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -466,9 +508,23 @@ tenantCommand
       process.exit(1);
     }
 
+    let rootHomeRegion: TenantHomeRegion | undefined;
+    if (!options.parent) {
+      try {
+        rootHomeRegion = normalizeTenantCreateHomeRegion(options.homeRegion);
+      } catch (err) {
+        out.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+      if (!rootHomeRegion) {
+        out.error('--home-region au|ca|eu is required with --allow-root because root tenants cannot inherit a parent region.');
+        process.exit(1);
+      }
+    }
+
     const root = await findProjectRoot();
     const publicApiUrl = await resolvePublicApiUrl(root || undefined);
-    const spinner = options.format === 'json' ? null : ora(`Creating tenant "${options.name}"...`).start();
+    let spinner: ReturnType<typeof ora> | null = null;
 
     try {
       const context = await resolveActiveTenantContext({
@@ -478,6 +534,15 @@ tenantCommand
         tenantId: options.parent || undefined,
       });
       const client = new PlatformAPIClient(publicApiUrl, context.activeTenant.id);
+      const tenantHomeRegion = options.parent
+        ? await resolveChildTenantHomeRegion({
+          requested: options.homeRegion,
+          parentHomeRegion: context.activeTenant.homeRegion,
+          interactive: options.format !== 'json' && Boolean(process.stdin.isTTY && process.stdout.isTTY),
+        })
+        : rootHomeRegion;
+
+      spinner = options.format === 'json' ? null : ora(`Creating tenant "${options.name}"...`).start();
 
       const res = await client.createTenant({
         name: options.name,
@@ -487,6 +552,7 @@ tenantCommand
         usecase: options.usecase,
         industry: options.industry,
         starterTemplate: options.starterTemplate,
+        homeRegion: tenantHomeRegion,
       });
 
       if (!res.ok) {
@@ -604,7 +670,12 @@ tenantCommand
         }
       }
     } catch (err) {
-      if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      if (spinner) {
+        spinner.fail(message);
+      } else {
+        out.error(message);
+      }
       process.exit(1);
     }
   });

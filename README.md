@@ -74,6 +74,8 @@ eai tenant select
 #    `eai tenant create --parent <id>` now creates the tenant record,
 #    attempts first-admin bootstrap for the current login, and only marks
 #    the tenant usable after direct tenant-admin membership is confirmed.
+#    The child home region defaults to the parent region; pass
+#    `--home-region au|ca|eu` when the child must use another region.
 
 # 5. Sync project environment if your app needs local config/secrets
 eai env pull --include-secrets
