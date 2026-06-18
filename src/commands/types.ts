@@ -78,6 +78,7 @@ export function shouldFailTypeSeedRun(
 }
 
 const RESOURCEAPI_SCHEMA_SYNC_NON_FAILURE_STATUSES = new Set(['pending', 'queued', 'synced']);
+const RESOURCEAPI_SCHEMA_SYNC_ASYNC_STATUSES = new Set(['pending', 'queued']);
 
 function isBlockingResourceApiSchemaSyncStatus(status: string | undefined): boolean {
   if (status === undefined || status === '') {
@@ -768,6 +769,81 @@ export async function verifyTypeSeedConvergenceWithRetry(
   throw new Error('schema verification did not produce a result');
 }
 
+export async function waitForResourceApiSchemaVisibility(
+  client: PlatformAPIClient,
+  tenantId: string,
+  requestedTypes: string[],
+  resourceApiSchemaSync: Record<string, unknown> | undefined,
+  options?: {
+    attempts?: number;
+    delayMs?: number;
+  },
+): Promise<Record<string, unknown> | undefined> {
+  const status = isRecord(resourceApiSchemaSync)
+    ? String(resourceApiSchemaSync.status ?? '').toLowerCase()
+    : '';
+  if (!RESOURCEAPI_SCHEMA_SYNC_ASYNC_STATUSES.has(status)) {
+    return resourceApiSchemaSync;
+  }
+
+  const attempts = Math.max(options?.attempts ?? 45, 1);
+  const delayMs = Math.max(options?.delayMs ?? 1000, 0);
+  let lastVerification: TypeSeedVerificationResult | undefined;
+  let lastError: string | undefined;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const schemaResponse = await client.getSchema();
+      if (!schemaResponse.ok) {
+        lastError = `schema re-fetch failed: ${schemaResponse.status} ${schemaResponse.statusText}`;
+      } else {
+        const verification = verifyTypeSeedConvergence(
+          tenantId,
+          requestedTypes,
+          await schemaResponse.json() as unknown,
+          {
+            createdCount: 0,
+            updatedCount: 0,
+            failedCount: 0,
+          },
+        );
+        lastVerification = verification;
+        if (verification.converged) {
+          return {
+            ...resourceApiSchemaSync,
+            status: 'synced',
+            schemaVisibility: 'visible',
+          };
+        }
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+
+    if (attempt < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  return {
+    ...resourceApiSchemaSync,
+    status: 'failed',
+    errorCode: 'RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT',
+    message: 'ResourceAPI schema sync was queued, but requested Object Types were not visible from the ResourceAPI schema read path before the CLI timeout.',
+    details: {
+      requestedTypes,
+      ...(lastVerification
+        ? {
+            matchedTypes: lastVerification.matchedTypes,
+            missingTypes: lastVerification.missingTypes,
+            driftedTypes: lastVerification.driftedTypes,
+          }
+        : {}),
+      ...(lastError ? { lastError } : {}),
+    },
+  };
+}
+
 async function selectTenantKey(
   objectTypes: Record<string, ObjectTypeDefinition[]>,
   explicitTenantKey?: string,
@@ -948,6 +1024,12 @@ Examples:
       try {
         const appPublishOutcome = await trySeedViaAppManifestPublish(client, tenantKey, tenantId, types);
         if (appPublishOutcome.result) {
+          appPublishOutcome.result.resourceApiSchemaSync = await waitForResourceApiSchemaVisibility(
+            client,
+            tenantId,
+            types.map((type) => type.name),
+            appPublishOutcome.result.resourceApiSchemaSync,
+          );
           if (options.format !== 'json') {
             out.success('Published via app object-type manifest');
             out.info(`Result: ${chalk.green(`${appPublishOutcome.result.created} created`)}, ${chalk.cyan(`${appPublishOutcome.result.updated} updated`)}, ${chalk.red(`${appPublishOutcome.result.failed} failed`)}`);

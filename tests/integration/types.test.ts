@@ -24,6 +24,7 @@ import {
   validateObjectTypeStorageMetadata,
   verifyTypeSeedConvergence,
   verifyTypeSeedConvergenceWithRetry,
+  waitForResourceApiSchemaVisibility,
 } from '../../src/commands/types.js';
 import { createTestEnvironment } from '../helpers/test-env.js';
 
@@ -622,6 +623,80 @@ describe('verifyTypeSeedConvergenceWithRetry', () => {
 
     expect(verification.converged).toBe(false);
     expect(verification.driftedTypes).toEqual(['Customer']);
+  });
+});
+
+describe('waitForResourceApiSchemaVisibility', () => {
+  test('waits for queued app-manifest ResourceAPI sync to become schema-visible', async () => {
+    let schemaCalls = 0;
+    const client = {
+      getSchema: async () => {
+        schemaCalls += 1;
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => ({
+            objectTypes: schemaCalls >= 2
+              ? [{ name: 'Customer', slug: 'customer' }]
+              : [],
+          }),
+        };
+      },
+    } as unknown as PlatformAPIClient;
+
+    await expect(waitForResourceApiSchemaVisibility(
+      client,
+      'tenant-1',
+      ['Customer'],
+      { status: 'queued', objectTypes: ['customer'] },
+      { attempts: 3, delayMs: 0 },
+    )).resolves.toMatchObject({
+      status: 'synced',
+      schemaVisibility: 'visible',
+    });
+    expect(schemaCalls).toBe(2);
+  });
+
+  test('marks queued app-manifest sync as failed when ResourceAPI schema stays stale', async () => {
+    const client = {
+      getSchema: async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({ objectTypes: [] }),
+      }),
+    } as unknown as PlatformAPIClient;
+
+    await expect(waitForResourceApiSchemaVisibility(
+      client,
+      'tenant-1',
+      ['Customer'],
+      { status: 'queued', objectTypes: ['customer'] },
+      { attempts: 2, delayMs: 0 },
+    )).resolves.toMatchObject({
+      status: 'failed',
+      errorCode: 'RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT',
+      details: {
+        missingTypes: ['Customer'],
+      },
+    });
+  });
+
+  test('does not poll ResourceAPI schema for terminal sync metadata', async () => {
+    const client = {
+      getSchema: async () => {
+        throw new Error('schema should not be polled for terminal metadata');
+      },
+    } as unknown as PlatformAPIClient;
+
+    await expect(waitForResourceApiSchemaVisibility(
+      client,
+      'tenant-1',
+      ['Customer'],
+      { status: 'synced' },
+      { attempts: 1, delayMs: 0 },
+    )).resolves.toEqual({ status: 'synced' });
   });
 });
 
