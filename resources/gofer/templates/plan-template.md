@@ -28,7 +28,7 @@ CLARIFICATION]
 **Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
 **Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
 **App Stack Policy**: [For app delivery: EAI Platform including app template
-first, Azure second, all other technology only as an approved exception]
+first, Azure second, all other technology only as an approved exception]  
 **Project Type**: [single/web/mobile - determines source structure]  
 **Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps
 or NEEDS CLARIFICATION]  

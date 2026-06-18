@@ -203,6 +203,14 @@ with an unrelated non-EAI stack.
      --describe`.
    - Record the selected app key with `eai vertical select <key> --format json`
      when available.
+   - Do not claim platform readiness from app creation alone. Later stages must
+     keep real EAI app gates separate: `eai vertical provision <key> --tenant-id <tenant-id> --select --format json`,
+     `eai types validate`,
+     `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json`,
+     `eai types diff`, `eai resources schema --tenant-id <tenant-id> --format json`,
+     `eai resources storage doctor --tenant-id <tenant-id> --format json`,
+     `eai verify storage --tenant-id <tenant-id>`, workflow readiness, and
+     preview/runtime readiness.
    - Provision storage, Entra app registration, environment sync, object types,
      and deployment only in the later plan/tasks/implement stages after the
      business scenario and UI approval gates are complete.
@@ -219,6 +227,9 @@ with an unrelated non-EAI stack.
      and collaborate, then resolve/explain/improve.
    - Keep private tenant IDs, tokens, secrets, and `.env.local` contents out of
      Gofer artifacts. Record only product-safe readiness states and evidence.
+   - Treat `.specify/references/platform/eai-repo-contract.md` and
+     `.specify/references/platform/eai-error-catalog.yaml` as the repo-owned
+     fallback contract whenever live docs are unavailable or a command fails.
 
 ### EAI Preflight Artifact
 

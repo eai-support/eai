@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/1_gofer_research.md
-  canonicalChecksum: 3462f953709b1414be6b6545abcc4db5905673657faa7187d969c1fb675df1d8
+  canonicalChecksum: f6e154b1b1f97bb530c8f68ba92db5d62c6f554505eddef56c26cf956c86ede0
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -460,6 +460,13 @@ explicitly `enterpriseai`, generate:
    - Record the selected package profile and block-catalog readiness evidence
      from `eai blocks list`, `eai blocks readiness`, and selected
      `eai blocks describe <id>` calls.
+   - Record resource provisioning state, object-type publish state,
+     schema/storage health state, workflow readiness, last completed gate,
+     blocked gate, and next recovery command so later stages inherit the real
+     platform lifecycle instead of guessing.
+   - Use `.specify/references/platform/eai-repo-contract.md` and
+     `.specify/references/platform/eai-error-catalog.yaml` whenever recovery,
+     command ordering, or drift handling is unclear.
    - Record only product-safe status labels such as `ready`,
      `account_required`, `login_required`, `tenant_required`,
      `operator_required`, `template_required`, `user_confirmation_required`,

@@ -578,6 +578,15 @@ precondition to downstream implementation tasks:
 
 `tasks.md` MUST also include:
 
+- EAI readiness unblock -> `eai-preflight.md` before any remote platform task.
+- App resource provisioning -> `eai vertical provision` before any claim of
+  object-type seeding or preview readiness.
+- Object-type publish -> `eai types seed` only after provisioning and
+  validation are complete.
+- Schema and storage health -> `eai resources schema` / storage diagnostics / `eai verify`
+  before preview/runtime signoff.
+- Pinned `eai major.minor` deployment tasks whenever deployment, rollout, or
+  environment coordination depends on a specific EAI CLI generation.
 - Contract-pack coverage tasks for actors, object types, workflows/journeys,
   permissions/tenant boundaries, APIs/events, deployment assumptions, and
   acceptance tests.
@@ -617,6 +626,8 @@ When a command-line workflow is expected to update platform state, `tasks.md`
 MUST order work like this unless the plan proves a different authoritative
 dependency:
 
+0. Respect the real EAI app gates before any claim of seeding, schema
+   readiness, or preview readiness.
 1. Define or extend the authoritative storage model.
 2. Implement platform-side orchestrator writes into those stores.
 3. Implement secret/config persistence if secrets or environment state are part

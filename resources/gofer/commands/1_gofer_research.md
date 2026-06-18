@@ -433,6 +433,13 @@ explicitly `enterpriseai`, generate:
    - Record the selected package profile and block-catalog readiness evidence
      from `eai blocks list`, `eai blocks readiness`, and selected
      `eai blocks describe <id>` calls.
+   - Record resource provisioning state, object-type publish state,
+     schema/storage health state, workflow readiness, last completed gate,
+     blocked gate, and next recovery command so later stages inherit the real
+     platform lifecycle instead of guessing.
+   - Use `.specify/references/platform/eai-repo-contract.md` and
+     `.specify/references/platform/eai-error-catalog.yaml` whenever recovery,
+     command ordering, or drift handling is unclear.
    - Record only product-safe status labels such as `ready`,
      `account_required`, `login_required`, `tenant_required`,
      `operator_required`, `template_required`, `user_confirmation_required`,

@@ -10,12 +10,14 @@ export const CORE_SENTINELS = [
   GOFER_VERSION_FILE,
   path.join('.specify', 'commands', '0_business_scenario.md'),
   path.join('.specify', 'templates', 'spec-template.md'),
-  path.join('.specify', 'templates', 'goal-ledger-template.json'),
   path.join('.specify', 'scripts', 'bash', 'create-new-feature.sh'),
-  path.join('.specify', 'scripts', 'node', 'gofer-closed-loop-audit.mjs'),
   path.join('.specify', 'scripts', 'node', 'parse-stage-command.mjs'),
   path.join('.specify', 'scripts', 'hooks', 'post-tool-use.mjs'),
   path.join('.specify', 'scripts', 'powershell', 'install-optional-tools.ps1'),
+  path.join('.specify', 'references', 'platform', 'README.md'),
+  path.join('.specify', 'references', 'platform', 'eai.md'),
+  path.join('.specify', 'references', 'platform', 'eai-repo-contract.md'),
+  path.join('.specify', 'references', 'platform', 'eai-error-catalog.yaml'),
   path.join('.specify', 'templates', 'gofer-model-policy.yaml'),
   path.join('.specify', 'memory', 'gofer-model-policy.yaml'),
   path.join('.specify', 'specs'),
@@ -46,6 +48,11 @@ const WORKSPACE_MARKERS = [
   'Cargo.toml',
   '.specify',
 ];
+
+const EAI_CONFIG_DIR = path.join('src', 'eai.config');
+const EAI_OBJECT_TYPES_MARKER = path.join(EAI_CONFIG_DIR, 'object-types.ts');
+const EAI_REGISTER_MARKER = path.join(EAI_CONFIG_DIR, 'register.ts');
+const EAI_MANIFEST_MARKER = 'manifest.yml';
 
 const GOFER_GITIGNORE_ENTRIES = [
   '.specify/hooks/',
@@ -104,6 +111,7 @@ function createEmptyProjectInfo(workspaceRoot) {
     lintCommand: null,
     formatCommand: null,
     packageManager: null,
+    eaiInitialized: false,
   };
 }
 
@@ -233,6 +241,7 @@ async function detectPackageManager(workspaceRoot) {
 export async function detectProjectInfo(workspaceRoot) {
   const info = createEmptyProjectInfo(workspaceRoot);
   info.packageManager = await detectPackageManager(workspaceRoot);
+  info.eaiInitialized = await detectEaiInitialized(workspaceRoot);
 
   if (await pathExists(path.join(workspaceRoot, 'tsconfig.json'))) {
     info.language = 'typescript';
@@ -305,6 +314,17 @@ export async function detectProjectInfo(workspaceRoot) {
   return info;
 }
 
+async function detectEaiInitialized(workspaceRoot) {
+  const [hasEaiConfigDir, hasObjectTypes, hasRegister, hasManifest] = await Promise.all([
+    pathExists(path.join(workspaceRoot, EAI_CONFIG_DIR)),
+    pathExists(path.join(workspaceRoot, EAI_OBJECT_TYPES_MARKER)),
+    pathExists(path.join(workspaceRoot, EAI_REGISTER_MARKER)),
+    pathExists(path.join(workspaceRoot, EAI_MANIFEST_MARKER)),
+  ]);
+
+  return (hasObjectTypes && hasRegister) || (hasEaiConfigDir && hasManifest);
+}
+
 function formatLanguage(language) {
   const names = {
     typescript: 'TypeScript',
@@ -374,6 +394,20 @@ function buildCodeStyleSection(projectInfo) {
   ];
 
   return lines.join('\n');
+}
+
+function buildEaiRepoContractSection(projectInfo) {
+  if (!projectInfo.eaiInitialized) {
+    return '';
+  }
+
+  return `## EAI Repo Contract
+
+- This repo appears to be initialized from the EAI app template. Before app-delivery work, read \`.specify/references/platform/eai-repo-contract.md\` and \`.specify/references/platform/eai-error-catalog.yaml\`.
+- If CLI, login, tenant, template, or Gofer readiness is missing or stale, run \`/gofer:eai-first-run\` before building.
+- Use \`eai update --check\`, \`eai template check --format json\`, \`eai gofer refresh --check --format json\`, and \`eai workflow readiness --format json\` when the CLI advertises them before assuming the repo is current.
+- Build on EAI Platform first and Azure second. Treat non-EAI runtimes as explicit exceptions only.
+- Keep provisioning, types seed, schema/storage health, workflow readiness, and preview as separate gates.`;
 }
 
 export function buildAgentsMd(projectInfo, stages) {
@@ -455,6 +489,8 @@ ${buildCodeStyleSection(projectInfo)}
 
 This project uses Gofer for spec-driven development. Run \`/0_business_scenario\` to start the core pipeline (business scenario -> research -> specify -> plan -> tasks -> implement -> validate). \`/6_gofer_validate\` is the terminal quality gate and includes the final engineering review loop. Artifacts in \`.specify/specs/{feature}/\`.
 
+${buildEaiRepoContractSection(projectInfo)}
+
 ## Core Principles
 
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
@@ -463,7 +499,9 @@ This project uses Gofer for spec-driven development. Run \`/0_business_scenario\
 `;
 }
 
-export function buildClaudeMd() {
+export function buildClaudeMd(projectInfo) {
+  const eaiSection = buildEaiRepoContractSection(projectInfo);
+
   return `# CLAUDE.md
 
 See @AGENTS.md for project conventions, commands, and code style.
@@ -500,11 +538,14 @@ See @AGENTS.md for project conventions, commands, and code style.
 ## Gofer Pipeline
 
 Run \`/0_business_scenario\` to start the core pipeline: business scenario -> research -> specify -> plan -> tasks -> implement -> validate. \`/6_gofer_validate\` is the terminal quality gate and includes the final engineering review loop. Use \`/7_gofer_save\` and \`/8_gofer_resume\` for session continuity. Artifacts go to \`.specify/specs/{feature}/\`.
+
+${eaiSection}
 `;
 }
 
 export function buildCopilotInstructions(projectInfo) {
   const frameworkBit = projectInfo.framework ? ` using ${projectInfo.framework}` : '';
+  const eaiSection = buildEaiRepoContractSection(projectInfo);
   return `# Copilot Instructions
 
 ## Project Overview
@@ -516,6 +557,8 @@ export function buildCopilotInstructions(projectInfo) {
 This project uses Gofer for spec-driven development. Run \`/0_business_scenario\` to start the core pipeline: business scenario -> research -> specify -> plan -> tasks -> implement -> validate.
 
 Key commands: \`/1_gofer_research\`, \`/2_gofer_specify\`, \`/3_gofer_plan\`, \`/4_gofer_tasks\`, \`/5_gofer_implement\`, \`/6_gofer_validate\`. \`/6_gofer_validate\` is the terminal quality gate and includes the final engineering review loop. Use \`/7_gofer_save\` and \`/8_gofer_resume\` for session continuity. Artifacts in \`.specify/specs/{feature}/\`.
+
+${eaiSection}
 
 ## Code Quality
 
@@ -699,7 +742,8 @@ This folder contains all project specifications for AI-driven feature developmen
 
 - **memory/** - Constitution, decisions, and project principles
 - **specs/** - Feature specifications (numbered: 001-feature-name/)
-- **templates/** - Templates for specs, plans, tasks, and goal ledgers
+- **templates/** - Templates for specs, plans, and tasks
+- **references/** - Public-safe EAI fallback references and recovery guides
 - **scripts/** - Helper scripts for workflow automation
 - **logs/** - Execution logs and support artifacts
 
@@ -711,9 +755,7 @@ Run the unified Gofer pipeline with:
 /0_business_scenario Add user authentication with OAuth2 and JWT
 \`\`\`
 
-Artifacts are stored in \`.specify/specs/{feature}/\`, including
-\`goal-ledger.json\`, \`traceability.md\`, and \`goal-rebaseline-report.md\`
-for closed-loop delivery checks.
+Artifacts are stored in \`.specify/specs/{feature}/\`.
 
 ## Model Policy
 
@@ -783,6 +825,7 @@ export async function bootstrapWorkspace({
 
   const coreCopies = [
     path.join('.specify', 'commands'),
+    path.join('.specify', 'references'),
     path.join('.specify', 'templates'),
     path.join('.specify', 'scripts', 'bash'),
     path.join('.specify', 'scripts', 'node'),
@@ -820,7 +863,13 @@ export async function bootstrapWorkspace({
   }
 
   if (normalizedHost === 'claude') {
-    if (await writeFileIfMissing(path.join(workspaceRoot, 'CLAUDE.md'), buildClaudeMd(), dryRun)) {
+    if (
+      await writeFileIfMissing(
+        path.join(workspaceRoot, 'CLAUDE.md'),
+        buildClaudeMd(projectInfo),
+        dryRun
+      )
+    ) {
       changed.push('CLAUDE.md');
     }
     await installClaudeHooksSettings(workspaceRoot, dryRun);

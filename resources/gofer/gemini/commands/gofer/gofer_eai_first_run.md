@@ -262,18 +262,17 @@ Include the minimum provenance schema:
 The generated first-run report must contain these sections:
 
 - `## Provenance`
-- `## Host And Platform`
 - `## Workspace Root`
-- `## Prerequisite Checks`
+- `## Environment Check`
 - `## EAI CLI`
-- `## Login And Tenant`
-- `## Template Initialization`
-- `## Gofer Scaffold`
+- `## Tenant And Login`
+- `## Template Readiness`
+- `## Drift And Recovery`
 - `## Next Action`
 
 Each section should include:
 
-- Host, OS, shell, and workspace root
+- Host, OS, shell, workspace root, and prerequisite tool versions
 - Git, Node.js, npm, and EAI CLI versions
 - EAI registry status
 - EAI CLI release status from `eai update --check`
@@ -283,9 +282,9 @@ Each section should include:
 - Login status without tokens
 - Tenant readiness without private payloads
 - Template readiness
-- Template/Gofer drift status and any `E001` explanation
-- Gofer scaffold readiness
-- Project path
+- Template/Gofer drift status, the next recovery command, and any `E001`
+  explanation
+- Gofer scaffold readiness and project path
 - Next action
 
 ## Step 11: Start The Pipeline
