@@ -50,6 +50,7 @@ export interface ChildTenantBootstrapRequest {
 }
 
 export type TenantUsecase = 'council' | 'retail' | 'healthcare' | 'finance' | 'manufacturing' | 'generic';
+export type TenantHomeRegion = 'au' | 'ca' | 'eu';
 
 export interface ChildTenantBootstrapResult {
   parentTenantId: string;
@@ -73,6 +74,7 @@ export interface TenantAppCreateRequest {
   appUrl?: string;
   usecase?: TenantUsecase;
   industry?: string;
+  homeRegion?: TenantHomeRegion;
 }
 
 export interface CapabilityEvaluationRequest {
@@ -1068,6 +1070,7 @@ export class PlatformAPIClient {
     usecase?: TenantUsecase;
     industry?: string;
     starterTemplate?: string;
+    homeRegion?: TenantHomeRegion;
   }): Promise<Response> {
     if (data.parent) {
       return this.publicRequest(
@@ -1077,6 +1080,7 @@ export class PlatformAPIClient {
           displayName: data.name,
           slug: data.slug,
           usecase: data.usecase || 'generic',
+          ...(data.homeRegion ? { homeRegion: data.homeRegion } : {}),
           ...(data.industry ? { industry: data.industry } : {}),
           ...(data.starterTemplate ? { starterTemplate: data.starterTemplate } : {}),
         },
@@ -1090,6 +1094,7 @@ export class PlatformAPIClient {
       parentTenant: data.parent,
       domain: data.domain,
       usecase: data.usecase || 'generic',
+      ...(data.homeRegion ? { homeRegion: data.homeRegion } : {}),
       ...(data.industry ? { industry: data.industry } : {}),
       ...(data.starterTemplate ? { starterTemplate: data.starterTemplate } : {}),
     });

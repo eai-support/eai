@@ -187,7 +187,18 @@ export async function syncProjectPublicApiUrlForTenant(
 export function buildPublicApiEnvSyncNotice(
   result: PublicApiEnvSyncResult | undefined,
 ): PublicApiEnvSyncNotice | null {
-  if (!result || result.status !== 'updated') return null;
+  if (!result) return null;
+
+  if (result.status === 'skipped' && result.reason === 'unresolved-home-region') {
+    return {
+      level: 'warn',
+      message:
+        'Active tenant homeRegion is missing; regional PublicAPI routing may fall back. ' +
+        'Ask a tenant or platform admin to repair tenant metadata before provisioning resources.',
+    };
+  }
+
+  if (result.status !== 'updated') return null;
 
   const target = `BASE_URL_PUBLIC_API=${result.publicApiUrl}`;
   if (result.previousPublicApiUrl) {
