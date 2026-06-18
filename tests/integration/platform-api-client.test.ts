@@ -85,6 +85,22 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('reads ResourceAPI passive schema status through the public data router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.getResourceStorageSchemaStatus()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/data/resources/tenant-123/storage/schema-status')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
   test('saves app object type manifests through the public platform router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
@@ -174,6 +190,33 @@ describe('PlatformAPIClient', () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       userOid: 'user-oid',
       userEmail: 'user@example.com',
+    })
+  })
+
+  test('sends child tenant homeRegion through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 201 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.createTenant({
+      name: 'Elevate',
+      slug: 'elevate',
+      parent: 'tenant-parent',
+      usecase: 'generic',
+      homeRegion: 'eu',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/children')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      displayName: 'Elevate',
+      slug: 'elevate',
+      usecase: 'generic',
+      homeRegion: 'eu',
     })
   })
 

@@ -78,6 +78,7 @@ export function shouldFailTypeSeedRun(
 }
 
 const RESOURCEAPI_SCHEMA_SYNC_NON_FAILURE_STATUSES = new Set(['pending', 'queued', 'synced']);
+const RESOURCEAPI_SCHEMA_SYNC_ASYNC_STATUSES = new Set(['pending', 'queued']);
 
 function isBlockingResourceApiSchemaSyncStatus(status: string | undefined): boolean {
   if (status === undefined || status === '') {
@@ -353,6 +354,17 @@ function extractRemoteTypeState(payload: unknown): {
     return { published, available };
   }
 
+  if (isRecord(payload) && Array.isArray(payload.objectTypeSlugs)) {
+    payload.objectTypeSlugs.forEach((value) => {
+      if (typeof value !== 'string' || !value.trim()) {
+        return;
+      }
+      available.add(toObjectTypeSlug(value));
+      published.add(toObjectTypeSlug(value));
+    });
+    return { published, available };
+  }
+
   if (isRecord(payload) && Array.isArray(payload.docs)) {
     dedupeRemoteObjectTypeDocs(extractRemoteObjectTypeDocs(payload)).forEach((value) => {
       const publishedState = value.status === 'published'
@@ -399,7 +411,9 @@ function findMatchingRemoteType(
 export async function describeFailedPlatformResponse(response: Response): Promise<string> {
   const context = await extractServerErrorContext(response);
   const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
-  const detail = (context.serverMessage ?? context.rawBody).trim();
+  // String() guards against a non-string slipping through (defense in depth;
+  // extractServerErrorContext already coerces, but this line must never throw).
+  const detail = String(context.serverMessage ?? context.rawBody ?? '').trim();
 
   if (!detail) {
     return status;
@@ -443,6 +457,23 @@ export async function appObjectTypePublishFallbackReason(
 ): Promise<string | null> {
   if (response.status === 405) {
     return `app object-type manifest ${phase} route unavailable`;
+  }
+  // Newer platforms expose the manifest route but return 404 "App was not found
+  // for this company" when the tenant has no app enrollment for this vertical
+  // (e.g. a freshly created tenant seeded straight from the repo). That is not a
+  // hard failure — fall back to direct (tenant-scoped) Object Type writes, the
+  // same behaviour older platforms gave via 405. Body-gated so genuine
+  // route/resource 404s still surface.
+  if (response.status === 404) {
+    let body: string;
+    try {
+      body = await response.clone().text();
+    } catch {
+      body = '';
+    }
+    if (/app was not found|not found for this company/i.test(body)) {
+      return `app object-type manifest ${phase} route unavailable (tenant has no app enrollment)`;
+    }
   }
   return null;
 }
@@ -749,6 +780,106 @@ export async function verifyTypeSeedConvergenceWithRetry(
   throw new Error('schema verification did not produce a result');
 }
 
+export async function waitForResourceApiSchemaVisibility(
+  client: PlatformAPIClient,
+  tenantId: string,
+  requestedTypes: string[],
+  resourceApiSchemaSync: Record<string, unknown> | undefined,
+  options?: {
+    attempts?: number;
+    delayMs?: number;
+  },
+): Promise<Record<string, unknown> | undefined> {
+  const status = isRecord(resourceApiSchemaSync)
+    ? String(resourceApiSchemaSync.status ?? '').toLowerCase()
+    : '';
+  if (!RESOURCEAPI_SCHEMA_SYNC_ASYNC_STATUSES.has(status)) {
+    return resourceApiSchemaSync;
+  }
+
+  const attempts = Math.max(options?.attempts ?? 45, 1);
+  const delayMs = Math.max(options?.delayMs ?? 1000, 0);
+  let lastVerification: TypeSeedVerificationResult | undefined;
+  let lastError: string | undefined;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const schemaStatusResponse = await client.getResourceStorageSchemaStatus();
+      if (schemaStatusResponse.ok) {
+        const verification = verifyTypeSeedConvergence(
+          tenantId,
+          requestedTypes,
+          await schemaStatusResponse.json() as unknown,
+          {
+            createdCount: 0,
+            updatedCount: 0,
+            failedCount: 0,
+          },
+        );
+        lastVerification = verification;
+        if (verification.converged) {
+          return {
+            ...resourceApiSchemaSync,
+            status: 'synced',
+            schemaVisibility: 'visible',
+            schemaVisibilitySource: 'storage.schema-status',
+          };
+        }
+      } else {
+        lastError = `schema-status re-fetch failed: ${schemaStatusResponse.status} ${schemaStatusResponse.statusText}`;
+      }
+
+      const schemaResponse = await client.getSchema();
+      if (!schemaResponse.ok) {
+        lastError = `schema re-fetch failed: ${schemaResponse.status} ${schemaResponse.statusText}`;
+      } else {
+        const verification = verifyTypeSeedConvergence(
+          tenantId,
+          requestedTypes,
+          await schemaResponse.json() as unknown,
+          {
+            createdCount: 0,
+            updatedCount: 0,
+            failedCount: 0,
+          },
+        );
+        lastVerification = verification;
+        if (verification.converged) {
+          return {
+            ...resourceApiSchemaSync,
+            status: 'synced',
+            schemaVisibility: 'visible',
+          };
+        }
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+
+    if (attempt < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  return {
+    ...resourceApiSchemaSync,
+    status: 'failed',
+    errorCode: 'RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT',
+    message: 'ResourceAPI schema sync was queued, but requested Object Types were not visible from the ResourceAPI schema read path before the CLI timeout.',
+    details: {
+      requestedTypes,
+      ...(lastVerification
+        ? {
+            matchedTypes: lastVerification.matchedTypes,
+            missingTypes: lastVerification.missingTypes,
+            driftedTypes: lastVerification.driftedTypes,
+          }
+        : {}),
+      ...(lastError ? { lastError } : {}),
+    },
+  };
+}
+
 async function selectTenantKey(
   objectTypes: Record<string, ObjectTypeDefinition[]>,
   explicitTenantKey?: string,
@@ -929,6 +1060,12 @@ Examples:
       try {
         const appPublishOutcome = await trySeedViaAppManifestPublish(client, tenantKey, tenantId, types);
         if (appPublishOutcome.result) {
+          appPublishOutcome.result.resourceApiSchemaSync = await waitForResourceApiSchemaVisibility(
+            client,
+            tenantId,
+            types.map((type) => type.name),
+            appPublishOutcome.result.resourceApiSchemaSync,
+          );
           if (options.format !== 'json') {
             out.success('Published via app object-type manifest');
             out.info(`Result: ${chalk.green(`${appPublishOutcome.result.created} created`)}, ${chalk.cyan(`${appPublishOutcome.result.updated} updated`)}, ${chalk.red(`${appPublishOutcome.result.failed} failed`)}`);
