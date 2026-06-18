@@ -354,6 +354,17 @@ function extractRemoteTypeState(payload: unknown): {
     return { published, available };
   }
 
+  if (isRecord(payload) && Array.isArray(payload.objectTypeSlugs)) {
+    payload.objectTypeSlugs.forEach((value) => {
+      if (typeof value !== 'string' || !value.trim()) {
+        return;
+      }
+      available.add(toObjectTypeSlug(value));
+      published.add(toObjectTypeSlug(value));
+    });
+    return { published, available };
+  }
+
   if (isRecord(payload) && Array.isArray(payload.docs)) {
     dedupeRemoteObjectTypeDocs(extractRemoteObjectTypeDocs(payload)).forEach((value) => {
       const publishedState = value.status === 'published'
@@ -793,6 +804,31 @@ export async function waitForResourceApiSchemaVisibility(
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
+      const schemaStatusResponse = await client.getResourceStorageSchemaStatus();
+      if (schemaStatusResponse.ok) {
+        const verification = verifyTypeSeedConvergence(
+          tenantId,
+          requestedTypes,
+          await schemaStatusResponse.json() as unknown,
+          {
+            createdCount: 0,
+            updatedCount: 0,
+            failedCount: 0,
+          },
+        );
+        lastVerification = verification;
+        if (verification.converged) {
+          return {
+            ...resourceApiSchemaSync,
+            status: 'synced',
+            schemaVisibility: 'visible',
+            schemaVisibilitySource: 'storage.schema-status',
+          };
+        }
+      } else {
+        lastError = `schema-status re-fetch failed: ${schemaStatusResponse.status} ${schemaStatusResponse.statusText}`;
+      }
+
       const schemaResponse = await client.getSchema();
       if (!schemaResponse.ok) {
         lastError = `schema re-fetch failed: ${schemaResponse.status} ${schemaResponse.statusText}`;

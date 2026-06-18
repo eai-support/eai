@@ -630,6 +630,11 @@ describe('waitForResourceApiSchemaVisibility', () => {
   test('waits for queued app-manifest ResourceAPI sync to become schema-visible', async () => {
     let schemaCalls = 0;
     const client = {
+      getResourceStorageSchemaStatus: async () => ({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+      }),
       getSchema: async () => {
         schemaCalls += 1;
         return {
@@ -658,8 +663,42 @@ describe('waitForResourceApiSchemaVisibility', () => {
     expect(schemaCalls).toBe(2);
   });
 
+  test('accepts passive storage schema-status objectTypeSlugs as schema-visible', async () => {
+    const client = {
+      getResourceStorageSchemaStatus: async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          objectTypeSlugs: ['customer', 'order-line'],
+        }),
+      }),
+      getSchema: async () => {
+        throw new Error('generic schema should not be polled after schema-status converges');
+      },
+    } as unknown as PlatformAPIClient;
+
+    await expect(waitForResourceApiSchemaVisibility(
+      client,
+      'tenant-1',
+      ['Customer', 'OrderLine'],
+      { status: 'queued', objectTypes: ['customer', 'order-line'] },
+      { attempts: 3, delayMs: 0 },
+    )).resolves.toMatchObject({
+      status: 'synced',
+      schemaVisibility: 'visible',
+      schemaVisibilitySource: 'storage.schema-status',
+    });
+  });
+
   test('marks queued app-manifest sync as failed when ResourceAPI schema stays stale', async () => {
     const client = {
+      getResourceStorageSchemaStatus: async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({ objectTypeSlugs: [] }),
+      }),
       getSchema: async () => ({
         ok: true,
         status: 200,
@@ -685,6 +724,9 @@ describe('waitForResourceApiSchemaVisibility', () => {
 
   test('does not poll ResourceAPI schema for terminal sync metadata', async () => {
     const client = {
+      getResourceStorageSchemaStatus: async () => {
+        throw new Error('schema status should not be polled for terminal metadata');
+      },
       getSchema: async () => {
         throw new Error('schema should not be polled for terminal metadata');
       },

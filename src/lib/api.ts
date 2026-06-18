@@ -719,6 +719,13 @@ export class PlatformAPIClient {
     });
   }
 
+  async getResourceStorageSchemaStatus(): Promise<Response> {
+    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage/schema-status`, {
+      method: 'GET',
+      headers: await this.headers(),
+    });
+  }
+
   async provisionStorage(options: {
     backend?: string;
     dryRun?: boolean;
