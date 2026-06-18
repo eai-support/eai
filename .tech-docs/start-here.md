@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.7** (2026-06-17): Release additive Entra redirect URIs and current-folder init.
+The current CLI release is **v3.2.8** (2026-06-17): Release resource lifecycle smoke coverage.
 
 
 ## What The Pieces Do

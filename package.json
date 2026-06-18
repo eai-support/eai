@@ -1,6 +1,6 @@
 {
   "name": "@eai-tools/cli",
-  "version": "3.2.7",
+  "version": "3.2.8",
   "description": "EAI Platform CLI — scaffold, seed, deploy, and manage applications",
   "type": "module",
   "bin": {
@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:eai-cli:ci": "mkdir -p test-results && vitest run tests/integration/login.test.ts tests/integration/whoami.test.ts tests/integration/tenant.test.ts tests/integration/init.test.ts tests/integration/help.test.ts tests/integration/output.test.ts tests/integration/publicapi.test.ts tests/integration/platform-api-client.test.ts tests/integration/dedicated-tenant-lifecycle.test.ts --reporter=default --reporter=junit --outputFile=test-results/eai-cli-results.xml",
     "test:e2e-local": "bash scripts/test-local-dedicated-tenant-lifecycle.sh",
+    "smoke:resourceapi-lifecycle": "bash scripts/smoke-resourceapi-schema-sync-lifecycle.sh",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
