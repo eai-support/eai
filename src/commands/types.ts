@@ -865,7 +865,7 @@ export async function waitForResourceApiSchemaVisibility(
     ...resourceApiSchemaSync,
     status: 'failed',
     errorCode: 'RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT',
-    message: 'ResourceAPI schema sync was queued, but requested Object Types were not visible from the ResourceAPI schema read path before the CLI timeout.',
+    message: 'Platform schema sync was queued, but requested Object Types were not visible from the platform schema read path before the CLI timeout.',
     details: {
       requestedTypes,
       ...(lastVerification

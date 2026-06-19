@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.8** (2026-06-17): Release resource lifecycle smoke coverage.
+The current CLI release is **v3.2.9** (2026-06-18): Release tenant home region and Gofer updates.
 
 
 ## What The Pieces Do

@@ -1,0 +1,141 @@
+version: 1
+catalog:
+  - errorId: EAI_CLI_MISSING
+    match:
+      containsAny:
+        - "command not found: eai"
+        - "eai: command not found"
+    meaning: EAI CLI is not installed or not on PATH.
+    likelyCause: Local workstation or container is missing the CLI.
+    recovery:
+      - "npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user"
+      - "npm install -g @eai-tools/cli"
+      - "eai --version"
+    nextGate: cli_installed
+  - errorId: EAI_CLI_OUTDATED
+    match:
+      containsAny:
+        - "update available"
+        - "upgrade required"
+        - "behind latest"
+    meaning: Installed EAI CLI is behind the expected release.
+    likelyCause: Global CLI package has not been updated.
+    recovery:
+      - "eai update --check"
+      - "eai update"
+      - "eai --describe"
+    nextGate: cli_release_current
+  - errorId: EAI_NOT_LOGGED_IN
+    match:
+      containsAny:
+        - "not logged in"
+        - "login required"
+        - "token expired"
+    meaning: The current session has no usable EAI authentication.
+    likelyCause: User has not logged in or the token has expired.
+    recovery:
+      - "eai login"
+      - "eai whoami"
+      - "eai tenant list --format json"
+    nextGate: tenant_ready
+  - errorId: EAI_TENANT_ACCESS_REQUIRED
+    match:
+      containsAny:
+        - "no tenant"
+        - "tenant required"
+        - "insufficient tenant role"
+    meaning: The user lacks the tenant context needed for app delivery.
+    likelyCause: No membership, wrong tenant, or insufficient role.
+    recovery:
+      - "eai tenant list --format json"
+      - "eai tenant select <tenant-slug>"
+      - "eai whoami"
+    nextGate: tenant_ready
+  - errorId: EAI_NOT_PROJECT
+    match:
+      containsAny:
+        - "E001"
+        - "Not in an EAI project"
+    meaning: The current repo is not initialized from the EAI app template.
+    likelyCause: Template init has not run in this repo or folder.
+    recovery:
+      - "Run /gofer:eai-first-run"
+      - "Confirm folder choice and tenant"
+      - "eai init <app-name> --skip-prompts --company-tenant <active-tenant-id>"
+    nextGate: template_ready
+  - errorId: EAI_TEMPLATE_DRIFT
+    match:
+      containsAny:
+        - "template drift"
+        - "template check failed"
+        - "template out of date"
+    meaning: Repo template files have drifted from the expected EAI template baseline.
+    likelyCause: Local repo changes or newer template release not applied.
+    recovery:
+      - "eai template check --format json"
+      - "Follow the advertised refresh or reconcile path from eai --describe"
+    nextGate: template_drift_resolved
+  - errorId: EAI_GOFER_DRIFT
+    match:
+      containsAny:
+        - "gofer refresh"
+        - "gofer scaffold drift"
+        - "refresh required"
+    meaning: The Gofer scaffold inside the repo is behind the expected version.
+    likelyCause: Repo Gofer assets were not refreshed after a CLI/plugin update.
+    recovery:
+      - "eai gofer refresh --check --format json"
+      - "Run the advertised refresh path"
+      - "node .specify/scripts/node/gofer-workspace-check.mjs --host auto --json"
+    nextGate: gofer_drift_resolved
+  - errorId: EAI_VERTICAL_NOT_SELECTED
+    match:
+      containsAny:
+        - "no vertical selected"
+        - "select app first"
+        - "app key required"
+    meaning: App-scoped work started before selecting the target app.
+    likelyCause: `eai vertical select` has not been run for the active tenant.
+    recovery:
+      - "eai vertical list --format json"
+      - "eai vertical select <key> --format json"
+    nextGate: app_selected
+  - errorId: EAI_PROVISION_REQUIRED_FOR_TYPES
+    match:
+      containsAny:
+        - "App resources must be provisioned before publishing object types"
+        - "409"
+    meaning: Object types cannot be published until app resources are provisioned.
+    likelyCause: `eai types seed` ran before `eai vertical provision` completed.
+    recovery:
+      - "eai vertical provision <key> --tenant-id <tenant-id> --select --format json"
+      - "eai types validate"
+      - "eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json"
+    nextGate: types_publish_ready
+  - errorId: EAI_RESOURCE_NOT_READY
+    match:
+      containsAny:
+        - "503"
+        - "Service Unavailable"
+        - "storage not ready"
+        - "preview not ready"
+    meaning: Backing resources or preview surfaces are not ready yet.
+    likelyCause: Provisioning completed partially or downstream services are still unhealthy.
+    recovery:
+      - "eai resources storage status --tenant-id <tenant-id> --format json"
+      - "eai resources storage doctor --tenant-id <tenant-id> --format json"
+      - "eai verify storage --tenant-id <tenant-id>"
+      - "eai resources schema --tenant-id <tenant-id> --format json"
+    nextGate: schema_storage_ready
+  - errorId: EAI_WORKFLOW_NOT_READY
+    match:
+      containsAny:
+        - "workflow readiness failed"
+        - "workflow unavailable"
+    meaning: Required workflow support is not yet ready for this repo or tenant.
+    likelyCause: Workflow dependencies, package profile, or tenant features are missing.
+    recovery:
+      - "eai workflow readiness --format json"
+      - "eai --describe"
+      - "Record blocked workflow capability in service-fit-matrix.md"
+    nextGate: workflow_ready

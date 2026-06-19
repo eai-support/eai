@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/5_gofer_implement.md
-  canonicalChecksum: c0f1809905ff9583bc5cec8c161e09c592980995db5d0300aa94b23e0468b265
+  canonicalChecksum: d51e60f846b7e21215acc7223277c923c394a82e409d0629a2314b2baa8c1999
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -697,6 +697,21 @@ separation from `tasks.md`:
   Use `eai resources schema`, an adapter boundary, or an approved
   restricted-source exception; record the coupling status in implementation
   notes and `ui-review-log.md`.
+- For EAI app delivery, read `.specify/references/platform/eai-repo-contract.md`,
+  `.specify/references/platform/eai-error-catalog.yaml`, and
+  `.specify/specs/{feature}/eai-preflight.md` before remote platform changes.
+- Carry forward the last completed gate, blocked gate, and next recovery
+  command from `eai-preflight.md` whenever provisioning, object-type publish,
+  schema/storage health, workflow readiness, or preview readiness changes.
+- Treat resource provisioning, object-type publish, schema/storage health, and preview readiness as separate gates even when the CLI reports progress in a single run.
+- Track workflow readiness alongside those gates; do not collapse it into
+  provisioning, schema/storage health, or preview status.
+- Use `eai vertical provision <key> --tenant-id <tenant-id> --select --format json`,
+  `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json`,
+  `eai resources schema --tenant-id <tenant-id> --format json`,
+  `eai resources storage doctor --tenant-id <tenant-id> --format json`, and
+  `eai verify storage --tenant-id <tenant-id>` in the recovery order recorded
+  by the preflight artifact instead of improvising a new sequence.
 - For application delivery, implement the four-step-or-fewer AI-augmented
   process as the user-facing spine. Each step must preserve its business goal,
   AI assistance mode, contextual prefill or conversational support, completion
