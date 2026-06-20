@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.4.0.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.4.1.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -351,7 +351,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.4.0** (2026-06-20): Add AI agent self-discovery guide.
+The current CLI release is **v3.4.1** (2026-06-20): Surface stale CLI update guidance during discovery.
 
 
 ## What The Pieces Do
@@ -447,10 +447,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.4.0 |
+| Version | 3.4.1 |
 | Released | 2026-06-20 |
-| Last Material Change | Add AI agent self-discovery guide |
-| Source Commit | `8eff9523404ccc5986e325cb517f7928a0f2d78f` |
+| Last Material Change | Surface stale CLI update guidance during discovery |
+| Source Commit | `63e24c4cff0903eee97c75852c30ffaf78e24fbe` |
 
 
 ## Common Workflow
@@ -1583,7 +1583,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.4.0. The same catalog powers human stderr output, JSON output for AI
+v3.4.1. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
