@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "package": "@eai-tools/cli",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "generatedAt": "release-generated",
   "entries": [
     {

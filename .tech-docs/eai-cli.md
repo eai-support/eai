@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.3.0 |
+| Version | 3.4.0 |
 | Released | 2026-06-20 |
-| Last Material Change | Add agent error guidance catalog |
-| Source Commit | `459ad8cb614b27c03d34679871119eb75c3cbefe` |
+| Last Material Change | Add AI agent self-discovery guide |
+| Source Commit | `8eff9523404ccc5986e325cb517f7928a0f2d78f` |
 
 
 ## Common Workflow
