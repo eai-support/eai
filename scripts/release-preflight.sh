@@ -154,12 +154,20 @@ if ! grep -q "Enterprise AI Platform CLI" <<<"$PACKED_HELP"; then
   echo "✗ packed eai --help is missing the expected product banner"
   exit 1
 fi
-for command_name in update template doctor gofer publicapi; do
+for command_name in update template doctor gofer publicapi errors agent; do
   if ! "$PACKED_EAI" "$command_name" --help >/dev/null 2>&1; then
     echo "✗ packed eai $command_name --help failed"
     exit 1
   fi
 done
+if ! "$PACKED_EAI" errors explain E101 --format json >/dev/null 2>&1; then
+  echo "✗ packed eai errors explain E101 --format json failed"
+  exit 1
+fi
+if ! "$PACKED_EAI" agent guide --format json >/dev/null 2>&1; then
+  echo "✗ packed eai agent guide --format json failed"
+  exit 1
+fi
 if ! "$PACKED_EAI" template check --help >/dev/null 2>&1; then
   echo "✗ packed eai template check --help failed"
   exit 1
