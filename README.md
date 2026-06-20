@@ -386,6 +386,20 @@ to prefer structured output, run read-only diagnostics before fixes, call
 commands before raw `publicapi` calls, and stop when retry or escalation
 conditions match.
 
+To test whether a weak agent can discover that behavior without EAI-specific
+prompt instructions, run the built-in discovery eval:
+
+```bash
+npm run build
+npm run eval:agent-discovery -- --json
+```
+
+The default `regex-small` agent is intentionally limited: it starts from generic
+help/describe output, parses visible error codes or reason codes, and only runs
+commands it discovers from the CLI output. Use `--agent-command <cmd>` to plug
+in a real model runner that accepts the eval JSON turn on stdin and returns a
+JSON decision.
+
 ## Gofer AI Terminal Assets
 
 Every `eai init` project includes the repo-local Gofer assets needed by the AI
