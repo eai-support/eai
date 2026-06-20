@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.2.9.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.3.0.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -322,7 +322,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.9** (2026-06-18): Release tenant home region and Gofer updates.
+The current CLI release is **v3.3.0** (2026-06-20): Add agent error guidance catalog.
 
 
 ## What The Pieces Do
@@ -418,10 +418,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.9 |
-| Released | 2026-06-18 |
-| Last Material Change | Release tenant home region and Gofer updates |
-| Source Commit | `0aa39723963e414c593cfe811899482f780a106e` |
+| Version | 3.3.0 |
+| Released | 2026-06-20 |
+| Last Material Change | Add agent error guidance catalog |
+| Source Commit | `459ad8cb614b27c03d34679871119eb75c3cbefe` |
 
 
 ## Common Workflow
@@ -1554,7 +1554,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.2.9. The same catalog powers human stderr output, JSON output for AI
+v3.3.0. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -1568,7 +1568,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E101` | `not_logged_in` | Not logged in. |
 | `E102` | `access_token_expired` | Access token expired. |
 | `E204` | `permission_denied` | Permission denied. |
-| `E242` | `tenant_authorization_incomplete` | Tenant app authorization is incomplete. |
+| `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
@@ -1712,7 +1712,7 @@ are explicitly listed, and stop when a stop condition matches.
 - requested command
 - request ID if present
 
-## E242: Tenant app authorization is incomplete.
+## E242: Tenant data-plane authorization incomplete.
 
 | Field | Value |
 | --- | --- |
