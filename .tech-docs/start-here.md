@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.3.0** (2026-06-20): Add agent error guidance catalog.
+The current CLI release is **v3.4.0** (2026-06-20): Add AI agent self-discovery guide.
 
 
 ## What The Pieces Do
