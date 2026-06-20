@@ -22,7 +22,7 @@ const sidebars = {
     {
       type: "category",
       label: "EAI CLI",
-      items: ["configuration", "api-reference"],
+      items: ["configuration", "error-guidance", "api-reference"],
     },
     {
       type: "category",

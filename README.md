@@ -290,26 +290,37 @@ The CLI authenticates via browser-based authorization code flow with PKCE, store
 
 Runtime workflow checks are intentionally public-safe. They tell you whether a workflow key is `available`, `operator_required`, `paid_upgrade_required`, `rate_limited`, `blocked`, `unsupported`, or not ready without exposing private platform topology. Use `eai workflow request <key>` when the platform reports `operator_required`.
 
-## Error Codes
+## Error Guidance
 
-The CLI uses structured error codes for consistent error handling:
+The CLI uses structured error guidance for consistent human and AI-agent recovery:
 
 - **E001-E099**: Project errors (not in EAI project, config missing)
 - **E100-E199**: Auth errors (not logged in, token expired)
 - **E200-E299**: Platform errors (API unreachable, resource not found)
 - **E300-E399**: Validation errors (invalid schema, missing field)
 
-Example error output:
+Error output explains why the error may have happened, what read-only diagnostics
+to run first, what mutating `eai` commands can fix it, and when to stop retrying.
 
 ```
-✗ Not logged in
+✗ Not logged in.
 
-Run `eai login` to authenticate with the platform
+Why this might happen:
+- The CLI does not have a usable local sign-in token.
+- The token may have expired or been created for a different local profile.
+
+Try next:
+1. eai whoami [read-only]
+   Show the current login and active tenant status.
+2. eai login [changes state]
+   Authenticate with the EAI identity flow.
 
 Error code: E101
+Reason: not_logged_in
 ```
 
-JSON format (for automation):
+JSON output keeps the legacy `suggestion` field and adds structured guidance for
+AI agents:
 
 ```json
 {
@@ -317,9 +328,22 @@ JSON format (for automation):
     "code": "E101",
     "message": "Not logged in",
     "suggestion": "Run `eai login` to authenticate with the platform",
+    "guidance": {
+      "reasonCode": "not_logged_in",
+      "why": ["The CLI does not have a usable local sign-in token."],
+      "diagnostics": [{ "command": "eai whoami", "mutates": false }],
+      "fixes": [{ "command": "eai login", "mutates": true }]
+    },
     "exitCode": 1
   }
 }
+```
+
+Use `eai errors explain <code-or-reason>` for the release-aligned explanation:
+
+```bash
+eai errors explain E101
+eai errors explain tenant_authorization_incomplete --format json
 ```
 
 ## Machine-Readable Output

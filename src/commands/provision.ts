@@ -17,6 +17,8 @@ import { getAccessToken, loadTokens } from '../lib/auth.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 import { buildPassiveResourceApiBundle } from '../lib/resourceapi-bundle.js';
+import { findGuidanceByCode } from '../lib/error-guidance/catalog.js';
+import { formatGuidanceText } from '../lib/error-guidance/render.js';
 
 interface ErrorContext {
   status?: number;
@@ -99,6 +101,13 @@ function printProvisionFallback(reference: string): void {
   out.info('Manual fallback: set ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET in .env.local.');
 }
 
+function printGuidance(code: ErrorCode, context?: Record<string, string>): void {
+  const guidance = findGuidanceByCode(code);
+  if (guidance) {
+    out.error(formatGuidanceText(guidance, context));
+  }
+}
+
 function tenantLabel(diag: DiagnosticsContext): string {
   if (diag.tenantSlug && diag.tenantId) {
     return `${chalk.cyan(diag.tenantSlug)} (${chalk.dim(diag.tenantId)})`;
@@ -137,6 +146,7 @@ function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
       );
     }
     out.info('Reference: EAI-PROVISION-FORBIDDEN');
+    printGuidance(ErrorCode.E204);
     process.exit(1);
   }
   if (status === 409) {
@@ -670,12 +680,14 @@ function reportTenantAuthorization(
   }
 
   if (summary.warning || (!summary.added && !summary.alreadyAuthorized)) {
-    out.error('Tenant data-plane authorization incomplete — the app registration exists but PublicAPI will reject this app for the selected tenant.');
     if (summary.warning) {
       out.warn(`Reason: ${summary.warning}`);
     }
     out.warn(`App client ID: ${chalk.cyan(clientId)}`);
-    out.warn('Re-run `eai provision entra --force --debug` after the platform route is fixed, then run `eai user provision-me`.');
+    const code = summary.warning?.includes('502') || summary.warning?.includes('5xx')
+      ? ErrorCode.E243
+      : ErrorCode.E242;
+    printGuidance(code);
     process.exit(1);
   }
 
