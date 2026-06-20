@@ -228,8 +228,14 @@ if (!llmsIndex.includes('npm config set @eai-tools:registry https://eai-tools.gi
 if (!llmsIndex.includes('Error Guidance')) {
   throw new Error('llms.txt is missing the error guidance documentation link');
 }
+if (!llmsIndex.includes('eai agent guide --format json')) {
+  throw new Error('llms.txt is missing the AI agent guide command');
+}
 if (!llmsFull.includes(currentVersion)) {
   throw new Error('llms-full.txt is missing the current package version');
+}
+if (!llmsFull.includes('eai agent guide --help')) {
+  throw new Error('llms-full.txt is missing the agent guide help snapshot');
 }
 if (!llmsFull.includes('eai gofer refresh --help')) {
   throw new Error('llms-full.txt is missing current Gofer help output');
@@ -242,6 +248,9 @@ if (!cliHelp.includes('eai gofer refresh --help')) {
 }
 if (!cliHelp.includes('eai template check --help')) {
   throw new Error('cli-help.txt is missing the template check help snapshot');
+}
+if (!cliHelp.includes('eai agent guide --help')) {
+  throw new Error('cli-help.txt is missing the agent guide help snapshot');
 }
 const guidance = JSON.parse(fs.readFileSync(path.join(root, 'docs-site/static/error-guidance.json'), 'utf-8'));
 if (!guidance.entries?.some((entry) => entry.reasonCode === 'tenant_authorization_incomplete')) {

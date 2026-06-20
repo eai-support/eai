@@ -43,6 +43,7 @@ import { templateCommand } from './commands/template.js';
 import { blocksCommand } from './commands/blocks.js';
 import { publicApiCommand } from './commands/publicapi.js';
 import { errorsCommand } from './commands/errors.js';
+import { agentCommand } from './commands/agent.js';
 import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
 import { setActiveProfile, loadActiveProfileFromConfig } from './lib/profile.js';
@@ -114,6 +115,7 @@ program.addCommand(templateCommand);
 program.addCommand(blocksCommand);
 program.addCommand(publicApiCommand);
 program.addCommand(errorsCommand);
+program.addCommand(agentCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -161,6 +163,7 @@ ${chalk.bold('Machine-Readable Output:')}
 
   ${chalk.dim('# Discover CLI structure for AI agents')}
   ${chalk.cyan('eai --describe')}
+  ${chalk.cyan('eai agent guide --format json')}
 
 ${chalk.bold('AI Terminal Workflows:')}
   ${chalk.dim('# New projects include Gofer commands, agents, scripts, hooks, and skills')}
@@ -194,6 +197,9 @@ ${chalk.bold('Updates:')}
   ${chalk.dim('# Explain known errors for humans and AI agents')}
   ${chalk.cyan('eai errors list')}
   ${chalk.cyan('eai errors explain tenant_authorization_incomplete --format json')}
+
+  ${chalk.dim('# Follow the built-in AI-agent recovery loop')}
+  ${chalk.cyan('eai agent guide')}
 
 ${chalk.bold('Accessibility:')}
   ${chalk.dim('# Screen reader friendly output')}

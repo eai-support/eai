@@ -49,6 +49,7 @@ Commands:
   blocks                 Discover AI-readable EAI UI block manifests
   publicapi              Call authorized PublicAPI V4 routes directly
   errors                 Explain EAI CLI errors and agent-safe recovery steps
+  agent                  Show AI-agent discovery and recovery guidance
   help [command]         display help for command
 
 Getting Started:
@@ -95,6 +96,7 @@ Machine-Readable Output:
 
   # Discover CLI structure for AI agents
   eai --describe
+  eai agent guide --format json
 
 AI Terminal Workflows:
   # New projects include Gofer commands, agents, scripts, hooks, and skills
@@ -128,6 +130,9 @@ Updates:
   # Explain known errors for humans and AI agents
   eai errors list
   eai errors explain tenant_authorization_incomplete --format json
+
+  # Follow the built-in AI-agent recovery loop
+  eai agent guide
 
 Accessibility:
   # Screen reader friendly output
@@ -226,6 +231,31 @@ Notes:
   - Guidance is public-safe and avoids private platform implementation detail.
   - Commands marked [read-only] should run before commands marked [changes state].
   - AI agents should respect retry and stop conditions instead of looping.
+
+---
+
+eai agent guide --help
+======================
+
+Usage: eai agent guide [options]
+
+Show the AI-agent operating guide for eai
+
+Options:
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+Examples:
+  $ eai agent guide
+  $ eai agent guide --format json
+  $ eai --describe
+
+Notes:
+  - Use this before improvising eai commands.
+  - Prefer read-only diagnostics before commands marked [changes state].
+  - On failure, run eai errors explain <code-or-reason> --format json.
 
 ---
 

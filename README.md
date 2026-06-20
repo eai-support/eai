@@ -373,6 +373,19 @@ eai --describe        # Describe all commands
 eai types --describe  # Describe types subcommands
 ```
 
+For AI agents that need to use `eai` without extra instructions, start with the
+built-in operating guide:
+
+```bash
+eai agent guide --format json
+```
+
+The same guide is embedded in `eai --describe` as `agentGuide`. It tells agents
+to prefer structured output, run read-only diagnostics before fixes, call
+`eai errors explain <code-or-reason> --format json` after failures, use named
+commands before raw `publicapi` calls, and stop when retry or escalation
+conditions match.
+
 ## Gofer AI Terminal Assets
 
 Every `eai init` project includes the repo-local Gofer assets needed by the AI
