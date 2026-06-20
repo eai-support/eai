@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.4.0 |
+| Version | 3.4.1 |
 | Released | 2026-06-20 |
-| Last Material Change | Add AI agent self-discovery guide |
-| Source Commit | `8eff9523404ccc5986e325cb517f7928a0f2d78f` |
+| Last Material Change | Surface stale CLI update guidance during discovery |
+| Source Commit | `63e24c4cff0903eee97c75852c30ffaf78e24fbe` |
 
 
 ## Common Workflow
