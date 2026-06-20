@@ -44,7 +44,11 @@ import { blocksCommand } from './commands/blocks.js';
 import { publicApiCommand } from './commands/publicapi.js';
 import { errorsCommand } from './commands/errors.js';
 import { agentCommand } from './commands/agent.js';
-import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
+import {
+  checkForUpdate,
+  notifyIfUpdateAvailable,
+  notifyIfUpdateAvailableForDiscovery,
+} from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
 import { setActiveProfile, loadActiveProfileFromConfig } from './lib/profile.js';
 import { describeProgram } from './lib/schema-builder.js';
@@ -207,11 +211,87 @@ ${chalk.bold('Accessibility:')}
   ${chalk.cyan('eai --no-color <command>')}
 `);
 
+function readTopLevelCommandName(args: readonly string[]): string | null {
+  const flagsWithValues = new Set(['--profile']);
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (!arg) {
+      continue;
+    }
+
+    if (arg === '--') {
+      return args[i + 1] ?? null;
+    }
+
+    if (arg.startsWith('--profile=')) {
+      continue;
+    }
+
+    if (flagsWithValues.has(arg)) {
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('-')) {
+      continue;
+    }
+
+    return arg;
+  }
+
+  return null;
+}
+
+function isHelpInvocation(args: readonly string[]): boolean {
+  return (
+    args.length === 0 ||
+    args.includes('--help') ||
+    args.includes('-h') ||
+    readTopLevelCommandName(args) === 'help'
+  );
+}
+
+function isUnknownTopLevelCommand(args: readonly string[]): boolean {
+  const commandName = readTopLevelCommandName(args);
+  if (!commandName || commandName === 'help') {
+    return false;
+  }
+
+  const knownCommands = new Set<string>();
+  for (const command of program.commands) {
+    knownCommands.add(command.name());
+    for (const alias of command.aliases()) {
+      knownCommands.add(alias);
+    }
+  }
+
+  return !knownCommands.has(commandName);
+}
+
 // Handle --describe before parsing (needs to work without command)
-if (process.argv.includes('--describe')) {
+const cliArgs = process.argv.slice(2);
+if (cliArgs.includes('--describe')) {
   console.log(JSON.stringify(describeProgram(program), null, 2));
 } else {
-  checkForUpdate(pkg.version);
+  const topLevelCommandName = readTopLevelCommandName(cliArgs);
+  const shouldForegroundCheckForUpdate = isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs);
+  const shouldSuppressPostCommandNotice = topLevelCommandName === 'update';
+
+  if (shouldForegroundCheckForUpdate) {
+    await notifyIfUpdateAvailableForDiscovery(pkg.version);
+  } else if (!shouldSuppressPostCommandNotice) {
+    checkForUpdate(pkg.version);
+  }
+
+  if (cliArgs.length === 0) {
+    program.outputHelp();
+    process.exit(0);
+  }
+
   await program.parseAsync();
-  await notifyIfUpdateAvailable(pkg.version);
+
+  if (!shouldForegroundCheckForUpdate && !shouldSuppressPostCommandNotice) {
+    await notifyIfUpdateAvailable(pkg.version);
+  }
 }
