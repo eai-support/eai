@@ -42,6 +42,7 @@ import { goferCommand } from './commands/gofer.js';
 import { templateCommand } from './commands/template.js';
 import { blocksCommand } from './commands/blocks.js';
 import { publicApiCommand } from './commands/publicapi.js';
+import { errorsCommand } from './commands/errors.js';
 import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
 import { setActiveProfile, loadActiveProfileFromConfig } from './lib/profile.js';
@@ -112,6 +113,7 @@ program.addCommand(goferCommand);
 program.addCommand(templateCommand);
 program.addCommand(blocksCommand);
 program.addCommand(publicApiCommand);
+program.addCommand(errorsCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -155,6 +157,7 @@ ${chalk.bold('Machine-Readable Output:')}
   ${chalk.cyan('eai resources list User --format json')}
   ${chalk.cyan('eai tenant list --format json | jq')}
   ${chalk.cyan('eai verify calls --format json')}
+  ${chalk.cyan('eai errors explain E101 --format json')}
 
   ${chalk.dim('# Discover CLI structure for AI agents')}
   ${chalk.cyan('eai --describe')}
@@ -187,6 +190,10 @@ ${chalk.bold('Updates:')}
   ${chalk.dim('# Call any authorized PublicAPI V4 interface')}
   ${chalk.cyan('eai publicapi get /v4/identity/me --format json')}
   ${chalk.cyan("eai publicapi post /v4/geo/resolve-location --data '{\"query\":\"Copenhagen\"}'")}
+
+  ${chalk.dim('# Explain known errors for humans and AI agents')}
+  ${chalk.cyan('eai errors list')}
+  ${chalk.cyan('eai errors explain tenant_authorization_incomplete --format json')}
 
 ${chalk.bold('Accessibility:')}
   ${chalk.dim('# Screen reader friendly output')}

@@ -27,10 +27,12 @@ npm install -g @eai-tools/cli
 - [Platform Service Patterns](/eai/docs/app-template/service-patterns)
 - [Config-Driven UI](/eai/docs/app-template/config-driven-ui)
 - [EAI CLI - Configuration](/eai/docs/configuration)
+- [Error Guidance](/eai/docs/error-guidance)
 - [EAI CLI — API Reference](/eai/docs/api-reference)
 
 ## Help & AI Bundles
 
 - [cli-help.txt](/eai/cli-help.txt): Current CLI help snapshots used for release validation
 - [llms-full.txt](/eai/llms-full.txt): Full release-aligned documentation bundle for AI agents
+- [error-guidance.json](/eai/error-guidance.json): Machine-readable error guidance for AI agents
 - [Registry](/eai/registry/): Static EAI package registry on GitHub Pages

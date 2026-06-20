@@ -39,6 +39,7 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain('eai gofer refresh --check');
     expect(result.stdout).toContain('eai gofer refresh');
     expect(result.stdout).toContain('eai template check');
+    expect(result.stdout).toContain('eai errors explain E101 --format json');
     expect(result.stdout).toContain('eai publicapi get /v4/identity/me --format json');
   });
 
@@ -84,6 +85,7 @@ describe('CLI help output', () => {
     const templateResult = await runCommand(ctx, 'eai template --help');
     const publicApiResult = await runCommand(ctx, 'eai publicapi --help');
     const updateResult = await runCommand(ctx, 'eai update --help');
+    const errorsResult = await runCommand(ctx, 'eai errors --help');
 
     expect(verifyResult.exitCode).toBe(0);
     expect(verifyResult.stdout).toContain('eai verify --tenant-id <tenantId>');
@@ -109,5 +111,9 @@ describe('CLI help output', () => {
     expect(updateResult.stdout).toContain('npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user');
     expect(updateResult.stdout).toContain('eai gofer refresh --check');
     expect(updateResult.stdout).toContain('eai template check');
+
+    expect(errorsResult.exitCode).toBe(0);
+    expect(errorsResult.stdout).toContain('explain');
+    expect(errorsResult.stdout).toContain('list');
   });
 });

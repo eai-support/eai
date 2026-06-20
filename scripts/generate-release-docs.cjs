@@ -25,12 +25,18 @@ const DOC_ORDER = [
   "app-template/service-patterns.md",
   "app-template/config-driven-ui.md",
   "configuration.md",
+  "error-guidance.md",
   "api-reference.md",
 ];
 const HELP_COMMANDS = [
   { label: "eai --help", args: ["dist/index.js", "--help"] },
   { label: "eai update --help", args: ["dist/index.js", "update", "--help"] },
   { label: "eai doctor --help", args: ["dist/index.js", "doctor", "--help"] },
+  { label: "eai errors --help", args: ["dist/index.js", "errors", "--help"] },
+  {
+    label: "eai errors explain --help",
+    args: ["dist/index.js", "errors", "explain", "--help"],
+  },
   { label: "eai gofer --help", args: ["dist/index.js", "gofer", "--help"] },
   {
     label: "eai gofer refresh --help",
@@ -159,6 +165,7 @@ ${docsList}
 
 - [cli-help.txt](/eai/cli-help.txt): Current CLI help snapshots used for release validation
 - [llms-full.txt](/eai/llms-full.txt): Full release-aligned documentation bundle for AI agents
+- [error-guidance.json](/eai/error-guidance.json): Machine-readable error guidance for AI agents
 - [Registry](/eai/registry/): Static EAI package registry on GitHub Pages
 `;
 }
