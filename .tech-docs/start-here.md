@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.2.9** (2026-06-18): Release tenant home region and Gofer updates.
+The current CLI release is **v3.3.0** (2026-06-20): Add agent error guidance catalog.
 
 
 ## What The Pieces Do

@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.9 |
-| Released | 2026-06-18 |
-| Last Material Change | Release tenant home region and Gofer updates |
-| Source Commit | `0aa39723963e414c593cfe811899482f780a106e` |
+| Version | 3.3.0 |
+| Released | 2026-06-20 |
+| Last Material Change | Add agent error guidance catalog |
+| Source Commit | `459ad8cb614b27c03d34679871119eb75c3cbefe` |
 
 
 ## Common Workflow
