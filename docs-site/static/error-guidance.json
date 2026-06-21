@@ -1,0 +1,727 @@
+{
+  "schemaVersion": 1,
+  "package": "@eai-tools/cli",
+  "version": "3.5.0",
+  "generatedAt": "release-generated",
+  "entries": [
+    {
+      "code": "E001",
+      "reasonCode": "not_in_eai_project",
+      "title": "Not in an EAI project.",
+      "category": "project",
+      "severity": "error",
+      "appliesTo": [
+        "project.resolve",
+        "verify",
+        "types",
+        "env",
+        "deploy",
+        "provision",
+        "template",
+        "gofer"
+      ],
+      "why": [
+        "The current folder does not contain the project markers created by eai init.",
+        "The command needs a project root so it can read local app configuration safely.",
+        "You may be one directory above or below the generated app folder."
+      ],
+      "evidenceToCheck": [
+        "Current working directory.",
+        "Whether package.json and src/eai.config/object-types.ts exist.",
+        "Whether eai verify reports the same project-root issue."
+      ],
+      "diagnostics": [
+        {
+          "command": "pwd",
+          "purpose": "Confirm the current folder before changing anything.",
+          "mutates": false
+        },
+        {
+          "command": "eai verify",
+          "purpose": "Check whether the current folder is an EAI project.",
+          "mutates": false
+        },
+        {
+          "command": "eai template check --format json",
+          "purpose": "If this is an EAI project, inspect template drift without writing files.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "cd <existing-eai-project>",
+          "purpose": "Move into a folder that has already been initialized.",
+          "mutates": false
+        },
+        {
+          "command": "eai init <app-name>",
+          "purpose": "Create a new EAI app project when this folder should become one.",
+          "mutates": true
+        }
+      ],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 1,
+        "stopWhen": [
+          "The folder still has no EAI project markers after eai init or changing directory."
+        ]
+      },
+      "escalation": {
+        "audience": "eai-maintainer",
+        "neededWhen": [
+          "A freshly generated project still cannot be detected as an EAI project."
+        ],
+        "include": [
+          "command",
+          "CLI version",
+          "working directory shape without secrets"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E101",
+      "reasonCode": "not_logged_in",
+      "title": "Not logged in.",
+      "category": "authentication",
+      "severity": "error",
+      "appliesTo": [
+        "auth",
+        "tenant",
+        "provision",
+        "resources",
+        "types",
+        "workflow",
+        "publicapi"
+      ],
+      "why": [
+        "The CLI does not have a usable local sign-in token.",
+        "The token may have expired or been created for a different local profile.",
+        "The command needs a user session before it can resolve tenant access."
+      ],
+      "evidenceToCheck": [
+        "eai whoami status.",
+        "Active profile, if a local profile is selected.",
+        "Whether the command is running on a machine or Codespace that has completed browser sign-in."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Show the current login and active tenant status.",
+          "mutates": false
+        },
+        {
+          "command": "eai tenant list --format json",
+          "purpose": "Confirm tenant memberships after login succeeds.",
+          "mutates": false,
+          "when": "After eai login succeeds."
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai login",
+          "purpose": "Authenticate with the EAI identity flow.",
+          "mutates": true
+        },
+        {
+          "command": "eai login --callback-port <port>",
+          "purpose": "Use a fixed local callback port for Codespaces or locked-down environments.",
+          "mutates": true,
+          "when": "Use when the browser callback cannot reach the CLI."
+        }
+      ],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 2,
+        "stopWhen": [
+          "The browser sign-in flow repeatedly fails with the same identity error."
+        ]
+      },
+      "escalation": {
+        "audience": "tenant-admin",
+        "neededWhen": [
+          "Login succeeds but no expected tenant membership is visible."
+        ],
+        "include": [
+          "signed-in email",
+          "CLI version",
+          "active profile",
+          "tenant list output without secrets"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E102",
+      "reasonCode": "access_token_expired",
+      "title": "Access token expired.",
+      "category": "authentication",
+      "severity": "error",
+      "appliesTo": [
+        "auth",
+        "tenant",
+        "provision",
+        "resources",
+        "types",
+        "workflow",
+        "publicapi"
+      ],
+      "why": [
+        "The saved user session is older than the identity provider allows.",
+        "The CLI cannot refresh the session silently in this environment.",
+        "The command needs a fresh user token before it can call tenant-scoped APIs."
+      ],
+      "evidenceToCheck": [
+        "eai whoami token status.",
+        "Whether the active profile changed since the last login."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the expired session and active profile.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai login",
+          "purpose": "Refresh the local user session.",
+          "mutates": true
+        }
+      ],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 1,
+        "stopWhen": [
+          "A fresh login still returns an expired-token result."
+        ]
+      },
+      "escalation": {
+        "audience": "eai-maintainer",
+        "neededWhen": [
+          "A newly completed login immediately reports an expired token."
+        ],
+        "include": [
+          "CLI version",
+          "active profile",
+          "token expiry time without token values"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E204",
+      "reasonCode": "permission_denied",
+      "title": "Permission denied.",
+      "category": "authorization",
+      "severity": "error",
+      "appliesTo": [
+        "tenant",
+        "user",
+        "vertical",
+        "provision",
+        "types",
+        "resources",
+        "workflow"
+      ],
+      "why": [
+        "The signed-in user can authenticate, but does not have the role required for this action.",
+        "The active tenant may not be the tenant where the user has the needed role.",
+        "The app or resource may require a tenant-admin or builder-level action."
+      ],
+      "evidenceToCheck": [
+        "Active tenant in eai whoami.",
+        "Roles returned by eai tenant list --all --format json.",
+        "The exact command and request ID, if the server returned one."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user and active tenant.",
+          "mutates": false
+        },
+        {
+          "command": "eai tenant list --all --format json",
+          "purpose": "List visible tenant memberships and roles.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai tenant select <tenant>",
+          "purpose": "Switch to a tenant where the user has the required role.",
+          "mutates": true
+        },
+        {
+          "command": "eai tenant bootstrap-admin --parent <parent-id> --child <child-id>",
+          "purpose": "Bootstrap direct child tenant admin access when the user is authorized as the parent tenant admin.",
+          "mutates": true,
+          "when": "Only when the user is already an authorized parent tenant admin."
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The user lacks the required tenant role. Retrying will not change authorization."
+        ]
+      },
+      "escalation": {
+        "audience": "tenant-admin",
+        "neededWhen": [
+          "No visible tenant membership has the role required by the command."
+        ],
+        "include": [
+          "signed-in email",
+          "active tenant slug",
+          "requested command",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E242",
+      "reasonCode": "tenant_authorization_incomplete",
+      "title": "Tenant data-plane authorization incomplete.",
+      "category": "app_provisioning",
+      "severity": "error",
+      "appliesTo": [
+        "provision.entra",
+        "user.provision-me",
+        "types.seed",
+        "vertical.provision"
+      ],
+      "why": [
+        "The app registration exists, but the selected tenant has not completed app authorization.",
+        "The active tenant may not be the tenant this app was provisioned for.",
+        "The authorization retry may need to run again after sign-in wiring is refreshed."
+      ],
+      "evidenceToCheck": [
+        "eai whoami active tenant.",
+        "eai provision entra --force --debug tenant authorization summary.",
+        "Request ID and platform status if debug output includes one."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm login, active tenant, profile, and public API context.",
+          "mutates": false
+        },
+        {
+          "command": "eai tenant list --format json",
+          "purpose": "Confirm the intended tenant is visible to the user.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai tenant select <tenant>",
+          "purpose": "Select the tenant that should own the app.",
+          "mutates": true
+        },
+        {
+          "command": "eai provision entra --force --debug",
+          "purpose": "Refresh sign-in wiring and retry app authorization for the active tenant.",
+          "mutates": true,
+          "writesSecrets": true
+        },
+        {
+          "command": "eai user provision-me",
+          "purpose": "Create or refresh the current user membership after app authorization succeeds.",
+          "mutates": true,
+          "when": "Run only after provision entra no longer reports incomplete tenant authorization."
+        }
+      ],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 3,
+        "backoffSeconds": [
+          10,
+          30,
+          60
+        ],
+        "stopWhen": [
+          "The same platform 5xx or authorization status remains after bounded retry."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "The platform authorization step continues to fail after bounded retry."
+        ],
+        "include": [
+          "request ID",
+          "CLI version",
+          "active tenant slug",
+          "command",
+          "reason code"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": true,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E243",
+      "reasonCode": "tenant_authorization_platform_error",
+      "title": "Tenant app authorization could not be completed because the platform returned a server error.",
+      "category": "platform",
+      "severity": "error",
+      "appliesTo": [
+        "provision.entra"
+      ],
+      "why": [
+        "The CLI tried to authorize the app for the selected tenant, but the platform returned a server-side failure.",
+        "This is usually not fixed by changing local files or repeatedly rotating app credentials.",
+        "The safest next step is a bounded retry followed by escalation with the request evidence."
+      ],
+      "evidenceToCheck": [
+        "HTTP status from eai provision entra --force --debug.",
+        "Request ID if present.",
+        "Whether the same status repeats after bounded retry."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai provision entra --force --debug",
+          "purpose": "Retry once with product-safe diagnostics and request identifiers.",
+          "mutates": true,
+          "writesSecrets": true
+        },
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the active tenant and profile are still correct.",
+          "mutates": false
+        }
+      ],
+      "fixes": [],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 3,
+        "backoffSeconds": [
+          10,
+          30,
+          60
+        ],
+        "stopWhen": [
+          "The same 5xx status repeats after bounded retry."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "A platform 5xx repeats for the same authorization command."
+        ],
+        "include": [
+          "request ID",
+          "HTTP status",
+          "CLI version",
+          "command",
+          "active tenant slug"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": true,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E250",
+      "reasonCode": "paid_upgrade_required",
+      "title": "Tenant plan does not allow this builder operation.",
+      "category": "capability",
+      "severity": "error",
+      "appliesTo": [
+        "workflow.readiness",
+        "types.seed",
+        "vertical.create",
+        "workflow.request"
+      ],
+      "why": [
+        "The tenant is reachable, but the requested builder operation is gated by the tenant plan.",
+        "The CLI cannot self-upgrade a tenant plan.",
+        "Read-only checks may still work while write/build actions are blocked."
+      ],
+      "evidenceToCheck": [
+        "Workflow readiness status and reason code.",
+        "Tenant active status from eai whoami.",
+        "Which command attempted a builder write."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai workflow readiness --format json",
+          "purpose": "Confirm whether builder operations are available for the active tenant.",
+          "mutates": false
+        },
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the active tenant before asking an admin to change plan state.",
+          "mutates": false
+        }
+      ],
+      "fixes": [],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The readiness reason is paid_upgrade_required. Retrying does not activate the tenant plan."
+        ]
+      },
+      "escalation": {
+        "audience": "tenant-admin",
+        "neededWhen": [
+          "A builder operation is required and readiness reports paid_upgrade_required."
+        ],
+        "include": [
+          "active tenant slug",
+          "command",
+          "readiness reason code"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E260",
+      "reasonCode": "object_type_validation_failed",
+      "title": "Object Type validation failed.",
+      "category": "schema",
+      "severity": "error",
+      "appliesTo": [
+        "types.validate",
+        "types.seed"
+      ],
+      "why": [
+        "At least one local Object Type definition does not match the schema rules enforced by the CLI or platform.",
+        "Common causes include invalid default values, incomplete storage metadata, or missing required fields.",
+        "Publishing cannot continue until the local definitions validate."
+      ],
+      "evidenceToCheck": [
+        "Validation details printed by eai types validate.",
+        "Object Type name and property path in the error output.",
+        "Whether the Object Type is marked published before storage metadata is ready."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai types validate",
+          "purpose": "Validate local Object Types without publishing them.",
+          "mutates": false
+        },
+        {
+          "command": "eai types diff",
+          "purpose": "Compare local definitions with published tenant state after validation passes.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai types seed",
+          "purpose": "Publish the corrected definitions after validation passes.",
+          "mutates": true,
+          "when": "Run only after eai types validate is clean."
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The same validation issue is reported. Fix the local Object Type definition before retrying."
+        ]
+      },
+      "escalation": {
+        "audience": "eai-maintainer",
+        "neededWhen": [
+          "The definition appears valid but the CLI still rejects it."
+        ],
+        "include": [
+          "Object Type name",
+          "validation message",
+          "CLI version"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E270",
+      "reasonCode": "object_type_not_published",
+      "title": "Object Type is not published for the active tenant.",
+      "category": "resource_data",
+      "severity": "error",
+      "appliesTo": [
+        "resources.list",
+        "resources.create",
+        "resources.update",
+        "resources.search",
+        "resources.query"
+      ],
+      "why": [
+        "The resource command is asking for a type that is not available in the active tenant schema.",
+        "The local Object Types may not have been published yet.",
+        "The active tenant may not be the tenant where the Object Type was published."
+      ],
+      "evidenceToCheck": [
+        "Published type list from eai resources schema.",
+        "Active tenant from eai whoami.",
+        "Local Object Type definitions from eai types validate."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai resources schema --format json",
+          "purpose": "List published Object Types visible to the active tenant.",
+          "mutates": false
+        },
+        {
+          "command": "eai types validate",
+          "purpose": "Check local definitions before publishing.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai types seed",
+          "purpose": "Publish local Object Types to the active tenant.",
+          "mutates": true
+        },
+        {
+          "command": "eai tenant select <tenant>",
+          "purpose": "Switch to the tenant where the Object Type was published.",
+          "mutates": true,
+          "when": "Use when the active tenant is wrong."
+        }
+      ],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 2,
+        "backoffSeconds": [
+          10,
+          30
+        ],
+        "stopWhen": [
+          "The type is still absent from eai resources schema after publishing and schema propagation."
+        ]
+      },
+      "escalation": {
+        "audience": "eai-maintainer",
+        "neededWhen": [
+          "types seed reports convergence but resources schema never shows the Object Type."
+        ],
+        "include": [
+          "Object Type name",
+          "active tenant slug",
+          "CLI version",
+          "types seed summary"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E280",
+      "reasonCode": "workflow_operator_required",
+      "title": "Workflow runtime binding requires operator assistance.",
+      "category": "workflow",
+      "severity": "warning",
+      "appliesTo": [
+        "workflow.readiness",
+        "workflow.status",
+        "workflow.request",
+        "chat.send",
+        "chat.stream"
+      ],
+      "why": [
+        "The tenant and workflow key are recognized, but an executable runtime binding is not available yet.",
+        "Some workflow bindings require an operator-assisted request before chat or workflow execution can run.",
+        "The CLI should request the binding only when readiness reports operator_required."
+      ],
+      "evidenceToCheck": [
+        "workflow readiness status and reason code.",
+        "workflow status for the specific workflow key.",
+        "request ID returned by eai workflow request."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai workflow readiness <workflow-key> --format json",
+          "purpose": "Check tenant, plan, and workflow readiness.",
+          "mutates": false
+        },
+        {
+          "command": "eai workflow status <workflow-key> --format json",
+          "purpose": "Check whether the workflow has an executable runtime binding.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai workflow request <workflow-key> --reason \"<reason>\"",
+          "purpose": "Request operator-assisted runtime binding for this tenant and workflow.",
+          "mutates": true,
+          "when": "Run only when readiness or status reports operator_required."
+        }
+      ],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 2,
+        "backoffSeconds": [
+          30,
+          60
+        ],
+        "stopWhen": [
+          "A workflow request is already queued or the status remains operator_required."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "The workflow request is queued but does not progress."
+        ],
+        "include": [
+          "workflow key",
+          "request ID",
+          "active tenant slug",
+          "CLI version"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    }
+  ]
+}

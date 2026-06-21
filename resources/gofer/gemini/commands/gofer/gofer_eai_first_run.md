@@ -116,9 +116,22 @@ Run:
 eai --describe
 ```
 
+If advertised, also run:
+
+```bash
+eai agent guide --format json
+```
+
 Prefer commands and options advertised by the installed CLI over remembered
 syntax. Use JSON only where the CLI advertises it. Record a safe summary in the
 first-run report.
+
+When any later `eai` command fails, use the CLI's error guidance before
+inventing a workaround:
+
+```bash
+eai errors explain <code-or-reason> --format json
+```
 
 Specifically note whether the installed CLI advertises the commands needed for:
 
@@ -130,6 +143,8 @@ Specifically note whether the installed CLI advertises the commands needed for:
 - project drift checks via `eai template check`
 - Gofer drift checks via `eai gofer refresh --check`
 - UI block discovery via `eai blocks`
+- AI-agent guidance via `eai agent guide`
+- error recovery guidance via `eai errors explain`
 
 ## Step 5: Login, Tenant, And Account Readiness
 

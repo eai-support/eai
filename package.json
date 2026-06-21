@@ -1,6 +1,6 @@
 {
   "name": "@eai-tools/cli",
-  "version": "3.2.9",
+  "version": "3.5.0",
   "description": "EAI Platform CLI — scaffold, seed, deploy, and manage applications",
   "type": "module",
   "bin": {
@@ -13,7 +13,7 @@
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:eai-cli:ci": "mkdir -p test-results && vitest run tests/integration/login.test.ts tests/integration/whoami.test.ts tests/integration/tenant.test.ts tests/integration/init.test.ts tests/integration/help.test.ts tests/integration/output.test.ts tests/integration/provision.test.ts tests/integration/types.test.ts tests/integration/publicapi.test.ts tests/integration/platform-api-client.test.ts tests/integration/dedicated-tenant-lifecycle.test.ts --reporter=default --reporter=junit --outputFile=test-results/eai-cli-results.xml",
+    "test:eai-cli:ci": "mkdir -p test-results && vitest run tests/integration/login.test.ts tests/integration/whoami.test.ts tests/integration/tenant.test.ts tests/integration/init.test.ts tests/integration/help.test.ts tests/integration/update.test.ts tests/integration/output.test.ts tests/integration/error-guidance.test.ts tests/integration/agent-guide.test.ts tests/integration/agent-discovery-eval.test.ts tests/integration/provision.test.ts tests/integration/types.test.ts tests/integration/publicapi.test.ts tests/integration/platform-api-client.test.ts tests/integration/dedicated-tenant-lifecycle.test.ts tests/integration/runtime-contract.test.ts --reporter=default --reporter=junit --outputFile=test-results/eai-cli-results.xml",
     "test:e2e-local": "bash scripts/test-local-dedicated-tenant-lifecycle.sh",
     "smoke:resourceapi-lifecycle": "bash scripts/smoke-resourceapi-schema-sync-lifecycle.sh",
     "test:watch": "vitest",
@@ -25,6 +25,10 @@
     "sync:linked-sources": "node scripts/sync-linked-sources.js",
     "docs:release-assets": "node scripts/generate-release-docs.cjs",
     "docs:release-assets:check": "node scripts/generate-release-docs.cjs --check",
+    "docs:error-guidance": "node scripts/generate-error-guidance-docs.cjs",
+    "docs:error-guidance:check": "node scripts/generate-error-guidance-docs.cjs --check",
+    "guidance:verify": "node scripts/verify-error-guidance.cjs",
+    "eval:agent-discovery": "node scripts/eval-agent-discovery.cjs",
     "docs:verify-api": "node scripts/verify-api-reference.cjs --check",
     "security:public-hygiene": "node scripts/verify-public-hygiene.cjs",
     "release:check": "bash scripts/release-preflight.sh",

@@ -1,0 +1,53 @@
+---
+generated: false
+title: Deploy An EAI App Anywhere
+---
+
+# Deploy An EAI App Anywhere
+
+EAI apps declare a provider-neutral runtime contract in `eai.runtime.json`.
+Hosting-specific tooling should translate that contract into provider env vars,
+secret settings, callback URLs, and smoke checks. The app contract stays the
+same whether the host is Vercel, Docker, AWS, Azure, Kubernetes, a VM, or an
+internal demo environment.
+
+## Local Contract Validation
+
+```bash
+eai runtime validate
+eai deploy env --provider generic
+```
+
+The validator checks that required env names and secrets are declared, tenant
+and workflow key patterns are consistent, the Auth.js callback path is valid,
+public endpoints are declared, service identity is explicit when anonymous
+server-side platform calls exist, and post-deploy smoke tests are present.
+
+## Deployed Runtime Doctor
+
+```bash
+eai deploy doctor --url https://your-app.example.com
+```
+
+The deploy doctor checks `/health`, `/api/auth/providers`,
+`/api/eai/config`, declared public endpoints, and declared smoke tests. It
+classifies failures as host/infrastructure, app not running, Auth.js config,
+Entra callback config, EAI PublicAPI config, tenant/workflow config, service
+identity/app-only auth config, PublicAPI authorization, or app runtime error.
+
+`/health` returning 200 is not enough. Gofer should treat deployment as
+incomplete until runtime smoke tests pass.
+
+## Service Identity
+
+For app-only PublicAPI access, prefer:
+
+```text
+EAI_SERVICE_CLIENT_ID
+EAI_SERVICE_CLIENT_SECRET
+EAI_SERVICE_TARGET_SCOPE
+EAI_SERVICE_TENANT_NAME
+```
+
+Existing apps can keep using `OBO_CLIENT_ID`, `OBO_CLIENT_SECRET`,
+`OBO_TARGET_SCOPE`, and `OBO_TENANT_NAME` while migrating.

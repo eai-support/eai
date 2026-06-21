@@ -4,6 +4,7 @@
  */
 
 import type { Command, Option } from 'commander';
+import { getAgentGuide } from './agent-guide.js';
 
 export interface CommandSchema {
   command: string;
@@ -89,5 +90,8 @@ export function buildCommandSchema(command: Command): CommandSchema {
  * Build schema for entire CLI program
  */
 export function describeProgram(program: Command): object {
-  return buildCommandSchema(program);
+  return {
+    ...buildCommandSchema(program),
+    agentGuide: getAgentGuide(),
+  };
 }

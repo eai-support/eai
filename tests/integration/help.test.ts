@@ -33,12 +33,16 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain('eai env pull');
     expect(result.stdout).toContain('eai resources schema');
     expect(result.stdout).toContain('eai verify calls --format json');
+    expect(result.stdout).toContain('eai runtime validate');
+    expect(result.stdout).toContain('eai deploy doctor --url <deployed-url>');
     expect(result.stdout).toContain('Updates:');
     expect(result.stdout).toContain('eai update --check');
     expect(result.stdout).toContain('eai update');
     expect(result.stdout).toContain('eai gofer refresh --check');
     expect(result.stdout).toContain('eai gofer refresh');
     expect(result.stdout).toContain('eai template check');
+    expect(result.stdout).toContain('eai errors explain E101 --format json');
+    expect(result.stdout).toContain('eai agent guide --format json');
     expect(result.stdout).toContain('eai publicapi get /v4/identity/me --format json');
   });
 
@@ -60,7 +64,7 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain('eai docs index <documentId>');
   });
 
-  test('--describe outputs valid parseable JSON', async () => {
+  test('--describe outputs valid parseable JSON with the agent recovery guide', async () => {
     const cliEntry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
     const { stdout } = await execFileAsync(process.execPath, [cliEntry, '--describe'], {
       cwd: ctx.workingDir,
@@ -75,19 +79,37 @@ describe('CLI help output', () => {
     expect(() => JSON.parse(stdout)).not.toThrow();
     const schema = JSON.parse(stdout);
     expect(typeof schema).toBe('object');
+    expect(schema.agentGuide.audience).toBe('ai-agents');
+    expect(schema.agentGuide.recoveryLoop).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Explain the error',
+        }),
+      ]),
+    );
   });
 
-  test('verify, doctor, gofer, template, publicapi, and update help include concrete examples', async () => {
+  test('verify, runtime, deploy, doctor, gofer, template, publicapi, and update help include concrete examples', async () => {
     const verifyResult = await runCommand(ctx, 'eai verify --help');
+    const runtimeResult = await runCommand(ctx, 'eai runtime validate --help');
+    const deployResult = await runCommand(ctx, 'eai deploy doctor --help');
     const doctorResult = await runCommand(ctx, 'eai doctor --help');
     const goferResult = await runCommand(ctx, 'eai gofer --help');
     const templateResult = await runCommand(ctx, 'eai template --help');
     const publicApiResult = await runCommand(ctx, 'eai publicapi --help');
     const updateResult = await runCommand(ctx, 'eai update --help');
+    const errorsResult = await runCommand(ctx, 'eai errors --help');
+    const agentResult = await runCommand(ctx, 'eai agent guide --help');
 
     expect(verifyResult.exitCode).toBe(0);
     expect(verifyResult.stdout).toContain('eai verify --tenant-id <tenantId>');
     expect(verifyResult.stdout).toContain("Use 'eai verify calls' when you need to inspect");
+
+    expect(runtimeResult.exitCode).toBe(0);
+    expect(runtimeResult.stdout).toContain('eai runtime validate --format json');
+
+    expect(deployResult.exitCode).toBe(0);
+    expect(deployResult.stdout).toContain('eai deploy doctor --url https://my-app.example.com');
 
     expect(doctorResult.exitCode).toBe(0);
     expect(doctorResult.stdout).toContain('eai doctor --check-updates');
@@ -109,5 +131,13 @@ describe('CLI help output', () => {
     expect(updateResult.stdout).toContain('npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user');
     expect(updateResult.stdout).toContain('eai gofer refresh --check');
     expect(updateResult.stdout).toContain('eai template check');
+
+    expect(errorsResult.exitCode).toBe(0);
+    expect(errorsResult.stdout).toContain('explain');
+    expect(errorsResult.stdout).toContain('list');
+
+    expect(agentResult.exitCode).toBe(0);
+    expect(agentResult.stdout).toContain('eai agent guide --format json');
+    expect(agentResult.stdout).toContain('eai errors explain <code-or-reason> --format json');
   });
 });

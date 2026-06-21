@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/gofer_eai_first_run.md
-  canonicalChecksum: d46f3583e61dc352f1b1e09dd95b0f5268e15c1adb82f9e61f29e6f8087fb424
+  canonicalChecksum: 501cd27c314a66fc4d802dbf5da0bc0457e7331d11e62302de78963f69d26a6c
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -134,9 +134,22 @@ Run:
 eai --describe
 ```
 
+If advertised, also run:
+
+```bash
+eai agent guide --format json
+```
+
 Prefer commands and options advertised by the installed CLI over remembered
 syntax. Use JSON only where the CLI advertises it. Record a safe summary in the
 first-run report.
+
+When any later `eai` command fails, use the CLI's error guidance before
+inventing a workaround:
+
+```bash
+eai errors explain <code-or-reason> --format json
+```
 
 Specifically note whether the installed CLI advertises the commands needed for:
 
@@ -148,6 +161,8 @@ Specifically note whether the installed CLI advertises the commands needed for:
 - project drift checks via `eai template check`
 - Gofer drift checks via `eai gofer refresh --check`
 - UI block discovery via `eai blocks`
+- AI-agent guidance via `eai agent guide`
+- error recovery guidance via `eai errors explain`
 
 ## Step 5: Login, Tenant, And Account Readiness
 

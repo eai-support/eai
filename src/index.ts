@@ -34,6 +34,7 @@ import { chatCommand } from './commands/chat.js';
 import { workflowCommand } from './commands/workflow.js';
 import { docsCommand } from './commands/docs.js';
 import { deployCommand } from './commands/deploy.js';
+import { runtimeCommand } from './commands/runtime.js';
 import { verifyCommand, doctorCommand } from './commands/verify.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { updateCommand } from './commands/update.js';
@@ -42,7 +43,13 @@ import { goferCommand } from './commands/gofer.js';
 import { templateCommand } from './commands/template.js';
 import { blocksCommand } from './commands/blocks.js';
 import { publicApiCommand } from './commands/publicapi.js';
-import { checkForUpdate, notifyIfUpdateAvailable } from './lib/update-check.js';
+import { errorsCommand } from './commands/errors.js';
+import { agentCommand } from './commands/agent.js';
+import {
+  checkForUpdate,
+  notifyIfUpdateAvailable,
+  notifyIfUpdateAvailableForDiscovery,
+} from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
 import { setActiveProfile, loadActiveProfileFromConfig } from './lib/profile.js';
 import { describeProgram } from './lib/schema-builder.js';
@@ -103,6 +110,7 @@ program.addCommand(chatCommand);
 program.addCommand(workflowCommand);
 program.addCommand(docsCommand);
 program.addCommand(deployCommand);
+program.addCommand(runtimeCommand);
 program.addCommand(verifyCommand);
 program.addCommand(doctorCommand);
 program.addCommand(whoamiCommand);
@@ -112,6 +120,8 @@ program.addCommand(goferCommand);
 program.addCommand(templateCommand);
 program.addCommand(blocksCommand);
 program.addCommand(publicApiCommand);
+program.addCommand(errorsCommand);
+program.addCommand(agentCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -144,20 +154,27 @@ ${chalk.bold('Development Workflows:')}
   ${chalk.cyan('eai verify && eai doctor')}
 
 ${chalk.bold('Deployment:')}
+  ${chalk.dim('# Validate the host-neutral runtime contract before deploying')}
+  ${chalk.cyan('eai runtime validate')}
+  ${chalk.cyan('eai deploy env --provider generic')}
+
   ${chalk.dim('# Set up GitHub Actions deployment')}
   ${chalk.cyan('eai deploy setup --repo org/name')}
 
-  ${chalk.dim('# Trigger deployment and check status')}
+  ${chalk.dim('# Trigger deployment, check status, then doctor the deployed runtime')}
   ${chalk.cyan('eai deploy trigger && eai deploy status')}
+  ${chalk.cyan('eai deploy doctor --url <deployed-url>')}
 
 ${chalk.bold('Machine-Readable Output:')}
   ${chalk.dim('# Get structured JSON output for automation')}
   ${chalk.cyan('eai resources list User --format json')}
   ${chalk.cyan('eai tenant list --format json | jq')}
   ${chalk.cyan('eai verify calls --format json')}
+  ${chalk.cyan('eai errors explain E101 --format json')}
 
   ${chalk.dim('# Discover CLI structure for AI agents')}
   ${chalk.cyan('eai --describe')}
+  ${chalk.cyan('eai agent guide --format json')}
 
 ${chalk.bold('AI Terminal Workflows:')}
   ${chalk.dim('# New projects include Gofer commands, agents, scripts, hooks, and skills')}
@@ -188,17 +205,100 @@ ${chalk.bold('Updates:')}
   ${chalk.cyan('eai publicapi get /v4/identity/me --format json')}
   ${chalk.cyan("eai publicapi post /v4/geo/resolve-location --data '{\"query\":\"Copenhagen\"}'")}
 
+  ${chalk.dim('# Explain known errors for humans and AI agents')}
+  ${chalk.cyan('eai errors list')}
+  ${chalk.cyan('eai errors explain tenant_authorization_incomplete --format json')}
+
+  ${chalk.dim('# Follow the built-in AI-agent recovery loop')}
+  ${chalk.cyan('eai agent guide')}
+
 ${chalk.bold('Accessibility:')}
   ${chalk.dim('# Screen reader friendly output')}
   ${chalk.cyan('eai --simple <command>')}
   ${chalk.cyan('eai --no-color <command>')}
 `);
 
+function readTopLevelCommandName(args: readonly string[]): string | null {
+  const flagsWithValues = new Set(['--profile']);
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (!arg) {
+      continue;
+    }
+
+    if (arg === '--') {
+      return args[i + 1] ?? null;
+    }
+
+    if (arg.startsWith('--profile=')) {
+      continue;
+    }
+
+    if (flagsWithValues.has(arg)) {
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('-')) {
+      continue;
+    }
+
+    return arg;
+  }
+
+  return null;
+}
+
+function isHelpInvocation(args: readonly string[]): boolean {
+  return (
+    args.length === 0 ||
+    args.includes('--help') ||
+    args.includes('-h') ||
+    readTopLevelCommandName(args) === 'help'
+  );
+}
+
+function isUnknownTopLevelCommand(args: readonly string[]): boolean {
+  const commandName = readTopLevelCommandName(args);
+  if (!commandName || commandName === 'help') {
+    return false;
+  }
+
+  const knownCommands = new Set<string>();
+  for (const command of program.commands) {
+    knownCommands.add(command.name());
+    for (const alias of command.aliases()) {
+      knownCommands.add(alias);
+    }
+  }
+
+  return !knownCommands.has(commandName);
+}
+
 // Handle --describe before parsing (needs to work without command)
-if (process.argv.includes('--describe')) {
+const cliArgs = process.argv.slice(2);
+if (cliArgs.includes('--describe')) {
   console.log(JSON.stringify(describeProgram(program), null, 2));
 } else {
-  checkForUpdate(pkg.version);
+  const topLevelCommandName = readTopLevelCommandName(cliArgs);
+  const shouldForegroundCheckForUpdate = isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs);
+  const shouldSuppressPostCommandNotice = topLevelCommandName === 'update';
+
+  if (shouldForegroundCheckForUpdate) {
+    await notifyIfUpdateAvailableForDiscovery(pkg.version);
+  } else if (!shouldSuppressPostCommandNotice) {
+    checkForUpdate(pkg.version);
+  }
+
+  if (cliArgs.length === 0) {
+    program.outputHelp();
+    process.exit(0);
+  }
+
   await program.parseAsync();
-  await notifyIfUpdateAvailable(pkg.version);
+
+  if (!shouldForegroundCheckForUpdate && !shouldSuppressPostCommandNotice) {
+    await notifyIfUpdateAvailable(pkg.version);
+  }
 }

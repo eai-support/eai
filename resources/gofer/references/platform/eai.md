@@ -13,12 +13,16 @@ Use this fallback when external CLI documentation is unavailable.
 - Use live CLI discovery before assuming syntax:
   - `eai update --check`
   - `eai --describe`
+  - `eai agent guide --format json` when advertised
   - `eai whoami`
   - `eai tenant list --format json`
 - When the repo is already an EAI app project, also check:
   - `eai template check --format json`
   - `eai gofer refresh --check --format json`
   - `eai workflow readiness --format json` when advertised
+- When any `eai` command fails, run
+  `eai errors explain <code-or-reason> --format json` when advertised and use
+  its public-safe reasons and next commands before guessing remediation.
 - Include scaffolding or setup commands only when they are supported by the
   target project.
 - Include deployment commands only when the target repository documents a
@@ -44,5 +48,7 @@ readiness, and preview as interchangeable states.
 ## Error Recovery
 
 When commands fail, consult `eai-error-catalog.yaml` in the same folder. Match
-the failure to a recovery path, record the blocked gate in
-`.specify/specs/{feature}/eai-preflight.md`, and avoid inventing a new order.
+the failure to a recovery path, then use
+`eai errors explain <code-or-reason> --format json` when the CLI advertises it.
+Record the blocked gate in `.specify/specs/{feature}/eai-preflight.md`, and
+avoid inventing a new order.
