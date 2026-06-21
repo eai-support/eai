@@ -53,6 +53,7 @@ const EAI_CONFIG_DIR = path.join('src', 'eai.config');
 const EAI_OBJECT_TYPES_MARKER = path.join(EAI_CONFIG_DIR, 'object-types.ts');
 const EAI_REGISTER_MARKER = path.join(EAI_CONFIG_DIR, 'register.ts');
 const EAI_MANIFEST_MARKER = 'manifest.yml';
+const EAI_RUNTIME_CONTRACT_MARKER = 'eai.runtime.json';
 
 const GOFER_GITIGNORE_ENTRIES = [
   '.specify/hooks/',
@@ -315,14 +316,16 @@ export async function detectProjectInfo(workspaceRoot) {
 }
 
 async function detectEaiInitialized(workspaceRoot) {
-  const [hasEaiConfigDir, hasObjectTypes, hasRegister, hasManifest] = await Promise.all([
-    pathExists(path.join(workspaceRoot, EAI_CONFIG_DIR)),
-    pathExists(path.join(workspaceRoot, EAI_OBJECT_TYPES_MARKER)),
-    pathExists(path.join(workspaceRoot, EAI_REGISTER_MARKER)),
-    pathExists(path.join(workspaceRoot, EAI_MANIFEST_MARKER)),
-  ]);
+  const [hasEaiConfigDir, hasObjectTypes, hasRegister, hasManifest, hasRuntimeContract] =
+    await Promise.all([
+      pathExists(path.join(workspaceRoot, EAI_CONFIG_DIR)),
+      pathExists(path.join(workspaceRoot, EAI_OBJECT_TYPES_MARKER)),
+      pathExists(path.join(workspaceRoot, EAI_REGISTER_MARKER)),
+      pathExists(path.join(workspaceRoot, EAI_MANIFEST_MARKER)),
+      pathExists(path.join(workspaceRoot, EAI_RUNTIME_CONTRACT_MARKER)),
+    ]);
 
-  return (hasObjectTypes && hasRegister) || (hasEaiConfigDir && hasManifest);
+  return hasRuntimeContract || (hasObjectTypes && hasRegister) || (hasEaiConfigDir && hasManifest);
 }
 
 function formatLanguage(language) {
@@ -405,7 +408,8 @@ function buildEaiRepoContractSection(projectInfo) {
 
 - This repo appears to be initialized from the EAI app template. Before app-delivery work, read \`.specify/references/platform/eai-repo-contract.md\` and \`.specify/references/platform/eai-error-catalog.yaml\`.
 - If CLI, login, tenant, template, or Gofer readiness is missing or stale, run \`/gofer:eai-first-run\` before building.
-- Use \`eai update --check\`, \`eai template check --format json\`, \`eai gofer refresh --check --format json\`, and \`eai workflow readiness --format json\` when the CLI advertises them before assuming the repo is current.
+- Use \`eai update --check\`, \`eai --describe\`, \`eai agent guide --format json\`, \`eai template check --format json\`, \`eai gofer refresh --check --format json\`, and \`eai workflow readiness --format json\` when the CLI advertises them before assuming the repo is current.
+- After any \`eai\` command error, use \`eai errors explain <code-or-reason> --format json\` before guessing remediation.
 - Build on EAI Platform first and Azure second. Treat non-EAI runtimes as explicit exceptions only.
 - Keep provisioning, types seed, schema/storage health, workflow readiness, and preview as separate gates.`;
 }

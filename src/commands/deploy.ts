@@ -16,6 +16,13 @@ import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
+import {
+  expectedStatuses,
+  loadRuntimeContract,
+  RUNTIME_CONTRACT_FILE,
+  validateRuntimeContract,
+  type RuntimeSmokeTest,
+} from '../lib/runtime-contract.js';
 
 const exec = promisify(execFile);
 
@@ -198,6 +205,534 @@ deployCommand
       }
     } catch (err) {
       if (spinner) spinner.fail(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+// ─── eai deploy env ──────────────────────────────────────────────────────
+
+const DEPLOY_PROVIDERS = ['vercel', 'docker', 'aws', 'azure', 'kubernetes', 'vm', 'generic'] as const;
+type DeployProvider = (typeof DEPLOY_PROVIDERS)[number];
+
+interface DeployEnvPlan {
+  provider: DeployProvider;
+  contract: string;
+  requiredEnv: string[];
+  requiredSecrets: string[];
+  optionalSecrets: string[];
+  notes: string[];
+}
+
+function isDeployProvider(value: string): value is DeployProvider {
+  return DEPLOY_PROVIDERS.includes(value as DeployProvider);
+}
+
+function providerNotes(provider: DeployProvider): string[] {
+  switch (provider) {
+    case 'vercel':
+      return [
+        'Add required environment variables and secrets in Project Settings > Environment Variables.',
+        'Add the deployed Auth.js callback URL to the Entra app registration.',
+        'Run eai deploy doctor --url against preview and production URLs before marking deployment complete.',
+      ];
+    case 'docker':
+      return [
+        'Put non-secret values in an env file or container environment.',
+        'Inject secrets through the runtime or orchestrator secret store, not the image.',
+        'Run eai deploy doctor --url against the exposed container URL.',
+      ];
+    case 'aws':
+      return [
+        'Map required env vars to the app runtime configuration for the selected AWS service.',
+        'Store secrets in the provider secret store and inject them at runtime.',
+        'Run eai deploy doctor --url against the public load balancer or app URL.',
+      ];
+    case 'azure':
+      return [
+        'Map required env vars to App Settings or the selected Azure container runtime.',
+        'Store secrets in the platform secret store or Key Vault-backed settings.',
+        'Run eai deploy doctor --url against the deployed app URL after restart.',
+      ];
+    case 'kubernetes':
+      return [
+        'Put non-secret values in a ConfigMap and secrets in a Secret.',
+        'Mount both into the workload as environment variables.',
+        'Run eai deploy doctor --url against the ingress URL after rollout.',
+      ];
+    case 'vm':
+      return [
+        'Provide env vars and secrets through the process manager or host secret mechanism.',
+        'Do not commit runtime secret files to the repo.',
+        'Run eai deploy doctor --url against the public or internal app URL.',
+      ];
+    case 'generic':
+      return [
+        'Translate the runtime contract into your host environment and secret mechanism.',
+        'Configure the Auth.js callback URL in the Entra app registration.',
+        'Run eai deploy doctor --url after deployment; /health alone is not enough.',
+      ];
+  }
+}
+
+function buildDeployEnvPlan(provider: DeployProvider, contractPath: string, validation: Awaited<ReturnType<typeof validateRuntimeContract>>): DeployEnvPlan {
+  return {
+    provider,
+    contract: contractPath,
+    requiredEnv: validation.summary.requiredEnv,
+    requiredSecrets: validation.summary.requiredSecrets,
+    optionalSecrets: validation.summary.optionalSecrets,
+    notes: providerNotes(provider),
+  };
+}
+
+deployCommand
+  .command('env')
+  .description('Print provider-neutral runtime env and secret requirements')
+  .requiredOption('--provider <provider>', `Target provider (${DEPLOY_PROVIDERS.join('|')})`)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+Examples:
+  $ eai deploy env --provider generic
+  $ eai deploy env --provider vercel --format json
+  $ eai deploy env --provider kubernetes
+  `)
+  .action(async (options) => {
+    if (options.json) options.format = 'json';
+    if (!isDeployProvider(options.provider)) {
+      exitWithError(ErrorCode.E305, { details: `Unknown provider ${options.provider}. Use one of ${DEPLOY_PROVIDERS.join(', ')}` }, options.format);
+    }
+
+    const validation = await validateRuntimeContract();
+    const plan = buildDeployEnvPlan(options.provider, validation.contractPath, validation);
+
+    if (options.format === 'json') {
+      out.json({
+        provider: plan.provider,
+        contract: plan.contract,
+        requiredEnv: plan.requiredEnv,
+        requiredProtectedEnvNames: plan.requiredSecrets,
+        optionalProtectedEnvNames: plan.optionalSecrets,
+        notes: plan.notes,
+        validationStatus: validation.status,
+        validationFindings: validation.findings,
+      });
+      if (validation.status === 'fail') process.exit(1);
+      return;
+    }
+
+    out.heading(`EAI Deploy Env: ${options.provider}`);
+    out.table([
+      ['Contract', plan.contract],
+      ['Validation', validation.status === 'pass' ? 'PASS' : 'FAIL'],
+    ]);
+
+    out.blank();
+    out.heading('Required Environment Variables');
+    for (const name of plan.requiredEnv) {
+      out.info(name);
+    }
+
+    out.blank();
+    out.heading('Required Secrets');
+    for (const name of plan.requiredSecrets) {
+      out.info(name);
+    }
+
+    if (plan.optionalSecrets.length > 0) {
+      out.blank();
+      out.heading('Optional Secrets');
+      for (const name of plan.optionalSecrets) {
+        out.info(name);
+      }
+    }
+
+    out.blank();
+    out.heading('Provider Notes');
+    for (const note of plan.notes) {
+      out.info(note);
+    }
+
+    if (validation.status === 'fail') {
+      out.blank();
+      for (const finding of validation.findings) {
+        out.error(`${finding.code}: ${finding.message}`);
+        if (finding.fix) out.info(`Fix: ${finding.fix}`);
+      }
+      process.exit(1);
+    }
+  });
+
+// ─── eai deploy doctor ───────────────────────────────────────────────────
+
+type DeployDoctorCategory =
+  | 'host/infrastructure'
+  | 'app_not_running'
+  | 'authjs_config'
+  | 'entra_client_redirect_config'
+  | 'eai_publicapi_config'
+  | 'tenant_workflow_config'
+  | 'service_identity_app_only_auth_config'
+  | 'publicapi_authorization'
+  | 'app_code_runtime_error';
+
+interface DeployDoctorCheck {
+  name: string;
+  method: string;
+  path: string;
+  url: string;
+  category: DeployDoctorCategory;
+  status: 'pass' | 'fail' | 'warning' | 'skip';
+  httpStatus?: number;
+  message: string;
+  fix?: string;
+}
+
+interface DeployDoctorResult {
+  url: string;
+  contract: string;
+  status: 'pass' | 'fail';
+  checks: DeployDoctorCheck[];
+  summary: {
+    pass: number;
+    fail: number;
+    warning: number;
+    skip: number;
+  };
+}
+
+function normalizeBaseUrl(url: string): string {
+  const parsed = new URL(url);
+  parsed.hash = '';
+  parsed.search = '';
+  return parsed.toString().replace(/\/$/, '');
+}
+
+function combineUrl(baseUrl: string, pathValue: string): string {
+  return `${baseUrl}${pathValue.startsWith('/') ? pathValue : `/${pathValue}`}`;
+}
+
+function coerceDoctorCategory(value: string | undefined, fallback: DeployDoctorCategory): DeployDoctorCategory {
+  const allowed = new Set<DeployDoctorCategory>([
+    'host/infrastructure',
+    'app_not_running',
+    'authjs_config',
+    'entra_client_redirect_config',
+    'eai_publicapi_config',
+    'tenant_workflow_config',
+    'service_identity_app_only_auth_config',
+    'publicapi_authorization',
+    'app_code_runtime_error',
+  ]);
+  return value && allowed.has(value as DeployDoctorCategory) ? (value as DeployDoctorCategory) : fallback;
+}
+
+function classifyStatus(pathValue: string, httpStatus: number, fallback: DeployDoctorCategory): DeployDoctorCategory {
+  if (httpStatus === 401 || httpStatus === 403) return 'publicapi_authorization';
+  if (httpStatus === 404 && pathValue.includes('/api/auth')) return 'authjs_config';
+  if (httpStatus >= 500 && pathValue.includes('/api/eai')) return 'app_code_runtime_error';
+  if (httpStatus >= 500) return 'app_not_running';
+  return fallback;
+}
+
+async function readJsonSafely(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function hasTenantWorkflowProblem(body: unknown): string | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return 'Runtime config did not return a JSON object.';
+  }
+  const tenants = (body as Record<string, unknown>).tenants;
+  if (!tenants || typeof tenants !== 'object' || Array.isArray(tenants)) {
+    return 'Runtime config did not include a tenants object.';
+  }
+  for (const [key, value] of Object.entries(tenants as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return `Tenant key ${key} did not return an object.`;
+    }
+    const tenant = value as Record<string, unknown>;
+    if (typeof tenant.tenantId !== 'string' || tenant.tenantId.trim() === '') {
+      return `Tenant key ${key} is missing tenantId.`;
+    }
+    if (typeof tenant.workflowId !== 'string' || tenant.workflowId.trim() === '') {
+      return `Tenant key ${key} is missing workflowId.`;
+    }
+  }
+  return null;
+}
+
+function hasAuthProvidersProblem(body: unknown): string | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return 'Auth.js providers endpoint did not return a JSON object.';
+  }
+  if (Object.keys(body as Record<string, unknown>).length === 0) {
+    return 'Auth.js providers endpoint returned no providers.';
+  }
+  return null;
+}
+
+async function runDoctorCheck(baseUrl: string, test: RuntimeSmokeTest, fallbackCategory: DeployDoctorCategory): Promise<DeployDoctorCheck> {
+  const url = combineUrl(baseUrl, test.path);
+  const expected = expectedStatuses(test);
+  const category = coerceDoctorCategory(test.category, fallbackCategory);
+  try {
+    const response = await fetch(url, {
+      method: test.method,
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body = await readJsonSafely(response);
+
+    if (!expected.includes(response.status)) {
+      const failureCategory = classifyStatus(test.path, response.status, category);
+      const optionalStatus = test.optional ? 'warning' : 'fail';
+      return {
+        name: test.name,
+        method: test.method,
+        path: test.path,
+        url,
+        category: failureCategory,
+        status: optionalStatus,
+        httpStatus: response.status,
+        message: `Expected HTTP ${expected.join(' or ')}, received ${response.status}.`,
+        fix: 'Check the deployed app logs and the runtime contract for this endpoint.',
+      };
+    }
+
+    if (test.path.includes('/api/eai/config')) {
+      const problem = hasTenantWorkflowProblem(body);
+      if (problem) {
+        return {
+          name: test.name,
+          method: test.method,
+          path: test.path,
+          url,
+          category: 'tenant_workflow_config',
+          status: test.optional ? 'warning' : 'fail',
+          httpStatus: response.status,
+          message: problem,
+          fix: 'Set TENANT_KEYS plus TENANT_{KEY}_ID and WORKFLOW_{KEY}_ID for the deployed app.',
+        };
+      }
+    }
+
+    if (test.path.includes('/api/auth/providers')) {
+      const problem = hasAuthProvidersProblem(body);
+      if (problem) {
+        return {
+          name: test.name,
+          method: test.method,
+          path: test.path,
+          url,
+          category: 'authjs_config',
+          status: test.optional ? 'warning' : 'fail',
+          httpStatus: response.status,
+          message: problem,
+          fix: 'Check AUTH_SECRET, AUTH_URL, Entra client settings, and callback URL registration.',
+        };
+      }
+    }
+
+    return {
+      name: test.name,
+      method: test.method,
+      path: test.path,
+      url,
+      category,
+      status: 'pass',
+      httpStatus: response.status,
+      message: `HTTP ${response.status}`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      name: test.name,
+      method: test.method,
+      path: test.path,
+      url,
+      category: test.path === '/health' ? 'app_not_running' : 'host/infrastructure',
+      status: test.optional ? 'warning' : 'fail',
+      message,
+      fix: 'Confirm the deployed URL is reachable from this machine and the app process is running.',
+    };
+  }
+}
+
+function dedupeSmokeTests(tests: RuntimeSmokeTest[]): RuntimeSmokeTest[] {
+  const seen = new Set<string>();
+  const unique: RuntimeSmokeTest[] = [];
+  for (const test of tests) {
+    const key = `${test.method}:${test.path}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(test);
+    }
+  }
+  return unique;
+}
+
+export async function runDeployDoctor(url: string): Promise<DeployDoctorResult> {
+  const baseUrl = normalizeBaseUrl(url);
+  const validation = await validateRuntimeContract();
+  const loaded = await loadRuntimeContract(validation.projectRoot);
+  const checks: DeployDoctorCheck[] = [];
+
+  if (validation.status === 'fail') {
+    for (const finding of validation.findings) {
+      checks.push({
+        name: finding.code,
+        method: 'LOCAL',
+        path: RUNTIME_CONTRACT_FILE,
+        url: validation.contractPath,
+        category: 'eai_publicapi_config',
+        status: 'fail',
+        message: finding.message,
+        fix: finding.fix,
+      });
+    }
+  }
+
+  const contract = loaded.contract;
+  const tests = dedupeSmokeTests([
+    {
+      name: 'health',
+      method: 'GET',
+      path: contract.endpoints.health || '/health',
+      expectedStatus: 200,
+      category: 'app_not_running',
+    },
+    {
+      name: 'auth-providers',
+      method: 'GET',
+      path: contract.endpoints.authProviders || '/api/auth/providers',
+      expectedStatus: 200,
+      category: 'authjs_config',
+    },
+    {
+      name: 'runtime-config',
+      method: 'GET',
+      path: contract.endpoints.runtimeConfig || '/api/eai/config',
+      expectedStatus: 200,
+      category: 'tenant_workflow_config',
+    },
+    ...contract.endpoints.public.map((endpoint, index) => ({
+      name: `public-${index + 1}`,
+      method: endpoint.method || 'GET',
+      path: endpoint.path || '/',
+      expectedStatus: 200,
+      category: endpoint.serverSidePlatformAccess
+        ? 'service_identity_app_only_auth_config'
+        : 'app_code_runtime_error',
+    })),
+    ...contract.endpoints.smokeTests,
+  ]);
+
+  for (const test of tests) {
+    checks.push(await runDoctorCheck(baseUrl, test, 'app_code_runtime_error'));
+  }
+
+  const hasBffSmoke = tests.some(
+    (test) =>
+      contract.endpoints.bffBasePath &&
+      test.path.startsWith(contract.endpoints.bffBasePath) &&
+      test.path !== contract.endpoints.runtimeConfig,
+  );
+  if (!hasBffSmoke) {
+    checks.push({
+      name: 'publicapi-bff-smoke-declared',
+      method: 'CONTRACT',
+      path: contract.endpoints.bffBasePath || '/api/eai',
+      url: contract.endpoints.bffBasePath || '/api/eai',
+      category: 'eai_publicapi_config',
+      status: 'warning',
+      message: 'No deployed BFF/PublicAPI smoke endpoint is declared; doctor cannot prove PublicAPI reachability through the app.',
+      fix: 'Add a safe read-only smoke endpoint to endpoints.smokeTests when the app exposes one.',
+    });
+  }
+
+  const summary = {
+    pass: checks.filter((check) => check.status === 'pass').length,
+    fail: checks.filter((check) => check.status === 'fail').length,
+    warning: checks.filter((check) => check.status === 'warning').length,
+    skip: checks.filter((check) => check.status === 'skip').length,
+  };
+
+  return {
+    url: baseUrl,
+    contract: loaded.contractPath,
+    status: summary.fail > 0 ? 'fail' : 'pass',
+    checks,
+    summary,
+  };
+}
+
+deployCommand
+  .command('doctor')
+  .description('Black-box check a deployed EAI app runtime')
+  .requiredOption('--url <url>', 'Deployed app base URL')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+Examples:
+  $ eai deploy doctor --url https://my-app.example.com
+  $ eai deploy doctor --url https://my-app.example.com --format json
+  `)
+  .action(async (options) => {
+    if (options.json) options.format = 'json';
+
+    let result: DeployDoctorResult;
+    try {
+      result = await runDeployDoctor(options.url);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (options.format === 'json') {
+        out.json({ status: 'fail', error: message });
+      } else {
+        out.error(message);
+      }
+      process.exit(1);
+      return;
+    }
+
+    if (options.format === 'json') {
+      out.json(result);
+      if (result.status === 'fail') process.exit(1);
+      return;
+    }
+
+    out.heading('EAI Deploy Doctor');
+    out.table([
+      ['URL', result.url],
+      ['Contract', result.contract],
+      ['Status', result.status === 'pass' ? 'PASS' : 'FAIL'],
+      ['Passed', String(result.summary.pass)],
+      ['Failed', String(result.summary.fail)],
+      ['Warnings', String(result.summary.warning)],
+    ]);
+
+    out.blank();
+    for (const check of result.checks) {
+      const icon =
+        check.status === 'pass'
+          ? out.symbols.success
+          : check.status === 'warning'
+            ? out.symbols.warning
+            : out.symbols.error;
+      console.log(`${icon} ${check.name} [${check.category}] ${check.method} ${check.path}: ${check.message}`);
+      if (check.fix && check.status !== 'pass') out.info(`Fix: ${check.fix}`);
+    }
+
+    out.blank();
+    if (result.status === 'pass') {
+      out.success('Deployment runtime checks passed.');
+    } else {
+      out.error('Deployment runtime checks failed.');
       process.exit(1);
     }
   });

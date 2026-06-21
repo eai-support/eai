@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/0_business_scenario.md
-  canonicalChecksum: 987e794c53d77f36e02654172c9a20ab913ac2ce7a4823e0f1844b2386138f73
+  canonicalChecksum: f37a0e56390d6a28776ee0e3596a00a4bfe7acb500ede086665a03b91555f89b
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -155,12 +155,20 @@ with an unrelated non-EAI stack.
 4. **Discover CLI capabilities before assuming syntax**
    - Run `eai --describe` and prefer advertised subcommands/options over stale
      remembered syntax.
+   - If advertised, run `eai agent guide --format json` before planning EAI
+     platform work so the agent uses current CLI contracts and safe recovery
+     patterns.
+   - After any `eai` command error, run
+     `eai errors explain <code-or-reason> --format json` before proposing a
+     fix, and prefer the CLI's public-safe recovery commands over guessed
+     platform internals.
    - Use JSON only where the CLI advertises it. `eai tenant list --format json`
      is suitable for automation; `eai whoami` may be plain text on current
      versions.
    - Record whether the installed CLI advertises `eai vertical`, `eai resources
      schema`, `eai workflow readiness`, `eai template check`, `eai gofer
-     refresh --check`, and `eai blocks`.
+     refresh --check`, `eai blocks`, `eai agent guide`, and
+     `eai errors explain`.
 5. **Check account, login, and tenant readiness**
    - Run `eai whoami` to confirm login, active tenant, profile, token status,
      and PublicAPI context.

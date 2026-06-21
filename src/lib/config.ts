@@ -146,6 +146,14 @@ export async function findProjectRoot(from?: string): Promise<string | null> {
       /* not here */
     }
 
+    // Provider-neutral EAI app runtime contract.
+    try {
+      await access(join(dir, "eai.runtime.json"));
+      return dir;
+    } catch {
+      /* not here */
+    }
+
     // Check for package.json with eai-related deps (fallback)
     try {
       await access(join(dir, "package.json"));

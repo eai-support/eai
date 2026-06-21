@@ -33,6 +33,8 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain('eai env pull');
     expect(result.stdout).toContain('eai resources schema');
     expect(result.stdout).toContain('eai verify calls --format json');
+    expect(result.stdout).toContain('eai runtime validate');
+    expect(result.stdout).toContain('eai deploy doctor --url <deployed-url>');
     expect(result.stdout).toContain('Updates:');
     expect(result.stdout).toContain('eai update --check');
     expect(result.stdout).toContain('eai update');
@@ -87,8 +89,10 @@ describe('CLI help output', () => {
     );
   });
 
-  test('verify, doctor, gofer, template, publicapi, and update help include concrete examples', async () => {
+  test('verify, runtime, deploy, doctor, gofer, template, publicapi, and update help include concrete examples', async () => {
     const verifyResult = await runCommand(ctx, 'eai verify --help');
+    const runtimeResult = await runCommand(ctx, 'eai runtime validate --help');
+    const deployResult = await runCommand(ctx, 'eai deploy doctor --help');
     const doctorResult = await runCommand(ctx, 'eai doctor --help');
     const goferResult = await runCommand(ctx, 'eai gofer --help');
     const templateResult = await runCommand(ctx, 'eai template --help');
@@ -100,6 +104,12 @@ describe('CLI help output', () => {
     expect(verifyResult.exitCode).toBe(0);
     expect(verifyResult.stdout).toContain('eai verify --tenant-id <tenantId>');
     expect(verifyResult.stdout).toContain("Use 'eai verify calls' when you need to inspect");
+
+    expect(runtimeResult.exitCode).toBe(0);
+    expect(runtimeResult.stdout).toContain('eai runtime validate --format json');
+
+    expect(deployResult.exitCode).toBe(0);
+    expect(deployResult.stdout).toContain('eai deploy doctor --url https://my-app.example.com');
 
     expect(doctorResult.exitCode).toBe(0);
     expect(doctorResult.stdout).toContain('eai doctor --check-updates');

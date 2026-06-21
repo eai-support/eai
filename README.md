@@ -231,9 +231,25 @@ still enforces platform tenant authorization.
 
 | Command | Description |
 |---------|-------------|
+| `eai runtime validate` | Validate the provider-neutral EAI app runtime contract |
+| `eai deploy env --provider <provider>` | Translate the runtime contract into provider env/secret requirements |
 | `eai deploy setup` | Generate deploy-demo.yml + GitHub secrets |
 | `eai deploy trigger` | Trigger deployment workflow |
 | `eai deploy status` | Check deployment status |
+| `eai deploy doctor --url <deployed-url>` | Black-box check health, Auth.js, runtime config, smoke tests, and BFF readiness |
+
+The runtime contract lives in `eai.runtime.json`. It declares required
+environment variable names, required secrets, health/runtime endpoints, Auth.js
+callback path, tenant/workflow key patterns, optional app-only service identity,
+and post-deploy smoke tests. It is host-neutral: Vercel, Docker, AWS, Azure,
+Kubernetes, VM-style hosts, and internal demo environments should translate the
+same contract into their provider-specific env and secret setup.
+
+`eai deploy doctor` deliberately does more than `/health`. A deployment can have
+`/health` returning 200 and still fail because Auth.js providers are missing,
+the Entra callback URL is wrong, tenant/workflow config is empty, service
+identity is absent for anonymous server-side platform calls, PublicAPI rejects
+authorization, or the app runtime is throwing errors.
 
 ### Diagnostics
 
@@ -283,7 +299,10 @@ eai resources list ─────────────────→ Platfo
 eai workflow status ────────────────→ Platform API → AI runtime readiness
 eai chat stream ────────────────────→ Platform API → AI Service
 eai docs classify ──────────────────→ Platform API → AI Service
-eai deploy trigger ─────────────────→ GitHub Actions → Azure App Service
+eai runtime validate ────────────────→ eai.runtime.json → local contract evidence
+eai deploy env ──────────────────────→ eai.runtime.json → provider env/secret checklist
+eai deploy doctor ───────────────────→ deployed app URL → black-box runtime checks
+eai deploy trigger ─────────────────→ GitHub Actions → deployment workflow
 ```
 
 The CLI authenticates via browser-based authorization code flow with PKCE, stores tokens locally in `~/.eai/`, persists the active working tenant from your tenant-admin memberships, and calls the platform API directly with a Bearer token. `.env.local` is still available for project runtime configuration, but tenant selection for CLI platform commands comes from `eai login` and `eai tenant select`.

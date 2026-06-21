@@ -34,6 +34,7 @@ import { chatCommand } from './commands/chat.js';
 import { workflowCommand } from './commands/workflow.js';
 import { docsCommand } from './commands/docs.js';
 import { deployCommand } from './commands/deploy.js';
+import { runtimeCommand } from './commands/runtime.js';
 import { verifyCommand, doctorCommand } from './commands/verify.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { updateCommand } from './commands/update.js';
@@ -109,6 +110,7 @@ program.addCommand(chatCommand);
 program.addCommand(workflowCommand);
 program.addCommand(docsCommand);
 program.addCommand(deployCommand);
+program.addCommand(runtimeCommand);
 program.addCommand(verifyCommand);
 program.addCommand(doctorCommand);
 program.addCommand(whoamiCommand);
@@ -152,11 +154,16 @@ ${chalk.bold('Development Workflows:')}
   ${chalk.cyan('eai verify && eai doctor')}
 
 ${chalk.bold('Deployment:')}
+  ${chalk.dim('# Validate the host-neutral runtime contract before deploying')}
+  ${chalk.cyan('eai runtime validate')}
+  ${chalk.cyan('eai deploy env --provider generic')}
+
   ${chalk.dim('# Set up GitHub Actions deployment')}
   ${chalk.cyan('eai deploy setup --repo org/name')}
 
-  ${chalk.dim('# Trigger deployment and check status')}
+  ${chalk.dim('# Trigger deployment, check status, then doctor the deployed runtime')}
   ${chalk.cyan('eai deploy trigger && eai deploy status')}
+  ${chalk.cyan('eai deploy doctor --url <deployed-url>')}
 
 ${chalk.bold('Machine-Readable Output:')}
   ${chalk.dim('# Get structured JSON output for automation')}
