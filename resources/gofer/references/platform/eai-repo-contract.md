@@ -31,11 +31,12 @@ Before app-delivery research, planning, implementation, or validation:
 
 1. Read `.specify/specs/{feature}/eai-preflight.md` when it exists.
 2. Read `.specify/references/platform/eai-error-catalog.yaml`.
-3. If CLI, login, tenant, template, or Gofer readiness is missing or stale,
-   run `/gofer:eai-first-run`.
+3. If CLI, login, tenant, template, or Gofer readiness is missing or stale, run
+   `/gofer:eai-first-run`.
 4. Use current CLI discovery instead of memory:
    - `eai update --check`
    - `eai --describe`
+   - `eai agent guide --format json` when advertised
    - `eai whoami`
    - `eai tenant list --format json`
 5. When the repo is an EAI project, check drift before further build work:
@@ -86,10 +87,14 @@ Treat these as separate gates:
 
 When an EAI CLI or platform command fails:
 
-1. Match the failure against `.specify/references/platform/eai-error-catalog.yaml`.
-2. Record the last completed gate, blocked gate, and next recovery command in
+1. Match the failure against
+   `.specify/references/platform/eai-error-catalog.yaml`.
+2. Run `eai errors explain <code-or-reason> --format json` when the CLI
+   advertises it, and use its public-safe reasons plus next `eai` commands
+   before guessing platform internals.
+3. Record the last completed gate, blocked gate, and next recovery command in
    `.specify/specs/{feature}/eai-preflight.md`.
-3. Do not invent a new order or mark the repo ready when a prior gate is still
+4. Do not invent a new order or mark the repo ready when a prior gate is still
    blocked.
 
 ## Privacy And Safety

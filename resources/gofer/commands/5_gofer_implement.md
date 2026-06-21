@@ -606,21 +606,34 @@ If implementation was interrupted:
 
 ---
 
-## EnterpriseAI Deployment Preflight Gate (Manifest/Config)
+## EnterpriseAI Runtime Deployment Preflight Gate
 
 The standard Gofer workflow is the public default. EnterpriseAI deployment
 preflight is migration-only and runs only when `workflowProfile` is explicitly
 `enterpriseai`.
 
 Before any deployment task emitted by `/4_gofer_tasks` completes, this stage
-MUST execute deployment preflight checks (manifest/config gate). A task that
-invokes `eai deploy` is not marked complete until all of the following files
-are present at the workspace root and pass their readiness checks:
+MUST execute deployment preflight checks for the runtime contract and deploy
+doctor gate. A task that invokes `eai deploy` is not marked complete until all
+of the following files are present at the workspace root and pass their
+readiness checks:
 
-| Required File  | Purpose                                                 |
-| -------------- | ------------------------------------------------------- |
-| `manifest.yml` | Vertical application manifest (from `eai init`) |
-| `config.json`  | Runtime configuration bundle (environment-specific)     |
+| Required File             | Purpose                                                        |
+| ------------------------- | -------------------------------------------------------------- |
+| `eai.runtime.json`        | Provider-neutral runtime contract from the EAI app template    |
+| `.eai/deploy-doctor.json` | Black-box deploy doctor evidence from the deployed app runtime |
+
+Required commands:
+
+```bash
+eai runtime validate
+mkdir -p .eai
+eai deploy doctor --url <deployed-url> --format json > .eai/deploy-doctor.json
+```
+
+`/health` alone is not enough. Auth.js, runtime config, tenant/workflow config,
+PublicAPI/BFF reachability, service-identity requirements, and declared smoke
+tests must pass before deployment is complete.
 
 ### Gate behaviour
 

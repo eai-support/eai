@@ -145,12 +145,20 @@ with an unrelated non-EAI stack.
 4. **Discover CLI capabilities before assuming syntax**
    - Run `eai --describe` and prefer advertised subcommands/options over stale
      remembered syntax.
+   - If advertised, run `eai agent guide --format json` before planning EAI
+     platform work so the agent uses current CLI contracts and safe recovery
+     patterns.
+   - After any `eai` command error, run
+     `eai errors explain <code-or-reason> --format json` before proposing a
+     fix, and prefer the CLI's public-safe recovery commands over guessed
+     platform internals.
    - Use JSON only where the CLI advertises it. `eai tenant list --format json`
      is suitable for automation; `eai whoami` may be plain text on current
      versions.
    - Record whether the installed CLI advertises `eai vertical`, `eai resources
      schema`, `eai workflow readiness`, `eai template check`, `eai gofer
-     refresh --check`, and `eai blocks`.
+     refresh --check`, `eai blocks`, `eai agent guide`, and
+     `eai errors explain`.
 5. **Check account, login, and tenant readiness**
    - Run `eai whoami` to confirm login, active tenant, profile, token status,
      and PublicAPI context.
