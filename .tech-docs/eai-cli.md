@@ -48,6 +48,8 @@ eai dev
 | `eai docs`                              | Upload, classify, and index documents for platform processing and RAG.                    |
 | `eai chat`                              | Send or stream chat requests through configured AI workflows.                             |
 | `eai publicapi`                         | Call authorized PublicAPI V4 routes when a named command does not exist yet.              |
+| `eai runtime`                           | Validate the host-neutral `eai.runtime.json` app runtime contract.                        |
+| `eai deploy`                            | Translate provider env/secrets and black-box doctor deployed EAI app runtimes.            |
 | `eai gofer`                             | Install and refresh repo-local agent workflow assets.                                     |
 | `eai template`                          | Check app-template and UI drift without writing files.                                    |
 | `eai verify`, `eai doctor`              | Run connectivity, contract, update, and troubleshooting checks.                           |
