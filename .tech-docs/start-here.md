@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.4.1** (2026-06-20): Surface stale CLI update guidance during discovery.
+The current CLI release is **v3.5.0** (2026-06-21): Add provider-neutral runtime contract and deploy doctor.
 
 
 ## What The Pieces Do

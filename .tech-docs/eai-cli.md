@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.4.1 |
-| Released | 2026-06-20 |
-| Last Material Change | Surface stale CLI update guidance during discovery |
-| Source Commit | `63e24c4cff0903eee97c75852c30ffaf78e24fbe` |
+| Version | 3.5.0 |
+| Released | 2026-06-21 |
+| Last Material Change | Add provider-neutral runtime contract and deploy doctor |
+| Source Commit | `7f743ed8b01e8809a13ed140ec781508d4f45c4d` |
 
 
 ## Common Workflow
