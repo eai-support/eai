@@ -151,16 +151,35 @@ async function readJsonIfExists(filePath) {
 
 export async function detectGoferVersion(sourceRoot) {
   const candidates = [
-    path.join(sourceRoot, '.eai-gofer-plugin-version'),
-    path.join(sourceRoot, 'plugin.json'),
-    path.join(sourceRoot, 'package.json'),
-    path.join(sourceRoot, 'extension', 'package.json'),
+    {
+      path: path.join(sourceRoot, '.eai-gofer-plugin-version'),
+      type: 'marker',
+    },
+    {
+      path: path.join(sourceRoot, 'plugin.json'),
+      type: 'manifest',
+      validName: (name) => name === 'eai-gofer',
+    },
+    {
+      path: path.join(sourceRoot, 'package.json'),
+      type: 'manifest',
+      validName: (name) => name === 'eai-gofer',
+    },
+    {
+      path: path.join(sourceRoot, 'extension', 'package.json'),
+      type: 'manifest',
+      validName: (name) => name === 'gofer',
+    },
+    {
+      path: path.join(sourceRoot, GOFER_VERSION_FILE),
+      type: 'marker',
+    },
   ];
 
   for (const candidate of candidates) {
     try {
-      const content = await fs.readFile(candidate, 'utf8');
-      if (candidate.endsWith('.eai-gofer-plugin-version')) {
+      const content = await fs.readFile(candidate.path, 'utf8');
+      if (candidate.type === 'marker') {
         const firstLine = content.split('\n')[0]?.trim();
         if (firstLine) {
           return firstLine;
@@ -169,7 +188,12 @@ export async function detectGoferVersion(sourceRoot) {
       }
 
       const parsed = JSON.parse(content);
-      if (typeof parsed.version === 'string' && parsed.version.trim().length > 0) {
+      const name = typeof parsed.name === 'string' ? parsed.name.trim() : '';
+      if (
+        candidate.validName?.(name) &&
+        typeof parsed.version === 'string' &&
+        parsed.version.trim().length > 0
+      ) {
         return parsed.version.trim();
       }
     } catch (error) {

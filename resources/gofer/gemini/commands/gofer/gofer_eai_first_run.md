@@ -140,6 +140,7 @@ Specifically note whether the installed CLI advertises the commands needed for:
 - app enrollment via `eai vertical`
 - resource schema discovery via `eai resources schema`
 - workflow readiness via `eai workflow readiness`
+- Entra app registration and redirect URI provisioning via `eai provision entra`
 - project drift checks via `eai template check`
 - Gofer drift checks via `eai gofer refresh --check`
 - UI block discovery via `eai blocks`
@@ -222,7 +223,48 @@ If the CLI requires additional safe answers, gather them first. If the repo is
 non-empty and not an EAI app, ask whether to initialize a new sibling EAI app
 directory or stop.
 
-## Step 8: Confirm Gofer Scaffold And Workspace Commands
+## Step 8: Recover Known Entra Redirect Mismatches
+
+If the user provides a browser sign-in error, auth callback log, or deployment
+log containing `AADSTS50011`, "reply URL specified in the request does not
+match", "redirect URI", `redirect_uri`, or
+`/api/auth/callback/microsoft-entra-id`, treat it as an EAI identity
+provisioning recovery before giving manual Azure Portal instructions.
+
+Do this sequence:
+
+```bash
+eai whoami
+eai tenant list --format json
+```
+
+If the active tenant is missing or wrong, help the user choose the right tenant
+and run the advertised equivalent of:
+
+```bash
+eai tenant select <tenant-slug-or-id>
+```
+
+Capture the exact callback URI from the failing browser log, for example:
+
+```text
+https://<host>/api/auth/callback/microsoft-entra-id
+```
+
+Ask before changing tenant-scoped identity configuration, then run the
+advertised equivalent of:
+
+```bash
+eai provision entra --force --redirect-uri <exact-callback-uri> --debug
+```
+
+After the command succeeds, retry the sign-in flow and confirm the authorize
+request uses the same registered `redirect_uri`. If the mismatch persists,
+check whether `AUTH_ENTRA_CLIENT_ID` or `ENTRA_CLIENT_ID` points to a different
+app registration than the one EAI provisioned. Never record client secrets,
+tokens, or `.env.local` values in the first-run report.
+
+## Step 9: Confirm Gofer Scaffold And Workspace Commands
 
 After `eai init`, verify Gofer files exist:
 
