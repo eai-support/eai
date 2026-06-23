@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/0_business_scenario.md
-  canonicalChecksum: f37a0e56390d6a28776ee0e3596a00a4bfe7acb500ede086665a03b91555f89b
+  canonicalChecksum: 6fd6b55eb018f979eb3f937a7768321663aaf13b9d522eb84ccd4f8a64c83fb3
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -167,8 +167,8 @@ with an unrelated non-EAI stack.
      versions.
    - Record whether the installed CLI advertises `eai vertical`, `eai resources
      schema`, `eai workflow readiness`, `eai template check`, `eai gofer
-     refresh --check`, `eai blocks`, `eai agent guide`, and
-     `eai errors explain`.
+     refresh --check`, `eai provision entra`, `eai blocks`,
+     `eai agent guide`, and `eai errors explain`.
 5. **Check account, login, and tenant readiness**
    - Run `eai whoami` to confirm login, active tenant, profile, token status,
      and PublicAPI context.
@@ -236,6 +236,13 @@ with an unrelated non-EAI stack.
    - Treat `.specify/references/platform/eai-repo-contract.md` and
      `.specify/references/platform/eai-error-catalog.yaml` as the repo-owned
      fallback contract whenever live docs are unavailable or a command fails.
+   - If the user provides a browser or auth log with `AADSTS50011`,
+     `redirect_uri`, "reply URL specified in the request does not match", or
+     `/api/auth/callback/microsoft-entra-id`, record
+     `EAI_ENTRA_REDIRECT_URI_MISMATCH` in `eai-preflight.md` and recover through
+     EAI login, tenant selection, and `eai provision entra --force
+     --redirect-uri <exact-callback-uri> --debug` before suggesting manual
+     Azure Portal edits.
 
 ### EAI Preflight Artifact
 
@@ -252,6 +259,7 @@ For EAI app delivery, create or update
 | Template readiness | Already EAI template / needs `eai init` / non-EAI repo decision |
 | Drift readiness | `eai template check` / `eai gofer refresh --check` result or `E001` explanation |
 | App enrollment | Existing app, new app to create, or blocked pending user confirmation |
+| Entra redirect readiness | Exact callback URI, tenant/client alignment state, and any `AADSTS50011` recovery command |
 | Block catalog readiness | Available block commands and package profile compatibility evidence |
 | App stack policy | EAI Platform including app template first, Azure second, or approved exception |
 | Next action | Continue discovery, initialize template, request account/tenant access, or stop |
