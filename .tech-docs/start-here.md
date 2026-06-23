@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.5.3** (2026-06-23): Fix eai tenant select inquirer v14 list->select prompt regression (#3006).
+The current CLI release is **v3.5.4** (2026-06-23): Show login refresh guidance for tenant auth failures.
 
 
 ## What The Pieces Do
