@@ -20,6 +20,8 @@ Use this fallback when external CLI documentation is unavailable.
   - `eai template check --format json`
   - `eai gofer refresh --check --format json`
   - `eai workflow readiness --format json` when advertised
+  - `eai provision entra` when identity callback or Entra registration setup is
+    in scope
 - When any `eai` command fails, run
   `eai errors explain <code-or-reason> --format json` when advertised and use
   its public-safe reasons and next commands before guessing remediation.
@@ -52,3 +54,10 @@ the failure to a recovery path, then use
 `eai errors explain <code-or-reason> --format json` when the CLI advertises it.
 Record the blocked gate in `.specify/specs/{feature}/eai-preflight.md`, and
 avoid inventing a new order.
+
+If a browser sign-in flow reports `AADSTS50011` or a Microsoft Entra redirect
+URI mismatch, do not start with manual Azure Portal edits. Confirm the EAI login
+and tenant, capture the exact callback URI from the failing authorize request,
+then run the advertised
+`eai provision entra --force --redirect-uri <exact-callback-uri> --debug` path
+and retry sign-in.

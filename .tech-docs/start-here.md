@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.5.1** (2026-06-23): Fix eai dev on Windows.
+The current CLI release is **v3.5.3** (2026-06-23): Fix eai tenant select inquirer v14 list->select prompt regression (#3006).
 
 
 ## What The Pieces Do

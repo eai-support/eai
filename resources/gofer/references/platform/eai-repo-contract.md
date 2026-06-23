@@ -39,6 +39,7 @@ Before app-delivery research, planning, implementation, or validation:
    - `eai agent guide --format json` when advertised
    - `eai whoami`
    - `eai tenant list --format json`
+   - `eai provision entra` when advertised and identity setup is in scope
 5. When the repo is an EAI project, check drift before further build work:
    - `eai template check --format json`
    - `eai gofer refresh --check --format json`
@@ -96,6 +97,15 @@ When an EAI CLI or platform command fails:
    `.specify/specs/{feature}/eai-preflight.md`.
 4. Do not invent a new order or mark the repo ready when a prior gate is still
    blocked.
+
+For Entra browser sign-in failures, treat `AADSTS50011`, redirect URI mismatch
+messages, and `/api/auth/callback/microsoft-entra-id` callback errors as EAI
+identity provisioning problems first. Confirm login and tenant with `eai whoami`
+and `eai tenant list --format json`, select the correct tenant if needed, then
+run the advertised equivalent of
+`eai provision entra --force --redirect-uri <exact-callback-uri> --debug`. Use
+Azure Portal edits only when the installed EAI CLI does not advertise an Entra
+provisioning path or the CLI reports an operator-only block.
 
 ## Privacy And Safety
 

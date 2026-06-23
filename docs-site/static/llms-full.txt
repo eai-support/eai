@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.5.1.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.5.3.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -357,7 +357,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.5.1** (2026-06-23): Fix eai dev on Windows.
+The current CLI release is **v3.5.3** (2026-06-23): Fix eai tenant select inquirer v14 list->select prompt regression (#3006).
 
 
 ## What The Pieces Do
@@ -453,10 +453,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.5.1 |
+| Version | 3.5.3 |
 | Released | 2026-06-23 |
-| Last Material Change | Fix eai dev on Windows |
-| Source Commit | `106f3e8677c8f66dccd1d552e4ef311a7727ea6e` |
+| Last Material Change | Fix eai tenant select inquirer v14 list->select prompt regression (#3006) |
+| Source Commit | `a07df343211d0120b875ad287181dbfcdc13dd80` |
 
 
 ## Common Workflow
@@ -1591,7 +1591,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.5.1. The same catalog powers human stderr output, JSON output for AI
+v3.5.3. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they

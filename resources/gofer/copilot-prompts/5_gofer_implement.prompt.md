@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/5_gofer_implement.md
-  canonicalChecksum: 0e86047eb76d57e8df34598298eb46f14fbcbcef80bc7a2cdffde96ff9d7e251
+  canonicalChecksum: 2f0e88f5be5fb0e853bcbf07d94ee8da4180aeaa253065c9c2c00b6ad1cbe6f9
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -720,11 +720,18 @@ separation from `tasks.md`:
 - Track workflow readiness alongside those gates; do not collapse it into
   provisioning, schema/storage health, or preview status.
 - Use `eai vertical provision <key> --tenant-id <tenant-id> --select --format json`,
+  `eai provision entra --force --redirect-uri <exact-callback-uri> --debug`,
   `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json`,
   `eai resources schema --tenant-id <tenant-id> --format json`,
   `eai resources storage doctor --tenant-id <tenant-id> --format json`, and
   `eai verify storage --tenant-id <tenant-id>` in the recovery order recorded
   by the preflight artifact instead of improvising a new sequence.
+- If a browser or runtime auth log reports `AADSTS50011`, `redirect_uri`,
+  "reply URL specified in the request does not match", or
+  `/api/auth/callback/microsoft-entra-id`, match
+  `EAI_ENTRA_REDIRECT_URI_MISMATCH` in the error catalog. Confirm `eai whoami`
+  and tenant selection first, then use EAI Entra provisioning to register the
+  exact callback URI before asking the user to edit Azure manually.
 - For application delivery, implement the four-step-or-fewer AI-augmented
   process as the user-facing spine. Each step must preserve its business goal,
   AI assistance mode, contextual prefill or conversational support, completion
