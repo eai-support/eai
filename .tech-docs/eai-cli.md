@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.5.1 |
+| Version | 3.5.2 |
 | Released | 2026-06-23 |
-| Last Material Change | Fix eai dev on Windows |
-| Source Commit | `106f3e8677c8f66dccd1d552e4ef311a7727ea6e` |
+| Last Material Change | Bundle eai-gofer v3.7.1 assets |
+| Source Commit | `a1a3c99af0e76d9eed86f2b7ee03fd63f1353922` |
 
 
 ## Common Workflow
