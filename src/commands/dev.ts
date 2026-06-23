@@ -13,6 +13,35 @@ import { getNpmExecutable } from '../lib/npm.js';
 import { getAccessToken } from '../lib/auth.js';
 import * as out from '../lib/output.js';
 
+export function normalizeDevPort(port: unknown): string | null {
+  const value = String(port ?? '').trim();
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+
+  const numericPort = Number(value);
+  if (!Number.isInteger(numericPort) || numericPort < 1 || numericPort > 65_535) {
+    return null;
+  }
+
+  return String(numericPort);
+}
+
+export function buildDevServerArgs(port: string, turbo: boolean): string[] {
+  const args = ['run', 'dev', '--', '--port', port];
+  if (turbo) {
+    args.push('--turbopack');
+  }
+  return args;
+}
+
+export function getDevServerSpawnConfig(platform: NodeJS.Platform = process.platform): { command: string; shell: boolean } {
+  return {
+    command: getNpmExecutable(platform),
+    shell: platform === 'win32',
+  };
+}
+
 export const devCommand = new Command('dev')
   .description('Start local development server')
   .option('--port <port>', 'Port number', '3000')
@@ -84,18 +113,22 @@ export const devCommand = new Command('dev')
       out.blank();
     }
 
-    // Start Next.js dev server
-    const args = ['run', 'dev', '--', '--port', options.port];
-    if (options.turbo) {
-      args.push('--turbopack');
+    const port = normalizeDevPort(options.port);
+    if (!port) {
+      out.error(`Invalid port: ${options.port}`);
+      process.exit(1);
     }
 
-    out.info(`Starting Next.js at ${chalk.cyan(`http://localhost:${options.port}/${appName}`)}`);
+    const args = buildDevServerArgs(port, Boolean(options.turbo));
+    const spawnConfig = getDevServerSpawnConfig();
+
+    out.info(`Starting Next.js at ${chalk.cyan(`http://localhost:${port}/${appName}`)}`);
     out.blank();
 
-    const child = spawn(getNpmExecutable(), args, {
+    const child = spawn(spawnConfig.command, args, {
       cwd: root,
       stdio: 'inherit',
+      shell: spawnConfig.shell,
       env: { ...process.env, ...envVars, ...(accessToken ? { EAI_ACCESS_TOKEN: accessToken } : {}) },
     });
 
