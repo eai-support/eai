@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.5.1** (2026-06-23): Fix eai dev on Windows.
+The current CLI release is **v3.5.2** (2026-06-23): Bundle eai-gofer v3.7.1 assets.
 
 
 ## What The Pieces Do
