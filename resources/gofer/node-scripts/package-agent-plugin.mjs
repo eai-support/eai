@@ -668,6 +668,7 @@ async function writePluginFolder(pluginRoot, root, version, stages) {
 
   const copiedResources = [
     '.specify/commands',
+    '.specify/references',
     '.specify/templates',
     '.specify/scripts/bash',
     '.specify/scripts/node',
