@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.5.0 |
-| Released | 2026-06-21 |
-| Last Material Change | Add provider-neutral runtime contract and deploy doctor |
-| Source Commit | `7f743ed8b01e8809a13ed140ec781508d4f45c4d` |
+| Version | 3.5.1 |
+| Released | 2026-06-23 |
+| Last Material Change | Fix eai dev on Windows |
+| Source Commit | `106f3e8677c8f66dccd1d552e4ef311a7727ea6e` |
 
 
 ## Common Workflow
