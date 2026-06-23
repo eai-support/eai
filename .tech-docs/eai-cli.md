@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.5.2 |
+| Version | 3.5.3 |
 | Released | 2026-06-23 |
-| Last Material Change | Bundle eai-gofer v3.7.1 assets |
-| Source Commit | `a1a3c99af0e76d9eed86f2b7ee03fd63f1353922` |
+| Last Material Change | Fix eai tenant select inquirer v14 list->select prompt regression (#3006) |
+| Source Commit | `a07df343211d0120b875ad287181dbfcdc13dd80` |
 
 
 ## Common Workflow

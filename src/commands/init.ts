@@ -7,7 +7,16 @@ import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
-import { readFile, writeFile, access, mkdir, rm, cp, mkdtemp, chmod } from "node:fs/promises";
+import {
+  readFile,
+  writeFile,
+  access,
+  mkdir,
+  rm,
+  cp,
+  mkdtemp,
+  chmod,
+} from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import ora from "ora";
@@ -263,10 +272,7 @@ export const initCommand = new Command("init")
     "--tenant <id>",
     "Main company tenant ID (deprecated alias for --company-tenant)",
   )
-  .option(
-    "--company-tenant <id>",
-    "Main company tenant ID that owns this app",
-  )
+  .option("--company-tenant <id>", "Main company tenant ID that owns this app")
   .option(
     "--parent-tenant <id>",
     "Immediate parent company tenant ID for the new child company",
@@ -340,7 +346,8 @@ Use --no-gofer only when you need a bare app scaffold.
         description: `${toDisplayName(nameArg)} application`,
         parentTenantId,
         tenantId,
-        tenantHomeRegion: binding.runtimeTenantHomeRegion ?? activeTenant?.homeRegion,
+        tenantHomeRegion:
+          binding.runtimeTenantHomeRegion ?? activeTenant?.homeRegion,
         includeChat: capabilities["ai-chat"].outcome === "allow",
         includeDocs: capabilities.documents.outcome === "allow",
         authProvider: "ciam",
@@ -418,7 +425,8 @@ Use --no-gofer only when you need a bare app scaffold.
         }),
         parentTenantId,
         tenantId,
-        tenantHomeRegion: binding.runtimeTenantHomeRegion ?? activeTenant?.homeRegion,
+        tenantHomeRegion:
+          binding.runtimeTenantHomeRegion ?? activeTenant?.homeRegion,
         ...(featureAnswers as {
           includeChat: boolean;
           includeDocs: boolean;
@@ -670,15 +678,15 @@ async function provisionEntraInline(
     const result = await client.provisionEntraApp({
       tenantId,
       verticalName,
-      redirectUris: [
-        `${authSiteUrl}/api/auth/callback/microsoft-entra-id`,
-      ],
+      redirectUris: [`${authSiteUrl}/api/auth/callback/microsoft-entra-id`],
       idempotent: true,
     });
 
     if (
-      result.tenantAuthorization?.warning
-      || (result.tenantAuthorization && !result.tenantAuthorization.added && !result.tenantAuthorization.alreadyAuthorized)
+      result.tenantAuthorization?.warning ||
+      (result.tenantAuthorization &&
+        !result.tenantAuthorization.added &&
+        !result.tenantAuthorization.alreadyAuthorized)
     ) {
       spinner.fail("Tenant data-plane authorization incomplete.");
       out.warn(
@@ -847,7 +855,7 @@ async function promptCompanyTenantForInit(
 
   const { mode } = await inquirer.prompt([
     {
-      type: "list",
+      type: "select",
       name: "mode",
       message: "Which main company tenant should own this app?",
       choices,
@@ -910,7 +918,7 @@ async function createTenantAppForInit(
   if (!shouldCreateChildTenant && interactive) {
     const answer = await inquirer.prompt([
       {
-        type: "list",
+        type: "select",
         name: "appTenantScope",
         message: "App tenant scope:",
         default: "current",
@@ -920,7 +928,8 @@ async function createTenantAppForInit(
         ],
       },
     ]);
-    shouldCreateChildTenant = String(answer.appTenantScope || "current") === "child";
+    shouldCreateChildTenant =
+      String(answer.appTenantScope || "current") === "child";
   }
 
   if (shouldCreateChildTenant) {
@@ -996,16 +1005,18 @@ async function createTenantAppForInit(
   out.info(
     `Created app ${chalk.cyan(appSeed.slug)} under main company ${chalk.cyan(companyTenantId)} with child company ${chalk.cyan(childTenantId)}.`,
   );
-  const childTenantHomeRegion = childTenant && typeof childTenant === "object"
-    ? (childTenant as Record<string, unknown>).homeRegion
-    : undefined;
+  const childTenantHomeRegion =
+    childTenant && typeof childTenant === "object"
+      ? (childTenant as Record<string, unknown>).homeRegion
+      : undefined;
   return {
     parentTenantId: companyTenantId,
     runtimeTenantId: childTenantId,
     childTenantId,
-    runtimeTenantHomeRegion: typeof childTenantHomeRegion === "string"
-      ? childTenantHomeRegion
-      : activeTenant?.homeRegion,
+    runtimeTenantHomeRegion:
+      typeof childTenantHomeRegion === "string"
+        ? childTenantHomeRegion
+        : activeTenant?.homeRegion,
   };
 }
 
@@ -1589,7 +1600,7 @@ async function promptFeatureOptions(
   const authChoices = buildAuthProviderChoices(capabilities);
   const authProviderAnswer = await inquirer.prompt([
     {
-      type: "list",
+      type: "select",
       name: "authProvider",
       message: "Auth provider:",
       choices: authChoices,
