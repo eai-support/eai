@@ -29,6 +29,19 @@ const TRUSTED_SESSION_PUBLIC_API_HOSTS = new Set([
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
+const TENANT_MEMBERSHIP_AUTH_MESSAGE =
+  "Authentication is missing or expired. Run `eai login` to refresh your session.";
+
+export class TenantMembershipAuthError extends Error {
+  readonly status?: number;
+
+  constructor(status?: number) {
+    super(TENANT_MEMBERSHIP_AUTH_MESSAGE);
+    this.name = "TenantMembershipAuthError";
+    this.status = status;
+  }
+}
+
 export interface TenantRoleAssignment {
   baseRole?: string;
   displayName?: string;
@@ -653,11 +666,19 @@ export async function fetchTenantAdminMemberships(
   }
 
   const resolvedPublicApiUrl = publicApiUrl || (await resolvePublicApiUrl());
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    throw new TenantMembershipAuthError(401);
+  }
+
   const client = new PlatformAPIClient(resolvedPublicApiUrl, "system");
   const response = await client.listCurrentUserTenants();
 
   if (!response.ok) {
     const body = await response.text();
+    if (response.status === 401) {
+      throw new TenantMembershipAuthError(response.status);
+    }
     throw new Error(
       `Failed to load tenant memberships: ${response.status} ${response.statusText}${body ? ` — ${body}` : ""}`,
     );
