@@ -11,6 +11,11 @@ updates:
     groups:
       npm-production:
         dependency-type: production
+        exclude-patterns:
+          - "inquirer"
+      npm-production-interactive:
+        patterns:
+          - "inquirer"
       npm-development:
         dependency-type: development
   - package-ecosystem: npm

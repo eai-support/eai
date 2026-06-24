@@ -170,13 +170,14 @@ rm -f "eai-tools-cli-${OLD_VERSION}.tgz" "eai-tools-cli-${NEW_VERSION}.tgz"
 node scripts/update-release-doc-metadata.cjs "$NEW_VERSION" "$MESSAGE" >/dev/null
 TARBALL="$(npm pack --silent)"
 node scripts/generate-registry.cjs >/dev/null
+node scripts/generate-error-guidance-docs.cjs >/dev/null
 node scripts/generate-release-docs.cjs >/dev/null
 echo "  ✓ npm pack -> $TARBALL"
 echo "  ✓ static registry metadata refreshed"
 echo "  ✓ release-facing docs refreshed"
 
 section "Committing release"
-git add package.json package-lock.json .tech-docs/ docs-site/static/registry/ docs-site/static/llms.txt docs-site/static/llms-full.txt docs-site/static/cli-help.txt
+git add package.json package-lock.json .tech-docs/ docs-site/static/registry/ docs-site/static/llms.txt docs-site/static/llms-full.txt docs-site/static/cli-help.txt docs-site/static/error-guidance.json
 git commit -m "chore: release v$NEW_VERSION — $MESSAGE"
 git tag -a "v$NEW_VERSION" -m "$MESSAGE"
 RELEASE_COMMIT_SHA="$(git rev-parse HEAD)"

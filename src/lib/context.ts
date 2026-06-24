@@ -10,6 +10,7 @@ import { PlatformAPIClient } from './api.js';
 import {
   resolvePublicApiUrl,
   resolveActiveTenantContext,
+  TenantMembershipAuthError,
   type TenantMembership,
   type ActiveTenantContext,
 } from './tenant-context.js';
@@ -44,13 +45,21 @@ export async function resolveCommandContext(options?: {
   }
 
   const publicApiUrl = await resolvePublicApiUrl(root);
-  const context: ActiveTenantContext = await resolveActiveTenantContext({
-    projectRoot: root,
-    publicApiUrl,
-    interactive: options?.interactive ?? true,
-    tenantId: options?.tenantId,
-    forceRefresh: options?.forceRefresh,
-  });
+  let context: ActiveTenantContext;
+  try {
+    context = await resolveActiveTenantContext({
+      projectRoot: root,
+      publicApiUrl,
+      interactive: options?.interactive ?? true,
+      tenantId: options?.tenantId,
+      forceRefresh: options?.forceRefresh,
+    });
+  } catch (error) {
+    if (error instanceof TenantMembershipAuthError) {
+      exitWithError(ErrorCode.E102);
+    }
+    throw error;
+  }
 
   const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
 

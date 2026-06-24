@@ -8,6 +8,9 @@
  * - E300-E399: Validation errors (invalid schema, missing field)
  */
 
+import { findGuidanceByCode } from './error-guidance/catalog.js';
+import { guidanceToJSON, formatGuidanceText } from './error-guidance/render.js';
+
 export enum ErrorCode {
   // E001-E099: Project errors
   E001 = 'E001',
@@ -29,6 +32,12 @@ export enum ErrorCode {
   E203 = 'E203',
   E204 = 'E204',
   E205 = 'E205',
+  E242 = 'E242',
+  E243 = 'E243',
+  E250 = 'E250',
+  E260 = 'E260',
+  E270 = 'E270',
+  E280 = 'E280',
 
   // E300-E399: Validation errors
   E301 = 'E301',
@@ -110,6 +119,30 @@ export const errorCatalog: Record<ErrorCode, Omit<ErrorDefinition, 'code'>> = {
     message: 'Resource conflict: {details}',
     suggestion: 'The resource already exists or conflicts with existing data',
   },
+  [ErrorCode.E242]: {
+    message: 'Tenant app authorization is incomplete',
+    suggestion: 'Run `eai whoami`, `eai tenant list --format json`, then `eai provision entra --force --debug`',
+  },
+  [ErrorCode.E243]: {
+    message: 'Tenant app authorization returned a platform server error',
+    suggestion: 'Retry `eai provision entra --force --debug` with bounded backoff, then escalate with the request ID if the 5xx repeats',
+  },
+  [ErrorCode.E250]: {
+    message: 'Tenant plan does not allow this builder operation',
+    suggestion: 'Run `eai workflow readiness --format json` and ask a tenant administrator to update the plan if required',
+  },
+  [ErrorCode.E260]: {
+    message: 'Object Type validation failed',
+    suggestion: 'Run `eai types validate`, fix the reported Object Type definitions, then run `eai types seed`',
+  },
+  [ErrorCode.E270]: {
+    message: 'Object Type is not published for the active tenant',
+    suggestion: 'Run `eai resources schema --format json`, then `eai types seed` if the type is missing',
+  },
+  [ErrorCode.E280]: {
+    message: 'Workflow runtime binding requires operator assistance',
+    suggestion: 'Run `eai workflow status <workflow-key> --format json`, then `eai workflow request <workflow-key> --reason "<reason>"` if status is operator_required',
+  },
 
   // Validation errors (E300-E399)
   [ErrorCode.E301]: {
@@ -152,6 +185,11 @@ export function formatError(
   code: ErrorCode,
   context?: Record<string, string>,
 ): string {
+  const guidance = findGuidanceByCode(code);
+  if (guidance) {
+    return formatGuidanceText(guidance, context);
+  }
+
   const def = errorCatalog[code];
   const message = interpolate(def.message, context);
   const suggestion = interpolate(def.suggestion, context);
@@ -169,12 +207,14 @@ export function formatErrorJSON(
   const def = errorCatalog[code];
   const message = interpolate(def.message, context);
   const suggestion = interpolate(def.suggestion, context);
+  const guidance = findGuidanceByCode(code);
 
   return {
     error: {
       code,
       message,
       suggestion,
+      ...(guidance ? { guidance: guidanceToJSON(guidance, context) } : {}),
       exitCode: 1,
     },
   };

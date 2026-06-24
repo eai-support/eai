@@ -1,33 +1,46 @@
-import inquirer from 'inquirer';
-import { findProjectRoot, loadEnvFile, patchEnvFile } from './config.js';
+import inquirer from "inquirer";
+import { findProjectRoot, loadEnvFile, patchEnvFile } from "./config.js";
 import {
   getAccessToken,
   getActiveAuthConfigMismatch,
   loadTokens,
   storeTokens,
   type StoredTokens,
-} from './auth.js';
-import { PlatformAPIClient } from './api.js';
-import { isRecord } from './utils.js';
-import { getActiveProfile, loadProfileConfig } from './profile.js';
+} from "./auth.js";
+import { PlatformAPIClient } from "./api.js";
+import { isRecord } from "./utils.js";
+import { getActiveProfile, loadProfileConfig } from "./profile.js";
 
-export const DEFAULT_PUBLIC_API_URL = 'https://api.au.myenterprise.ai/public';
+export const DEFAULT_PUBLIC_API_URL = "https://api.au.myenterprise.ai/public";
 
 const REGION_PUBLIC_API_URLS = {
   au: DEFAULT_PUBLIC_API_URL,
-  ca: 'https://api.ca.myenterprise.ai/public',
-  eu: 'https://api.eu.myenterprise.ai/public',
+  ca: "https://api.ca.myenterprise.ai/public",
+  eu: "https://api.eu.myenterprise.ai/public",
 } as const;
 
 export type HomeRegion = keyof typeof REGION_PUBLIC_API_URLS;
 
 const TRUSTED_SESSION_PUBLIC_API_HOSTS = new Set([
-  'api.au.myenterprise.ai',
-  'api.ca.myenterprise.ai',
-  'api.eu.myenterprise.ai',
+  "api.au.myenterprise.ai",
+  "api.ca.myenterprise.ai",
+  "api.eu.myenterprise.ai",
 ]);
 
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+const TENANT_MEMBERSHIP_AUTH_MESSAGE =
+  "Authentication is missing or expired. Run `eai login` to refresh your session.";
+
+export class TenantMembershipAuthError extends Error {
+  readonly status?: number;
+
+  constructor(status?: number) {
+    super(TENANT_MEMBERSHIP_AUTH_MESSAGE);
+    this.name = "TenantMembershipAuthError";
+    this.status = status;
+  }
+}
 
 export interface TenantRoleAssignment {
   baseRole?: string;
@@ -88,26 +101,26 @@ export interface ActiveTenantContext {
 
 export type PublicApiEnvSyncResult =
   | {
-      status: 'updated';
+      status: "updated";
       projectRoot: string;
       publicApiUrl: string;
       previousPublicApiUrl?: string;
       homeRegion: HomeRegion;
     }
   | {
-      status: 'already-current';
+      status: "already-current";
       projectRoot: string;
       publicApiUrl: string;
       homeRegion: HomeRegion;
     }
   | {
-      status: 'skipped';
-      reason: 'no-project-root' | 'unresolved-home-region';
+      status: "skipped";
+      reason: "no-project-root" | "unresolved-home-region";
       homeRegion?: string | null;
     };
 
 export interface PublicApiEnvSyncNotice {
-  level: 'success' | 'warn';
+  level: "success" | "warn";
   message: string;
 }
 
@@ -129,37 +142,41 @@ interface SessionResolveResponse {
 }
 
 function normalizeBaseUrl(value: string): string {
-  return value.trim().replace(/\/+$/g, '');
+  return value.trim().replace(/\/+$/g, "");
 }
 
-export function normalizeHomeRegion(value: string | null | undefined): HomeRegion | null {
+export function normalizeHomeRegion(
+  value: string | null | undefined,
+): HomeRegion | null {
   const normalized = value?.trim().toLowerCase();
-  return normalized === 'au' || normalized === 'ca' || normalized === 'eu'
+  return normalized === "au" || normalized === "ca" || normalized === "eu"
     ? normalized
     : null;
 }
 
-export function publicApiUrlForHomeRegion(value: string | null | undefined): string | null {
+export function publicApiUrlForHomeRegion(
+  value: string | null | undefined,
+): string | null {
   const region = normalizeHomeRegion(value);
   return region ? REGION_PUBLIC_API_URLS[region] : null;
 }
 
 export async function syncProjectPublicApiUrlForTenant(
-  tenant: Pick<TenantMembership, 'homeRegion'>,
+  tenant: Pick<TenantMembership, "homeRegion">,
   projectRoot?: string | null,
 ): Promise<PublicApiEnvSyncResult> {
   const homeRegion = normalizeHomeRegion(tenant.homeRegion);
   if (!homeRegion) {
     return {
-      status: 'skipped',
-      reason: 'unresolved-home-region',
+      status: "skipped",
+      reason: "unresolved-home-region",
       homeRegion: tenant.homeRegion,
     };
   }
 
-  const root = projectRoot ?? await findProjectRoot();
+  const root = projectRoot ?? (await findProjectRoot());
   if (!root) {
-    return { status: 'skipped', reason: 'no-project-root', homeRegion };
+    return { status: "skipped", reason: "no-project-root", homeRegion };
   }
 
   const publicApiUrl = REGION_PUBLIC_API_URLS[homeRegion];
@@ -167,7 +184,7 @@ export async function syncProjectPublicApiUrlForTenant(
   const previousPublicApiUrl = env.BASE_URL_PUBLIC_API?.trim();
   if (previousPublicApiUrl === publicApiUrl) {
     return {
-      status: 'already-current',
+      status: "already-current",
       projectRoot: root,
       publicApiUrl,
       homeRegion,
@@ -176,7 +193,7 @@ export async function syncProjectPublicApiUrlForTenant(
 
   await patchEnvFile(root, { BASE_URL_PUBLIC_API: publicApiUrl });
   return {
-    status: 'updated',
+    status: "updated",
     projectRoot: root,
     publicApiUrl,
     previousPublicApiUrl: previousPublicApiUrl || undefined,
@@ -189,21 +206,24 @@ export function buildPublicApiEnvSyncNotice(
 ): PublicApiEnvSyncNotice | null {
   if (!result) return null;
 
-  if (result.status === 'skipped' && result.reason === 'unresolved-home-region') {
+  if (
+    result.status === "skipped" &&
+    result.reason === "unresolved-home-region"
+  ) {
     return {
-      level: 'warn',
+      level: "warn",
       message:
-        'Active tenant homeRegion is missing; regional PublicAPI routing may fall back. ' +
-        'Ask a tenant or platform admin to repair tenant metadata before provisioning resources.',
+        "Active tenant homeRegion is missing; regional PublicAPI routing may fall back. " +
+        "Ask a tenant or platform admin to repair tenant metadata before provisioning resources.",
     };
   }
 
-  if (result.status !== 'updated') return null;
+  if (result.status !== "updated") return null;
 
   const target = `BASE_URL_PUBLIC_API=${result.publicApiUrl}`;
   if (result.previousPublicApiUrl) {
     return {
-      level: 'warn',
+      level: "warn",
       message:
         `.env.local ${target} for active tenant homeRegion ${result.homeRegion} ` +
         `(was ${result.previousPublicApiUrl}).`,
@@ -211,23 +231,25 @@ export function buildPublicApiEnvSyncNotice(
   }
 
   return {
-    level: 'success',
-    message:
-      `.env.local ${target} for active tenant homeRegion ${result.homeRegion}.`,
+    level: "success",
+    message: `.env.local ${target} for active tenant homeRegion ${result.homeRegion}.`,
   };
 }
 
 function normalizeCliPublicApiUrl(value: unknown): string | null {
-  if (typeof value !== 'string' || !value.trim()) return null;
+  if (typeof value !== "string" || !value.trim()) return null;
   try {
     const url = new URL(value.trim());
-    const pathWithoutTrailingSlash = url.pathname.replace(/\/+$/g, '');
-    if (!pathWithoutTrailingSlash && /\.myenterprise\.ai$/i.test(url.hostname)) {
-      url.pathname = '/public';
+    const pathWithoutTrailingSlash = url.pathname.replace(/\/+$/g, "");
+    if (
+      !pathWithoutTrailingSlash &&
+      /\.myenterprise\.ai$/i.test(url.hostname)
+    ) {
+      url.pathname = "/public";
     } else {
       url.pathname = pathWithoutTrailingSlash;
     }
-    return url.toString().replace(/\/+$/g, '');
+    return url.toString().replace(/\/+$/g, "");
   } catch {
     return normalizeBaseUrl(value);
   }
@@ -246,7 +268,10 @@ function normalizeTrustedSessionPublicApiUrl(value: unknown): string | null {
     const hostname = url.hostname.toLowerCase();
     const isLoopback = isLoopbackHost(hostname);
     if (url.username || url.password) return null;
-    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopback)) {
+    if (
+      url.protocol !== "https:" &&
+      !(url.protocol === "http:" && isLoopback)
+    ) {
       return null;
     }
     if (!isLoopback && !TRUSTED_SESSION_PUBLIC_API_HOSTS.has(hostname)) {
@@ -262,41 +287,50 @@ function buildSessionResolveUrl(baseUrl: string): string {
   return `${normalizeBaseUrl(baseUrl)}/v4/identity/session/resolve`;
 }
 
-async function resolveRegionalPublicApiUrlFromSession(requestedTenantId?: string | null): Promise<string | null> {
+async function resolveRegionalPublicApiUrlFromSession(
+  requestedTenantId?: string | null,
+): Promise<string | null> {
   const accessToken = await getAccessToken();
   if (!accessToken) return null;
 
-  const bootstrapBaseUrl = process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL?.trim()
-    || DEFAULT_PUBLIC_API_URL;
+  const bootstrapBaseUrl =
+    process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL?.trim() ||
+    DEFAULT_PUBLIC_API_URL;
   try {
     const response = await fetch(buildSessionResolveUrl(bootstrapBaseUrl), {
-      method: 'POST',
+      method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        product: 'eai-cli',
+        product: "eai-cli",
         requestedTenantId: requestedTenantId || undefined,
       }),
     });
     if (!response.ok) return null;
 
-    const payload = await response.json() as SessionResolveResponse;
-    if (payload.status !== 'resolved') return null;
+    const payload = (await response.json()) as SessionResolveResponse;
+    if (payload.status !== "resolved") return null;
     return normalizeTrustedSessionPublicApiUrl(payload.apiBaseUrl);
   } catch {
     return null;
   }
 }
 
-async function resolveRegionalPublicApiUrlFromTenantManagement(tokens: StoredTokens | null): Promise<string | null> {
+async function resolveRegionalPublicApiUrlFromTenantManagement(
+  tokens: StoredTokens | null,
+): Promise<string | null> {
   if (!tokens?.activeTenantId) return null;
 
-  const bootstrapBaseUrl = process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL?.trim()
-    || DEFAULT_PUBLIC_API_URL;
+  const bootstrapBaseUrl =
+    process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL?.trim() ||
+    DEFAULT_PUBLIC_API_URL;
   try {
-    const client = new PlatformAPIClient(normalizeBaseUrl(bootstrapBaseUrl), tokens.activeTenantId);
+    const client = new PlatformAPIClient(
+      normalizeBaseUrl(bootstrapBaseUrl),
+      tokens.activeTenantId,
+    );
     const response = await client.getTenant(tokens.activeTenantId);
     if (!response.ok) return null;
 
@@ -311,9 +345,10 @@ async function resolveRegionalPublicApiUrlFromTenantManagement(tokens: StoredTok
     await storeTokens({
       ...tokens,
       activeTenantHomeRegion: homeRegion,
-      activeTenantHqCountryCode: hqCountryCode === undefined
-        ? tokens.activeTenantHqCountryCode
-        : hqCountryCode,
+      activeTenantHqCountryCode:
+        hqCountryCode === undefined
+          ? tokens.activeTenantHqCountryCode
+          : hqCountryCode,
     });
     return regionalUrl;
   } catch {
@@ -322,7 +357,9 @@ async function resolveRegionalPublicApiUrlFromTenantManagement(tokens: StoredTok
 }
 
 function unique(values: Array<string | undefined>): string[] {
-  return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+  return Array.from(
+    new Set(values.filter((value): value is string => Boolean(value))),
+  );
 }
 
 async function readTenantManagementRecord(
@@ -331,7 +368,7 @@ async function readTenantManagementRecord(
 ): Promise<TenantHierarchyRecord> {
   const response = await client.getTenant(tenantId);
   if (!response.ok) {
-    const body = await response.text().catch(() => '');
+    const body = await response.text().catch(() => "");
     throw new Error(
       `Tenant ${tenantId} could not be resolved (${response.status}). ${body}`.trim(),
     );
@@ -358,29 +395,38 @@ export function getTenantRoles(entry: TenantEntry): string[] {
     ...(entry.roles ?? []),
     entry.role,
     ...(entry.roleAssignments ?? []).map((assignment) => assignment.baseRole),
-    entry.isTenantAdmin ? 'tenant-admin' : undefined,
+    entry.isTenantAdmin ? "tenant-admin" : undefined,
   ]);
 }
 
 export function tenantEntryHasTenantAdminRole(entry: TenantEntry): boolean {
-  return getTenantRoles(entry).includes('tenant-admin');
+  return getTenantRoles(entry).includes("tenant-admin");
 }
 
-export function filterTenantAdminEntries(entries: TenantEntry[]): TenantEntry[] {
-  return entries.filter((entry) => (
-    entry.tenant?.isActive !== false && tenantEntryHasTenantAdminRole(entry)
-  ));
+export function filterTenantAdminEntries(
+  entries: TenantEntry[],
+): TenantEntry[] {
+  return entries.filter(
+    (entry) =>
+      entry.tenant?.isActive !== false && tenantEntryHasTenantAdminRole(entry),
+  );
 }
 
-function isAdminTenantMembership(value: unknown): value is AdminTenantMembership {
-  return isRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.displayName === 'string'
-    && typeof value.slug === 'string';
+function isAdminTenantMembership(
+  value: unknown,
+): value is AdminTenantMembership {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.displayName === "string" &&
+    typeof value.slug === "string"
+  );
 }
 
-function toTenantEntry(value: AdminTenantMembership | TenantEntry): TenantEntry {
-  if ('tenant' in value) {
+function toTenantEntry(
+  value: AdminTenantMembership | TenantEntry,
+): TenantEntry {
+  if ("tenant" in value) {
     return value;
   }
 
@@ -414,9 +460,14 @@ export function normalizeTenantEntries(payload: unknown): TenantEntry[] {
   const source = record.tenants ?? record.user?.tenants ?? [];
 
   return source
-    .filter((entry): entry is TenantEntry | AdminTenantMembership => isRecord(entry))
+    .filter((entry): entry is TenantEntry | AdminTenantMembership =>
+      isRecord(entry),
+    )
     .map(toTenantEntry)
-    .filter((entry) => isAdminTenantMembership(entry.tenant) || isRecord(entry.tenant));
+    .filter(
+      (entry) =>
+        isAdminTenantMembership(entry.tenant) || isRecord(entry.tenant),
+    );
 }
 
 export function toTenantMembership(entry: TenantEntry): TenantMembership {
@@ -433,12 +484,14 @@ export function toTenantMembership(entry: TenantEntry): TenantMembership {
 }
 
 function optionalStringOrNull(value: unknown): string | null | undefined {
-  if (typeof value === 'string') return value;
+  if (typeof value === "string") return value;
   if (value === null) return null;
   return undefined;
 }
 
-function tenantManagementDetailRecord(payload: unknown): Record<string, unknown> | null {
+function tenantManagementDetailRecord(
+  payload: unknown,
+): Record<string, unknown> | null {
   if (!isRecord(payload)) return null;
   return isRecord(payload.tenant) ? payload.tenant : payload;
 }
@@ -456,7 +509,8 @@ function mergeTenantManagementDetails(
   return {
     ...membership,
     homeRegion: homeRegion === undefined ? membership.homeRegion : homeRegion,
-    hqCountryCode: hqCountryCode === undefined ? membership.hqCountryCode : hqCountryCode,
+    hqCountryCode:
+      hqCountryCode === undefined ? membership.hqCountryCode : hqCountryCode,
   };
 }
 
@@ -464,28 +518,32 @@ async function hydrateTenantMembershipManagementDetails(
   client: PlatformAPIClient,
   memberships: TenantMembership[],
 ): Promise<TenantMembership[]> {
-  return Promise.all(memberships.map(async (membership) => {
-    if (membership.homeRegion && membership.hqCountryCode) {
-      return membership;
-    }
-
-    try {
-      const response = await client.getTenant(membership.id);
-      if (!response.ok) {
+  return Promise.all(
+    memberships.map(async (membership) => {
+      if (membership.homeRegion && membership.hqCountryCode) {
         return membership;
       }
-      return mergeTenantManagementDetails(membership, await response.json());
-    } catch {
-      return membership;
-    }
-  }));
+
+      try {
+        const response = await client.getTenant(membership.id);
+        if (!response.ok) {
+          return membership;
+        }
+        return mergeTenantManagementDetails(membership, await response.json());
+      } catch {
+        return membership;
+      }
+    }),
+  );
 }
 
 export function findTenantMembership(
   memberships: TenantMembership[],
   tenantId: string,
 ): TenantMembership | undefined {
-  return memberships.find((membership) => membership.id === tenantId || membership.slug === tenantId);
+  return memberships.find(
+    (membership) => membership.id === tenantId || membership.slug === tenantId,
+  );
 }
 
 export function evaluateTenantUsability(
@@ -498,7 +556,7 @@ export function evaluateTenantUsability(
   },
 ): TenantUsabilityStatus {
   const membership = findTenantMembership(memberships, tenantId);
-  const adminConfirmed = Boolean(membership?.roles.includes('tenant-admin'));
+  const adminConfirmed = Boolean(membership?.roles.includes("tenant-admin"));
 
   return {
     tenantId,
@@ -522,16 +580,20 @@ export function evaluateTenantUsability(
  *  5. PublicAPI session routing bootstrap for authenticated default profiles
  *  6. DEFAULT_PUBLIC_API_URL fallback
  */
-async function loadContextEnv(projectRoot?: string): Promise<Record<string, string>> {
-  const root = projectRoot ?? await findProjectRoot() ?? undefined;
+async function loadContextEnv(
+  projectRoot?: string,
+): Promise<Record<string, string>> {
+  const root = projectRoot ?? (await findProjectRoot()) ?? undefined;
   const envVars = root ? await loadEnvFile(root) : {};
   return { ...envVars, ...process.env } as Record<string, string>;
 }
 
-export async function resolvePublicApiUrl(projectRoot?: string): Promise<string> {
+export async function resolvePublicApiUrl(
+  projectRoot?: string,
+): Promise<string> {
   // 1. Profile config (named profiles carry their own API URL)
   const profile = getActiveProfile();
-  if (profile !== 'default') {
+  if (profile !== "default") {
     const config = await loadProfileConfig(profile);
     if (config?.publicApiUrl) {
       return config.publicApiUrl;
@@ -545,17 +607,22 @@ export async function resolvePublicApiUrl(projectRoot?: string): Promise<string>
   }
 
   const tokens = await loadTokens();
-  const storedRegionalUrl = publicApiUrlForHomeRegion(tokens?.activeTenantHomeRegion);
+  const storedRegionalUrl = publicApiUrlForHomeRegion(
+    tokens?.activeTenantHomeRegion,
+  );
   if (storedRegionalUrl) {
     return storedRegionalUrl;
   }
 
-  const tenantManagementRegionalUrl = await resolveRegionalPublicApiUrlFromTenantManagement(tokens);
+  const tenantManagementRegionalUrl =
+    await resolveRegionalPublicApiUrlFromTenantManagement(tokens);
   if (tenantManagementRegionalUrl) {
     return tenantManagementRegionalUrl;
   }
 
-  const routedUrl = await resolveRegionalPublicApiUrlFromSession(tokens?.activeTenantId);
+  const routedUrl = await resolveRegionalPublicApiUrlFromSession(
+    tokens?.activeTenantId,
+  );
   if (routedUrl) {
     return routedUrl;
   }
@@ -563,7 +630,9 @@ export async function resolvePublicApiUrl(projectRoot?: string): Promise<string>
   return DEFAULT_PUBLIC_API_URL;
 }
 
-export function getStoredActiveTenant(tokens: StoredTokens): TenantMembership | null {
+export function getStoredActiveTenant(
+  tokens: StoredTokens,
+): TenantMembership | null {
   if (!tokens.activeTenantId || !tokens.activeTenantName) {
     return null;
   }
@@ -574,39 +643,53 @@ export function getStoredActiveTenant(tokens: StoredTokens): TenantMembership | 
     slug: tokens.activeTenantSlug || tokens.activeTenantName,
     domain: tokens.activeTenantDomain,
     isActive: true,
-    roles: ['tenant-admin'],
+    roles: ["tenant-admin"],
     homeRegion: tokens.activeTenantHomeRegion,
     hqCountryCode: tokens.activeTenantHqCountryCode,
   };
 }
 
-export async function fetchTenantAdminMemberships(publicApiUrl?: string): Promise<{
+export async function fetchTenantAdminMemberships(
+  publicApiUrl?: string,
+): Promise<{
   publicApiUrl: string;
   tokens: StoredTokens;
   memberships: TenantMembership[];
 }> {
   const tokens = await loadTokens();
   if (!tokens?.oid) {
-    throw new Error('Not logged in. Run `eai login` to authenticate.');
+    throw new Error("Not logged in. Run `eai login` to authenticate.");
   }
   const authMismatch = await getActiveAuthConfigMismatch(tokens);
   if (authMismatch) {
     throw new Error(authMismatch);
   }
 
-  const resolvedPublicApiUrl = publicApiUrl || await resolvePublicApiUrl();
-  const client = new PlatformAPIClient(resolvedPublicApiUrl, 'system');
+  const resolvedPublicApiUrl = publicApiUrl || (await resolvePublicApiUrl());
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    throw new TenantMembershipAuthError(401);
+  }
+
+  const client = new PlatformAPIClient(resolvedPublicApiUrl, "system");
   const response = await client.listCurrentUserTenants();
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Failed to load tenant memberships: ${response.status} ${response.statusText}${body ? ` — ${body}` : ''}`);
+    if (response.status === 401) {
+      throw new TenantMembershipAuthError(response.status);
+    }
+    throw new Error(
+      `Failed to load tenant memberships: ${response.status} ${response.statusText}${body ? ` — ${body}` : ""}`,
+    );
   }
 
   const payload = await response.json();
   const memberships = await hydrateTenantMembershipManagementDetails(
     client,
-    filterTenantAdminEntries(normalizeTenantEntries(payload)).map(toTenantMembership),
+    filterTenantAdminEntries(normalizeTenantEntries(payload)).map(
+      toTenantMembership,
+    ),
   );
 
   return {
@@ -621,9 +704,9 @@ export async function saveActiveTenantSelection(
   publicApiUrl?: string,
   existingTokens?: StoredTokens,
 ): Promise<StoredTokens> {
-  const tokens = existingTokens ?? await loadTokens();
+  const tokens = existingTokens ?? (await loadTokens());
   if (!tokens) {
-    throw new Error('Not logged in. Run `eai login` to authenticate.');
+    throw new Error("Not logged in. Run `eai login` to authenticate.");
   }
 
   const next: StoredTokens = {
@@ -684,20 +767,24 @@ export async function refreshTenantUsabilityStatus(
   };
 }
 
-async function promptForTenantSelection(memberships: TenantMembership[]): Promise<TenantMembership> {
-  const { tenantId } = await inquirer.prompt([{
-    type: 'list',
-    name: 'tenantId',
-    message: 'Select the tenant to work with now',
-    choices: memberships.map((tenant) => ({
-      name: `${tenant.displayName} (${tenant.slug})${tenant.domain ? ` — ${tenant.domain}` : ''}`,
-      value: tenant.id,
-    })),
-  }]);
+async function promptForTenantSelection(
+  memberships: TenantMembership[],
+): Promise<TenantMembership> {
+  const { tenantId } = await inquirer.prompt([
+    {
+      type: "select",
+      name: "tenantId",
+      message: "Select the tenant to work with now",
+      choices: memberships.map((tenant) => ({
+        name: `${tenant.displayName} (${tenant.slug})${tenant.domain ? ` — ${tenant.domain}` : ""}`,
+        value: tenant.id,
+      })),
+    },
+  ]);
 
   const selected = memberships.find((tenant) => tenant.id === tenantId);
   if (!selected) {
-    throw new Error('Selected tenant was not found.');
+    throw new Error("Selected tenant was not found.");
   }
 
   return selected;
@@ -713,7 +800,10 @@ export async function resolveActiveTenantContext(options?: {
   forceRefresh?: boolean;
   tenantId?: string;
 }): Promise<ActiveTenantContext> {
-  const authMismatch = await getActiveAuthConfigMismatch(undefined, options?.projectRoot);
+  const authMismatch = await getActiveAuthConfigMismatch(
+    undefined,
+    options?.projectRoot,
+  );
   if (authMismatch) {
     throw new Error(authMismatch);
   }
@@ -733,43 +823,71 @@ export async function resolveActiveTenantContext(options?: {
         slug: cached.activeTenantSlug || cached.activeTenantName,
         domain: cached.activeTenantDomain,
         isActive: true,
-        roles: ['tenant-admin'],
+        roles: ["tenant-admin"],
         homeRegion: cached.activeTenantHomeRegion,
         hqCountryCode: cached.activeTenantHqCountryCode,
       };
-      const publicApiUrl = options?.publicApiUrl || await resolvePublicApiUrl(options?.projectRoot);
-      return { publicApiUrl, tokens: cached, activeTenant, memberships: [activeTenant] };
+      const publicApiUrl =
+        options?.publicApiUrl ||
+        (await resolvePublicApiUrl(options?.projectRoot));
+      return {
+        publicApiUrl,
+        tokens: cached,
+        activeTenant,
+        memberships: [activeTenant],
+      };
     }
   }
 
-  const fetched = await fetchTenantAdminMemberships(options?.publicApiUrl || await resolvePublicApiUrl(options?.projectRoot));
+  const fetched = await fetchTenantAdminMemberships(
+    options?.publicApiUrl || (await resolvePublicApiUrl(options?.projectRoot)),
+  );
   const { tokens, memberships } = fetched;
 
   if (memberships.length === 0) {
-    throw new Error('No active tenant-admin memberships found for the current login. Run `eai tenant list` to inspect your access.');
+    throw new Error(
+      "No active tenant-admin memberships found for the current login. Run `eai tenant list` to inspect your access.",
+    );
   }
 
   let selected: TenantMembership | undefined;
   if (options?.tenantId) {
-    selected = memberships.find((tenant) => tenant.id === options.tenantId || tenant.slug === options.tenantId);
+    selected = memberships.find(
+      (tenant) =>
+        tenant.id === options.tenantId || tenant.slug === options.tenantId,
+    );
     if (!selected) {
-      throw new Error(`Tenant "${options.tenantId}" is not available in your active tenant-admin memberships.`);
+      throw new Error(
+        `Tenant "${options.tenantId}" is not available in your active tenant-admin memberships.`,
+      );
     }
   } else if (!options?.forcePrompt && tokens.activeTenantId) {
-    selected = memberships.find((tenant) => tenant.id === tokens.activeTenantId);
+    selected = memberships.find(
+      (tenant) => tenant.id === tokens.activeTenantId,
+    );
   }
 
   if (!selected) {
     if (memberships.length === 1) {
       selected = memberships[0];
-    } else if (options?.interactive === false || !process.stdin.isTTY || !process.stdout.isTTY) {
-      throw new Error('Multiple active tenant-admin memberships found. Run `eai tenant select` to choose one.');
+    } else if (
+      options?.interactive === false ||
+      !process.stdin.isTTY ||
+      !process.stdout.isTTY
+    ) {
+      throw new Error(
+        "Multiple active tenant-admin memberships found. Run `eai tenant select` to choose one.",
+      );
     } else {
       selected = await promptForTenantSelection(memberships);
     }
   }
 
-  const updatedTokens = await saveActiveTenantSelection(selected, fetched.publicApiUrl, tokens);
+  const updatedTokens = await saveActiveTenantSelection(
+    selected,
+    fetched.publicApiUrl,
+    tokens,
+  );
   const publicApiEnvSync = await syncProjectPublicApiUrlForTenant(
     selected,
     options?.projectRoot,

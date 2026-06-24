@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { createServer, type Server } from 'node:http';
 import {
   buildUpdateInstallArgs,
   buildUpdatePermissionGuidance,
@@ -9,6 +10,38 @@ import {
   selectNewestRelease,
 } from '../../src/lib/update-check.js';
 import { getNpmExecutable } from '../../src/lib/npm.js';
+import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
+import { runCommand } from '../helpers/action-dsl.js';
+import type { TestContext } from '../helpers/setup-dsl.js';
+
+async function startPackumentServer(latestVersion: string): Promise<{ readonly url: string; readonly close: () => Promise<void> }> {
+  const server: Server = createServer((_request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({ 'dist-tags': { latest: latestVersion } }));
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to start packument test server');
+  }
+
+  return {
+    url: `http://127.0.0.1:${address.port}/@eai-tools/cli`,
+    close: () => new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      });
+    }),
+  };
+}
 
 describe('buildUpdateInstallArgs', () => {
   test('uses the scoped static registry override for CLI installs', () => {
@@ -82,5 +115,80 @@ describe('release channel selection', () => {
       { channel: 'static-registry', version: '2.8.4' },
       { channel: 'static-registry', version: '2.8.5' },
     ])).toEqual({ channel: 'static-registry', version: '2.8.5' });
+  });
+});
+
+describe('discovery update notifier', () => {
+  async function createUpdateCheckContext(latestVersion = '99.99.99'): Promise<{
+    readonly env: TestEnvironment;
+    readonly ctx: TestContext;
+    readonly close: () => Promise<void>;
+  }> {
+    const env = await createTestEnvironment();
+    const server = await startPackumentServer(latestVersion);
+    const ctx: TestContext = {
+      workingDir: env.dir,
+      mockAPI: {} as TestContext['mockAPI'],
+      env: {
+        EAI_UPDATE_NOTIFIER_FORCE: '1',
+        EAI_UPDATE_PACKUMENT_URL: server.url,
+        NO_COLOR: '1',
+      },
+      prompts: [],
+    };
+
+    return {
+      env,
+      ctx,
+      close: async () => {
+        await server.close();
+        await env.cleanup();
+      },
+    };
+  }
+
+  test('checks for updates when a user runs root help discovery', async () => {
+    const { ctx, close } = await createUpdateCheckContext();
+    try {
+      const result = await runCommand(ctx, 'eai');
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Usage: eai [options] [command]');
+      expect(result.stderr).toContain('Update available:');
+      expect(result.stderr).toContain('Run eai update to update');
+    } finally {
+      await close();
+    }
+  });
+
+  test('checks for updates before reporting an unknown top-level command', async () => {
+    const { ctx, close } = await createUpdateCheckContext();
+    try {
+      const result = await runCommand(ctx, 'eai future-command');
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Update available:');
+      expect(result.stderr).toContain("error: unknown command 'future-command'");
+    } finally {
+      await close();
+    }
+  });
+
+  test('keeps --describe machine-readable and free of update banners', async () => {
+    const { ctx, close } = await createUpdateCheckContext();
+    try {
+      const result = await runCommand(ctx, 'eai --describe');
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).not.toContain('Update available:');
+      const schema = JSON.parse(result.stdout) as {
+        subcommands: Array<{ command: string }>;
+      };
+      expect(schema.subcommands.map((command) => command.command)).toEqual(
+        expect.arrayContaining(['errors', 'agent']),
+      );
+    } finally {
+      await close();
+    }
   });
 });

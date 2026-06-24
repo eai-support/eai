@@ -488,8 +488,8 @@ is migration-only and used only when `workflowProfile` is explicitly
 When the workflow profile is explicitly `enterpriseai`,
 `tasks.md` MUST emit deployment
 tasks in the following ordered chain. Each task is independently runnable and
-the ordering enforces scaffold before deployment so that configuration and
-manifest artifacts exist before any deploy command runs.
+the ordering enforces scaffold before deployment so that runtime contract and
+deploy-doctor evidence exist before any deploy command runs.
 
 0. **EAI readiness unblock -> `eai-preflight.md`**
    - If `{FEATURE_DIR}/eai-preflight.md` is missing, stale, or blocked, emit
@@ -510,17 +510,23 @@ manifest artifacts exist before any deploy command runs.
      fit is recorded.
 1. **EAI App Template scaffolding -> `eai init`**
    - Command: `eai init <app-name> --skip-prompts --company-tenant <tenant-id>`
-   - Produces the working directory, `manifest.yml`, and `config.json` expected
-     by subsequent tasks.
-2. **Local validation -> `eai verify`**
-   - Command: `eai verify`
-   - Confirms manifest/config correctness before any deploy attempt.
+   - Produces the working directory and provider-neutral `eai.runtime.json`
+     expected by subsequent runtime and deployment tasks.
+2. **Local validation -> `eai runtime validate` and `eai verify`**
+   - Commands: `eai runtime validate` and `eai verify`
+   - Confirms the runtime contract, tenant/workflow configuration, and platform
+     readiness before any deploy attempt.
 3. **Pinned `eai major.minor` deployment tasks -> `eai deploy`**
    - Command: `eai deploy trigger --repo <org/repo>`
    - Inherits the `major.minor` pin recorded in `plan.md`.
+4. **Post-deploy smoke gate -> `eai deploy doctor`**
+   - Command: `mkdir -p .eai && eai deploy doctor --url <deployed-url> --format json > .eai/deploy-doctor.json`
+   - Captures black-box runtime smoke evidence for `/health`, Auth.js,
+     PublicAPI/BFF reachability, tenant/workflow config, and declared smoke
+     tests.
 
 <!-- prettier-ignore -->
-The ordering above is non-negotiable: tasks.md MUST instruct the pipeline to scaffold before deployment, validate before deploy, and only then invoke pinned `eai major.minor` deployment tasks. Breaking the order causes deployment preflight gating in `/5_gofer_implement` to fail.
+The ordering above is non-negotiable: tasks.md MUST instruct the pipeline to scaffold before deployment, validate before deploy, invoke pinned `eai major.minor` deployment tasks, and then capture deploy-doctor evidence. Breaking the order causes deployment preflight gating in `/5_gofer_implement` to fail.
 
 ### App-Delivery Preconditions Inside Shared Stages
 
@@ -566,6 +572,15 @@ precondition to downstream implementation tasks:
 
 `tasks.md` MUST also include:
 
+- EAI readiness unblock -> `eai-preflight.md` before any remote platform task.
+- App resource provisioning -> `eai vertical provision` before any claim of
+  object-type seeding or preview readiness.
+- Object-type publish -> `eai types seed` only after provisioning and
+  validation are complete.
+- Schema and storage health -> `eai resources schema` / storage diagnostics / `eai verify`
+  before preview/runtime signoff.
+- Pinned `eai major.minor` deployment tasks whenever deployment, rollout, or
+  environment coordination depends on a specific EAI CLI generation.
 - Contract-pack coverage tasks for actors, object types, workflows/journeys,
   permissions/tenant boundaries, APIs/events, deployment assumptions, and
   acceptance tests.
@@ -605,6 +620,8 @@ When a command-line workflow is expected to update platform state, `tasks.md`
 MUST order work like this unless the plan proves a different authoritative
 dependency:
 
+0. Respect the real EAI app gates before any claim of seeding, schema
+   readiness, or preview readiness.
 1. Define or extend the authoritative storage model.
 2. Implement platform-side orchestrator writes into those stores.
 3. Implement secret/config persistence if secrets or environment state are part

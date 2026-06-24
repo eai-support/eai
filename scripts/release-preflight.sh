@@ -45,7 +45,7 @@ BACKUP_DIR="$(mktemp -d)"
 if [[ -d "$ROOT/docs-site/static/registry" ]]; then
   cp -R "$ROOT/docs-site/static/registry" "$BACKUP_DIR/registry"
 fi
-for file in llms.txt llms-full.txt cli-help.txt; do
+for file in llms.txt llms-full.txt cli-help.txt error-guidance.json; do
   if [[ -f "$ROOT/docs-site/static/$file" ]]; then
     cp "$ROOT/docs-site/static/$file" "$BACKUP_DIR/$file"
   fi
@@ -119,6 +119,11 @@ section "Verifying API reference routes match code"
 node scripts/verify-api-reference.cjs --check
 echo "  ✓ api-reference routes align with src/lib/api.ts"
 
+section "Verifying error guidance catalog"
+node scripts/verify-error-guidance.cjs
+node scripts/generate-error-guidance-docs.cjs --check
+echo "  ✓ error guidance catalog and docs align"
+
 section "Building docs site"
 (cd "$DOCS_DIR" && npm ci --silent && npm run build >/dev/null)
 echo "  ✓ docs-site build"
@@ -126,6 +131,7 @@ echo "  ✓ docs-site build"
 section "Generating release artifacts"
 GENERATED_TARBALL="$(npm pack --silent)"
 node scripts/generate-registry.cjs >/dev/null
+node scripts/generate-error-guidance-docs.cjs >/dev/null
 node scripts/generate-release-docs.cjs >/dev/null
 echo "  ✓ npm pack -> $GENERATED_TARBALL"
 echo "  ✓ static registry metadata regenerated"
@@ -148,12 +154,20 @@ if ! grep -q "Enterprise AI Platform CLI" <<<"$PACKED_HELP"; then
   echo "✗ packed eai --help is missing the expected product banner"
   exit 1
 fi
-for command_name in update template doctor gofer publicapi; do
+for command_name in update template doctor gofer publicapi errors agent; do
   if ! "$PACKED_EAI" "$command_name" --help >/dev/null 2>&1; then
     echo "✗ packed eai $command_name --help failed"
     exit 1
   fi
 done
+if ! "$PACKED_EAI" errors explain E101 --format json >/dev/null 2>&1; then
+  echo "✗ packed eai errors explain E101 --format json failed"
+  exit 1
+fi
+if ! "$PACKED_EAI" agent guide --format json >/dev/null 2>&1; then
+  echo "✗ packed eai agent guide --format json failed"
+  exit 1
+fi
 if ! "$PACKED_EAI" template check --help >/dev/null 2>&1; then
   echo "✗ packed eai template check --help failed"
   exit 1
@@ -219,8 +233,17 @@ if (!llmsIndex.includes(currentVersion)) {
 if (!llmsIndex.includes('npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user')) {
   throw new Error('llms.txt is missing the scoped registry setup command');
 }
+if (!llmsIndex.includes('Error Guidance')) {
+  throw new Error('llms.txt is missing the error guidance documentation link');
+}
+if (!llmsIndex.includes('eai agent guide --format json')) {
+  throw new Error('llms.txt is missing the AI agent guide command');
+}
 if (!llmsFull.includes(currentVersion)) {
   throw new Error('llms-full.txt is missing the current package version');
+}
+if (!llmsFull.includes('eai agent guide --help')) {
+  throw new Error('llms-full.txt is missing the agent guide help snapshot');
 }
 if (!llmsFull.includes('eai gofer refresh --help')) {
   throw new Error('llms-full.txt is missing current Gofer help output');
@@ -233,6 +256,13 @@ if (!cliHelp.includes('eai gofer refresh --help')) {
 }
 if (!cliHelp.includes('eai template check --help')) {
   throw new Error('cli-help.txt is missing the template check help snapshot');
+}
+if (!cliHelp.includes('eai agent guide --help')) {
+  throw new Error('cli-help.txt is missing the agent guide help snapshot');
+}
+const guidance = JSON.parse(fs.readFileSync(path.join(root, 'docs-site/static/error-guidance.json'), 'utf-8'));
+if (!guidance.entries?.some((entry) => entry.reasonCode === 'tenant_authorization_incomplete')) {
+  throw new Error('error-guidance.json is missing tenant authorization guidance');
 }
 EOF
 echo "  ✓ README, package metadata, and release docs align with the static-registry release flow"

@@ -1,6 +1,6 @@
 # EAI CLI Documentation
 
-> Release-aligned documentation surfaces for `@eai-tools/cli` v3.2.8.
+> Release-aligned documentation surfaces for `@eai-tools/cli` v3.5.4.
 
 ## Install
 
@@ -12,6 +12,7 @@ npm install -g @eai-tools/cli
 ## Key Commands
 
 - `eai update` updates the installed CLI package only.
+- `eai agent guide --format json` explains how AI agents should discover commands and recover from known errors.
 - `eai doctor --check-updates` reports CLI, Gofer, and template drift.
 - `eai gofer refresh --check` previews safe Gofer-managed file updates in an existing repo.
 
@@ -27,10 +28,12 @@ npm install -g @eai-tools/cli
 - [Platform Service Patterns](/eai/docs/app-template/service-patterns)
 - [Config-Driven UI](/eai/docs/app-template/config-driven-ui)
 - [EAI CLI - Configuration](/eai/docs/configuration)
+- [Error Guidance](/eai/docs/error-guidance)
 - [EAI CLI — API Reference](/eai/docs/api-reference)
 
 ## Help & AI Bundles
 
 - [cli-help.txt](/eai/cli-help.txt): Current CLI help snapshots used for release validation
 - [llms-full.txt](/eai/llms-full.txt): Full release-aligned documentation bundle for AI agents
+- [error-guidance.json](/eai/error-guidance.json): Machine-readable error guidance for AI agents
 - [Registry](/eai/registry/): Static EAI package registry on GitHub Pages
