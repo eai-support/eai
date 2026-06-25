@@ -26,6 +26,7 @@ import {
   normalizeTenantEntries,
   publicApiUrlForHomeRegion,
   fetchTenantAdminMemberships,
+  TenantMembershipAuthError,
   resolvePublicApiUrl,
   resolveActiveTenantContext,
   resolveMainCompanyTenantId,
@@ -296,6 +297,41 @@ describe('tenant list filtering', () => {
       `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/tenant-eu/management`,
       expect.objectContaining({ method: 'GET' }),
     );
+  });
+
+  test('returns login refresh guidance when no access token can be loaded for membership lookup', async () => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue(null);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = fetchTenantAdminMemberships(DEFAULT_PUBLIC_API_URL);
+
+    await expect(result).rejects.toMatchObject({
+      name: 'TenantMembershipAuthError',
+      message: 'Authentication is missing or expired. Run `eai login` to refresh your session.',
+      status: 401,
+    });
+    await expect(result).rejects.toBeInstanceOf(TenantMembershipAuthError);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('returns login refresh guidance when PublicAPI rejects membership lookup as unauthorized', async () => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('expired-token');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({
+        error: 'MISSING_AUTHORIZATION',
+        message: 'Authorization header is required',
+      }),
+      { status: 401, statusText: 'Unauthorized', headers: { 'content-type': 'application/json' } },
+    )));
+
+    await expect(fetchTenantAdminMemberships(DEFAULT_PUBLIC_API_URL)).rejects.toMatchObject({
+      name: 'TenantMembershipAuthError',
+      message: 'Authentication is missing or expired. Run `eai login` to refresh your session.',
+      status: 401,
+    });
   });
 
   test('HP005 resolves PublicAPI URL from tenant management when cached homeRegion is missing', async () => {
