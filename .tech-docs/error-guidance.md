@@ -26,6 +26,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
 | `E270` | `object_type_not_published` | Object Type is not published for the active tenant. |
 | `E280` | `workflow_operator_required` | Workflow runtime binding requires operator assistance. |
+| `E244` | `tenant_data_install_no_match` | Tenant data/schema setup is not fully provisioned. |
 
 ## E001: Not in an EAI project.
 
@@ -370,4 +371,38 @@ None.
 - request ID
 - active tenant slug
 - CLI version
+
+## E244: Tenant data/schema setup is not fully provisioned.
+
+| Field | Value |
+| --- | --- |
+| Reason | `tenant_data_install_no_match` |
+| Category | `app_provisioning` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The platform could not resolve an active data/schema install for this tenant.
+- This is a tenant setup issue, not a transient outage: the data/schema capability is reachable but has no active install registered for this tenant.
+- Object Type publish (eai types seed) and schema reads cannot complete until the tenant setup is completed. Retrying does not create that setup.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the active tenant that failed to resolve a data/schema install.
+- `eai verify` (read-only) — Confirm whether the data/schema service can resolve an install for this tenant.
+
+### Fixes
+
+None.
+
+### Stop Conditions
+
+- The response indicates no active tenant data/schema install. Retrying does not provision the tenant setup — it must be fixed by platform support.
+
+### Escalation Evidence
+
+- active tenant slug and id (eai whoami)
+- the command that failed
+- the request id from the error
+- the reason code from the error response
 

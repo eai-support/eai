@@ -722,6 +722,66 @@
         "mayDeleteData": false,
         "publicSafe": true
       }
+    },
+    {
+      "code": "E244",
+      "reasonCode": "tenant_data_install_no_match",
+      "title": "Tenant data/schema setup is not fully provisioned.",
+      "category": "app_provisioning",
+      "severity": "error",
+      "appliesTo": [
+        "types.seed",
+        "platform.verify",
+        "workflow.readiness",
+        "resources.read"
+      ],
+      "why": [
+        "The platform could not resolve an active data/schema install for this tenant.",
+        "This is a tenant setup issue, not a transient outage: the data/schema capability is reachable but has no active install registered for this tenant.",
+        "Object Type publish (eai types seed) and schema reads cannot complete until the tenant setup is completed. Retrying does not create that setup."
+      ],
+      "evidenceToCheck": [
+        "The reason code in the response body.",
+        "Active tenant from eai whoami — confirm you are on the intended tenant.",
+        "Whether the same tenant also fails the data/schema check in eai verify."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the active tenant that failed to resolve a data/schema install.",
+          "mutates": false
+        },
+        {
+          "command": "eai verify",
+          "purpose": "Confirm whether the data/schema service can resolve an install for this tenant.",
+          "mutates": false
+        }
+      ],
+      "fixes": [],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The response indicates no active tenant data/schema install. Retrying does not provision the tenant setup — it must be fixed by platform support."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "A tenant cannot resolve an active data/schema install on publish or schema reads."
+        ],
+        "include": [
+          "active tenant slug and id (eai whoami)",
+          "the command that failed",
+          "the request id from the error",
+          "the reason code from the error response"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
     }
   ]
 }
