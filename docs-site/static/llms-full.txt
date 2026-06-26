@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.5.4.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.5.5.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -357,7 +357,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.5.4** (2026-06-23): Show login refresh guidance for tenant auth failures.
+The current CLI release is **v3.5.5** (2026-06-26): Release current main after public-safe guidance fix.
 
 
 ## What The Pieces Do
@@ -453,10 +453,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.5.4 |
-| Released | 2026-06-23 |
-| Last Material Change | Show login refresh guidance for tenant auth failures |
-| Source Commit | `383f322e1d8e21939ff908a61e4d4b44421bfab7` |
+| Version | 3.5.5 |
+| Released | 2026-06-26 |
+| Last Material Change | Release current main after public-safe guidance fix |
+| Source Commit | `28f959d3e8ebe0f17f3bc43a401d9f3f9abce687` |
 
 
 ## Common Workflow
@@ -1591,7 +1591,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.5.4. The same catalog powers human stderr output, JSON output for AI
+v3.5.5. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -1611,6 +1611,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
 | `E270` | `object_type_not_published` | Object Type is not published for the active tenant. |
 | `E280` | `workflow_operator_required` | Workflow runtime binding requires operator assistance. |
+| `E244` | `tenant_data_install_no_match` | Tenant data/schema setup is not fully provisioned. |
 
 ## E001: Not in an EAI project.
 
@@ -1955,6 +1956,40 @@ None.
 - request ID
 - active tenant slug
 - CLI version
+
+## E244: Tenant data/schema setup is not fully provisioned.
+
+| Field | Value |
+| --- | --- |
+| Reason | `tenant_data_install_no_match` |
+| Category | `app_provisioning` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The platform could not resolve an active data/schema install for this tenant.
+- This is a tenant setup issue, not a transient outage: the data/schema capability is reachable but has no active install registered for this tenant.
+- Object Type publish (eai types seed) and schema reads cannot complete until the tenant setup is completed. Retrying does not create that setup.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the active tenant that failed to resolve a data/schema install.
+- `eai verify` (read-only) — Confirm whether the data/schema service can resolve an install for this tenant.
+
+### Fixes
+
+None.
+
+### Stop Conditions
+
+- The response indicates no active tenant data/schema install. Retrying does not provision the tenant setup — it must be fixed by platform support.
+
+### Escalation Evidence
+
+- active tenant slug and id (eai whoami)
+- the command that failed
+- the request id from the error
+- the reason code from the error response
 
 ---
 
