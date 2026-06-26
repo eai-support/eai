@@ -67,11 +67,11 @@ describe('error guidance catalog', () => {
     const guidance = findGuidance({
       status: 503,
       serverCode: 'RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH',
-      message: 'ResourceAPI install registry did not resolve an active install for this tenant',
+      message: 'install registry did not resolve an active install for this tenant',
     });
 
     expect(guidance?.code).toBe('E244');
-    expect(guidance?.reasonCode).toBe('resourceapi_install_registry_no_match');
+    expect(guidance?.reasonCode).toBe('tenant_data_install_no_match');
     expect(guidance?.retry.allowed).toBe(false);
     expect(guidance?.escalation.audience).toBe('platform-support');
     // also resolves from the message alone (when the server code is sanitised out)
@@ -148,4 +148,3 @@ describe('eai errors command', () => {
     );
   });
 });
-

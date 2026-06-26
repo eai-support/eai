@@ -602,26 +602,26 @@ export const errorGuidanceCatalog = [
   },
   {
     code: 'E244',
-    reasonCode: 'resourceapi_install_registry_no_match',
-    title: 'Tenant is not fully provisioned on the platform (no ResourceAPI install resolved).',
+    reasonCode: 'tenant_data_install_no_match',
+    title: 'Tenant data/schema setup is not fully provisioned.',
     category: 'app_provisioning',
     severity: 'error',
     appliesTo: ['types.seed', 'platform.verify', 'workflow.readiness', 'resources.read'],
     publicSafe: true,
     why: [
-      'The platform could not resolve an active ResourceAPI install for this tenant (RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH).',
-      'This is a tenant provisioning/config issue on the platform side, not a transient outage — the data/schema service is reachable but has no install registered for this tenant.',
-      'Object Type publish (eai types seed) and schema reads cannot complete until the tenant has an active install. Retrying does not provision it.',
+      'The platform could not resolve an active data/schema install for this tenant.',
+      'This is a tenant setup issue, not a transient outage: the data/schema capability is reachable but has no active install registered for this tenant.',
+      'Object Type publish (eai types seed) and schema reads cannot complete until the tenant setup is completed. Retrying does not create that setup.',
     ],
     evidenceToCheck: [
-      'The error code in the response body (RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH).',
+      'The reason code in the response body.',
       'Active tenant from eai whoami — confirm you are on the intended tenant.',
       'Whether the same tenant also fails the data/schema check in eai verify.',
     ],
     diagnostics: [
       {
         command: 'eai whoami',
-        purpose: 'Confirm the active tenant that failed to resolve a ResourceAPI install.',
+        purpose: 'Confirm the active tenant that failed to resolve a data/schema install.',
         mutates: false,
       },
       {
@@ -634,17 +634,17 @@ export const errorGuidanceCatalog = [
     retry: {
       allowed: false,
       stopWhen: [
-        'The response code is RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH. Retrying does not provision the tenant install — it must be fixed on the platform side.',
+        'The response indicates no active tenant data/schema install. Retrying does not provision the tenant setup — it must be fixed by platform support.',
       ],
     },
     escalation: {
       audience: 'platform-support',
-      neededWhen: ['A tenant returns RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH on publish or schema reads.'],
+      neededWhen: ['A tenant cannot resolve an active data/schema install on publish or schema reads.'],
       include: [
         'active tenant slug and id (eai whoami)',
         'the command that failed',
         'the request id from the error',
-        'the code RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH',
+        'the reason code from the error response',
       ],
     },
     safety: {
