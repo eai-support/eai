@@ -116,9 +116,22 @@ Run:
 eai --describe
 ```
 
+If advertised, also run:
+
+```bash
+eai agent guide --format json
+```
+
 Prefer commands and options advertised by the installed CLI over remembered
 syntax. Use JSON only where the CLI advertises it. Record a safe summary in the
 first-run report.
+
+When any later `eai` command fails, use the CLI's error guidance before
+inventing a workaround:
+
+```bash
+eai errors explain <code-or-reason> --format json
+```
 
 Specifically note whether the installed CLI advertises the commands needed for:
 
@@ -127,9 +140,12 @@ Specifically note whether the installed CLI advertises the commands needed for:
 - app enrollment via `eai vertical`
 - resource schema discovery via `eai resources schema`
 - workflow readiness via `eai workflow readiness`
+- Entra app registration and redirect URI provisioning via `eai provision entra`
 - project drift checks via `eai template check`
 - Gofer drift checks via `eai gofer refresh --check`
 - UI block discovery via `eai blocks`
+- AI-agent guidance via `eai agent guide`
+- error recovery guidance via `eai errors explain`
 
 ## Step 5: Login, Tenant, And Account Readiness
 
@@ -207,7 +223,48 @@ If the CLI requires additional safe answers, gather them first. If the repo is
 non-empty and not an EAI app, ask whether to initialize a new sibling EAI app
 directory or stop.
 
-## Step 8: Confirm Gofer Scaffold And Workspace Commands
+## Step 8: Recover Known Entra Redirect Mismatches
+
+If the user provides a browser sign-in error, auth callback log, or deployment
+log containing `AADSTS50011`, "reply URL specified in the request does not
+match", "redirect URI", `redirect_uri`, or
+`/api/auth/callback/microsoft-entra-id`, treat it as an EAI identity
+provisioning recovery before giving manual Azure Portal instructions.
+
+Do this sequence:
+
+```bash
+eai whoami
+eai tenant list --format json
+```
+
+If the active tenant is missing or wrong, help the user choose the right tenant
+and run the advertised equivalent of:
+
+```bash
+eai tenant select <tenant-slug-or-id>
+```
+
+Capture the exact callback URI from the failing browser log, for example:
+
+```text
+https://<host>/api/auth/callback/microsoft-entra-id
+```
+
+Ask before changing tenant-scoped identity configuration, then run the
+advertised equivalent of:
+
+```bash
+eai provision entra --force --redirect-uri <exact-callback-uri> --debug
+```
+
+After the command succeeds, retry the sign-in flow and confirm the authorize
+request uses the same registered `redirect_uri`. If the mismatch persists,
+check whether `AUTH_ENTRA_CLIENT_ID` or `ENTRA_CLIENT_ID` points to a different
+app registration than the one EAI provisioned. Never record client secrets,
+tokens, or `.env.local` values in the first-run report.
+
+## Step 9: Confirm Gofer Scaffold And Workspace Commands
 
 After `eai init`, verify Gofer files exist:
 
@@ -262,18 +319,17 @@ Include the minimum provenance schema:
 The generated first-run report must contain these sections:
 
 - `## Provenance`
-- `## Host And Platform`
 - `## Workspace Root`
-- `## Prerequisite Checks`
+- `## Environment Check`
 - `## EAI CLI`
-- `## Login And Tenant`
-- `## Template Initialization`
-- `## Gofer Scaffold`
+- `## Tenant And Login`
+- `## Template Readiness`
+- `## Drift And Recovery`
 - `## Next Action`
 
 Each section should include:
 
-- Host, OS, shell, and workspace root
+- Host, OS, shell, workspace root, and prerequisite tool versions
 - Git, Node.js, npm, and EAI CLI versions
 - EAI registry status
 - EAI CLI release status from `eai update --check`
@@ -283,9 +339,9 @@ Each section should include:
 - Login status without tokens
 - Tenant readiness without private payloads
 - Template readiness
-- Template/Gofer drift status and any `E001` explanation
-- Gofer scaffold readiness
-- Project path
+- Template/Gofer drift status, the next recovery command, and any `E001`
+  explanation
+- Gofer scaffold readiness and project path
 - Next action
 
 ## Step 11: Start The Pipeline

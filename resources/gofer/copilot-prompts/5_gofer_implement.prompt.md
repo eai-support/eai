@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/5_gofer_implement.md
-  canonicalChecksum: c0f1809905ff9583bc5cec8c161e09c592980995db5d0300aa94b23e0468b265
+  canonicalChecksum: 2f0e88f5be5fb0e853bcbf07d94ee8da4180aeaa253065c9c2c00b6ad1cbe6f9
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -629,21 +629,34 @@ If implementation was interrupted:
 
 ---
 
-## EnterpriseAI Deployment Preflight Gate (Manifest/Config)
+## EnterpriseAI Runtime Deployment Preflight Gate
 
 The standard Gofer workflow is the public default. EnterpriseAI deployment
 preflight is migration-only and runs only when `workflowProfile` is explicitly
 `enterpriseai`.
 
 Before any deployment task emitted by `#4_gofer_tasks` completes, this stage
-MUST execute deployment preflight checks (manifest/config gate). A task that
-invokes `eai deploy` is not marked complete until all of the following files
-are present at the workspace root and pass their readiness checks:
+MUST execute deployment preflight checks for the runtime contract and deploy
+doctor gate. A task that invokes `eai deploy` is not marked complete until all
+of the following files are present at the workspace root and pass their
+readiness checks:
 
-| Required File  | Purpose                                                 |
-| -------------- | ------------------------------------------------------- |
-| `manifest.yml` | Vertical application manifest (from `eai init`) |
-| `config.json`  | Runtime configuration bundle (environment-specific)     |
+| Required File             | Purpose                                                        |
+| ------------------------- | -------------------------------------------------------------- |
+| `eai.runtime.json`        | Provider-neutral runtime contract from the EAI app template    |
+| `.eai/deploy-doctor.json` | Black-box deploy doctor evidence from the deployed app runtime |
+
+Required commands:
+
+```bash
+eai runtime validate
+mkdir -p .eai
+eai deploy doctor --url <deployed-url> --format json > .eai/deploy-doctor.json
+```
+
+`/health` alone is not enough. Auth.js, runtime config, tenant/workflow config,
+PublicAPI/BFF reachability, service-identity requirements, and declared smoke
+tests must pass before deployment is complete.
 
 ### Gate behaviour
 
@@ -697,6 +710,28 @@ separation from `tasks.md`:
   Use `eai resources schema`, an adapter boundary, or an approved
   restricted-source exception; record the coupling status in implementation
   notes and `ui-review-log.md`.
+- For EAI app delivery, read `.specify/references/platform/eai-repo-contract.md`,
+  `.specify/references/platform/eai-error-catalog.yaml`, and
+  `.specify/specs/{feature}/eai-preflight.md` before remote platform changes.
+- Carry forward the last completed gate, blocked gate, and next recovery
+  command from `eai-preflight.md` whenever provisioning, object-type publish,
+  schema/storage health, workflow readiness, or preview readiness changes.
+- Treat resource provisioning, object-type publish, schema/storage health, and preview readiness as separate gates even when the CLI reports progress in a single run.
+- Track workflow readiness alongside those gates; do not collapse it into
+  provisioning, schema/storage health, or preview status.
+- Use `eai vertical provision <key> --tenant-id <tenant-id> --select --format json`,
+  `eai provision entra --force --redirect-uri <exact-callback-uri> --debug`,
+  `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json`,
+  `eai resources schema --tenant-id <tenant-id> --format json`,
+  `eai resources storage doctor --tenant-id <tenant-id> --format json`, and
+  `eai verify storage --tenant-id <tenant-id>` in the recovery order recorded
+  by the preflight artifact instead of improvising a new sequence.
+- If a browser or runtime auth log reports `AADSTS50011`, `redirect_uri`,
+  "reply URL specified in the request does not match", or
+  `/api/auth/callback/microsoft-entra-id`, match
+  `EAI_ENTRA_REDIRECT_URI_MISMATCH` in the error catalog. Confirm `eai whoami`
+  and tenant selection first, then use EAI Entra provisioning to register the
+  exact callback URI before asking the user to edit Azure manually.
 - For application delivery, implement the four-step-or-fewer AI-augmented
   process as the user-facing spine. Each step must preserve its business goal,
   AI assistance mode, contextual prefill or conversational support, completion

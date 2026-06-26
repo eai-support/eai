@@ -854,11 +854,19 @@ async function emitAgentsMd(stages, root, dryRun) {
     sections.push(`### ${sectionTitle}\n${summary}...`);
   }
 
-  const content = `# Gofer Agent Commands
+const content = `# Gofer Agent Commands
 
 This file documents all Gofer pipeline commands available as agent skills.
 
 Generated: ${timestamp}
+
+## EAI CLI Discovery And Recovery
+
+- Run \`eai update --check\` before first EAI platform work when the CLI may be stale.
+- Run \`eai --describe\` before assuming command syntax.
+- If advertised, run \`eai agent guide --format json\` before planning or fixing EAI workflows.
+- After any \`eai\` error, run \`eai errors explain <code-or-reason> --format json\` before guessing remediation.
+- Use \`eai publicapi\` only for authorized PublicAPI \`/v4/...\` routes.
 
 ## Commands
 

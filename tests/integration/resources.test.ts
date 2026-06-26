@@ -104,6 +104,7 @@ describe('resource type diagnostics', () => {
       name: 'Root Tenant',
       slug: 'root-tenant',
       domain: ['root.example.com'],
+      homeRegion: 'eu',
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -116,6 +117,7 @@ describe('resource type diagnostics', () => {
           slug: 'root-tenant',
           domain: ['root.example.com'],
           usecase: 'generic',
+          homeRegion: 'eu',
         }),
       }),
     );

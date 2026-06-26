@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.2.8 |
-| Released | 2026-06-17 |
-| Last Material Change | Release resource lifecycle smoke coverage |
-| Source Commit | `10868de11d693882437323c6898dc6852f81288f` |
+| Version | 3.5.4 |
+| Released | 2026-06-23 |
+| Last Material Change | Show login refresh guidance for tenant auth failures |
+| Source Commit | `383f322e1d8e21939ff908a61e4d4b44421bfab7` |
 
 
 ## Common Workflow
@@ -48,6 +48,8 @@ eai dev
 | `eai docs`                              | Upload, classify, and index documents for platform processing and RAG.                    |
 | `eai chat`                              | Send or stream chat requests through configured AI workflows.                             |
 | `eai publicapi`                         | Call authorized PublicAPI V4 routes when a named command does not exist yet.              |
+| `eai runtime`                           | Validate the host-neutral `eai.runtime.json` app runtime contract.                        |
+| `eai deploy`                            | Translate provider env/secrets and black-box doctor deployed EAI app runtimes.            |
 | `eai gofer`                             | Install and refresh repo-local agent workflow assets.                                     |
 | `eai template`                          | Check app-template and UI drift without writing files.                                    |
 | `eai verify`, `eai doctor`              | Run connectivity, contract, update, and troubleshooting checks.                           |

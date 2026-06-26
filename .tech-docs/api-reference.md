@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-06-17T07:58:54.720Z"
-source_commit: "10868de11d693882437323c6898dc6852f81288f"
+generated_at: "2026-06-23T08:02:02.779Z"
+source_commit: "383f322e1d8e21939ff908a61e4d4b44421bfab7"
 ---
 # EAI CLI — API Reference
 
@@ -168,6 +168,7 @@ Create a new tenant and bootstrap admin access.
 - `--usecase <usecase>` — `council|retail|healthcare|finance|manufacturing|generic` (default: `generic`)
 - `--industry <industry>` — Signup/onboarding industry segment
 - `--starter-template <key>` — Starter application template key (default: `blank-vertical-template`)
+- `--home-region <region>` — Tenant home region (`au|ca|eu`); required with `--allow-root`, optional child override with `--parent`
 - `--allow-root` — Allow root tenant creation for administrative backfills
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -175,6 +176,8 @@ Create a new tenant and bootstrap admin access.
 1. Creates a child tenant under `--parent`, or a root tenant when `--allow-root` is set
 2. Bootstraps the current user as `tenant-admin` on the new child tenant
 3. Polls membership to confirm the tenant is usable, then auto-selects it
+4. For child tenants, sends the parent home region by default or the explicit `--home-region` override
+5. For root tenants, requires an explicit `--home-region` because there is no parent tenant to inherit from
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/tenants/{parentId}/children` — create child tenant (when `--parent` is given)

@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/3_gofer_plan.md
-  canonicalChecksum: bbc8a7a23c9b2ba366a9c24b3d9f21444f3984fc461179f792330e654fbd44bb
+  canonicalChecksum: a3b01ef928a8b1bb6eeab5edc2cfa0e9329e5f276b08ba653e71c5af44e79a51
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -669,9 +669,16 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
      `eai init <app-name>`
    - whether app creation/selection is confirmed, deferred, or blocked
    - block-catalog readiness and package-profile compatibility evidence
+   - the last completed gate, blocked gate, and next recovery command from the
+     EAI preflight artifact
    If EAI readiness is blocked, plan only the smallest unblock task group and
    do not invent object types, tenant IDs, app keys, or platform capabilities.
-3. **EAI Platform/Azure app stack decision** — for app delivery, the plan MUST
+3. **EAI app lifecycle ordering handoff** — keep the platform lifecycle
+   explicit inside the plan. Resource provisioning, object-type publish,
+   schema/storage health, workflow readiness, and preview readiness must remain
+   distinct gates with the recovery path carried forward from
+   `{FEATURE_DIR}/eai-preflight.md`.
+4. **EAI Platform/Azure app stack decision** — for app delivery, the plan MUST
    use EAI Platform, including the EAI app template, as the primary app
    substrate and Azure as the preferred cloud/supporting substrate. The plan MUST
    NOT select Firebase, Supabase, Vercel as the primary runtime, AWS, GCP,
@@ -682,24 +689,24 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
    Capabilities unavailable in EAI Platform/Azure must be recorded in
    `{FEATURE_DIR}/service-fit-matrix.md` as platform work, operator-required, or
    upgrade-required rather than substituted silently.
-4. **Deployment convention** — reference the configured deployment
+5. **Deployment convention** — reference the configured deployment
    documentation for the target project and note which environment
    (dev/staging/prod) each deliverable targets.
-5. **Integration map handoff** — restate the Vertical App → EAI Services →
+6. **Integration map handoff** — restate the Vertical App → EAI Services →
    Deployment Target chain from `spec.md` and bind each link to a task
    identifier in `tasks.md`.
-6. **Contract pack handoff** — reference `{FEATURE_DIR}/contract-pack.md` and
+7. **Contract pack handoff** — reference `{FEATURE_DIR}/contract-pack.md` and
    bind each actor, object type, workflow/journey, permission boundary,
    API/event, runtime assumption, and acceptance test to plan sections and
    downstream tasks.
-7. **AI-augmented journey handoff** — for app delivery, reference
+8. **AI-augmented journey handoff** — for app delivery, reference
    `{FEATURE_DIR}/journeys/base-journey.md` and plan the four-step-or-fewer
    user-facing process as the default scope spine. Each step must include the
    business goal, generative AI assistance mode, screen/user/data context used,
    completion signal, user controls, audit trail, and fallback/escalation path.
    If the plan expands beyond four user-facing steps, document why those steps
    cannot be combined, automated, or handled by the AI assistant.
-8. **UI-first approval gate handoff** — for app delivery, reference
+9. **UI-first approval gate handoff** — for app delivery, reference
    `{FEATURE_DIR}/ui-preview-brief.md` and require the planning stage to lock
    the preview loop before plan/tasks are considered complete. The plan MUST:
    - keep the first preview constrained to EAI App Template blocks unless an
@@ -714,7 +721,7 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
      evidence before stakeholder presentation
    - update `{FEATURE_DIR}/ui-review-log.md` for each iteration and require
      explicit stakeholder approval in `{FEATURE_DIR}/ui-approval.md`
-9. **EnterpriseAI service-fit handoff** — for app delivery, the plan MUST
+10. **EnterpriseAI service-fit handoff** — for app delivery, the plan MUST
    produce or update `{FEATURE_DIR}/service-fit-matrix.md` after UI approval and
    before tasks are treated as complete. The matrix must distinguish:
    - accessible now
@@ -726,13 +733,13 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
    --format json`, `eai workflow status <workflow-key>`, `eai workflow request
    <workflow-key>`, `eai provision entra --rotate-secret`, or documented
    equivalent public platform evidence.
-10. **Reuse-before-create decision log** — reference `{FEATURE_DIR}/reuse-scan.md`
+11. **Reuse-before-create decision log** — reference `{FEATURE_DIR}/reuse-scan.md`
    for every new or extended EnterpriseAI object type, API/event, workflow, or
    module.
-11. **Audit history seed** — create or update `{FEATURE_DIR}/audit-history.md`
+12. **Audit history seed** — create or update `{FEATURE_DIR}/audit-history.md`
    with stable finding IDs, decision exceptions, owner, expiry, and review
    cadence so validation can track recurring issues.
-12. **Public/private knowledge split** — identify which implementation facts
+13. **Public/private knowledge split** — identify which implementation facts
     are safe for public docs, Gofer guidance, EAI CLI help, or EAI App Template
     comments, and which facts are restricted-source. Plans must express blocked
     states as public-safe actions (`operator_required`, `upgrade_required`, or

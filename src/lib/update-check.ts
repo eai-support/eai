@@ -14,6 +14,8 @@ const CACHE_FILE = join(EAI_DIR, 'update-check.json');
 export const STATIC_REGISTRY_URL = 'https://eai-tools.github.io/eai/registry/';
 export const STATIC_PACKUMENT_URL = `${STATIC_REGISTRY_URL}@eai-tools/cli`;
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const DEFAULT_FETCH_TIMEOUT_MS = 5000;
+const DISCOVERY_FETCH_TIMEOUT_MS = 1200;
 
 export type ReleaseChannel = 'static-registry';
 
@@ -22,18 +24,29 @@ export interface LatestRelease {
   version: string;
 }
 
-interface UpdateCache {
+export interface UpdateCache {
   lastCheck: number;
   latestVersion: string;
   currentVersion: string;
 }
 
 function shouldSkip(): boolean {
+  if (process.env['NO_UPDATE_NOTIFIER'] === '1') {
+    return true;
+  }
+
+  if (process.env['EAI_UPDATE_NOTIFIER_FORCE'] === '1') {
+    return false;
+  }
+
   return (
     !!process.env['CI'] ||
-    process.env['NO_UPDATE_NOTIFIER'] === '1' ||
     !process.stderr.isTTY
   );
+}
+
+function getPackumentUrl(): string {
+  return process.env['EAI_UPDATE_PACKUMENT_URL'] || STATIC_PACKUMENT_URL;
 }
 
 /** Compare two semver strings (major.minor.patch). */
@@ -78,12 +91,13 @@ export function selectNewestRelease(candidates: readonly LatestRelease[]): Lates
 async function fetchChannelLatest(
   url: string,
   channel: ReleaseChannel,
+  timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
 ): Promise<LatestRelease | null> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    timeout = setTimeout(() => controller.abort(), timeoutMs);
     const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
 
     if (!res.ok) return null;
 
@@ -96,17 +110,21 @@ async function fetchChannelLatest(
     return { channel, version };
   } catch {
     return null;
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
   }
 }
 
 /** Fetch the newest release from the static EAI registry. */
-export async function fetchLatestRelease(): Promise<LatestRelease | null> {
-  return fetchChannelLatest(STATIC_PACKUMENT_URL, 'static-registry');
+export async function fetchLatestRelease(timeoutMs = DEFAULT_FETCH_TIMEOUT_MS): Promise<LatestRelease | null> {
+  return fetchChannelLatest(getPackumentUrl(), 'static-registry', timeoutMs);
 }
 
 /** Fetch the latest version from the available release channels. */
-export async function fetchLatestVersion(): Promise<string | null> {
-  return (await fetchLatestRelease())?.version ?? null;
+export async function fetchLatestVersion(timeoutMs = DEFAULT_FETCH_TIMEOUT_MS): Promise<string | null> {
+  return (await fetchLatestRelease(timeoutMs))?.version ?? null;
 }
 
 async function readCache(): Promise<UpdateCache | null> {
@@ -127,6 +145,36 @@ async function writeCache(cache: UpdateCache): Promise<void> {
   }
 }
 
+async function refreshCache(
+  currentVersion: string,
+  timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
+): Promise<UpdateCache | null> {
+  const latest = await fetchLatestVersion(timeoutMs);
+  if (!latest) {
+    return null;
+  }
+
+  const cache = {
+    lastCheck: Date.now(),
+    latestVersion: latest,
+    currentVersion,
+  };
+  await writeCache(cache);
+  return cache;
+}
+
+async function readFreshOrRefreshCache(
+  currentVersion: string,
+  timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
+): Promise<UpdateCache | null> {
+  const cache = await readCache();
+  if (cache && Date.now() - cache.lastCheck < CHECK_INTERVAL_MS) {
+    return cache;
+  }
+
+  return await refreshCache(currentVersion, timeoutMs) ?? cache;
+}
+
 /**
  * Fire-and-forget background update check.
  * Reads cache; skips if checked within 24h; otherwise fetches and caches.
@@ -136,17 +184,7 @@ export function checkForUpdate(currentVersion: string): void {
 
   // Fire-and-forget — errors are swallowed
   void (async () => {
-    const cache = await readCache();
-    if (cache && Date.now() - cache.lastCheck < CHECK_INTERVAL_MS) return;
-
-    const latest = await fetchLatestVersion();
-    if (!latest) return;
-
-    await writeCache({
-      lastCheck: Date.now(),
-      latestVersion: latest,
-      currentVersion,
-    });
+    await readFreshOrRefreshCache(currentVersion);
   })();
 }
 
@@ -158,6 +196,10 @@ export async function notifyIfUpdateAvailable(currentVersion: string): Promise<v
   if (shouldSkip()) return;
 
   const cache = await readCache();
+  printUpdateNotice(currentVersion, cache);
+}
+
+export function printUpdateNotice(currentVersion: string, cache: UpdateCache | null): void {
   if (!cache) return;
   if (!isNewerVersion(currentVersion, cache.latestVersion)) return;
 
@@ -169,4 +211,16 @@ export async function notifyIfUpdateAvailable(currentVersion: string): Promise<v
   console.error(`  Update available: ${current} → ${latest}`);
   console.error(`  Run ${cmd} to update`);
   console.error('');
+}
+
+/**
+ * Discovery commands are where stale CLIs hurt most: a user or agent asks
+ * "what can this do?" and old binaries cannot list new commands. Do a bounded
+ * foreground refresh so root help and unknown commands can point at eai update.
+ */
+export async function notifyIfUpdateAvailableForDiscovery(currentVersion: string): Promise<void> {
+  if (shouldSkip()) return;
+
+  const cache = await readFreshOrRefreshCache(currentVersion, DISCOVERY_FETCH_TIMEOUT_MS);
+  printUpdateNotice(currentVersion, cache);
 }

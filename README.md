@@ -74,6 +74,8 @@ eai tenant select
 #    `eai tenant create --parent <id>` now creates the tenant record,
 #    attempts first-admin bootstrap for the current login, and only marks
 #    the tenant usable after direct tenant-admin membership is confirmed.
+#    The child home region defaults to the parent region; pass
+#    `--home-region au|ca|eu` when the child must use another region.
 
 # 5. Sync project environment if your app needs local config/secrets
 eai env pull --include-secrets
@@ -229,9 +231,25 @@ still enforces platform tenant authorization.
 
 | Command | Description |
 |---------|-------------|
+| `eai runtime validate` | Validate the provider-neutral EAI app runtime contract |
+| `eai deploy env --provider <provider>` | Translate the runtime contract into provider env/secret requirements |
 | `eai deploy setup` | Generate deploy-demo.yml + GitHub secrets |
 | `eai deploy trigger` | Trigger deployment workflow |
 | `eai deploy status` | Check deployment status |
+| `eai deploy doctor --url <deployed-url>` | Black-box check health, Auth.js, runtime config, smoke tests, and BFF readiness |
+
+The runtime contract lives in `eai.runtime.json`. It declares required
+environment variable names, required secrets, health/runtime endpoints, Auth.js
+callback path, tenant/workflow key patterns, optional app-only service identity,
+and post-deploy smoke tests. It is host-neutral: Vercel, Docker, AWS, Azure,
+Kubernetes, VM-style hosts, and internal demo environments should translate the
+same contract into their provider-specific env and secret setup.
+
+`eai deploy doctor` deliberately does more than `/health`. A deployment can have
+`/health` returning 200 and still fail because Auth.js providers are missing,
+the Entra callback URL is wrong, tenant/workflow config is empty, service
+identity is absent for anonymous server-side platform calls, PublicAPI rejects
+authorization, or the app runtime is throwing errors.
 
 ### Diagnostics
 
@@ -281,33 +299,47 @@ eai resources list ─────────────────→ Platfo
 eai workflow status ────────────────→ Platform API → AI runtime readiness
 eai chat stream ────────────────────→ Platform API → AI Service
 eai docs classify ──────────────────→ Platform API → AI Service
-eai deploy trigger ─────────────────→ GitHub Actions → Azure App Service
+eai runtime validate ────────────────→ eai.runtime.json → local contract evidence
+eai deploy env ──────────────────────→ eai.runtime.json → provider env/secret checklist
+eai deploy doctor ───────────────────→ deployed app URL → black-box runtime checks
+eai deploy trigger ─────────────────→ GitHub Actions → deployment workflow
 ```
 
 The CLI authenticates via browser-based authorization code flow with PKCE, stores tokens locally in `~/.eai/`, persists the active working tenant from your tenant-admin memberships, and calls the platform API directly with a Bearer token. `.env.local` is still available for project runtime configuration, but tenant selection for CLI platform commands comes from `eai login` and `eai tenant select`.
 
 Runtime workflow checks are intentionally public-safe. They tell you whether a workflow key is `available`, `operator_required`, `paid_upgrade_required`, `rate_limited`, `blocked`, `unsupported`, or not ready without exposing private platform topology. Use `eai workflow request <key>` when the platform reports `operator_required`.
 
-## Error Codes
+## Error Guidance
 
-The CLI uses structured error codes for consistent error handling:
+The CLI uses structured error guidance for consistent human and AI-agent recovery:
 
 - **E001-E099**: Project errors (not in EAI project, config missing)
 - **E100-E199**: Auth errors (not logged in, token expired)
 - **E200-E299**: Platform errors (API unreachable, resource not found)
 - **E300-E399**: Validation errors (invalid schema, missing field)
 
-Example error output:
+Error output explains why the error may have happened, what read-only diagnostics
+to run first, what mutating `eai` commands can fix it, and when to stop retrying.
 
 ```
-✗ Not logged in
+✗ Not logged in.
 
-Run `eai login` to authenticate with the platform
+Why this might happen:
+- The CLI does not have a usable local sign-in token.
+- The token may have expired or been created for a different local profile.
+
+Try next:
+1. eai whoami [read-only]
+   Show the current login and active tenant status.
+2. eai login [changes state]
+   Authenticate with the EAI identity flow.
 
 Error code: E101
+Reason: not_logged_in
 ```
 
-JSON format (for automation):
+JSON output keeps the legacy `suggestion` field and adds structured guidance for
+AI agents:
 
 ```json
 {
@@ -315,9 +347,22 @@ JSON format (for automation):
     "code": "E101",
     "message": "Not logged in",
     "suggestion": "Run `eai login` to authenticate with the platform",
+    "guidance": {
+      "reasonCode": "not_logged_in",
+      "why": ["The CLI does not have a usable local sign-in token."],
+      "diagnostics": [{ "command": "eai whoami", "mutates": false }],
+      "fixes": [{ "command": "eai login", "mutates": true }]
+    },
     "exitCode": 1
   }
 }
+```
+
+Use `eai errors explain <code-or-reason>` for the release-aligned explanation:
+
+```bash
+eai errors explain E101
+eai errors explain tenant_authorization_incomplete --format json
 ```
 
 ## Machine-Readable Output
@@ -346,6 +391,33 @@ The `--describe` flag outputs the CLI command structure as JSON Schema, enabling
 eai --describe        # Describe all commands
 eai types --describe  # Describe types subcommands
 ```
+
+For AI agents that need to use `eai` without extra instructions, start with the
+built-in operating guide:
+
+```bash
+eai agent guide --format json
+```
+
+The same guide is embedded in `eai --describe` as `agentGuide`. It tells agents
+to prefer structured output, run read-only diagnostics before fixes, call
+`eai errors explain <code-or-reason> --format json` after failures, use named
+commands before raw `publicapi` calls, and stop when retry or escalation
+conditions match.
+
+To test whether a weak agent can discover that behavior without EAI-specific
+prompt instructions, run the built-in discovery eval:
+
+```bash
+npm run build
+npm run eval:agent-discovery -- --json
+```
+
+The default `regex-small` agent is intentionally limited: it starts from generic
+help/describe output, parses visible error codes or reason codes, and only runs
+commands it discovers from the CLI output. Use `--agent-command <cmd>` to plug
+in a real model runner that accepts the eval JSON turn on stdin and returns a
+JSON decision.
 
 ## Gofer AI Terminal Assets
 
