@@ -25,6 +25,7 @@ import {
 import { isRecord } from "../lib/utils.js";
 import * as out from "../lib/output.js";
 import { ErrorCode, exitWithError } from "../lib/error-codes.js";
+import { findGuidance } from "../lib/error-guidance/match.js";
 import { compareVersions, fetchLatestRelease } from "../lib/update-check.js";
 import { readGoferBundleMetadata } from "../lib/gofer-refresh.js";
 import { resolveProjectManifest } from "../lib/project-manifest.js";
@@ -1150,7 +1151,32 @@ Use 'eai verify calls' when you need to inspect the exact API contracts the CLI 
           );
           passed++;
         } else {
-          resSpinner.fail(`Data service returned ${res.status}`);
+          // Surface the server's reason code/message (e.g. RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH)
+          // instead of only the status — and add actionable guidance when we recognise it, so a
+          // tenant-provisioning issue is not mistaken for a transient outage.
+          let code: string | undefined;
+          let message: string | undefined;
+          try {
+            const body = (await res.json()) as { code?: unknown; message?: unknown };
+            if (typeof body?.code === "string") code = body.code;
+            if (typeof body?.message === "string") message = body.message;
+          } catch {
+            // non-JSON body — the status alone is the signal
+          }
+          resSpinner.fail(
+            `Data service returned ${res.status}${code ? ` [${code}]` : ""}${message ? ` — ${message}` : ""}`,
+          );
+          const guidance = findGuidance({
+            status: res.status,
+            serverCode: code,
+            message: message ?? code,
+          });
+          if (guidance) {
+            out.info(guidance.title);
+            if (!guidance.retry.allowed && guidance.retry.stopWhen[0]) {
+              out.info(guidance.retry.stopWhen[0]);
+            }
+          }
           failed++;
         }
       } catch (err) {
