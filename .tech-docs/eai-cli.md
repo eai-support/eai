@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.5.4 |
-| Released | 2026-06-23 |
-| Last Material Change | Show login refresh guidance for tenant auth failures |
-| Source Commit | `383f322e1d8e21939ff908a61e4d4b44421bfab7` |
+| Version | 3.5.5 |
+| Released | 2026-06-26 |
+| Last Material Change | Release current main after public-safe guidance fix |
+| Source Commit | `28f959d3e8ebe0f17f3bc43a401d9f3f9abce687` |
 
 
 ## Common Workflow

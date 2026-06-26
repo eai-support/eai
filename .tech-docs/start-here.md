@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.5.4** (2026-06-23): Show login refresh guidance for tenant auth failures.
+The current CLI release is **v3.5.5** (2026-06-26): Release current main after public-safe guidance fix.
 
 
 ## What The Pieces Do
