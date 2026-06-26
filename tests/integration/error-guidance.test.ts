@@ -2,6 +2,7 @@ import { beforeEach, afterEach, describe, expect, test } from 'vitest';
 import { ErrorCode, formatError, formatErrorJSON } from '../../src/lib/error-codes.js';
 import { findGuidanceByCodeOrReason, listErrorGuidance } from '../../src/lib/error-guidance/catalog.js';
 import { validateErrorGuidanceCatalog } from '../../src/lib/error-guidance/validate.js';
+import { findGuidance } from '../../src/lib/error-guidance/match.js';
 import { runCommand } from '../helpers/action-dsl.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
@@ -60,6 +61,23 @@ describe('error guidance catalog', () => {
       ]),
     );
     expect(guidance?.retry.maxAttempts).toBe(3);
+  });
+
+  test('install-registry NO_MATCH maps to non-retryable provisioning guidance', () => {
+    const guidance = findGuidance({
+      status: 503,
+      serverCode: 'RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH',
+      message: 'ResourceAPI install registry did not resolve an active install for this tenant',
+    });
+
+    expect(guidance?.code).toBe('E244');
+    expect(guidance?.reasonCode).toBe('resourceapi_install_registry_no_match');
+    expect(guidance?.retry.allowed).toBe(false);
+    expect(guidance?.escalation.audience).toBe('platform-support');
+    // also resolves from the message alone (when the server code is sanitised out)
+    expect(
+      findGuidance({ message: 'install registry did not resolve an active install' })?.code,
+    ).toBe('E244');
   });
 });
 
