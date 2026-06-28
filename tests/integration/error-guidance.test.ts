@@ -79,6 +79,29 @@ describe('error guidance catalog', () => {
       findGuidance({ message: 'install registry did not resolve an active install' })?.code,
     ).toBe('E244');
   });
+
+  test('semantic resource search guidance tells agents to use fulltext fallback', () => {
+    const guidance = findGuidance({
+      operation: 'resources.search',
+      status: 400,
+      message: 'Search vector embedding endpoint is not configured',
+    });
+
+    expect(guidance?.code).toBe('E275');
+    expect(guidance?.reasonCode).toBe('resource_search_embedding_required');
+    expect(guidance?.diagnostics.map((item) => item.command)).toContain(
+      'eai resources storage doctor --format json',
+    );
+    expect(guidance?.fixes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: 'eai resources search "<query>" --fulltext',
+          mutates: false,
+        }),
+      ]),
+    );
+    expect(findGuidanceByCodeOrReason('resource_search_embedding_required')?.code).toBe('E275');
+  });
 });
 
 describe('eai errors command', () => {
