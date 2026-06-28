@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.5.5 |
-| Released | 2026-06-26 |
-| Last Material Change | Release current main after public-safe guidance fix |
-| Source Commit | `28f959d3e8ebe0f17f3bc43a401d9f3f9abce687` |
+| Version | 3.6.0 |
+| Released | 2026-06-28 |
+| Last Material Change | Add native app terminology commands |
+| Source Commit | `ff5ebafc7ea71d02bf2a9084c849f14b0647ade0` |
 
 
 ## Common Workflow

@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.5.5** (2026-06-26): Release current main after public-safe guidance fix.
+The current CLI release is **v3.6.0** (2026-06-28): Add native app terminology commands.
 
 
 ## What The Pieces Do
