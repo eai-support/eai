@@ -540,6 +540,78 @@ export const errorGuidanceCatalog = [
     ],
   },
   {
+    code: 'E275',
+    reasonCode: 'resource_search_embedding_required',
+    title: 'Semantic resource search is not ready for this v4 passive ResourceAPI tenant.',
+    category: 'resource_data',
+    severity: 'warning',
+    appliesTo: ['resources.search', 'resources.storage.doctor', 'verify.storage'],
+    publicSafe: true,
+    why: [
+      'The PublicAPI v4 passive ResourceAPI route can be available for full-text search while semantic search modes are still not ready.',
+      'Hybrid and vector search need an additional semantic-search capability before the platform can create query embeddings.',
+      'This is not fixed by retrying the same hybrid or vector search command; use full-text search or check readiness first.',
+      'This guidance applies to eai resources commands using the v4 passive ResourceAPI surface, not legacy v1/v3 or active ResourceAPI behavior.',
+    ],
+    evidenceToCheck: [
+      'Search capabilities from eai resources storage doctor.',
+      'Whether the failed command used --hybrid, --vector, or the default hybrid mode.',
+      'Published Object Types from eai resources schema.',
+    ],
+    diagnostics: [
+      {
+        command: 'eai resources storage doctor --format json',
+        purpose: 'Check whether fulltext, hybrid, and vector search are ready for the active tenant through the v4 passive ResourceAPI route.',
+        mutates: false,
+      },
+      {
+        command: 'eai resources schema --format json',
+        purpose: 'Confirm the tenant has published Object Types to search.',
+        mutates: false,
+      },
+    ],
+    fixes: [
+      {
+        command: 'eai resources search "<query>" --fulltext',
+        purpose: 'Run a full-text search path that does not require semantic-search readiness.',
+        mutates: false,
+        when: 'Use this when storage doctor reports fulltext ready but hybrid/vector unavailable.',
+      },
+    ],
+    retry: {
+      allowed: true,
+      maxAttempts: 1,
+      stopWhen: [
+        'The same hybrid or vector command still reports semantic-search readiness as unavailable.',
+        'Full-text search also fails, which means the issue is broader than semantic-search readiness.',
+      ],
+    },
+    escalation: {
+      audience: 'platform-support',
+      neededWhen: ['The app requires hybrid or vector search and storage doctor keeps reporting those modes unavailable.'],
+      include: ['active tenant slug', 'search mode used', 'storage doctor search capabilities', 'CLI version'],
+    },
+    safety: {
+      mutatesState: false,
+      mayWriteSecrets: false,
+      mayDeleteData: false,
+      publicSafe: true,
+    },
+    match: [
+      {
+        operation: 'resources.search',
+        messageIncludes: ['search vector embedding endpoint is not configured'],
+      },
+      {
+        operation: 'resources.search',
+        messageIncludes: ['Configure Azure OpenAI embedding endpoint and deployment before vector or hybrid search'],
+      },
+      {
+        messageIncludes: ['search_embedding_required'],
+      },
+    ],
+  },
+  {
     code: 'E280',
     reasonCode: 'workflow_operator_required',
     title: 'Workflow runtime binding requires operator assistance.',

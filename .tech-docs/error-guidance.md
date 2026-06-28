@@ -25,6 +25,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
 | `E270` | `object_type_not_published` | Object Type is not published for the active tenant. |
+| `E275` | `resource_search_embedding_required` | Semantic resource search is not ready for this v4 passive ResourceAPI tenant. |
 | `E280` | `workflow_operator_required` | Workflow runtime binding requires operator assistance. |
 | `E244` | `tenant_data_install_no_match` | Tenant data/schema setup is not fully provisioned. |
 
@@ -337,6 +338,42 @@ None.
 - active tenant slug
 - CLI version
 - types seed summary
+
+## E275: Semantic resource search is not ready for this v4 passive ResourceAPI tenant.
+
+| Field | Value |
+| --- | --- |
+| Reason | `resource_search_embedding_required` |
+| Category | `resource_data` |
+| Severity | `warning` |
+
+### Why This Might Happen
+
+- The PublicAPI v4 passive ResourceAPI route can be available for full-text search while semantic search modes are still not ready.
+- Hybrid and vector search need an additional semantic-search capability before the platform can create query embeddings.
+- This is not fixed by retrying the same hybrid or vector search command; use full-text search or check readiness first.
+- This guidance applies to eai resources commands using the v4 passive ResourceAPI surface, not legacy v1/v3 or active ResourceAPI behavior.
+
+### Diagnostics
+
+- `eai resources storage doctor --format json` (read-only) — Check whether fulltext, hybrid, and vector search are ready for the active tenant through the v4 passive ResourceAPI route.
+- `eai resources schema --format json` (read-only) — Confirm the tenant has published Object Types to search.
+
+### Fixes
+
+- `eai resources search "<query>" --fulltext` (read-only) — Run a full-text search path that does not require semantic-search readiness. Use this when storage doctor reports fulltext ready but hybrid/vector unavailable.
+
+### Stop Conditions
+
+- The same hybrid or vector command still reports semantic-search readiness as unavailable.
+- Full-text search also fails, which means the issue is broader than semantic-search readiness.
+
+### Escalation Evidence
+
+- active tenant slug
+- search mode used
+- storage doctor search capabilities
+- CLI version
 
 ## E280: Workflow runtime binding requires operator assistance.
 
