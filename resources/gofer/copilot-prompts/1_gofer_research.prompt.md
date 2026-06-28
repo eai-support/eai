@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/1_gofer_research.md
-  canonicalChecksum: f6e154b1b1f97bb530c8f68ba92db5d62c6f554505eddef56c26cf956c86ede0
+  canonicalChecksum: 76d0a27a91fdc60fc9301868596ca370d512c95dfa21e86fc35953d6c845f811
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -441,7 +441,7 @@ explicitly `enterpriseai`, generate:
      `https://eai-tools.github.io/eai/scenarios`, and
      `https://github.com/eai-tools/eai-app-template`.
    - Record whether `eai --describe` found the expected scaffolding,
-     authentication, tenant, vertical app, resource schema, workflow
+     authentication, tenant, app, resource schema, workflow
      readiness, block catalog, diagnostics, Gofer-refresh, and template-check
      commands.
    - Record whether `eai update --check` reports the installed CLI is current

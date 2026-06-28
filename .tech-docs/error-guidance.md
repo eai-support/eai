@@ -6,7 +6,7 @@ description: Public-safe EAI CLI error explanations and agent recovery commands.
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.5.4. The same catalog powers human stderr output, JSON output for AI
+v3.6.0. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -25,7 +25,9 @@ are explicitly listed, and stop when a stop condition matches.
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
 | `E270` | `object_type_not_published` | Object Type is not published for the active tenant. |
+| `E275` | `resource_search_embedding_required` | Semantic resource search is not ready for this v4 passive ResourceAPI tenant. |
 | `E280` | `workflow_operator_required` | Workflow runtime binding requires operator assistance. |
+| `E244` | `tenant_data_install_no_match` | Tenant data/schema setup is not fully provisioned. |
 
 ## E001: Not in an EAI project.
 
@@ -337,6 +339,42 @@ None.
 - CLI version
 - types seed summary
 
+## E275: Semantic resource search is not ready for this v4 passive ResourceAPI tenant.
+
+| Field | Value |
+| --- | --- |
+| Reason | `resource_search_embedding_required` |
+| Category | `resource_data` |
+| Severity | `warning` |
+
+### Why This Might Happen
+
+- The PublicAPI v4 passive ResourceAPI route can be available for full-text search while semantic search modes are still not ready.
+- Hybrid and vector search need an additional semantic-search capability before the platform can create query embeddings.
+- This is not fixed by retrying the same hybrid or vector search command; use full-text search or check readiness first.
+- This guidance applies to eai resources commands using the v4 passive ResourceAPI surface, not legacy v1/v3 or active ResourceAPI behavior.
+
+### Diagnostics
+
+- `eai resources storage doctor --format json` (read-only) — Check whether fulltext, hybrid, and vector search are ready for the active tenant through the v4 passive ResourceAPI route.
+- `eai resources schema --format json` (read-only) — Confirm the tenant has published Object Types to search.
+
+### Fixes
+
+- `eai resources search "<query>" --fulltext` (read-only) — Run a full-text search path that does not require semantic-search readiness. Use this when storage doctor reports fulltext ready but hybrid/vector unavailable.
+
+### Stop Conditions
+
+- The same hybrid or vector command still reports semantic-search readiness as unavailable.
+- Full-text search also fails, which means the issue is broader than semantic-search readiness.
+
+### Escalation Evidence
+
+- active tenant slug
+- search mode used
+- storage doctor search capabilities
+- CLI version
+
 ## E280: Workflow runtime binding requires operator assistance.
 
 | Field | Value |
@@ -370,4 +408,38 @@ None.
 - request ID
 - active tenant slug
 - CLI version
+
+## E244: Tenant data/schema setup is not fully provisioned.
+
+| Field | Value |
+| --- | --- |
+| Reason | `tenant_data_install_no_match` |
+| Category | `app_provisioning` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The platform could not resolve an active data/schema install for this tenant.
+- This is a tenant setup issue, not a transient outage: the data/schema capability is reachable but has no active install registered for this tenant.
+- Object Type publish (eai types seed) and schema reads cannot complete until the tenant setup is completed. Retrying does not create that setup.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the active tenant that failed to resolve a data/schema install.
+- `eai verify` (read-only) — Confirm whether the data/schema service can resolve an install for this tenant.
+
+### Fixes
+
+None.
+
+### Stop Conditions
+
+- The response indicates no active tenant data/schema install. Retrying does not provision the tenant setup — it must be fixed by platform support.
+
+### Escalation Evidence
+
+- active tenant slug and id (eai whoami)
+- the command that failed
+- the request id from the error
+- the reason code from the error response
 

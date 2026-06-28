@@ -667,17 +667,17 @@ function resolvePackageProfile(value: unknown): PackageProfile {
  */
 async function provisionEntraInline(
   targetDir: string,
-  verticalName: string,
+  appName: string,
   tenantId: string,
   publicApiUrl: string,
 ): Promise<boolean> {
   const spinner = ora("Provisioning Entra app registration...").start();
   try {
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
-    const authSiteUrl = `http://localhost:3000/${verticalName}`;
+    const authSiteUrl = `http://localhost:3000/${appName}`;
     const result = await client.provisionEntraApp({
       tenantId,
-      verticalName,
+      appName,
       redirectUris: [`${authSiteUrl}/api/auth/callback/microsoft-entra-id`],
       idempotent: true,
     });
@@ -719,7 +719,7 @@ async function provisionEntraInline(
         NEXTAUTH_URL: authSiteUrl,
         AUTH_TRUST_HOST: "true",
       });
-      const hydratedSecret = await hydrateCloudSecret(targetDir, verticalName);
+      const hydratedSecret = await hydrateCloudSecret(targetDir, appName);
       spinner.succeed(
         `Entra app registration confirmed: ${chalk.dim(result.clientId)}`,
       );
@@ -752,11 +752,11 @@ async function provisionEntraInline(
 
 async function hydrateCloudSecret(
   targetDir: string,
-  verticalName: string,
+  appName: string,
 ): Promise<boolean> {
   try {
     const { patches } = await pullCloudEnvValues({
-      label: verticalName,
+      label: appName,
       includeSecrets: true,
     });
     const secret = patches.ENTRA_CLIENT_SECRET;
@@ -1022,13 +1022,13 @@ async function createTenantAppForInit(
 
 async function hydrateEnvFromLoginContext(
   targetDir: string,
-  verticalName: string,
+  appName: string,
   parentTenantId: string,
   platformTenantId: string,
   tenantHomeRegion?: string | null,
 ): Promise<void> {
   const patches: Record<string, string> = {};
-  const envKey = verticalName.replace(/-/g, "_").toUpperCase();
+  const envKey = appName.replace(/-/g, "_").toUpperCase();
 
   const regionalPublicApiUrl = publicApiUrlForHomeRegion(tenantHomeRegion);
   if (regionalPublicApiUrl) {

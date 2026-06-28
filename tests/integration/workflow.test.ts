@@ -41,7 +41,7 @@ async function setupProject(dir: string): Promise<void> {
   );
   await writeFile(
     join(dir, ".env.local"),
-    `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\n`,
+    `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\n`,
   );
 }
 
@@ -287,7 +287,7 @@ describe("eai workflow", () => {
         [
           "provision",
           "configurator",
-          "--vertical",
+          "--app",
           "no-code-builder",
           "--display-name",
           "Workflow Configurator",
@@ -359,6 +359,7 @@ describe("eai workflow", () => {
       });
 
       const output = outputSpy.mock.calls.flat().join("\n");
+      expect(output).toContain('"appKey": "no-code-builder"');
       expect(output).toContain(
         '"NEXT_PUBLIC_WORKFLOW_CONFIGURATOR_ID": "workflow-record-1"',
       );

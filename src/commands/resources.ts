@@ -10,6 +10,8 @@ import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/cont
 import { isRecord, toObjectTypeSlug } from '../lib/utils.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
+import { findGuidance } from '../lib/error-guidance/match.js';
+import { formatGuidanceText } from '../lib/error-guidance/render.js';
 
 interface SchemaTypeSummary {
   name: string;
@@ -26,6 +28,19 @@ interface PublishedTypeMatch {
   requestedSlug: string;
   publishedTypeNames: string[];
   matchedType?: SchemaTypeSummary;
+}
+
+interface StorageSearchCapabilities {
+  fulltext?: boolean;
+  hybrid?: boolean;
+  vector?: boolean;
+  recommendedMode?: string | null;
+  reasonCode?: string | null;
+  reasonMessage?: string | null;
+}
+
+interface StorageCapabilities {
+  search?: StorageSearchCapabilities;
 }
 
 export function buildCreateResourceOutput(
@@ -119,26 +134,123 @@ function succeedCommand(spinner: Ora | null, message: string): void {
   }
 }
 
-async function formatResponseError(res: Response): Promise<string> {
+function extractErrorPayload(payload: unknown): {
+  message?: string;
+  code?: string;
+  reasonCode?: string;
+  serverCode?: string;
+} {
+  if (!isRecord(payload)) {
+    return {};
+  }
+
+  const nested = [payload.error, payload.detail, payload];
+  const result: {
+    message?: string;
+    code?: string;
+    reasonCode?: string;
+    serverCode?: string;
+  } = {};
+
+  for (const candidate of nested) {
+    if (typeof candidate === 'string' && !result.message) {
+      result.message = candidate;
+      continue;
+    }
+    if (!isRecord(candidate)) {
+      continue;
+    }
+    if (!result.message) {
+      const message = candidate.message ?? candidate.detail ?? candidate.error;
+      if (typeof message === 'string') {
+        result.message = message;
+      }
+    }
+    if (!result.code && typeof candidate.code === 'string') {
+      result.code = candidate.code;
+    }
+    if (!result.reasonCode) {
+      const reasonCode = candidate.reasonCode ?? candidate.reason_code ?? candidate.reason;
+      if (typeof reasonCode === 'string') {
+        result.reasonCode = reasonCode;
+      }
+    }
+    if (!result.serverCode) {
+      const serverCode = candidate.serverCode ?? candidate.server_code;
+      if (typeof serverCode === 'string') {
+        result.serverCode = serverCode;
+      }
+    }
+  }
+
+  return result;
+}
+
+function withGuidance(
+  message: string,
+  lookup: {
+    operation?: string;
+    status: number;
+    code?: string;
+    reasonCode?: string;
+    serverCode?: string;
+    message?: string;
+  },
+): string {
+  const guidance = findGuidance(lookup);
+  return guidance ? `${message}\n\n${formatGuidanceText(guidance)}` : message;
+}
+
+async function formatResponseError(res: Response, operation?: string): Promise<string> {
   const text = await res.text();
   if (!text) {
-    return `${res.status} ${res.statusText}`;
+    return withGuidance(`${res.status} ${res.statusText}`, {
+      operation,
+      status: res.status,
+      message: res.statusText,
+    });
   }
 
   try {
-    const payload = JSON.parse(text) as {
-      error?: { message?: string } | string;
-      detail?: { message?: string } | string;
-      message?: string;
-    };
-    const message = typeof payload.error === 'object'
-      ? payload.error.message
-      : typeof payload.detail === 'object'
-        ? payload.detail.message
-        : payload.error || payload.detail || payload.message;
-    return `${res.status} ${res.statusText}${message ? ` — ${message}` : ''}`;
+    const payload = JSON.parse(text) as unknown;
+    const errorPayload = extractErrorPayload(payload);
+    const message = errorPayload.message;
+    const base = `${res.status} ${res.statusText}${message ? ` — ${message}` : ''}`;
+    return withGuidance(base, {
+      operation,
+      status: res.status,
+      code: errorPayload.code,
+      reasonCode: errorPayload.reasonCode,
+      serverCode: errorPayload.serverCode,
+      message: message || text.slice(0, 300),
+    });
   } catch {
-    return `${res.status} ${res.statusText} — ${text.slice(0, 300)}`;
+    const message = text.slice(0, 300);
+    return withGuidance(`${res.status} ${res.statusText} — ${message}`, {
+      operation,
+      status: res.status,
+      message,
+    });
+  }
+}
+
+function renderSearchCapabilities(capabilities?: StorageCapabilities): void {
+  const search = capabilities?.search;
+  if (!search) {
+    return;
+  }
+
+  const modeState = (ready?: boolean): string => (
+    ready ? chalk.green('ready') : chalk.yellow('unavailable')
+  );
+  out.info(
+    `Search modes: fulltext ${modeState(search.fulltext)}, hybrid ${modeState(search.hybrid)}, vector ${modeState(search.vector)}`,
+  );
+  if (search.recommendedMode) {
+    out.info(`Recommended search mode: ${chalk.cyan(search.recommendedMode)}`);
+  }
+  if (search.reasonMessage) {
+    out.warn(search.reasonMessage);
   }
 }
 
@@ -735,13 +847,20 @@ storageCommand
     const spinner = makeSpinner(options.format, 'Fetching storage status...');
     const res = await ctx.client.getResourceStorageStatus();
     if (!res.ok) {
-      failCommand(spinner, await formatResponseError(res));
+      failCommand(spinner, await formatResponseError(res, 'resources.storage.status'));
       process.exit(1);
     }
 
     const payload = await res.json() as {
       tenantId?: string;
-      objectTypes?: Array<{ objectType: string; backend: string; isReady?: boolean; issues?: string[] }>;
+      objectTypes?: Array<{
+        objectType: string;
+        backend: string;
+        isReady?: boolean;
+        issues?: string[];
+        warnings?: string[];
+        capabilities?: StorageCapabilities;
+      }>;
     };
     if (options.format === 'json') {
       out.json(payload);
@@ -755,6 +874,10 @@ storageCommand
       for (const issue of item.issues || []) {
         out.warn(`  ${issue}`);
       }
+      for (const warning of item.warnings || []) {
+        out.warn(`  warning: ${warning}`);
+      }
+      renderSearchCapabilities(item.capabilities);
     }
   });
 
@@ -771,13 +894,21 @@ storageCommand
     const spinner = makeSpinner(options.format, 'Running storage doctor...');
     const res = await ctx.client.getResourceStorageDoctor();
     if (!res.ok) {
-      failCommand(spinner, await formatResponseError(res));
+      failCommand(spinner, await formatResponseError(res, 'resources.storage.doctor'));
       process.exit(1);
     }
 
     const payload = await res.json() as {
       healthy?: boolean;
-      checks?: Array<{ objectType: string; backend: string; healthy: boolean; issues?: string[] }>;
+      checks?: Array<{
+        objectType: string;
+        backend: string;
+        healthy: boolean;
+        issues?: string[];
+        warnings?: string[];
+        capabilities?: StorageCapabilities;
+      }>;
+      capabilities?: StorageCapabilities;
     };
     if (options.format === 'json') {
       out.json(payload);
@@ -795,7 +926,11 @@ storageCommand
       for (const issue of check.issues || []) {
         out.warn(`  ${issue}`);
       }
+      for (const warning of check.warnings || []) {
+        out.warn(`  warning: ${warning}`);
+      }
     }
+    renderSearchCapabilities(payload.capabilities);
     if (!payload.healthy) {
       process.exit(1);
     }
@@ -833,7 +968,7 @@ resourcesCommand
     });
 
     if (!res.ok) {
-      failCommand(spinner, await formatResponseError(res));
+      failCommand(spinner, await formatResponseError(res, 'resources.search'));
       process.exit(1);
     }
 

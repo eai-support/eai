@@ -41,33 +41,33 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 
 ## Category 1: Init & Project Setup (Scenarios 1-10)
 
-### Scenario 1: Initialize New Vertical with Interactive Prompts
+### Scenario 1: Initialize New App with Interactive Prompts
 **Priority**: P0
-**User Story**: As a developer, I want to scaffold a new vertical application with guided prompts
+**User Story**: As a developer, I want to scaffold a new app with guided prompts
 
 ```javascript
-// TC001: Initialize new vertical interactively
+// TC001: Initialize new app interactively
 // Traces to: Init-US1-AC1
 //
 // workingDirectoryIs('/tmp/test-projects')
 // gitIsInstalled()
 // networkIsAvailable()
 //
-// runCommand('eai init my-vertical')
-// respondToPrompt('Display Name', 'My Vertical')
-// respondToPrompt('Description', 'Test vertical app')
+// runCommand('eai init my-app')
+// respondToPrompt('Display Name', 'My App')
+// respondToPrompt('Description', 'Test app')
 // respondToPrompt('Tenant Structure', 'single')
 // respondToPrompt('Include AI Chat', 'yes')
 // respondToPrompt('Include Docs', 'yes')
 // respondToPrompt('Auth Provider', 'ciam')
 //
-// expectDirectoryCreated('my-vertical')
-// expectFileExists('my-vertical/package.json')
-// expectFileContains('my-vertical/package.json', '"name": "my-vertical"')
-// expectFileExists('my-vertical/.env.local')
-// expectFileExists('my-vertical/src/eai.config/object-types.ts')
-// expectGitRepoInitialized('my-vertical')
-// expectSuccessMessage('Vertical "My Vertical" initialized')
+// expectDirectoryCreated('my-app')
+// expectFileExists('my-app/package.json')
+// expectFileContains('my-app/package.json', '"name": "my-app"')
+// expectFileExists('my-app/.env.local')
+// expectFileExists('my-app/src/eai.config/object-types.ts')
+// expectGitRepoInitialized('my-app')
+// expectSuccessMessage('Vertical "My App" initialized')
 ```
 
 ### Scenario 2: Initialize with Skip Prompts
@@ -144,10 +144,10 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 
 ### Scenario 6: Initialize Multi-Tenant Structure
 **Priority**: P1
-**User Story**: As a developer, I want to scaffold a multi-tenant vertical
+**User Story**: As a developer, I want to scaffold a multi-tenant app
 
 ```javascript
-// TC006: Initialize multi-tenant vertical
+// TC006: Initialize multi-tenant app
 // Traces to: Init-US2-AC1
 //
 // workingDirectoryIs('/tmp/test-projects')
@@ -708,11 +708,11 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //   { name: 'Customer', displayName: 'Customer', status: 'published' }
 // ])
 // publicAPIReachable()
-// tenantConfigured('my-vertical')
+// tenantConfigured('my-app')
 //
 // runCommand('eai types seed')
 //
-// expectAPICalledPOST('/v4/data/resources/object-types', { name: 'Customer', tenant: 'my-vertical' })
+// expectAPICalledPOST('/v4/data/resources/object-types', { name: 'Customer', tenant: 'my-app' })
 // expectSuccessMessage('Seeded 1 type(s) to platform')
 ```
 
@@ -842,7 +842,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // Traces to: Types-US4-AC1
 //
 // userIsLoggedIn()
-// platformHasTypes(['Customer', 'Order'], 'my-vertical')
+// platformHasTypes(['Customer', 'Order'], 'my-app')
 //
 // runCommand('eai types pull')
 //

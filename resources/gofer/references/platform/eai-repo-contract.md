@@ -65,7 +65,7 @@ this gate order:
 2. Dependency install
 3. Login and tenant selection
 4. App list/create/select
-5. `eai vertical provision`
+5. `eai app provision`
 6. `eai provision entra` when required
 7. `eai env pull` when required
 8. `eai types validate`

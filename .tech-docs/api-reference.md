@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-06-23T08:02:02.779Z"
-source_commit: "383f322e1d8e21939ff908a61e4d4b44421bfab7"
+generated_at: "2026-06-28T09:39:50.306Z"
+source_commit: "ff5ebafc7ea71d02bf2a9084c849f14b0647ade0"
 ---
 # EAI CLI — API Reference
 
@@ -608,7 +608,8 @@ Provision a usecase-agnostic workflow config and bind it to a tenant app. Option
 **Arguments**: `<workflow-key>`
 
 **Key options**:
-- `--vertical <key>` — Tenant app key that consumes this workflow (required)
+- `--app <key>` — Tenant app key that consumes this workflow (required)
+- `--vertical <key>` — Deprecated compatibility alias for `--app`
 - `--tenant <id>` — Tenant to provision against (default: active tenant)
 - `--display-name <name>` — Workflow display name
 - `--usecase <usecase>` — Workflow usecase namespace (default: `generic`)
@@ -846,9 +847,11 @@ Validate the installed block catalog, or a manifest JSON file.
 
 ---
 
-### App Commands (`eai vertical`)
+### App Commands (`eai app`)
 
-#### `eai vertical list`
+`eai vertical ...` remains available as a compatibility alias during the migration window.
+
+#### `eai app list`
 List apps for the active company tenant.
 
 **Options**:
@@ -861,7 +864,7 @@ List apps for the active company tenant.
 
 ---
 
-#### `eai vertical create <name>`
+#### `eai app create <name>`
 Create an app under a company tenant.
 
 **Arguments**: `<name>`
@@ -883,8 +886,8 @@ Create an app under a company tenant.
 
 ---
 
-#### `eai vertical select <key>`
-Set `EAI_VERTICAL_KEY` in the current project `.env.local`.
+#### `eai app select <key>`
+Set `EAI_APP_KEY` in the current project `.env.local`. The CLI also writes `EAI_VERTICAL_KEY` for compatibility with existing projects.
 
 **Arguments**: `<key>`
 
@@ -898,7 +901,7 @@ Set `EAI_VERTICAL_KEY` in the current project `.env.local`.
 
 ---
 
-#### `eai vertical provision <key>`
+#### `eai app provision <key>`
 Prepare platform storage for an app.
 
 **Arguments**: `<key>`
@@ -909,7 +912,7 @@ Prepare platform storage for an app.
 - `--dry-run` — Plan actions without applying changes
 - `--rebuild-search` — Request a search projection rebuild after provisioning
 - `--skip-validate` — Skip the app lookup
-- `--select` — Write `EAI_VERTICAL_KEY` after successful provisioning
+- `--select` — Write `EAI_APP_KEY` and compatibility `EAI_VERTICAL_KEY` after successful provisioning
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:

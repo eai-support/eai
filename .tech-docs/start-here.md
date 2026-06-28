@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.5.4** (2026-06-23): Show login refresh guidance for tenant auth failures.
+The current CLI release is **v3.6.0** (2026-06-28): Add native app terminology commands.
 
 
 ## What The Pieces Do

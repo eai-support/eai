@@ -179,7 +179,7 @@ describe('resource type diagnostics', () => {
     );
   });
 
-  test('creates tenant vertical enrollment through ResourceAPI resources route', async () => {
+  test('creates tenant app enrollment through ResourceAPI resources route', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -295,7 +295,7 @@ describe('resource type diagnostics', () => {
     );
   });
 
-  test('provisions tenant vertical storage through the same ResourceAPI tenant storage route', async () => {
+  test('provisions tenant app storage through the same ResourceAPI tenant storage route', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 

@@ -2,6 +2,7 @@ import { beforeEach, afterEach, describe, expect, test } from 'vitest';
 import { ErrorCode, formatError, formatErrorJSON } from '../../src/lib/error-codes.js';
 import { findGuidanceByCodeOrReason, listErrorGuidance } from '../../src/lib/error-guidance/catalog.js';
 import { validateErrorGuidanceCatalog } from '../../src/lib/error-guidance/validate.js';
+import { findGuidance } from '../../src/lib/error-guidance/match.js';
 import { runCommand } from '../helpers/action-dsl.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
@@ -60,6 +61,46 @@ describe('error guidance catalog', () => {
       ]),
     );
     expect(guidance?.retry.maxAttempts).toBe(3);
+  });
+
+  test('install-registry NO_MATCH maps to non-retryable provisioning guidance', () => {
+    const guidance = findGuidance({
+      status: 503,
+      serverCode: 'RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH',
+      message: 'install registry did not resolve an active install for this tenant',
+    });
+
+    expect(guidance?.code).toBe('E244');
+    expect(guidance?.reasonCode).toBe('tenant_data_install_no_match');
+    expect(guidance?.retry.allowed).toBe(false);
+    expect(guidance?.escalation.audience).toBe('platform-support');
+    // also resolves from the message alone (when the server code is sanitised out)
+    expect(
+      findGuidance({ message: 'install registry did not resolve an active install' })?.code,
+    ).toBe('E244');
+  });
+
+  test('semantic resource search guidance tells agents to use fulltext fallback', () => {
+    const guidance = findGuidance({
+      operation: 'resources.search',
+      status: 400,
+      message: 'Search vector embedding endpoint is not configured',
+    });
+
+    expect(guidance?.code).toBe('E275');
+    expect(guidance?.reasonCode).toBe('resource_search_embedding_required');
+    expect(guidance?.diagnostics.map((item) => item.command)).toContain(
+      'eai resources storage doctor --format json',
+    );
+    expect(guidance?.fixes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: 'eai resources search "<query>" --fulltext',
+          mutates: false,
+        }),
+      ]),
+    );
+    expect(findGuidanceByCodeOrReason('resource_search_embedding_required')?.code).toBe('E275');
   });
 });
 
@@ -130,4 +171,3 @@ describe('eai errors command', () => {
     );
   });
 });
-

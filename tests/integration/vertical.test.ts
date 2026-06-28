@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
 import { cleanupTestTokens, workingDirectoryIs } from '../helpers/setup-dsl.js';
@@ -9,7 +11,7 @@ import {
   DEFAULT_PROD_AUTH_TENANT_NAME,
   setActiveProfile,
 } from '../../src/lib/profile.js';
-import { verticalCommand } from '../../src/commands/vertical.js';
+import { appCommand, verticalCommand } from '../../src/commands/vertical.js';
 
 const API_BASE = 'https://test-api.example.com';
 const COMPANY_TENANT_ID = 'company-tenant';
@@ -46,10 +48,17 @@ async function seedLoggedInTenant(): Promise<void> {
     activeTenantName: 'Builder Workspace',
     activeTenantSlug: 'builder-workspace',
     publicApiUrl: API_BASE,
+    membershipsCachedAt: Date.now(),
   });
 }
 
-describe('eai vertical', () => {
+async function seedProjectRoot(dir: string): Promise<void> {
+  await mkdir(join(dir, 'src', 'eai.config'), { recursive: true });
+  await writeFile(join(dir, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
+  await writeFile(join(dir, '.env.local'), `BASE_URL_PUBLIC_API=${API_BASE}\n`);
+}
+
+describe('eai app', () => {
   let env: TestEnvironment;
   let ctx: TestContext;
   let originalHome: string | undefined;
@@ -134,7 +143,7 @@ describe('eai vertical', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await verticalCommand.parseAsync([
+    await appCommand.parseAsync([
       'create',
       'PlanningPortal',
       '--tenant-id',
@@ -160,6 +169,40 @@ describe('eai vertical', () => {
       expect.stringContaining(`/v4/platform/tenants/${PLATFORM_PARENT_ID}/apps`),
       expect.anything(),
     );
+  });
+
+  test('HP003 writes canonical and legacy app env keys when selecting an app', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+
+    await appCommand.parseAsync([
+      'select',
+      'planning-portal',
+      '--skip-validate',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    const envFile = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(envFile).toContain('EAI_APP_KEY=planning-portal');
+    expect(envFile).toContain('EAI_VERTICAL_KEY=planning-portal');
+  });
+
+  test('BC001 keeps the legacy vertical alias working', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+
+    await verticalCommand.parseAsync([
+      'select',
+      'planning-portal',
+      '--skip-validate',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    const envFile = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(envFile).toContain('EAI_APP_KEY=planning-portal');
+    expect(envFile).toContain('EAI_VERTICAL_KEY=planning-portal');
   });
 
   test('HP002 creates an app for the active builder workspace when tier is omitted from tenant lookups', async () => {

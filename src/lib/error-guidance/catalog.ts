@@ -540,6 +540,78 @@ export const errorGuidanceCatalog = [
     ],
   },
   {
+    code: 'E275',
+    reasonCode: 'resource_search_embedding_required',
+    title: 'Semantic resource search is not ready for this v4 passive ResourceAPI tenant.',
+    category: 'resource_data',
+    severity: 'warning',
+    appliesTo: ['resources.search', 'resources.storage.doctor', 'verify.storage'],
+    publicSafe: true,
+    why: [
+      'The PublicAPI v4 passive ResourceAPI route can be available for full-text search while semantic search modes are still not ready.',
+      'Hybrid and vector search need an additional semantic-search capability before the platform can create query embeddings.',
+      'This is not fixed by retrying the same hybrid or vector search command; use full-text search or check readiness first.',
+      'This guidance applies to eai resources commands using the v4 passive ResourceAPI surface, not legacy v1/v3 or active ResourceAPI behavior.',
+    ],
+    evidenceToCheck: [
+      'Search capabilities from eai resources storage doctor.',
+      'Whether the failed command used --hybrid, --vector, or the default hybrid mode.',
+      'Published Object Types from eai resources schema.',
+    ],
+    diagnostics: [
+      {
+        command: 'eai resources storage doctor --format json',
+        purpose: 'Check whether fulltext, hybrid, and vector search are ready for the active tenant through the v4 passive ResourceAPI route.',
+        mutates: false,
+      },
+      {
+        command: 'eai resources schema --format json',
+        purpose: 'Confirm the tenant has published Object Types to search.',
+        mutates: false,
+      },
+    ],
+    fixes: [
+      {
+        command: 'eai resources search "<query>" --fulltext',
+        purpose: 'Run a full-text search path that does not require semantic-search readiness.',
+        mutates: false,
+        when: 'Use this when storage doctor reports fulltext ready but hybrid/vector unavailable.',
+      },
+    ],
+    retry: {
+      allowed: true,
+      maxAttempts: 1,
+      stopWhen: [
+        'The same hybrid or vector command still reports semantic-search readiness as unavailable.',
+        'Full-text search also fails, which means the issue is broader than semantic-search readiness.',
+      ],
+    },
+    escalation: {
+      audience: 'platform-support',
+      neededWhen: ['The app requires hybrid or vector search and storage doctor keeps reporting those modes unavailable.'],
+      include: ['active tenant slug', 'search mode used', 'storage doctor search capabilities', 'CLI version'],
+    },
+    safety: {
+      mutatesState: false,
+      mayWriteSecrets: false,
+      mayDeleteData: false,
+      publicSafe: true,
+    },
+    match: [
+      {
+        operation: 'resources.search',
+        messageIncludes: ['search vector embedding endpoint is not configured'],
+      },
+      {
+        operation: 'resources.search',
+        messageIncludes: ['Configure Azure OpenAI embedding endpoint and deployment before vector or hybrid search'],
+      },
+      {
+        messageIncludes: ['search_embedding_required'],
+      },
+    ],
+  },
+  {
     code: 'E280',
     reasonCode: 'workflow_operator_required',
     title: 'Workflow runtime binding requires operator assistance.',
@@ -597,6 +669,72 @@ export const errorGuidanceCatalog = [
     match: [
       {
         messageIncludes: ['operator_required'],
+      },
+    ],
+  },
+  {
+    code: 'E244',
+    reasonCode: 'tenant_data_install_no_match',
+    title: 'Tenant data/schema setup is not fully provisioned.',
+    category: 'app_provisioning',
+    severity: 'error',
+    appliesTo: ['types.seed', 'platform.verify', 'workflow.readiness', 'resources.read'],
+    publicSafe: true,
+    why: [
+      'The platform could not resolve an active data/schema install for this tenant.',
+      'This is a tenant setup issue, not a transient outage: the data/schema capability is reachable but has no active install registered for this tenant.',
+      'Object Type publish (eai types seed) and schema reads cannot complete until the tenant setup is completed. Retrying does not create that setup.',
+    ],
+    evidenceToCheck: [
+      'The reason code in the response body.',
+      'Active tenant from eai whoami — confirm you are on the intended tenant.',
+      'Whether the same tenant also fails the data/schema check in eai verify.',
+    ],
+    diagnostics: [
+      {
+        command: 'eai whoami',
+        purpose: 'Confirm the active tenant that failed to resolve a data/schema install.',
+        mutates: false,
+      },
+      {
+        command: 'eai verify',
+        purpose: 'Confirm whether the data/schema service can resolve an install for this tenant.',
+        mutates: false,
+      },
+    ],
+    fixes: [],
+    retry: {
+      allowed: false,
+      stopWhen: [
+        'The response indicates no active tenant data/schema install. Retrying does not provision the tenant setup — it must be fixed by platform support.',
+      ],
+    },
+    escalation: {
+      audience: 'platform-support',
+      neededWhen: ['A tenant cannot resolve an active data/schema install on publish or schema reads.'],
+      include: [
+        'active tenant slug and id (eai whoami)',
+        'the command that failed',
+        'the request id from the error',
+        'the reason code from the error response',
+      ],
+    },
+    safety: {
+      mutatesState: false,
+      mayWriteSecrets: false,
+      mayDeleteData: false,
+      publicSafe: true,
+    },
+    match: [
+      {
+        serverCode: 'RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH',
+      },
+      {
+        messageIncludes: [
+          'RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH',
+          'did not resolve an active install',
+          'install registry did not resolve',
+        ],
       },
     ],
   },

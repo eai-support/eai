@@ -114,10 +114,10 @@ catalog:
         - 'select app first'
         - 'app key required'
     meaning: App-scoped work started before selecting the target app.
-    likelyCause: '`eai vertical select` has not been run for the active tenant.'
+    likelyCause: '`eai app select` has not been run for the active tenant.'
     recovery:
-      - 'eai vertical list --format json'
-      - 'eai vertical select <key> --format json'
+      - 'eai app list --format json'
+      - 'eai app select <key> --format json'
     nextGate: app_selected
   - errorId: EAI_PROVISION_REQUIRED_FOR_TYPES
     match:
@@ -125,9 +125,9 @@ catalog:
         - 'App resources must be provisioned before publishing object types'
         - '409'
     meaning: Object types cannot be published until app resources are provisioned.
-    likelyCause: '`eai types seed` ran before `eai vertical provision` completed.'
+    likelyCause: '`eai types seed` ran before `eai app provision` completed.'
     recovery:
-      - 'eai vertical provision <key> --tenant-id <tenant-id> --select --format json'
+      - 'eai app provision <key> --tenant-id <tenant-id> --select --format json'
       - 'eai types validate'
       - 'eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json'
     nextGate: types_publish_ready

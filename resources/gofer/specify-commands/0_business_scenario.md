@@ -71,7 +71,7 @@ Before doing stage/helper work:
 
 Run this after the Gofer workspace preflight and before application-delivery
 discovery whenever the request is an app build, dashboard, portal, workflow,
-form, chatbot, vertical application, tenant-scoped business experience, or any
+form, chatbot, app, tenant-scoped business experience, or any
 durable user-facing product. App delivery in EAI Gofer means EAI Platform
 delivery by default. Do not run this for explicit non-app work. If the user asks
 for a non-EAI app stack, pause and confirm that they are intentionally leaving
@@ -116,7 +116,7 @@ with an unrelated non-EAI stack.
 
 1. **Classify the build path**
    - Treat the work as EAI app delivery when the user asks to build an app,
-     dashboard, portal, workflow, form, chatbot, vertical application,
+     dashboard, portal, workflow, form, chatbot, app,
      tenant-scoped business experience, or durable user-facing product.
    - If the user is only doing research, docs, audit, migration planning, or
      non-EAI application work, record that EAI preflight is not applicable.
@@ -167,7 +167,7 @@ with an unrelated non-EAI stack.
    - Use JSON only where the CLI advertises it. `eai tenant list --format json`
      is suitable for automation; `eai whoami` may be plain text on current
      versions.
-   - Record whether the installed CLI advertises `eai vertical`, `eai resources
+   - Record whether the installed CLI advertises `eai app`, `eai resources
      schema`, `eai workflow readiness`, `eai template check`, `eai gofer
      refresh --check`, `eai provision entra`, `eai blocks`,
      `eai agent guide`, and `eai errors explain`.
@@ -202,17 +202,17 @@ with an unrelated non-EAI stack.
      over it silently. Ask whether to initialize a new sibling EAI app directory
      with `eai init <app-name>`, or to stop and let the user prepare the repo.
 7. **Check app enrollment capability before build planning**
-   - Once app name and tenant are confirmed, run `eai vertical list --format
+   - Once app name and tenant are confirmed, run `eai app list --format
      json` to confirm the tenant's current app enrollments.
    - Before creating anything remote, ask the user to confirm the app name,
      app key, company tenant, and any child-tenant boundary.
-   - If confirmed, use `eai vertical create <name> --tenant-id <tenant-id>
+   - If confirmed, use `eai app create <name> --tenant-id <tenant-id>
      --format json` or the currently advertised equivalent from `eai
      --describe`.
-   - Record the selected app key with `eai vertical select <key> --format json`
+   - Record the selected app key with `eai app select <key> --format json`
      when available.
    - Do not claim platform readiness from app creation alone. Later stages must
-     keep real EAI app gates separate: `eai vertical provision <key> --tenant-id <tenant-id> --select --format json`,
+     keep real EAI app gates separate: `eai app provision <key> --tenant-id <tenant-id> --select --format json`,
      `eai types validate`,
      `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json`,
      `eai types diff`, `eai resources schema --tenant-id <tenant-id> --format json`,
@@ -588,7 +588,7 @@ In EnterpriseAI mode, assume the request is application delivery unless the
 user's intent is clearly non-app. Roughly 90% of Gofer business requests should
 be treated this way: the user is trying to improve a customer journey or
 business process by building an app, workflow, portal, dashboard, mobile
-experience, form, assistant, or vertical application.
+experience, form, assistant, or app.
 
 For app delivery in any profile, apply the **EAI Platform And Azure App Stack
 Policy**: EAI Platform is the primary app substrate, Azure is the preferred
@@ -599,7 +599,7 @@ only.
 
 Treat the request as application delivery when it includes any of these signals:
 
-- Build an app, tool, dashboard, portal, workflow, form, chatbot, or vertical.
+- Build an app, tool, dashboard, portal, workflow, form, chatbot, or app.
 - Improve how a customer, employee, advisor, agent, or operator completes work.
 - Replace a manual process with a guided digital process.
 - Use EnterpriseAI data, object types, screens, APIs, or tenant context.
@@ -688,7 +688,7 @@ and coupling path before research starts:
 | Intake Field | Required Decision |
 | ------------ | ----------------- |
 | Profile choice | External, internal, or hybrid package profile |
-| Package lane | Public reusable block package, internal vertical app, hybrid adapter, or app-local implementation |
+| Package lane | Public reusable block package, internal app, hybrid adapter, or app-local implementation |
 | Coupling status | source-platform-coupled, source-platform-decoupled, or hybrid adapter boundary |
 | Public-readiness target | Whether the first delivery must be ready for external package consumers |
 | Block porting need | Reuse existing block, port an EAI App Template block, or request a custom-block exception |
@@ -1141,7 +1141,7 @@ When the workflow profile is explicitly `enterpriseai`:
 - Non-EAI platforms must never be presented as primary recommendations during
   discovery. They may only appear as optional reference material in the research
   stage, clearly labelled as non-primary.
-- All recommended scenarios must map to an EnterpriseAI vertical application
+- All recommended scenarios must map to an EnterpriseAI app
   (business analysis → EAI services → deployment target).
 - Maintain a running domain model using the user's vocabulary. Ask adaptive
   follow-up questions that clarify actors, object types, workflows, tenant

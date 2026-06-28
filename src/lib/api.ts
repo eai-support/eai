@@ -1216,7 +1216,7 @@ export class PlatformAPIClient {
 
   async provisionEntraApp(request: {
     tenantId: string;
-    verticalName: string;
+    appName: string;
     redirectUris: string[];
     idempotent?: boolean;
   }): Promise<{
@@ -1232,7 +1232,7 @@ export class PlatformAPIClient {
   }> {
     const body = {
       tenant_id: request.tenantId,
-      vertical_name: request.verticalName,
+      app_name: request.appName,
       redirect_uris: request.redirectUris,
       idempotent: request.idempotent ?? false,
     };

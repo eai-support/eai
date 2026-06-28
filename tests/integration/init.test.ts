@@ -135,28 +135,28 @@ describe("eai init", () => {
     }
   });
 
-  test("TC001: Initialize new vertical interactively", async () => {
-    // TC001: Initialize new vertical interactively
+  test("TC001: Initialize new app interactively", async () => {
+    // TC001: Initialize new app interactively
     // Traces to: Init-US1-AC1
     //
     // workingDirectoryIs('/tmp/test-projects')
     // gitIsInstalled()
     // networkIsAvailable()
     //
-    // runCommand('eai init my-vertical')
-    // respondToPrompt('Display Name', 'My Vertical')
-    // respondToPrompt('Description', 'Test vertical app')
+    // runCommand('eai init my-app')
+    // respondToPrompt('Display Name', 'My App')
+    // respondToPrompt('Description', 'Test app')
     // respondToPrompt('Tenant Structure', 'single')
     // respondToPrompt('Include AI Chat', 'yes')
     // respondToPrompt('Include Docs', 'yes')
     // respondToPrompt('Auth Provider', 'ciam')
     //
-    // expectDirectoryCreated('my-vertical')
-    // expectFileExists('my-vertical/package.json')
-    // expectFileContains('my-vertical/package.json', '"name": "my-vertical"')
-    // expectFileExists('my-vertical/.env.local')
-    // expectFileExists('my-vertical/src/eai.config/object-types.ts')
-    // expectSuccessMessage('Vertical "My Vertical" initialized')
+    // expectDirectoryCreated('my-app')
+    // expectFileExists('my-app/package.json')
+    // expectFileContains('my-app/package.json', '"name": "my-app"')
+    // expectFileExists('my-app/.env.local')
+    // expectFileExists('my-app/src/eai.config/object-types.ts')
+    // expectSuccessMessage('App "My App" initialized')
 
     workingDirectoryIs(ctx, env.dir);
     gitIsInstalled(ctx);
@@ -165,9 +165,9 @@ describe("eai init", () => {
     const promptSpy = vi
       .spyOn(inquirer, "prompt")
       .mockResolvedValueOnce({
-        name: "my-vertical",
-        displayName: "My Vertical",
-        description: "My Vertical vertical application",
+        name: "my-app",
+        displayName: "My App",
+        description: "My App application",
       })
       .mockResolvedValueOnce({ useCurrentDirectory: false })
       .mockResolvedValueOnce({ mode: "default" })
@@ -232,14 +232,14 @@ describe("eai init", () => {
     const consoleCapture = captureConsole();
 
     try {
-      await initCommand.parseAsync(["my-vertical", "--from", templateRepo], {
+      await initCommand.parseAsync(["my-app", "--from", templateRepo], {
         from: "user",
       });
       expect(createTenantAppSpy).toHaveBeenCalledWith(
         "tenant-123",
         expect.objectContaining({
-          appDisplayName: "My Vertical",
-          verticalKey: "my-vertical",
+          appDisplayName: "My App",
+          verticalKey: "my-app",
           source: "eai-cli",
         }),
       );
@@ -257,104 +257,104 @@ describe("eai init", () => {
       createTenantAppSpy.mockRestore();
     }
 
-    await expectDirectoryCreated(ctx, "my-vertical");
-    await expectFileExists(ctx, "my-vertical/package.json");
+    await expectDirectoryCreated(ctx, "my-app");
+    await expectFileExists(ctx, "my-app/package.json");
     await expectFileContains(
       ctx,
-      "my-vertical/package.json",
-      '"name": "@eai-tools/my-vertical"',
+      "my-app/package.json",
+      '"name": "@eai-tools/my-app"',
     );
-    await expectFileExists(ctx, "my-vertical/.env.local");
+    await expectFileExists(ctx, "my-app/.env.local");
     await expectFileContains(
       ctx,
-      "my-vertical/.env.local",
+      "my-app/.env.local",
       "EAI_PARENT_TENANT_ID=tenant-123",
     );
     await expectFileContains(
       ctx,
-      "my-vertical/.env.local",
+      "my-app/.env.local",
       "EAI_TENANT_ID=tenant-123",
     );
     await expectFileContains(
       ctx,
-      "my-vertical/.env.local",
-      "APP_BASE_PATH=/my-vertical",
+      "my-app/.env.local",
+      "APP_BASE_PATH=/my-app",
     );
     await expectFileContains(
       ctx,
-      "my-vertical/.env.local",
-      "NEXT_PUBLIC_APP_BASE_PATH=/my-vertical",
+      "my-app/.env.local",
+      "NEXT_PUBLIC_APP_BASE_PATH=/my-app",
     );
     await expectFileContains(
       ctx,
-      "my-vertical/.env.local",
-      "AUTH_URL=http://localhost:3000/my-vertical",
+      "my-app/.env.local",
+      "AUTH_URL=http://localhost:3000/my-app",
     );
     await expectFileContains(
       ctx,
-      "my-vertical/.env.local",
-      "NEXTAUTH_URL=http://localhost:3000/my-vertical",
+      "my-app/.env.local",
+      "NEXTAUTH_URL=http://localhost:3000/my-app",
     );
-    await expectFileExists(ctx, "my-vertical/src/eai.config/object-types.ts");
+    await expectFileExists(ctx, "my-app/src/eai.config/object-types.ts");
     await expectFileExists(
       ctx,
-      "my-vertical/.claude/commands/0_business_scenario.md",
-    );
-    await expectFileExists(
-      ctx,
-      "my-vertical/.claude/agents/codebase-analyzer.md",
+      "my-app/.claude/commands/0_business_scenario.md",
     );
     await expectFileExists(
       ctx,
-      "my-vertical/.specify/commands/1_gofer_research.md",
+      "my-app/.claude/agents/codebase-analyzer.md",
     );
     await expectFileExists(
       ctx,
-      "my-vertical/.specify/scripts/bash/pipeline-state.sh",
-    );
-    await expectFileExists(ctx, "my-vertical/.eai-manifest.json");
-    await expectFileExists(
-      ctx,
-      "my-vertical/.system/skills/1_gofer_research/SKILL.md",
+      "my-app/.specify/commands/1_gofer_research.md",
     );
     await expectFileExists(
       ctx,
-      "my-vertical/.agents/skills/1_gofer_research/SKILL.md",
+      "my-app/.specify/scripts/bash/pipeline-state.sh",
+    );
+    await expectFileExists(ctx, "my-app/.eai-manifest.json");
+    await expectFileExists(
+      ctx,
+      "my-app/.system/skills/1_gofer_research/SKILL.md",
     );
     await expectFileExists(
       ctx,
-      "my-vertical/.agents/skills/0_business_scenario/SKILL.md",
-    );
-    await expectFileExists(ctx, "my-vertical/.gemini/extension.json");
-    await expectFileExists(
-      ctx,
-      "my-vertical/.gemini/commands/gofer/1_gofer_research.toml",
+      "my-app/.agents/skills/1_gofer_research/SKILL.md",
     );
     await expectFileExists(
       ctx,
-      "my-vertical/.gemini/commands/gofer/0_business_scenario.toml",
+      "my-app/.agents/skills/0_business_scenario/SKILL.md",
+    );
+    await expectFileExists(ctx, "my-app/.gemini/extension.json");
+    await expectFileExists(
+      ctx,
+      "my-app/.gemini/commands/gofer/1_gofer_research.toml",
     );
     await expectFileExists(
       ctx,
-      "my-vertical/.github/prompts/0_business_scenario.prompt.md",
+      "my-app/.gemini/commands/gofer/0_business_scenario.toml",
     );
     await expectFileExists(
       ctx,
-      "my-vertical/.github/skills/0-business-scenario/SKILL.md",
+      "my-app/.github/prompts/0_business_scenario.prompt.md",
     );
-    await expectFileExists(ctx, "my-vertical/.github/copilot-instructions.md");
-    await expectFileContains(ctx, "my-vertical/CLAUDE.md", "## Gofer Pipeline");
+    await expectFileExists(
+      ctx,
+      "my-app/.github/skills/0-business-scenario/SKILL.md",
+    );
+    await expectFileExists(ctx, "my-app/.github/copilot-instructions.md");
+    await expectFileContains(ctx, "my-app/CLAUDE.md", "## Gofer Pipeline");
     await expectFileContains(
       ctx,
-      "my-vertical/.eai-manifest.json",
+      "my-app/.eai-manifest.json",
       `"version": "${pkg.version}"`,
     );
     await expectFileContains(
       ctx,
-      "my-vertical/.eai-manifest.json",
+      "my-app/.eai-manifest.json",
       '"displaySource":',
     );
-    expect(consoleCapture.stdout.join("\n")).toContain("Created My Vertical");
+    expect(consoleCapture.stdout.join("\n")).toContain("Created My App");
   }, 30_000);
 
   test("HP002: Initialize into the current empty folder when selected", async () => {
@@ -679,14 +679,14 @@ describe("eai init", () => {
     const promptSpy = vi
       .spyOn(inquirer, "prompt")
       .mockResolvedValueOnce({
-        name: "child-vertical",
-        displayName: "Child Vertical",
-        description: "Child Vertical vertical application",
+        name: "child-app",
+        displayName: "Child App",
+        description: "Child App application",
       })
       .mockResolvedValueOnce({ useCurrentDirectory: false })
       .mockResolvedValueOnce({ mode: "default" })
       .mockResolvedValueOnce({ appTenantScope: "child" })
-      .mockResolvedValueOnce({ childTenantDisplayName: "Child Vertical" })
+      .mockResolvedValueOnce({ childTenantDisplayName: "Child App" })
       .mockResolvedValueOnce({ includeChat: true })
       .mockResolvedValueOnce({ includeDocs: true })
       .mockResolvedValueOnce({ authProvider: "ciam" });
@@ -743,8 +743,8 @@ describe("eai init", () => {
           JSON.stringify({
             childTenant: {
               id: "tenant-child",
-              displayName: "Child Vertical",
-              slug: "child-vertical",
+              displayName: "Child App",
+              slug: "child-app",
             },
           }),
           { status: 201 },
@@ -752,22 +752,22 @@ describe("eai init", () => {
       );
 
     try {
-      await initCommand.parseAsync(["child-vertical", "--from", templateRepo], {
+      await initCommand.parseAsync(["child-app", "--from", templateRepo], {
         from: "user",
       });
       const envContent = await readFile(
-        join(env.dir, "child-vertical", ".env.local"),
+        join(env.dir, "child-app", ".env.local"),
         "utf-8",
       );
       expect(envContent).toContain("EAI_TENANT_ID=tenant-child");
       expect(envContent).toContain("EAI_PARENT_TENANT_ID=tenant-parent");
-      expect(envContent).toContain("TENANT_CHILD_VERTICAL_ID=tenant-child");
+      expect(envContent).toContain("TENANT_CHILD_APP_ID=tenant-child");
       expect(createTenantAppSpy).toHaveBeenCalledWith(
         "tenant-parent",
         expect.objectContaining({
-          appDisplayName: "Child Vertical",
-          verticalKey: "child-vertical",
-          childTenantDisplayName: "Child Vertical",
+          appDisplayName: "Child App",
+          verticalKey: "child-app",
+          childTenantDisplayName: "Child App",
           source: "eai-cli",
         }),
       );

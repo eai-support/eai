@@ -708,7 +708,7 @@ separation from `tasks.md`:
 - Treat resource provisioning, object-type publish, schema/storage health, and preview readiness as separate gates even when the CLI reports progress in a single run.
 - Track workflow readiness alongside those gates; do not collapse it into
   provisioning, schema/storage health, or preview status.
-- Use `eai vertical provision <key> --tenant-id <tenant-id> --select --format json`,
+- Use `eai app provision <key> --tenant-id <tenant-id> --select --format json`,
   `eai provision entra --force --redirect-uri <exact-callback-uri> --debug`,
   `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json`,
   `eai resources schema --tenant-id <tenant-id> --format json`,

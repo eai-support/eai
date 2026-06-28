@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.5.4.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.6.0.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -45,7 +45,7 @@ Commands:
   tenant                 Manage tenants on the platform
   user                   Manage users on the platform
   resources              CRUD operations on platform resources
-  vertical               Manage apps under the active company tenant
+  app|vertical           Manage apps under the active company tenant
   chat                   Chat with AI workflows
   workflow               Provision app workflow configs and inspect AI runtime
                          workflow bindings
@@ -80,7 +80,7 @@ Development Workflows:
 
   # See what is published for the active tenant
   eai resources schema
-  eai vertical create "My App" --template eai-app-template
+  eai app create "My App" --template eai-app-template
 
   # Query resources and inspect data
   eai resources list User --limit 10
@@ -357,7 +357,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.5.4** (2026-06-23): Show login refresh guidance for tenant auth failures.
+The current CLI release is **v3.6.0** (2026-06-28): Add native app terminology commands.
 
 
 ## What The Pieces Do
@@ -453,10 +453,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.5.4 |
-| Released | 2026-06-23 |
-| Last Material Change | Show login refresh guidance for tenant auth failures |
-| Source Commit | `383f322e1d8e21939ff908a61e4d4b44421bfab7` |
+| Version | 3.6.0 |
+| Released | 2026-06-28 |
+| Last Material Change | Add native app terminology commands |
+| Source Commit | `ff5ebafc7ea71d02bf2a9084c849f14b0647ade0` |
 
 
 ## Common Workflow
@@ -1591,7 +1591,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.5.4. The same catalog powers human stderr output, JSON output for AI
+v3.6.0. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -1611,6 +1611,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
 | `E270` | `object_type_not_published` | Object Type is not published for the active tenant. |
 | `E280` | `workflow_operator_required` | Workflow runtime binding requires operator assistance. |
+| `E244` | `tenant_data_install_no_match` | Tenant data/schema setup is not fully provisioned. |
 
 ## E001: Not in an EAI project.
 
@@ -1955,6 +1956,40 @@ None.
 - request ID
 - active tenant slug
 - CLI version
+
+## E244: Tenant data/schema setup is not fully provisioned.
+
+| Field | Value |
+| --- | --- |
+| Reason | `tenant_data_install_no_match` |
+| Category | `app_provisioning` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The platform could not resolve an active data/schema install for this tenant.
+- This is a tenant setup issue, not a transient outage: the data/schema capability is reachable but has no active install registered for this tenant.
+- Object Type publish (eai types seed) and schema reads cannot complete until the tenant setup is completed. Retrying does not create that setup.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the active tenant that failed to resolve a data/schema install.
+- `eai verify` (read-only) — Confirm whether the data/schema service can resolve an install for this tenant.
+
+### Fixes
+
+None.
+
+### Stop Conditions
+
+- The response indicates no active tenant data/schema install. Retrying does not provision the tenant setup — it must be fixed by platform support.
+
+### Escalation Evidence
+
+- active tenant slug and id (eai whoami)
+- the command that failed
+- the request id from the error
+- the reason code from the error response
 
 ---
 
@@ -2565,7 +2600,8 @@ Provision a usecase-agnostic workflow config and bind it to a tenant app. Option
 **Arguments**: `<workflow-key>`
 
 **Key options**:
-- `--vertical <key>` — Tenant app key that consumes this workflow (required)
+- `--app <key>` — Tenant app key that consumes this workflow (required)
+- `--vertical <key>` — Deprecated compatibility alias for `--app`
 - `--tenant <id>` — Tenant to provision against (default: active tenant)
 - `--display-name <name>` — Workflow display name
 - `--usecase <usecase>` — Workflow usecase namespace (default: `generic`)
@@ -2803,9 +2839,11 @@ Validate the installed block catalog, or a manifest JSON file.
 
 ---
 
-### App Commands (`eai vertical`)
+### App Commands (`eai app`)
 
-#### `eai vertical list`
+`eai vertical ...` remains available as a compatibility alias during the migration window.
+
+#### `eai app list`
 List apps for the active company tenant.
 
 **Options**:
@@ -2818,7 +2856,7 @@ List apps for the active company tenant.
 
 ---
 
-#### `eai vertical create <name>`
+#### `eai app create <name>`
 Create an app under a company tenant.
 
 **Arguments**: `<name>`
@@ -2840,8 +2878,8 @@ Create an app under a company tenant.
 
 ---
 
-#### `eai vertical select <key>`
-Set `EAI_VERTICAL_KEY` in the current project `.env.local`.
+#### `eai app select <key>`
+Set `EAI_APP_KEY` in the current project `.env.local`. The CLI also writes `EAI_VERTICAL_KEY` for compatibility with existing projects.
 
 **Arguments**: `<key>`
 
@@ -2855,7 +2893,7 @@ Set `EAI_VERTICAL_KEY` in the current project `.env.local`.
 
 ---
 
-#### `eai vertical provision <key>`
+#### `eai app provision <key>`
 Prepare platform storage for an app.
 
 **Arguments**: `<key>`
@@ -2866,7 +2904,7 @@ Prepare platform storage for an app.
 - `--dry-run` — Plan actions without applying changes
 - `--rebuild-search` — Request a search projection rebuild after provisioning
 - `--skip-validate` — Skip the app lookup
-- `--select` — Write `EAI_VERTICAL_KEY` after successful provisioning
+- `--select` — Write `EAI_APP_KEY` and compatibility `EAI_VERTICAL_KEY` after successful provisioning
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:

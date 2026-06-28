@@ -55,6 +55,29 @@ const EAI_REGISTER_MARKER = path.join(EAI_CONFIG_DIR, 'register.ts');
 const EAI_MANIFEST_MARKER = 'manifest.yml';
 const EAI_RUNTIME_CONTRACT_MARKER = 'eai.runtime.json';
 
+const EXTENSION_RESOURCE_PATHS = new Map([
+  [path.join('.specify', 'commands'), path.join('resources', 'specify-commands')],
+  [path.join('.specify', 'references'), path.join('resources', 'references')],
+  [path.join('.specify', 'templates'), path.join('resources', 'templates')],
+  [path.join('.specify', 'scripts', 'bash'), path.join('resources', 'bash-scripts')],
+  [path.join('.specify', 'scripts', 'node'), path.join('resources', 'node-scripts')],
+  [path.join('.specify', 'scripts', 'hooks'), path.join('resources', 'hook-scripts')],
+  [
+    path.join('.specify', 'scripts', 'powershell'),
+    path.join('resources', 'powershell-scripts'),
+  ],
+  ['commands', path.join('resources', 'claude-commands')],
+  ['agents', path.join('resources', 'claude-agents')],
+  [path.join('.claude', 'skills'), path.join('resources', 'claude-skills')],
+  [path.join('.github', 'agents'), path.join('resources', 'github-agents')],
+  [path.join('.github', 'prompts'), path.join('resources', 'copilot-prompts')],
+  [path.join('.github', 'instructions'), path.join('resources', 'copilot-instructions')],
+  [path.join('.github', 'skills'), path.join('resources', 'github-skills')],
+  [path.join('.gemini'), path.join('resources', 'gemini')],
+  [path.join('.agents', 'skills'), 'skills'],
+  [path.join('.system', 'skills'), 'skills'],
+]);
+
 const GOFER_GITIGNORE_ENTRIES = [
   '.specify/hooks/',
   '.specify/memory/local.json',
@@ -123,7 +146,11 @@ export function normalizeHost(host = 'auto') {
 
 export function scriptRootFromUrl(scriptUrl) {
   const filePath = fileURLToPath(scriptUrl);
-  return path.resolve(path.dirname(filePath), '..', '..', '..');
+  const dirPath = path.dirname(filePath);
+  if (path.basename(path.dirname(dirPath)) === 'resources') {
+    return path.resolve(dirPath, '..', '..');
+  }
+  return path.resolve(dirPath, '..', '..', '..');
 }
 
 export async function pathExists(targetPath) {
@@ -136,6 +163,27 @@ export async function pathExists(targetPath) {
     }
     throw error;
   }
+}
+
+async function resolveSourcePath(sourceRoot, relativePath) {
+  const directPath = path.join(sourceRoot, relativePath);
+  if (await pathExists(directPath)) {
+    return directPath;
+  }
+
+  const resourceRelativePath = EXTENSION_RESOURCE_PATHS.get(path.normalize(relativePath));
+  if (resourceRelativePath) {
+    const resourcePath = path.join(sourceRoot, resourceRelativePath);
+    if (await pathExists(resourcePath)) {
+      return resourcePath;
+    }
+  }
+
+  return directPath;
+}
+
+async function readSourceFile(sourceRoot, relativePath, encoding = 'utf8') {
+  return fs.readFile(await resolveSourcePath(sourceRoot, relativePath), encoding);
 }
 
 async function readJsonIfExists(filePath) {
@@ -163,7 +211,7 @@ export async function detectGoferVersion(sourceRoot) {
     {
       path: path.join(sourceRoot, 'package.json'),
       type: 'manifest',
-      validName: (name) => name === 'eai-gofer',
+      validName: (name) => name === 'eai-gofer' || name === 'gofer',
     },
     {
       path: path.join(sourceRoot, 'extension', 'package.json'),
@@ -226,7 +274,7 @@ export async function findWorkspaceRoot(startDir = process.cwd()) {
 }
 
 export async function loadStageMetadata(sourceRoot) {
-  const commandsDir = path.join(sourceRoot, '.specify', 'commands');
+  const commandsDir = await resolveSourcePath(sourceRoot, path.join('.specify', 'commands'));
   const entries = (await fs.readdir(commandsDir))
     .filter((entry) => entry.endsWith('.md') && entry !== '.gitkeep')
     .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
@@ -714,12 +762,14 @@ async function writeTextFile(filePath, content, dryRun) {
 }
 
 async function writeModelPolicyIfMissing(workspaceRoot, sourceRoot, dryRun) {
-  const sourcePath = path.join(sourceRoot, '.specify', 'templates', 'gofer-model-policy.yaml');
   const targetPath = path.join(workspaceRoot, '.specify', 'memory', 'gofer-model-policy.yaml');
 
   let template = '';
   try {
-    template = await fs.readFile(sourcePath, 'utf8');
+    template = await readSourceFile(
+      sourceRoot,
+      path.join('.specify', 'templates', 'gofer-model-policy.yaml')
+    );
   } catch (error) {
     if (error?.code === 'ENOENT') {
       return false;
@@ -794,18 +844,33 @@ and is not overwritten by bootstrap.
 `;
 }
 
-function getMirrorCopyCandidates(sourceRoot) {
+function getMirrorCopyCandidates() {
   return [
-    { source: path.join(sourceRoot, 'commands'), target: path.join('.claude', 'commands') },
-    { source: path.join(sourceRoot, 'agents'), target: path.join('.claude', 'agents') },
-    { source: path.join(sourceRoot, '.github', 'prompts'), target: path.join('.github', 'prompts') },
+    { sourceRelativePath: 'commands', target: path.join('.claude', 'commands') },
+    { sourceRelativePath: 'agents', target: path.join('.claude', 'agents') },
     {
-      source: path.join(sourceRoot, '.github', 'instructions'),
+      sourceRelativePath: path.join('.claude', 'skills'),
+      target: path.join('.claude', 'skills'),
+    },
+    {
+      sourceRelativePath: path.join('.github', 'agents'),
+      target: path.join('.github', 'agents'),
+    },
+    {
+      sourceRelativePath: path.join('.github', 'prompts'),
+      target: path.join('.github', 'prompts'),
+    },
+    {
+      sourceRelativePath: path.join('.github', 'instructions'),
       target: path.join('.github', 'instructions'),
     },
-    { source: path.join(sourceRoot, '.gemini'), target: '.gemini' },
-    { source: path.join(sourceRoot, 'skills'), target: path.join('.agents', 'skills') },
-    { source: path.join(sourceRoot, 'skills'), target: path.join('.system', 'skills') },
+    {
+      sourceRelativePath: path.join('.github', 'skills'),
+      target: path.join('.github', 'skills'),
+    },
+    { sourceRelativePath: '.gemini', target: '.gemini' },
+    { sourceRelativePath: path.join('.agents', 'skills'), target: path.join('.agents', 'skills') },
+    { sourceRelativePath: path.join('.system', 'skills'), target: path.join('.system', 'skills') },
   ];
 }
 
@@ -862,7 +927,7 @@ export async function bootstrapWorkspace({
   ];
   for (const relativePath of coreCopies) {
     const copied = await copyDirectory(
-      path.join(sourceRoot, relativePath),
+      await resolveSourcePath(sourceRoot, relativePath),
       path.join(workspaceRoot, relativePath),
       dryRun
     );
@@ -919,7 +984,7 @@ export async function bootstrapWorkspace({
   if (includeMirrors) {
     for (const candidate of getMirrorCopyCandidates(sourceRoot)) {
       const copied = await copyDirectory(
-        candidate.source,
+        await resolveSourcePath(sourceRoot, candidate.sourceRelativePath),
         path.join(workspaceRoot, candidate.target),
         dryRun
       );
