@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/5_gofer_implement.md
-  canonicalChecksum: 2f0e88f5be5fb0e853bcbf07d94ee8da4180aeaa253065c9c2c00b6ad1cbe6f9
+  canonicalChecksum: 0e076fb1934d6dbf32029d3ea07dbb7d1e263416d005b97200c0acb062c0b863
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -719,7 +719,7 @@ separation from `tasks.md`:
 - Treat resource provisioning, object-type publish, schema/storage health, and preview readiness as separate gates even when the CLI reports progress in a single run.
 - Track workflow readiness alongside those gates; do not collapse it into
   provisioning, schema/storage health, or preview status.
-- Use `eai vertical provision <key> --tenant-id <tenant-id> --select --format json`,
+- Use `eai app provision <key> --tenant-id <tenant-id> --select --format json`,
   `eai provision entra --force --redirect-uri <exact-callback-uri> --debug`,
   `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json`,
   `eai resources schema --tenant-id <tenant-id> --format json`,

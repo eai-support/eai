@@ -32,7 +32,7 @@ async function setupProject(dir: string): Promise<void> {
   await writeFile(join(dir, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
   await writeFile(
     join(dir, '.env.local'),
-    `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\n`,
+    `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\n`,
   );
 }
 

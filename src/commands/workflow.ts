@@ -42,7 +42,8 @@ interface ResourceDoc {
 
 interface WorkflowProvisionOptions {
   tenant?: string;
-  vertical: string;
+  app?: string;
+  vertical?: string;
   displayName?: string;
   usecase?: string;
   scopeKey?: string;
@@ -61,6 +62,22 @@ interface WorkflowProvisionOptions {
   label?: string;
   format?: string;
   json?: boolean;
+}
+
+function resolveWorkflowAppKey(options: Pick<WorkflowProvisionOptions, 'app' | 'vertical'>): string {
+  const appKey = options.app?.trim();
+  const legacyVerticalKey = options.vertical?.trim();
+
+  if (appKey && legacyVerticalKey && appKey !== legacyVerticalKey) {
+    throw new Error('--app and --vertical must match when both are provided.');
+  }
+
+  const resolved = appKey || legacyVerticalKey;
+  if (!resolved) {
+    throw new Error('--app <key> is required.');
+  }
+
+  return resolved;
 }
 
 function readDocs(payload: unknown): ResourceDoc[] {
@@ -192,7 +209,8 @@ function handleWorkflowError(err: unknown): never {
 workflowCommand
   .command('provision <workflow-key>')
   .description('Provision a usecase-agnostic workflow config and bind it to a tenant app')
-  .requiredOption('--vertical <key>', 'Tenant app key that consumes this workflow')
+  .option('--app <key>', 'Tenant app key that consumes this workflow')
+  .option('--vertical <key>', 'Deprecated alias for --app')
   .option('--tenant <id>', 'Tenant id to provision against (defaults to active tenant)')
   .option('--display-name <name>', 'Workflow display name (defaults to humanized workflow key)')
   .option('--usecase <usecase>', 'Workflow usecase namespace', 'generic')
@@ -214,7 +232,7 @@ workflowCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', `
 Examples:
-  $ eai workflow provision configurator --vertical no-code-builder \\
+  $ eai workflow provision configurator --app no-code-builder \\
       --workflow-env-key NEXT_PUBLIC_WORKFLOW_CONFIGURATOR_ID \\
       --stage analyze-process:"Analyze process" \\
       --stage generate-workflow:"Generate workflow" \\
@@ -224,7 +242,7 @@ Examples:
       --stage-env WORKFLOW_SUGGESTIONS_STAGE=suggest-improvements
       --bind-ai-runtime --ai-provider azure-openai --ai-model gpt-5.1-chat
 
-  $ eai workflow provision onboarding --vertical hr-helper --stage intake --stage review --write-local-env
+  $ eai workflow provision onboarding --app hr-helper --stage intake --stage review --write-local-env
   `)
   .action(async (workflowKey: string, options: WorkflowProvisionOptions) => {
     const format = normalizeFormat(options);
@@ -233,6 +251,7 @@ Examples:
       const stages = (options.stage ?? []).map((stage, index) => parseStageSpec(stage, index));
       const stageEnv = Object.fromEntries((options.stageEnv ?? []).map(parseEnvMapping));
       validateStageEnvMappings(stages, stageEnv);
+      const appKey = resolveWorkflowAppKey(options);
 
       if (options.status !== 'active' && options.status !== 'draft') {
         throw new Error('--status must be active or draft.');
@@ -241,7 +260,7 @@ Examples:
       const displayName = options.displayName?.trim() || parseStageSpec(workflowKey, 0).name || workflowKey;
       const payloads = buildWorkflowProvisionPayloads({
         tenantId: context.tenantId,
-        verticalKey: options.vertical,
+        verticalKey: appKey,
         workflowKey,
         displayName,
         stages,
@@ -270,7 +289,7 @@ Examples:
         validateStagePromptMappings(stages, stagePrompts);
         runtimePayloads = buildWorkflowAiRuntimeBindingPayloads({
           tenantId: context.tenantId,
-          verticalKey: options.vertical,
+          verticalKey: appKey,
           workflowKey,
           displayName,
           stages,
@@ -370,6 +389,14 @@ Examples:
           action: workflow.action,
           objectType: SHARED_WORKFLOW_CONFIG_OBJECT_TYPE,
           workflowKey: normalizedWorkflowKey,
+        },
+        app: {
+          id: vertical.id ?? null,
+          action: vertical.action,
+          objectType: VERTICAL_PRODUCT_CONFIG_OBJECT_TYPE,
+          appKey: normalizedVerticalKey,
+          verticalKey: normalizedVerticalKey,
+          configKey: workflowVerticalConfigKey(normalizedWorkflowKey),
         },
         vertical: {
           id: vertical.id ?? null,

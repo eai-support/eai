@@ -686,7 +686,7 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
 5. **Deployment convention** — reference the configured deployment
    documentation for the target project and note which environment
    (dev/staging/prod) each deliverable targets.
-6. **Integration map handoff** — restate the Vertical App → EAI Services →
+6. **Integration map handoff** — restate the App → EAI Services →
    Deployment Target chain from `spec.md` and bind each link to a task
    identifier in `tasks.md`.
 7. **Contract pack handoff** — reference `{FEATURE_DIR}/contract-pack.md` and

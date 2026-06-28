@@ -6,8 +6,9 @@
  * Usage:
  *   node generate-commands.mjs [--dry-run] [--surfaces <comma-list>] [--root <path>]
  *
- * Surfaces: claude, claude-mirror, copilot, github-prompts, agents-skills,
- *           system-skills, gemini, agents-md, codex-config
+ * Surfaces: claude, claude-mirror, copilot, github-prompts, github-agents,
+ *           github-skills, claude-skills, agents-skills, system-skills,
+ *           gemini, agents-md, codex-config
  */
 
 import { promises as fs } from 'fs';
@@ -29,8 +30,11 @@ export const CLAUDE_ONLY_STAGES = [];
 const ALL_SURFACES = [
   'claude',
   'claude-mirror',
+  'claude-skills',
   'copilot',
   'github-prompts',
+  'github-agents',
+  'github-skills',
   'agents-skills',
   'system-skills',
   'gemini',
@@ -44,8 +48,11 @@ const PUBLIC_PLUGIN_URL = `${PUBLIC_RELEASES_URL}/plugins/eai-gofer`;
 const SURFACE_WORKSPACE_HOSTS = {
   'claude': 'claude',
   'claude-mirror': 'claude',
+  'claude-skills': 'claude',
   'copilot': 'copilot',
   'github-prompts': 'copilot',
+  'github-agents': 'copilot',
+  'github-skills': 'copilot',
   'agents-skills': 'codex',
   'system-skills': 'codex',
   'gemini': 'gemini',
@@ -645,6 +652,140 @@ function buildSkillContent(stageName, description, body) {
   return `---\nname: ${stageName}\ndescription: "${description}"\n---\n\n${body}`;
 }
 
+function buildUmbrellaSkillContent(version, stages, hostLabel) {
+  const stageList = stages
+    .map((stage) => `- \`/${getStageOutputStem(stage)}\` - ${stage.frontmatter.description}`)
+    .join('\n');
+
+  return `---\nname: eai-gofer\ndescription: "Use Gofer's repo-owned pipeline, scripts, and validation tools without duplicating every slash command in the picker."\n---\n\n# EAI Gofer\n\nVersion: ${version}\nHost: ${hostLabel}\n\nUse this skill when the user asks to install, update, diagnose, run, or understand Gofer from an AI coding app. Prefer this umbrella skill for app-level discovery. Use the plain slash commands for individual pipeline stages.\n\n## Clean Surface Contract\n\n- Stage work uses the plain repo slash commands, for example \`/0_business_scenario\`, \`/1_gofer_research\`, and \`/6_gofer_validate\`.\n- App-level setup, troubleshooting, and explanation should use this \`eai-gofer\` skill plus the repo-owned scripts in \`.specify/scripts/\`.\n- Do not expose a second full set of namespaced stage commands in the same picker when plain slash commands are available.\n- Check workspace health before stage work: \`node .specify/scripts/node/gofer-workspace-check.mjs --host auto --json\`.\n- If missing or stale, ask the user before running: \`node .specify/scripts/node/gofer-workspace-bootstrap.mjs --host auto --include-mirrors\`.\n\n## Light Plugin And Repo Scripts\n\nThe light plugin installs durable Gofer knowledge and app integration metadata. The repository remains the source of truth for executable scripts, commands, templates, specs, and memory. After bootstrap, agents should prefer repo-local scripts over bundled fallback copies because the repo can be updated by \`eai gofer refresh\` or the VS Code extension.\n\n## First EAI Platform App\n\nIf the user is starting a first EAI Platform app, run \`/gofer:eai-first-run\` before \`/0_business_scenario\`. It is intentionally allowed before \`.specify/\` exists.\n\n## Current Pipeline\n\n${stageList}\n`;
+}
+
+function buildGithubAgentContent({ id, description, tools, handoffs, body }) {
+  const frontmatter = [
+    '---',
+    `description: ${JSON.stringify(description)}`,
+    `tools: ${JSON.stringify(tools)}`,
+  ];
+
+  if (handoffs.length > 0) {
+    frontmatter.push('handoffs:');
+    for (const handoff of handoffs) {
+      frontmatter.push(`  - agent: ${handoff.agent}`);
+      frontmatter.push(`    label: ${JSON.stringify(handoff.label)}`);
+      frontmatter.push(`    prompt: ${JSON.stringify(handoff.prompt)}`);
+      frontmatter.push(`    send: ${handoff.send ? 'true' : 'false'}`);
+    }
+  }
+
+  frontmatter.push('---');
+
+  return `${frontmatter.join('\n')}\n\n# ${id}\n\n${body.trim()}\n`;
+}
+
+function getGithubAgentSpecs() {
+  const goferTools = [
+    'search/codebase',
+    'vscode/askQuestion',
+    'gofer_check_workspace',
+    'gofer_bootstrap_workspace',
+    'gofer_get_pipeline_state',
+    'gofer_start_stage',
+    'gofer_validate_branch',
+    'gofer_open_artifact',
+  ];
+
+  return [
+    {
+      id: 'gofer-business',
+      description: 'Gofer business scenario and setup agent. Use for first-run setup, workspace health, feature intake, and selecting the right pipeline entry point.',
+      tools: goferTools,
+      handoffs: [
+        {
+          agent: 'gofer-research',
+          label: 'Continue to Research',
+          prompt: 'Continue with Gofer research for the confirmed feature. Check workspace health first, then run /1_gofer_research or the equivalent repo-local stage instruction.',
+          send: false,
+        },
+      ],
+      body: `
+You are the Gofer business scenario agent.
+
+Start by checking Gofer workspace health. If the repo is missing or stale, ask before bootstrapping. Keep the user-facing surface simple: use plain slash commands for pipeline stages and the eai-gofer skill/tools for app-level setup.
+
+Primary outputs:
+
+- A clear route into \`/0_business_scenario\`, \`/gofer:eai-first-run\`, or standalone research.
+- A concise statement of whether the repo has the Gofer scaffold, plugin/app support, and EAI first-run prerequisites.
+`,
+    },
+    {
+      id: 'gofer-research',
+      description: 'Gofer research agent. Use for codebase and documentation research before specification.',
+      tools: goferTools,
+      handoffs: [
+        {
+          agent: 'gofer-plan',
+          label: 'Continue to Plan',
+          prompt: 'Continue through Gofer specify and plan stages using the research artifacts. Preserve workspace checks and artifact evidence.',
+          send: false,
+        },
+      ],
+      body: `
+You are the Gofer research agent.
+
+Use \`/1_gofer_research\` as the stage contract. Keep raw output out of chat when it is large; write durable findings to \`.specify/specs/{feature}/research.md\` and \`context-bundle.md\`.
+`,
+    },
+    {
+      id: 'gofer-plan',
+      description: 'Gofer specification and planning agent. Use after research to produce spec, plan, contracts, and ordered tasks.',
+      tools: goferTools,
+      handoffs: [
+        {
+          agent: 'gofer-implement',
+          label: 'Implement Tasks',
+          prompt: 'Implement the approved Gofer tasks. Check pipeline state first and preserve traceability.',
+          send: false,
+        },
+      ],
+      body: `
+You are the Gofer planning agent.
+
+Use \`/2_gofer_specify\`, \`/3_gofer_plan\`, and \`/4_gofer_tasks\` as the stage contracts. Keep the plan grounded in existing repository scripts, current platform capabilities, and explicit validation obligations.
+`,
+    },
+    {
+      id: 'gofer-implement',
+      description: 'Gofer implementation agent. Use for task execution, code edits, tests, and repo-script driven changes.',
+      tools: goferTools,
+      handoffs: [
+        {
+          agent: 'gofer-validate',
+          label: 'Validate Changes',
+          prompt: 'Validate this implementation with Gofer. Run the relevant tests and produce validation evidence.',
+          send: false,
+        },
+      ],
+      body: `
+You are the Gofer implementation agent.
+
+Use \`/5_gofer_implement\` as the stage contract. Work from \`tasks.md\`, keep changes minimal, run repo tests, and update traceability evidence as tasks complete.
+`,
+    },
+    {
+      id: 'gofer-validate',
+      description: 'Gofer validation agent. Use for branch validation, security checks, test evidence, and release readiness.',
+      tools: goferTools,
+      handoffs: [],
+      body: `
+You are the Gofer validation agent.
+
+Use \`/6_gofer_validate\` as the terminal quality gate. Validate functional correctness, integration, security, standards, tests, generated artifacts, and release/public readiness where relevant.
+`,
+    },
+  ];
+}
+
 /**
  * Escapes a string for a basic TOML double-quoted value.
  * @param {string} value
@@ -697,6 +838,62 @@ async function emitAgentsSkills(stages, root, dryRun) {
     count++;
   }
   console.log(`agents-skills: ${count} file(s) emitted`);
+  return true;
+}
+
+async function emitGithubAgents(stages, root, dryRun) {
+  void stages;
+  const outDir = path.join(root, '.github', 'agents');
+  const agentSpecs = getGithubAgentSpecs();
+
+  if (dryRun) {
+    for (const agent of agentSpecs) {
+      console.log(`[dry-run] github-agents: would write ${path.join(outDir, `${agent.id}.agent.md`)}`);
+    }
+  } else {
+    await ensureDir(outDir);
+    for (const agent of agentSpecs) {
+      const outPath = path.join(outDir, `${agent.id}.agent.md`);
+      await fs.writeFile(outPath, buildGithubAgentContent(agent), 'utf8');
+      console.log(`github-agents: wrote ${outPath}`);
+    }
+  }
+
+  console.log(`github-agents: ${agentSpecs.length} file(s) emitted`);
+  return true;
+}
+
+async function emitGithubSkills(stages, root, dryRun) {
+  const version = await detectPackageVersion(root);
+  const outPath = path.join(root, '.github', 'skills', 'eai-gofer', 'SKILL.md');
+  const content = buildUmbrellaSkillContent(version, stages, 'VS Code and GitHub Copilot');
+
+  if (dryRun) {
+    console.log(`[dry-run] github-skills: would write ${outPath}`);
+  } else {
+    await ensureDir(path.dirname(outPath));
+    await fs.writeFile(outPath, content, 'utf8');
+    console.log(`github-skills: wrote ${outPath}`);
+  }
+
+  console.log('github-skills: 1 file(s) emitted');
+  return true;
+}
+
+async function emitClaudeSkills(stages, root, dryRun) {
+  const version = await detectPackageVersion(root);
+  const outPath = path.join(root, '.claude', 'skills', 'eai-gofer', 'SKILL.md');
+  const content = buildUmbrellaSkillContent(version, stages, 'Claude Code');
+
+  if (dryRun) {
+    console.log(`[dry-run] claude-skills: would write ${outPath}`);
+  } else {
+    await ensureDir(path.dirname(outPath));
+    await fs.writeFile(outPath, content, 'utf8');
+    console.log(`claude-skills: wrote ${outPath}`);
+  }
+
+  console.log('claude-skills: 1 file(s) emitted');
   return true;
 }
 
@@ -939,8 +1136,11 @@ async function emitCodexConfig(stages, root, dryRun) {
 const EMITTERS = {
   'claude': emitClaude,
   'claude-mirror': emitClaudeMirror,
+  'claude-skills': emitClaudeSkills,
   'copilot': emitCopilot,
   'github-prompts': emitGithubPrompts,
+  'github-agents': emitGithubAgents,
+  'github-skills': emitGithubSkills,
   'agents-skills': emitAgentsSkills,
   'system-skills': emitSystemSkills,
   'gemini': emitGemini,

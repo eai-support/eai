@@ -134,22 +134,24 @@ Gofer consists of three coordinated components:
   detection)
 - Manages UI (tree views, commands, progress panels)
 - Launches Language Server as child process
-- Auto-creates `.vscode/mcp.json` for Claude Code integration
+- Auto-creates provider-neutral `.vscode/mcp.json` for VS Code/Copilot, Claude
+  Code, Codex, Gemini, and compatible agent apps
 
 **Language Server** (`/language-server/`):
 
-- Dual protocol: LSP (extension ↔ server) + MCP (Claude ↔ tools)
-- Exposes 6 MCP tools: `get_specs`, `get_next_task`, `execute_task`,
-  `update_task_status`, `validate_code`, `run_tests`
+- Dual protocol: LSP (extension ↔ server) + MCP (agent app ↔ repo tools)
+- Exposes the current Gofer MCP tool set for specs, tasks, context health,
+  workspace check/bootstrap, pipeline state, validation, EAI error explanation,
+  and artifact reads
 - Loads specs from `.specify/specs/` using GitHub Spec Kit parser
 - Stateless design, all state in filesystem
 
-**Orchestrator Process** (`/src/`):
+**Repo-Owned Pipeline Scripts** (`/.specify/scripts/`):
 
-- Coordinates Engineer and Test agents via Claude API
-- Manages task dependencies and execution workflows
-- Monitors file changes with Chokidar
-- Integrates Playwright for E2E testing
+- Remain the executable source of truth for Gofer stages, workspace checks,
+  bootstrap, hooks, context management, validation helpers, and release checks
+- Are called or explained by app plugins, skills, agents, and MCP tools instead
+  of duplicating workflow logic per host
 
 ### Dependency Management
 

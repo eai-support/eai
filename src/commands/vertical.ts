@@ -1,5 +1,9 @@
 /**
- * eai vertical — manage tenant app/product instances under the active company tenant.
+ * eai app — manage tenant app/product instances under the active company tenant.
+ *
+ * The platform data contract still stores app enrollment in legacy
+ * tenant-vertical-* object types. Keep the wire/data names stable here while
+ * making the public CLI vocabulary App-first.
  */
 
 import { Command } from 'commander';
@@ -23,6 +27,8 @@ import * as out from '../lib/output.js';
 
 const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
 const DEFAULT_VERTICAL_SOURCE = ['eai', 'cli'].join('-');
+const APP_KEY_ENV = 'EAI_APP_KEY';
+const LEGACY_VERTICAL_KEY_ENV = 'EAI_VERTICAL_KEY';
 
 export interface VerticalCreateOptions {
   key?: string;
@@ -120,12 +126,15 @@ async function validateVerticalEnrollment(
   }
   const docs = extractDocs(await readResponsePayload(res));
   if (docs.length === 0) {
-    fail(`No app found for ${verticalKey}. Create it with \`eai vertical create\` first, or pass --skip-validate if the app is still being prepared.`);
+    fail(`No app found for ${verticalKey}. Create it with \`eai app create\` first, or pass --skip-validate if the app is still being prepared.`);
   }
 }
 
-export const verticalCommand = new Command('vertical')
+export const appCommand = new Command('app')
+  .alias('vertical')
   .description('Manage apps under the active company tenant');
+
+export const verticalCommand = appCommand;
 
 verticalCommand
   .command('list')
@@ -241,7 +250,7 @@ verticalCommand
 
 verticalCommand
   .command('select <key>')
-  .description('Set EAI_VERTICAL_KEY in the current project .env.local')
+  .description('Set EAI_APP_KEY in the current project .env.local')
   .option('--tenant-id <id>', 'Validate against a specific company tenant')
   .option('--skip-validate', 'Skip remote lookup before writing .env.local', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -259,10 +268,19 @@ verticalCommand
       await validateVerticalEnrollment(verticalKey, ctx);
     }
 
-    await patchEnvFile(ctx.root, { EAI_VERTICAL_KEY: verticalKey });
+    await patchEnvFile(ctx.root, {
+      [APP_KEY_ENV]: verticalKey,
+      [LEGACY_VERTICAL_KEY_ENV]: verticalKey,
+    });
 
     if (format === 'json') {
-      out.json({ tenantId: ctx.tenantId, verticalKey, env: 'EAI_VERTICAL_KEY' });
+      out.json({
+        tenantId: ctx.tenantId,
+        appKey: verticalKey,
+        verticalKey,
+        env: APP_KEY_ENV,
+        legacyEnv: LEGACY_VERTICAL_KEY_ENV,
+      });
       return;
     }
     out.success(`Active app set to ${chalk.cyan(verticalKey)} in .env.local`);
@@ -276,7 +294,7 @@ verticalCommand
   .option('--dry-run', 'Plan actions without applying changes', false)
   .option('--rebuild-search', 'Request search projection rebuild after provisioning', false)
   .option('--skip-validate', 'Skip app lookup', false)
-  .option('--select', 'Write EAI_VERTICAL_KEY after successful provisioning', false)
+  .option('--select', 'Write EAI_APP_KEY after successful provisioning', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options) => {
@@ -309,12 +327,16 @@ verticalCommand
     }
 
     if (options.select) {
-      await patchEnvFile(ctx.root, { EAI_VERTICAL_KEY: verticalKey });
+      await patchEnvFile(ctx.root, {
+        [APP_KEY_ENV]: verticalKey,
+        [LEGACY_VERTICAL_KEY_ENV]: verticalKey,
+      });
     }
 
     if (format === 'json') {
       out.json({
         tenantId: ctx.tenantId,
+        appKey: verticalKey,
         verticalKey,
         selected: Boolean(options.select),
         storage: payload,

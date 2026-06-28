@@ -420,6 +420,19 @@ Run \`/gofer:eai-first-run\` before \`/0_business_scenario\` when a new user, ma
 
 If \`/0_business_scenario\` is unknown in a new repo, install or update this plugin first, then run \`/gofer:eai-first-run\`.
 
+## App-Native Surfaces And Repo Scripts
+
+Gofer keeps repo-owned scripts and canonical command files as the source of truth. App plugins, skills, agents, and MCP tools are thin entry points that call or explain those repo scripts.
+
+| Surface | Best entry point | Repo-owned files used |
+| ------- | ---------------- | --------------------- |
+| Codex App / Codex IDE | Umbrella \`eai-gofer\` plugin skill plus repo \`.agents/skills\` when a workspace is open | \`AGENTS.md\`, \`.agents/skills/\`, \`.specify/scripts/\`, \`.vscode/mcp.json\` |
+| GitHub Copilot app / VS Code agent mode | Custom Gofer agents and one umbrella skill, not a duplicate slash-command list | \`.github/agents/\`, \`.github/skills/\`, \`.github/prompts/\`, \`.github/instructions/\`, \`.vscode/mcp.json\` |
+| Claude Code app | Plugin umbrella skill for discovery; repo slash commands remain the fast command path | \`.claude/skills/\`, \`.claude/commands/\`, \`.claude/agents/\`, \`.specify/scripts/\` |
+| Gemini CLI / Gemini Code Assist | Gemini extension commands and workspace MCP/customization when available | \`.gemini/\`, \`.specify/scripts/\`, \`.vscode/mcp.json\` |
+
+The clean UX rule is: use plain numbered stage commands in initialized repos, and use app/plugin skills for setup, diagnostics, and routing when those stage commands are not loaded yet.
+
 ## Core Pipeline
 
 | Stage | Command | Main output |
@@ -675,7 +688,11 @@ async function writePluginFolder(pluginRoot, root, version, stages) {
     '.specify/scripts/hooks',
     '.specify/scripts/powershell',
     '.github/prompts',
+    '.github/agents',
+    '.github/skills',
+    '.claude/skills',
     '.gemini',
+    '.vscode/mcp.json',
     'AGENTS.md',
     'LICENSE',
     'NOTICE',

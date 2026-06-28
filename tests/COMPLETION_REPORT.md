@@ -111,10 +111,10 @@ test('TC001: Initialize new vertical interactively', async () => {
   respondToPrompt(ctx, 'Display Name', 'My Vertical');
 
   // Action
-  const result = await runCommand(ctx, 'eai init my-vertical');
+  const result = await runCommand(ctx, 'eai init my-app');
 
   // Assert
-  await expectDirectoryCreated(ctx, 'my-vertical');
+  await expectDirectoryCreated(ctx, 'my-app');
   expectSuccessMessage(result, 'initialized');
 });
 ```
