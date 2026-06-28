@@ -58,7 +58,7 @@ async function setupProject(dir: string): Promise<void> {
   await writeFile(join(dir, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
   await writeFile(
     join(dir, '.env.local'),
-    `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\n`,
+    `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\n`,
   );
 }
 
@@ -170,7 +170,7 @@ describe('eai provision entra', () => {
 
     expect(requestBody).toEqual({
       tenant_id: 'test-tenant-id',
-      vertical_name: 'my-vertical',
+      app_name: 'my-app',
       redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
       idempotent: true,
     });
@@ -181,7 +181,7 @@ describe('eai provision entra', () => {
     expect(content).toContain('AUTH_URL=http://localhost:3000');
     expect(content).toContain('NEXTAUTH_URL=http://localhost:3000');
     expect(content).toContain('AUTH_TRUST_HOST=true');
-    expect(content).toContain('NEXT_PUBLIC_APP_NAME=my-vertical');
+    expect(content).toContain('NEXT_PUBLIC_APP_NAME=my-app');
   });
 
   test('--redirect-uri registers deployed callbacks alongside the local one', { timeout: 10000 }, async () => {
@@ -204,7 +204,7 @@ describe('eai provision entra', () => {
 
     expect(requestBody).toEqual({
       tenant_id: 'test-tenant-id',
-      vertical_name: 'my-vertical',
+      app_name: 'my-app',
       redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id', deployed],
       idempotent: true,
     });
@@ -246,7 +246,7 @@ describe('eai provision entra', () => {
 
     expect(requestBody).toEqual({
       tenant_id: 'test-tenant-id',
-      vertical_name: 'no-code-builder',
+      app_name: 'no-code-builder',
       redirect_uris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
       idempotent: true,
     });
@@ -290,7 +290,7 @@ describe('eai provision entra', () => {
 
     expect(requestBody).toEqual({
       tenant_id: 'test-tenant-id',
-      vertical_name: 'no-code-builder',
+      app_name: 'no-code-builder',
       redirect_uris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
       idempotent: true,
     });
@@ -332,7 +332,7 @@ describe('eai provision entra', () => {
 
     expect(requestBody).toEqual({
       tenant_id: 'test-tenant-id',
-      vertical_name: 'no-code-builder',
+      app_name: 'no-code-builder',
       redirect_uris: ['http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id'],
       idempotent: true,
     });
@@ -548,7 +548,7 @@ describe('eai provision entra', () => {
       publicApiUrl: API_BASE,
       membershipsCachedAt: Date.now(),
     });
-    await writeFile(join(env.dir, '.env.local'), 'NEXT_PUBLIC_APP_NAME=my-vertical\n');
+    await writeFile(join(env.dir, '.env.local'), 'NEXT_PUBLIC_APP_NAME=my-app\n');
 
     let requestBody: unknown;
     let staleTokenApiHit = false;
@@ -573,7 +573,7 @@ describe('eai provision entra', () => {
 
     expect(requestBody).toEqual({
       tenant_id: 'test-tenant-id',
-      vertical_name: 'my-vertical',
+      app_name: 'my-app',
       redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
       idempotent: true,
     });
@@ -587,7 +587,7 @@ describe('eai provision entra', () => {
   test('existing registration: preserves .env.local keys and confirms ENTRA_CLIENT_ID when a local secret is already present', { timeout: 10000 }, async () => {
     await writeFile(
       join(env.dir, '.env.local'),
-      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\nEXISTING_KEY=keep-me\n`,
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\nEXISTING_KEY=keep-me\n`,
     );
 
     mockServer.server.use(
@@ -612,7 +612,7 @@ describe('eai provision entra', () => {
   test('existing registration without a usable local secret exits with a rotate-secret instruction', { timeout: 10000 }, async () => {
     await writeFile(
       join(env.dir, '.env.local'),
-      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_SECRET=empty\n`,
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\nENTRA_CLIENT_SECRET=empty\n`,
     );
 
     mockServer.server.use(
@@ -647,7 +647,7 @@ describe('eai provision entra', () => {
 
     await writeFile(
       join(env.dir, '.env.local'),
-      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_ID=empty\nENTRA_CLIENT_SECRET=empty\n`,
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\nENTRA_CLIENT_ID=empty\nENTRA_CLIENT_SECRET=empty\n`,
     );
 
     mockServer.server.use(
@@ -666,7 +666,7 @@ describe('eai provision entra', () => {
 
     expect(requestBody).toEqual({
       tenant_id: 'test-tenant-id',
-      vertical_name: 'my-vertical',
+      app_name: 'my-app',
       redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
       idempotent: true,
     });
@@ -679,7 +679,7 @@ describe('eai provision entra', () => {
   test('tenant authorization warning exits before reporting provisioning as usable', { timeout: 10000 }, async () => {
     await writeFile(
       join(env.dir, '.env.local'),
-      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\n`,
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\n`,
     );
 
     mockServer.server.use(
@@ -718,7 +718,7 @@ describe('eai provision entra', () => {
 
     await writeFile(
       join(env.dir, '.env.local'),
-      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_ID=local-client\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\n`,
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\nENTRA_CLIENT_ID=local-client\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\n`,
     );
 
     mockServer.server.use(
@@ -737,7 +737,7 @@ describe('eai provision entra', () => {
 
     expect(requestBody).toEqual({
       tenant_id: 'test-tenant-id',
-      vertical_name: 'my-vertical',
+      app_name: 'my-app',
       redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
       idempotent: true,
     });
@@ -752,7 +752,7 @@ describe('eai provision entra', () => {
 
     await writeFile(
       join(env.dir, '.env.local'),
-      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-vertical\nENTRA_CLIENT_ID=client-1\n`,
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\nENTRA_CLIENT_ID=client-1\n`,
     );
 
     mockServer.server.use(
@@ -821,7 +821,7 @@ describe('eai provision entra', () => {
 
     expect(requestBody).toEqual({
       tenant_id: 'test-tenant-id',
-      vertical_name: 'my-vertical',
+      app_name: 'my-app',
       redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
       idempotent: true,
     });
@@ -867,7 +867,7 @@ describe('eai provision entra', () => {
 
     expect(requestBody).toEqual({
       tenant_id: 'test-tenant-id',
-      vertical_name: 'my-vertical',
+      app_name: 'my-app',
       redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
       idempotent: true,
     });
@@ -932,7 +932,7 @@ describe('eai provision entra', () => {
       join(env.dir, '.env.local'),
       [
         `BASE_URL_PUBLIC_API=${API_BASE}`,
-        'NEXT_PUBLIC_APP_NAME=my-vertical',
+        'NEXT_PUBLIC_APP_NAME=my-app',
         `ENTRA_TENANT_NAME=${EXAMPLE_AUTH_TENANT_NAME}`,
         `ENTRA_TENANT_ID=${EXAMPLE_AUTH_TENANT_ID}`,
         `ENTRA_SCOPES=openid profile email offline_access ${EXAMPLE_PUBLIC_API_SCOPE}`,

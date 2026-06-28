@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/3_gofer_plan.md
-  canonicalChecksum: a3b01ef928a8b1bb6eeab5edc2cfa0e9329e5f276b08ba653e71c5af44e79a51
+  canonicalChecksum: 78baa89267480dfc4488c5e7c15d3fe5951d1bd94e2d31d2e9e6f06f0afc67f9
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -692,7 +692,7 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
 5. **Deployment convention** — reference the configured deployment
    documentation for the target project and note which environment
    (dev/staging/prod) each deliverable targets.
-6. **Integration map handoff** — restate the Vertical App → EAI Services →
+6. **Integration map handoff** — restate the App → EAI Services →
    Deployment Target chain from `spec.md` and bind each link to a task
    identifier in `tasks.md`.
 7. **Contract pack handoff** — reference `{FEATURE_DIR}/contract-pack.md` and

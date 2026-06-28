@@ -259,16 +259,16 @@ Diagnostics:
     }
 
     const env = await loadEnvFile(root);
-    const verticalName = env.NEXT_PUBLIC_APP_NAME;
+    const appName = env.NEXT_PUBLIC_APP_NAME;
 
-    if (!verticalName) {
+    if (!appName) {
       out.error('NEXT_PUBLIC_APP_NAME is not set in .env.local. Run `eai init` to scaffold an app first.');
       process.exit(1);
     }
 
     // Check if ENTRA_CLIENT_ID already exists
     if (hasUsableLocalEntraClientId(env) && !options.force && !options.rotateSecret) {
-      out.warn(`ENTRA_CLIENT_ID is already set for ${chalk.cyan(verticalName)}.`);
+      out.warn(`ENTRA_CLIENT_ID is already set for ${chalk.cyan(appName)}.`);
       out.info(`Use ${chalk.cyan('eai provision entra --force')} to re-check the remote registration and confirm ENTRA_CLIENT_ID.`);
       out.info(`Use ${chalk.cyan('eai provision entra --rotate-secret')} to rotate and write a new ENTRA_CLIENT_SECRET.`);
       process.exit(0);
@@ -306,7 +306,7 @@ Diagnostics:
         out.error('ENTRA_CLIENT_ID is not set in .env.local. Run `eai provision entra` first.');
         process.exit(1);
       }
-      out.info(`Rotating Entra client secret for ${chalk.cyan(verticalName)}...`);
+      out.info(`Rotating Entra client secret for ${chalk.cyan(appName)}...`);
       try {
         const rotated = await client.rotateEntraAppSecret({
           tenantId,
@@ -317,7 +317,7 @@ Diagnostics:
           ENTRA_CLIENT_SECRET: rotated.clientSecret,
           EAI_TENANT_ID: rotated.tenantId,
         });
-        out.success(`Entra client secret rotated for ${chalk.cyan(verticalName)}`);
+        out.success(`Entra client secret rotated for ${chalk.cyan(appName)}`);
         out.table([
           ['Client ID', chalk.dim(rotated.clientId)],
           ['Client Secret', chalk.dim('[written to .env.local]')],
@@ -331,7 +331,7 @@ Diagnostics:
       }
     }
 
-    out.info(`Provisioning Entra app registration for ${chalk.cyan(verticalName)}...`);
+    out.info(`Provisioning Entra app registration for ${chalk.cyan(appName)}...`);
 
     let result: {
       clientId: string;
@@ -355,7 +355,7 @@ Diagnostics:
     try {
       result = await client.provisionEntraApp({
         tenantId,
-        verticalName,
+        appName,
         redirectUris,
         // The platform route is intentionally idempotent: it creates on first run and
         // returns the existing app ID on later runs without attempting secret rotation.
@@ -398,7 +398,7 @@ Diagnostics:
     }
 
     if (result.existing && !result.clientSecret) {
-      out.info(`App registration already exists for ${chalk.cyan(verticalName)}.`);
+      out.info(`App registration already exists for ${chalk.cyan(appName)}.`);
       if (hasUsableLocalEntraSecret(env)) {
         out.info('Your existing ENTRA_CLIENT_SECRET in .env.local remains valid.');
       } else {
@@ -429,7 +429,7 @@ Diagnostics:
       ...optionalEnv,
     });
 
-    out.success(`Entra app registration created for ${chalk.cyan(verticalName)}`);
+    out.success(`Entra app registration created for ${chalk.cyan(appName)}`);
     const tableRows: Array<[string, string]> = [
       ['Client ID', chalk.dim(result.clientId)],
       ['Client Secret', chalk.dim('[written to .env.local]')],

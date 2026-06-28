@@ -147,7 +147,7 @@ title: '{{feature-name}} Stakeholder Presentation'
 ````
 
 - Diagram: {{architecture-diagram-path-or-link}}
-- Components: {{vertical-app}} -> {{eai-services}} -> {{deployment-target}}
+- Components: {{app}} -> {{eai-services}} -> {{deployment-target}}
 - Decision rationale: {{why-this-architecture}}
 
 ---

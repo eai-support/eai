@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/gofer_eai_first_run.md
-  canonicalChecksum: 8bd8ce88d0404928bb9f318bb954a2ee2718980a8bb9a452f4e7d2d2230cd4c5
+  canonicalChecksum: eb5e35e2bb0cb1ac9c73df1330eaf43168cb18704208e58824e5ea43684a9ff9
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -155,7 +155,7 @@ Specifically note whether the installed CLI advertises the commands needed for:
 
 - app scaffolding via `eai init`
 - tenant selection via `eai tenant select`
-- app enrollment via `eai vertical`
+- app enrollment via `eai app`
 - resource schema discovery via `eai resources schema`
 - workflow readiness via `eai workflow readiness`
 - Entra app registration and redirect URI provisioning via `eai provision entra`
@@ -352,7 +352,7 @@ Each section should include:
 - EAI registry status
 - EAI CLI release status from `eai update --check`
 - EAI CLI capability source (`eai --describe` timestamp)
-- EAI capability inventory for init, tenant, vertical, resources, workflow,
+- EAI capability inventory for init, tenant, app, resources, workflow,
   template, Gofer-refresh, and blocks commands
 - Login status without tokens
 - Tenant readiness without private payloads

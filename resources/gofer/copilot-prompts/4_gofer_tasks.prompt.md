@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/4_gofer_tasks.md
-  canonicalChecksum: a1c457b4de1ea383630cd01507fc952fdf5f59bd0d081d6064d6d3f4b4c2fa4b
+  canonicalChecksum: 4ce043e3c6472ecd174a68f7b1c290287f3e2b25081c0257fe2867c1a7589d4c
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -521,7 +521,7 @@ deploy-doctor evidence exist before any deploy command runs.
      tenant-admin membership with `eai tenant list --format json`, initialize
      the EAI app template with `eai init <app-name> --skip-prompts
      --company-tenant <tenant-id>` when confirmed, and confirm app enrollment
-     with `eai vertical list/create/select`.
+     with `eai app list/create/select`.
    - Do not emit object-type, UI, implementation, deployment, or service-fit
      tasks until EAI readiness is `ready` or explicitly deferred by the user.
    - Never invent tenant IDs, app keys, app URLs, or platform capabilities.
@@ -596,7 +596,7 @@ precondition to downstream implementation tasks:
 `tasks.md` MUST also include:
 
 - EAI readiness unblock -> `eai-preflight.md` before any remote platform task.
-- App resource provisioning -> `eai vertical provision` before any claim of
+- App resource provisioning -> `eai app provision` before any claim of
   object-type seeding or preview readiness.
 - Object-type publish -> `eai types seed` only after provisioning and
   validation are complete.

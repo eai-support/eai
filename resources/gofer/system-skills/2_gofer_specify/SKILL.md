@@ -686,22 +686,22 @@ remain opt-in and migration-only.
 
 When the workflow profile is `enterpriseai`, `spec.md` MUST include an explicit
 **Integration Map** section that traces the flow from end-user interaction to
-the deployed EnterpriseAI vertical application and back. The map must be
+the deployed EnterpriseAI app and back. The map must be
 expressed as an ordered dependency chain following the pattern:
 
 ```
-Vertical App -> EAI Services -> Deployment Target
+App -> EAI Services -> Deployment Target
 ```
 
 At minimum the map must name:
 
-1. **Vertical App**: the student-facing or business-facing vertical being
+1. **App**: the student-facing or business-facing app being
    delivered (maps to the `eai-app-template` reference).
-2. **EAI Services**: the EnterpriseAI platform services the vertical consumes
+2. **EAI Services**: the EnterpriseAI platform services the app consumes
    (maps to the current public platform documentation or explicitly provided
    project references).
 3. **Deployment Target**: the deployment environment and pipeline that will host
-   the running vertical (maps to the configured deployment documentation for the
+   the running app (maps to the configured deployment documentation for the
    target project).
 
 Each link in the chain must reference the internal API contract that carries the
@@ -741,7 +741,7 @@ For EnterpriseAI public-facing work, the contract pack must also separate:
 - **Private platform knowledge**: internal service topology, direct downstream
   credentials, private provisioning paths, and any bypass around plan limits or
   AuthZ. These may inform internal implementation tasks, but must not be copied
-  into public docs, generated help, templates, or vertical guidance.
+  into public docs, generated help, templates, or app guidance.
 
 ---
 

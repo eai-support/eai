@@ -426,7 +426,7 @@ explicitly `enterpriseai`, generate:
      `https://eai-tools.github.io/eai/scenarios`, and
      `https://github.com/eai-tools/eai-app-template`.
    - Record whether `eai --describe` found the expected scaffolding,
-     authentication, tenant, vertical app, resource schema, workflow
+     authentication, tenant, app, resource schema, workflow
      readiness, block catalog, diagnostics, Gofer-refresh, and template-check
      commands.
    - Record whether `eai update --check` reports the installed CLI is current

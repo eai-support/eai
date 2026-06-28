@@ -142,7 +142,7 @@ Specifically note whether the installed CLI advertises the commands needed for:
 
 - app scaffolding via `eai init`
 - tenant selection via `eai tenant select`
-- app enrollment via `eai vertical`
+- app enrollment via `eai app`
 - resource schema discovery via `eai resources schema`
 - workflow readiness via `eai workflow readiness`
 - Entra app registration and redirect URI provisioning via `eai provision entra`
@@ -339,7 +339,7 @@ Each section should include:
 - EAI registry status
 - EAI CLI release status from `eai update --check`
 - EAI CLI capability source (`eai --describe` timestamp)
-- EAI capability inventory for init, tenant, vertical, resources, workflow,
+- EAI capability inventory for init, tenant, app, resources, workflow,
   template, Gofer-refresh, and blocks commands
 - Login status without tokens
 - Tenant readiness without private payloads

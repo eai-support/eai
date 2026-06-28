@@ -13,18 +13,18 @@ workflowProfile: enterpriseai
 
 ## Selected Scenario
 
-| Item                  | Detail                            |
-| --------------------- | --------------------------------- |
-| Business outcome      | {{outcome}}                       |
-| Primary users         | {{users}}                         |
-| Value metric          | {{metric}}                        |
-| EnterpriseAI vertical | {{vertical-app}}                  |
-| App classification    | {{app-or-non-app-with-rationale}} |
-| Pipeline mode         | {{shared-stages-app-or-non-app}}  |
-| Profile choice        | {{external-internal-hybrid}}      |
-| Package lane          | {{package-lane}}                  |
-| Coupling status       | {{coupling-status}}               |
-| Public-readiness      | {{target-or-na}}                  |
+| Item               | Detail                            |
+| ------------------ | --------------------------------- |
+| Business outcome   | {{outcome}}                       |
+| Primary users      | {{users}}                         |
+| Value metric       | {{metric}}                        |
+| EnterpriseAI app   | {{app}}                           |
+| App classification | {{app-or-non-app-with-rationale}} |
+| Pipeline mode      | {{shared-stages-app-or-non-app}}  |
+| Profile choice     | {{external-internal-hybrid}}      |
+| Package lane       | {{package-lane}}                  |
+| Coupling status    | {{coupling-status}}               |
+| Public-readiness   | {{target-or-na}}                  |
 
 ## AI-Augmented Journey Summary
 
@@ -65,9 +65,9 @@ rationale.
 
 ## AI-Readable Blocks Bridge Context
 
-| Block ID | Package Lane | Storybook Story ID | Theme Override Points | Coupling Status | Porting / Decoupling Decision |
-| -------- | ------------ | ------------------ | --------------------- | --------------- | ----------------------------- |
-| {{block-id}} | {{lane}} | {{story-id-or-na}} | {{theme-overrides}} | {{coupling-status}} | {{reuse-port-adapter-exception}} |
+| Block ID     | Package Lane | Storybook Story ID | Theme Override Points | Coupling Status     | Porting / Decoupling Decision    |
+| ------------ | ------------ | ------------------ | --------------------- | ------------------- | -------------------------------- |
+| {{block-id}} | {{lane}}     | {{story-id-or-na}} | {{theme-overrides}}   | {{coupling-status}} | {{reuse-port-adapter-exception}} |
 
 ## Next Agent Instructions
 
