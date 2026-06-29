@@ -982,12 +982,23 @@ Comprehensive diagnostics with fix suggestions.
 ### Maintenance Commands
 
 #### `eai update`
-Check for and install CLI updates from the EAI static registry.
+Check for and install CLI updates from the EAI static registry, then maintain
+safe repo-local project assets when the command is run inside an EAI project.
 
 **Options**:
-- `--check` — Only check for updates without installing
+- `--check` — Only check for CLI, Gofer, and app-template status without installing or writing files
+- `--no-project-refresh` — Skip Gofer/app-template maintenance for the current project
 
-**Update channel**: `https://eai-tools.github.io/eai/registry/@eai-tools/cli`. No platform API calls.
+**Update channel**: `https://eai-tools.github.io/eai/registry/@eai-tools/cli`.
+No platform API calls.
+
+**Project maintenance**:
+- Normal `eai update` refreshes safe Gofer-managed files with the same backups
+  and conflict detection as `eai gofer refresh`.
+- App-template and UI files are not auto-merged. The CLI reports drift and
+  points to `eai template check` for manual review.
+- Interactive update prompts are suppressed for CI, non-TTY, `--describe`,
+  `--format json`, and `--json`.
 
 ---
 
@@ -999,7 +1010,8 @@ Safely refresh Gofer-managed assets in the current project.
 - `--force` — Overwrite conflicting managed files after backing them up
 - `--format <format>` — Output format (text|json, default: text)
 
-**No API calls** — local file diff and copy from the bundled Gofer assets
+**No API calls** — local file diff and copy from the latest public `eai-gofer`
+release when available, falling back to bundled Gofer assets
 
 ---
 

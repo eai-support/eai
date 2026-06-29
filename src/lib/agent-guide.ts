@@ -41,7 +41,7 @@ const guide: AgentGuide = {
     {
       command: 'eai update --check',
       mutates: false,
-      purpose: 'Check whether the installed CLI is older than the published static-registry release.',
+      purpose: 'Check whether the installed CLI, Gofer assets, or app-template snapshot need attention.',
     },
     {
       command: 'eai whoami',
@@ -93,7 +93,7 @@ const guide: AgentGuide = {
         {
           command: 'eai doctor --check-updates',
           mutates: false,
-          purpose: 'Check CLI, Gofer, and template drift.',
+          purpose: 'Check CLI, Gofer, and template drift without changing files.',
         },
       ],
     },
@@ -127,7 +127,7 @@ const guide: AgentGuide = {
       instruction: 'Check login, tenant, CLI release, project assets, and platform-facing contracts.',
       commands: [
         { command: 'eai whoami', mutates: false, purpose: 'Show current user and tenant context.' },
-        { command: 'eai update --check', mutates: false, purpose: 'Check installed CLI release.' },
+        { command: 'eai update --check', mutates: false, purpose: 'Check CLI release plus Gofer/template currency.' },
         { command: 'eai doctor --check-updates', mutates: false, purpose: 'Check CLI, Gofer, and template drift.' },
         { command: 'eai verify calls --format json', mutates: false, purpose: 'Audit platform-facing contracts.' },
       ],

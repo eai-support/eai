@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { createServer, type Server } from 'node:http';
+import { access, mkdir, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import {
   buildUpdateInstallArgs,
   buildUpdatePermissionGuidance,
@@ -8,11 +11,15 @@ import {
 import {
   compareVersions,
   selectNewestRelease,
+  shouldOfferInteractiveUpdatePrompt,
 } from '../../src/lib/update-check.js';
 import { getNpmExecutable } from '../../src/lib/npm.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { runCommand } from '../helpers/action-dsl.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
+
+const require = createRequire(import.meta.url);
+const pkg = require('../../package.json') as { version: string };
 
 async function startPackumentServer(latestVersion: string): Promise<{ readonly url: string; readonly close: () => Promise<void> }> {
   const server: Server = createServer((_request, response) => {
@@ -41,6 +48,36 @@ async function startPackumentServer(latestVersion: string): Promise<{ readonly u
       });
     }),
   };
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function createEaiProjectFixture(root: string): Promise<void> {
+  await mkdir(join(root, 'src', 'eai.config'), { recursive: true });
+  await writeFile(
+    join(root, 'src', 'eai.config', 'object-types.ts'),
+    'export const objectTypes = {};\n',
+    'utf-8',
+  );
+  await writeFile(
+    join(root, 'package.json'),
+    `${JSON.stringify({
+      name: '@eai-tools/update-maintenance-fixture',
+      version: '0.0.1',
+      type: 'module',
+      dependencies: {
+        '@eai-tools/core': '1.0.0',
+      },
+    }, null, 2)}\n`,
+    'utf-8',
+  );
 }
 
 describe('buildUpdateInstallArgs', () => {
@@ -187,6 +224,83 @@ describe('discovery update notifier', () => {
       expect(schema.subcommands.map((command) => command.command)).toEqual(
         expect.arrayContaining(['errors', 'agent']),
       );
+    } finally {
+      await close();
+    }
+  });
+});
+
+describe('interactive update prompt safety', () => {
+  const tty = { isTTY: true };
+  const notTty = { isTTY: false };
+
+  test('offers update prompt only for safe interactive text commands', () => {
+    expect(shouldOfferInteractiveUpdatePrompt(['whoami'], {}, tty, tty)).toBe(true);
+    expect(shouldOfferInteractiveUpdatePrompt(['whoami', '--format', 'json'], {}, tty, tty)).toBe(false);
+    expect(shouldOfferInteractiveUpdatePrompt(['whoami', '--json'], {}, tty, tty)).toBe(false);
+    expect(shouldOfferInteractiveUpdatePrompt(['--describe'], {}, tty, tty)).toBe(false);
+    expect(shouldOfferInteractiveUpdatePrompt(['whoami'], { CI: 'true' }, tty, tty)).toBe(false);
+    expect(shouldOfferInteractiveUpdatePrompt(['whoami'], {}, notTty, tty)).toBe(false);
+    expect(shouldOfferInteractiveUpdatePrompt(['whoami'], { NO_UPDATE_NOTIFIER: '1' }, tty, tty)).toBe(false);
+  });
+});
+
+describe('eai update project maintenance', () => {
+  async function createMaintenanceContext(): Promise<{
+    readonly env: TestEnvironment;
+    readonly ctx: TestContext;
+    readonly close: () => Promise<void>;
+  }> {
+    const env = await createTestEnvironment();
+    const server = await startPackumentServer(pkg.version);
+    await createEaiProjectFixture(env.dir);
+
+    const ctx: TestContext = {
+      workingDir: env.dir,
+      mockAPI: {} as TestContext['mockAPI'],
+      env: {
+        EAI_UPDATE_PACKUMENT_URL: server.url,
+        NO_COLOR: '1',
+      },
+      prompts: [],
+    };
+
+    return {
+      env,
+      ctx,
+      close: async () => {
+        await server.close();
+        await env.cleanup();
+      },
+    };
+  }
+
+  test('runs read-only project maintenance during update checks', async () => {
+    const { env, ctx, close } = await createMaintenanceContext();
+    try {
+      const result = await runCommand(ctx, 'eai update --check');
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('Already on the latest version');
+      expect(result.stdout).toContain('Project Maintenance');
+      expect(result.stdout).toContain('Gofer-managed asset refresh is available');
+      expect(await pathExists(join(env.dir, '.eai-manifest.json'))).toBe(false);
+    } finally {
+      await close();
+    }
+  });
+
+  test('applies safe Gofer maintenance during explicit update', async () => {
+    const { env, ctx, close } = await createMaintenanceContext();
+    try {
+      const result = await runCommand(ctx, 'eai update');
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('Already on the latest version');
+      expect(result.stdout).toContain('Project Maintenance');
+      expect(result.stdout).toContain('Gofer-managed assets refreshed');
+      expect(await pathExists(join(env.dir, '.eai-manifest.json'))).toBe(true);
+      expect(await pathExists(join(env.dir, '.specify', 'commands', '0_business_scenario.md'))).toBe(true);
     } finally {
       await close();
     }
