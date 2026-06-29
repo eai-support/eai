@@ -25,7 +25,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
 | `E270` | `object_type_not_published` | Object Type is not published for the active tenant. |
-| `E275` | `resource_search_embedding_required` | Semantic resource search is not ready for this v4 passive ResourceAPI tenant. |
+| `E275` | `resource_search_embedding_required` | Semantic resource search is not ready for this tenant. |
 | `E280` | `workflow_operator_required` | Workflow runtime binding requires operator assistance. |
 | `E244` | `tenant_data_install_no_match` | Tenant data/schema setup is not fully provisioned. |
 
@@ -339,7 +339,7 @@ None.
 - CLI version
 - types seed summary
 
-## E275: Semantic resource search is not ready for this v4 passive ResourceAPI tenant.
+## E275: Semantic resource search is not ready for this tenant.
 
 | Field | Value |
 | --- | --- |
@@ -349,14 +349,14 @@ None.
 
 ### Why This Might Happen
 
-- The PublicAPI v4 passive ResourceAPI route can be available for full-text search while semantic search modes are still not ready.
+- The v4 resource search endpoint can be available for full-text search while semantic search modes are still not ready.
 - Hybrid and vector search need an additional semantic-search capability before the platform can create query embeddings.
 - This is not fixed by retrying the same hybrid or vector search command; use full-text search or check readiness first.
-- This guidance applies to eai resources commands using the v4 passive ResourceAPI surface, not legacy v1/v3 or active ResourceAPI behavior.
+- This guidance applies to eai resources commands using the public v4 resource surface.
 
 ### Diagnostics
 
-- `eai resources storage doctor --format json` (read-only) — Check whether fulltext, hybrid, and vector search are ready for the active tenant through the v4 passive ResourceAPI route.
+- `eai resources storage doctor --format json` (read-only) — Check whether fulltext, hybrid, and vector search are ready for the active tenant.
 - `eai resources schema --format json` (read-only) — Confirm the tenant has published Object Types to search.
 
 ### Fixes
