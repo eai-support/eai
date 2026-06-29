@@ -118,7 +118,7 @@ describe('eai resources command guidance', () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
     const output = joinedConsoleOutput(errSpy);
     expect(output).toContain(
-      'Semantic resource search is not ready for this v4 passive ResourceAPI tenant.',
+      'Semantic resource search is not ready for this tenant.',
     );
     expect(output).toContain('eai resources storage doctor --format json');
     expect(output).toContain('eai resources search "<query>" --fulltext');
