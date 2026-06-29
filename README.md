@@ -448,7 +448,7 @@ Use these commands instead:
 # See whether a newer CLI release exists
 eai update --check
 
-# See whether this repo's Gofer-managed files differ from the installed CLI bundle
+# See whether this repo's Gofer-managed files differ from the available Gofer assets
 eai doctor --check-updates
 
 # Preview safe Gofer-managed asset updates for the current repo
@@ -463,6 +463,9 @@ eai gofer refresh
 
 Important boundaries:
 
+- `eai gofer refresh` prefers the latest public `eai-gofer` release at runtime,
+  so Gofer asset updates do not require a new `eai` CLI release. If the latest
+  release cannot be reached or prepared, it falls back to the bundled snapshot.
 - `eai gofer refresh` manages the Gofer-owned surfaces copied by `eai init`
   such as `.specify/`, `.claude/`, `.agents/skills/`, `.gemini/`, and
   generated Copilot Gofer files.
@@ -566,7 +569,7 @@ auth, and preview canaries live in `enterpriseaigroup/eai-testing-dev` under the
 `eai-cli` cross-service surface. Keep prod CLI canaries read-only; preview
 lifecycle checks must stay explicit and cleanup-backed.
 
-The release path publishes the repository exactly as committed. Bundled Gofer and linked-source refreshes happen separately via `npm run sync:gofer` / `npm run sync:linked-sources` and should be committed before you cut a release instead of being fetched during publish time.
+The release path publishes the repository exactly as committed. Bundled Gofer and linked-source refreshes happen separately via `npm run sync:gofer` / `npm run sync:linked-sources` and should be committed before you cut a release. At runtime, `eai gofer refresh` still checks the public latest `eai-gofer` release and falls back to that bundled snapshot when offline.
 
 Before making or keeping the repository public, run a public-readiness check:
 
