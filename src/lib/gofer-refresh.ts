@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
-import { access, chmod, copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, relative } from 'node:path';
+import { execFile } from 'node:child_process';
+import { access, chmod, copyFile, cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, join, relative, resolve } from 'node:path';
+import { promisify } from 'node:util';
 import {
   GOFER_RESOURCE_MAPPINGS,
   installClaudeHooks,
@@ -12,6 +15,33 @@ import {
 import type { GoferInstallOptions } from './gofer-installer.js';
 import type { GoferManagedFileState, ProjectManifest } from './project-manifest.js';
 import { saveProjectManifest } from './project-manifest.js';
+
+const execFileAsync = promisify(execFile);
+const GOFER_REPO_URL = 'https://github.com/eai-tools/eai-gofer.git';
+const GOFER_RELEASE_MANIFEST_URL = 'https://eai-tools.github.io/eai-gofer/releases/plugins/eai-gofer/gemini-extension.json';
+const GOFER_FETCH_TIMEOUT_MS = 5000;
+const GOFER_CACHE_ROOT = join(homedir(), '.eai', 'gofer-cache');
+const GOFER_BASE_RESOURCE_DIR = join('extension', 'resources');
+const GOFER_EXTRA_RESOURCE_MAPPINGS: readonly (readonly [string, string])[] = [
+  ['.specify/commands', 'commands'],
+  ['.specify/memory', 'memory'],
+  ['.specify/references', 'references'],
+  ['.system/skills', 'system-skills'],
+  ['.agents/skills', 'agents-skills'],
+];
+
+interface GoferBundleMetadata {
+  readonly commit?: string;
+  readonly describe?: string;
+  readonly syncedAt?: string;
+  readonly source?: 'latest' | 'bundled';
+  readonly warning?: string;
+}
+
+interface GoferResourcesSource {
+  readonly root: string;
+  readonly metadata: GoferBundleMetadata;
+}
 
 export interface GoferRefreshSummary {
   added: number;
@@ -35,11 +65,7 @@ export interface GoferRefreshPlanItem {
 export interface GoferRefreshPlan {
   readonly projectRoot: string;
   readonly manifest: ProjectManifest | null;
-  readonly bundle: {
-    readonly commit?: string;
-    readonly describe?: string;
-    readonly syncedAt?: string;
-  };
+  readonly bundle: GoferBundleMetadata;
   readonly items: readonly GoferRefreshPlanItem[];
   readonly summary: GoferRefreshSummary;
   readonly firstRefresh: boolean;
@@ -77,26 +103,223 @@ async function readCurrentHash(path: string): Promise<string | null> {
   return hashContents(await readFile(path));
 }
 
-export async function readGoferBundleMetadata(): Promise<{ commit?: string; describe?: string; syncedAt?: string }> {
-  const metadataPath = join(resolveGoferResourcesPath(), '.gofer-version');
+async function readResourcesMetadata(root: string): Promise<GoferBundleMetadata> {
+  const metadataPath = join(root, '.gofer-version');
   try {
     const raw = JSON.parse(await readFile(metadataPath, 'utf-8')) as {
       commit?: string;
       describe?: string;
       synced_at?: string;
+      syncedAt?: string;
     };
     return {
       commit: raw.commit,
       describe: raw.describe,
-      syncedAt: raw.synced_at,
+      syncedAt: raw.synced_at ?? raw.syncedAt,
     };
   } catch {
     return {};
   }
 }
 
-async function collectBundledCandidates(): Promise<ManagedCandidate[]> {
-  const resourcesRoot = resolveGoferResourcesPath();
+function shouldUseLatestGoferSource(): boolean {
+  const mode = (process.env['EAI_GOFER_REFRESH_SOURCE'] || '').trim().toLowerCase();
+  if (mode === 'bundled') {
+    return false;
+  }
+  if (mode === 'latest') {
+    return true;
+  }
+  if (process.env['EAI_GOFER_REFRESH_BUNDLED_ONLY'] === '1') {
+    return false;
+  }
+  if (process.env['EAI_GOFER_REFRESH_RESOURCES_PATH']) {
+    return true;
+  }
+  return process.env['NODE_ENV'] !== 'test';
+}
+
+function getLatestManifestUrl(): string {
+  return process.env['EAI_GOFER_REFRESH_MANIFEST_URL'] || GOFER_RELEASE_MANIFEST_URL;
+}
+
+function getGoferRepoUrl(): string {
+  return process.env['EAI_GOFER_REFRESH_REPO_URL'] || GOFER_REPO_URL;
+}
+
+function getGoferCacheRoot(): string {
+  return process.env['EAI_GOFER_REFRESH_CACHE_DIR'] || GOFER_CACHE_ROOT;
+}
+
+function sanitizeCacheSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]/g, '-');
+}
+
+async function fetchLatestGoferVersion(): Promise<{ version: string; generated?: string } | null> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const controller = new AbortController();
+    timeout = setTimeout(() => controller.abort(), GOFER_FETCH_TIMEOUT_MS);
+    const response = await fetch(getLatestManifestUrl(), { signal: controller.signal });
+    if (!response.ok) {
+      return null;
+    }
+    const data = await response.json() as { version?: unknown; generated?: unknown };
+    if (typeof data.version !== 'string' || !/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9._-]+)?$/.test(data.version)) {
+      return null;
+    }
+    return {
+      version: data.version,
+      generated: typeof data.generated === 'string' ? data.generated : undefined,
+    };
+  } catch {
+    return null;
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+async function runGit(args: readonly string[], cwd?: string): Promise<string> {
+  const { stdout } = await execFileAsync('git', [...args], {
+    cwd,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  return stdout.trim();
+}
+
+async function ensureLatestGoferCheckout(version: string): Promise<string> {
+  const tag = `v${version}`;
+  const checkoutRoot = join(getGoferCacheRoot(), sanitizeCacheSegment(tag), 'repo');
+  if (
+    await fileExists(join(checkoutRoot, '.git')) &&
+    await isDirectoryPath(join(checkoutRoot, GOFER_BASE_RESOURCE_DIR))
+  ) {
+    return checkoutRoot;
+  }
+
+  await rm(checkoutRoot, { recursive: true, force: true });
+  await mkdir(dirname(checkoutRoot), { recursive: true });
+  await runGit([
+    'clone',
+    '--depth',
+    '1',
+    '--branch',
+    tag,
+    getGoferRepoUrl(),
+    checkoutRoot,
+  ]);
+  return checkoutRoot;
+}
+
+async function copyDirectoryIfPresent(source: string, target: string): Promise<void> {
+  if (!(await isDirectoryPath(source))) {
+    return;
+  }
+  await mkdir(target, { recursive: true });
+  await cp(source, target, { recursive: true, force: true });
+}
+
+async function writeResourcesMetadata(root: string, metadata: GoferBundleMetadata): Promise<void> {
+  await writeFile(join(root, '.gofer-version'), JSON.stringify({
+    commit: metadata.commit,
+    describe: metadata.describe,
+    synced_at: metadata.syncedAt,
+  }, null, 2) + '\n');
+}
+
+async function normalizeGoferResourcesCheckout(
+  checkoutRoot: string,
+  metadata: GoferBundleMetadata,
+): Promise<string> {
+  const resourcesRoot = join(dirname(checkoutRoot), 'resources');
+  const currentMetadata = await readResourcesMetadata(resourcesRoot);
+  if (currentMetadata.commit && metadata.commit && currentMetadata.commit === metadata.commit) {
+    return resourcesRoot;
+  }
+
+  const baseResources = join(checkoutRoot, GOFER_BASE_RESOURCE_DIR);
+  if (!(await isDirectoryPath(baseResources))) {
+    throw new Error(`eai-gofer checkout is missing ${GOFER_BASE_RESOURCE_DIR}`);
+  }
+
+  await rm(resourcesRoot, { recursive: true, force: true });
+  await mkdir(resourcesRoot, { recursive: true });
+  await cp(baseResources, resourcesRoot, { recursive: true, force: true });
+  for (const [sourceRelative, targetRelative] of GOFER_EXTRA_RESOURCE_MAPPINGS) {
+    await copyDirectoryIfPresent(join(checkoutRoot, sourceRelative), join(resourcesRoot, targetRelative));
+  }
+  await writeResourcesMetadata(resourcesRoot, metadata);
+  return resourcesRoot;
+}
+
+async function resolveBundledGoferResourcesSource(warning?: string): Promise<GoferResourcesSource> {
+  const root = resolveGoferResourcesPath();
+  return {
+    root,
+    metadata: {
+      ...await readResourcesMetadata(root),
+      source: 'bundled',
+      warning,
+    },
+  };
+}
+
+async function resolveLatestGoferResourcesSource(): Promise<GoferResourcesSource | null> {
+  const overridePath = process.env['EAI_GOFER_REFRESH_RESOURCES_PATH'];
+  if (overridePath) {
+    const root = resolve(overridePath);
+    return {
+      root,
+      metadata: {
+        ...await readResourcesMetadata(root),
+        source: 'latest',
+      },
+    };
+  }
+
+  const latest = await fetchLatestGoferVersion();
+  if (!latest) {
+    return null;
+  }
+
+  const checkoutRoot = await ensureLatestGoferCheckout(latest.version);
+  const commit = await runGit(['rev-parse', 'HEAD'], checkoutRoot).catch(() => undefined);
+  const metadata: GoferBundleMetadata = {
+    commit,
+    describe: `v${latest.version}`,
+    syncedAt: latest.generated,
+    source: 'latest',
+  };
+  return {
+    root: await normalizeGoferResourcesCheckout(checkoutRoot, metadata),
+    metadata,
+  };
+}
+
+async function resolveGoferResourcesSource(): Promise<GoferResourcesSource> {
+  if (!shouldUseLatestGoferSource()) {
+    return resolveBundledGoferResourcesSource();
+  }
+
+  try {
+    const latest = await resolveLatestGoferResourcesSource();
+    if (latest) {
+      return latest;
+    }
+    return resolveBundledGoferResourcesSource('Could not resolve the latest eai-gofer release; using bundled assets.');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return resolveBundledGoferResourcesSource(`Could not prepare the latest eai-gofer release (${message}); using bundled assets.`);
+  }
+}
+
+export async function readGoferBundleMetadata(): Promise<GoferBundleMetadata> {
+  return (await resolveGoferResourcesSource()).metadata;
+}
+
+async function collectBundledCandidates(resourcesRoot: string): Promise<ManagedCandidate[]> {
   const candidates: ManagedCandidate[] = [];
 
   for (const mapping of GOFER_RESOURCE_MAPPINGS) {
@@ -188,11 +411,12 @@ export async function planGoferRefresh(
   manifest: ProjectManifest | null,
   options: GoferInstallOptions = {},
 ): Promise<GoferRefreshPlan> {
-  const bundle = await readGoferBundleMetadata();
+  const resourcesSource = await resolveGoferResourcesSource();
+  const bundle = resourcesSource.metadata;
   const desiredFiles = new Map<string, ManagedCandidate>();
 
   for (const candidate of [
-    ...await collectBundledCandidates(),
+    ...await collectBundledCandidates(resourcesSource.root),
     ...await collectGeneratedCandidates(projectRoot, options),
   ]) {
     desiredFiles.set(candidate.relativePath, candidate);
@@ -342,7 +566,11 @@ function createManifestFromPlan(
     packages: plan.manifest?.packages,
     template: plan.manifest?.template,
     gofer: {
-      bundle: plan.bundle,
+      bundle: {
+        commit: plan.bundle.commit,
+        describe: plan.bundle.describe,
+        syncedAt: plan.bundle.syncedAt,
+      },
       managedFiles: nextManagedFiles,
       refreshedAt: new Date().toISOString(),
     },

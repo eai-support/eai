@@ -1479,7 +1479,7 @@ async function renderDoctorUpdateStatus(root: string): Promise<void> {
       bundledGofer.commit !== manifest.gofer.bundle.commit
     ) {
       out.warn(
-        `Bundled Gofer assets differ from this project: ${projectLabel} → ${bundledLabel}`,
+        `Available Gofer assets differ from this project: ${projectLabel} -> ${bundledLabel}`,
       );
       out.dim(`  Preview: ${chalk.cyan("eai gofer refresh --check")}`);
     } else {

@@ -74,7 +74,12 @@ goferCommand
     out.success(`Project root: ${chalk.dim(root)}`);
 
     if (plan.bundle.describe || plan.bundle.commit) {
-      out.success(`Bundled Gofer assets: ${plan.bundle.describe || plan.bundle.commit}`);
+      const sourceLabel = plan.bundle.source === 'latest' ? 'latest' : 'bundled';
+      out.success(`Gofer assets: ${plan.bundle.describe || plan.bundle.commit} ${chalk.dim(`(${sourceLabel})`)}`);
+    }
+
+    if (plan.bundle.warning) {
+      out.warn(plan.bundle.warning);
     }
 
     if (resolvedManifest.source === 'inferred-init-commit') {
