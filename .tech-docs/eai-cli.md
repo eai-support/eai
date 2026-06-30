@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.1 |
-| Released | 2026-06-29 |
-| Last Material Change | Refresh Gofer assets from latest release |
-| Source Commit | `c49df6966cf25f77c59b381b7586bef7dfa133a4` |
+| Version | 3.6.2 |
+| Released | 2026-06-30 |
+| Last Material Change | Refresh app template source pin |
+| Source Commit | `82f1e7b90c2bb9ff67744b9b71226afa3d186478` |
 
 
 ## Common Workflow

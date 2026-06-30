@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.1** (2026-06-29): Refresh Gofer assets from latest release.
+The current CLI release is **v3.6.2** (2026-06-30): Refresh app template source pin.
 
 
 ## What The Pieces Do

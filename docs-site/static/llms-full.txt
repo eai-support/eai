@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.6.1.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.6.2.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -360,7 +360,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.1** (2026-06-29): Refresh Gofer assets from latest release.
+The current CLI release is **v3.6.2** (2026-06-30): Refresh app template source pin.
 
 
 ## What The Pieces Do
@@ -456,10 +456,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.1 |
-| Released | 2026-06-29 |
-| Last Material Change | Refresh Gofer assets from latest release |
-| Source Commit | `c49df6966cf25f77c59b381b7586bef7dfa133a4` |
+| Version | 3.6.2 |
+| Released | 2026-06-30 |
+| Last Material Change | Refresh app template source pin |
+| Source Commit | `82f1e7b90c2bb9ff67744b9b71226afa3d186478` |
 
 
 ## Common Workflow
@@ -1595,7 +1595,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.6.1. The same catalog powers human stderr output, JSON output for AI
+v3.6.2. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
