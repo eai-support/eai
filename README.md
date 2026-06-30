@@ -139,6 +139,7 @@ a different repository or a local template path.
 | `eai whoami` | Show auth status and project context |
 | `eai provision entra` | Create or confirm the app's Entra app registration in the CIAM for the active platform environment |
 | `eai provision entra --rotate-secret` | Rotate the existing app registration secret and write the new value to `.env.local` |
+| `eai provision entra --deauthorize --force` | Remove tenant authorization, delete the app registration, and remove local Entra credentials |
 | `eai user invite --email <email>` | Add an existing user to the active tenant or an explicit tenant |
 | `eai user provision-me` | Provision yourself to the active tenant or an explicit tenant |
 

@@ -144,6 +144,19 @@ export interface RotateEntraSecretResult {
   expiresAt: string | null;
 }
 
+export interface TenantDeauthorizationSummary {
+  removed: boolean;
+  alreadyAbsent: boolean;
+}
+
+export interface DeprovisionEntraAppResult {
+  clientId: string;
+  tenantId: string;
+  tenantDeauthorization: TenantDeauthorizationSummary;
+  appRegistrationFound: boolean;
+  appRegistrationDeleted: boolean;
+}
+
 export interface ParsedApiError {
   status: number;
   code?: string;
@@ -1339,6 +1352,60 @@ export class PlatformAPIClient {
       clientSecret,
       tenantId: readStringField(data, 'tenantId', 'tenant_id') ?? request.tenantId,
       expiresAt: readStringField(data, 'expiresAt', 'expires_at'),
+    };
+  }
+
+  async deprovisionEntraApp(request: {
+    tenantId: string;
+    clientId: string;
+    deleteRegistration?: boolean;
+  }): Promise<DeprovisionEntraAppResult> {
+    const response = await fetch(
+      `${this.baseUrl}${PUBLIC_PLATFORM_PATH}/provisioning/entra-apps/${encodeURIComponent(request.clientId)}`,
+      {
+        method: 'DELETE',
+        headers: await this.headers(),
+        body: JSON.stringify({
+          tenant_id: request.tenantId,
+          delete_registration: request.deleteRegistration ?? true,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const context = await extractServerErrorContext(response);
+      throw new PlatformAPIRequestError({
+        operation: 'Entra app deprovisioning',
+        status: response.status,
+        statusText: response.statusText,
+        ...context,
+      });
+    }
+
+    const data = await response.json() as Record<string, unknown>;
+    const clientId = readStringField(data, 'clientId', 'client_id');
+    const tenantId = readStringField(data, 'tenantId', 'tenant_id');
+    if (!clientId || !tenantId) {
+      throw new PlatformAPIRequestError({
+        operation: 'Entra app deprovisioning',
+        status: response.status,
+        statusText: 'Invalid deprovision response',
+      });
+    }
+
+    const tenantDeauthorizationRaw = (
+      data.tenantDeauthorization ?? data.tenant_deauthorization
+    ) as Record<string, unknown> | undefined;
+
+    return {
+      clientId,
+      tenantId,
+      tenantDeauthorization: {
+        removed: Boolean(tenantDeauthorizationRaw?.removed),
+        alreadyAbsent: Boolean(tenantDeauthorizationRaw?.alreadyAbsent ?? tenantDeauthorizationRaw?.already_absent),
+      },
+      appRegistrationFound: Boolean(data.appRegistrationFound ?? data.app_registration_found),
+      appRegistrationDeleted: Boolean(data.appRegistrationDeleted ?? data.app_registration_deleted),
     };
   }
 }

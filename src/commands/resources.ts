@@ -348,7 +348,9 @@ export function normalizeBatchUpdateItems(payload: unknown): Array<{ id: string;
 
 export function normalizeBatchDeleteIds(payload: unknown): string[] {
   if (Array.isArray(payload)) {
-    return payload.map(String);
+    return payload.map((item) => (
+      isRecord(item) && typeof item.id === 'string' ? item.id : String(item)
+    ));
   }
   if (isRecord(payload) && Array.isArray(payload.ids)) {
     return payload.ids.map(String);
@@ -521,6 +523,7 @@ resourcesCommand
   .option('--ids <csv>', 'Comma-separated ids to delete')
   .option('--data <json>', 'Batch payload as JSON array or object')
   .option('--file <path>', 'Read batch payload from JSON file')
+  .option('--force', 'Accepted for parity with resources delete; batch delete is non-interactive', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, options) => {
@@ -571,7 +574,7 @@ resourcesCommand
         limit: parseInt(options.limit),
       });
       if (!res.ok) {
-        out.error(`${res.status} ${res.statusText}`);
+        failCommand(null, await formatResponseError(res, 'resources.aggregate'));
         process.exit(1);
       }
       const data = await res.json() as { rows: Array<Record<string, unknown>>; totalRows: number };
@@ -717,7 +720,7 @@ resourcesCommand
     try {
       const res = await ctx.client.updateResource(type, id, data, version!);
       if (!res.ok) {
-        failCommand(spinner, `${res.status} ${res.statusText}`);
+        failCommand(spinner, await formatResponseError(res, 'resources.update'));
         process.exit(1);
       }
 

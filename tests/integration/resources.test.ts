@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PlatformAPIClient } from '../../src/lib/api.js';
+import { resourcesCommand } from '../../src/commands/resources.js';
 import {
   buildCreateResourceOutput,
   buildMissingPublishedTypeMessage,
@@ -73,6 +74,13 @@ describe('resource type diagnostics', () => {
 
   test('normalizes batch delete payload ids', () => {
     expect(normalizeBatchDeleteIds({ ids: [123, '456'] })).toEqual(['123', '456']);
+    expect(normalizeBatchDeleteIds([{ id: 'abc' }, { id: 'def' }])).toEqual(['abc', 'def']);
+  });
+
+  test('batch delete accepts force option for cleanup scripts', () => {
+    const batchDelete = resourcesCommand.commands.find((command) => command.name() === 'batch-delete');
+
+    expect(batchDelete?.options.some((option) => option.long === '--force')).toBe(true);
   });
 
   test('builds cursor-aware list URLs for resource reads', async () => {

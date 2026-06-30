@@ -781,6 +781,113 @@ describe('eai provision entra', () => {
     expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-rotated-credential>');
   });
 
+  test('deauthorize refuses to clean up without explicit force', { timeout: 10000 }, async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\nENTRA_CLIENT_ID=client-1\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\n`,
+    );
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      provisionCommand.parseAsync(['entra', '--deauthorize'], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).toContain('Refusing to deauthorize without explicit confirmation');
+    expect(output).toContain('eai provision entra --deauthorize --force');
+  });
+
+  test('deauthorize deletes the app registration and removes local Entra credentials', { timeout: 10000 }, async () => {
+    let deleteBody: unknown;
+    let createEndpointHit = false;
+
+    await writeFile(
+      join(env.dir, '.env.local'),
+      [
+        `BASE_URL_PUBLIC_API=${API_BASE}`,
+        'NEXT_PUBLIC_APP_NAME=my-app',
+        'ENTRA_CLIENT_ID=client-1',
+        'ENTRA_CLIENT_SECRET=<fixture-existing-credential>',
+        'EXISTING_KEY=keep-me',
+        '',
+      ].join('\n'),
+    );
+
+    mockServer.server.use(
+      http.delete(`${API_BASE}/v4/platform/provisioning/entra-apps/client-1`, async ({ request }) => {
+        deleteBody = await request.json();
+        return HttpResponse.json({
+          client_id: 'client-1',
+          tenant_id: 'test-tenant-id',
+          tenant_deauthorization: {
+            removed: true,
+            already_absent: false,
+          },
+          app_registration_found: true,
+          app_registration_deleted: true,
+        });
+      }),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => {
+        createEndpointHit = true;
+        return HttpResponse.json({ detail: 'should not create' }, { status: 500 });
+      }),
+    );
+
+    await provisionCommand.parseAsync(['entra', '--deauthorize', '--force'], { from: 'user' });
+
+    expect(deleteBody).toEqual({
+      tenant_id: 'test-tenant-id',
+      delete_registration: true,
+    });
+    expect(createEndpointHit).toBe(false);
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).not.toContain('ENTRA_CLIENT_ID=');
+    expect(content).not.toContain('ENTRA_CLIENT_SECRET=');
+    expect(content).toContain('EXISTING_KEY=keep-me');
+  });
+
+  test('deauthorize keeps local credentials when explicit client id differs from project env', { timeout: 10000 }, async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      [
+        `BASE_URL_PUBLIC_API=${API_BASE}`,
+        'NEXT_PUBLIC_APP_NAME=my-app',
+        'ENTRA_CLIENT_ID=local-client',
+        'ENTRA_CLIENT_SECRET=<fixture-existing-credential>',
+        '',
+      ].join('\n'),
+    );
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockServer.server.use(
+      http.delete(`${API_BASE}/v4/platform/provisioning/entra-apps/other-client`, () => HttpResponse.json({
+        client_id: 'other-client',
+        tenant_id: 'test-tenant-id',
+        tenant_deauthorization: {
+          removed: true,
+          already_absent: false,
+        },
+        app_registration_found: true,
+        app_registration_deleted: true,
+      })),
+    );
+
+    await provisionCommand.parseAsync(['entra', '--deauthorize', '--client-id', 'other-client', '--force'], { from: 'user' });
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('ENTRA_CLIENT_ID=local-client');
+    expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-existing-credential>');
+    expect(joinedConsoleOutput(warnSpy)).toContain('leaving .env.local unchanged');
+  });
+
   test('named profile API URL overrides local env when provisioning', { timeout: 10000 }, async () => {
     setActiveProfile('test');
     await mkdir(join(env.dir, '.eai'), { recursive: true });

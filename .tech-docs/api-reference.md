@@ -234,15 +234,20 @@ Create or confirm an Entra app registration for end-user auth (Auth.js).
 **Options**:
 - `--force` — Re-check the remote app registration even if `ENTRA_CLIENT_ID` already exists locally
 - `--rotate-secret` — Rotate the existing secret and write the new value to `.env.local`
+- `--deauthorize` — Remove tenant authorization and delete the app registration for cleanup; requires `--force`
+- `--client-id <id>` — Client ID to deauthorize; defaults to `ENTRA_CLIENT_ID` in `.env.local`
+- `--keep-registration` — Remove tenant authorization without deleting the app registration
 - `--debug` — Print product-safe diagnostics and request identifiers on failure
 
 **What it does**:
 1. Creates/confirms the Entra app registration on the platform
 2. Writes the client ID (and secret) to `.env.local`
+3. With `--deauthorize --force`, removes tenant authorization, deletes the app registration, and removes local `ENTRA_CLIENT_ID`/`ENTRA_CLIENT_SECRET`
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/provisioning/entra-apps` — create/confirm app registration
 - `POST /v4/platform/provisioning/entra-apps/{clientId}/rotate-secret` — rotate secret (with `--rotate-secret`)
+- `DELETE /v4/platform/provisioning/entra-apps/{clientId}` — deauthorize/delete app registration (with `--deauthorize --force`)
 
 ---
 

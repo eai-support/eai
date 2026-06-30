@@ -2,7 +2,7 @@
 /* eslint-disable no-console */
 
 const { spawnSync } = require('node:child_process');
-const { existsSync, mkdirSync, mkdtempSync, writeFileSync } = require('node:fs');
+const { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } = require('node:fs');
 const { basename, join, resolve } = require('node:path');
 
 const ROOT = resolve(__dirname, '..');
@@ -32,24 +32,24 @@ const TRACEABILITY_BASE = [
   ['eai tenant delete', 'delete', 'live-optional', 'Runs only for child-tenant cleanup when the smoke created the child tenant.'],
   ['eai user invite', 'create/update', 'live-optional', 'Runs only when EAI_E2E_INVITE_TEST_USER is set.'],
   ['eai user provision-me', 'create/update', 'live', 'Ensures the authenticated test user is provisioned to the test tenant.'],
-  ['eai resources list', 'read', 'live', 'Lists resources for every smoke Object Type.'],
-  ['eai resources batch-create', 'create', 'live', 'Creates multiple PostgreSQL smoke resources.'],
-  ['eai resources batch-update', 'update', 'live', 'Updates multiple PostgreSQL smoke resources.'],
-  ['eai resources batch-delete', 'delete', 'live', 'Deletes multiple PostgreSQL smoke resources.'],
-  ['eai resources aggregate', 'read', 'live', 'Aggregates smoke resources after CRUD.'],
-  ['eai resources get', 'read', 'live', 'Reads single PostgreSQL and DocumentDB resources.'],
-  ['eai resources create', 'create', 'live', 'Creates PostgreSQL, DocumentDB, Blob-backed, and Search-indexed resources.'],
-  ['eai resources update', 'update', 'live', 'Updates created resources and exercises optimistic locking path.'],
-  ['eai resources delete', 'delete', 'live', 'Deletes all smoke resources during cleanup.'],
-  ['eai resources query', 'read', 'live', 'Runs cross-type query over smoke Object Types.'],
+  ['eai resources list', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 because it depends on run-specific storage schema.'],
+  ['eai resources batch-create', 'create', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 and is cleaned up by batch/per-resource delete.'],
+  ['eai resources batch-update', 'update', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 against smoke-created rows.'],
+  ['eai resources batch-delete', 'delete', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 during cleanup.'],
+  ['eai resources aggregate', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 after ResourceAPI CRUD.'],
+  ['eai resources get', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 against smoke-created resources.'],
+  ['eai resources create', 'create', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 because it depends on run-specific storage schema.'],
+  ['eai resources update', 'update', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 against smoke-created resources.'],
+  ['eai resources delete', 'delete', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 during cleanup.'],
+  ['eai resources query', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 after ResourceAPI CRUD.'],
   ['eai resources storage status', 'read', 'live', 'Checks routing and provisioning status.'],
   ['eai resources storage doctor', 'read', 'live', 'Checks storage health/capabilities before search assertions.'],
-  ['eai resources search', 'read', 'live', 'Runs fulltext search, and hybrid/vector when reported ready.'],
-  ['eai resources file upload', 'create/update', 'live', 'Uploads a file to a Blob-backed resource property.'],
-  ['eai resources file get', 'read', 'live', 'Downloads the uploaded Blob-backed resource file.'],
-  ['eai resources file delete', 'delete', 'live', 'Deletes the Blob-backed resource file.'],
+  ['eai resources search', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 after indexing a smoke resource.'],
+  ['eai resources file upload', 'create/update', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 and is cleaned up by file/resource delete.'],
+  ['eai resources file get', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 after file upload.'],
+  ['eai resources file delete', 'delete', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 during cleanup.'],
   ['eai resources schema', 'read', 'live', 'Verifies published Object Types are visible through resource schema.'],
-  ['eai resources sync-schema', 'create/update', 'live', 'Reconciles storage resources from published Object Type metadata.'],
+  ['eai resources sync-schema', 'create/update', 'live-optional', 'Dry-run runs by default. Non-dry-run requires EAI_E2E_SYNC_SCHEMA_APPLY=1 until ResourceAPI physical cleanup exists.'],
   ['eai resources doctor', 'read', 'live', 'Runs active tenant storage readiness diagnostics.'],
   ['eai app list', 'read', 'live', 'Lists apps before and after scaffold.'],
   ['eai app create', 'create', 'covered-by-init', 'The scaffold path calls the same app creation API; direct extra app creation is opt-in to avoid orphaned apps.'],
@@ -75,7 +75,7 @@ const TRACEABILITY_BASE = [
   ['eai doctor', 'read', 'live', 'Runs diagnostics in the smoke workspace.'],
   ['eai whoami', 'read', 'live', 'Confirms dedicated test identity and active tenant context.'],
   ['eai update', 'read/update', 'check-only', 'Runs `update --check`; installing over the release candidate is not safe inside release smoke.'],
-  ['eai provision entra', 'create/update', 'live-optional', 'Runs only when EAI_E2E_PROVISION_ENTRA=1 because it creates/rotates app credentials.'],
+  ['eai provision entra', 'create/update/delete', 'live-optional', 'Runs only when EAI_E2E_PROVISION_ENTRA=1 because it creates/rotates/deletes app credentials.'],
   ['eai provision resourceapi-refresh', 'create/update', 'live-optional', 'Runs when passive ResourceAPI bundle/env is configured.'],
   ['eai provision storage', 'create/update', 'live', 'Provisions storage for the active test tenant.'],
   ['eai provision resourceapi-bundle', 'create-local', 'live', 'Creates a customer-hosted storage schema bundle in the disposable workspace.'],
@@ -126,7 +126,7 @@ const SMOKE_CALLS = {
     'eai types validate',
   ],
   'eai types diff': [
-    'eai types diff --tenant-id <tenant-id> --tenant-key <app-name>',
+    'eai types diff --tenant-id <tenant-id> --tenant-key <app-name> --format json',
   ],
   'eai types pull': [
     'eai types pull --tenant-id <tenant-id> --output src/eai.config/object-types.generated.ts',
@@ -181,7 +181,7 @@ const SMOKE_CALLS = {
     'eai resources batch-delete <object-type> --tenant-id <tenant-id> --data [{"id":"<id>"}] --force --format json',
   ],
   'eai resources aggregate': [
-    'eai resources aggregate <object-type> --tenant-id <tenant-id> --group-by status --metrics {"total":{"op":"count"}} --where {"status":{"exists":true}} --limit 1000 --format json',
+    'eai resources aggregate <object-type> --tenant-id <tenant-id> --group-by status --metrics {"total":{"function":"count"}} --where {"status":{"exists":true}} --limit 1000 --format json',
   ],
   'eai resources get': [
     'eai resources get <object-type> <resource-id> --tenant-id <tenant-id> --format json',
@@ -191,7 +191,7 @@ const SMOKE_CALLS = {
     'eai resources create <object-type> --tenant-id <tenant-id> --file resource.json --format json',
   ],
   'eai resources update': [
-    'eai resources update <object-type> <resource-id> --tenant-id <tenant-id> --data {"status":"updated"} --version 1 --format json',
+    'eai resources update <object-type> <resource-id> --tenant-id <tenant-id> --data {"title":"updated","status":"updated"} --version 1 --format json',
   ],
   'eai resources delete': [
     'eai resources delete <object-type> <resource-id> --tenant-id <tenant-id> --force --format json',
@@ -224,7 +224,7 @@ const SMOKE_CALLS = {
   ],
   'eai resources sync-schema': [
     'eai resources sync-schema --tenant-id <tenant-id> --backend documentdb --dry-run --format json',
-    'eai resources sync-schema --tenant-id <tenant-id> --format json',
+    'EAI_E2E_SYNC_SCHEMA_APPLY=1 eai resources sync-schema --tenant-id <tenant-id> --format json',
   ],
   'eai resources doctor': [
     'eai resources doctor --tenant-id <tenant-id> --format json',
@@ -306,6 +306,7 @@ const SMOKE_CALLS = {
   'eai provision entra': [
     'EAI_E2E_PROVISION_ENTRA=1 eai provision entra --force --redirect-uri <callback-uri> --debug',
     'EAI_E2E_ROTATE_ENTRA_SECRET=1 eai provision entra --rotate-secret --debug',
+    'EAI_E2E_PROVISION_ENTRA=1 EAI_E2E_CLEANUP=1 eai provision entra --deauthorize --client-id <client-id> --force --debug',
   ],
   'eai provision resourceapi-refresh': [
     'EAI_E2E_RESOURCEAPI_REFRESH=1 eai provision resourceapi-refresh --admin-api-url <url> --tenant-id <tenant-id> --install-id <install-id> --apply --dry-run --backend all --rebuild-search --force-overwrite --reason smoke --change-ticket E2E-SMOKE --product <app-key> --schema-version 1 --format json',
@@ -408,6 +409,9 @@ const OPTION_DECISIONS = {
   },
   'eai provision entra': {
     '--rotate-secret': 'Secret rotation is destructive; covered only when EAI_E2E_ROTATE_ENTRA_SECRET=1 is set.',
+    '--deauthorize': 'Cleanup mode; covered when EAI_E2E_PROVISION_ENTRA=1 and EAI_E2E_CLEANUP is not 0.',
+    '--client-id': 'Cleanup can target the smoke-created client id read back from .env.local.',
+    '--keep-registration': 'Support/diagnostic mode; smoke deletes registrations so app cleanup is complete.',
   },
   'eai provision resourceapi-refresh': {
     '--no-verify': 'Negative verification bypass; not used because smoke should verify the storage status.',
@@ -429,6 +433,175 @@ const COMMON_OPTION_DECISIONS = {
   '--json': 'Deprecated JSON shortcut; new smoke calls use --format json to keep one V4-native output vocabulary.',
 };
 
+const DEFAULT_ARTIFACT_CLEANUP = {
+  createsExternalArtifact: 'No',
+  cleanupMechanism: 'Not required',
+  cleanupVerified: 'Yes - read/check command',
+};
+
+const ARTIFACT_CLEANUP = {
+  'eai init': {
+    createsExternalArtifact: 'Yes - app binding and local workspace',
+    cleanupMechanism: 'Disposable local workspace retained for evidence; no app delete command in default smoke',
+    cleanupVerified: 'Partial - summary records workspace path',
+  },
+  'eai env push': {
+    createsExternalArtifact: 'Yes - cloud env/config value',
+    cleanupMechanism: 'Opt-in only; caller owns reverting the selected key',
+    cleanupVerified: 'No - disabled by default',
+  },
+  'eai types seed': {
+    createsExternalArtifact: 'Yes - Object Type metadata',
+    cleanupMechanism: 'No Object Type delete/deprovision command yet; use dedicated smoke tenant',
+    cleanupVerified: 'No - cleanup gap documented',
+  },
+  'eai tenant create': {
+    createsExternalArtifact: 'Yes - child tenant',
+    cleanupMechanism: 'eai tenant delete <child-tenant-id> --force',
+    cleanupVerified: 'Yes when EAI_E2E_CREATE_CHILD_TENANT=1 and cleanup succeeds',
+  },
+  'eai tenant bootstrap-admin': {
+    createsExternalArtifact: 'Yes - membership/role assignment',
+    cleanupMechanism: 'Child tenant deletion when smoke created the child tenant',
+    cleanupVerified: 'Yes when child-tenant cleanup is enabled',
+  },
+  'eai tenant delete': {
+    createsExternalArtifact: 'No - cleanup command',
+    cleanupMechanism: 'Deletes smoke-created child tenant',
+    cleanupVerified: 'Yes when command returns success',
+  },
+  'eai user invite': {
+    createsExternalArtifact: 'Yes - user invite/membership',
+    cleanupMechanism: 'Opt-in only; no default invite cleanup',
+    cleanupVerified: 'No - disabled by default',
+  },
+  'eai user provision-me': {
+    createsExternalArtifact: 'Yes - current-user membership if missing',
+    cleanupMechanism: 'Dedicated test user/tenant retains membership',
+    cleanupVerified: 'Partial - membership is re-read by later checks',
+  },
+  'eai resources batch-create': {
+    createsExternalArtifact: 'Yes - ResourceAPI rows',
+    cleanupMechanism: 'eai resources batch-delete and per-resource delete fallback',
+    cleanupVerified: 'Yes when cleanup is enabled',
+  },
+  'eai resources batch-update': {
+    createsExternalArtifact: 'Updates ResourceAPI rows',
+    cleanupMechanism: 'Rows deleted after smoke',
+    cleanupVerified: 'Yes when cleanup is enabled',
+  },
+  'eai resources batch-delete': {
+    createsExternalArtifact: 'No - cleanup command',
+    cleanupMechanism: 'Deletes smoke-created batch rows',
+    cleanupVerified: 'Yes when command returns success',
+  },
+  'eai resources create': {
+    createsExternalArtifact: 'Yes - ResourceAPI rows/files/search documents',
+    cleanupMechanism: 'eai resources delete and eai resources file delete',
+    cleanupVerified: 'Yes when cleanup is enabled',
+  },
+  'eai resources update': {
+    createsExternalArtifact: 'Updates ResourceAPI rows',
+    cleanupMechanism: 'Rows deleted after smoke',
+    cleanupVerified: 'Yes when cleanup is enabled',
+  },
+  'eai resources delete': {
+    createsExternalArtifact: 'No - cleanup command',
+    cleanupMechanism: 'Deletes smoke-created resources',
+    cleanupVerified: 'Yes when command returns success',
+  },
+  'eai resources file upload': {
+    createsExternalArtifact: 'Yes - blob/file attachment',
+    cleanupMechanism: 'eai resources file delete, then resource delete',
+    cleanupVerified: 'Yes when cleanup is enabled',
+  },
+  'eai resources file delete': {
+    createsExternalArtifact: 'No - cleanup command',
+    cleanupMechanism: 'Deletes smoke-created blob/file attachment',
+    cleanupVerified: 'Yes when command returns success',
+  },
+  'eai resources sync-schema': {
+    createsExternalArtifact: 'Yes when EAI_E2E_SYNC_SCHEMA_APPLY=1',
+    cleanupMechanism: 'No ResourceAPI physical schema cleanup yet; non-dry-run is opt-in',
+    cleanupVerified: 'No - destructive apply disabled by default',
+  },
+  'eai app create': {
+    createsExternalArtifact: 'Yes - app record',
+    cleanupMechanism: 'Covered by eai init path; no default app delete command',
+    cleanupVerified: 'No - dedicated smoke tenant expected',
+  },
+  'eai app provision': {
+    createsExternalArtifact: 'Yes - app storage/provisioning metadata',
+    cleanupMechanism: 'No app storage deprovision command yet; dedicated smoke tenant expected',
+    cleanupVerified: 'No - cleanup gap documented',
+  },
+  'eai chat send': {
+    createsExternalArtifact: 'Yes - chat/workflow conversation',
+    cleanupMechanism: 'Optional workflow smoke only; no default cleanup',
+    cleanupVerified: 'No - disabled by default',
+  },
+  'eai workflow provision': {
+    createsExternalArtifact: 'Yes - workflow runtime/binding metadata',
+    cleanupMechanism: 'Opt-in only; caller owns cleanup',
+    cleanupVerified: 'No - disabled by default',
+  },
+  'eai workflow request': {
+    createsExternalArtifact: 'Yes - workflow request',
+    cleanupMechanism: 'Opt-in only; no default request cleanup',
+    cleanupVerified: 'No - disabled by default',
+  },
+  'eai docs upload': {
+    createsExternalArtifact: 'Yes - document asset',
+    cleanupMechanism: 'Opt-in only; no default document cleanup command',
+    cleanupVerified: 'No - disabled by default',
+  },
+  'eai docs classify': {
+    createsExternalArtifact: 'May create classification result',
+    cleanupMechanism: 'Tied to optional document artifact cleanup gap',
+    cleanupVerified: 'No - disabled by default',
+  },
+  'eai docs index': {
+    createsExternalArtifact: 'May create search/index artifact',
+    cleanupMechanism: 'Tied to optional document artifact cleanup gap',
+    cleanupVerified: 'No - disabled by default',
+  },
+  'eai deploy setup': {
+    createsExternalArtifact: 'Creates local deployment workflow files',
+    cleanupMechanism: 'Disposable workspace retained for evidence',
+    cleanupVerified: 'Partial - workspace summary records path',
+  },
+  'eai deploy trigger': {
+    createsExternalArtifact: 'Yes - host deployment run',
+    cleanupMechanism: 'Manual only; not run by release smoke',
+    cleanupVerified: 'No - disabled by default',
+  },
+  'eai provision entra': {
+    createsExternalArtifact: 'Yes when EAI_E2E_PROVISION_ENTRA=1 - Entra app registration and tenant allowlist entry',
+    cleanupMechanism: 'eai provision entra --deauthorize --client-id <client-id> --force',
+    cleanupVerified: 'Yes when optional provisioning and cleanup both run successfully',
+  },
+  'eai provision resourceapi-refresh': {
+    createsExternalArtifact: 'May update passive install registry/schema snapshot',
+    cleanupMechanism: 'Dry-run by default; apply is opt-in',
+    cleanupVerified: 'No for apply; disabled by default',
+  },
+  'eai provision storage': {
+    createsExternalArtifact: 'Yes - tenant storage provisioning metadata/resources',
+    cleanupMechanism: 'No tenant storage deprovision command yet; dedicated smoke tenant expected',
+    cleanupVerified: 'No - cleanup gap documented',
+  },
+  'eai provision resourceapi-bundle': {
+    createsExternalArtifact: 'Creates local bundle file only by default',
+    cleanupMechanism: 'Disposable workspace retained for evidence',
+    cleanupVerified: 'Partial - local workspace retained',
+  },
+  'eai gofer refresh': {
+    createsExternalArtifact: 'May update local Gofer-managed assets',
+    cleanupMechanism: 'Check mode by default in smoke',
+    cleanupVerified: 'Yes - no mutation in default smoke',
+  },
+};
+
 const TRACEABILITY = TRACEABILITY_BASE.map(([command, crud, coverage, notes]) => ({
   command,
   crud,
@@ -436,6 +609,7 @@ const TRACEABILITY = TRACEABILITY_BASE.map(([command, crud, coverage, notes]) =>
   notes,
   calls: SMOKE_CALLS[command] || [],
   optionDecisions: OPTION_DECISIONS[command] || {},
+  ...((ARTIFACT_CLEANUP[command] || DEFAULT_ARTIFACT_CLEANUP)),
 }));
 
 function parseArgs(argv) {
@@ -613,12 +787,12 @@ Generated from \`eai --describe\`. This table is the release-test contract for
 the public CLI command surface. Live coverage is intentionally explicit so a new
 command, alias, or option cannot be added without a coverage decision.
 
-| Command | Alias surface | CRUD / operation | Release coverage | Smoke calls / options | Deferred options | Traceability note |
-| ------- | ------------- | ---------------- | ---------------- | --------------------- | ---------------- | ----------------- |
+| Command | Alias surface | CRUD / operation | Release coverage | Creates external/platform artifact? | Cleanup mechanism | Cleanup verified? | Smoke calls / options | Deferred options | Traceability note |
+| ------- | ------------- | ---------------- | ---------------- | ----------------------------------- | ----------------- | ----------------- | --------------------- | ---------------- | ----------------- |
 ${rows.map((row) => {
   const entry = entryByCommand.get(row.command) || { aliases: [], options: [] };
   const coverage = optionCoverage(row, entry);
-  return `| \`${row.command}\` | ${markdownList(entry.aliases.map((alias) => `\`${alias}\``))} | ${row.crud} | ${row.coverage} | ${markdownList(row.calls.map((call) => `\`${call}\``))} | ${markdownList(coverage.deferred)} | ${row.notes} |`;
+  return `| \`${row.command}\` | ${markdownList(entry.aliases.map((alias) => `\`${alias}\``))} | ${row.crud} | ${row.coverage} | ${markdownCell(row.createsExternalArtifact)} | ${markdownCell(row.cleanupMechanism)} | ${markdownCell(row.cleanupVerified)} | ${markdownList(row.calls.map((call) => `\`${call}\``))} | ${markdownList(coverage.deferred)} | ${row.notes} |`;
 }).join('\n')}
 
 ## Coverage Summary
@@ -645,6 +819,9 @@ function checkTraceability(schema) {
   const missingCalls = TRACEABILITY
     .filter((row) => !row.calls || row.calls.length === 0)
     .map((row) => row.command);
+  const missingArtifactCleanup = TRACEABILITY
+    .filter((row) => !row.createsExternalArtifact || !row.cleanupMechanism || !row.cleanupVerified)
+    .map((row) => row.command);
   const missingOptionCoverage = [];
   const staleOptionDecisions = [];
   for (const row of TRACEABILITY) {
@@ -665,15 +842,6 @@ function checkTraceability(schema) {
     'eai init',
     'eai user provision-me',
     'eai types seed',
-    'eai resources create',
-    'eai resources get',
-    'eai resources update',
-    'eai resources delete',
-    'eai resources file upload',
-    'eai resources file get',
-    'eai resources file delete',
-    'eai resources search',
-    'eai resources sync-schema',
     'eai app provision',
     'eai provision storage',
   ];
@@ -687,6 +855,7 @@ function checkTraceability(schema) {
   if (stale.length) failures.push(`Stale traceability rows:\n  - ${stale.join('\n  - ')}`);
   if (duplicateRows.length) failures.push(`Duplicate traceability rows:\n  - ${[...new Set(duplicateRows)].join('\n  - ')}`);
   if (missingCalls.length) failures.push(`Missing smoke call examples:\n  - ${missingCalls.join('\n  - ')}`);
+  if (missingArtifactCleanup.length) failures.push(`Missing artifact cleanup traceability:\n  - ${missingArtifactCleanup.join('\n  - ')}`);
   if (missingOptionCoverage.length) failures.push(`Missing option coverage decisions:\n  - ${missingOptionCoverage.join('\n  - ')}`);
   if (staleOptionDecisions.length) failures.push(`Stale option coverage decisions:\n  - ${staleOptionDecisions.join('\n  - ')}`);
   if (notLive.length) failures.push(`Required live CRUD rows are not marked live:\n  - ${notLive.join('\n  - ')}`);
@@ -736,6 +905,18 @@ function createJsonFile(filePath, value) {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+function readEnvValue(projectRoot, key) {
+  const envPath = join(projectRoot, '.env.local');
+  if (!existsSync(envPath)) return '';
+  const prefix = `${key}=`;
+  const exportPrefix = `export ${key}=`;
+  for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    if (line.startsWith(prefix)) return line.slice(prefix.length).trim();
+    if (line.startsWith(exportPrefix)) return line.slice(exportPrefix.length).trim();
+  }
+  return '';
+}
+
 function sleep(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
@@ -752,6 +933,8 @@ function runLiveSmoke(cliPath) {
   const appName = `eai-e2e-smoke-${runId}`;
   const summary = [];
   const createdResources = [];
+  const applyStorageSchema = process.env.EAI_E2E_SYNC_SCHEMA_APPLY === '1';
+  let provisionedEntraClientId = '';
 
   function eai(args, options = {}) {
     const result = runCommand(command, ['--profile', profile, ...args], {
@@ -810,23 +993,37 @@ function runLiveSmoke(cliPath) {
   }
   eai(['tenant', 'select', parentTenantId], { cwd: ROOT });
   eai(['tenant', 'info', parentTenantId, '--format', 'json'], { cwd: ROOT });
-  eai(['user', 'provision-me', '--tenant', parentTenantId], { cwd: ROOT });
 
   eai(['init', appName, '--skip-prompts', '--current-dir', '--company-tenant', parentTenantId]);
+  eai(['user', 'provision-me', '--tenant', parentTenantId]);
   eai(['runtime', 'validate', '--format', 'json']);
   eai(['template', 'check', '--format', 'json']);
   eai(['gofer', 'refresh', '--check', '--format', 'json']);
   eai(['deploy', 'env', '--provider', 'generic', '--format', 'json']);
   eai(['deploy', 'setup']);
   eai(['env', 'list', '--format', 'json']);
+  if (process.env.EAI_E2E_PROVISION_ENTRA === '1') {
+    eai([
+      'provision',
+      'entra',
+      '--force',
+      '--redirect-uri',
+      `http://localhost:3000/api/auth/callback/microsoft-entra-id`,
+      '--debug',
+    ]);
+    provisionedEntraClientId = readEnvValue(projectRoot, 'ENTRA_CLIENT_ID');
+    if (process.env.EAI_E2E_ROTATE_ENTRA_SECRET === '1') {
+      eai(['provision', 'entra', '--rotate-secret', '--debug']);
+    }
+  }
   eai(['app', 'list', '--tenant-id', parentTenantId, '--format', 'json']);
   eai(['app', 'select', appName, '--tenant-id', parentTenantId, '--format', 'json']);
   eai(['app', 'provision', appName, '--tenant-id', parentTenantId, '--select', '--format', 'json']);
   eai(['provision', 'storage', '--tenant-id', parentTenantId, '--format', 'json']);
 
-  writeSmokeObjectTypes(projectRoot, appName, runId);
+  writeSmokeObjectTypes(projectRoot, appName, runId, parentTenantId);
   const bundleSchema = join(projectRoot, 'smoke-object-types.json');
-  createJsonFile(bundleSchema, { objectTypes: smokeObjectTypes(appName, runId) });
+  createJsonFile(bundleSchema, { objectTypes: smokeObjectTypes(appName, runId, parentTenantId) });
   eai([
     'provision',
     'resourceapi-bundle',
@@ -846,7 +1043,12 @@ function runLiveSmoke(cliPath) {
 
   eai(['types', 'validate']);
   eai(['types', 'seed', '--tenant-id', parentTenantId, '--tenant-key', appName, '--format', 'json']);
-  eai(['resources', 'sync-schema', '--tenant-id', parentTenantId, '--format', 'json']);
+  eai(['resources', 'sync-schema', '--tenant-id', parentTenantId, '--backend', 'documentdb', '--dry-run', '--format', 'json']);
+  if (applyStorageSchema) {
+    eai(['resources', 'sync-schema', '--tenant-id', parentTenantId, '--format', 'json']);
+  } else {
+    console.log('[e2e] Skipping ResourceAPI schema apply and CRUD; set EAI_E2E_SYNC_SCHEMA_APPLY=1 for destructive storage smoke.');
+  }
   eai(['types', 'diff', '--tenant-id', parentTenantId, '--format', 'json']);
   eai(['types', 'pull', '--tenant-id', parentTenantId, '--output', join(projectRoot, 'src', 'eai.config', 'object-types.generated.ts')]);
   eai(['resources', 'schema', '--tenant-id', parentTenantId, '--format', 'json']);
@@ -866,73 +1068,79 @@ function runLiveSmoke(cliPath) {
   const fileType = `EaiSmokeFile${runId}`;
   const searchType = `EaiSmokeSearch${runId}`;
 
-  const pgId = createResource(eai, parentTenantId, pgType, { title: 'postgres smoke', status: 'draft', count: 1 });
-  createdResources.push([pgType, pgId]);
-  eai(['resources', 'get', pgType, pgId, '--tenant-id', parentTenantId, '--format', 'json']);
-  eai(['resources', 'update', pgType, pgId, '--tenant-id', parentTenantId, '--data', JSON.stringify({ status: 'updated', count: 2 }), '--format', 'json']);
+  let batchIds = [];
+  if (applyStorageSchema) {
+    const pgId = createResource(eai, parentTenantId, pgType, { title: 'postgres smoke', status: 'draft', count: 1 });
+    createdResources.push([pgType, pgId]);
+    eai(['resources', 'get', pgType, pgId, '--tenant-id', parentTenantId, '--format', 'json']);
+    eai(['resources', 'update', pgType, pgId, '--tenant-id', parentTenantId, '--data', JSON.stringify({ title: 'postgres smoke updated', status: 'updated', count: 2 }), '--format', 'json']);
 
-  const docId = createResource(eai, parentTenantId, docType, { title: 'documentdb smoke', status: 'draft' });
-  createdResources.push([docType, docId]);
-  eai(['resources', 'get', docType, docId, '--tenant-id', parentTenantId, '--format', 'json']);
-  eai(['resources', 'update', docType, docId, '--tenant-id', parentTenantId, '--data', JSON.stringify({ status: 'updated' }), '--format', 'json']);
+    const docId = createResource(eai, parentTenantId, docType, { title: 'documentdb smoke', status: 'draft' });
+    createdResources.push([docType, docId]);
+    eai(['resources', 'get', docType, docId, '--tenant-id', parentTenantId, '--format', 'json']);
+    eai(['resources', 'update', docType, docId, '--tenant-id', parentTenantId, '--data', JSON.stringify({ title: 'documentdb smoke updated', status: 'updated' }), '--format', 'json']);
 
-  const fileId = createResource(eai, parentTenantId, fileType, { title: 'file smoke', status: 'draft' });
-  createdResources.push([fileType, fileId]);
-  const uploadFile = join(projectRoot, 'smoke-file.txt');
-  writeFileSync(uploadFile, `EAI file smoke ${runId}\n`, 'utf8');
-  const downloadFile = join(projectRoot, 'smoke-file-downloaded.txt');
-  eai(['resources', 'file', 'upload', fileType, fileId, 'attachment', uploadFile, '--tenant-id', parentTenantId, '--format', 'json']);
-  eai(['resources', 'file', 'get', fileType, fileId, 'attachment', '--tenant-id', parentTenantId, '--output', downloadFile]);
-  eai(['resources', 'file', 'delete', fileType, fileId, 'attachment', '--tenant-id', parentTenantId, '--force', '--format', 'json']);
+    const fileId = createResource(eai, parentTenantId, fileType, { title: 'file smoke', status: 'draft' });
+    createdResources.push([fileType, fileId]);
+    const uploadFile = join(projectRoot, 'smoke-file.txt');
+    writeFileSync(uploadFile, `EAI file smoke ${runId}\n`, 'utf8');
+    const downloadFile = join(projectRoot, 'smoke-file-downloaded.txt');
+    eai(['resources', 'file', 'upload', fileType, fileId, 'attachment', uploadFile, '--tenant-id', parentTenantId, '--format', 'json']);
+    eai(['resources', 'file', 'get', fileType, fileId, 'attachment', '--tenant-id', parentTenantId, '--output', downloadFile]);
+    eai(['resources', 'file', 'delete', fileType, fileId, 'attachment', '--tenant-id', parentTenantId, '--force', '--format', 'json']);
 
-  const searchId = createResource(eai, parentTenantId, searchType, {
-    title: `search smoke ${runId}`,
-    body: `unique-search-term-${runId}`,
-    status: 'published',
-  });
-  createdResources.push([searchType, searchId]);
+    const searchId = createResource(eai, parentTenantId, searchType, {
+      title: `search smoke ${runId}`,
+      body: `unique-search-term-${runId}`,
+      status: 'published',
+    });
+    createdResources.push([searchType, searchId]);
 
-  const batchFile = join(projectRoot, 'batch-create.json');
-  createJsonFile(batchFile, [
-    { title: 'batch smoke one', status: 'draft', count: 10 },
-    { title: 'batch smoke two', status: 'draft', count: 20 },
-  ]);
-  const batchCreate = parseJson(eai(['resources', 'batch-create', pgType, '--tenant-id', parentTenantId, '--file', batchFile, '--format', 'json']).stdout, {});
-  const batchIds = (batchCreate.resources || batchCreate.created || batchCreate.items || [])
-    .map((item) => item.id || item.resource?.id)
-    .filter(Boolean);
-  for (const id of batchIds) createdResources.push([pgType, id]);
-  if (batchIds.length) {
-    const batchUpdateFile = join(projectRoot, 'batch-update.json');
-    createJsonFile(batchUpdateFile, batchIds.map((id) => ({ id, version: 1, data: { status: 'batch-updated' } })));
-    eai(['resources', 'batch-update', pgType, '--tenant-id', parentTenantId, '--file', batchUpdateFile, '--format', 'json']);
+    const batchFile = join(projectRoot, 'batch-create.json');
+    createJsonFile(batchFile, [
+      { title: 'batch smoke one', status: 'draft', count: 10 },
+      { title: 'batch smoke two', status: 'draft', count: 20 },
+    ]);
+    const batchCreate = parseJson(eai(['resources', 'batch-create', pgType, '--tenant-id', parentTenantId, '--file', batchFile, '--format', 'json']).stdout, {});
+    batchIds = (batchCreate.results || batchCreate.resources || batchCreate.created || batchCreate.items || [])
+      .map((item) => item.id || item.resource?.id)
+      .filter(Boolean);
+    if (batchIds.length) {
+      const batchUpdateFile = join(projectRoot, 'batch-update.json');
+      createJsonFile(batchUpdateFile, batchIds.map((id, index) => ({
+        id,
+        version: 1,
+        data: { title: `batch smoke ${index + 1} updated`, status: 'batch-updated', count: index === 0 ? 10 : 20 },
+      })));
+      eai(['resources', 'batch-update', pgType, '--tenant-id', parentTenantId, '--file', batchUpdateFile, '--format', 'json']);
+    }
+
+    eai(['resources', 'list', pgType, '--tenant-id', parentTenantId, '--format', 'json']);
+    eai([
+      'resources',
+      'aggregate',
+      pgType,
+      '--tenant-id',
+      parentTenantId,
+      '--group-by',
+      'status',
+      '--metrics',
+      JSON.stringify({ total: { function: 'count' } }),
+      '--format',
+      'json',
+    ]);
+    eai(['resources', 'query', '--tenant-id', parentTenantId, '--types', `${pgType},${docType},${fileType},${searchType}`, '--limit', '20', '--format', 'json']);
+    retryEai(
+      eai,
+      ['resources', 'search', `unique-search-term-${runId}`, '--tenant-id', parentTenantId, '--types', searchType, '--fulltext', '--format', 'json'],
+      (result) => {
+        const payload = parseJson(result.stdout, {});
+        return Array.isArray(payload.results) && payload.results.length > 0;
+      },
+      'resource search did not return the indexed smoke resource',
+    );
+    eai(['publicapi', 'get', `/v4/data/resources/object-types?where[tenant][equals]=${encodeURIComponent(parentTenantId)}&limit=1`, '--tenant-id', parentTenantId, '--format', 'json']);
   }
-
-  eai(['resources', 'list', pgType, '--tenant-id', parentTenantId, '--format', 'json']);
-  eai([
-    'resources',
-    'aggregate',
-    pgType,
-    '--tenant-id',
-    parentTenantId,
-    '--group-by',
-    'status',
-    '--metrics',
-    JSON.stringify({ total: { op: 'count' } }),
-    '--format',
-    'json',
-  ]);
-  eai(['resources', 'query', '--tenant-id', parentTenantId, '--types', `${pgType},${docType},${fileType},${searchType}`, '--limit', '20', '--format', 'json']);
-  retryEai(
-    eai,
-    ['resources', 'search', `unique-search-term-${runId}`, '--tenant-id', parentTenantId, '--types', searchType, '--fulltext', '--format', 'json'],
-    (result) => {
-      const payload = parseJson(result.stdout, {});
-      return Array.isArray(payload.results) && payload.results.length > 0;
-    },
-    'resource search did not return the indexed smoke resource',
-  );
-  eai(['publicapi', 'get', `/v4/data/resources/object-types?where[tenant][equals]=${encodeURIComponent(parentTenantId)}&limit=1`, '--tenant-id', parentTenantId, '--format', 'json']);
 
   if (process.env.EAI_E2E_DEPLOYED_URL) {
     eai(['deploy', 'doctor', '--url', process.env.EAI_E2E_DEPLOYED_URL, '--format', 'json']);
@@ -953,13 +1161,26 @@ function runLiveSmoke(cliPath) {
   }
 
   if (cleanup) {
-    for (const [type, id] of createdResources.reverse()) {
-      eai(['resources', 'delete', type, id, '--tenant-id', parentTenantId, '--force', '--format', 'json'], { allowFailure: true });
-    }
+    const cleanupFailures = [];
     if (batchIds.length) {
       const batchDeleteFile = join(projectRoot, 'batch-delete.json');
       createJsonFile(batchDeleteFile, batchIds.map((id) => ({ id })));
-      eai(['resources', 'batch-delete', pgType, '--tenant-id', parentTenantId, '--file', batchDeleteFile, '--force', '--format', 'json'], { allowFailure: true });
+      const batchDelete = eai(['resources', 'batch-delete', pgType, '--tenant-id', parentTenantId, '--file', batchDeleteFile, '--force', '--format', 'json'], { allowFailure: true });
+      if (batchDelete.status !== 0) {
+        cleanupFailures.push('eai resources batch-delete failed');
+        for (const id of batchIds) {
+          eai(['resources', 'delete', pgType, id, '--tenant-id', parentTenantId, '--force', '--format', 'json'], { allowFailure: true });
+        }
+      }
+    }
+    for (const [type, id] of createdResources.reverse()) {
+      eai(['resources', 'delete', type, id, '--tenant-id', parentTenantId, '--force', '--format', 'json'], { allowFailure: true });
+    }
+    if (provisionedEntraClientId) {
+      eai(['provision', 'entra', '--deauthorize', '--client-id', provisionedEntraClientId, '--force', '--debug'], { allowFailure: true });
+    }
+    if (cleanupFailures.length) {
+      throw new Error(cleanupFailures.join('; '));
     }
   }
 
@@ -990,9 +1211,23 @@ function createResource(eai, tenantId, type, data) {
   return id;
 }
 
-function writeSmokeObjectTypes(projectRoot, appName, runId) {
+function tenantStorageScope(tenantId) {
+  const scope = String(tenantId || '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(-12) || 'tenant';
+  return /^[a-z]/.test(scope) ? scope : `t${scope}`;
+}
+
+function storageNamePrefix(parts, separator = '_') {
+  const replacement = separator === '-' ? '-' : '_';
+  return parts
+    .map((part) => String(part || '').toLowerCase().replace(/-/g, separator))
+    .join(separator)
+    .replace(/[^a-z0-9_-]+/g, replacement)
+    .replace(/^[_-]+|[_-]+$/g, '');
+}
+
+function writeSmokeObjectTypes(projectRoot, appName, runId, tenantId) {
   const typeFile = join(projectRoot, 'src', 'eai.config', 'object-types.ts');
-  const definitions = smokeObjectTypes(appName, runId);
+  const definitions = smokeObjectTypes(appName, runId, tenantId);
   const content = `export const objectTypes = {
   '${appName}': ${JSON.stringify(definitions, null, 4)},
 };
@@ -1000,8 +1235,10 @@ function writeSmokeObjectTypes(projectRoot, appName, runId) {
   writeFileSync(typeFile, content, 'utf8');
 }
 
-function smokeObjectTypes(appName, runId) {
-  const prefix = appName.replace(/-/g, '_');
+function smokeObjectTypes(appName, runId, tenantId) {
+  const tenantScope = tenantStorageScope(tenantId);
+  const sqlPrefix = `${storageNamePrefix([tenantScope, appName], '_')}_`;
+  const blobPrefix = `${storageNamePrefix([tenantScope, appName], '-')}-`;
   return [
     {
       name: `EaiSmokePg${runId}`,
@@ -1019,10 +1256,10 @@ function smokeObjectTypes(appName, runId) {
       linkTypes: [],
       actions: [],
       storageBinding: {
-        postgresql: {
-          connectionAlias: 'tenant-postgres',
-          schemaName: 'resources',
-          tableName: `${prefix}_pg_${runId}`,
+        sql: {
+          databaseAlias: 'tenant-postgres',
+          tenantSchemaStrategy: 'per-tenant-schema',
+          tableName: `${sqlPrefix}pg_${runId}`,
         },
       },
     },
@@ -1044,7 +1281,7 @@ function smokeObjectTypes(appName, runId) {
         documentdb: {
           databaseAlias: 'tenant-documentdb',
           databaseName: 'tenant-control-plane',
-          collectionName: `${prefix}_doc_${runId}`,
+          collectionName: `${sqlPrefix}doc_${runId}`,
           partitionKey: '/tenantId',
         },
       },
@@ -1068,12 +1305,13 @@ function smokeObjectTypes(appName, runId) {
         documentdb: {
           databaseAlias: 'tenant-documentdb',
           databaseName: 'tenant-control-plane',
-          collectionName: `${prefix}_file_${runId}`,
+          collectionName: `${sqlPrefix}file_${runId}`,
           partitionKey: '/tenantId',
         },
         blob: {
-          containerAlias: 'tenant-files',
-          pathPrefix: `${prefix}/file/${runId}`,
+          storageAccountAlias: 'tenant-blob',
+          containerName: `${blobPrefix}file-${runId}`,
+          pathPrefix: `${appName}/file/${runId}`,
         },
       },
     },
@@ -1087,7 +1325,7 @@ function smokeObjectTypes(appName, runId) {
       storageMetadataStatus: 'ready',
       properties: [
         { name: 'title', type: 'text', required: true, indexed: true, searchable: true },
-        { name: 'body', type: 'longText', required: true, indexed: true, searchable: true },
+        { name: 'body', type: 'text', required: true, indexed: true, searchable: true },
         { name: 'status', type: 'text', required: true, indexed: true },
       ],
       linkTypes: [],
@@ -1096,12 +1334,12 @@ function smokeObjectTypes(appName, runId) {
         documentdb: {
           databaseAlias: 'tenant-documentdb',
           databaseName: 'tenant-control-plane',
-          collectionName: `${prefix}_search_${runId}`,
+          collectionName: `${sqlPrefix}search_${runId}`,
           partitionKey: '/tenantId',
         },
         search: {
-          indexAlias: 'tenant-search',
-          indexName: `${prefix}-search-${runId}`,
+          searchServiceAlias: 'tenant-search',
+          indexName: `${blobPrefix}search-${runId}`,
           keyField: 'id',
           contentFields: ['title', 'body'],
         },
