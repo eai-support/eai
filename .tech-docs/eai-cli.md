@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.2 |
+| Version | 3.6.3 |
 | Released | 2026-06-30 |
-| Last Material Change | Refresh app template source pin |
-| Source Commit | `82f1e7b90c2bb9ff67744b9b71226afa3d186478` |
+| Last Material Change | Add full EAI e2e smoke traceability |
+| Source Commit | `e5437fd7d7c9942bb8f15556603ade4e37f0fdfe` |
 
 
 ## Common Workflow

@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.2** (2026-06-30): Refresh app template source pin.
+The current CLI release is **v3.6.3** (2026-06-30): Add full EAI e2e smoke traceability.
 
 
 ## What The Pieces Do
