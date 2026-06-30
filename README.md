@@ -557,6 +557,38 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 9. Release-facing docs/help generation (`llms.txt`, `llms-full.txt`, `cli-help.txt`)
 10. Registry artifact generation (`npm pack` + `generate-registry.cjs`)
 11. Static-registry release metadata stays aligned with the documented install flow
+12. Full e2e smoke traceability stays aligned with `eai --describe`
+
+### Optional live full e2e smoke
+
+`release:check` always validates the full command/CRUD traceability table in
+[`.tech-docs/full-e2e-smoke-traceability.md`](.tech-docs/full-e2e-smoke-traceability.md).
+The destructive live suite is opt-in because it creates a disposable app,
+publishes Object Types, provisions storage, and CRUDs PostgreSQL, DocumentDB,
+Blob-backed file, and Search-indexed resources in a dedicated test tenant.
+
+Use a dedicated test user and tenant. Do not paste the password into a chat or
+commit it to the repo; store it in your shell only for the run, or in GitHub
+Actions secrets.
+
+```bash
+export EAI_RELEASE_FULL_E2E_SMOKE=1
+export EAI_E2E_TEST_PROFILE=test
+export EAI_E2E_TEST_USERNAME='<dedicated-test-user-email>'
+export EAI_E2E_PARENT_TENANT_ID='<dedicated-test-tenant-id>'
+
+# Authenticate the profile before the run:
+eai --profile "$EAI_E2E_TEST_PROFILE" login
+
+# Or provide a secure bootstrap command that leaves whoami working:
+export EAI_E2E_AUTH_COMMAND='<secure-auth-bootstrap-command>'
+
+npm run smoke:eai-full:live
+```
+
+If an external bootstrap command needs a password, pass it through an
+environment secret such as `EAI_E2E_TEST_PASSWORD`. The smoke runner redacts
+password-like values from failures and does not print or persist the password.
 
 ### What happens after the local checks pass
 

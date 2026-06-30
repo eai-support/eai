@@ -98,6 +98,10 @@ for command_name in init login dev types resources deploy env verify chat docs w
 done
 echo "  ✓ help output contains expected command groups"
 
+section "Checking full e2e command traceability"
+node scripts/eai-full-e2e-smoke.cjs --check --write-doc
+echo "  ✓ full e2e smoke traceability is current"
+
 section "Scanning for internal platform terminology leaks"
 IP_TERMS="Configurator|ResourceAPI|AICore|PayloadCMS|OPA|Rego|HyPE|OBO"
 LEAKS="$(
@@ -177,6 +181,15 @@ if ! "$PACKED_EAI" gofer refresh --help >/dev/null 2>&1; then
   exit 1
 fi
 echo "  ✓ packed CLI starts with production dependencies only"
+
+if [[ "${EAI_RELEASE_FULL_E2E_SMOKE:-0}" == "1" ]]; then
+  section "Running live full e2e smoke against dedicated test tenant"
+  node scripts/eai-full-e2e-smoke.cjs --live --cli "$PACKED_EAI" --write-doc
+  echo "  ✓ live full e2e smoke passed"
+else
+  section "Skipping live full e2e smoke"
+  echo "  → Set EAI_RELEASE_FULL_E2E_SMOKE=1 with a dedicated test profile/user to run it."
+fi
 
 section "Validating static registry metadata"
 node <<'EOF'

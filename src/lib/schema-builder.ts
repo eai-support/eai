@@ -9,6 +9,7 @@ import { getAgentGuide } from './agent-guide.js';
 export interface CommandSchema {
   command: string;
   description: string;
+  aliases: string[];
   options: OptionSchema[];
   subcommands?: CommandSchema[];
 }
@@ -72,6 +73,7 @@ export function buildCommandSchema(command: Command): CommandSchema {
   const schema: CommandSchema = {
     command: name,
     description,
+    aliases: command.aliases(),
     options,
   };
 
