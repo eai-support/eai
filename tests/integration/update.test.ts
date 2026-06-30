@@ -219,11 +219,13 @@ describe('discovery update notifier', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stderr).not.toContain('Update available:');
       const schema = JSON.parse(result.stdout) as {
-        subcommands: Array<{ command: string }>;
+        subcommands: Array<{ command: string; options?: Array<{ name: string }> }>;
       };
       expect(schema.subcommands.map((command) => command.command)).toEqual(
         expect.arrayContaining(['errors', 'agent']),
       );
+      const updateCommand = schema.subcommands.find((command) => command.command === 'update');
+      expect(updateCommand?.options?.map((option) => option.name)).not.toContain('--project-maintenance-only');
     } finally {
       await close();
     }
