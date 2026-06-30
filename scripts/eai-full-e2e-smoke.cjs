@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 
-const { execFileSync, spawnSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
 const { existsSync, mkdirSync, mkdtempSync, writeFileSync } = require('node:fs');
-const { tmpdir } = require('node:os');
 const { basename, join, resolve } = require('node:path');
 
 const ROOT = resolve(__dirname, '..');
@@ -527,10 +526,6 @@ function describeCli(cliPath) {
   const command = cliInvocation(cliPath);
   const result = runCommand(command, ['--describe']);
   return JSON.parse(result.stdout);
-}
-
-function leafCommands(schema) {
-  return leafEntries(schema).map((entry) => entry.command).sort();
 }
 
 function leafEntries(schema) {
