@@ -357,8 +357,8 @@ Diagnostics:
         process.exit(1);
       }
 
-      const clientId = normalizeLocalEntraSetting(options.clientId)
-        ?? normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID);
+      const localClientId = normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID);
+      const clientId = normalizeLocalEntraSetting(options.clientId) ?? localClientId;
       if (!clientId) {
         out.error('No Entra client id was provided or found in .env.local.');
         out.info('Pass --client-id <id>, or run from a project with ENTRA_CLIENT_ID in .env.local.');
@@ -372,14 +372,19 @@ Diagnostics:
           clientId,
           deleteRegistration: !options.keepRegistration,
         });
-        await removeEnvFileKeys(root, ['ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET']);
+        const localEnvCleaned = localClientId === clientId;
+        if (localEnvCleaned) {
+          await removeEnvFileKeys(root, ['ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET']);
+        } else if (localClientId) {
+          out.warn('Local ENTRA_CLIENT_ID belongs to a different app; leaving .env.local unchanged.');
+        }
         out.success(`Entra app cleanup complete for ${chalk.cyan(appName)}`);
         out.table([
           ['Client ID', chalk.dim(result.clientId)],
           ['Tenant authorization removed', result.tenantDeauthorization.removed ? chalk.green('yes') : chalk.yellow('already absent')],
           ['App registration found', result.appRegistrationFound ? 'yes' : 'no'],
           ['App registration deleted', result.appRegistrationDeleted ? 'yes' : options.keepRegistration ? 'kept' : 'already absent'],
-          ['Local env cleaned', 'ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET'],
+          ['Local env cleaned', localEnvCleaned ? 'ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET' : 'not changed'],
         ]);
         return;
       } catch (err) {
