@@ -452,4 +452,36 @@ describe('PlatformAPIClient', () => {
     expect(JSON.parse(String(init?.body))).toEqual({ tenant_id: 'tenant-parent' })
     expect(result.clientSecret).toBe('<fixture-client-secret>')
   })
+
+  test('deprovisions Entra app registrations through the public provision router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        client_id: 'client-1',
+        tenant_id: 'tenant-parent',
+        tenant_deauthorization: {
+          removed: true,
+          already_absent: false,
+        },
+        app_registration_found: true,
+        app_registration_deleted: true,
+      }), { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const result = await client.deprovisionEntraApp({
+      tenantId: 'tenant-parent',
+      clientId: 'client-1',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/platform/provisioning/entra-apps/client-1')
+    expect(init?.method).toBe('DELETE')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      tenant_id: 'tenant-parent',
+      delete_registration: true,
+    })
+    expect(result.tenantDeauthorization.removed).toBe(true)
+    expect(result.appRegistrationDeleted).toBe(true)
+  })
 })

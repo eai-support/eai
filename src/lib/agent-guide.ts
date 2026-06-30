@@ -143,6 +143,15 @@ const guide: AgentGuide = {
         { command: 'eai resources schema --format json', mutates: false, purpose: 'Inspect published resource schema.' },
       ],
     },
+    {
+      step: 4,
+      title: 'App auth cleanup',
+      instruction: 'When a smoke or test app created an Entra registration that should be removed, deauthorize it explicitly and verify local credentials are gone.',
+      commands: [
+        { command: 'eai provision entra --deauthorize --client-id <client-id> --force', mutates: true, purpose: 'Remove tenant authorization, delete the app registration, and remove local Entra credentials.' },
+        { command: 'eai env list', mutates: false, purpose: 'Confirm local project env no longer contains the removed Entra credential keys.' },
+      ],
+    },
   ],
   stopConditions: [
     'The same error repeats after the guidance retry limit.',

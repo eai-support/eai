@@ -130,6 +130,7 @@ ${chalk.bold('Getting Started:')}
   ${chalk.cyan('eai init my-app')}     Scaffold an app with Gofer AI CLI assets
   ${chalk.cyan('eai login')}                Authenticate with Entra CIAM
   ${chalk.cyan('eai provision entra')}      Create Entra app registration for end-user auth
+  ${chalk.cyan('eai provision entra --deauthorize --force')} Clean up app auth registration
   ${chalk.cyan('eai env pull')}             Sync app config from cloud
   ${chalk.cyan('eai types seed')}           Publish Object Types to the platform
   ${chalk.cyan('eai dev')}                  Start local development server
