@@ -126,7 +126,7 @@ const SMOKE_CALLS = {
     'eai types validate',
   ],
   'eai types diff': [
-    'eai types diff --tenant-id <tenant-id> --tenant-key <app-name>',
+    'eai types diff --tenant-id <tenant-id> --tenant-key <app-name> --format json',
   ],
   'eai types pull': [
     'eai types pull --tenant-id <tenant-id> --output src/eai.config/object-types.generated.ts',
@@ -181,7 +181,7 @@ const SMOKE_CALLS = {
     'eai resources batch-delete <object-type> --tenant-id <tenant-id> --data [{"id":"<id>"}] --force --format json',
   ],
   'eai resources aggregate': [
-    'eai resources aggregate <object-type> --tenant-id <tenant-id> --group-by status --metrics {"total":{"op":"count"}} --where {"status":{"exists":true}} --limit 1000 --format json',
+    'eai resources aggregate <object-type> --tenant-id <tenant-id> --group-by status --metrics {"total":{"function":"count"}} --where {"status":{"exists":true}} --limit 1000 --format json',
   ],
   'eai resources get': [
     'eai resources get <object-type> <resource-id> --tenant-id <tenant-id> --format json',
@@ -191,7 +191,7 @@ const SMOKE_CALLS = {
     'eai resources create <object-type> --tenant-id <tenant-id> --file resource.json --format json',
   ],
   'eai resources update': [
-    'eai resources update <object-type> <resource-id> --tenant-id <tenant-id> --data {"status":"updated"} --version 1 --format json',
+    'eai resources update <object-type> <resource-id> --tenant-id <tenant-id> --data {"title":"updated","status":"updated"} --version 1 --format json',
   ],
   'eai resources delete': [
     'eai resources delete <object-type> <resource-id> --tenant-id <tenant-id> --force --format json',
@@ -993,9 +993,9 @@ function runLiveSmoke(cliPath) {
   }
   eai(['tenant', 'select', parentTenantId], { cwd: ROOT });
   eai(['tenant', 'info', parentTenantId, '--format', 'json'], { cwd: ROOT });
-  eai(['user', 'provision-me', '--tenant', parentTenantId], { cwd: ROOT });
 
   eai(['init', appName, '--skip-prompts', '--current-dir', '--company-tenant', parentTenantId]);
+  eai(['user', 'provision-me', '--tenant', parentTenantId]);
   eai(['runtime', 'validate', '--format', 'json']);
   eai(['template', 'check', '--format', 'json']);
   eai(['gofer', 'refresh', '--check', '--format', 'json']);
@@ -1021,9 +1021,9 @@ function runLiveSmoke(cliPath) {
   eai(['app', 'provision', appName, '--tenant-id', parentTenantId, '--select', '--format', 'json']);
   eai(['provision', 'storage', '--tenant-id', parentTenantId, '--format', 'json']);
 
-  writeSmokeObjectTypes(projectRoot, appName, runId);
+  writeSmokeObjectTypes(projectRoot, appName, runId, parentTenantId);
   const bundleSchema = join(projectRoot, 'smoke-object-types.json');
-  createJsonFile(bundleSchema, { objectTypes: smokeObjectTypes(appName, runId) });
+  createJsonFile(bundleSchema, { objectTypes: smokeObjectTypes(appName, runId, parentTenantId) });
   eai([
     'provision',
     'resourceapi-bundle',
@@ -1073,12 +1073,12 @@ function runLiveSmoke(cliPath) {
     const pgId = createResource(eai, parentTenantId, pgType, { title: 'postgres smoke', status: 'draft', count: 1 });
     createdResources.push([pgType, pgId]);
     eai(['resources', 'get', pgType, pgId, '--tenant-id', parentTenantId, '--format', 'json']);
-    eai(['resources', 'update', pgType, pgId, '--tenant-id', parentTenantId, '--data', JSON.stringify({ status: 'updated', count: 2 }), '--format', 'json']);
+    eai(['resources', 'update', pgType, pgId, '--tenant-id', parentTenantId, '--data', JSON.stringify({ title: 'postgres smoke updated', status: 'updated', count: 2 }), '--format', 'json']);
 
     const docId = createResource(eai, parentTenantId, docType, { title: 'documentdb smoke', status: 'draft' });
     createdResources.push([docType, docId]);
     eai(['resources', 'get', docType, docId, '--tenant-id', parentTenantId, '--format', 'json']);
-    eai(['resources', 'update', docType, docId, '--tenant-id', parentTenantId, '--data', JSON.stringify({ status: 'updated' }), '--format', 'json']);
+    eai(['resources', 'update', docType, docId, '--tenant-id', parentTenantId, '--data', JSON.stringify({ title: 'documentdb smoke updated', status: 'updated' }), '--format', 'json']);
 
     const fileId = createResource(eai, parentTenantId, fileType, { title: 'file smoke', status: 'draft' });
     createdResources.push([fileType, fileId]);
@@ -1102,13 +1102,16 @@ function runLiveSmoke(cliPath) {
       { title: 'batch smoke two', status: 'draft', count: 20 },
     ]);
     const batchCreate = parseJson(eai(['resources', 'batch-create', pgType, '--tenant-id', parentTenantId, '--file', batchFile, '--format', 'json']).stdout, {});
-    batchIds = (batchCreate.resources || batchCreate.created || batchCreate.items || [])
+    batchIds = (batchCreate.results || batchCreate.resources || batchCreate.created || batchCreate.items || [])
       .map((item) => item.id || item.resource?.id)
       .filter(Boolean);
-    for (const id of batchIds) createdResources.push([pgType, id]);
     if (batchIds.length) {
       const batchUpdateFile = join(projectRoot, 'batch-update.json');
-      createJsonFile(batchUpdateFile, batchIds.map((id) => ({ id, version: 1, data: { status: 'batch-updated' } })));
+      createJsonFile(batchUpdateFile, batchIds.map((id, index) => ({
+        id,
+        version: 1,
+        data: { title: `batch smoke ${index + 1} updated`, status: 'batch-updated', count: index === 0 ? 10 : 20 },
+      })));
       eai(['resources', 'batch-update', pgType, '--tenant-id', parentTenantId, '--file', batchUpdateFile, '--format', 'json']);
     }
 
@@ -1122,7 +1125,7 @@ function runLiveSmoke(cliPath) {
       '--group-by',
       'status',
       '--metrics',
-      JSON.stringify({ total: { op: 'count' } }),
+      JSON.stringify({ total: { function: 'count' } }),
       '--format',
       'json',
     ]);
@@ -1158,16 +1161,26 @@ function runLiveSmoke(cliPath) {
   }
 
   if (cleanup) {
-    for (const [type, id] of createdResources.reverse()) {
-      eai(['resources', 'delete', type, id, '--tenant-id', parentTenantId, '--force', '--format', 'json'], { allowFailure: true });
-    }
+    const cleanupFailures = [];
     if (batchIds.length) {
       const batchDeleteFile = join(projectRoot, 'batch-delete.json');
       createJsonFile(batchDeleteFile, batchIds.map((id) => ({ id })));
-      eai(['resources', 'batch-delete', pgType, '--tenant-id', parentTenantId, '--file', batchDeleteFile, '--force', '--format', 'json'], { allowFailure: true });
+      const batchDelete = eai(['resources', 'batch-delete', pgType, '--tenant-id', parentTenantId, '--file', batchDeleteFile, '--force', '--format', 'json'], { allowFailure: true });
+      if (batchDelete.status !== 0) {
+        cleanupFailures.push('eai resources batch-delete failed');
+        for (const id of batchIds) {
+          eai(['resources', 'delete', pgType, id, '--tenant-id', parentTenantId, '--force', '--format', 'json'], { allowFailure: true });
+        }
+      }
+    }
+    for (const [type, id] of createdResources.reverse()) {
+      eai(['resources', 'delete', type, id, '--tenant-id', parentTenantId, '--force', '--format', 'json'], { allowFailure: true });
     }
     if (provisionedEntraClientId) {
       eai(['provision', 'entra', '--deauthorize', '--client-id', provisionedEntraClientId, '--force', '--debug'], { allowFailure: true });
+    }
+    if (cleanupFailures.length) {
+      throw new Error(cleanupFailures.join('; '));
     }
   }
 
@@ -1198,9 +1211,23 @@ function createResource(eai, tenantId, type, data) {
   return id;
 }
 
-function writeSmokeObjectTypes(projectRoot, appName, runId) {
+function tenantStorageScope(tenantId) {
+  const scope = String(tenantId || '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(-12) || 'tenant';
+  return /^[a-z]/.test(scope) ? scope : `t${scope}`;
+}
+
+function storageNamePrefix(parts, separator = '_') {
+  const replacement = separator === '-' ? '-' : '_';
+  return parts
+    .map((part) => String(part || '').toLowerCase().replace(/-/g, separator))
+    .join(separator)
+    .replace(/[^a-z0-9_-]+/g, replacement)
+    .replace(/^[_-]+|[_-]+$/g, '');
+}
+
+function writeSmokeObjectTypes(projectRoot, appName, runId, tenantId) {
   const typeFile = join(projectRoot, 'src', 'eai.config', 'object-types.ts');
-  const definitions = smokeObjectTypes(appName, runId);
+  const definitions = smokeObjectTypes(appName, runId, tenantId);
   const content = `export const objectTypes = {
   '${appName}': ${JSON.stringify(definitions, null, 4)},
 };
@@ -1208,8 +1235,10 @@ function writeSmokeObjectTypes(projectRoot, appName, runId) {
   writeFileSync(typeFile, content, 'utf8');
 }
 
-function smokeObjectTypes(appName, runId) {
-  const prefix = appName.replace(/-/g, '_');
+function smokeObjectTypes(appName, runId, tenantId) {
+  const tenantScope = tenantStorageScope(tenantId);
+  const sqlPrefix = `${storageNamePrefix([tenantScope, appName], '_')}_`;
+  const blobPrefix = `${storageNamePrefix([tenantScope, appName], '-')}-`;
   return [
     {
       name: `EaiSmokePg${runId}`,
@@ -1227,10 +1256,10 @@ function smokeObjectTypes(appName, runId) {
       linkTypes: [],
       actions: [],
       storageBinding: {
-        postgresql: {
-          connectionAlias: 'tenant-postgres',
-          schemaName: 'resources',
-          tableName: `${prefix}_pg_${runId}`,
+        sql: {
+          databaseAlias: 'tenant-postgres',
+          tenantSchemaStrategy: 'per-tenant-schema',
+          tableName: `${sqlPrefix}pg_${runId}`,
         },
       },
     },
@@ -1252,7 +1281,7 @@ function smokeObjectTypes(appName, runId) {
         documentdb: {
           databaseAlias: 'tenant-documentdb',
           databaseName: 'tenant-control-plane',
-          collectionName: `${prefix}_doc_${runId}`,
+          collectionName: `${sqlPrefix}doc_${runId}`,
           partitionKey: '/tenantId',
         },
       },
@@ -1276,12 +1305,13 @@ function smokeObjectTypes(appName, runId) {
         documentdb: {
           databaseAlias: 'tenant-documentdb',
           databaseName: 'tenant-control-plane',
-          collectionName: `${prefix}_file_${runId}`,
+          collectionName: `${sqlPrefix}file_${runId}`,
           partitionKey: '/tenantId',
         },
         blob: {
-          containerAlias: 'tenant-files',
-          pathPrefix: `${prefix}/file/${runId}`,
+          storageAccountAlias: 'tenant-blob',
+          containerName: `${blobPrefix}file-${runId}`,
+          pathPrefix: `${appName}/file/${runId}`,
         },
       },
     },
@@ -1295,7 +1325,7 @@ function smokeObjectTypes(appName, runId) {
       storageMetadataStatus: 'ready',
       properties: [
         { name: 'title', type: 'text', required: true, indexed: true, searchable: true },
-        { name: 'body', type: 'longText', required: true, indexed: true, searchable: true },
+        { name: 'body', type: 'text', required: true, indexed: true, searchable: true },
         { name: 'status', type: 'text', required: true, indexed: true },
       ],
       linkTypes: [],
@@ -1304,12 +1334,12 @@ function smokeObjectTypes(appName, runId) {
         documentdb: {
           databaseAlias: 'tenant-documentdb',
           databaseName: 'tenant-control-plane',
-          collectionName: `${prefix}_search_${runId}`,
+          collectionName: `${sqlPrefix}search_${runId}`,
           partitionKey: '/tenantId',
         },
         search: {
-          indexAlias: 'tenant-search',
-          indexName: `${prefix}-search-${runId}`,
+          searchServiceAlias: 'tenant-search',
+          indexName: `${blobPrefix}search-${runId}`,
           keyField: 'id',
           contentFields: ['title', 'body'],
         },
