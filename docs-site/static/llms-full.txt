@@ -125,9 +125,9 @@ AI Terminal Workflows:
   copilot                  uses .github/prompts and .github/skills
 
 Updates:
-  # Check for a newer CLI release and install it safely
-  eai update --check       preview the latest published CLI version
-  eai update               update the installed CLI package
+  # Check/update the CLI, then maintain safe repo-local assets
+  eai update --check       preview CLI, Gofer, and template status
+  eai update               update the CLI and refresh safe Gofer assets
 
   # Preview repo-local Gofer asset updates before writing files
   eai gofer refresh --check preview managed Gofer asset updates for this repo
@@ -167,8 +167,10 @@ Usage: eai update [options]
 Check for and install CLI updates
 
 Options:
-  --check     Only check for updates without installing
-  -h, --help  display help for command
+  --check               Only check for updates without installing
+  --no-project-refresh  Skip Gofer/app-template maintenance for the current
+                        project
+  -h, --help            display help for command
 
 Examples:
   $ eai update --check
@@ -177,9 +179,10 @@ Examples:
 Notes:
   - The CLI installs from the scoped EAI static registry on GitHub Pages.
   - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-  - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
-  - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
-  - Use `eai template check` to preview app-template and UI drift before copying changes manually.
+  - `eai update --check` previews CLI, Gofer, and app-template status without writing files.
+  - `eai update` upgrades the CLI, refreshes safe Gofer-managed files in the current EAI project, and reports app-template drift.
+  - Use `eai gofer refresh --check` to preview Gofer-managed file changes separately.
+  - App-template and UI files are not auto-merged; use `eai template check` to review them.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
 ```
 
@@ -491,6 +494,7 @@ eai dev
 | `eai deploy`                            | Translate provider env/secrets and black-box doctor deployed EAI app runtimes.            |
 | `eai gofer`                             | Install and refresh repo-local agent workflow assets.                                     |
 | `eai template`                          | Check app-template and UI drift without writing files.                                    |
+| `eai update`                            | Update the CLI, refresh safe Gofer-managed assets, and report app-template drift.         |
 | `eai verify`, `eai doctor`              | Run connectivity, contract, update, and troubleshooting checks.                           |
 
 ## Output Modes
@@ -3011,12 +3015,23 @@ Comprehensive diagnostics with fix suggestions.
 ### Maintenance Commands
 
 #### `eai update`
-Check for and install CLI updates from the EAI static registry.
+Check for and install CLI updates from the EAI static registry, then maintain
+safe repo-local project assets when the command is run inside an EAI project.
 
 **Options**:
-- `--check` — Only check for updates without installing
+- `--check` — Only check for CLI, Gofer, and app-template status without installing or writing files
+- `--no-project-refresh` — Skip Gofer/app-template maintenance for the current project
 
-**Update channel**: `https://eai-tools.github.io/eai/registry/@eai-tools/cli`. No platform API calls.
+**Update channel**: `https://eai-tools.github.io/eai/registry/@eai-tools/cli`.
+No platform API calls.
+
+**Project maintenance**:
+- Normal `eai update` refreshes safe Gofer-managed files with the same backups
+  and conflict detection as `eai gofer refresh`.
+- App-template and UI files are not auto-merged. The CLI reports drift and
+  points to `eai template check` for manual review.
+- Interactive update prompts are suppressed for CI, non-TTY, `--describe`,
+  `--format json`, and `--json`.
 
 ---
 
@@ -3028,7 +3043,8 @@ Safely refresh Gofer-managed assets in the current project.
 - `--force` — Overwrite conflicting managed files after backing them up
 - `--format <format>` — Output format (text|json, default: text)
 
-**No API calls** — local file diff and copy from the bundled Gofer assets
+**No API calls** — local file diff and copy from the latest public `eai-gofer`
+release when available, falling back to bundled Gofer assets
 
 ---
 

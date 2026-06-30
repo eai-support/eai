@@ -48,7 +48,7 @@ export function buildCommandSchema(command: Command): CommandSchema {
   const name = command.name();
   const description = command.description();
 
-  const options: OptionSchema[] = command.options.map((opt) => {
+  const options: OptionSchema[] = command.options.filter((opt) => !opt.hidden).map((opt) => {
     const type = inferOptionType(opt);
     const schema: OptionSchema = {
       name: opt.flags.split(' ')[0],

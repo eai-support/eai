@@ -438,31 +438,34 @@ app.
 
 ### Updating an existing repo safely
 
-`eai update` updates the installed CLI package only. It does **not** blindly
-rewrite Gofer assets, template files, or UI components inside an existing
-app repo.
+`eai update` keeps the local EAI toolchain current. It checks the installed CLI
+against the public static registry, installs the newer CLI when available, then
+refreshes safe Gofer-managed files in the current EAI project. It does **not**
+blindly rewrite template files or UI components inside an existing app repo.
 
-Use these commands instead:
+Use these commands for the full maintenance loop:
 
 ```bash
-# See whether a newer CLI release exists
+# See whether a newer CLI release, Gofer refresh, or template review is available
 eai update --check
 
-# See whether this repo's Gofer-managed files differ from the available Gofer assets
+# Same report through the broader doctor command
 eai doctor --check-updates
 
 # Preview safe Gofer-managed asset updates for the current repo
 eai gofer refresh --check
 
+# Apply safe Gofer-managed file updates, with backups and conflict detection
+eai gofer refresh
+
 # Preview app-template and UI component drift before copying changes manually
 eai template check
-
-# Apply only the safe Gofer-managed file updates, with backups for replaced files
-eai gofer refresh
 ```
 
 Important boundaries:
 
+- `eai update --check` is read-only. `eai update` may write only
+  Gofer-managed files in an EAI project.
 - `eai gofer refresh` prefers the latest public `eai-gofer` release at runtime,
   so Gofer asset updates do not require a new `eai` CLI release. If the latest
   release cannot be reached or prepared, it falls back to the bundled snapshot.
@@ -480,6 +483,10 @@ Important boundaries:
 - Template or UI component changes are **not** auto-merged into existing repos
   yet. Copy additions first, then diff/review existing files that `eai template
   check` marks for manual review.
+- During normal interactive CLI use, if the CLI has already cached that a newer
+  release is available, it can ask whether to run `eai update` immediately.
+  That prompt is suppressed for CI, non-TTY, `--describe`, `--format json`, and
+  `--json` output.
 
 ## Development
 

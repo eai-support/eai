@@ -47,6 +47,7 @@ import { errorsCommand } from './commands/errors.js';
 import { agentCommand } from './commands/agent.js';
 import {
   checkForUpdate,
+  isMachineReadableInvocation,
   notifyIfUpdateAvailable,
   notifyIfUpdateAvailableForDiscovery,
 } from './lib/update-check.js';
@@ -184,9 +185,9 @@ ${chalk.bold('AI Terminal Workflows:')}
   ${chalk.cyan('copilot')}                  ${chalk.dim('uses .github/prompts and .github/skills')}
 
 ${chalk.bold('Updates:')}
-  ${chalk.dim('# Check for a newer CLI release and install it safely')}
-  ${chalk.cyan('eai update --check')}       ${chalk.dim('preview the latest published CLI version')}
-  ${chalk.cyan('eai update')}               ${chalk.dim('update the installed CLI package')}
+  ${chalk.dim('# Check/update the CLI, then maintain safe repo-local assets')}
+  ${chalk.cyan('eai update --check')}       ${chalk.dim('preview CLI, Gofer, and template status')}
+  ${chalk.cyan('eai update')}               ${chalk.dim('update the CLI and refresh safe Gofer assets')}
 
   ${chalk.dim('# Preview repo-local Gofer asset updates before writing files')}
   ${chalk.cyan('eai gofer refresh --check')} ${chalk.dim('preview managed Gofer asset updates for this repo')}
@@ -283,7 +284,9 @@ if (cliArgs.includes('--describe')) {
 } else {
   const topLevelCommandName = readTopLevelCommandName(cliArgs);
   const shouldForegroundCheckForUpdate = isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs);
-  const shouldSuppressPostCommandNotice = topLevelCommandName === 'update';
+  const shouldSuppressPostCommandNotice =
+    topLevelCommandName === 'update' ||
+    isMachineReadableInvocation(cliArgs);
 
   if (shouldForegroundCheckForUpdate) {
     await notifyIfUpdateAvailableForDiscovery(pkg.version);
@@ -299,6 +302,6 @@ if (cliArgs.includes('--describe')) {
   await program.parseAsync();
 
   if (!shouldForegroundCheckForUpdate && !shouldSuppressPostCommandNotice) {
-    await notifyIfUpdateAvailable(pkg.version);
+    await notifyIfUpdateAvailable(pkg.version, { args: cliArgs });
   }
 }
