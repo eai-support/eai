@@ -596,7 +596,14 @@ function optionCoverage(row, schemaEntry) {
 
 function markdownList(values) {
   if (!values || values.length === 0) return '-';
-  return values.map((value) => value.replace(/\|/g, '\\|')).join('<br>');
+  return values.map((value) => markdownCell(value)).join('<br>');
+}
+
+function markdownCell(value) {
+  return String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
+    .replace(/\r?\n/g, ' ');
 }
 
 function traceabilityMarkdown(schema) {
