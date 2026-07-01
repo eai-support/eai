@@ -265,6 +265,12 @@ describe('PlatformAPIClient', () => {
       configPath: 'src/eai.config/index.ts',
       runtimePath: 'src/eai.runtime.ts',
       sourceMode: 'source-unknown',
+      schemaProvenance: {
+        templateVersion: 'eai.generated_app_config.v1',
+        baseTemplateSha: '3fa18d004b20ff409ab9687d623028f24d9e5543',
+        schemaDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        validatorDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      },
       validationSummary: { status: 'registered_by_cli' },
     })
 
@@ -284,6 +290,12 @@ describe('PlatformAPIClient', () => {
       configPath: 'src/eai.config/index.ts',
       runtimePath: 'src/eai.runtime.ts',
       sourceMode: 'source-unknown',
+      schemaProvenance: {
+        templateVersion: 'eai.generated_app_config.v1',
+        baseTemplateSha: '3fa18d004b20ff409ab9687d623028f24d9e5543',
+        schemaDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        validatorDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      },
       validationSummary: { status: 'registered_by_cli' },
     })
   })

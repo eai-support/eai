@@ -57,6 +57,12 @@ export interface AppConnectExistingOptions {
   commit?: string;
   config?: string;
   runtime?: string;
+  templateVersion?: string;
+  baseTemplateSha?: string;
+  approvedSourceSha?: string;
+  approvedRelease?: string;
+  schemaDigest?: string;
+  validatorDigest?: string;
   skipValidate?: boolean;
   format?: string;
   json?: boolean;
@@ -117,6 +123,51 @@ function defaultRepoUrl(owner: string, name: string): string {
   return `https://github.com/${owner}/${name}`;
 }
 
+function normaliseOptionalString(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
+function assertSha256Digest(value: string, field: string): void {
+  if (!/^sha256:[a-fA-F0-9]{64}$/.test(value)) {
+    throw new Error(`${field} must be a sha256:<64 hex chars> digest.`);
+  }
+}
+
+function buildSchemaProvenance(
+  options: AppConnectExistingOptions,
+): SourceUnknownAppRegistrationRequest['schemaProvenance'] {
+  const schemaDigest = normaliseOptionalString(options.schemaDigest);
+  const validatorDigest = normaliseOptionalString(options.validatorDigest);
+  const templateVersion = normaliseOptionalString(options.templateVersion);
+  const baseTemplateSha = normaliseOptionalString(options.baseTemplateSha);
+  const approvedSourceSha = normaliseOptionalString(options.approvedSourceSha);
+  const approvedReleaseId = normaliseOptionalString(options.approvedRelease);
+  const hasAny =
+    schemaDigest ||
+    validatorDigest ||
+    templateVersion ||
+    baseTemplateSha ||
+    approvedSourceSha ||
+    approvedReleaseId;
+
+  if (!hasAny) return undefined;
+  if (!schemaDigest || !validatorDigest) {
+    throw new Error('Schema provenance requires --schema-digest and --validator-digest.');
+  }
+  assertSha256Digest(schemaDigest, '--schema-digest');
+  assertSha256Digest(validatorDigest, '--validator-digest');
+
+  return {
+    ...(templateVersion ? { templateVersion } : {}),
+    ...(baseTemplateSha ? { baseTemplateSha } : {}),
+    ...(approvedSourceSha ? { approvedSourceSha } : {}),
+    ...(approvedReleaseId ? { approvedReleaseId } : {}),
+    schemaDigest,
+    validatorDigest,
+  };
+}
+
 /**
  * Build the PublicAPI payload used to store source-unknown app repo metadata.
  */
@@ -128,6 +179,7 @@ export function buildSourceUnknownRegistrationData(
   if (!defaultBranch) {
     throw new Error('Default branch is required.');
   }
+  const schemaProvenance = buildSchemaProvenance(options);
 
   return {
     repoOwner: repo.owner,
@@ -140,6 +192,7 @@ export function buildSourceUnknownRegistrationData(
     configPath: options.config?.trim() || 'src/eai.config/index.ts',
     runtimePath: options.runtime?.trim() || 'src/eai.runtime.ts',
     sourceMode: 'source-unknown',
+    ...(schemaProvenance ? { schemaProvenance } : {}),
     validationSummary: {
       status: 'registered_by_cli',
       appValidated: !options.skipValidate,
@@ -376,6 +429,12 @@ verticalCommand
   .option('--commit <sha>', 'Current commit SHA to bind')
   .option('--config <path>', 'eai.config path', 'src/eai.config/index.ts')
   .option('--runtime <path>', 'eai.runtime path', 'src/eai.runtime.ts')
+  .option('--template-version <version>', 'Approved schema/template version')
+  .option('--base-template-sha <sha>', 'Base eai-app-template commit SHA when known')
+  .option('--approved-source-sha <sha>', 'Approved source commit SHA for non-template apps')
+  .option('--approved-release <id>', 'Approved schema/validator release identifier')
+  .option('--schema-digest <digest>', 'Approved schema digest in sha256:<hex> form')
+  .option('--validator-digest <digest>', 'Approved validator digest in sha256:<hex> form')
   .option('--skip-validate', 'Skip app lookup', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -448,6 +507,12 @@ verticalCommand
   .option('--commit <sha>', 'Current commit SHA to bind')
   .option('--config <path>', 'eai.config path', 'src/eai.config/index.ts')
   .option('--runtime <path>', 'eai.runtime path', 'src/eai.runtime.ts')
+  .option('--template-version <version>', 'Approved schema/template version')
+  .option('--base-template-sha <sha>', 'Base eai-app-template commit SHA when known')
+  .option('--approved-source-sha <sha>', 'Approved source commit SHA for non-template apps')
+  .option('--approved-release <id>', 'Approved schema/validator release identifier')
+  .option('--schema-digest <digest>', 'Approved schema digest in sha256:<hex> form')
+  .option('--validator-digest <digest>', 'Approved validator digest in sha256:<hex> form')
   .option('--deployment-id <id>', 'Observed deployment identifier')
   .option('--image-digest <digest>', 'Observed immutable image digest')
   .option('--config-hash <hash>', 'Observed config hash')

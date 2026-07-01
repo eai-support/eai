@@ -11,7 +11,11 @@ import {
   DEFAULT_PROD_AUTH_TENANT_NAME,
   setActiveProfile,
 } from '../../src/lib/profile.js';
-import { appCommand, verticalCommand } from '../../src/commands/vertical.js';
+import {
+  appCommand,
+  buildSourceUnknownRegistrationData,
+  verticalCommand,
+} from '../../src/commands/vertical.js';
 
 const API_BASE = 'https://test-api.example.com';
 const COMPANY_TENANT_ID = 'company-tenant';
@@ -241,6 +245,14 @@ describe('eai app', () => {
       'enterpriseaigroup/planning-portal',
       '--commit',
       'abcdef1234567890',
+      '--template-version',
+      'eai.generated_app_config.v1',
+      '--base-template-sha',
+      '3fa18d004b20ff409ab9687d623028f24d9e5543',
+      '--schema-digest',
+      'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      '--validator-digest',
+      'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       '--format',
       'json',
     ], { from: 'user' });
@@ -260,6 +272,12 @@ describe('eai app', () => {
           configPath: 'src/eai.config/index.ts',
           runtimePath: 'src/eai.runtime.ts',
           sourceMode: 'source-unknown',
+          schemaProvenance: {
+            templateVersion: 'eai.generated_app_config.v1',
+            baseTemplateSha: '3fa18d004b20ff409ab9687d623028f24d9e5543',
+            schemaDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            validatorDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          },
           validationSummary: {
             status: 'registered_by_cli',
             appValidated: true,
@@ -377,6 +395,15 @@ describe('eai app', () => {
         }),
       }),
     );
+  });
+
+  test('BC002 rejects incomplete schema provenance before registration', () => {
+    expect(() =>
+      buildSourceUnknownRegistrationData({
+        repo: 'enterpriseaigroup/planning-portal',
+        schemaDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      }),
+    ).toThrow('Schema provenance requires --schema-digest and --validator-digest.');
   });
 
   test('BC001 keeps the legacy vertical alias working', async () => {

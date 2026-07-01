@@ -14,18 +14,26 @@
   },
   "configPath": "src/eai.config/index.ts",
   "runtimePath": "src/eai.runtime.ts",
+  "schemaProvenance": {
+    "templateVersion": "eai.generated_app_config.v1",
+    "baseTemplateSha": "3fa18d004b20ff409ab9687d623028f24d9e5543",
+    "schemaDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "validatorDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
   "sourceMode": "source-unknown",
   "positiveAssertions": [
     "CLI validates the tenant app enrollment unless --skip-validate is supplied",
     "CLI registers the approved repo/ref/workflow mapping through PublicAPI",
     "registration payload includes config and runtime paths",
-    "source mode is stored as source-unknown without generated-source ownership"
+    "source mode is stored as source-unknown without generated-source ownership",
+    "schema provenance includes approved schema and validator digests"
   ],
   "negativeAssertions": [
     "repository slugs outside owner/name form are rejected",
     "empty default branch is rejected",
     "wrong tenant enrollment validation prevents registration",
-    "source-unknown registration does not invoke Admin Portal generated-source export"
+    "source-unknown registration does not invoke Admin Portal generated-source export",
+    "incomplete schema provenance is rejected before registration"
   ],
   "evidenceTests": [
     "tests/integration/vertical.test.ts",

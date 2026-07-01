@@ -35,6 +35,9 @@ if (!fixture.repository?.workflowPath || !fixture.repository?.ref) {
 if (!fixture.observedDeployment?.activeUrl || !fixture.observedDeployment?.environment) {
   throw new Error('Fixture observedDeployment activeUrl and environment are required.');
 }
+if (!fixture.schemaProvenance?.schemaDigest || !fixture.schemaProvenance?.validatorDigest) {
+  throw new Error('Fixture schemaProvenance schemaDigest and validatorDigest are required.');
+}
 if (!Array.isArray(fixture.positiveAssertions) || fixture.positiveAssertions.length < 4) {
   throw new Error('Fixture must include positive adopt-observed assertions.');
 }
@@ -54,8 +57,8 @@ cat > "$ARTIFACT" <<EOF
 
 - Command: \`./scripts/verify-stage050-adopt-observed.sh\`
 - Fixture: \`tests/fixtures/stage050/adopt-observed.json\`
-- Positive assertions: tenant app enrollment validation, PublicAPI source-unknown registration, observed deployment metadata payload, destructive operations blocked until managed redeploy.
-- Negative assertions: invalid repository slug rejection, invalid observed URL rejection, wrong tenant validation failure before adoption, no Admin Portal generated-source export invocation.
+- Positive assertions: tenant app enrollment validation, PublicAPI source-unknown registration, observed deployment metadata payload, destructive operations blocked until managed redeploy, schema/validator provenance payload.
+- Negative assertions: invalid repository slug rejection, invalid observed URL rejection, wrong tenant validation failure before adoption, no Admin Portal generated-source export invocation, incomplete schema provenance rejection.
 - Result: passed
 EOF
 

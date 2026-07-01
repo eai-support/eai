@@ -93,6 +93,14 @@ export interface SourceUnknownAppRegistrationRequest {
   runtimePath?: string;
   sourceMode?: 'source-unknown';
   adoptionMode?: 'connect-existing' | 'adopted-observed';
+  schemaProvenance?: {
+    templateVersion?: string;
+    baseTemplateSha?: string;
+    approvedSourceSha?: string;
+    approvedReleaseId?: string;
+    schemaDigest: string;
+    validatorDigest: string;
+  };
   observedDeployment?: {
     environment: string;
     activeUrl: string;

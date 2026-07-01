@@ -450,6 +450,12 @@ const OPTION_DECISIONS = {
 
 const COMMON_OPTION_DECISIONS = {
   '--json': 'Deprecated JSON shortcut; new smoke calls use --format json to keep one V4-native output vocabulary.',
+  '--template-version': 'Schema provenance is covered by mocked source-unknown command tests; live smoke avoids overwriting source metadata.',
+  '--base-template-sha': 'Schema provenance is covered by mocked source-unknown command tests; live smoke avoids overwriting source metadata.',
+  '--approved-source-sha': 'Source-unknown provenance is covered by mocked command tests; live smoke does not bind arbitrary source approvals.',
+  '--approved-release': 'Source-unknown provenance release binding is covered by mocked command tests; live smoke does not bind arbitrary source approvals.',
+  '--schema-digest': 'Schema digest validation is covered by mocked source-unknown command tests; live smoke avoids source metadata mutation.',
+  '--validator-digest': 'Validator digest validation is covered by mocked source-unknown command tests; live smoke avoids source metadata mutation.',
 };
 
 const DEFAULT_ARTIFACT_CLEANUP = {

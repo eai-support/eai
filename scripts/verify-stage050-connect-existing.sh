@@ -34,6 +34,9 @@ if (!fixture.repository?.workflowPath || !fixture.repository?.ref) {
 if (!fixture.configPath || !fixture.runtimePath) {
   throw new Error('Fixture configPath and runtimePath are required.');
 }
+if (!fixture.schemaProvenance?.schemaDigest || !fixture.schemaProvenance?.validatorDigest) {
+  throw new Error('Fixture schemaProvenance schemaDigest and validatorDigest are required.');
+}
 if (!Array.isArray(fixture.positiveAssertions) || fixture.positiveAssertions.length < 4) {
   throw new Error('Fixture must include positive connect-existing assertions.');
 }
@@ -53,8 +56,8 @@ cat > "$ARTIFACT" <<EOF
 
 - Command: \`./scripts/verify-stage050-connect-existing.sh\`
 - Fixture: \`tests/fixtures/stage050/connect-existing.json\`
-- Positive assertions: tenant app enrollment validation, PublicAPI source-unknown registration, config/runtime path payload, source-unknown mode without generated-source ownership.
-- Negative assertions: invalid repository slug rejection, empty branch rejection, wrong tenant validation failure before registration, no Admin Portal generated-source export invocation.
+- Positive assertions: tenant app enrollment validation, PublicAPI source-unknown registration, config/runtime path payload, source-unknown mode without generated-source ownership, schema/validator provenance payload.
+- Negative assertions: invalid repository slug rejection, empty branch rejection, wrong tenant validation failure before registration, no Admin Portal generated-source export invocation, incomplete schema provenance rejection.
 - Result: passed
 EOF
 
