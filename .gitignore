@@ -28,3 +28,4 @@ homebrew-tap/
 
 # Durable local smoke-test output
 .smoke/
+.stage050-artifacts/

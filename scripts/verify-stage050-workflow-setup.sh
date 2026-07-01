@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FIXTURE="$ROOT_DIR/tests/fixtures/stage050/workflow-setup.json"
-ARTIFACT_DIR="$ROOT_DIR/artifacts/stage050"
+ARTIFACT_DIR="${STAGE050_ARTIFACT_DIR:-$ROOT_DIR/.stage050-artifacts}"
 ARTIFACT="$ARTIFACT_DIR/eai-cli-workflow-setup.md"
 
 cd "$ROOT_DIR"
