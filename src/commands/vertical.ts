@@ -12,6 +12,7 @@ import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/cont
 import {
   PlatformAPIClient,
   type SourceUnknownAppRegistrationRequest,
+  type SourceUnknownWorkflowEvidenceRequest,
   type SourceUnknownWorkflowSetupRequest,
 } from '../lib/api.js';
 import {
@@ -91,6 +92,17 @@ export interface AppWorkflowSetupOptions {
   skipValidate?: boolean;
   format?: string;
   json?: boolean;
+}
+
+export interface AppWorkflowEvidenceOptions extends AppConnectExistingOptions {
+  operationId: string;
+  nonce: string;
+  environment?: string;
+  configHash: string;
+  artifactDigest: string;
+  imageDigest: string;
+  workflowRunId?: string;
+  workflowRunAttempt?: string;
 }
 
 export function buildVerticalEnrollmentData(
@@ -267,6 +279,65 @@ export function buildSourceUnknownWorkflowSetupData(
     ...(options.ref?.trim() ? { ref: options.ref.trim() } : {}),
     ...(options.commit?.trim() ? { commitSha: options.commit.trim() } : {}),
     ...(options.configHash?.trim() ? { configHash: options.configHash.trim() } : {}),
+  };
+}
+
+export function buildSourceUnknownWorkflowEvidenceData(
+  options: AppWorkflowEvidenceOptions,
+): SourceUnknownWorkflowEvidenceRequest {
+  const repo = parseRepositorySlug(options.repo);
+  const operationId = options.operationId?.trim();
+  const nonce = options.nonce?.trim();
+  const environment = (options.environment || 'preview').trim();
+  const defaultBranch = (options.branch || 'main').trim();
+  const workflowPath = options.workflow?.trim() || '.github/workflows/eai-app.yml';
+  const ref = options.ref?.trim() || `refs/heads/${defaultBranch}`;
+  const commitSha = options.commit?.trim();
+  const configHash = options.configHash?.trim();
+  const artifactDigest = options.artifactDigest?.trim();
+  const imageDigest = options.imageDigest?.trim();
+  if (!operationId) throw new Error('Workflow evidence operation ID is required.');
+  if (!nonce) throw new Error('Workflow evidence nonce is required.');
+  if (!environment) throw new Error('Workflow evidence environment is required.');
+  if (!defaultBranch) throw new Error('Default branch is required.');
+  if (!commitSha) throw new Error('Workflow evidence commit SHA is required.');
+  if (!configHash) throw new Error('Workflow evidence config hash is required.');
+  if (!artifactDigest) throw new Error('Workflow evidence artifact digest is required.');
+  if (!imageDigest) throw new Error('Workflow evidence image digest is required.');
+  assertSha256Digest(artifactDigest, '--artifact-digest');
+  assertSha256Digest(imageDigest, '--image-digest');
+  const schemaProvenance = buildSchemaProvenance(options);
+  const workflowRun: Record<string, unknown> = {};
+  if (options.workflowRunId?.trim()) workflowRun.id = options.workflowRunId.trim();
+  if (options.workflowRunAttempt?.trim()) {
+    const attempt = Number(options.workflowRunAttempt.trim());
+    workflowRun.attempt = Number.isFinite(attempt) ? attempt : options.workflowRunAttempt.trim();
+  }
+
+  return {
+    operationId,
+    nonce,
+    environment,
+    workflowPath,
+    ref,
+    commitSha,
+    configHash,
+    artifactDigest,
+    imageDigest,
+    ...(schemaProvenance ? { schemaProvenance } : {}),
+    ...(Object.keys(workflowRun).length > 0 ? { workflowRun } : {}),
+    oidcClaims: {
+      repository: `${repo.owner}/${repo.name}`,
+      ref,
+      sha: commitSha,
+      workflow_ref: `${repo.owner}/${repo.name}/${workflowPath}@${ref}`,
+      ...(workflowRun.id ? { run_id: String(workflowRun.id) } : {}),
+      ...(workflowRun.attempt ? { run_attempt: String(workflowRun.attempt) } : {}),
+    },
+    validationSummary: {
+      status: 'passed_by_cli',
+      appValidated: !options.skipValidate,
+    },
   };
 }
 
@@ -681,6 +752,82 @@ verticalCommand
         out.info(`Evidence endpoint: ${chalk.cyan(evidencePath)}`);
       }
     }
+  });
+
+verticalCommand
+  .command('workflow-evidence <key>')
+  .description('Submit source-unknown workflow evidence for a setup operation')
+  .requiredOption('--repo <owner/repo>', 'GitHub repository submitting evidence')
+  .requiredOption('--operation-id <id>', 'Source-unknown workflow setup operation ID')
+  .requiredOption('--nonce <nonce>', 'One-time setup nonce')
+  .requiredOption('--commit <sha>', 'Workflow commit SHA')
+  .requiredOption('--config-hash <hash>', 'Validated config hash')
+  .requiredOption('--artifact-digest <digest>', 'Workflow artifact digest in sha256:<hex> form')
+  .requiredOption('--image-digest <digest>', 'Immutable image digest in sha256:<hex> form')
+  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--environment <environment>', 'Deployment environment to bind', 'preview')
+  .option('--branch <branch>', 'Default branch', 'main')
+  .option('--workflow <path>', 'GitHub Actions workflow path', '.github/workflows/eai-app.yml')
+  .option('--ref <ref>', 'Approved git ref (defaults to refs/heads/<branch>)')
+  .option('--template-version <version>', 'Approved schema/template version')
+  .option('--base-template-sha <sha>', 'Base eai-app-template commit SHA when known')
+  .option('--approved-source-sha <sha>', 'Approved source commit SHA for non-template apps')
+  .option('--approved-release <id>', 'Approved schema/validator release identifier')
+  .option('--schema-digest <digest>', 'Approved schema digest in sha256:<hex> form')
+  .option('--validator-digest <digest>', 'Approved validator digest in sha256:<hex> form')
+  .option('--workflow-run-id <id>', 'GitHub Actions run ID')
+  .option('--workflow-run-attempt <n>', 'GitHub Actions run attempt')
+  .option('--skip-validate', 'Skip app lookup', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (key: string, options: AppWorkflowEvidenceOptions) => {
+    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const companyTenantId = options.tenantId
+      ? ctx.tenantId
+      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const format = normalizeFormat(options);
+    const appKey = key.trim();
+
+    if (!appKey) {
+      fail('App key is required.');
+    }
+
+    let evidenceRequest: SourceUnknownWorkflowEvidenceRequest;
+    try {
+      evidenceRequest = buildSourceUnknownWorkflowEvidenceData(options);
+    } catch (err) {
+      fail(errMsg(err));
+    }
+
+    if (!options.skipValidate) {
+      await validateVerticalEnrollment(appKey, client);
+    }
+
+    const spinner = makeSpinner(format, `Submitting workflow evidence for ${appKey}...`);
+    const res = await client.submitSourceUnknownWorkflowEvidence(companyTenantId, appKey, evidenceRequest);
+    const payload = await readResponsePayload(res);
+
+    if (!res.ok) {
+      spinner?.fail('Failed to submit source-unknown workflow evidence');
+      fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
+    }
+
+    if (format === 'json') {
+      out.json({
+        tenantId: companyTenantId,
+        appKey,
+        sourceMode: 'source-unknown',
+        request: evidenceRequest,
+        response: payload,
+      });
+      return;
+    }
+
+    spinner?.succeed(`Submitted workflow evidence for ${chalk.cyan(appKey)}`);
+    out.info(`Operation: ${chalk.cyan(evidenceRequest.operationId)}`);
+    out.info(`Artifact: ${chalk.cyan(evidenceRequest.artifactDigest)}`);
+    out.info(`Image: ${chalk.cyan(evidenceRequest.imageDigest)}`);
   });
 
 verticalCommand

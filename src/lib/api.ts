@@ -121,6 +121,29 @@ export interface SourceUnknownWorkflowSetupRequest {
   configHash?: string;
 }
 
+export interface SourceUnknownWorkflowEvidenceRequest {
+  operationId: string;
+  nonce: string;
+  environment?: string;
+  workflowPath: string;
+  ref: string;
+  commitSha: string;
+  configHash: string;
+  artifactDigest: string;
+  imageDigest: string;
+  schemaProvenance?: {
+    templateVersion?: string;
+    baseTemplateSha?: string;
+    approvedSourceSha?: string;
+    approvedReleaseId?: string;
+    schemaDigest: string;
+    validatorDigest: string;
+  };
+  workflowRun?: Record<string, unknown>;
+  oidcClaims: Record<string, unknown>;
+  validationSummary?: Record<string, unknown>;
+}
+
 export interface CapabilityEvaluationRequest {
   tenantId: string;
   targetCapability: 'child-tenants' | 'ai-chat' | 'documents' | 'auth-b2b' | 'auth-dual';
@@ -1165,6 +1188,18 @@ export class PlatformAPIClient {
   ): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-setup`,
+      'POST',
+      data,
+    );
+  }
+
+  async submitSourceUnknownWorkflowEvidence(
+    tenantId: string,
+    appKey: string,
+    data: SourceUnknownWorkflowEvidenceRequest,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
       'POST',
       data,
     );

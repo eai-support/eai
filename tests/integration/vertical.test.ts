@@ -484,6 +484,129 @@ describe('eai app', () => {
     );
   });
 
+  test('HP007 submits source-unknown workflow evidence under the company tenant', async () => {
+    await seedLoggedInTenant();
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      const method = requestMethod(init);
+
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        return jsonResponse({
+          tenants: [{
+            id: COMPANY_TENANT_ID,
+            displayName: 'Builder Workspace',
+            slug: 'builder-workspace',
+            isActive: true,
+            roles: ['tenant-admin'],
+          }],
+        });
+      }
+
+      if (
+        url.startsWith(`${API_BASE}/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)
+        && method === 'GET'
+      ) {
+        return jsonResponse({
+          docs: [{
+            id: 'app-1',
+            data: {
+              tenantId: COMPANY_TENANT_ID,
+              verticalKey: 'planning-portal',
+            },
+          }],
+        });
+      }
+
+      if (
+        url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/workflow-evidence`
+        && method === 'POST'
+      ) {
+        return jsonResponse({
+          status: 'accepted',
+          sourceMetadata: {
+            sourceMode: 'source-unknown',
+            artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          },
+        });
+      }
+
+      return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appCommand.parseAsync([
+      'workflow-evidence',
+      'planning-portal',
+      '--tenant-id',
+      COMPANY_TENANT_ID,
+      '--repo',
+      'enterpriseaigroup/planning-portal',
+      '--operation-id',
+      'source-unknown-op',
+      '--nonce',
+      'nonce-token',
+      '--commit',
+      'abcdef1234567890',
+      '--config-hash',
+      'sha256:config',
+      '--artifact-digest',
+      'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      '--image-digest',
+      'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      '--workflow-run-id',
+      '123456789',
+      '--workflow-run-attempt',
+      '1',
+      '--template-version',
+      'eai.generated_app_config.v1',
+      '--schema-digest',
+      'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+      '--validator-digest',
+      'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/workflow-evidence`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          operationId: 'source-unknown-op',
+          nonce: 'nonce-token',
+          environment: 'preview',
+          workflowPath: '.github/workflows/eai-app.yml',
+          ref: 'refs/heads/main',
+          commitSha: 'abcdef1234567890',
+          configHash: 'sha256:config',
+          artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          schemaProvenance: {
+            templateVersion: 'eai.generated_app_config.v1',
+            schemaDigest: 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+            validatorDigest: 'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+          },
+          workflowRun: {
+            id: '123456789',
+            attempt: 1,
+          },
+          oidcClaims: {
+            repository: 'enterpriseaigroup/planning-portal',
+            ref: 'refs/heads/main',
+            sha: 'abcdef1234567890',
+            workflow_ref: 'enterpriseaigroup/planning-portal/.github/workflows/eai-app.yml@refs/heads/main',
+            run_id: '123456789',
+            run_attempt: '1',
+          },
+          validationSummary: {
+            status: 'passed_by_cli',
+            appValidated: true,
+          },
+        }),
+      }),
+    );
+  });
+
   test('BC002 rejects incomplete schema provenance before registration', () => {
     expect(() =>
       buildSourceUnknownRegistrationData({
