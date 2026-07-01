@@ -188,6 +188,87 @@ describe('eai app', () => {
     expect(envFile).toContain('EAI_VERTICAL_KEY=planning-portal');
   });
 
+  test('HP004 registers an existing app repo as source-unknown under the company tenant', async () => {
+    await seedLoggedInTenant();
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      const method = requestMethod(init);
+
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        return jsonResponse({
+          tenants: [{
+            id: COMPANY_TENANT_ID,
+            displayName: 'Builder Workspace',
+            slug: 'builder-workspace',
+            isActive: true,
+            roles: ['tenant-admin'],
+          }],
+        });
+      }
+
+      if (
+        url.startsWith(`${API_BASE}/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)
+        && method === 'GET'
+      ) {
+        return jsonResponse({
+          docs: [{
+            id: 'app-1',
+            data: {
+              tenantId: COMPANY_TENANT_ID,
+              verticalKey: 'planning-portal',
+            },
+          }],
+        });
+      }
+
+      if (
+        url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/register`
+        && method === 'POST'
+      ) {
+        return jsonResponse({ status: 'registered', sourceMetadata: { sourceMode: 'source-unknown' } });
+      }
+
+      return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appCommand.parseAsync([
+      'connect-existing',
+      'planning-portal',
+      '--tenant-id',
+      COMPANY_TENANT_ID,
+      '--repo',
+      'enterpriseaigroup/planning-portal',
+      '--commit',
+      'abcdef1234567890',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/register`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          repoOwner: 'enterpriseaigroup',
+          repoName: 'planning-portal',
+          repoUrl: 'https://github.com/enterpriseaigroup/planning-portal',
+          defaultBranch: 'main',
+          workflowPath: '.github/workflows/eai-app.yml',
+          ref: 'refs/heads/main',
+          commitSha: 'abcdef1234567890',
+          configPath: 'src/eai.config/index.ts',
+          runtimePath: 'src/eai.runtime.ts',
+          sourceMode: 'source-unknown',
+          validationSummary: {
+            status: 'registered_by_cli',
+            appValidated: true,
+          },
+        }),
+      }),
+    );
+  });
+
   test('BC001 keeps the legacy vertical alias working', async () => {
     await seedLoggedInTenant();
     await seedProjectRoot(env.dir);

@@ -77,6 +77,24 @@ export interface TenantAppCreateRequest {
   homeRegion?: TenantHomeRegion;
 }
 
+/**
+ * Existing repository binding for tenant apps whose source is not owned by the
+ * generated-source export pipeline.
+ */
+export interface SourceUnknownAppRegistrationRequest {
+  repoOwner: string;
+  repoName: string;
+  repoUrl?: string;
+  defaultBranch?: string;
+  workflowPath?: string;
+  ref?: string;
+  commitSha?: string;
+  configPath?: string;
+  runtimePath?: string;
+  sourceMode?: 'source-unknown';
+  validationSummary?: Record<string, unknown>;
+}
+
 export interface CapabilityEvaluationRequest {
   tenantId: string;
   targetCapability: 'child-tenants' | 'ai-chat' | 'documents' | 'auth-b2b' | 'auth-dual';
@@ -1097,6 +1115,18 @@ export class PlatformAPIClient {
   async createTenantApp(parentTenantId: string, data: TenantAppCreateRequest): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(parentTenantId)}/apps`,
+      'POST',
+      data,
+    );
+  }
+
+  async registerSourceUnknownApp(
+    tenantId: string,
+    appKey: string,
+    data: SourceUnknownAppRegistrationRequest,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/register`,
       'POST',
       data,
     );

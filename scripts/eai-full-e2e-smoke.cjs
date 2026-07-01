@@ -53,6 +53,7 @@ const TRACEABILITY_BASE = [
   ['eai resources doctor', 'read', 'live', 'Runs active tenant storage readiness diagnostics.'],
   ['eai app list', 'read', 'live', 'Lists apps before and after scaffold.'],
   ['eai app create', 'create', 'covered-by-init', 'The scaffold path calls the same app creation API; direct extra app creation is opt-in to avoid orphaned apps.'],
+  ['eai app connect-existing', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids overwriting source metadata on a dedicated tenant app.'],
   ['eai app select', 'update-local', 'live', 'Writes the app key into the disposable workspace env.'],
   ['eai app provision', 'create/update', 'live', 'Prepares platform storage for the smoke app.'],
   ['eai chat send', 'create/read', 'live-optional', 'Runs only when EAI_E2E_WORKFLOW_KEY is configured and workflow status is available.'],
@@ -236,6 +237,9 @@ const SMOKE_CALLS = {
     'eai app create <name> --tenant-id <tenant-id> --key <app-key> --template eai-app-template --source eai-cli --app-url https://example.invalid --status pending --format json',
     'eai app create <name> --tenant-id <tenant-id> --parent-tenant <tenant-id> --child-tenant <child-name> --child-tenant-slug <child-slug> --key <app-key> --format json',
   ],
+  'eai app connect-existing': [
+    'eai app connect-existing <app-key> --tenant-id <tenant-id> --repo <owner/repo> --repo-url https://github.com/<owner>/<repo> --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config src/eai.config/index.ts --runtime src/eai.runtime.ts --format json',
+  ],
   'eai app select': [
     'eai app select <app-key> --tenant-id <tenant-id> --skip-validate --format json',
   ],
@@ -397,6 +401,9 @@ const OPTION_DECISIONS = {
     '--rebuild-search': 'Potentially expensive search rebuild; left as explicit opt-in outside release smoke.',
     '--skip-validate': 'Negative validation bypass; not used in release smoke because the smoke should prove normal validation works.',
   },
+  'eai app connect-existing': {
+    '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
+  },
   'eai workflow provision': {
     '--vertical': 'Deprecated alias for --app; not used by new V4-native/app vocabulary smoke.',
     '--write-app-config': 'Writes cloud configuration; opt-in outside the default destructive smoke.',
@@ -529,6 +536,11 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'Yes - app record',
     cleanupMechanism: 'Covered by eai init path; no default app delete command',
     cleanupVerified: 'No - dedicated smoke tenant expected',
+  },
+  'eai app connect-existing': {
+    createsExternalArtifact: 'Updates app source metadata',
+    cleanupMechanism: 'No source registration unlink command yet; command is covered by mocked integration tests',
+    cleanupVerified: 'No - live smoke does not mutate source metadata',
   },
   'eai app provision': {
     createsExternalArtifact: 'Yes - app storage/provisioning metadata',

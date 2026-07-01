@@ -248,6 +248,46 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('registers source-unknown app repositories through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.registerSourceUnknownApp('tenant-parent', 'rates-review', {
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      repoUrl: 'https://github.com/enterpriseaigroup/rates-review',
+      defaultBranch: 'main',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configPath: 'src/eai.config/index.ts',
+      runtimePath: 'src/eai.runtime.ts',
+      sourceMode: 'source-unknown',
+      validationSummary: { status: 'registered_by_cli' },
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      repoUrl: 'https://github.com/enterpriseaigroup/rates-review',
+      defaultBranch: 'main',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configPath: 'src/eai.config/index.ts',
+      runtimePath: 'src/eai.runtime.ts',
+      sourceMode: 'source-unknown',
+      validationSummary: { status: 'registered_by_cli' },
+    })
+  })
+
   test('posts capability evaluation requests to the public capability router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

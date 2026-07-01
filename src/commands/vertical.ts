@@ -9,7 +9,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
-import { PlatformAPIClient } from '../lib/api.js';
+import { PlatformAPIClient, type SourceUnknownAppRegistrationRequest } from '../lib/api.js';
 import {
   resolveActiveTenantContext,
   resolveMainCompanyTenantId,
@@ -43,6 +43,25 @@ export interface VerticalCreateOptions {
   json?: boolean;
 }
 
+/**
+ * Options for binding a tenant app to an existing GitHub repository while
+ * keeping source ownership outside the generated-source export pipeline.
+ */
+export interface AppConnectExistingOptions {
+  tenantId?: string;
+  repo: string;
+  repoUrl?: string;
+  branch?: string;
+  workflow?: string;
+  ref?: string;
+  commit?: string;
+  config?: string;
+  runtime?: string;
+  skipValidate?: boolean;
+  format?: string;
+  json?: boolean;
+}
+
 export function buildVerticalEnrollmentData(
   name: string,
   tenantId: string,
@@ -66,6 +85,56 @@ export function buildVerticalEnrollmentData(
     source: options.source || DEFAULT_VERTICAL_SOURCE,
     ...(options.template ? { templateKey: options.template } : {}),
     ...(options.appUrl ? { appUrl: options.appUrl } : {}),
+  };
+}
+
+/**
+ * Parse the GitHub repository identifier accepted by Admin Portal export jobs.
+ */
+export function parseRepositorySlug(repo: string): { owner: string; name: string } {
+  const normalized = repo
+    .trim()
+    .replace(/^git@github\.com:/, '')
+    .replace(/^https:\/\/github\.com\//, '')
+    .replace(/\.git$/, '');
+  const [owner, name, extra] = normalized.split('/');
+  if (!owner || !name || extra) {
+    throw new Error('Repository must be in owner/name form.');
+  }
+  return { owner, name };
+}
+
+function defaultRepoUrl(owner: string, name: string): string {
+  return `https://github.com/${owner}/${name}`;
+}
+
+/**
+ * Build the PublicAPI payload used to store source-unknown app repo metadata.
+ */
+export function buildSourceUnknownRegistrationData(
+  options: AppConnectExistingOptions,
+): SourceUnknownAppRegistrationRequest {
+  const repo = parseRepositorySlug(options.repo);
+  const defaultBranch = (options.branch || 'main').trim();
+  if (!defaultBranch) {
+    throw new Error('Default branch is required.');
+  }
+
+  return {
+    repoOwner: repo.owner,
+    repoName: repo.name,
+    repoUrl: options.repoUrl?.trim() || defaultRepoUrl(repo.owner, repo.name),
+    defaultBranch,
+    workflowPath: options.workflow?.trim() || '.github/workflows/eai-app.yml',
+    ref: options.ref?.trim() || `refs/heads/${defaultBranch}`,
+    ...(options.commit?.trim() ? { commitSha: options.commit.trim() } : {}),
+    configPath: options.config?.trim() || 'src/eai.config/index.ts',
+    runtimePath: options.runtime?.trim() || 'src/eai.runtime.ts',
+    sourceMode: 'source-unknown',
+    validationSummary: {
+      status: 'registered_by_cli',
+      appValidated: !options.skipValidate,
+    },
   };
 }
 
@@ -115,9 +184,9 @@ async function resolveAppManagementContext(options?: {
 
 async function validateVerticalEnrollment(
   verticalKey: string,
-  ctx: Awaited<ReturnType<typeof resolveCommandContext>>,
+  client: Pick<PlatformAPIClient, 'listResources'>,
 ): Promise<void> {
-  const res = await ctx.client.listResources(VERTICAL_ENROLLMENT_TYPE, {
+  const res = await client.listResources(VERTICAL_ENROLLMENT_TYPE, {
     limit: 1,
     where: { verticalKey },
   });
@@ -249,6 +318,76 @@ verticalCommand
   });
 
 verticalCommand
+  .command('connect-existing <key>')
+  .description('Register an existing app repository for managed deployment')
+  .requiredOption('--repo <owner/repo>', 'GitHub repository to connect')
+  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--repo-url <url>', 'Repository URL when it differs from https://github.com/owner/repo')
+  .option('--branch <branch>', 'Default branch', 'main')
+  .option('--workflow <path>', 'GitHub Actions workflow path', '.github/workflows/eai-app.yml')
+  .option('--ref <ref>', 'Approved git ref (defaults to refs/heads/<branch>)')
+  .option('--commit <sha>', 'Current commit SHA to bind')
+  .option('--config <path>', 'eai.config path', 'src/eai.config/index.ts')
+  .option('--runtime <path>', 'eai.runtime path', 'src/eai.runtime.ts')
+  .option('--skip-validate', 'Skip app lookup', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (key: string, options: AppConnectExistingOptions) => {
+    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const companyTenantId = options.tenantId
+      ? ctx.tenantId
+      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const format = normalizeFormat(options);
+    const appKey = key.trim();
+
+    if (!appKey) {
+      fail('App key is required.');
+    }
+
+    let registration: SourceUnknownAppRegistrationRequest;
+    try {
+      registration = buildSourceUnknownRegistrationData(options);
+    } catch (err) {
+      fail(errMsg(err));
+    }
+
+    if (!options.skipValidate) {
+      await validateVerticalEnrollment(appKey, client);
+    }
+
+    const spinner = makeSpinner(format, `Connecting ${appKey} to ${registration.repoOwner}/${registration.repoName}...`);
+    const res = await client.registerSourceUnknownApp(companyTenantId, appKey, registration);
+    const payload = await readResponsePayload(res);
+
+    if (!res.ok) {
+      spinner?.fail('Failed to connect existing app repository');
+      fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
+    }
+
+    if (format === 'json') {
+      out.json({
+        tenantId: companyTenantId,
+        appKey,
+        sourceMode: 'source-unknown',
+        repository: {
+          owner: registration.repoOwner,
+          name: registration.repoName,
+          url: registration.repoUrl,
+        },
+        request: registration,
+        response: payload,
+      });
+      return;
+    }
+
+    spinner?.succeed(`Connected existing repository for ${chalk.cyan(appKey)}`);
+    out.info(`Repository: ${chalk.cyan(`${registration.repoOwner}/${registration.repoName}`)}`);
+    out.info(`Branch: ${chalk.cyan(String(registration.defaultBranch))} · Ref: ${chalk.dim(String(registration.ref))}`);
+    out.info(`Workflow: ${chalk.cyan(String(registration.workflowPath))}`);
+  });
+
+verticalCommand
   .command('select <key>')
   .description('Set EAI_APP_KEY in the current project .env.local')
   .option('--tenant-id <id>', 'Validate against a specific company tenant')
@@ -265,7 +404,7 @@ verticalCommand
     }
 
     if (!options.skipValidate) {
-      await validateVerticalEnrollment(verticalKey, ctx);
+      await validateVerticalEnrollment(verticalKey, ctx.client);
     }
 
     await patchEnvFile(ctx.root, {
@@ -307,7 +446,7 @@ verticalCommand
     }
 
     if (!options.skipValidate) {
-      await validateVerticalEnrollment(verticalKey, ctx);
+      await validateVerticalEnrollment(verticalKey, ctx.client);
     }
 
     const spinner = makeSpinner(
