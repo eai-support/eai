@@ -12,6 +12,7 @@ import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/cont
 import {
   PlatformAPIClient,
   type SourceUnknownAppRegistrationRequest,
+  type SourceUnknownDeploymentRequest,
   type SourceUnknownWorkflowEvidenceRequest,
   type SourceUnknownWorkflowSetupRequest,
 } from '../lib/api.js';
@@ -106,6 +107,23 @@ export interface AppWorkflowEvidenceOptions extends AppConnectExistingOptions {
   workflowRunAttempt?: string;
   githubOidcToken?: string;
   githubOidcAudience?: string;
+}
+
+export interface AppDeploySourceUnknownOptions {
+  tenantId?: string;
+  operationId: string;
+  environment?: string;
+  workflow?: string;
+  ref?: string;
+  commit?: string;
+  configHash?: string;
+  artifactDigest?: string;
+  imageDigest?: string;
+  targetKind?: string;
+  releaseChannel?: string;
+  skipValidate?: boolean;
+  format?: string;
+  json?: boolean;
 }
 
 export function buildVerticalEnrollmentData(
@@ -340,6 +358,43 @@ export function buildSourceUnknownWorkflowEvidenceData(
     validationSummary: {
       status: 'passed_by_cli',
       appValidated: !options.skipValidate,
+    },
+  };
+}
+
+export function buildSourceUnknownDeploymentData(
+  options: AppDeploySourceUnknownOptions,
+): SourceUnknownDeploymentRequest {
+  const operationId = options.operationId?.trim();
+  const environment = (options.environment || 'preview').trim();
+  const artifactDigest = options.artifactDigest?.trim();
+  const imageDigest = options.imageDigest?.trim();
+
+  if (!operationId) throw new Error('Deployment handoff operation ID is required.');
+  if (!environment) throw new Error('Deployment handoff environment is required.');
+  if (artifactDigest) assertSha256Digest(artifactDigest, '--artifact-digest');
+  if (imageDigest) assertSha256Digest(imageDigest, '--image-digest');
+
+  const deploymentTarget: Record<string, unknown> = {};
+  const targetKind = normaliseOptionalString(options.targetKind);
+  const releaseChannel = normaliseOptionalString(options.releaseChannel);
+  if (targetKind) deploymentTarget.kind = targetKind;
+  if (releaseChannel) deploymentTarget.releaseChannel = releaseChannel;
+
+  return {
+    operationId,
+    environment,
+    ...(options.workflow?.trim() ? { workflowPath: options.workflow.trim() } : {}),
+    ...(options.ref?.trim() ? { ref: options.ref.trim() } : {}),
+    ...(options.commit?.trim() ? { commitSha: options.commit.trim() } : {}),
+    ...(options.configHash?.trim() ? { configHash: options.configHash.trim() } : {}),
+    ...(artifactDigest ? { artifactDigest } : {}),
+    ...(imageDigest ? { imageDigest } : {}),
+    ...(Object.keys(deploymentTarget).length > 0 ? { deploymentTarget } : {}),
+    validationSummary: {
+      status: 'deployment_requested_by_cli',
+      appValidated: !options.skipValidate,
+      requiresTenantInfra: true,
     },
   };
 }
@@ -872,6 +927,78 @@ verticalCommand
     out.info(`Operation: ${chalk.cyan(evidenceRequest.operationId)}`);
     out.info(`Artifact: ${chalk.cyan(evidenceRequest.artifactDigest)}`);
     out.info(`Image: ${chalk.cyan(evidenceRequest.imageDigest)}`);
+  });
+
+verticalCommand
+  .command('deploy-source-unknown <key>')
+  .description('Request a TenantInfra deployment handoff for a source-unknown app')
+  .requiredOption('--operation-id <id>', 'Accepted source-unknown workflow evidence operation ID')
+  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--environment <environment>', 'Deployment environment to bind', 'preview')
+  .option('--workflow <path>', 'GitHub Actions workflow path')
+  .option('--ref <ref>', 'Approved git ref')
+  .option('--commit <sha>', 'Workflow commit SHA')
+  .option('--config-hash <hash>', 'Validated config hash')
+  .option('--artifact-digest <digest>', 'Workflow artifact digest in sha256:<hex> form')
+  .option('--image-digest <digest>', 'Immutable image digest in sha256:<hex> form')
+  .option('--target-kind <kind>', 'Deployment backend target kind', 'tenantinfra')
+  .option('--release-channel <channel>', 'Release channel to request', 'preview')
+  .option('--skip-validate', 'Skip app lookup', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (key: string, options: AppDeploySourceUnknownOptions) => {
+    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const companyTenantId = options.tenantId
+      ? ctx.tenantId
+      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const format = normalizeFormat(options);
+    const appKey = key.trim();
+
+    if (!appKey) {
+      fail('App key is required.');
+    }
+
+    let deploymentRequest: SourceUnknownDeploymentRequest;
+    try {
+      deploymentRequest = buildSourceUnknownDeploymentData(options);
+    } catch (err) {
+      fail(errMsg(err));
+    }
+
+    if (!options.skipValidate) {
+      await validateVerticalEnrollment(appKey, client);
+    }
+
+    const spinner = makeSpinner(format, `Requesting source-unknown deployment handoff for ${appKey}...`);
+    const res = await client.requestSourceUnknownDeployment(companyTenantId, appKey, deploymentRequest);
+    const payload = await readResponsePayload(res);
+
+    if (!res.ok) {
+      spinner?.fail('Failed to request source-unknown deployment handoff');
+      fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
+    }
+
+    if (format === 'json') {
+      out.json({
+        tenantId: companyTenantId,
+        appKey,
+        sourceMode: 'source-unknown',
+        request: deploymentRequest,
+        response: payload,
+      });
+      return;
+    }
+
+    spinner?.succeed(`Recorded deployment handoff for ${chalk.cyan(appKey)}`);
+    if (isRecord(payload)) {
+      const status = typeof payload.status === 'string' ? payload.status : 'unknown';
+      const requestId = typeof payload.deploymentRequestId === 'string' ? payload.deploymentRequestId : '<unknown>';
+      const requiresTenantInfra = payload.requiresTenantInfra === true ? 'required' : 'not required';
+      out.info(`Status: ${chalk.cyan(status)}`);
+      out.info(`Request: ${chalk.cyan(requestId)}`);
+      out.info(`TenantInfra: ${chalk.cyan(requiresTenantInfra)}`);
+    }
   });
 
 verticalCommand

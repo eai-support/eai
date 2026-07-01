@@ -144,6 +144,19 @@ export interface SourceUnknownWorkflowEvidenceRequest {
   validationSummary?: Record<string, unknown>;
 }
 
+export interface SourceUnknownDeploymentRequest {
+  operationId: string;
+  environment?: string;
+  workflowPath?: string;
+  ref?: string;
+  commitSha?: string;
+  configHash?: string;
+  artifactDigest?: string;
+  imageDigest?: string;
+  deploymentTarget?: Record<string, unknown>;
+  validationSummary?: Record<string, unknown>;
+}
+
 export interface CapabilityEvaluationRequest {
   tenantId: string;
   targetCapability: 'child-tenants' | 'ai-chat' | 'documents' | 'auth-b2b' | 'auth-dual';
@@ -1208,6 +1221,18 @@ export class PlatformAPIClient {
         headers,
         body: JSON.stringify(data),
       },
+    );
+  }
+
+  async requestSourceUnknownDeployment(
+    tenantId: string,
+    appKey: string,
+    data: SourceUnknownDeploymentRequest,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/deploy`,
+      'POST',
+      data,
     );
   }
 

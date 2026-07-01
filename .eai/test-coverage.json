@@ -25,6 +25,7 @@
             "tests/integration/types.test.ts",
             "tests/integration/publicapi.test.ts",
             "tests/integration/platform-api-client.test.ts",
+            "tests/integration/vertical.test.ts",
             "tests/integration/dedicated-tenant-lifecycle.test.ts"
           ],
           "required_ci_checks": [

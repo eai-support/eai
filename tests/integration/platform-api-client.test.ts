@@ -445,6 +445,56 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('requests source-unknown deployment handoff through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 202 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.requestSourceUnknownDeployment('tenant-parent', 'rates-review', {
+      operationId: 'source-unknown-op',
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configHash: 'sha256:config',
+      artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      deploymentTarget: {
+        kind: 'tenantinfra',
+        releaseChannel: 'preview',
+      },
+      validationSummary: {
+        status: 'deployment_requested_by_cli',
+        requiresTenantInfra: true,
+      },
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deploy')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      operationId: 'source-unknown-op',
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configHash: 'sha256:config',
+      artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      deploymentTarget: {
+        kind: 'tenantinfra',
+        releaseChannel: 'preview',
+      },
+      validationSummary: {
+        status: 'deployment_requested_by_cli',
+        requiresTenantInfra: true,
+      },
+    })
+  })
+
   test('posts capability evaluation requests to the public capability router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

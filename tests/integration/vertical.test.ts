@@ -13,6 +13,7 @@ import {
 } from '../../src/lib/profile.js';
 import {
   appCommand,
+  buildSourceUnknownDeploymentData,
   buildSourceUnknownRegistrationData,
   verticalCommand,
 } from '../../src/commands/vertical.js';
@@ -612,6 +613,108 @@ describe('eai app', () => {
     );
   });
 
+  test('HP008 requests source-unknown deployment handoff under the company tenant', async () => {
+    await seedLoggedInTenant();
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      const method = requestMethod(init);
+
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        return jsonResponse({
+          tenants: [{
+            id: COMPANY_TENANT_ID,
+            displayName: 'Builder Workspace',
+            slug: 'builder-workspace',
+            isActive: true,
+            roles: ['tenant-admin'],
+          }],
+        });
+      }
+
+      if (
+        url.startsWith(`${API_BASE}/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)
+        && method === 'GET'
+      ) {
+        return jsonResponse({
+          docs: [{
+            id: 'app-1',
+            data: {
+              tenantId: COMPANY_TENANT_ID,
+              verticalKey: 'planning-portal',
+            },
+          }],
+        });
+      }
+
+      if (
+        url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/deploy`
+        && method === 'POST'
+      ) {
+        return jsonResponse({
+          status: 'handoff_pending',
+          deploymentRequestId: 'source-unknown-deploy-1',
+          requiresTenantInfra: true,
+        }, 202);
+      }
+
+      return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appCommand.parseAsync([
+      'deploy-source-unknown',
+      'planning-portal',
+      '--tenant-id',
+      COMPANY_TENANT_ID,
+      '--operation-id',
+      'source-unknown-op',
+      '--environment',
+      'preview',
+      '--workflow',
+      '.github/workflows/eai-app.yml',
+      '--ref',
+      'refs/heads/main',
+      '--commit',
+      'abcdef1234567890',
+      '--config-hash',
+      'sha256:config',
+      '--artifact-digest',
+      'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      '--image-digest',
+      'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      '--release-channel',
+      'preview',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/deploy`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          operationId: 'source-unknown-op',
+          environment: 'preview',
+          workflowPath: '.github/workflows/eai-app.yml',
+          ref: 'refs/heads/main',
+          commitSha: 'abcdef1234567890',
+          configHash: 'sha256:config',
+          artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          deploymentTarget: {
+            kind: 'tenantinfra',
+            releaseChannel: 'preview',
+          },
+          validationSummary: {
+            status: 'deployment_requested_by_cli',
+            appValidated: true,
+            requiresTenantInfra: true,
+          },
+        }),
+      }),
+    );
+  });
+
   test('BC002 rejects incomplete schema provenance before registration', () => {
     expect(() =>
       buildSourceUnknownRegistrationData({
@@ -619,6 +722,15 @@ describe('eai app', () => {
         schemaDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       }),
     ).toThrow('Schema provenance requires --schema-digest and --validator-digest.');
+  });
+
+  test('BC003 rejects invalid deployment handoff artifact digest before request', () => {
+    expect(() =>
+      buildSourceUnknownDeploymentData({
+        operationId: 'source-unknown-op',
+        artifactDigest: 'sha256:not-a-real-digest',
+      }),
+    ).toThrow('--artifact-digest must be a sha256:<64 hex chars> digest.');
   });
 
   test('BC001 keeps the legacy vertical alias working', async () => {
