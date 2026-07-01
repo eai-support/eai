@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.6.3.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.6.4.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -361,7 +361,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.3** (2026-06-30): Add full EAI e2e smoke traceability.
+The current CLI release is **v3.6.4** (2026-07-01): Fix default CLI auth profile isolation.
 
 
 ## What The Pieces Do
@@ -457,10 +457,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.3 |
-| Released | 2026-06-30 |
-| Last Material Change | Add full EAI e2e smoke traceability |
-| Source Commit | `e5437fd7d7c9942bb8f15556603ade4e37f0fdfe` |
+| Version | 3.6.4 |
+| Released | 2026-07-01 |
+| Last Material Change | Fix default CLI auth profile isolation |
+| Source Commit | `5b5085dc02a8342254d921c6654f8ea747a0a575` |
 
 
 ## Common Workflow
@@ -1596,7 +1596,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.6.3. The same catalog powers human stderr output, JSON output for AI
+v3.6.4. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they

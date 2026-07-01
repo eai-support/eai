@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.3** (2026-06-30): Add full EAI e2e smoke traceability.
+The current CLI release is **v3.6.4** (2026-07-01): Fix default CLI auth profile isolation.
 
 
 ## What The Pieces Do

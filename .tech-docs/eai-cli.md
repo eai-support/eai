@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.3 |
-| Released | 2026-06-30 |
-| Last Material Change | Add full EAI e2e smoke traceability |
-| Source Commit | `e5437fd7d7c9942bb8f15556603ade4e37f0fdfe` |
+| Version | 3.6.4 |
+| Released | 2026-07-01 |
+| Last Material Change | Fix default CLI auth profile isolation |
+| Source Commit | `5b5085dc02a8342254d921c6654f8ea747a0a575` |
 
 
 ## Common Workflow
