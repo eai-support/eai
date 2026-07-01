@@ -495,6 +495,22 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('reads latest source-unknown deployment handoff status through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.getLatestSourceUnknownDeployment('tenant-parent', 'rates-review')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deployments/latest')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
   test('posts capability evaluation requests to the public capability router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

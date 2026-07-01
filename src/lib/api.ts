@@ -1236,6 +1236,13 @@ export class PlatformAPIClient {
     );
   }
 
+  async getLatestSourceUnknownDeployment(tenantId: string, appKey: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/deployments/latest`,
+      'GET',
+    );
+  }
+
   async createTenant(data: {
     name: string;
     slug: string;

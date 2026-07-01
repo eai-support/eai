@@ -58,6 +58,7 @@ const TRACEABILITY_BASE = [
   ['eai app workflow-setup', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids issuing one-time source-unknown nonce state.'],
   ['eai app workflow-evidence', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids consuming source-unknown nonce state.'],
   ['eai app deploy-source-unknown', 'create/update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids recording deployment handoff state before TenantInfra execution exists.'],
+  ['eai app deploy-source-unknown-status', 'read', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids depending on a pre-existing deployment handoff.'],
   ['eai app select', 'update-local', 'live', 'Writes the app key into the disposable workspace env.'],
   ['eai app provision', 'create/update', 'live', 'Prepares platform storage for the smoke app.'],
   ['eai chat send', 'create/read', 'live-optional', 'Runs only when EAI_E2E_WORKFLOW_KEY is configured and workflow status is available.'],
@@ -256,6 +257,9 @@ const SMOKE_CALLS = {
   'eai app deploy-source-unknown': [
     'eai app deploy-source-unknown <app-key> --tenant-id <tenant-id> --operation-id <operation-id> --environment preview --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --artifact-digest sha256:<artifact> --image-digest sha256:<image> --target-kind tenantinfra --release-channel preview --format json',
   ],
+  'eai app deploy-source-unknown-status': [
+    'eai app deploy-source-unknown-status <app-key> --tenant-id <tenant-id> --format json',
+  ],
   'eai app select': [
     'eai app select <app-key> --tenant-id <tenant-id> --skip-validate --format json',
   ],
@@ -441,6 +445,9 @@ const OPTION_DECISIONS = {
   'eai app deploy-source-unknown': {
     '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
   },
+  'eai app deploy-source-unknown-status': {
+    '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
+  },
   'eai workflow provision': {
     '--vertical': 'Deprecated alias for --app; not used by new V4-native/app vocabulary smoke.',
     '--write-app-config': 'Writes cloud configuration; opt-in outside the default destructive smoke.',
@@ -604,6 +611,11 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'Records source-unknown deployment handoff metadata',
     cleanupMechanism: 'No deployment handoff delete command yet; command is covered by mocked integration tests',
     cleanupVerified: 'No - live smoke does not record deployment handoff state',
+  },
+  'eai app deploy-source-unknown-status': {
+    createsExternalArtifact: 'No - reads latest source-unknown deployment handoff metadata',
+    cleanupMechanism: 'No cleanup required for read-only status',
+    cleanupVerified: 'Yes - read-only',
   },
   'eai app provision': {
     createsExternalArtifact: 'Yes - app storage/provisioning metadata',

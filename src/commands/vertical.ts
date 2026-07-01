@@ -126,6 +126,13 @@ export interface AppDeploySourceUnknownOptions {
   json?: boolean;
 }
 
+export interface AppDeploySourceUnknownStatusOptions {
+  tenantId?: string;
+  skipValidate?: boolean;
+  format?: string;
+  json?: boolean;
+}
+
 export function buildVerticalEnrollmentData(
   name: string,
   tenantId: string,
@@ -994,6 +1001,60 @@ verticalCommand
     if (isRecord(payload)) {
       const status = typeof payload.status === 'string' ? payload.status : 'unknown';
       const requestId = typeof payload.deploymentRequestId === 'string' ? payload.deploymentRequestId : '<unknown>';
+      const requiresTenantInfra = payload.requiresTenantInfra === true ? 'required' : 'not required';
+      out.info(`Status: ${chalk.cyan(status)}`);
+      out.info(`Request: ${chalk.cyan(requestId)}`);
+      out.info(`TenantInfra: ${chalk.cyan(requiresTenantInfra)}`);
+    }
+  });
+
+verticalCommand
+  .command('deploy-source-unknown-status <key>')
+  .description('Read the latest source-unknown deployment handoff status')
+  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--skip-validate', 'Skip app lookup', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (key: string, options: AppDeploySourceUnknownStatusOptions) => {
+    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const companyTenantId = options.tenantId
+      ? ctx.tenantId
+      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const format = normalizeFormat(options);
+    const appKey = key.trim();
+
+    if (!appKey) {
+      fail('App key is required.');
+    }
+
+    if (!options.skipValidate) {
+      await validateVerticalEnrollment(appKey, client);
+    }
+
+    const spinner = makeSpinner(format, `Reading source-unknown deployment handoff status for ${appKey}...`);
+    const res = await client.getLatestSourceUnknownDeployment(companyTenantId, appKey);
+    const payload = await readResponsePayload(res);
+
+    if (!res.ok) {
+      spinner?.fail('Failed to read source-unknown deployment handoff status');
+      fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
+    }
+
+    if (format === 'json') {
+      out.json({
+        tenantId: companyTenantId,
+        appKey,
+        sourceMode: 'source-unknown',
+        response: payload,
+      });
+      return;
+    }
+
+    spinner?.succeed(`Read deployment handoff status for ${chalk.cyan(appKey)}`);
+    if (isRecord(payload)) {
+      const status = typeof payload.status === 'string' ? payload.status : 'unknown';
+      const requestId = typeof payload.deploymentRequestId === 'string' ? payload.deploymentRequestId : '<none>';
       const requiresTenantInfra = payload.requiresTenantInfra === true ? 'required' : 'not required';
       out.info(`Status: ${chalk.cyan(status)}`);
       out.info(`Request: ${chalk.cyan(requestId)}`);

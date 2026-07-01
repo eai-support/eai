@@ -715,6 +715,71 @@ describe('eai app', () => {
     );
   });
 
+  test('HP009 reads source-unknown deployment handoff status under the company tenant', async () => {
+    await seedLoggedInTenant();
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      const method = requestMethod(init);
+
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        return jsonResponse({
+          tenants: [{
+            id: COMPANY_TENANT_ID,
+            displayName: 'Builder Workspace',
+            slug: 'builder-workspace',
+            isActive: true,
+            roles: ['tenant-admin'],
+          }],
+        });
+      }
+
+      if (
+        url.startsWith(`${API_BASE}/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)
+        && method === 'GET'
+      ) {
+        return jsonResponse({
+          docs: [{
+            id: 'app-1',
+            data: {
+              tenantId: COMPANY_TENANT_ID,
+              verticalKey: 'planning-portal',
+            },
+          }],
+        });
+      }
+
+      if (
+        url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/deployments/latest`
+        && method === 'GET'
+      ) {
+        return jsonResponse({
+          status: 'handoff_pending',
+          deploymentRequestId: 'source-unknown-deploy-1',
+          requiresTenantInfra: true,
+        });
+      }
+
+      return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appCommand.parseAsync([
+      'deploy-source-unknown-status',
+      'planning-portal',
+      '--tenant-id',
+      COMPANY_TENANT_ID,
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/deployments/latest`,
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    );
+  });
+
   test('BC002 rejects incomplete schema provenance before registration', () => {
     expect(() =>
       buildSourceUnknownRegistrationData({
