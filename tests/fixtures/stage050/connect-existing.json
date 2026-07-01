@@ -1,0 +1,34 @@
+{
+  "stage": "stage050",
+  "contract": "source-unknown-connect-existing",
+  "tenantId": "tenant-parent",
+  "appKey": "rates-review",
+  "repository": {
+    "owner": "enterpriseaigroup",
+    "name": "rates-review",
+    "url": "https://github.com/enterpriseaigroup/rates-review",
+    "defaultBranch": "main",
+    "ref": "refs/heads/main",
+    "commitSha": "abcdef1234567890",
+    "workflowPath": ".github/workflows/eai-app.yml"
+  },
+  "configPath": "src/eai.config/index.ts",
+  "runtimePath": "src/eai.runtime.ts",
+  "sourceMode": "source-unknown",
+  "positiveAssertions": [
+    "CLI validates the tenant app enrollment unless --skip-validate is supplied",
+    "CLI registers the approved repo/ref/workflow mapping through PublicAPI",
+    "registration payload includes config and runtime paths",
+    "source mode is stored as source-unknown without generated-source ownership"
+  ],
+  "negativeAssertions": [
+    "repository slugs outside owner/name form are rejected",
+    "empty default branch is rejected",
+    "wrong tenant enrollment validation prevents registration",
+    "source-unknown registration does not invoke Admin Portal generated-source export"
+  ],
+  "evidenceTests": [
+    "tests/integration/vertical.test.ts",
+    "tests/integration/platform-api-client.test.ts"
+  ]
+}
