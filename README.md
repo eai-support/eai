@@ -117,6 +117,11 @@ All commands support these global flags:
 | `--describe` | Output JSON schema of command structure (for AI agents) |
 | `--format <format>` | Output format: `text` (default), `json`, or `yaml` |
 
+Plain `eai ...` commands use the public production profile. Private/dev/test
+profiles are explicit opt-in with `--profile <name>` or `EAI_PROFILE`; `eai
+login --profile <name>` stores tokens for that profile, but does not make future
+plain commands use it.
+
 ## Commands
 
 ### Scaffolding
