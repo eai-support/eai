@@ -15,6 +15,7 @@ import {
   appCommand,
   buildSourceUnknownDeploymentData,
   buildSourceUnknownRegistrationData,
+  buildSourceUnknownWorkflowEvidenceData,
   verticalCommand,
 } from '../../src/commands/vertical.js';
 
@@ -562,6 +563,8 @@ describe('eai app', () => {
       'github-oidc-token',
       '--template-version',
       'eai.generated_app_config.v1',
+      '--base-template-sha',
+      '3fa18d004b20ff409ab9687d623028f24d9e5543',
       '--schema-digest',
       'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
       '--validator-digest',
@@ -589,6 +592,7 @@ describe('eai app', () => {
           imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
           schemaProvenance: {
             templateVersion: 'eai.generated_app_config.v1',
+            baseTemplateSha: '3fa18d004b20ff409ab9687d623028f24d9e5543',
             schemaDigest: 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
             validatorDigest: 'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
           },
@@ -789,7 +793,32 @@ describe('eai app', () => {
     ).toThrow('Schema provenance requires --schema-digest and --validator-digest.');
   });
 
-  test('BC003 rejects invalid deployment handoff artifact digest before request', () => {
+  test('BC003 rejects schema provenance without an approved source anchor', () => {
+    expect(() =>
+      buildSourceUnknownRegistrationData({
+        repo: 'enterpriseaigroup/planning-portal',
+        templateVersion: 'eai.generated_app_config.v1',
+        schemaDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        validatorDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      }),
+    ).toThrow('Schema provenance requires --base-template-sha, --approved-source-sha, or --approved-release.');
+  });
+
+  test('BC004 rejects workflow evidence without schema provenance before request', () => {
+    expect(() =>
+      buildSourceUnknownWorkflowEvidenceData({
+        repo: 'enterpriseaigroup/planning-portal',
+        operationId: 'source-unknown-op',
+        nonce: 'nonce-token',
+        commit: 'abcdef1234567890',
+        configHash: 'sha256:config',
+        artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      }),
+    ).toThrow('Workflow evidence requires schema provenance');
+  });
+
+  test('BC005 rejects invalid deployment handoff artifact digest before request', () => {
     expect(() =>
       buildSourceUnknownDeploymentData({
         operationId: 'source-unknown-op',

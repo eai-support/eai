@@ -77,6 +77,15 @@ export interface TenantAppCreateRequest {
   homeRegion?: TenantHomeRegion;
 }
 
+export interface SourceUnknownSchemaProvenance {
+  templateVersion: string;
+  baseTemplateSha?: string;
+  approvedSourceSha?: string;
+  approvedReleaseId?: string;
+  schemaDigest: string;
+  validatorDigest: string;
+}
+
 /**
  * Existing repository binding for tenant apps whose source is not owned by the
  * generated-source export pipeline.
@@ -93,14 +102,7 @@ export interface SourceUnknownAppRegistrationRequest {
   runtimePath?: string;
   sourceMode?: 'source-unknown';
   adoptionMode?: 'connect-existing' | 'adopted-observed';
-  schemaProvenance?: {
-    templateVersion?: string;
-    baseTemplateSha?: string;
-    approvedSourceSha?: string;
-    approvedReleaseId?: string;
-    schemaDigest: string;
-    validatorDigest: string;
-  };
+  schemaProvenance?: SourceUnknownSchemaProvenance;
   observedDeployment?: {
     environment: string;
     activeUrl: string;
@@ -131,14 +133,7 @@ export interface SourceUnknownWorkflowEvidenceRequest {
   configHash: string;
   artifactDigest: string;
   imageDigest: string;
-  schemaProvenance?: {
-    templateVersion?: string;
-    baseTemplateSha?: string;
-    approvedSourceSha?: string;
-    approvedReleaseId?: string;
-    schemaDigest: string;
-    validatorDigest: string;
-  };
+  schemaProvenance: SourceUnknownSchemaProvenance;
   workflowRun?: Record<string, unknown>;
   oidcClaims: Record<string, unknown>;
   validationSummary?: Record<string, unknown>;

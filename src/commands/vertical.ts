@@ -13,6 +13,7 @@ import {
   PlatformAPIClient,
   type SourceUnknownAppRegistrationRequest,
   type SourceUnknownDeploymentRequest,
+  type SourceUnknownSchemaProvenance,
   type SourceUnknownWorkflowEvidenceRequest,
   type SourceUnknownWorkflowSetupRequest,
 } from '../lib/api.js';
@@ -190,9 +191,15 @@ function assertSha256Digest(value: string, field: string): void {
   }
 }
 
+function assertGitCommitSha(value: string, field: string): void {
+  if (!/^[a-fA-F0-9]{40}$/.test(value)) {
+    throw new Error(`${field} must be a 40 character git commit SHA.`);
+  }
+}
+
 function buildSchemaProvenance(
   options: AppConnectExistingOptions,
-): SourceUnknownAppRegistrationRequest['schemaProvenance'] {
+): SourceUnknownSchemaProvenance | undefined {
   const schemaDigest = normaliseOptionalString(options.schemaDigest);
   const validatorDigest = normaliseOptionalString(options.validatorDigest);
   const templateVersion = normaliseOptionalString(options.templateVersion);
@@ -211,11 +218,19 @@ function buildSchemaProvenance(
   if (!schemaDigest || !validatorDigest) {
     throw new Error('Schema provenance requires --schema-digest and --validator-digest.');
   }
+  if (!templateVersion) {
+    throw new Error('Schema provenance requires --template-version.');
+  }
+  if (!baseTemplateSha && !approvedSourceSha && !approvedReleaseId) {
+    throw new Error('Schema provenance requires --base-template-sha, --approved-source-sha, or --approved-release.');
+  }
   assertSha256Digest(schemaDigest, '--schema-digest');
   assertSha256Digest(validatorDigest, '--validator-digest');
+  if (baseTemplateSha) assertGitCommitSha(baseTemplateSha, '--base-template-sha');
+  if (approvedSourceSha) assertGitCommitSha(approvedSourceSha, '--approved-source-sha');
 
   return {
-    ...(templateVersion ? { templateVersion } : {}),
+    templateVersion,
     ...(baseTemplateSha ? { baseTemplateSha } : {}),
     ...(approvedSourceSha ? { approvedSourceSha } : {}),
     ...(approvedReleaseId ? { approvedReleaseId } : {}),
@@ -335,6 +350,9 @@ export function buildSourceUnknownWorkflowEvidenceData(
   assertSha256Digest(artifactDigest, '--artifact-digest');
   assertSha256Digest(imageDigest, '--image-digest');
   const schemaProvenance = buildSchemaProvenance(options);
+  if (!schemaProvenance) {
+    throw new Error('Workflow evidence requires schema provenance: provide --template-version, --schema-digest, --validator-digest, and an approved source anchor.');
+  }
   const workflowRun: Record<string, unknown> = {};
   if (options.workflowRunId?.trim()) workflowRun.id = options.workflowRunId.trim();
   if (options.workflowRunAttempt?.trim()) {
@@ -352,7 +370,7 @@ export function buildSourceUnknownWorkflowEvidenceData(
     configHash,
     artifactDigest,
     imageDigest,
-    ...(schemaProvenance ? { schemaProvenance } : {}),
+    schemaProvenance,
     ...(Object.keys(workflowRun).length > 0 ? { workflowRun } : {}),
     oidcClaims: {
       repository: `${repo.owner}/${repo.name}`,
