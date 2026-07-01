@@ -57,6 +57,7 @@ Getting Started:
   eai init my-app     Scaffold an app with Gofer AI CLI assets
   eai login                Authenticate with Entra CIAM
   eai provision entra      Create Entra app registration for end-user auth
+  eai provision entra --deauthorize --force Clean up app auth registration
   eai env pull             Sync app config from cloud
   eai types seed           Publish Object Types to the platform
   eai dev                  Start local development server

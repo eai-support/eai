@@ -24,7 +24,6 @@ export interface ProfileConfig {
 }
 
 interface ProfilesFile {
-  activeProfile?: string;
   readonly profiles: Record<string, ProfileConfig>;
 }
 
@@ -129,50 +128,6 @@ export async function saveProfileConfig(name: string, config: ProfileConfig): Pr
       [name]: config,
     },
   };
-
-  await writeFile(configPath, JSON.stringify(file, null, 2) + '\n', {
-    encoding: 'utf-8',
-    mode: 0o600,
-  });
-}
-
-/**
- * Read the activeProfile field from local profile settings.
- * Returns "default" if the file doesn't exist or has no activeProfile.
- */
-export async function loadActiveProfileFromConfig(): Promise<string> {
-  try {
-    const raw = await readFile(getConfigFilePath(), 'utf-8');
-    const file = JSON.parse(raw) as ProfilesFile;
-    return file.activeProfile ?? 'default';
-  } catch {
-    return 'default';
-  }
-}
-
-/**
- * Persist the active profile name in local profile settings.
- * Called after login with a private profile so subsequent commands remember it.
- * Setting to "default" removes the activeProfile field.
- */
-export async function saveActiveProfileToConfig(name: string): Promise<void> {
-  const dir = getEaiDir();
-  await mkdir(dir, { recursive: true });
-
-  const configPath = getConfigFilePath();
-  let file: ProfilesFile = { profiles: {} };
-  try {
-    const raw = await readFile(configPath, 'utf-8');
-    file = JSON.parse(raw) as ProfilesFile;
-  } catch {
-    // File doesn't exist or is invalid — start fresh
-  }
-
-  if (name === 'default') {
-    delete file.activeProfile;
-  } else {
-    file = { ...file, activeProfile: name };
-  }
 
   await writeFile(configPath, JSON.stringify(file, null, 2) + '\n', {
     encoding: 'utf-8',

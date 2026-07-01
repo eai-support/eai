@@ -4,6 +4,9 @@
  * Tests for: eai whoami
  */
 
+import { createCipheriv, createHash, randomBytes } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
@@ -30,6 +33,38 @@ const RESOLVED_API_BASE = 'https://current-api.example.com';
 const PROD_AUTH_TENANT_NAME = 'enterpriseaiplatform';
 const PROD_AUTH_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
 const PROD_AUTH_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
+
+async function writeEncryptedTokenFile(
+  homeDir: string,
+  relativePath: string,
+  tokens: Record<string, unknown>,
+): Promise<void> {
+  const key = createHash('sha256').update(`eai-${homeDir}-token-store`).digest();
+  const iv = randomBytes(16);
+  const cipher = createCipheriv('aes-256-cbc', key, iv);
+  let encrypted = cipher.update(JSON.stringify(tokens), 'utf-8', 'hex');
+  encrypted += cipher.final('hex');
+  const target = join(homeDir, relativePath);
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, `${iv.toString('hex')}:${encrypted}`, { encoding: 'utf-8', mode: 0o600 });
+}
+
+async function writeStoredTokens(
+  homeDir: string,
+  relativePath: string,
+  email: string,
+): Promise<void> {
+  await writeEncryptedTokenFile(homeDir, relativePath, {
+    accessToken: '<fixture-access-token>',
+    refreshToken: '<fixture-refresh-token>',
+    expiresAt: Date.now() + 3600000,
+    upn: email,
+    oid: 'test-user-oid',
+    tenantId: PROD_AUTH_TENANT_ID,
+    tenantName: PROD_AUTH_TENANT_NAME,
+    clientId: PROD_AUTH_CLIENT_ID,
+  });
+}
 
 describe('eai whoami', () => {
   let env: TestEnvironment;
@@ -152,6 +187,43 @@ describe('eai whoami', () => {
 
     expect(staleApiHit).toBe(false);
     expect(membershipRequestHeaders?.authorization).toBe('Bearer <fixture-access-token>');
+  });
+
+  test('plain commands ignore persisted activeProfile and profiles require explicit opt-in', { timeout: 15000 }, async () => {
+    workingDirectoryIs(ctx, env.dir);
+    ctx.env.HOME = env.dir;
+    ctx.env.USERPROFILE = env.dir;
+
+    await mkdir(join(env.dir, '.eai'), { recursive: true });
+    await writeFile(
+      join(env.dir, '.eai', 'config.json'),
+      JSON.stringify({
+        activeProfile: 'test',
+        profiles: {
+          test: {
+            publicApiUrl: 'https://test-api.example.com/public',
+            authTenantName: PROD_AUTH_TENANT_NAME,
+            authTenantId: PROD_AUTH_TENANT_ID,
+            authClientId: PROD_AUTH_CLIENT_ID,
+            authScope: 'openid profile email offline_access api://test-publicapi/access_token',
+          },
+        },
+      }, null, 2),
+    );
+    await writeStoredTokens(env.dir, '.eai/tokens.json', 'default-prod@example.com');
+    await writeStoredTokens(env.dir, '.eai/tokens/test.json', 'profile-test@example.com');
+
+    const plain = await runCommand(ctx, 'eai whoami');
+    expectCommandSucceeded(plain);
+    expectDisplayedMessage(plain, 'default-prod@example.com');
+    expect(plain.stdout).not.toContain('profile-test@example.com');
+    expectDisplayedMessage(plain, 'Profile');
+    expectDisplayedMessage(plain, 'default');
+
+    const profiled = await runCommand(ctx, 'eai --profile test whoami');
+    expectCommandSucceeded(profiled);
+    expectDisplayedMessage(profiled, 'profile-test@example.com');
+    expectDisplayedMessage(profiled, 'test');
   });
 
   test('TC018: Whoami when not logged in', { timeout: 15000 }, async () => {

@@ -70,6 +70,7 @@ Getting Started:
   eai init my-app     Scaffold an app with Gofer AI CLI assets
   eai login                Authenticate with Entra CIAM
   eai provision entra      Create Entra app registration for end-user auth
+  eai provision entra --deauthorize --force Clean up app auth registration
   eai env pull             Sync app config from cloud
   eai types seed           Publish Object Types to the platform
   eai dev                  Start local development server
@@ -2061,6 +2062,11 @@ The v4 surface is grouped by domain prefix:
 - **Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)
 **Global Flags**: `--simple`, `--no-color`, `--color`, `--profile <name>`, `--describe`, `-V`
 
+Plain `eai ...` commands use the public production profile. Private/dev/test
+profiles are explicit opt-in with `--profile <name>` or `EAI_PROFILE`; logging
+in with a profile stores tokens for that profile but does not make later plain
+commands use it.
+
 > **Note on `eai env`:** `env pull` and `env push` are configuration-plane operations. They do not call PublicAPI and may require organization-specific cloud access.
 
 ---
@@ -2267,15 +2273,20 @@ Create or confirm an Entra app registration for end-user auth (Auth.js).
 **Options**:
 - `--force` — Re-check the remote app registration even if `ENTRA_CLIENT_ID` already exists locally
 - `--rotate-secret` — Rotate the existing secret and write the new value to `.env.local`
+- `--deauthorize` — Remove tenant authorization and delete the app registration for cleanup; requires `--force`
+- `--client-id <id>` — Client ID to deauthorize; defaults to `ENTRA_CLIENT_ID` in `.env.local`
+- `--keep-registration` — Remove tenant authorization without deleting the app registration
 - `--debug` — Print product-safe diagnostics and request identifiers on failure
 
 **What it does**:
 1. Creates/confirms the Entra app registration on the platform
 2. Writes the client ID (and secret) to `.env.local`
+3. With `--deauthorize --force`, removes tenant authorization, deletes the app registration, and removes local `ENTRA_CLIENT_ID`/`ENTRA_CLIENT_SECRET`
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/provisioning/entra-apps` — create/confirm app registration
 - `POST /v4/platform/provisioning/entra-apps/{clientId}/rotate-secret` — rotate secret (with `--rotate-secret`)
+- `DELETE /v4/platform/provisioning/entra-apps/{clientId}` — deauthorize/delete app registration (with `--deauthorize --force`)
 
 ---
 
@@ -3153,6 +3164,9 @@ These flags are available on the root `eai` command:
 | `--color` | boolean | Force colored output |
 | `--profile <name>` | string | Use a locally configured private profile |
 | `--describe` | boolean | Output a JSON schema of the command structure (for AI agents) |
+
+Plain commands use the public production profile unless `--profile <name>` or
+`EAI_PROFILE` is supplied.
 
 Most data-returning subcommands additionally accept `--format <format>` (`text` default, or `json`). A legacy `--json` boolean is accepted on many commands but is deprecated in favor of `--format json`.
 

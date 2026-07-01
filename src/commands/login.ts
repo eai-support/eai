@@ -11,7 +11,7 @@ import {
   resolveActiveTenantContext,
   resolvePublicApiUrl,
 } from '../lib/tenant-context.js';
-import { getActiveProfile, saveActiveProfileToConfig } from '../lib/profile.js';
+import { getActiveProfile } from '../lib/profile.js';
 import * as out from '../lib/output.js';
 
 function parseCallbackPort(value: string | undefined): number | undefined {
@@ -91,9 +91,6 @@ What happens next:
       // Store bare tokens now so the cache is populated for the tenant resolution call
       await storeTokens(tokens);
 
-      // Persist this profile as the active one so subsequent commands use it
-      await saveActiveProfileToConfig(profile);
-
       out.blank();
       out.success(`Authenticated as ${chalk.bold(tokens.upn || 'user')}`);
       out.info(`Token expires: ${new Date(tokens.expiresAt).toLocaleString()}`);
@@ -128,9 +125,7 @@ export const logoutCommand = new Command('logout')
   .action(async () => {
     const profile = getActiveProfile();
     await clearTokens();
-    // Reset active profile to default on logout
     if (profile !== 'default') {
-      await saveActiveProfileToConfig('default');
       out.success(`Logged out from profile "${profile}". Stored tokens cleared.`);
     } else {
       out.success('Logged out. Stored tokens cleared.');

@@ -28,6 +28,11 @@ The v4 surface is grouped by domain prefix:
 - **Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)
 **Global Flags**: `--simple`, `--no-color`, `--color`, `--profile <name>`, `--describe`, `-V`
 
+Plain `eai ...` commands use the public production profile. Private/dev/test
+profiles are explicit opt-in with `--profile <name>` or `EAI_PROFILE`; logging
+in with a profile stores tokens for that profile but does not make later plain
+commands use it.
+
 > **Note on `eai env`:** `env pull` and `env push` are configuration-plane operations. They do not call PublicAPI and may require organization-specific cloud access.
 
 ---
@@ -1125,6 +1130,9 @@ These flags are available on the root `eai` command:
 | `--color` | boolean | Force colored output |
 | `--profile <name>` | string | Use a locally configured private profile |
 | `--describe` | boolean | Output a JSON schema of the command structure (for AI agents) |
+
+Plain commands use the public production profile unless `--profile <name>` or
+`EAI_PROFILE` is supplied.
 
 Most data-returning subcommands additionally accept `--format <format>` (`text` default, or `json`). A legacy `--json` boolean is accepted on many commands but is deprecated in favor of `--format json`.
 

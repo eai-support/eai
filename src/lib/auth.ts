@@ -15,7 +15,6 @@ import { createServer } from 'node:http';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import type { AddressInfo } from 'node:net';
-import { findProjectRoot, loadEnvFile } from './config.js';
 import {
   getActiveProfile,
   getProfileTokensFile,
@@ -130,25 +129,20 @@ function buildDefaultAuthScopeForAudience(audienceScope: string): string {
   return normalizeAuthScope(`${DEFAULT_AUTH_SCOPE} ${audienceScope}`);
 }
 
-async function loadRuntimeAuthEnv(projectRoot?: string): Promise<Record<string, string>> {
-  const root = projectRoot ?? await findProjectRoot() ?? undefined;
-  const envVars = root ? await loadEnvFile(root) : {};
-  return { ...envVars, ...process.env } as Record<string, string>;
+async function loadRuntimeAuthEnv(): Promise<Record<string, string>> {
+  return { ...process.env } as Record<string, string>;
 }
 
 function resolveDefaultProfileAuthScopeFromEnv(env: Record<string, string>): string | undefined {
   const explicitScope = readFirstEnvValue(env, [
     'EAI_AUTH_SCOPE',
-    'ENTRA_SCOPES',
-    'ENTRA_DEFAULT_SCOPES',
   ]);
   if (explicitScope) {
     return normalizeAuthScope(explicitScope);
   }
 
   const delegatedScope = readFirstEnvValue(env, [
-    'EXTERNAL_PUBLIC_API_SCOPE',
-    'PUBLIC_API_SCOPE',
+    'EAI_PUBLIC_API_SCOPE',
   ]);
   if (delegatedScope) {
     return buildDefaultAuthScopeForAudience(delegatedScope);
@@ -217,14 +211,12 @@ export async function resolveAuthConfig(
     };
   }
 
-  const env = await loadRuntimeAuthEnv(projectRoot);
+  const env = await loadRuntimeAuthEnv();
   const tenantName = readFirstEnvValue(env, [
     'EAI_AUTH_TENANT_NAME',
-    'ENTRA_TENANT_NAME',
   ]) || DEFAULT_PROD_AUTH_TENANT_NAME;
   const tenantId = readFirstEnvValue(env, [
     'EAI_AUTH_TENANT_ID',
-    'ENTRA_TENANT_ID',
   ]) || DEFAULT_PROD_AUTH_TENANT_ID;
   const authScope = resolveDefaultProfileAuthScopeFromEnv(env) || DEFAULT_PROD_AUTH_SCOPE;
   const { clientId, source: clientIdSource } = resolveDefaultProfileClientId(env);
@@ -459,7 +451,7 @@ function buildStoredTokens(
     tenantName,
     clientId,
     authScope,
-    upn: parseJwtClaim(token.access_token, 'preferred_username') || undefined,
+    upn: parseJwtDisplayIdentity(token.access_token),
     oid: parseJwtClaim(token.access_token, 'oid') || undefined,
   };
 }
@@ -744,7 +736,7 @@ async function refreshAccessToken(tokens: StoredTokens): Promise<StoredTokens | 
     refreshToken: data.refresh_token || tokens.refreshToken,
     expiresAt: Date.now() + data.expires_in * 1000,
     authScope: scope,
-    upn: parseJwtClaim(data.access_token, 'preferred_username') || tokens.upn,
+    upn: parseJwtDisplayIdentity(data.access_token) || tokens.upn,
     oid: parseJwtClaim(data.access_token, 'oid') || tokens.oid,
   };
 }
@@ -760,4 +752,14 @@ function parseJwtClaim(jwt: string, claim: string): string | null {
   } catch {
     return null;
   }
+}
+
+function parseJwtDisplayIdentity(jwt: string): string | undefined {
+  return (
+    parseJwtClaim(jwt, 'preferred_username') ||
+    parseJwtClaim(jwt, 'upn') ||
+    parseJwtClaim(jwt, 'email') ||
+    parseJwtClaim(jwt, 'name') ||
+    undefined
+  );
 }
