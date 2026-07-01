@@ -18,9 +18,14 @@
     "sha": "abcdef1234567890",
     "run_id": "123456789"
   },
+  "githubOidc": {
+    "audience": "api://enterprise-ai-publicapi/source-unknown",
+    "authorization": "Bearer <github-oidc-token>",
+    "source": "GitHub Actions OIDC request environment or --github-oidc-token"
+  },
   "positiveAssertions": [
     "CLI validates the tenant app enrollment unless --skip-validate is supplied",
-    "CLI submits source-unknown workflow evidence through PublicAPI",
+    "CLI submits source-unknown workflow evidence through PublicAPI using a GitHub OIDC bearer token",
     "evidence payload includes operation ID, one-time nonce, config hash, artifact digest, and image digest",
     "evidence payload includes repository/ref/commit/workflow OIDC claim metadata",
     "server-side validation consumes the setup operation and blocks replay"

@@ -1197,11 +1197,17 @@ export class PlatformAPIClient {
     tenantId: string,
     appKey: string,
     data: SourceUnknownWorkflowEvidenceRequest,
+    githubOidcToken: string,
   ): Promise<Response> {
-    return this.publicRequest(
-      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
-      'POST',
-      data,
+    const headers = await this.headers();
+    headers.Authorization = `Bearer ${githubOidcToken}`;
+    return fetch(
+      `${this.baseUrl}${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(data),
+      },
     );
   }
 

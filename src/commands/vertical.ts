@@ -34,6 +34,7 @@ const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
 const DEFAULT_VERTICAL_SOURCE = ['eai', 'cli'].join('-');
 const APP_KEY_ENV = 'EAI_APP_KEY';
 const LEGACY_VERTICAL_KEY_ENV = 'EAI_VERTICAL_KEY';
+const DEFAULT_SOURCE_UNKNOWN_GITHUB_OIDC_AUDIENCE = 'api://enterprise-ai-publicapi/source-unknown';
 
 export interface VerticalCreateOptions {
   key?: string;
@@ -103,6 +104,8 @@ export interface AppWorkflowEvidenceOptions extends AppConnectExistingOptions {
   imageDigest: string;
   workflowRunId?: string;
   workflowRunAttempt?: string;
+  githubOidcToken?: string;
+  githubOidcAudience?: string;
 }
 
 export function buildVerticalEnrollmentData(
@@ -339,6 +342,34 @@ export function buildSourceUnknownWorkflowEvidenceData(
       appValidated: !options.skipValidate,
     },
   };
+}
+
+async function resolveGitHubOidcToken(options: AppWorkflowEvidenceOptions): Promise<string> {
+  const explicitToken = normaliseOptionalString(options.githubOidcToken);
+  if (explicitToken) return explicitToken;
+
+  const envToken = normaliseOptionalString(process.env.GITHUB_ID_TOKEN);
+  if (envToken) return envToken;
+
+  const requestUrl = normaliseOptionalString(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
+  const requestToken = normaliseOptionalString(process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN);
+  if (!requestUrl || !requestToken) {
+    throw new Error('Workflow evidence requires --github-oidc-token or GitHub Actions OIDC request environment variables.');
+  }
+
+  const audience = normaliseOptionalString(options.githubOidcAudience) || DEFAULT_SOURCE_UNKNOWN_GITHUB_OIDC_AUDIENCE;
+  const separator = requestUrl.includes('?') ? '&' : '?';
+  const response = await fetch(`${requestUrl}${separator}audience=${encodeURIComponent(audience)}`, {
+    headers: { Authorization: `Bearer ${requestToken}` },
+  });
+  if (!response.ok) {
+    throw new Error(`GitHub OIDC token request failed: ${response.status} ${response.statusText}`);
+  }
+  const payload = await response.json() as unknown;
+  if (!isRecord(payload) || typeof payload.value !== 'string' || !payload.value.trim()) {
+    throw new Error('GitHub OIDC token response did not include a token value.');
+  }
+  return payload.value.trim();
 }
 
 function extractDocs(payload: unknown): Array<{ id?: string; data?: Record<string, unknown>; version?: number }> {
@@ -777,6 +808,12 @@ verticalCommand
   .option('--validator-digest <digest>', 'Approved validator digest in sha256:<hex> form')
   .option('--workflow-run-id <id>', 'GitHub Actions run ID')
   .option('--workflow-run-attempt <n>', 'GitHub Actions run attempt')
+  .option('--github-oidc-token <token>', 'GitHub Actions OIDC token for workflow evidence submission')
+  .option(
+    '--github-oidc-audience <audience>',
+    'GitHub Actions OIDC audience',
+    DEFAULT_SOURCE_UNKNOWN_GITHUB_OIDC_AUDIENCE,
+  )
   .option('--skip-validate', 'Skip app lookup', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -804,8 +841,15 @@ verticalCommand
       await validateVerticalEnrollment(appKey, client);
     }
 
+    let githubOidcToken: string;
+    try {
+      githubOidcToken = await resolveGitHubOidcToken(options);
+    } catch (err) {
+      fail(errMsg(err));
+    }
+
     const spinner = makeSpinner(format, `Submitting workflow evidence for ${appKey}...`);
-    const res = await client.submitSourceUnknownWorkflowEvidence(companyTenantId, appKey, evidenceRequest);
+    const res = await client.submitSourceUnknownWorkflowEvidence(companyTenantId, appKey, evidenceRequest, githubOidcToken);
     const payload = await readResponsePayload(res);
 
     if (!res.ok) {

@@ -414,13 +414,16 @@ describe('PlatformAPIClient', () => {
         run_id: '123456789',
       },
       validationSummary: { status: 'passed' },
-    })
+    }, 'github-oidc-token')
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
     expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-evidence')
     expect(init?.method).toBe('POST')
+    expect(init?.headers).toEqual(expect.objectContaining({
+      Authorization: 'Bearer github-oidc-token',
+    }))
     expect(JSON.parse(String(init?.body))).toEqual({
       operationId: 'source-unknown-op',
       nonce: 'nonce-token',

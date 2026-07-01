@@ -250,7 +250,7 @@ const SMOKE_CALLS = {
     'eai app workflow-setup <app-key> --tenant-id <tenant-id> --environment preview --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --format json',
   ],
   'eai app workflow-evidence': [
-    'eai app workflow-evidence <app-key> --tenant-id <tenant-id> --repo <owner/repo> --operation-id <operation-id> --nonce <nonce> --environment preview --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --artifact-digest sha256:<artifact> --image-digest sha256:<image> --workflow-run-id <run-id> --format json',
+    'eai app workflow-evidence <app-key> --tenant-id <tenant-id> --repo <owner/repo> --operation-id <operation-id> --nonce <nonce> --environment preview --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --artifact-digest sha256:<artifact> --image-digest sha256:<image> --workflow-run-id <run-id> --github-oidc-token <token> --github-oidc-audience api://enterprise-ai-publicapi/source-unknown --format json',
   ],
   'eai app select': [
     'eai app select <app-key> --tenant-id <tenant-id> --skip-validate --format json',

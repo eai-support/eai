@@ -557,6 +557,8 @@ describe('eai app', () => {
       '123456789',
       '--workflow-run-attempt',
       '1',
+      '--github-oidc-token',
+      'github-oidc-token',
       '--template-version',
       'eai.generated_app_config.v1',
       '--schema-digest',
@@ -571,6 +573,9 @@ describe('eai app', () => {
       `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/workflow-evidence`,
       expect.objectContaining({
         method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer github-oidc-token',
+        }),
         body: JSON.stringify({
           operationId: 'source-unknown-op',
           nonce: 'nonce-token',

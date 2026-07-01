@@ -37,6 +37,9 @@ for (const field of ['artifactDigest', 'imageDigest']) {
 if (!fixture.oidcClaims?.repository || !fixture.oidcClaims?.ref || !fixture.oidcClaims?.sha) {
   throw new Error('Fixture oidcClaims repository, ref, and sha are required.');
 }
+if (!fixture.githubOidc?.audience || !String(fixture.githubOidc?.authorization || '').startsWith('Bearer ')) {
+  throw new Error('Fixture githubOidc audience and Bearer authorization are required.');
+}
 if (!Array.isArray(fixture.positiveAssertions) || fixture.positiveAssertions.length < 4) {
   throw new Error('Fixture must include positive workflow-evidence assertions.');
 }
@@ -56,7 +59,7 @@ cat > "$ARTIFACT" <<EOF
 
 - Command: \`./scripts/verify-stage050-workflow-evidence.sh\`
 - Fixture: \`tests/fixtures/stage050/workflow-evidence.json\`
-- Positive assertions: tenant app enrollment validation, PublicAPI source-unknown workflow evidence request, operation/nonce/config-hash payload, artifact/image digest payload, OIDC claim metadata payload, setup operation consumption expectation.
+- Positive assertions: tenant app enrollment validation, PublicAPI source-unknown workflow evidence request with GitHub OIDC bearer auth, operation/nonce/config-hash payload, artifact/image digest payload, OIDC claim metadata payload, setup operation consumption expectation.
 - Negative assertions: empty app key rejection, missing operation/nonce rejection, invalid digest rejection, wrong tenant validation failure before evidence submission, no live-smoke nonce consumption by default.
 - Result: passed
 EOF
