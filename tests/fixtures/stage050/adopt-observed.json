@@ -1,0 +1,41 @@
+{
+  "stage": "stage050",
+  "contract": "source-unknown-adopt-observed",
+  "tenantId": "tenant-parent",
+  "appKey": "rates-review",
+  "repository": {
+    "owner": "enterpriseaigroup",
+    "name": "rates-review",
+    "url": "https://github.com/enterpriseaigroup/rates-review",
+    "defaultBranch": "main",
+    "ref": "refs/heads/main",
+    "commitSha": "abcdef1234567890",
+    "workflowPath": ".github/workflows/eai-app.yml"
+  },
+  "configPath": "src/eai.config/index.ts",
+  "runtimePath": "src/eai.runtime.ts",
+  "sourceMode": "source-unknown",
+  "adoptionMode": "adopted-observed",
+  "observedDeployment": {
+    "environment": "production",
+    "activeUrl": "https://rates.example.com",
+    "status": "adopted_observed",
+    "observedAt": "2026-07-02T00:00:00.000Z"
+  },
+  "positiveAssertions": [
+    "CLI validates the tenant app enrollment unless --skip-validate is supplied",
+    "CLI registers the approved repo/ref/workflow mapping through PublicAPI",
+    "registration payload includes observed deployment URL and environment",
+    "destructive operations remain blocked until a managed redeploy verifies control"
+  ],
+  "negativeAssertions": [
+    "repository slugs outside owner/name form are rejected",
+    "invalid observed app URLs are rejected",
+    "wrong tenant enrollment validation prevents adoption",
+    "observed adoption does not invoke Admin Portal generated-source export"
+  ],
+  "evidenceTests": [
+    "tests/integration/vertical.test.ts",
+    "tests/integration/platform-api-client.test.ts"
+  ]
+}

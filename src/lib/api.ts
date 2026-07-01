@@ -92,6 +92,16 @@ export interface SourceUnknownAppRegistrationRequest {
   configPath?: string;
   runtimePath?: string;
   sourceMode?: 'source-unknown';
+  adoptionMode?: 'connect-existing' | 'adopted-observed';
+  observedDeployment?: {
+    environment: string;
+    activeUrl: string;
+    status: 'adopted_observed';
+    observedAt: string;
+    deploymentId?: string;
+    imageDigest?: string;
+    configHash?: string;
+  };
   validationSummary?: Record<string, unknown>;
 }
 

@@ -288,6 +288,68 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('registers observed-only source-unknown app adoption metadata', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.registerSourceUnknownApp('tenant-parent', 'rates-review', {
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      repoUrl: 'https://github.com/enterpriseaigroup/rates-review',
+      defaultBranch: 'main',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configPath: 'src/eai.config/index.ts',
+      runtimePath: 'src/eai.runtime.ts',
+      sourceMode: 'source-unknown',
+      adoptionMode: 'adopted-observed',
+      observedDeployment: {
+        environment: 'production',
+        activeUrl: 'https://rates.example.com',
+        status: 'adopted_observed',
+        observedAt: '2026-07-02T00:00:00.000Z',
+        deploymentId: 'aca-revision-42',
+      },
+      validationSummary: {
+        status: 'adopted_observed_by_cli',
+        destructiveOperationsBlocked: true,
+      },
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      repoUrl: 'https://github.com/enterpriseaigroup/rates-review',
+      defaultBranch: 'main',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configPath: 'src/eai.config/index.ts',
+      runtimePath: 'src/eai.runtime.ts',
+      sourceMode: 'source-unknown',
+      adoptionMode: 'adopted-observed',
+      observedDeployment: {
+        environment: 'production',
+        activeUrl: 'https://rates.example.com',
+        status: 'adopted_observed',
+        observedAt: '2026-07-02T00:00:00.000Z',
+        deploymentId: 'aca-revision-42',
+      },
+      validationSummary: {
+        status: 'adopted_observed_by_cli',
+        destructiveOperationsBlocked: true,
+      },
+    })
+  })
+
   test('posts capability evaluation requests to the public capability router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

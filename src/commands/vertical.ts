@@ -62,6 +62,15 @@ export interface AppConnectExistingOptions {
   json?: boolean;
 }
 
+export interface AppAdoptObservedOptions extends AppConnectExistingOptions {
+  url: string;
+  environment?: string;
+  deploymentId?: string;
+  imageDigest?: string;
+  configHash?: string;
+  observedAt?: string;
+}
+
 export function buildVerticalEnrollmentData(
   name: string,
   tenantId: string,
@@ -134,6 +143,44 @@ export function buildSourceUnknownRegistrationData(
     validationSummary: {
       status: 'registered_by_cli',
       appValidated: !options.skipValidate,
+    },
+  };
+}
+
+export function buildSourceUnknownAdoptObservedData(
+  options: AppAdoptObservedOptions,
+): SourceUnknownAppRegistrationRequest {
+  const registration = buildSourceUnknownRegistrationData(options);
+  const activeUrl = options.url.trim();
+  const environment = (options.environment || 'production').trim();
+  if (!activeUrl) {
+    throw new Error('Observed app URL is required.');
+  }
+  try {
+    new URL(activeUrl);
+  } catch {
+    throw new Error('Observed app URL must be an absolute URL.');
+  }
+  if (!environment) {
+    throw new Error('Observed environment is required.');
+  }
+
+  return {
+    ...registration,
+    adoptionMode: 'adopted-observed',
+    observedDeployment: {
+      environment,
+      activeUrl,
+      status: 'adopted_observed',
+      observedAt: options.observedAt?.trim() || new Date().toISOString(),
+      ...(options.deploymentId?.trim() ? { deploymentId: options.deploymentId.trim() } : {}),
+      ...(options.imageDigest?.trim() ? { imageDigest: options.imageDigest.trim() } : {}),
+      ...(options.configHash?.trim() ? { configHash: options.configHash.trim() } : {}),
+    },
+    validationSummary: {
+      status: 'adopted_observed_by_cli',
+      appValidated: !options.skipValidate,
+      destructiveOperationsBlocked: true,
     },
   };
 }
@@ -385,6 +432,84 @@ verticalCommand
     out.info(`Repository: ${chalk.cyan(`${registration.repoOwner}/${registration.repoName}`)}`);
     out.info(`Branch: ${chalk.cyan(String(registration.defaultBranch))} · Ref: ${chalk.dim(String(registration.ref))}`);
     out.info(`Workflow: ${chalk.cyan(String(registration.workflowPath))}`);
+  });
+
+verticalCommand
+  .command('adopt-observed <key>')
+  .description('Import an already-running app as read-only observed infrastructure')
+  .requiredOption('--repo <owner/repo>', 'GitHub repository to connect')
+  .requiredOption('--url <url>', 'Currently active observed app URL')
+  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--repo-url <url>', 'Repository URL when it differs from https://github.com/owner/repo')
+  .option('--environment <environment>', 'Observed deployment environment', 'production')
+  .option('--branch <branch>', 'Default branch', 'main')
+  .option('--workflow <path>', 'GitHub Actions workflow path', '.github/workflows/eai-app.yml')
+  .option('--ref <ref>', 'Approved git ref (defaults to refs/heads/<branch>)')
+  .option('--commit <sha>', 'Current commit SHA to bind')
+  .option('--config <path>', 'eai.config path', 'src/eai.config/index.ts')
+  .option('--runtime <path>', 'eai.runtime path', 'src/eai.runtime.ts')
+  .option('--deployment-id <id>', 'Observed deployment identifier')
+  .option('--image-digest <digest>', 'Observed immutable image digest')
+  .option('--config-hash <hash>', 'Observed config hash')
+  .option('--observed-at <iso>', 'Observation timestamp')
+  .option('--skip-validate', 'Skip app lookup', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (key: string, options: AppAdoptObservedOptions) => {
+    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const companyTenantId = options.tenantId
+      ? ctx.tenantId
+      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const format = normalizeFormat(options);
+    const appKey = key.trim();
+
+    if (!appKey) {
+      fail('App key is required.');
+    }
+
+    let registration: SourceUnknownAppRegistrationRequest;
+    try {
+      registration = buildSourceUnknownAdoptObservedData(options);
+    } catch (err) {
+      fail(errMsg(err));
+    }
+
+    if (!options.skipValidate) {
+      await validateVerticalEnrollment(appKey, client);
+    }
+
+    const spinner = makeSpinner(format, `Adopting observed app ${appKey} from ${registration.repoOwner}/${registration.repoName}...`);
+    const res = await client.registerSourceUnknownApp(companyTenantId, appKey, registration);
+    const payload = await readResponsePayload(res);
+
+    if (!res.ok) {
+      spinner?.fail('Failed to adopt observed app');
+      fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
+    }
+
+    if (format === 'json') {
+      out.json({
+        tenantId: companyTenantId,
+        appKey,
+        sourceMode: 'source-unknown',
+        adoptionMode: 'adopted-observed',
+        repository: {
+          owner: registration.repoOwner,
+          name: registration.repoName,
+          url: registration.repoUrl,
+        },
+        observedDeployment: registration.observedDeployment,
+        request: registration,
+        response: payload,
+      });
+      return;
+    }
+
+    spinner?.succeed(`Adopted observed app ${chalk.cyan(appKey)}`);
+    out.info(`Repository: ${chalk.cyan(`${registration.repoOwner}/${registration.repoName}`)}`);
+    out.info(`Observed URL: ${chalk.cyan(String(registration.observedDeployment?.activeUrl))}`);
+    out.info('Destructive operations remain blocked until a managed redeploy verifies control.');
   });
 
 verticalCommand

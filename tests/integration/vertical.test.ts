@@ -269,6 +269,116 @@ describe('eai app', () => {
     );
   });
 
+  test('HP005 adopts an already-running app as observed-only source-unknown state', async () => {
+    await seedLoggedInTenant();
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      const method = requestMethod(init);
+
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        return jsonResponse({
+          tenants: [{
+            id: COMPANY_TENANT_ID,
+            displayName: 'Builder Workspace',
+            slug: 'builder-workspace',
+            isActive: true,
+            roles: ['tenant-admin'],
+          }],
+        });
+      }
+
+      if (
+        url.startsWith(`${API_BASE}/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)
+        && method === 'GET'
+      ) {
+        return jsonResponse({
+          docs: [{
+            id: 'app-1',
+            data: {
+              tenantId: COMPANY_TENANT_ID,
+              verticalKey: 'planning-portal',
+            },
+          }],
+        });
+      }
+
+      if (
+        url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/register`
+        && method === 'POST'
+      ) {
+        return jsonResponse({
+          status: 'registered',
+          sourceMetadata: {
+            sourceMode: 'source-unknown',
+            adoptionMode: 'adopted-observed',
+          },
+        });
+      }
+
+      return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appCommand.parseAsync([
+      'adopt-observed',
+      'planning-portal',
+      '--tenant-id',
+      COMPANY_TENANT_ID,
+      '--repo',
+      'enterpriseaigroup/planning-portal',
+      '--url',
+      'https://planning.example.com',
+      '--environment',
+      'production',
+      '--commit',
+      'abcdef1234567890',
+      '--deployment-id',
+      'aca-revision-42',
+      '--image-digest',
+      'sha256:1234567890abcdef',
+      '--config-hash',
+      'sha256:feedface',
+      '--observed-at',
+      '2026-07-02T00:00:00.000Z',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/register`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          repoOwner: 'enterpriseaigroup',
+          repoName: 'planning-portal',
+          repoUrl: 'https://github.com/enterpriseaigroup/planning-portal',
+          defaultBranch: 'main',
+          workflowPath: '.github/workflows/eai-app.yml',
+          ref: 'refs/heads/main',
+          commitSha: 'abcdef1234567890',
+          configPath: 'src/eai.config/index.ts',
+          runtimePath: 'src/eai.runtime.ts',
+          sourceMode: 'source-unknown',
+          validationSummary: {
+            status: 'adopted_observed_by_cli',
+            appValidated: true,
+            destructiveOperationsBlocked: true,
+          },
+          adoptionMode: 'adopted-observed',
+          observedDeployment: {
+            environment: 'production',
+            activeUrl: 'https://planning.example.com',
+            status: 'adopted_observed',
+            observedAt: '2026-07-02T00:00:00.000Z',
+            deploymentId: 'aca-revision-42',
+            imageDigest: 'sha256:1234567890abcdef',
+            configHash: 'sha256:feedface',
+          },
+        }),
+      }),
+    );
+  });
+
   test('BC001 keeps the legacy vertical alias working', async () => {
     await seedLoggedInTenant();
     await seedProjectRoot(env.dir);
