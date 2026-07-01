@@ -397,6 +397,93 @@ describe('eai app', () => {
     );
   });
 
+  test('HP006 issues source-unknown workflow setup under the company tenant', async () => {
+    await seedLoggedInTenant();
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      const method = requestMethod(init);
+
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        return jsonResponse({
+          tenants: [{
+            id: COMPANY_TENANT_ID,
+            displayName: 'Builder Workspace',
+            slug: 'builder-workspace',
+            isActive: true,
+            roles: ['tenant-admin'],
+          }],
+        });
+      }
+
+      if (
+        url.startsWith(`${API_BASE}/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)
+        && method === 'GET'
+      ) {
+        return jsonResponse({
+          docs: [{
+            id: 'app-1',
+            data: {
+              tenantId: COMPANY_TENANT_ID,
+              verticalKey: 'planning-portal',
+            },
+          }],
+        });
+      }
+
+      if (
+        url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/workflow-setup`
+        && method === 'POST'
+      ) {
+        return jsonResponse({
+          status: 'issued',
+          operationId: 'source-unknown-op',
+          nonce: 'nonce-token',
+          expiresAt: '2026-07-02T00:15:00.000Z',
+          setup: {
+            workflowPath: '.github/workflows/eai-app.yml',
+            publicApiEvidencePath: '/v4/platform/tenants/company-tenant/apps/planning-portal/source-unknown/workflow-evidence',
+          },
+        });
+      }
+
+      return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appCommand.parseAsync([
+      'workflow-setup',
+      'planning-portal',
+      '--tenant-id',
+      COMPANY_TENANT_ID,
+      '--environment',
+      'preview',
+      '--workflow',
+      '.github/workflows/eai-app.yml',
+      '--ref',
+      'refs/heads/main',
+      '--commit',
+      'abcdef1234567890',
+      '--config-hash',
+      'sha256:config',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/workflow-setup`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          environment: 'preview',
+          workflowPath: '.github/workflows/eai-app.yml',
+          ref: 'refs/heads/main',
+          commitSha: 'abcdef1234567890',
+          configHash: 'sha256:config',
+        }),
+      }),
+    );
+  });
+
   test('BC002 rejects incomplete schema provenance before registration', () => {
     expect(() =>
       buildSourceUnknownRegistrationData({

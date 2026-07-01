@@ -1,0 +1,36 @@
+{
+  "stage": "stage050",
+  "contract": "source-unknown-workflow-setup",
+  "tenantId": "tenant-parent",
+  "appKey": "rates-review",
+  "sourceMode": "source-unknown",
+  "environment": "preview",
+  "workflowPath": ".github/workflows/eai-app.yml",
+  "ref": "refs/heads/main",
+  "commitSha": "abcdef1234567890",
+  "configHash": "sha256:config",
+  "operationBinding": {
+    "operationId": "source-unknown-<issued>",
+    "nonce": "<returned-once>",
+    "storedNonce": "sha256:<nonce-hash>",
+    "expires": "short-lived"
+  },
+  "positiveAssertions": [
+    "CLI validates the tenant app enrollment unless --skip-validate is supplied",
+    "CLI requests source-unknown workflow setup through PublicAPI",
+    "setup payload includes environment, workflow path, ref, commit SHA, and config hash",
+    "PublicAPI/AdminAPI returns an operation ID and one-time nonce for workflow evidence",
+    "server-side storage keeps only the nonce hash"
+  ],
+  "negativeAssertions": [
+    "empty app key is rejected before setup",
+    "empty setup environment is rejected before PublicAPI mutation",
+    "wrong tenant enrollment validation prevents setup",
+    "workflow setup does not invoke Admin Portal generated-source export",
+    "nonce state is not issued by live smoke by default"
+  ],
+  "evidenceTests": [
+    "tests/integration/vertical.test.ts",
+    "tests/integration/platform-api-client.test.ts"
+  ]
+}

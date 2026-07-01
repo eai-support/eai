@@ -55,6 +55,7 @@ const TRACEABILITY_BASE = [
   ['eai app create', 'create', 'covered-by-init', 'The scaffold path calls the same app creation API; direct extra app creation is opt-in to avoid orphaned apps.'],
   ['eai app connect-existing', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids overwriting source metadata on a dedicated tenant app.'],
   ['eai app adopt-observed', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids marking app infrastructure observed without a managed redeploy path.'],
+  ['eai app workflow-setup', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids issuing one-time source-unknown nonce state.'],
   ['eai app select', 'update-local', 'live', 'Writes the app key into the disposable workspace env.'],
   ['eai app provision', 'create/update', 'live', 'Prepares platform storage for the smoke app.'],
   ['eai chat send', 'create/read', 'live-optional', 'Runs only when EAI_E2E_WORKFLOW_KEY is configured and workflow status is available.'],
@@ -244,6 +245,9 @@ const SMOKE_CALLS = {
   'eai app adopt-observed': [
     'eai app adopt-observed <app-key> --tenant-id <tenant-id> --repo <owner/repo> --url https://app.example.test --environment production --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config src/eai.config/index.ts --runtime src/eai.runtime.ts --format json',
   ],
+  'eai app workflow-setup': [
+    'eai app workflow-setup <app-key> --tenant-id <tenant-id> --environment preview --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --format json',
+  ],
   'eai app select': [
     'eai app select <app-key> --tenant-id <tenant-id> --skip-validate --format json',
   ],
@@ -416,6 +420,9 @@ const OPTION_DECISIONS = {
     '--config-hash': 'Observed config hash is optional until managed redeploy evidence exists; mocked command coverage proves it is forwarded.',
     '--observed-at': 'Observation timestamp defaults to now; mocked command coverage pins it for deterministic evidence.',
   },
+  'eai app workflow-setup': {
+    '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
+  },
   'eai workflow provision': {
     '--vertical': 'Deprecated alias for --app; not used by new V4-native/app vocabulary smoke.',
     '--write-app-config': 'Writes cloud configuration; opt-in outside the default destructive smoke.',
@@ -564,6 +571,11 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'Updates app source metadata and observed deployment status',
     cleanupMechanism: 'No observed-adoption unlink command yet; command is covered by mocked integration tests',
     cleanupVerified: 'No - live smoke does not mutate observed source metadata',
+  },
+  'eai app workflow-setup': {
+    createsExternalArtifact: 'Issues source-unknown workflow operation and nonce metadata',
+    cleanupMechanism: 'Operation expires; command is covered by mocked integration tests',
+    cleanupVerified: 'No - live smoke does not issue nonce state',
   },
   'eai app provision': {
     createsExternalArtifact: 'Yes - app storage/provisioning metadata',

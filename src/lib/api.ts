@@ -113,6 +113,14 @@ export interface SourceUnknownAppRegistrationRequest {
   validationSummary?: Record<string, unknown>;
 }
 
+export interface SourceUnknownWorkflowSetupRequest {
+  environment?: string;
+  workflowPath?: string;
+  ref?: string;
+  commitSha?: string;
+  configHash?: string;
+}
+
 export interface CapabilityEvaluationRequest {
   tenantId: string;
   targetCapability: 'child-tenants' | 'ai-chat' | 'documents' | 'auth-b2b' | 'auth-dual';
@@ -1145,6 +1153,18 @@ export class PlatformAPIClient {
   ): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/register`,
+      'POST',
+      data,
+    );
+  }
+
+  async setupSourceUnknownWorkflow(
+    tenantId: string,
+    appKey: string,
+    data: SourceUnknownWorkflowSetupRequest,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-setup`,
       'POST',
       data,
     );

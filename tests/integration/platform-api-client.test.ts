@@ -362,6 +362,34 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('issues source-unknown workflow setup through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.setupSourceUnknownWorkflow('tenant-parent', 'rates-review', {
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configHash: 'sha256:config',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-setup')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configHash: 'sha256:config',
+    })
+  })
+
   test('posts capability evaluation requests to the public capability router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

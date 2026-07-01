@@ -9,7 +9,11 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
-import { PlatformAPIClient, type SourceUnknownAppRegistrationRequest } from '../lib/api.js';
+import {
+  PlatformAPIClient,
+  type SourceUnknownAppRegistrationRequest,
+  type SourceUnknownWorkflowSetupRequest,
+} from '../lib/api.js';
 import {
   resolveActiveTenantContext,
   resolveMainCompanyTenantId,
@@ -75,6 +79,18 @@ export interface AppAdoptObservedOptions extends AppConnectExistingOptions {
   imageDigest?: string;
   configHash?: string;
   observedAt?: string;
+}
+
+export interface AppWorkflowSetupOptions {
+  tenantId?: string;
+  environment?: string;
+  workflow?: string;
+  ref?: string;
+  commit?: string;
+  configHash?: string;
+  skipValidate?: boolean;
+  format?: string;
+  json?: boolean;
 }
 
 export function buildVerticalEnrollmentData(
@@ -235,6 +251,22 @@ export function buildSourceUnknownAdoptObservedData(
       appValidated: !options.skipValidate,
       destructiveOperationsBlocked: true,
     },
+  };
+}
+
+export function buildSourceUnknownWorkflowSetupData(
+  options: AppWorkflowSetupOptions,
+): SourceUnknownWorkflowSetupRequest {
+  const environment = (options.environment || 'preview').trim();
+  if (!environment) {
+    throw new Error('Workflow setup environment is required.');
+  }
+  return {
+    environment,
+    workflowPath: options.workflow?.trim() || '.github/workflows/eai-app.yml',
+    ...(options.ref?.trim() ? { ref: options.ref.trim() } : {}),
+    ...(options.commit?.trim() ? { commitSha: options.commit.trim() } : {}),
+    ...(options.configHash?.trim() ? { configHash: options.configHash.trim() } : {}),
   };
 }
 
@@ -575,6 +607,80 @@ verticalCommand
     out.info(`Repository: ${chalk.cyan(`${registration.repoOwner}/${registration.repoName}`)}`);
     out.info(`Observed URL: ${chalk.cyan(String(registration.observedDeployment?.activeUrl))}`);
     out.info('Destructive operations remain blocked until a managed redeploy verifies control.');
+  });
+
+verticalCommand
+  .command('workflow-setup <key>')
+  .description('Issue source-unknown workflow setup operation and nonce')
+  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--environment <environment>', 'Deployment environment to bind', 'preview')
+  .option('--workflow <path>', 'GitHub Actions workflow path', '.github/workflows/eai-app.yml')
+  .option('--ref <ref>', 'Approved git ref')
+  .option('--commit <sha>', 'Current commit SHA to bind')
+  .option('--config-hash <hash>', 'Validated config hash to bind')
+  .option('--skip-validate', 'Skip app lookup', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (key: string, options: AppWorkflowSetupOptions) => {
+    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const companyTenantId = options.tenantId
+      ? ctx.tenantId
+      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const format = normalizeFormat(options);
+    const appKey = key.trim();
+
+    if (!appKey) {
+      fail('App key is required.');
+    }
+
+    let setupRequest: SourceUnknownWorkflowSetupRequest;
+    try {
+      setupRequest = buildSourceUnknownWorkflowSetupData(options);
+    } catch (err) {
+      fail(errMsg(err));
+    }
+
+    if (!options.skipValidate) {
+      await validateVerticalEnrollment(appKey, client);
+    }
+
+    const spinner = makeSpinner(format, `Issuing workflow setup for ${appKey}...`);
+    const res = await client.setupSourceUnknownWorkflow(companyTenantId, appKey, setupRequest);
+    const payload = await readResponsePayload(res);
+
+    if (!res.ok) {
+      spinner?.fail('Failed to issue source-unknown workflow setup');
+      fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
+    }
+
+    if (format === 'json') {
+      out.json({
+        tenantId: companyTenantId,
+        appKey,
+        sourceMode: 'source-unknown',
+        request: setupRequest,
+        response: payload,
+      });
+      return;
+    }
+
+    spinner?.succeed(`Issued workflow setup for ${chalk.cyan(appKey)}`);
+    if (isRecord(payload)) {
+      const operationId = typeof payload.operationId === 'string' ? payload.operationId : '<unknown>';
+      const nonce = typeof payload.nonce === 'string' ? payload.nonce : '<returned in JSON response>';
+      const expiresAt = typeof payload.expiresAt === 'string' ? payload.expiresAt : '<unknown>';
+      const setup = isRecord(payload.setup) ? payload.setup : {};
+      const workflowPath = typeof setup.workflowPath === 'string' ? setup.workflowPath : setupRequest.workflowPath;
+      const evidencePath = typeof setup.publicApiEvidencePath === 'string' ? setup.publicApiEvidencePath : undefined;
+      out.info(`Operation: ${chalk.cyan(operationId)}`);
+      out.info(`Nonce: ${chalk.cyan(nonce)} ${chalk.dim('(displayed once)')}`);
+      out.info(`Expires: ${chalk.cyan(expiresAt)}`);
+      out.info(`Workflow: ${chalk.cyan(String(workflowPath))}`);
+      if (evidencePath) {
+        out.info(`Evidence endpoint: ${chalk.cyan(evidencePath)}`);
+      }
+    }
   });
 
 verticalCommand
