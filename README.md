@@ -140,7 +140,10 @@ a different repository or a local template path.
 | `eai provision entra` | Create or confirm the app's Entra app registration in the CIAM for the active platform environment |
 | `eai provision entra --rotate-secret` | Rotate the existing app registration secret and write the new value to `.env.local` |
 | `eai provision entra --deauthorize --force` | Remove tenant authorization, delete the app registration, and remove local Entra credentials |
-| `eai user invite --email <email>` | Add an existing user to the active tenant or an explicit tenant |
+| `eai user invite --email <email> --role <role>` | Invite or provision a user into the active tenant or an explicit tenant with a V4 member role |
+| `eai user list` | List tenant members in the active tenant or an explicit tenant |
+| `eai user roles` | List tenant role definitions available for user invitation |
+| `eai user role set --email <email> --role <role>` | Assign a role by email through the V4 invite/add flow |
 | `eai user provision-me` | Provision yourself to the active tenant or an explicit tenant |
 
 Codespaces and other remote dev environments can keep the standard localhost
@@ -286,6 +289,30 @@ eai tenant bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id>
 ```
 
 By default this bootstraps the current login. To repair another known parent member, pass `--user-oid <entra-user-oid>` and optionally `--user-email <email>`.
+
+## Tenant Member And Role Management
+
+Use `eai user invite` for normal "add this person to a tenant" and "make this
+person a tenant admin/member" requests. The command calls the V4 tenant member
+invite/add flow and can assign these base roles:
+
+- `tenant-viewer`
+- `tenant-staff`
+- `tenant-builder`
+- `tenant-admin`
+
+Common examples:
+
+```bash
+eai user roles --tenant <tenant-id> --format json
+eai user invite --email user@example.com --tenant <tenant-id> --role tenant-viewer
+eai user invite --email admin@example.com --tenant <tenant-id> --role tenant-admin
+eai user list --tenant <tenant-id> --search admin@example.com --format json
+```
+
+`eai tenant bootstrap-admin` is not a general "make this user an admin" command.
+It is only for repairing first tenant-admin access on an existing immediate
+child tenant when the caller is already tenant-admin on the direct parent.
 
 ## Architecture
 

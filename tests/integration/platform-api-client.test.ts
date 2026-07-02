@@ -193,6 +193,111 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('invites tenant members through the public platform member route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.inviteTenantMember('tenant-child', {
+      email: 'poppy@example.com',
+      role: 'tenant-admin',
+      firstName: 'Poppy',
+      lastName: 'Lucas',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/members/invite')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'poppy@example.com',
+      role: 'tenant-admin',
+      firstName: 'Poppy',
+      lastName: 'Lucas',
+    })
+  })
+
+  test('invites tenant members with a role definition id without adding a default role', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.inviteTenantMember('tenant-child', {
+      email: 'poppy@example.com',
+      roleDefinitionId: 'role-definition-123',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/members/invite')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'poppy@example.com',
+      roleDefinitionId: 'role-definition-123',
+    })
+  })
+
+  test('lists tenant members through the public platform member route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.listTenantMembers('tenant-child', {
+      page: 2,
+      limit: 50,
+      sort: 'email',
+      search: 'poppy@example.com',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/members?page=2&limit=50&sort=email&search=poppy%40example.com')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
+  test('lists tenant role definitions through the public platform member route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.listTenantRoleDefinitions('tenant-child')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/role-definitions')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
+  test('updates tenant member role through the public platform member route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.updateTenantMemberRole('tenant-child', 'user-123', {
+      role: 'tenant-admin',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/members/user-123/roles')
+    expect(init?.method).toBe('PATCH')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      role: 'tenant-admin',
+    })
+  })
+
   test('sends child tenant homeRegion through the public platform router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

@@ -670,6 +670,11 @@ describe("eai init", () => {
       "package.json",
       '"name": "@eai-tools/current-dir-app"',
     );
+    await expectFileContains(
+      ctx,
+      ".env.local",
+      "WORKFLOW_CURRENT_DIR_APP_ID=",
+    );
     await expectFileNotExists(ctx, "current-dir-app/package.json");
   }, 30_000);
 

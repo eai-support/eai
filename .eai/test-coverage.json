@@ -23,9 +23,11 @@
             "tests/integration/output.test.ts",
             "tests/integration/provision.test.ts",
             "tests/integration/types.test.ts",
+            "tests/integration/user.test.ts",
             "tests/integration/publicapi.test.ts",
             "tests/integration/platform-api-client.test.ts",
-            "tests/integration/dedicated-tenant-lifecycle.test.ts"
+            "tests/integration/dedicated-tenant-lifecycle.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts"
           ],
           "required_ci_checks": [
             "ci/eai-cli-tests"

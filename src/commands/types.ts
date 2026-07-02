@@ -54,7 +54,28 @@ export interface TypeSeedResult {
   error?: string;
 }
 
-interface RemoteObjectTypeDocument {
+export interface TypeDiffEntry {
+  name: string;
+  slug?: string;
+  addedProperties: string[];
+  removedProperties: string[];
+  unchangedProperties: string[];
+}
+
+export interface TypeDiffResult {
+  tenantKey: string;
+  tenantId?: string;
+  resolutionSource?: TenantResolution["source"];
+  localCount: number;
+  remoteCount: number;
+  localOnly: TypeDiffEntry[];
+  remoteOnly: TypeDiffEntry[];
+  changed: TypeDiffEntry[];
+  unchanged: TypeDiffEntry[];
+  error?: string;
+}
+
+export interface RemoteObjectTypeDocument {
   id?: string;
   name: string;
   slug?: string;
@@ -486,6 +507,107 @@ function findMatchingRemoteType(
   requestedType: string,
 ): RemoteObjectTypeDocument | undefined {
   return findMatchingRemoteTypes(remoteDocs, requestedType)[0];
+}
+
+function propertyNames(properties: unknown[]): string[] {
+  return properties
+    .map((property) =>
+      isRecord(property) && typeof property.name === "string"
+        ? property.name
+        : null,
+    )
+    .filter((name): name is string => Boolean(name));
+}
+
+function diffEntry(
+  name: string,
+  slug: string | undefined,
+  addedProperties: string[] = [],
+  removedProperties: string[] = [],
+  unchangedProperties: string[] = [],
+): TypeDiffEntry {
+  return {
+    name,
+    ...(slug ? { slug } : {}),
+    addedProperties,
+    removedProperties,
+    unchangedProperties,
+  };
+}
+
+export function diffObjectTypesForTenant(
+  tenantKey: string,
+  tenantId: string | undefined,
+  resolutionSource: TenantResolution["source"] | undefined,
+  localTypes: ObjectTypeDefinition[],
+  remoteDocs: RemoteObjectTypeDocument[],
+): TypeDiffResult {
+  const matchedRemoteNames = new Set<string>();
+  const result: TypeDiffResult = {
+    tenantKey,
+    tenantId,
+    resolutionSource,
+    localCount: localTypes.length,
+    remoteCount: remoteDocs.length,
+    localOnly: [],
+    remoteOnly: [],
+    changed: [],
+    unchanged: [],
+  };
+
+  for (const localType of localTypes) {
+    const remote = findMatchingRemoteType(remoteDocs, localType.name);
+    if (!remote) {
+      result.localOnly.push(
+        diffEntry(localType.name, toObjectTypeSlug(localType.name)),
+      );
+      continue;
+    }
+
+    matchedRemoteNames.add(remote.name);
+    const localPropNames = new Set(localType.properties.map((p) => p.name));
+    const remotePropNames = new Set(propertyNames(remote.properties));
+    const addedProperties = [...localPropNames].filter(
+      (property) => !remotePropNames.has(property),
+    );
+    const removedProperties = [...remotePropNames].filter(
+      (property) => !localPropNames.has(property),
+    );
+    const unchangedProperties = [...localPropNames].filter((property) =>
+      remotePropNames.has(property),
+    );
+    const entry = diffEntry(
+      localType.name,
+      remote.slug ?? toObjectTypeSlug(localType.name),
+      addedProperties,
+      removedProperties,
+      unchangedProperties,
+    );
+
+    if (addedProperties.length === 0 && removedProperties.length === 0) {
+      result.unchanged.push(entry);
+    } else {
+      result.changed.push(entry);
+    }
+  }
+
+  for (const remote of remoteDocs) {
+    if (!matchedRemoteNames.has(remote.name)) {
+      result.remoteOnly.push(
+        diffEntry(remote.name, remote.slug ?? toObjectTypeSlug(remote.name)),
+      );
+    }
+  }
+
+  return result;
+}
+
+export async function resolveTypesPullOutputPath(
+  root: string,
+  output: string,
+): Promise<string> {
+  const { isAbsolute, join: pathJoin } = await import("node:path");
+  return isAbsolute(output) ? output : pathJoin(root, output);
 }
 
 export async function describeFailedPlatformResponse(
@@ -1818,27 +1940,41 @@ typesCommand
     "--tenant-id <id>",
     "Override the resolved tenant ID (use with --tenant-key)",
   )
+  .option("--format <format>", "Output format (text|json)", "text")
+  .option("--json", "Output raw JSON (deprecated, use --format json)", false)
   .addHelpText(
     "after",
     `
 Examples:
   $ eai types diff
   $ eai types diff --tenant-key council --tenant-id 423b7e9c-9a69-4763-5b9a-69570218f65d
+  $ eai types diff --format json
   `,
   )
   .action(async (options) => {
+    if (options.json) {
+      options.format = "json";
+    }
+    if (!["text", "json"].includes(options.format)) {
+      exitWithError(ErrorCode.E303, {
+        field: "--format",
+        value: options.format,
+        expected: "text or json",
+      });
+    }
+    const jsonOutput = options.format === "json";
     const ctx = await resolveCommandContext({ tenantId: options.tenantId });
     const { root, publicApiUrl } = ctx;
     const activeContext = options.tenantId ? null : ctx;
 
-    const spinner = ora("Loading local Object Types...").start();
+    const spinner = jsonOutput ? null : ora("Loading local Object Types...").start();
 
     let objectTypes: Record<string, ObjectTypeDefinition[]>;
     try {
       objectTypes = await loadObjectTypes(root);
-      spinner.succeed("Loaded local types");
+      spinner?.succeed("Loaded local types");
     } catch (err) {
-      spinner.fail("Failed to load local types");
+      spinner?.fail("Failed to load local types");
       out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
@@ -1864,9 +2000,24 @@ Examples:
       });
     }
 
+    const results: TypeDiffResult[] = [];
+
     for (const [tenantKey, localTypes] of entries) {
       if (!localTypes || localTypes.length === 0) {
-        out.warn(`No local Object Types found for "${tenantKey}"`);
+        if (!jsonOutput) {
+          out.warn(`No local Object Types found for "${tenantKey}"`);
+        }
+        results.push({
+          tenantKey,
+          tenantId: options.tenantId,
+          resolutionSource: options.tenantId ? "option" : undefined,
+          localCount: 0,
+          remoteCount: 0,
+          localOnly: [],
+          remoteOnly: [],
+          changed: [],
+          unchanged: [],
+        });
         continue;
       }
 
@@ -1877,81 +2028,106 @@ Examples:
       );
       const tenantId = resolution.tenantId;
       if (!tenantId) {
-        explainMissingTenantId(tenantKey);
+        if (!jsonOutput) {
+          explainMissingTenantId(tenantKey);
+        }
+        results.push({
+          tenantKey,
+          resolutionSource: resolution.source,
+          localCount: localTypes.length,
+          remoteCount: 0,
+          localOnly: [],
+          remoteOnly: [],
+          changed: [],
+          unchanged: [],
+          error: "Tenant ID could not be resolved",
+        });
         continue;
       }
 
-      out.heading(
-        `Tenant: ${tenantKey} → ${chalk.dim(tenantId)} ${chalk.dim(`(${describeTenantResolutionSource(resolution.source)})`)}`,
-      );
+      if (!jsonOutput) {
+        out.heading(
+          `Tenant: ${tenantKey} → ${chalk.dim(tenantId)} ${chalk.dim(`(${describeTenantResolutionSource(resolution.source)})`)}`,
+        );
+      }
 
       const client = new PlatformAPIClient(publicApiUrl, tenantId);
-      const remoteSpinner = ora("  Fetching remote types...").start();
+      const remoteSpinner = jsonOutput ? null : ora("  Fetching remote types...").start();
 
       try {
         const res = await client.getPublishedObjectTypes({ limit: 100 });
 
         const remoteDocs = extractRemoteObjectTypeDocs(await res.json());
-        remoteSpinner.succeed(`  ${remoteDocs.length} remote types`);
+        remoteSpinner?.succeed(`  ${remoteDocs.length} remote types`);
 
-        const matchedRemoteNames = new Set<string>();
+        const result = diffObjectTypesForTenant(
+          tenantKey,
+          tenantId,
+          resolution.source,
+          localTypes,
+          remoteDocs,
+        );
+        results.push(result);
 
-        // Local-only types
-        for (const localType of localTypes) {
-          const remote = findMatchingRemoteType(remoteDocs, localType.name);
-          if (!remote) {
-            out.info(`  ${out.symbols.added} ${localType.name} — local only`);
-            continue;
+        if (jsonOutput) {
+          continue;
+        }
+
+        for (const entry of result.localOnly) {
+          out.info(`  ${out.symbols.added} ${entry.name} — local only`);
+        }
+
+        for (const entry of result.unchanged) {
+          out.info(
+            `  ${out.symbols.unchanged} ${entry.name} — no changes`,
+          );
+        }
+
+        for (const entry of result.changed) {
+          out.info(`  ${out.symbols.changed} ${entry.name}`);
+          for (const property of entry.addedProperties) {
+            out.info(`    ${out.symbols.added} ${property}`);
           }
-
-          matchedRemoteNames.add(remote.name);
-          const localPropNames = new Set(
-            localType.properties.map((p) => p.name),
-          );
-          const remotePropNames = new Set(
-            (remote.properties as Array<{ name: string }>).map((p) => p.name),
-          );
-
-          const added = [...localPropNames].filter(
-            (p) => !remotePropNames.has(p),
-          );
-          const removed = [...remotePropNames].filter(
-            (p) => !localPropNames.has(p),
-          );
-          const unchanged = [...localPropNames].filter((p) =>
-            remotePropNames.has(p),
-          );
-
-          if (added.length === 0 && removed.length === 0) {
-            out.info(
-              `  ${out.symbols.unchanged} ${localType.name} — no changes`,
-            );
-          } else {
-            out.info(`  ${out.symbols.changed} ${localType.name}`);
-            for (const p of added) {
-              out.info(`    ${out.symbols.added} ${p}`);
-            }
-            for (const p of removed) {
-              out.info(`    ${out.symbols.removed} ${p}`);
-            }
-            if (unchanged.length > 0) {
-              out.dim(`    ${unchanged.length} unchanged`);
-            }
+          for (const property of entry.removedProperties) {
+            out.info(`    ${out.symbols.removed} ${property}`);
+          }
+          if (entry.unchangedProperties.length > 0) {
+            out.dim(`    ${entry.unchangedProperties.length} unchanged`);
           }
         }
 
-        // Remote-only types
-        for (const remote of remoteDocs) {
-          if (!matchedRemoteNames.has(remote.name)) {
-            out.warn(
-              `  ${out.symbols.warning} ${remote.name} — exists remotely but not locally`,
-            );
-          }
+        for (const entry of result.remoteOnly) {
+          out.warn(
+            `  ${out.symbols.warning} ${entry.name} — exists remotely but not locally`,
+          );
         }
       } catch (err) {
-        remoteSpinner.fail("  Failed to fetch remote types");
-        out.error(err instanceof Error ? err.message : String(err));
+        const message = err instanceof Error ? err.message : String(err);
+        remoteSpinner?.fail("  Failed to fetch remote types");
+        if (!jsonOutput) {
+          out.error(message);
+        }
+        results.push({
+          tenantKey,
+          tenantId,
+          resolutionSource: resolution.source,
+          localCount: localTypes.length,
+          remoteCount: 0,
+          localOnly: [],
+          remoteOnly: [],
+          changed: [],
+          unchanged: [],
+          error: message,
+        });
       }
+    }
+
+    if (jsonOutput) {
+      out.json({ tenants: results });
+    }
+
+    if (results.some((result) => result.error)) {
+      process.exitCode = 1;
     }
   });
 
@@ -1990,8 +2166,7 @@ Examples:
       // Generate TypeScript
       const ts = generateTypeScript(types, tenantId);
       const { writeFile: write } = await import("node:fs/promises");
-      const { join: pathJoin } = await import("node:path");
-      const outputPath = pathJoin(root, options.output);
+      const outputPath = await resolveTypesPullOutputPath(root, options.output);
       await write(outputPath, ts, "utf-8");
 
       out.success(`Written to ${chalk.bold(options.output)}`);

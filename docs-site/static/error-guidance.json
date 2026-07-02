@@ -268,10 +268,21 @@
           "mutates": true
         },
         {
-          "command": "eai tenant bootstrap-admin --parent <parent-id> --child <child-id>",
-          "purpose": "Bootstrap direct child tenant admin access when the user is authorized as the parent tenant admin.",
+          "command": "eai user invite --email <email> --tenant <tenant-id> --role tenant-admin",
+          "purpose": "Add or refresh a user membership and assign a tenant role when you are already tenant-admin for that tenant.",
           "mutates": true,
-          "when": "Only when the user is already an authorized parent tenant admin."
+          "when": "Use for normal \"add this person as a tenant member/admin\" requests."
+        },
+        {
+          "command": "eai user roles --tenant <tenant-id> --format json",
+          "purpose": "List assignable tenant roles before choosing a role for an invite.",
+          "mutates": false
+        },
+        {
+          "command": "eai tenant bootstrap-admin --parent <parent-id> --child <child-id>",
+          "purpose": "Repair first tenant-admin access for an immediate child tenant.",
+          "mutates": true,
+          "when": "Only when the target tenant is an immediate child of the supplied parent and does not already have usable tenant-admin access."
         }
       ],
       "retry": {
@@ -290,6 +301,83 @@
           "active tenant slug",
           "requested command",
           "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E205",
+      "reasonCode": "child_relation_invalid",
+      "title": "The supplied tenant is not an immediate child of the supplied parent.",
+      "category": "authorization",
+      "severity": "error",
+      "appliesTo": [
+        "tenant.bootstrap-admin",
+        "user.role",
+        "user.invite"
+      ],
+      "why": [
+        "The child-tenant bootstrap command is intentionally narrow.",
+        "It only works when the parent ID is the direct parent of the child tenant.",
+        "This error often appears when an agent uses bootstrap-admin for normal user addition instead of the tenant member invite flow."
+      ],
+      "evidenceToCheck": [
+        "Whether the task is normal user addition or first-admin child tenant repair.",
+        "The active tenant shown by eai whoami.",
+        "The target tenant shown by eai tenant info <tenant-id>."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user and active tenant.",
+          "mutates": false
+        },
+        {
+          "command": "eai tenant info <tenant-id> --format json",
+          "purpose": "Inspect the target tenant before retrying a tenant relationship command.",
+          "mutates": false
+        },
+        {
+          "command": "eai user roles --tenant <tenant-id> --format json",
+          "purpose": "List assignable roles when the intended task is adding or updating a user.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai user invite --email <email> --tenant <tenant-id> --role tenant-admin",
+          "purpose": "Add or update a user as tenant-admin on an existing tenant.",
+          "mutates": true,
+          "when": "Use when the goal is to add a person to a tenant or app context."
+        },
+        {
+          "command": "eai tenant bootstrap-admin --parent <direct-parent-id> --child <immediate-child-id>",
+          "purpose": "Retry the child bootstrap repair with the direct parent and immediate child IDs.",
+          "mutates": true,
+          "when": "Use only for first-admin child tenant repair, not normal member management."
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The supplied parent and child are not a direct parent-child pair."
+        ]
+      },
+      "escalation": {
+        "audience": "tenant-admin",
+        "neededWhen": [
+          "The direct parent tenant is not visible to the signed-in user."
+        ],
+        "include": [
+          "signed-in email",
+          "active tenant slug",
+          "target tenant slug",
+          "requested command"
         ]
       },
       "safety": {

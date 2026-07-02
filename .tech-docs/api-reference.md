@@ -205,15 +205,76 @@ Soft-delete a tenant.
 ### User Management Commands
 
 #### `eai user invite`
-Add an existing user to a tenant via the tenant-admin provisioning flow.
+Invite or provision a user into a tenant via the V4 tenant member-invite flow.
+Use this when a tenant admin needs to add a member or promote a trusted user to
+`tenant-admin`.
 
 **Options**:
 - `--email <email>` — Email of the user to add
 - `--tenant <id>` — Target tenant (default: active tenant)
+- `--role <role>` — Target base role (default: `tenant-viewer`; supported base roles are `tenant-viewer`, `tenant-staff`, `tenant-builder`, `tenant-admin`)
+- `--role-definition-id <id>` — Assign a specific tenant role definition instead of a base role
+- `--first-name <name>` — Optional first name for invite/provisioning context
+- `--last-name <name>` — Optional last name for invite/provisioning context
+- `--message <message>` — Optional invite message
+- `--redirect-uri <uri>` — Optional post-acceptance redirect URI
+- `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/platform/users/by-email?email=...` — look up the user
-- `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — provision the user into the tenant
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — invite or provision the tenant member with the requested role
+
+---
+
+#### `eai user list`
+List members in the active tenant or an explicit tenant.
+
+**Options**:
+- `--tenant <id>` — Target tenant (default: active tenant)
+- `--search <query>` — Search by email or name
+- `--page <number>` — Page number (default: 1)
+- `--limit <number>` — Page size (default: 25)
+- `--sort <field>` — Sort field (default: email)
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v4/platform/tenants/{tenantId}/members` — list tenant members
+
+---
+
+#### `eai user roles`
+List role definitions available for tenant member invitation.
+
+**Options**:
+- `--tenant <id>` — Target tenant (default: active tenant)
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v4/platform/tenants/{tenantId}/role-definitions` — list assignable tenant role definitions
+
+---
+
+#### `eai user role set`
+Assign a tenant member role. Email-based role assignment uses the V4 invite/add
+flow so agents can handle "user already exists", "user is new to this tenant",
+and "user needs a tenant-admin role" with one command.
+
+**Options**:
+- `--email <email>` — Add or update a user by email through the invite/add flow
+- `--member-id <id>` — Existing tenant member/user ID for the direct role update endpoint
+- `--tenant <id>` — Target tenant (default: active tenant)
+- `--role <role>` — Role to assign. Email-based updates support `tenant-viewer`, `tenant-staff`, `tenant-builder`, and `tenant-admin`; member-id updates support the platform role update contract.
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — email-based add/update with a role
+- `PATCH /v4/platform/tenants/{tenantId}/members/{memberId}/roles` — direct member-id role update
+
+---
+
+**Agent rule**: for normal user addition or tenant-admin assignment, use
+`eai user invite --email <email> --tenant <tenant-id> --role <role>`.
+`eai tenant bootstrap-admin` is only for first-admin repair on an immediate child
+tenant.
 
 ---
 
@@ -1049,6 +1110,10 @@ Preview file-level app-template / UI drift without writing to the repo.
 - `GET /v4/platform/users/by-email` — Look up a user by email
 - `GET /v4/platform/users/{oid}/memberships` — User memberships
 - `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — Provision a user into a tenant
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — Invite or provision a tenant member with a role
+- `GET /v4/platform/tenants/{tenantId}/members` — List tenant members
+- `GET /v4/platform/tenants/{tenantId}/role-definitions` — List assignable tenant role definitions
+- `PATCH /v4/platform/tenants/{tenantId}/members/{memberId}/roles` — Update a tenant member role
 - `POST /v4/platform/capabilities/evaluate` — Evaluate a capability decision
 
 ### Platform — Provisioning (Entra)

@@ -63,6 +63,40 @@ describe('error guidance catalog', () => {
     expect(guidance?.retry.maxAttempts).toBe(3);
   });
 
+  test('permission guidance sends normal user addition through user invite before child bootstrap repair', () => {
+    const guidance = findGuidanceByCodeOrReason('permission_denied');
+
+    const fixCommands = guidance?.fixes.map((fix) => fix.command) ?? [];
+    expect(fixCommands).toEqual(
+      expect.arrayContaining([
+        'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin',
+        'eai user roles --tenant <tenant-id> --format json',
+        'eai tenant bootstrap-admin --parent <parent-id> --child <child-id>',
+      ]),
+    );
+    expect(guidance?.fixes.find((fix) => fix.command.includes('bootstrap-admin'))?.when)
+      .toContain('immediate child');
+  });
+
+  test('child relation guidance tells agents to use user invite for normal member management', () => {
+    const guidance = findGuidance({
+      serverCode: 'CHILD_RELATION_INVALID',
+      message: 'Tenant child is not an immediate child of parent',
+    });
+
+    expect(guidance?.code).toBe('E205');
+    expect(guidance?.reasonCode).toBe('child_relation_invalid');
+    expect(guidance?.retry.allowed).toBe(false);
+    expect(guidance?.fixes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin',
+          mutates: true,
+        }),
+      ]),
+    );
+  });
+
   test('install-registry NO_MATCH maps to non-retryable provisioning guidance', () => {
     const guidance = findGuidance({
       status: 503,

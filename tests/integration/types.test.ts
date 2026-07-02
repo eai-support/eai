@@ -13,9 +13,11 @@ import {
   collectTypeDefaultValueValidationIssues,
   collectTypeStorageValidationIssues,
   describeFailedPlatformResponse,
+  diffObjectTypesForTenant,
   findMatchingRemoteTypes,
   resolveDefaultTenantKey,
   resolveTenantIdForKey,
+  resolveTypesPullOutputPath,
   shouldFailTypeSeedRun,
   summarizeAppObjectTypePublish,
   summarizeResourceApiSchemaSync,
@@ -86,7 +88,95 @@ describe('resolveDefaultTenantKey', () => {
   });
 });
 
+describe('resolveTypesPullOutputPath', () => {
+  test('preserves absolute output paths and roots relative paths', async () => {
+    const absolute = join('/tmp', 'eai-object-types.generated.ts');
+
+    await expect(resolveTypesPullOutputPath('/project', absolute)).resolves.toBe(absolute);
+    await expect(resolveTypesPullOutputPath('/project', 'src/eai.config/object-types.generated.ts')).resolves.toBe(
+      join('/project', 'src/eai.config/object-types.generated.ts'),
+    );
+  });
+});
+
 describe('app object-type publish helpers', () => {
+  test('diffObjectTypesForTenant reports local, remote, changed, and unchanged groups', () => {
+    const result = diffObjectTypesForTenant(
+      'smoke-app',
+      'tenant-1',
+      'option',
+      [
+        {
+          name: 'Workflow',
+          displayName: 'Workflow',
+          properties: [
+            { name: 'title', type: 'text', required: true },
+            { name: 'status', type: 'text', required: false },
+          ],
+          linkTypes: [],
+          actions: [],
+        } as ObjectTypeDefinition,
+        {
+          name: 'LocalOnly',
+          displayName: 'Local only',
+          properties: [],
+          linkTypes: [],
+          actions: [],
+        } as ObjectTypeDefinition,
+        {
+          name: 'Unchanged',
+          displayName: 'Unchanged',
+          properties: [{ name: 'title', type: 'text', required: true }],
+          linkTypes: [],
+          actions: [],
+        } as ObjectTypeDefinition,
+      ],
+      [
+        {
+          name: 'Workflow',
+          slug: 'workflow',
+          properties: [{ name: 'title' }, { name: 'oldField' }],
+          linkTypes: [],
+          actions: [],
+        },
+        {
+          name: 'Unchanged',
+          slug: 'unchanged',
+          properties: [{ name: 'title' }],
+          linkTypes: [],
+          actions: [],
+        },
+        {
+          name: 'RemoteOnly',
+          slug: 'remote-only',
+          properties: [],
+          linkTypes: [],
+          actions: [],
+        },
+      ],
+    );
+
+    expect(result).toMatchObject({
+      tenantKey: 'smoke-app',
+      tenantId: 'tenant-1',
+      resolutionSource: 'option',
+      localCount: 3,
+      remoteCount: 3,
+    });
+    expect(result.localOnly.map((entry) => entry.name)).toEqual(['LocalOnly']);
+    expect(result.remoteOnly.map((entry) => entry.name)).toEqual(['RemoteOnly']);
+    expect(result.unchanged.map((entry) => entry.name)).toEqual(['Unchanged']);
+    expect(result.changed).toEqual([
+      {
+        name: 'Workflow',
+        slug: 'workflow',
+        addedProperties: ['status'],
+        removedProperties: ['oldField'],
+        unchangedProperties: ['title'],
+      },
+    ]);
+  });
+
   test('marks manifest object types as published when status is omitted', () => {
     const objectType = {
       name: 'SubmissionFile',

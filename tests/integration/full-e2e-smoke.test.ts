@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -64,5 +64,30 @@ describe('full e2e smoke traceability', () => {
     expect(result.status).not.toBe(0);
     expect(`${result.stdout}\n${result.stderr}`).toContain('test profile is not authenticated');
     expect(`${result.stdout}\n${result.stderr}`).not.toContain(secret);
+  });
+
+  test('resource update smoke uses full replacement payloads for required fields', () => {
+    const source = readFileSync(scriptPath, 'utf8');
+
+    expect(source).toContain("title: 'postgres smoke updated'");
+    expect(source).toContain("title: 'documentdb smoke updated'");
+    expect(source).toContain('`batch smoke ${index + 1} updated`');
+    expect(source).toContain("function: 'count'");
+    expect(source).toContain('batchCreate.results');
+  });
+
+  test('live smoke executes opt-in invite, negative, and child cleanup paths', () => {
+    const source = readFileSync(scriptPath, 'utf8');
+
+    expect(source).toContain('EAI_E2E_INVITE_TEST_USER');
+    expect(source).toContain("'user',");
+    expect(source).toContain("'invite',");
+    expect(source).toContain("'--role',");
+    expect(source).toContain('EAI_E2E_NEGATIVE_TESTS');
+    expect(source).toContain('expectEaiFailure');
+    expect(source).toContain('tenant');
+    expect(source).toContain('bootstrap-admin');
+    expect(source).toContain('tenant');
+    expect(source).toContain('delete');
   });
 });
