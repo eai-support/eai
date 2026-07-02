@@ -52,7 +52,7 @@ import {
   notifyIfUpdateAvailableForDiscovery,
 } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
-import { setActiveProfile, loadActiveProfileFromConfig } from './lib/profile.js';
+import { setActiveProfile } from './lib/profile.js';
 import { describeProgram } from './lib/schema-builder.js';
 
 const program = new Command();
@@ -84,15 +84,13 @@ program
       process.env.FORCE_COLOR = '1';
     }
 
-    // Handle --profile flag, EAI_PROFILE env var, or persisted activeProfile
+    // Handle --profile flag or EAI_PROFILE env var. Plain `eai ...`
+    // intentionally stays on the public production default profile.
     const profileName = opts.profile || process.env.EAI_PROFILE;
     if (profileName) {
       setActiveProfile(profileName);
     } else {
-      const persisted = await loadActiveProfileFromConfig();
-      if (persisted !== 'default') {
-        setActiveProfile(persisted);
-      }
+      setActiveProfile('default');
     }
   });
 
