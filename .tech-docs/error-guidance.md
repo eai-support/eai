@@ -20,6 +20,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E101` | `not_logged_in` | Not logged in. |
 | `E102` | `access_token_expired` | Access token expired. |
 | `E204` | `permission_denied` | Permission denied. |
+| `E205` | `child_relation_invalid` | The supplied tenant is not an immediate child of the supplied parent. |
 | `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
@@ -153,7 +154,9 @@ are explicitly listed, and stop when a stop condition matches.
 ### Fixes
 
 - `eai tenant select <tenant>` (changes state) — Switch to a tenant where the user has the required role.
-- `eai tenant bootstrap-admin --parent <parent-id> --child <child-id>` (changes state) — Bootstrap direct child tenant admin access when the user is authorized as the parent tenant admin. Only when the user is already an authorized parent tenant admin.
+- `eai user invite --email <email> --tenant <tenant-id> --role tenant-admin` (changes state) — Add or refresh a user membership and assign a tenant role when you are already tenant-admin for that tenant. Use for normal "add this person as a tenant member/admin" requests.
+- `eai user roles --tenant <tenant-id> --format json` (read-only) — List assignable tenant roles before choosing a role for an invite.
+- `eai tenant bootstrap-admin --parent <parent-id> --child <child-id>` (changes state) — Repair first tenant-admin access for an immediate child tenant. Only when the target tenant is an immediate child of the supplied parent and does not already have usable tenant-admin access.
 
 ### Stop Conditions
 
@@ -165,6 +168,42 @@ are explicitly listed, and stop when a stop condition matches.
 - active tenant slug
 - requested command
 - request ID if present
+
+## E205: The supplied tenant is not an immediate child of the supplied parent.
+
+| Field | Value |
+| --- | --- |
+| Reason | `child_relation_invalid` |
+| Category | `authorization` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The child-tenant bootstrap command is intentionally narrow.
+- It only works when the parent ID is the direct parent of the child tenant.
+- This error often appears when an agent uses bootstrap-admin for normal user addition instead of the tenant member invite flow.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the signed-in user and active tenant.
+- `eai tenant info <tenant-id> --format json` (read-only) — Inspect the target tenant before retrying a tenant relationship command.
+- `eai user roles --tenant <tenant-id> --format json` (read-only) — List assignable roles when the intended task is adding or updating a user.
+
+### Fixes
+
+- `eai user invite --email <email> --tenant <tenant-id> --role tenant-admin` (changes state) — Add or update a user as tenant-admin on an existing tenant. Use when the goal is to add a person to a tenant or app context.
+- `eai tenant bootstrap-admin --parent <direct-parent-id> --child <immediate-child-id>` (changes state) — Retry the child bootstrap repair with the direct parent and immediate child IDs. Use only for first-admin child tenant repair, not normal member management.
+
+### Stop Conditions
+
+- The supplied parent and child are not a direct parent-child pair.
+
+### Escalation Evidence
+
+- signed-in email
+- active tenant slug
+- target tenant slug
+- requested command
 
 ## E242: Tenant data-plane authorization incomplete.
 

@@ -31,6 +31,9 @@ const TRACEABILITY_BASE = [
   ['eai tenant bootstrap-admin', 'create/update', 'live-optional', 'Runs only for child-tenant smoke because it mutates membership.'],
   ['eai tenant delete', 'delete', 'live-optional', 'Runs only for child-tenant cleanup when the smoke created the child tenant.'],
   ['eai user invite', 'create/update', 'live-optional', 'Runs only when EAI_E2E_INVITE_TEST_USER is set.'],
+  ['eai user list', 'read', 'live', 'Verifies tenant membership visibility after invite/provision flows.'],
+  ['eai user roles', 'read', 'live', 'Discovers assignable tenant roles before invite.'],
+  ['eai user role set', 'create/update', 'live-optional', 'Runs only when EAI_E2E_INVITE_TEST_USER is set; email-based assignment uses the V4 invite/add flow.'],
   ['eai user provision-me', 'create/update', 'live', 'Ensures the authenticated test user is provisioned to the test tenant.'],
   ['eai resources list', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 because it depends on run-specific storage schema.'],
   ['eai resources batch-create', 'create', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 and is cleaned up by batch/per-resource delete.'],
@@ -160,6 +163,15 @@ const SMOKE_CALLS = {
   ],
   'eai user invite': [
     'EAI_E2E_INVITE_TEST_USER=<email> eai user invite --email <email> --tenant <tenant-id> --role <role> --first-name <name> --last-name <name> --message <message> --redirect-uri <uri> --format json',
+  ],
+  'eai user list': [
+    'eai user list --tenant <tenant-id> --search <email> --page 1 --limit 25 --sort email --format json',
+  ],
+  'eai user roles': [
+    'eai user roles --tenant <tenant-id> --format json',
+  ],
+  'eai user role set': [
+    'EAI_E2E_INVITE_TEST_USER=<email> eai user role set --email <email> --tenant <tenant-id> --role <role> --format json',
   ],
   'eai user provision-me': [
     'eai user provision-me --tenant <tenant-id>',
@@ -390,6 +402,12 @@ const OPTION_DECISIONS = {
   'eai tenant create': {
     '--allow-root': 'Administrative backfill escape hatch; intentionally excluded from normal e2e smoke.',
   },
+  'eai user invite': {
+    '--role-definition-id': 'Custom role definition assignment is contract-tested; release smoke uses canonical base roles for portability.',
+  },
+  'eai user role set': {
+    '--member-id': 'Direct member-id role update is contract-tested; release smoke uses email-based assignment to cover existing and new user flows consistently.',
+  },
   'eai resources list': {
     '--cursor': 'Cursor is data-dependent; pagination is covered through page/limit and cursor remains contract-documented.',
   },
@@ -474,6 +492,11 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'Yes - user invite/membership',
     cleanupMechanism: 'Child tenant deletion when EAI_E2E_CREATE_CHILD_TENANT=1; otherwise opt-in caller owns membership cleanup',
     cleanupVerified: 'Yes when invite targets a smoke-created child tenant; otherwise no',
+  },
+  'eai user role set': {
+    createsExternalArtifact: 'Yes - user invite/membership or role update',
+    cleanupMechanism: 'Same cleanup model as eai user invite',
+    cleanupVerified: 'Yes when targeting a smoke-created child tenant; otherwise no',
   },
   'eai user provision-me': {
     createsExternalArtifact: 'Yes - current-user membership if missing',
@@ -1067,6 +1090,23 @@ function runLiveSmoke(cliPath) {
 
   eai(['init', appName, '--skip-prompts', '--current-dir', '--company-tenant', parentTenantId]);
   eai(['user', 'provision-me', '--tenant', parentTenantId]);
+  eai(['user', 'roles', '--tenant', parentTenantId, '--format', 'json']);
+  eai([
+    'user',
+    'list',
+    '--tenant',
+    parentTenantId,
+    '--search',
+    currentEmail || expectedUsername || 'smoke@example.invalid',
+    '--page',
+    '1',
+    '--limit',
+    '25',
+    '--sort',
+    'email',
+    '--format',
+    'json',
+  ]);
   if (process.env.EAI_E2E_INVITE_TEST_USER) {
     eai([
       'user',
@@ -1081,6 +1121,19 @@ function runLiveSmoke(cliPath) {
       ...(process.env.EAI_E2E_INVITE_LAST_NAME ? ['--last-name', process.env.EAI_E2E_INVITE_LAST_NAME] : []),
       ...(process.env.EAI_E2E_INVITE_MESSAGE ? ['--message', process.env.EAI_E2E_INVITE_MESSAGE] : []),
       ...(process.env.EAI_E2E_INVITE_REDIRECT_URI ? ['--redirect-uri', process.env.EAI_E2E_INVITE_REDIRECT_URI] : []),
+      '--format',
+      'json',
+    ]);
+    eai([
+      'user',
+      'role',
+      'set',
+      '--email',
+      process.env.EAI_E2E_INVITE_TEST_USER,
+      '--tenant',
+      childTenantId || parentTenantId,
+      '--role',
+      process.env.EAI_E2E_INVITE_ROLE || 'tenant-viewer',
       '--format',
       'json',
     ]);

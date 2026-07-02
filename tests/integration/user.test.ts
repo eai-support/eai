@@ -137,4 +137,190 @@ describe('eai user', () => {
     });
     expect(outputSpy.mock.calls.flat().join('')).toContain('"inviteMode": "existing_user_reused"');
   });
+
+  test('invite can assign a specific role definition without sending a default base role', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        status: 'invited',
+        email: 'custom@example.com',
+        role: 'custom-role-definition-id',
+        userId: 'user-456',
+      }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      }));
+
+    await userCommand.parseAsync([
+      'invite',
+      '--email',
+      'custom@example.com',
+      '--tenant',
+      TENANT_ID,
+      '--role-definition-id',
+      'custom-role-definition-id',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'custom@example.com',
+      roleDefinitionId: 'custom-role-definition-id',
+    });
+    expect(outputSpy.mock.calls.flat().join('')).toContain('"role": "custom-role-definition-id"');
+  });
+
+  test('list calls the V4 tenant members route with query options', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        data: [
+          {
+            id: 'user-123',
+            email: 'poppy@example.com',
+            roles: ['tenant-admin'],
+          },
+        ],
+        total: 1,
+        page: 2,
+        limit: 50,
+        totalPages: 1,
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+
+    await userCommand.parseAsync([
+      'list',
+      '--tenant',
+      TENANT_ID,
+      '--search',
+      'poppy@example.com',
+      '--page',
+      '2',
+      '--limit',
+      '50',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(`${API_BASE}/v4/platform/tenants/${TENANT_ID}/members?page=2&limit=50&sort=email&search=poppy%40example.com`);
+    expect(init?.method).toBe('GET');
+    expect(outputSpy.mock.calls.flat().join('')).toContain('"tenant-admin"');
+  });
+
+  test('roles calls the V4 tenant role definitions route', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        data: [
+          {
+            id: 'tenant-admin-role-id',
+            value: 'tenant-admin',
+            label: 'Tenant Admin',
+            baseRole: 'tenant-admin',
+            isSystemRole: true,
+          },
+        ],
+        total: 1,
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+
+    await userCommand.parseAsync([
+      'roles',
+      '--tenant',
+      TENANT_ID,
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(`${API_BASE}/v4/platform/tenants/${TENANT_ID}/role-definitions`);
+    expect(init?.method).toBe('GET');
+    expect(outputSpy.mock.calls.flat().join('')).toContain('"value": "tenant-admin"');
+  });
+
+  test('role set by email uses the V4 invite/add flow', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        status: 'invited',
+        email: 'poppy@example.com',
+        role: 'tenant-admin',
+        userId: 'user-123',
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+
+    await userCommand.parseAsync([
+      'role',
+      'set',
+      '--email',
+      'poppy@example.com',
+      '--tenant',
+      TENANT_ID,
+      '--role',
+      'tenant-admin',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(`${API_BASE}/v4/platform/tenants/${TENANT_ID}/members/invite`);
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'poppy@example.com',
+      role: 'tenant-admin',
+    });
+    expect(outputSpy.mock.calls.flat().join('')).toContain('"role": "tenant-admin"');
+  });
+
+  test('role set by member id calls the V4 member role update route', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        status: 'updated',
+        userId: 'user-123',
+        role: 'tenant-admin',
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+
+    await userCommand.parseAsync([
+      'role',
+      'set',
+      '--member-id',
+      'user-123',
+      '--tenant',
+      TENANT_ID,
+      '--role',
+      'tenant-admin',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(`${API_BASE}/v4/platform/tenants/${TENANT_ID}/members/user-123/roles`);
+    expect(init?.method).toBe('PATCH');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      role: 'tenant-admin',
+    });
+    expect(outputSpy.mock.calls.flat().join('')).toContain('"status": "updated"');
+  });
 });

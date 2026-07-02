@@ -52,10 +52,23 @@ export interface ChildTenantBootstrapRequest {
 export interface TenantMemberInviteRequest {
   email: string;
   role?: string;
+  roleDefinitionId?: string;
   firstName?: string;
   lastName?: string;
   message?: string;
   redirectUri?: string;
+}
+
+export interface TenantMemberListOptions {
+  page?: number;
+  limit?: number;
+  sort?: string;
+  search?: string;
+}
+
+export interface TenantMemberRoleUpdateRequest {
+  role?: string;
+  roleDefinitionId?: string;
 }
 
 export type TenantUsecase = 'council' | 'retail' | 'healthcare' | 'finance' | 'manufacturing' | 'generic';
@@ -1111,6 +1124,13 @@ export class PlatformAPIClient {
     );
   }
 
+  async createAppProvisioningJob(verticalKey: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/provisioning-jobs`,
+      'POST',
+    );
+  }
+
   async createTenant(data: {
     name: string;
     slug: string;
@@ -1237,8 +1257,13 @@ export class PlatformAPIClient {
   async inviteTenantMember(tenantId: string, request: TenantMemberInviteRequest): Promise<Response> {
     const body: Record<string, string> = {
       email: request.email,
-      role: request.role || 'tenant-viewer',
     };
+    if (request.roleDefinitionId) {
+      body.roleDefinitionId = request.roleDefinitionId;
+    }
+    if (request.role || !request.roleDefinitionId) {
+      body.role = request.role || 'tenant-viewer';
+    }
     if (request.firstName) body.firstName = request.firstName;
     if (request.lastName) body.lastName = request.lastName;
     if (request.message) body.message = request.message;
@@ -1247,6 +1272,47 @@ export class PlatformAPIClient {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/members/invite`,
       'POST',
+      body,
+    );
+  }
+
+  async listTenantMembers(tenantId: string, options?: TenantMemberListOptions): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/members`,
+      'GET',
+      undefined,
+      {
+        page: options?.page,
+        limit: options?.limit,
+        sort: options?.sort,
+        search: options?.search,
+      },
+    );
+  }
+
+  async listTenantRoleDefinitions(tenantId: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/role-definitions`,
+      'GET',
+    );
+  }
+
+  async updateTenantMemberRole(
+    tenantId: string,
+    memberId: string,
+    request: TenantMemberRoleUpdateRequest,
+  ): Promise<Response> {
+    const body: Record<string, string> = {};
+    if (request.roleDefinitionId) {
+      body.roleDefinitionId = request.roleDefinitionId;
+    }
+    if (request.role || !request.roleDefinitionId) {
+      body.role = request.role || 'tenant-viewer';
+    }
+
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/members/${encodeURIComponent(memberId)}/roles`,
+      'PATCH',
       body,
     );
   }

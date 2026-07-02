@@ -314,11 +314,13 @@ verticalCommand
       format,
       `${options.dryRun ? 'Planning' : 'Provisioning'} storage for ${verticalKey}...`,
     );
-    const res = await ctx.client.provisionStorage({
-      backend: options.backend,
-      dryRun: Boolean(options.dryRun),
-      rebuildSearch: Boolean(options.rebuildSearch),
-    });
+    const res = options.dryRun
+      ? await ctx.client.provisionStorage({
+        backend: options.backend,
+        dryRun: true,
+        rebuildSearch: Boolean(options.rebuildSearch),
+      })
+      : await ctx.client.createAppProvisioningJob(verticalKey);
     const payload = await readResponsePayload(res);
 
     if (!res.ok) {
@@ -339,7 +341,7 @@ verticalCommand
         appKey: verticalKey,
         verticalKey,
         selected: Boolean(options.select),
-        storage: payload,
+        ...(options.dryRun ? { storage: payload } : { provisioning: payload }),
       });
       return;
     }

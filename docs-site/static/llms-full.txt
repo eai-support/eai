@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.6.4.
+> Release-aligned documentation bundle for `@eai-tools/cli` v3.6.3.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -361,7 +361,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.4** (2026-07-01): Fix default CLI auth profile isolation.
+The current CLI release is **v3.6.3** (2026-06-30): Add full EAI e2e smoke traceability.
 
 
 ## What The Pieces Do
@@ -457,10 +457,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.4 |
-| Released | 2026-07-01 |
-| Last Material Change | Fix default CLI auth profile isolation |
-| Source Commit | `5b5085dc02a8342254d921c6654f8ea747a0a575` |
+| Version | 3.6.3 |
+| Released | 2026-06-30 |
+| Last Material Change | Add full EAI e2e smoke traceability |
+| Source Commit | `e5437fd7d7c9942bb8f15556603ade4e37f0fdfe` |
 
 
 ## Common Workflow
@@ -1596,7 +1596,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.6.4. The same catalog powers human stderr output, JSON output for AI
+v3.6.3. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -1610,6 +1610,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E101` | `not_logged_in` | Not logged in. |
 | `E102` | `access_token_expired` | Access token expired. |
 | `E204` | `permission_denied` | Permission denied. |
+| `E205` | `child_relation_invalid` | The supplied tenant is not an immediate child of the supplied parent. |
 | `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
@@ -1743,7 +1744,9 @@ are explicitly listed, and stop when a stop condition matches.
 ### Fixes
 
 - `eai tenant select <tenant>` (changes state) — Switch to a tenant where the user has the required role.
-- `eai tenant bootstrap-admin --parent <parent-id> --child <child-id>` (changes state) — Bootstrap direct child tenant admin access when the user is authorized as the parent tenant admin. Only when the user is already an authorized parent tenant admin.
+- `eai user invite --email <email> --tenant <tenant-id> --role tenant-admin` (changes state) — Add or refresh a user membership and assign a tenant role when you are already tenant-admin for that tenant. Use for normal "add this person as a tenant member/admin" requests.
+- `eai user roles --tenant <tenant-id> --format json` (read-only) — List assignable tenant roles before choosing a role for an invite.
+- `eai tenant bootstrap-admin --parent <parent-id> --child <child-id>` (changes state) — Repair first tenant-admin access for an immediate child tenant. Only when the target tenant is an immediate child of the supplied parent and does not already have usable tenant-admin access.
 
 ### Stop Conditions
 
@@ -1755,6 +1758,42 @@ are explicitly listed, and stop when a stop condition matches.
 - active tenant slug
 - requested command
 - request ID if present
+
+## E205: The supplied tenant is not an immediate child of the supplied parent.
+
+| Field | Value |
+| --- | --- |
+| Reason | `child_relation_invalid` |
+| Category | `authorization` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The child-tenant bootstrap command is intentionally narrow.
+- It only works when the parent ID is the direct parent of the child tenant.
+- This error often appears when an agent uses bootstrap-admin for normal user addition instead of the tenant member invite flow.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the signed-in user and active tenant.
+- `eai tenant info <tenant-id> --format json` (read-only) — Inspect the target tenant before retrying a tenant relationship command.
+- `eai user roles --tenant <tenant-id> --format json` (read-only) — List assignable roles when the intended task is adding or updating a user.
+
+### Fixes
+
+- `eai user invite --email <email> --tenant <tenant-id> --role tenant-admin` (changes state) — Add or update a user as tenant-admin on an existing tenant. Use when the goal is to add a person to a tenant or app context.
+- `eai tenant bootstrap-admin --parent <direct-parent-id> --child <immediate-child-id>` (changes state) — Retry the child bootstrap repair with the direct parent and immediate child IDs. Use only for first-admin child tenant repair, not normal member management.
+
+### Stop Conditions
+
+- The supplied parent and child are not a direct parent-child pair.
+
+### Escalation Evidence
+
+- signed-in email
+- active tenant slug
+- target tenant slug
+- requested command
 
 ## E242: Tenant data-plane authorization incomplete.
 
@@ -2062,11 +2101,6 @@ The v4 surface is grouped by domain prefix:
 - **Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)
 **Global Flags**: `--simple`, `--no-color`, `--color`, `--profile <name>`, `--describe`, `-V`
 
-Plain `eai ...` commands use the public production profile. Private/dev/test
-profiles are explicit opt-in with `--profile <name>` or `EAI_PROFILE`; logging
-in with a profile stores tokens for that profile but does not make later plain
-commands use it.
-
 > **Note on `eai env`:** `env pull` and `env push` are configuration-plane operations. They do not call PublicAPI and may require organization-specific cloud access.
 
 ---
@@ -2251,7 +2285,8 @@ Use this when a tenant admin needs to add a member or promote a trusted user to
 **Options**:
 - `--email <email>` — Email of the user to add
 - `--tenant <id>` — Target tenant (default: active tenant)
-- `--role <role>` — Target role (default: `tenant-viewer`)
+- `--role <role>` — Target base role (default: `tenant-viewer`; supported base roles are `tenant-viewer`, `tenant-staff`, `tenant-builder`, `tenant-admin`)
+- `--role-definition-id <id>` — Assign a specific tenant role definition instead of a base role
 - `--first-name <name>` — Optional first name for invite/provisioning context
 - `--last-name <name>` — Optional last name for invite/provisioning context
 - `--message <message>` — Optional invite message
@@ -2260,6 +2295,59 @@ Use this when a tenant admin needs to add a member or promote a trusted user to
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/tenants/{tenantId}/members/invite` — invite or provision the tenant member with the requested role
+
+---
+
+#### `eai user list`
+List members in the active tenant or an explicit tenant.
+
+**Options**:
+- `--tenant <id>` — Target tenant (default: active tenant)
+- `--search <query>` — Search by email or name
+- `--page <number>` — Page number (default: 1)
+- `--limit <number>` — Page size (default: 25)
+- `--sort <field>` — Sort field (default: email)
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v4/platform/tenants/{tenantId}/members` — list tenant members
+
+---
+
+#### `eai user roles`
+List role definitions available for tenant member invitation.
+
+**Options**:
+- `--tenant <id>` — Target tenant (default: active tenant)
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v4/platform/tenants/{tenantId}/role-definitions` — list assignable tenant role definitions
+
+---
+
+#### `eai user role set`
+Assign a tenant member role. Email-based role assignment uses the V4 invite/add
+flow so agents can handle "user already exists", "user is new to this tenant",
+and "user needs a tenant-admin role" with one command.
+
+**Options**:
+- `--email <email>` — Add or update a user by email through the invite/add flow
+- `--member-id <id>` — Existing tenant member/user ID for the direct role update endpoint
+- `--tenant <id>` — Target tenant (default: active tenant)
+- `--role <role>` — Role to assign. Email-based updates support `tenant-viewer`, `tenant-staff`, `tenant-builder`, and `tenant-admin`; member-id updates support the platform role update contract.
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — email-based add/update with a role
+- `PATCH /v4/platform/tenants/{tenantId}/members/{memberId}/roles` — direct member-id role update
+
+---
+
+**Agent rule**: for normal user addition or tenant-admin assignment, use
+`eai user invite --email <email> --tenant <tenant-id> --role <role>`.
+`eai tenant bootstrap-admin` is only for first-admin repair on an immediate child
+tenant.
 
 ---
 
@@ -3096,6 +3184,9 @@ Preview file-level app-template / UI drift without writing to the repo.
 - `GET /v4/platform/users/{oid}/memberships` — User memberships
 - `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — Provision a user into a tenant
 - `POST /v4/platform/tenants/{tenantId}/members/invite` — Invite or provision a tenant member with a role
+- `GET /v4/platform/tenants/{tenantId}/members` — List tenant members
+- `GET /v4/platform/tenants/{tenantId}/role-definitions` — List assignable tenant role definitions
+- `PATCH /v4/platform/tenants/{tenantId}/members/{memberId}/roles` — Update a tenant member role
 - `POST /v4/platform/capabilities/evaluate` — Evaluate a capability decision
 
 ### Platform — Provisioning (Entra)
@@ -3172,9 +3263,6 @@ These flags are available on the root `eai` command:
 | `--color` | boolean | Force colored output |
 | `--profile <name>` | string | Use a locally configured private profile |
 | `--describe` | boolean | Output a JSON schema of the command structure (for AI agents) |
-
-Plain commands use the public production profile unless `--profile <name>` or
-`EAI_PROFILE` is supplied.
 
 Most data-returning subcommands additionally accept `--format <format>` (`text` default, or `json`). A legacy `--json` boolean is accepted on many commands but is deprecated in favor of `--format json`.
 

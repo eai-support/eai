@@ -188,6 +188,82 @@ describe('eai app', () => {
     expect(envFile).toContain('EAI_VERTICAL_KEY=planning-portal');
   });
 
+  test('HP004 provisions app resources through the v4 app provisioning job', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      const method = requestMethod(init);
+
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        return jsonResponse({
+          tenants: [{
+            id: COMPANY_TENANT_ID,
+            displayName: 'Builder Workspace',
+            slug: 'builder-workspace',
+            isActive: true,
+            roles: ['tenant-admin'],
+          }],
+        });
+      }
+
+      if (
+        url.startsWith(`${API_BASE}/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)
+        && method === 'GET'
+      ) {
+        return jsonResponse({
+          docs: [{
+            id: 'app-1',
+            data: {
+              tenantId: COMPANY_TENANT_ID,
+              verticalKey: 'planning-portal',
+              displayName: 'Planning Portal',
+            },
+            version: 1,
+          }],
+        });
+      }
+
+      if (
+        url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/provisioning-jobs`
+        && method === 'POST'
+      ) {
+        return jsonResponse({
+          tenantId: COMPANY_TENANT_ID,
+          appKey: 'planning-portal',
+          verticalKey: 'planning-portal',
+          jobId: 'app-prov-123',
+          status: 'ready',
+        });
+      }
+
+      return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appCommand.parseAsync([
+      'provision',
+      'planning-portal',
+      '--tenant-id',
+      COMPANY_TENANT_ID,
+      '--select',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/provisioning-jobs`,
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining(`/v4/data/resources/${COMPANY_TENANT_ID}/storage/provision`),
+      expect.anything(),
+    );
+    const envFile = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(envFile).toContain('EAI_APP_KEY=planning-portal');
+    expect(envFile).toContain('EAI_VERTICAL_KEY=planning-portal');
+  });
+
   test('BC001 keeps the legacy vertical alias working', async () => {
     await seedLoggedInTenant();
     await seedProjectRoot(env.dir);

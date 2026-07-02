@@ -42,6 +42,27 @@ describe('agent guide', () => {
     expect(guide.operatingRules).toContain('When calling eai publicapi directly, only use /v4 paths.');
   });
 
+  test('catalog tells agents to use user invite for normal tenant member management', () => {
+    const guide = getAgentGuide();
+
+    expect(guide.operatingRules).toContain(
+      'For normal tenant user/admin addition, use eai user invite --email <email> --tenant <tenant-id> --role <role>; do not use tenant bootstrap-admin.',
+    );
+    expect(guide.commonWorkflows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Tenant member management',
+          commands: expect.arrayContaining([
+            expect.objectContaining({
+              command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin --format json',
+              mutates: true,
+            }),
+          ]),
+        }),
+      ]),
+    );
+  });
+
   test('prints the agent guide in text mode', async () => {
     const result = await runCommand(ctx, 'eai agent guide');
 
