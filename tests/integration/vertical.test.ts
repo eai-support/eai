@@ -674,12 +674,16 @@ describe('eai app', () => {
       'source-unknown-op',
       '--environment',
       'preview',
+      '--repo',
+      'enterpriseaigroup/planning-portal',
       '--workflow',
       '.github/workflows/eai-app.yml',
       '--ref',
       'refs/heads/main',
       '--commit',
       'abcdef1234567890',
+      '--workflow-run-id',
+      '123456789',
       '--config-hash',
       'sha256:config',
       '--artifact-digest',
@@ -699,9 +703,12 @@ describe('eai app', () => {
         body: JSON.stringify({
           operationId: 'source-unknown-op',
           environment: 'preview',
+          repoOwner: 'enterpriseaigroup',
+          repoName: 'planning-portal',
           workflowPath: '.github/workflows/eai-app.yml',
           ref: 'refs/heads/main',
           commitSha: 'abcdef1234567890',
+          workflowRunId: '123456789',
           configHash: 'sha256:config',
           artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
           imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
@@ -825,6 +832,31 @@ describe('eai app', () => {
         artifactDigest: 'sha256:not-a-real-digest',
       }),
     ).toThrow('--artifact-digest must be a sha256:<64 hex chars> digest.');
+  });
+
+  test('BC006 includes TenantInfra source metadata in deployment handoff payloads', () => {
+    expect(
+      buildSourceUnknownDeploymentData({
+        operationId: 'source-unknown-op',
+        environment: 'preview',
+        repo: 'enterpriseaigroup/planning-portal',
+        workflow: '.github/workflows/eai-app.yml',
+        ref: 'refs/heads/main',
+        commit: 'abcdef1234567890abcdef1234567890abcdef12',
+        workflowRunId: '123456789',
+        artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      }),
+    ).toMatchObject({
+      operationId: 'source-unknown-op',
+      environment: 'preview',
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'planning-portal',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890abcdef1234567890abcdef12',
+      workflowRunId: '123456789',
+    });
   });
 
   test('BC001 keeps the legacy vertical alias working', async () => {

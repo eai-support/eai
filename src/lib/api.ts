@@ -142,9 +142,12 @@ export interface SourceUnknownWorkflowEvidenceRequest {
 export interface SourceUnknownDeploymentRequest {
   operationId: string;
   environment?: string;
+  repoOwner?: string;
+  repoName?: string;
   workflowPath?: string;
   ref?: string;
   commitSha?: string;
+  workflowRunId?: string;
   configHash?: string;
   artifactDigest?: string;
   imageDigest?: string;

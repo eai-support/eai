@@ -114,9 +114,11 @@ export interface AppDeploySourceUnknownOptions {
   tenantId?: string;
   operationId: string;
   environment?: string;
+  repo?: string;
   workflow?: string;
   ref?: string;
   commit?: string;
+  workflowRunId?: string;
   configHash?: string;
   artifactDigest?: string;
   imageDigest?: string;
@@ -392,6 +394,8 @@ export function buildSourceUnknownDeploymentData(
 ): SourceUnknownDeploymentRequest {
   const operationId = options.operationId?.trim();
   const environment = (options.environment || 'preview').trim();
+  const repo = options.repo?.trim() ? parseRepositorySlug(options.repo) : undefined;
+  const workflowRunId = normaliseOptionalString(options.workflowRunId);
   const artifactDigest = options.artifactDigest?.trim();
   const imageDigest = options.imageDigest?.trim();
 
@@ -409,9 +413,11 @@ export function buildSourceUnknownDeploymentData(
   return {
     operationId,
     environment,
+    ...(repo ? { repoOwner: repo.owner, repoName: repo.name } : {}),
     ...(options.workflow?.trim() ? { workflowPath: options.workflow.trim() } : {}),
     ...(options.ref?.trim() ? { ref: options.ref.trim() } : {}),
     ...(options.commit?.trim() ? { commitSha: options.commit.trim() } : {}),
+    ...(workflowRunId ? { workflowRunId } : {}),
     ...(options.configHash?.trim() ? { configHash: options.configHash.trim() } : {}),
     ...(artifactDigest ? { artifactDigest } : {}),
     ...(imageDigest ? { imageDigest } : {}),
@@ -960,9 +966,11 @@ verticalCommand
   .requiredOption('--operation-id <id>', 'Accepted source-unknown workflow evidence operation ID')
   .option('--tenant-id <id>', 'Run against a specific company tenant')
   .option('--environment <environment>', 'Deployment environment to bind', 'preview')
+  .option('--repo <owner/name>', 'GitHub repository that produced the deployment evidence')
   .option('--workflow <path>', 'GitHub Actions workflow path')
   .option('--ref <ref>', 'Approved git ref')
   .option('--commit <sha>', 'Workflow commit SHA')
+  .option('--workflow-run-id <id>', 'GitHub Actions workflow run ID')
   .option('--config-hash <hash>', 'Validated config hash')
   .option('--artifact-digest <digest>', 'Workflow artifact digest in sha256:<hex> form')
   .option('--image-digest <digest>', 'Immutable image digest in sha256:<hex> form')
