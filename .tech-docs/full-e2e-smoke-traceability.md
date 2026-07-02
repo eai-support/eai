@@ -76,13 +76,16 @@ command, alias, or option cannot be added without a coverage decision.
 | `eai tenant storage list` | - | read | live | No | Not required | Yes - read/check command | `eai tenant storage list --format json` | - | Lists published storage bindings for the test tenant. |
 | `eai tenant storage verify` | - | read | live | No | Not required | Yes - read/check command | `eai tenant storage verify --format json` | - | Verifies tenant storage readiness after sync. |
 | `eai types define` | - | create | help | No | Not required | Yes - read/check command | `eai types define --help` | - | Interactive builder is coming soon; help/contract only until it has a non-interactive path. |
-| `eai types diff` | - | read | live | No | Not required | Yes - read/check command | `eai types diff --tenant-id <tenant-id> --tenant-key <app-name> --format json` | - | Compares local and remote Object Types after seed. |
+| `eai types diff` | - | read | live | No | Not required | Yes - read/check command | `eai types diff --tenant-id <tenant-id> --tenant-key <app-name> --format json` | --json: Deprecated JSON shortcut; new smoke calls use --format json to keep one V4-native output vocabulary. | Compares local and remote Object Types after seed. |
 | `eai types pull` | - | read | live | No | Not required | Yes - read/check command | `eai types pull --tenant-id <tenant-id> --output src/eai.config/object-types.generated.ts` | - | Downloads remote Object Types into the disposable workspace. |
 | `eai types seed` | - | create/update | live | Yes - Object Type metadata | No Object Type delete/deprovision command yet; use dedicated smoke tenant | No - cleanup gap documented | `eai types seed --tenant-id <tenant-id> --tenant-key <app-name> --dry-run --format json`<br>`eai types seed --tenant-id <tenant-id> --tenant-key <app-name> --format json` | --env: Compatibility label only; tenant-id and tenant-key are the authoritative V4 smoke selectors.<br>--json: Deprecated JSON shortcut; new smoke calls use --format json to keep one V4-native output vocabulary. | Publishes PostgreSQL, DocumentDB, Blob, and Search smoke Object Types. |
 | `eai types validate` | - | read | live | No | Not required | Yes - read/check command | `eai types validate` | - | Validates local Object Types before publishing. |
 | `eai update` | - | read/update | check-only | No | Not required | Yes - read/check command | `eai update --check --no-project-refresh` | - | Runs `update --check`; installing over the release candidate is not safe inside release smoke. |
-| `eai user invite` | - | create/update | live-optional | Yes - user invite/membership | Opt-in only; no default invite cleanup | No - disabled by default | `EAI_E2E_INVITE_TEST_USER=<email> eai user invite --email <email> --tenant <tenant-id>` | - | Runs only when EAI_E2E_INVITE_TEST_USER is set. |
+| `eai user invite` | `eai user add` | create/update | live-optional | Yes - user invite/membership | Child tenant deletion when EAI_E2E_CREATE_CHILD_TENANT=1; otherwise opt-in caller owns membership cleanup | Yes when invite targets a smoke-created child tenant; otherwise no | `EAI_E2E_INVITE_TEST_USER=<email> eai user invite --email <email> --tenant <tenant-id> --role <role> --first-name <name> --last-name <name> --message <message> --redirect-uri <uri> --format json` | --role-definition-id: Custom role definition assignment is contract-tested; release smoke uses canonical base roles for portability. | Runs only when EAI_E2E_INVITE_TEST_USER is set. |
+| `eai user list` | - | read | live | No | Not required | Yes - read/check command | `eai user list --tenant <tenant-id> --search <email> --page 1 --limit 25 --sort email --format json` | - | Verifies tenant membership visibility after invite/provision flows. |
 | `eai user provision-me` | - | create/update | live | Yes - current-user membership if missing | Dedicated test user/tenant retains membership | Partial - membership is re-read by later checks | `eai user provision-me --tenant <tenant-id>` | - | Ensures the authenticated test user is provisioned to the test tenant. |
+| `eai user role set` | - | create/update | live-optional | Yes - user invite/membership or role update | Same cleanup model as eai user invite | Yes when targeting a smoke-created child tenant; otherwise no | `EAI_E2E_INVITE_TEST_USER=<email> eai user role set --email <email> --tenant <tenant-id> --role <role> --format json` | --member-id: Direct member-id role update is contract-tested; release smoke uses email-based assignment to cover existing and new user flows consistently. | Runs only when EAI_E2E_INVITE_TEST_USER is set; email-based assignment uses the V4 invite/add flow. |
+| `eai user roles` | - | read | live | No | Not required | Yes - read/check command | `eai user roles --tenant <tenant-id> --format json` | - | Discovers assignable tenant roles before invite. |
 | `eai verify calls` | - | read | live | No | Not required | Yes - read/check command | `eai verify calls --tenant-id <tenant-id> --resource-type <object-type> --resource-id <resource-id> --workflow <workflow-id> --stage chat --tenant-record <tenant-id> --user-email <email> --chat-message "Smoke test" --format json` | --include-chat: Creates a chat conversation; optional workflow/chat smoke covers it when EAI_E2E_WORKFLOW_KEY is set.<br>--json: Deprecated JSON shortcut; new smoke calls use --format json to keep one V4-native output vocabulary. | Audits platform-facing CLI call contracts. |
 | `eai verify storage` | - | read | live | No | Not required | Yes - read/check command | `eai verify storage --tenant-id <tenant-id> --format json` | --json: Deprecated JSON shortcut; new smoke calls use --format json to keep one V4-native output vocabulary. | Verifies storage status and doctor contracts. |
 | `eai whoami` | - | read | live | No | Not required | Yes - read/check command | `eai whoami` | - | Confirms dedicated test identity and active tenant context. |
@@ -95,9 +98,9 @@ command, alias, or option cannot be added without a coverage decision.
 
 | Metric | Count |
 | ------ | ----- |
-| CLI leaf commands | 84 |
-| Traceability rows | 84 |
-| Live rows | 40 |
-| Optional live rows | 31 |
+| CLI leaf commands | 87 |
+| Traceability rows | 87 |
+| Live rows | 42 |
+| Optional live rows | 32 |
 | Help/check/manual rows | 13 |
-| Alias paths covered | 4 |
+| Alias paths covered | 5 |

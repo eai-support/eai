@@ -31,6 +31,9 @@ const TRACEABILITY_BASE = [
   ['eai tenant bootstrap-admin', 'create/update', 'live-optional', 'Runs only for child-tenant smoke because it mutates membership.'],
   ['eai tenant delete', 'delete', 'live-optional', 'Runs only for child-tenant cleanup when the smoke created the child tenant.'],
   ['eai user invite', 'create/update', 'live-optional', 'Runs only when EAI_E2E_INVITE_TEST_USER is set.'],
+  ['eai user list', 'read', 'live', 'Verifies tenant membership visibility after invite/provision flows.'],
+  ['eai user roles', 'read', 'live', 'Discovers assignable tenant roles before invite.'],
+  ['eai user role set', 'create/update', 'live-optional', 'Runs only when EAI_E2E_INVITE_TEST_USER is set; email-based assignment uses the V4 invite/add flow.'],
   ['eai user provision-me', 'create/update', 'live', 'Ensures the authenticated test user is provisioned to the test tenant.'],
   ['eai resources list', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 because it depends on run-specific storage schema.'],
   ['eai resources batch-create', 'create', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 and is cleaned up by batch/per-resource delete.'],
@@ -165,7 +168,16 @@ const SMOKE_CALLS = {
     'EAI_E2E_CREATE_CHILD_TENANT=1 eai tenant delete <child-tenant-id> --force --format json',
   ],
   'eai user invite': [
-    'EAI_E2E_INVITE_TEST_USER=<email> eai user invite --email <email> --tenant <tenant-id>',
+    'EAI_E2E_INVITE_TEST_USER=<email> eai user invite --email <email> --tenant <tenant-id> --role <role> --first-name <name> --last-name <name> --message <message> --redirect-uri <uri> --format json',
+  ],
+  'eai user list': [
+    'eai user list --tenant <tenant-id> --search <email> --page 1 --limit 25 --sort email --format json',
+  ],
+  'eai user roles': [
+    'eai user roles --tenant <tenant-id> --format json',
+  ],
+  'eai user role set': [
+    'EAI_E2E_INVITE_TEST_USER=<email> eai user role set --email <email> --tenant <tenant-id> --role <role> --format json',
   ],
   'eai user provision-me': [
     'eai user provision-me --tenant <tenant-id>',
@@ -414,6 +426,12 @@ const OPTION_DECISIONS = {
   'eai tenant create': {
     '--allow-root': 'Administrative backfill escape hatch; intentionally excluded from normal e2e smoke.',
   },
+  'eai user invite': {
+    '--role-definition-id': 'Custom role definition assignment is contract-tested; release smoke uses canonical base roles for portability.',
+  },
+  'eai user role set': {
+    '--member-id': 'Direct member-id role update is contract-tested; release smoke uses email-based assignment to cover existing and new user flows consistently.',
+  },
   'eai resources list': {
     '--cursor': 'Cursor is data-dependent; pagination is covered through page/limit and cursor remains contract-documented.',
   },
@@ -529,8 +547,13 @@ const ARTIFACT_CLEANUP = {
   },
   'eai user invite': {
     createsExternalArtifact: 'Yes - user invite/membership',
-    cleanupMechanism: 'Opt-in only; no default invite cleanup',
-    cleanupVerified: 'No - disabled by default',
+    cleanupMechanism: 'Child tenant deletion when EAI_E2E_CREATE_CHILD_TENANT=1; otherwise opt-in caller owns membership cleanup',
+    cleanupVerified: 'Yes when invite targets a smoke-created child tenant; otherwise no',
+  },
+  'eai user role set': {
+    createsExternalArtifact: 'Yes - user invite/membership or role update',
+    cleanupMechanism: 'Same cleanup model as eai user invite',
+    cleanupVerified: 'Yes when targeting a smoke-created child tenant; otherwise no',
   },
   'eai user provision-me': {
     createsExternalArtifact: 'Yes - current-user membership if missing',
@@ -740,7 +763,14 @@ Live mode environment:
   EAI_E2E_TEST_PASSWORD         Optional secret for EAI_E2E_AUTH_COMMAND; never printed
   EAI_E2E_CLEANUP               Delete smoke resources after run. Default: 1
   EAI_E2E_CREATE_CHILD_TENANT   Create/delete a child tenant during smoke. Default: 0
-`);
+  EAI_E2E_INVITE_TEST_USER      Optional invite target email for membership/role smoke
+  EAI_E2E_INVITE_ROLE           Optional invite role. Default: tenant-viewer
+  EAI_E2E_INVITE_FIRST_NAME     Optional invite first name
+  EAI_E2E_INVITE_LAST_NAME      Optional invite last name
+  EAI_E2E_INVITE_MESSAGE        Optional invite message
+  EAI_E2E_INVITE_REDIRECT_URI   Optional invite redirect URI
+  EAI_E2E_NEGATIVE_TESTS        Run non-mutating negative path checks. Default: 0
+  `);
 }
 
 function cliInvocation(cliPath) {
@@ -980,8 +1010,10 @@ function firstTenantId(payload) {
 
 function extractId(payload) {
   return payload.id
+    || payload.tenant?.id
     || payload.resource?.id
     || payload.body?.id
+    || payload.body?.tenant?.id
     || payload.doc?.id
     || payload.data?.id
     || payload.created?.id
@@ -1008,6 +1040,14 @@ function sleep(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
+function expectEaiFailure(eai, args, label, options = {}) {
+  const result = eai(args, { ...options, allowFailure: true });
+  if (result.status === 0) {
+    throw new Error(`Negative smoke unexpectedly succeeded: ${label}`);
+  }
+  return result;
+}
+
 function runLiveSmoke(cliPath) {
   const profile = process.env.EAI_E2E_TEST_PROFILE || 'test';
   const expectedUsername = process.env.EAI_E2E_TEST_USERNAME || '';
@@ -1022,6 +1062,7 @@ function runLiveSmoke(cliPath) {
   const createdResources = [];
   const applyStorageSchema = process.env.EAI_E2E_SYNC_SCHEMA_APPLY === '1';
   let provisionedEntraClientId = '';
+  let childTenantId = '';
 
   function eai(args, options = {}) {
     const result = runCommand(command, ['--profile', profile, ...args], {
@@ -1080,9 +1121,132 @@ function runLiveSmoke(cliPath) {
   }
   eai(['tenant', 'select', parentTenantId], { cwd: ROOT });
   eai(['tenant', 'info', parentTenantId, '--format', 'json'], { cwd: ROOT });
+  const currentIdentity = parseJson(
+    eai(['publicapi', 'get', '/v4/identity/me', '--tenant-id', parentTenantId, '--format', 'json'], { cwd: ROOT }).stdout,
+    {},
+  );
+  const currentOid = currentIdentity.body?.oid || currentIdentity.oid || '';
+  const currentEmail = currentIdentity.body?.email || currentIdentity.email || expectedUsername || '';
+
+  if (process.env.EAI_E2E_CREATE_CHILD_TENANT === '1') {
+    const childName = `EAI E2E Smoke ${runId}`;
+    const childSlug = `eai-e2e-smoke-${runId}`.toLowerCase();
+    const childRegion = process.env.EAI_E2E_CHILD_HOME_REGION || process.env.EAI_E2E_HOME_REGION || 'au';
+    const childCreate = parseJson(eai([
+      'tenant',
+      'create',
+      '--name',
+      childName,
+      '--slug',
+      childSlug,
+      '--parent',
+      parentTenantId,
+      '--domain',
+      `${childSlug}.example.invalid`,
+      '--usecase',
+      'generic',
+      '--industry',
+      'test',
+      '--starter-template',
+      'eai-app-template',
+      '--home-region',
+      childRegion,
+      '--format',
+      'json',
+    ], { cwd: ROOT }).stdout, {});
+    childTenantId = extractId(childCreate) || childCreate.tenantId || childCreate.body?.tenantId || '';
+    if (!childTenantId) {
+      throw new Error('Child tenant smoke did not return a tenant id.');
+    }
+    if (currentOid) {
+      eai([
+        'tenant',
+        'bootstrap-admin',
+        '--parent',
+        parentTenantId,
+        '--child',
+        childTenantId,
+        '--user-oid',
+        currentOid,
+        ...(currentEmail ? ['--user-email', currentEmail] : []),
+        '--format',
+        'json',
+      ], { cwd: ROOT });
+    }
+  }
 
   eai(['init', appName, '--skip-prompts', '--current-dir', '--company-tenant', parentTenantId]);
   eai(['user', 'provision-me', '--tenant', parentTenantId]);
+  eai(['user', 'roles', '--tenant', parentTenantId, '--format', 'json']);
+  eai([
+    'user',
+    'list',
+    '--tenant',
+    parentTenantId,
+    '--search',
+    currentEmail || expectedUsername || 'smoke@example.invalid',
+    '--page',
+    '1',
+    '--limit',
+    '25',
+    '--sort',
+    'email',
+    '--format',
+    'json',
+  ]);
+  if (process.env.EAI_E2E_INVITE_TEST_USER) {
+    eai([
+      'user',
+      'invite',
+      '--email',
+      process.env.EAI_E2E_INVITE_TEST_USER,
+      '--tenant',
+      childTenantId || parentTenantId,
+      '--role',
+      process.env.EAI_E2E_INVITE_ROLE || 'tenant-viewer',
+      ...(process.env.EAI_E2E_INVITE_FIRST_NAME ? ['--first-name', process.env.EAI_E2E_INVITE_FIRST_NAME] : []),
+      ...(process.env.EAI_E2E_INVITE_LAST_NAME ? ['--last-name', process.env.EAI_E2E_INVITE_LAST_NAME] : []),
+      ...(process.env.EAI_E2E_INVITE_MESSAGE ? ['--message', process.env.EAI_E2E_INVITE_MESSAGE] : []),
+      ...(process.env.EAI_E2E_INVITE_REDIRECT_URI ? ['--redirect-uri', process.env.EAI_E2E_INVITE_REDIRECT_URI] : []),
+      '--format',
+      'json',
+    ]);
+    eai([
+      'user',
+      'role',
+      'set',
+      '--email',
+      process.env.EAI_E2E_INVITE_TEST_USER,
+      '--tenant',
+      childTenantId || parentTenantId,
+      '--role',
+      process.env.EAI_E2E_INVITE_ROLE || 'tenant-viewer',
+      '--format',
+      'json',
+    ]);
+  }
+  if (process.env.EAI_E2E_NEGATIVE_TESTS === '1') {
+    expectEaiFailure(
+      eai,
+      ['user', 'invite', '--email', 'not-an-email', '--tenant', parentTenantId, '--role', 'tenant-viewer', '--format', 'json'],
+      'invalid user invite email',
+    );
+    expectEaiFailure(
+      eai,
+      [
+        'publicapi',
+        'post',
+        `/v4/platform/tenants/${parentTenantId}/members/invite`,
+        '--tenant-id',
+        parentTenantId,
+        '--data',
+        '{}',
+        '--format',
+        'json',
+      ],
+      'missing member invite payload fields',
+    );
+  }
   eai(['runtime', 'validate', '--format', 'json']);
   eai(['template', 'check', '--format', 'json']);
   eai(['gofer', 'refresh', '--check', '--format', 'json']);
@@ -1266,12 +1430,15 @@ function runLiveSmoke(cliPath) {
     if (provisionedEntraClientId) {
       eai(['provision', 'entra', '--deauthorize', '--client-id', provisionedEntraClientId, '--force', '--debug'], { allowFailure: true });
     }
+    if (childTenantId) {
+      eai(['tenant', 'delete', childTenantId, '--force', '--format', 'json'], { cwd: ROOT, allowFailure: true });
+    }
     if (cleanupFailures.length) {
       throw new Error(cleanupFailures.join('; '));
     }
   }
 
-  writeFileSync(join(projectRoot, 'summary.json'), `${JSON.stringify({ runId, profile, parentTenantId, projectRoot, summary }, null, 2)}\n`, 'utf8');
+  writeFileSync(join(projectRoot, 'summary.json'), `${JSON.stringify({ runId, profile, parentTenantId, childTenantId, projectRoot, summary }, null, 2)}\n`, 'utf8');
   console.log(`[e2e] Full smoke passed. Summary: ${join(projectRoot, 'summary.json')}`);
 }
 

@@ -1139,9 +1139,6 @@ async function resolveInitTargetDir(
 function generateEnvFile(opts: InitOptions): string {
   const envKey = opts.name.replace(/-/g, "_").toUpperCase();
   const authSecret = randomBytes(32).toString("base64");
-  const workflowSection = opts.includeChat
-    ? `WORKFLOW_${envKey}_ID=`
-    : `# WORKFLOW_${envKey}_ID=  # Set later if chat is enabled`;
 
   return `# =============================================================================
 # EAI App: ${opts.displayName}
@@ -1177,7 +1174,7 @@ TENANT_${envKey}_ID=
 # =============================================================================
 # Workflow IDs — populate after provisioning via platform dashboard
 # =============================================================================
-${workflowSection}
+WORKFLOW_${envKey}_ID=
 
 # =============================================================================
 # Init capability selections
