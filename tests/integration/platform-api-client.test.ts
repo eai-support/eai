@@ -193,6 +193,32 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('invites tenant members through the public platform member route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.inviteTenantMember('tenant-child', {
+      email: 'poppy@example.com',
+      role: 'tenant-admin',
+      firstName: 'Poppy',
+      lastName: 'Lucas',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/members/invite')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'poppy@example.com',
+      role: 'tenant-admin',
+      firstName: 'Poppy',
+      lastName: 'Lucas',
+    })
+  })
+
   test('sends child tenant homeRegion through the public platform router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

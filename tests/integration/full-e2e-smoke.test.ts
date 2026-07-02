@@ -75,4 +75,19 @@ describe('full e2e smoke traceability', () => {
     expect(source).toContain("function: 'count'");
     expect(source).toContain('batchCreate.results');
   });
+
+  test('live smoke executes opt-in invite, negative, and child cleanup paths', () => {
+    const source = readFileSync(scriptPath, 'utf8');
+
+    expect(source).toContain('EAI_E2E_INVITE_TEST_USER');
+    expect(source).toContain("'user',");
+    expect(source).toContain("'invite',");
+    expect(source).toContain("'--role',");
+    expect(source).toContain('EAI_E2E_NEGATIVE_TESTS');
+    expect(source).toContain('expectEaiFailure');
+    expect(source).toContain('tenant');
+    expect(source).toContain('bootstrap-admin');
+    expect(source).toContain('tenant');
+    expect(source).toContain('delete');
+  });
 });

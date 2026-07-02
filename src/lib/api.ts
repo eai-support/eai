@@ -49,6 +49,15 @@ export interface ChildTenantBootstrapRequest {
   userEmail?: string;
 }
 
+export interface TenantMemberInviteRequest {
+  email: string;
+  role?: string;
+  firstName?: string;
+  lastName?: string;
+  message?: string;
+  redirectUri?: string;
+}
+
 export type TenantUsecase = 'council' | 'retail' | 'healthcare' | 'finance' | 'manufacturing' | 'generic';
 export type TenantHomeRegion = 'au' | 'ca' | 'eu';
 
@@ -1223,6 +1232,23 @@ export class PlatformAPIClient {
       headers: await this.headers(),
       body: JSON.stringify(body),
     });
+  }
+
+  async inviteTenantMember(tenantId: string, request: TenantMemberInviteRequest): Promise<Response> {
+    const body: Record<string, string> = {
+      email: request.email,
+      role: request.role || 'tenant-viewer',
+    };
+    if (request.firstName) body.firstName = request.firstName;
+    if (request.lastName) body.lastName = request.lastName;
+    if (request.message) body.message = request.message;
+    if (request.redirectUri) body.redirectUri = request.redirectUri;
+
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/members/invite`,
+      'POST',
+      body,
+    );
   }
 
   // --------------- Provisioning ---------------

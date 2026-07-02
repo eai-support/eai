@@ -16,69 +16,80 @@ export const userCommand = new Command('user')
 
 userCommand
   .command('invite')
-  .description('Add an existing user to a tenant using the tenant-admin provisioning flow')
+  .description('Invite or add a user to a tenant with a tenant role')
   .requiredOption('--email <email>', 'Email address of the user to add')
   .option('--tenant <id>', 'Tenant ID to add the user to (defaults to the active tenant)')
+  .option('--role <role>', 'Tenant role to assign (tenant-viewer|tenant-staff|tenant-builder|tenant-admin)', 'tenant-viewer')
+  .option('--first-name <name>', 'Optional first name for new invitations')
+  .option('--last-name <name>', 'Optional last name for new invitations')
+  .option('--message <message>', 'Optional invitation message')
+  .option('--redirect-uri <uri>', 'Optional post-invite redirect URI')
+  .option('--format <format>', 'Output format (text|json)', 'text')
   .action(async (options) => {
     const ctx = await resolveCommandContext({ interactive: false });
     const tenantId = options.tenant || ctx.tenantId;
-
-    // Use 'system' scope for admin user lookup
-    const client = new PlatformAPIClient(ctx.publicApiUrl, 'system');
-
-    // Step 1: Look up user by email
-    const lookupSpinner = ora(`Looking up ${options.email}...`).start();
-
-    let lookupResult: { id?: string; email?: string; user?: { id?: string; email?: string; username?: string } | null };
-    try {
-      const lookupRes = await client.lookupUserByEmail(options.email);
-      if (!lookupRes.ok) {
-        const body = await lookupRes.text();
-        lookupSpinner.fail(`Lookup failed: ${lookupRes.status}: ${body}`);
-        process.exit(1);
-      }
-      lookupResult = await lookupRes.json() as typeof lookupResult;
-    } catch (err) {
-      lookupSpinner.fail(err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    }
-
-    const resolvedUser = lookupResult.user?.id
-      ? lookupResult.user
-      : lookupResult.id
-        ? { id: lookupResult.id, email: lookupResult.email || options.email }
-        : null;
-
-    if (!resolvedUser) {
-      lookupSpinner.fail(`User ${chalk.cyan(options.email)} not found.`);
-      process.exit(1);
-    }
-
-    const user = resolvedUser;
-    const userEmail = user.email || options.email;
-    lookupSpinner.succeed(`Found user ${chalk.cyan(userEmail)} (${chalk.dim(user.id)})`);
-
-    // Step 2: Provision user to tenant
-    const provisionSpinner = ora(`Adding ${userEmail} to tenant ${tenantId}...`).start();
+    const client = new PlatformAPIClient(ctx.publicApiUrl, tenantId);
+    const jsonOutput = options.format === 'json';
+    const inviteSpinner = jsonOutput
+      ? null
+      : ora(`Inviting ${options.email} to tenant ${tenantId} as ${options.role}...`).start();
 
     try {
-      const provisionRes = await client.provisionUserToTenant(tenantId, user.id);
-      if (!provisionRes.ok) {
-        const body = await provisionRes.text();
-        provisionSpinner.fail(`Provisioning failed: ${provisionRes.status}: ${body}`);
+      const inviteRes = await client.inviteTenantMember(tenantId, {
+        email: options.email,
+        role: options.role,
+        firstName: options.firstName,
+        lastName: options.lastName,
+        message: options.message,
+        redirectUri: options.redirectUri,
+      });
+      if (!inviteRes.ok) {
+        const body = await inviteRes.text();
+        inviteSpinner?.fail(`Invite failed: ${inviteRes.status}: ${body}`);
+        if (jsonOutput) {
+          out.json({
+            ok: false,
+            status: inviteRes.status,
+            error: body,
+            command: 'eai user invite',
+            next: [
+              'Confirm you are tenant-admin for the target tenant with `eai whoami`.',
+              'Confirm the target tenant is selected with `eai tenant info <tenant-id> --format json`.',
+              'Retry with an explicit role, for example `--role tenant-admin` or `--role tenant-viewer`.',
+            ],
+          });
+        }
         process.exit(1);
       }
 
-      const result = await provisionRes.json() as { success?: boolean; message?: string };
-      provisionSpinner.succeed(
-        `Added ${chalk.cyan(userEmail)} to tenant ${chalk.dim(tenantId)}`,
+      const result = await inviteRes.json() as {
+        email?: string;
+        role?: string;
+        status?: string;
+        userId?: string;
+        inviteMode?: string;
+        message?: string;
+      };
+      if (jsonOutput) {
+        out.json(result);
+        return;
+      }
+
+      inviteSpinner?.succeed(
+        `Invited ${chalk.cyan(result.email || options.email)} to tenant ${chalk.dim(tenantId)} as ${result.role || options.role}`,
       );
-
       if (result.message) {
         out.info(result.message);
       }
     } catch (err) {
-      provisionSpinner.fail(err instanceof Error ? err.message : String(err));
+      inviteSpinner?.fail(err instanceof Error ? err.message : String(err));
+      if (jsonOutput) {
+        out.json({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+          command: 'eai user invite',
+        });
+      }
       process.exit(1);
     }
   });

@@ -2244,15 +2244,22 @@ Soft-delete a tenant.
 ### User Management Commands
 
 #### `eai user invite`
-Add an existing user to a tenant via the tenant-admin provisioning flow.
+Invite or provision a user into a tenant via the V4 tenant member-invite flow.
+Use this when a tenant admin needs to add a member or promote a trusted user to
+`tenant-admin`.
 
 **Options**:
 - `--email <email>` — Email of the user to add
 - `--tenant <id>` — Target tenant (default: active tenant)
+- `--role <role>` — Target role (default: `tenant-viewer`)
+- `--first-name <name>` — Optional first name for invite/provisioning context
+- `--last-name <name>` — Optional last name for invite/provisioning context
+- `--message <message>` — Optional invite message
+- `--redirect-uri <uri>` — Optional post-acceptance redirect URI
+- `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/platform/users/by-email?email=...` — look up the user
-- `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — provision the user into the tenant
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — invite or provision the tenant member with the requested role
 
 ---
 
@@ -3088,6 +3095,7 @@ Preview file-level app-template / UI drift without writing to the repo.
 - `GET /v4/platform/users/by-email` — Look up a user by email
 - `GET /v4/platform/users/{oid}/memberships` — User memberships
 - `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — Provision a user into a tenant
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — Invite or provision a tenant member with a role
 - `POST /v4/platform/capabilities/evaluate` — Evaluate a capability decision
 
 ### Platform — Provisioning (Entra)
