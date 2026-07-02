@@ -267,7 +267,7 @@ const SMOKE_CALLS = {
     'eai app workflow-evidence <app-key> --tenant-id <tenant-id> --repo <owner/repo> --operation-id <operation-id> --nonce <nonce> --environment preview --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --artifact-digest sha256:<artifact> --image-digest sha256:<image> --workflow-run-id <run-id> --github-oidc-token <token> --github-oidc-audience api://enterprise-ai-publicapi/source-unknown --format json',
   ],
   'eai app deploy-source-unknown': [
-    'eai app deploy-source-unknown <app-key> --tenant-id <tenant-id> --operation-id <operation-id> --environment preview --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --artifact-digest sha256:<artifact> --image-digest sha256:<image> --target-kind tenantinfra --release-channel preview --format json',
+    'eai app deploy-source-unknown <app-key> --tenant-id <tenant-id> --operation-id <operation-id> --environment preview --repo <owner/repo> --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --workflow-run-id <run-id> --config-hash sha256:config --artifact-digest sha256:<artifact> --image-digest sha256:<image> --target-kind tenantinfra --release-channel preview --format json',
   ],
   'eai app deploy-source-unknown-status': [
     'eai app deploy-source-unknown-status <app-key> --tenant-id <tenant-id> --format json',
