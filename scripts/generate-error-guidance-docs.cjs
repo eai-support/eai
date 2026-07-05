@@ -58,7 +58,7 @@ description: Public-safe EAI CLI error explanations and agent recovery commands.
 
 # Error Guidance
 
-This page lists the public-safe error guidance bundled with \`@eai-tools/cli\`
+This page lists the public-safe error guidance bundled with \`@enterpriseai/cli\`
 v${PKG.version}. The same catalog powers human stderr output, JSON output for AI
 agents, and \`eai errors explain\`.
 
@@ -100,7 +100,7 @@ async function main() {
   const markdown = buildMarkdown(entries);
   const json = `${JSON.stringify({
     schemaVersion: 1,
-    package: '@eai-tools/cli',
+    package: '@enterpriseai/cli',
     version: PKG.version,
     generatedAt: 'release-generated',
     entries: entries.map(publicEntry),

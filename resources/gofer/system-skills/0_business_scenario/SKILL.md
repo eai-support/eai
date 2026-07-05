@@ -69,7 +69,7 @@ Use current public EAI documentation as the safe source of truth:
 
 - EAI CLI docs: `https://eai-tools.github.io/eai/docs/overview`
 - EAI API reference: `https://eai-tools.github.io/eai/docs/api-reference`
-- EAI static registry: `https://eai-tools.github.io/eai/registry/`
+- EAI static registry fallback: `https://eai-tools.github.io/eai/registry/`
 - EAI scenario library: `https://eai-tools.github.io/eai/scenarios`
 - EAI app template: `https://github.com/eai-tools/eai-app-template`
 
@@ -126,12 +126,12 @@ with an unrelated non-EAI stack.
      the plugin-level `/gofer:eai-first-run` command after installing or
      updating the Gofer plugin.
 3. **Install or update the EAI CLI when needed**
-   - Check `git --version`, `node --version`, `npm --version`, `npm config get
-     @eai-tools:registry`, and `eai --version`.
+   - Check `git --version`, `node --version`, `npm --version`, `npm view eai-cli version --registry=https://registry.npmjs.org/`, and `eai --version`.
    - If `eai` is missing and the user approves, install it:
      ```bash
-     npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-     npm install -g @eai-tools/cli
+     npm install -g eai-cli
+     # Fallback if npmjs is unavailable:
+     npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
      eai --version
      ```
    - On Windows, use the same npm commands in PowerShell and avoid shell

@@ -67,10 +67,12 @@ See @AGENTS.md for project conventions, commands, and code style.
 - Keep deployed CLI canaries in `eai-testing-dev` read-only for prod; preview
   lifecycle checks must stay explicit and cleanup-backed.
 - Refresh `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt` as part of every release
-- GitHub Pages static registry is the release and update channel, and it must
-  keep matching the current tag
-- Preferred install setup is `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
-- Install or update the CLI with `npm install -g @eai-tools/cli`
+- npmjs is the primary release and update channel; the GitHub Pages static
+  registry remains the fallback and must keep matching the current tag
+- Recommended install is `npm install -g eai-cli`
+- Canonical package install is `npm install -g @enterpriseai/cli`
+- Static fallback install is `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/`
+- Persistent static fallback setup is `npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user`
 - `eai update` upgrades the installed CLI package only; it does not rewrite project repos
 - Use `eai gofer refresh --check` to preview safe Gofer-managed file updates in an existing repo
 - Use `eai doctor --check-updates` to report CLI, Gofer, and template drift

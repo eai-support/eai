@@ -142,7 +142,7 @@ Commands to migrate from `out.error() + process.exit(1)` to `exitWithError(Error
 - Last commit: `dee6200` - "feat: add comprehensive JSON output and schema introspection"
 - Branch: main
 - Modified files: 0 (all committed)
-- Untracked files: eai-tools-cli-0.1.1.tgz, IMPLEMENTATION_PROGRESS.md
+- Untracked files: enterpriseai-cli-0.1.1.tgz, IMPLEMENTATION_PROGRESS.md
 
 ## Known Issues
 

@@ -5,7 +5,7 @@ description: Public-safe EAI CLI error explanations and agent recovery commands.
 
 # Error Guidance
 
-This page lists the public-safe error guidance bundled with `@eai-tools/cli`
+This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
 v3.6.5. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 

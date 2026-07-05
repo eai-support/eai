@@ -1387,8 +1387,11 @@ verifyCommand
 
 // ─── eai doctor ────────────────────────────────────────────────────────────
 
-function describeReleaseChannel(channel: "static-registry"): string {
-  return channel === "static-registry" ? "static registry" : channel;
+function describeReleaseChannel(channel: "npmjs" | "static-registry"): string {
+  if (channel === "npmjs") {
+    return "npmjs";
+  }
+  return "static registry fallback";
 }
 
 function describeTemplateSnapshot(template: {
@@ -1418,7 +1421,7 @@ async function renderDoctorUpdateStatus(root: string): Promise<void> {
   const latestRelease = await fetchLatestRelease();
   if (!latestRelease) {
     out.warn(
-      "Could not determine the latest published CLI release from the EAI static registry right now.",
+      "Could not determine the latest published CLI release from npmjs or the EAI static registry fallback right now.",
     );
   } else if (compareVersions(latestRelease.version, currentCliVersion) > 0) {
     out.warn(

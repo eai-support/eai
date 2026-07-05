@@ -33,7 +33,7 @@ updated: '{{iso_timestamp}}'
 
 - EAI CLI overview: https://eai-tools.github.io/eai/docs/overview
 - EAI API reference: https://eai-tools.github.io/eai/docs/api-reference
-- EAI static registry: https://eai-tools.github.io/eai/registry/
+- EAI static registry fallback: https://eai-tools.github.io/eai/registry/
 - EAI scenario library: https://eai-tools.github.io/eai/scenarios
 - EAI app template: https://github.com/eai-tools/eai-app-template
 

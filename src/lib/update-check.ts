@@ -14,12 +14,14 @@ import chalk from 'chalk';
 const EAI_DIR = join(homedir(), '.eai');
 const CACHE_FILE = join(EAI_DIR, 'update-check.json');
 export const STATIC_REGISTRY_URL = 'https://eai-tools.github.io/eai/registry/';
-export const STATIC_PACKUMENT_URL = `${STATIC_REGISTRY_URL}@eai-tools/cli`;
+export const STATIC_PACKUMENT_URL = `${STATIC_REGISTRY_URL}@enterpriseai/cli`;
+export const NPMJS_REGISTRY_URL = 'https://registry.npmjs.org/';
+export const NPMJS_PACKUMENT_URL = `${NPMJS_REGISTRY_URL}@enterpriseai%2fcli`;
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const DEFAULT_FETCH_TIMEOUT_MS = 5000;
 const DISCOVERY_FETCH_TIMEOUT_MS = 1200;
 
-export type ReleaseChannel = 'static-registry';
+export type ReleaseChannel = 'npmjs' | 'static-registry';
 
 export interface LatestRelease {
   channel: ReleaseChannel;
@@ -52,8 +54,12 @@ function shouldSkip(): boolean {
   );
 }
 
-function getPackumentUrl(): string {
+function getStaticPackumentUrl(): string {
   return process.env['EAI_UPDATE_PACKUMENT_URL'] || STATIC_PACKUMENT_URL;
+}
+
+function getNpmjsPackumentUrl(): string {
+  return process.env['EAI_UPDATE_NPMJS_PACKUMENT_URL'] || NPMJS_PACKUMENT_URL;
 }
 
 export function isMachineReadableInvocation(args: readonly string[]): boolean {
@@ -125,13 +131,18 @@ export function selectNewestRelease(candidates: readonly LatestRelease[]): Lates
     return null;
   }
 
+  const channelPriority: Record<ReleaseChannel, number> = {
+    npmjs: 0,
+    'static-registry': 1,
+  };
+
   return [...candidates].sort((left, right) => {
     const versionDelta = compareVersions(right.version, left.version);
     if (versionDelta !== 0) {
       return versionDelta;
     }
 
-    return 0;
+    return channelPriority[left.channel] - channelPriority[right.channel];
   })[0] ?? null;
 }
 
@@ -164,9 +175,17 @@ async function fetchChannelLatest(
   }
 }
 
-/** Fetch the newest release from the static EAI registry. */
+/** Fetch the newest release from the public npm registry, falling back to the static EAI registry. */
 export async function fetchLatestRelease(timeoutMs = DEFAULT_FETCH_TIMEOUT_MS): Promise<LatestRelease | null> {
-  return fetchChannelLatest(getPackumentUrl(), 'static-registry', timeoutMs);
+  const [npmjsRelease, staticRelease] = await Promise.all([
+    fetchChannelLatest(getNpmjsPackumentUrl(), 'npmjs', timeoutMs),
+    fetchChannelLatest(getStaticPackumentUrl(), 'static-registry', timeoutMs),
+  ]);
+
+  return selectNewestRelease([
+    ...(npmjsRelease ? [npmjsRelease] : []),
+    ...(staticRelease ? [staticRelease] : []),
+  ]);
 }
 
 /** Fetch the latest version from the available release channels. */
