@@ -53,6 +53,7 @@ updated: '{{iso_timestamp}}'
 | App enrollment check      | `eai app list --format json`                                               | {{result_or_not_run}} |
 | App selection             | `eai app select <key> --format json`                                       | {{result_or_not_run}} |
 | App resource provisioning | `eai app provision <key> --tenant-id <tenant-id> --select --format json`   | {{result_or_not_run}} |
+| Admin Portal app schema   | Confirm `eai app provision` reports schema/app setup readiness and `eai resources schema --tenant-id <tenant-id> --format json` includes `vertical-product-config`, `vertical-service-activation`, and shared workflow types | {{result_or_not_run}} |
 | Entra provisioning        | `eai provision entra`                                                      | {{result_or_not_run}} |
 | Entra redirect recovery   | `eai provision entra --force --redirect-uri <exact-callback-uri> --debug`  | {{result_or_not_run}} |
 | Environment pull          | `eai env pull`                                                             | {{result_or_not_run}} |
@@ -123,6 +124,11 @@ rationale, owner, expiry, and validation evidence.
 - If `eai types seed` fails with an app-resources/provisioning error, return to
   `eai app provision <key> --tenant-id <tenant-id> --select --format json` and
   keep `Object-type publish` blocked.
+- If Admin Portal app pages, workflows, services, or setup config fail because
+  ResourceAPI cannot see `vertical-product-config`, `vertical-service-activation`,
+  `shared-workflow-config`, `shared-workflow-target-profile`, or
+  `shared-workflow-metric-definition`, rerun `eai app provision <key>
+  --tenant-id <tenant-id> --select --format json` before claiming app readiness.
 - If `eai resources schema`, storage endpoints, app endpoints, or preview URLs
   return `503` or equivalent readiness failures, run
   `eai resources storage status --tenant-id <tenant-id> --format json`,
