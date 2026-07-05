@@ -193,6 +193,27 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('lists child tenants through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ children: [] }), { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.listTenantChildren('tenant-parent', {
+      includeDescendants: true,
+      limit: 100,
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe(
+      'https://example.test/v4/platform/tenants/tenant-parent/children?include_descendants=true&limit=100',
+    )
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
   test('invites tenant members through the public platform member route', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

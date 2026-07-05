@@ -18,14 +18,12 @@ import { loadTokens } from "../lib/auth.js";
 import {
   buildPublicApiEnvSyncNotice,
   fetchTenantAdminMemberships,
-  filterTenantAdminEntries,
-  getTenantRoles,
   normalizeHomeRegion,
-  normalizeTenantEntries,
   refreshTenantUsabilityStatus,
   resolveActiveTenantContext,
   resolvePublicApiUrl,
   type TenantEntry,
+  type TenantMembership,
   type TenantUsabilityStatus,
 } from "../lib/tenant-context.js";
 import * as out from "../lib/output.js";
@@ -46,6 +44,20 @@ export function tenantMatchesParent(
   const resolvedParentId =
     typeof parent === "string" ? parent : (parent?.id ?? entry.tenant.parentId);
   return resolvedParentId === parentId || entry.tenant.id === parentId;
+}
+
+export interface TenantHierarchyItem {
+  id: string;
+  displayName: string;
+  slug: string;
+  domain?: string;
+  isActive: boolean;
+  roles: string[];
+  homeRegion?: string | null;
+  hqCountryCode?: string | null;
+  parentId?: string | null;
+  directMembership: boolean;
+  children: TenantHierarchyItem[];
 }
 
 export interface TenantListZeroState {
@@ -74,6 +86,360 @@ interface TenantBootstrapAdminCommandOptions {
   userEmail?: string;
   format: string;
   json?: boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function tenantReferenceId(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value;
+  if (!isRecord(value)) return null;
+  return optionalString(value.id) ?? optionalString(value._id) ?? null;
+}
+
+function tenantParentIdFromRecord(record: Record<string, unknown>): string | null {
+  return (
+    tenantReferenceId(record.parentTenant) ??
+    tenantReferenceId(record.parent) ??
+    optionalString(record.parentTenantId) ??
+    optionalString(record.parentId) ??
+    optionalString(record.parent_tenant_id) ??
+    null
+  );
+}
+
+function tenantRecordsFromPayload(payload: unknown): Record<string, unknown>[] {
+  if (Array.isArray(payload)) {
+    return payload.filter(isRecord);
+  }
+  if (!isRecord(payload)) return [];
+
+  for (const key of ["children", "tenants", "docs", "items", "data"]) {
+    const value = payload[key];
+    if (Array.isArray(value)) {
+      return value.filter(isRecord);
+    }
+  }
+
+  if (isRecord(payload.tenant)) {
+    return [payload.tenant];
+  }
+  return [];
+}
+
+function tenantHierarchyItemFromMembership(
+  membership: TenantMembership,
+): TenantHierarchyItem {
+  return {
+    id: membership.id,
+    displayName: membership.displayName,
+    slug: membership.slug,
+    domain: membership.domain,
+    isActive: membership.isActive,
+    roles: membership.roles,
+    homeRegion: membership.homeRegion,
+    hqCountryCode: membership.hqCountryCode,
+    directMembership: true,
+    children: [],
+  };
+}
+
+function tenantHierarchyItemFromRecord(
+  record: Record<string, unknown>,
+): TenantHierarchyItem | null {
+  const id = optionalString(record.id) ?? optionalString(record._id);
+  if (!id) return null;
+
+  const slug = optionalString(record.slug) ?? id;
+  const displayName =
+    optionalString(record.displayName) ??
+    optionalString(record.name) ??
+    optionalString(record.title) ??
+    slug;
+
+  return {
+    id,
+    displayName,
+    slug,
+    domain: optionalString(record.domain),
+    isActive: record.isActive !== false,
+    roles: [],
+    homeRegion:
+      typeof record.homeRegion === "string" || record.homeRegion === null
+        ? record.homeRegion
+        : undefined,
+    hqCountryCode:
+      typeof record.hqCountryCode === "string" || record.hqCountryCode === null
+        ? record.hqCountryCode
+        : undefined,
+    parentId: tenantParentIdFromRecord(record),
+    directMembership: false,
+    children: [],
+  };
+}
+
+function mergeTenantHierarchyItem(
+  existing: TenantHierarchyItem | undefined,
+  next: TenantHierarchyItem,
+): TenantHierarchyItem {
+  if (!existing) return next;
+
+  return {
+    ...existing,
+    ...next,
+    displayName: next.displayName || existing.displayName,
+    slug: next.slug || existing.slug,
+    domain: next.domain ?? existing.domain,
+    roles: existing.roles.length ? existing.roles : next.roles,
+    directMembership: existing.directMembership || next.directMembership,
+    parentId: next.parentId ?? existing.parentId,
+    homeRegion: next.homeRegion ?? existing.homeRegion,
+    hqCountryCode: next.hqCountryCode ?? existing.hqCountryCode,
+    children: [],
+  };
+}
+
+function compareTenantHierarchyItems(
+  left: TenantHierarchyItem,
+  right: TenantHierarchyItem,
+): number {
+  return left.displayName.localeCompare(right.displayName, undefined, {
+    sensitivity: "base",
+  });
+}
+
+export function buildTenantHierarchy(
+  directMemberships: TenantMembership[],
+  childRecords: unknown[] = [],
+): TenantHierarchyItem[] {
+  const byId = new Map<string, TenantHierarchyItem>();
+
+  for (const membership of directMemberships) {
+    byId.set(
+      membership.id,
+      mergeTenantHierarchyItem(
+        byId.get(membership.id),
+        tenantHierarchyItemFromMembership(membership),
+      ),
+    );
+  }
+
+  for (const record of childRecords) {
+    if (!isRecord(record)) continue;
+    const item = tenantHierarchyItemFromRecord(record);
+    if (!item) continue;
+    byId.set(item.id, mergeTenantHierarchyItem(byId.get(item.id), item));
+  }
+
+  for (const item of byId.values()) {
+    item.children = [];
+  }
+
+  const roots: TenantHierarchyItem[] = [];
+  for (const item of byId.values()) {
+    if (item.parentId && item.parentId !== item.id && byId.has(item.parentId)) {
+      byId.get(item.parentId)!.children.push(item);
+    } else {
+      roots.push(item);
+    }
+  }
+
+  const sortTree = (items: TenantHierarchyItem[]): TenantHierarchyItem[] => {
+    items.sort(compareTenantHierarchyItems);
+    for (const item of items) {
+      sortTree(item.children);
+    }
+    return items;
+  };
+
+  return sortTree(roots);
+}
+
+function flattenTenantHierarchy(
+  roots: TenantHierarchyItem[],
+): TenantHierarchyItem[] {
+  const items: TenantHierarchyItem[] = [];
+  const visit = (item: TenantHierarchyItem): void => {
+    items.push(item);
+    for (const child of item.children) visit(child);
+  };
+  for (const root of roots) visit(root);
+  return items;
+}
+
+function tenantHierarchyStatus(
+  item: TenantHierarchyItem,
+  activeTenantId?: string,
+): string {
+  const labels: string[] = [];
+  if (item.roles.length) labels.push(item.roles.join(", "));
+  if (!item.directMembership) labels.push("visible via parent");
+  if (activeTenantId === item.id) labels.push("active");
+  return labels.length ? ` [${labels.join("; ")}]` : "";
+}
+
+function tenantHierarchyLineText(
+  item: TenantHierarchyItem,
+  prefix: string,
+  isLast: boolean,
+  isRoot: boolean,
+  activeTenantId?: string,
+): string {
+  const connector = isRoot ? "" : isLast ? "`- " : "|- ";
+  const domain = item.domain ? ` (${item.domain})` : "";
+  return `${prefix}${connector}${item.slug} - ${item.displayName}${domain}${tenantHierarchyStatus(item, activeTenantId)}`;
+}
+
+export function buildTenantHierarchyTreeLines(
+  roots: TenantHierarchyItem[],
+  options?: { activeTenantId?: string },
+): string[] {
+  const lines: string[] = [];
+  const visit = (
+    item: TenantHierarchyItem,
+    prefix: string,
+    isLast: boolean,
+    isRoot: boolean,
+  ): void => {
+    lines.push(
+      tenantHierarchyLineText(
+        item,
+        prefix,
+        isLast,
+        isRoot,
+        options?.activeTenantId,
+      ),
+    );
+    const childPrefix = isRoot ? "" : `${prefix}${isLast ? "   " : "|  "}`;
+    item.children.forEach((child, index) =>
+      visit(child, childPrefix, index === item.children.length - 1, false),
+    );
+  };
+
+  roots.forEach((root, index) =>
+    visit(root, "", index === roots.length - 1, true),
+  );
+  return lines;
+}
+
+function tenantHierarchyJson(item: TenantHierarchyItem): Record<string, unknown> {
+  return {
+    id: item.id,
+    displayName: item.displayName,
+    slug: item.slug,
+    domain: item.domain,
+    isActive: item.isActive,
+    roles: item.roles,
+    homeRegion: item.homeRegion,
+    hqCountryCode: item.hqCountryCode,
+    parentId: item.parentId,
+    directMembership: item.directMembership,
+    children: item.children.map(tenantHierarchyJson),
+  };
+}
+
+async function loadTenantHierarchy(options: {
+  publicApiUrl: string;
+  memberships: TenantMembership[];
+  parentId?: string;
+  debug?: (message: string, data?: unknown) => void;
+}): Promise<{ roots: TenantHierarchyItem[]; warnings: string[] }> {
+  const warnings: string[] = [];
+  const childRecords: Record<string, unknown>[] = [];
+  const parentMembership = options.parentId
+    ? options.memberships.find(
+        (membership) =>
+          membership.id === options.parentId || membership.slug === options.parentId,
+      )
+    : undefined;
+  const rootMemberships = options.parentId
+    ? [
+        parentMembership ??
+          ({
+            id: options.parentId,
+            displayName: options.parentId,
+            slug: options.parentId,
+            isActive: true,
+            roles: [],
+          } satisfies TenantMembership),
+      ]
+    : options.memberships;
+  const parentsToQuery = options.parentId
+    ? [options.parentId]
+    : options.memberships.map((membership) => membership.id);
+
+  for (const parentId of parentsToQuery) {
+    const client = new PlatformAPIClient(options.publicApiUrl, parentId);
+    try {
+      const response = await client.listTenantChildren(parentId, {
+        includeDescendants: true,
+        limit: 100,
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        const message =
+          `Could not load child tenants for ${parentId}: ${response.status} ${response.statusText}`.trim();
+        warnings.push(message);
+        options.debug?.(message, body || undefined);
+        continue;
+      }
+      childRecords.push(...tenantRecordsFromPayload(await response.json()));
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? `Could not load child tenants for ${parentId}: ${error.message}`
+          : `Could not load child tenants for ${parentId}`;
+      warnings.push(message);
+      options.debug?.(message);
+    }
+  }
+
+  return {
+    roots: buildTenantHierarchy(rootMemberships, childRecords),
+    warnings,
+  };
+}
+
+async function promptForTenantFromHierarchy(
+  roots: TenantHierarchyItem[],
+): Promise<string> {
+  const choices: Array<{ name: string; value: string; disabled?: string }> = [];
+  const visit = (
+    item: TenantHierarchyItem,
+    prefix: string,
+    isLast: boolean,
+    isRoot: boolean,
+  ): void => {
+    choices.push({
+      name: tenantHierarchyLineText(item, prefix, isLast, isRoot),
+      value: item.id,
+      disabled: item.directMembership
+        ? undefined
+        : "Visible through parent hierarchy; direct tenant-admin membership is required to select.",
+    });
+    const childPrefix = isRoot ? "" : `${prefix}${isLast ? "   " : "|  "}`;
+    item.children.forEach((child, index) =>
+      visit(child, childPrefix, index === item.children.length - 1, false),
+    );
+  };
+  roots.forEach((root, index) =>
+    visit(root, "", index === roots.length - 1, true),
+  );
+
+  const { tenantId } = await inquirer.prompt([
+    {
+      type: "select",
+      name: "tenantId",
+      message: "Select the tenant to work with now",
+      choices,
+    },
+  ]);
+  return String(tenantId);
 }
 
 export function extractCreatedTenantRecord(
@@ -389,6 +755,7 @@ tenantCommand
     `
 Examples:
   $ eai tenant list
+  $ eai tenant list --parent <tenant-id> # show the child hierarchy for a parent
   $ eai tenant list --all              # include tenant-viewer / tenant-builder memberships
   $ eai tenant list --debug
   $ eai tenant list --debug --raw-user
@@ -434,28 +801,15 @@ Examples:
         await fetchTenantAdminMemberships(publicApiUrl);
       debug("Membership lookup status", "ok");
 
-      const payload = {
-        tenants: membershipsResponse.memberships.map((membership) => ({
-          tenant: {
-            id: membership.id,
-            displayName: membership.displayName,
-            slug: membership.slug,
-            domain: membership.domain,
-            isActive: membership.isActive,
-          },
-          roles: membership.roles,
-        })),
-      } satisfies { tenants: TenantEntry[] };
-
       if (debugEnabled && options.rawUser) {
-        debug("Raw membership payload", payload);
+        debug("Raw membership payload", membershipsResponse);
       }
 
-      const tenantEntries = normalizeTenantEntries(payload);
-      debug("Tenant entries before filtering", tenantEntries.length);
       const tenants = options.all
-        ? tenantEntries.filter((entry) => entry.tenant?.isActive !== false)
-        : filterTenantAdminEntries(tenantEntries);
+        ? membershipsResponse.memberships.filter(
+            (membership) => membership.isActive !== false,
+          )
+        : membershipsResponse.memberships;
       debug(
         options.all
           ? "Tenant entries (all roles, active only)"
@@ -463,30 +817,49 @@ Examples:
         tenants.length,
       );
 
-      // Filter by parent if requested
-      const filtered = options.parent
-        ? tenants.filter((t) => tenantMatchesParent(t, options.parent))
-        : tenants;
-      debug("Tenant entries after filtering", filtered.length);
+      const hierarchy = await loadTenantHierarchy({
+        publicApiUrl: membershipsResponse.publicApiUrl,
+        memberships: tenants,
+        parentId: options.parent,
+        debug,
+      });
+      const visible = flattenTenantHierarchy(hierarchy.roots);
+      const selectable = visible.filter((tenant) => tenant.directMembership);
+      debug("Tenant hierarchy entries after filtering", visible.length);
 
       if (options.format === "json") {
         out.json({
-          tenants: filtered.map((t) => ({
-            ...t.tenant,
-            roles: getTenantRoles(t),
-            active: tokens.activeTenantId === t.tenant.id,
+          tenants: visible.map((tenant) => ({
+            id: tenant.id,
+            displayName: tenant.displayName,
+            slug: tenant.slug,
+            domain: tenant.domain,
+            isActive: tenant.isActive,
+            roles: tenant.roles,
+            homeRegion: tenant.homeRegion,
+            hqCountryCode: tenant.hqCountryCode,
+            parentId: tenant.parentId,
+            directMembership: tenant.directMembership,
+            active: tokens.activeTenantId === tenant.id,
           })),
-          count: filtered.length,
+          hierarchy: hierarchy.roots.map(tenantHierarchyJson),
+          count: visible.length,
+          selectableCount: selectable.length,
         });
         return;
       }
 
-      const countLabel = options.all
-        ? `${filtered.length} membership${filtered.length !== 1 ? "s" : ""}`
-        : `${filtered.length} tenant-admin membership${filtered.length !== 1 ? "s" : ""}`;
+      const countLabel =
+        visible.length === selectable.length
+          ? `${visible.length} tenant-admin membership${visible.length !== 1 ? "s" : ""}`
+          : `${visible.length} visible tenant${visible.length !== 1 ? "s" : ""} (${selectable.length} selectable tenant-admin membership${selectable.length !== 1 ? "s" : ""})`;
       spinner!.succeed(countLabel);
 
-      if (filtered.length === 0) {
+      for (const warning of hierarchy.warnings) {
+        out.warn(warning);
+      }
+
+      if (visible.length === 0) {
         const zeroState = buildTenantListZeroState(tokens);
         out.info(zeroState.headline);
         if (zeroState.tenantContext) {
@@ -500,18 +873,10 @@ Examples:
         return;
       }
 
-      for (const entry of filtered) {
-        const { tenant } = entry;
-        const roleNames = getTenantRoles(entry);
-        const roles = roleNames.length
-          ? chalk.dim(` [${roleNames.join(", ")}]`)
-          : "";
-        const domain = tenant.domain ? chalk.dim(` (${tenant.domain})`) : "";
-        const active =
-          tokens.activeTenantId === tenant.id ? chalk.green(" (active)") : "";
-        out.info(
-          `${chalk.cyan(tenant.slug)} — ${tenant.displayName}${domain}${roles}${active}`,
-        );
+      for (const line of buildTenantHierarchyTreeLines(hierarchy.roots, {
+        activeTenantId: tokens.activeTenantId,
+      })) {
+        out.info(line);
       }
     } catch (err) {
       if (spinner)
@@ -530,12 +895,43 @@ tenantCommand
     const publicApiUrl = await resolvePublicApiUrl(root || undefined);
 
     try {
+      let tenantId = tenant;
+      if (!tenantId) {
+        const fetched = await fetchTenantAdminMemberships(publicApiUrl);
+        const hierarchy = await loadTenantHierarchy({
+          publicApiUrl: fetched.publicApiUrl,
+          memberships: fetched.memberships,
+        });
+        for (const warning of hierarchy.warnings) {
+          out.warn(warning);
+        }
+
+        const selectable = flattenTenantHierarchy(hierarchy.roots).filter(
+          (item) => item.directMembership,
+        );
+        if (selectable.length === 0) {
+          throw new Error(
+            "No active tenant-admin memberships found for the current login. Run `eai tenant list` to inspect your access.",
+          );
+        }
+        if (!process.stdin.isTTY || !process.stdout.isTTY) {
+          if (selectable.length !== 1) {
+            throw new Error(
+              "Multiple active tenant-admin memberships found. Run `eai tenant select <tenant>` to choose one.",
+            );
+          }
+          tenantId = selectable[0]!.id;
+        } else {
+          tenantId = await promptForTenantFromHierarchy(hierarchy.roots);
+        }
+      }
+
       const context = await resolveActiveTenantContext({
         projectRoot: root || undefined,
         publicApiUrl,
-        interactive: true,
-        forcePrompt: !tenant,
-        tenantId: tenant,
+        interactive: false,
+        forcePrompt: false,
+        tenantId,
       });
 
       out.success(
