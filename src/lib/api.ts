@@ -1116,6 +1116,32 @@ export class PlatformAPIClient {
     return this.publicRequest(`${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(id)}/management`, 'GET');
   }
 
+  async listTenantChildren(
+    tenantId: string,
+    options?: {
+      includeDescendants?: boolean;
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<Response> {
+    const params: Record<string, unknown> = {};
+    if (options?.includeDescendants !== undefined) {
+      params.include_descendants = options.includeDescendants;
+    }
+    if (options?.limit !== undefined) {
+      params.limit = options.limit;
+    }
+    if (options?.offset !== undefined) {
+      params.offset = options.offset;
+    }
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/children`,
+      'GET',
+      undefined,
+      params,
+    );
+  }
+
   async createTenantApp(parentTenantId: string, data: TenantAppCreateRequest): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(parentTenantId)}/apps`,

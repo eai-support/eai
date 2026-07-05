@@ -12,6 +12,8 @@ import * as config from '../../src/lib/config.js';
 import * as profile from '../../src/lib/profile.js';
 import {
   buildTenantBootstrapAdminStatusMessages,
+  buildTenantHierarchy,
+  buildTenantHierarchyTreeLines,
   buildTenantCreateStatusMessages,
   buildTenantListZeroState,
   extractCreatedTenantRecord,
@@ -175,6 +177,44 @@ describe('tenant list filtering', () => {
     expect(tenantMatchesParent(childEntry, 'parent-tenant')).toBe(true);
     expect(tenantMatchesParent(directEntry, 'direct-tenant')).toBe(true);
     expect(tenantMatchesParent(childEntry, 'other-tenant')).toBe(false);
+  });
+
+  test('builds a tenant hierarchy tree with direct memberships marked selectable', () => {
+    const roots = buildTenantHierarchy([
+      {
+        id: 'parent-tenant',
+        displayName: 'Parent Tenant',
+        slug: 'parent',
+        isActive: true,
+        roles: ['tenant-admin'],
+      },
+      {
+        id: 'child-tenant',
+        displayName: 'Child Tenant',
+        slug: 'child',
+        isActive: true,
+        roles: ['tenant-admin'],
+      },
+    ], [
+      {
+        id: 'child-tenant',
+        displayName: 'Child Tenant',
+        slug: 'child',
+        parentTenant: { id: 'parent-tenant' },
+      },
+      {
+        id: 'grandchild-tenant',
+        displayName: 'Grandchild Tenant',
+        slug: 'grandchild',
+        parentTenant: 'child-tenant',
+      },
+    ]);
+
+    expect(buildTenantHierarchyTreeLines(roots)).toEqual([
+      'parent - Parent Tenant [tenant-admin]',
+      '`- child - Child Tenant [tenant-admin]',
+      '   `- grandchild - Grandchild Tenant [visible via parent]',
+    ]);
   });
 
   test('normalizes flat admin membership payloads into tenant entries', () => {
