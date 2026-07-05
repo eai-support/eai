@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.4 |
-| Released | 2026-07-01 |
-| Last Material Change | Fix default CLI auth profile isolation |
-| Source Commit | `5b5085dc02a8342254d921c6654f8ea747a0a575` |
+| Version | 3.6.5 |
+| Released | 2026-07-05 |
+| Last Material Change | Show tenant hierarchy in CLI selection |
+| Source Commit | `3344b8c3d8dea2aa12ed013aaf0b7de49b7282cd` |
 
 
 ## Common Workflow

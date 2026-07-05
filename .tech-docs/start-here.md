@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.4** (2026-07-01): Fix default CLI auth profile isolation.
+The current CLI release is **v3.6.5** (2026-07-05): Show tenant hierarchy in CLI selection.
 
 
 ## What The Pieces Do
