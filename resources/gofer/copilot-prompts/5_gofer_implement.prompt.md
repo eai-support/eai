@@ -715,8 +715,8 @@ separation from `tasks.md`:
   `.specify/specs/{feature}/eai-preflight.md` before remote platform changes.
 - Carry forward the last completed gate, blocked gate, and next recovery
   command from `eai-preflight.md` whenever provisioning, object-type publish,
-  schema/storage health, workflow readiness, or preview readiness changes.
-- Treat resource provisioning, object-type publish, schema/storage health, and preview readiness as separate gates even when the CLI reports progress in a single run.
+  Admin Portal app-control-plane schema readiness, schema/storage health, workflow readiness, or preview readiness changes.
+- Treat resource provisioning, Admin Portal app-control-plane schema readiness, object-type publish, schema/storage health, and preview readiness as separate gates even when the CLI reports progress in a single run.
 - Track workflow readiness alongside those gates; do not collapse it into
   provisioning, schema/storage health, or preview status.
 - Use `eai app provision <key> --tenant-id <tenant-id> --select --format json`,

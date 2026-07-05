@@ -200,8 +200,9 @@ with an unrelated non-EAI stack.
      `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json`,
      `eai types diff`, `eai resources schema --tenant-id <tenant-id> --format json`,
      `eai resources storage doctor --tenant-id <tenant-id> --format json`,
-     `eai verify storage --tenant-id <tenant-id>`, workflow readiness, and
-     preview/runtime readiness.
+     `eai verify storage --tenant-id <tenant-id>`, Admin Portal app-control-plane
+     schema readiness (`vertical-product-config`, `vertical-service-activation`,
+     and shared workflow schemas), workflow readiness, and preview/runtime readiness.
    - Provision storage, Entra app registration, environment sync, object types,
      and deployment only in the later plan/tasks/implement stages after the
      business scenario and UI approval gates are complete.
