@@ -288,7 +288,7 @@ verticalCommand
 
 verticalCommand
   .command('provision <key>')
-  .description('Prepare platform storage for an app')
+  .description('Run the platform app provisioning job')
   .option('--tenant-id <id>', 'Run against a specific company tenant')
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--dry-run', 'Plan actions without applying changes', false)
@@ -312,7 +312,9 @@ verticalCommand
 
     const spinner = makeSpinner(
       format,
-      `${options.dryRun ? 'Planning' : 'Provisioning'} storage for ${verticalKey}...`,
+      options.dryRun
+        ? `Planning app storage readiness for ${verticalKey}...`
+        : `Provisioning app ${verticalKey}...`,
     );
     const res = options.dryRun
       ? await ctx.client.provisionStorage({
@@ -341,12 +343,12 @@ verticalCommand
         appKey: verticalKey,
         verticalKey,
         selected: Boolean(options.select),
-        ...(options.dryRun ? { storage: payload } : { provisioning: payload }),
+        ...(options.dryRun ? { dryRun: true, storagePlan: payload } : { provisioning: payload }),
       });
       return;
     }
 
-    spinner?.succeed(options.dryRun ? 'Storage plan complete' : 'Storage provisioning complete');
+    spinner?.succeed(options.dryRun ? 'App storage readiness plan complete' : 'App provisioning complete');
     out.info(`App ${chalk.cyan(verticalKey)} is linked under the selected company tenant.`);
     if (isRecord(payload) && Array.isArray(payload.results)) {
       for (const result of payload.results.filter(isRecord)) {

@@ -652,7 +652,7 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
    do not invent object types, tenant IDs, app keys, or platform capabilities.
 3. **EAI app lifecycle ordering handoff** — keep the platform lifecycle
    explicit inside the plan. Resource provisioning, object-type publish,
-   schema/storage health, workflow readiness, and preview readiness must remain
+   Admin Portal app-control-plane schema readiness, schema/storage health, workflow readiness, and preview readiness must remain
    distinct gates with the recovery path carried forward from
    `{FEATURE_DIR}/eai-preflight.md`.
 4. **EAI Platform/Azure app stack decision** — for app delivery, the plan MUST

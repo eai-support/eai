@@ -483,7 +483,7 @@ function buildEaiRepoContractSection(projectInfo) {
 - Use \`eai update --check\`, \`eai --describe\`, \`eai agent guide --format json\`, \`eai template check --format json\`, \`eai gofer refresh --check --format json\`, and \`eai workflow readiness --format json\` when the CLI advertises them before assuming the repo is current.
 - After any \`eai\` command error, use \`eai errors explain <code-or-reason> --format json\` before guessing remediation.
 - Build on EAI Platform first and Azure second. Treat non-EAI runtimes as explicit exceptions only.
-- Keep provisioning, types seed, schema/storage health, workflow readiness, and preview as separate gates.`;
+- Keep provisioning, Admin Portal app-control-plane schema readiness, types seed, schema/storage health, workflow readiness, and preview as separate gates.`;
 }
 
 export function buildAgentsMd(projectInfo, stages) {
