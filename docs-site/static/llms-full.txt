@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.6.8.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.6.9.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -381,7 +381,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.8** (2026-07-06): Polish public npm package guidance.
+The current CLI release is **v3.6.9** (2026-07-06): Document V4 document and workflow file guidance.
 
 
 ## What The Pieces Do
@@ -495,10 +495,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.8 |
+| Version | 3.6.9 |
 | Released | 2026-07-06 |
-| Last Material Change | Polish public npm package guidance |
-| Source Commit | `fec0c8f15e2f28baea28369b7f807eafbdd232ad` |
+| Last Material Change | Document V4 document and workflow file guidance |
+| Source Commit | `2ad1279fcbb79a772ca129e2d6a63aa682853529` |
 
 
 ## Install
@@ -1216,11 +1216,11 @@ should call EAI platform capabilities.
 | Need                 | App Pattern                                                      | CLI Pattern                                                                                 | Notes                                                 |
 | -------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | Frontend composition | `src/eai.config` layout slots plus `src/eai.blocks.tsx` registry | `eai gofer refresh` installs guidance                                                       | Keep config data-only; callbacks belong in overrides. |
-| Data model           | Object Types in `src/eai.config/object-types.ts`                 | `eai types validate`, `eai types seed`, `eai types diff`                                    | Object Types define ResourceAPI contracts.            |
+| Data model           | Object Types in `src/eai.config/object-types.ts`                 | `eai types validate`, `eai types seed`, `eai types diff`                                    | Object Types define resource contracts.               |
 | Structured resources | `useResources(type)` or `client.resources`                       | `eai resources list/get/create/update/delete/query`                                         | Default for tenant business data.                     |
 | Resource actions     | `client.resources.executeAction(type, id, action)`               | named resources command if available; otherwise `eai publicapi post /v4/data/resources/...` | Actions enforce Object Type rules.                    |
 | Resource search      | helper around PublicAPI resource search if SDK support is absent | `eai resources search "<query>" --mode hybrid`                                              | Search is a projection over canonical data.           |
-| Resource files       | helper around resource file routes                               | `eai resources file upload/get/delete`                                                      | Use for file fields on ResourceAPI objects.           |
+| Resource files       | helper around resource file routes                               | `eai resources file upload/get/delete`                                                      | Use for file fields on typed resource objects.        |
 | Documents            | `useDocuments().upload/classify/ragIndex`                        | `eai docs upload`, `eai docs classify`, `eai docs index`                                    | Use for platform document processing and RAG.         |
 | Chat                 | `useChat(workflowId, stage).send/stream`                         | `eai chat send`, `eai chat stream`                                                          | Use `message`, `conversation_id`, and `params`.       |
 | Advanced PublicAPI   | BFF or server helper                                             | `eai publicapi <method> /v4/...`                                                            | Use only when named support is missing.               |
@@ -1283,7 +1283,7 @@ await classify([file]);
 await ragIndex(documentId);
 ```
 
-Use ResourceAPI file routes when the file is a property of a ResourceAPI object.
+Use resource file routes when the file is a property of a typed resource object.
 Use document upload, classification, and RAG routes when the platform should
 process the document content.
 
@@ -1308,7 +1308,7 @@ should upload files, expose documents to AI, or attach files to business data.
 | Store an arbitrary blob without a document or resource owner | Not a public v4 app pattern | Ask the user to choose document workflow or resource file property | No named command |
 
 V4 files are not public free-form blob writes. A file belongs to either a
-document workflow or a typed ResourceAPI resource property.
+document workflow or a typed resource property.
 
 ## Document Workflow
 
@@ -1474,7 +1474,7 @@ then pass document IDs into chat or workflow runtime context.
 If the answer is resource attachment:
 
 ```text
-Use ResourceAPI file properties: validate the Object Type file property, create
+Use resource file properties: validate the Object Type file property, create
 or find the resource, upload through the resource file route, and rely on
 resource permissions for access.
 ```
@@ -1880,7 +1880,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.6.8. The same catalog powers human stderr output, JSON output for AI
+v3.6.9. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they

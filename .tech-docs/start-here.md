@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.8** (2026-07-06): Polish public npm package guidance.
+The current CLI release is **v3.6.9** (2026-07-06): Document V4 document and workflow file guidance.
 
 
 ## What The Pieces Do
