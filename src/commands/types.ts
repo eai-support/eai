@@ -113,6 +113,19 @@ const RESOURCEAPI_SCHEMA_SYNC_NON_FAILURE_STATUSES = new Set([
   "synced",
 ]);
 const RESOURCEAPI_SCHEMA_SYNC_ASYNC_STATUSES = new Set(["pending", "queued"]);
+const RESOURCEAPI_SCHEMA_BACKGROUND_APPLY_UNTRUSTED_INSTALL =
+  "RESOURCEAPI_SCHEMA_BACKGROUND_APPLY_UNTRUSTED_INSTALL";
+const RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT =
+  "RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT";
+
+export interface ResourceApiSchemaSyncGuidance {
+  title: string;
+  currentState: string;
+  reason: string;
+  fix: string;
+  nextSteps: string[];
+  platformActionRequired: boolean;
+}
 
 function isBlockingResourceApiSchemaSyncStatus(
   status: string | undefined,
@@ -121,6 +134,191 @@ function isBlockingResourceApiSchemaSyncStatus(
     return false;
   }
   return !RESOURCEAPI_SCHEMA_SYNC_NON_FAILURE_STATUSES.has(status);
+}
+
+function optionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const result = optionalString(value);
+    if (result) {
+      return result;
+    }
+  }
+  return undefined;
+}
+
+function resourceApiSchemaSyncInstallContext(sync: Record<string, unknown>): {
+  installId?: string;
+  mode?: string;
+  endpoint?: string;
+  tenantId?: string;
+} {
+  const result = isRecord(sync.result) ? sync.result : {};
+  const details = isRecord(sync.details) ? sync.details : {};
+  const trustFingerprint = isRecord(sync.installTrustFingerprint)
+    ? sync.installTrustFingerprint
+    : isRecord(result.installTrustFingerprint)
+      ? result.installTrustFingerprint
+      : isRecord(details.installTrustFingerprint)
+        ? details.installTrustFingerprint
+        : {};
+
+  return {
+    installId: firstString(
+      trustFingerprint.installId,
+      result.installId,
+      details.installId,
+      sync.installId,
+    ),
+    mode: firstString(
+      trustFingerprint.mode,
+      result.mode,
+      details.mode,
+      sync.mode,
+    ),
+    endpoint: firstString(
+      trustFingerprint.endpoint,
+      result.endpoint,
+      details.endpoint,
+      sync.endpoint,
+    ),
+    tenantId: firstString(sync.tenantId, result.tenantId, details.tenantId),
+  };
+}
+
+export function resourceApiSchemaSyncGuidance(
+  sync: Record<string, unknown>,
+): ResourceApiSchemaSyncGuidance | undefined {
+  const errorCode = firstString(sync.errorCode, sync.error_code);
+  if (errorCode === RESOURCEAPI_SCHEMA_BACKGROUND_APPLY_UNTRUSTED_INSTALL) {
+    const { installId, mode, tenantId } =
+      resourceApiSchemaSyncInstallContext(sync);
+    const install = installId
+      ? `ResourceAPI install ${installId}`
+      : "the selected ResourceAPI install";
+    const modeSentence = mode
+      ? ` The tenant metadata currently says mode=${mode}.`
+      : "";
+    const tenantFlag = tenantId
+      ? ` --tenant-id ${tenantId}`
+      : " --tenant-id <tenant-id>";
+    const installFlag = installId
+      ? ` --install-id ${installId}`
+      : " --install-id <install-id>";
+
+    return {
+      title:
+        "ResourceAPI schema apply was skipped because the install is not trusted for automatic apply.",
+      currentState:
+        "The Object Types were published to platform metadata, but the live ResourceAPI runtime schema was not refreshed. ResourceAPI can still serve an older schema snapshot, so reads or writes for the new Object Types may fail.",
+      reason: `${install} was not accepted as an EAI-hosted install for the background schema apply.${modeSentence} EAI-managed eai-* installs should normally be mode=eai-hosted; customer-hosted-passive is only for an explicit customer-hosted passive install.`,
+      fix: "A platform admin needs to repair the tenant-platform-metadata.resourceApiInstalls row so the EAI-managed install is mode=eai-hosted, then re-run the ResourceAPI schema apply or publish flow.",
+      nextSteps: [
+        `Check the current schema: eai resources schema${tenantFlag} --format json`,
+        `Repair canonical EAI install metadata from Configurator: npx tsx scripts-new/backfill-resourceapi-installs.ts --env <test|prod>${tenantFlag} --execute [--confirm-prod]`,
+        `Refresh ResourceAPI after the metadata repair: eai provision resourceapi-refresh${tenantFlag}${installFlag} --apply --force-overwrite --reason "Repair ResourceAPI schema after install mode fix"`,
+        "Retry the Object Type publish or seed command and confirm the ResourceAPI schema includes the new Object Types.",
+      ],
+      platformActionRequired: true,
+    };
+  }
+
+  if (errorCode === RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT) {
+    return {
+      title: "ResourceAPI schema visibility timed out.",
+      currentState:
+        "The schema apply was queued or started, but the CLI could not see the requested Object Types through the schema read path before its timeout.",
+      reason:
+        "This usually means the background apply is still running, ResourceAPI is serving a stale snapshot, or one of the requested Object Types failed to apply.",
+      fix: "Check the ResourceAPI schema/status output and rerun the apply if the Object Types do not appear after the background work settles.",
+      nextSteps: [
+        "Check schema status: eai resources schema --format json",
+        "If the types are still missing, rerun the ResourceAPI schema apply for the tenant.",
+        "If it repeats, inspect AdminAPI and ResourceAPI logs for the schema apply request.",
+      ],
+      platformActionRequired: true,
+    };
+  }
+
+  return undefined;
+}
+
+export function enrichResourceApiSchemaSync(
+  sync: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!sync) {
+    return undefined;
+  }
+  const guidance = resourceApiSchemaSyncGuidance(sync);
+  return guidance ? { ...sync, guidance } : sync;
+}
+
+function readEmbeddedResourceApiSchemaSyncGuidance(
+  value: unknown,
+): ResourceApiSchemaSyncGuidance | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const nextSteps = readStringArray(value.nextSteps);
+  if (
+    typeof value.title !== "string" ||
+    typeof value.currentState !== "string" ||
+    typeof value.reason !== "string" ||
+    typeof value.fix !== "string" ||
+    nextSteps.length === 0
+  ) {
+    return undefined;
+  }
+  return {
+    title: value.title,
+    currentState: value.currentState,
+    reason: value.reason,
+    fix: value.fix,
+    nextSteps,
+    platformActionRequired: value.platformActionRequired === true,
+  };
+}
+
+function printResourceApiSchemaSyncSummary(
+  resourceApiSchemaSync: Record<string, unknown> | undefined,
+): void {
+  if (!resourceApiSchemaSync) {
+    return;
+  }
+  const syncStatus = optionalString(resourceApiSchemaSync.status);
+  if (!syncStatus) {
+    return;
+  }
+
+  const line = `Resource schema sync: ${chalk.cyan(syncStatus)}`;
+  if (isBlockingResourceApiSchemaSyncStatus(syncStatus.toLowerCase())) {
+    out.warn(line);
+  } else {
+    out.info(line);
+  }
+
+  const guidance =
+    readEmbeddedResourceApiSchemaSyncGuidance(resourceApiSchemaSync.guidance) ??
+    resourceApiSchemaSyncGuidance(resourceApiSchemaSync);
+  if (!guidance) {
+    return;
+  }
+
+  out.warn(guidance.title);
+  out.info(`Current state: ${guidance.currentState}`);
+  out.info(`Reason: ${guidance.reason}`);
+  out.info(`Fix: ${guidance.fix}`);
+  out.info("Next steps:");
+  guidance.nextSteps.forEach((step, index) => {
+    out.info(`${index + 1}. ${step}`);
+  });
 }
 
 export interface TypeDefaultValueValidationIssue {
@@ -777,7 +975,7 @@ export function summarizeAppObjectTypePublish(
     ),
     publishingMode: "app-manifest",
     resourceApiSchemaSync: isRecord(body.resourceApiSchemaSync)
-      ? body.resourceApiSchemaSync
+      ? enrichResourceApiSchemaSync(body.resourceApiSchemaSync)
       : undefined,
   };
 }
@@ -895,11 +1093,11 @@ export async function summarizeResourceApiSchemaSync(
   // reason/error) that resource-store failed results can surface before they land
   // in CLI JSON output, logs, or release evidence. The AdminAPI manifest path
   // already sanitizes this shape; this hardens the direct fallback path too.
-  return {
+  return enrichResourceApiSchemaSync({
     ...(isRecord(payload) ? out.redactSensitiveDeep(payload) : {}),
     ...(missingObjectTypes.length > 0 ? { missingObjectTypes } : {}),
     status: failed ? "failed" : "synced",
-  };
+  }) as Record<string, unknown>;
 }
 
 export function verifyTypeSeedConvergence(
@@ -1149,10 +1347,10 @@ export async function waitForResourceApiSchemaVisibility(
     }
   }
 
-  return {
+  return enrichResourceApiSchemaSync({
     ...resourceApiSchemaSync,
     status: "failed",
-    errorCode: "RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT",
+    errorCode: RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT,
     message:
       "Platform schema sync was queued, but requested Object Types were not visible from the platform schema read path before the CLI timeout.",
     details: {
@@ -1166,7 +1364,7 @@ export async function waitForResourceApiSchemaVisibility(
         : {}),
       ...(lastError ? { lastError } : {}),
     },
-  };
+  }) as Record<string, unknown>;
 }
 
 async function selectTenantKey(
@@ -1434,11 +1632,9 @@ Examples:
                 `Verification: partial (${issues || "remote schema did not converge"})`,
               );
             }
-            const syncStatus =
-              appPublishOutcome.result.resourceApiSchemaSync?.status;
-            if (typeof syncStatus === "string" && syncStatus) {
-              out.info(`Resource schema sync: ${chalk.cyan(syncStatus)}`);
-            }
+            printResourceApiSchemaSyncSummary(
+              appPublishOutcome.result.resourceApiSchemaSync,
+            );
             out.blank();
           }
           jsonResults.push(appPublishOutcome.result);
@@ -1712,15 +1908,7 @@ Examples:
             `Verification: partial (${issues || "remote schema did not converge"})`,
           );
         }
-        const syncStatus = resourceApiSchemaSync?.status;
-        if (typeof syncStatus === "string" && syncStatus) {
-          const line = `Resource schema sync: ${chalk.cyan(syncStatus)}`;
-          if (syncStatus === "failed") {
-            out.warn(line);
-          } else {
-            out.info(line);
-          }
-        }
+        printResourceApiSchemaSyncSummary(resourceApiSchemaSync);
       }
       jsonResults.push({
         tenantKey,
