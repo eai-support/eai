@@ -40,6 +40,9 @@ describe('agent guide', () => {
       ]),
     );
     expect(guide.operatingRules).toContain('When calling eai publicapi directly, only use /v4 paths.');
+    expect(guide.operatingRules).toContain(
+      'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing tenant members, Entra, or role definitions.',
+    );
   });
 
   test('catalog tells agents to use user invite for normal tenant member management', () => {
