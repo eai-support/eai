@@ -1,12 +1,12 @@
 {
   "name": "@enterpriseai/cli",
   "dist-tags": {
-    "latest": "3.6.8"
+    "latest": "3.6.9"
   },
   "versions": {
-    "3.6.8": {
+    "3.6.9": {
       "name": "@enterpriseai/cli",
-      "version": "3.6.8",
+      "version": "3.6.9",
       "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
       "bin": {
         "eai": "dist/index.js"
@@ -23,15 +23,15 @@
         "typescript": "6.0.3"
       },
       "dist": {
-        "tarball": "https://eai-tools.github.io/eai/registry/-/@enterpriseai/cli-3.6.8.tgz",
-        "shasum": "ce34b6e96f7b73fa064a2aeddd53ebea8ba9aca5",
-        "integrity": "sha512-eD+QpfpuqjtvLARmhZ7Z198ZvnDht3QU6aYqju9lRDfS988z+On+0Q3OC93k+Udslbd7Ivk+BXk8TbhBTbJ9mA=="
+        "tarball": "https://eai-tools.github.io/eai/registry/-/@enterpriseai/cli-3.6.9.tgz",
+        "shasum": "8eefcf916fe567a58404532aa4d5698ec5d701be",
+        "integrity": "sha512-9XnF5y811EtvQXp8p/6uN+FM9AlwqX4V6CHX0MTeRtkRuZj4+V4Fp7xChWmNLRwa+Ae/VMhiyp4Q6sXfGSt4XA=="
       }
     }
   },
-  "modified": "2026-07-06T07:00:43.420Z",
+  "modified": "2026-07-06T21:39:47.334Z",
   "time": {
-    "3.6.8": "2026-07-06T07:00:43.420Z",
-    "modified": "2026-07-06T07:00:43.420Z"
+    "3.6.9": "2026-07-06T21:39:47.334Z",
+    "modified": "2026-07-06T21:39:47.334Z"
   }
 }

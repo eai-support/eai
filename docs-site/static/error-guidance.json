@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "package": "@enterpriseai/cli",
-  "version": "3.6.8",
+  "version": "3.6.9",
   "generatedAt": "release-generated",
   "entries": [
     {

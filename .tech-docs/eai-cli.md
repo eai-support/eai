@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.8 |
+| Version | 3.6.9 |
 | Released | 2026-07-06 |
-| Last Material Change | Polish public npm package guidance |
-| Source Commit | `fec0c8f15e2f28baea28369b7f807eafbdd232ad` |
+| Last Material Change | Document V4 document and workflow file guidance |
+| Source Commit | `2ad1279fcbb79a772ca129e2d6a63aa682853529` |
 
 
 ## Install
