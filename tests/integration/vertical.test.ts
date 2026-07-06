@@ -428,7 +428,7 @@ describe('eai app', () => {
           ref: 'refs/heads/main',
           commitSha: 'abcdef1234567890',
           configPath: 'src/eai.config/index.ts',
-          runtimePath: 'src/eai.runtime.ts',
+          runtimePath: 'eai.runtime.json',
           sourceMode: 'source-unknown',
           schemaProvenance: {
             templateVersion: 'eai.generated_app_config.v1',
@@ -533,7 +533,7 @@ describe('eai app', () => {
           ref: 'refs/heads/main',
           commitSha: 'abcdef1234567890',
           configPath: 'src/eai.config/index.ts',
-          runtimePath: 'src/eai.runtime.ts',
+          runtimePath: 'eai.runtime.json',
           sourceMode: 'source-unknown',
           validationSummary: {
             status: 'adopted_observed_by_cli',

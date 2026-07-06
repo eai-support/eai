@@ -37,6 +37,7 @@ const DEFAULT_VERTICAL_SOURCE = ['eai', 'cli'].join('-');
 const APP_KEY_ENV = 'EAI_APP_KEY';
 const LEGACY_VERTICAL_KEY_ENV = 'EAI_VERTICAL_KEY';
 const DEFAULT_SOURCE_UNKNOWN_GITHUB_OIDC_AUDIENCE = 'api://enterprise-ai-publicapi/source-unknown';
+const DEFAULT_SOURCE_UNKNOWN_RUNTIME_PATH = 'eai.runtime.json';
 
 export interface VerticalCreateOptions {
   key?: string;
@@ -263,7 +264,7 @@ export function buildSourceUnknownRegistrationData(
     ref: options.ref?.trim() || `refs/heads/${defaultBranch}`,
     ...(options.commit?.trim() ? { commitSha: options.commit.trim() } : {}),
     configPath: options.config?.trim() || 'src/eai.config/index.ts',
-    runtimePath: options.runtime?.trim() || 'src/eai.runtime.ts',
+    runtimePath: options.runtime?.trim() || DEFAULT_SOURCE_UNKNOWN_RUNTIME_PATH,
     sourceMode: 'source-unknown',
     ...(schemaProvenance ? { schemaProvenance } : {}),
     validationSummary: {
@@ -650,7 +651,7 @@ verticalCommand
   .option('--ref <ref>', 'Approved git ref (defaults to refs/heads/<branch>)')
   .option('--commit <sha>', 'Current commit SHA to bind')
   .option('--config <path>', 'eai.config path', 'src/eai.config/index.ts')
-  .option('--runtime <path>', 'eai.runtime path', 'src/eai.runtime.ts')
+  .option('--runtime <path>', 'eai.runtime path', DEFAULT_SOURCE_UNKNOWN_RUNTIME_PATH)
   .option('--template-version <version>', 'Approved schema/template version')
   .option('--base-template-sha <sha>', 'Base eai-app-template commit SHA when known')
   .option('--approved-source-sha <sha>', 'Approved source commit SHA for non-template apps')
@@ -728,7 +729,7 @@ verticalCommand
   .option('--ref <ref>', 'Approved git ref (defaults to refs/heads/<branch>)')
   .option('--commit <sha>', 'Current commit SHA to bind')
   .option('--config <path>', 'eai.config path', 'src/eai.config/index.ts')
-  .option('--runtime <path>', 'eai.runtime path', 'src/eai.runtime.ts')
+  .option('--runtime <path>', 'eai.runtime path', DEFAULT_SOURCE_UNKNOWN_RUNTIME_PATH)
   .option('--template-version <version>', 'Approved schema/template version')
   .option('--base-template-sha <sha>', 'Base eai-app-template commit SHA when known')
   .option('--approved-source-sha <sha>', 'Approved source commit SHA for non-template apps')
