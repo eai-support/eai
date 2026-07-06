@@ -201,8 +201,8 @@ export function resourceApiSchemaSyncGuidance(
     const { installId, mode, tenantId } =
       resourceApiSchemaSyncInstallContext(sync);
     const install = installId
-      ? `ResourceAPI install ${installId}`
-      : "the selected ResourceAPI install";
+      ? `EAI resource runtime install ${installId}`
+      : "the selected EAI resource runtime install";
     const modeSentence = mode
       ? ` The tenant metadata currently says mode=${mode}.`
       : "";
@@ -215,16 +215,16 @@ export function resourceApiSchemaSyncGuidance(
 
     return {
       title:
-        "ResourceAPI schema apply was skipped because the install is not trusted for automatic apply.",
+        "EAI resource schema apply was skipped because the install is not trusted for automatic apply.",
       currentState:
-        "The Object Types were published to platform metadata, but the live ResourceAPI runtime schema was not refreshed. ResourceAPI can still serve an older schema snapshot, so reads or writes for the new Object Types may fail.",
+        "The Object Types were published to platform metadata, but the live EAI resource runtime schema was not refreshed. The runtime can still serve an older schema snapshot, so reads or writes for the new Object Types may fail.",
       reason: `${install} was not accepted as an EAI-hosted install for the background schema apply.${modeSentence} EAI-managed eai-* installs should normally be mode=eai-hosted; customer-hosted-passive is only for an explicit customer-hosted passive install.`,
-      fix: "A platform admin needs to repair the tenant-platform-metadata.resourceApiInstalls row so the EAI-managed install is mode=eai-hosted, then re-run the ResourceAPI schema apply or publish flow.",
+      fix: "A platform admin needs to repair the tenant resource runtime install metadata so the EAI-managed install is mode=eai-hosted, then re-run the resource schema apply or publish flow.",
       nextSteps: [
         `Check the current schema: eai resources schema${tenantFlag} --format json`,
-        `Repair canonical EAI install metadata from Configurator: npx tsx scripts-new/backfill-resourceapi-installs.ts --env <test|prod>${tenantFlag} --execute [--confirm-prod]`,
-        `Refresh ResourceAPI after the metadata repair: eai provision resourceapi-refresh${tenantFlag}${installFlag} --apply --force-overwrite --reason "Repair ResourceAPI schema after install mode fix"`,
-        "Retry the Object Type publish or seed command and confirm the ResourceAPI schema includes the new Object Types.",
+        `Repair canonical EAI install metadata using platform administration tooling: npx tsx scripts-new/backfill-resourceapi-installs.ts --env <test|prod>${tenantFlag} --execute [--confirm-prod]`,
+        `Refresh the EAI resource runtime after the metadata repair: eai provision resourceapi-refresh${tenantFlag}${installFlag} --apply --force-overwrite --reason "Repair EAI resource schema after install mode fix"`,
+        "Retry the Object Type publish or seed command and confirm the EAI resource schema includes the new Object Types.",
       ],
       platformActionRequired: true,
     };
@@ -232,16 +232,16 @@ export function resourceApiSchemaSyncGuidance(
 
   if (errorCode === RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT) {
     return {
-      title: "ResourceAPI schema visibility timed out.",
+      title: "EAI resource schema visibility timed out.",
       currentState:
         "The schema apply was queued or started, but the CLI could not see the requested Object Types through the schema read path before its timeout.",
       reason:
-        "This usually means the background apply is still running, ResourceAPI is serving a stale snapshot, or one of the requested Object Types failed to apply.",
-      fix: "Check the ResourceAPI schema/status output and rerun the apply if the Object Types do not appear after the background work settles.",
+        "This usually means the background apply is still running, the EAI resource runtime is serving a stale snapshot, or one of the requested Object Types failed to apply.",
+      fix: "Check the EAI resource schema/status output and rerun the apply if the Object Types do not appear after the background work settles.",
       nextSteps: [
         "Check schema status: eai resources schema --format json",
-        "If the types are still missing, rerun the ResourceAPI schema apply for the tenant.",
-        "If it repeats, inspect AdminAPI and ResourceAPI logs for the schema apply request.",
+        "If the types are still missing, rerun the EAI resource schema apply for the tenant.",
+        "If it repeats, inspect platform administration and resource runtime logs for the schema apply request.",
       ],
       platformActionRequired: true,
     };

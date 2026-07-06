@@ -7,7 +7,7 @@
  */
 
 export const CANONICAL_DESCRIPTIONS = {
-  '0_business_scenario':
+  '0_gofer_start':
     'Define the business problem Gofer should solve.',
   '0a_problem_validation':
     'Validate the problem with 5 Whys and stakeholder mapping.',
@@ -27,8 +27,8 @@ export const CANONICAL_DESCRIPTIONS = {
     'Save session state for later resumption.',
   '7a_stakeholder_comms':
     'Generate release notes, demos, and change briefs for stakeholders.',
-  '8_gofer_resume':
-    'Resume a previous Gofer session from a saved checkpoint file.',
+  '8_gofer_branding':
+    'Brand Gofer templates and stakeholder documents.',
   '9_gofer_tests':
     'Generate tests from four perspectives for a target component.',
   '10_gofer_cloud':

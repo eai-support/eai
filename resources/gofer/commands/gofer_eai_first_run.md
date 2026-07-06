@@ -19,7 +19,7 @@ aliases: [gofer:first-run, gofer:eai-setup]
 # EAI Gofer First Run
 
 Use this command when the user is starting their first EAI Platform app, when
-`/0_business_scenario` is unavailable in a new repository, or when an EAI app
+`/0_gofer_start` is unavailable in a new repository, or when an EAI app
 build reaches the Gofer pipeline before the local machine, workspace, tenant, or
 EAI app template is ready.
 
@@ -64,7 +64,7 @@ Run only safe read/check commands first:
 | Node.js | `node --version`                  | `node --version`                         |
 | npm     | `npm --version`                   | `npm --version`                          |
 | EAI CLI | `eai --version`                   | `eai --version`                          |
-| npmjs package | `npm view eai-cli version --registry=https://registry.npmjs.org/` | `npm view eai-cli version --registry=https://registry.npmjs.org/` |
+| Registry | `npm config get @eai-tools:registry` | `npm config get @eai-tools:registry` |
 
 If Git, Node.js, or npm is missing, ask before installing. Use the least
 surprising platform path:
@@ -84,15 +84,16 @@ or assume Git Bash exists unless it was detected.
 If `eai` is missing, or if the user asks to update it, ask for approval and run:
 
 ```bash
-npm install -g eai-cli
-# Fallback if npmjs is unavailable:
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @eai-tools/cli
 eai --version
 ```
 
 Use the same commands in PowerShell. Do not edit `.npmrc` by shell redirection.
 
-If npmjs is unavailable, use the one-command static fallback above. Do not rewrite user npm config unless the user asks for persistent fallback setup.
+If the scoped registry already equals
+`https://eai-tools.github.io/eai/registry/`, do not rewrite it. If it points
+somewhere else, show the current value and ask before changing it.
 
 If `eai` is already installed, run:
 
@@ -131,6 +132,30 @@ inventing a workaround:
 ```bash
 eai errors explain <code-or-reason> --format json
 ```
+
+If `eai errors explain` is unavailable, use the installed Gofer fallback catalog
+at `.specify/references/platform/eai-error-catalog.yaml` once the repo exists,
+or report that live EAI guidance is unavailable and stop before mutating
+tenant/app state. Always run read-only diagnostics before mutating fixes.
+
+For tenant member/admin operations, if `eai user invite` fails with
+`EXTERNAL_SERVICE_ERROR`, a 5xx response, or
+`user_invite_external_service_existing_member`, check for an existing direct
+member with:
+
+```bash
+eai user list --tenant <tenant-id> --search <email> --format json
+```
+
+Use role repair only after the existing member ID is verified and the user
+approves the role change:
+
+```bash
+eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json
+```
+
+Then verify the read-back and tell the affected app user to sign out and sign
+back in because Auth.js session or JWT role data may be cached.
 
 Specifically note whether the installed CLI advertises the commands needed for:
 
@@ -244,18 +269,27 @@ and run the advertised equivalent of:
 eai tenant select <tenant-slug-or-id>
 ```
 
-Capture the exact callback URI from the failing browser log, for example:
+Use the failing browser log to confirm the callback route in the active session,
+for example:
 
 ```text
 https://<host>/api/auth/callback/microsoft-entra-id
 ```
 
+Record only the redacted route pattern and recovery status in Gofer artifacts.
+Keep the full callback URI in the terminal/session or user-approved local notes
+only.
+
 Ask before changing tenant-scoped identity configuration, then run the
 advertised equivalent of:
 
 ```bash
-eai provision entra --force --redirect-uri <exact-callback-uri> --debug
+eai provision entra --force --redirect-uri <confirmed-callback-uri>
 ```
+
+Use `--debug` only when the user explicitly approves it, and redact private
+hostnames, tenant IDs, client IDs, tokens, and raw debug output before writing
+any report.
 
 After the command succeeds, retry the sign-in flow and confirm the authorize
 request uses the same registered `redirect_uri`. If the mismatch persists,
@@ -268,7 +302,7 @@ tokens, or `.env.local` values in the first-run report.
 After `eai init`, verify Gofer files exist:
 
 - `.specify/.gofer-version`
-- `.specify/commands/0_business_scenario.md`
+- `.specify/commands/0_gofer_start.md`
 - `.specify/templates/spec-template.md`
 - `.specify/scripts/node/gofer-workspace-check.mjs`
 - `.specify/memory/gofer-model-policy.yaml`
@@ -330,7 +364,7 @@ Each section should include:
 
 - Host, OS, shell, workspace root, and prerequisite tool versions
 - Git, Node.js, npm, and EAI CLI versions
-- EAI CLI release-channel status
+- EAI registry status
 - EAI CLI release status from `eai update --check`
 - EAI CLI capability source (`eai --describe` timestamp)
 - EAI capability inventory for init, tenant, app, resources, workflow,
@@ -349,10 +383,10 @@ When the app folder, EAI CLI, login, tenant, EAI template, and Gofer scaffold ar
 ready, tell the user to start:
 
 ```text
-/0_business_scenario <what you want to build>
+/0_gofer_start <what you want to build>
 ```
 
-If `/0_business_scenario` is still unknown after the plugin is installed and the
+If `/0_gofer_start` is still unknown after the plugin is installed and the
 repo is bootstrapped, explain that the host has not loaded the Gofer plugin or
 repo commands yet. Give the host-specific install/update command from the Gofer
 README, then retry this command after the host reloads.

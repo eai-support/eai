@@ -388,6 +388,95 @@
       }
     },
     {
+      "code": "E245",
+      "reasonCode": "user_invite_external_service_existing_member",
+      "title": "Tenant member invite failed, but an existing member role repair may be available.",
+      "category": "external_service",
+      "severity": "error",
+      "appliesTo": [
+        "user.invite",
+        "user.role.set",
+        "tenant.member.management"
+      ],
+      "why": [
+        "The invite/add flow reached an external identity or notification dependency that returned a server-side failure.",
+        "The target person may already exist as a direct tenant member with a lower role, so retrying the same invite can fail without changing access.",
+        "When a member record already exists, the supported recovery is to update that member through EAI CLI instead of editing data stores or cloud portals directly.",
+        "Applications may cache tenant role claims in their Auth.js session or JWT, so the user may need to sign out and sign back in after a role change."
+      ],
+      "evidenceToCheck": [
+        "HTTP status, server code, and request ID from the failed invite/add command.",
+        "Active tenant and profile from eai whoami.",
+        "Assignable roles from eai user roles --tenant <tenant-id> --format json.",
+        "Existing member record from eai user list --tenant <tenant-id> --search <email> --format json.",
+        "Read-back role after any eai user role set command."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user, active tenant, and profile before changing membership.",
+          "mutates": false
+        },
+        {
+          "command": "eai user roles --tenant <tenant-id> --format json",
+          "purpose": "Confirm the target role is assignable in this tenant.",
+          "mutates": false
+        },
+        {
+          "command": "eai user list --tenant <tenant-id> --search <email> --format json",
+          "purpose": "Check whether the person already exists as a direct tenant member and capture the member ID.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json",
+          "purpose": "Update the existing direct member to tenant-admin through the approved EAI tenant-member role endpoint.",
+          "mutates": true,
+          "when": "Use only after eai user list confirms the existing member ID and the user approves the role change."
+        },
+        {
+          "command": "eai user invite --email <email> --tenant <tenant-id> --role <role> --format json",
+          "purpose": "Retry the normal invite/add flow when no existing direct member is found and the failure was transient.",
+          "mutates": true,
+          "when": "Use only within the retry limit and after read-only diagnostics confirm the tenant and role."
+        }
+      ],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 2,
+        "backoffSeconds": [
+          10,
+          30
+        ],
+        "stopWhen": [
+          "The same external service error repeats after bounded retry.",
+          "The existing member is found but role update is not approved by the user.",
+          "The signed-in user is not allowed to change tenant membership."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "No existing direct member is found and the invite/add flow keeps returning a 5xx or EXTERNAL_SERVICE_ERROR."
+        ],
+        "include": [
+          "request ID",
+          "HTTP status",
+          "server code",
+          "CLI version",
+          "active tenant slug",
+          "redacted command shape"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
       "code": "E242",
       "reasonCode": "tenant_authorization_incomplete",
       "title": "Tenant data-plane authorization incomplete.",

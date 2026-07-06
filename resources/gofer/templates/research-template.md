@@ -1,6 +1,6 @@
 ---
 date: '[ISO timestamp]'
-researcher: Claude
+researcher: Gofer
 feature: '[Feature Name]'
 status: complete
 codebase_type: '[greenfield | brownfield]'
@@ -8,16 +8,39 @@ codebase_type: '[greenfield | brownfield]'
 
 <!--
   This template is filled in by /1_gofer_research (or legacy /1_research_codebase).
-  Recommended: Use /0_business_scenario to auto-chain the entire pipeline.
+  Recommended: Use /0_gofer_start to auto-chain the entire pipeline.
   Location: .specify/specs/[###-feature-name]/research.md
   Pair this with proposal-review.md before /2_gofer_specify runs.
 -->
 
 # Research: [Feature Name]
 
+## Executive Summary
+
+[Three to five plain-language bullets covering what was researched, why it
+matters, the recommended direction, the biggest risk, and the next decision.]
+
 ## Feature Summary
 
 [Brief description of what we're building]
+
+## Visual Summary
+
+Use simple source-controlled visuals when they make the research easier to
+understand. Prefer Mermaid for Markdown-native diagrams, Marp for stakeholder
+slides, D2 for compact system/process sketches when Mermaid is too cramped, and
+Structurizr/C4 when the architecture needs model-as-code consistency.
+
+| Visual                          | Audience            | Question answered                               | Source / render proof |
+| ------------------------------- | ------------------- | ----------------------------------------------- | --------------------- |
+| `visuals/c4-context.md`         | CTO / delivery      | Who uses the system and what does it depend on? | [path]                |
+| `visuals/capability-heatmap.md` | Business / delivery | Which capabilities matter most?                 | [path]                |
+| `presentation.marp.md`          | Stakeholders        | What is the short story for review?             | [path or N/A]         |
+
+If branded stakeholder output is in scope, record discovered brand sources
+(`.specify/memory/brand-profile.json`, brand guide, logo paths, consulting-firm
+style requirements) and whether `/8_gofer_branding` should run before
+stakeholder communications are generated.
 
 ## Application Classification
 

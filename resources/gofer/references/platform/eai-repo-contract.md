@@ -93,19 +93,39 @@ When an EAI CLI or platform command fails:
 2. Run `eai errors explain <code-or-reason> --format json` when the CLI
    advertises it, and use its public-safe reasons plus next `eai` commands
    before guessing platform internals.
-3. Record the last completed gate, blocked gate, and next recovery command in
+3. Run read-only diagnostics from the guidance before mutating fixes. Apply a
+   mutating fix only when it is listed by live EAI guidance or the fallback
+   catalog and the user has approved any admin or tenant-membership change.
+4. Record the command shape, status, server code, request ID when present, last
+   completed gate, blocked gate, and next recovery command in
    `.specify/specs/{feature}/eai-preflight.md`.
-4. Do not invent a new order or mark the repo ready when a prior gate is still
+5. Stop at the retry or escalation condition instead of repeatedly rerunning the
+   same failing command.
+6. Do not invent a new order or mark the repo ready when a prior gate is still
    blocked.
+
+For tenant member or admin changes, prefer `eai user invite`, `eai user list`,
+`eai user roles`, and `eai user role set` over direct database edits or cloud
+portal changes. If `eai user invite` fails with `EXTERNAL_SERVICE_ERROR`, a 5xx
+status, or the `user_invite_external_service_existing_member` reason, check for
+an existing direct member with
+`eai user list --tenant <tenant-id> --search <email> --format json`. If a direct
+member exists and the user approves, update the role with
+`eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json`,
+verify the read-back, and tell the affected app user to sign out and sign back
+in because Auth.js session or JWT role data may be cached.
 
 For Entra browser sign-in failures, treat `AADSTS50011`, redirect URI mismatch
 messages, and `/api/auth/callback/microsoft-entra-id` callback errors as EAI
 identity provisioning problems first. Confirm login and tenant with `eai whoami`
 and `eai tenant list --format json`, select the correct tenant if needed, then
 run the advertised equivalent of
-`eai provision entra --force --redirect-uri <exact-callback-uri> --debug`. Use
-Azure Portal edits only when the installed EAI CLI does not advertise an Entra
-provisioning path or the CLI reports an operator-only block.
+`eai provision entra --force --redirect-uri <confirmed-callback-uri>`. Record
+only a redacted callback route in Gofer artifacts. Use `--debug` only with
+explicit user approval, and redact private hostnames, tenant IDs, client IDs,
+tokens, and raw debug output before writing artifacts. Use Azure Portal edits
+only when the installed EAI CLI does not advertise an Entra provisioning path or
+the CLI reports an operator-only block.
 
 ## Privacy And Safety
 

@@ -324,6 +324,25 @@ eai user invite --email admin@example.com --tenant <tenant-id> --role tenant-adm
 eai user list --tenant <tenant-id> --search admin@example.com --format json
 ```
 
+If `eai user invite` fails with a 5xx or `EXTERNAL_SERVICE_ERROR`, do not guess
+or edit the database directly. Run:
+
+```bash
+eai errors explain user_invite_external_service_existing_member --format json
+eai user list --tenant <tenant-id> --search <email> --format json
+```
+
+If the person already exists as a direct tenant member and you approve the role
+change, repair the role through EAI CLI and verify read-back:
+
+```bash
+eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json
+eai user list --tenant <tenant-id> --search <email> --format json
+```
+
+The affected app user may need to sign out and sign back in because Auth.js
+session or JWT role data can be cached.
+
 `eai tenant bootstrap-admin` is not a general "make this user an admin" command.
 It is only for repairing first tenant-admin access on an existing immediate
 child tenant when the caller is already tenant-admin on the direct parent.
@@ -405,6 +424,7 @@ Use `eai errors explain <code-or-reason>` for the release-aligned explanation:
 ```bash
 eai errors explain E101
 eai errors explain tenant_authorization_incomplete --format json
+eai errors explain user_invite_external_service_existing_member --format json
 ```
 
 ## Machine-Readable Output
@@ -468,7 +488,7 @@ terminals used in this workspace:
 
 | CLI | Installed surface | First command |
 |-----|-------------------|---------------|
-| Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` hooks | `/0_business_scenario` |
+| Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` hooks | `/0_gofer_start` |
 | Codex CLI | `.agents/skills/` with a legacy `.system/skills/` mirror | Ask Codex to use the relevant Gofer skill |
 | Gemini CLI | `.gemini/commands/gofer`, `.gemini/extension.json` | `/gofer:1_gofer_research` |
 | GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | Use the Gofer prompt or matching local skill |

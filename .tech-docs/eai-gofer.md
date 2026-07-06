@@ -33,21 +33,24 @@ eai gofer refresh
 Use `--check` before committing to see what would change. Use `--force` only
 when you intentionally want managed files overwritten after review.
 
-## Business Scenario Pipeline
+## Gofer Start Pipeline
 
-For app or platform work, start with the business scenario workflow. The current
+For app or platform work, start with the Gofer Start workflow. The current
 pipeline stages are:
 
-| Stage                 | Purpose                                                                       |
-| --------------------- | ----------------------------------------------------------------------------- |
-| `0_business_scenario` | Triage the business goal and orchestrate the pipeline.                        |
-| `1_gofer_research`    | Discover stakeholders, existing code, platform capabilities, and constraints. |
-| `2_gofer_specify`     | Convert discovery into a feature specification and shared scope.              |
-| `3_gofer_plan`        | Plan architecture, tests, rollback, service usage, and delivery sequencing.   |
-| `4_gofer_tasks`       | Break the plan into implementation tasks.                                     |
-| `5_gofer_implement`   | Implement with tests and focused changes.                                     |
-| `6_gofer_validate`    | Validate correctness, security, integration, tests, and release readiness.    |
-| `7_gofer_save`        | Save evidence and handoff state.                                              |
+| Stage               | Purpose                                                                       |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `0_gofer_start`     | Confirm EAI readiness, frame the business goal, and route the pipeline.       |
+| `1_gofer_research`  | Discover stakeholders, existing code, platform capabilities, and constraints. |
+| `2_gofer_specify`   | Convert discovery into a feature specification and shared scope.              |
+| `3_gofer_plan`      | Plan architecture, tests, rollback, service usage, and delivery sequencing.   |
+| `4_gofer_tasks`     | Break the plan into implementation tasks.                                     |
+| `5_gofer_implement` | Implement with tests and focused changes.                                     |
+| `6_gofer_validate`  | Validate correctness, security, integration, tests, and release readiness.    |
+
+Optional helpers include `0a_problem_validation`, `7_gofer_save`,
+`7a_stakeholder_comms`, `8_gofer_branding`, `9_gofer_tests`, and
+`10_gofer_cloud`.
 
 ## EAI App Delivery Rules
 

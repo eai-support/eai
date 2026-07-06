@@ -1,25 +1,8 @@
 ---
-name: 0_business_scenario
-description: "Define the business problem and scenario for Gofer to analyse and solve."
-title: "Business Scenario"
-category: pipeline
-surfaces:
-  - claude
-  - claude-mirror
-  - copilot
-  - vscode
-  - codex
-  - gemini
-  - github-prompts
-  - agents-skills
-  - system-skills
-aliases: [gofer:scenario]
----
----
-description: Triage business scenario and orchestrate the unified Gofer pipeline
+description: Start Gofer, confirm EAI readiness, and orchestrate the unified pipeline
 ---
 
-# Gofer Orchestrator
+# Gofer Start
 
 ## Token And Cost Policy
 <!-- gofer:token-cost-policy:start -->
@@ -45,10 +28,12 @@ Before doing stage/helper work:
 1. Resolve the repository root.
 2. Check the core Gofer sentinels:
    - `.specify/.gofer-version`
-   - `.specify/commands/0_business_scenario.md`
+   - `.specify/commands/0_gofer_start.md`
    - `.specify/templates/spec-template.md`
+   - `.specify/templates/loop-contract-template.json`
    - `.specify/scripts/bash/create-new-feature.sh`
    - `.specify/scripts/node/parse-stage-command.mjs`
+   - `.specify/scripts/node/gofer-loop-audit.mjs`
    - `.specify/scripts/hooks/post-tool-use.mjs`
    - `.specify/scripts/powershell/install-optional-tools.ps1`
    - `.specify/templates/gofer-model-policy.yaml`
@@ -61,11 +46,29 @@ Before doing stage/helper work:
    - Copilot: `.github/copilot-instructions.md`
    - VS Code extension mirrors Claude/Copilot/Gemini resources itself and should still keep the core scaffold healthy
 4. If the repo already has the workspace checker script, prefer running:
-   - `node .specify/scripts/node/gofer-workspace-check.mjs --host auto --json`
+   - `node .specify/scripts/node/gofer-workspace-check.mjs --host gemini --json`
 5. If the workspace is missing or stale, ask exactly:
    - **"This repo is missing or stale for Gofer. Initialize/update it now?"**
 6. If the user says yes, run the Gofer workspace bootstrap helper and then resume this command from the top.
 7. If the user says no, stop and explain that Gofer stage/helper work depends on the repo-owned scaffold.
+
+## EAI Platform Session Preflight
+
+Before any Gofer stage/helper command does pipeline work:
+
+1. Treat durable delivery as EAI Platform delivery by default, with Azure second
+   and every other stack only by explicit exception.
+2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
+   and an active tenant is visible.
+3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
+   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   approve login/setup before continuing.
+4. For EAI app delivery, do not continue into research, specification, planning,
+   tasks, implementation, or validation until
+   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   app-readiness, and next-action evidence.
+5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+   Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## EAI App Delivery Preflight
 
@@ -81,7 +84,7 @@ Use current public EAI documentation as the safe source of truth:
 
 - EAI CLI docs: `https://eai-tools.github.io/eai/docs/overview`
 - EAI API reference: `https://eai-tools.github.io/eai/docs/api-reference`
-- EAI static registry fallback: `https://eai-tools.github.io/eai/registry/`
+- EAI static registry: `https://eai-tools.github.io/eai/registry/`
 - EAI scenario library: `https://eai-tools.github.io/eai/scenarios`
 - EAI app template: `https://github.com/eai-tools/eai-app-template`
 
@@ -134,16 +137,16 @@ with an unrelated non-EAI stack.
      runs `eai init <project-name> --skip-prompts --company-tenant
      <active-tenant-id>` when approved, verifies Gofer files, and then returns
      here.
-   - If `/0_business_scenario` is unavailable in a new repo, the user should run
+   - If `/0_gofer_start` is unavailable in a new repo, the user should run
      the plugin-level `/gofer:eai-first-run` command after installing or
      updating the Gofer plugin.
 3. **Install or update the EAI CLI when needed**
-   - Check `git --version`, `node --version`, `npm --version`, `npm view eai-cli version --registry=https://registry.npmjs.org/`, and `eai --version`.
+   - Check `git --version`, `node --version`, `npm --version`, `npm config get
+     @eai-tools:registry`, and `eai --version`.
    - If `eai` is missing and the user approves, install it:
      ```bash
-     npm install -g eai-cli
-     # Fallback if npmjs is unavailable:
-     npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+     npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
+     npm install -g @eai-tools/cli
      eai --version
      ```
    - On Windows, use the same npm commands in PowerShell and avoid shell
@@ -164,6 +167,19 @@ with an unrelated non-EAI stack.
      `eai errors explain <code-or-reason> --format json` before proposing a
      fix, and prefer the CLI's public-safe recovery commands over guessed
      platform internals.
+   - If the CLI does not advertise `eai errors explain`, match the failure
+     against `.specify/references/platform/eai-error-catalog.yaml`, run the
+     listed read-only diagnostics before mutating fixes, and stop at the retry
+     or escalation condition instead of looping.
+   - For tenant member/admin changes, if `eai user invite` fails with
+     `EXTERNAL_SERVICE_ERROR`, a 5xx response, or
+     `user_invite_external_service_existing_member`, check for an existing
+     direct member with `eai user list --tenant <tenant-id> --search <email>
+     --format json`; use `eai user role set --tenant <tenant-id> --member-id
+     <member-id> --role tenant-admin --format json` only after read-only
+     evidence and user approval, verify the read-back, and tell the affected
+     app user to sign out and sign back in because Auth.js session or JWT role
+     data may be cached.
    - Use JSON only where the CLI advertises it. `eai tenant list --format json`
      is suitable for automation; `eai whoami` may be plain text on current
      versions.
@@ -217,9 +233,8 @@ with an unrelated non-EAI stack.
      `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json`,
      `eai types diff`, `eai resources schema --tenant-id <tenant-id> --format json`,
      `eai resources storage doctor --tenant-id <tenant-id> --format json`,
-     `eai verify storage --tenant-id <tenant-id>`, Admin Portal app-control-plane
-     schema readiness (`vertical-product-config`, `vertical-service-activation`,
-     and shared workflow schemas), workflow readiness, and preview/runtime readiness.
+     `eai verify storage --tenant-id <tenant-id>`, workflow readiness, and
+     preview/runtime readiness.
    - Provision storage, Entra app registration, environment sync, object types,
      and deployment only in the later plan/tasks/implement stages after the
      business scenario and UI approval gates are complete.
@@ -231,6 +246,12 @@ with an unrelated non-EAI stack.
      `eai workflow readiness --format json` so later stages can cite actual
      platform resource fields, actions, events, and workflow availability
      instead of guessing.
+   - For v4 passive ResourceAPI search requirements, run or plan to run
+     `eai resources storage doctor --tenant-id <tenant-id> --format json` and
+     treat fulltext, hybrid, and vector as separate readiness states. Prefer
+     `eai resources search "<query>" --fulltext` until doctor reports semantic
+     search modes ready. Do not apply this fallback to legacy v1/v3 or active
+     ResourceAPI behavior.
    - Use the EAI scenario library to map the business problem to the common
      four-step pattern: capture demand/context, prepare the decision, execute
      and collaborate, then resolve/explain/improve.
@@ -242,10 +263,14 @@ with an unrelated non-EAI stack.
    - If the user provides a browser or auth log with `AADSTS50011`,
      `redirect_uri`, "reply URL specified in the request does not match", or
      `/api/auth/callback/microsoft-entra-id`, record
-     `EAI_ENTRA_REDIRECT_URI_MISMATCH` in `eai-preflight.md` and recover through
-     EAI login, tenant selection, and `eai provision entra --force
-     --redirect-uri <exact-callback-uri> --debug` before suggesting manual
-     Azure Portal edits.
+     `EAI_ENTRA_REDIRECT_URI_MISMATCH` in `eai-preflight.md` with a redacted
+     callback route pattern such as `https://<app-host>/api/auth/callback/...`.
+     Keep the exact callback URI and any debug output in the active terminal or
+     user-approved local notes only. Recover through EAI login, tenant
+     selection, and `eai provision entra --force --redirect-uri
+     <confirmed-callback-uri>` before suggesting manual Azure Portal edits. Use
+     `--debug` only when the user approves it, and redact private hostnames,
+     tenant IDs, client IDs, and tokens before writing artifacts.
 
 ### EAI Preflight Artifact
 
@@ -262,7 +287,7 @@ For EAI app delivery, create or update
 | Template readiness | Already EAI template / needs `eai init` / non-EAI repo decision |
 | Drift readiness | `eai template check` / `eai gofer refresh --check` result or `E001` explanation |
 | App enrollment | Existing app, new app to create, or blocked pending user confirmation |
-| Entra redirect readiness | Exact callback URI, tenant/client alignment state, and any `AADSTS50011` recovery command |
+| Entra redirect readiness | Redacted callback route pattern, tenant/client alignment state, and `AADSTS50011` recovery status. Never write exact private URLs, tenant IDs, client IDs, tokens, or debug output to committed artifacts. |
 | Block catalog readiness | Available block commands and package profile compatibility evidence |
 | App stack policy | EAI Platform including app template first, Azure second, or approved exception |
 | Next action | Continue discovery, initialize template, request account/tenant access, or stop |
@@ -277,7 +302,7 @@ scenario and route them through the **unified Gofer pipeline**.
 │                    UNIFIED GOFER PIPELINE                        │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  0. /0_business_scenario → kickoff, routing, discovery          │
+│  0. /0_gofer_start → Gofer Start, routing, discovery       │
 │     Business scenario intake + optional problem validation       │
 │                         ↓ AUTO                                   │
 │  1. /1_gofer_research    → research.md                           │
@@ -308,7 +333,7 @@ scenario and route them through the **unified Gofer pipeline**.
 | ----------------------------- | ------------------------------------------------------- |
 | `/0a_problem_validation`      | Optional deeper problem framing before research         |
 | `/7_gofer_save`               | Save session checkpoint mid-implementation              |
-| `/8_gofer_resume`             | Resume work from saved checkpoint                       |
+| `/8_gofer_branding`           | Brand templates and stakeholder documents               |
 | `/9_gofer_tests`              | Define acceptance test cases using DSL                  |
 | `/10_gofer_cloud`             | READ-ONLY cloud infrastructure analysis                 |
 | `/7a_stakeholder_comms`       | Optional post-validation communications package         |
@@ -344,7 +369,16 @@ ls -la .specify/memory/constitution.md 2>/dev/null
 | `plan.md`               | `.specify/specs/{feature}/` | Planning complete            |
 | `tasks.md`              | `.specify/specs/{feature}/` | Ready for implement          |
 | `goal-ledger.json`      | `.specify/specs/{feature}/` | Active objective ledger and drift triggers |
+| `loop-contract.json`    | `.specify/specs/{feature}/` | Bounded check-repair loop objective, commands, and stop rules |
+| `loop-ledger.jsonl`     | `.specify/specs/{feature}/` | Implementation/validation iteration evidence |
+| `loop-audit-report.md`  | `.specify/specs/{feature}/` | Latest loop contract and ledger audit |
 | `goal-rebaseline-report.md` | `.specify/specs/{feature}/` | Latest closed-loop audit result |
+| `working-backwards-prfaq.md` | `.specify/specs/{feature}/` | Running product release PR/FAQ |
+| `prfaq-history/`        | `.specify/specs/{feature}/` | Immutable stage snapshots of the PR/FAQ |
+| `business-owner-summary.md` | `.specify/specs/{feature}/` | Business owner scenario, process, and value summary |
+| `cto-architecture-summary.md` | `.specify/specs/{feature}/` | CTO/EAI Platform architecture summary |
+| `ciso-security-summary.md` | `.specify/specs/{feature}/` | CISO security posture summary |
+| `stakeholder-review-index.md` | `.specify/specs/{feature}/` | Stakeholder review status and approval asks |
 | `session-checkpoint.md` | `.specify/specs/{feature}/` | Work paused (resumable)      |
 | `validation-report.md`  | `.specify/specs/{feature}/` | Feature validated            |
 | `constitution.md`       | `.specify/memory/`          | Project principles set       |
@@ -368,7 +402,7 @@ Present these options using the AskUserQuestion tool:
 | **B. Modify Existing**  | Change or extend existing functionality in the codebase  |
 | **C. Fix a Bug**        | Diagnose and fix a specific issue                        |
 | **D. Explore/Research** | Understand the codebase before making changes            |
-| **E. Resume Work**      | Continue from where I left off                           |
+| **E. Continue Work**    | Continue from where I left off                           |
 | **F. Setup Project**    | Initialize constitution and project guidelines           |
 
 ### For Existing Codebases
@@ -498,7 +532,7 @@ After completing discovery questions, create
 ---
 feature: '[Feature Name]'
 created: '[ISO timestamp]'
-discoveredBy: Claude + [User]
+discoveredBy: Gofer + [User]
 status: complete
 ---
 
@@ -919,6 +953,17 @@ feature directory already exists:
 node .specify/scripts/node/gofer-closed-loop-audit.mjs --feature-dir {FEATURE_DIR} --json
 ```
 
+If `{FEATURE_DIR}/loop-contract.json` is missing, initialize it before routing
+past discovery:
+
+```bash
+node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir {FEATURE_DIR} --stage 0_gofer_start --init --json
+```
+
+Do not ask the user about loop initialization unless the command fails or would
+overwrite an existing contract. The loop contract is standard Gofer feature
+scaffold, not an optional extra.
+
 If the audit recommends a `recommendedStartStage`, resume from that stage even
 when later artifacts exist. This is how Gofer behaves like a goal-seeking loop:
 goal drift, expired assumptions, contract drift, UX scope changes, or
@@ -942,6 +987,16 @@ If the closed-loop audit recommends an earlier stage than `currentStage`, the
 audit wins. Pipeline state tracks progress; the audit tracks whether progress is
 still valid.
 
+**Spec Artifact Guard (Mandatory)**:
+
+Before routing to `/3_gofer_plan`, `/4_gofer_tasks`, `/5_gofer_implement`, or
+`/6_gofer_validate`, confirm that `.specify/specs/{feature}/spec.md` exists and
+is not the unfilled `spec-template.md` copy created by feature bootstrap. A
+missing, empty, or placeholder-filled spec always routes back to
+`/2_gofer_specify`, even when `pipeline-state.json`, `plan.md`, `tasks.md`, or
+validation artifacts imply later progress. Gofer must never plan, task,
+implement, or validate a feature from research or plan artifacts alone.
+
 **Fallback — File-existence heuristics** (used when no pipeline-state.json
 exists):
 
@@ -958,7 +1013,17 @@ exists):
 
 1. Ask: **"What would you like to call this feature?"** (use AskUserQuestion)
 2. Create the spec directory: `.specify/specs/{feature-name}/`
-3. Invoke `/1_gofer_research` to start the pipeline
+3. Seed stakeholder review scaffolding from templates:
+   - `{FEATURE_DIR}/working-backwards-prfaq.md` from
+     `.specify/templates/working-backwards-prfaq-template.md`
+   - `{FEATURE_DIR}/stakeholder-review-index.md` from
+     `.specify/templates/stakeholder-review-index-template.md`
+   - `{FEATURE_DIR}/prfaq-history/00-business-scenario.md` as the initial
+     product release PR/FAQ snapshot
+   - Draft persona files only when enough context exists; otherwise let stages
+     1, 3, and 6 create the Business Owner, CTO, and CISO summaries with
+     evidence.
+4. Invoke `/1_gofer_research` to start the pipeline
 
 Output:
 
@@ -968,6 +1033,7 @@ FEATURE: {feature-name}
 STARTING: /1_gofer_research
 AUTO-CHAIN: research → specify → plan → tasks → implement → validate
 NOTE: research may also create optional supporting review artifacts
+NOTE: create/update the running product release PR/FAQ and stakeholder review index from the first stage
 REASON: [explanation]
 ```
 
@@ -1000,7 +1066,7 @@ AUTO-CHAIN: disabled after research until the user asks to continue
 REASON: User wants to explore the codebase first
 ```
 
-### Route E: Resume Work
+### Route E: Continue Work
 
 Check for session checkpoints:
 
@@ -1008,7 +1074,8 @@ Check for session checkpoints:
 find .specify/specs -name "session-checkpoint.md" -type f 2>/dev/null
 ```
 
-If checkpoint found → Invoke `/8_gofer_resume`
+If checkpoint found, read the most recent checkpoint and continue from the
+stage it names. Do not invoke a separate resume command.
 
 If no checkpoint but unchecked tasks exist:
 
@@ -1019,9 +1086,9 @@ If no checkpoint but unchecked tasks exist:
 Output:
 
 ```
-ROUTING: GOFER RESUME
+ROUTING: GOFER CONTINUE
 FEATURE: {feature-name}
-COMMAND: /8_gofer_resume
+COMMAND: /5_gofer_implement or /6_gofer_validate
 CHECKPOINT: {path to checkpoint}
 REASON: Resuming from saved session
 ```
@@ -1059,7 +1126,7 @@ The unified Gofer pipeline automatically chains commands:
 /6_gofer_validate completes → pipeline complete
 ```
 
-**The user only needs to run `/0_business_scenario` once** - the orchestrator
+**The user only needs to run `/0_gofer_start` once** - the orchestrator
 handles everything else automatically.
 
 ---
@@ -1070,13 +1137,14 @@ If the user needs to pause:
 
 1. Invoke `/7_gofer_save` to create checkpoint
 2. Document current state
-3. User can resume later with `/8_gofer_resume`
+3. User can start a fresh session, read the checkpoint, and continue from the
+   named stage
 
 If context window is filling up:
 
 1. Save progress with `/7_gofer_save`
 2. Recommend user start new conversation
-3. User runs `/8_gofer_resume` in new session
+3. User opens the checkpoint and continues from the appropriate stage
 
 ---
 
@@ -1100,13 +1168,18 @@ If context window is filling up:
 
 | Stage | Command               | Main output                        | Description                               |
 | ----- | --------------------- | ---------------------------------- | ----------------------------------------- |
-| 0     | `/0_business_scenario`| Full pipeline kickoff              | Business scenario intake and routing      |
+| 0     | `/0_gofer_start`| Full pipeline kickoff              | Business scenario intake and routing      |
 | 1     | `/1_gofer_research`   | research.md                        | Research and supporting review prep       |
 | 2     | `/2_gofer_specify`    | spec.md                            | Feature specification                     |
 | 3     | `/3_gofer_plan`       | plan.md, data-model.md, contracts/ | Technical architecture and contracts      |
 | 4     | `/4_gofer_tasks`      | tasks.md, traceability.md, issues.md | Dependency-ordered task breakdown       |
-| 5     | `/5_gofer_implement`  | Code and doc changes               | Execute the planned work                  |
-| 6     | `/6_gofer_validate`   | Validation artifacts               | Terminal quality gate, including review   |
+| 5     | `/5_gofer_implement`  | Code, docs, loop-ledger.jsonl      | Execute bounded check-repair loops        |
+| 6     | `/6_gofer_validate`   | Validation artifacts, loop-audit-report.md | Terminal quality gate, including review |
+
+Every stage also updates the running product release PR/FAQ:
+`working-backwards-prfaq.md`, writes an immutable snapshot in
+`prfaq-history/`, and refreshes `stakeholder-review-index.md` so the user sees
+which Business Owner, CTO/Architecture, CISO/Risk, or Delivery review is needed.
 
 ### Helper Commands
 
@@ -1115,7 +1188,7 @@ If context window is filling up:
 | `/0a_problem_validation`      | Optional deeper problem framing before research  |
 | `/7_gofer_save`               | Save session checkpoint                          |
 | `/7a_stakeholder_comms`       | Post-validation communications                   |
-| `/8_gofer_resume`             | Resume from checkpoint                           |
+| `/8_gofer_branding`           | Brand templates and stakeholder documents        |
 | `/9_gofer_tests`              | Define test cases (DSL approach)                 |
 | `/10_gofer_cloud`             | Cloud infrastructure analysis (READ-ONLY)        |
 | `/gofer_hydrate`              | Reverse-engineer spec from code                  |
@@ -1168,6 +1241,12 @@ stages to create these artifacts without re-interviewing the user:
 | `contract-pack.md` | Actors, object types, workflows/journeys, four-step AI assistance contract, permissions, tenant boundaries, APIs/events, runtime assumptions, acceptance tests |
 | `reuse-scan.md` | Existing specs, platform references, object types, APIs, workflows, modules, and the reuse/extend/create decision |
 | `audit-history.md` | Stable finding IDs, recurring-finding history, accepted exceptions, owner, expiry, and review cadence |
+| `working-backwards-prfaq.md` | Product release PR/FAQ: headline, customer problem, launch description, external FAQ, internal FAQ, evidence links, and review asks |
+| `prfaq-history/` | Stage-by-stage immutable PR/FAQ snapshots: `00-business-scenario.md` through `06-validate.md` |
+| `business-owner-summary.md` | Business scenario, process change, business case, metrics, assumptions, and Business Owner review ask |
+| `cto-architecture-summary.md` | EAI Platform/Azure architecture, auth, tenancy, data, contracts, diagrams, and CTO review ask |
+| `ciso-security-summary.md` | Security posture, identity/tenant controls, secrets/data handling, residual risk, validation evidence, and CISO review ask |
+| `stakeholder-review-index.md` | One-page index of review-ready artifacts, current status, reviewer, and approve/revise/defer response contract |
 
 Use these artifacts as decision evidence for executive, architecture, CISO,
 data, delivery, CIO, CFO, COO, and risk/compliance stakeholders.
