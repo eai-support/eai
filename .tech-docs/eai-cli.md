@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.6 |
+| Version | 3.6.7 |
 | Released | 2026-07-06 |
-| Last Material Change | Add operational error guidance and Gofer v3.7.14 bundle. |
-| Source Commit | `c84fef391d8a3906f38053334846c47c40087b1f` |
+| Last Material Change | Add tenant context error guidance |
+| Source Commit | `65ae7bd9c56da2bb1ab0bf65bc02e86f5b30c2bc` |
 
 
 ## Install

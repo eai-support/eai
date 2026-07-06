@@ -167,8 +167,9 @@ function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
     printServerDetail(ctx, diag);
     out.info('Confirm role with: eai whoami --verbose && eai tenant list');
     if (diag.userOid) {
+      const tenantId = diag.tenantId ?? '<tenant-id>';
       out.info(
-        `Platform team can verify membership at /v4/platform/users/${diag.userOid}/memberships`,
+        `Platform team can verify membership at /v4/platform/tenants/${tenantId}/users/${diag.userOid}/memberships`,
       );
     }
     out.info('Reference: EAI-PROVISION-FORBIDDEN');

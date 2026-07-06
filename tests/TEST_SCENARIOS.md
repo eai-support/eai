@@ -1342,7 +1342,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai user invite --email new.user@company.com --tenant tenant-id')
 //
-// expectAPICalledGET('/v4/platform/users/by-email?email=new.user@company.com')
+// expectAPICalledGET('/v4/platform/tenants/tenant-id/users/by-email?email=new.user@company.com')
 // expectAPICalledPOST('/v4/platform/tenants/tenant-id/users/user-oid-123/provision', {
 //   tenant_id: 'tenant-id',
 //   user_oid: 'user-oid-123'

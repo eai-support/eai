@@ -1379,8 +1379,11 @@ export class PlatformAPIClient {
 
   // --------------- Users ---------------
 
-  async getUserMemberships(oid: string): Promise<Response> {
-    return this.publicRequest(`${PUBLIC_PLATFORM_PATH}/users/${encodeURIComponent(oid)}/memberships`, 'GET');
+  async getUserMemberships(tenantId: string, oid: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/users/${encodeURIComponent(oid)}/memberships`,
+      'GET',
+    );
   }
 
   async provisionMe(): Promise<Response> {
@@ -1391,8 +1394,13 @@ export class PlatformAPIClient {
     });
   }
 
-  async lookupUserByEmail(email: string): Promise<Response> {
-    return this.publicRequest(`${PUBLIC_PLATFORM_PATH}/users/by-email`, 'GET', undefined, { email });
+  async lookupUserByEmail(tenantId: string, email: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/users/by-email`,
+      'GET',
+      undefined,
+      { email },
+    );
   }
 
   async listCurrentUserTenants(): Promise<Response> {

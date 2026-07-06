@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "package": "@enterpriseai/cli",
-  "version": "3.6.6",
+  "version": "3.6.7",
   "generatedAt": "release-generated",
   "entries": [
     {
@@ -467,6 +467,106 @@
           "CLI version",
           "active tenant slug",
           "redacted command shape"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E246",
+      "reasonCode": "app_token_tenant_context_required",
+      "title": "App-token platform user lookup is missing tenant context.",
+      "category": "tenant_context",
+      "severity": "error",
+      "appliesTo": [
+        "publicapi",
+        "platform.user.lookup",
+        "tenant.member.management",
+        "verify.calls"
+      ],
+      "why": [
+        "The platform call authenticated, but the request did not carry the tenant context required for app-token user or membership operations.",
+        "This is commonly seen as MISSING_TENANT or \"Tenant context required for app tokens\" on platform user lookup or membership prerequisite calls.",
+        "Do not treat this as the first signal to edit tenant members, role definitions, Entra configuration, databases, or cloud portals.",
+        "For app-token or service-identity flows, use the tenant-scoped platform routes instead of root user lookup routes.",
+        "If the same route works in current main but fails in an environment, the deployed PublicAPI/AdminAPI may be behind the release that adds tenant-scoped routing hardening."
+      ],
+      "evidenceToCheck": [
+        "The failed path and whether it is a root platform user route such as /v4/platform/users/by-email or /v4/platform/users/{oid}/memberships.",
+        "Whether the caller is using an app token or service identity rather than an end-user identity route.",
+        "Active tenant from eai whoami and eai tenant list --format json.",
+        "PublicAPI/AdminAPI deployed versions when the failure happens in a shared environment.",
+        "Whether a tenant-scoped path succeeds for the same operation."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm login, active tenant, profile, and PublicAPI context.",
+          "mutates": false
+        },
+        {
+          "command": "eai tenant list --format json",
+          "purpose": "Confirm the target tenant is visible before retrying tenant-scoped calls.",
+          "mutates": false
+        },
+        {
+          "command": "eai publicapi get /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>",
+          "purpose": "Verify user lookup through the tenant-scoped platform route.",
+          "mutates": false
+        },
+        {
+          "command": "eai publicapi get /v4/platform/tenants/<tenant-id>/users/<oid>/memberships",
+          "purpose": "Verify membership lookup through the tenant-scoped platform route.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai tenant select <tenant>",
+          "purpose": "Select the tenant that should provide app-token context.",
+          "mutates": true
+        },
+        {
+          "command": "Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>",
+          "purpose": "Replace root platform user lookup with the tenant-scoped V4 route in app-token or service-identity flows.",
+          "mutates": false
+        },
+        {
+          "command": "Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships",
+          "purpose": "Replace root platform membership lookup with the tenant-scoped V4 route in app-token or service-identity flows.",
+          "mutates": false
+        },
+        {
+          "command": "Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions",
+          "purpose": "Keep tenant member and role-definition reads on the tenant-scoped V4 surface.",
+          "mutates": false
+        }
+      ],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 1,
+        "stopWhen": [
+          "The tenant-scoped route returns the same MISSING_TENANT result.",
+          "The environment is running older PublicAPI/AdminAPI versions than the release with tenant-scoped platform routing hardening."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "Tenant-scoped routes still return MISSING_TENANT after confirming the tenant and current deployed versions.",
+          "Production or another shared environment is behind the release that contains tenant-scoped platform routing hardening."
+        ],
+        "include": [
+          "CLI version",
+          "redacted route shape",
+          "HTTP status",
+          "server code",
+          "active tenant slug",
+          "deployed PublicAPI/AdminAPI versions if visible"
         ]
       },
       "safety": {

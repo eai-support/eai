@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.6.6.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.6.7.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -381,7 +381,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.6** (2026-07-06): Add operational error guidance and Gofer v3.7.14 bundle..
+The current CLI release is **v3.6.7** (2026-07-06): Add tenant context error guidance.
 
 
 ## What The Pieces Do
@@ -495,10 +495,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.6 |
+| Version | 3.6.7 |
 | Released | 2026-07-06 |
-| Last Material Change | Add operational error guidance and Gofer v3.7.14 bundle. |
-| Source Commit | `c84fef391d8a3906f38053334846c47c40087b1f` |
+| Last Material Change | Add tenant context error guidance |
+| Source Commit | `65ae7bd9c56da2bb1ab0bf65bc02e86f5b30c2bc` |
 
 
 ## Install
@@ -1664,7 +1664,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.6.6. The same catalog powers human stderr output, JSON output for AI
+v3.6.7. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -1680,6 +1680,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E204` | `permission_denied` | Permission denied. |
 | `E205` | `child_relation_invalid` | The supplied tenant is not an immediate child of the supplied parent. |
 | `E245` | `user_invite_external_service_existing_member` | Tenant member invite failed, but an existing member role repair may be available. |
+| `E246` | `app_token_tenant_context_required` | App-token platform user lookup is missing tenant context. |
 | `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
@@ -1904,6 +1905,50 @@ are explicitly listed, and stop when a stop condition matches.
 - CLI version
 - active tenant slug
 - redacted command shape
+
+## E246: App-token platform user lookup is missing tenant context.
+
+| Field | Value |
+| --- | --- |
+| Reason | `app_token_tenant_context_required` |
+| Category | `tenant_context` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The platform call authenticated, but the request did not carry the tenant context required for app-token user or membership operations.
+- This is commonly seen as MISSING_TENANT or "Tenant context required for app tokens" on platform user lookup or membership prerequisite calls.
+- Do not treat this as the first signal to edit tenant members, role definitions, Entra configuration, databases, or cloud portals.
+- For app-token or service-identity flows, use the tenant-scoped platform routes instead of root user lookup routes.
+- If the same route works in current main but fails in an environment, the deployed PublicAPI/AdminAPI may be behind the release that adds tenant-scoped routing hardening.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm login, active tenant, profile, and PublicAPI context.
+- `eai tenant list --format json` (read-only) — Confirm the target tenant is visible before retrying tenant-scoped calls.
+- `eai publicapi get /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Verify user lookup through the tenant-scoped platform route.
+- `eai publicapi get /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Verify membership lookup through the tenant-scoped platform route.
+
+### Fixes
+
+- `eai tenant select <tenant>` (changes state) — Select the tenant that should provide app-token context.
+- `Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Replace root platform user lookup with the tenant-scoped V4 route in app-token or service-identity flows.
+- `Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Replace root platform membership lookup with the tenant-scoped V4 route in app-token or service-identity flows.
+- `Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions` (read-only) — Keep tenant member and role-definition reads on the tenant-scoped V4 surface.
+
+### Stop Conditions
+
+- The tenant-scoped route returns the same MISSING_TENANT result.
+- The environment is running older PublicAPI/AdminAPI versions than the release with tenant-scoped platform routing hardening.
+
+### Escalation Evidence
+
+- CLI version
+- redacted route shape
+- HTTP status
+- server code
+- active tenant slug
+- deployed PublicAPI/AdminAPI versions if visible
 
 ## E242: Tenant data-plane authorization incomplete.
 
@@ -3213,7 +3258,7 @@ Audit the platform API contracts used by the CLI. All checks are read-only unles
 - `--chat-message <message>` — Message to send when probing chat
 - `--format <format>` — Output format (text|json, default: text)
 
-**Endpoints probed** (subset, depending on flags): `GET /health`, `GET /v4/platform/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
+**Endpoints probed** (subset, depending on flags): `GET /health`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
 
 ---
 
@@ -3319,8 +3364,8 @@ Preview file-level app-template / UI drift without writing to the repo.
 - `POST /v4/platform/tenants/{companyTenantId}/apps` — Create app enrollment
 
 ### Platform — Users & Capabilities
-- `GET /v4/platform/users/by-email` — Look up a user by email
-- `GET /v4/platform/users/{oid}/memberships` — User memberships
+- `GET /v4/platform/tenants/{tenantId}/users/by-email` — Look up a user by email in a tenant context
+- `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships` — User memberships in a tenant context
 - `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — Provision a user into a tenant
 - `POST /v4/platform/tenants/{tenantId}/members/invite` — Invite or provision a tenant member with a role
 - `GET /v4/platform/tenants/{tenantId}/members` — List tenant members

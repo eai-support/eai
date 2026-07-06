@@ -425,7 +425,13 @@ Use `eai errors explain <code-or-reason>` for the release-aligned explanation:
 eai errors explain E101
 eai errors explain tenant_authorization_incomplete --format json
 eai errors explain user_invite_external_service_existing_member --format json
+eai errors explain app_token_tenant_context_required --format json
 ```
+
+Use `app_token_tenant_context_required` when platform user lookup or membership
+prerequisite calls return `MISSING_TENANT` or "Tenant context required for app
+tokens"; retry tenant-scoped V4 platform routes before changing tenant members,
+role definitions, Entra configuration, databases, or cloud portals.
 
 ## Machine-Readable Output
 

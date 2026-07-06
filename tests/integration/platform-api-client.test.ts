@@ -299,6 +299,27 @@ describe('PlatformAPIClient', () => {
     expect(init?.body).toBeUndefined()
   })
 
+  test('looks up users and memberships through tenant-scoped public platform routes', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.lookupUserByEmail('tenant-child', 'jane@example.com')
+    await client.getUserMemberships('tenant-child', 'user-123')
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://example.test/v4/platform/tenants/tenant-child/users/by-email?email=jane%40example.com',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://example.test/v4/platform/tenants/tenant-child/users/user-123/memberships',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
   test('updates tenant member role through the public platform member route', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

@@ -54,6 +54,7 @@ const guide: AgentGuide = {
     'Run read-only diagnostics before mutating fixes.',
     'Use named eai commands before calling eai publicapi directly.',
     'When calling eai publicapi directly, only use /v4 paths.',
+    'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing tenant members, Entra, or role definitions.',
     'For normal tenant user/admin addition, use eai user invite --email <email> --tenant <tenant-id> --role <role>; do not use tenant bootstrap-admin.',
     'If user invite fails with a 5xx or EXTERNAL_SERVICE_ERROR, run eai errors explain user_invite_external_service_existing_member --format json, check for an existing member with eai user list, and only then use eai user role set by member ID when approved.',
     'Use eai tenant bootstrap-admin only for first-admin repair on an immediate child tenant.',
@@ -149,7 +150,7 @@ const guide: AgentGuide = {
     {
       step: 4,
       title: 'Tenant member management',
-      instruction: 'List available roles, invite or refresh the user by email with the intended role, and verify membership. This is the correct path for "add this person as tenant admin/member" requests.',
+      instruction: 'List available roles, invite or refresh the user by email with the intended role, and verify membership. This is the correct path for "add this person as tenant admin/member" requests. If prerequisite platform user lookups fail with MISSING_TENANT, first confirm tenant-scoped /v4/platform/tenants/<tenant-id>/... routes and deployed API versions.',
       commands: [
         { command: 'eai user roles --tenant <tenant-id> --format json', mutates: false, purpose: 'Discover assignable tenant roles before choosing a role.' },
         { command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin --format json', mutates: true, purpose: 'Add or refresh a user membership and assign tenant-admin.' },
