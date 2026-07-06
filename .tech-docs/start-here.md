@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.5** (2026-07-05): Show tenant hierarchy in CLI selection.
+The current CLI release is **v3.6.6** (2026-07-06): Add operational error guidance and Gofer v3.7.14 bundle..
 
 
 ## What The Pieces Do
