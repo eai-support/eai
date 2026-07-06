@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.7 |
+| Version | 3.6.8 |
 | Released | 2026-07-06 |
-| Last Material Change | Add tenant context error guidance |
-| Source Commit | `65ae7bd9c56da2bb1ab0bf65bc02e86f5b30c2bc` |
+| Last Material Change | Polish public npm package guidance |
+| Source Commit | `fec0c8f15e2f28baea28369b7f807eafbdd232ad` |
 
 
 ## Install

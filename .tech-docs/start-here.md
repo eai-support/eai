@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.7** (2026-07-06): Add tenant context error guidance.
+The current CLI release is **v3.6.8** (2026-07-06): Polish public npm package guidance.
 
 
 ## What The Pieces Do
