@@ -5,8 +5,10 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { PlatformAPIClient } from '../lib/api.js';
+import { extractServerErrorContext, PlatformAPIClient } from '../lib/api.js';
 import { resolveCommandContext } from '../lib/context.js';
+import { findGuidance } from '../lib/error-guidance/match.js';
+import { formatGuidanceText, guidanceToJSON } from '../lib/error-guidance/render.js';
 import * as out from '../lib/output.js';
 
 const TENANT_BASE_ROLES = [
@@ -118,18 +120,35 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
 
 async function failResponse(
   response: Response,
-  options: { jsonOutput: boolean; spinner?: ReturnType<typeof ora> | null; label: string; command: string; next?: string[] },
+  options: { jsonOutput: boolean; spinner?: ReturnType<typeof ora> | null; label: string; command: string; operation?: string; next?: string[] },
 ): Promise<never> {
-  const body = await response.text();
-  options.spinner?.fail(`${options.label}: ${response.status}: ${body}`);
+  const context = await extractServerErrorContext(response);
+  const body = context.rawBody;
+  const message = context.serverMessage || body;
+  const guidance = findGuidance({
+    operation: options.operation || options.command,
+    status: response.status,
+    serverCode: context.serverCode,
+    message,
+  });
+
+  const failureMessage = `${options.label}: ${response.status}: ${body || response.statusText}`;
+  options.spinner?.fail(failureMessage);
   if (options.jsonOutput) {
     out.json({
       ok: false,
       status: response.status,
       error: body,
+      ...(context.serverCode ? { serverCode: context.serverCode } : {}),
+      ...(context.requestId ? { requestId: context.requestId } : {}),
       command: options.command,
       ...(options.next ? { next: options.next } : {}),
+      ...(guidance ? { guidance: guidanceToJSON(guidance) } : {}),
     });
+  } else if (guidance) {
+    console.error(`\n${formatGuidanceText(guidance)}`);
+  } else {
+    out.info('Run `eai errors list` to inspect known recovery guidance before guessing a fix.');
   }
   process.exit(1);
 }
@@ -200,6 +219,7 @@ tenant.
           spinner: inviteSpinner,
           label: 'Invite failed',
           command: 'eai user invite',
+          operation: 'user invite',
           next: [
             'Confirm you are tenant-admin for the target tenant with `eai whoami`.',
             'List allowed roles with `eai user roles --tenant <tenant-id> --format json`.',
@@ -268,6 +288,7 @@ userCommand
         jsonOutput: options.format === 'json',
         label: 'List members failed',
         command: 'eai user list',
+        operation: 'user list',
       });
     }
 
@@ -305,6 +326,7 @@ userCommand
         jsonOutput: options.format === 'json',
         label: 'List roles failed',
         command: 'eai user roles',
+        operation: 'user roles',
       });
     }
 
@@ -370,6 +392,7 @@ membership in one V4 flow.
           jsonOutput,
           label: 'Role assignment failed',
           command: 'eai user role set',
+          operation: 'user role set',
           next: [
             'Confirm you are tenant-admin for the target tenant with `eai whoami`.',
             'List allowed roles with `eai user roles --tenant <tenant-id> --format json`.',
@@ -396,6 +419,7 @@ membership in one V4 flow.
         jsonOutput,
         label: 'Role update failed',
         command: 'eai user role set',
+        operation: 'user role set',
       });
     }
     const result = await readJsonResponse<unknown>(response);

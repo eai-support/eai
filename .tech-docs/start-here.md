@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.5** (2026-07-05): Show tenant hierarchy in CLI selection.
+The current CLI release is **v3.6.6** (2026-07-06): Add operational error guidance and Gofer v3.7.14 bundle..
 
 
 ## What The Pieces Do
@@ -29,9 +29,27 @@ The current CLI release is **v3.6.5** (2026-07-05): Show tenant hierarchy in CLI
 ## Install The CLI
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-npm install -g @eai-tools/cli
+npm install -g eai-cli
 eai --version
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 ```
 
 ## Create A New App

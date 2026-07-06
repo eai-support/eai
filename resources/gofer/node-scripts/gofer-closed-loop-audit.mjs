@@ -13,6 +13,15 @@ const STAGE_ORDER = {
 };
 
 const PLACEHOLDER_PATTERN = /^(?:—|-|n\/a|none|tbd|unknown|pending|not mapped)$/i;
+const SPEC_TEMPLATE_PATTERNS = [
+  /Feature Specification: \[FEATURE NAME\]/,
+  /\[###-feature-name\]/,
+  /\[Describe this user journey/,
+  /\[specific capability/,
+  /ACTION REQUIRED/,
+  /NEEDS CLARIFICATION: auth method not specified/,
+  /\.specify\/specs\/\[###-feature-name\]\/goal-ledger\.json/,
+];
 
 function usage() {
   return `Usage: node .specify/scripts/node/gofer-closed-loop-audit.mjs --feature-dir <path> [options]
@@ -348,6 +357,19 @@ function addFinding(bucket, finding) {
   });
 }
 
+function getSpecArtifactStatus(content) {
+  if (content == null) {
+    return 'missing';
+  }
+  if (content.trim().length === 0) {
+    return 'empty';
+  }
+  if (SPEC_TEMPLATE_PATTERNS.some((pattern) => pattern.test(content))) {
+    return 'template';
+  }
+  return 'ready';
+}
+
 async function analyzeFeature({ featureDir, workspaceRoot }) {
   const featureId = path.basename(featureDir);
   const specPath = path.join(featureDir, 'spec.md');
@@ -415,6 +437,17 @@ async function analyzeFeature({ featureDir, workspaceRoot }) {
     readTextIfExists(assumptionsPath),
   ]);
 
+  const specArtifactStatus = getSpecArtifactStatus(specContent);
+  if (specArtifactStatus !== 'ready' && specArtifactStatus !== 'missing') {
+    result.status = 'fail';
+    result.recommendedStartStage = pickEarlierStage(result.recommendedStartStage, '2_specify');
+    addFinding(result.blockingFindings, {
+      stage: '2_specify',
+      source: 'spec.md',
+      message: `spec.md is ${specArtifactStatus}; run /2_gofer_specify before downstream stages`,
+    });
+  }
+
   let goalLedger = null;
   try {
     goalLedger = await readJsonIfExists(goalLedgerPath);
@@ -469,7 +502,8 @@ async function analyzeFeature({ featureDir, workspaceRoot }) {
     });
   }
 
-  const requirementIds = specContent ? extractRequirementIds(specContent) : [];
+  const requirementIds =
+    specContent && specArtifactStatus === 'ready' ? extractRequirementIds(specContent) : [];
   result.coverage.requirements.total = requirementIds.length;
 
   let traceRows = [];

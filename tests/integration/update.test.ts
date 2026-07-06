@@ -37,7 +37,7 @@ async function startPackumentServer(latestVersion: string): Promise<{ readonly u
   }
 
   return {
-    url: `http://127.0.0.1:${address.port}/@eai-tools/cli`,
+    url: `http://127.0.0.1:${address.port}/@enterpriseai/cli`,
     close: () => new Promise<void>((resolve, reject) => {
       server.close((error) => {
         if (error) {
@@ -81,13 +81,34 @@ async function createEaiProjectFixture(root: string): Promise<void> {
 }
 
 describe('buildUpdateInstallArgs', () => {
-  test('uses the scoped static registry override for CLI installs', () => {
+  test('uses npmjs for canonical CLI installs by default', () => {
     expect(buildUpdateInstallArgs('1.2.3')).toEqual([
       'install',
       '-g',
-      '@eai-tools/cli@1.2.3',
+      '@enterpriseai/cli@1.2.3',
       '--prefer-online',
-      '--@eai-tools:registry=https://eai-tools.github.io/eai/registry/',
+      '--registry=https://registry.npmjs.org/',
+      '--@enterpriseai:registry=https://registry.npmjs.org/',
+    ]);
+  });
+
+  test('uses the simple eai-cli alias when the alias package is installed', () => {
+    expect(buildUpdateInstallArgs('1.2.3', 'npmjs', 'eai-cli')).toEqual([
+      'install',
+      '-g',
+      'eai-cli@1.2.3',
+      '--prefer-online',
+      '--registry=https://registry.npmjs.org/',
+    ]);
+  });
+
+  test('uses the scoped static registry override for fallback installs', () => {
+    expect(buildUpdateInstallArgs('1.2.3', 'static-registry')).toEqual([
+      'install',
+      '-g',
+      '@enterpriseai/cli@1.2.3',
+      '--prefer-online',
+      '--@enterpriseai:registry=https://eai-tools.github.io/eai/registry/',
     ]);
   });
 });
@@ -111,25 +132,25 @@ describe('update permission guidance', () => {
   });
 
   test('avoids sudo-centric guidance on Unix', () => {
-    expect(buildUpdatePermissionGuidance('1.2.3', 'static-registry', 'darwin')).toEqual([
+    expect(buildUpdatePermissionGuidance('1.2.3', 'npmjs', 'darwin')).toEqual([
       'Your global npm install location is not writable from this shell.',
-      'Retry from a shell that can write to your global npm directory: npm install -g @eai-tools/cli@1.2.3 --prefer-online --@eai-tools:registry=https://eai-tools.github.io/eai/registry/',
+      'Retry from a shell that can write to your global npm directory: npm install -g @enterpriseai/cli@1.2.3 --prefer-online --registry=https://registry.npmjs.org/ --@enterpriseai:registry=https://registry.npmjs.org/',
       'If you use nvm, Homebrew, or Volta, prefer their user-writable install path instead of sudo.',
     ]);
   });
 
-  test('includes the scoped registry when retrying a static-registry install', () => {
+  test('includes the static fallback registry when retrying a static-registry install', () => {
     expect(buildUpdatePermissionGuidance('1.2.3', 'static-registry', 'darwin')).toEqual([
       'Your global npm install location is not writable from this shell.',
-      'Retry from a shell that can write to your global npm directory: npm install -g @eai-tools/cli@1.2.3 --prefer-online --@eai-tools:registry=https://eai-tools.github.io/eai/registry/',
+      'Retry from a shell that can write to your global npm directory: npm install -g @enterpriseai/cli@1.2.3 --prefer-online --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/',
       'If you use nvm, Homebrew, or Volta, prefer their user-writable install path instead of sudo.',
     ]);
   });
 
   test('uses elevated shell guidance on Windows', () => {
-    expect(buildUpdatePermissionGuidance('1.2.3', 'static-registry', 'win32')).toEqual([
+    expect(buildUpdatePermissionGuidance('1.2.3', 'npmjs', 'win32')).toEqual([
       'Your global npm install location is not writable from this shell.',
-      'Retry from an elevated PowerShell or Command Prompt: npm install -g @eai-tools/cli@1.2.3 --prefer-online --@eai-tools:registry=https://eai-tools.github.io/eai/registry/',
+      'Retry from an elevated PowerShell or Command Prompt: npm install -g @enterpriseai/cli@1.2.3 --prefer-online --registry=https://registry.npmjs.org/ --@enterpriseai:registry=https://registry.npmjs.org/',
     ]);
   });
 });
@@ -153,6 +174,20 @@ describe('release channel selection', () => {
       { channel: 'static-registry', version: '2.8.5' },
     ])).toEqual({ channel: 'static-registry', version: '2.8.5' });
   });
+
+  test('prefers npmjs when npmjs and the static registry have the same version', () => {
+    expect(selectNewestRelease([
+      { channel: 'static-registry', version: '2.8.5' },
+      { channel: 'npmjs', version: '2.8.5' },
+    ])).toEqual({ channel: 'npmjs', version: '2.8.5' });
+  });
+
+  test('uses the newer static fallback when npmjs is behind', () => {
+    expect(selectNewestRelease([
+      { channel: 'npmjs', version: '2.8.4' },
+      { channel: 'static-registry', version: '2.8.5' },
+    ])).toEqual({ channel: 'static-registry', version: '2.8.5' });
+  });
 });
 
 describe('discovery update notifier', () => {
@@ -168,6 +203,7 @@ describe('discovery update notifier', () => {
       mockAPI: {} as TestContext['mockAPI'],
       env: {
         EAI_UPDATE_NOTIFIER_FORCE: '1',
+        EAI_UPDATE_NPMJS_PACKUMENT_URL: server.url,
         EAI_UPDATE_PACKUMENT_URL: server.url,
         NO_COLOR: '1',
       },
@@ -261,6 +297,7 @@ describe('eai update project maintenance', () => {
       workingDir: env.dir,
       mockAPI: {} as TestContext['mockAPI'],
       env: {
+        EAI_UPDATE_NPMJS_PACKUMENT_URL: server.url,
         EAI_UPDATE_PACKUMENT_URL: server.url,
         NO_COLOR: '1',
       },
@@ -302,7 +339,7 @@ describe('eai update project maintenance', () => {
       expect(result.stdout).toContain('Project Maintenance');
       expect(result.stdout).toContain('Gofer-managed assets refreshed');
       expect(await pathExists(join(env.dir, '.eai-manifest.json'))).toBe(true);
-      expect(await pathExists(join(env.dir, '.specify', 'commands', '0_business_scenario.md'))).toBe(true);
+      expect(await pathExists(join(env.dir, '.specify', 'commands', '0_gofer_start.md'))).toBe(true);
     } finally {
       await close();
     }

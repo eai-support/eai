@@ -1,6 +1,6 @@
 {
-  "name": "@eai-tools/cli",
-  "version": "3.6.5",
+  "name": "@enterpriseai/cli",
+  "version": "3.6.6",
   "description": "EAI Platform CLI — scaffold, seed, deploy, and manage applications",
   "type": "module",
   "bin": {
@@ -61,6 +61,11 @@
   "homepage": "https://eai-tools.github.io/eai",
   "bugs": {
     "url": "https://github.com/eai-tools/eai/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
   },
   "engines": {
     "node": ">=20.0.0"

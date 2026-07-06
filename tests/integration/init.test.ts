@@ -298,7 +298,7 @@ describe("eai init", () => {
     await expectFileExists(ctx, "my-app/src/eai.config/object-types.ts");
     await expectFileExists(
       ctx,
-      "my-app/.claude/commands/0_business_scenario.md",
+      "my-app/.claude/commands/0_gofer_start.md",
     );
     await expectFileExists(
       ctx,
@@ -323,7 +323,7 @@ describe("eai init", () => {
     );
     await expectFileExists(
       ctx,
-      "my-app/.agents/skills/0_business_scenario/SKILL.md",
+      "my-app/.agents/skills/0_gofer_start/SKILL.md",
     );
     await expectFileExists(ctx, "my-app/.gemini/extension.json");
     await expectFileExists(
@@ -332,15 +332,15 @@ describe("eai init", () => {
     );
     await expectFileExists(
       ctx,
-      "my-app/.gemini/commands/gofer/0_business_scenario.toml",
+      "my-app/.gemini/commands/gofer/0_gofer_start.toml",
     );
     await expectFileExists(
       ctx,
-      "my-app/.github/prompts/0_business_scenario.prompt.md",
+      "my-app/.github/prompts/0_gofer_start.prompt.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.github/skills/0-business-scenario/SKILL.md",
+      "my-app/.github/skills/0-gofer-start/SKILL.md",
     );
     await expectFileExists(ctx, "my-app/.github/copilot-instructions.md");
     await expectFileContains(ctx, "my-app/CLAUDE.md", "## Gofer Pipeline");
@@ -916,7 +916,7 @@ describe("eai init", () => {
     );
     await expectFileExists(
       ctx,
-      "quick-app/.claude/commands/0_business_scenario.md",
+      "quick-app/.claude/commands/0_gofer_start.md",
     );
     await expectFileExists(
       ctx,
@@ -940,7 +940,7 @@ describe("eai init", () => {
     );
     await expectFileExists(
       ctx,
-      "quick-app/.github/skills/0-business-scenario/SKILL.md",
+      "quick-app/.github/skills/0-gofer-start/SKILL.md",
     );
     const objectTypes = await readFile(
       join(env.dir, "quick-app", "src", "eai.config", "object-types.ts"),
@@ -1052,7 +1052,7 @@ describe("eai init", () => {
     );
     await expectFileNotExists(
       ctx,
-      "plain-app/.claude/commands/0_business_scenario.md",
+      "plain-app/.claude/commands/0_gofer_start.md",
     );
     await expectFileNotExists(
       ctx,

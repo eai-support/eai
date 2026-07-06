@@ -10,10 +10,17 @@ Before doing stage/helper work:
 1. Resolve the repository root.
 2. Check the core Gofer sentinels:
    - `.specify/.gofer-version`
-   - `.specify/commands/0_business_scenario.md`
+   - `.specify/commands/0_gofer_start.md`
    - `.specify/templates/spec-template.md`
+   - `.specify/templates/loop-contract-template.json`
+   - `.specify/templates/working-backwards-prfaq-template.md`
+   - `.specify/templates/business-owner-summary-template.md`
+   - `.specify/templates/cto-architecture-summary-template.md`
+   - `.specify/templates/ciso-security-summary-template.md`
+   - `.specify/templates/stakeholder-review-index-template.md`
    - `.specify/scripts/bash/create-new-feature.sh`
    - `.specify/scripts/node/parse-stage-command.mjs`
+   - `.specify/scripts/node/gofer-loop-audit.mjs`
    - `.specify/scripts/hooks/post-tool-use.mjs`
    - `.specify/scripts/powershell/install-optional-tools.ps1`
    - `.specify/templates/gofer-model-policy.yaml`
@@ -37,6 +44,24 @@ description: Execute tasks from tasks.md to implement the feature
 ---
 
 # Gofer Implement
+
+## EAI Platform Session Preflight
+
+Before any Gofer stage/helper command does pipeline work:
+
+1. Treat durable delivery as EAI Platform delivery by default, with Azure second
+   and every other stack only by explicit exception.
+2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
+   and an active tenant is visible.
+3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
+   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   approve login/setup before continuing.
+4. For EAI app delivery, do not continue into research, specification, planning,
+   tasks, implementation, or validation until
+   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   app-readiness, and next-action evidence.
+5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+   Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
 <!-- gofer:token-cost-policy:start -->
@@ -91,10 +116,21 @@ This command expects in `.specify/specs/{feature}/`:
 - `spec.md` - Feature specification (from /2_gofer_specify)
 - `plan.md` - Implementation plan (from /3_gofer_plan)
 - `tasks.md` - Task breakdown (from /4_gofer_tasks)
+- `loop-contract.json` - Bounded eval commands and stop rules (from /1 through /4)
 
 If missing, prompt user to run the prerequisite stage.
 
 ---
+
+## Spec Artifact Guard
+
+Before implementation, `.specify/scripts/bash/check-prerequisites.sh --json
+--require-tasks --include-tasks` must confirm that `{FEATURE_DIR}/spec.md`
+exists, is non-empty, and is not the unfilled spec template. If the helper
+reports `spec.md` as missing, empty, or `template`, stop and run
+`/2_gofer_specify` before editing code. Implementation must never proceed from
+`tasks.md` or `plan.md` without an authoritative spec for acceptance criteria
+and protected boundaries.
 
 ## Outline
 
@@ -148,8 +184,9 @@ During implementation, use these techniques to preserve context quality:
 
 ```bash
 /7_gofer_save  # Creates comprehensive checkpoint
-# Start new Claude Code session
-/8_gofer_resume  # Restores state with clean context
+# Start a fresh supported AI coding app session
+# Read .specify/specs/{feature}/session-checkpoint.md
+# Continue with /5_gofer_implement or the stage named in the checkpoint
 ```
 
 ---
@@ -168,6 +205,8 @@ During implementation, use these techniques to preserve context quality:
    - **Required**: tasks.md (task list and execution plan)
    - **Required**: plan.md (tech stack, architecture, file structure)
    - **Required**: spec.md (scope boundaries and protected files)
+   - **Required**: loop-contract.json (bounded loop objective, eval commands,
+     maximum iterations, stop conditions, and escalation rules)
    - **Optional**: data-model.md (entities and relationships)
    - **Optional**: contracts/ (API specifications)
    - **Optional**: research.md (technical decisions)
@@ -261,10 +300,25 @@ Extract from tasks.md:
 3. **Task details**: ID, description, file paths, [P] markers
 4. **Current progress**: Which tasks are already `[X]` completed
 5. **Protected files**: List from "Protected Files" section
+6. **Loop evidence tasks**: eval command tasks, ledger append tasks, and
+   stop/escalation rules
 
 ---
 
 ## Step 7: Execute Implementation
+
+### Loop Contract Preflight
+
+Before editing code, run:
+
+```bash
+node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir {FEATURE_DIR} --stage 4_tasks --init --json
+```
+
+If this reports contract blocking findings, repair `loop-contract.json` before
+editing code. If `loop-contract.json` was initialized for an older feature, keep
+going but make sure task execution appends real `loop-ledger.jsonl` evidence
+before this stage completes.
 
 ### Checkpoint Strategy
 
@@ -310,6 +364,16 @@ Create checkpoints (git commits) at strategic points:
 3. **Parallel tasks**: [P] marked tasks can run together
 4. **File coordination**: Same-file tasks run sequentially
 5. **Scope check**: Verify every file against protected list
+6. **Loop evidence**: After each focused implementation/check-repair loop,
+   append a ledger record:
+
+   ```bash
+   node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir {FEATURE_DIR} --stage 5_implement --record '{"iteration":1,"action":"<command-or-review>","result":"pass","summary":"<evidence summary>"}' --json
+   ```
+
+   Use `result: "fail"` or `"blocked"` when a check fails and include a
+   material `nextAction`. Stop and escalate instead of continuing silently when
+   the same action reaches `humanEscalation.maxFailedIterations`.
 
 ### Execution Order
 
@@ -520,6 +584,15 @@ After all tasks complete:
 2. **Check implementation matches spec**
 3. **Run automated tests** if they exist
 4. **Validate against plan.md architecture**
+5. **Run loop audit in strict mode**:
+
+   ```bash
+   node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir {FEATURE_DIR} --stage 5_implement --json --strict
+   ```
+
+   If the audit fails, implementation is not complete. Repair the contract,
+   append missing ledger evidence, run the failing eval command, or escalate
+   according to the stop condition.
 
 ---
 
@@ -576,7 +649,30 @@ Report Red/Yellow/Gray findings with coverage gaps."
 
 ## Step 12: Report and Continue
 
-After implementation complete and review gate passes:
+After implementation complete, strict loop audit passes, and review gate passes,
+update the stakeholder-facing implementation record:
+
+1. Update `{FEATURE_DIR}/working-backwards-prfaq.md`.
+   - In "The Launch" and Delivery / Operations FAQ, describe what is now built.
+   - Add "What changed from plan" when implementation differs from `plan.md`,
+     `tasks.md`, or stakeholder-approved scope.
+   - Link to code/test evidence, `loop-ledger.jsonl`, and any preview evidence.
+2. Write `{FEATURE_DIR}/prfaq-history/05-implement.md` as an immutable
+   implementation snapshot.
+3. Update `{FEATURE_DIR}/business-owner-summary.md` if implementation changed
+   process, scope, user-facing behavior, assumptions, or success metrics.
+4. Update `{FEATURE_DIR}/cto-architecture-summary.md` if implementation changed
+   architecture, EAI Platform/Azure usage, auth, tenancy, data, contracts, or
+   integration boundaries.
+5. Update `{FEATURE_DIR}/stakeholder-review-index.md` with:
+   - Business Owner review ask for implemented behavior and demo readiness.
+   - CTO review ask for implementation deltas against the architecture summary.
+   - Delivery review ask for completed scope, outstanding risks, and rollback
+     evidence.
+6. Do not mark implementation complete unless the existing feedback loops,
+   `loop-ledger.jsonl`, and strict loop audit requirements remain satisfied.
+
+After the stakeholder PR/FAQ artifacts are updated:
 
 ```
 ════════════════════════════════════════════════════════════════
@@ -584,6 +680,10 @@ After implementation complete and review gate passes:
 ════════════════════════════════════════════════════════════════
 
   Tasks: [N]/[N] completed
+  Loop evidence: {FEATURE_DIR}/loop-ledger.jsonl
+  Working Backwards PR/FAQ: {FEATURE_DIR}/working-backwards-prfaq.md
+  PR/FAQ implementation snapshot: {FEATURE_DIR}/prfaq-history/05-implement.md
+  Stakeholder review index: {FEATURE_DIR}/stakeholder-review-index.md
 
   Phases completed:
   - Phase 1: Setup ✓
@@ -709,23 +809,51 @@ separation from `tasks.md`:
   `.specify/specs/{feature}/eai-preflight.md` before remote platform changes.
 - Carry forward the last completed gate, blocked gate, and next recovery
   command from `eai-preflight.md` whenever provisioning, object-type publish,
-  Admin Portal app-control-plane schema readiness, schema/storage health, workflow readiness, or preview readiness changes.
-- Treat resource provisioning, Admin Portal app-control-plane schema readiness, object-type publish, schema/storage health, and preview readiness as separate gates even when the CLI reports progress in a single run.
+  schema/storage health, workflow readiness, or preview readiness changes.
+- After any failed `eai` command, run `eai errors explain <code-or-reason>
+  --format json` when advertised before proposing a fix. If the command is not
+  advertised, match `.specify/references/platform/eai-error-catalog.yaml`. Run
+  read-only diagnostics before mutating fixes, ask for approval before tenant
+  membership or admin changes, and stop at the guidance retry/escalation
+  condition instead of repeatedly rerunning the same command.
+- Treat resource provisioning, object-type publish, schema/storage health, and preview readiness as separate gates even when the CLI reports progress in a single run.
 - Track workflow readiness alongside those gates; do not collapse it into
   provisioning, schema/storage health, or preview status.
 - Use `eai app provision <key> --tenant-id <tenant-id> --select --format json`,
-  `eai provision entra --force --redirect-uri <exact-callback-uri> --debug`,
+  `eai provision entra --force --redirect-uri <confirmed-callback-uri>`,
   `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json`,
   `eai resources schema --tenant-id <tenant-id> --format json`,
   `eai resources storage doctor --tenant-id <tenant-id> --format json`, and
   `eai verify storage --tenant-id <tenant-id>` in the recovery order recorded
-  by the preflight artifact instead of improvising a new sequence.
+  by the preflight artifact instead of improvising a new sequence. Use EAI
+  `--debug` flags only with explicit user approval, and never write private
+  hostnames, tenant IDs, client IDs, tokens, or raw debug output to committed
+  artifacts.
+- For v4 passive ResourceAPI search, treat `capabilities.search.fulltext`,
+  `capabilities.search.hybrid`, and `capabilities.search.vector` from
+  `eai resources storage doctor --tenant-id <tenant-id> --format json` as
+  separate readiness states. If hybrid/vector are unavailable but fulltext is
+  ready, use `eai resources search "<query>" --fulltext --tenant-id <tenant-id>`
+  and record semantic search as a deferred platform capability only when the
+  business scenario genuinely requires it. Do not apply this fallback to legacy
+  v1/v3 or active ResourceAPI behavior.
 - If a browser or runtime auth log reports `AADSTS50011`, `redirect_uri`,
   "reply URL specified in the request does not match", or
   `/api/auth/callback/microsoft-entra-id`, match
   `EAI_ENTRA_REDIRECT_URI_MISMATCH` in the error catalog. Confirm `eai whoami`
   and tenant selection first, then use EAI Entra provisioning to register the
-  exact callback URI before asking the user to edit Azure manually.
+  confirmed callback URI before asking the user to edit Azure manually. Record
+  only a redacted callback route pattern and recovery status in implementation
+  notes or validation artifacts.
+- If `eai user invite` fails with `EXTERNAL_SERVICE_ERROR`, a 5xx response, or
+  `user_invite_external_service_existing_member`, treat it as a tenant-member
+  recovery flow: run `eai user list --tenant <tenant-id> --search <email>
+  --format json`, use `eai user role set --tenant <tenant-id> --member-id
+  <member-id> --role tenant-admin --format json` only when an existing direct
+  member is verified and the user approves, verify the read-back, and tell the
+  affected app user to sign out and sign back in because Auth.js session or JWT
+  role data may be cached. Do not edit databases or cloud portals directly
+  unless EAI guidance reports an operator-only block.
 - For application delivery, implement the four-step-or-fewer AI-augmented
   process as the user-facing spine. Each step must preserve its business goal,
   AI assistance mode, contextual prefill or conversational support, completion

@@ -55,6 +55,7 @@ const guide: AgentGuide = {
     'Use named eai commands before calling eai publicapi directly.',
     'When calling eai publicapi directly, only use /v4 paths.',
     'For normal tenant user/admin addition, use eai user invite --email <email> --tenant <tenant-id> --role <role>; do not use tenant bootstrap-admin.',
+    'If user invite fails with a 5xx or EXTERNAL_SERVICE_ERROR, run eai errors explain user_invite_external_service_existing_member --format json, check for an existing member with eai user list, and only then use eai user role set by member ID when approved.',
     'Use eai tenant bootstrap-admin only for first-admin repair on an immediate child tenant.',
     'Do not loop indefinitely; follow retry and stop conditions from eai errors explain.',
     'Do not expose tokens, secrets, local env files, tenant identifiers, or request IDs unless the user explicitly asks to collect escalation evidence.',
@@ -153,6 +154,7 @@ const guide: AgentGuide = {
         { command: 'eai user roles --tenant <tenant-id> --format json', mutates: false, purpose: 'Discover assignable tenant roles before choosing a role.' },
         { command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin --format json', mutates: true, purpose: 'Add or refresh a user membership and assign tenant-admin.' },
         { command: 'eai user list --tenant <tenant-id> --search <email> --format json', mutates: false, purpose: 'Verify the user membership and role after invite.' },
+        { command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json', mutates: true, purpose: 'Repair the role on an existing direct member when invite/add fails and the member ID has been verified.' },
       ],
     },
     {

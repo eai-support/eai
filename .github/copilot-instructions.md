@@ -37,10 +37,14 @@ or workflow logs.
 - Run `npm run release:check` before treating release work as complete
 - Keep `release.sh`, `.github/workflows/release.yml`, `src/commands/update.ts`,
   `src/lib/update-check.ts`, and `README.md` aligned
-- Verify the public static registry explicitly:
-  - `curl https://eai-tools.github.io/eai/registry/@eai-tools/cli`
-- Preferred user setup is `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
-- Install or update the CLI with `npm install -g @eai-tools/cli`
+- Verify npmjs and the public static fallback registry explicitly:
+  - `npm view eai-cli version --registry=https://registry.npmjs.org/`
+  - `npm view @enterpriseai/cli version --registry=https://registry.npmjs.org/ --@enterpriseai:registry=https://registry.npmjs.org/`
+  - `curl https://eai-tools.github.io/eai/registry/@enterpriseai/cli`
+- Recommended install is `npm install -g eai-cli`
+- Canonical package install is `npm install -g @enterpriseai/cli`
+- Static fallback install is `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/`
+- Persistent static fallback setup is `npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user`
 - `eai update` upgrades the installed CLI package only
 - `eai gofer refresh --check` previews safe Gofer-managed repo updates
 - `eai doctor --check-updates` reports CLI, Gofer, and template drift

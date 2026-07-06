@@ -5,8 +5,8 @@ description: Public-safe EAI CLI error explanations and agent recovery commands.
 
 # Error Guidance
 
-This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.6.5. The same catalog powers human stderr output, JSON output for AI
+This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
+v3.6.6. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -21,6 +21,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E102` | `access_token_expired` | Access token expired. |
 | `E204` | `permission_denied` | Permission denied. |
 | `E205` | `child_relation_invalid` | The supplied tenant is not an immediate child of the supplied parent. |
+| `E245` | `user_invite_external_service_existing_member` | Tenant member invite failed, but an existing member role repair may be available. |
 | `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
@@ -204,6 +205,47 @@ are explicitly listed, and stop when a stop condition matches.
 - active tenant slug
 - target tenant slug
 - requested command
+
+## E245: Tenant member invite failed, but an existing member role repair may be available.
+
+| Field | Value |
+| --- | --- |
+| Reason | `user_invite_external_service_existing_member` |
+| Category | `external_service` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The invite/add flow reached an external identity or notification dependency that returned a server-side failure.
+- The target person may already exist as a direct tenant member with a lower role, so retrying the same invite can fail without changing access.
+- When a member record already exists, the supported recovery is to update that member through EAI CLI instead of editing data stores or cloud portals directly.
+- Applications may cache tenant role claims in their Auth.js session or JWT, so the user may need to sign out and sign back in after a role change.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the signed-in user, active tenant, and profile before changing membership.
+- `eai user roles --tenant <tenant-id> --format json` (read-only) — Confirm the target role is assignable in this tenant.
+- `eai user list --tenant <tenant-id> --search <email> --format json` (read-only) — Check whether the person already exists as a direct tenant member and capture the member ID.
+
+### Fixes
+
+- `eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json` (changes state) — Update the existing direct member to tenant-admin through the approved EAI tenant-member role endpoint. Use only after eai user list confirms the existing member ID and the user approves the role change.
+- `eai user invite --email <email> --tenant <tenant-id> --role <role> --format json` (changes state) — Retry the normal invite/add flow when no existing direct member is found and the failure was transient. Use only within the retry limit and after read-only diagnostics confirm the tenant and role.
+
+### Stop Conditions
+
+- The same external service error repeats after bounded retry.
+- The existing member is found but role update is not approved by the user.
+- The signed-in user is not allowed to change tenant membership.
+
+### Escalation Evidence
+
+- request ID
+- HTTP status
+- server code
+- CLI version
+- active tenant slug
+- redacted command shape
 
 ## E242: Tenant data-plane authorization incomplete.
 

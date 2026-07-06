@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "loopId": "{{featureId}}",
+  "profile": "standard",
+  "objective": "Keep feature delivery aligned with current goals, approved scope, implementation evidence, and validation gates.",
+  "entryStage": "0_gofer_start",
+  "maxIterations": 3,
+  "budget": {
+    "maxWallClockMinutes": null,
+    "maxModelSpendUsd": null,
+    "stopOnBudgetWarning": true
+  },
+  "modelTiers": {
+    "simple": "Use the repo model policy simple tier.",
+    "medium": "Use the repo model policy medium tier.",
+    "hard": "Use the repo model policy hard tier.",
+    "arbiter": "Use the repo model policy arbiter tier only for release-critical or contradictory results."
+  },
+  "evalCommands": [
+    {
+      "id": "loop-audit",
+      "stage": "5_implement",
+      "command": "node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir {FEATURE_DIR} --stage 5_implement --json --strict",
+      "purpose": "Verify bounded loop contract and implementation-loop ledger evidence before marking implementation complete.",
+      "runWhen": "before and after implementation loops"
+    },
+    {
+      "id": "closed-loop-audit",
+      "stage": "6_validate",
+      "command": "node .specify/scripts/node/gofer-closed-loop-audit.mjs --feature-dir {FEATURE_DIR} --json --strict",
+      "purpose": "Verify goal, traceability, drift, and validation freshness before final scoring.",
+      "runWhen": "before validation scoring"
+    }
+  ],
+  "successCriteria": [
+    {
+      "id": "SC-LOOP-001",
+      "description": "Each implementation or validation loop records iteration evidence in loop-ledger.jsonl.",
+      "evidence": ["loop-ledger.jsonl"]
+    },
+    {
+      "id": "SC-LOOP-002",
+      "description": "All configured evaluation commands pass before Gofer reports the feature complete.",
+      "evidence": ["validation-report.md", "loop-audit-report.md"]
+    }
+  ],
+  "stopConditions": [
+    {
+      "id": "STOP-001",
+      "description": "Stop when all success criteria have evidence and no blocking loop findings remain.",
+      "status": "active"
+    },
+    {
+      "id": "STOP-002",
+      "description": "Escalate instead of looping forever when the same failing action reaches maxIterations.",
+      "status": "active"
+    }
+  ],
+  "humanEscalation": {
+    "maxFailedIterations": 3,
+    "owner": "feature owner",
+    "escalateWhen": [
+      "the same failure repeats at maxIterations",
+      "a security, privacy, data, or release-critical gate remains red",
+      "budget or context-window limits would hide evidence"
+    ]
+  }
+}

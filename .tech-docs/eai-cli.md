@@ -14,11 +14,38 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.5 |
-| Released | 2026-07-05 |
-| Last Material Change | Show tenant hierarchy in CLI selection |
-| Source Commit | `3344b8c3d8dea2aa12ed013aaf0b7de49b7282cd` |
+| Version | 3.6.6 |
+| Released | 2026-07-06 |
+| Last Material Change | Add operational error guidance and Gofer v3.7.14 bundle. |
+| Source Commit | `c84fef391d8a3906f38053334846c47c40087b1f` |
 
+
+## Install
+
+Recommended install:
+
+```bash
+npm install -g eai-cli
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
+```
 
 ## Common Workflow
 

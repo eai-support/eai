@@ -1,17 +1,35 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.6.5.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.6.6.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-npm install -g @eai-tools/cli
+npm install -g eai-cli
+```
+
+Canonical package:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 ```
 
 ## Update & Refresh Model
 
-- `eai update` reinstalls the latest CLI from the scoped EAI registry.
+- `eai update` reinstalls the latest CLI from npmjs, with the static registry as a fallback.
 - `eai gofer refresh` updates Gofer-managed assets without blindly overwriting local work.
 - `eai template check` previews app-template and UI drift without writing files.
 - Template and UI drift are reported by `eai doctor --check-updates` and still require manual review.
@@ -120,7 +138,7 @@ Machine-Readable Output:
 
 AI Terminal Workflows:
   # New projects include Gofer commands, agents, scripts, hooks, and skills
-  claude                   then run /0_business_scenario
+  claude                   then run /0_gofer_start
   codex                    then ask Codex to use the 1_gofer_research skill
   gemini                   then run /gofer:1_gofer_research
   copilot                  uses .github/prompts and .github/skills
@@ -178,8 +196,10 @@ Examples:
   $ eai update
 
 Notes:
-  - The CLI installs from the scoped EAI static registry on GitHub Pages.
-  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
+  - The CLI installs from the public npm registry by default.
+  - Recommended install: npm install -g eai-cli
+  - Canonical package install: npm install -g @enterpriseai/cli
+  - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
   - `eai update --check` previews CLI, Gofer, and app-template status without writing files.
   - `eai update` upgrades the CLI, refreshes safe Gofer-managed files in the current EAI project, and reports app-template drift.
   - Use `eai gofer refresh --check` to preview Gofer-managed file changes separately.
@@ -361,7 +381,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.5** (2026-07-05): Show tenant hierarchy in CLI selection.
+The current CLI release is **v3.6.6** (2026-07-06): Add operational error guidance and Gofer v3.7.14 bundle..
 
 
 ## What The Pieces Do
@@ -376,9 +396,27 @@ The current CLI release is **v3.6.5** (2026-07-05): Show tenant hierarchy in CLI
 ## Install The CLI
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-npm install -g @eai-tools/cli
+npm install -g eai-cli
 eai --version
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 ```
 
 ## Create A New App
@@ -457,11 +495,38 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.5 |
-| Released | 2026-07-05 |
-| Last Material Change | Show tenant hierarchy in CLI selection |
-| Source Commit | `3344b8c3d8dea2aa12ed013aaf0b7de49b7282cd` |
+| Version | 3.6.6 |
+| Released | 2026-07-06 |
+| Last Material Change | Add operational error guidance and Gofer v3.7.14 bundle. |
+| Source Commit | `c84fef391d8a3906f38053334846c47c40087b1f` |
 
+
+## Install
+
+Recommended install:
+
+```bash
+npm install -g eai-cli
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
+```
 
 ## Common Workflow
 
@@ -566,21 +631,24 @@ eai gofer refresh
 Use `--check` before committing to see what would change. Use `--force` only
 when you intentionally want managed files overwritten after review.
 
-## Business Scenario Pipeline
+## Gofer Start Pipeline
 
-For app or platform work, start with the business scenario workflow. The current
+For app or platform work, start with the Gofer Start workflow. The current
 pipeline stages are:
 
-| Stage                 | Purpose                                                                       |
-| --------------------- | ----------------------------------------------------------------------------- |
-| `0_business_scenario` | Triage the business goal and orchestrate the pipeline.                        |
-| `1_gofer_research`    | Discover stakeholders, existing code, platform capabilities, and constraints. |
-| `2_gofer_specify`     | Convert discovery into a feature specification and shared scope.              |
-| `3_gofer_plan`        | Plan architecture, tests, rollback, service usage, and delivery sequencing.   |
-| `4_gofer_tasks`       | Break the plan into implementation tasks.                                     |
-| `5_gofer_implement`   | Implement with tests and focused changes.                                     |
-| `6_gofer_validate`    | Validate correctness, security, integration, tests, and release readiness.    |
-| `7_gofer_save`        | Save evidence and handoff state.                                              |
+| Stage               | Purpose                                                                       |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `0_gofer_start`     | Confirm EAI readiness, frame the business goal, and route the pipeline.       |
+| `1_gofer_research`  | Discover stakeholders, existing code, platform capabilities, and constraints. |
+| `2_gofer_specify`   | Convert discovery into a feature specification and shared scope.              |
+| `3_gofer_plan`      | Plan architecture, tests, rollback, service usage, and delivery sequencing.   |
+| `4_gofer_tasks`     | Break the plan into implementation tasks.                                     |
+| `5_gofer_implement` | Implement with tests and focused changes.                                     |
+| `6_gofer_validate`  | Validate correctness, security, integration, tests, and release readiness.    |
+
+Optional helpers include `0a_problem_validation`, `7_gofer_save`,
+`7a_stakeholder_comms`, `8_gofer_branding`, `9_gofer_tests`, and
+`10_gofer_cloud`.
 
 ## EAI App Delivery Rules
 
@@ -1595,8 +1663,8 @@ Before committing a project that uses the EAI CLI:
 
 # Error Guidance
 
-This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.6.5. The same catalog powers human stderr output, JSON output for AI
+This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
+v3.6.6. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -1611,6 +1679,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E102` | `access_token_expired` | Access token expired. |
 | `E204` | `permission_denied` | Permission denied. |
 | `E205` | `child_relation_invalid` | The supplied tenant is not an immediate child of the supplied parent. |
+| `E245` | `user_invite_external_service_existing_member` | Tenant member invite failed, but an existing member role repair may be available. |
 | `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
@@ -1794,6 +1863,47 @@ are explicitly listed, and stop when a stop condition matches.
 - active tenant slug
 - target tenant slug
 - requested command
+
+## E245: Tenant member invite failed, but an existing member role repair may be available.
+
+| Field | Value |
+| --- | --- |
+| Reason | `user_invite_external_service_existing_member` |
+| Category | `external_service` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The invite/add flow reached an external identity or notification dependency that returned a server-side failure.
+- The target person may already exist as a direct tenant member with a lower role, so retrying the same invite can fail without changing access.
+- When a member record already exists, the supported recovery is to update that member through EAI CLI instead of editing data stores or cloud portals directly.
+- Applications may cache tenant role claims in their Auth.js session or JWT, so the user may need to sign out and sign back in after a role change.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the signed-in user, active tenant, and profile before changing membership.
+- `eai user roles --tenant <tenant-id> --format json` (read-only) — Confirm the target role is assignable in this tenant.
+- `eai user list --tenant <tenant-id> --search <email> --format json` (read-only) — Check whether the person already exists as a direct tenant member and capture the member ID.
+
+### Fixes
+
+- `eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json` (changes state) — Update the existing direct member to tenant-admin through the approved EAI tenant-member role endpoint. Use only after eai user list confirms the existing member ID and the user approves the role change.
+- `eai user invite --email <email> --tenant <tenant-id> --role <role> --format json` (changes state) — Retry the normal invite/add flow when no existing direct member is found and the failure was transient. Use only within the retry limit and after read-only diagnostics confirm the tenant and role.
+
+### Stop Conditions
+
+- The same external service error repeats after bounded retry.
+- The existing member is found but role update is not approved by the user.
+- The signed-in user is not allowed to change tenant membership.
+
+### Escalation Evidence
+
+- request ID
+- HTTP status
+- server code
+- CLI version
+- active tenant slug
+- redacted command shape
 
 ## E242: Tenant data-plane authorization incomplete.
 
@@ -3114,21 +3224,50 @@ Comprehensive diagnostics with fix suggestions.
 - `--fix` — Attempt to fix issues automatically
 - `--check-updates` — Report CLI release status plus Gofer/template drift
 
-**API calls**: local checks only; optionally reads the EAI static registry for the update check.
+**API calls**: local checks only; optionally reads npmjs and the EAI static
+registry fallback for the update check.
 
 ---
 
 ### Maintenance Commands
 
 #### `eai update`
-Check for and install CLI updates from the EAI static registry, then maintain
+Check for and install CLI updates from npmjs, with the EAI static registry as a
+fallback, then maintain
 safe repo-local project assets when the command is run inside an EAI project.
 
 **Options**:
 - `--check` — Only check for CLI, Gofer, and app-template status without installing or writing files
 - `--no-project-refresh` — Skip Gofer/app-template maintenance for the current project
 
-**Update channel**: `https://eai-tools.github.io/eai/registry/@eai-tools/cli`.
+**Primary update channel**: npmjs package `eai-cli` or `@enterpriseai/cli`.
+**Static fallback channel**: `https://eai-tools.github.io/eai/registry/@enterpriseai/cli`.
+
+Recommended install:
+
+```bash
+npm install -g eai-cli
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
+```
+
 No platform API calls.
 
 **Project maintenance**:

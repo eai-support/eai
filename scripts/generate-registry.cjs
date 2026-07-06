@@ -3,11 +3,12 @@
 /**
  * Generate static npm registry metadata for GitHub Pages.
  *
- * Reads package.json, finds the npm pack tarball, computes integrity hashes,
- * and writes/updates the registry packument + copies the tarball into the
- * docs-site/static/registry/ directory structure.
+ * npmjs is the primary release channel. The static registry is a fallback and
+ * emergency recovery bridge for @enterpriseai/cli.
  *
- * Usage: npm pack && node scripts/generate-registry.cjs
+ * Usage:
+ *   npm pack
+ *   node scripts/generate-registry.cjs
  */
 
 const crypto = require('node:crypto');
@@ -16,111 +17,104 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const REGISTRY_DIR = path.join(ROOT, 'docs-site', 'static', 'registry');
-const SCOPE = '@eai-tools';
 const BASE_URL = 'https://eai-tools.github.io/eai/registry';
+const CANONICAL_PACKAGE = '@enterpriseai/cli';
 
 function main() {
-  // 1. Read package.json
   const pkgPath = path.join(ROOT, 'package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-  const { name, version, description, bin, engines, dependencies } = pkg;
 
-  if (name !== `${SCOPE}/cli`) {
-    console.error(`✗ Expected package name "${SCOPE}/cli", got "${name}"`);
+  if (pkg.name !== CANONICAL_PACKAGE) {
+    console.error(`✗ Expected package name "${CANONICAL_PACKAGE}", got "${pkg.name}"`);
     process.exit(1);
   }
 
-  console.log(`▸ Generating registry for ${name}@${version}`);
+  const canonical = generatePackageRegistry({
+    packageName: CANONICAL_PACKAGE,
+    packageMetadata: pkg,
+    tarballName: findTarball(CANONICAL_PACKAGE, pkg.version),
+  });
 
-  // 2. Find the npm pack tarball
-  const tarballName = findTarball(version);
+  generateVersionListing(canonical);
+
+  console.log('');
+  console.log(`✓ Registry updated for ${CANONICAL_PACKAGE}@${pkg.version}`);
+}
+
+function generatePackageRegistry({ packageName, packageMetadata, tarballName }) {
+  const { version, description, bin, engines, dependencies } = packageMetadata;
+  const scope = packageName.split('/')[0];
   const tarballPath = path.join(ROOT, tarballName);
   const tarballData = fs.readFileSync(tarballPath);
 
+  console.log(`▸ Generating registry for ${packageName}@${version}`);
   console.log(`  ✓ Found tarball: ${tarballName} (${tarballData.length} bytes)`);
 
-  // 3. Compute hashes
   const shasum = crypto.createHash('sha1').update(tarballData).digest('hex');
   const sha512 = crypto.createHash('sha512').update(tarballData).digest('base64');
   const integrity = `sha512-${sha512}`;
 
-  console.log(`  ✓ shasum:    ${shasum}`);
-  console.log(`  ✓ integrity: ${integrity.slice(0, 30)}...`);
-
-  // 4. Build a latest-only packument.
-  const packumentPath = path.join(REGISTRY_DIR, SCOPE, 'cli');
+  const packumentPath = path.join(REGISTRY_DIR, scope, 'cli');
+  const tarballUrl = `${BASE_URL}/-/${scope}/cli-${version}.tgz`;
+  const now = new Date().toISOString();
   const packument = {
-    name,
-    'dist-tags': {},
-    versions: {},
-  };
-  console.log('  ✓ Creating latest-only packument');
-
-  // 5. Build version entry
-  const tarballUrl = `${BASE_URL}/-/${SCOPE}/cli-${version}.tgz`;
-  const versionEntry = {
-    name,
-    version,
-    description,
-    bin,
-    engines,
-    dependencies,
-    dist: {
-      tarball: tarballUrl,
-      shasum,
-      integrity,
+    name: packageName,
+    'dist-tags': {
+      latest: version,
+    },
+    versions: {
+      [version]: {
+        name: packageName,
+        version,
+        description,
+        bin,
+        engines,
+        dependencies,
+        dist: {
+          tarball: tarballUrl,
+          shasum,
+          integrity,
+        },
+      },
+    },
+    modified: now,
+    time: {
+      [version]: now,
+      modified: now,
     },
   };
 
-  // 6. Update packument
-  const now = new Date().toISOString();
-  packument.versions[version] = versionEntry;
-  packument['dist-tags'].latest = version;
-  packument.modified = now;
-
-  // Track per-version publish times (standard npm packument convention)
-  if (!packument.time) {
-    packument.time = {};
-  }
-  if (!packument.time[version]) {
-    packument.time[version] = now;
-  }
-  packument.time.modified = now;
-
-  // 7. Write packument (extensionless file)
   fs.mkdirSync(path.dirname(packumentPath), { recursive: true });
-  fs.writeFileSync(packumentPath, JSON.stringify(packument, null, 2) + '\n');
-  console.log(`  ✓ Wrote packument: ${packumentPath}`);
+  fs.writeFileSync(packumentPath, `${JSON.stringify(packument, null, 2)}\n`);
+  const encodedPackumentPaths = [
+    path.join(REGISTRY_DIR, `${scope}%2fcli`),
+    path.join(REGISTRY_DIR, `${scope}%2Fcli`),
+    path.join(REGISTRY_DIR, encodeURIComponent(packageName)),
+  ];
+  for (const encodedPackumentPath of new Set(encodedPackumentPaths)) {
+    fs.writeFileSync(encodedPackumentPath, `${JSON.stringify(packument, null, 2)}\n`);
+  }
 
-  // 8. Copy tarball to registry
-  const registryTarballDir = path.join(REGISTRY_DIR, '-', SCOPE);
+  const registryTarballDir = path.join(REGISTRY_DIR, '-', scope);
   const registryTarballPath = path.join(registryTarballDir, `cli-${version}.tgz`);
   const registryLatestTarballPath = path.join(registryTarballDir, 'cli-latest.tgz');
   fs.rmSync(registryTarballDir, { recursive: true, force: true });
   fs.mkdirSync(registryTarballDir, { recursive: true });
   fs.copyFileSync(tarballPath, registryTarballPath);
   fs.copyFileSync(tarballPath, registryLatestTarballPath);
+
+  console.log(`  ✓ Wrote packument: ${packumentPath}`);
+  console.log(`  ✓ Wrote encoded packuments: ${encodedPackumentPaths.map((item) => path.relative(ROOT, item)).join(', ')}`);
   console.log(`  ✓ Copied tarball: ${registryTarballPath}`);
   console.log(`  ✓ Updated latest tarball alias: ${registryLatestTarballPath}`);
 
-  // 9. Generate version listing HTML
-  generateVersionListing(packument);
-
-  // Summary
-  const versionCount = Object.keys(packument.versions).length;
-  console.log('');
-  console.log(`✓ Registry updated: ${name}@${version}`);
-  console.log(`  Versions in registry: ${versionCount}`);
-  console.log(`  Packument: docs-site/static/registry/${SCOPE}/cli`);
-  console.log(`  Tarball:   docs-site/static/registry/-/${SCOPE}/cli-${version}.tgz`);
-  console.log(`  Listing:   docs-site/static/registry/index.html`);
+  return packument;
 }
 
 function generateVersionListing(packument) {
   const latest = packument['dist-tags'].latest;
   const versions = Object.keys(packument.versions)
     .sort((a, b) => {
-      // Sort newest first using simple semver comparison
       const pa = a.split('.').map(Number);
       const pb = b.split('.').map(Number);
       for (let i = 0; i < 3; i++) {
@@ -129,31 +123,30 @@ function generateVersionListing(packument) {
       return 0;
     });
 
-  const rows = versions.map(v => {
-    const entry = packument.versions[v];
-    const publishDate = (packument.time && packument.time[v])
-      ? new Date(packument.time[v]).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-      : '—';
+  const rows = versions.map((version) => {
+    const entry = packument.versions[version];
+    const publishDate = (packument.time && packument.time[version])
+      ? new Date(packument.time[version]).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+      : '-';
     const sha1 = entry.dist.shasum;
     const tarballUrl = entry.dist.tarball;
-    const isLatest = v === latest;
-    const badge = isLatest ? ' <span class="badge">latest</span>' : '';
+    const badge = version === latest ? ' <span class="badge">latest</span>' : '';
 
     return `      <tr>
-        <td><code>${v}</code>${badge}</td>
+        <td><code>${version}</code>${badge}</td>
         <td>${publishDate}</td>
-        <td><code title="${sha1}">${sha1.slice(0, 12)}…</code></td>
+        <td><code title="${sha1}">${sha1.slice(0, 12)}...</code></td>
         <td><a href="${tarballUrl}" download>Download</a></td>
       </tr>`;
   }).join('\n');
 
-  const html = `<!-- Generated by scripts/generate-registry.cjs — do not edit -->
+  const html = `<!-- Generated by scripts/generate-registry.cjs - do not edit -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${packument.name} — Registry</title>
+  <title>${packument.name} - Registry</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -203,14 +196,21 @@ function generateVersionListing(packument) {
   <p class="subtitle">${packument.versions[latest].description}</p>
 
   <h2>Install</h2>
-  <pre><code># 1. Configure the scoped EAI registry (one-time setup)
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
+  <pre><code># Recommended install from npmjs
+npm install -g eai-cli
 
-# 2. Install the CLI globally
-npm install -g @eai-tools/cli
+# Canonical package on npmjs
+npm install -g @enterpriseai/cli
+
+# Static registry fallback without changing user npm config
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+
+# Persistent static fallback setup
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 
 # Local repo checkout smoke test
-npm install -g ./docs-site/static/registry/-/@eai-tools/cli-latest.tgz</code></pre>
+npm install -g ./docs-site/static/registry/-/@enterpriseai/cli-latest.tgz</code></pre>
 
   <h2>Versions</h2>
   <table>
@@ -228,7 +228,7 @@ ${rows}
   </table>
 
   <p class="footer">
-    Static npm registry hosted on GitHub Pages.
+    Static npm registry fallback hosted on GitHub Pages.
     Generated ${new Date().toISOString().split('T')[0]}.
   </p>
 </body>
@@ -240,21 +240,19 @@ ${rows}
   console.log(`  ✓ Wrote version listing: ${htmlPath}`);
 }
 
-function findTarball(version) {
+function findTarball(packageName, version) {
   const files = fs.readdirSync(ROOT);
-  // npm pack for @eai-tools/cli produces eai-tools-cli-{version}.tgz
-  const expected = `eai-tools-cli-${version}.tgz`;
+  const expected = `${packageTarballPrefix(packageName)}-${version}.tgz`;
   if (files.includes(expected)) {
     return expected;
   }
-  // Fallback: find any matching tarball
-  const match = files.find(f => f.endsWith('.tgz') && f.includes(version));
-  if (match) {
-    return match;
-  }
-  console.error(`✗ Tarball not found. Expected: ${expected}`);
-  console.error('  Run "npm pack" first.');
+
+  console.error(`✗ Tarball not found for ${packageName}. Expected: ${expected}`);
   process.exit(1);
+}
+
+function packageTarballPrefix(packageName) {
+  return packageName.replace(/^@/, '').replace('/', '-');
 }
 
 main();
