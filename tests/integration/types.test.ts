@@ -381,6 +381,39 @@ describe('ResourceAPI schema sync summary', () => {
     });
   });
 
+  test('adds actionable guidance for untrusted ResourceAPI background applies', async () => {
+    const response = new Response(JSON.stringify({
+      tenantId: 'tenant-1',
+      errorCode: 'RESOURCEAPI_SCHEMA_BACKGROUND_APPLY_UNTRUSTED_INSTALL',
+      message: 'ResourceAPI runtime schema refresh skipped.',
+      result: {
+        installTrustFingerprint: {
+          installId: 'eai-prod-ae-resourceapi',
+          mode: 'customer-hosted-passive',
+        },
+      },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    await expect(summarizeResourceApiSchemaSync(response, ['FactBatchLoad'])).resolves.toMatchObject({
+      status: 'failed',
+      errorCode: 'RESOURCEAPI_SCHEMA_BACKGROUND_APPLY_UNTRUSTED_INSTALL',
+      missingObjectTypes: ['fact-batch-load'],
+      guidance: {
+        platformActionRequired: true,
+        currentState: expect.stringContaining('published to platform metadata'),
+        reason: expect.stringContaining('mode=customer-hosted-passive'),
+        fix: expect.stringContaining('mode=eai-hosted'),
+        nextSteps: expect.arrayContaining([
+          expect.stringContaining('eai resources schema --tenant-id tenant-1'),
+          expect.stringContaining('--install-id eai-prod-ae-resourceapi'),
+        ]),
+      },
+    });
+  });
+
   test('captures non-2xx schema sync responses as failed', async () => {
     const response = new Response(JSON.stringify({
       detail: 'storage sync failed',
@@ -806,6 +839,10 @@ describe('waitForResourceApiSchemaVisibility', () => {
     )).resolves.toMatchObject({
       status: 'failed',
       errorCode: 'RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT',
+      guidance: {
+        platformActionRequired: true,
+        title: expect.stringContaining('visibility timed out'),
+      },
       details: {
         missingTypes: ['Customer'],
       },
