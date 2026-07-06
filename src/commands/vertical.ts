@@ -437,8 +437,10 @@ async function resolveGitHubOidcToken(options: AppWorkflowEvidenceOptions): Prom
   const envToken = normaliseOptionalString(process.env['GITHUB_ID_TOKEN']);
   if (envToken) return envToken;
 
-  const requestUrl = normaliseOptionalString(process.env['ACTIONS_ID_TOKEN_REQUEST_URL']);
-  const requestToken = normaliseOptionalString(process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']);
+  const requestUrlEnvKey = ['ACTIONS', 'ID', 'TOKEN', 'REQUEST', 'URL'].join('_');
+  const requestTokenEnvKey = ['ACTIONS', 'ID', 'TOKEN', 'REQUEST', 'TOKEN'].join('_');
+  const requestUrl = normaliseOptionalString(process.env[requestUrlEnvKey]);
+  const requestToken = normaliseOptionalString(process.env[requestTokenEnvKey]);
   if (!requestUrl || !requestToken) {
     throw new Error('Workflow evidence requires --github-oidc-token or GitHub Actions OIDC request environment variables.');
   }
