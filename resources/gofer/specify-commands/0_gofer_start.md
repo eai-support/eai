@@ -159,11 +159,12 @@ with an unrelated non-EAI stack.
      updating the Gofer plugin.
 3. **Install or update the EAI CLI when needed**
    - Check `git --version`, `node --version`, `npm --version`, `npm config get
-     @eai-tools:registry`, and `eai --version`.
+     @enterpriseai:registry`, and `eai --version`.
    - If `eai` is missing and the user approves, install it:
      ```bash
-     npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-     npm install -g @eai-tools/cli
+     npm install -g eai-cli
+     # If npmjs is unavailable:
+     npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
      eai --version
      ```
    - On Windows, use the same npm commands in PowerShell and avoid shell

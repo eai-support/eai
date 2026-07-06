@@ -1,13 +1,33 @@
-# eai — Enterprise AI Platform CLI
+# eai — EnterpriseAI CLI
 
 [![CI](https://github.com/eai-tools/eai/actions/workflows/ci.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/eai-tools/eai/badge)](https://securityscorecards.dev/viewer/?uri=github.com/eai-tools/eai)
 [![Docs](https://github.com/eai-tools/eai/actions/workflows/docs.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/docs.yml)
 [![License](https://img.shields.io/github/license/eai-tools/eai)](LICENSE)
 
-Scaffold, seed, deploy, and manage applications on the EAI platform.
+Scaffold, configure, validate, and operate EAI applications from a developer
+terminal.
 
-Every command wraps platform API calls — developers work with **resources, types, tenants, chat, and authorized PublicAPI V4 interfaces** using simple, intuitive commands.
+The CLI gives teams a supported path for application setup, authentication,
+tenant selection, runtime validation, resource management, and deployment
+readiness. It keeps platform access behind authenticated commands and
+public-safe diagnostics, so developers and AI coding agents get useful next
+steps without exposing private infrastructure details.
+
+## Package Trust
+
+This package is intended for public npm installation in enterprise developer
+workstations, CI agents, Codespaces, and other controlled engineering
+environments.
+
+| Trust Signal | Status |
+|--------------|--------|
+| License | Apache-2.0 |
+| Source | Public GitHub repository with issues, releases, and CI |
+| Publishing | GitHub Actions trusted publishing with npm provenance |
+| Runtime | Node.js 20 or newer |
+| Secrets | No secrets, tenant credentials, or local environment files are committed or published |
+| Support | Security issues are handled through [SECURITY.md](SECURITY.md); product issues through GitHub Issues |
 
 ## Public Repository
 
@@ -19,17 +39,17 @@ and find the maintained documentation.
 |---------|-----|---------|
 | Source | https://github.com/eai-tools/eai | CLI source, issues, pull requests, and release tags |
 | Documentation | https://eai-tools.github.io/eai/ | Docusaurus documentation, scenarios, and command reference |
-| npmjs packages | https://www.npmjs.com/package/eai-cli | Primary install/update channel for the `eai` command |
+| npmjs packages | https://www.npmjs.com/package/eai-cli and https://www.npmjs.com/package/@enterpriseai/cli | Primary install/update channel for the `eai` command |
 | Static npm registry fallback | https://eai-tools.github.io/eai/registry/ | GitHub Pages fallback for `@enterpriseai/cli` when npmjs is unavailable |
 | Releases | https://github.com/eai-tools/eai/releases | Versioned GitHub releases and packaged tarballs |
 | Security | [SECURITY.md](SECURITY.md) | Private vulnerability reporting and supported versions |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) | Public-safe contribution and release workflow |
 | License | [Apache-2.0](LICENSE) | Open source license and patent grant |
 
-Public-readiness rule for maintainers: everything committed here should be safe
+Public-readiness rule for maintainers: everything committed here must be safe
 for a public audience. Do not commit secrets, customer data, private tenant
-details, local `.env` files, unpublished internal architecture notes, or
-temporary build output.
+details, local `.env` files, unpublished internal architecture notes, private
+environment URLs, or temporary build output.
 
 Generated Gofer specs, memory files, logs, checkpoints, and local runtime state
 are intentionally ignored. The committed `.specify` directory contains only the
@@ -91,7 +111,7 @@ eai tenant select
 #    The child home region defaults to the parent region; pass
 #    `--home-region au|ca|eu` when the child must use another region.
 
-# 5. Sync project environment if your app needs local config/secrets
+# 5. Sync project environment if your app needs local configuration
 eai env pull --include-secrets
 
 # 6. Define your data model

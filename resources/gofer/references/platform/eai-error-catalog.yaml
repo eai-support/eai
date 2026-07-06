@@ -8,8 +8,8 @@ catalog:
     meaning: EAI CLI is not installed or not on PATH.
     likelyCause: Local workstation or container is missing the CLI.
     recovery:
-      - 'npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user'
-      - 'npm install -g @eai-tools/cli'
+      - 'npm install -g eai-cli'
+      - 'If npmjs is unavailable: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/'
       - 'eai --version'
     nextGate: cli_installed
   - errorId: EAI_CLI_OUTDATED
