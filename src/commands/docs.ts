@@ -73,7 +73,7 @@ Typical workflow:
 
 Use docs commands when the file is the subject of document processing or AI
 context. Use "eai resources file" when the file is an attachment to a typed
-ResourceAPI object.
+resource object.
   `);
 
 // ─── eai docs upload ─────────────────────────────────────────────────────

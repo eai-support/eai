@@ -997,7 +997,7 @@ resourcesCommand
 
 const fileCommand = resourcesCommand
   .command('file')
-  .description('Upload, download, and delete files attached to ResourceAPI object properties')
+  .description('Upload, download, and delete files attached to typed resource object properties')
   .addHelpText('after', `
 Use this when the file belongs to an existing typed resource. Use "eai docs"
 when the file is a document to process, classify, or index for AI/RAG.
