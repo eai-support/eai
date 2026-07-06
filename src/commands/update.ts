@@ -14,6 +14,7 @@ import ora from 'ora';
 import chalk from 'chalk';
 import {
   fetchLatestRelease,
+  NPMJS_REGISTRY_URL,
   STATIC_REGISTRY_URL,
   type ReleaseChannel,
   isNewerVersion,
@@ -28,22 +29,39 @@ import {
 
 const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
-const pkg = require('../../package.json') as { version: string };
+const pkg = require('../../package.json') as { name?: string; version: string };
 
-const STATIC_SCOPE_REGISTRY_FLAG = `--@eai-tools:registry=${STATIC_REGISTRY_URL}`;
+const STATIC_SCOPE_REGISTRY_FLAG = `--@enterpriseai:registry=${STATIC_REGISTRY_URL}`;
+const NPMJS_REGISTRY_FLAG = `--registry=${NPMJS_REGISTRY_URL}`;
+const NPMJS_SCOPE_REGISTRY_FLAG = `--@enterpriseai:registry=${NPMJS_REGISTRY_URL}`;
+
+function installedPackageName(): string {
+  return pkg.name === 'eai-cli' ? 'eai-cli' : '@enterpriseai/cli';
+}
 
 export function buildUpdateInstallArgs(
   version: string,
-  _channel: ReleaseChannel = 'static-registry',
+  channel: ReleaseChannel = 'npmjs',
+  packageName = '@enterpriseai/cli',
 ): string[] {
+  const resolvedPackageName = channel === 'static-registry'
+    ? '@enterpriseai/cli'
+    : packageName;
   const args = [
     'install',
     '-g',
-    `@eai-tools/cli@${version}`,
+    `${resolvedPackageName}@${version}`,
     '--prefer-online',
   ];
 
-  args.push(STATIC_SCOPE_REGISTRY_FLAG);
+  if (channel === 'static-registry') {
+    args.push(STATIC_SCOPE_REGISTRY_FLAG);
+  } else {
+    args.push(NPMJS_REGISTRY_FLAG);
+    if (resolvedPackageName.startsWith('@enterpriseai/')) {
+      args.push(NPMJS_SCOPE_REGISTRY_FLAG);
+    }
+  }
 
   return args;
 }
@@ -54,10 +72,10 @@ export function isUpdatePermissionError(message: string): boolean {
 
 export function buildUpdatePermissionGuidance(
   version: string,
-  channel: ReleaseChannel = 'static-registry',
+  channel: ReleaseChannel = 'npmjs',
   platform: NodeJS.Platform = process.platform,
 ): string[] {
-  const installCommand = `npm ${buildUpdateInstallArgs(version, channel).join(' ')}`;
+  const installCommand = `npm ${buildUpdateInstallArgs(version, channel, installedPackageName()).join(' ')}`;
 
   if (platform === 'win32') {
     return [
@@ -84,8 +102,10 @@ Examples:
   $ eai update
 
 Notes:
-  - The CLI installs from the scoped EAI static registry on GitHub Pages.
-  - One-time setup for manual installs: npm config set @eai-tools:registry ${STATIC_REGISTRY_URL} --location=user
+  - The CLI installs from the public npm registry by default.
+  - Recommended install: npm install -g eai-cli
+  - Canonical package install: npm install -g @enterpriseai/cli
+  - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=${STATIC_REGISTRY_URL}
   - \`eai update --check\` previews CLI, Gofer, and app-template status without writing files.
   - \`eai update\` upgrades the CLI, refreshes safe Gofer-managed files in the current EAI project, and reports app-template drift.
   - Use \`eai gofer refresh --check\` to preview Gofer-managed file changes separately.
@@ -108,7 +128,7 @@ Notes:
     const latestRelease = await fetchLatestRelease();
 
     if (!latestRelease) {
-      spinner.fail('Could not reach the EAI static release registry.');
+      spinner.fail('Could not reach the EAI release registry.');
       out.info('Check your network connection and try again.');
       process.exit(1);
     }
@@ -138,9 +158,10 @@ Notes:
       return;
     }
 
-    const installSpinner = ora(`Installing @eai-tools/cli@${latest}...`).start();
+    const packageName = installedPackageName();
+    const installSpinner = ora(`Installing ${packageName}@${latest}...`).start();
     try {
-      await exec(getNpmExecutable(), buildUpdateInstallArgs(latest, channel));
+      await exec(getNpmExecutable(), buildUpdateInstallArgs(latest, channel, packageName));
       installSpinner.succeed(`Updated to ${chalk.green(latest)}`);
     } catch (err) {
       installSpinner.fail('Update failed.');
@@ -156,7 +177,7 @@ Notes:
         }
       } else {
         out.error(message);
-        out.info(`Manual install: ${chalk.cyan(`npm ${buildUpdateInstallArgs(latest, channel).join(' ')}`)}`);
+        out.info(`Manual install: ${chalk.cyan(`npm ${buildUpdateInstallArgs(latest, channel, packageName).join(' ')}`)}`);
       }
       process.exit(1);
     }

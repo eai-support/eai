@@ -3,9 +3,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 REPO="eai-tools/eai"
-NPM_PACKAGE="@eai-tools/cli"
+NPM_PACKAGE="@enterpriseai/cli"
+NPM_ALIAS_PACKAGE="eai-cli"
+NPM_REGISTRY_URL="https://registry.npmjs.org/"
 STATIC_REGISTRY_URL="https://eai-tools.github.io/eai/registry/"
-STATIC_PACKUMENT_URL="https://eai-tools.github.io/eai/registry/@eai-tools/cli"
+STATIC_PACKUMENT_URL="https://eai-tools.github.io/eai/registry/@enterpriseai/cli"
 
 BUMP="${1:-}"
 MESSAGE="${2:-}"
@@ -97,22 +99,48 @@ wait_for_docs_run() {
 
 verify_static_registry_latest() {
   local expected_version="$1"
+  local packument_url="$2"
+  local label="$3"
   local actual_version=""
 
   for _attempt in $(seq 1 24); do
     actual_version="$(
-      curl -fsSL "$STATIC_PACKUMENT_URL" \
+      curl -fsSL "$packument_url" \
         | node -e 'let raw="";process.stdin.on("data",(chunk)=>raw+=chunk);process.stdin.on("end",()=>{const parsed=JSON.parse(raw);process.stdout.write(parsed["dist-tags"]?.latest ?? "");});' \
         2>/dev/null || true
     )"
     if [[ "$actual_version" == "$expected_version" ]]; then
-      echo "  ✓ static registry latest is $actual_version"
+      echo "  ✓ $label latest is $actual_version"
       return 0
     fi
     sleep 5
   done
 
-  echo "✗ static registry latest did not converge to $expected_version (saw: ${actual_version:-unavailable})"
+  echo "✗ $label latest did not converge to $expected_version (saw: ${actual_version:-unavailable})"
+  return 1
+}
+
+verify_npmjs_latest() {
+  local package_name="$1"
+  local expected_version="$2"
+  local actual_version=""
+  local package_label="$package_name"
+
+  for _attempt in $(seq 1 36); do
+    if [[ "$package_name" == @enterpriseai/* ]]; then
+      actual_version="$(npm view "$package_name" version --registry="$NPM_REGISTRY_URL" --@enterpriseai:registry="$NPM_REGISTRY_URL" 2>/dev/null || true)"
+    else
+      actual_version="$(npm view "$package_name" version --registry="$NPM_REGISTRY_URL" 2>/dev/null || true)"
+    fi
+
+    if [[ "$actual_version" == "$expected_version" ]]; then
+      echo "  ✓ npmjs $package_label latest is $actual_version"
+      return 0
+    fi
+    sleep 5
+  done
+
+  echo "✗ npmjs $package_label latest did not converge to $expected_version (saw: ${actual_version:-unavailable})"
   return 1
 }
 
@@ -166,13 +194,17 @@ NEW_VERSION="${NEW_VERSION#v}"
 echo "  ✓ version: $OLD_VERSION -> $NEW_VERSION"
 
 section "Regenerating release artifacts"
-rm -f "eai-tools-cli-${OLD_VERSION}.tgz" "eai-tools-cli-${NEW_VERSION}.tgz"
+rm -f "enterpriseai-cli-${OLD_VERSION}.tgz" "enterpriseai-cli-${NEW_VERSION}.tgz"
+rm -f "eai-cli-${OLD_VERSION}.tgz" "eai-cli-${NEW_VERSION}.tgz"
 node scripts/update-release-doc-metadata.cjs "$NEW_VERSION" "$MESSAGE" >/dev/null
 TARBALL="$(npm pack --silent)"
+node scripts/build-npm-alias-package.cjs >/dev/null
+ALIAS_TARBALL="$(npm pack --silent .release/eai-cli-package)"
 node scripts/generate-registry.cjs >/dev/null
 node scripts/generate-error-guidance-docs.cjs >/dev/null
 node scripts/generate-release-docs.cjs >/dev/null
 echo "  ✓ npm pack -> $TARBALL"
+echo "  ✓ eai-cli alias pack -> $ALIAS_TARBALL"
 echo "  ✓ static registry metadata refreshed"
 echo "  ✓ release-facing docs refreshed"
 
@@ -197,15 +229,20 @@ wait_for_docs_run "$RELEASE_COMMIT_SHA"
 echo "  ✓ Deploy Docs workflow completed"
 
 section "Verifying public release channels"
-verify_static_registry_latest "$NEW_VERSION"
+verify_npmjs_latest "$NPM_PACKAGE" "$NEW_VERSION"
+verify_npmjs_latest "$NPM_ALIAS_PACKAGE" "$NEW_VERSION"
+verify_static_registry_latest "$NEW_VERSION" "$STATIC_PACKUMENT_URL" "canonical static registry"
 
 echo ""
 echo "══════════════════════════════════════════"
 echo "  Released v$NEW_VERSION — $MESSAGE"
 echo "══════════════════════════════════════════"
 echo ""
-echo "Preferred setup for future installs and updates:"
-echo "  npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user"
+echo "Recommended install or update:"
+echo "  npm install -g eai-cli"
 echo ""
-echo "Install or update the EnterpriseAI CLI with:"
-echo "  npm install -g @eai-tools/cli"
+echo "Canonical package install:"
+echo "  npm install -g @enterpriseai/cli"
+echo ""
+echo "Static fallback if npmjs is unavailable:"
+echo "  npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/"

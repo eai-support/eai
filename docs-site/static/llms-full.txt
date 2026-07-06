@@ -1,17 +1,35 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.6.5.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.6.5.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-npm install -g @eai-tools/cli
+npm install -g eai-cli
+```
+
+Canonical package:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 ```
 
 ## Update & Refresh Model
 
-- `eai update` reinstalls the latest CLI from the scoped EAI registry.
+- `eai update` reinstalls the latest CLI from npmjs, with the static registry as a fallback.
 - `eai gofer refresh` updates Gofer-managed assets without blindly overwriting local work.
 - `eai template check` previews app-template and UI drift without writing files.
 - Template and UI drift are reported by `eai doctor --check-updates` and still require manual review.
@@ -178,8 +196,10 @@ Examples:
   $ eai update
 
 Notes:
-  - The CLI installs from the scoped EAI static registry on GitHub Pages.
-  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
+  - The CLI installs from the public npm registry by default.
+  - Recommended install: npm install -g eai-cli
+  - Canonical package install: npm install -g @enterpriseai/cli
+  - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
   - `eai update --check` previews CLI, Gofer, and app-template status without writing files.
   - `eai update` upgrades the CLI, refreshes safe Gofer-managed files in the current EAI project, and reports app-template drift.
   - Use `eai gofer refresh --check` to preview Gofer-managed file changes separately.
@@ -376,9 +396,27 @@ The current CLI release is **v3.6.5** (2026-07-05): Show tenant hierarchy in CLI
 ## Install The CLI
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-npm install -g @eai-tools/cli
+npm install -g eai-cli
 eai --version
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 ```
 
 ## Create A New App
@@ -462,6 +500,33 @@ and gofer asset refresh.
 | Last Material Change | Show tenant hierarchy in CLI selection |
 | Source Commit | `3344b8c3d8dea2aa12ed013aaf0b7de49b7282cd` |
 
+
+## Install
+
+Recommended install:
+
+```bash
+npm install -g eai-cli
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
+```
 
 ## Common Workflow
 
@@ -1595,7 +1660,7 @@ Before committing a project that uses the EAI CLI:
 
 # Error Guidance
 
-This page lists the public-safe error guidance bundled with `@eai-tools/cli`
+This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
 v3.6.5. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
@@ -3114,21 +3179,50 @@ Comprehensive diagnostics with fix suggestions.
 - `--fix` — Attempt to fix issues automatically
 - `--check-updates` — Report CLI release status plus Gofer/template drift
 
-**API calls**: local checks only; optionally reads the EAI static registry for the update check.
+**API calls**: local checks only; optionally reads npmjs and the EAI static
+registry fallback for the update check.
 
 ---
 
 ### Maintenance Commands
 
 #### `eai update`
-Check for and install CLI updates from the EAI static registry, then maintain
+Check for and install CLI updates from npmjs, with the EAI static registry as a
+fallback, then maintain
 safe repo-local project assets when the command is run inside an EAI project.
 
 **Options**:
 - `--check` — Only check for CLI, Gofer, and app-template status without installing or writing files
 - `--no-project-refresh` — Skip Gofer/app-template maintenance for the current project
 
-**Update channel**: `https://eai-tools.github.io/eai/registry/@eai-tools/cli`.
+**Primary update channel**: npmjs package `eai-cli` or `@enterpriseai/cli`.
+**Static fallback channel**: `https://eai-tools.github.io/eai/registry/@enterpriseai/cli`.
+
+Recommended install:
+
+```bash
+npm install -g eai-cli
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
+```
+
 No platform API calls.
 
 **Project maintenance**:

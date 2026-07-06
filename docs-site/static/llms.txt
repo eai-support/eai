@@ -1,12 +1,30 @@
 # EAI CLI Documentation
 
-> Release-aligned documentation surfaces for `@eai-tools/cli` v3.6.5.
+> Release-aligned documentation surfaces for `@enterpriseai/cli` v3.6.5.
 
 ## Install
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-npm install -g @eai-tools/cli
+npm install -g eai-cli
+```
+
+Canonical package:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 ```
 
 ## Key Commands
@@ -36,4 +54,4 @@ npm install -g @eai-tools/cli
 - [cli-help.txt](/eai/cli-help.txt): Current CLI help snapshots used for release validation
 - [llms-full.txt](/eai/llms-full.txt): Full release-aligned documentation bundle for AI agents
 - [error-guidance.json](/eai/error-guidance.json): Machine-readable error guidance for AI agents
-- [Registry](/eai/registry/): Static EAI package registry on GitHub Pages
+- [Registry](/eai/registry/): Static EAI package registry fallback on GitHub Pages

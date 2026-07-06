@@ -19,7 +19,8 @@ and find the maintained documentation.
 |---------|-----|---------|
 | Source | https://github.com/eai-tools/eai | CLI source, issues, pull requests, and release tags |
 | Documentation | https://eai-tools.github.io/eai/ | Docusaurus documentation, scenarios, and command reference |
-| Static npm registry | https://eai-tools.github.io/eai/registry/ | GitHub Pages registry used by `npm install -g @eai-tools/cli` |
+| npmjs packages | https://www.npmjs.com/package/eai-cli | Primary install/update channel for the `eai` command |
+| Static npm registry fallback | https://eai-tools.github.io/eai/registry/ | GitHub Pages fallback for `@enterpriseai/cli` when npmjs is unavailable |
 | Releases | https://github.com/eai-tools/eai/releases | Versioned GitHub releases and packaged tarballs |
 | Security | [SECURITY.md](SECURITY.md) | Private vulnerability reporting and supported versions |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) | Public-safe contribution and release workflow |
@@ -36,25 +37,38 @@ reusable scripts and templates needed by `eai init` and `eai gofer refresh`.
 
 ## Install
 
-Configure the scoped EAI registry once per user:
+Recommended install:
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g eai-cli
 ```
 
-Install or update the EnterpriseAI CLI:
+Canonical package:
 
 ```bash
-npm install -g @eai-tools/cli
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 ```
 
 If you are validating the generated registry from a local checkout of this repo, install the tarball instead of the packument file:
 
 ```bash
-npm install -g ./docs-site/static/registry/-/@eai-tools/cli-latest.tgz
+npm install -g ./docs-site/static/registry/-/@enterpriseai/cli-latest.tgz
 ```
 
-`docs-site/static/registry/@eai-tools/cli` is the registry metadata file. It is not an installable package directory.
+`docs-site/static/registry/@enterpriseai/cli` is the registry metadata file. It is not an installable package directory.
 
 ## Quick Start
 
@@ -467,7 +481,7 @@ app.
 ### Updating an existing repo safely
 
 `eai update` keeps the local EAI toolchain current. It checks the installed CLI
-against the public static registry, installs the newer CLI when available, then
+against npmjs first, falls back to the public static registry when needed, installs the newer CLI when available, then
 refreshes safe Gofer-managed files in the current EAI project. It does **not**
 blindly rewrite template files or UI components inside an existing app repo.
 
@@ -533,7 +547,7 @@ npm run lint         # Run ESLint
 The documentation site lives in `docs-site/` and renders the source content from
 `.tech-docs/`, the scenario library, and the generated command/API reference.
 GitHub Pages is the public deployment target for both the documentation site and
-the static npm registry used by the install flow.
+the static npm registry fallback used by the install flow.
 
 The `Deploy Docs` workflow builds `docs-site/` on `main` when documentation,
 release-doc, registry, or LLM-help assets change. It uploads `docs-site/build`
@@ -543,13 +557,13 @@ with the official GitHub Pages artifact action and deploys it to the
 Pages serves these public artifacts:
 
 - `/docs/` and `/scenarios/` — documentation and scenario library
-- `/registry/` — static npm registry metadata and tarballs
+- `/registry/` — static npm registry fallback metadata and tarballs
 - `/llms.txt`, `/llms-full.txt`, and `/cli-help.txt` — release-facing AI/help
   surfaces generated from the current CLI
 
 ## Releasing
 
-Releases are managed with `release.sh`. It validates the release candidate locally, bumps the version, refreshes the release-facing docs/help surfaces, regenerates the static registry artifacts, pushes `main` plus the annotated tag, waits for GitHub Actions to create the GitHub release, waits for the docs deployment that updates the static registry, and then verifies the public static registry exposes the new version.
+Releases are managed with `release.sh`. It validates the release candidate locally, bumps the version, refreshes the release-facing docs/help surfaces, regenerates the static registry fallback artifacts, pushes `main` plus the annotated tag, waits for GitHub Actions to publish the npmjs packages and create the GitHub release, waits for the docs deployment that updates the static registry fallback, and then verifies npmjs plus the public static registry expose the new version.
 
 ```bash
 ./release.sh <patch|minor|major> "Release message"
@@ -584,8 +598,9 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 8. Docs site build
 9. Release-facing docs/help generation (`llms.txt`, `llms-full.txt`, `cli-help.txt`)
 10. Registry artifact generation (`npm pack` + `generate-registry.cjs`)
-11. Static-registry release metadata stays aligned with the documented install flow
-12. Full e2e smoke traceability stays aligned with `eai --describe`
+11. The `eai-cli` npm alias package builds and installs the `eai` command
+12. Static-registry fallback metadata stays aligned with the documented install flow
+13. Full e2e smoke traceability stays aligned with `eai --describe`
 
 ### Optional live full e2e smoke
 
@@ -624,11 +639,11 @@ password-like values from failures and does not print or persist the password.
 2. It updates the visible `.tech-docs/` release metadata to the new version and release message
 3. It regenerates `docs-site/static/registry/`, `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`
 4. It commits the release, creates an annotated `vX.Y.Z` tag, and pushes `main --follow-tags`
-5. The tag-triggered GitHub Actions `Release` workflow verifies the committed release docs/help surfaces before creating the GitHub release and attaching the packaged tarball
-6. The `Deploy Docs` workflow publishes the matching static registry and release-doc bundle to GitHub Pages
-7. `release.sh` waits for both workflows and verifies `https://eai-tools.github.io/eai/registry/@eai-tools/cli`
+5. The tag-triggered GitHub Actions `Release` workflow verifies the committed release docs/help surfaces, publishes `@enterpriseai/cli` and `eai-cli` to npmjs with trusted publishing, then creates the GitHub release and attaches the packaged tarballs
+6. The `Deploy Docs` workflow publishes the matching static registry fallback and release-doc bundle to GitHub Pages
+7. `release.sh` waits for both workflows and verifies npmjs plus the canonical `@enterpriseai/cli` static fallback
 
-If the static registry does not converge to the new version, the script exits non-zero so the release is treated as incomplete.
+If npmjs or the static registry fallback does not converge to the new version, the script exits non-zero so the release is treated as incomplete.
 
 The EAI CLI is also part of SRP release evidence. Repo-local CLI behavior is
 owned here through `ci/eai-cli-tests`; deployed read-only CLI schema, error,
@@ -658,9 +673,12 @@ npm run docs:release-assets:check
 
 ### Release channel policy
 
-- **GitHub Pages static registry is the release channel**
-- Configure the registry once with `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
-- Install or update with `npm install -g @eai-tools/cli`, or use `eai update`
+- **npmjs is the primary release and update channel**
+- Recommended install: `npm install -g eai-cli`
+- Canonical package install: `npm install -g @enterpriseai/cli`
+- Static fallback: `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/`
+- Persistent fallback setup: `npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user`
+- Use `eai update` to update the installed CLI and refresh safe project assets
 
 ## Documentation
 
@@ -673,4 +691,4 @@ Full documentation: https://eai-tools.github.io/eai/
 - [ ] `eai types define` — interactive Object Type builder
 - [ ] `eai dev --offline` — local mock gateway for offline development
 - [ ] `eai tunnel` — Cloudflare tunnel for webhook testing
-- [x] Static npm registry on GitHub Pages (`npm install -g @eai-tools/cli`)
+- [x] npmjs install alias (`npm install -g eai-cli`) with static registry fallback

@@ -2,8 +2,17 @@
 Version: 3.6.5
 
 Install / update the CLI:
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-npm install -g @eai-tools/cli
+npm install -g eai-cli
+
+Canonical package:
+npm install -g @enterpriseai/cli
+
+Static fallback:
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+
+Persistent static fallback setup:
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 
 eai --help
 ==========
@@ -166,8 +175,10 @@ Examples:
   $ eai update
 
 Notes:
-  - The CLI installs from the scoped EAI static registry on GitHub Pages.
-  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
+  - The CLI installs from the public npm registry by default.
+  - Recommended install: npm install -g eai-cli
+  - Canonical package install: npm install -g @enterpriseai/cli
+  - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
   - `eai update --check` previews CLI, Gofer, and app-template status without writing files.
   - `eai update` upgrades the CLI, refreshes safe Gofer-managed files in the current EAI project, and reports app-template drift.
   - Use `eai gofer refresh --check` to preview Gofer-managed file changes separately.
