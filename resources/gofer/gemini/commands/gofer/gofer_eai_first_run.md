@@ -64,7 +64,7 @@ Run only safe read/check commands first:
 | Node.js | `node --version`                  | `node --version`                         |
 | npm     | `npm --version`                   | `npm --version`                          |
 | EAI CLI | `eai --version`                   | `eai --version`                          |
-| npmjs package | `npm view eai-cli version --registry=https://registry.npmjs.org/` | `npm view eai-cli version --registry=https://registry.npmjs.org/` |
+| Registry | `npm config get @eai-tools:registry` | `npm config get @eai-tools:registry` |
 
 If Git, Node.js, or npm is missing, ask before installing. Use the least
 surprising platform path:
@@ -84,15 +84,16 @@ or assume Git Bash exists unless it was detected.
 If `eai` is missing, or if the user asks to update it, ask for approval and run:
 
 ```bash
-npm install -g eai-cli
-# Fallback if npmjs is unavailable:
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @eai-tools/cli
 eai --version
 ```
 
 Use the same commands in PowerShell. Do not edit `.npmrc` by shell redirection.
 
-If npmjs is unavailable, use the one-command static fallback above. Do not rewrite user npm config unless the user asks for persistent fallback setup.
+If the scoped registry already equals
+`https://eai-tools.github.io/eai/registry/`, do not rewrite it. If it points
+somewhere else, show the current value and ask before changing it.
 
 If `eai` is already installed, run:
 
@@ -363,7 +364,7 @@ Each section should include:
 
 - Host, OS, shell, workspace root, and prerequisite tool versions
 - Git, Node.js, npm, and EAI CLI versions
-- EAI CLI release-channel status
+- EAI registry status
 - EAI CLI release status from `eai update --check`
 - EAI CLI capability source (`eai --describe` timestamp)
 - EAI capability inventory for init, tenant, app, resources, workflow,

@@ -5,7 +5,7 @@ description: "Use Gofer's repo-owned pipeline, scripts, and validation tools wit
 
 # EAI Gofer
 
-Version: 3.7.13
+Version: 3.7.14
 Host: VS Code and GitHub Copilot
 
 Use this skill when the user asks to install, update, diagnose, run, or understand Gofer from an AI coding app. Prefer this umbrella skill for app-level discovery. Use the plain slash commands for individual pipeline stages.

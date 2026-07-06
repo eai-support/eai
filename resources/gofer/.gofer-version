@@ -1,7 +1,7 @@
 {
-  "commit": "323746cfea1f96ad5edd58bc19513c86dbacd211",
-  "describe": "v3.7.13-1-g323746cf",
-  "source": "local-checkout",
+  "commit": "6059c0e61377f648a9470b3554ae689e6912ec24",
+  "describe": "v3.7.14",
+  "source": "https://github.com/eai-tools/eai-gofer.git@6059c0e61377f648a9470b3554ae689e6912ec24",
   "dirty": false,
-  "synced_at": "2026-07-06T01:50:42Z"
+  "synced_at": "2026-07-06T03:17:53Z"
 }
