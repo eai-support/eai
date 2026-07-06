@@ -1,7 +1,7 @@
 {
   "name": "@enterpriseai/cli",
-  "version": "3.6.7",
-  "description": "EAI Platform CLI — scaffold, seed, deploy, and manage applications",
+  "version": "3.6.8",
+  "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
   "type": "module",
   "bin": {
     "eai": "dist/index.js"
@@ -43,14 +43,17 @@
     "NOTICE"
   ],
   "keywords": [
+    "enterpriseai",
+    "eai",
     "cli",
     "enterprise",
     "ai",
     "application",
     "platform",
-    "eai",
+    "developer-tools",
+    "deployment",
     "typescript",
-    "commander"
+    "automation"
   ],
   "author": "EAI Tools",
   "license": "Apache-2.0",
