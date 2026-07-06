@@ -73,6 +73,34 @@ describe('agent guide', () => {
     );
   });
 
+  test('catalog tells agents how to choose document workflow versus resource files', () => {
+    const guide = getAgentGuide();
+
+    expect(guide.operatingRules).toContain(
+      'For files, use eai docs when the file is a document to process, classify, index, or expose to AI context. Use eai resources file only when the file is attached to a typed ResourceAPI object property.',
+    );
+    expect(guide.operatingRules).toContain(
+      'Do not invent standalone PublicAPI v4 blob-upload flows. Ask whether the user needs a document workflow or a ResourceAPI file property.',
+    );
+    expect(guide.commonWorkflows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Documents, files, and AI context',
+          commands: expect.arrayContaining([
+            expect.objectContaining({
+              command: 'eai docs upload <file>',
+              mutates: true,
+            }),
+            expect.objectContaining({
+              command: 'eai resources file upload <type> <id> <property> <path> --tenant-id <tenant-id>',
+              mutates: true,
+            }),
+          ]),
+        }),
+      ]),
+    );
+  });
+
   test('prints the agent guide in text mode', async () => {
     const result = await runCommand(ctx, 'eai agent guide');
 
