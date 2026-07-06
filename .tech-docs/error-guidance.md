@@ -22,6 +22,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E204` | `permission_denied` | Permission denied. |
 | `E205` | `child_relation_invalid` | The supplied tenant is not an immediate child of the supplied parent. |
 | `E245` | `user_invite_external_service_existing_member` | Tenant member invite failed, but an existing member role repair may be available. |
+| `E246` | `app_token_tenant_context_required` | App-token platform user lookup is missing tenant context. |
 | `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
@@ -246,6 +247,50 @@ are explicitly listed, and stop when a stop condition matches.
 - CLI version
 - active tenant slug
 - redacted command shape
+
+## E246: App-token platform user lookup is missing tenant context.
+
+| Field | Value |
+| --- | --- |
+| Reason | `app_token_tenant_context_required` |
+| Category | `tenant_context` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The platform call authenticated, but the request did not carry the tenant context required for app-token user or membership operations.
+- This is commonly seen as MISSING_TENANT or "Tenant context required for app tokens" on platform user lookup or membership prerequisite calls.
+- Do not treat this as the first signal to edit tenant members, role definitions, Entra configuration, databases, or cloud portals.
+- For app-token or service-identity flows, use the tenant-scoped platform routes instead of root user lookup routes.
+- If the same route works in current main but fails in an environment, the deployed PublicAPI/AdminAPI may be behind the release that adds tenant-scoped routing hardening.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm login, active tenant, profile, and PublicAPI context.
+- `eai tenant list --format json` (read-only) — Confirm the target tenant is visible before retrying tenant-scoped calls.
+- `eai publicapi get /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Verify user lookup through the tenant-scoped platform route.
+- `eai publicapi get /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Verify membership lookup through the tenant-scoped platform route.
+
+### Fixes
+
+- `eai tenant select <tenant>` (changes state) — Select the tenant that should provide app-token context.
+- `Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Replace root platform user lookup with the tenant-scoped V4 route in app-token or service-identity flows.
+- `Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Replace root platform membership lookup with the tenant-scoped V4 route in app-token or service-identity flows.
+- `Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions` (read-only) — Keep tenant member and role-definition reads on the tenant-scoped V4 surface.
+
+### Stop Conditions
+
+- The tenant-scoped route returns the same MISSING_TENANT result.
+- The environment is running older PublicAPI/AdminAPI versions than the release with tenant-scoped platform routing hardening.
+
+### Escalation Evidence
+
+- CLI version
+- redacted route shape
+- HTTP status
+- server code
+- active tenant slug
+- deployed PublicAPI/AdminAPI versions if visible
 
 ## E242: Tenant data-plane authorization incomplete.
 

@@ -126,6 +126,39 @@ describe('error guidance catalog', () => {
     expect(guidance?.why.join(' ')).toContain('Auth.js session or JWT');
   });
 
+  test('app-token missing tenant guidance routes agents to tenant-scoped platform paths first', () => {
+    const guidance = findGuidance({
+      operation: 'platform user lookup',
+      status: 502,
+      serverCode: 'MISSING_TENANT',
+      message: 'Tenant context required for app tokens',
+    });
+
+    expect(guidance?.code).toBe('E246');
+    expect(guidance?.reasonCode).toBe('app_token_tenant_context_required');
+    expect(guidance?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: 'eai publicapi get /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>',
+          mutates: false,
+        }),
+        expect.objectContaining({
+          command: 'eai publicapi get /v4/platform/tenants/<tenant-id>/users/<oid>/memberships',
+          mutates: false,
+        }),
+      ]),
+    );
+    expect(guidance?.fixes.map((fix) => fix.command)).toEqual(
+      expect.arrayContaining([
+        'Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>',
+        'Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships',
+        'Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions',
+      ]),
+    );
+    expect(guidance?.why.join(' ')).toContain('Do not treat this as the first signal to edit tenant members');
+    expect(findGuidanceByCodeOrReason('app_token_tenant_context_required')?.code).toBe('E246');
+  });
+
   test('install-registry NO_MATCH maps to non-retryable provisioning guidance', () => {
     const guidance = findGuidance({
       status: 503,
