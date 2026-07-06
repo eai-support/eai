@@ -77,10 +77,10 @@ describe('agent guide', () => {
     const guide = getAgentGuide();
 
     expect(guide.operatingRules).toContain(
-      'For files, use eai docs when the file is a document to process, classify, index, or expose to AI context. Use eai resources file only when the file is attached to a typed ResourceAPI object property.',
+      'For files, use eai docs when the file is a document to process, classify, index, or expose to AI context. Use eai resources file only when the file is attached to a typed resource object file property.',
     );
     expect(guide.operatingRules).toContain(
-      'Do not invent standalone PublicAPI v4 blob-upload flows. Ask whether the user needs a document workflow or a ResourceAPI file property.',
+      'Do not invent standalone PublicAPI v4 blob-upload flows. Ask whether the user needs a document workflow or a resource file property.',
     );
     expect(guide.commonWorkflows).toEqual(
       expect.arrayContaining([

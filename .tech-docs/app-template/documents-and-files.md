@@ -17,7 +17,7 @@ should upload files, expose documents to AI, or attach files to business data.
 | Store an arbitrary blob without a document or resource owner | Not a public v4 app pattern | Ask the user to choose document workflow or resource file property | No named command |
 
 V4 files are not public free-form blob writes. A file belongs to either a
-document workflow or a typed ResourceAPI resource property.
+document workflow or a typed resource property.
 
 ## Document Workflow
 
@@ -183,7 +183,7 @@ then pass document IDs into chat or workflow runtime context.
 If the answer is resource attachment:
 
 ```text
-Use ResourceAPI file properties: validate the Object Type file property, create
+Use resource file properties: validate the Object Type file property, create
 or find the resource, upload through the resource file route, and rely on
 resource permissions for access.
 ```
