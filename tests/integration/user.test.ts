@@ -43,6 +43,22 @@ async function storeTestTokens(dir: string): Promise<void> {
   });
 }
 
+function parseJsonOutput(spy: ReturnType<typeof vi.spyOn>): unknown[] {
+  return spy.mock.calls
+    .flat()
+    .map((value) => {
+      if (typeof value !== 'string') {
+        return null;
+      }
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    })
+    .filter((value) => value !== null);
+}
+
 describe('eai user', () => {
   let env: TestEnvironment;
   let originalCwd: string;
@@ -171,6 +187,67 @@ describe('eai user', () => {
       roleDefinitionId: 'custom-role-definition-id',
     });
     expect(outputSpy.mock.calls.flat().join('')).toContain('"role": "custom-role-definition-id"');
+  });
+
+  test('invite failure emits structured recovery guidance for external service errors', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      code: 'EXTERNAL_SERVICE_ERROR',
+      message: 'EXTERNAL_SERVICE_ERROR while inviting tenant member',
+    }), {
+      status: 502,
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'req-user-invite-502',
+      },
+    }));
+    vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(userCommand.parseAsync([
+      'invite',
+      '--email',
+      'poppy@example.com',
+      '--tenant',
+      TENANT_ID,
+      '--role',
+      'tenant-admin',
+      '--format',
+      'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    const payload = parseJsonOutput(outputSpy).find((value): value is {
+      status: number;
+      serverCode: string;
+      requestId: string;
+      guidance: {
+        reasonCode: string;
+        diagnostics: Array<{ command: string; mutates: boolean }>;
+        fixes: Array<{ command: string; mutates: boolean }>;
+      };
+    } => typeof value === 'object' && value !== null && 'guidance' in value);
+    expect(payload).toBeDefined();
+    expect(payload.status).toBe(502);
+    expect(payload.serverCode).toBe('EXTERNAL_SERVICE_ERROR');
+    expect(payload.requestId).toBe('req-user-invite-502');
+    expect(payload.guidance.reasonCode).toBe('user_invite_external_service_existing_member');
+    expect(payload.guidance.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: 'eai user list --tenant <tenant-id> --search <email> --format json',
+          mutates: false,
+        }),
+      ]),
+    );
+    expect(payload.guidance.fixes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
+          mutates: true,
+        }),
+      ]),
+    );
   });
 
   test('list calls the V4 tenant members route with query options', async () => {

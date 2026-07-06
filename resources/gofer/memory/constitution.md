@@ -333,10 +333,10 @@ and MUST NOT be conflated.
   canonical Gofer stages MUST be ≤2048 bytes (≤2KB). Codex preloads ~2% of
   context for skill name+description text; over-budget triggers a global drop of
   ALL skill descriptions, not per-bundle eviction (NFR-004, SC-006).
-- **Per-CLI exclusion**: 5 Claude-only stages (`0_business_scenario`,
-  `gofer_constitution`, `gofer_hydrate`, `7_gofer_save`, `8_gofer_resume`) are
-  NOT emitted to Codex / Gemini / Copilot / GitHub-prompts surfaces (FR-007,
-  SC-012).
+- **Per-CLI parity**: Numbered stages, utilities, and helper commands are
+  emitted to Claude, Codex, Gemini, Copilot, VS Code, GitHub prompts, agent
+  skills, and system skills unless their frontmatter explicitly says otherwise
+  (FR-007, SC-012).
 - **Flat tree**: Codex skill files emit at depth ≤2 from `.agents/skills/`; no
   `<tenant>/<stage>/` nesting (FR-008).
 - **No fictional config keys**: The official Codex disable knob is per-skill

@@ -65,6 +65,9 @@ const WORKSPACE_PREFLIGHT_EXCLUDED_COMMANDS = new Set([
   'gofer:bootstrap-workspace',
   'gofer:eai-first-run',
 ]);
+const LEGACY_STAGE_STEMS = new Map([
+  ['0_gofer_start', ['0_business_scenario']],
+]);
 
 // ---------------------------------------------------------------------------
 // Exclusion logic
@@ -181,6 +184,10 @@ function getStageOutputStem(stage) {
   return path.basename(stage.filePath, '.md');
 }
 
+function getLegacyStageStems(stage) {
+  return LEGACY_STAGE_STEMS.get(getStageOutputStem(stage)) ?? [];
+}
+
 async function removeLegacyGeneratedPath(outPath, legacyPath) {
   if (outPath === legacyPath) {
     return;
@@ -225,7 +232,10 @@ async function emitClaude(stages, root, dryRun) {
 
     const stageStem = getStageOutputStem(stage);
     const outPath = path.join(outDir, `${stageStem}.md`);
-    const legacyPath = path.join(outDir, `${name}.md`);
+    const legacyPaths = [
+      path.join(outDir, `${name}.md`),
+      ...getLegacyStageStems(stage).map((legacyStem) => path.join(outDir, `${legacyStem}.md`)),
+    ];
     if (dryRun) {
       console.log(`[dry-run] claude: would write ${outPath}`);
     } else {
@@ -237,7 +247,7 @@ async function emitClaude(stages, root, dryRun) {
         ),
         'utf8'
       );
-      await removeLegacyGeneratedPath(outPath, legacyPath);
+      await removeLegacyGeneratedPaths(outPath, legacyPaths);
       console.log(`claude: wrote ${outPath}`);
     }
     count++;
@@ -264,7 +274,10 @@ async function emitClaudeMirror(stages, root, dryRun) {
 
     const stageStem = getStageOutputStem(stage);
     const outPath = path.join(outDir, `${stageStem}.md`);
-    const legacyPath = path.join(outDir, `${name}.md`);
+    const legacyPaths = [
+      path.join(outDir, `${name}.md`),
+      ...getLegacyStageStems(stage).map((legacyStem) => path.join(outDir, `${legacyStem}.md`)),
+    ];
     if (dryRun) {
       console.log(`[dry-run] claude-mirror: would write ${outPath}`);
     } else {
@@ -280,7 +293,7 @@ async function emitClaudeMirror(stages, root, dryRun) {
         ),
         'utf8'
       );
-      await removeLegacyGeneratedPath(outPath, legacyPath);
+      await removeLegacyGeneratedPaths(outPath, legacyPaths);
       console.log(`claude-mirror: wrote ${outPath}`);
     }
     count++;
@@ -308,7 +321,12 @@ async function emitCopilot(stages, root, dryRun) {
 
     const stageStem = getStageOutputStem(stage);
     const outPath = path.join(outDir, `${stageStem}.prompt.md`);
-    const legacyPath = path.join(outDir, `${name}.prompt.md`);
+    const legacyPaths = [
+      path.join(outDir, `${name}.prompt.md`),
+      ...getLegacyStageStems(stage).map((legacyStem) =>
+        path.join(outDir, `${legacyStem}.prompt.md`)
+      ),
+    ];
     if (dryRun) {
       console.log(`[dry-run] copilot: would write ${outPath}`);
     } else {
@@ -318,7 +336,7 @@ async function emitCopilot(stages, root, dryRun) {
         buildCopilotPromptContent(stage, SURFACE_WORKSPACE_HOSTS['copilot']),
         'utf8'
       );
-      await removeLegacyGeneratedPath(outPath, legacyPath);
+      await removeLegacyGeneratedPaths(outPath, legacyPaths);
       console.log(`copilot: wrote ${outPath}`);
     }
     count++;
@@ -346,7 +364,12 @@ async function emitGithubPrompts(stages, root, dryRun) {
 
     const stageStem = getStageOutputStem(stage);
     const outPath = path.join(outDir, `${stageStem}.prompt.md`);
-    const legacyPath = path.join(outDir, `${name}.prompt.md`);
+    const legacyPaths = [
+      path.join(outDir, `${name}.prompt.md`),
+      ...getLegacyStageStems(stage).map((legacyStem) =>
+        path.join(outDir, `${legacyStem}.prompt.md`)
+      ),
+    ];
     if (dryRun) {
       console.log(`[dry-run] github-prompts: would write ${outPath}`);
     } else {
@@ -356,7 +379,7 @@ async function emitGithubPrompts(stages, root, dryRun) {
         buildCopilotPromptContent(stage, SURFACE_WORKSPACE_HOSTS['github-prompts']),
         'utf8'
       );
-      await removeLegacyGeneratedPath(outPath, legacyPath);
+      await removeLegacyGeneratedPaths(outPath, legacyPaths);
       console.log(`github-prompts: wrote ${outPath}`);
     }
     count++;
@@ -476,7 +499,45 @@ function injectPipelineContinuation(content, platform, commandName) {
   return content + autoChainSection;
 }
 
-function buildWorkspacePreflightSection(host = 'auto') {
+function buildEaiPlatformSessionPreflightSection() {
+  return `
+## EAI Platform Session Preflight
+
+Before any Gofer stage/helper command does pipeline work:
+
+1. Treat durable delivery as EAI Platform delivery by default, with Azure second and every other stack only by explicit exception.
+2. Run \`eai whoami\` and confirm the EAI CLI is installed, the user is logged in, and an active tenant is visible.
+3. If \`eai\` is missing, \`eai whoami\` fails, the token is expired, or no active tenant is available, stop and run \`/gofer:eai-first-run\` or ask the user to approve login/setup before continuing.
+4. For EAI app delivery, do not continue into research, specification, planning, tasks, implementation, or validation until \`.specify/specs/{feature}/eai-preflight.md\` records login, tenant, template, app-readiness, and next-action evidence.
+5. Do not write tokens, secrets, private tenant IDs, or local \`.env\` values into Gofer artifacts; record only product-safe readiness status and evidence.
+`.trim();
+}
+
+function injectEaiPlatformSessionPreflight(content) {
+  if (content.includes('## EAI Platform Session Preflight')) {
+    return content;
+  }
+
+  const section = buildEaiPlatformSessionPreflightSection();
+  const workspaceHeadingIndex = content.indexOf('## Workspace Preflight');
+  if (workspaceHeadingIndex !== -1) {
+    const nextHeadingIndex = content.indexOf('\n## ', workspaceHeadingIndex + 1);
+    if (nextHeadingIndex !== -1) {
+      return `${content.slice(0, nextHeadingIndex).trimEnd()}\n\n${section}\n\n${content
+        .slice(nextHeadingIndex)
+        .replace(/^\n+/, '')}`;
+    }
+    return `${content.trimEnd()}\n\n${section}\n`;
+  }
+
+  return `${section}\n\n${content}`;
+}
+
+function buildWorkspacePreflightSection(host = 'auto', includeEaiPreflight = true) {
+  const eaiPreflight = includeEaiPreflight
+    ? `\n\n${buildEaiPlatformSessionPreflightSection()}`
+    : '';
+
   return `
 ## Workspace Preflight
 
@@ -485,10 +546,17 @@ Before doing stage/helper work:
 1. Resolve the repository root.
 2. Check the core Gofer sentinels:
    - \`.specify/.gofer-version\`
-   - \`.specify/commands/0_business_scenario.md\`
+   - \`.specify/commands/0_gofer_start.md\`
    - \`.specify/templates/spec-template.md\`
+   - \`.specify/templates/loop-contract-template.json\`
+   - \`.specify/templates/working-backwards-prfaq-template.md\`
+   - \`.specify/templates/business-owner-summary-template.md\`
+   - \`.specify/templates/cto-architecture-summary-template.md\`
+   - \`.specify/templates/ciso-security-summary-template.md\`
+   - \`.specify/templates/stakeholder-review-index-template.md\`
    - \`.specify/scripts/bash/create-new-feature.sh\`
    - \`.specify/scripts/node/parse-stage-command.mjs\`
+   - \`.specify/scripts/node/gofer-loop-audit.mjs\`
    - \`.specify/scripts/hooks/post-tool-use.mjs\`
    - \`.specify/scripts/powershell/install-optional-tools.ps1\`
    - \`.specify/templates/gofer-model-policy.yaml\`
@@ -505,7 +573,7 @@ Before doing stage/helper work:
 5. If the workspace is missing or stale, ask exactly:
    - **"This repo is missing or stale for Gofer. Initialize/update it now?"**
 6. If the user says yes, run the Gofer workspace bootstrap helper and then resume this command from the top.
-7. If the user says no, stop and explain that Gofer stage/helper work depends on the repo-owned scaffold.
+7. If the user says no, stop and explain that Gofer stage/helper work depends on the repo-owned scaffold.${eaiPreflight}
 `.trim();
 }
 
@@ -515,13 +583,17 @@ function injectWorkspacePreflight(content, commandName, host = 'auto') {
   }
 
   if (content.includes('## Workspace Preflight')) {
-    return content.replace(
+    const updatedContent = content.replace(
       /`node \.specify\/scripts\/node\/gofer-workspace-check\.mjs --host [^`\n]+ --json`/,
       `\`node .specify/scripts/node/gofer-workspace-check.mjs --host ${host} --json\``
     );
+    return injectEaiPlatformSessionPreflight(updatedContent);
   }
 
-  const section = buildWorkspacePreflightSection(host);
+  const section = buildWorkspacePreflightSection(
+    host,
+    !content.includes('## EAI Platform Session Preflight')
+  );
   const headingMatch = content.match(/^# [^\n]+\n+/);
   if (!headingMatch) {
     return `${section}\n\n${content}`;
@@ -616,7 +688,7 @@ function injectTokenCostPolicy(content) {
  */
 function getNextCommand(currentCommand) {
   const pipeline = [
-    '0_business_scenario',
+    '0_gofer_start',
     '1_gofer_research',
     '2_gofer_specify',
     '3_gofer_plan',
@@ -657,7 +729,7 @@ function buildUmbrellaSkillContent(version, stages, hostLabel) {
     .map((stage) => `- \`/${getStageOutputStem(stage)}\` - ${stage.frontmatter.description}`)
     .join('\n');
 
-  return `---\nname: eai-gofer\ndescription: "Use Gofer's repo-owned pipeline, scripts, and validation tools without duplicating every slash command in the picker."\n---\n\n# EAI Gofer\n\nVersion: ${version}\nHost: ${hostLabel}\n\nUse this skill when the user asks to install, update, diagnose, run, or understand Gofer from an AI coding app. Prefer this umbrella skill for app-level discovery. Use the plain slash commands for individual pipeline stages.\n\n## Clean Surface Contract\n\n- Stage work uses the plain repo slash commands, for example \`/0_business_scenario\`, \`/1_gofer_research\`, and \`/6_gofer_validate\`.\n- App-level setup, troubleshooting, and explanation should use this \`eai-gofer\` skill plus the repo-owned scripts in \`.specify/scripts/\`.\n- Do not expose a second full set of namespaced stage commands in the same picker when plain slash commands are available.\n- Check workspace health before stage work: \`node .specify/scripts/node/gofer-workspace-check.mjs --host auto --json\`.\n- If missing or stale, ask the user before running: \`node .specify/scripts/node/gofer-workspace-bootstrap.mjs --host auto --include-mirrors\`.\n\n## Light Plugin And Repo Scripts\n\nThe light plugin installs durable Gofer knowledge and app integration metadata. The repository remains the source of truth for executable scripts, commands, templates, specs, and memory. After bootstrap, agents should prefer repo-local scripts over bundled fallback copies because the repo can be updated by \`eai gofer refresh\` or the VS Code extension.\n\n## First EAI Platform App\n\nIf the user is starting a first EAI Platform app, run \`/gofer:eai-first-run\` before \`/0_business_scenario\`. It is intentionally allowed before \`.specify/\` exists.\n\n## Current Pipeline\n\n${stageList}\n`;
+  return `---\nname: eai-gofer\ndescription: "Use Gofer's repo-owned pipeline, scripts, and validation tools without duplicating every slash command in the picker."\n---\n\n# EAI Gofer\n\nVersion: ${version}\nHost: ${hostLabel}\n\nUse this skill when the user asks to install, update, diagnose, run, or understand Gofer from an AI coding app. Prefer this umbrella skill for app-level discovery. Use the plain slash commands for individual pipeline stages.\n\n## Clean Surface Contract\n\n- Stage work uses the plain repo slash commands, for example \`/0_gofer_start\`, \`/1_gofer_research\`, and \`/6_gofer_validate\`.\n- App-level setup, troubleshooting, and explanation should use this \`eai-gofer\` skill plus the repo-owned scripts in \`.specify/scripts/\`.\n- Do not expose a second full set of namespaced stage commands in the same picker when plain slash commands are available.\n- Check workspace health before stage work: \`node .specify/scripts/node/gofer-workspace-check.mjs --host auto --json\`.\n- If missing or stale, ask the user before running: \`node .specify/scripts/node/gofer-workspace-bootstrap.mjs --host auto --include-mirrors\`.\n\n## Light Plugin And Repo Scripts\n\nThe light plugin installs durable Gofer knowledge and app integration metadata. The repository remains the source of truth for executable scripts, commands, templates, specs, and memory. After bootstrap, agents should prefer repo-local scripts over bundled fallback copies because the repo can be updated by \`eai gofer refresh\` or the VS Code extension.\n\n## First EAI Platform App\n\nIf the user is starting a first EAI Platform app, run \`/gofer:eai-first-run\` before \`/0_gofer_start\`. It is intentionally allowed before \`.specify/\` exists.\n\n## Current Pipeline\n\n${stageList}\n`;
 }
 
 function buildGithubAgentContent({ id, description, tools, handoffs, body }) {
@@ -697,7 +769,7 @@ function getGithubAgentSpecs() {
   return [
     {
       id: 'gofer-business',
-      description: 'Gofer business scenario and setup agent. Use for first-run setup, workspace health, feature intake, and selecting the right pipeline entry point.',
+      description: 'Gofer start and setup agent. Use for first-run setup, workspace health, feature intake, and selecting the right pipeline entry point.',
       tools: goferTools,
       handoffs: [
         {
@@ -708,13 +780,13 @@ function getGithubAgentSpecs() {
         },
       ],
       body: `
-You are the Gofer business scenario agent.
+You are the Gofer start agent.
 
 Start by checking Gofer workspace health. If the repo is missing or stale, ask before bootstrapping. Keep the user-facing surface simple: use plain slash commands for pipeline stages and the eai-gofer skill/tools for app-level setup.
 
 Primary outputs:
 
-- A clear route into \`/0_business_scenario\`, \`/gofer:eai-first-run\`, or standalone research.
+- A clear route into \`/0_gofer_start\`, \`/gofer:eai-first-run\`, or standalone research.
 - A concise statement of whether the repo has the Gofer scaffold, plugin/app support, and EAI first-run prerequisites.
 `,
     },
@@ -813,6 +885,7 @@ async function emitAgentsSkills(stages, root, dryRun) {
     if (!surfaces.includes('agents-skills')) continue;
 
     const stageStem = getStageOutputStem(stage);
+    const legacyStageStems = getLegacyStageStems(stage);
     const skillDir = path.join(baseDir, stageStem);
     const outPath = path.join(skillDir, 'SKILL.md');
     const legacySkillDir = path.join(baseDir, String(name));
@@ -831,6 +904,7 @@ async function emitAgentsSkills(stages, root, dryRun) {
       await fs.writeFile(outPath, content, 'utf8');
       await removeLegacyGeneratedPaths(skillDir, [
         legacySkillDir,
+        ...legacyStageStems.map((legacyStem) => path.join(baseDir, legacyStem)),
         ...getCodexLegacySkillDirs(root, '.agents/skills', stageStem, String(name)),
       ]);
       console.log(`agents-skills: wrote ${outPath}`);
@@ -915,6 +989,7 @@ async function emitSystemSkills(stages, root, dryRun) {
     if (!surfaces.includes('system-skills')) continue;
 
     const stageStem = getStageOutputStem(stage);
+    const legacyStageStems = getLegacyStageStems(stage);
     const skillDir = path.join(baseDir, stageStem);
     const outPath = path.join(skillDir, 'SKILL.md');
     const legacySkillDir = path.join(baseDir, String(name));
@@ -933,6 +1008,7 @@ async function emitSystemSkills(stages, root, dryRun) {
       await fs.writeFile(outPath, content, 'utf8');
       await removeLegacyGeneratedPaths(skillDir, [
         legacySkillDir,
+        ...legacyStageStems.map((legacyStem) => path.join(baseDir, legacyStem)),
         ...getCodexLegacySkillDirs(root, '.system/skills', stageStem, String(name)),
       ]);
       console.log(`system-skills: wrote ${outPath}`);
@@ -968,8 +1044,15 @@ async function emitGemini(stages, root, dryRun) {
     const stageStem = getStageOutputStem(stage);
     const markdownPath = path.join(outDir, `${stageStem}.md`);
     const tomlPath = path.join(outDir, `${stageStem}.toml`);
-    const legacyMarkdownPath = path.join(outDir, `${name}.md`);
-    const legacyTomlPath = path.join(outDir, `${name}.toml`);
+    const legacyStageStems = getLegacyStageStems(stage);
+    const legacyMarkdownPaths = [
+      path.join(outDir, `${name}.md`),
+      ...legacyStageStems.map((legacyStem) => path.join(outDir, `${legacyStem}.md`)),
+    ];
+    const legacyTomlPaths = [
+      path.join(outDir, `${name}.toml`),
+      ...legacyStageStems.map((legacyStem) => path.join(outDir, `${legacyStem}.toml`)),
+    ];
     const sourceFileName = path.basename(stage.filePath);
     const tomlContent = [
       `description = "${escapeTomlString(String(description || name))}"`,
@@ -990,8 +1073,8 @@ async function emitGemini(stages, root, dryRun) {
         'utf8'
       );
       await fs.writeFile(tomlPath, tomlContent, 'utf8');
-      await removeLegacyGeneratedPath(markdownPath, legacyMarkdownPath);
-      await removeLegacyGeneratedPath(tomlPath, legacyTomlPath);
+      await removeLegacyGeneratedPaths(markdownPath, legacyMarkdownPaths);
+      await removeLegacyGeneratedPaths(tomlPath, legacyTomlPaths);
       console.log(`gemini: wrote ${markdownPath}`);
       console.log(`gemini: wrote ${tomlPath}`);
     }
@@ -1063,6 +1146,8 @@ Generated: ${timestamp}
 - Run \`eai --describe\` before assuming command syntax.
 - If advertised, run \`eai agent guide --format json\` before planning or fixing EAI workflows.
 - After any \`eai\` error, run \`eai errors explain <code-or-reason> --format json\` before guessing remediation.
+- If \`eai errors explain\` is unavailable, match \`.specify/references/platform/eai-error-catalog.yaml\`, run read-only diagnostics before mutating fixes, and stop at the retry or escalation condition.
+- For \`eai user invite\` 5xx or \`EXTERNAL_SERVICE_ERROR\`, check existing members with \`eai user list --tenant <tenant-id> --search <email> --format json\`; use \`eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json\` only after verification and user approval, then tell the app user to sign out and sign back in.
 - Use \`eai publicapi\` only for authorized PublicAPI \`/v4/...\` routes.
 
 ## Commands

@@ -62,7 +62,7 @@ interface ProjectInfo {
 }
 
 const PIPELINE_COMMANDS = [
-  '0_business_scenario',
+  '0_gofer_start',
   '0a_problem_validation',
   '1_gofer_research',
   '2_gofer_specify',
@@ -70,7 +70,6 @@ const PIPELINE_COMMANDS = [
   '4_gofer_tasks',
   '5_gofer_implement',
   '6_gofer_validate',
-  '6a_gofer_engineering_review',
 ] as const;
 
 const GOFER_GITIGNORE_ENTRIES = [
@@ -733,7 +732,7 @@ This folder contains project specifications for AI-driven feature development.
 
 ## AI Terminal Commands
 
-- Claude CLI: \`/0_business_scenario\`
+- Claude CLI: \`/0_gofer_start\`
 - Codex CLI: ask Codex to use the relevant Gofer skill from \`.agents/skills/\`
 - Gemini CLI: \`/gofer:1_gofer_research\`
 - GitHub Copilot: prompts are in \`.github/prompts\`; CLI skills are in \`.github/skills\`

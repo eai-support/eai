@@ -17,6 +17,7 @@
  *   node scripts/sync-gofer-resources.cjs            # use pinned .gofer-version
  *   node scripts/sync-gofer-resources.cjs v3.0.1     # override tag/ref
  *   GOFER_REF=main node scripts/sync-gofer-resources.cjs
+ *   GOFER_SOURCE_DIR=../gofer node scripts/sync-gofer-resources.cjs
  */
 
 const { execFileSync } = require('node:child_process');
@@ -78,23 +79,32 @@ function resolvedDescribe(workdir) {
   return execFileSync('git', ['-C', workdir, 'describe', '--tags', '--always'], { encoding: 'utf-8' }).trim();
 }
 
-function mirror(sourceDir, targetDir) {
-  fs.rmSync(targetDir, { recursive: true, force: true });
-  fs.mkdirSync(targetDir, { recursive: true });
-  copyDir(sourceDir, targetDir);
+function hasUncommittedChanges(workdir) {
+  return execFileSync('git', ['-C', workdir, 'status', '--short'], { encoding: 'utf-8' }).trim().length > 0;
 }
 
-function copyDir(src, dst) {
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    const from = path.join(src, entry.name);
-    const to = path.join(dst, entry.name);
-    if (entry.isDirectory()) {
-      fs.mkdirSync(to, { recursive: true });
-      copyDir(from, to);
-    } else if (entry.isFile()) {
-      fs.copyFileSync(from, to);
-    }
+function mirror(workdir, sourceRelativeDir, targetDir) {
+  fs.rmSync(targetDir, { recursive: true, force: true });
+  fs.mkdirSync(targetDir, { recursive: true });
+  return copyTrackedFiles(workdir, sourceRelativeDir, targetDir);
+}
+
+function listTrackedFiles(workdir, sourceRelativeDir) {
+  const output = execFileSync('git', ['-C', workdir, 'ls-files', '-z', '--', sourceRelativeDir], {
+    encoding: 'utf-8',
+  });
+  return output.split('\0').filter(Boolean);
+}
+
+function copyTrackedFiles(workdir, sourceRelativeDir, targetDir) {
+  const files = listTrackedFiles(workdir, sourceRelativeDir);
+  for (const relativeFile of files) {
+    const from = path.join(workdir, relativeFile);
+    const to = path.join(targetDir, path.relative(sourceRelativeDir, relativeFile));
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to);
   }
+  return files.length;
 }
 
 function syncDir(workdir, sourceRelativeDir, targetRelativeDir) {
@@ -106,43 +116,56 @@ function syncDir(workdir, sourceRelativeDir, targetRelativeDir) {
 
   const targetDir = path.join(TARGET, targetRelativeDir);
   fs.mkdirSync(targetDir, { recursive: true });
-  copyDir(sourceDir, targetDir);
+  copyTrackedFiles(workdir, sourceRelativeDir, targetDir);
   console.log(`▸ Synced ${sourceRelativeDir} → ${path.relative(ROOT, targetDir)}`);
 }
 
-function writeSyncMetadata(sha, describe) {
+function writeSyncMetadata({ sha, describe, source, dirty }) {
   const metadata = {
     commit: sha,
     describe,
+    source,
+    dirty,
     synced_at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
   };
   fs.writeFileSync(path.join(TARGET, '.gofer-version'), JSON.stringify(metadata, null, 2) + '\n');
 }
 
+function syncFromCheckout(workdir, source) {
+  const sourceDir = path.join(workdir, BASE_RESOURCE_DIR);
+  if (!fs.existsSync(sourceDir)) {
+    throw new Error(`gofer source ${workdir} is missing ${BASE_RESOURCE_DIR}/ — refusing to wipe target.`);
+  }
+
+  const sha = resolvedSha(workdir);
+  const describe = resolvedDescribe(workdir);
+  const dirty = hasUncommittedChanges(workdir);
+  mirror(workdir, BASE_RESOURCE_DIR, TARGET);
+  for (const [sourceRelativeDir, targetRelativeDir] of EXTRA_RESOURCE_MAPPINGS) {
+    syncDir(workdir, sourceRelativeDir, targetRelativeDir);
+  }
+  writeSyncMetadata({ sha, describe, source, dirty });
+
+  const fileCount = countFiles(TARGET);
+  console.log(`▸ Mirrored ${fileCount} files into ${path.relative(ROOT, TARGET)}/`);
+  console.log(`▸ gofer ref: ${describe} (${sha})${dirty ? ' with local modifications' : ''}`);
+}
+
 function main() {
+  const localSource = process.env.GOFER_SOURCE_DIR;
+  if (localSource) {
+    const workdir = path.resolve(ROOT, localSource);
+    console.log(`▸ Syncing gofer resources from local checkout ${workdir}`);
+    syncFromCheckout(workdir, 'local-checkout');
+    return;
+  }
+
   const ref = readPinnedRef();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eai-gofer-sync-'));
-
   try {
     console.log(`▸ Syncing gofer resources from ${REPO} @ ${ref}`);
     cloneAtRef(ref, tmpDir);
-
-    const sourceDir = path.join(tmpDir, BASE_RESOURCE_DIR);
-    if (!fs.existsSync(sourceDir)) {
-      throw new Error(`gofer@${ref} is missing ${BASE_RESOURCE_DIR}/ — refusing to wipe target.`);
-    }
-
-    const sha = resolvedSha(tmpDir);
-    const describe = resolvedDescribe(tmpDir);
-    mirror(sourceDir, TARGET);
-    for (const [sourceRelativeDir, targetRelativeDir] of EXTRA_RESOURCE_MAPPINGS) {
-      syncDir(tmpDir, sourceRelativeDir, targetRelativeDir);
-    }
-    writeSyncMetadata(sha, describe);
-
-    const fileCount = countFiles(TARGET);
-    console.log(`▸ Mirrored ${fileCount} files into ${path.relative(ROOT, TARGET)}/`);
-    console.log(`▸ gofer ref: ${describe} (${sha})`);
+    syncFromCheckout(tmpDir, `${REPO}@${ref}`);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

@@ -1,5 +1,7 @@
 {
-  "commit": "648e3faa590bb172a6169680455a77220dce1868",
-  "describe": "v3.7.4",
-  "synced_at": "2026-06-28T09:25:13Z"
+  "commit": "323746cfea1f96ad5edd58bc19513c86dbacd211",
+  "describe": "v3.7.13-1-g323746cf",
+  "source": "local-checkout",
+  "dirty": false,
+  "synced_at": "2026-07-06T01:50:42Z"
 }

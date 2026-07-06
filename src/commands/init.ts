@@ -641,7 +641,7 @@ Use --no-gofer only when you need a bare app scaffold.
     out.dim(`Template: ${templatePlan.displaySource}`);
     if (options.gofer) {
       out.dim(
-        "Gofer: Claude /0_business_scenario; Codex uses the repo-local Gofer skills; Gemini /gofer:1_gofer_research; Copilot .github prompts/skills.",
+        "Gofer: Claude /0_gofer_start; Codex uses the repo-local Gofer skills; Gemini /gofer:1_gofer_research; Copilot .github prompts/skills.",
       );
     }
     out.dim(`Package profile: ${initOptions.packageProfile}`);

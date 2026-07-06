@@ -116,7 +116,7 @@ Machine-Readable Output:
 
 AI Terminal Workflows:
   # New projects include Gofer commands, agents, scripts, hooks, and skills
-  claude                   then run /0_business_scenario
+  claude                   then run /0_gofer_start
   codex                    then ask Codex to use the 1_gofer_research skill
   gemini                   then run /gofer:1_gofer_research
   copilot                  uses .github/prompts and .github/skills

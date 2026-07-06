@@ -48,6 +48,9 @@ describe('agent guide', () => {
     expect(guide.operatingRules).toContain(
       'For normal tenant user/admin addition, use eai user invite --email <email> --tenant <tenant-id> --role <role>; do not use tenant bootstrap-admin.',
     );
+    expect(guide.operatingRules).toContain(
+      'If user invite fails with a 5xx or EXTERNAL_SERVICE_ERROR, run eai errors explain user_invite_external_service_existing_member --format json, check for an existing member with eai user list, and only then use eai user role set by member ID when approved.',
+    );
     expect(guide.commonWorkflows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -55,6 +58,10 @@ describe('agent guide', () => {
           commands: expect.arrayContaining([
             expect.objectContaining({
               command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin --format json',
+              mutates: true,
+            }),
+            expect.objectContaining({
+              command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
               mutates: true,
             }),
           ]),

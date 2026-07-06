@@ -5,14 +5,14 @@ description: "Use Gofer's repo-owned pipeline, scripts, and validation tools wit
 
 # EAI Gofer
 
-Version: 3.7.4
+Version: 3.7.13
 Host: VS Code and GitHub Copilot
 
 Use this skill when the user asks to install, update, diagnose, run, or understand Gofer from an AI coding app. Prefer this umbrella skill for app-level discovery. Use the plain slash commands for individual pipeline stages.
 
 ## Clean Surface Contract
 
-- Stage work uses the plain repo slash commands, for example `/0_business_scenario`, `/1_gofer_research`, and `/6_gofer_validate`.
+- Stage work uses the plain repo slash commands, for example `/0_gofer_start`, `/1_gofer_research`, and `/6_gofer_validate`.
 - App-level setup, troubleshooting, and explanation should use this `eai-gofer` skill plus the repo-owned scripts in `.specify/scripts/`.
 - Do not expose a second full set of namespaced stage commands in the same picker when plain slash commands are available.
 - Check workspace health before stage work: `node .specify/scripts/node/gofer-workspace-check.mjs --host auto --json`.
@@ -24,11 +24,11 @@ The light plugin installs durable Gofer knowledge and app integration metadata. 
 
 ## First EAI Platform App
 
-If the user is starting a first EAI Platform app, run `/gofer:eai-first-run` before `/0_business_scenario`. It is intentionally allowed before `.specify/` exists.
+If the user is starting a first EAI Platform app, run `/gofer:eai-first-run` before `/0_gofer_start`. It is intentionally allowed before `.specify/` exists.
 
 ## Current Pipeline
 
-- `/0_business_scenario` - Define the business problem and scenario for Gofer to analyse and solve.
+- `/0_gofer_start` - Start Gofer, confirm EAI readiness, and route the delivery pipeline.
 - `/0a_problem_validation` - Validate the business problem using 5 Whys root-cause analysis and stakeholder mapping.
 - `/10_gofer_cloud` - Deploy and configure the Gofer cloud integration for remote pipeline execution.
 - `/1_gofer_research` - Research codebase, CLI integrations, and technology landscape for the target feature.
@@ -39,7 +39,7 @@ If the user is starting a first EAI Platform app, run `/gofer:eai-first-run` bef
 - `/6_gofer_validate` - Validate implemented work with evidence-backed scoring, blast-radius analysis, and engineering review.
 - `/7_gofer_save` - Save session state and create a handoff checkpoint for resumption in a new context.
 - `/7a_stakeholder_comms` - Generate stakeholder-facing communications: release notes, demo scripts, and change briefs.
-- `/8_gofer_resume` - Resume a previous Gofer session from a saved checkpoint file.
+- `/8_gofer_branding` - Brand Gofer templates and stakeholder documents for a company or consulting-firm look and feel.
 - `/9_gofer_tests` - Generate comprehensive test suites from four testing perspectives for a target component.
 - `/gofer_bootstrap_workspace` - Create or update the repo-owned Gofer scaffold for the current workspace.
 - `/gofer_check_workspace` - Check whether this repo is initialized for Gofer and explain any missing or stale scaffold.

@@ -97,6 +97,35 @@ describe('error guidance catalog', () => {
     );
   });
 
+  test('user invite external-service guidance routes agents through existing member role repair', () => {
+    const guidance = findGuidance({
+      operation: 'user invite',
+      status: 502,
+      serverCode: 'EXTERNAL_SERVICE_ERROR',
+      message: 'EXTERNAL_SERVICE_ERROR while inviting a tenant member',
+    });
+
+    expect(guidance?.code).toBe('E245');
+    expect(guidance?.reasonCode).toBe('user_invite_external_service_existing_member');
+    expect(guidance?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: 'eai user list --tenant <tenant-id> --search <email> --format json',
+          mutates: false,
+        }),
+      ]),
+    );
+    expect(guidance?.fixes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
+          mutates: true,
+        }),
+      ]),
+    );
+    expect(guidance?.why.join(' ')).toContain('Auth.js session or JWT');
+  });
+
   test('install-registry NO_MATCH maps to non-retryable provisioning guidance', () => {
     const guidance = findGuidance({
       status: 503,
@@ -166,7 +195,7 @@ describe('eai errors command', () => {
   });
 
   test('explains a reason code in JSON mode for agents', async () => {
-    const result = await runCommand(ctx, 'eai errors explain tenant_authorization_incomplete --format json');
+    const result = await runCommand(ctx, 'eai errors explain user_invite_external_service_existing_member --format json');
 
     expect(result.exitCode).toBe(0);
     const payload = JSON.parse(result.stdout) as {
@@ -179,11 +208,11 @@ describe('eai errors command', () => {
     };
 
     expect(payload.ok).toBe(true);
-    expect(payload.guidance.code).toBe('E242');
+    expect(payload.guidance.code).toBe('E245');
     expect(payload.guidance.fixes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          command: 'eai provision entra --force --debug',
+          command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
           mutates: true,
         }),
       ]),

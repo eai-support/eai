@@ -5,13 +5,14 @@
 `.specify/specs/[###-feature-name]/spec.md`
 
 **Note**: This template is filled in by `/3_gofer_plan` (or legacy
-`/3_gofer_plan`). Recommended: Use `/0_business_scenario` to auto-chain the
-entire pipeline.
+`/3_gofer_plan`). Recommended: Use `/0_gofer_start` to auto-chain the entire
+pipeline.
 
-## Summary
+## Executive Summary
 
-[Extract from feature spec: primary requirement + technical approach from
-research]
+[Three to five plain-language bullets covering what will be built, the chosen
+architecture, why it fits EAI Platform/Azure, the largest delivery risk, and the
+next decision or validation gate.]
 
 ## Technical Context
 
@@ -35,7 +36,8 @@ or NEEDS CLARIFICATION]
 **Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory,
 offline-capable or NEEDS CLARIFICATION]  
 **Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS
-CLARIFICATION]
+CLARIFICATION] **Brand Profile**: [`.specify/memory/brand-profile.json` path,
+`/8_gofer_branding` needed, or N/A]
 
 ## Constitution Check
 
@@ -129,6 +131,27 @@ why no app journey is required.
 | 2    | [goal]        | [assist]      | [component/API/data]     | [test]     |
 | 3    | [goal]        | [assist]      | [component/API/data]     | [test]     |
 | 4    | [goal]        | [assist]      | [component/API/data]     | [test]     |
+
+## Branded Deliverables Plan
+
+For stakeholder-facing app delivery, describe how approved brand choices affect
+documents, diagrams, decks, UI preview notes, headers, footers, confidentiality
+labels, and logo usage. If `/8_gofer_branding` has not run and branding matters,
+add it as a prerequisite before `/7a_stakeholder_comms`.
+
+## Visual Documentation Plan
+
+Use visuals to explain the plan, not to decorate it. Prefer Mermaid for
+Markdown-native diagrams, Marp for stakeholder slide decks, D2 for compact
+process/system sketches when Mermaid becomes noisy, and Structurizr/C4 when the
+architecture needs model-as-code consistency.
+
+| Visual             | Tool / format                | Audience               | Question answered                      | Evidence                      |
+| ------------------ | ---------------------------- | ---------------------- | -------------------------------------- | ----------------------------- |
+| Context boundary   | Mermaid C4 or Structurizr/C4 | CTO / delivery         | What is inside and outside the system? | `visuals/c4-context.md`       |
+| Runtime containers | Mermaid C4 or Structurizr/C4 | CTO / engineers        | What deployable parts exist?           | `visuals/c4-container.md`     |
+| User/process flow  | Mermaid sequence/state or D2 | Business / delivery    | What happens in what order?            | [path]                        |
+| Stakeholder slides | Marp                         | Executives / reviewers | What is the simple review story?       | `presentation.marp.md` or N/A |
 
 ## UI Preview And Service-Fit Gate
 

@@ -339,7 +339,7 @@ describe('eai update project maintenance', () => {
       expect(result.stdout).toContain('Project Maintenance');
       expect(result.stdout).toContain('Gofer-managed assets refreshed');
       expect(await pathExists(join(env.dir, '.eai-manifest.json'))).toBe(true);
-      expect(await pathExists(join(env.dir, '.specify', 'commands', '0_business_scenario.md'))).toBe(true);
+      expect(await pathExists(join(env.dir, '.specify', 'commands', '0_gofer_start.md'))).toBe(true);
     } finally {
       await close();
     }

@@ -1,7 +1,7 @@
 ---
 feature: '[Feature Name]'
 created: '[ISO timestamp]'
-discoveredBy: Claude + [User]
+discoveredBy: Gofer + [User]
 status: complete
 ---
 

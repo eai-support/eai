@@ -9,7 +9,7 @@
   "properties": {
     "name": {
       "type": "string",
-      "description": "Stage identifier, e.g. '0_business_scenario'"
+      "description": "Stage identifier, e.g. '0_gofer_start'"
     },
     "description": {
       "type": "string",
