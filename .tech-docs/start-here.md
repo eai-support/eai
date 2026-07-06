@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.6** (2026-07-06): Add operational error guidance and Gofer v3.7.14 bundle..
+The current CLI release is **v3.6.7** (2026-07-06): Add tenant context error guidance.
 
 
 ## What The Pieces Do
