@@ -26,6 +26,7 @@ const DOC_ORDER = [
   "examples/task-tracker.md",
   "examples/ai-chat.md",
   "app-template/service-patterns.md",
+  "app-template/documents-and-files.md",
   "app-template/config-driven-ui.md",
   "configuration.md",
   "error-guidance.md",

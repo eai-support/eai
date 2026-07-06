@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.8 |
+| Version | 3.6.9 |
 | Released | 2026-07-06 |
-| Last Material Change | Polish public npm package guidance |
-| Source Commit | `fec0c8f15e2f28baea28369b7f807eafbdd232ad` |
+| Last Material Change | Document V4 document and workflow file guidance |
+| Source Commit | `2ad1279fcbb79a772ca129e2d6a63aa682853529` |
 
 
 ## Install
@@ -106,6 +106,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
 | Work with documents  | `eai docs upload`, `eai docs classify`, `eai docs index` |
+| Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
 
@@ -114,4 +115,5 @@ Prefer product-shaped commands before `eai publicapi`:
 - [Configuration](./configuration.md)
 - [API Reference](./api-reference.md)
 - [Platform Service Patterns](./app-template/service-patterns.md)
+- [V4 Documents And Files](./app-template/documents-and-files.md)
 - [Examples](./examples/index.md)

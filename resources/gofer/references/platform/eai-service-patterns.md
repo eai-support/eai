@@ -24,8 +24,8 @@ patterns in `eai-app-template/docs/platform/eai-service-patterns.md`.
 | Structured resources | `useResources(type)` / `client.resources`                                         | `eai resources list/get/create/update/delete/query`                                                                                                                   | Default for tenant business data.                                                                                                 |
 | Resource actions     | `client.resources.executeAction(type, id, action)`                                | named resources command if available; otherwise `eai publicapi post /v4/data/resources/...`                                                                           | Actions enforce object-type rules.                                                                                                |
 | Resource search      | local helper around `/v4/data/resources/{tenant}/search` if SDK support is absent | `eai resources storage doctor --format json`, then `eai resources search "query" --fulltext`; use `--hybrid` or `--vector` only when doctor reports those modes ready | V4 passive ResourceAPI search is a projection over canonical data. Fulltext can be usable before semantic search modes are ready. |
-| Resource files       | local helper around resource file routes                                          | `eai resources file upload/get/delete`                                                                                                                                | Use for file fields on ResourceAPI objects.                                                                                       |
-| Documents            | `useDocuments().upload/classify/ragIndex`                                         | `eai docs upload`, `eai docs classify`, `eai docs index`                                                                                                              | Use for platform document processing and RAG.                                                                                     |
+| Resource files       | local helper around resource file routes                                          | `eai resources file upload/get/delete`                                                                                                                                | Use when the file is attached to a typed ResourceAPI object property.                                                             |
+| Documents            | `useDocuments().upload/classify/ragIndex`                                         | `eai docs upload`, `eai docs classify`, `eai docs index`                                                                                                              | Use when the file should be processed, classified, indexed, or exposed to AI/RAG context.                                          |
 | Chat                 | `useChat(workflowId, stage).send/stream`                                          | `eai chat send`, `eai chat stream`                                                                                                                                    | Use v4 chat shape with `message`, `conversation_id`, and `params`.                                                                |
 | Advanced PublicAPI   | BFF/server helper                                                                 | `eai publicapi <method> /v4/...`                                                                                                                                      | Use only when named SDK/CLI support is missing.                                                                                   |
 
@@ -44,6 +44,11 @@ patterns in `eai-app-template/docs/platform/eai-service-patterns.md`.
 Document RAG indexing is a documents service pattern (`eai docs index` or
 `useDocuments().ragIndex(...)`), not a reason to create a search-only Object
 Type.
+
+Do not create standalone PublicAPI v4 blob-upload flows. If a user asks to
+upload a file, first decide whether the file is a document workflow input or a
+ResourceAPI file property. Ask which tenant, workflow/stage, document purpose,
+Object Type, resource ID, and file property are involved before writing code.
 
 ## Config-Driven UI Rules
 
