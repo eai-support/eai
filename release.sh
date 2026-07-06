@@ -217,8 +217,10 @@ echo "  ✓ commit created at $RELEASE_COMMIT_SHA"
 echo "  ✓ tag created: v$NEW_VERSION"
 
 section "Pushing main and tag"
-git push origin main --follow-tags
-echo "  ✓ pushed main and v$NEW_VERSION"
+git push origin main
+git push origin "v$NEW_VERSION"
+echo "  ✓ pushed main"
+echo "  ✓ pushed v$NEW_VERSION"
 
 section "Waiting for GitHub release workflow"
 wait_for_release_run "v$NEW_VERSION"
