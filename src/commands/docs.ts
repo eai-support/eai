@@ -70,6 +70,10 @@ Typical workflow:
   1. Upload a file
   2. Classify it if your platform uses document classification
   3. Index the document ID if you want it available to RAG or chat workflows
+
+Use docs commands when the file is the subject of document processing or AI
+context. Use "eai resources file" when the file is an attachment to a typed
+ResourceAPI object.
   `);
 
 // ─── eai docs upload ─────────────────────────────────────────────────────

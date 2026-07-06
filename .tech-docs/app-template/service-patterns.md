@@ -95,3 +95,6 @@ await ragIndex(documentId);
 Use ResourceAPI file routes when the file is a property of a ResourceAPI object.
 Use document upload, classification, and RAG routes when the platform should
 process the document content.
+
+For workflow steps, AI-agent questions, and prompting guidance, see
+[V4 Documents And Files](./documents-and-files.md).

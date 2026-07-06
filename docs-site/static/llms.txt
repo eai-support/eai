@@ -44,6 +44,7 @@ npm install -g @enterpriseai/cli
 - [Build A Task Tracker](/eai/docs/examples/task-tracker)
 - [Add AI Chat](/eai/docs/examples/ai-chat)
 - [Platform Service Patterns](/eai/docs/app-template/service-patterns)
+- [V4 Documents And Files](/eai/docs/app-template/documents-and-files)
 - [Config-Driven UI](/eai/docs/app-template/config-driven-ui)
 - [EAI CLI - Configuration](/eai/docs/configuration)
 - [Error Guidance](/eai/docs/error-guidance)
