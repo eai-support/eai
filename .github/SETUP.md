@@ -40,8 +40,9 @@ publishing uses GitHub OIDC through the `id-token: write` workflow permission.
 If either npmjs package has never existed before and npm does not expose package
 settings yet, create it with a one-off owner-controlled public publish, then
 enable trusted publishing before returning to the normal `release.sh` flow.
-Do not configure or publish `@eai-tools/cli` on npmjs; that name is kept only as
-a GitHub Pages static-registry compatibility bridge for older installed CLIs.
+Do not configure or publish the legacy scoped CLI package name on npmjs; legacy
+installers are handled only through the GitHub Pages static-registry
+compatibility bridge for older installed CLIs.
 
 ## Branch Protection Rules
 

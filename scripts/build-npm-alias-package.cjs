@@ -68,7 +68,7 @@ function aliasPackageJson(name, description, publishConfig = pkg.publishConfig) 
 function publicAliasReadme() {
   return `# eai-cli
 
-Memorable npm install alias for the EAI Platform CLI.
+Easy npm install alias for the EnterpriseAI CLI.
 
 ## Install
 
@@ -80,6 +80,14 @@ eai --version
 This package installs the same \`eai\` command as the canonical
 \`@enterpriseai/cli\` package. Use either package name; both are published from the
 same source repository and release tag.
+
+## Trust Signals
+
+- Source: https://github.com/eai-tools/eai
+- Documentation: https://eai-tools.github.io/eai/
+- License: Apache-2.0
+- Runtime: Node.js 20 or newer
+- Publishing: GitHub Actions trusted publishing with npm provenance
 `;
 }
 
@@ -107,7 +115,7 @@ function main() {
 
   writeAliasPackage(
     PUBLIC_ALIAS_DIR,
-    aliasPackageJson('eai-cli', 'Memorable npm install alias for the EAI Platform CLI'),
+    aliasPackageJson('eai-cli', 'Easy npm install alias for the EnterpriseAI CLI'),
     publicAliasReadme(),
   );
 
