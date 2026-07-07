@@ -10,6 +10,7 @@ import {
 } from '../../src/commands/update.js';
 import {
   compareVersions,
+  fetchLatestRelease,
   selectNewestRelease,
   shouldOfferInteractiveUpdatePrompt,
 } from '../../src/lib/update-check.js';
@@ -188,6 +189,62 @@ describe('release channel selection', () => {
       { channel: 'static-registry', version: '2.8.5' },
     ])).toEqual({ channel: 'static-registry', version: '2.8.5' });
   });
+
+  test('fetches the npmjs release when the static fallback is unavailable', async () => {
+    const npmjsServer = await startPackumentServer('4.0.1');
+    const originalNpmjsUrl = process.env.EAI_UPDATE_NPMJS_PACKUMENT_URL;
+    const originalStaticUrl = process.env.EAI_UPDATE_PACKUMENT_URL;
+
+    try {
+      process.env.EAI_UPDATE_NPMJS_PACKUMENT_URL = npmjsServer.url;
+      process.env.EAI_UPDATE_PACKUMENT_URL = 'http://127.0.0.1:1/@enterpriseai/cli';
+
+      await expect(fetchLatestRelease(250)).resolves.toEqual({
+        channel: 'npmjs',
+        version: '4.0.1',
+      });
+    } finally {
+      if (originalNpmjsUrl === undefined) {
+        delete process.env.EAI_UPDATE_NPMJS_PACKUMENT_URL;
+      } else {
+        process.env.EAI_UPDATE_NPMJS_PACKUMENT_URL = originalNpmjsUrl;
+      }
+      if (originalStaticUrl === undefined) {
+        delete process.env.EAI_UPDATE_PACKUMENT_URL;
+      } else {
+        process.env.EAI_UPDATE_PACKUMENT_URL = originalStaticUrl;
+      }
+      await npmjsServer.close();
+    }
+  });
+
+  test('uses the static fallback release when npmjs is unavailable', async () => {
+    const staticServer = await startPackumentServer('4.0.2');
+    const originalNpmjsUrl = process.env.EAI_UPDATE_NPMJS_PACKUMENT_URL;
+    const originalStaticUrl = process.env.EAI_UPDATE_PACKUMENT_URL;
+
+    try {
+      process.env.EAI_UPDATE_NPMJS_PACKUMENT_URL = 'http://127.0.0.1:1/@enterpriseai/cli';
+      process.env.EAI_UPDATE_PACKUMENT_URL = staticServer.url;
+
+      await expect(fetchLatestRelease(250)).resolves.toEqual({
+        channel: 'static-registry',
+        version: '4.0.2',
+      });
+    } finally {
+      if (originalNpmjsUrl === undefined) {
+        delete process.env.EAI_UPDATE_NPMJS_PACKUMENT_URL;
+      } else {
+        process.env.EAI_UPDATE_NPMJS_PACKUMENT_URL = originalNpmjsUrl;
+      }
+      if (originalStaticUrl === undefined) {
+        delete process.env.EAI_UPDATE_PACKUMENT_URL;
+      } else {
+        process.env.EAI_UPDATE_PACKUMENT_URL = originalStaticUrl;
+      }
+      await staticServer.close();
+    }
+  });
 });
 
 describe('discovery update notifier', () => {
@@ -326,6 +383,56 @@ describe('eai update project maintenance', () => {
       expect(await pathExists(join(env.dir, '.eai-manifest.json'))).toBe(false);
     } finally {
       await close();
+    }
+  });
+
+  test('succeeds when npmjs is reachable and the static fallback is unavailable', async () => {
+    const env = await createTestEnvironment();
+    const server = await startPackumentServer(pkg.version);
+    const ctx: TestContext = {
+      workingDir: env.dir,
+      mockAPI: {} as TestContext['mockAPI'],
+      env: {
+        EAI_UPDATE_NPMJS_PACKUMENT_URL: server.url,
+        EAI_UPDATE_PACKUMENT_URL: 'http://127.0.0.1:1/@enterpriseai/cli',
+        NO_COLOR: '1',
+      },
+      prompts: [],
+    };
+
+    try {
+      const result = await runCommand(ctx, 'eai update --check --no-project-refresh');
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('Already on the latest version');
+      expect(`${result.stdout}\n${result.stderr}`).not.toContain('Could not reach');
+    } finally {
+      await server.close();
+      await env.cleanup();
+    }
+  });
+
+  test('fails clearly when both update release channels are unavailable', async () => {
+    const env = await createTestEnvironment();
+    const ctx: TestContext = {
+      workingDir: env.dir,
+      mockAPI: {} as TestContext['mockAPI'],
+      env: {
+        EAI_UPDATE_NPMJS_PACKUMENT_URL: 'http://127.0.0.1:1/@enterpriseai/cli',
+        EAI_UPDATE_PACKUMENT_URL: 'http://127.0.0.1:1/@enterpriseai/cli',
+        NO_COLOR: '1',
+      },
+      prompts: [],
+    };
+
+    try {
+      const result = await runCommand(ctx, 'eai update --check --no-project-refresh');
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Could not reach the EAI release registry.');
+      expect(result.stdout).toContain('Check your network connection and try again.');
+    } finally {
+      await env.cleanup();
     }
   });
 
