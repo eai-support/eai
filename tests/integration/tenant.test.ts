@@ -17,6 +17,7 @@ import {
   buildTenantCreateStatusMessages,
   buildTenantListZeroState,
   extractCreatedTenantRecord,
+  loadTenantHierarchy,
   tenantMatchesParent,
   type TenantCreateOutcome,
 } from '../../src/commands/tenant.js';
@@ -215,6 +216,94 @@ describe('tenant list filtering', () => {
       '`- child - Child Tenant [tenant-admin]',
       '   `- grandchild - Grandchild Tenant [visible via parent]',
     ]);
+  });
+
+  test('loads direct tenant memberships without expanding every tenant hierarchy', async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error('child tenant lookup should not run for the default list');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await loadTenantHierarchy({
+      publicApiUrl: DEFAULT_PUBLIC_API_URL,
+      memberships: [
+        {
+          id: 'tenant-a',
+          displayName: 'Tenant A',
+          slug: 'tenant-a',
+          isActive: true,
+          roles: ['tenant-admin'],
+        },
+        {
+          id: 'tenant-b',
+          displayName: 'Tenant B',
+          slug: 'tenant-b',
+          isActive: true,
+          roles: ['tenant-admin'],
+        },
+      ],
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
+      'tenant-a - Tenant A [tenant-admin]',
+      'tenant-b - Tenant B [tenant-admin]',
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  test('loads child tenant hierarchy only for an explicit parent', async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (
+        href ===
+        `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/parent-tenant/children?include_descendants=true&limit=100`
+      ) {
+        return new Response(
+          JSON.stringify({
+            children: [
+              {
+                id: 'child-tenant',
+                displayName: 'Child Tenant',
+                slug: 'child',
+                parentTenant: { id: 'parent-tenant' },
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(`Unhandled request: ${href}`, { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await loadTenantHierarchy({
+      publicApiUrl: DEFAULT_PUBLIC_API_URL,
+      parentId: 'parent-tenant',
+      memberships: [
+        {
+          id: 'parent-tenant',
+          displayName: 'Parent Tenant',
+          slug: 'parent',
+          isActive: true,
+          roles: ['tenant-admin'],
+        },
+        {
+          id: 'other-tenant',
+          displayName: 'Other Tenant',
+          slug: 'other',
+          isActive: true,
+          roles: ['tenant-admin'],
+        },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
+      'parent - Parent Tenant [tenant-admin]',
+      '`- child - Child Tenant [visible via parent]',
+    ]);
+    expect(result.warnings).toEqual([]);
   });
 
   test('normalizes flat admin membership payloads into tenant entries', () => {

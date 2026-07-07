@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.9** (2026-07-06): Document V4 document and workflow file guidance.
+The current CLI release is **v3.6.10** (2026-07-07): Fix tenant list hierarchy expansion.
 
 
 ## What The Pieces Do

@@ -343,7 +343,7 @@ function tenantHierarchyJson(item: TenantHierarchyItem): Record<string, unknown>
   };
 }
 
-async function loadTenantHierarchy(options: {
+export async function loadTenantHierarchy(options: {
   publicApiUrl: string;
   memberships: TenantMembership[];
   parentId?: string;
@@ -369,9 +369,7 @@ async function loadTenantHierarchy(options: {
           } satisfies TenantMembership),
       ]
     : options.memberships;
-  const parentsToQuery = options.parentId
-    ? [options.parentId]
-    : options.memberships.map((membership) => membership.id);
+  const parentsToQuery = options.parentId ? [options.parentId] : [];
 
   for (const parentId of parentsToQuery) {
     const client = new PlatformAPIClient(options.publicApiUrl, parentId);
