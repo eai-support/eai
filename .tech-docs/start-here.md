@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.10** (2026-07-07): Fix tenant list hierarchy expansion.
+The current CLI release is **v3.7.0** (2026-07-08): Fix base-path Auth.js URLs.
 
 
 ## What The Pieces Do
