@@ -99,6 +99,84 @@ export interface TenantAppCreateRequest {
   homeRegion?: TenantHomeRegion;
 }
 
+export interface SourceUnknownSchemaProvenance {
+  templateVersion: string;
+  baseTemplateSha?: string;
+  approvedSourceSha?: string;
+  approvedReleaseId?: string;
+  schemaDigest: string;
+  validatorDigest: string;
+}
+
+/**
+ * Existing repository binding for tenant apps whose source is not owned by the
+ * generated-source export pipeline.
+ */
+export interface SourceUnknownAppRegistrationRequest {
+  repoOwner: string;
+  repoName: string;
+  repoUrl?: string;
+  defaultBranch?: string;
+  workflowPath?: string;
+  ref?: string;
+  commitSha?: string;
+  configPath?: string;
+  runtimePath?: string;
+  sourceMode?: 'source-unknown';
+  adoptionMode?: 'connect-existing' | 'adopted-observed';
+  schemaProvenance?: SourceUnknownSchemaProvenance;
+  observedDeployment?: {
+    environment: string;
+    activeUrl: string;
+    status: 'adopted_observed';
+    observedAt: string;
+    deploymentId?: string;
+    imageDigest?: string;
+    configHash?: string;
+  };
+  validationSummary?: Record<string, unknown>;
+}
+
+export interface SourceUnknownWorkflowSetupRequest {
+  environment?: string;
+  workflowPath?: string;
+  ref?: string;
+  commitSha?: string;
+  configHash?: string;
+}
+
+export interface SourceUnknownWorkflowEvidenceRequest {
+  operationId: string;
+  nonce: string;
+  environment?: string;
+  workflowPath: string;
+  ref: string;
+  commitSha: string;
+  configHash: string;
+  artifactDigest: string;
+  imageDigest: string;
+  schemaProvenance: SourceUnknownSchemaProvenance;
+  workflowRun?: Record<string, unknown>;
+  oidcClaims: Record<string, unknown>;
+  validationSummary?: Record<string, unknown>;
+}
+
+export interface SourceUnknownDeploymentRequest {
+  operationId: string;
+  environment?: string;
+  repoOwner?: string;
+  repoName?: string;
+  workflowPath?: string;
+  ref?: string;
+  commitSha?: string;
+  workflowRunId?: string;
+  configHash?: string;
+  artifactDigest?: string;
+  imageDigest?: string;
+  deploymentTarget?: Record<string, unknown>;
+  validationSummary?: Record<string, unknown>;
+}
+
 export interface CapabilityEvaluationRequest {
   tenantId: string;
   targetCapability: 'child-tenants' | 'ai-chat' | 'documents' | 'auth-b2b' | 'auth-dual';
@@ -1154,6 +1232,67 @@ export class PlatformAPIClient {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/provisioning-jobs`,
       'POST',
+    );
+  }
+
+  async registerSourceUnknownApp(
+    tenantId: string,
+    appKey: string,
+    data: SourceUnknownAppRegistrationRequest,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/register`,
+      'POST',
+      data,
+    );
+  }
+
+  async setupSourceUnknownWorkflow(
+    tenantId: string,
+    appKey: string,
+    data: SourceUnknownWorkflowSetupRequest,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-setup`,
+      'POST',
+      data,
+    );
+  }
+
+  async submitSourceUnknownWorkflowEvidence(
+    tenantId: string,
+    appKey: string,
+    data: SourceUnknownWorkflowEvidenceRequest,
+    githubOidcToken: string,
+  ): Promise<Response> {
+    const headers = await this.headers();
+    headers.Authorization = `Bearer ${githubOidcToken}`;
+    return fetch(
+      `${this.baseUrl}${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(data),
+      },
+    );
+  }
+
+  async requestSourceUnknownDeployment(
+    tenantId: string,
+    appKey: string,
+    data: SourceUnknownDeploymentRequest,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/deploy`,
+      'POST',
+      data,
+    );
+  }
+
+  async getLatestSourceUnknownDeployment(tenantId: string, appKey: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/deployments/latest`,
+      'GET',
     );
   }
 
