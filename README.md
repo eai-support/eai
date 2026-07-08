@@ -278,15 +278,15 @@ still enforces platform tenant authorization.
 
 The runtime contract lives in `eai.runtime.json`. It declares required
 environment variable names, required secrets, health/runtime endpoints, Auth.js
-callback path, tenant/workflow key patterns, optional app-only service identity,
-and post-deploy smoke tests. It is host-neutral: Vercel, Docker, AWS, Azure,
+callback path, tenant/workflow key patterns, signed-in-user/OBO BFF access, and
+post-deploy smoke tests. It is host-neutral: Vercel, Docker, AWS, Azure,
 Kubernetes, VM-style hosts, and internal demo environments should translate the
 same contract into their provider-specific env and secret setup.
 
 `eai deploy doctor` deliberately does more than `/health`. A deployment can have
 `/health` returning 200 and still fail because Auth.js providers are missing,
-the Entra callback URL is wrong, tenant/workflow config is empty, service
-identity is absent for anonymous server-side platform calls, PublicAPI rejects
+the Entra callback URL is wrong, tenant/workflow config is empty, a route is
+trying to use unsupported app-only data-plane access, PublicAPI rejects
 authorization, or the app runtime is throwing errors.
 
 ### Diagnostics

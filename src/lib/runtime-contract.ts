@@ -90,7 +90,7 @@ export interface NormalizedRuntimeContract {
   secrets: RuntimeSecretsShape;
   auth: RuntimeAuthShape;
   endpoints: RuntimeEndpointShape;
-  serviceIdentityExplicit: boolean;
+  serviceIdentityDeclared: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -187,7 +187,7 @@ export function normalizeRuntimeContract(raw: RuntimeContract): NormalizedRuntim
             .filter((test): test is RuntimeSmokeTest => test !== null)
         : [],
     },
-    serviceIdentityExplicit: isRecord(raw.serviceIdentity),
+    serviceIdentityDeclared: isRecord(raw.serviceIdentity),
   };
 }
 
@@ -355,12 +355,20 @@ export async function validateRuntimeContract(projectRoot?: string): Promise<Run
   const serverSidePublicEndpoints = contract.endpoints.public.filter(
     (endpoint) => endpoint.serverSidePlatformAccess === true,
   );
-  if (serverSidePublicEndpoints.length > 0 && !contract.serviceIdentityExplicit) {
+  if (contract.serviceIdentityDeclared) {
     findings.push({
-      code: 'runtime_service_identity_missing',
+      code: 'runtime_service_identity_not_supported',
       severity: 'error',
-      message: 'Public anonymous endpoints declare server-side platform access, but serviceIdentity is not explicit.',
-      fix: 'Add serviceIdentity preferred env names and legacy aliases to the runtime contract.',
+      message: 'Tenant app runtime contracts must not declare app-only PublicAPI service identity.',
+      fix: 'Remove serviceIdentity from eai.runtime.json. Use signed-in-user/OBO access through /api/eai, or move background work into a user-authorized platform workflow.',
+    });
+  }
+  if (serverSidePublicEndpoints.length > 0) {
+    findings.push({
+      code: 'runtime_anonymous_platform_access_not_supported',
+      severity: 'error',
+      message: 'Public anonymous endpoints must not declare server-side EAI platform access.',
+      fix: 'Require sign-in before calling /api/eai, or expose only public non-platform endpoints. Long-running work should be requested by a user and executed by a platform workflow.',
     });
   }
 
