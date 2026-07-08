@@ -414,7 +414,7 @@ describe('PlatformAPIClient', () => {
       sourceMode: 'source-unknown',
       schemaProvenance: {
         templateVersion: 'eai.generated_app_config.v1',
-        baseTemplateSha: '3fa18d004b20ff409ab9687d623028f24d9e5543',
+        baseTemplateSha: '483c609cd974fa732c8ccb5ce37855911f881d76',
         schemaDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         validatorDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       },
@@ -439,7 +439,7 @@ describe('PlatformAPIClient', () => {
       sourceMode: 'source-unknown',
       schemaProvenance: {
         templateVersion: 'eai.generated_app_config.v1',
-        baseTemplateSha: '3fa18d004b20ff409ab9687d623028f24d9e5543',
+        baseTemplateSha: '483c609cd974fa732c8ccb5ce37855911f881d76',
         schemaDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         validatorDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       },
