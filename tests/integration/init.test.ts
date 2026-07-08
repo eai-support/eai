@@ -947,6 +947,8 @@ describe("eai init", () => {
       "utf-8",
     );
     expect(objectTypes).toContain("storageMetadataStatus: 'ready' as const");
+    expect(objectTypes).toContain("export type StorageBackend");
+    expect(objectTypes).toContain("export interface ObjectTypeDefinition");
     expect(objectTypes).toContain("databaseAlias: 'resourceapi-postgres'");
     expect(objectTypes).toContain(
       "tenantSchemaStrategy: 'per-tenant-database' as const",
