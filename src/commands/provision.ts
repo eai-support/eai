@@ -477,7 +477,7 @@ Diagnostics:
       optionalEnv.ENTRA_SCOPES = result.scopes.join(' ');
     }
     optionalEnv.ENTRA_REDIRECT_URIS = redirectUris.join(' ');
-    optionalEnv.AUTH_URL = authRuntime.siteUrl;
+    optionalEnv.AUTH_URL = authRuntime.authUrl;
     optionalEnv.NEXTAUTH_URL = authRuntime.siteUrl;
     optionalEnv.AUTH_TRUST_HOST = 'true';
     if (result.environment) {
@@ -714,7 +714,7 @@ function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
-function resolveAuthRuntime(env: Record<string, string>): { siteUrl: string } {
+function resolveAuthRuntime(env: Record<string, string>): { authUrl: string; siteUrl: string } {
   const basePath = normaliseBasePath(env.APP_BASE_PATH);
   const rawUrl = env.NEXTAUTH_URL || env.AUTH_URL || 'http://localhost:3000';
 
@@ -723,9 +723,17 @@ function resolveAuthRuntime(env: Record<string, string>): { siteUrl: string } {
     url.pathname = basePath || stripAuthEndpointPath(url.pathname);
     url.search = '';
     url.hash = '';
-    return { siteUrl: stripTrailingSlash(url.toString()) };
+    const siteUrl = stripTrailingSlash(url.toString());
+    return {
+      authUrl: basePath ? `${siteUrl}/api/auth` : siteUrl,
+      siteUrl,
+    };
   } catch {
-    return { siteUrl: `http://localhost:3000${basePath}` };
+    const siteUrl = `http://localhost:3000${basePath}`;
+    return {
+      authUrl: basePath ? `${siteUrl}/api/auth` : siteUrl,
+      siteUrl,
+    };
   }
 }
 

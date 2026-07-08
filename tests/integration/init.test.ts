@@ -288,7 +288,7 @@ describe("eai init", () => {
     await expectFileContains(
       ctx,
       "my-app/.env.local",
-      "AUTH_URL=http://localhost:3000/my-app",
+      "AUTH_URL=http://localhost:3000/my-app/api/auth",
     );
     await expectFileContains(
       ctx,
