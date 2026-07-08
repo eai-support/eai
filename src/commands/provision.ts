@@ -443,18 +443,28 @@ Diagnostics:
     // so this never drops a previously-registered deployed callback.
     const extraRedirectUris = (options.redirectUri as string[] | undefined) ?? [];
     const redirectUris = [localCallback, ...extraRedirectUris.filter((u) => u !== localCallback)];
+    const existingClientId = normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID);
 
     try {
       result = await client.provisionEntraApp({
         tenantId,
         appName,
         redirectUris,
+        existingClientId: existingClientId ?? undefined,
         // The platform route is intentionally idempotent: it creates on first run and
         // returns the existing app ID on later runs without attempting secret rotation.
         idempotent: true,
       });
     } catch (err) {
       handleProvisionError(err, diag);
+    }
+
+    if (existingClientId && result.clientId !== existingClientId) {
+      out.error('Platform returned a different Entra client id than the one already recorded locally.');
+      out.info(`Local ENTRA_CLIENT_ID: ${chalk.dim(existingClientId)}`);
+      out.info(`Platform ENTRA_CLIENT_ID: ${chalk.dim(result.clientId)}`);
+      out.info('Run `eai provision entra --deauthorize --client-id <old-client-id> --force` for registrations you want to remove, or delete the stale local ENTRA_CLIENT_ID after confirming it is no longer needed.');
+      process.exit(1);
     }
 
     // Build env-var patches that derive from the platform response so the

@@ -1316,6 +1316,68 @@ function generateObjectTypesScaffold(opts: InitOptions): string {
  * └────────────┴─────────────────────────────────────────────────┘
  */
 
+export type FieldType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'json' | 'file' | 'relationship';
+
+export interface SelectOption {
+  label: string;
+  value: string;
+}
+
+export interface PropertyDefinition {
+  name: string;
+  type: FieldType;
+  required: boolean;
+  indexed?: boolean;
+  defaultValue?: string | number | boolean;
+  options?: SelectOption[];
+  description?: string;
+}
+
+export type Cardinality = 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
+
+export interface LinkTypeDefinition {
+  name: string;
+  targetObjectType: string;
+  cardinality: Cardinality;
+  cascadeDelete?: boolean;
+}
+
+export type SideEffectType = 'set_field' | 'set_timestamp' | 'set_user';
+
+export interface ActionSideEffect {
+  type: SideEffectType;
+  field: string;
+  value?: string | number | boolean;
+}
+
+export interface ActionValidationRules {
+  requiredFields?: string[];
+  requiredStatus?: string;
+}
+
+export interface ActionDefinition {
+  name: string;
+  displayName: string;
+  requiredRole: 'tenant-viewer' | 'tenant-builder' | 'tenant-admin';
+  validationRules: ActionValidationRules;
+  sideEffects: ActionSideEffect[];
+}
+
+export type StorageBackend = 'postgresql' | 'documentdb' | 'blob' | 'search';
+
+export type ObjectTypeStatus = 'draft' | 'published' | 'deprecated';
+
+export interface ObjectTypeDefinition {
+  name: string;
+  displayName: string;
+  description?: string;
+  properties: PropertyDefinition[];
+  linkTypes: LinkTypeDefinition[];
+  actions: ActionDefinition[];
+  storageBackend: StorageBackend;
+  status: ObjectTypeStatus;
+}
+
 const postgresqlResourceStorage = {
   schemaVersion: 1,
   storageBackend: 'postgresql' as const,

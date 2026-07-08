@@ -618,6 +618,39 @@ describe('PlatformAPIClient', () => {
     expect(result.clientSecret).toBe('<fixture-client-secret>')
   })
 
+  test('passes an existing Entra client id when provisioning should reconcile a local registration', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        client_id: 'client-1',
+        client_secret: null,
+        existing: true,
+      }), { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const result = await client.provisionEntraApp({
+      tenantId: 'tenant-parent',
+      appName: 'my-app',
+      redirectUris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      existingClientId: 'client-1',
+      idempotent: true,
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/platform/provisioning/entra-apps')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      tenant_id: 'tenant-parent',
+      app_name: 'my-app',
+      redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      existing_client_id: 'client-1',
+      idempotent: true,
+    })
+    expect(result.clientId).toBe('client-1')
+    expect(result.existing).toBe(true)
+  })
+
   test('deprovisions Entra app registrations through the public provision router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
