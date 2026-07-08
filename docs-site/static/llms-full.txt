@@ -2135,7 +2135,7 @@ are explicitly listed, and stop when a stop condition matches.
 - The platform call authenticated, but the request did not carry the tenant context required for app-token user or membership operations.
 - This is commonly seen as MISSING_TENANT or "Tenant context required for app tokens" on platform user lookup or membership prerequisite calls.
 - Do not treat this as the first signal to edit tenant members, role definitions, Entra configuration, databases, or cloud portals.
-- For app-token or service-identity flows, use the tenant-scoped platform routes instead of root user lookup routes.
+- For platform automation app-token flows outside tenant app runtime, use the tenant-scoped platform routes instead of root user lookup routes.
 - If the same route works in current main but fails in an environment, the deployed PublicAPI/AdminAPI may be behind the release that adds tenant-scoped routing hardening.
 
 ### Diagnostics
@@ -2148,8 +2148,8 @@ are explicitly listed, and stop when a stop condition matches.
 ### Fixes
 
 - `eai tenant select <tenant>` (changes state) — Select the tenant that should provide app-token context.
-- `Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Replace root platform user lookup with the tenant-scoped V4 route in app-token or service-identity flows.
-- `Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Replace root platform membership lookup with the tenant-scoped V4 route in app-token or service-identity flows.
+- `Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Replace root platform user lookup with the tenant-scoped V4 route in platform automation app-token flows.
+- `Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Replace root platform membership lookup with the tenant-scoped V4 route in platform automation app-token flows.
 - `Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions` (read-only) — Keep tenant member and role-definition reads on the tenant-scoped V4 surface.
 
 ### Stop Conditions

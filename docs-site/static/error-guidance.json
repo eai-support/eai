@@ -492,12 +492,12 @@
         "The platform call authenticated, but the request did not carry the tenant context required for app-token user or membership operations.",
         "This is commonly seen as MISSING_TENANT or \"Tenant context required for app tokens\" on platform user lookup or membership prerequisite calls.",
         "Do not treat this as the first signal to edit tenant members, role definitions, Entra configuration, databases, or cloud portals.",
-        "For app-token or service-identity flows, use the tenant-scoped platform routes instead of root user lookup routes.",
+        "For platform automation app-token flows outside tenant app runtime, use the tenant-scoped platform routes instead of root user lookup routes.",
         "If the same route works in current main but fails in an environment, the deployed PublicAPI/AdminAPI may be behind the release that adds tenant-scoped routing hardening."
       ],
       "evidenceToCheck": [
         "The failed path and whether it is a root platform user route such as /v4/platform/users/by-email or /v4/platform/users/{oid}/memberships.",
-        "Whether the caller is using an app token or service identity rather than an end-user identity route.",
+        "Whether the caller is using an app token rather than an end-user identity route.",
         "Active tenant from eai whoami and eai tenant list --format json.",
         "PublicAPI/AdminAPI deployed versions when the failure happens in a shared environment.",
         "Whether a tenant-scoped path succeeds for the same operation."
@@ -532,12 +532,12 @@
         },
         {
           "command": "Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>",
-          "purpose": "Replace root platform user lookup with the tenant-scoped V4 route in app-token or service-identity flows.",
+          "purpose": "Replace root platform user lookup with the tenant-scoped V4 route in platform automation app-token flows.",
           "mutates": false
         },
         {
           "command": "Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships",
-          "purpose": "Replace root platform membership lookup with the tenant-scoped V4 route in app-token or service-identity flows.",
+          "purpose": "Replace root platform membership lookup with the tenant-scoped V4 route in platform automation app-token flows.",
           "mutates": false
         },
         {
