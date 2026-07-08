@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.10 |
-| Released | 2026-07-07 |
-| Last Material Change | Fix tenant list hierarchy expansion |
-| Source Commit | `a3cbfb3d9609a1feffc411163a5f8b6f80991303` |
+| Version | 3.7.0 |
+| Released | 2026-07-08 |
+| Last Material Change | Fix base-path Auth.js URLs |
+| Source Commit | `04feb80646af99b121afef50ea5ea8d97ad544de` |
 
 
 ## Install

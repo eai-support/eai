@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-07-07T02:48:28.938Z"
-source_commit: "a3cbfb3d9609a1feffc411163a5f8b6f80991303"
+generated_at: "2026-07-08T13:06:48.953Z"
+source_commit: "04feb80646af99b121afef50ea5ea8d97ad544de"
 ---
 # EAI CLI — API Reference
 
