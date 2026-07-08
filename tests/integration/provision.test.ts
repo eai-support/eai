@@ -252,7 +252,7 @@ describe('eai provision entra', () => {
     });
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
-    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder/api/auth');
     expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
     expect(content).toContain('ENTRA_REDIRECT_URIS=http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id');
   });
@@ -296,7 +296,7 @@ describe('eai provision entra', () => {
     });
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
-    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder/api/auth');
     expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
     expect(content).toContain('ENTRA_REDIRECT_URIS=http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id');
   });
@@ -338,7 +338,7 @@ describe('eai provision entra', () => {
     });
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
-    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder/api/auth');
     expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
   });
 

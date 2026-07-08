@@ -675,6 +675,7 @@ async function provisionEntraInline(
   try {
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
     const authSiteUrl = `http://localhost:3000/${appName}`;
+    const authEndpointUrl = `${authSiteUrl}/api/auth`;
     const result = await client.provisionEntraApp({
       tenantId,
       appName,
@@ -699,7 +700,7 @@ async function provisionEntraInline(
       await patchEnvFile(targetDir, {
         ENTRA_CLIENT_ID: result.clientId,
         ENTRA_CLIENT_SECRET: result.clientSecret,
-        AUTH_URL: authSiteUrl,
+        AUTH_URL: authEndpointUrl,
         NEXTAUTH_URL: authSiteUrl,
         AUTH_TRUST_HOST: "true",
       });
@@ -715,7 +716,7 @@ async function provisionEntraInline(
     if (result.existing) {
       await patchEnvFile(targetDir, {
         ENTRA_CLIENT_ID: result.clientId,
-        AUTH_URL: authSiteUrl,
+        AUTH_URL: authEndpointUrl,
         NEXTAUTH_URL: authSiteUrl,
         AUTH_TRUST_HOST: "true",
       });
@@ -1197,7 +1198,7 @@ ENTRA_CLIENT_SECRET=
 # Auth.js — auto-generated secret
 # =============================================================================
 AUTH_SECRET=${authSecret}
-AUTH_URL=http://localhost:3000/${opts.name}
+AUTH_URL=http://localhost:3000/${opts.name}/api/auth
 NEXTAUTH_URL=http://localhost:3000/${opts.name}
 AUTH_TRUST_HOST=true
 
