@@ -1496,6 +1496,7 @@ export class PlatformAPIClient {
     tenantId: string;
     appName: string;
     redirectUris: string[];
+    existingClientId?: string;
     idempotent?: boolean;
   }): Promise<{
     clientId: string;
@@ -1512,6 +1513,7 @@ export class PlatformAPIClient {
       tenant_id: request.tenantId,
       app_name: request.appName,
       redirect_uris: request.redirectUris,
+      ...(request.existingClientId ? { existing_client_id: request.existingClientId } : {}),
       idempotent: request.idempotent ?? false,
     };
 
