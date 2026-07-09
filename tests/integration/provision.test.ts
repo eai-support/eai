@@ -17,7 +17,6 @@ import { getActiveProfile, setActiveProfile } from '../../src/lib/profile.js';
 import { DEFAULT_PUBLIC_API_URL } from '../../src/lib/tenant-context.js';
 
 const API_BASE = 'https://test-api.example.com';
-const ADMIN_API_BASE = 'https://test-admin-api.example.com';
 const PROFILE_API_BASE = 'https://profile-test.example.test/public';
 const DEV_PROFILE_API_BASE = 'https://profile-dev.example.test/public';
 const PROD_AUTH_TENANT_NAME = 'enterpriseaiplatform';
@@ -381,7 +380,7 @@ describe('eai provision entra', () => {
     });
   });
 
-  test('resourceapi bundle provisioning uses the AdminAPI v4 passive route', { timeout: 10000 }, async () => {
+  test('resourceapi bundle provisioning uses the PublicAPI v4 passive route', { timeout: 10000 }, async () => {
     let requestBody: unknown;
 
     mockServer.server.use(
@@ -403,7 +402,7 @@ describe('eai provision entra', () => {
         });
       }),
       http.post(
-        `${ADMIN_API_BASE}/v4/platform/tenants/test-tenant-id/resourceapi/passive-bundle`,
+        `${API_BASE}/v4/platform/tenants/test-tenant-id/resourceapi/passive-bundle`,
         async ({ request }) => {
           expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
           requestBody = await request.json();
@@ -421,8 +420,6 @@ describe('eai provision entra', () => {
 
     await provisionCommand.parseAsync([
       'resourceapi-bundle',
-      '--admin-api-url',
-      ADMIN_API_BASE,
       '--tenant-id',
       'test-tenant-id',
       '--install-id',
@@ -451,7 +448,7 @@ describe('eai provision entra', () => {
     });
   });
 
-  test('resourceapi refresh uses the AdminAPI v4 super-admin repair route', { timeout: 10000 }, async () => {
+  test('resourceapi refresh uses the PublicAPI v4 super-admin repair route', { timeout: 10000 }, async () => {
     let requestBody: unknown;
 
     mockServer.server.use(
@@ -473,7 +470,7 @@ describe('eai provision entra', () => {
         });
       }),
       http.post(
-        `${ADMIN_API_BASE}/v4/platform/tenants/test-tenant-id/resourceapi/passive-refresh`,
+        `${API_BASE}/v4/platform/tenants/test-tenant-id/resourceapi/passive-refresh`,
         async ({ request }) => {
           expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
           requestBody = await request.json();
@@ -494,8 +491,6 @@ describe('eai provision entra', () => {
 
     await provisionCommand.parseAsync([
       'resourceapi-refresh',
-      '--admin-api-url',
-      ADMIN_API_BASE,
       '--tenant-id',
       'test-tenant-id',
       '--install-id',

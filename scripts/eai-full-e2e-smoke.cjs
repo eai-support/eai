@@ -345,7 +345,7 @@ const SMOKE_CALLS = {
     'EAI_E2E_PROVISION_ENTRA=1 EAI_E2E_CLEANUP=1 eai provision entra --deauthorize --client-id <client-id> --force --debug',
   ],
   'eai provision resourceapi-refresh': [
-    'EAI_E2E_RESOURCEAPI_REFRESH=1 eai provision resourceapi-refresh --admin-api-url <url> --tenant-id <tenant-id> --install-id <install-id> --apply --dry-run --backend all --rebuild-search --force-overwrite --reason smoke --change-ticket E2E-SMOKE --product <app-key> --schema-version 1 --format json',
+    'EAI_E2E_RESOURCEAPI_REFRESH=1 eai provision resourceapi-refresh --tenant-id <tenant-id> --install-id <install-id> --apply --dry-run --backend all --rebuild-search --force-overwrite --reason smoke --change-ticket E2E-SMOKE --product <app-key> --schema-version 1 --format json',
   ],
   'eai provision storage': [
     'eai provision storage --tenant-id <tenant-id> --backend all --dry-run --format json',
@@ -353,7 +353,7 @@ const SMOKE_CALLS = {
   ],
   'eai provision resourceapi-bundle': [
     'eai provision resourceapi-bundle --schema smoke-object-types.json --tenant-id <tenant-id> --install-id <install-id> --backend all --product <app-key> --schema-version 1 --out resourceapi-bundle.json --format json',
-    'EAI_E2E_RESOURCEAPI_BUNDLE_APPLY=1 eai provision resourceapi-bundle --schema smoke-object-types.json --tenant-id <tenant-id> --install-id <install-id> --admin-api-url <url> --apply --dry-run --backend all --rebuild-search --product <app-key> --schema-version 1 --format json',
+    'EAI_E2E_RESOURCEAPI_BUNDLE_APPLY=1 eai provision resourceapi-bundle --tenant-id <tenant-id> --install-id <install-id> --apply --dry-run --backend all --rebuild-search --product <app-key> --schema-version 1 --format json',
   ],
   'eai gofer refresh': [
     'eai gofer refresh --check --format json',
