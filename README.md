@@ -278,7 +278,7 @@ still enforces platform tenant authorization.
 
 The runtime contract lives in `eai.runtime.json`. It declares required
 environment variable names, required secrets, health/runtime endpoints, Auth.js
-callback path, tenant/workflow key patterns, signed-in-user/OBO BFF access, and
+callback path, tenant/workflow key patterns, user-delegated BFF access, and
 post-deploy smoke tests. It is host-neutral: Vercel, Docker, AWS, Azure,
 Kubernetes, VM-style hosts, and internal demo environments should translate the
 same contract into their provider-specific env and secret setup.
