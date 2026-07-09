@@ -40,7 +40,7 @@ incomplete until runtime smoke tests pass.
 
 ## Tenant Data Access
 
-Tenant apps use signed-in-user/OBO access for EAI data-plane calls. Browser code
+Tenant apps use user-delegated access for EAI data-plane calls. Browser code
 calls the local BFF at `/api/eai/...`; the BFF forwards to PublicAPI with the
 current user's session token. PublicAPI, OPA/Authz, and ResourceAPI then
 evaluate the user, app, and tenant together.

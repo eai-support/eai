@@ -360,7 +360,7 @@ export async function validateRuntimeContract(projectRoot?: string): Promise<Run
       code: 'runtime_service_identity_not_supported',
       severity: 'error',
       message: 'Tenant app runtime contracts must not declare app-only PublicAPI service identity.',
-      fix: 'Remove serviceIdentity from eai.runtime.json. Use signed-in-user/OBO access through /api/eai, or move background work into a user-authorized platform workflow.',
+      fix: 'Remove serviceIdentity from eai.runtime.json. Use user-delegated access through /api/eai, or move background work into a user-authorized platform workflow.',
     });
   }
   if (serverSidePublicEndpoints.length > 0) {
