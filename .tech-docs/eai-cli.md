@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.0 |
-| Released | 2026-07-08 |
-| Last Material Change | Fix base-path Auth.js URLs |
-| Source Commit | `04feb80646af99b121afef50ea5ea8d97ad544de` |
+| Version | 3.7.1 |
+| Released | 2026-07-09 |
+| Last Material Change | Reject app-only tenant app data-plane runtime contracts |
+| Source Commit | `9aa4d1240a58f6d93e50fb97019dd130f9556670` |
 
 
 ## Install

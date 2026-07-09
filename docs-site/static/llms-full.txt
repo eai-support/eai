@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.7.0.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.7.1.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -381,7 +381,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.7.0** (2026-07-08): Fix base-path Auth.js URLs.
+The current CLI release is **v3.7.1** (2026-07-09): Reject app-only tenant app data-plane runtime contracts.
 
 
 ## What The Pieces Do
@@ -495,10 +495,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.0 |
-| Released | 2026-07-08 |
-| Last Material Change | Fix base-path Auth.js URLs |
-| Source Commit | `04feb80646af99b121afef50ea5ea8d97ad544de` |
+| Version | 3.7.1 |
+| Released | 2026-07-09 |
+| Last Material Change | Reject app-only tenant app data-plane runtime contracts |
+| Source Commit | `9aa4d1240a58f6d93e50fb97019dd130f9556670` |
 
 
 ## Install
@@ -1880,7 +1880,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.7.0. The same catalog powers human stderr output, JSON output for AI
+v3.7.1. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
