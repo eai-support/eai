@@ -526,6 +526,64 @@ describe('eai provision entra', () => {
     });
   });
 
+  test('resourceapi-bundle refuses to call PublicAPI when the caller is not logged in', { timeout: 10000 }, async () => {
+    // Regression coverage for the shared resolveResourceApiProvisioningContext()
+    // helper extracted for both resourceapi-bundle and resourceapi-refresh: the
+    // "not logged in" exit branch had only ever been exercised indirectly via
+    // the happy-path tests above, which always set EAI_ACCESS_TOKEN.
+    delete process.env.EAI_ACCESS_TOKEN;
+    await clearTokens();
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      provisionCommand.parseAsync([
+        'resourceapi-bundle',
+        '--tenant-id',
+        'test-tenant-id',
+        '--install-id',
+        'install-1',
+        '--format',
+        'json',
+      ], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).toContain('Not logged in');
+  });
+
+  test('resourceapi-refresh refuses to call PublicAPI when the caller is not logged in', { timeout: 10000 }, async () => {
+    delete process.env.EAI_ACCESS_TOKEN;
+    await clearTokens();
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      provisionCommand.parseAsync([
+        'resourceapi-refresh',
+        '--tenant-id',
+        'test-tenant-id',
+        '--install-id',
+        'install-1',
+        '--format',
+        'json',
+      ], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).toContain('Not logged in');
+  });
+
   test('default profile provisions through the prod PublicAPI when no local API URL is configured', { timeout: 10000 }, async () => {
     await clearTokens();
     await storeTokens({
