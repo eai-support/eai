@@ -340,6 +340,33 @@ const VALID_STORAGE_BACKENDS = [
   "search",
 ] as const;
 const VALID_STORAGE_METADATA_STATUSES = ["draft", "ready"] as const;
+const APP_SQL_DATABASE_ALIAS = "tenant-postgres";
+const LEGACY_SHARED_SQL_DATABASE_ALIAS = "resourceapi-postgres";
+
+export function tenantStorageScope(tenantId: string): string {
+  const scope =
+    tenantId
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "")
+      .slice(-12) || "tenant";
+  return /^[a-z]/.test(scope) ? scope : `t${scope}`;
+}
+
+export function storageNamePrefix(parts: string[], separator = "_"): string {
+  const replacement = separator === "-" ? "-" : "_";
+  return parts
+    .map((part) => String(part || "").toLowerCase().replace(/-/g, separator))
+    .join(separator)
+    .replace(/[^a-z0-9_-]+/g, replacement)
+    .replace(/^[_-]+|[_-]+$/g, "");
+}
+
+export function appOwnedSqlTablePrefix(
+  tenantId: string,
+  tenantKey: string,
+): string {
+  return `${storageNamePrefix([tenantStorageScope(tenantId), tenantKey], "_")}_`;
+}
 
 export function collectTypeDefaultValueValidationIssues(
   objectTypes: Record<string, ObjectTypeDefinition[]>,
@@ -353,6 +380,10 @@ export function collectTypeDefaultValueValidationIssues(
       })),
     ),
   );
+}
+
+export interface TypeStorageValidationOptions {
+  tenantIdsByKey?: Record<string, string | undefined>;
 }
 
 function hasStorageValue(value: unknown): boolean {
@@ -468,12 +499,71 @@ export function validateObjectTypeStorageMetadata(
   return issues;
 }
 
+export function validateObjectTypeAppOwnedStorageMetadata(
+  type: ObjectTypeDefinition,
+  tenantKey: string,
+  tenantId?: string,
+): string[] {
+  const issues: string[] = [];
+  const backend = type.storageBackend || "postgresql";
+  const storageMetadataStatus = type.storageMetadataStatus || "draft";
+
+  if (backend !== "postgresql" || storageMetadataStatus !== "ready") {
+    return issues;
+  }
+
+  const sql = getStorageBindingScope(type.storageBinding, "sql");
+  const databaseAlias = sql?.databaseAlias;
+  const tableName = sql?.tableName;
+  const appKeyFragment = `${storageNamePrefix([tenantKey], "_")}_`;
+
+  if (databaseAlias === LEGACY_SHARED_SQL_DATABASE_ALIAS) {
+    issues.push(
+      `PostgreSQL storageBinding databaseAlias "${LEGACY_SHARED_SQL_DATABASE_ALIAS}" is a legacy shared ResourceAPI alias. Use "${APP_SQL_DATABASE_ALIAS}" for tenant app Object Types.`,
+    );
+  }
+
+  if (databaseAlias !== APP_SQL_DATABASE_ALIAS) {
+    return issues;
+  }
+
+  if (typeof tableName !== "string" || tableName.trim() === "") {
+    return issues;
+  }
+
+  if (tenantId) {
+    const expectedPrefix = appOwnedSqlTablePrefix(tenantId, tenantKey);
+    if (!tableName.startsWith(expectedPrefix)) {
+      issues.push(
+        `PostgreSQL storageBinding tableName "${tableName}" must start with app-owned prefix "${expectedPrefix}". Run eai app provision, then update Object Type storage bindings before publishing.`,
+      );
+    }
+    return issues;
+  }
+
+  if (!tableName.includes(appKeyFragment)) {
+    issues.push(
+      `PostgreSQL storageBinding tableName "${tableName}" does not include the app key fragment "${appKeyFragment}". Run eai types validate --tenant-key ${tenantKey} --tenant-id <tenant-id> to check the exact app-owned prefix.`,
+    );
+  }
+
+  return issues;
+}
+
 export function collectTypeStorageValidationIssues(
   objectTypes: Record<string, ObjectTypeDefinition[]>,
+  options: TypeStorageValidationOptions = {},
 ): TypeStorageValidationIssue[] {
   return Object.entries(objectTypes).flatMap(([tenantKey, types]) =>
     types.flatMap((type) =>
-      validateObjectTypeStorageMetadata(type).map((issue) => ({
+      [
+        ...validateObjectTypeStorageMetadata(type),
+        ...validateObjectTypeAppOwnedStorageMetadata(
+          type,
+          tenantKey,
+          options.tenantIdsByKey?.[tenantKey],
+        ),
+      ].map((issue) => ({
         tenantKey,
         typeName: type.name,
         issue,
@@ -829,6 +919,26 @@ export async function describeFailedPlatformResponse(
   return `${status} - ${code}${truncatedDetail}${requestId}`;
 }
 
+function appOwnedStoragePublishGuidance(
+  message: string,
+  tenantKey: string,
+  tenantId: string,
+): string {
+  if (
+    !/databaseAlias|storageBinding|app-owned prefix|not authorized|tableName/i.test(
+      message,
+    )
+  ) {
+    return "";
+  }
+
+  return [
+    "",
+    "Why this can happen: tenant app Object Types must use app-owned storage bindings. Shared ResourceAPI aliases and generic table names are rejected by the platform.",
+    `Next steps: run eai app provision ${tenantKey} --tenant-id ${tenantId} --select --format json, update src/eai.config/object-types.ts to use tenant-postgres and app-owned table names, then rerun eai types validate --tenant-key ${tenantKey} --tenant-id ${tenantId} and eai types seed --tenant-key ${tenantKey} --tenant-id ${tenantId}.`,
+  ].join("\n");
+}
+
 async function archiveDuplicateRemoteTypes(
   client: PlatformAPIClient,
   duplicates: RemoteObjectTypeDocument[],
@@ -998,8 +1108,9 @@ export async function trySeedViaAppManifestPublish(
     return { fallbackReason: manifestFallbackReason };
   }
   if (!manifestResponse.ok) {
+    const detail = await describeFailedPlatformResponse(manifestResponse);
     throw new Error(
-      `app manifest save failed: ${await describeFailedPlatformResponse(manifestResponse)}`,
+      `app manifest save failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, tenantId)}`,
     );
   }
 
@@ -1012,8 +1123,9 @@ export async function trySeedViaAppManifestPublish(
     return { fallbackReason: publishFallbackReason };
   }
   if (!publishResponse.ok) {
+    const detail = await describeFailedPlatformResponse(publishResponse);
     throw new Error(
-      `app manifest publish failed: ${await describeFailedPlatformResponse(publishResponse)}`,
+      `app manifest publish failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, tenantId)}`,
     );
   }
 
@@ -1566,6 +1678,44 @@ Examples:
         continue;
       }
 
+      const tenantScopedStorageIssues = collectTypeStorageValidationIssues(
+        { [tenantKey]: types },
+        { tenantIdsByKey: { [tenantKey]: tenantId } },
+      );
+      if (tenantScopedStorageIssues.length > 0) {
+        const message = "Object Type app-owned storage binding validation failed";
+        if (options.format !== "json") {
+          out.error(message);
+          for (const issue of tenantScopedStorageIssues) {
+            out.error(`  [${issue.tenantKey}/${issue.typeName}] ${issue.issue}`);
+          }
+          out.info(
+            `Run ${chalk.cyan(`eai app provision ${tenantKey} --tenant-id ${tenantId} --select --format json`)} to confirm the app storage contract, then update ${chalk.cyan("src/eai.config/object-types.ts")}.`,
+          );
+        }
+        jsonResults.push({
+          tenantKey,
+          tenantId,
+          created: 0,
+          updated: 0,
+          failed: types.length,
+          publishingMode: "app-manifest",
+          error: `${message}: ${tenantScopedStorageIssues.map((issue) => issue.issue).join("; ")}`,
+          verification: {
+            tenantId,
+            requestedTypes: types.map((type) => type.name),
+            matchedTypes: [],
+            missingTypes: types.map((type) => type.name),
+            driftedTypes: [],
+            createdCount: 0,
+            updatedCount: 0,
+            failedCount: types.length,
+            converged: false,
+          },
+        });
+        continue;
+      }
+
       if (options.format !== "json") {
         out.heading(
           `Tenant: ${tenantKey} → ${chalk.dim(tenantId)} ${chalk.dim(`(${describeTenantResolutionSource(resolution.source)})`)}`,
@@ -1937,14 +2087,20 @@ Examples:
 typesCommand
   .command("validate")
   .description("Validate Object Types against platform schema rules")
+  .option("--tenant-key <key>", "Specific tenant key from object-types.ts")
+  .option(
+    "--tenant-id <id>",
+    "Check app-owned storage naming for this tenant ID",
+  )
   .addHelpText(
     "after",
     `
 Examples:
   $ eai types validate
+  $ eai types validate --tenant-key post-pilot --tenant-id 5dd8db37-0993-f01c-0487-e8f0fae6c3d7
   `,
   )
-  .action(async () => {
+  .action(async (options: { tenantKey?: string; tenantId?: string }) => {
     const root = await findProjectRoot();
     if (!root) {
       exitWithError(ErrorCode.E001);
@@ -1962,10 +2118,36 @@ Examples:
       process.exit(1);
     }
 
+    if (
+      options.tenantId &&
+      !options.tenantKey &&
+      Object.keys(objectTypes).length > 1
+    ) {
+      exitWithError(ErrorCode.E303, {
+        field: "--tenant-key when using --tenant-id with multiple tenant scopes",
+      });
+    }
+
+    if (options.tenantKey && !objectTypes[options.tenantKey]) {
+      exitWithError(ErrorCode.E303, {
+        field: `--tenant-key ${options.tenantKey} (no matching object-types scope)`,
+      });
+    }
+
+    const entries = options.tenantKey
+      ? ([[options.tenantKey, objectTypes[options.tenantKey] ?? []]] as Array<
+          [string, ObjectTypeDefinition[]]
+        >)
+      : Object.entries(objectTypes);
+    const tenantIdsByKey =
+      options.tenantId && options.tenantKey
+        ? { [options.tenantKey]: options.tenantId }
+        : {};
+
     let errors = 0;
     let warnings = 0;
 
-    for (const [tenantKey, types] of Object.entries(objectTypes)) {
+    for (const [tenantKey, types] of entries) {
       out.heading(`Tenant: ${tenantKey}`);
 
       for (const type of types) {
@@ -2032,6 +2214,13 @@ Examples:
 
         issues.push(...validateObjectTypeDefaultValues(type));
         issues.push(...validateObjectTypeStorageMetadata(type));
+        issues.push(
+          ...validateObjectTypeAppOwnedStorageMetadata(
+            type,
+            tenantKey,
+            tenantIdsByKey[tenantKey],
+          ),
+        );
 
         // Validate link types
         for (const link of type.linkTypes) {

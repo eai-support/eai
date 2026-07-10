@@ -216,15 +216,98 @@ export async function loadObjectTypes(
 
   // Write to a temp .mjs file and import it
   const tempFile = join(tmpdir(), `eai-object-types-${randomUUID()}.mjs`);
+  const evaluationEnv = await loadObjectTypeEvaluationEnv(projectRoot);
+  const restoredEnv = applyTemporaryEnv(evaluationEnv);
   try {
     await writeFile(tempFile, jsSource, "utf-8");
     const module = await import(pathToFileURL(tempFile).href);
     return module.objectTypes || module.default?.objectTypes || {};
   } finally {
+    restoreTemporaryEnv(restoredEnv);
     try {
       await unlink(tempFile);
     } catch {
       /* cleanup best-effort */
+    }
+  }
+}
+
+type TemporaryEnvRestore = Array<[string, string | undefined]>;
+
+async function loadObjectTypeEvaluationEnv(
+  projectRoot: string,
+): Promise<Record<string, string>> {
+  const safeEnvNames = new Set([
+    "EAI_TENANT_ID",
+    "NEXT_PUBLIC_EAI_TENANT_ID",
+    "EAI_APP_KEY",
+    "NEXT_PUBLIC_EAI_APP_KEY",
+    "NEXT_PUBLIC_APP_NAME",
+    "EAI_STORAGE_TABLE_PREFIX",
+    "EAI_STORAGE_CONTAINER_PREFIX",
+    "EAI_STORAGE_COLLECTION_PREFIX",
+    "EAI_STORAGE_INDEX_PREFIX",
+  ]);
+  const env = await loadEnvFile(projectRoot);
+  const safeEnv = Object.fromEntries(
+    Object.entries(env).filter(([key]) => safeEnvNames.has(key)),
+  );
+
+  try {
+    const contractPath = join(projectRoot, ".eai", "storage-bindings.json");
+    const contract = JSON.parse(await readFile(contractPath, "utf-8"));
+    if (contract && typeof contract === "object") {
+      const data = contract as Record<string, unknown>;
+      const prefixes = data.storageNamePrefixes;
+      if (typeof data.tenantId === "string") {
+        safeEnv.EAI_TENANT_ID = data.tenantId;
+        safeEnv.NEXT_PUBLIC_EAI_TENANT_ID = data.tenantId;
+      }
+      if (typeof data.appKey === "string") {
+        safeEnv.EAI_APP_KEY = data.appKey;
+        safeEnv.NEXT_PUBLIC_EAI_APP_KEY = data.appKey;
+      }
+      if (prefixes && typeof prefixes === "object") {
+        const prefixData = prefixes as Record<string, unknown>;
+        if (typeof prefixData.sql === "string") {
+          safeEnv.EAI_STORAGE_TABLE_PREFIX = prefixData.sql;
+        }
+        if (typeof prefixData.blob === "string") {
+          safeEnv.EAI_STORAGE_CONTAINER_PREFIX = prefixData.blob;
+        }
+        if (typeof prefixData.documentdb === "string") {
+          safeEnv.EAI_STORAGE_COLLECTION_PREFIX = prefixData.documentdb;
+        }
+        if (typeof prefixData.search === "string") {
+          safeEnv.EAI_STORAGE_INDEX_PREFIX = prefixData.search;
+        }
+      }
+    }
+  } catch {
+    /* No generated storage contract yet. */
+  }
+
+  return safeEnv;
+}
+
+function applyTemporaryEnv(env: Record<string, string>): TemporaryEnvRestore {
+  const restore: TemporaryEnvRestore = [];
+  for (const [key, value] of Object.entries(env)) {
+    if (process.env[key] !== undefined) {
+      continue;
+    }
+    restore.push([key, process.env[key]]);
+    process.env[key] = value;
+  }
+  return restore;
+}
+
+function restoreTemporaryEnv(restore: TemporaryEnvRestore): void {
+  for (const [key, value] of restore.reverse()) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
     }
   }
 }
