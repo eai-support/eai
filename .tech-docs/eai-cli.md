@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.1 |
-| Released | 2026-07-09 |
-| Last Material Change | Reject app-only tenant app data-plane runtime contracts |
-| Source Commit | `9aa4d1240a58f6d93e50fb97019dd130f9556670` |
+| Version | 3.7.2 |
+| Released | 2026-07-10 |
+| Last Material Change | Fix resource file upload tenant context |
+| Source Commit | `ec4f1f065ad44e0d5a7dbf70b69c5aaf110d6bd7` |
 
 
 ## Install

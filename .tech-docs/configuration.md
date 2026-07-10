@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-07-09T00:11:11.329Z"
-source_commit: "9aa4d1240a58f6d93e50fb97019dd130f9556670"
+generated_at: "2026-07-10T01:50:51.176Z"
+source_commit: "ec4f1f065ad44e0d5a7dbf70b69c5aaf110d6bd7"
 ---
 # EAI CLI - Configuration
 
