@@ -907,12 +907,12 @@ describe("eai init", () => {
     await expectFileContains(
       ctx,
       "quick-app/src/eai.config/object-types.ts",
-      "databaseAlias: 'resourceapi-postgres'",
+      "databaseAlias: 'tenant-postgres'",
     );
     await expectFileContains(
       ctx,
       "quick-app/src/eai.config/object-types.ts",
-      "tableName: 'tenant_resources'",
+      "tableName: 'nantquickapp_quick_app_tenant_resources'",
     );
     await expectFileExists(
       ctx,
@@ -949,11 +949,15 @@ describe("eai init", () => {
     expect(objectTypes).toContain("storageMetadataStatus: 'ready' as const");
     expect(objectTypes).toContain("export type StorageBackend");
     expect(objectTypes).toContain("export interface ObjectTypeDefinition");
-    expect(objectTypes).toContain("databaseAlias: 'resourceapi-postgres'");
+    expect(objectTypes).toContain("databaseAlias: 'tenant-postgres'");
+    expect(objectTypes).not.toContain("resourceapi-postgres");
     expect(objectTypes).toContain(
-      "tenantSchemaStrategy: 'per-tenant-database' as const",
+      "tenantSchemaStrategy: 'per-tenant-schema' as const",
     );
-    expect(objectTypes).toContain("tableName: 'tenant_resources'");
+    expect(objectTypes).toContain(
+      "tableName: 'nantquickapp_quick_app_tenant_resources'",
+    );
+    expect(objectTypes).toContain("tableName: 'nantquickapp_quick_app_records'");
     expectNoPrompts(ctx);
   }, 30_000);
 

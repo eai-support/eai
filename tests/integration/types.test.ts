@@ -9,6 +9,7 @@ import { buildPayloadEqualsParams, PlatformAPIClient } from '../../src/lib/api.j
 import { loadObjectTypes, type ObjectTypeDefinition, type ObjectTypeProperty } from '../../src/lib/config.js';
 import { validateObjectTypeDefaultValues } from '../../src/lib/object-type-defaults.js';
 import {
+  appOwnedSqlTablePrefix,
   appObjectTypePublishFallbackReason,
   collectTypeDefaultValueValidationIssues,
   collectTypeStorageValidationIssues,
@@ -23,6 +24,7 @@ import {
   summarizeResourceApiSchemaSync,
   toAppManifestObjectTypes,
   trySeedViaAppManifestPublish,
+  validateObjectTypeAppOwnedStorageMetadata,
   validateObjectTypeStorageMetadata,
   verifyTypeSeedConvergence,
   verifyTypeSeedConvergenceWithRetry,
@@ -250,6 +252,34 @@ describe('app object-type publish helpers', () => {
 
   test('does not fall back to direct object-type writes when manifest validation fails', async () => {
     await expect(appObjectTypePublishFallbackReason(new Response('{}', { status: 422 }), 'publish')).resolves.toBeNull();
+  });
+
+  test('adds app-owned storage repair guidance to manifest publish validation failures', async () => {
+    const objectType = {
+      name: 'FeedItem',
+      displayName: 'Feed item',
+      properties: [],
+      linkTypes: [],
+      actions: [],
+      storageBackend: 'postgresql',
+      storageMetadataStatus: 'ready',
+      status: 'published',
+    } as ObjectTypeDefinition;
+    const client = {
+      saveAppObjectTypeManifest: async () => new Response('{}', { status: 200 }),
+      publishAppObjectTypes: async () => new Response(JSON.stringify({
+        error: 'VALIDATION_ERROR',
+        message: 'postgresql storageBinding databaseAlias "resourceapi-postgres" is not authorized for this tenant app',
+      }), {
+        status: 422,
+        statusText: 'Unprocessable Entity',
+        headers: { 'content-type': 'application/json' },
+      }),
+    } as unknown as PlatformAPIClient;
+
+    await expect(
+      trySeedViaAppManifestPublish(client, 'post-pilot', '5dd8db37-0993-f01c-0487-e8f0fae6c3d7', [objectType]),
+    ).rejects.toThrow(/tenant app Object Types must use app-owned storage bindings/);
   });
 
   test('does not fall back to direct object-type writes when manifest route is missing', async () => {
@@ -1073,6 +1103,72 @@ describe('loadObjectTypes', () => {
       await env.cleanup();
     }
   });
+
+  test('loads generated storage binding contract values while evaluating object types', async () => {
+    const env = await createTestEnvironment();
+    const objectTypesDir = join(env.dir, 'src', 'eai.config');
+    const contractDir = join(env.dir, '.eai');
+
+    try {
+      await mkdir(objectTypesDir, { recursive: true });
+      await mkdir(contractDir, { recursive: true });
+      await writeFile(
+        join(contractDir, 'storage-bindings.json'),
+        JSON.stringify({
+          schemaVersion: 1,
+          tenantId: '5dd8db37-0993-f01c-0487-e8f0fae6c3d7',
+          appKey: 'post-pilot',
+          storageNamePrefixes: {
+            sql: 'e8f0fae6c3d7_post_pilot_',
+          },
+        }),
+        'utf-8',
+      );
+      await writeFile(
+        join(objectTypesDir, 'object-types.ts'),
+        `function appSqlStorage(logicalTableName) {
+          return {
+            storageBackend: 'postgresql',
+            storageMetadataStatus: 'ready',
+            storageBinding: {
+              sql: {
+                databaseAlias: 'tenant-postgres',
+                tenantSchemaStrategy: 'per-tenant-schema',
+                tableName: process.env.EAI_STORAGE_TABLE_PREFIX + logicalTableName,
+              },
+            },
+          };
+        }
+        export const objectTypes = {
+          'post-pilot': [{
+            name: 'FeedItem',
+            displayName: 'Feed item',
+            properties: [],
+            linkTypes: [],
+            actions: [],
+            status: 'published',
+            ...appSqlStorage('feed_items'),
+          }],
+        };\n`,
+        'utf-8',
+      );
+
+      await expect(loadObjectTypes(env.dir)).resolves.toEqual({
+        'post-pilot': [
+          expect.objectContaining({
+            name: 'FeedItem',
+            storageBinding: {
+              sql: expect.objectContaining({
+                tableName: 'e8f0fae6c3d7_post_pilot_feed_items',
+              }),
+            },
+          }),
+        ],
+      });
+    } finally {
+      await env.cleanup();
+    }
+  });
 });
 
 function buildObjectType(properties: ObjectTypeProperty[]): ObjectTypeDefinition {
@@ -1214,7 +1310,7 @@ describe('validateObjectTypeStorageMetadata', () => {
     ]);
   });
 
-  test('accepts ResourceAPI PostgreSQL storage metadata', () => {
+  test('accepts tenant-app PostgreSQL storage metadata shape', () => {
     expect(validateObjectTypeStorageMetadata({
       ...buildObjectType([]),
       status: 'published',
@@ -1223,10 +1319,9 @@ describe('validateObjectTypeStorageMetadata', () => {
       storageMetadataStatus: 'ready',
       storageBinding: {
         sql: {
-          databaseAlias: 'resourceapi-postgres',
-          tenantSchemaStrategy: 'per-tenant-database',
-          schemaName: 'resources',
-          tableName: 'tenant_resources',
+          databaseAlias: 'tenant-postgres',
+          tenantSchemaStrategy: 'per-tenant-schema',
+          tableName: 'e8f0fae6c3d7_template_workflows',
         },
       },
     })).toEqual([]);
@@ -1263,6 +1358,32 @@ describe('collectTypeStorageValidationIssues', () => {
           storageMetadataStatus: 'ready',
           storageBinding: {
             sql: {
+              databaseAlias: 'tenant-postgres',
+              tenantSchemaStrategy: 'per-tenant-schema',
+              tableName: 'e8f0fae6c3d7_template_workflows',
+            },
+          },
+        },
+      ],
+    }, {
+      tenantIdsByKey: {
+        template: '5dd8db37-0993-f01c-0487-e8f0fae6c3d7',
+      },
+    });
+
+    expect(issues).toEqual([]);
+  });
+
+  test('rejects legacy shared ResourceAPI PostgreSQL aliases for app Object Types', () => {
+    const issues = collectTypeStorageValidationIssues({
+      template: [
+        {
+          ...buildObjectType([]),
+          status: 'published',
+          storageBackend: 'postgresql',
+          storageMetadataStatus: 'ready',
+          storageBinding: {
+            sql: {
               databaseAlias: 'resourceapi-postgres',
               tenantSchemaStrategy: 'per-tenant-schema',
               tableName: 'workflows',
@@ -1272,7 +1393,60 @@ describe('collectTypeStorageValidationIssues', () => {
       ],
     });
 
-    expect(issues).toEqual([]);
+    expect(issues).toEqual([
+      {
+        tenantKey: 'template',
+        typeName: 'Workflow',
+        issue: expect.stringContaining('legacy shared ResourceAPI alias'),
+      },
+    ]);
+  });
+
+  test('rejects tenant-app PostgreSQL table names without the app key fragment', () => {
+    const issues = validateObjectTypeAppOwnedStorageMetadata({
+      ...buildObjectType([]),
+      status: 'published',
+      storageBackend: 'postgresql',
+      storageMetadataStatus: 'ready',
+      storageBinding: {
+        sql: {
+          databaseAlias: 'tenant-postgres',
+          tenantSchemaStrategy: 'per-tenant-schema',
+          tableName: 'feed_items',
+        },
+      },
+    }, 'post-pilot');
+
+    expect(issues).toEqual([
+      expect.stringContaining('does not include the app key fragment "post_pilot_"'),
+    ]);
+  });
+
+  test('rejects tenant-app PostgreSQL table names without the exact tenant prefix', () => {
+    const tenantId = '5dd8db37-0993-f01c-0487-e8f0fae6c3d7';
+    expect(appOwnedSqlTablePrefix(tenantId, 'post-pilot')).toBe(
+      'e8f0fae6c3d7_post_pilot_',
+    );
+
+    const issues = validateObjectTypeAppOwnedStorageMetadata({
+      ...buildObjectType([]),
+      status: 'published',
+      storageBackend: 'postgresql',
+      storageMetadataStatus: 'ready',
+      storageBinding: {
+        sql: {
+          databaseAlias: 'tenant-postgres',
+          tenantSchemaStrategy: 'per-tenant-schema',
+          tableName: 'post_pilot_feed_items',
+        },
+      },
+    }, 'post-pilot', tenantId);
+
+    expect(issues).toEqual([
+      expect.stringContaining(
+        'must start with app-owned prefix "e8f0fae6c3d7_post_pilot_"',
+      ),
+    ]);
   });
 
   test('rejects published types without ready storage metadata', () => {
@@ -1303,7 +1477,7 @@ describe('collectTypeStorageValidationIssues', () => {
           storageMetadataStatus: 'ready',
           storageBinding: {
             sql: {
-              databaseAlias: 'resourceapi-postgres',
+              databaseAlias: 'tenant-postgres',
               tenantSchemaStrategy: 'per-tenant-schema',
               tableName: '',
             },

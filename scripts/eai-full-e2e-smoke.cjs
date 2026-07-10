@@ -133,6 +133,7 @@ const SMOKE_CALLS = {
   ],
   'eai types validate': [
     'eai types validate',
+    'eai types validate --tenant-id <tenant-id> --tenant-key <app-name>',
   ],
   'eai types diff': [
     'eai types diff --tenant-id <tenant-id> --tenant-key <app-name> --format json',
@@ -416,6 +417,10 @@ const OPTION_DECISIONS = {
   },
   'eai types seed': {
     '--env': 'Compatibility label only; tenant-id and tenant-key are the authoritative V4 smoke selectors.',
+  },
+  'eai types validate': {
+    '--tenant-id': 'Optional tenant-aware storage binding validation is covered explicitly so app-owned table prefixes can be checked before publish.',
+    '--tenant-key': 'Optional app/tenant binding validation is covered explicitly so scaffolded app-owned storage names can be checked before publish.',
   },
   'eai env list': {
     '--show-secrets': 'Intentionally not used in release smoke to avoid printing secrets.',

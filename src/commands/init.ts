@@ -1109,6 +1109,32 @@ function describeGitInitFailure(error: unknown): string {
   return message;
 }
 
+function tenantStorageScope(tenantId: string): string {
+  const scope =
+    tenantId
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "")
+      .slice(-12) || "tenant";
+  return /^[a-z]/.test(scope) ? scope : `t${scope}`;
+}
+
+function storageNamePrefix(parts: string[], separator = "_"): string {
+  const replacement = separator === "-" ? "-" : "_";
+  return parts
+    .map((part) => String(part || "").toLowerCase().replace(/-/g, separator))
+    .join(separator)
+    .replace(/[^a-z0-9_-]+/g, replacement)
+    .replace(/^[_-]+|[_-]+$/g, "");
+}
+
+function appOwnedSqlTableName(opts: InitOptions, logicalName: string): string {
+  const prefix = storageNamePrefix(
+    [tenantStorageScope(opts.tenantId), opts.name],
+    "_",
+  );
+  return `${prefix}_${logicalName}`;
+}
+
 async function ensureTargetDirAvailable(
   targetDir: string,
   projectName: string,
@@ -1211,6 +1237,9 @@ AUTH_TRUST_HOST=true
 
 function generateObjectTypesScaffold(opts: InitOptions): string {
   const tenantKey = opts.name;
+  const recordsTableName = appOwnedSqlTableName(opts, "records");
+  const documentsTableName = appOwnedSqlTableName(opts, "documents");
+  const tenantResourcesTableName = appOwnedSqlTableName(opts, "tenant_resources");
   const documentLinkBlock = opts.includeDocs
     ? `      linkTypes: [
         {
@@ -1266,9 +1295,9 @@ function generateObjectTypesScaffold(opts: InitOptions): string {
       storageMetadataStatus: 'ready' as const,
       storageBinding: {
         sql: {
-          databaseAlias: 'resourceapi-postgres',
+          databaseAlias: 'tenant-postgres',
           tenantSchemaStrategy: 'per-tenant-schema' as const,
-          tableName: 'documents',
+          tableName: '${documentsTableName}',
         },
       },
       status: 'published' as const,
@@ -1280,9 +1309,9 @@ function generateObjectTypesScaffold(opts: InitOptions): string {
  * Each object type maps to a platform resource with typed validation, actions, and relationship links.
  *
  * Commands:
- *   eai types validate    Check definitions against platform schema
- *   eai types seed        Push to platform via PublicAPI
- *   eai types diff        Compare local vs remote state
+ *   eai types validate --tenant-key ${tenantKey} --tenant-id <tenant-id>
+ *   eai types seed --tenant-key ${tenantKey} --tenant-id <tenant-id>
+ *   eai types diff --tenant-key ${tenantKey} --tenant-id <tenant-id>
  *
  * ┌──────────────────────────────────────────────────────────────┐
  * │ Field Types                                                  │
@@ -1385,10 +1414,9 @@ const postgresqlResourceStorage = {
   storageMetadataStatus: 'ready' as const,
   storageBinding: {
     sql: {
-      databaseAlias: 'resourceapi-postgres',
-      tenantSchemaStrategy: 'per-tenant-database' as const,
-      schemaName: 'resources',
-      tableName: 'tenant_resources',
+      databaseAlias: 'tenant-postgres',
+      tenantSchemaStrategy: 'per-tenant-schema' as const,
+      tableName: '${tenantResourcesTableName}',
     },
   },
 };
@@ -1495,9 +1523,9 @@ ${documentLinkBlock}
       storageMetadataStatus: 'ready' as const,
       storageBinding: {
         sql: {
-          databaseAlias: 'resourceapi-postgres',
+          databaseAlias: 'tenant-postgres',
           tenantSchemaStrategy: 'per-tenant-schema' as const,
-          tableName: 'records',
+          tableName: '${recordsTableName}',
         },
       },
       status: 'published' as const,
