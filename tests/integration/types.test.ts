@@ -1374,7 +1374,7 @@ describe('collectTypeStorageValidationIssues', () => {
     expect(issues).toEqual([]);
   });
 
-  test('rejects legacy shared ResourceAPI PostgreSQL aliases for app Object Types', () => {
+  test('rejects legacy shared PostgreSQL aliases for app Object Types', () => {
     const issues = collectTypeStorageValidationIssues({
       template: [
         {
@@ -1397,7 +1397,7 @@ describe('collectTypeStorageValidationIssues', () => {
       {
         tenantKey: 'template',
         typeName: 'Workflow',
-        issue: expect.stringContaining('legacy shared ResourceAPI alias'),
+        issue: expect.stringContaining('legacy shared platform alias'),
       },
     ]);
   });
