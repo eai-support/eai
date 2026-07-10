@@ -906,13 +906,8 @@ export class PlatformAPIClient {
     const { basename } = await import('node:path');
     const normalizedObjectType = toObjectTypeSlug(objectType);
     const content = await readFile(filePath);
-    const token = await getAccessToken();
-    const h: Record<string, string> = {
-      'Content-Type': 'application/octet-stream',
-    };
-    if (token) {
-      h.Authorization = `Bearer ${token}`;
-    }
+    const h = await this.headers();
+    h['Content-Type'] = 'application/octet-stream';
 
     const filename = encodeURIComponent(basename(filePath));
     return fetch(
