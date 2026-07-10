@@ -519,7 +519,7 @@ export function validateObjectTypeAppOwnedStorageMetadata(
 
   if (databaseAlias === LEGACY_SHARED_SQL_DATABASE_ALIAS) {
     issues.push(
-      `PostgreSQL storageBinding databaseAlias "${LEGACY_SHARED_SQL_DATABASE_ALIAS}" is a legacy shared ResourceAPI alias. Use "${APP_SQL_DATABASE_ALIAS}" for tenant app Object Types.`,
+      `PostgreSQL storageBinding databaseAlias "${LEGACY_SHARED_SQL_DATABASE_ALIAS}" is a legacy shared platform alias. Use "${APP_SQL_DATABASE_ALIAS}" for tenant app Object Types.`,
     );
   }
 
@@ -934,7 +934,7 @@ function appOwnedStoragePublishGuidance(
 
   return [
     "",
-    "Why this can happen: tenant app Object Types must use app-owned storage bindings. Shared ResourceAPI aliases and generic table names are rejected by the platform.",
+    "Why this can happen: tenant app Object Types must use app-owned storage bindings. Shared platform aliases and generic table names are rejected by the platform.",
     `Next steps: run eai app provision ${tenantKey} --tenant-id ${tenantId} --select --format json, update src/eai.config/object-types.ts to use tenant-postgres and app-owned table names, then rerun eai types validate --tenant-key ${tenantKey} --tenant-id ${tenantId} and eai types seed --tenant-key ${tenantKey} --tenant-id ${tenantId}.`,
   ].join("\n");
 }
