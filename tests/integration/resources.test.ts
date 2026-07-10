@@ -394,6 +394,7 @@ describe('resource type diagnostics', () => {
           method: 'POST',
           headers: expect.objectContaining({
             'Content-Type': 'application/octet-stream',
+            'X-Tenant-Id': 'tenant-1',
           }),
         }),
       );
