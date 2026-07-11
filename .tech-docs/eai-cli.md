@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.3 |
+| Version | 3.7.4 |
 | Released | 2026-07-11 |
-| Last Material Change | Add tenant hard purge and hierarchy selection |
-| Source Commit | `c6b4a1260f2c3fb6f6431dd2e91be67b7f8d3b10` |
+| Last Material Change | Fix tenant hierarchy indentation across tenant listings |
+| Source Commit | `b6b4f08d6791a17b565a09dc8302c4e131da7f73` |
 
 
 ## Install

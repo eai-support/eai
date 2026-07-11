@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.7.3** (2026-07-11): Add tenant hard purge and hierarchy selection.
+The current CLI release is **v3.7.4** (2026-07-11): Fix tenant hierarchy indentation across tenant listings.
 
 
 ## What The Pieces Do
