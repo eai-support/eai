@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.4 |
+| Version | 3.7.5 |
 | Released | 2026-07-11 |
-| Last Material Change | Fix tenant hierarchy indentation across tenant listings |
-| Source Commit | `b6b4f08d6791a17b565a09dc8302c4e131da7f73` |
+| Last Material Change | Build tenant hierarchy from live tenant paths |
+| Source Commit | `7505019b7119d980316bc22f627efb98a9697cda` |
 
 
 ## Install

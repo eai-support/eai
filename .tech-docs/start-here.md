@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.7.4** (2026-07-11): Fix tenant hierarchy indentation across tenant listings.
+The current CLI release is **v3.7.5** (2026-07-11): Build tenant hierarchy from live tenant paths.
 
 
 ## What The Pieces Do
