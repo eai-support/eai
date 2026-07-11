@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import inquirer from 'inquirer';
 import * as auth from '../../src/lib/auth.js';
 import type { StoredTokens } from '../../src/lib/auth.js';
 import * as config from '../../src/lib/config.js';
@@ -195,6 +196,7 @@ describe('tenant list filtering', () => {
         slug: 'child',
         isActive: true,
         roles: ['tenant-admin'],
+        parentId: 'parent-tenant',
       },
     ], [
       {
@@ -240,6 +242,7 @@ describe('tenant list filtering', () => {
           slug: 'tenant-b',
           isActive: true,
           roles: ['tenant-admin'],
+          parentId: 'tenant-a',
         },
       ],
     });
@@ -247,9 +250,98 @@ describe('tenant list filtering', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
       'tenant-a - Tenant A [tenant-admin]',
-      'tenant-b - Tenant B [tenant-admin]',
+      '`- tenant-b - Tenant B [tenant-admin]',
     ]);
     expect(result.warnings).toEqual([]);
+  });
+
+  test('interactive tenant selection shows hierarchy tree choices', async () => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
+    vi.spyOn(auth, 'getActiveAuthConfigMismatch').mockResolvedValue(null);
+    vi.spyOn(auth, 'storeTokens').mockResolvedValue();
+    vi.spyOn(profile, 'getActiveProfile').mockReturnValue('default');
+
+    const promptSpy = vi.spyOn(inquirer, 'prompt').mockImplementation(async (questions: Array<Record<string, unknown>>) => {
+      const [question] = questions;
+      expect(question?.message).toBe('Select the tenant to work with now');
+      expect(question?.choices).toEqual([
+        { name: 'parent - Parent Tenant [tenant-admin]', value: 'parent-tenant', disabled: undefined },
+        { name: '`- child - Child Tenant [tenant-admin]', value: 'child-tenant', disabled: undefined },
+      ]);
+      return { tenantId: 'child-tenant' };
+    });
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/identity/tenants`) {
+        return new Response(
+          JSON.stringify({
+            tenants: [
+              {
+                id: 'parent-tenant',
+                displayName: 'Parent Tenant',
+                slug: 'parent',
+                role: 'tenant-admin',
+                isActive: true,
+              },
+              {
+                id: 'child-tenant',
+                displayName: 'Child Tenant',
+                slug: 'child',
+                role: 'tenant-admin',
+                isActive: true,
+                parentId: 'parent-tenant',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/parent-tenant/management`) {
+        return new Response(
+          JSON.stringify({
+            id: 'parent-tenant',
+            displayName: 'Parent Tenant',
+            slug: 'parent',
+            homeRegion: 'au',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/child-tenant/management`) {
+        return new Response(
+          JSON.stringify({
+            id: 'child-tenant',
+            displayName: 'Child Tenant',
+            slug: 'child',
+            parentTenantId: 'parent-tenant',
+            homeRegion: 'au',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(`Unhandled request: ${href}`, { status: 500 });
+    }));
+
+    const originalStdinTty = process.stdin.isTTY;
+    const originalStdoutTty = process.stdout.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+
+    try {
+      const context = await resolveActiveTenantContext({
+        publicApiUrl: DEFAULT_PUBLIC_API_URL,
+        interactive: true,
+        forcePrompt: true,
+      });
+
+      expect(context.activeTenant.id).toBe('child-tenant');
+      expect(promptSpy).toHaveBeenCalledOnce();
+    } finally {
+      Object.defineProperty(process.stdin, 'isTTY', { value: originalStdinTty, configurable: true });
+      Object.defineProperty(process.stdout, 'isTTY', { value: originalStdoutTty, configurable: true });
+    }
   });
 
   test('loads child tenant hierarchy only for an explicit parent', async () => {
