@@ -76,7 +76,10 @@ interface AdminTenantMembership {
   domain?: string;
   isActive?: boolean;
   parent?: { id?: string } | string | null;
+  parentTenant?: { id?: string } | string | null;
   parentId?: string | null;
+  parentTenantId?: string | null;
+  parent_tenant_id?: string | null;
   homeRegion?: string | null;
   hqCountryCode?: string | null;
   role?: string;
@@ -442,8 +445,8 @@ function toTenantEntry(
       slug: value.slug,
       domain: value.domain,
       isActive: value.isActive !== false,
-      parent: value.parent,
-      parentId: value.parentId,
+      parent: value.parent ?? value.parentTenant,
+      parentId: value.parentId ?? value.parentTenantId ?? value.parent_tenant_id,
       homeRegion: value.homeRegion,
       hqCountryCode: value.hqCountryCode,
     },
@@ -539,7 +542,11 @@ async function hydrateTenantMembershipManagementDetails(
 ): Promise<TenantMembership[]> {
   return Promise.all(
     memberships.map(async (membership) => {
-      if (membership.homeRegion && membership.hqCountryCode) {
+      if (
+        membership.homeRegion &&
+        membership.hqCountryCode &&
+        membership.parentId !== undefined
+      ) {
         return membership;
       }
 
