@@ -474,6 +474,8 @@ Examples:
             homeRegion: tenant.homeRegion,
             hqCountryCode: tenant.hqCountryCode,
             parentId: tenant.parentId,
+            tenantPath: tenant.tenantPath,
+            depth: tenant.depth,
             directMembership: tenant.directMembership,
             active: tokens.activeTenantId === tenant.id,
           })),
