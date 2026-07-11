@@ -215,8 +215,8 @@ describe('tenant list filtering', () => {
 
     expect(buildTenantHierarchyTreeLines(roots)).toEqual([
       'parent - Parent Tenant [tenant-admin]',
-      '`- child - Child Tenant [tenant-admin]',
-      '   `- grandchild - Grandchild Tenant [visible via parent]',
+      '\tchild - Child Tenant [tenant-admin]',
+      '\t\tgrandchild - Grandchild Tenant [visible via parent]',
     ]);
   });
 
@@ -250,7 +250,7 @@ describe('tenant list filtering', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
       'tenant-a - Tenant A [tenant-admin]',
-      '`- tenant-b - Tenant B [tenant-admin]',
+      '\ttenant-b - Tenant B [tenant-admin]',
     ]);
     expect(result.warnings).toEqual([]);
   });
@@ -267,7 +267,7 @@ describe('tenant list filtering', () => {
       expect(question?.message).toBe('Select the tenant to work with now');
       expect(question?.choices).toEqual([
         { name: 'parent - Parent Tenant [tenant-admin]', value: 'parent-tenant', disabled: undefined },
-        { name: '`- child - Child Tenant [tenant-admin]', value: 'child-tenant', disabled: undefined },
+        { name: '\tchild - Child Tenant [tenant-admin]', value: 'child-tenant', disabled: undefined },
       ]);
       return { tenantId: 'child-tenant' };
     });
@@ -393,9 +393,40 @@ describe('tenant list filtering', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
       'parent - Parent Tenant [tenant-admin]',
-      '`- child - Child Tenant [visible via parent]',
+      '\tchild - Child Tenant [visible via parent]',
     ]);
     expect(result.warnings).toEqual([]);
+  });
+
+  test('normalizes parent tenant metadata from flat membership payloads', () => {
+    const [entry] = normalizeTenantEntries({
+      tenants: [{
+        id: 'tenant-child',
+        displayName: 'Child Tenant',
+        slug: 'child-tenant',
+        isTenantAdmin: true,
+        roles: ['tenant-admin'],
+        parentTenant: { id: 'tenant-parent' },
+      }],
+    });
+
+    expect(entry).toEqual({
+      tenant: {
+        id: 'tenant-child',
+        displayName: 'Child Tenant',
+        slug: 'child-tenant',
+        isActive: true,
+        parent: { id: 'tenant-parent' },
+        parentId: undefined,
+        domain: undefined,
+      },
+      isTenantAdmin: true,
+      roles: ['tenant-admin'],
+    });
+    expect(toTenantMembership(entry!)).toEqual(expect.objectContaining({
+      id: 'tenant-child',
+      parentId: 'tenant-parent',
+    }));
   });
 
   test('normalizes flat admin membership payloads into tenant entries', () => {
@@ -516,6 +547,58 @@ describe('tenant list filtering', () => {
     expect(result.memberships[0]?.hqCountryCode).toBe('DK');
     expect(fetchMock).toHaveBeenCalledWith(
       `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/tenant-eu/management`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  test('hydrates missing parentId from tenant management details even when region metadata already exists', async () => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/identity/tenants`) {
+        return new Response(
+          JSON.stringify({
+            tenants: [{
+              id: 'tenant-child',
+              displayName: 'Child Tenant',
+              slug: 'child-tenant',
+              role: 'tenant-admin',
+              isActive: true,
+              homeRegion: 'au',
+              hqCountryCode: 'AU',
+            }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/tenant-child/management`) {
+        return new Response(
+          JSON.stringify({
+            id: 'tenant-child',
+            displayName: 'Child Tenant',
+            slug: 'child-tenant',
+            homeRegion: 'au',
+            hqCountryCode: 'AU',
+            parentTenantId: 'tenant-parent',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(`Unhandled request: ${href}`, { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchTenantAdminMemberships(DEFAULT_PUBLIC_API_URL);
+
+    expect(result.memberships[0]).toEqual(expect.objectContaining({
+      id: 'tenant-child',
+      parentId: 'tenant-parent',
+      homeRegion: 'au',
+      hqCountryCode: 'AU',
+    }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/tenant-child/management`,
       expect.objectContaining({ method: 'GET' }),
     );
   });
