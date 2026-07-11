@@ -224,14 +224,12 @@ function tenantHierarchyStatus(
 
 export function tenantHierarchyLineText(
   item: TenantHierarchyItem,
-  prefix: string,
-  isLast: boolean,
-  isRoot: boolean,
+  depth: number,
   activeTenantId?: string,
 ): string {
-  const connector = isRoot ? "" : isLast ? "`- " : "|- ";
+  const prefix = "\t".repeat(Math.max(0, depth));
   const domain = item.domain ? ` (${item.domain})` : "";
-  return `${prefix}${connector}${item.slug} - ${item.displayName}${domain}${tenantHierarchyStatus(item, activeTenantId)}`;
+  return `${prefix}${item.slug} - ${item.displayName}${domain}${tenantHierarchyStatus(item, activeTenantId)}`;
 }
 
 export function buildTenantHierarchyTreeLines(
@@ -241,28 +239,13 @@ export function buildTenantHierarchyTreeLines(
   const lines: string[] = [];
   const visit = (
     item: TenantHierarchyItem,
-    prefix: string,
-    isLast: boolean,
-    isRoot: boolean,
+    depth: number,
   ): void => {
-    lines.push(
-      tenantHierarchyLineText(
-        item,
-        prefix,
-        isLast,
-        isRoot,
-        options?.activeTenantId,
-      ),
-    );
-    const childPrefix = isRoot ? "" : `${prefix}${isLast ? "   " : "|  "}`;
-    item.children.forEach((child, index) =>
-      visit(child, childPrefix, index === item.children.length - 1, false),
-    );
+    lines.push(tenantHierarchyLineText(item, depth, options?.activeTenantId));
+    item.children.forEach((child) => visit(child, depth + 1));
   };
 
-  roots.forEach((root, index) =>
-    visit(root, "", index === roots.length - 1, true),
-  );
+  roots.forEach((root) => visit(root, 0));
   return lines;
 }
 
@@ -356,26 +339,19 @@ export async function promptForTenantFromHierarchy(
   const allowIndirect = options?.allowIndirect ?? false;
   const visit = (
     item: TenantHierarchyItem,
-    prefix: string,
-    isLast: boolean,
-    isRoot: boolean,
+    depth: number,
   ): void => {
     choices.push({
-      name: tenantHierarchyLineText(item, prefix, isLast, isRoot),
+      name: tenantHierarchyLineText(item, depth),
       value: item.id,
       disabled:
         allowIndirect || item.directMembership
           ? undefined
           : "Visible through parent hierarchy; direct tenant-admin membership is required to select.",
     });
-    const childPrefix = isRoot ? "" : `${prefix}${isLast ? "   " : "|  "}`;
-    item.children.forEach((child, index) =>
-      visit(child, childPrefix, index === item.children.length - 1, false),
-    );
+    item.children.forEach((child) => visit(child, depth + 1));
   };
-  roots.forEach((root, index) =>
-    visit(root, "", index === roots.length - 1, true),
-  );
+  roots.forEach((root) => visit(root, 0));
   if (options?.extraChoices?.length) {
     choices.push(...options.extraChoices);
   }

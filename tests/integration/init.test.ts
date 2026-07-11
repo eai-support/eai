@@ -596,8 +596,8 @@ describe("eai init", () => {
         expect(question?.message).toBe("Choose the main company tenant for this app");
         expect(question?.choices).toEqual([
           { name: "parent - Parent Tenant [tenant-admin]", value: "tenant-parent", disabled: undefined },
-          { name: "`- child - Child Tenant [tenant-admin]", value: "tenant-child", disabled: undefined },
-          { name: "Other main company tenant (enter ID manually)", value: "__manual__", disabled: undefined },
+          { name: "\tchild - Child Tenant [tenant-admin]", value: "tenant-child", disabled: undefined },
+          { name: "Other main company tenant (enter ID manually)", value: "__manual__" },
         ]);
         return { tenantId: "tenant-child" };
       })
