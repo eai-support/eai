@@ -1,6 +1,6 @@
 {
   "name": "@enterpriseai/cli",
-  "version": "3.7.2",
+  "version": "3.7.3",
   "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
   "type": "module",
   "bin": {

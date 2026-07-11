@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.2 |
-| Released | 2026-07-10 |
-| Last Material Change | Fix resource file upload tenant context |
-| Source Commit | `ec4f1f065ad44e0d5a7dbf70b69c5aaf110d6bd7` |
+| Version | 3.7.3 |
+| Released | 2026-07-11 |
+| Last Material Change | Add tenant hard purge and hierarchy selection |
+| Source Commit | `c6b4a1260f2c3fb6f6431dd2e91be67b7f8d3b10` |
 
 
 ## Install

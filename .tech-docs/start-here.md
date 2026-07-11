@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.7.2** (2026-07-10): Fix resource file upload tenant context.
+The current CLI release is **v3.7.3** (2026-07-11): Add tenant hard purge and hierarchy selection.
 
 
 ## What The Pieces Do
