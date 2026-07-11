@@ -255,6 +255,44 @@ describe('tenant list filtering', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  test('builds hierarchy from tenantPath when parentId is absent', async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error('child tenant lookup should not run for the default list');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await loadTenantHierarchy({
+      publicApiUrl: DEFAULT_PUBLIC_API_URL,
+      memberships: [
+        {
+          id: 'tenant-eai',
+          displayName: 'EAI',
+          slug: 'eai',
+          tenantPath: '/eai',
+          depth: 1,
+          isActive: true,
+          roles: ['tenant-admin'],
+        },
+        {
+          id: 'tenant-compliance',
+          displayName: 'Compliance',
+          slug: 'compliance',
+          tenantPath: '/eai/compliance',
+          depth: 2,
+          isActive: true,
+          roles: ['tenant-admin'],
+        },
+      ],
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
+      'eai - EAI [tenant-admin]',
+      '\tcompliance - Compliance [tenant-admin]',
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
   test('interactive tenant selection shows hierarchy tree choices', async () => {
     vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
     vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
@@ -284,6 +322,8 @@ describe('tenant list filtering', () => {
                 slug: 'parent',
                 role: 'tenant-admin',
                 isActive: true,
+                tenantPath: '/parent',
+                depth: 1,
               },
               {
                 id: 'child-tenant',
@@ -291,7 +331,8 @@ describe('tenant list filtering', () => {
                 slug: 'child',
                 role: 'tenant-admin',
                 isActive: true,
-                parentId: 'parent-tenant',
+                tenantPath: '/parent/child',
+                depth: 2,
               },
             ],
           }),
@@ -418,6 +459,8 @@ describe('tenant list filtering', () => {
         isActive: true,
         parent: { id: 'tenant-parent' },
         parentId: undefined,
+        tenantPath: undefined,
+        depth: undefined,
         domain: undefined,
       },
       isTenantAdmin: true,
@@ -446,6 +489,8 @@ describe('tenant list filtering', () => {
         isActive: true,
         parent: undefined,
         parentId: undefined,
+        tenantPath: undefined,
+        depth: undefined,
         domain: undefined,
       },
       isTenantAdmin: true,
@@ -475,6 +520,8 @@ describe('tenant list filtering', () => {
         isActive: true,
         parent: undefined,
         parentId: undefined,
+        tenantPath: undefined,
+        depth: 1,
         domain: undefined,
       },
       role: 'tenant-admin',
@@ -490,6 +537,7 @@ describe('tenant list filtering', () => {
         displayName: 'Canada Workspace',
         slug: 'canada-workspace',
         role: 'tenant-admin',
+        tenantPath: '/canada-workspace',
         depth: 1,
         createdAt: '2026-05-08T00:00:00Z',
         homeRegion: 'ca',
@@ -501,6 +549,8 @@ describe('tenant list filtering', () => {
     const membership = toTenantMembership(entry!);
 
     expect(membership.homeRegion).toBe('ca');
+    expect(membership.tenantPath).toBe('/canada-workspace');
+    expect(membership.depth).toBe(1);
     expect(publicApiUrlForHomeRegion(membership.homeRegion)).toBe(
       'https://api.ca.myenterprise.ai/public',
     );

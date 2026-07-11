@@ -60,6 +60,8 @@ export interface TenantEntry {
     isActive: boolean;
     parent?: { id?: string } | string | null;
     parentId?: string | null;
+    tenantPath?: string;
+    depth?: number;
     homeRegion?: string | null;
     hqCountryCode?: string | null;
   };
@@ -80,6 +82,8 @@ interface AdminTenantMembership {
   parentId?: string | null;
   parentTenantId?: string | null;
   parent_tenant_id?: string | null;
+  tenantPath?: string;
+  depth?: number;
   homeRegion?: string | null;
   hqCountryCode?: string | null;
   role?: string;
@@ -95,6 +99,8 @@ export interface TenantMembership {
   isActive: boolean;
   roles: string[];
   parentId?: string | null;
+  tenantPath?: string;
+  depth?: number;
   homeRegion?: string | null;
   hqCountryCode?: string | null;
 }
@@ -447,6 +453,8 @@ function toTenantEntry(
       isActive: value.isActive !== false,
       parent: value.parent ?? value.parentTenant,
       parentId: value.parentId ?? value.parentTenantId ?? value.parent_tenant_id,
+      tenantPath: value.tenantPath,
+      depth: value.depth,
       homeRegion: value.homeRegion,
       hqCountryCode: value.hqCountryCode,
     },
@@ -490,6 +498,8 @@ export function toTenantMembership(entry: TenantEntry): TenantMembership {
       (typeof entry.tenant.parent === "string"
         ? entry.tenant.parent
         : entry.tenant.parent?.id) ?? entry.tenant.parentId,
+    tenantPath: entry.tenant.tenantPath,
+    depth: entry.tenant.depth,
     homeRegion: entry.tenant.homeRegion,
     hqCountryCode: entry.tenant.hqCountryCode,
   };

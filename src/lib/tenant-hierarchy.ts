@@ -12,6 +12,8 @@ export interface TenantHierarchyItem {
   homeRegion?: string | null;
   hqCountryCode?: string | null;
   parentId?: string | null;
+  tenantPath?: string;
+  depth?: number;
   directMembership: boolean;
   children: TenantHierarchyItem[];
 }
@@ -39,6 +41,23 @@ function tenantParentIdFromRecord(record: Record<string, unknown>): string | nul
     optionalString(record.parent_tenant_id) ??
     null
   );
+}
+
+function normalizeTenantPath(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const segments = value
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (segments.length === 0) return undefined;
+  return `/${segments.join("/")}`;
+}
+
+function parentTenantPath(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const segments = value.split("/").filter(Boolean);
+  if (segments.length <= 1) return undefined;
+  return `/${segments.slice(0, -1).join("/")}`;
 }
 
 function tenantRecordsFromPayload(payload: unknown): Record<string, unknown>[] {
@@ -71,6 +90,8 @@ function tenantHierarchyItemFromMembership(
     isActive: membership.isActive,
     roles: membership.roles,
     parentId: membership.parentId,
+    tenantPath: membership.tenantPath,
+    depth: membership.depth,
     homeRegion: membership.homeRegion,
     hqCountryCode: membership.hqCountryCode,
     directMembership: true,
@@ -107,6 +128,11 @@ function tenantHierarchyItemFromRecord(
         ? record.hqCountryCode
         : undefined,
     parentId: tenantParentIdFromRecord(record),
+    tenantPath: normalizeTenantPath(record.tenantPath),
+    depth:
+      typeof record.depth === "number" && Number.isFinite(record.depth)
+        ? record.depth
+        : undefined,
     directMembership: false,
     children: [],
   };
@@ -127,6 +153,8 @@ function mergeTenantHierarchyItem(
     roles: existing.roles.length ? existing.roles : next.roles,
     directMembership: existing.directMembership || next.directMembership,
     parentId: next.parentId ?? existing.parentId,
+    tenantPath: next.tenantPath ?? existing.tenantPath,
+    depth: next.depth ?? existing.depth,
     homeRegion: next.homeRegion ?? existing.homeRegion,
     hqCountryCode: next.hqCountryCode ?? existing.hqCountryCode,
     children: [],
@@ -157,6 +185,7 @@ export function buildTenantHierarchy(
   childRecords: unknown[] = [],
 ): TenantHierarchyItem[] {
   const byId = new Map<string, TenantHierarchyItem>();
+  const byPath = new Map<string, TenantHierarchyItem>();
 
   for (const membership of directMemberships) {
     byId.set(
@@ -177,12 +206,25 @@ export function buildTenantHierarchy(
 
   for (const item of byId.values()) {
     item.children = [];
+    if (item.tenantPath) {
+      byPath.set(item.tenantPath, item);
+    }
   }
 
   const roots: TenantHierarchyItem[] = [];
   for (const item of byId.values()) {
-    if (item.parentId && item.parentId !== item.id && byId.has(item.parentId)) {
-      byId.get(item.parentId)!.children.push(item);
+    const parentFromPath = parentTenantPath(item.tenantPath);
+    const resolvedParentId =
+      (parentFromPath ? byPath.get(parentFromPath)?.id : undefined) ??
+      item.parentId ??
+      undefined;
+
+    if (
+      resolvedParentId &&
+      resolvedParentId !== item.id &&
+      byId.has(resolvedParentId)
+    ) {
+      byId.get(resolvedParentId)!.children.push(item);
     } else {
       roots.push(item);
     }
@@ -262,6 +304,8 @@ export function tenantHierarchyJson(
     homeRegion: item.homeRegion,
     hqCountryCode: item.hqCountryCode,
     parentId: item.parentId,
+    tenantPath: item.tenantPath,
+    depth: item.depth,
     directMembership: item.directMembership,
     children: item.children.map(tenantHierarchyJson),
   };
