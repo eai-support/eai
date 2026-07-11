@@ -1342,6 +1342,7 @@ tenantCommand
   .command("delete <id>")
   .description("Delete a tenant")
   .option("--force", "Skip confirmation", false)
+  .option("--force-hard-purge", "Permanently purge the tenant and all child tenants", false)
   .option("--format <format>", "Output format (text|json)", "text")
   .option("--json", "Output raw JSON (deprecated, use --format json)", false)
   .action(async (id, options) => {
@@ -1349,11 +1350,14 @@ tenantCommand
 
     if (!options.force) {
       const { default: inquirer } = await import("inquirer");
+      const promptMessage = options.forceHardPurge
+        ? `Permanently hard purge tenant ${id} and all child tenants? This cannot be undone.`
+        : `Delete tenant ${id}?`;
       const { confirm } = await inquirer.prompt([
         {
           type: "confirm",
           name: "confirm",
-          message: `Delete tenant ${id}?`,
+          message: promptMessage,
           default: false,
         },
       ]);
@@ -1378,10 +1382,12 @@ tenantCommand
     const spinner =
       options.format === "json"
         ? null
-        : ora(`Deleting tenant "${id}"...`).start();
+        : ora(`${options.forceHardPurge ? "Hard purging" : "Deleting"} tenant "${id}"...`).start();
 
     try {
-      const res = await client.deleteTenant(id);
+      const res = await client.deleteTenant(id, {
+        forceHardPurge: Boolean(options.forceHardPurge),
+      });
       if (!res.ok) {
         const body = await res.text();
         if (options.format === "json") {
@@ -1397,10 +1403,18 @@ tenantCommand
         process.exit(1);
       }
 
+      const responseBody = await res.json().catch(() => null);
       if (options.format === "json") {
-        out.json({ id, deleted: true });
+        out.json({
+          id,
+          deleted: true,
+          hardPurged: Boolean(options.forceHardPurge),
+          response: responseBody,
+        });
       } else {
-        spinner!.succeed(`Deleted tenant ${chalk.cyan(id)}`);
+        spinner!.succeed(
+          `${options.forceHardPurge ? "Hard purged" : "Deleted"} tenant ${chalk.cyan(id)}`,
+        );
       }
     } catch (err) {
       if (spinner)

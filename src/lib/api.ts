@@ -1329,8 +1329,22 @@ export class PlatformAPIClient {
     });
   }
 
-  async deleteTenant(tenantId: string): Promise<Response> {
-    return this.publicRequest(`${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/delete`, 'POST');
+  async deleteTenant(
+    tenantId: string,
+    options: { forceHardPurge?: boolean; reason?: string } = {},
+  ): Promise<Response> {
+    const body = options.forceHardPurge
+      ? {
+          forceHardPurge: true,
+          confirmationTenantId: tenantId,
+          reason: options.reason || 'eai tenant delete --force-hard-purge',
+        }
+      : undefined;
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/delete`,
+      'POST',
+      body,
+    );
   }
 
   async bootstrapChildTenantAdmin(
