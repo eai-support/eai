@@ -288,7 +288,7 @@ describe("eai init", () => {
     await expectFileContains(
       ctx,
       "my-app/.env.local",
-      "AUTH_URL=http://localhost:3000/my-app",
+      "AUTH_URL=http://localhost:3000/my-app/api/auth",
     );
     await expectFileContains(
       ctx,
@@ -578,6 +578,137 @@ describe("eai init", () => {
     await expectFileNotExists(ctx, "existing-work/package.json");
     expect(consoleCapture.stdout.join("\n")).toContain("Created Existing Work");
   });
+
+  test("HP003: init shows tenant hierarchy when choosing another main company tenant", async () => {
+    workingDirectoryIs(ctx, env.dir);
+
+    const promptSpy = vi
+      .spyOn(inquirer, "prompt")
+      .mockResolvedValueOnce({
+        name: "hierarchy-app",
+        displayName: "Hierarchy App",
+        description: "Hierarchy App application",
+      })
+      .mockResolvedValueOnce({ useCurrentDirectory: false })
+      .mockResolvedValueOnce({ mode: "other" })
+      .mockImplementationOnce(async (questions: Array<Record<string, unknown>>) => {
+        const [question] = questions;
+        expect(question?.message).toBe("Choose the main company tenant for this app");
+        expect(question?.choices).toEqual([
+          { name: "parent - Parent Tenant [tenant-admin]", value: "tenant-parent", disabled: undefined },
+          { name: "\tchild - Child Tenant [tenant-admin]", value: "tenant-child", disabled: undefined },
+          { name: "Other main company tenant (enter ID manually)", value: "__manual__" },
+        ]);
+        return { tenantId: "tenant-child" };
+      })
+      .mockResolvedValueOnce({ appTenantScope: "current" })
+      .mockResolvedValueOnce({ includeChat: true })
+      .mockResolvedValueOnce({ includeDocs: true })
+      .mockResolvedValueOnce({ authProvider: "ciam" });
+    const tenantCtxSpy = vi
+      .spyOn(tenantContext, "resolveActiveTenantContext")
+      .mockResolvedValue({
+        publicApiUrl: TEST_PUBLIC_API_URL,
+        tokens: {
+          accessToken: "access",
+          expiresAt: Date.now() + 60_000,
+          tenantId: "ciam-guid",
+          tenantName: "profile-test-tenant",
+          clientId: "client-id",
+        },
+        activeTenant: {
+          id: "tenant-current",
+          displayName: "Current Tenant",
+          slug: "current",
+          domain: "current.example.com",
+          isActive: true,
+          roles: ["tenant-admin"],
+        },
+        memberships: [
+          {
+            id: "tenant-current",
+            displayName: "Current Tenant",
+            slug: "current",
+            domain: "current.example.com",
+            isActive: true,
+            roles: ["tenant-admin"],
+          },
+          {
+            id: "tenant-parent",
+            displayName: "Parent Tenant",
+            slug: "parent",
+            isActive: true,
+            roles: ["tenant-admin"],
+          },
+          {
+            id: "tenant-child",
+            displayName: "Child Tenant",
+            slug: "child",
+            isActive: true,
+            roles: ["tenant-admin"],
+            parentId: "tenant-parent",
+          },
+        ],
+      });
+    const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(false);
+    const loadTokensSpy = vi.spyOn(auth, "loadTokens").mockResolvedValue({
+      accessToken: "access",
+      expiresAt: Date.now() + 60_000,
+      tenantId: "ciam-guid",
+      tenantName: "profile-test-tenant",
+      clientId: "client-id",
+    });
+    const capabilitySpy = vi
+      .spyOn(PlatformAPIClient.prototype, "evaluateCapability")
+      .mockResolvedValue(allowedCapability());
+    const getTenantSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "getTenant")
+      .mockImplementation(async (tenantId: string) => {
+        return new Response(
+          JSON.stringify({
+            id: tenantId,
+            displayName:
+              tenantId === "tenant-child" ? "Child Tenant" : "Current Tenant",
+            parentTenantId:
+              tenantId === "tenant-child" ? "tenant-parent" : undefined,
+            ultimateParentId:
+              tenantId === "tenant-child" ? "tenant-parent" : tenantId,
+            homeRegion: "au",
+          }),
+          { status: 200 },
+        );
+      });
+    const createTenantAppSpy = vi
+      .spyOn(PlatformAPIClient.prototype, "createTenantApp")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            childTenant: null,
+          }),
+          { status: 201 },
+        ),
+      );
+
+    try {
+      await initCommand.parseAsync(["hierarchy-app", "--from", templateRepo], {
+        from: "user",
+      });
+      expect(createTenantAppSpy).toHaveBeenCalledWith(
+        "tenant-child",
+        expect.objectContaining({
+          verticalKey: "hierarchy-app",
+        }),
+      );
+    } finally {
+      promptSpy.mockRestore();
+      tenantCtxSpy.mockRestore();
+      authSpy.mockRestore();
+      loadTokensSpy.mockRestore();
+      capabilitySpy.mockRestore();
+      getTenantSpy.mockRestore();
+      createTenantAppSpy.mockRestore();
+    }
+  }, 30_000);
 
   test("TC002c: --current-dir works with --skip-prompts for automation", async () => {
     const projectDir = join(env.dir, "current-dir-app");
@@ -907,12 +1038,12 @@ describe("eai init", () => {
     await expectFileContains(
       ctx,
       "quick-app/src/eai.config/object-types.ts",
-      "databaseAlias: 'resourceapi-postgres'",
+      "databaseAlias: 'tenant-postgres'",
     );
     await expectFileContains(
       ctx,
       "quick-app/src/eai.config/object-types.ts",
-      "tableName: 'tenant_resources'",
+      "tableName: 'nantquickapp_quick_app_tenant_resources'",
     );
     await expectFileExists(
       ctx,
@@ -947,11 +1078,17 @@ describe("eai init", () => {
       "utf-8",
     );
     expect(objectTypes).toContain("storageMetadataStatus: 'ready' as const");
-    expect(objectTypes).toContain("databaseAlias: 'resourceapi-postgres'");
+    expect(objectTypes).toContain("export type StorageBackend");
+    expect(objectTypes).toContain("export interface ObjectTypeDefinition");
+    expect(objectTypes).toContain("databaseAlias: 'tenant-postgres'");
+    expect(objectTypes).not.toContain("resourceapi-postgres");
     expect(objectTypes).toContain(
-      "tenantSchemaStrategy: 'per-tenant-database' as const",
+      "tenantSchemaStrategy: 'per-tenant-schema' as const",
     );
-    expect(objectTypes).toContain("tableName: 'tenant_resources'");
+    expect(objectTypes).toContain(
+      "tableName: 'nantquickapp_quick_app_tenant_resources'",
+    );
+    expect(objectTypes).toContain("tableName: 'nantquickapp_quick_app_records'");
     expectNoPrompts(ctx);
   }, 30_000);
 

@@ -161,7 +161,7 @@ for required in \
   "Create GitHub release" \
   "id-token: write" \
   "registry-url: https://registry.npmjs.org/" \
-  "npm install -g npm@latest" \
+  "npm install -g npm@11.18.0" \
   "npm publish --access public --provenance" \
   "npm publish .release/eai-cli-package --access public --provenance" \
   "node scripts/build-npm-alias-package.cjs" \

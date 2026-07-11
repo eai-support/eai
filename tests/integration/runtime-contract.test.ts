@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { execFile } from 'node:child_process';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,7 +39,7 @@ async function createRuntimeProject(): Promise<string> {
         },
         secrets: {
           required: ['AUTH_SECRET', 'ENTRA_CLIENT_SECRET'],
-          optional: ['EAI_SERVICE_CLIENT_SECRET', 'OBO_CLIENT_SECRET'],
+          optional: [],
         },
         auth: {
           callbackPath: '/api/auth/callback/microsoft-entra-id',
@@ -73,20 +73,6 @@ async function createRuntimeProject(): Promise<string> {
               category: 'tenant_workflow_config',
             },
           ],
-        },
-        serviceIdentity: {
-          preferred: {
-            clientId: 'EAI_SERVICE_CLIENT_ID',
-            clientSecret: 'EAI_SERVICE_CLIENT_SECRET',
-            targetScope: 'EAI_SERVICE_TARGET_SCOPE',
-            tenantName: 'EAI_SERVICE_TENANT_NAME',
-          },
-          legacyAliases: {
-            clientId: 'OBO_CLIENT_ID',
-            clientSecret: 'OBO_CLIENT_SECRET',
-            targetScope: 'OBO_TARGET_SCOPE',
-            tenantName: 'OBO_TENANT_NAME',
-          },
         },
       },
       null,
@@ -166,7 +152,7 @@ describe('runtime contract validation and deploy doctor', () => {
       };
 
       expect(runtimeJson.summary.requiredProtectedEnvNames).toContain('AUTH_SECRET');
-      expect(runtimeJson.summary.optionalProtectedEnvNames).toContain('EAI_SERVICE_CLIENT_SECRET');
+      expect(runtimeJson.summary.optionalProtectedEnvNames).not.toContain('EAI_SERVICE_CLIENT_SECRET');
       expect(runtime.stdout).not.toContain('[redacted]');
 
       const deploy = await execFileAsync(
@@ -180,7 +166,7 @@ describe('runtime contract validation and deploy doctor', () => {
       };
 
       expect(deployJson.requiredProtectedEnvNames).toContain('ENTRA_CLIENT_SECRET');
-      expect(deployJson.optionalProtectedEnvNames).toContain('OBO_CLIENT_SECRET');
+      expect(deployJson.optionalProtectedEnvNames).not.toContain('OBO_CLIENT_SECRET');
       expect(deploy.stdout).not.toContain('[redacted]');
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -221,6 +207,51 @@ describe('runtime contract validation and deploy doctor', () => {
       );
     } finally {
       process.chdir(originalCwd);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects app-only service identity and anonymous platform access in tenant app contracts', async () => {
+    const root = await createRuntimeProject();
+    try {
+      const contract = JSON.parse(
+        await readFile(join(root, 'eai.runtime.json'), 'utf8'),
+      ) as Record<string, unknown>;
+      contract.serviceIdentity = {
+        preferred: {
+          clientId: 'EAI_SERVICE_CLIENT_ID',
+          clientSecret: 'EAI_SERVICE_CLIENT_SECRET',
+          targetScope: 'EAI_SERVICE_TARGET_SCOPE',
+          tenantName: 'EAI_SERVICE_TENANT_NAME',
+        },
+      };
+      contract.endpoints = {
+        ...(contract.endpoints as Record<string, unknown>),
+        public: [
+          {
+            method: 'GET',
+            path: '/api/public/feed',
+            serverSidePlatformAccess: true,
+          },
+        ],
+      };
+      await writeFile(join(root, 'eai.runtime.json'), JSON.stringify(contract, null, 2));
+
+      const result = await validateRuntimeContract(root);
+      expect(result.status).toBe('fail');
+      expect(result.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'runtime_service_identity_not_supported',
+            severity: 'error',
+          }),
+          expect.objectContaining({
+            code: 'runtime_anonymous_platform_access_not_supported',
+            severity: 'error',
+          }),
+        ]),
+      );
+    } finally {
       await rm(root, { recursive: true, force: true });
     }
   });

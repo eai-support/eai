@@ -171,6 +171,26 @@ describe('PlatformAPIClient', () => {
     expect(init?.body).toBeUndefined()
   })
 
+  test('sends force-hard-purge confirmation when deleting a tenant permanently', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.deleteTenant('tenant-child', { forceHardPurge: true })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/delete')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      forceHardPurge: true,
+      confirmationTenantId: 'tenant-child',
+      reason: 'eai tenant delete --force-hard-purge',
+    })
+  })
+
   test('routes child tenant admin bootstrap through the public platform router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
@@ -395,6 +415,275 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('registers source-unknown app repositories through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.registerSourceUnknownApp('tenant-parent', 'rates-review', {
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      repoUrl: 'https://github.com/enterpriseaigroup/rates-review',
+      defaultBranch: 'main',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configPath: 'src/eai.config/index.ts',
+      runtimePath: 'src/eai.runtime.ts',
+      sourceMode: 'source-unknown',
+      schemaProvenance: {
+        templateVersion: 'eai.generated_app_config.v1',
+        baseTemplateSha: '483c609cd974fa732c8ccb5ce37855911f881d76',
+        schemaDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        validatorDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      },
+      validationSummary: { status: 'registered_by_cli' },
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      repoUrl: 'https://github.com/enterpriseaigroup/rates-review',
+      defaultBranch: 'main',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configPath: 'src/eai.config/index.ts',
+      runtimePath: 'src/eai.runtime.ts',
+      sourceMode: 'source-unknown',
+      schemaProvenance: {
+        templateVersion: 'eai.generated_app_config.v1',
+        baseTemplateSha: '483c609cd974fa732c8ccb5ce37855911f881d76',
+        schemaDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        validatorDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      },
+      validationSummary: { status: 'registered_by_cli' },
+    })
+  })
+
+  test('registers observed-only source-unknown app adoption metadata', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.registerSourceUnknownApp('tenant-parent', 'rates-review', {
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      repoUrl: 'https://github.com/enterpriseaigroup/rates-review',
+      defaultBranch: 'main',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configPath: 'src/eai.config/index.ts',
+      runtimePath: 'src/eai.runtime.ts',
+      sourceMode: 'source-unknown',
+      adoptionMode: 'adopted-observed',
+      observedDeployment: {
+        environment: 'production',
+        activeUrl: 'https://rates.example.com',
+        status: 'adopted_observed',
+        observedAt: '2026-07-02T00:00:00.000Z',
+        deploymentId: 'aca-revision-42',
+      },
+      validationSummary: {
+        status: 'adopted_observed_by_cli',
+        destructiveOperationsBlocked: true,
+      },
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      repoUrl: 'https://github.com/enterpriseaigroup/rates-review',
+      defaultBranch: 'main',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configPath: 'src/eai.config/index.ts',
+      runtimePath: 'src/eai.runtime.ts',
+      sourceMode: 'source-unknown',
+      adoptionMode: 'adopted-observed',
+      observedDeployment: {
+        environment: 'production',
+        activeUrl: 'https://rates.example.com',
+        status: 'adopted_observed',
+        observedAt: '2026-07-02T00:00:00.000Z',
+        deploymentId: 'aca-revision-42',
+      },
+      validationSummary: {
+        status: 'adopted_observed_by_cli',
+        destructiveOperationsBlocked: true,
+      },
+    })
+  })
+
+  test('issues source-unknown workflow setup through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.setupSourceUnknownWorkflow('tenant-parent', 'rates-review', {
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configHash: 'sha256:config',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-setup')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configHash: 'sha256:config',
+    })
+  })
+
+  test('submits source-unknown workflow evidence through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.submitSourceUnknownWorkflowEvidence('tenant-parent', 'rates-review', {
+      operationId: 'source-unknown-op',
+      nonce: 'nonce-token',
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configHash: 'sha256:config',
+      artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      workflowRun: { id: '123456789', attempt: 1 },
+      oidcClaims: {
+        repository: 'enterpriseaigroup/rates-review',
+        ref: 'refs/heads/main',
+        sha: 'abcdef1234567890',
+        run_id: '123456789',
+      },
+      validationSummary: { status: 'passed' },
+    }, 'github-oidc-token')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-evidence')
+    expect(init?.method).toBe('POST')
+    expect(init?.headers).toEqual(expect.objectContaining({
+      Authorization: 'Bearer github-oidc-token',
+    }))
+    expect(JSON.parse(String(init?.body))).toEqual({
+      operationId: 'source-unknown-op',
+      nonce: 'nonce-token',
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configHash: 'sha256:config',
+      artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      workflowRun: { id: '123456789', attempt: 1 },
+      oidcClaims: {
+        repository: 'enterpriseaigroup/rates-review',
+        ref: 'refs/heads/main',
+        sha: 'abcdef1234567890',
+        run_id: '123456789',
+      },
+      validationSummary: { status: 'passed' },
+    })
+  })
+
+  test('requests source-unknown deployment handoff through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 202 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.requestSourceUnknownDeployment('tenant-parent', 'rates-review', {
+      operationId: 'source-unknown-op',
+      environment: 'preview',
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      workflowRunId: '123456789',
+      configHash: 'sha256:config',
+      artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      deploymentTarget: {
+        kind: 'tenantinfra',
+        releaseChannel: 'preview',
+      },
+      validationSummary: {
+        status: 'deployment_requested_by_cli',
+        requiresTenantInfra: true,
+      },
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deploy')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      operationId: 'source-unknown-op',
+      environment: 'preview',
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      workflowRunId: '123456789',
+      configHash: 'sha256:config',
+      artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      deploymentTarget: {
+        kind: 'tenantinfra',
+        releaseChannel: 'preview',
+      },
+      validationSummary: {
+        status: 'deployment_requested_by_cli',
+        requiresTenantInfra: true,
+      },
+    })
+  })
+
+  test('reads latest source-unknown deployment handoff status through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.getLatestSourceUnknownDeployment('tenant-parent', 'rates-review')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deployments/latest')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
   test('creates app provisioning jobs through the public company app route', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
@@ -616,6 +905,39 @@ describe('PlatformAPIClient', () => {
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({ tenant_id: 'tenant-parent' })
     expect(result.clientSecret).toBe('<fixture-client-secret>')
+  })
+
+  test('passes an existing Entra client id when provisioning should reconcile a local registration', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        client_id: 'client-1',
+        client_secret: null,
+        existing: true,
+      }), { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const result = await client.provisionEntraApp({
+      tenantId: 'tenant-parent',
+      appName: 'my-app',
+      redirectUris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      existingClientId: 'client-1',
+      idempotent: true,
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/platform/provisioning/entra-apps')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      tenant_id: 'tenant-parent',
+      app_name: 'my-app',
+      redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      existing_client_id: 'client-1',
+      idempotent: true,
+    })
+    expect(result.clientId).toBe('client-1')
+    expect(result.existing).toBe(true)
   })
 
   test('deprovisions Entra app registrations through the public provision router', async () => {

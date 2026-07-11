@@ -8,6 +8,7 @@ body:
     attributes:
       value: |
         Describe the user problem first. Please keep examples public-safe.
+        Paste commands, sanitized logs, and examples directly into this form. Do not attach ZIPs, scripts, installers, binaries, or fix archives; unsolicited executable/archive attachments may be removed by maintainers.
   - type: textarea
     id: problem
     attributes:
@@ -32,6 +33,6 @@ body:
     id: context
     attributes:
       label: Additional context
-      description: Do not include secrets, tenant data, customer data, or private URLs.
+      description: Do not include secrets, tenant data, customer data, private URLs, ZIPs, scripts, installers, binaries, or fix archives.
     validations:
       required: false

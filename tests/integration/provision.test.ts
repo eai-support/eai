@@ -252,7 +252,7 @@ describe('eai provision entra', () => {
     });
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
-    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder/api/auth');
     expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
     expect(content).toContain('ENTRA_REDIRECT_URIS=http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id');
   });
@@ -296,7 +296,7 @@ describe('eai provision entra', () => {
     });
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
-    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder/api/auth');
     expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
     expect(content).toContain('ENTRA_REDIRECT_URIS=http://localhost:3000/no-code-builder/api/auth/callback/microsoft-entra-id');
   });
@@ -338,7 +338,7 @@ describe('eai provision entra', () => {
     });
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
-    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder');
+    expect(content).toContain('AUTH_URL=http://localhost:3000/no-code-builder/api/auth');
     expect(content).toContain('NEXTAUTH_URL=http://localhost:3000/no-code-builder');
   });
 
@@ -725,7 +725,7 @@ describe('eai provision entra', () => {
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         requestBody = await request.json();
         return HttpResponse.json({
-          client_id: 'remote-client',
+          client_id: 'local-client',
           client_secret: null,
           existing: true,
           ...TENANT_AUTH_EXISTING,
@@ -739,11 +739,52 @@ describe('eai provision entra', () => {
       tenant_id: 'test-tenant-id',
       app_name: 'my-app',
       redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      existing_client_id: 'local-client',
       idempotent: true,
     });
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
-    expect(content).toContain('ENTRA_CLIENT_ID=remote-client');
+    expect(content).toContain('ENTRA_CLIENT_ID=local-client');
+  });
+
+  test('refuses to overwrite a local ENTRA_CLIENT_ID with a different platform registration', { timeout: 10000 }, async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\nENTRA_CLIENT_ID=local-client\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\n`,
+    );
+
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
+        HttpResponse.json({
+          client_id: 'different-client',
+          client_secret: '<fixture-new-secret>',
+          existing: false,
+          ...TENANT_AUTH_ADDED,
+        }),
+      ),
+    );
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      provisionCommand.parseAsync(['entra', '--force'], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).toContain('Platform returned a different Entra client id');
+    expect(output).toContain('local-client');
+    expect(output).toContain('different-client');
+
+    const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(content).toContain('ENTRA_CLIENT_ID=local-client');
+    expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-existing-credential>');
+    expect(content).not.toContain('different-client');
+    expect(content).not.toContain('<fixture-new-secret>');
   });
 
   test('rotate-secret writes a new ENTRA_CLIENT_SECRET without creating a new app', { timeout: 10000 }, async () => {
