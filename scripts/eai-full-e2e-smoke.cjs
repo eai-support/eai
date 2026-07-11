@@ -431,6 +431,9 @@ const OPTION_DECISIONS = {
   'eai tenant create': {
     '--allow-root': 'Administrative backfill escape hatch; intentionally excluded from normal e2e smoke.',
   },
+  'eai tenant delete': {
+    '--force-hard-purge': 'Permanent subtree purge; covered by command/API contract tests and intentionally excluded from release smoke cleanup.',
+  },
   'eai user invite': {
     '--role-definition-id': 'Custom role definition assignment is contract-tested; release smoke uses canonical base roles for portability.',
   },

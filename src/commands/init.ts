@@ -34,6 +34,10 @@ import {
   type TenantMembership,
 } from "../lib/tenant-context.js";
 import {
+  buildTenantHierarchy,
+  promptForTenantFromHierarchy,
+} from "../lib/tenant-hierarchy.js";
+import {
   parseApiError,
   PlatformAPIClient,
   type CapabilityDecision,
@@ -310,7 +314,8 @@ Use --no-gofer only when you need a bare app scaffold.
   )
   .action(async (nameArg, options) => {
     const publicApiUrl = await resolvePublicApiUrl();
-    const activeTenant = await loadActiveTenantForInit(publicApiUrl);
+    const tenantContext = await loadActiveTenantForInit(publicApiUrl);
+    const activeTenant = tenantContext.activeTenant;
 
     let tenantId: string;
     let parentTenantId: string;
@@ -324,7 +329,7 @@ Use --no-gofer only when you need a bare app scaffold.
       targetDir = await resolveInitTargetDir(nameArg, targetUsesCurrentDir);
       const binding = await createTenantAppForInit(
         publicApiUrl,
-        activeTenant,
+        tenantContext,
         options.companyTenant || options.tenant,
         options.parentTenant,
         {
@@ -401,7 +406,7 @@ Use --no-gofer only when you need a bare app scaffold.
 
       const binding = await createTenantAppForInit(
         publicApiUrl,
-        activeTenant,
+        tenantContext,
         options.companyTenant || options.tenant,
         options.parentTenant,
         {
@@ -771,17 +776,28 @@ async function hydrateCloudSecret(
   }
 }
 
+interface InitTenantContext {
+  activeTenant: TenantMembership | null;
+  memberships: TenantMembership[];
+}
+
 async function loadActiveTenantForInit(
   publicApiUrl: string,
-): Promise<TenantMembership | null> {
+): Promise<InitTenantContext> {
   try {
     const ctx = await resolveActiveTenantContext({
       publicApiUrl,
       interactive: false,
     });
-    return ctx.activeTenant;
+    return {
+      activeTenant: ctx.activeTenant,
+      memberships: ctx.memberships,
+    };
   } catch {
-    return null;
+    return {
+      activeTenant: null,
+      memberships: [],
+    };
   }
 }
 
@@ -809,10 +825,11 @@ interface InitTenantAppBinding {
 
 async function promptCompanyTenantForInit(
   publicApiUrl: string,
-  activeTenant: TenantMembership | null,
+  tenantContext: InitTenantContext,
   companyFlag: string | undefined,
   interactive: boolean,
 ): Promise<string> {
+  const { activeTenant, memberships } = tenantContext;
   if (companyFlag) {
     await assertTenantExists(publicApiUrl, companyFlag);
     return resolveMainCompanyTenantId(publicApiUrl, companyFlag);
@@ -867,23 +884,49 @@ async function promptCompanyTenantForInit(
     return resolveMainCompanyTenantId(publicApiUrl, activeTenant!.id);
   }
 
-  const { otherId } = await inquirer.prompt([
-    {
-      type: "input",
-      name: "otherId",
-      message: "Main company tenant ID:",
-      validate: (input: string) =>
-        input.trim().length > 0 || "Main company tenant ID is required",
-    },
-  ]);
-  const trimmed = String(otherId).trim();
+  const selectableMemberships = memberships.filter(
+    (membership) => membership.id !== activeTenant?.id,
+  );
+  let trimmed = "";
+
+  if (selectableMemberships.length > 0) {
+    const selectedTenantId = await promptForTenantFromHierarchy(
+      buildTenantHierarchy(selectableMemberships),
+      {
+        message: "Choose the main company tenant for this app",
+        extraChoices: [
+          {
+            name: "Other main company tenant (enter ID manually)",
+            value: "__manual__",
+          },
+        ],
+      },
+    );
+    if (selectedTenantId !== "__manual__") {
+      trimmed = selectedTenantId;
+    }
+  }
+
+  if (!trimmed) {
+    const { otherId } = await inquirer.prompt([
+      {
+        type: "input",
+        name: "otherId",
+        message: "Main company tenant ID:",
+        validate: (input: string) =>
+          input.trim().length > 0 || "Main company tenant ID is required",
+      },
+    ]);
+    trimmed = String(otherId).trim();
+  }
+
   await assertTenantExists(publicApiUrl, trimmed);
   return resolveMainCompanyTenantId(publicApiUrl, trimmed);
 }
 
 async function createTenantAppForInit(
   publicApiUrl: string,
-  activeTenant: TenantMembership | null,
+  tenantContext: InitTenantContext,
   companyFlag: string | undefined,
   immediateParentFlag: string | undefined,
   appSeed: { slug: string; displayName: string },
@@ -893,10 +936,11 @@ async function createTenantAppForInit(
 ): Promise<InitTenantAppBinding> {
   const companyTenantId = await promptCompanyTenantForInit(
     publicApiUrl,
-    activeTenant,
+    tenantContext,
     companyFlag,
     interactive,
   );
+  const activeTenant = tenantContext.activeTenant;
   const defaultImmediateParentTenantId =
     companyFlag || !activeTenant ? companyTenantId : activeTenant.id;
   const immediateParentTenantId =

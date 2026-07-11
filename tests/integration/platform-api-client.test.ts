@@ -171,6 +171,26 @@ describe('PlatformAPIClient', () => {
     expect(init?.body).toBeUndefined()
   })
 
+  test('sends force-hard-purge confirmation when deleting a tenant permanently', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.deleteTenant('tenant-child', { forceHardPurge: true })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/delete')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      forceHardPurge: true,
+      confirmationTenantId: 'tenant-child',
+      reason: 'eai tenant delete --force-hard-purge',
+    })
+  })
+
   test('routes child tenant admin bootstrap through the public platform router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
