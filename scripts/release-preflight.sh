@@ -192,6 +192,10 @@ if ! "$PACKED_EAI" gofer refresh --help >/dev/null 2>&1; then
   echo "✗ packed eai gofer refresh --help failed"
   exit 1
 fi
+if ! "$PACKED_EAI" update --check --no-project-refresh >/dev/null 2>&1; then
+  echo "✗ packed eai update --check failed"
+  exit 1
+fi
 echo "  ✓ packed CLI starts with production dependencies only"
 
 section "Smoke testing packed eai-cli alias tarball"
@@ -205,6 +209,10 @@ if [[ "$ALIAS_VERSION" != "$EXPECTED_VERSION" ]]; then
 fi
 if ! "$ALIAS_EAI" --help >/dev/null 2>&1; then
   echo "✗ packed eai-cli alias eai --help failed"
+  exit 1
+fi
+if ! "$ALIAS_EAI" update --check --no-project-refresh >/dev/null 2>&1; then
+  echo "✗ packed eai-cli alias eai update --check failed"
   exit 1
 fi
 echo "  ✓ packed eai-cli alias installs the eai command"

@@ -83,7 +83,7 @@ const TRACEABILITY_BASE = [
   ['eai verify calls', 'read', 'live', 'Audits platform-facing CLI call contracts.'],
   ['eai doctor', 'read', 'live', 'Runs diagnostics in the smoke workspace.'],
   ['eai whoami', 'read', 'live', 'Confirms dedicated test identity and active tenant context.'],
-  ['eai update', 'read/update', 'check-only', 'Runs `update --check`; installing over the release candidate is not safe inside release smoke.'],
+  ['eai update', 'read/update', 'check-only', 'Runs `update --check`; installing over the release candidate is not safe inside release smoke. Release preflight also runs update checks from the packed canonical and eai-cli alias install paths.'],
   ['eai provision entra', 'create/update/delete', 'live-optional', 'Runs only when EAI_E2E_PROVISION_ENTRA=1 because it creates/rotates/deletes app credentials.'],
   ['eai provision resourceapi-refresh', 'create/update', 'live-optional', 'Runs when passive ResourceAPI bundle/env is configured.'],
   ['eai provision storage', 'create/update', 'live', 'Provisions storage for the active test tenant.'],
