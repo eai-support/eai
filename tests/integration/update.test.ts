@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { access, mkdir, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import {
+  buildUpdateInstallExecConfig,
   buildUpdateInstallArgs,
   buildUpdatePermissionGuidance,
   isUpdatePermissionError,
@@ -81,6 +82,40 @@ async function createEaiProjectFixture(root: string): Promise<void> {
   );
 }
 
+async function createNpmShim(root: string): Promise<{ readonly binDir: string; readonly logPath: string }> {
+  const binDir = join(root, 'fake-bin');
+  const logPath = join(root, 'npm-args.json');
+  await mkdir(binDir, { recursive: true });
+
+  const shimScript = join(binDir, 'npm-shim.cjs');
+  await writeFile(
+    shimScript,
+    [
+      "const { writeFileSync } = require('node:fs');",
+      "const logPath = process.env.EAI_NPM_SHIM_LOG;",
+      "if (!logPath) { throw new Error('EAI_NPM_SHIM_LOG is required'); }",
+      'writeFileSync(logPath, JSON.stringify(process.argv.slice(2)));',
+    ].join('\n'),
+    'utf-8',
+  );
+
+  const unixShim = join(binDir, 'npm');
+  await writeFile(
+    unixShim,
+    `#!/usr/bin/env sh\nexec node "${shimScript}" "$@"\n`,
+    'utf-8',
+  );
+  await chmod(unixShim, 0o755);
+
+  await writeFile(
+    join(binDir, 'npm.cmd'),
+    `@echo off\r\nnode "${shimScript}" %*\r\n`,
+    'utf-8',
+  );
+
+  return { binDir, logPath };
+}
+
 describe('buildUpdateInstallArgs', () => {
   test('uses npmjs for canonical CLI installs by default', () => {
     expect(buildUpdateInstallArgs('1.2.3')).toEqual([
@@ -122,6 +157,67 @@ describe('getNpmExecutable', () => {
 
   test('uses npm.cmd on Windows', () => {
     expect(getNpmExecutable('win32')).toBe('npm.cmd');
+  });
+});
+
+describe('eai update install execution', () => {
+  test('uses shell mode only on Windows so npm.cmd can launch reliably', () => {
+    expect(buildUpdateInstallExecConfig('1.2.3', 'npmjs', '@enterpriseai/cli', 'win32')).toEqual({
+      command: 'npm.cmd',
+      args: [
+        'install',
+        '-g',
+        '@enterpriseai/cli@1.2.3',
+        '--prefer-online',
+        '--registry=https://registry.npmjs.org/',
+        '--@enterpriseai:registry=https://registry.npmjs.org/',
+      ],
+      shell: true,
+    });
+
+    expect(buildUpdateInstallExecConfig('1.2.3', 'npmjs', '@enterpriseai/cli', 'darwin')).toEqual({
+      command: 'npm',
+      args: [
+        'install',
+        '-g',
+        '@enterpriseai/cli@1.2.3',
+        '--prefer-online',
+        '--registry=https://registry.npmjs.org/',
+        '--@enterpriseai:registry=https://registry.npmjs.org/',
+      ],
+      shell: false,
+    });
+  });
+
+  test('runs the update install path with the expected npm arguments', async () => {
+    const env = await createTestEnvironment();
+    const server = await startPackumentServer('99.99.99');
+    const npmShim = await createNpmShim(env.dir);
+    const ctx: TestContext = {
+      workingDir: env.dir,
+      mockAPI: {} as TestContext['mockAPI'],
+      env: {
+        EAI_UPDATE_NPMJS_PACKUMENT_URL: server.url,
+        EAI_UPDATE_PACKUMENT_URL: server.url,
+        EAI_NPM_SHIM_LOG: npmShim.logPath,
+        NO_COLOR: '1',
+        PATH: `${npmShim.binDir}${delimiter}${process.env.PATH ?? ''}`,
+      },
+      prompts: [],
+    };
+
+    try {
+      const result = await runCommand(ctx, 'eai update --no-project-refresh');
+      const npmArgs = JSON.parse(await readFile(npmShim.logPath, 'utf-8')) as string[];
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('Update available:');
+      expect(result.stderr).toContain('Updated to 99.99.99');
+      expect(npmArgs).toEqual(buildUpdateInstallArgs('99.99.99'));
+    } finally {
+      await server.close();
+      await env.cleanup();
+    }
   });
 });
 
