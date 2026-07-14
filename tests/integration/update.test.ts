@@ -6,7 +6,9 @@ import { delimiter, join } from 'node:path';
 import {
   buildUpdateInstallExecConfig,
   buildUpdateInstallArgs,
+  buildUpdateCommandPlan,
   buildUpdatePermissionGuidance,
+  detectInstalledPackageName,
   isUpdatePermissionError,
 } from '../../src/commands/update.js';
 import {
@@ -144,6 +146,55 @@ describe('buildUpdateInstallArgs', () => {
       '@enterpriseai/cli@1.2.3',
       '--prefer-online',
       '--@enterpriseai:registry=https://eai-tools.github.io/eai/registry/',
+    ]);
+  });
+});
+
+describe('detectInstalledPackageName', () => {
+  test('detects the recommended alias package from the installed binary path', () => {
+    expect(detectInstalledPackageName('/opt/homebrew/lib/node_modules/eai-cli/dist/index.js')).toBe('eai-cli');
+  });
+
+  test('detects the canonical package from the installed binary path', () => {
+    expect(detectInstalledPackageName('/opt/homebrew/lib/node_modules/@enterpriseai/cli/dist/index.js')).toBe('@enterpriseai/cli');
+  });
+});
+
+describe('buildUpdateCommandPlan', () => {
+  test('reinstalls the alias package in place on npmjs', () => {
+    expect(buildUpdateCommandPlan('1.2.3', 'npmjs', 'eai-cli', 'darwin')).toEqual([
+      {
+        command: 'npm',
+        args: [
+          'install',
+          '-g',
+          'eai-cli@1.2.3',
+          '--prefer-online',
+          '--registry=https://registry.npmjs.org/',
+        ],
+        shell: false,
+      },
+    ]);
+  });
+
+  test('uninstalls the alias before migrating to the canonical static-registry package', () => {
+    expect(buildUpdateCommandPlan('1.2.3', 'static-registry', 'eai-cli', 'darwin')).toEqual([
+      {
+        command: 'npm',
+        args: ['uninstall', '-g', 'eai-cli'],
+        shell: false,
+      },
+      {
+        command: 'npm',
+        args: [
+          'install',
+          '-g',
+          '@enterpriseai/cli@1.2.3',
+          '--prefer-online',
+          '--@enterpriseai:registry=https://eai-tools.github.io/eai/registry/',
+        ],
+        shell: false,
+      },
     ]);
   });
 });

@@ -11,6 +11,8 @@ import * as auth from '../../src/lib/auth.js';
 import type { StoredTokens } from '../../src/lib/auth.js';
 import * as config from '../../src/lib/config.js';
 import * as profile from '../../src/lib/profile.js';
+import * as tenantContext from '../../src/lib/tenant-context.js';
+import { tenantCommand } from '../../src/commands/tenant.js';
 import {
   buildTenantBootstrapAdminStatusMessages,
   buildTenantHierarchy,
@@ -76,6 +78,22 @@ function restoreEnv(name: string, value: string | undefined): void {
   } else {
     process.env[name] = value;
   }
+}
+
+function parseJsonOutput(spy: ReturnType<typeof vi.spyOn>): unknown[] {
+  return spy.mock.calls
+    .flat()
+    .map((value) => {
+      if (typeof value !== 'string') {
+        return null;
+      }
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    })
+    .filter((value) => value !== null);
 }
 
 beforeEach(() => {
@@ -907,6 +925,55 @@ describe('tenant list filtering', () => {
     })).toEqual({
       id: 'tenant-1',
       slug: 'tenant-one',
+    });
+  });
+});
+
+describe('tenant delete hard purge contract', () => {
+  test('fails when the backend only reports a soft delete for a requested hard purge', async () => {
+    vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');
+    vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
+      activeTenant: {
+        id: 'parent-tenant',
+        displayName: 'Parent Tenant',
+        slug: 'parent-tenant',
+        isActive: true,
+      },
+    } as Awaited<ReturnType<typeof tenantContext.resolveActiveTenantContext>>);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      id: 'tenant-1',
+      status: 'deleted',
+      message: 'Account deleted',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(
+      tenantCommand.parseAsync([
+        'delete',
+        'tenant-1',
+        '--force',
+        '--force-hard-purge',
+        '--format',
+        'json',
+      ], { from: 'user' }),
+    ).rejects.toThrow('process.exit 1');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(parseJsonOutput(outputSpy)).toContainEqual({
+      id: 'tenant-1',
+      deleted: true,
+      hardPurged: false,
+      requestedHardPurge: true,
+      error: 'Tenant delete completed but the backend did not confirm a hard purge. Stale tenant-owned data may remain.',
+      response: {
+        id: 'tenant-1',
+        status: 'deleted',
+        message: 'Account deleted',
+      },
     });
   });
 });

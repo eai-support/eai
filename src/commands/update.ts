@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import process from 'node:process';
+import { realpathSync } from 'node:fs';
 import ora from 'ora';
 import chalk from 'chalk';
 import {
@@ -35,8 +36,24 @@ const STATIC_SCOPE_REGISTRY_FLAG = `--@enterpriseai:registry=${STATIC_REGISTRY_U
 const NPMJS_REGISTRY_FLAG = `--registry=${NPMJS_REGISTRY_URL}`;
 const NPMJS_SCOPE_REGISTRY_FLAG = `--@enterpriseai:registry=${NPMJS_REGISTRY_URL}`;
 
-function installedPackageName(): string {
+export function detectInstalledPackageName(binaryPath = process.argv[1] || ''): string {
+  try {
+    const normalized = realpathSync(binaryPath).replaceAll('\\', '/');
+    if (normalized.includes('/node_modules/eai-cli/')) {
+      return 'eai-cli';
+    }
+    if (normalized.includes('/node_modules/@enterpriseai/cli/')) {
+      return '@enterpriseai/cli';
+    }
+  } catch {
+    // Fall back to package metadata when the current entry point is not a filesystem path.
+  }
+
   return pkg.name === 'eai-cli' ? 'eai-cli' : '@enterpriseai/cli';
+}
+
+function installedPackageName(): string {
+  return detectInstalledPackageName();
 }
 
 export function buildUpdateInstallArgs(
@@ -77,6 +94,44 @@ export function buildUpdateInstallExecConfig(
     args: buildUpdateInstallArgs(version, channel, packageName),
     shell: platform === 'win32',
   };
+}
+
+export interface UpdateCommandStep {
+  command: string;
+  args: string[];
+  shell: boolean;
+}
+
+export function buildUpdateCommandPlan(
+  version: string,
+  channel: ReleaseChannel = 'npmjs',
+  currentPackageName = '@enterpriseai/cli',
+  platform: NodeJS.Platform = process.platform,
+): UpdateCommandStep[] {
+  const targetPackageName =
+    channel === 'static-registry'
+      ? '@enterpriseai/cli'
+      : currentPackageName;
+
+  const command = getNpmExecutable(platform);
+  const shell = platform === 'win32';
+  const steps: UpdateCommandStep[] = [];
+
+  if (currentPackageName !== targetPackageName) {
+    steps.push({
+      command,
+      args: ['uninstall', '-g', currentPackageName],
+      shell,
+    });
+  }
+
+  steps.push({
+    command,
+    args: buildUpdateInstallArgs(version, channel, targetPackageName),
+    shell,
+  });
+
+  return steps;
 }
 
 export function isUpdatePermissionError(message: string): boolean {
@@ -174,8 +229,10 @@ Notes:
     const packageName = installedPackageName();
     const installSpinner = ora(`Installing ${packageName}@${latest}...`).start();
     try {
-      const install = buildUpdateInstallExecConfig(latest, channel, packageName);
-      await exec(install.command, install.args, { shell: install.shell });
+      const plan = buildUpdateCommandPlan(latest, channel, packageName);
+      for (const step of plan) {
+        await exec(step.command, step.args, { shell: step.shell });
+      }
       installSpinner.succeed(`Updated to ${chalk.green(latest)}`);
     } catch (err) {
       installSpinner.fail('Update failed.');

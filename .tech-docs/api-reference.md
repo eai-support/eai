@@ -188,17 +188,20 @@ Create a new tenant and bootstrap admin access.
 ---
 
 #### `eai tenant delete <id>`
-Soft-delete a tenant.
+Soft-delete a tenant by default. With `--force-hard-purge`, request permanent
+purge of the tenant and its child-tenant subtree.
 
 **Arguments**:
 - `<id>` — Tenant ID
 
 **Options**:
 - `--force` — Skip confirmation
+- `--force-hard-purge` — Permanently purge the tenant and all child tenants; sends `forceHardPurge`, `confirmationTenantId`, and a hard-purge reason to PublicAPI
 - `--format <format>` — Output format (text|json, default: text)
+- `--json` — Output raw JSON (deprecated, use `--format json`)
 
 **Platform API Endpoints Used**:
-- `POST /v4/platform/tenants/{tenantId}/delete`
+- `POST /v4/platform/tenants/{tenantId}/delete` — soft delete by default; hard purge when the request body includes `forceHardPurge: true`
 
 ---
 

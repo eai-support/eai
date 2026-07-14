@@ -217,6 +217,60 @@ if ! "$ALIAS_EAI" --help >/dev/null 2>&1; then
 fi
 echo "  ✓ packed eai-cli alias installs the eai command"
 
+section "Smoke testing packed eai-cli alias update path"
+ALIAS_UPDATE_VERSION="99.99.99"
+ALIAS_UPDATE_PACKUMENT_URL="$(
+  node -e "process.stdout.write('data:application/json,' + encodeURIComponent(JSON.stringify({ 'dist-tags': { latest: process.argv[1] } })))" "$ALIAS_UPDATE_VERSION"
+)"
+ALIAS_UPDATE_LOG="$ALIAS_INSTALL_PREFIX/update-npm-args.jsonl"
+ALIAS_UPDATE_BIN="$ALIAS_INSTALL_PREFIX/update-bin"
+mkdir -p "$ALIAS_UPDATE_BIN"
+cat >"$ALIAS_UPDATE_BIN/npm" <<EOF
+#!/usr/bin/env sh
+node -e "const fs=require('node:fs'); fs.appendFileSync(process.argv[1], JSON.stringify(process.argv.slice(2)) + '\n');" "$ALIAS_UPDATE_LOG" "\$@"
+EOF
+chmod +x "$ALIAS_UPDATE_BIN/npm"
+cat >"$ALIAS_UPDATE_BIN/npm.cmd" <<EOF
+@echo off
+node -e "const fs=require('node:fs'); fs.appendFileSync(process.argv[1], JSON.stringify(process.argv.slice(2)) + '\\n');" "$ALIAS_UPDATE_LOG" %*
+EOF
+if ! EAI_UPDATE_NPMJS_PACKUMENT_URL="$ALIAS_UPDATE_PACKUMENT_URL" EAI_UPDATE_PACKUMENT_URL="$ALIAS_UPDATE_PACKUMENT_URL" NO_COLOR=1 PATH="$ALIAS_UPDATE_BIN:$PATH" "$ALIAS_EAI" update --no-project-refresh >/dev/null 2>&1; then
+  echo "✗ packed eai-cli alias update failed"
+  exit 1
+fi
+export ALIAS_UPDATE_LOG
+node <<'EOF'
+const fs = require('node:fs');
+
+const logPath = process.env.ALIAS_UPDATE_LOG;
+if (!logPath || !fs.existsSync(logPath)) {
+  throw new Error('alias update log missing');
+}
+
+const commands = fs.readFileSync(logPath, 'utf-8')
+  .trim()
+  .split('\n')
+  .filter(Boolean)
+  .map((line) => JSON.parse(line));
+
+if (commands.length !== 1) {
+  throw new Error(`expected exactly one npm install invocation, saw ${commands.length}`);
+}
+
+const expected = [
+  'install',
+  '-g',
+  'eai-cli@99.99.99',
+  '--prefer-online',
+  '--registry=https://registry.npmjs.org/',
+];
+
+if (JSON.stringify(commands[0]) !== JSON.stringify(expected)) {
+  throw new Error(`unexpected alias update command: ${JSON.stringify(commands[0])}`);
+}
+EOF
+echo "  ✓ packed eai-cli alias update uses the alias package channel"
+
 if [[ "${EAI_RELEASE_FULL_E2E_SMOKE:-0}" == "1" ]]; then
   section "Running live full e2e smoke against dedicated test tenant"
   node scripts/eai-full-e2e-smoke.cjs --live --cli "$PACKED_EAI" --write-doc

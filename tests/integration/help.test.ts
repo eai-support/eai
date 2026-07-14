@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
@@ -7,6 +8,26 @@ import type { TestContext } from '../helpers/setup-dsl.js';
 import { runCommand } from '../helpers/action-dsl.js';
 
 const execFileAsync = promisify(execFile);
+
+interface DescribedCommand {
+  command: string;
+  subcommands?: DescribedCommand[];
+}
+
+function collectHelpLabels(command: DescribedCommand): string[] {
+  const labels = ['eai --help'];
+
+  function visit(node: DescribedCommand, path: string[]): void {
+    for (const child of node.subcommands ?? []) {
+      const nextPath = [...path, child.command];
+      labels.push(`eai ${nextPath.join(' ')} --help`);
+      visit(child, nextPath);
+    }
+  }
+
+  visit(command, []);
+  return labels;
+}
 
 describe('CLI help output', () => {
   let env: TestEnvironment;
@@ -87,6 +108,30 @@ describe('CLI help output', () => {
         }),
       ]),
     );
+  });
+
+  test('release help bundle snapshots every described command', async () => {
+    const cliEntry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
+    const cliHelpPath = fileURLToPath(new URL('../../docs-site/static/cli-help.txt', import.meta.url));
+    const { stdout } = await execFileAsync(process.execPath, [cliEntry, '--describe'], {
+      cwd: ctx.workingDir,
+      env: {
+        ...process.env,
+        HOME: ctx.env.HOME || ctx.workingDir,
+        USERPROFILE: ctx.env.USERPROFILE || ctx.workingDir,
+        NO_UPDATE_NOTIFIER: '1',
+        EAI_UPDATE_PROMPT_SUPPRESS: '1',
+        ...ctx.env,
+      },
+    });
+
+    const schema = JSON.parse(stdout) as DescribedCommand;
+    const cliHelp = await readFile(cliHelpPath, 'utf-8');
+    const missing = collectHelpLabels(schema).filter(
+      (label) => !cliHelp.includes(`${label}\n${'='.repeat(label.length)}`),
+    );
+
+    expect(missing).toEqual([]);
   });
 
   test('verify, runtime, deploy, doctor, gofer, template, publicapi, and update help include concrete examples', async () => {

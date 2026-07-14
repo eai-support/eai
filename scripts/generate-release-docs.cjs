@@ -32,38 +32,17 @@ const DOC_ORDER = [
   "error-guidance.md",
   "api-reference.md",
 ];
-const HELP_COMMANDS = [
-  { label: "eai --help", args: ["dist/index.js", "--help"] },
-  { label: "eai update --help", args: ["dist/index.js", "update", "--help"] },
-  { label: "eai doctor --help", args: ["dist/index.js", "doctor", "--help"] },
-  { label: "eai errors --help", args: ["dist/index.js", "errors", "--help"] },
-  {
-    label: "eai errors explain --help",
-    args: ["dist/index.js", "errors", "explain", "--help"],
-  },
-  {
-    label: "eai agent guide --help",
-    args: ["dist/index.js", "agent", "guide", "--help"],
-  },
-  { label: "eai gofer --help", args: ["dist/index.js", "gofer", "--help"] },
-  {
-    label: "eai gofer refresh --help",
-    args: ["dist/index.js", "gofer", "refresh", "--help"],
-  },
-  {
-    label: "eai template --help",
-    args: ["dist/index.js", "template", "--help"],
-  },
-  {
-    label: "eai template check --help",
-    args: ["dist/index.js", "template", "check", "--help"],
-  },
-];
 const OUTPUTS = [
   { path: path.join(STATIC_DIR, "llms.txt"), build: buildLlmsIndex },
   { path: path.join(STATIC_DIR, "llms-full.txt"), build: buildLlmsFull },
   { path: path.join(STATIC_DIR, "cli-help.txt"), build: buildCliHelp },
 ];
+
+const CLI_ENV = {
+  ...process.env,
+  NO_UPDATE_NOTIFIER: "1",
+  EAI_UPDATE_PROMPT_SUPPRESS: "1",
+};
 
 function parseFrontmatter(markdown) {
   const match = markdown.match(/^---\n([\s\S]*?)\n---\n?/);
@@ -110,14 +89,41 @@ function readAllDocs() {
   ).map(readDoc);
 }
 
-function readHelpSnapshots() {
-  return HELP_COMMANDS.map(({ label, args }) => ({
+function runCli(args) {
+  return execFileSync("node", ["dist/index.js", ...args], {
+    cwd: ROOT,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: CLI_ENV,
+  }).trim();
+}
+
+function readCommandSchema() {
+  return JSON.parse(runCli(["--describe"]));
+}
+
+function collectHelpCommands(schema) {
+  const commands = [{ label: "eai --help", args: ["--help"] }];
+
+  function visit(command, pathParts) {
+    for (const child of command.subcommands || []) {
+      const nextPath = [...pathParts, child.command];
+      commands.push({
+        label: `eai ${nextPath.join(" ")} --help`,
+        args: [...nextPath, "--help"],
+      });
+      visit(child, nextPath);
+    }
+  }
+
+  visit(schema, []);
+  return commands;
+}
+
+function readHelpSnapshots(commandSchema) {
+  return collectHelpCommands(commandSchema).map(({ label, args }) => ({
     label,
-    output: execFileSync("node", args, {
-      cwd: ROOT,
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim(),
+    output: runCli(args),
   }));
 }
 
@@ -274,10 +280,12 @@ ${docsSections}
 }
 
 function buildContext() {
+  const commandSchema = readCommandSchema();
   return {
     version: VERSION,
     docs: readAllDocs(),
-    helpSnapshots: readHelpSnapshots(),
+    commandSchema,
+    helpSnapshots: readHelpSnapshots(commandSchema),
   };
 }
 

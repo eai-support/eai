@@ -178,6 +178,1805 @@ Accessibility:
   eai --no-color <command>
 ```
 
+## eai init --help
+
+```text
+Usage: eai init [options] [name]
+
+Scaffold a new application
+
+Arguments:
+  name                         Name for the app (kebab-case)
+
+Options:
+  --from <repo>                GitHub repo URL or local path for template
+                               (default:
+                               "https://github.com/eai-tools/eai-app-template.git")
+  --skip-prompts               Use defaults without interactive prompts
+                               (default: false)
+  --current-dir                Scaffold into the current directory instead of
+                               creating ./<name> (default: false)
+  --tenant <id>                Main company tenant ID (deprecated alias for
+                               --company-tenant)
+  --company-tenant <id>        Main company tenant ID that owns this app
+  --parent-tenant <id>         Immediate parent company tenant ID for the new
+                               child company
+  --child-tenant <name>        Create or reuse a child company tenant display
+                               name for the app runtime boundary
+  --create-child-tenant        Prompt for a child company tenant instead of
+                               using the selected company tenant
+  --no-gofer                   Skip installing Gofer AI CLI assets
+  --package-profile <profile>  Package profile to record for block catalog
+                               discovery: external, internal, or hybrid
+                               (default: "external")
+  -h, --help                   display help for command
+
+Gofer AI CLI assets are installed by default:
+  .specify/ commands, scripts, templates, hooks, and memory folders
+  .claude/ commands and agents for Claude CLI
+  .system/skills and .agents/skills for Codex CLI
+  .gemini/commands/gofer and .gemini/extension.json for Gemini CLI
+  .github/prompts, .github/instructions, and .github/skills for GitHub Copilot
+
+The default public template is pinned to the latest eai-app-template main
+commit captured when this CLI release was cut. Use --from to override it with
+another repo or local path.
+
+Use --no-gofer only when you need a bare app scaffold.
+```
+
+## eai dev --help
+
+```text
+Usage: eai dev [options]
+
+Start local development server
+
+Options:
+  --port <port>  Port number (default: "3000")
+  --turbo        Use Turbopack (default: true) (default: true)
+  --no-turbo     Disable Turbopack
+  --skip-checks  Skip connectivity checks (default: false)
+  -h, --help     display help for command
+```
+
+## eai login --help
+
+```text
+Usage: eai login [options]
+
+Authenticate with Entra CIAM
+
+Options:
+  --tenant-name <name>    CIAM tenant name
+  --tenant-id <id>        CIAM tenant ID
+  --scope <scope>         OAuth scopes
+  --callback-port <port>  Localhost port to listen on for the OAuth callback
+  -h, --help              display help for command
+
+Examples:
+  $ eai login
+  $ eai login --tenant-name myorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
+  $ eai login --callback-port 3476
+  $ eai whoami
+
+What happens next:
+  - The CLI opens your browser to sign you in.
+  - With --callback-port, the CLI still uses localhost and listens on that exact port.
+  - For Codespaces, run 'gh codespace ports forward -c <codespace> 3476:3476' on your local machine and keep it running while you sign in.
+  - If you only have one tenant-admin membership, it becomes active automatically.
+  - If you have more than one, run 'eai tenant select' to choose the tenant to work with.
+```
+
+## eai logout --help
+
+```text
+Usage: eai logout [options]
+
+Clear stored authentication tokens
+
+Options:
+  -h, --help  display help for command
+```
+
+## eai env --help
+
+```text
+Usage: eai env [options] [command]
+
+Manage environment variables
+
+Options:
+  -h, --help      display help for command
+
+Commands:
+  pull [options]  Sync cloud config to local .env.local
+  list [options]  Show current environment variables
+  push [options]  Push local config overrides to cloud (admin)
+  help [command]  display help for command
+```
+
+## eai env pull --help
+
+```text
+Usage: eai env pull [options]
+
+Sync cloud config to local .env.local
+
+Options:
+  --env <label>      Cloud config environment label for
+                     EAI_APP_CONFIG_STORE_<LABEL>
+  --label <label>    App Config label (defaults to app name)
+  --include-secrets  Resolve Key Vault references (default: false)
+  -h, --help         display help for command
+
+Examples:
+  $ eai env pull
+  $ eai env pull --include-secrets
+```
+
+## eai env list --help
+
+```text
+Usage: eai env list [options]
+
+Show current environment variables
+
+Options:
+  --show-secrets     Show secret values (default: masked) (default: false)
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai env push --help
+
+```text
+Usage: eai env push [options]
+
+Push local config overrides to cloud (admin)
+
+Options:
+  --env <label>    Cloud config environment label for
+                   EAI_APP_CONFIG_STORE_<LABEL>
+  --label <label>  App Config label
+  --key <key>      Push a single key
+  -h, --help       display help for command
+```
+
+## eai types --help
+
+```text
+Usage: eai types [options] [command]
+
+Manage Object Type definitions
+
+Options:
+  -h, --help          display help for command
+
+Commands:
+  seed [options]      Push Object Types to platform
+  validate [options]  Validate Object Types against platform schema rules
+  diff [options]      Compare local Object Types with remote platform
+  pull [options]      Download remote Object Types to local TypeScript
+  define              Interactive Object Type builder (coming soon)
+  help [command]      display help for command
+
+Workflow:
+  1. Validate local definitions:
+       eai types validate
+  2. Login and select the active tenant:
+       eai login
+       eai tenant select
+  3. Preview remote differences:
+       eai types diff --tenant-key <key>
+  4. Publish:
+       eai types seed --tenant-key <key>
+  5. Verify published schema:
+       eai resources schema
+```
+
+## eai types seed --help
+
+```text
+Usage: eai types seed [options]
+
+Push Object Types to platform
+
+Options:
+  --env <label>       Optional deployment label for compatibility
+  --tenant-key <key>  Specific tenant key from object-types.ts
+  --tenant-id <id>    Override the resolved tenant ID (use with --tenant-key)
+  --dry-run           Show what would be seeded without making changes (default:
+                      false)
+  --format <format>   Output format (text|json) (default: "text")
+  --json              Output raw JSON (deprecated, use --format json) (default:
+                      false)
+  -h, --help          display help for command
+
+Examples:
+  $ eai types seed
+  $ eai types seed --dry-run
+  $ eai types seed --tenant-key trial-portal
+  $ eai types seed --tenant-key template --tenant-id 00000000-0000-4000-8000-000000000000
+  $ eai types seed --format json | jq
+```
+
+## eai types validate --help
+
+```text
+Usage: eai types validate [options]
+
+Validate Object Types against platform schema rules
+
+Options:
+  --tenant-key <key>  Specific tenant key from object-types.ts
+  --tenant-id <id>    Check app-owned storage naming for this tenant ID
+  -h, --help          display help for command
+
+Examples:
+  $ eai types validate
+  $ eai types validate --tenant-key post-pilot --tenant-id 5dd8db37-0993-f01c-0487-e8f0fae6c3d7
+```
+
+## eai types diff --help
+
+```text
+Usage: eai types diff [options]
+
+Compare local Object Types with remote platform
+
+Options:
+  --tenant-key <key>  Specific tenant key from object-types.ts
+  --tenant-id <id>    Override the resolved tenant ID (use with --tenant-key)
+  --format <format>   Output format (text|json) (default: "text")
+  --json              Output raw JSON (deprecated, use --format json) (default:
+                      false)
+  -h, --help          display help for command
+
+Examples:
+  $ eai types diff
+  $ eai types diff --tenant-key council --tenant-id 423b7e9c-9a69-4763-5b9a-69570218f65d
+  $ eai types diff --format json
+```
+
+## eai types pull --help
+
+```text
+Usage: eai types pull [options]
+
+Download remote Object Types to local TypeScript
+
+Options:
+  --tenant-id <id>  platform tenant ID
+  --output <path>   Output file path (default:
+                    "src/eai.config/object-types.generated.ts")
+  -h, --help        display help for command
+
+Examples:
+  $ eai types pull
+  $ eai types pull --output src/types/generated.ts
+```
+
+## eai types define --help
+
+```text
+Usage: eai types define [options]
+
+Interactive Object Type builder (coming soon)
+
+Options:
+  -h, --help  display help for command
+```
+
+## eai tenant --help
+
+```text
+Usage: eai tenant [options] [command]
+
+Manage tenants on the platform
+
+Options:
+  -h, --help                 display help for command
+
+Commands:
+  storage                    Inspect tenant storage configuration
+  list [options]             List tenants where the current user is a
+                             tenant-admin (default) or all roles with --all
+  select [tenant]            Select the active tenant to work with
+  info [options] <id>        Show tenant details
+  create [options]           Create a new tenant
+  bootstrap-admin [options]  Bootstrap first tenant-admin access for an existing
+                             child tenant
+  delete [options] <id>      Delete a tenant
+  help [command]             display help for command
+```
+
+## eai tenant storage --help
+
+```text
+Usage: eai tenant storage [options] [command]
+
+Inspect tenant storage configuration
+
+Options:
+  -h, --help        display help for command
+
+Commands:
+  list [options]    List published storage bindings and operational connections
+                    for the active tenant
+  verify [options]  Check tenant storage readiness across published Object Types
+  help [command]    display help for command
+```
+
+## eai tenant storage list --help
+
+```text
+Usage: eai tenant storage list [options]
+
+List published storage bindings and operational connections for the active
+tenant
+
+Options:
+  --format <format>  Output format (text|json) (default: "text")
+  -h, --help         display help for command
+```
+
+## eai tenant storage verify --help
+
+```text
+Usage: eai tenant storage verify [options]
+
+Check tenant storage readiness across published Object Types
+
+Options:
+  --format <format>  Output format (text|json) (default: "text")
+  -h, --help         display help for command
+```
+
+## eai tenant list --help
+
+```text
+Usage: eai tenant list [options]
+
+List tenants where the current user is a tenant-admin (default) or all roles
+with --all
+
+Options:
+  --parent <id>      Parent tenant ID
+  --all              Include tenants where the user holds non-admin roles (e.g.
+                     tenant-viewer) (default: false)
+  --debug            Show debug diagnostics for tenant lookup (default: false)
+  --raw-user         Print raw membership payload in debug mode (default: false)
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+Examples:
+  $ eai tenant list
+  $ eai tenant list --parent <tenant-id> # show the child hierarchy for a parent
+  $ eai tenant list --all              # include tenant-viewer / tenant-builder memberships
+  $ eai tenant list --debug
+  $ eai tenant list --debug --raw-user
+  $ eai tenant list --format json | jq '.tenants[] | .name'
+```
+
+## eai tenant select --help
+
+```text
+Usage: eai tenant select [options] [tenant]
+
+Select the active tenant to work with
+
+Options:
+  -h, --help  display help for command
+```
+
+## eai tenant info --help
+
+```text
+Usage: eai tenant info [options] <id>
+
+Show tenant details
+
+Options:
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai tenant create --help
+
+```text
+Usage: eai tenant create [options]
+
+Create a new tenant
+
+Options:
+  --name <name>             Tenant name
+  --slug <slug>             Tenant slug (kebab-case)
+  --parent <id>             Parent tenant ID
+  --domain <domains>        Comma-separated domain list
+  --usecase <usecase>       Tenant usecase:
+                            council|retail|healthcare|finance|manufacturing|generic
+                            (default: "generic")
+  --industry <industry>     Signup/onboarding industry segment
+  --starter-template <key>  Starter application template key (default:
+                            "eai-app-template")
+  --home-region <region>    Tenant home region: au|ca|eu
+  --allow-root              Allow root tenant creation for administrative
+                            backfills (default: false)
+  --format <format>         Output format (text|json) (default: "text")
+  --json                    Output raw JSON (deprecated, use --format json)
+                            (default: false)
+  -h, --help                display help for command
+```
+
+## eai tenant bootstrap-admin --help
+
+```text
+Usage: eai tenant bootstrap-admin [options]
+
+Bootstrap first tenant-admin access for an existing child tenant
+
+Options:
+  --parent <id>         Direct parent tenant ID
+  --child <id>          Immediate child tenant ID
+  --user-oid <oid>      Target user object ID (defaults to the current login)
+  --user-email <email>  Target user email (defaults to the current login email
+                        when available)
+  --format <format>     Output format (text|json) (default: "text")
+  --json                Output raw JSON (deprecated, use --format json)
+                        (default: false)
+  -h, --help            display help for command
+
+Examples:
+  $ eai tenant bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id>
+  $ eai tenant bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id> --user-oid <entra-user-oid> --user-email user@example.com
+```
+
+## eai tenant delete --help
+
+```text
+Usage: eai tenant delete [options] <id>
+
+Delete a tenant
+
+Options:
+  --force             Skip confirmation (default: false)
+  --force-hard-purge  Permanently purge the tenant and all child tenants
+                      (default: false)
+  --format <format>   Output format (text|json) (default: "text")
+  --json              Output raw JSON (deprecated, use --format json) (default:
+                      false)
+  -h, --help          display help for command
+```
+
+## eai user --help
+
+```text
+Usage: eai user [options] [command]
+
+Manage users on the platform
+
+Options:
+  -h, --help              display help for command
+
+Commands:
+  invite|add [options]    Invite or add a user to a tenant with a tenant role
+  list [options]          List members in the active tenant or an explicit
+                          tenant
+  roles [options]         List tenant role definitions available for user
+                          invitation
+  role                    Manage tenant member roles
+  provision-me [options]  Provision yourself to a tenant (for first-time setup)
+  help [command]          display help for command
+```
+
+## eai user invite --help
+
+```text
+Usage: eai user invite|add [options]
+
+Invite or add a user to a tenant with a tenant role
+
+Options:
+  --email <email>            Email address of the user to add
+  --tenant <id>              Tenant ID to add the user to (defaults to the
+                             active tenant)
+  --role <role>              Tenant role to assign
+                             (tenant-viewer|tenant-staff|tenant-builder|tenant-admin)
+                             (default: "tenant-viewer")
+  --role-definition-id <id>  Specific tenant role definition ID to assign
+                             instead of a base role
+  --first-name <name>        Optional first name for new invitations
+  --last-name <name>         Optional last name for new invitations
+  --message <message>        Optional invitation message
+  --redirect-uri <uri>       Optional post-invite redirect URI
+  --format <format>          Output format (text|json) (default: "text")
+  -h, --help                 display help for command
+
+Examples:
+  $ eai user invite --email user@example.com --role tenant-viewer
+  $ eai user invite --email user@example.com --tenant <tenant-id> --role tenant-admin
+  $ eai user add --email user@example.com --role-definition-id <role-definition-id>
+
+Use this command for normal tenant membership and role assignment. Do not use
+tenant bootstrap-admin unless repairing first-admin access on an immediate child
+tenant.
+```
+
+## eai user list --help
+
+```text
+Usage: eai user list [options]
+
+List members in the active tenant or an explicit tenant
+
+Options:
+  --tenant <id>      Tenant ID to list members from (defaults to the active
+                     tenant)
+  --search <query>   Search by email or name
+  --page <number>    Page number (default: "1")
+  --limit <number>   Page size (default: "25")
+  --sort <field>     Sort field (default: "email")
+  --format <format>  Output format (text|json) (default: "text")
+  -h, --help         display help for command
+```
+
+## eai user roles --help
+
+```text
+Usage: eai user roles [options]
+
+List tenant role definitions available for user invitation
+
+Options:
+  --tenant <id>      Tenant ID to list roles from (defaults to the active
+                     tenant)
+  --format <format>  Output format (text|json) (default: "text")
+  -h, --help         display help for command
+```
+
+## eai user role --help
+
+```text
+Usage: eai user role [options] [command]
+
+Manage tenant member roles
+
+Options:
+  -h, --help      display help for command
+
+Commands:
+  set [options]   Set a tenant member role; by email this uses the V4 invite/add
+                  flow
+  help [command]  display help for command
+```
+
+## eai user role set --help
+
+```text
+Usage: eai user role set [options]
+
+Set a tenant member role; by email this uses the V4 invite/add flow
+
+Options:
+  --tenant <id>      Tenant ID to update (defaults to the active tenant)
+  --email <email>    Email address to add or update through the invite/add flow
+  --member-id <id>   Existing tenant member/user ID for the direct role update
+                     endpoint
+  --role <role>      Role to assign. Email-based updates support
+                     tenant-viewer|tenant-staff|tenant-builder|tenant-admin;
+                     member-id updates support member|tenant-admin.
+  --format <format>  Output format (text|json) (default: "text")
+  -h, --help         display help for command
+
+Examples:
+  $ eai user role set --email user@example.com --role tenant-admin
+  $ eai user role set --member-id <member-id> --role tenant-admin
+
+For normal "add this person as tenant admin/member" requests, prefer email-based
+commands because they can resolve existing users and create missing tenant
+membership in one V4 flow.
+```
+
+## eai user provision-me --help
+
+```text
+Usage: eai user provision-me [options]
+
+Provision yourself to a tenant (for first-time setup)
+
+Options:
+  --tenant <id>  Tenant ID to provision yourself to (defaults to the active
+                 tenant)
+  -h, --help     display help for command
+```
+
+## eai resources --help
+
+```text
+Usage: eai resources [options] [command]
+
+CRUD operations on platform resources
+
+Options:
+  -h, --help                     display help for command
+
+Commands:
+  list [options] <type>          List resources of a given type
+  batch-create [options] <type>  Create resources in bulk
+  batch-update [options] <type>  Update resources in bulk
+  batch-delete [options] <type>  Delete resources in bulk
+  aggregate [options] <type>     Run a server-side aggregate query
+  get [options] <type> <id>      Get a single resource
+  create [options] <type>        Create a new resource
+  update [options] <type> <id>   Update a resource
+  delete [options] <type> <id>   Delete a resource
+  query [options]                Cross-type query
+  storage                        Storage provisioning status and diagnostics
+  search [options] <query>       Search tenant resource projections
+  file                           Upload, download, and delete files attached to
+                                 typed resource object properties
+  schema [options]               Show published Object Types for tenant
+  sync-schema [options]          Provision or reconcile storage resources from
+                                 published Object Type metadata
+  doctor [options]               Inspect storage readiness for the active tenant
+  help [command]                 display help for command
+```
+
+## eai resources list --help
+
+```text
+Usage: eai resources list [options] <type>
+
+List resources of a given type
+
+Options:
+  --tenant-id <id>   Run the read-only query against a specific tenant
+  --page <n>         Page number (default: "1")
+  --limit <n>        Items per page (default: "20")
+  --sort <field>     Sort field (prefix with - for descending) (default:
+                     "-created_at")
+  --where <json>     Structured where filter as JSON
+  --cursor <cursor>  Opaque cursor from a previous response
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+Examples:
+  $ eai resources list User
+  $ eai resources list Project --limit 10
+  $ eai resources list User --tenant-id 00000000-0000-4000-8000-000000000000
+  $ eai resources list User --format json | jq '.resources[] | .id'
+```
+
+## eai resources batch-create --help
+
+```text
+Usage: eai resources batch-create [options] <type>
+
+Create resources in bulk
+
+Options:
+  --tenant-id <id>   Run the mutation against a specific tenant
+  --data <json>      Batch payload as JSON array or object
+  --file <path>      Read batch payload from JSON file
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources batch-update --help
+
+```text
+Usage: eai resources batch-update [options] <type>
+
+Update resources in bulk
+
+Options:
+  --tenant-id <id>   Run the mutation against a specific tenant
+  --data <json>      Batch payload as JSON array or object
+  --file <path>      Read batch payload from JSON file
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources batch-delete --help
+
+```text
+Usage: eai resources batch-delete [options] <type>
+
+Delete resources in bulk
+
+Options:
+  --tenant-id <id>   Run the mutation against a specific tenant
+  --ids <csv>        Comma-separated ids to delete
+  --data <json>      Batch payload as JSON array or object
+  --file <path>      Read batch payload from JSON file
+  --force            Accepted for parity with resources delete; batch delete is
+                     non-interactive (default: false)
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources aggregate --help
+
+```text
+Usage: eai resources aggregate [options] <type>
+
+Run a server-side aggregate query
+
+Options:
+  --tenant-id <id>     Run the read-only query against a specific tenant
+  --group-by <fields>  Comma-separated groupBy fields
+  --metrics <json>     Aggregate metrics JSON
+  --where <json>       Structured where filter as JSON
+  --limit <n>          Max summary rows (default: "1000")
+  --format <format>    Output format (text|json) (default: "text")
+  --json               Output raw JSON (deprecated, use --format json) (default:
+                       false)
+  -h, --help           display help for command
+```
+
+## eai resources get --help
+
+```text
+Usage: eai resources get [options] <type> <id>
+
+Get a single resource
+
+Options:
+  --tenant-id <id>   Run the read-only query against a specific tenant
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources create --help
+
+```text
+Usage: eai resources create [options] <type>
+
+Create a new resource
+
+Options:
+  --tenant-id <id>   Run the mutation against a specific tenant
+  --data <json>      Resource data as JSON string
+  --file <path>      Read data from JSON file
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+Examples:
+  $ eai resources create Project --data '{"name":"Demo","description":"Test project"}'
+  $ eai resources create User --file user.json
+  $ eai resources create Project --tenant-id 00000000-0000-4000-8000-000000000000 --data '{"name":"Demo"}'
+  $ eai resources create Project --data '{"name":"Demo"}' --format json
+```
+
+## eai resources update --help
+
+```text
+Usage: eai resources update [options] <type> <id>
+
+Update a resource
+
+Options:
+  --tenant-id <id>   Run the mutation against a specific tenant
+  --data <json>      Updated data as JSON string
+  --version <n>      Resource version (for optimistic locking)
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources delete --help
+
+```text
+Usage: eai resources delete [options] <type> <id>
+
+Delete a resource
+
+Options:
+  --tenant-id <id>   Run the mutation against a specific tenant
+  --force            Skip confirmation (default: false)
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources query --help
+
+```text
+Usage: eai resources query [options]
+
+Cross-type query
+
+Options:
+  --tenant-id <id>   Run the read-only query against a specific tenant
+  --types <types>    Comma-separated object type names
+  --where <json>     Filter conditions as JSON
+  --limit <n>        Max results (default: "20")
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources storage --help
+
+```text
+Usage: eai resources storage [options] [command]
+
+Storage provisioning status and diagnostics
+
+Options:
+  -h, --help        display help for command
+
+Commands:
+  status [options]  Show storage routing and provisioning status
+  doctor [options]  Run storage diagnostics
+  help [command]    display help for command
+```
+
+## eai resources storage status --help
+
+```text
+Usage: eai resources storage status [options]
+
+Show storage routing and provisioning status
+
+Options:
+  --tenant-id <id>   Run against a specific tenant
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources storage doctor --help
+
+```text
+Usage: eai resources storage doctor [options]
+
+Run storage diagnostics
+
+Options:
+  --tenant-id <id>   Run against a specific tenant
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources search --help
+
+```text
+Usage: eai resources search [options] <query>
+
+Search tenant resource projections
+
+Options:
+  --tenant-id <id>   Run against a specific tenant
+  --types <types>    Comma-separated object type names
+  --mode <mode>      Search mode: fulltext|hybrid|vector (default: "hybrid")
+  --hybrid           Use hybrid full-text + vector search (default: false)
+  --vector           Use vector-only search (default: false)
+  --fulltext         Use full-text-only search (default: false)
+  --limit <n>        Max results (default: "10")
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources file --help
+
+```text
+Usage: eai resources file [options] [command]
+
+Upload, download, and delete files attached to typed resource object properties
+
+Options:
+  -h, --help                                      display help for command
+
+Commands:
+  upload [options] <type> <id> <property> <path>  Upload a file to a resource file property
+  get [options] <type> <id> <property>            Download a resource file property
+  delete [options] <type> <id> <property>         Delete a resource file property
+  help [command]                                  display help for command
+
+Use this when the file belongs to an existing typed resource. Use "eai docs"
+when the file is a document to process, classify, or index for AI/RAG.
+```
+
+## eai resources file upload --help
+
+```text
+Usage: eai resources file upload [options] <type> <id> <property> <path>
+
+Upload a file to a resource file property
+
+Options:
+  --tenant-id <id>   Run against a specific tenant
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources file get --help
+
+```text
+Usage: eai resources file get [options] <type> <id> <property>
+
+Download a resource file property
+
+Options:
+  --tenant-id <id>  Run against a specific tenant
+  --output <path>   Write to a specific file path
+  -h, --help        display help for command
+```
+
+## eai resources file delete --help
+
+```text
+Usage: eai resources file delete [options] <type> <id> <property>
+
+Delete a resource file property
+
+Options:
+  --tenant-id <id>   Run against a specific tenant
+  --force            Skip confirmation (default: false)
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources schema --help
+
+```text
+Usage: eai resources schema [options]
+
+Show published Object Types for tenant
+
+Options:
+  --tenant-id <id>   Run the read-only query against a specific tenant
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai resources sync-schema --help
+
+```text
+Usage: eai resources sync-schema [options]
+
+Provision or reconcile storage resources from published Object Type metadata
+
+Options:
+  --tenant-id <id>     Run against a specific tenant
+  --backend <backend>  Limit to a backend (postgresql|documentdb|blob|search)
+  --dry-run            Show the reconcile plan without mutating storage
+                       (default: false)
+  --format <format>    Output format (text|json) (default: "text")
+  -h, --help           display help for command
+```
+
+## eai resources doctor --help
+
+```text
+Usage: eai resources doctor [options]
+
+Inspect storage readiness for the active tenant
+
+Options:
+  --tenant-id <id>   Run against a specific tenant
+  --format <format>  Output format (text|json) (default: "text")
+  -h, --help         display help for command
+```
+
+## eai app --help
+
+```text
+Usage: eai app|vertical [options] [command]
+
+Manage apps under the active company tenant
+
+Options:
+  -h, --help                                    display help for command
+
+Commands:
+  list [options]                                List apps for the active company tenant
+  create [options] <name>                       Create an app under a company tenant
+  connect-existing [options] <key>              Register an existing app repository for managed deployment
+  adopt-observed [options] <key>                Import an already-running app as read-only observed infrastructure
+  workflow-setup [options] <key>                Issue source-unknown workflow setup operation and nonce
+  workflow-evidence [options] <key>             Submit source-unknown workflow evidence for a setup operation
+  deploy-source-unknown [options] <key>         Request a TenantInfra deployment handoff for a source-unknown app
+  deploy-source-unknown-status [options] <key>  Read the latest source-unknown deployment handoff status
+  select [options] <key>                        Set EAI_APP_KEY in the current project .env.local
+  provision [options] <key>                     Run the platform app provisioning job
+  help [command]                                display help for command
+```
+
+## eai app list --help
+
+```text
+Usage: eai app list [options]
+
+List apps for the active company tenant
+
+Options:
+  --tenant-id <id>   Run against a specific company tenant
+  --limit <n>        Items per page (default: "50")
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai app create --help
+
+```text
+Usage: eai app create [options] <name>
+
+Create an app under a company tenant
+
+Options:
+  --tenant-id <id>            Main company tenant ID that owns this app
+  --parent-tenant <id>        Immediate parent company tenant ID for the new
+                              child company
+  --child-tenant <name>       Create or reuse a child company tenant display
+                              name
+  --child-tenant-slug <slug>  Child company tenant key
+  --key <key>                 Stable app key (defaults to kebab-case name)
+  --template <templateKey>    Optional app-catalog template key
+  --source <source>           Creation source (default: "eai-cli")
+  --app-url <url>             Optional app URL
+  --status <status>           Initial lifecycle status (default: "pending")
+  --format <format>           Output format (text|json) (default: "text")
+  --json                      Output raw JSON (deprecated, use --format json)
+                              (default: false)
+  -h, --help                  display help for command
+```
+
+## eai app connect-existing --help
+
+```text
+Usage: eai app connect-existing [options] <key>
+
+Register an existing app repository for managed deployment
+
+Options:
+  --repo <owner/repo>           GitHub repository to connect
+  --tenant-id <id>              Run against a specific company tenant
+  --repo-url <url>              Repository URL when it differs from
+                                https://github.com/owner/repo
+  --branch <branch>             Default branch (default: "main")
+  --workflow <path>             GitHub Actions workflow path (default:
+                                ".github/workflows/eai-app.yml")
+  --ref <ref>                   Approved git ref (defaults to
+                                refs/heads/<branch>)
+  --commit <sha>                Current commit SHA to bind
+  --config <path>               eai.config path (default:
+                                "src/eai.config/index.ts")
+  --runtime <path>              eai.runtime path (default: "eai.runtime.json")
+  --template-version <version>  Approved schema/template version
+  --base-template-sha <sha>     Base eai-app-template commit SHA when known
+  --approved-source-sha <sha>   Approved source commit SHA for non-template apps
+  --approved-release <id>       Approved schema/validator release identifier
+  --schema-digest <digest>      Approved schema digest in sha256:<hex> form
+  --validator-digest <digest>   Approved validator digest in sha256:<hex> form
+  --skip-validate               Skip app lookup (default: false)
+  --format <format>             Output format (text|json) (default: "text")
+  --json                        Output raw JSON (deprecated, use --format json)
+                                (default: false)
+  -h, --help                    display help for command
+```
+
+## eai app adopt-observed --help
+
+```text
+Usage: eai app adopt-observed [options] <key>
+
+Import an already-running app as read-only observed infrastructure
+
+Options:
+  --repo <owner/repo>           GitHub repository to connect
+  --url <url>                   Currently active observed app URL
+  --tenant-id <id>              Run against a specific company tenant
+  --repo-url <url>              Repository URL when it differs from
+                                https://github.com/owner/repo
+  --environment <environment>   Observed deployment environment (default:
+                                "production")
+  --branch <branch>             Default branch (default: "main")
+  --workflow <path>             GitHub Actions workflow path (default:
+                                ".github/workflows/eai-app.yml")
+  --ref <ref>                   Approved git ref (defaults to
+                                refs/heads/<branch>)
+  --commit <sha>                Current commit SHA to bind
+  --config <path>               eai.config path (default:
+                                "src/eai.config/index.ts")
+  --runtime <path>              eai.runtime path (default: "eai.runtime.json")
+  --template-version <version>  Approved schema/template version
+  --base-template-sha <sha>     Base eai-app-template commit SHA when known
+  --approved-source-sha <sha>   Approved source commit SHA for non-template apps
+  --approved-release <id>       Approved schema/validator release identifier
+  --schema-digest <digest>      Approved schema digest in sha256:<hex> form
+  --validator-digest <digest>   Approved validator digest in sha256:<hex> form
+  --deployment-id <id>          Observed deployment identifier
+  --image-digest <digest>       Observed immutable image digest
+  --config-hash <hash>          Observed config hash
+  --observed-at <iso>           Observation timestamp
+  --skip-validate               Skip app lookup (default: false)
+  --format <format>             Output format (text|json) (default: "text")
+  --json                        Output raw JSON (deprecated, use --format json)
+                                (default: false)
+  -h, --help                    display help for command
+```
+
+## eai app workflow-setup --help
+
+```text
+Usage: eai app workflow-setup [options] <key>
+
+Issue source-unknown workflow setup operation and nonce
+
+Options:
+  --tenant-id <id>             Run against a specific company tenant
+  --environment <environment>  Deployment environment to bind (default:
+                               "preview")
+  --workflow <path>            GitHub Actions workflow path (default:
+                               ".github/workflows/eai-app.yml")
+  --ref <ref>                  Approved git ref
+  --commit <sha>               Current commit SHA to bind
+  --config-hash <hash>         Validated config hash to bind
+  --skip-validate              Skip app lookup (default: false)
+  --format <format>            Output format (text|json) (default: "text")
+  --json                       Output raw JSON (deprecated, use --format json)
+                               (default: false)
+  -h, --help                   display help for command
+```
+
+## eai app workflow-evidence --help
+
+```text
+Usage: eai app workflow-evidence [options] <key>
+
+Submit source-unknown workflow evidence for a setup operation
+
+Options:
+  --repo <owner/repo>                GitHub repository submitting evidence
+  --operation-id <id>                Source-unknown workflow setup operation ID
+  --nonce <nonce>                    One-time setup nonce
+  --commit <sha>                     Workflow commit SHA
+  --config-hash <hash>               Validated config hash
+  --artifact-digest <digest>         Workflow artifact digest in sha256:<hex>
+                                     form
+  --image-digest <digest>            Immutable image digest in sha256:<hex> form
+  --tenant-id <id>                   Run against a specific company tenant
+  --environment <environment>        Deployment environment to bind (default:
+                                     "preview")
+  --branch <branch>                  Default branch (default: "main")
+  --workflow <path>                  GitHub Actions workflow path (default:
+                                     ".github/workflows/eai-app.yml")
+  --ref <ref>                        Approved git ref (defaults to
+                                     refs/heads/<branch>)
+  --template-version <version>       Approved schema/template version
+  --base-template-sha <sha>          Base eai-app-template commit SHA when known
+  --approved-source-sha <sha>        Approved source commit SHA for non-template
+                                     apps
+  --approved-release <id>            Approved schema/validator release
+                                     identifier
+  --schema-digest <digest>           Approved schema digest in sha256:<hex> form
+  --validator-digest <digest>        Approved validator digest in sha256:<hex>
+                                     form
+  --workflow-run-id <id>             GitHub Actions run ID
+  --workflow-run-attempt <n>         GitHub Actions run attempt
+  --github-oidc-token <token>        GitHub Actions OIDC token for workflow
+                                     evidence submission
+  --github-oidc-audience <audience>  GitHub Actions OIDC audience (default:
+                                     "api://enterprise-ai-publicapi/source-unknown")
+  --skip-validate                    Skip app lookup (default: false)
+  --format <format>                  Output format (text|json) (default: "text")
+  --json                             Output raw JSON (deprecated, use --format
+                                     json) (default: false)
+  -h, --help                         display help for command
+```
+
+## eai app deploy-source-unknown --help
+
+```text
+Usage: eai app deploy-source-unknown [options] <key>
+
+Request a TenantInfra deployment handoff for a source-unknown app
+
+Options:
+  --operation-id <id>          Accepted source-unknown workflow evidence
+                               operation ID
+  --tenant-id <id>             Run against a specific company tenant
+  --environment <environment>  Deployment environment to bind (default:
+                               "preview")
+  --repo <owner/name>          GitHub repository that produced the deployment
+                               evidence
+  --workflow <path>            GitHub Actions workflow path
+  --ref <ref>                  Approved git ref
+  --commit <sha>               Workflow commit SHA
+  --workflow-run-id <id>       GitHub Actions workflow run ID
+  --config-hash <hash>         Validated config hash
+  --artifact-digest <digest>   Workflow artifact digest in sha256:<hex> form
+  --image-digest <digest>      Immutable image digest in sha256:<hex> form
+  --target-kind <kind>         Deployment backend target kind (default:
+                               "tenantinfra")
+  --release-channel <channel>  Release channel to request (default: "preview")
+  --skip-validate              Skip app lookup (default: false)
+  --format <format>            Output format (text|json) (default: "text")
+  --json                       Output raw JSON (deprecated, use --format json)
+                               (default: false)
+  -h, --help                   display help for command
+```
+
+## eai app deploy-source-unknown-status --help
+
+```text
+Usage: eai app deploy-source-unknown-status [options] <key>
+
+Read the latest source-unknown deployment handoff status
+
+Options:
+  --tenant-id <id>   Run against a specific company tenant
+  --skip-validate    Skip app lookup (default: false)
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai app select --help
+
+```text
+Usage: eai app select [options] <key>
+
+Set EAI_APP_KEY in the current project .env.local
+
+Options:
+  --tenant-id <id>   Validate against a specific company tenant
+  --skip-validate    Skip remote lookup before writing .env.local (default:
+                     false)
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai app provision --help
+
+```text
+Usage: eai app provision [options] <key>
+
+Run the platform app provisioning job
+
+Options:
+  --tenant-id <id>     Run against a specific company tenant
+  --backend <backend>  postgresql|mongodb|documentdb|blob|search|all (default:
+                       "all")
+  --dry-run            Plan actions without applying changes (default: false)
+  --rebuild-search     Request search projection rebuild after provisioning
+                       (default: false)
+  --skip-validate      Skip app lookup (default: false)
+  --select             Write EAI_APP_KEY after successful provisioning (default:
+                       false)
+  --format <format>    Output format (text|json) (default: "text")
+  --json               Output raw JSON (deprecated, use --format json) (default:
+                       false)
+  -h, --help           display help for command
+```
+
+## eai chat --help
+
+```text
+Usage: eai chat [options] [command]
+
+Chat with AI workflows
+
+Options:
+  -h, --help                  display help for command
+
+Commands:
+  send [options] <message>    Send a single chat message
+  stream [options] <message>  Stream a chat conversation (interactive)
+  help [command]              display help for command
+```
+
+## eai chat send --help
+
+```text
+Usage: eai chat send [options] <message>
+
+Send a single chat message
+
+Arguments:
+  message                 Message to send
+
+Options:
+  --workflow <id>         Workflow ID
+  --stage <stage>         Chat stage (default: "chat")
+  --conversation-id <id>  Conversation ID (auto-generated if omitted)
+  -h, --help              display help for command
+```
+
+## eai chat stream --help
+
+```text
+Usage: eai chat stream [options] <message>
+
+Stream a chat conversation (interactive)
+
+Arguments:
+  message                 Initial message
+
+Options:
+  --workflow <id>         Workflow ID
+  --stage <stage>         Chat stage (default: "chat")
+  --conversation-id <id>  Conversation ID (auto-generated if omitted)
+  -h, --help              display help for command
+```
+
+## eai workflow --help
+
+```text
+Usage: eai workflow [options] [command]
+
+Provision app workflow configs and inspect AI runtime workflow bindings
+
+Options:
+  -h, --help                              display help for command
+
+Commands:
+  provision [options] <workflow-key>      Provision a usecase-agnostic workflow config and bind it to a tenant app
+  readiness [options] [workflow-keys...]  Check tenant, plan, and workflow readiness for building an app
+  status [options] <workflow-key>         Check whether a workflow key has an executable runtime binding
+  request [options] <workflow-key>        Request an operator-assisted runtime workflow binding
+  help [command]                          display help for command
+```
+
+## eai workflow provision --help
+
+```text
+Usage: eai workflow provision [options] <workflow-key>
+
+Provision a usecase-agnostic workflow config and bind it to a tenant app
+
+Options:
+  --app <key>                     Tenant app key that consumes this workflow
+  --vertical <key>                Deprecated alias for --app
+  --tenant <id>                   Tenant id to provision against (defaults to
+                                  active tenant)
+  --display-name <name>           Workflow display name (defaults to humanized
+                                  workflow key)
+  --usecase <usecase>             Workflow usecase namespace (default:
+                                  "generic")
+  --scope-key <scopeKey>          Explicit workflow scope key (defaults to
+                                  <usecase>:<workflow-key>)
+  --stage <stage>                 Stage id, optionally id:Display Name. Repeat
+                                  for multiple stages. (default: [])
+  --stage-env <mapping>           Env mapping KEY=stage-id. Repeat for stage env
+                                  vars. (default: [])
+  --workflow-env-key <key>        Env key for the workflow id
+  --bind-ai-runtime               Also create shared-ai-profile and
+                                  shared-chatbot-config records for the stages
+                                  (default: false)
+  --ai-provider <integrationKey>  Tenant integration key for the AI provider
+  --ai-model <model>              AI model/deployment name for the workflow
+                                  runtime
+  --ai-profile-key <key>          Reusable shared-ai-profile key (defaults to
+                                  <workflow>-default-model)
+  --stage-prompt <stage=prompt>   Prompt content for a stage. Repeat for
+                                  multiple stages. (default: [])
+  --status <status>               active or draft (default: "active")
+  --write-local-env               Patch .env.local with generated env values
+                                  (default: false)
+  --write-app-config              Write generated env values to Azure App
+                                  Configuration (default: false)
+  --env <label>                   Cloud config environment label for
+                                  EAI_APP_CONFIG_STORE_<LABEL>
+  --label <label>                 Azure App Configuration label (defaults to
+                                  NEXT_PUBLIC_APP_NAME or app key)
+  --format <format>               Output format: text or json (default: "text")
+  --json                          Output raw JSON (deprecated, use --format
+                                  json) (default: false)
+  -h, --help                      display help for command
+
+Examples:
+  $ eai workflow provision configurator --app no-code-builder \
+      --workflow-env-key NEXT_PUBLIC_WORKFLOW_CONFIGURATOR_ID \
+      --stage analyze-process:"Analyze process" \
+      --stage generate-workflow:"Generate workflow" \
+      --stage suggest-improvements:"Suggest improvements" \
+      --stage-env WORKFLOW_ANALYZE_STAGE=analyze-process \
+      --stage-env WORKFLOW_GENERATE_STAGE=generate-workflow \
+      --stage-env WORKFLOW_SUGGESTIONS_STAGE=suggest-improvements
+      --bind-ai-runtime --ai-provider azure-openai --ai-model gpt-5.1-chat
+
+  $ eai workflow provision onboarding --app hr-helper --stage intake --stage review --write-local-env
+```
+
+## eai workflow readiness --help
+
+```text
+Usage: eai workflow readiness [options] [workflow-keys...]
+
+Check tenant, plan, and workflow readiness for building an app
+
+Arguments:
+  workflow-keys      Optional public workflow keys to include in readiness
+                     checks
+
+Options:
+  --tenant <id>      Tenant id to check (defaults to active tenant)
+  --format <format>  Output format: text or json (default: "text")
+  -h, --help         display help for command
+```
+
+## eai workflow status --help
+
+```text
+Usage: eai workflow status [options] <workflow-key>
+
+Check whether a workflow key has an executable runtime binding
+
+Arguments:
+  workflow-key       Public workflow key, for example strategy-monitor
+
+Options:
+  --tenant <id>      Tenant id to check (defaults to active tenant)
+  --format <format>  Output format: text or json (default: "text")
+  -h, --help         display help for command
+```
+
+## eai workflow request --help
+
+```text
+Usage: eai workflow request [options] <workflow-key>
+
+Request an operator-assisted runtime workflow binding
+
+Arguments:
+  workflow-key           Public workflow key, for example strategy-monitor
+
+Options:
+  --tenant <id>          Tenant id to request for (defaults to active tenant)
+  --display-name <name>  Human-readable workflow display name
+  --reason <reason>      Short reason to include for the platform operator
+  --format <format>      Output format: text or json (default: "text")
+  -h, --help             display help for command
+```
+
+## eai docs --help
+
+```text
+Usage: eai docs [options] [command]
+
+Document upload, classification, and indexing
+
+Options:
+  -h, --help          display help for command
+
+Commands:
+  upload <file>       Upload a document
+  classify <file>     Classify a document
+  index <documentId>  Index a document for RAG
+  help [command]      display help for command
+
+Examples:
+  $ eai docs upload ./reports/contract.pdf
+  $ eai docs classify ./reports/contract.pdf
+  $ eai docs index <documentId>
+
+Typical workflow:
+  1. Upload a file
+  2. Classify it if your platform uses document classification
+  3. Index the document ID if you want it available to RAG or chat workflows
+
+Use docs commands when the file is the subject of document processing or AI
+context. Use "eai resources file" when the file is an attachment to a typed
+resource object.
+```
+
+## eai docs upload --help
+
+```text
+Usage: eai docs upload [options] <file>
+
+Upload a document
+
+Options:
+  -h, --help  display help for command
+```
+
+## eai docs classify --help
+
+```text
+Usage: eai docs classify [options] <file>
+
+Classify a document
+
+Options:
+  -h, --help  display help for command
+```
+
+## eai docs index --help
+
+```text
+Usage: eai docs index [options] <documentId>
+
+Index a document for RAG
+
+Options:
+  -h, --help  display help for command
+```
+
+## eai deploy --help
+
+```text
+Usage: eai deploy [options] [command]
+
+Deployment management
+
+Options:
+  -h, --help         display help for command
+
+Commands:
+  setup [options]    Generate deployment workflow and configure GitHub secrets
+  trigger [options]  Trigger deployment workflow
+  status [options]   Check deployment status
+  env [options]      Print provider-neutral runtime env and secret requirements
+  doctor [options]   Black-box check a deployed EAI app runtime
+  help [command]     display help for command
+```
+
+## eai deploy setup --help
+
+```text
+Usage: eai deploy setup [options]
+
+Generate deployment workflow and configure GitHub secrets
+
+Options:
+  --repo <repo>  GitHub repo (org/name)
+  -h, --help     display help for command
+```
+
+## eai deploy trigger --help
+
+```text
+Usage: eai deploy trigger [options]
+
+Trigger deployment workflow
+
+Options:
+  --repo <repo>      GitHub repo (org/name)
+  --branch <branch>  Branch to deploy (default: "main")
+  --workflow <name>  Workflow filename (default: "deploy-demo.yml")
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+Examples:
+  $ eai deploy trigger
+  $ eai deploy trigger --branch develop
+  $ eai deploy trigger --repo eai-tools/my-app --format json
+```
+
+## eai deploy status --help
+
+```text
+Usage: eai deploy status [options]
+
+Check deployment status
+
+Options:
+  --repo <repo>      GitHub repo (org/name)
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai deploy env --help
+
+```text
+Usage: eai deploy env [options]
+
+Print provider-neutral runtime env and secret requirements
+
+Options:
+  --provider <provider>  Target provider
+                         (vercel|docker|aws|azure|kubernetes|vm|generic)
+  --format <format>      Output format (text|json) (default: "text")
+  --json                 Output raw JSON (deprecated, use --format json)
+                         (default: false)
+  -h, --help             display help for command
+
+Examples:
+  $ eai deploy env --provider generic
+  $ eai deploy env --provider vercel --format json
+  $ eai deploy env --provider kubernetes
+```
+
+## eai deploy doctor --help
+
+```text
+Usage: eai deploy doctor [options]
+
+Black-box check a deployed EAI app runtime
+
+Options:
+  --url <url>        Deployed app base URL
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+Examples:
+  $ eai deploy doctor --url https://my-app.example.com
+  $ eai deploy doctor --url https://my-app.example.com --format json
+```
+
+## eai runtime --help
+
+```text
+Usage: eai runtime [options] [command]
+
+Validate the provider-neutral EAI app runtime contract
+
+Options:
+  -h, --help          display help for command
+
+Commands:
+  validate [options]  Validate eai.runtime.json and local runtime declarations
+  help [command]      display help for command
+```
+
+## eai runtime validate --help
+
+```text
+Usage: eai runtime validate [options]
+
+Validate eai.runtime.json and local runtime declarations
+
+Options:
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+Examples:
+  $ eai runtime validate
+  $ eai runtime validate --format json
+```
+
+## eai verify --help
+
+```text
+Usage: eai verify [options] [command]
+
+Run platform connectivity checks
+
+Options:
+  --tenant-id <id>   Run read-only connectivity checks against a specific tenant
+                     ID
+  -h, --help         display help for command
+
+Commands:
+  storage [options]  Verify storage status and doctor contracts
+  calls [options]    Audit platform-facing API call contracts used by the CLI
+
+Examples:
+  $ eai verify
+  $ eai verify --tenant-id <tenantId>
+  $ eai verify calls --format json
+
+Use 'eai verify' for a quick health check.
+Use 'eai verify calls' when you need to inspect the exact API contracts the CLI depends on.
+```
+
+## eai verify storage --help
+
+```text
+Usage: eai verify storage [options]
+
+Verify storage status and doctor contracts
+
+Options:
+  --tenant-id <id>   Tenant ID to verify
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai verify calls --help
+
+```text
+Usage: eai verify calls [options]
+
+Audit platform-facing API call contracts used by the CLI
+
+Options:
+  --tenant-id <id>          Tenant ID to use for read-only resource and schema
+                            checks
+  --resource-type <type>    Resource type to probe with list/query/get checks
+  --resource-id <id>        Specific resource ID to fetch during contract audit
+  --workflow <id>           Workflow ID to use for chat smoke test
+  --stage <stage>           Chat stage to use when --include-chat is enabled
+                            (default: "chat")
+  --tenant-record <id>      Tenant record ID to use for tenant info lookup
+  --user-email <email>      Email address to use for user lookup contract check
+  --include-chat            Execute a non-streaming chat request (creates a
+                            conversation) (default: false)
+  --chat-message <message>  Message to send when probing chat (default: "Smoke
+                            test from `eai verify calls`")
+  --format <format>         Output format (text|json) (default: "text")
+  --json                    Output raw JSON (deprecated, use --format json)
+                            (default: false)
+  -h, --help                display help for command
+```
+
+## eai doctor --help
+
+```text
+Usage: eai doctor [options]
+
+Diagnose common issues and suggest fixes
+
+Options:
+  --fix            Attempt to fix issues automatically (default: false)
+  --check-updates  Report CLI release status plus Gofer/template drift for the
+                   current project (default: false)
+  -h, --help       display help for command
+
+Examples:
+  $ eai doctor
+  $ eai doctor --check-updates
+
+Notes:
+  - `eai update` upgrades the installed CLI package only.
+  - `eai gofer refresh --check` previews safe repo-local Gofer asset updates.
+  - `eai template check` previews app-template and UI drift without writing files.
+  - Template and UI component changes are not auto-merged into existing repos yet.
+```
+
+## eai whoami --help
+
+```text
+Usage: eai whoami [options]
+
+Show auth status and tenant info
+
+Options:
+  -h, --help  display help for command
+```
+
 ## eai update --help
 
 ```text
@@ -207,93 +2006,183 @@ Notes:
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
 ```
 
-## eai doctor --help
+## eai provision --help
 
 ```text
-Usage: eai doctor [options]
+Usage: eai provision [options] [command]
 
-Diagnose common issues and suggest fixes
-
-Options:
-  --fix            Attempt to fix issues automatically (default: false)
-  --check-updates  Report CLI release status plus Gofer/template drift for the
-                   current project (default: false)
-  -h, --help       display help for command
-
-Examples:
-  $ eai doctor
-  $ eai doctor --check-updates
-
-Notes:
-  - `eai update` upgrades the installed CLI package only.
-  - `eai gofer refresh --check` previews safe repo-local Gofer asset updates.
-  - `eai template check` previews app-template and UI drift without writing files.
-  - Template and UI component changes are not auto-merged into existing repos yet.
-```
-
-## eai errors --help
-
-```text
-Usage: eai errors [options] [command]
-
-Explain EAI CLI errors and agent-safe recovery steps
+Provision platform resources for this app
 
 Options:
-  -h, --help                          display help for command
+  -h, --help                     display help for command
 
 Commands:
-  list [options]                      List known EAI CLI error guidance entries
-  explain [options] <code-or-reason>  Explain why an error happens and what eai
-                                      commands can recover it
-  help [command]                      display help for command
+  entra [options]                Create an Entra app registration for end-user
+                                 auth (Auth.js)
+  resourceapi-refresh [options]  Refresh a passive customer storage schema
+                                 snapshot through the management service
+  storage [options]              Provision storage for the active tenant
+  resourceapi-bundle [options]   Prepare a customer-hosted storage schema bundle
+  help [command]                 display help for command
 ```
 
-## eai errors explain --help
+## eai provision entra --help
 
 ```text
-Usage: eai errors explain [options] <code-or-reason>
+Usage: eai provision entra [options]
 
-Explain why an error happens and what eai commands can recover it
+Create an Entra app registration for end-user auth (Auth.js)
 
 Options:
-  --format <format>  Output format (text|json) (default: "text")
-  --json             Output raw JSON (deprecated, use --format json) (default:
-                     false)
-  -h, --help         display help for command
+  --force               Re-check the remote app registration even if
+                        ENTRA_CLIENT_ID already exists locally (default: false)
+  --rotate-secret       Rotate the existing ENTRA_CLIENT_ID secret and write the
+                        new value to .env.local (default: false)
+  --deauthorize         Remove tenant authorization and delete the Entra app
+                        registration for cleanup (default: false)
+  --client-id <id>      Client ID to deauthorize; defaults to ENTRA_CLIENT_ID in
+                        .env.local
+  --keep-registration   Only remove tenant authorization; do not delete the
+                        Entra app registration (default: false)
+  --redirect-uri <uri>  Additional OAuth redirect URI to register (e.g. a
+                        deployed callback). Repeatable. Registered alongside the
+                        local callback; the platform merges with existing URIs.
+                        (default: [])
+  --debug               Print product-safe diagnostic status and request
+                        identifiers on failure (default: false)
+  -h, --help            display help for command
 
 Examples:
-  $ eai errors explain E101
-  $ eai errors explain tenant_authorization_incomplete
-  $ eai errors explain E242 --format json
+  $ eai provision entra
+  $ eai provision entra --force
+  $ eai provision entra --rotate-secret
+  $ eai provision entra --deauthorize --force
+  $ eai provision entra --redirect-uri https://abc.com/api/auth/callback/microsoft-entra-id
 
-Notes:
-  - Guidance is public-safe and avoids private platform implementation detail.
-  - Commands marked [read-only] should run before commands marked [changes state].
-  - AI agents should respect retry and stop conditions instead of looping.
+What happens:
+  - Calls the platform provisioning API to create an Entra app registration
+  - Writes ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET to .env.local
+  - If the registration already exists, confirms ENTRA_CLIENT_ID without rotating the secret
+  - With --rotate-secret, rotates the existing app registration secret through the platform API
+  - With --deauthorize --force, removes tenant authorization, deletes the app registration, and removes local ENTRA_CLIENT_ID/SECRET
+  - With --redirect-uri, registers the given deployed callback(s) in addition to the local one (the platform merges them with any already registered)
+
+Diagnostics:
+  - Uses the PublicAPI URL from the active profile, .env.local BASE_URL_PUBLIC_API, environment, or the default API
+  - Default/no profile uses the public API; private profiles use their locally configured API
+  - The platform chooses the matching CIAM from its deployment configuration; the CLI never sends a CIAM selector
+  - Errors are product-safe and include a support reference without exposing platform internals
 ```
 
-## eai agent guide --help
+## eai provision resourceapi-refresh --help
 
 ```text
-Usage: eai agent guide [options]
+Usage: eai provision resourceapi-refresh [options]
 
-Show the AI-agent operating guide for eai
+Refresh a passive customer storage schema snapshot through the management
+service
 
 Options:
-  --format <format>  Output format (text|json) (default: "text")
-  --json             Output raw JSON (deprecated, use --format json) (default:
-                     false)
-  -h, --help         display help for command
+  --admin-api-url <url>         Management service URL for server-backed
+                                orchestration
+  --tenant-id <id>              Tenant ID the refresh is scoped to
+  --install-id <id>             Customer storage install registry ID
+  --apply                       Apply the refreshed snapshot after planning
+                                (default: false)
+  --dry-run                     With --apply, ask the storage service to plan
+                                schema application without writing (default:
+                                false)
+  --backend <backend>           postgresql|mongodb|documentdb|blob|search|all
+                                (default: "all")
+  --rebuild-search              Request search projection rebuild after schema
+                                sync (default: false)
+  --force-overwrite             Allow the passive snapshot to overwrite an
+                                existing schema version (default: false)
+  --no-verify                   Skip storage schema-status verification after
+                                apply
+  --no-update-install-registry  Do not update the tenant install registry schema
+                                hash after apply
+  --reason <text>               Human-readable reason for a real schema refresh
+                                apply
+  --change-ticket <id>          Support/change ticket for audit trail
+  --product <key>               Product/app key this refresh enables
+  --schema-version <version>    Tenant schema version to stamp into metadata
+                                (default: "1")
+  --format <format>             Output format (text|json) (default: "text")
+  --json                        Output raw JSON (deprecated, use --format json)
+                                (default: false)
+  -h, --help                    display help for command
 
 Examples:
-  $ eai agent guide
-  $ eai agent guide --format json
-  $ eai --describe
+  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId>
+  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply --dry-run --force-overwrite
+  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply --force-overwrite --reason "Repair passive schema drift"
 
 Notes:
-  - Use this before improvising eai commands.
-  - Prefer read-only diagnostics before commands marked [changes state].
-  - On failure, run eai errors explain <code-or-reason> --format json.
+  - This is a super-admin repair path for passive customer storage schema metadata.
+  - It updates the tenant install registry only after the storage service accepts and verifies the refreshed snapshot.
+```
+
+## eai provision storage --help
+
+```text
+Usage: eai provision storage [options]
+
+Provision storage for the active tenant
+
+Options:
+  --tenant-id <id>     Provision storage for a specific tenant
+  --backend <backend>  postgresql|mongodb|documentdb|blob|search|all (default:
+                       "all")
+  --dry-run            Plan actions without applying changes (default: false)
+  --rebuild-search     Request search projection rebuild after provisioning
+                       (default: false)
+  --format <format>    Output format (text|json) (default: "text")
+  --json               Output raw JSON (deprecated, use --format json) (default:
+                       false)
+  -h, --help           display help for command
+```
+
+## eai provision resourceapi-bundle --help
+
+```text
+Usage: eai provision resourceapi-bundle [options]
+
+Prepare a customer-hosted storage schema bundle
+
+Options:
+  --schema <file>             Object-types export JSON for local bundle
+                              generation
+  --tenant-id <id>            Tenant ID the bundle is scoped to
+  --install-id <id>           Customer storage install registry ID
+  --admin-api-url <url>       Management service URL for server-backed
+                              orchestration
+  --apply                     Ask the management service to push the signed
+                              bundle to the customer storage install (default:
+                              false)
+  --dry-run                   Plan schema application without applying customer
+                              storage changes (default: false)
+  --backend <backend>         postgresql|mongodb|documentdb|blob|search|all
+                              (default: "all")
+  --rebuild-search            Request search projection rebuild after schema
+                              sync (default: false)
+  --product <key>             Product/app key this bundle enables
+  --schema-version <version>  Tenant schema version to stamp into metadata
+                              (default: "1")
+  --out <file>                Write bundle JSON to this file
+  --format <format>           Output format (text|json) (default: "text")
+  --json                      Output raw JSON (deprecated, use --format json)
+                              (default: false)
+  -h, --help                  display help for command
+
+Examples:
+  $ eai provision resourceapi-bundle --schema object-types.json --tenant-id <tenantId> --install-id <installId> --out resourceapi-bundle.json
+  $ eai provision resourceapi-bundle --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply
+  $ eai provision resourceapi-bundle --schema object-types.json --tenant-id <tenantId> --install-id <installId> --product daisy-assist --format json
+
+Notes:
+  - With --admin-api-url, the management service reads the platform schema source of truth, signs the bundle, and can push it.
+  - Local --schema mode is for offline inspection only and does not own provisioning policy.
 ```
 
 ## eai gofer --help
@@ -364,6 +2253,320 @@ Notes:
   - This command never writes files to your repo.
   - Template/UI updates still require manual review and selective copy/diff.
   - Use `eai gofer refresh --check` separately for Gofer-managed assets.
+```
+
+## eai blocks --help
+
+```text
+Usage: eai blocks [options] [command]
+
+Discover AI-readable EAI UI block manifests
+
+Options:
+  -h, --help               display help for command
+
+Commands:
+  list [options]           List available EAI UI blocks
+  describe [options] <id>  Describe a block by stable block id
+  readiness [options]      Summarize public readiness and package-profile
+                           compatibility
+  schema [options]         Print the public EAI block manifest schema summary
+  validate [options]       Validate installed block catalog metadata or a
+                           manifest JSON file
+  help [command]           display help for command
+```
+
+## eai blocks list --help
+
+```text
+Usage: eai blocks list [options]
+
+List available EAI UI blocks
+
+Options:
+  --format <format>            Output format: text or json (default: "text")
+  --lane <lane>                Filter by package lane: foundation, product,
+                               addon, dev
+  --coupling <status>          Filter by coupling: external-safe,
+                               external-with-adapter, internal-only
+  --readiness <status>         Filter by public readiness: public-ready,
+                               preview, internal, blocked
+  --package-profile <profile>  Filter by package profile compatibility:
+                               external, internal, hybrid
+  --custom                     Show only custom extension blocks
+  --group-by <field>           Group output by lane, package, coupling, profile,
+                               or readiness (default: "lane")
+  -h, --help                   display help for command
+```
+
+## eai blocks describe --help
+
+```text
+Usage: eai blocks describe [options] <id>
+
+Describe a block by stable block id
+
+Arguments:
+  id                 Block id or alias, e.g. core.button
+
+Options:
+  --format <format>  Output format: text or json (default: "text")
+  -h, --help         display help for command
+```
+
+## eai blocks readiness --help
+
+```text
+Usage: eai blocks readiness [options]
+
+Summarize public readiness and package-profile compatibility
+
+Options:
+  --format <format>            Output format: text or json (default: "text")
+  --package-profile <profile>  Evaluate compatibility for external, internal, or
+                               hybrid projects
+  -h, --help                   display help for command
+```
+
+## eai blocks schema --help
+
+```text
+Usage: eai blocks schema [options]
+
+Print the public EAI block manifest schema summary
+
+Options:
+  --format <format>  Output format: json or text (default: "json")
+  -h, --help         display help for command
+```
+
+## eai blocks validate --help
+
+```text
+Usage: eai blocks validate [options]
+
+Validate installed block catalog metadata or a manifest JSON file
+
+Options:
+  --file <path>      Validate a manifest JSON file instead of the installed
+                     catalog
+  --format <format>  Output format: text or json (default: "text")
+  --strict           Treat warnings as validation failures (default: false)
+  -h, --help         display help for command
+```
+
+## eai publicapi --help
+
+```text
+Usage: eai publicapi [options] [command]
+
+Call authorized PublicAPI V4 routes directly
+
+Options:
+  -h, --help               display help for command
+
+Commands:
+  get [options] <path>     GET an authorized PublicAPI V4 path
+  post [options] <path>    POST an authorized PublicAPI V4 path
+  patch [options] <path>   PATCH an authorized PublicAPI V4 path
+  put [options] <path>     PUT an authorized PublicAPI V4 path
+  delete [options] <path>  DELETE an authorized PublicAPI V4 path
+  help [command]           display help for command
+
+Examples:
+  eai publicapi get /v4/identity/me
+  eai publicapi get /v4/platform/capabilities/catalog --format json
+  eai publicapi post /v4/geo/resolve-location --data '{"query":"Copenhagen"}'
+  eai publicapi patch /v4/identity/me/profile --file profile.json
+
+Notes:
+  - Only /v4 PublicAPI paths are accepted.
+  - Existing named commands remain preferred for common workflows.
+  - Authorization is still enforced by PublicAPI and platform tenant policy.
+```
+
+## eai publicapi get --help
+
+```text
+Usage: eai publicapi get [options] <path>
+
+GET an authorized PublicAPI V4 path
+
+Options:
+  --tenant-id <tenantId>  Use a specific tenant instead of the active tenant
+  --data <json>           JSON request body
+  --file <path>           Read JSON request body from a file
+  --param <key=value>     Query parameter (repeatable) (default: [])
+  --include-headers       Include response headers in JSON output
+  --format <format>       Output format (text|json) (default: "text")
+  --json                  Shortcut for --format json
+  -h, --help              display help for command
+```
+
+## eai publicapi post --help
+
+```text
+Usage: eai publicapi post [options] <path>
+
+POST an authorized PublicAPI V4 path
+
+Options:
+  --tenant-id <tenantId>  Use a specific tenant instead of the active tenant
+  --data <json>           JSON request body
+  --file <path>           Read JSON request body from a file
+  --param <key=value>     Query parameter (repeatable) (default: [])
+  --include-headers       Include response headers in JSON output
+  --format <format>       Output format (text|json) (default: "text")
+  --json                  Shortcut for --format json
+  -h, --help              display help for command
+```
+
+## eai publicapi patch --help
+
+```text
+Usage: eai publicapi patch [options] <path>
+
+PATCH an authorized PublicAPI V4 path
+
+Options:
+  --tenant-id <tenantId>  Use a specific tenant instead of the active tenant
+  --data <json>           JSON request body
+  --file <path>           Read JSON request body from a file
+  --param <key=value>     Query parameter (repeatable) (default: [])
+  --include-headers       Include response headers in JSON output
+  --format <format>       Output format (text|json) (default: "text")
+  --json                  Shortcut for --format json
+  -h, --help              display help for command
+```
+
+## eai publicapi put --help
+
+```text
+Usage: eai publicapi put [options] <path>
+
+PUT an authorized PublicAPI V4 path
+
+Options:
+  --tenant-id <tenantId>  Use a specific tenant instead of the active tenant
+  --data <json>           JSON request body
+  --file <path>           Read JSON request body from a file
+  --param <key=value>     Query parameter (repeatable) (default: [])
+  --include-headers       Include response headers in JSON output
+  --format <format>       Output format (text|json) (default: "text")
+  --json                  Shortcut for --format json
+  -h, --help              display help for command
+```
+
+## eai publicapi delete --help
+
+```text
+Usage: eai publicapi delete [options] <path>
+
+DELETE an authorized PublicAPI V4 path
+
+Options:
+  --tenant-id <tenantId>  Use a specific tenant instead of the active tenant
+  --data <json>           JSON request body
+  --file <path>           Read JSON request body from a file
+  --param <key=value>     Query parameter (repeatable) (default: [])
+  --include-headers       Include response headers in JSON output
+  --format <format>       Output format (text|json) (default: "text")
+  --json                  Shortcut for --format json
+  -h, --help              display help for command
+```
+
+## eai errors --help
+
+```text
+Usage: eai errors [options] [command]
+
+Explain EAI CLI errors and agent-safe recovery steps
+
+Options:
+  -h, --help                          display help for command
+
+Commands:
+  list [options]                      List known EAI CLI error guidance entries
+  explain [options] <code-or-reason>  Explain why an error happens and what eai
+                                      commands can recover it
+  help [command]                      display help for command
+```
+
+## eai errors list --help
+
+```text
+Usage: eai errors list [options]
+
+List known EAI CLI error guidance entries
+
+Options:
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+```
+
+## eai errors explain --help
+
+```text
+Usage: eai errors explain [options] <code-or-reason>
+
+Explain why an error happens and what eai commands can recover it
+
+Options:
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+Examples:
+  $ eai errors explain E101
+  $ eai errors explain tenant_authorization_incomplete
+  $ eai errors explain E242 --format json
+
+Notes:
+  - Guidance is public-safe and avoids private platform implementation detail.
+  - Commands marked [read-only] should run before commands marked [changes state].
+  - AI agents should respect retry and stop conditions instead of looping.
+```
+
+## eai agent --help
+
+```text
+Usage: eai agent [options] [command]
+
+Show AI-agent discovery and recovery guidance
+
+Options:
+  -h, --help       display help for command
+
+Commands:
+  guide [options]  Show the AI-agent operating guide for eai
+  help [command]   display help for command
+```
+
+## eai agent guide --help
+
+```text
+Usage: eai agent guide [options]
+
+Show the AI-agent operating guide for eai
+
+Options:
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+Examples:
+  $ eai agent guide
+  $ eai agent guide --format json
+  $ eai --describe
+
+Notes:
+  - Use this before improvising eai commands.
+  - Prefer read-only diagnostics before commands marked [changes state].
+  - On failure, run eai errors explain <code-or-reason> --format json.
 ```
 
 ---
@@ -2632,17 +4835,20 @@ Create a new tenant and bootstrap admin access.
 ---
 
 #### `eai tenant delete <id>`
-Soft-delete a tenant.
+Soft-delete a tenant by default. With `--force-hard-purge`, request permanent
+purge of the tenant and its child-tenant subtree.
 
 **Arguments**:
 - `<id>` — Tenant ID
 
 **Options**:
 - `--force` — Skip confirmation
+- `--force-hard-purge` — Permanently purge the tenant and all child tenants; sends `forceHardPurge`, `confirmationTenantId`, and a hard-purge reason to PublicAPI
 - `--format <format>` — Output format (text|json, default: text)
+- `--json` — Output raw JSON (deprecated, use `--format json`)
 
 **Platform API Endpoints Used**:
-- `POST /v4/platform/tenants/{tenantId}/delete`
+- `POST /v4/platform/tenants/{tenantId}/delete` — soft delete by default; hard purge when the request body includes `forceHardPurge: true`
 
 ---
 
