@@ -1043,11 +1043,32 @@ tenantCommand
       }
 
       const responseBody = await res.json().catch(() => null);
+      const backendStatus =
+        responseBody && typeof responseBody === 'object' && 'status' in responseBody
+          ? String((responseBody as { status?: unknown }).status || '')
+          : '';
+      if (options.forceHardPurge && backendStatus !== 'hard_purged') {
+        const message =
+          'Tenant delete completed but the backend did not confirm a hard purge. Stale tenant-owned data may remain.';
+        if (options.format === 'json') {
+          out.json({
+            id,
+            deleted: true,
+            hardPurged: false,
+            requestedHardPurge: true,
+            error: message,
+            response: responseBody,
+          });
+        } else if (spinner) {
+          spinner.fail(message);
+        }
+        process.exit(1);
+      }
       if (options.format === "json") {
         out.json({
           id,
           deleted: true,
-          hardPurged: Boolean(options.forceHardPurge),
+          hardPurged: backendStatus === 'hard_purged',
           response: responseBody,
         });
       } else {
