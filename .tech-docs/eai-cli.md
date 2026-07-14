@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.6 |
+| Version | 3.7.7 |
 | Released | 2026-07-14 |
-| Last Material Change | Verify tenant hard purge backend status |
-| Source Commit | `f6c1a40c45abbff6c0e892d9375300f1e4a70df7` |
+| Last Material Change | Fix Windows eai update self-update |
+| Source Commit | `0a8d8718bcb0e9bc386c56a273077c7305220625` |
 
 
 ## Install
