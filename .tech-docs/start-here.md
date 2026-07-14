@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.7.5** (2026-07-11): Build tenant hierarchy from live tenant paths.
+The current CLI release is **v3.7.6** (2026-07-14): Verify tenant hard purge backend status.
 
 
 ## What The Pieces Do

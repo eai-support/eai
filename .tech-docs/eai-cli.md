@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.5 |
-| Released | 2026-07-11 |
-| Last Material Change | Build tenant hierarchy from live tenant paths |
-| Source Commit | `7505019b7119d980316bc22f627efb98a9697cda` |
+| Version | 3.7.6 |
+| Released | 2026-07-14 |
+| Last Material Change | Verify tenant hard purge backend status |
+| Source Commit | `f6c1a40c45abbff6c0e892d9375300f1e4a70df7` |
 
 
 ## Install

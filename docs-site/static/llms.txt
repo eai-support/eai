@@ -1,6 +1,6 @@
 # EAI CLI Documentation
 
-> Release-aligned documentation surfaces for `@enterpriseai/cli` v3.7.5.
+> Release-aligned documentation surfaces for `@enterpriseai/cli` v3.7.6.
 
 ## Install
 
