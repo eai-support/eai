@@ -66,6 +66,19 @@ export function buildUpdateInstallArgs(
   return args;
 }
 
+export function buildUpdateInstallExecConfig(
+  version: string,
+  channel: ReleaseChannel = 'npmjs',
+  packageName = '@enterpriseai/cli',
+  platform: NodeJS.Platform = process.platform,
+): { command: string; args: string[]; shell: boolean } {
+  return {
+    command: getNpmExecutable(platform),
+    args: buildUpdateInstallArgs(version, channel, packageName),
+    shell: platform === 'win32',
+  };
+}
+
 export function isUpdatePermissionError(message: string): boolean {
   return /EACCES|permission/i.test(message);
 }
@@ -161,7 +174,8 @@ Notes:
     const packageName = installedPackageName();
     const installSpinner = ora(`Installing ${packageName}@${latest}...`).start();
     try {
-      await exec(getNpmExecutable(), buildUpdateInstallArgs(latest, channel, packageName));
+      const install = buildUpdateInstallExecConfig(latest, channel, packageName);
+      await exec(install.command, install.args, { shell: install.shell });
       installSpinner.succeed(`Updated to ${chalk.green(latest)}`);
     } catch (err) {
       installSpinner.fail('Update failed.');

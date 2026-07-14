@@ -640,7 +640,7 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 6. Test (`vitest run`)
    - Focused SRP CLI evidence also runs as `npm run test:eai-cli:ci` in
      GitHub Actions check `ci/eai-cli-tests`
-7. Smoke tests — `eai --version`, `eai --help`, and the shipped command groups
+7. Smoke tests — `eai --version`, `eai --help`, `eai update --check`, and the shipped command groups
 8. Docs site build
 9. Release-facing docs/help generation (`llms.txt`, `llms-full.txt`, `cli-help.txt`)
 10. Registry artifact generation (`npm pack` + `generate-registry.cjs`)
