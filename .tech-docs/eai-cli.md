@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.7 |
+| Version | 3.7.8 |
 | Released | 2026-07-14 |
-| Last Material Change | Fix Windows eai update self-update |
-| Source Commit | `0a8d8718bcb0e9bc386c56a273077c7305220625` |
+| Last Material Change | Ship Windows eai update self-update fix |
+| Source Commit | `0776e280f652540bae360580e3760d0319b9dc26` |
 
 
 ## Install
