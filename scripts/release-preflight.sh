@@ -159,6 +159,9 @@ npm install --global --omit=dev --prefix "$PACKED_INSTALL_PREFIX" "$ROOT/$GENERA
 PACKED_EAI="$PACKED_INSTALL_PREFIX/bin/eai"
 PACKED_VERSION="$("$PACKED_EAI" --version 2>&1 | tr -d '\r')"
 EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+UPDATE_PACKUMENT_URL="$(
+  node -e "process.stdout.write('data:application/json,' + encodeURIComponent(JSON.stringify({ 'dist-tags': { latest: process.argv[1] } })))" "$EXPECTED_VERSION"
+)"
 if [[ "$PACKED_VERSION" != "$EXPECTED_VERSION" ]]; then
   echo "✗ packed eai --version returned $PACKED_VERSION, expected $EXPECTED_VERSION"
   exit 1
@@ -192,7 +195,12 @@ if ! "$PACKED_EAI" gofer refresh --help >/dev/null 2>&1; then
   echo "✗ packed eai gofer refresh --help failed"
   exit 1
 fi
+if ! EAI_UPDATE_NPMJS_PACKUMENT_URL="$UPDATE_PACKUMENT_URL" EAI_UPDATE_PACKUMENT_URL="$UPDATE_PACKUMENT_URL" NO_COLOR=1 "$PACKED_EAI" update --check --no-project-refresh >/dev/null 2>&1; then
+  echo "✗ packed eai update --check failed"
+  exit 1
+fi
 echo "  ✓ packed CLI starts with production dependencies only"
+echo "  ✓ packed eai update --check succeeds"
 
 section "Smoke testing packed eai-cli alias tarball"
 ALIAS_INSTALL_PREFIX="$(mktemp -d)"
