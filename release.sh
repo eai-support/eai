@@ -40,6 +40,92 @@ require_command() {
   fi
 }
 
+latest_release_tag() {
+  git ls-remote --tags --refs origin 'v*' \
+    | awk '{print $2}' \
+    | sed 's#refs/tags/##' \
+    | sort -V \
+    | tail -n 1
+}
+
+version_gt() {
+  local left="${1:-0.0.0}"
+  local right="${2:-0.0.0}"
+
+  LEFT="$left" RIGHT="$right" node <<'EOF'
+const left = (process.env.LEFT || '0.0.0').replace(/^v/, '');
+const right = (process.env.RIGHT || '0.0.0').replace(/^v/, '');
+const parse = (value) => value.split('.').map((part) => Number.parseInt(part, 10) || 0);
+const [la, lb, lc] = parse(left);
+const [ra, rb, rc] = parse(right);
+if (la !== ra) process.exit(la > ra ? 0 : 1);
+if (lb !== rb) process.exit(lb > rb ? 0 : 1);
+if (lc !== rc) process.exit(lc > rc ? 0 : 1);
+process.exit(1);
+EOF
+}
+
+remote_tag_exists() {
+  local tag_name="$1"
+  git ls-remote --tags origin "refs/tags/${tag_name}" | grep -q .
+}
+
+local_tag_exists() {
+  local tag_name="$1"
+  git rev-parse "$tag_name" >/dev/null 2>&1
+}
+
+ensure_no_stale_local_tag() {
+  local tag_name="$1"
+  if local_tag_exists "$tag_name" && ! remote_tag_exists "$tag_name"; then
+    echo "✗ Local tag $tag_name exists but has not been pushed"
+    echo "  Delete or move the stale local tag before publishing this release."
+    exit 1
+  fi
+}
+
+ensure_no_existing_release_pr() {
+  local branch_name="$1"
+  local existing_pr
+  existing_pr="$(gh pr list --repo "$REPO" --head "$branch_name" --state all --json url --jq '.[0].url // ""')"
+  if [[ -n "$existing_pr" ]]; then
+    echo "✗ Release branch $branch_name already has a PR: $existing_pr"
+    exit 1
+  fi
+}
+
+wait_for_main_docs_run() {
+  local commit_sha="$1"
+  wait_for_docs_run "$commit_sha"
+}
+
+create_release_pr() {
+  local branch_name="$1"
+  local version="$2"
+  local notes="$3"
+
+  local body
+  body=$(cat <<EOF
+## Release Prep
+
+- bumps CLI version to \`$version\`
+- refreshes static registry and release-facing docs
+- prepares the repo so a follow-up \`./release.sh\` on merged \`main\` can publish tag \`v$version\`
+
+## Release Notes
+
+$notes
+EOF
+)
+
+  gh pr create \
+    --repo "$REPO" \
+    --base main \
+    --head "$branch_name" \
+    --title "chore: release v$version — $notes" \
+    --body "$body"
+}
+
 wait_for_release_run() {
   local tag_name="$1"
   local run_id=""
@@ -187,11 +273,75 @@ npm run release:check
 echo "  ✓ release preflight"
 
 OLD_VERSION="$(node -p "require('./package.json').version")"
+LATEST_TAG="$(latest_release_tag)"
+LATEST_TAG_VERSION="${LATEST_TAG#v}"
+
+if version_gt "$OLD_VERSION" "${LATEST_TAG_VERSION:-0.0.0}"; then
+  RELEASE_PHASE="publish"
+else
+  RELEASE_PHASE="prepare"
+fi
+
+section "Release mode"
+if [[ "$RELEASE_PHASE" == "publish" ]]; then
+  echo "  Mode: publish merged main"
+  echo "  package.json version: $OLD_VERSION"
+  echo "  latest tag: ${LATEST_TAG:-none}"
+else
+  echo "  Mode: prepare release PR"
+  echo "  package.json version: $OLD_VERSION"
+  echo "  latest tag: ${LATEST_TAG:-none}"
+fi
+
+if [[ "$RELEASE_PHASE" == "publish" ]]; then
+  TAG_NAME="v$OLD_VERSION"
+
+  section "Waiting for docs/static-registry deployment from main"
+  wait_for_main_docs_run "$(git rev-parse HEAD)"
+  echo "  ✓ Deploy Docs workflow completed"
+
+  section "Creating and pushing release tag"
+  if remote_tag_exists "$TAG_NAME"; then
+    echo "✗ Remote tag $TAG_NAME already exists"
+    exit 1
+  fi
+  ensure_no_stale_local_tag "$TAG_NAME"
+  git tag -a "$TAG_NAME" -m "$MESSAGE"
+  git push origin "$TAG_NAME"
+  echo "  ✓ pushed $TAG_NAME"
+
+  section "Waiting for GitHub release workflow"
+  wait_for_release_run "$TAG_NAME"
+  echo "  ✓ Release workflow completed"
+
+  section "Verifying public release channels"
+  verify_npmjs_latest "$NPM_PACKAGE" "$OLD_VERSION"
+  verify_npmjs_latest "$NPM_ALIAS_PACKAGE" "$OLD_VERSION"
+  verify_static_registry_latest "$OLD_VERSION" "$STATIC_PACKUMENT_URL" "canonical static registry"
+
+  echo ""
+  echo "══════════════════════════════════════════"
+  echo "  Released $TAG_NAME — $MESSAGE"
+  echo "══════════════════════════════════════════"
+  echo ""
+  exit 0
+fi
 
 section "Bumping version"
 NEW_VERSION="$(npm version "$BUMP" --no-git-tag-version)"
 NEW_VERSION="${NEW_VERSION#v}"
 echo "  ✓ version: $OLD_VERSION -> $NEW_VERSION"
+
+RELEASE_BRANCH="release/v$NEW_VERSION"
+if git show-ref --verify --quiet "refs/heads/$RELEASE_BRANCH"; then
+  echo "✗ Local branch $RELEASE_BRANCH already exists"
+  exit 1
+fi
+if git ls-remote --heads origin "$RELEASE_BRANCH" | grep -q .; then
+  echo "✗ Remote branch $RELEASE_BRANCH already exists"
+  exit 1
+fi
+ensure_no_existing_release_pr "$RELEASE_BRANCH"
 
 section "Regenerating release artifacts"
 rm -f "enterpriseai-cli-${OLD_VERSION}.tgz" "enterpriseai-cli-${NEW_VERSION}.tgz"
@@ -208,43 +358,23 @@ echo "  ✓ eai-cli alias pack -> $ALIAS_TARBALL"
 echo "  ✓ static registry metadata refreshed"
 echo "  ✓ release-facing docs refreshed"
 
-section "Committing release"
+section "Creating release branch"
+git checkout -b "$RELEASE_BRANCH"
+echo "  ✓ branch created: $RELEASE_BRANCH"
+
+section "Committing release prep"
 git add package.json package-lock.json .tech-docs/ docs-site/static/registry/ docs-site/static/llms.txt docs-site/static/llms-full.txt docs-site/static/cli-help.txt docs-site/static/error-guidance.json
 git commit -m "chore: release v$NEW_VERSION — $MESSAGE"
-git tag -a "v$NEW_VERSION" -m "$MESSAGE"
-RELEASE_COMMIT_SHA="$(git rev-parse HEAD)"
-echo "  ✓ commit created at $RELEASE_COMMIT_SHA"
-echo "  ✓ tag created: v$NEW_VERSION"
-
-section "Pushing main and tag"
-git push origin main
-git push origin "v$NEW_VERSION"
-echo "  ✓ pushed main"
-echo "  ✓ pushed v$NEW_VERSION"
-
-section "Waiting for GitHub release workflow"
-wait_for_release_run "v$NEW_VERSION"
-echo "  ✓ Release workflow completed"
-
-section "Waiting for docs/static-registry deployment"
-wait_for_docs_run "$RELEASE_COMMIT_SHA"
-echo "  ✓ Deploy Docs workflow completed"
-
-section "Verifying public release channels"
-verify_npmjs_latest "$NPM_PACKAGE" "$NEW_VERSION"
-verify_npmjs_latest "$NPM_ALIAS_PACKAGE" "$NEW_VERSION"
-verify_static_registry_latest "$NEW_VERSION" "$STATIC_PACKUMENT_URL" "canonical static registry"
+git push -u origin "$RELEASE_BRANCH"
+PR_URL="$(create_release_pr "$RELEASE_BRANCH" "$NEW_VERSION" "$MESSAGE")"
+echo "  ✓ release prep PR: $PR_URL"
 
 echo ""
 echo "══════════════════════════════════════════"
-echo "  Released v$NEW_VERSION — $MESSAGE"
+echo "  Prepared release PR for v$NEW_VERSION — $MESSAGE"
 echo "══════════════════════════════════════════"
 echo ""
-echo "Recommended install or update:"
-echo "  npm install -g eai-cli"
-echo ""
-echo "Canonical package install:"
-echo "  npm install -g @enterpriseai/cli"
-echo ""
-echo "Static fallback if npmjs is unavailable:"
-echo "  npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/"
+echo "Next step:"
+echo "  1. Merge $PR_URL"
+echo "  2. Switch back to main and fast-forward"
+echo "  3. Run ./release.sh $BUMP \"$MESSAGE\" again to publish tag v$NEW_VERSION from merged main"
