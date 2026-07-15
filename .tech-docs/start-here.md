@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.7.8** (2026-07-14): Ship Windows eai update self-update fix.
+The current CLI release is **v3.7.9** (2026-07-15): Align release flow with protected main.
 
 
 ## What The Pieces Do
