@@ -1084,6 +1084,28 @@ export class PlatformAPIClient {
 
   // --------------- Documents ---------------
 
+  private inferUploadContentType(filePath: string): string {
+    const extension = filePath.toLowerCase().slice(filePath.lastIndexOf("."));
+    const contentTypes: Record<string, string> = {
+      ".csv": "text/csv",
+      ".doc": "application/msword",
+      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ".gif": "image/gif",
+      ".jpeg": "image/jpeg",
+      ".jpg": "image/jpeg",
+      ".json": "application/json",
+      ".md": "text/markdown",
+      ".pdf": "application/pdf",
+      ".png": "image/png",
+      ".txt": "text/plain",
+      ".webp": "image/webp",
+      ".xls": "application/vnd.ms-excel",
+      ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ".xml": "application/xml",
+    };
+    return contentTypes[extension] ?? "application/octet-stream";
+  }
+
   private async uploadDocumentBatch(
     filePath: string,
     processingMode: 'full' | 'classification',
@@ -1092,7 +1114,12 @@ export class PlatformAPIClient {
     const { basename } = await import('node:path');
     const content = await readFile(filePath);
     const form = new FormData();
-    form.append('files', new Blob([content]), basename(filePath));
+    form.append(
+      'files',
+      new File([content], basename(filePath), {
+        type: this.inferUploadContentType(filePath),
+      }),
+    );
     form.append('tenant_id', this.tenantId);
     form.append('processing_mode', processingMode);
 

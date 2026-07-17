@@ -51,7 +51,7 @@ export interface ObjectTypeAction {
   requiredRole: "tenant-viewer" | "tenant-builder" | "tenant-admin";
   validationRules: {
     requiredFields?: string[];
-    requiredStatus?: string;
+    requiredStatus?: string | string[];
   };
   sideEffects: Array<{
     type: "set_field" | "set_timestamp" | "set_user";

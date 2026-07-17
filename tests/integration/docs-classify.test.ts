@@ -73,6 +73,7 @@ describe('PlatformAPIClient.classifyDocument', () => {
         const uploaded = formData.get('files');
         expect(uploaded).toBeInstanceOf(File);
         expect((uploaded as File).name).toBe('sample.pdf');
+        expect((uploaded as File).type).toBe('application/pdf');
 
         return HttpResponse.json({
           status: 'accepted',
@@ -95,6 +96,50 @@ describe('PlatformAPIClient.classifyDocument', () => {
       status: 'accepted',
       jobId: 'job-123',
       documents: [{ documentId: 'doc-123' }],
+    });
+  });
+
+  test('preserves supported Office document MIME types for upload requests', async () => {
+    const filePath = join(env.dir, 'brief.docx');
+    await writeFile(filePath, 'docx-bytes');
+
+    mockServer.server.use(
+      http.post('https://test-api.example.com/v4/data/documents/upload', async ({ request }) => {
+        expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
+        expect(request.headers.get('x-tenant-id')).toBe('tenant-one');
+
+        const formData = await request.formData();
+        expect(formData.get('tenant_id')).toBe('tenant-one');
+        expect(formData.get('processing_mode')).toBe('full');
+
+        const uploaded = formData.get('files');
+        expect(uploaded).toBeInstanceOf(File);
+        expect((uploaded as File).name).toBe('brief.docx');
+        expect((uploaded as File).type).toBe(
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        );
+
+        return HttpResponse.json({
+          status: 'accepted',
+          jobId: 'job-456',
+          documents: [{ documentId: 'doc-456' }],
+        });
+      }),
+    );
+
+    const client = new PlatformAPIClient('https://test-api.example.com', 'tenant-one');
+    const response = await client.uploadDocument(filePath);
+    const payload = await response.json() as {
+      status: string;
+      jobId: string;
+      documents: Array<{ documentId: string }>;
+    };
+
+    expect(response.ok).toBe(true);
+    expect(payload).toMatchObject({
+      status: 'accepted',
+      jobId: 'job-456',
+      documents: [{ documentId: 'doc-456' }],
     });
   });
 });

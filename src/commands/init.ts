@@ -1426,7 +1426,7 @@ export interface ActionSideEffect {
 
 export interface ActionValidationRules {
   requiredFields?: string[];
-  requiredStatus?: string;
+  requiredStatus?: string | string[];
 }
 
 export interface ActionDefinition {
