@@ -198,6 +198,33 @@ describe('app object-type publish helpers', () => {
     ]);
   });
 
+  test('preserves list-valued requiredStatus rules for app manifest publication', () => {
+    const objectType = {
+      name: 'Draft',
+      displayName: 'Draft',
+      properties: [],
+      linkTypes: [],
+      actions: [
+        {
+          name: 'approve',
+          displayName: 'Approve',
+          requiredRole: 'tenant-admin',
+          validationRules: {
+            requiredStatus: ['draft', 'review'],
+          },
+          sideEffects: [],
+        },
+      ],
+    } as unknown as ObjectTypeDefinition;
+
+    expect(toAppManifestObjectTypes([objectType])).toEqual([
+      {
+        ...objectType,
+        status: 'published',
+      },
+    ]);
+  });
+
   test('summarizes platform publish results including ResourceAPI sync metadata', () => {
     const objectType = {
       name: 'SubmissionFile',
