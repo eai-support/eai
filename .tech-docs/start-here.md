@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.7.10** (2026-07-18): Ship document MIME and manifest status array fixes.
+The current CLI release is **v3.7.10** (2026-07-18): Ship document MIME, manifest status array, and batch import improvements.
 
 
 ## What The Pieces Do
