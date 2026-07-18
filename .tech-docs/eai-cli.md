@@ -16,8 +16,8 @@ and gofer asset refresh.
 | --- | --- |
 | Version | 3.7.10 |
 | Released | 2026-07-18 |
-| Last Material Change | Ship document MIME and manifest status array fixes |
-| Source Commit | `e5df96429ecc31d0456d4b634dd9bdf03629a67e` |
+| Last Material Change | Ship document MIME, manifest status array, and batch import improvements |
+| Source Commit | `2a8bdd374117db29258268d3fa9545eb19b88a49` |
 
 
 ## Install
