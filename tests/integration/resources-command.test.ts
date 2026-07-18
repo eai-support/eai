@@ -124,4 +124,48 @@ describe('eai resources command guidance', () => {
     expect(output).toContain('eai resources search "<query>" --fulltext');
     expect(output).not.toContain(API_BASE);
   });
+
+  test('batch-import uses the high-throughput import route with deferred projection', async () => {
+    let capturedBody: unknown;
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/data/resources/test-tenant-id/fact-material-usage/batch/import`, async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({
+          succeeded: 2,
+          failed: 0,
+          results: [
+            { index: 0, id: 'resource-1', success: true, version: 1 },
+            { index: 1, id: 'resource-2', success: true, version: 1 },
+          ],
+          projectionMode: 'deferred',
+          projectionDeferred: true,
+          historyCreated: 2,
+          outboxEnqueued: 2,
+        });
+      }),
+    );
+
+    const batchFile = join(env.dir, 'batch-import.json');
+    await writeFile(batchFile, JSON.stringify([
+      { materialCode: 'coal', quantity: 10 },
+      { materialCode: 'diesel', quantity: 5 },
+    ]));
+
+    await resourcesCommand.parseAsync([
+      'batch-import',
+      'FactMaterialUsage',
+      '--file',
+      batchFile,
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(capturedBody).toEqual({
+      items: [
+        { data: { materialCode: 'coal', quantity: 10 } },
+        { data: { materialCode: 'diesel', quantity: 5 } },
+      ],
+      projectionMode: 'deferred',
+    });
+  });
 });

@@ -325,6 +325,14 @@ export function normalizeBatchCreateItems(payload: unknown): Array<{ data: Recor
   throw new Error('Batch create payload must be an object, array, or { items } wrapper');
 }
 
+export function normalizeBatchProjectionMode(value: unknown): 'deferred' | 'sync' {
+  const mode = typeof value === 'string' ? value.trim().toLowerCase() : 'deferred';
+  if (mode === 'deferred' || mode === 'sync') {
+    return mode;
+  }
+  throw new Error('Projection mode must be "deferred" or "sync"');
+}
+
 export function normalizeBatchUpdateItems(payload: unknown): Array<{ id: string; data: Record<string, unknown>; version: number }> {
   const items = Array.isArray(payload)
     ? payload
@@ -476,6 +484,54 @@ resourcesCommand
         out.json(data);
       } else {
         succeedCommand(spinner,`Batch create complete (${data.succeeded} succeeded, ${data.failed} failed)`);
+      }
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+resourcesCommand
+  .command('batch-import <type>')
+  .description('Import resources through the high-throughput bulk path')
+  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--data <json>', 'Batch payload as JSON array or object')
+  .option('--file <path>', 'Read batch payload from JSON file')
+  .option('--projection-mode <mode>', 'Search projection mode (deferred|sync)', 'deferred')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (type, options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+
+    try {
+      const payload = await loadJsonInput(options);
+      const items = normalizeBatchCreateItems(payload);
+      const projectionMode = normalizeBatchProjectionMode(options.projectionMode);
+      const spinner = makeSpinner(options.format, `Batch importing ${type}...`);
+      const res = await ctx.client.batchImportResources(type, items, { projectionMode });
+      if (!res.ok) {
+        failCommand(spinner, await formatResponseError(res, 'resources.batch.import'));
+        process.exit(1);
+      }
+      const data = await res.json() as {
+        succeeded?: number;
+        failed?: number;
+        projectionMode?: string;
+        projectionDeferred?: boolean;
+        historyCreated?: number;
+        outboxEnqueued?: number;
+      };
+      if (options.format === 'json') {
+        out.json(data);
+      } else {
+        const projection = data.projectionDeferred === true
+          ? 'projection deferred'
+          : `projection ${data.projectionMode ?? projectionMode}`;
+        succeedCommand(
+          spinner,
+          `Batch import complete (${data.succeeded ?? 0} succeeded, ${data.failed ?? 0} failed, ${projection})`,
+        );
       }
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));

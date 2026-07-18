@@ -10,6 +10,7 @@ import {
   matchPublishedType,
   normalizeBatchCreateItems,
   normalizeBatchDeleteIds,
+  normalizeBatchProjectionMode,
   normalizeBatchUpdateItems,
 } from '../../src/commands/resources.js';
 import { buildVerticalEnrollmentData } from '../../src/commands/vertical.js';
@@ -60,6 +61,14 @@ describe('resource type diagnostics', () => {
   test('normalizes batch create payloads from arrays and single objects', () => {
     expect(normalizeBatchCreateItems([{ id: '1' }])).toEqual([{ data: { id: '1' } }]);
     expect(normalizeBatchCreateItems({ id: '2' })).toEqual([{ data: { id: '2' } }]);
+  });
+
+  test('normalizes batch import projection mode', () => {
+    expect(normalizeBatchProjectionMode(undefined)).toBe('deferred');
+    expect(normalizeBatchProjectionMode('SYNC')).toBe('sync');
+    expect(() => normalizeBatchProjectionMode('inline')).toThrow(
+      'Projection mode must be "deferred" or "sync"',
+    );
   });
 
   test('normalizes batch update payloads from items wrapper', () => {
@@ -212,6 +221,29 @@ describe('resource type diagnostics', () => {
             status: 'pending',
             source: 'eai',
           },
+        }),
+      }),
+    );
+  });
+
+  test('imports resources through the ResourceAPI high-throughput batch route', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new PlatformAPIClient('https://test-api.example.com', 'tenant-1');
+    await client.batchImportResources(
+      'FactMaterialUsage',
+      [{ data: { materialCode: 'coal', quantity: 10 } }],
+      { projectionMode: 'sync' },
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://test-api.example.com/v4/data/resources/tenant-1/fact-material-usage/batch/import',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          items: [{ data: { materialCode: 'coal', quantity: 10 } }],
+          projectionMode: 'sync',
         }),
       }),
     );

@@ -681,6 +681,22 @@ export class PlatformAPIClient {
     });
   }
 
+  async batchImportResources(
+    objectType: string,
+    items: Array<{ data: Record<string, unknown> }>,
+    options?: { projectionMode?: 'deferred' | 'sync' },
+  ): Promise<Response> {
+    const normalizedObjectType = toObjectTypeSlug(objectType);
+    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/batch/import`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({
+        items,
+        projectionMode: options?.projectionMode ?? 'deferred',
+      }),
+    });
+  }
+
   async batchUpdateResources(
     objectType: string,
     items: Array<{ id: string; data: Record<string, unknown>; version: number }>,
