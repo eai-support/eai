@@ -37,6 +37,7 @@ const TRACEABILITY_BASE = [
   ['eai user provision-me', 'create/update', 'live', 'Ensures the authenticated test user is provisioned to the test tenant.'],
   ['eai resources list', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 because it depends on run-specific storage schema.'],
   ['eai resources batch-create', 'create', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 and is cleaned up by batch/per-resource delete.'],
+  ['eai resources batch-import', 'create', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 against PostgreSQL-backed smoke Object Types for high-throughput ingest.'],
   ['eai resources batch-update', 'update', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 against smoke-created rows.'],
   ['eai resources batch-delete', 'delete', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 during cleanup.'],
   ['eai resources aggregate', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 after ResourceAPI CRUD.'],
@@ -189,6 +190,10 @@ const SMOKE_CALLS = {
   'eai resources batch-create': [
     'eai resources batch-create <object-type> --tenant-id <tenant-id> --file batch-create.json --format json',
     'eai resources batch-create <object-type> --tenant-id <tenant-id> --data [{"title":"batch smoke"}] --format json',
+  ],
+  'eai resources batch-import': [
+    'eai resources batch-import <object-type> --tenant-id <tenant-id> --file batch-import.json --projection-mode deferred --format json',
+    'eai resources batch-import <object-type> --tenant-id <tenant-id> --data [{"title":"batch smoke"}] --format json',
   ],
   'eai resources batch-update': [
     'eai resources batch-update <object-type> --tenant-id <tenant-id> --file batch-update.json --format json',
@@ -570,6 +575,11 @@ const ARTIFACT_CLEANUP = {
   },
   'eai resources batch-create': {
     createsExternalArtifact: 'Yes - ResourceAPI rows',
+    cleanupMechanism: 'eai resources batch-delete and per-resource delete fallback',
+    cleanupVerified: 'Yes when cleanup is enabled',
+  },
+  'eai resources batch-import': {
+    createsExternalArtifact: 'Yes - ResourceAPI rows, audit history, and async projection work',
     cleanupMechanism: 'eai resources batch-delete and per-resource delete fallback',
     cleanupVerified: 'Yes when cleanup is enabled',
   },
@@ -1364,6 +1374,16 @@ function runLiveSmoke(cliPath) {
     batchIds = (batchCreate.results || batchCreate.resources || batchCreate.created || batchCreate.items || [])
       .map((item) => item.id || item.resource?.id)
       .filter(Boolean);
+    const batchImportFile = join(projectRoot, 'batch-import.json');
+    createJsonFile(batchImportFile, [
+      { title: 'batch import smoke one', status: 'draft', count: 30 },
+      { title: 'batch import smoke two', status: 'draft', count: 40 },
+    ]);
+    const batchImport = parseJson(eai(['resources', 'batch-import', pgType, '--tenant-id', parentTenantId, '--file', batchImportFile, '--projection-mode', 'deferred', '--format', 'json']).stdout, {});
+    const batchImportIds = (batchImport.results || batchImport.resources || batchImport.created || batchImport.items || [])
+      .map((item) => item.id || item.resource?.id)
+      .filter(Boolean);
+    batchIds.push(...batchImportIds);
     if (batchIds.length) {
       const batchUpdateFile = join(projectRoot, 'batch-update.json');
       createJsonFile(batchUpdateFile, batchIds.map((id, index) => ({
