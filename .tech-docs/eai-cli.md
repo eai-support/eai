@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.9 |
-| Released | 2026-07-15 |
-| Last Material Change | Align release flow with protected main |
-| Source Commit | `710d342c5916799e1247409304ba43cb2e71eda4` |
+| Version | 3.7.10 |
+| Released | 2026-07-18 |
+| Last Material Change | Ship document MIME and manifest status array fixes |
+| Source Commit | `e5df96429ecc31d0456d4b634dd9bdf03629a67e` |
 
 
 ## Install
