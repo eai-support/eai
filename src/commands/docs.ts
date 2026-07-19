@@ -163,7 +163,7 @@ docsCommand
     try {
       const res = await client.indexDocument(documentId);
       if (!res.ok) {
-        spinner.fail(`${res.status} ${res.statusText}`);
+        spinner.fail(await readResponseError(res));
         process.exit(1);
       }
 

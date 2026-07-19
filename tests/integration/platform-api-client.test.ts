@@ -139,6 +139,25 @@ describe('PlatformAPIClient', () => {
     expect(init?.body).toBeUndefined()
   })
 
+  test('indexes documents through the public rag-index route without a client-side record lookup', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.indexDocument('DOC-123')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/data/documents/rag-index')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      documentId: 'DOC-123',
+      tenantId: 'tenant-123',
+    })
+  })
+
   test('reads tenant details through the public management tenant route', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

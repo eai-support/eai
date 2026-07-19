@@ -1163,57 +1163,13 @@ export class PlatformAPIClient {
     return this.uploadDocumentBatch(filePath, 'classification');
   }
 
-  async getDocumentRecord(documentId: string): Promise<Response> {
-    return this.publicRequest(`${PUBLIC_DATA_DOCUMENTS_PATH}/records/${encodeURIComponent(documentId)}`, 'GET');
-  }
-
   async indexDocument(documentId: string): Promise<Response> {
-    const lookup = await this.getDocumentRecord(documentId);
-    if (!lookup.ok) {
-      return lookup;
-    }
-
-    const document = await lookup.json() as {
-      id?: string;
-      documentId?: string;
-      title?: string;
-      tenant?: string | { id?: string };
-      businessRequest?: string | { id?: string };
-      fileInfo?: {
-        dataLakeUrl?: string;
-      };
-    };
-
-    const storagePath = document.fileInfo?.dataLakeUrl;
-    if (!storagePath) {
-      return new Response(
-        JSON.stringify({
-          error: 'MISSING_STORAGE_PATH',
-          message: 'The document does not have a dataLakeUrl/storage path and cannot be indexed.',
-        }),
-        {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      );
-    }
-
-    const tenantId = typeof document.tenant === 'string'
-      ? document.tenant
-      : document.tenant?.id || this.tenantId;
-    const businessRequestId = typeof document.businessRequest === 'string'
-      ? document.businessRequest
-      : document.businessRequest?.id;
-
     return fetch(`${this.baseUrl}${PUBLIC_DATA_DOCUMENTS_PATH}/rag-index`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
-        documentId: document.documentId || document.id || documentId,
-        storagePath,
-        tenantId,
-        businessRequestId,
-        title: document.title,
+        documentId,
+        tenantId: this.tenantId,
       }),
     });
   }
