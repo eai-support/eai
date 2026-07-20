@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.11 |
-| Released | 2026-07-18 |
-| Last Material Change | Ship document MIME, manifest status array, and batch import improvements |
-| Source Commit | `32fc9661df21b50bca2a3dc549ef4c632e3ff961` |
+| Version | 3.7.12 |
+| Released | 2026-07-20 |
+| Last Material Change | Fix v4 document record resolution and CLI rag indexing |
+| Source Commit | `9ae3e92996ad460fd9f52235358c3883b63fe1b4` |
 
 
 ## Install
