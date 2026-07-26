@@ -1195,6 +1195,44 @@ resourcesCommand
   });
 
 resourcesCommand
+  .command('performance-status')
+  .description('Show tenant-scoped ResourceAPI schema and performance readiness')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+    const spinner = makeSpinner(options.format, 'Fetching ResourceAPI performance status...');
+    try {
+      const response = await ctx.client.getResourceStorageSchemaStatus();
+      if (!response.ok) {
+        failCommand(spinner, `${response.status} ${response.statusText}`);
+        process.exit(1);
+      }
+      const payload = await response.json() as Record<string, unknown>;
+      if (options.format === 'json') {
+        out.json({
+          ...payload,
+          rawSqlAllowed: false,
+          tenantAdminOperations: ['read_status', 'plan_index_change'],
+          systemAdminOperations: ['apply_index_change', 'force_cache_refresh'],
+        });
+        return;
+      }
+      const state = typeof payload.state === 'string' ? payload.state : 'unknown';
+      const count = typeof payload.objectTypeCount === 'number' ? payload.objectTypeCount : 0;
+      succeedCommand(spinner, `ResourceAPI schema ${state} — ${count} Object Types visible`);
+      out.info('Tenant-admin: read status and request an index plan.');
+      out.info('Platform-admin only: apply index changes and force cache refresh.');
+      out.info('Raw SQL: disabled.');
+    } catch (err) {
+      failCommand(spinner, err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+resourcesCommand
   .command('sync-schema')
   .description('Provision or reconcile storage resources from published Object Type metadata')
   .option('--tenant-id <id>', 'Run against a specific tenant')
