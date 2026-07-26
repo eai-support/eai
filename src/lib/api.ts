@@ -892,6 +892,22 @@ export class PlatformAPIClient {
     });
   }
 
+  async planResourceIndexes(objectTypes?: string[]): Promise<Response> {
+    return this.syncStorageSchema({ objectTypes, dryRun: true });
+  }
+
+  async applyResourceIndexes(objectTypes?: string[]): Promise<Response> {
+    return this.syncStorageSchema({ objectTypes, dryRun: false });
+  }
+
+  async refreshResourceCache(objectTypes: string[] | undefined, reason: string): Promise<Response> {
+    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage/cache-refresh`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({ objectTypes, reason }),
+    });
+  }
+
   async searchResources(request: {
     query: string;
     objectTypes?: string[];

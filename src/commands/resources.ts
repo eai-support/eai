@@ -1233,6 +1233,60 @@ resourcesCommand
   });
 
 resourcesCommand
+  .command('indexes-plan')
+  .description('Plan validated ResourceAPI storage/index changes without applying them')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--object-type <slug...>', 'Limit the plan to published Object Type slugs')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+    const spinner = makeSpinner(options.format, 'Planning ResourceAPI indexes...');
+    const response = await ctx.client.planResourceIndexes(options.objectType);
+    if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
+    const payload = await response.json();
+    if (options.format === 'json') { out.json(payload); return; }
+    succeedCommand(spinner, 'ResourceAPI index plan ready (dry run; no changes applied).');
+  });
+
+resourcesCommand
+  .command('indexes-apply')
+  .description('Apply validated ResourceAPI storage/index changes')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--object-type <slug...>', 'Limit the apply to published Object Type slugs')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--confirm', 'Confirm the tenant-scoped apply', false)
+  .action(async (options) => {
+    if (!options.confirm) { throw new Error('Pass --confirm to apply validated ResourceAPI index changes.'); }
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+    const spinner = makeSpinner(options.format, 'Applying ResourceAPI indexes...');
+    const response = await ctx.client.applyResourceIndexes(options.objectType);
+    if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
+    const payload = await response.json();
+    if (options.format === 'json') { out.json(payload); return; }
+    succeedCommand(spinner, 'ResourceAPI index apply completed.');
+  });
+
+resourcesCommand
+  .command('cache-refresh')
+  .description('Force a ResourceAPI cache refresh (system-admin operation)')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--object-type <slug...>', 'Limit the refresh to Object Type slugs')
+  .requiredOption('--reason <reason>', 'Audited reason or change ticket')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+    const spinner = makeSpinner(options.format, 'Refreshing ResourceAPI cache...');
+    const response = await ctx.client.refreshResourceCache(options.objectType, options.reason);
+    if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
+    const payload = await response.json();
+    if (options.format === 'json') { out.json(payload); return; }
+    succeedCommand(spinner, 'ResourceAPI cache refresh completed.');
+  });
+
+resourcesCommand
   .command('sync-schema')
   .description('Provision or reconcile storage resources from published Object Type metadata')
   .option('--tenant-id <id>', 'Run against a specific tenant')
