@@ -1275,7 +1275,9 @@ resourcesCommand
   .option('--object-type <slug...>', 'Limit the refresh to Object Type slugs')
   .requiredOption('--reason <reason>', 'Audited reason or change ticket')
   .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--confirm', 'Confirm the system-admin cache refresh', false)
   .action(async (options) => {
+    if (!options.confirm) { throw new Error('Pass --confirm to force a system-admin ResourceAPI cache refresh.'); }
     const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     options.format = normalizeFormat(options);
     const spinner = makeSpinner(options.format, 'Refreshing ResourceAPI cache...');

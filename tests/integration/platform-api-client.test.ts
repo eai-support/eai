@@ -85,6 +85,40 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('plans and applies indexes through the tenant-scoped AdminAPI route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.planResourceIndexes(['fact-batch-load'])
+    await client.applyResourceIndexes(['fact-batch-load'])
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://example.test/v4/platform/tenants/tenant-123/resourceapi/index-plan')
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      objectTypes: ['fact-batch-load'], apply: false, dryRun: true,
+    })
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      objectTypes: ['fact-batch-load'], apply: true, dryRun: false,
+    })
+  })
+
+  test('refreshes cache through the system-admin AdminAPI route with an audit reason', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.refreshResourceCache(['fact-batch-load'], 'INC-1234')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://example.test/v4/platform/tenants/tenant-123/resourceapi/cache-refresh')
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      objectTypes: ['fact-batch-load'], reason: 'INC-1234',
+    })
+  })
+
   test('reads ResourceAPI passive schema status through the public data router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

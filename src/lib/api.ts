@@ -893,19 +893,27 @@ export class PlatformAPIClient {
   }
 
   async planResourceIndexes(objectTypes?: string[]): Promise<Response> {
-    return this.syncStorageSchema({ objectTypes, dryRun: true });
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/index-plan`,
+      'POST',
+      { objectTypes, apply: false, dryRun: true },
+    );
   }
 
   async applyResourceIndexes(objectTypes?: string[]): Promise<Response> {
-    return this.syncStorageSchema({ objectTypes, dryRun: false });
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/index-plan`,
+      'POST',
+      { objectTypes, apply: true, dryRun: false },
+    );
   }
 
   async refreshResourceCache(objectTypes: string[] | undefined, reason: string): Promise<Response> {
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage/cache-refresh`, {
-      method: 'POST',
-      headers: await this.headers(),
-      body: JSON.stringify({ objectTypes, reason }),
-    });
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/cache-refresh`,
+      'POST',
+      { objectTypes, reason },
+    );
   }
 
   async searchResources(request: {
