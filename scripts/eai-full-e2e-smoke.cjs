@@ -55,6 +55,10 @@ const TRACEABILITY_BASE = [
   ['eai resources schema', 'read', 'live', 'Verifies published Object Types are visible through resource schema.'],
   ['eai resources sync-schema', 'create/update', 'live-optional', 'Dry-run runs by default. Non-dry-run requires EAI_E2E_SYNC_SCHEMA_APPLY=1 until ResourceAPI physical cleanup exists.'],
   ['eai resources doctor', 'read', 'live', 'Runs active tenant storage readiness diagnostics.'],
+  ['eai resources performance-status', 'read', 'live', 'Reads bounded ResourceAPI performance/schema readiness through AdminAPI.'],
+  ['eai resources indexes-plan', 'read', 'live-optional', 'Plans validated tenant-scoped index changes without applying storage mutations.'],
+  ['eai resources indexes-apply', 'create/update', 'live-optional', 'Applies validated tenant-scoped indexes only after explicit confirmation and server authorization.'],
+  ['eai resources cache-refresh', 'create/update', 'live-optional', 'Forces a signed, reasoned system-admin cache refresh; disabled in default smoke.'],
   ['eai app list', 'read', 'live', 'Lists apps before and after scaffold.'],
   ['eai app create', 'create', 'covered-by-init', 'The scaffold path calls the same app creation API; direct extra app creation is opt-in to avoid orphaned apps.'],
   ['eai app connect-existing', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids overwriting source metadata on a dedicated tenant app.'],
@@ -253,6 +257,18 @@ const SMOKE_CALLS = {
   'eai resources doctor': [
     'eai resources doctor --tenant-id <tenant-id> --format json',
   ],
+  'eai resources performance-status': [
+    'eai resources performance-status --tenant-id <tenant-id> --format json',
+  ],
+  'eai resources indexes-plan': [
+    'eai resources indexes-plan --tenant-id <tenant-id> --format json',
+  ],
+  'eai resources indexes-apply': [
+    'eai resources indexes-apply --tenant-id <tenant-id> --confirm --format json',
+  ],
+  'eai resources cache-refresh': [
+    'eai resources cache-refresh --tenant-id <tenant-id> --reason <change-ticket> --confirm --format json',
+  ],
   'eai app list': [
     'eai app list --tenant-id <tenant-id> --limit 50 --format json',
   ],
@@ -448,6 +464,15 @@ const OPTION_DECISIONS = {
   'eai resources list': {
     '--cursor': 'Cursor is data-dependent; pagination is covered through page/limit and cursor remains contract-documented.',
   },
+  'eai resources indexes-plan': {
+    '--object-type': 'Optional published Object Type scope; default smoke plans the tenant-wide validated set without applying changes.',
+  },
+  'eai resources indexes-apply': {
+    '--object-type': 'Optional published Object Type scope; apply is confirmation-gated and disabled in default release smoke.',
+  },
+  'eai resources cache-refresh': {
+    '--object-type': 'Optional Object Type scope; system-admin refresh is reasoned and disabled in default release smoke.',
+  },
   'eai app provision': {
     '--rebuild-search': 'Potentially expensive search rebuild; left as explicit opt-in outside release smoke.',
     '--skip-validate': 'Negative validation bypass; not used in release smoke because the smoke should prove normal validation works.',
@@ -622,6 +647,26 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'Yes when EAI_E2E_SYNC_SCHEMA_APPLY=1',
     cleanupMechanism: 'No ResourceAPI physical schema cleanup yet; non-dry-run is opt-in',
     cleanupVerified: 'No - destructive apply disabled by default',
+  },
+  'eai resources performance-status': {
+    createsExternalArtifact: 'No - bounded status read',
+    cleanupMechanism: 'Not required',
+    cleanupVerified: 'Yes - read/check command',
+  },
+  'eai resources indexes-plan': {
+    createsExternalArtifact: 'No - dry-run plan only',
+    cleanupMechanism: 'Not required',
+    cleanupVerified: 'Yes - no mutation applied',
+  },
+  'eai resources indexes-apply': {
+    createsExternalArtifact: 'Yes - validated tenant-scoped storage indexes',
+    cleanupMechanism: 'Re-run the validated plan or revert the declared Object Type index metadata',
+    cleanupVerified: 'No - live mutation disabled in default smoke',
+  },
+  'eai resources cache-refresh': {
+    createsExternalArtifact: 'Yes - cache invalidation operation',
+    cleanupMechanism: 'No rollback required; refresh is idempotent and scoped',
+    cleanupVerified: 'No - system-admin mutation disabled in default smoke',
   },
   'eai app create': {
     createsExternalArtifact: 'Yes - app record',

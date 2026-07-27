@@ -1195,6 +1195,104 @@ resourcesCommand
   });
 
 resourcesCommand
+  .command('performance-status')
+  .description('Show tenant-scoped ResourceAPI schema and performance readiness')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+    const spinner = makeSpinner(options.format, 'Fetching ResourceAPI performance status...');
+    try {
+      const response = await ctx.client.getResourceStorageSchemaStatus();
+      if (!response.ok) {
+        failCommand(spinner, `${response.status} ${response.statusText}`);
+        process.exit(1);
+      }
+      const payload = await response.json() as Record<string, unknown>;
+      if (options.format === 'json') {
+        out.json({
+          ...payload,
+          rawSqlAllowed: false,
+          tenantAdminOperations: ['read_status', 'plan_index_change'],
+          systemAdminOperations: ['apply_index_change', 'force_cache_refresh'],
+        });
+        return;
+      }
+      const state = typeof payload.state === 'string' ? payload.state : 'unknown';
+      const count = typeof payload.objectTypeCount === 'number' ? payload.objectTypeCount : 0;
+      succeedCommand(spinner, `ResourceAPI schema ${state} — ${count} Object Types visible`);
+      out.info('Tenant-admin: read status and request an index plan.');
+      out.info('Platform-admin only: apply index changes and force cache refresh.');
+      out.info('Raw SQL: disabled.');
+    } catch (err) {
+      failCommand(spinner, err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+resourcesCommand
+  .command('indexes-plan')
+  .description('Plan validated ResourceAPI storage/index changes without applying them')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--object-type <slug...>', 'Limit the plan to published Object Type slugs')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+    const spinner = makeSpinner(options.format, 'Planning ResourceAPI indexes...');
+    const response = await ctx.client.planResourceIndexes(options.objectType);
+    if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
+    const payload = await response.json();
+    if (options.format === 'json') { out.json(payload); return; }
+    succeedCommand(spinner, 'ResourceAPI index plan ready (dry run; no changes applied).');
+  });
+
+resourcesCommand
+  .command('indexes-apply')
+  .description('Apply validated ResourceAPI storage/index changes')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--object-type <slug...>', 'Limit the apply to published Object Type slugs')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--confirm', 'Confirm the tenant-scoped apply', false)
+  .action(async (options) => {
+    options.format = normalizeFormat(options);
+    if (!options.confirm) {
+      exitWithError(ErrorCode.E303, { field: '--confirm' }, options.format);
+    }
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const spinner = makeSpinner(options.format, 'Applying ResourceAPI indexes...');
+    const response = await ctx.client.applyResourceIndexes(options.objectType);
+    if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
+    const payload = await response.json();
+    if (options.format === 'json') { out.json(payload); return; }
+    succeedCommand(spinner, 'ResourceAPI index apply completed.');
+  });
+
+resourcesCommand
+  .command('cache-refresh')
+  .description('Force a ResourceAPI cache refresh (system-admin operation)')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--object-type <slug...>', 'Limit the refresh to Object Type slugs')
+  .requiredOption('--reason <reason>', 'Audited reason or change ticket')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--confirm', 'Confirm the system-admin cache refresh', false)
+  .action(async (options) => {
+    options.format = normalizeFormat(options);
+    if (!options.confirm) {
+      exitWithError(ErrorCode.E303, { field: '--confirm' }, options.format);
+    }
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const spinner = makeSpinner(options.format, 'Refreshing ResourceAPI cache...');
+    const response = await ctx.client.refreshResourceCache(options.objectType, options.reason);
+    if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
+    const payload = await response.json();
+    if (options.format === 'json') { out.json(payload); return; }
+    succeedCommand(spinner, 'ResourceAPI cache refresh completed.');
+  });
+
+resourcesCommand
   .command('sync-schema')
   .description('Provision or reconcile storage resources from published Object Type metadata')
   .option('--tenant-id <id>', 'Run against a specific tenant')

@@ -892,6 +892,30 @@ export class PlatformAPIClient {
     });
   }
 
+  async planResourceIndexes(objectTypes?: string[]): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/index-plan`,
+      'POST',
+      { objectTypes, apply: false, dryRun: true },
+    );
+  }
+
+  async applyResourceIndexes(objectTypes?: string[]): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/index-plan`,
+      'POST',
+      { objectTypes, apply: true, dryRun: false },
+    );
+  }
+
+  async refreshResourceCache(objectTypes: string[] | undefined, reason: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/cache-refresh`,
+      'POST',
+      { objectTypes, reason },
+    );
+  }
+
   async searchResources(request: {
     query: string;
     objectTypes?: string[];
