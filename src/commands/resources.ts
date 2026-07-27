@@ -1257,9 +1257,11 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--confirm', 'Confirm the tenant-scoped apply', false)
   .action(async (options) => {
-    if (!options.confirm) { throw new Error('Pass --confirm to apply validated ResourceAPI index changes.'); }
-    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     options.format = normalizeFormat(options);
+    if (!options.confirm) {
+      exitWithError(ErrorCode.E303, { field: '--confirm' }, options.format);
+    }
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     const spinner = makeSpinner(options.format, 'Applying ResourceAPI indexes...');
     const response = await ctx.client.applyResourceIndexes(options.objectType);
     if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
@@ -1277,9 +1279,11 @@ resourcesCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--confirm', 'Confirm the system-admin cache refresh', false)
   .action(async (options) => {
-    if (!options.confirm) { throw new Error('Pass --confirm to force a system-admin ResourceAPI cache refresh.'); }
-    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     options.format = normalizeFormat(options);
+    if (!options.confirm) {
+      exitWithError(ErrorCode.E303, { field: '--confirm' }, options.format);
+    }
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     const spinner = makeSpinner(options.format, 'Refreshing ResourceAPI cache...');
     const response = await ctx.client.refreshResourceCache(options.objectType, options.reason);
     if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
