@@ -144,7 +144,7 @@ function extractErrorPayload(payload: unknown): {
     return {};
   }
 
-  const nested = [payload.detail, payload];
+  const nested = [payload.error, payload.detail, payload];
   const result: {
     message?: string;
     code?: string;
@@ -153,15 +153,24 @@ function extractErrorPayload(payload: unknown): {
   } = {};
 
   for (const candidate of nested) {
-    if (typeof candidate === 'string' && !result.message) {
-      result.message = candidate;
+    if (typeof candidate === 'string') {
+      if (/^[A-Z][A-Z0-9_]+$/.test(candidate)) {
+        result.code ??= candidate;
+        result.serverCode ??= candidate;
+      } else {
+        result.message ??= candidate;
+      }
       continue;
     }
     if (!isRecord(candidate)) {
       continue;
     }
     if (!result.message) {
-      const message = candidate.message ?? candidate.detail;
+      const message = candidate.message ?? candidate.detail ??
+        (typeof candidate.error === 'string' &&
+        !/^[A-Z][A-Z0-9_]+$/.test(candidate.error)
+          ? candidate.error
+          : undefined);
       if (typeof message === 'string') {
         result.message = message;
       }

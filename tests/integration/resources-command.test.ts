@@ -117,6 +117,7 @@ describe('eai resources command guidance', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     const output = joinedConsoleOutput(errSpy);
+    expect(output).toContain('Search vector embedding endpoint is not configured');
     expect(output).toContain(
       'Semantic resource search is not ready for this tenant.',
     );
