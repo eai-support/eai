@@ -125,6 +125,39 @@ describe('eai resources command guidance', () => {
     expect(output).not.toContain(API_BASE);
   });
 
+  test('explains the exact v4 envelope when resource create returns 422', async () => {
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/data/resources/test-tenant-id/project`, () =>
+        HttpResponse.json(
+          {
+            error: 'RESOURCE_MUTATION_CONTRACT_INVALID',
+            message: 'Invalid PublicAPI v4 resource.create request body.',
+            expected: { method: 'POST', body: { data: 'object' } },
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(
+      resourcesCommand.parseAsync(
+        ['create', 'Project', '--data', '{"name":"Demo"}'],
+        { from: 'user' },
+      ),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy);
+    expect(output).toContain('PublicAPI v4 resource mutation contract is invalid');
+    expect(output).toContain('Create requires POST with {"data": {...}}');
+    expect(output).toContain('Update requires PUT with {"data": {...}, "version": n}');
+  });
+
   test('batch-import uses the high-throughput import route with deferred projection', async () => {
     let capturedBody: unknown;
     mockServer.server.use(

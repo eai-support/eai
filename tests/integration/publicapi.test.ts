@@ -148,4 +148,47 @@ describe('eai publicapi', () => {
     expect(output).toContain('"ok": true');
     expect(output).toContain(`"method": "${method}"`);
   });
+
+  test('includes machine-readable mutation remediation for a strict v4 405', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 'RESOURCE_MUTATION_METHOD_NOT_ALLOWED',
+          message: 'PublicAPI v4 resource.update requires PUT.',
+          expected: {
+            method: 'PUT',
+            body: { data: 'object', version: 'positive integer' },
+          },
+        }),
+        {
+          status: 405,
+          statusText: 'Method Not Allowed',
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+
+    await expect(
+      publicApiCommand.parseAsync(
+        [
+          'patch',
+          '/v4/data/resources/tenant-publicapi/customer/customer-1',
+          '--data',
+          '{"name":"Ada"}',
+          '--format',
+          'json',
+        ],
+        { from: 'user' },
+      ),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = outputSpy.mock.calls.flat().join('');
+    expect(output).toContain('"reasonCode": "resource_mutation_contract_invalid"');
+    expect(output).toContain('Update requires PUT with');
+  });
 });

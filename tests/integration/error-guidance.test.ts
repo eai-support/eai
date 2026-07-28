@@ -198,6 +198,35 @@ describe('error guidance catalog', () => {
     );
     expect(findGuidanceByCodeOrReason('resource_search_embedding_required')?.code).toBe('E275');
   });
+
+  test('resource mutation guidance gives the exact strict v4 methods and envelopes', () => {
+    const guidance = findGuidance({
+      operation: 'resources.update',
+      status: 422,
+      serverCode: 'RESOURCE_MUTATION_CONTRACT_INVALID',
+      message: 'Invalid PublicAPI v4 resource.update request body.',
+    });
+
+    expect(guidance?.code).toBe('E276');
+    expect(guidance?.why).toEqual(
+      expect.arrayContaining([
+        'Create requires POST with {"data": {...}}.',
+        'Update requires PUT with {"data": {...}, "version": n}, where n is the latest resource version.',
+      ]),
+    );
+    expect(guidance?.fixes.map((fix) => fix.command)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('publicapi post'),
+        expect.stringContaining('publicapi put'),
+      ]),
+    );
+    expect(
+      findGuidance({
+        status: 405,
+        serverCode: 'RESOURCE_MUTATION_METHOD_NOT_ALLOWED',
+      })?.code,
+    ).toBe('E276');
+  });
 });
 
 describe('eai errors command', () => {

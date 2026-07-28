@@ -7,6 +7,8 @@ import { Command } from 'commander';
 import { findProjectRoot } from '../lib/config.js';
 import { PlatformAPIClient, parseApiError, type PlatformMethod } from '../lib/api.js';
 import { normalizeFormat, makeSpinner } from '../lib/context.js';
+import { findGuidance } from '../lib/error-guidance/match.js';
+import { formatGuidanceText, guidanceToJSON } from '../lib/error-guidance/render.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 
@@ -148,6 +150,12 @@ async function runPublicApiRequest(method: PlatformMethod, path: string, options
 
     if (!response.ok) {
       const error = await parseApiError(response);
+      const guidance = findGuidance({
+        operation: `${method} ${requestPath}`,
+        status: error.status,
+        serverCode: error.code,
+        message: error.message,
+      });
       spinner?.fail(`${method} ${requestPath} failed: ${error.status} ${error.message}`);
       if (format === 'json') {
         out.json({
@@ -159,7 +167,10 @@ async function runPublicApiRequest(method: PlatformMethod, path: string, options
             bodyText: error.bodyText,
           },
           request: { method, path: requestPath, publicApiUrl, tenantId },
+          ...(guidance ? { guidance: guidanceToJSON(guidance) } : {}),
         });
+      } else if (guidance) {
+        console.error(`\n${formatGuidanceText(guidance)}`);
       }
       process.exit(1);
     }

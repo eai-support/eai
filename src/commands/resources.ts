@@ -144,7 +144,7 @@ function extractErrorPayload(payload: unknown): {
     return {};
   }
 
-  const nested = [payload.error, payload.detail, payload];
+  const nested = [payload.detail, payload];
   const result: {
     message?: string;
     code?: string;
@@ -161,7 +161,7 @@ function extractErrorPayload(payload: unknown): {
       continue;
     }
     if (!result.message) {
-      const message = candidate.message ?? candidate.detail ?? candidate.error;
+      const message = candidate.message ?? candidate.detail;
       if (typeof message === 'string') {
         result.message = message;
       }
@@ -180,6 +180,10 @@ function extractErrorPayload(payload: unknown): {
       if (typeof serverCode === 'string') {
         result.serverCode = serverCode;
       }
+    }
+    if (typeof candidate.error === 'string' && /^[A-Z][A-Z0-9_]+$/.test(candidate.error)) {
+      result.code ??= candidate.error;
+      result.serverCode ??= candidate.error;
     }
   }
 
@@ -717,9 +721,7 @@ Examples:
     try {
       const res = await ctx.client.createResource(type, data);
       if (!res.ok) {
-        failCommand(spinner, `${res.status} ${res.statusText}`);
-        const body = await res.text();
-        out.error(body);
+        failCommand(spinner, await formatResponseError(res, 'resources.create'));
         process.exit(1);
       }
 
