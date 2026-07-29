@@ -191,4 +191,58 @@ describe('eai publicapi', () => {
     expect(output).toContain('"reasonCode": "resource_mutation_contract_invalid"');
     expect(output).toContain('Update requires PUT with');
   });
+
+  test.each([
+    {
+      name: 'matching mutation guidance',
+      status: 405,
+      statusText: 'Method Not Allowed',
+      payload: {
+        error: 'RESOURCE_MUTATION_METHOD_NOT_ALLOWED',
+        message: 'PublicAPI v4 resource.update requires PUT.',
+      },
+      path: '/v4/data/resources/tenant-publicapi/customer/customer-1',
+      expectedGuidance: true,
+    },
+    {
+      name: 'unmatched server error',
+      status: 500,
+      statusText: 'Internal Server Error',
+      payload: { message: 'Unexpected upstream failure' },
+      path: '/v4/platform/capabilities/catalog',
+      expectedGuidance: false,
+    },
+  ])('prints the base failure in non-TTY text mode for $name', async ({
+    status,
+    statusText,
+    payload,
+    path,
+    expectedGuidance,
+  }) => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(payload), {
+        status,
+        statusText,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+
+    await expect(
+      publicApiCommand.parseAsync(['get', path, '--format', 'text'], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = errorSpy.mock.calls.flat().join(' ');
+    expect(output).toContain(`GET ${path} failed: ${status}`);
+    expect(output).toContain(String(payload.message));
+    if (expectedGuidance) {
+      expect(output).toContain('PublicAPI v4 resource mutation contract is invalid');
+    } else {
+      expect(output).not.toContain('resource_mutation_contract_invalid');
+    }
+  });
 });

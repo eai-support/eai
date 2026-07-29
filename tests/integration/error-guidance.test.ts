@@ -199,33 +199,63 @@ describe('error guidance catalog', () => {
     expect(findGuidanceByCodeOrReason('resource_search_embedding_required')?.code).toBe('E275');
   });
 
-  test('resource mutation guidance gives the exact strict v4 methods and envelopes', () => {
-    const guidance = findGuidance({
+  test('resource mutation guidance is operation-aware for maintained and raw clients', () => {
+    const updateGuidance = findGuidance({
       operation: 'resources.update',
       status: 422,
       serverCode: 'RESOURCE_MUTATION_CONTRACT_INVALID',
       message: 'Invalid PublicAPI v4 resource.update request body.',
     });
 
-    expect(guidance?.code).toBe('E276');
-    expect(guidance?.why).toEqual(
+    expect(updateGuidance?.code).toBe('E276');
+    expect(updateGuidance?.why.join(' ')).toContain(
+      'resources update client already sends PUT',
+    );
+    expect(updateGuidance?.fixes.map((fix) => fix.command)).toEqual(
       expect.arrayContaining([
-        'Create requires POST with {"data": {...}}.',
-        'Update requires PUT with {"data": {...}, "version": n}, where n is the latest resource version.',
+        'eai update',
+        expect.stringContaining('resources update'),
       ]),
     );
-    expect(guidance?.fixes.map((fix) => fix.command)).toEqual(
+    expect(updateGuidance?.fixes.map((fix) => fix.command).join(' ')).not.toContain(
+      'publicapi',
+    );
+
+    const createGuidance = findGuidance({
+      operation: 'resources.create',
+      status: 422,
+      serverCode: 'RESOURCE_MUTATION_CONTRACT_INVALID',
+    });
+    expect(createGuidance?.why.join(' ')).toContain(
+      'resources create client already sends POST',
+    );
+    expect(createGuidance?.fixes.map((fix) => fix.command)).toContain(
+      'eai resources create <type> --data \'<json>\'',
+    );
+
+    const actionGuidance = findGuidance({
+      operation: 'resources.action',
+      status: 422,
+      serverCode: 'RESOURCE_MUTATION_CONTRACT_INVALID',
+    });
+    expect(actionGuidance?.why.join(' ')).toContain(
+      'resource action client already sends POST',
+    );
+    expect(actionGuidance?.fixes.map((fix) => fix.command).join(' ')).toContain(
+      'action result version',
+    );
+
+    const rawGuidance = findGuidance({
+      operation: 'PATCH /v4/data/resources/tenant/type/id',
+      status: 405,
+      serverCode: 'RESOURCE_MUTATION_METHOD_NOT_ALLOWED',
+    });
+    expect(rawGuidance?.fixes.map((fix) => fix.command)).toEqual(
       expect.arrayContaining([
         expect.stringContaining('publicapi post'),
         expect.stringContaining('publicapi put'),
       ]),
     );
-    expect(
-      findGuidance({
-        status: 405,
-        serverCode: 'RESOURCE_MUTATION_METHOD_NOT_ALLOWED',
-      })?.code,
-    ).toBe('E276');
   });
 });
 

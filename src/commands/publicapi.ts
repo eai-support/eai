@@ -156,7 +156,12 @@ async function runPublicApiRequest(method: PlatformMethod, path: string, options
         serverCode: error.code,
         message: error.message,
       });
-      spinner?.fail(`${method} ${requestPath} failed: ${error.status} ${error.message}`);
+      const failureMessage = `${method} ${requestPath} failed: ${error.status} ${error.message}`;
+      if (spinner) {
+        spinner.fail(failureMessage);
+      } else if (format !== 'json') {
+        out.error(failureMessage);
+      }
       if (format === 'json') {
         out.json({
           ok: false,
