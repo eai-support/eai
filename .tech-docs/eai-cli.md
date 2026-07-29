@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.8.0 |
+| Version | 3.8.1 |
 | Released | 2026-07-29 |
-| Last Material Change | Add ResourceAPI performance controls and generated workflow app runtime |
-| Source Commit | `1db7c3f255c809283973fb1f365895675ea01fa1` |
+| Last Material Change | Explain strict PublicAPI v4 resource mutation failures |
+| Source Commit | `659da5e542bee15ee2fb5019a0fe194e5c0c3796` |
 
 
 ## Install
