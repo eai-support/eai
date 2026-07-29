@@ -29,6 +29,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
 | `E270` | `object_type_not_published` | Object Type is not published for the active tenant. |
 | `E275` | `resource_search_embedding_required` | Semantic resource search is not ready for this tenant. |
+| `E276` | `resource_mutation_contract_invalid` | The PublicAPI v4 resource mutation contract is invalid. |
 | `E280` | `workflow_operator_required` | Workflow runtime binding requires operator assistance. |
 | `E244` | `tenant_data_install_no_match` | Tenant data/schema setup is not fully provisioned. |
 
@@ -500,6 +501,43 @@ None.
 - search mode used
 - storage doctor search capabilities
 - CLI version
+
+## E276: The PublicAPI v4 resource mutation contract is invalid.
+
+| Field | Value |
+| --- | --- |
+| Reason | `resource_mutation_contract_invalid` |
+| Category | `resource_data` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- PublicAPI v4 intentionally rejects legacy flat resource bodies and PATCH updates.
+- Create requires POST with {"data": {...}}.
+- Update requires PUT with {"data": {...}, "version": n}, where n is the latest resource version.
+- A resource action requires POST with {"params": {...}} and returns the new version for any follow-up update.
+
+### Diagnostics
+
+- `eai resources get <type> <id> --format json` (read-only) — Read the current resource and version before an update. Required for updates, especially after an action or another writer.
+
+### Fixes
+
+- `eai publicapi post /v4/data/resources/<tenant-id>/<type> --data '{"data":{...}}'` (changes state) — Create a resource using the strict v4 data envelope.
+- `eai publicapi put /v4/data/resources/<tenant-id>/<type>/<id> --data '{"data":{...},"version":<current-version>}'` (changes state) — Update a resource with PUT and the latest optimistic-lock version.
+- `eai publicapi post /v4/data/resources/<tenant-id>/<type>/<id>/actions/<action> --data '{"params":{...}}'` (changes state) — Execute a resource action with the strict params envelope.
+
+### Stop Conditions
+
+- The corrected method and body still return the same contract error.
+- The update uses the latest version but returns a version conflict.
+
+### Escalation Evidence
+
+- command without secrets
+- HTTP status
+- server error code
+- request ID
 
 ## E280: Workflow runtime binding requires operator assistance.
 

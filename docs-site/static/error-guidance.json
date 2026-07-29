@@ -997,6 +997,81 @@
       }
     },
     {
+      "code": "E276",
+      "reasonCode": "resource_mutation_contract_invalid",
+      "title": "The PublicAPI v4 resource mutation contract is invalid.",
+      "category": "resource_data",
+      "severity": "error",
+      "appliesTo": [
+        "resources.create",
+        "resources.update",
+        "resources.action",
+        "publicapi"
+      ],
+      "why": [
+        "PublicAPI v4 intentionally rejects legacy flat resource bodies and PATCH updates.",
+        "Create requires POST with {\"data\": {...}}.",
+        "Update requires PUT with {\"data\": {...}, \"version\": n}, where n is the latest resource version.",
+        "A resource action requires POST with {\"params\": {...}} and returns the new version for any follow-up update."
+      ],
+      "evidenceToCheck": [
+        "The HTTP method and path used by the failed request.",
+        "The server error code and expected contract in the response.",
+        "The latest resource version when an update follows another mutation or action."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai resources get <type> <id> --format json",
+          "purpose": "Read the current resource and version before an update.",
+          "mutates": false,
+          "when": "Required for updates, especially after an action or another writer."
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai publicapi post /v4/data/resources/<tenant-id>/<type> --data '{\"data\":{...}}'",
+          "purpose": "Create a resource using the strict v4 data envelope.",
+          "mutates": true
+        },
+        {
+          "command": "eai publicapi put /v4/data/resources/<tenant-id>/<type>/<id> --data '{\"data\":{...},\"version\":<current-version>}'",
+          "purpose": "Update a resource with PUT and the latest optimistic-lock version.",
+          "mutates": true
+        },
+        {
+          "command": "eai publicapi post /v4/data/resources/<tenant-id>/<type>/<id>/actions/<action> --data '{\"params\":{...}}'",
+          "purpose": "Execute a resource action with the strict params envelope.",
+          "mutates": true
+        }
+      ],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 1,
+        "stopWhen": [
+          "The corrected method and body still return the same contract error.",
+          "The update uses the latest version but returns a version conflict."
+        ]
+      },
+      "escalation": {
+        "audience": "eai-maintainer",
+        "neededWhen": [
+          "A request matching the documented strict v4 method and envelope is still rejected."
+        ],
+        "include": [
+          "command without secrets",
+          "HTTP status",
+          "server error code",
+          "request ID"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
       "code": "E280",
       "reasonCode": "workflow_operator_required",
       "title": "Workflow runtime binding requires operator assistance.",

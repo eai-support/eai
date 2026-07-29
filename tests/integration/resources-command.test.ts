@@ -117,12 +117,90 @@ describe('eai resources command guidance', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     const output = joinedConsoleOutput(errSpy);
+    expect(output).toContain('Search vector embedding endpoint is not configured');
     expect(output).toContain(
       'Semantic resource search is not ready for this tenant.',
     );
     expect(output).toContain('eai resources storage doctor --format json');
     expect(output).toContain('eai resources search "<query>" --fulltext');
     expect(output).not.toContain(API_BASE);
+  });
+
+  test('treats create E276 as maintained-client version skew rather than raw body repair', async () => {
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/data/resources/test-tenant-id/project`, () =>
+        HttpResponse.json(
+          {
+            error: 'RESOURCE_MUTATION_CONTRACT_INVALID',
+            message: 'Invalid PublicAPI v4 resource.create request body.',
+            expected: { method: 'POST', body: { data: 'object' } },
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(
+      resourcesCommand.parseAsync(
+        ['create', 'Project', '--data', '{"name":"Demo"}'],
+        { from: 'user' },
+      ),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy);
+    expect(output).toContain('PublicAPI v4 resource mutation contract is invalid');
+    expect(output).toContain('resources create client already sends POST');
+    expect(output).toContain('eai --version');
+    expect(output).toContain('eai update');
+    expect(output).not.toContain('eai publicapi post');
+    expect(output).not.toContain('eai publicapi put');
+  });
+
+  test('refreshes the version for update E276 without suggesting a raw body rewrite', async () => {
+    mockServer.server.use(
+      http.put(`${API_BASE}/v4/data/resources/test-tenant-id/project/project-1`, () =>
+        HttpResponse.json(
+          {
+            error: 'RESOURCE_MUTATION_CONTRACT_INVALID',
+            message: 'Invalid PublicAPI v4 resource.update request body.',
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(
+      resourcesCommand.parseAsync(
+        [
+          'update',
+          'Project',
+          'project-1',
+          '--data',
+          '{"name":"Demo"}',
+          '--version',
+          '3',
+        ],
+        { from: 'user' },
+      ),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy);
+    expect(output).toContain('resources update client already sends PUT');
+    expect(output).toContain('eai resources get <type> <id> --format json');
+    expect(output).toContain('--version <current-version>');
+    expect(output).not.toContain('eai publicapi put');
   });
 
   test('batch-import uses the high-throughput import route with deferred projection', async () => {

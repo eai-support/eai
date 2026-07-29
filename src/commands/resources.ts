@@ -153,15 +153,24 @@ function extractErrorPayload(payload: unknown): {
   } = {};
 
   for (const candidate of nested) {
-    if (typeof candidate === 'string' && !result.message) {
-      result.message = candidate;
+    if (typeof candidate === 'string') {
+      if (/^[A-Z][A-Z0-9_]+$/.test(candidate)) {
+        result.code ??= candidate;
+        result.serverCode ??= candidate;
+      } else {
+        result.message ??= candidate;
+      }
       continue;
     }
     if (!isRecord(candidate)) {
       continue;
     }
     if (!result.message) {
-      const message = candidate.message ?? candidate.detail ?? candidate.error;
+      const message = candidate.message ?? candidate.detail ??
+        (typeof candidate.error === 'string' &&
+        !/^[A-Z][A-Z0-9_]+$/.test(candidate.error)
+          ? candidate.error
+          : undefined);
       if (typeof message === 'string') {
         result.message = message;
       }
@@ -180,6 +189,10 @@ function extractErrorPayload(payload: unknown): {
       if (typeof serverCode === 'string') {
         result.serverCode = serverCode;
       }
+    }
+    if (typeof candidate.error === 'string' && /^[A-Z][A-Z0-9_]+$/.test(candidate.error)) {
+      result.code ??= candidate.error;
+      result.serverCode ??= candidate.error;
     }
   }
 
@@ -717,9 +730,7 @@ Examples:
     try {
       const res = await ctx.client.createResource(type, data);
       if (!res.ok) {
-        failCommand(spinner, `${res.status} ${res.statusText}`);
-        const body = await res.text();
-        out.error(body);
+        failCommand(spinner, await formatResponseError(res, 'resources.create'));
         process.exit(1);
       }
 
