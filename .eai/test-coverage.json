@@ -21,6 +21,7 @@
             "tests/integration/tenant.test.ts",
             "tests/integration/init.test.ts",
             "tests/integration/help.test.ts",
+            "tests/integration/describe-contract.test.ts",
             "tests/integration/dev.test.ts",
             "tests/integration/output.test.ts",
             "tests/integration/provision.test.ts",
