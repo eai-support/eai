@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.8.0** (2026-07-29): Add ResourceAPI performance controls and generated workflow app runtime.
+The current CLI release is **v3.8.1** (2026-07-29): Explain strict PublicAPI v4 resource mutation failures.
 
 
 ## What The Pieces Do
