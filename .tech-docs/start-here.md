@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.7.12** (2026-07-20): Fix v4 document record resolution and CLI rag indexing.
+The current CLI release is **v3.8.0** (2026-07-29): Add ResourceAPI performance controls and generated workflow app runtime.
 
 
 ## What The Pieces Do
