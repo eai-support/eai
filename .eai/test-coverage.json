@@ -9,6 +9,8 @@
           "owned_paths": [
             "src/**",
             "tests/**",
+            ".tech-docs/full-e2e-smoke-traceability.md",
+            "scripts/eai-full-e2e-smoke.cjs",
             "scripts/smoke-resourceapi-schema-sync-lifecycle.sh",
             "resources/**",
             "package.json"
@@ -19,6 +21,7 @@
             "tests/integration/tenant.test.ts",
             "tests/integration/init.test.ts",
             "tests/integration/help.test.ts",
+            "tests/integration/describe-contract.test.ts",
             "tests/integration/dev.test.ts",
             "tests/integration/output.test.ts",
             "tests/integration/provision.test.ts",

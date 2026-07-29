@@ -55,7 +55,7 @@ const TRACEABILITY_BASE = [
   ['eai resources schema', 'read', 'live', 'Verifies published Object Types are visible through resource schema.'],
   ['eai resources sync-schema', 'create/update', 'live-optional', 'Dry-run runs by default. Non-dry-run requires EAI_E2E_SYNC_SCHEMA_APPLY=1 until ResourceAPI physical cleanup exists.'],
   ['eai resources doctor', 'read', 'live', 'Runs active tenant storage readiness diagnostics.'],
-  ['eai resources performance-status', 'read', 'live', 'Reads bounded ResourceAPI performance/schema readiness through AdminAPI.'],
+  ['eai resources performance-status', 'read', 'live', 'Reads bounded resource performance and schema readiness through the platform API.'],
   ['eai resources indexes-plan', 'read', 'live-optional', 'Plans validated tenant-scoped index changes without applying storage mutations.'],
   ['eai resources indexes-apply', 'create/update', 'live-optional', 'Applies validated tenant-scoped indexes only after explicit confirmation and server authorization.'],
   ['eai resources cache-refresh', 'create/update', 'live-optional', 'Forces a signed, reasoned system-admin cache refresh; disabled in default smoke.'],
