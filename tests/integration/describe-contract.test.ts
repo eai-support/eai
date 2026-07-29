@@ -321,6 +321,7 @@ describe("built CLI discovery and error contracts", () => {
       .sort();
 
     expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
     expect(actual).toEqual([...TOP_LEVEL_COMMANDS].sort());
   });
 
@@ -329,6 +330,7 @@ describe("built CLI discovery and error contracts", () => {
     const schema = JSON.parse(result.stdout) as DescribeCommand;
 
     expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
     for (const [commandName, expectedFlags] of Object.entries(
       SOURCE_UNKNOWN_APP_FLAGS,
     )) {
