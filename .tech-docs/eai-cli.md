@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.12 |
-| Released | 2026-07-20 |
-| Last Material Change | Fix v4 document record resolution and CLI rag indexing |
-| Source Commit | `9ae3e92996ad460fd9f52235358c3883b63fe1b4` |
+| Version | 3.8.0 |
+| Released | 2026-07-29 |
+| Last Material Change | Add ResourceAPI performance controls and generated workflow app runtime |
+| Source Commit | `1db7c3f255c809283973fb1f365895675ea01fa1` |
 
 
 ## Install
