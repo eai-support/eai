@@ -21,7 +21,7 @@ if (process.argv.length === 3 && process.argv[2] === '--version') {
 }
 
 // Commands
-import { initCommand } from './commands/init.js';
+import { createCommand, initCommand } from './commands/init.js';
 import { devCommand } from './commands/dev.js';
 import { loginCommand, logoutCommand } from './commands/login.js';
 import { envCommand } from './commands/env.js';
@@ -96,6 +96,7 @@ program
 
 // Register all commands
 program.addCommand(initCommand);
+program.addCommand(createCommand);
 program.addCommand(devCommand);
 program.addCommand(loginCommand);
 program.addCommand(logoutCommand);
@@ -125,7 +126,7 @@ program.addCommand(agentCommand);
 // Custom help footer
 program.addHelpText('after', `
 ${chalk.bold('Getting Started:')}
-  ${chalk.cyan('eai init my-app')}     Scaffold an app with Gofer AI CLI assets
+  ${chalk.cyan('eai create my-app')}   Scaffold an app with Gofer AI CLI assets
   ${chalk.cyan('eai login')}                Authenticate with Entra CIAM
   ${chalk.cyan('eai provision entra')}      Create Entra app registration for end-user auth
   ${chalk.cyan('eai provision entra --deauthorize --force')} Clean up app auth registration

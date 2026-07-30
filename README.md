@@ -93,15 +93,17 @@ npm install -g ./docs-site/static/registry/-/@enterpriseai/cli-latest.tgz
 ## Quick Start
 
 ```bash
-# 1. Create a new app
-eai init my-app
+# 1. Run the guided first-time setup
+eai create my-app
 cd my-app
 npm install
 
-# 2. Authenticate
-eai login
+# `eai create` checks local tooling, signs you in, confirms the signup
+# workspace, creates the app, verifies Gofer, and checks builder readiness.
+# Use `/0_business_scenario` in your AI tool when it finishes.
 
-# 3. Choose the tenant to work with
+# 2. For an existing login or automation, use the lower-level commands:
+eai whoami
 eai tenant select
 
 # 4. Create child tenants only when you need them
@@ -125,13 +127,16 @@ eai types seed
 eai dev
 ```
 
-`eai init` installs Gofer AI terminal assets by default. New app repos include
+`eai create` installs Gofer AI terminal assets by default. New app repos include
 Claude commands and agents, Codex skills, Gemini commands, Copilot prompts and
 CLI skills, and the `.specify` commands/scripts/templates/hooks required to run
 the Gofer pipeline.
-Use `eai init my-app --no-gofer` only when you need a bare scaffold.
+Use `eai create my-app --no-gofer` only when you need a bare scaffold. `eai init`
+remains available as the low-level, backwards-compatible scaffold command.
+Use `eai create my-app --skip-onboarding` when you want the old init prompts
+without the first-run checks.
 
-By default, `eai init my-app` creates a new `./my-app` folder. If you already
+By default, `eai create my-app` creates a new `./my-app` folder. If you already
 created and entered a project folder, run `eai init`, enter the app name, and
 answer yes when asked to use the current folder. For automation, pass
 `--current-dir` with the kebab-case app name. Current-folder init preserves
@@ -157,7 +162,8 @@ All commands support these global flags:
 
 | Command | Description |
 |---------|-------------|
-| `eai init [name]` | Interactive scaffold from the CLI-pinned public EAI application template with Gofer AI CLI assets |
+| `eai create [name]` | Guided first-run setup plus scaffold, Gofer verification, and builder readiness check |
+| `eai init [name]` | Low-level backwards-compatible scaffold command |
 | `eai dev` | Start local dev server with connectivity checks |
 
 The bundled default template is pinned to the latest `eai-app-template` `main`

@@ -55,6 +55,16 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain("run 'eai tenant select' to choose the tenant");
   });
 
+  test('create help explains the guided first-run flow', async () => {
+    const result = await runCommand(ctx, 'eai create --help');
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Guide a new builder through EAI setup');
+    expect(result.stdout).toContain('Check Git, Node.js, and npm');
+    expect(result.stdout).toContain('Check builder readiness');
+    expect(result.stdout).toContain('--skip-onboarding');
+  });
+
   test('docs help includes the simple upload-classify-index workflow', async () => {
     const result = await runCommand(ctx, 'eai docs --help');
 
