@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Version: 3.8.3
+Version: 3.9.0
 
 Install / update the CLI:
 npm install -g eai-cli
@@ -22,48 +22,51 @@ Usage: eai [options] [command]
 Enterprise AI Platform CLI — scaffold, seed, deploy, and manage applications
 
 Options:
-  -V, --cli-version      output the version number
-  --simple               Plain text output without colors or symbols (for screen
-                         readers)
-  --no-color             Disable colored output
-  --color                Force colored output
-  --profile <name>       Use a locally configured private profile
-  --describe             Output JSON schema of all commands
-  -h, --help             display help for command
+  -V, --cli-version        output the version number
+  --simple                 Plain text output without colors or symbols (for
+                           screen readers)
+  --no-color               Disable colored output
+  --color                  Force colored output
+  --profile <name>         Use a locally configured private profile
+  --describe               Output JSON schema of all commands
+  -h, --help               display help for command
 
 Commands:
-  init [options] [name]  Scaffold a new application
-  dev [options]          Start local development server
-  login [options]        Authenticate with Entra CIAM
-  logout                 Clear stored authentication tokens
-  env                    Manage environment variables
-  types                  Manage Object Type definitions
-  tenant                 Manage tenants on the platform
-  user                   Manage users on the platform
-  resources              CRUD operations on platform resources
-  app|vertical           Manage apps under the active company tenant
-  chat                   Chat with AI workflows
-  workflow               Provision app workflow configs and inspect AI runtime
-                         workflow bindings
-  docs                   Document upload, classification, and indexing
-  deploy                 Deployment management
-  runtime                Validate the provider-neutral EAI app runtime contract
-  verify [options]       Run platform connectivity checks
-  doctor [options]       Diagnose common issues and suggest fixes
-  whoami                 Show auth status and tenant info
-  update [options]       Check for and install CLI updates
-  provision              Provision platform resources for this app
-  gofer                  Inspect and refresh Gofer-managed project assets
-  template               Preview application template and UI component drift for
-                         the current project
-  blocks                 Discover AI-readable EAI UI block manifests
-  publicapi              Call authorized PublicAPI V4 routes directly
-  errors                 Explain EAI CLI errors and agent-safe recovery steps
-  agent                  Show AI-agent discovery and recovery guidance
-  help [command]         display help for command
+  init [options] [name]    Scaffold a new application
+  create [options] [name]  Guide a new builder through EAI setup and create an
+                           application
+  dev [options]            Start local development server
+  login [options]          Authenticate with Entra CIAM
+  logout                   Clear stored authentication tokens
+  env                      Manage environment variables
+  types                    Manage Object Type definitions
+  tenant                   Manage tenants on the platform
+  user                     Manage users on the platform
+  resources                CRUD operations on platform resources
+  app|vertical             Manage apps under the active company tenant
+  chat                     Chat with AI workflows
+  workflow                 Provision app workflow configs and inspect AI runtime
+                           workflow bindings
+  docs                     Document upload, classification, and indexing
+  deploy                   Deployment management
+  runtime                  Validate the provider-neutral EAI app runtime
+                           contract
+  verify [options]         Run platform connectivity checks
+  doctor [options]         Diagnose common issues and suggest fixes
+  whoami                   Show auth status and tenant info
+  update [options]         Check for and install CLI updates
+  provision                Provision platform resources for this app
+  gofer                    Inspect and refresh Gofer-managed project assets
+  template                 Preview application template and UI component drift
+                           for the current project
+  blocks                   Discover AI-readable EAI UI block manifests
+  publicapi                Call authorized PublicAPI V4 routes directly
+  errors                   Explain EAI CLI errors and agent-safe recovery steps
+  agent                    Show AI-agent discovery and recovery guidance
+  help [command]           display help for command
 
 Getting Started:
-  eai init my-app     Scaffold an app with Gofer AI CLI assets
+  eai create my-app   Scaffold an app with Gofer AI CLI assets
   eai login                Authenticate with Entra CIAM
   eai provision entra      Create Entra app registration for end-user auth
   eai provision entra --deauthorize --force Clean up app auth registration

@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.8.3 |
+| Version | 3.9.0 |
 | Released | 2026-07-30 |
-| Last Material Change | Pin generated app template with multi-tab submission ownership |
-| Source Commit | `315f54dae400e3ff2d79da5d37e4c73481e90fc9` |
+| Last Material Change | Add guided EAI create onboarding command |
+| Source Commit | `84eb4cf8692ba52ec036cb3be8d2208aabbd9729` |
 
 
 ## Install
