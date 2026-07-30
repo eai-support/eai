@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.8.2** (2026-07-30): Ship branded generated app templates.
+The current CLI release is **v3.8.3** (2026-07-30): Pin generated app template with multi-tab submission ownership.
 
 
 ## What The Pieces Do
