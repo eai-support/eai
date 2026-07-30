@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.8.1 |
-| Released | 2026-07-29 |
-| Last Material Change | Explain strict PublicAPI v4 resource mutation failures |
-| Source Commit | `659da5e542bee15ee2fb5019a0fe194e5c0c3796` |
+| Version | 3.8.2 |
+| Released | 2026-07-30 |
+| Last Material Change | Ship branded generated app templates |
+| Source Commit | `3dd64ba84d9914375e00f9fd34e38928e91a019d` |
 
 
 ## Install
