@@ -5,10 +5,17 @@ Before doing stage/helper work:
 1. Resolve the repository root.
 2. Check the core Gofer sentinels:
    - `.specify/.gofer-version`
-   - `.specify/commands/0_business_scenario.md`
+   - `.specify/commands/0_gofer_start.md`
    - `.specify/templates/spec-template.md`
+   - `.specify/templates/loop-contract-template.json`
+   - `.specify/templates/working-backwards-prfaq-template.md`
+   - `.specify/templates/business-owner-summary-template.md`
+   - `.specify/templates/cto-architecture-summary-template.md`
+   - `.specify/templates/ciso-security-summary-template.md`
+   - `.specify/templates/stakeholder-review-index-template.md`
    - `.specify/scripts/bash/create-new-feature.sh`
    - `.specify/scripts/node/parse-stage-command.mjs`
+   - `.specify/scripts/node/gofer-loop-audit.mjs`
    - `.specify/scripts/hooks/post-tool-use.mjs`
    - `.specify/scripts/powershell/install-optional-tools.ps1`
    - `.specify/templates/gofer-model-policy.yaml`
@@ -32,6 +39,24 @@ description: Create feature specification informed by codebase research
 ---
 
 # Gofer Specify
+
+## EAI Platform Session Preflight
+
+Before any Gofer stage/helper command does pipeline work:
+
+1. Treat durable delivery as EAI Platform delivery by default, with Azure second
+   and every other stack only by explicit exception.
+2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
+   and an active tenant is visible.
+3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
+   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   approve login/setup before continuing.
+4. For EAI app delivery, do not continue into research, specification, planning,
+   tasks, implementation, or validation until
+   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   app-readiness, and next-action evidence.
+5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+   Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
 <!-- gofer:token-cost-policy:start -->
@@ -91,11 +116,27 @@ This command expects:
 - Feature directory already created at `.specify/specs/{feature}/`
 - `research.md` completed from `/1_gofer_research`
 - `goal-ledger.json` seeded from `/1_gofer_research`
+- `loop-contract.json` seeded from `/1_gofer_research`
 - `proposal-review.md` if research created supporting review context
 
 If these don't exist, prompt user to run `/1_gofer_research` first.
 
 ---
+
+## Spec Artifact Guarantee
+
+This stage is the first point where the placeholder `spec.md` created by
+feature bootstrap becomes a real feature specification. Before this command
+finishes or auto-chains to `/3_gofer_plan`, verify that
+`{FEATURE_DIR}/spec.md` exists, is non-empty, and no longer contains the raw
+template placeholders such as `[FEATURE NAME]`, `[###-feature-name]`,
+`[Describe this user journey]`, `System MUST [specific capability]`, or
+`ACTION REQUIRED`. If the check fails, write or repair `spec.md` immediately and
+do not continue to planning.
+
+Downstream stages use repo scripts that fail on missing, empty, or still-template
+specs. Treat that failure as a required return to `/2_gofer_specify`, not as a
+script problem to bypass.
 
 ## Outline
 
@@ -105,7 +146,10 @@ If these don't exist, prompt user to run `/1_gofer_research` first.
 4. Review agent output, handle clarifications
 5. Optional multi-perspective review
 6. Output: `.specify/specs/{feature}/spec.md`
-7. EnterpriseAI profile output: `.specify/specs/{feature}/contract-pack.md`
+7. Stakeholder PR/FAQ output: `working-backwards-prfaq.md`,
+   `prfaq-history/02-specify.md`, `spec-summary.md`,
+   `business-owner-summary.md`, and `stakeholder-review-index.md`
+8. EnterpriseAI profile output: `.specify/specs/{feature}/contract-pack.md`
 
 ---
 
@@ -141,6 +185,10 @@ Before starting specification, assess context window health:
    - Note whether proposal-review.md exists
    - Note whether goal-ledger.json exists and which goals, metrics, delivery
      states, and re-loop triggers it records
+   - Note whether loop-contract.json exists and which evaluation commands,
+     success criteria, stop conditions, and escalation rules it records
+   - If loop-contract.json is missing, initialize it with
+     `node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir {FEATURE_DIR} --stage 2_specify --init --json`
 
 3. **Note template path**: `.specify/templates/spec-template.md`
 
@@ -220,6 +268,7 @@ Feature directory: {FEATURE_DIR}
 Read these files for full context:
 - {FEATURE_DIR}/research.md — Codebase analysis, integration points, patterns, constraints
 - {FEATURE_DIR}/goal-ledger.json — machine-readable goals, metrics, delivery states, and re-loop triggers
+- {FEATURE_DIR}/loop-contract.json — bounded loop objective, evaluation commands, success criteria, stop conditions, and escalation rules
 - {FEATURE_DIR}/proposal-review.md — Supporting business scenario, architecture direction, options, overrides (read if exists, skip if not)
 - .specify/templates/spec-template.md — Template structure to follow
 - {FEATURE_DIR}/discovery.md — Business discovery findings (read if exists, skip if not)
@@ -231,7 +280,7 @@ Read these files for full context:
 
 Generate the COMPLETE spec.md following this structure:
 
-1. YAML frontmatter: id, title, status: draft, created (ISO date), updated, author: Claude
+1. YAML frontmatter: id, title, status: draft, created (ISO date), updated, author: Gofer
 2. Overview — High-level description of what this feature does and why it matters
 3. User Stories — Prioritized P1/P2/P3 with 'As a [user] I want to [action] So that [benefit]'
    - Each story MUST have checkable acceptance criteria (- [ ] format)
@@ -244,11 +293,12 @@ Generate the COMPLETE spec.md following this structure:
 10. Glossary — Key terms
 11. Research Traceability — Matrix mapping each research finding to a spec section
 12. Goal Ledger Alignment — Goal IDs, outcomes, metrics/targets, linked stories, linked requirements
-13. AI-Augmented 4-Step Journey — required for app delivery, not applicable for explicit non-app work
-14. UI Preview And Approval Gate — required for app delivery, not applicable for explicit non-app work
-15. EAI Platform/Azure App Stack Policy — required for app delivery, not applicable for explicit non-app work
-16. EnterpriseAI Service Fit — required for app delivery, not applicable for explicit non-app work
-17. EnterpriseAI Contract Pack Summary — actors, object types, workflows, permissions, APIs/events, runtime assumptions, acceptance tests
+13. Loop Contract Alignment — loop objective, success criteria, required eval commands, max-iteration stop rules, and human escalation triggers
+14. AI-Augmented 4-Step Journey — required for app delivery, not applicable for explicit non-app work
+15. UI Preview And Approval Gate — required for app delivery, not applicable for explicit non-app work
+16. EAI Platform/Azure App Stack Policy — required for app delivery, not applicable for explicit non-app work
+17. EnterpriseAI Service Fit — required for app delivery, not applicable for explicit non-app work
+18. EnterpriseAI Contract Pack Summary — actors, object types, workflows, permissions, APIs/events, runtime assumptions, acceptance tests
 
 If discovery.md exists, use it to:
 - Use Problem Statement for Overview motivation
@@ -628,6 +678,7 @@ After spec.md is complete:
 ```
 ✓ Specification complete: {FEATURE_DIR}/spec.md
 ✓ Goal ledger aligned: {FEATURE_DIR}/goal-ledger.json
+✓ Loop contract aligned: {FEATURE_DIR}/loop-contract.json
 
 Summary:
 - [N] User Stories defined
@@ -738,6 +789,40 @@ For EnterpriseAI public-facing work, the contract pack must also separate:
   AuthZ. These may inform internal implementation tasks, but must not be copied
   into public docs, generated help, templates, or app guidance.
 
+## Step 7: Update Working Backwards PR/FAQ And Business Owner Summary
+
+After `spec.md` is stabilized and before stage completion logging:
+
+1. Create or update `{FEATURE_DIR}/spec-summary.md` using
+   `.specify/templates/spec-summary-template.md` if it does not already exist.
+   If the optional `gofer:spec-summary` helper was explicitly requested, keep
+   using that helper contract; otherwise write the concise stage summary inline.
+2. Update `{FEATURE_DIR}/working-backwards-prfaq.md` from the current
+   specification.
+   - Tighten the Press Release headline, customer problem, launch description,
+     customer benefit, and "How To Get Started" around the approved product
+     behavior.
+   - Fill External FAQ with user-facing behavior, process change, included
+     scope, explicit exclusions, success measures, and fallback path.
+   - Keep Internal FAQ CTO/CISO sections as `Pending /3` or `Pending /6` where
+     the stage has not produced evidence yet.
+3. Write `{FEATURE_DIR}/prfaq-history/02-specify.md` as an immutable snapshot of
+   the updated PR/FAQ.
+4. Update `{FEATURE_DIR}/business-owner-summary.md` from
+   `.specify/templates/business-owner-summary-template.md` using
+   `problem-brief.md`, `discovery.md`, `spec-summary.md`, assumptions, value
+   stream, ROI, and business metrics when present.
+5. Update `{FEATURE_DIR}/stakeholder-review-index.md` and explicitly ask the
+   Business Owner to approve, revise, or defer:
+   - business scenario
+   - process change
+   - business case / value measures
+   - assumptions and exclusions
+
+Do not block the normal auto-chain unless the user explicitly asks to pause for
+review. The review index captures pending stakeholder decisions so downstream
+stages can reconcile them.
+
 ---
 
 ## Observability Logging
@@ -758,8 +843,10 @@ Logs to: `.specify/logs/pipeline.jsonl`
   is stabilized, run `gofer:vocabulary` inline and write
   `.specify/specs/{feature}/glossary.md` using the same artifact contract as the
   standalone helper.
-- If the operator explicitly requests the `spec-summary` selector after `spec.md`
-  is stabilized, run `gofer:spec-summary` inline and write
+- This stage creates or updates a baseline `spec-summary.md` for the
+  Business Owner summary and PR/FAQ. If the operator explicitly requests the
+  `spec-summary` selector after `spec.md` is stabilized, run
+  `gofer:spec-summary` inline to deepen or regenerate
   `.specify/specs/{feature}/spec-summary.md` using the same artifact contract as
   the standalone helper.
 - If `spec.md` is missing, continue the stage normally and report that the

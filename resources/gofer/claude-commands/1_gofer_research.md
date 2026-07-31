@@ -5,10 +5,17 @@ Before doing stage/helper work:
 1. Resolve the repository root.
 2. Check the core Gofer sentinels:
    - `.specify/.gofer-version`
-   - `.specify/commands/0_business_scenario.md`
+   - `.specify/commands/0_gofer_start.md`
    - `.specify/templates/spec-template.md`
+   - `.specify/templates/loop-contract-template.json`
+   - `.specify/templates/working-backwards-prfaq-template.md`
+   - `.specify/templates/business-owner-summary-template.md`
+   - `.specify/templates/cto-architecture-summary-template.md`
+   - `.specify/templates/ciso-security-summary-template.md`
+   - `.specify/templates/stakeholder-review-index-template.md`
    - `.specify/scripts/bash/create-new-feature.sh`
    - `.specify/scripts/node/parse-stage-command.mjs`
+   - `.specify/scripts/node/gofer-loop-audit.mjs`
    - `.specify/scripts/hooks/post-tool-use.mjs`
    - `.specify/scripts/powershell/install-optional-tools.ps1`
    - `.specify/templates/gofer-model-policy.yaml`
@@ -32,6 +39,24 @@ description: Deep codebase and technology research for feature implementation
 ---
 
 # Gofer Research
+
+## EAI Platform Session Preflight
+
+Before any Gofer stage/helper command does pipeline work:
+
+1. Treat durable delivery as EAI Platform delivery by default, with Azure second
+   and every other stack only by explicit exception.
+2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
+   and an active tenant is visible.
+3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
+   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   approve login/setup before continuing.
+4. For EAI app delivery, do not continue into research, specification, planning,
+   tasks, implementation, or validation until
+   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   app-readiness, and next-action evidence.
+5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+   Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
 <!-- gofer:token-cost-policy:start -->
@@ -117,6 +142,11 @@ This is the **first stage** of the unified Gofer pipeline. Your job is to:
 
 - `.specify/specs/{feature}/research.md`
 - `.specify/specs/{feature}/goal-ledger.json`
+- `.specify/specs/{feature}/loop-contract.json`
+- `.specify/specs/{feature}/working-backwards-prfaq.md`
+- `.specify/specs/{feature}/prfaq-history/01-research.md`
+- `.specify/specs/{feature}/business-owner-summary.md` (draft; mark missing inputs pending)
+- `.specify/specs/{feature}/stakeholder-review-index.md`
 - `.specify/specs/{feature}/proposal-review.md` (optional supporting review context)
 - `.specify/specs/{feature}/journeys/base-journey.md` (application delivery default)
 - `.specify/specs/{feature}/eai-preflight.md` (EAI app delivery default)
@@ -418,7 +448,7 @@ explicitly `enterpriseai`, generate:
    - Non-app runs MUST skip this artifact and record "Not applicable" in
      `research.md`.
 4. `{FEATURE_DIR}/eai-preflight.md` (EAI app delivery only, created by
-   `/0_business_scenario` when possible and updated here when missing or stale)
+   `/0_gofer_start` when possible and updated here when missing or stale)
    - Verify the safe public EAI source set used for research:
      `https://eai-tools.github.io/eai/docs/overview`,
      `https://eai-tools.github.io/eai/docs/api-reference`,
@@ -504,6 +534,14 @@ Once all agents complete:
    - Delivery states for any capability that starts mock/hybrid before going live
    - Re-loop triggers for objective drift, assumption expiry, contract drift,
      UX scope changes, and post-validation code/test movement
+6. **Loop Contract Seed**
+   - Initialize `{FEATURE_DIR}/loop-contract.json` if it is missing:
+     `node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir {FEATURE_DIR} --stage 1_research --init --json`
+   - Align the loop objective, maximum iterations, evaluation commands, success
+     criteria, stop conditions, and human escalation rules with the research
+     risk profile.
+   - Keep the default contract for ordinary work, but tighten it for
+     release-critical, security, data, auth, platform, or cross-repo work.
 
 ### Novice Walkthrough Guardrail (MANDATORY)
 
@@ -558,7 +596,7 @@ Write to `{FEATURE_DIR}/research.md`:
 ````markdown
 ---
 date: [ISO timestamp]
-researcher: Claude
+researcher: Gofer
 feature: '[Feature Name]'
 status: complete
 ---
@@ -577,6 +615,15 @@ Reference `.specify/specs/{feature}/goal-ledger.json` and capture:
 - Delivery-state discipline (`mock`, `hybrid`, `live`) for each risky capability
 - Re-loop triggers that should reopen `/2_gofer_specify`, `/3_gofer_plan`,
   `/4_gofer_tasks`, or `/6_gofer_validate`
+
+## Loop Contract Seed
+
+Reference `.specify/specs/{feature}/loop-contract.json` and capture:
+
+- The current feature objective in one measurable sentence
+- Evaluation commands that must pass before implementation and validation close
+- Maximum check-repair iterations before human escalation
+- Stop conditions that define when Gofer should stop looping
 
 ## Structured Discovery Output
 
@@ -786,7 +833,31 @@ approvedAt: ''
 
 ## Step 6: Review, Discuss, and Hand Off To Specification
 
-After saving `research.md`, `goal-ledger.json`, and `proposal-review.md`:
+Before presenting the handoff, update the stakeholder-facing product release
+PR/FAQ artifacts:
+
+1. Create or update `{FEATURE_DIR}/working-backwards-prfaq.md` from
+   `.specify/templates/working-backwards-prfaq-template.md`.
+   - Fill the Press Release with the best current customer problem, launch
+     promise, customer benefit, and "How To Get Started" story from research.
+   - Fill External FAQ with researched customer/process evidence and mark
+     unknown claims as `Pending research validation` instead of inventing them.
+   - Fill Internal FAQ Business Owner and CTO sections with research options,
+     platform constraints, and architecture trade-offs.
+2. Write an immutable snapshot to
+   `{FEATURE_DIR}/prfaq-history/01-research.md`.
+3. Create or update `{FEATURE_DIR}/business-owner-summary.md` from
+   `.specify/templates/business-owner-summary-template.md` using
+   `problem-brief.md`, `discovery.md`, `research.md`, value-stream, and ROI
+   evidence when present. If `spec-summary.md` or `business-metrics.md` does
+   not exist yet, keep the relevant rows and mark status `Pending /2 or /7a`.
+4. Update `{FEATURE_DIR}/stakeholder-review-index.md` from
+   `.specify/templates/stakeholder-review-index-template.md` and mark the
+   Business Owner and CTO review asks that should be answered before or during
+   `/2_gofer_specify`.
+
+After saving `research.md`, `goal-ledger.json`, `proposal-review.md`, and the
+PR/FAQ review artifacts:
 
 1. **Present summary** to user:
    - What was found
@@ -833,6 +904,11 @@ After saving `research.md`, `goal-ledger.json`, and `proposal-review.md`:
 
 ✓ Research complete: {FEATURE_DIR}/research.md
 ✓ Goal ledger seeded: {FEATURE_DIR}/goal-ledger.json
+✓ Loop contract seeded: {FEATURE_DIR}/loop-contract.json
+✓ Working Backwards PR/FAQ updated: {FEATURE_DIR}/working-backwards-prfaq.md
+✓ PR/FAQ research snapshot: {FEATURE_DIR}/prfaq-history/01-research.md
+✓ Business Owner summary draft: {FEATURE_DIR}/business-owner-summary.md
+✓ Stakeholder review index updated: {FEATURE_DIR}/stakeholder-review-index.md
 ✓ Supporting review context ready: {FEATURE_DIR}/proposal-review.md
 
 Key findings:

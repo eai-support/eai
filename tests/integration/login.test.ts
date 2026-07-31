@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -157,10 +157,10 @@ describe('eai login', () => {
     expect(PROD_PUBLIC_API_SCOPE).toBe('api://833fc5ab-f1c9-4c60-b344-64e366f241cc/access_token');
   });
 
-  test('default profile resolves auth target from runtime env overrides', async () => {
-    process.env.ENTRA_TENANT_NAME = EXAMPLE_AUTH_TENANT_NAME;
-    process.env.ENTRA_TENANT_ID = EXAMPLE_AUTH_TENANT_ID;
-    process.env.ENTRA_SCOPES = `openid profile email offline_access ${EXAMPLE_PUBLIC_API_SCOPE}`;
+  test('default profile resolves auth target from explicit CLI env overrides', async () => {
+    process.env.EAI_AUTH_TENANT_NAME = EXAMPLE_AUTH_TENANT_NAME;
+    process.env.EAI_AUTH_TENANT_ID = EXAMPLE_AUTH_TENANT_ID;
+    process.env.EAI_AUTH_SCOPE = `openid profile email offline_access ${EXAMPLE_PUBLIC_API_SCOPE}`;
     process.env.EAI_CLI_CLIENT_ID = EXAMPLE_CLI_CLIENT_ID;
 
     vi.resetModules();
@@ -173,16 +173,16 @@ describe('eai login', () => {
     expect(config.authScope).toBe(`openid profile email offline_access ${EXAMPLE_PUBLIC_API_SCOPE}`);
     expect(validateResolvedAuthConfig(config)).toBeNull();
 
-    delete process.env.ENTRA_TENANT_NAME;
-    delete process.env.ENTRA_TENANT_ID;
-    delete process.env.ENTRA_SCOPES;
+    delete process.env.EAI_AUTH_TENANT_NAME;
+    delete process.env.EAI_AUTH_TENANT_ID;
+    delete process.env.EAI_AUTH_SCOPE;
     delete process.env.EAI_CLI_CLIENT_ID;
   });
 
-  test('default profile flags non-prod auth overrides without a CLI client ID', async () => {
-    process.env.ENTRA_TENANT_NAME = EXAMPLE_AUTH_TENANT_NAME;
-    process.env.ENTRA_TENANT_ID = EXAMPLE_AUTH_TENANT_ID;
-    process.env.ENTRA_SCOPES = `openid profile email offline_access ${EXAMPLE_PUBLIC_API_SCOPE}`;
+  test('default profile flags explicit non-prod auth overrides without a CLI client ID', async () => {
+    process.env.EAI_AUTH_TENANT_NAME = EXAMPLE_AUTH_TENANT_NAME;
+    process.env.EAI_AUTH_TENANT_ID = EXAMPLE_AUTH_TENANT_ID;
+    process.env.EAI_AUTH_SCOPE = `openid profile email offline_access ${EXAMPLE_PUBLIC_API_SCOPE}`;
 
     vi.resetModules();
     const { resolveAuthConfig, validateResolvedAuthConfig } = await import('../../src/lib/auth.js');
@@ -190,9 +190,39 @@ describe('eai login', () => {
     const config = await resolveAuthConfig();
     expect(validateResolvedAuthConfig(config)).toContain('EAI_CLI_CLIENT_ID');
 
-    delete process.env.ENTRA_TENANT_NAME;
-    delete process.env.ENTRA_TENANT_ID;
-    delete process.env.ENTRA_SCOPES;
+    delete process.env.EAI_AUTH_TENANT_NAME;
+    delete process.env.EAI_AUTH_TENANT_ID;
+    delete process.env.EAI_AUTH_SCOPE;
+  });
+
+  test('default profile ignores app .env.local auth runtime keys', async () => {
+    await writeFile(
+      join(env.dir, '.env.local'),
+      [
+        'ENTRA_TENANT_NAME=app-runtime-tenant',
+        'ENTRA_TENANT_ID=11111111-1111-4111-8111-111111111111',
+        'ENTRA_SCOPES="email offline_access openid profile"',
+        'PUBLIC_API_SCOPE=api://app-runtime-publicapi/access_token',
+        'BASE_URL_PUBLIC_API=https://test-api.example.com/public',
+        '',
+      ].join('\n'),
+    );
+
+    vi.resetModules();
+    const [
+      { resolveAuthConfig, validateResolvedAuthConfig },
+      { DEFAULT_PROD_AUTH_CLIENT_ID, DEFAULT_PROD_AUTH_SCOPE, DEFAULT_PROD_AUTH_TENANT_ID, DEFAULT_PROD_AUTH_TENANT_NAME },
+    ] = await Promise.all([
+      import('../../src/lib/auth.js'),
+      import('../../src/lib/profile.js'),
+    ]);
+
+    const config = await resolveAuthConfig(env.dir);
+    expect(config.tenantName).toBe(DEFAULT_PROD_AUTH_TENANT_NAME);
+    expect(config.tenantId).toBe(DEFAULT_PROD_AUTH_TENANT_ID);
+    expect(config.clientId).toBe(DEFAULT_PROD_AUTH_CLIENT_ID);
+    expect(config.authScope).toBe(DEFAULT_PROD_AUTH_SCOPE);
+    expect(validateResolvedAuthConfig(config)).toBeNull();
   });
 
   test('browserLogin completes callback flow and stores tokens', async () => {
@@ -235,6 +265,45 @@ describe('eai login', () => {
     const stored = await loadTokens();
     expect(stored?.upn).toBe('browser@example.com');
     await access(join(tempHome, '.eai', 'tokens.json'));
+
+    restoreHome();
+    await rm(tempHome, { recursive: true, force: true });
+  });
+
+  test('browserLogin falls back to email when preferred_username is absent', async () => {
+    const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
+    const restoreHome = setTestHome(tempHome);
+
+    mockBrowserLauncher();
+
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      return new Response(JSON.stringify({
+        access_token: createJwt({
+          email: 'fallback@example.com',
+          name: 'Fallback User',
+          oid: 'oid-456',
+        }),
+        refresh_token: '<fixture-refresh-token>',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    vi.resetModules();
+    const { browserLogin } = await import('../../src/lib/auth.js');
+
+    const tokens = await browserLogin(
+      'profile-dev-tenant',
+      'dev-tenant-id',
+      'client-id-123',
+      'openid profile email offline_access api://publicapi/access_token',
+    );
+
+    expect(tokens.upn).toBe('fallback@example.com');
+    expect(tokens.oid).toBe('oid-456');
 
     restoreHome();
     await rm(tempHome, { recursive: true, force: true });

@@ -3,12 +3,14 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PlatformAPIClient } from '../../src/lib/api.js';
+import { resourcesCommand } from '../../src/commands/resources.js';
 import {
   buildCreateResourceOutput,
   buildMissingPublishedTypeMessage,
   matchPublishedType,
   normalizeBatchCreateItems,
   normalizeBatchDeleteIds,
+  normalizeBatchProjectionMode,
   normalizeBatchUpdateItems,
 } from '../../src/commands/resources.js';
 import { buildVerticalEnrollmentData } from '../../src/commands/vertical.js';
@@ -61,6 +63,14 @@ describe('resource type diagnostics', () => {
     expect(normalizeBatchCreateItems({ id: '2' })).toEqual([{ data: { id: '2' } }]);
   });
 
+  test('normalizes batch import projection mode', () => {
+    expect(normalizeBatchProjectionMode(undefined)).toBe('deferred');
+    expect(normalizeBatchProjectionMode('SYNC')).toBe('sync');
+    expect(() => normalizeBatchProjectionMode('inline')).toThrow(
+      'Projection mode must be "deferred" or "sync"',
+    );
+  });
+
   test('normalizes batch update payloads from items wrapper', () => {
     expect(normalizeBatchUpdateItems({
       items: [
@@ -73,6 +83,13 @@ describe('resource type diagnostics', () => {
 
   test('normalizes batch delete payload ids', () => {
     expect(normalizeBatchDeleteIds({ ids: [123, '456'] })).toEqual(['123', '456']);
+    expect(normalizeBatchDeleteIds([{ id: 'abc' }, { id: 'def' }])).toEqual(['abc', 'def']);
+  });
+
+  test('batch delete accepts force option for cleanup scripts', () => {
+    const batchDelete = resourcesCommand.commands.find((command) => command.name() === 'batch-delete');
+
+    expect(batchDelete?.options.some((option) => option.long === '--force')).toBe(true);
   });
 
   test('builds cursor-aware list URLs for resource reads', async () => {
@@ -204,6 +221,29 @@ describe('resource type diagnostics', () => {
             status: 'pending',
             source: 'eai',
           },
+        }),
+      }),
+    );
+  });
+
+  test('imports resources through the ResourceAPI high-throughput batch route', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new PlatformAPIClient('https://test-api.example.com', 'tenant-1');
+    await client.batchImportResources(
+      'FactMaterialUsage',
+      [{ data: { materialCode: 'coal', quantity: 10 } }],
+      { projectionMode: 'sync' },
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://test-api.example.com/v4/data/resources/tenant-1/fact-material-usage/batch/import',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          items: [{ data: { materialCode: 'coal', quantity: 10 } }],
+          projectionMode: 'sync',
         }),
       }),
     );
@@ -386,6 +426,7 @@ describe('resource type diagnostics', () => {
           method: 'POST',
           headers: expect.objectContaining({
             'Content-Type': 'application/octet-stream',
+            'X-Tenant-Id': 'tenant-1',
           }),
         }),
       );

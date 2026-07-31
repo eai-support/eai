@@ -1,9 +1,18 @@
 # EAI CLI Help Snapshot
-Version: 3.6.0
+Version: 3.8.3
 
 Install / update the CLI:
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-npm install -g @eai-tools/cli
+npm install -g eai-cli
+
+Canonical package:
+npm install -g @enterpriseai/cli
+
+Static fallback:
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+
+Persistent static fallback setup:
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 
 eai --help
 ==========
@@ -57,6 +66,7 @@ Getting Started:
   eai init my-app     Scaffold an app with Gofer AI CLI assets
   eai login                Authenticate with Entra CIAM
   eai provision entra      Create Entra app registration for end-user auth
+  eai provision entra --deauthorize --force Clean up app auth registration
   eai env pull             Sync app config from cloud
   eai types seed           Publish Object Types to the platform
   eai dev                  Start local development server
@@ -106,15 +116,15 @@ Machine-Readable Output:
 
 AI Terminal Workflows:
   # New projects include Gofer commands, agents, scripts, hooks, and skills
-  claude                   then run /0_business_scenario
+  claude                   then run /0_gofer_start
   codex                    then ask Codex to use the 1_gofer_research skill
   gemini                   then run /gofer:1_gofer_research
   copilot                  uses .github/prompts and .github/skills
 
 Updates:
-  # Check for a newer CLI release and install it safely
-  eai update --check       preview the latest published CLI version
-  eai update               update the installed CLI package
+  # Check/update the CLI, then maintain safe repo-local assets
+  eai update --check       preview CLI, Gofer, and template status
+  eai update               update the CLI and refresh safe Gofer assets
 
   # Preview repo-local Gofer asset updates before writing files
   eai gofer refresh --check preview managed Gofer asset updates for this repo
@@ -155,19 +165,24 @@ Usage: eai update [options]
 Check for and install CLI updates
 
 Options:
-  --check     Only check for updates without installing
-  -h, --help  display help for command
+  --check               Only check for updates without installing
+  --no-project-refresh  Skip Gofer/app-template maintenance for the current
+                        project
+  -h, --help            display help for command
 
 Examples:
   $ eai update --check
   $ eai update
 
 Notes:
-  - The CLI installs from the scoped EAI static registry on GitHub Pages.
-  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-  - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
-  - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
-  - Use `eai template check` to preview app-template and UI drift before copying changes manually.
+  - The CLI installs from the public npm registry by default.
+  - Recommended install: npm install -g eai-cli
+  - Canonical package install: npm install -g @enterpriseai/cli
+  - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+  - `eai update --check` previews CLI, Gofer, and app-template status without writing files.
+  - `eai update` upgrades the CLI, refreshes safe Gofer-managed files in the current EAI project, and reports app-template drift.
+  - Use `eai gofer refresh --check` to preview Gofer-managed file changes separately.
+  - App-template and UI files are not auto-merged; use `eai template check` to review them.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
 
 ---

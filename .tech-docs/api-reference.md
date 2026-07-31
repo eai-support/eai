@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-06-28T09:39:50.306Z"
-source_commit: "ff5ebafc7ea71d02bf2a9084c849f14b0647ade0"
+generated_at: "2026-07-30T05:06:24.181Z"
+source_commit: "315f54dae400e3ff2d79da5d37e4c73481e90fc9"
 ---
 # EAI CLI — API Reference
 
@@ -205,15 +205,76 @@ Soft-delete a tenant.
 ### User Management Commands
 
 #### `eai user invite`
-Add an existing user to a tenant via the tenant-admin provisioning flow.
+Invite or provision a user into a tenant via the V4 tenant member-invite flow.
+Use this when a tenant admin needs to add a member or promote a trusted user to
+`tenant-admin`.
 
 **Options**:
 - `--email <email>` — Email of the user to add
 - `--tenant <id>` — Target tenant (default: active tenant)
+- `--role <role>` — Target base role (default: `tenant-viewer`; supported base roles are `tenant-viewer`, `tenant-staff`, `tenant-builder`, `tenant-admin`)
+- `--role-definition-id <id>` — Assign a specific tenant role definition instead of a base role
+- `--first-name <name>` — Optional first name for invite/provisioning context
+- `--last-name <name>` — Optional last name for invite/provisioning context
+- `--message <message>` — Optional invite message
+- `--redirect-uri <uri>` — Optional post-acceptance redirect URI
+- `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/platform/users/by-email?email=...` — look up the user
-- `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — provision the user into the tenant
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — invite or provision the tenant member with the requested role
+
+---
+
+#### `eai user list`
+List members in the active tenant or an explicit tenant.
+
+**Options**:
+- `--tenant <id>` — Target tenant (default: active tenant)
+- `--search <query>` — Search by email or name
+- `--page <number>` — Page number (default: 1)
+- `--limit <number>` — Page size (default: 25)
+- `--sort <field>` — Sort field (default: email)
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v4/platform/tenants/{tenantId}/members` — list tenant members
+
+---
+
+#### `eai user roles`
+List role definitions available for tenant member invitation.
+
+**Options**:
+- `--tenant <id>` — Target tenant (default: active tenant)
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v4/platform/tenants/{tenantId}/role-definitions` — list assignable tenant role definitions
+
+---
+
+#### `eai user role set`
+Assign a tenant member role. Email-based role assignment uses the V4 invite/add
+flow so agents can handle "user already exists", "user is new to this tenant",
+and "user needs a tenant-admin role" with one command.
+
+**Options**:
+- `--email <email>` — Add or update a user by email through the invite/add flow
+- `--member-id <id>` — Existing tenant member/user ID for the direct role update endpoint
+- `--tenant <id>` — Target tenant (default: active tenant)
+- `--role <role>` — Role to assign. Email-based updates support `tenant-viewer`, `tenant-staff`, `tenant-builder`, and `tenant-admin`; member-id updates support the platform role update contract.
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — email-based add/update with a role
+- `PATCH /v4/platform/tenants/{tenantId}/members/{memberId}/roles` — direct member-id role update
+
+---
+
+**Agent rule**: for normal user addition or tenant-admin assignment, use
+`eai user invite --email <email> --tenant <tenant-id> --role <role>`.
+`eai tenant bootstrap-admin` is only for first-admin repair on an immediate child
+tenant.
 
 ---
 
@@ -234,15 +295,20 @@ Create or confirm an Entra app registration for end-user auth (Auth.js).
 **Options**:
 - `--force` — Re-check the remote app registration even if `ENTRA_CLIENT_ID` already exists locally
 - `--rotate-secret` — Rotate the existing secret and write the new value to `.env.local`
+- `--deauthorize` — Remove tenant authorization and delete the app registration for cleanup; requires `--force`
+- `--client-id <id>` — Client ID to deauthorize; defaults to `ENTRA_CLIENT_ID` in `.env.local`
+- `--keep-registration` — Remove tenant authorization without deleting the app registration
 - `--debug` — Print product-safe diagnostics and request identifiers on failure
 
 **What it does**:
 1. Creates/confirms the Entra app registration on the platform
 2. Writes the client ID (and secret) to `.env.local`
+3. With `--deauthorize --force`, removes tenant authorization, deletes the app registration, and removes local `ENTRA_CLIENT_ID`/`ENTRA_CLIENT_SECRET`
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/provisioning/entra-apps` — create/confirm app registration
 - `POST /v4/platform/provisioning/entra-apps/{clientId}/rotate-secret` — rotate secret (with `--rotate-secret`)
+- `DELETE /v4/platform/provisioning/entra-apps/{clientId}` — deauthorize/delete app registration (with `--deauthorize --force`)
 
 ---
 
@@ -964,7 +1030,7 @@ Audit the platform API contracts used by the CLI. All checks are read-only unles
 - `--chat-message <message>` — Message to send when probing chat
 - `--format <format>` — Output format (text|json, default: text)
 
-**Endpoints probed** (subset, depending on flags): `GET /health`, `GET /v4/platform/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
+**Endpoints probed** (subset, depending on flags): `GET /health`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
 
 ---
 
@@ -975,19 +1041,59 @@ Comprehensive diagnostics with fix suggestions.
 - `--fix` — Attempt to fix issues automatically
 - `--check-updates` — Report CLI release status plus Gofer/template drift
 
-**API calls**: local checks only; optionally reads the EAI static registry for the update check.
+**API calls**: local checks only; optionally reads npmjs and the EAI static
+registry fallback for the update check.
 
 ---
 
 ### Maintenance Commands
 
 #### `eai update`
-Check for and install CLI updates from the EAI static registry.
+Check for and install CLI updates from npmjs, with the EAI static registry as a
+fallback, then maintain
+safe repo-local project assets when the command is run inside an EAI project.
 
 **Options**:
-- `--check` — Only check for updates without installing
+- `--check` — Only check for CLI, Gofer, and app-template status without installing or writing files
+- `--no-project-refresh` — Skip Gofer/app-template maintenance for the current project
 
-**Update channel**: `https://eai-tools.github.io/eai/registry/@eai-tools/cli`. No platform API calls.
+**Primary update channel**: npmjs package `eai-cli` or `@enterpriseai/cli`.
+**Static fallback channel**: `https://eai-tools.github.io/eai/registry/@enterpriseai/cli`.
+
+Recommended install:
+
+```bash
+npm install -g eai-cli
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
+```
+
+No platform API calls.
+
+**Project maintenance**:
+- Normal `eai update` refreshes safe Gofer-managed files with the same backups
+  and conflict detection as `eai gofer refresh`.
+- App-template and UI files are not auto-merged. The CLI reports drift and
+  points to `eai template check` for manual review.
+- Interactive update prompts are suppressed for CI, non-TTY, `--describe`,
+  `--format json`, and `--json`.
 
 ---
 
@@ -999,7 +1105,8 @@ Safely refresh Gofer-managed assets in the current project.
 - `--force` — Overwrite conflicting managed files after backing them up
 - `--format <format>` — Output format (text|json, default: text)
 
-**No API calls** — local file diff and copy from the bundled Gofer assets
+**No API calls** — local file diff and copy from the latest public `eai-gofer`
+release when available, falling back to bundled Gofer assets
 
 ---
 
@@ -1029,9 +1136,13 @@ Preview file-level app-template / UI drift without writing to the repo.
 - `POST /v4/platform/tenants/{companyTenantId}/apps` — Create app enrollment
 
 ### Platform — Users & Capabilities
-- `GET /v4/platform/users/by-email` — Look up a user by email
-- `GET /v4/platform/users/{oid}/memberships` — User memberships
+- `GET /v4/platform/tenants/{tenantId}/users/by-email` — Look up a user by email in a tenant context
+- `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships` — User memberships in a tenant context
 - `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — Provision a user into a tenant
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — Invite or provision a tenant member with a role
+- `GET /v4/platform/tenants/{tenantId}/members` — List tenant members
+- `GET /v4/platform/tenants/{tenantId}/role-definitions` — List assignable tenant role definitions
+- `PATCH /v4/platform/tenants/{tenantId}/members/{memberId}/roles` — Update a tenant member role
 - `POST /v4/platform/capabilities/evaluate` — Evaluate a capability decision
 
 ### Platform — Provisioning (Entra)

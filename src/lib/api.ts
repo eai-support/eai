@@ -49,6 +49,28 @@ export interface ChildTenantBootstrapRequest {
   userEmail?: string;
 }
 
+export interface TenantMemberInviteRequest {
+  email: string;
+  role?: string;
+  roleDefinitionId?: string;
+  firstName?: string;
+  lastName?: string;
+  message?: string;
+  redirectUri?: string;
+}
+
+export interface TenantMemberListOptions {
+  page?: number;
+  limit?: number;
+  sort?: string;
+  search?: string;
+}
+
+export interface TenantMemberRoleUpdateRequest {
+  role?: string;
+  roleDefinitionId?: string;
+}
+
 export type TenantUsecase = 'council' | 'retail' | 'healthcare' | 'finance' | 'manufacturing' | 'generic';
 export type TenantHomeRegion = 'au' | 'ca' | 'eu';
 
@@ -75,6 +97,84 @@ export interface TenantAppCreateRequest {
   usecase?: TenantUsecase;
   industry?: string;
   homeRegion?: TenantHomeRegion;
+}
+
+export interface SourceUnknownSchemaProvenance {
+  templateVersion: string;
+  baseTemplateSha?: string;
+  approvedSourceSha?: string;
+  approvedReleaseId?: string;
+  schemaDigest: string;
+  validatorDigest: string;
+}
+
+/**
+ * Existing repository binding for tenant apps whose source is not owned by the
+ * generated-source export pipeline.
+ */
+export interface SourceUnknownAppRegistrationRequest {
+  repoOwner: string;
+  repoName: string;
+  repoUrl?: string;
+  defaultBranch?: string;
+  workflowPath?: string;
+  ref?: string;
+  commitSha?: string;
+  configPath?: string;
+  runtimePath?: string;
+  sourceMode?: 'source-unknown';
+  adoptionMode?: 'connect-existing' | 'adopted-observed';
+  schemaProvenance?: SourceUnknownSchemaProvenance;
+  observedDeployment?: {
+    environment: string;
+    activeUrl: string;
+    status: 'adopted_observed';
+    observedAt: string;
+    deploymentId?: string;
+    imageDigest?: string;
+    configHash?: string;
+  };
+  validationSummary?: Record<string, unknown>;
+}
+
+export interface SourceUnknownWorkflowSetupRequest {
+  environment?: string;
+  workflowPath?: string;
+  ref?: string;
+  commitSha?: string;
+  configHash?: string;
+}
+
+export interface SourceUnknownWorkflowEvidenceRequest {
+  operationId: string;
+  nonce: string;
+  environment?: string;
+  workflowPath: string;
+  ref: string;
+  commitSha: string;
+  configHash: string;
+  artifactDigest: string;
+  imageDigest: string;
+  schemaProvenance: SourceUnknownSchemaProvenance;
+  workflowRun?: Record<string, unknown>;
+  oidcClaims: Record<string, unknown>;
+  validationSummary?: Record<string, unknown>;
+}
+
+export interface SourceUnknownDeploymentRequest {
+  operationId: string;
+  environment?: string;
+  repoOwner?: string;
+  repoName?: string;
+  workflowPath?: string;
+  ref?: string;
+  commitSha?: string;
+  workflowRunId?: string;
+  configHash?: string;
+  artifactDigest?: string;
+  imageDigest?: string;
+  deploymentTarget?: Record<string, unknown>;
+  validationSummary?: Record<string, unknown>;
 }
 
 export interface CapabilityEvaluationRequest {
@@ -142,6 +242,19 @@ export interface RotateEntraSecretResult {
   clientSecret: string;
   tenantId: string;
   expiresAt: string | null;
+}
+
+export interface TenantDeauthorizationSummary {
+  removed: boolean;
+  alreadyAbsent: boolean;
+}
+
+export interface DeprovisionEntraAppResult {
+  clientId: string;
+  tenantId: string;
+  tenantDeauthorization: TenantDeauthorizationSummary;
+  appRegistrationFound: boolean;
+  appRegistrationDeleted: boolean;
 }
 
 export interface ParsedApiError {
@@ -568,6 +681,22 @@ export class PlatformAPIClient {
     });
   }
 
+  async batchImportResources(
+    objectType: string,
+    items: Array<{ data: Record<string, unknown> }>,
+    options?: { projectionMode?: 'deferred' | 'sync' },
+  ): Promise<Response> {
+    const normalizedObjectType = toObjectTypeSlug(objectType);
+    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/batch/import`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({
+        items,
+        projectionMode: options?.projectionMode ?? 'deferred',
+      }),
+    });
+  }
+
   async batchUpdateResources(
     objectType: string,
     items: Array<{ id: string; data: Record<string, unknown>; version: number }>,
@@ -763,6 +892,30 @@ export class PlatformAPIClient {
     });
   }
 
+  async planResourceIndexes(objectTypes?: string[]): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/index-plan`,
+      'POST',
+      { objectTypes, apply: false, dryRun: true },
+    );
+  }
+
+  async applyResourceIndexes(objectTypes?: string[]): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/index-plan`,
+      'POST',
+      { objectTypes, apply: true, dryRun: false },
+    );
+  }
+
+  async refreshResourceCache(objectTypes: string[] | undefined, reason: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/cache-refresh`,
+      'POST',
+      { objectTypes, reason },
+    );
+  }
+
   async searchResources(request: {
     query: string;
     objectTypes?: string[];
@@ -793,13 +946,8 @@ export class PlatformAPIClient {
     const { basename } = await import('node:path');
     const normalizedObjectType = toObjectTypeSlug(objectType);
     const content = await readFile(filePath);
-    const token = await getAccessToken();
-    const h: Record<string, string> = {
-      'Content-Type': 'application/octet-stream',
-    };
-    if (token) {
-      h.Authorization = `Bearer ${token}`;
-    }
+    const h = await this.headers();
+    h['Content-Type'] = 'application/octet-stream';
 
     const filename = encodeURIComponent(basename(filePath));
     return fetch(
@@ -976,6 +1124,28 @@ export class PlatformAPIClient {
 
   // --------------- Documents ---------------
 
+  private inferUploadContentType(filePath: string): string {
+    const extension = filePath.toLowerCase().slice(filePath.lastIndexOf("."));
+    const contentTypes: Record<string, string> = {
+      ".csv": "text/csv",
+      ".doc": "application/msword",
+      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ".gif": "image/gif",
+      ".jpeg": "image/jpeg",
+      ".jpg": "image/jpeg",
+      ".json": "application/json",
+      ".md": "text/markdown",
+      ".pdf": "application/pdf",
+      ".png": "image/png",
+      ".txt": "text/plain",
+      ".webp": "image/webp",
+      ".xls": "application/vnd.ms-excel",
+      ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ".xml": "application/xml",
+    };
+    return contentTypes[extension] ?? "application/octet-stream";
+  }
+
   private async uploadDocumentBatch(
     filePath: string,
     processingMode: 'full' | 'classification',
@@ -984,7 +1154,12 @@ export class PlatformAPIClient {
     const { basename } = await import('node:path');
     const content = await readFile(filePath);
     const form = new FormData();
-    form.append('files', new Blob([content]), basename(filePath));
+    form.append(
+      'files',
+      new File([content], basename(filePath), {
+        type: this.inferUploadContentType(filePath),
+      }),
+    );
     form.append('tenant_id', this.tenantId);
     form.append('processing_mode', processingMode);
 
@@ -1012,57 +1187,13 @@ export class PlatformAPIClient {
     return this.uploadDocumentBatch(filePath, 'classification');
   }
 
-  async getDocumentRecord(documentId: string): Promise<Response> {
-    return this.publicRequest(`${PUBLIC_DATA_DOCUMENTS_PATH}/records/${encodeURIComponent(documentId)}`, 'GET');
-  }
-
   async indexDocument(documentId: string): Promise<Response> {
-    const lookup = await this.getDocumentRecord(documentId);
-    if (!lookup.ok) {
-      return lookup;
-    }
-
-    const document = await lookup.json() as {
-      id?: string;
-      documentId?: string;
-      title?: string;
-      tenant?: string | { id?: string };
-      businessRequest?: string | { id?: string };
-      fileInfo?: {
-        dataLakeUrl?: string;
-      };
-    };
-
-    const storagePath = document.fileInfo?.dataLakeUrl;
-    if (!storagePath) {
-      return new Response(
-        JSON.stringify({
-          error: 'MISSING_STORAGE_PATH',
-          message: 'The document does not have a dataLakeUrl/storage path and cannot be indexed.',
-        }),
-        {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      );
-    }
-
-    const tenantId = typeof document.tenant === 'string'
-      ? document.tenant
-      : document.tenant?.id || this.tenantId;
-    const businessRequestId = typeof document.businessRequest === 'string'
-      ? document.businessRequest
-      : document.businessRequest?.id;
-
     return fetch(`${this.baseUrl}${PUBLIC_DATA_DOCUMENTS_PATH}/rag-index`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
-        documentId: document.documentId || document.id || documentId,
-        storagePath,
-        tenantId,
-        businessRequestId,
-        title: document.title,
+        documentId,
+        tenantId: this.tenantId,
       }),
     });
   }
@@ -1081,11 +1212,105 @@ export class PlatformAPIClient {
     return this.publicRequest(`${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(id)}/management`, 'GET');
   }
 
+  async listTenantChildren(
+    tenantId: string,
+    options?: {
+      includeDescendants?: boolean;
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<Response> {
+    const params: Record<string, unknown> = {};
+    if (options?.includeDescendants !== undefined) {
+      params.include_descendants = options.includeDescendants;
+    }
+    if (options?.limit !== undefined) {
+      params.limit = options.limit;
+    }
+    if (options?.offset !== undefined) {
+      params.offset = options.offset;
+    }
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/children`,
+      'GET',
+      undefined,
+      params,
+    );
+  }
+
   async createTenantApp(parentTenantId: string, data: TenantAppCreateRequest): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(parentTenantId)}/apps`,
       'POST',
       data,
+    );
+  }
+
+  async createAppProvisioningJob(verticalKey: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/provisioning-jobs`,
+      'POST',
+    );
+  }
+
+  async registerSourceUnknownApp(
+    tenantId: string,
+    appKey: string,
+    data: SourceUnknownAppRegistrationRequest,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/register`,
+      'POST',
+      data,
+    );
+  }
+
+  async setupSourceUnknownWorkflow(
+    tenantId: string,
+    appKey: string,
+    data: SourceUnknownWorkflowSetupRequest,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-setup`,
+      'POST',
+      data,
+    );
+  }
+
+  async submitSourceUnknownWorkflowEvidence(
+    tenantId: string,
+    appKey: string,
+    data: SourceUnknownWorkflowEvidenceRequest,
+    githubOidcToken: string,
+  ): Promise<Response> {
+    const headers = await this.headers();
+    headers.Authorization = `Bearer ${githubOidcToken}`;
+    return fetch(
+      `${this.baseUrl}${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(data),
+      },
+    );
+  }
+
+  async requestSourceUnknownDeployment(
+    tenantId: string,
+    appKey: string,
+    data: SourceUnknownDeploymentRequest,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/deploy`,
+      'POST',
+      data,
+    );
+  }
+
+  async getLatestSourceUnknownDeployment(tenantId: string, appKey: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/deployments/latest`,
+      'GET',
     );
   }
 
@@ -1127,8 +1352,22 @@ export class PlatformAPIClient {
     });
   }
 
-  async deleteTenant(tenantId: string): Promise<Response> {
-    return this.publicRequest(`${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/delete`, 'POST');
+  async deleteTenant(
+    tenantId: string,
+    options: { forceHardPurge?: boolean; reason?: string } = {},
+  ): Promise<Response> {
+    const body = options.forceHardPurge
+      ? {
+          forceHardPurge: true,
+          confirmationTenantId: tenantId,
+          reason: options.reason || 'eai tenant delete --force-hard-purge',
+        }
+      : undefined;
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/delete`,
+      'POST',
+      body,
+    );
   }
 
   async bootstrapChildTenantAdmin(
@@ -1172,8 +1411,11 @@ export class PlatformAPIClient {
 
   // --------------- Users ---------------
 
-  async getUserMemberships(oid: string): Promise<Response> {
-    return this.publicRequest(`${PUBLIC_PLATFORM_PATH}/users/${encodeURIComponent(oid)}/memberships`, 'GET');
+  async getUserMemberships(tenantId: string, oid: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/users/${encodeURIComponent(oid)}/memberships`,
+      'GET',
+    );
   }
 
   async provisionMe(): Promise<Response> {
@@ -1184,8 +1426,13 @@ export class PlatformAPIClient {
     });
   }
 
-  async lookupUserByEmail(email: string): Promise<Response> {
-    return this.publicRequest(`${PUBLIC_PLATFORM_PATH}/users/by-email`, 'GET', undefined, { email });
+  async lookupUserByEmail(tenantId: string, email: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/users/by-email`,
+      'GET',
+      undefined,
+      { email },
+    );
   }
 
   async listCurrentUserTenants(): Promise<Response> {
@@ -1212,12 +1459,76 @@ export class PlatformAPIClient {
     });
   }
 
+  async inviteTenantMember(tenantId: string, request: TenantMemberInviteRequest): Promise<Response> {
+    const body: Record<string, string> = {
+      email: request.email,
+    };
+    if (request.roleDefinitionId) {
+      body.roleDefinitionId = request.roleDefinitionId;
+    }
+    if (request.role || !request.roleDefinitionId) {
+      body.role = request.role || 'tenant-viewer';
+    }
+    if (request.firstName) body.firstName = request.firstName;
+    if (request.lastName) body.lastName = request.lastName;
+    if (request.message) body.message = request.message;
+    if (request.redirectUri) body.redirectUri = request.redirectUri;
+
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/members/invite`,
+      'POST',
+      body,
+    );
+  }
+
+  async listTenantMembers(tenantId: string, options?: TenantMemberListOptions): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/members`,
+      'GET',
+      undefined,
+      {
+        page: options?.page,
+        limit: options?.limit,
+        sort: options?.sort,
+        search: options?.search,
+      },
+    );
+  }
+
+  async listTenantRoleDefinitions(tenantId: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/role-definitions`,
+      'GET',
+    );
+  }
+
+  async updateTenantMemberRole(
+    tenantId: string,
+    memberId: string,
+    request: TenantMemberRoleUpdateRequest,
+  ): Promise<Response> {
+    const body: Record<string, string> = {};
+    if (request.roleDefinitionId) {
+      body.roleDefinitionId = request.roleDefinitionId;
+    }
+    if (request.role || !request.roleDefinitionId) {
+      body.role = request.role || 'tenant-viewer';
+    }
+
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/members/${encodeURIComponent(memberId)}/roles`,
+      'PATCH',
+      body,
+    );
+  }
+
   // --------------- Provisioning ---------------
 
   async provisionEntraApp(request: {
     tenantId: string;
     appName: string;
     redirectUris: string[];
+    existingClientId?: string;
     idempotent?: boolean;
   }): Promise<{
     clientId: string;
@@ -1234,6 +1545,7 @@ export class PlatformAPIClient {
       tenant_id: request.tenantId,
       app_name: request.appName,
       redirect_uris: request.redirectUris,
+      ...(request.existingClientId ? { existing_client_id: request.existingClientId } : {}),
       idempotent: request.idempotent ?? false,
     };
 
@@ -1339,6 +1651,60 @@ export class PlatformAPIClient {
       clientSecret,
       tenantId: readStringField(data, 'tenantId', 'tenant_id') ?? request.tenantId,
       expiresAt: readStringField(data, 'expiresAt', 'expires_at'),
+    };
+  }
+
+  async deprovisionEntraApp(request: {
+    tenantId: string;
+    clientId: string;
+    deleteRegistration?: boolean;
+  }): Promise<DeprovisionEntraAppResult> {
+    const response = await fetch(
+      `${this.baseUrl}${PUBLIC_PLATFORM_PATH}/provisioning/entra-apps/${encodeURIComponent(request.clientId)}`,
+      {
+        method: 'DELETE',
+        headers: await this.headers(),
+        body: JSON.stringify({
+          tenant_id: request.tenantId,
+          delete_registration: request.deleteRegistration ?? true,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const context = await extractServerErrorContext(response);
+      throw new PlatformAPIRequestError({
+        operation: 'Entra app deprovisioning',
+        status: response.status,
+        statusText: response.statusText,
+        ...context,
+      });
+    }
+
+    const data = await response.json() as Record<string, unknown>;
+    const clientId = readStringField(data, 'clientId', 'client_id');
+    const tenantId = readStringField(data, 'tenantId', 'tenant_id');
+    if (!clientId || !tenantId) {
+      throw new PlatformAPIRequestError({
+        operation: 'Entra app deprovisioning',
+        status: response.status,
+        statusText: 'Invalid deprovision response',
+      });
+    }
+
+    const tenantDeauthorizationRaw = (
+      data.tenantDeauthorization ?? data.tenant_deauthorization
+    ) as Record<string, unknown> | undefined;
+
+    return {
+      clientId,
+      tenantId,
+      tenantDeauthorization: {
+        removed: Boolean(tenantDeauthorizationRaw?.removed),
+        alreadyAbsent: Boolean(tenantDeauthorizationRaw?.alreadyAbsent ?? tenantDeauthorizationRaw?.already_absent),
+      },
+      appRegistrationFound: Boolean(data.appRegistrationFound ?? data.app_registration_found),
+      appRegistrationDeleted: Boolean(data.appRegistrationDeleted ?? data.app_registration_deleted),
     };
   }
 }

@@ -85,6 +85,40 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('plans and applies indexes through the tenant-scoped AdminAPI route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.planResourceIndexes(['fact-batch-load'])
+    await client.applyResourceIndexes(['fact-batch-load'])
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://example.test/v4/platform/tenants/tenant-123/resourceapi/index-plan')
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      objectTypes: ['fact-batch-load'], apply: false, dryRun: true,
+    })
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      objectTypes: ['fact-batch-load'], apply: true, dryRun: false,
+    })
+  })
+
+  test('refreshes cache through the system-admin AdminAPI route with an audit reason', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.refreshResourceCache(['fact-batch-load'], 'INC-1234')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://example.test/v4/platform/tenants/tenant-123/resourceapi/cache-refresh')
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      objectTypes: ['fact-batch-load'], reason: 'INC-1234',
+    })
+  })
+
   test('reads ResourceAPI passive schema status through the public data router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
@@ -139,6 +173,25 @@ describe('PlatformAPIClient', () => {
     expect(init?.body).toBeUndefined()
   })
 
+  test('indexes documents through the public rag-index route without a client-side record lookup', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+    await client.indexDocument('DOC-123')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/data/documents/rag-index')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      documentId: 'DOC-123',
+      tenantId: 'tenant-123',
+    })
+  })
+
   test('reads tenant details through the public management tenant route', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
@@ -171,6 +224,26 @@ describe('PlatformAPIClient', () => {
     expect(init?.body).toBeUndefined()
   })
 
+  test('sends force-hard-purge confirmation when deleting a tenant permanently', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.deleteTenant('tenant-child', { forceHardPurge: true })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/delete')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      forceHardPurge: true,
+      confirmationTenantId: 'tenant-child',
+      reason: 'eai tenant delete --force-hard-purge',
+    })
+  })
+
   test('routes child tenant admin bootstrap through the public platform router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
@@ -190,6 +263,153 @@ describe('PlatformAPIClient', () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       userOid: 'user-oid',
       userEmail: 'user@example.com',
+    })
+  })
+
+  test('lists child tenants through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ children: [] }), { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.listTenantChildren('tenant-parent', {
+      includeDescendants: true,
+      limit: 100,
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe(
+      'https://example.test/v4/platform/tenants/tenant-parent/children?include_descendants=true&limit=100',
+    )
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
+  test('invites tenant members through the public platform member route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.inviteTenantMember('tenant-child', {
+      email: 'poppy@example.com',
+      role: 'tenant-admin',
+      firstName: 'Poppy',
+      lastName: 'Lucas',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/members/invite')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'poppy@example.com',
+      role: 'tenant-admin',
+      firstName: 'Poppy',
+      lastName: 'Lucas',
+    })
+  })
+
+  test('invites tenant members with a role definition id without adding a default role', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.inviteTenantMember('tenant-child', {
+      email: 'poppy@example.com',
+      roleDefinitionId: 'role-definition-123',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/members/invite')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'poppy@example.com',
+      roleDefinitionId: 'role-definition-123',
+    })
+  })
+
+  test('lists tenant members through the public platform member route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.listTenantMembers('tenant-child', {
+      page: 2,
+      limit: 50,
+      sort: 'email',
+      search: 'poppy@example.com',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/members?page=2&limit=50&sort=email&search=poppy%40example.com')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
+  test('lists tenant role definitions through the public platform member route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.listTenantRoleDefinitions('tenant-child')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/role-definitions')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
+  test('looks up users and memberships through tenant-scoped public platform routes', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.lookupUserByEmail('tenant-child', 'jane@example.com')
+    await client.getUserMemberships('tenant-child', 'user-123')
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://example.test/v4/platform/tenants/tenant-child/users/by-email?email=jane%40example.com',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://example.test/v4/platform/tenants/tenant-child/users/user-123/memberships',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  test('updates tenant member role through the public platform member route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.updateTenantMemberRole('tenant-child', 'user-123', {
+      role: 'tenant-admin',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-child/members/user-123/roles')
+    expect(init?.method).toBe('PATCH')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      role: 'tenant-admin',
     })
   })
 
@@ -246,6 +466,293 @@ describe('PlatformAPIClient', () => {
       childTenantDisplayName: 'IJK',
       source: 'eai-cli',
     })
+  })
+
+  test('registers source-unknown app repositories through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.registerSourceUnknownApp('tenant-parent', 'rates-review', {
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      repoUrl: 'https://github.com/enterpriseaigroup/rates-review',
+      defaultBranch: 'main',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configPath: 'src/eai.config/index.ts',
+      runtimePath: 'src/eai.runtime.ts',
+      sourceMode: 'source-unknown',
+      schemaProvenance: {
+        templateVersion: 'eai.generated_app_config.v1',
+        baseTemplateSha: '483c609cd974fa732c8ccb5ce37855911f881d76',
+        schemaDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        validatorDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      },
+      validationSummary: { status: 'registered_by_cli' },
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      repoUrl: 'https://github.com/enterpriseaigroup/rates-review',
+      defaultBranch: 'main',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configPath: 'src/eai.config/index.ts',
+      runtimePath: 'src/eai.runtime.ts',
+      sourceMode: 'source-unknown',
+      schemaProvenance: {
+        templateVersion: 'eai.generated_app_config.v1',
+        baseTemplateSha: '483c609cd974fa732c8ccb5ce37855911f881d76',
+        schemaDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        validatorDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      },
+      validationSummary: { status: 'registered_by_cli' },
+    })
+  })
+
+  test('registers observed-only source-unknown app adoption metadata', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.registerSourceUnknownApp('tenant-parent', 'rates-review', {
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      repoUrl: 'https://github.com/enterpriseaigroup/rates-review',
+      defaultBranch: 'main',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configPath: 'src/eai.config/index.ts',
+      runtimePath: 'src/eai.runtime.ts',
+      sourceMode: 'source-unknown',
+      adoptionMode: 'adopted-observed',
+      observedDeployment: {
+        environment: 'production',
+        activeUrl: 'https://rates.example.com',
+        status: 'adopted_observed',
+        observedAt: '2026-07-02T00:00:00.000Z',
+        deploymentId: 'aca-revision-42',
+      },
+      validationSummary: {
+        status: 'adopted_observed_by_cli',
+        destructiveOperationsBlocked: true,
+      },
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      repoUrl: 'https://github.com/enterpriseaigroup/rates-review',
+      defaultBranch: 'main',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configPath: 'src/eai.config/index.ts',
+      runtimePath: 'src/eai.runtime.ts',
+      sourceMode: 'source-unknown',
+      adoptionMode: 'adopted-observed',
+      observedDeployment: {
+        environment: 'production',
+        activeUrl: 'https://rates.example.com',
+        status: 'adopted_observed',
+        observedAt: '2026-07-02T00:00:00.000Z',
+        deploymentId: 'aca-revision-42',
+      },
+      validationSummary: {
+        status: 'adopted_observed_by_cli',
+        destructiveOperationsBlocked: true,
+      },
+    })
+  })
+
+  test('issues source-unknown workflow setup through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.setupSourceUnknownWorkflow('tenant-parent', 'rates-review', {
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configHash: 'sha256:config',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-setup')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configHash: 'sha256:config',
+    })
+  })
+
+  test('submits source-unknown workflow evidence through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.submitSourceUnknownWorkflowEvidence('tenant-parent', 'rates-review', {
+      operationId: 'source-unknown-op',
+      nonce: 'nonce-token',
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configHash: 'sha256:config',
+      artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      workflowRun: { id: '123456789', attempt: 1 },
+      oidcClaims: {
+        repository: 'enterpriseaigroup/rates-review',
+        ref: 'refs/heads/main',
+        sha: 'abcdef1234567890',
+        run_id: '123456789',
+      },
+      validationSummary: { status: 'passed' },
+    }, 'github-oidc-token')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-evidence')
+    expect(init?.method).toBe('POST')
+    expect(init?.headers).toEqual(expect.objectContaining({
+      Authorization: 'Bearer github-oidc-token',
+    }))
+    expect(JSON.parse(String(init?.body))).toEqual({
+      operationId: 'source-unknown-op',
+      nonce: 'nonce-token',
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      configHash: 'sha256:config',
+      artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      workflowRun: { id: '123456789', attempt: 1 },
+      oidcClaims: {
+        repository: 'enterpriseaigroup/rates-review',
+        ref: 'refs/heads/main',
+        sha: 'abcdef1234567890',
+        run_id: '123456789',
+      },
+      validationSummary: { status: 'passed' },
+    })
+  })
+
+  test('requests source-unknown deployment handoff through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 202 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.requestSourceUnknownDeployment('tenant-parent', 'rates-review', {
+      operationId: 'source-unknown-op',
+      environment: 'preview',
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      workflowRunId: '123456789',
+      configHash: 'sha256:config',
+      artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      deploymentTarget: {
+        kind: 'tenantinfra',
+        releaseChannel: 'preview',
+      },
+      validationSummary: {
+        status: 'deployment_requested_by_cli',
+        requiresTenantInfra: true,
+      },
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deploy')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      operationId: 'source-unknown-op',
+      environment: 'preview',
+      repoOwner: 'enterpriseaigroup',
+      repoName: 'rates-review',
+      workflowPath: '.github/workflows/eai-app.yml',
+      ref: 'refs/heads/main',
+      commitSha: 'abcdef1234567890',
+      workflowRunId: '123456789',
+      configHash: 'sha256:config',
+      artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      deploymentTarget: {
+        kind: 'tenantinfra',
+        releaseChannel: 'preview',
+      },
+      validationSummary: {
+        status: 'deployment_requested_by_cli',
+        requiresTenantInfra: true,
+      },
+    })
+  })
+
+  test('reads latest source-unknown deployment handoff status through the public platform router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.getLatestSourceUnknownDeployment('tenant-parent', 'rates-review')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deployments/latest')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
+  test('creates app provisioning jobs through the public company app route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 202 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.createAppProvisioningJob('planning-portal')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe(
+      'https://example.test/v4/platform/tenants/tenant-parent/apps/planning-portal/provisioning-jobs',
+    )
+    expect(init?.method).toBe('POST')
+    expect(init?.body).toBeUndefined()
   })
 
   test('posts capability evaluation requests to the public capability router', async () => {
@@ -451,5 +958,70 @@ describe('PlatformAPIClient', () => {
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({ tenant_id: 'tenant-parent' })
     expect(result.clientSecret).toBe('<fixture-client-secret>')
+  })
+
+  test('passes an existing Entra client id when provisioning should reconcile a local registration', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        client_id: 'client-1',
+        client_secret: null,
+        existing: true,
+      }), { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const result = await client.provisionEntraApp({
+      tenantId: 'tenant-parent',
+      appName: 'my-app',
+      redirectUris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      existingClientId: 'client-1',
+      idempotent: true,
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/platform/provisioning/entra-apps')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      tenant_id: 'tenant-parent',
+      app_name: 'my-app',
+      redirect_uris: ['http://localhost:3000/api/auth/callback/microsoft-entra-id'],
+      existing_client_id: 'client-1',
+      idempotent: true,
+    })
+    expect(result.clientId).toBe('client-1')
+    expect(result.existing).toBe(true)
+  })
+
+  test('deprovisions Entra app registrations through the public provision router', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        client_id: 'client-1',
+        tenant_id: 'tenant-parent',
+        tenant_deauthorization: {
+          removed: true,
+          already_absent: false,
+        },
+        app_registration_found: true,
+        app_registration_deleted: true,
+      }), { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const result = await client.deprovisionEntraApp({
+      tenantId: 'tenant-parent',
+      clientId: 'client-1',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/platform/provisioning/entra-apps/client-1')
+    expect(init?.method).toBe('DELETE')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      tenant_id: 'tenant-parent',
+      delete_registration: true,
+    })
+    expect(result.tenantDeauthorization.removed).toBe(true)
+    expect(result.appRegistrationDeleted).toBe(true)
   })
 })

@@ -128,7 +128,7 @@ describe('runContractAudit', () => {
       http.post('https://test-api.example.com/v4/data/resources/tenant-1/customer/aggregate', () => {
         return HttpResponse.json({ rows: [], totalRows: 0 });
       }),
-      http.get('https://test-api.example.com/v4/platform/users/test-user-oid/memberships', () => {
+      http.get('https://test-api.example.com/v4/platform/tenants/tenant-1/users/test-user-oid/memberships', () => {
         return HttpResponse.json({
           tenants: [
             {
@@ -146,7 +146,7 @@ describe('runContractAudit', () => {
           docs: [{ id: 'ot-1', name: 'Customer', status: 'published', properties: [], linkTypes: [], actions: [] }],
         });
       }),
-      http.get('https://test-api.example.com/v4/platform/users/by-email', ({ request }) => {
+      http.get('https://test-api.example.com/v4/platform/tenants/tenant-1/users/by-email', ({ request }) => {
         const url = new URL(request.url);
         if (url.searchParams.get('email') !== 'jane@example.com') {
           return HttpResponse.json({ error: 'unexpected email' }, { status: 404 });
@@ -220,7 +220,7 @@ describe('runContractAudit', () => {
           generated_at: '2026-04-05T00:00:00Z',
         });
       }),
-      http.get('https://test-api.example.com/v4/platform/users/test-user-oid/memberships', () => {
+      http.get('https://test-api.example.com/v4/platform/tenants/tenant-override/users/test-user-oid/memberships', () => {
         return HttpResponse.json({
           tenants: [
             {

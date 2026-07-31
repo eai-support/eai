@@ -394,7 +394,7 @@ export async function runContractAudit(
         "current-user",
         "Tenant membership contract",
         "GET",
-        "/v4/platform/users/{oid}/memberships",
+        "/v4/platform/tenants/{tenantId}/users/{oid}/memberships",
       ],
       [
         "object-types",
@@ -421,7 +421,7 @@ export async function runContractAudit(
         "current-user",
         "Tenant membership contract",
         "GET",
-        "/v4/platform/users/{oid}/memberships",
+        "/v4/platform/tenants/{tenantId}/users/{oid}/memberships",
       ],
       [
         "object-types",
@@ -445,7 +445,10 @@ export async function runContractAudit(
     }
   } else {
     try {
-      const res = await systemClient.getUserMemberships(tokens?.oid || "");
+      const res = await systemClient.getUserMemberships(
+        context.tenantId,
+        tokens?.oid || "",
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -458,7 +461,7 @@ export async function runContractAudit(
         id: "current-user",
         label: "Tenant membership contract",
         method: "GET",
-        endpoint: "/v4/platform/users/{oid}/memberships",
+        endpoint: "/v4/platform/tenants/{tenantId}/users/{oid}/memberships",
         status: "passed",
         details: `Tenant entries: ${tenantEntries.length}`,
       });
@@ -467,7 +470,7 @@ export async function runContractAudit(
         id: "current-user",
         label: "Tenant membership contract",
         method: "GET",
-        endpoint: "/v4/platform/users/{oid}/memberships",
+        endpoint: "/v4/platform/tenants/{tenantId}/users/{oid}/memberships",
         status: "failed",
         details: err instanceof Error ? err.message : String(err),
       });
@@ -827,7 +830,10 @@ export async function runContractAudit(
 
   if (authenticated && options.tenantRecordId) {
     try {
-      const res = await systemClient.getUserMemberships(tokens?.oid || "");
+      const res = await systemClient.getUserMemberships(
+        context.tenantId || options.tenantRecordId,
+        tokens?.oid || "",
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -847,7 +853,7 @@ export async function runContractAudit(
         id: "tenant-info",
         label: "Tenant info resolution",
         method: "GET",
-        endpoint: "/v4/platform/users/{oid}/memberships",
+        endpoint: "/v4/platform/tenants/{tenantId}/users/{oid}/memberships",
         status: "passed",
         details: `Resolved ${tenant.tenant.displayName} (${tenant.tenant.slug})`,
       });
@@ -856,7 +862,7 @@ export async function runContractAudit(
         id: "tenant-info",
         label: "Tenant info resolution",
         method: "GET",
-        endpoint: "/v4/platform/users/{oid}/memberships",
+        endpoint: "/v4/platform/tenants/{tenantId}/users/{oid}/memberships",
         status: "failed",
         details: err instanceof Error ? err.message : String(err),
       });
@@ -866,15 +872,18 @@ export async function runContractAudit(
       id: "tenant-info",
       label: "Tenant info resolution",
       method: "GET",
-      endpoint: "/v4/platform/users/{oid}/memberships",
+      endpoint: "/v4/platform/tenants/{tenantId}/users/{oid}/memberships",
       status: "skipped",
       details: "Provide --tenant-record to exercise tenant info lookup.",
     });
   }
 
-  if (authenticated && options.userEmail) {
+  if (authenticated && context.tenantId && options.userEmail) {
     try {
-      const res = await systemClient.lookupUserByEmail(options.userEmail);
+      const res = await systemClient.lookupUserByEmail(
+        context.tenantId,
+        options.userEmail,
+      );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -897,7 +906,7 @@ export async function runContractAudit(
         id: "user-lookup",
         label: "User lookup contract",
         method: "GET",
-        endpoint: "/v4/platform/users/by-email?email=...",
+        endpoint: "/v4/platform/tenants/{tenantId}/users/by-email?email=...",
         status: "passed",
         details: `${describeShape(payload)} (resolved user id ${userId})`,
       });
@@ -906,7 +915,7 @@ export async function runContractAudit(
         id: "user-lookup",
         label: "User lookup contract",
         method: "GET",
-        endpoint: "/v4/platform/users/by-email?email=...",
+        endpoint: "/v4/platform/tenants/{tenantId}/users/by-email?email=...",
         status: "failed",
         details: err instanceof Error ? err.message : String(err),
       });
@@ -916,7 +925,7 @@ export async function runContractAudit(
       id: "user-lookup",
       label: "User lookup contract",
       method: "GET",
-      endpoint: "/v4/platform/users/by-email?email=...",
+      endpoint: "/v4/platform/tenants/{tenantId}/users/by-email?email=...",
       status: "skipped",
       details: "Provide --user-email to exercise user lookup.",
     });
@@ -1387,8 +1396,11 @@ verifyCommand
 
 // ─── eai doctor ────────────────────────────────────────────────────────────
 
-function describeReleaseChannel(channel: "static-registry"): string {
-  return channel === "static-registry" ? "static registry" : channel;
+function describeReleaseChannel(channel: "npmjs" | "static-registry"): string {
+  if (channel === "npmjs") {
+    return "npmjs";
+  }
+  return "static registry fallback";
 }
 
 function describeTemplateSnapshot(template: {
@@ -1418,7 +1430,7 @@ async function renderDoctorUpdateStatus(root: string): Promise<void> {
   const latestRelease = await fetchLatestRelease();
   if (!latestRelease) {
     out.warn(
-      "Could not determine the latest published CLI release from the EAI static registry right now.",
+      "Could not determine the latest published CLI release from npmjs or the EAI static registry fallback right now.",
     );
   } else if (compareVersions(latestRelease.version, currentCliVersion) > 0) {
     out.warn(
@@ -1479,7 +1491,7 @@ async function renderDoctorUpdateStatus(root: string): Promise<void> {
       bundledGofer.commit !== manifest.gofer.bundle.commit
     ) {
       out.warn(
-        `Bundled Gofer assets differ from this project: ${projectLabel} → ${bundledLabel}`,
+        `Available Gofer assets differ from this project: ${projectLabel} -> ${bundledLabel}`,
       );
       out.dim(`  Preview: ${chalk.cyan("eai gofer refresh --check")}`);
     } else {

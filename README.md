@@ -1,13 +1,33 @@
-# eai — Enterprise AI Platform CLI
+# eai — EnterpriseAI CLI
 
 [![CI](https://github.com/eai-tools/eai/actions/workflows/ci.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/eai-tools/eai/badge)](https://securityscorecards.dev/viewer/?uri=github.com/eai-tools/eai)
 [![Docs](https://github.com/eai-tools/eai/actions/workflows/docs.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/docs.yml)
 [![License](https://img.shields.io/github/license/eai-tools/eai)](LICENSE)
 
-Scaffold, seed, deploy, and manage applications on the EAI platform.
+Scaffold, configure, validate, and operate EAI applications from a developer
+terminal.
 
-Every command wraps platform API calls — developers work with **resources, types, tenants, chat, and authorized PublicAPI V4 interfaces** using simple, intuitive commands.
+The CLI gives teams a supported path for application setup, authentication,
+tenant selection, runtime validation, resource management, and deployment
+readiness. It keeps platform access behind authenticated commands and
+public-safe diagnostics, so developers and AI coding agents get useful next
+steps without exposing private infrastructure details.
+
+## Package Trust
+
+This package is intended for public npm installation in enterprise developer
+workstations, CI agents, Codespaces, and other controlled engineering
+environments.
+
+| Trust Signal | Status |
+|--------------|--------|
+| License | Apache-2.0 |
+| Source | Public GitHub repository with issues, releases, and CI |
+| Publishing | GitHub Actions trusted publishing with npm provenance |
+| Runtime | Node.js 20 or newer |
+| Secrets | No secrets, tenant credentials, or local environment files are committed or published |
+| Support | Security issues are handled through [SECURITY.md](SECURITY.md); product issues through GitHub Issues |
 
 ## Public Repository
 
@@ -19,16 +39,17 @@ and find the maintained documentation.
 |---------|-----|---------|
 | Source | https://github.com/eai-tools/eai | CLI source, issues, pull requests, and release tags |
 | Documentation | https://eai-tools.github.io/eai/ | Docusaurus documentation, scenarios, and command reference |
-| Static npm registry | https://eai-tools.github.io/eai/registry/ | GitHub Pages registry used by `npm install -g @eai-tools/cli` |
+| npmjs packages | https://www.npmjs.com/package/eai-cli and https://www.npmjs.com/package/@enterpriseai/cli | Primary install/update channel for the `eai` command |
+| Static npm registry fallback | https://eai-tools.github.io/eai/registry/ | GitHub Pages fallback for `@enterpriseai/cli` when npmjs is unavailable |
 | Releases | https://github.com/eai-tools/eai/releases | Versioned GitHub releases and packaged tarballs |
 | Security | [SECURITY.md](SECURITY.md) | Private vulnerability reporting and supported versions |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) | Public-safe contribution and release workflow |
 | License | [Apache-2.0](LICENSE) | Open source license and patent grant |
 
-Public-readiness rule for maintainers: everything committed here should be safe
+Public-readiness rule for maintainers: everything committed here must be safe
 for a public audience. Do not commit secrets, customer data, private tenant
-details, local `.env` files, unpublished internal architecture notes, or
-temporary build output.
+details, local `.env` files, unpublished internal architecture notes, private
+environment URLs, or temporary build output.
 
 Generated Gofer specs, memory files, logs, checkpoints, and local runtime state
 are intentionally ignored. The committed `.specify` directory contains only the
@@ -36,25 +57,38 @@ reusable scripts and templates needed by `eai init` and `eai gofer refresh`.
 
 ## Install
 
-Configure the scoped EAI registry once per user:
+Recommended install:
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g eai-cli
 ```
 
-Install or update the EnterpriseAI CLI:
+Canonical package:
 
 ```bash
-npm install -g @eai-tools/cli
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 ```
 
 If you are validating the generated registry from a local checkout of this repo, install the tarball instead of the packument file:
 
 ```bash
-npm install -g ./docs-site/static/registry/-/@eai-tools/cli-latest.tgz
+npm install -g ./docs-site/static/registry/-/@enterpriseai/cli-latest.tgz
 ```
 
-`docs-site/static/registry/@eai-tools/cli` is the registry metadata file. It is not an installable package directory.
+`docs-site/static/registry/@enterpriseai/cli` is the registry metadata file. It is not an installable package directory.
 
 ## Quick Start
 
@@ -77,7 +111,7 @@ eai tenant select
 #    The child home region defaults to the parent region; pass
 #    `--home-region au|ca|eu` when the child must use another region.
 
-# 5. Sync project environment if your app needs local config/secrets
+# 5. Sync project environment if your app needs local configuration
 eai env pull --include-secrets
 
 # 6. Define your data model
@@ -139,7 +173,11 @@ a different repository or a local template path.
 | `eai whoami` | Show auth status and project context |
 | `eai provision entra` | Create or confirm the app's Entra app registration in the CIAM for the active platform environment |
 | `eai provision entra --rotate-secret` | Rotate the existing app registration secret and write the new value to `.env.local` |
-| `eai user invite --email <email>` | Add an existing user to the active tenant or an explicit tenant |
+| `eai provision entra --deauthorize --force` | Remove tenant authorization, delete the app registration, and remove local Entra credentials |
+| `eai user invite --email <email> --role <role>` | Invite or provision a user into the active tenant or an explicit tenant with a V4 member role |
+| `eai user list` | List tenant members in the active tenant or an explicit tenant |
+| `eai user roles` | List tenant role definitions available for user invitation |
+| `eai user role set --email <email> --role <role>` | Assign a role by email through the V4 invite/add flow |
 | `eai user provision-me` | Provision yourself to the active tenant or an explicit tenant |
 
 Codespaces and other remote dev environments can keep the standard localhost
@@ -240,15 +278,15 @@ still enforces platform tenant authorization.
 
 The runtime contract lives in `eai.runtime.json`. It declares required
 environment variable names, required secrets, health/runtime endpoints, Auth.js
-callback path, tenant/workflow key patterns, optional app-only service identity,
-and post-deploy smoke tests. It is host-neutral: Vercel, Docker, AWS, Azure,
+callback path, tenant/workflow key patterns, user-delegated BFF access, and
+post-deploy smoke tests. It is host-neutral: Vercel, Docker, AWS, Azure,
 Kubernetes, VM-style hosts, and internal demo environments should translate the
 same contract into their provider-specific env and secret setup.
 
 `eai deploy doctor` deliberately does more than `/health`. A deployment can have
 `/health` returning 200 and still fail because Auth.js providers are missing,
-the Entra callback URL is wrong, tenant/workflow config is empty, service
-identity is absent for anonymous server-side platform calls, PublicAPI rejects
+the Entra callback URL is wrong, tenant/workflow config is empty, a route is
+trying to use unsupported app-only data-plane access, PublicAPI rejects
 authorization, or the app runtime is throwing errors.
 
 ### Diagnostics
@@ -285,6 +323,49 @@ eai tenant bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id>
 ```
 
 By default this bootstraps the current login. To repair another known parent member, pass `--user-oid <entra-user-oid>` and optionally `--user-email <email>`.
+
+## Tenant Member And Role Management
+
+Use `eai user invite` for normal "add this person to a tenant" and "make this
+person a tenant admin/member" requests. The command calls the V4 tenant member
+invite/add flow and can assign these base roles:
+
+- `tenant-viewer`
+- `tenant-staff`
+- `tenant-builder`
+- `tenant-admin`
+
+Common examples:
+
+```bash
+eai user roles --tenant <tenant-id> --format json
+eai user invite --email user@example.com --tenant <tenant-id> --role tenant-viewer
+eai user invite --email admin@example.com --tenant <tenant-id> --role tenant-admin
+eai user list --tenant <tenant-id> --search admin@example.com --format json
+```
+
+If `eai user invite` fails with a 5xx or `EXTERNAL_SERVICE_ERROR`, do not guess
+or edit the database directly. Run:
+
+```bash
+eai errors explain user_invite_external_service_existing_member --format json
+eai user list --tenant <tenant-id> --search <email> --format json
+```
+
+If the person already exists as a direct tenant member and you approve the role
+change, repair the role through EAI CLI and verify read-back:
+
+```bash
+eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json
+eai user list --tenant <tenant-id> --search <email> --format json
+```
+
+The affected app user may need to sign out and sign back in because Auth.js
+session or JWT role data can be cached.
+
+`eai tenant bootstrap-admin` is not a general "make this user an admin" command.
+It is only for repairing first tenant-admin access on an existing immediate
+child tenant when the caller is already tenant-admin on the direct parent.
 
 ## Architecture
 
@@ -363,7 +444,14 @@ Use `eai errors explain <code-or-reason>` for the release-aligned explanation:
 ```bash
 eai errors explain E101
 eai errors explain tenant_authorization_incomplete --format json
+eai errors explain user_invite_external_service_existing_member --format json
+eai errors explain app_token_tenant_context_required --format json
 ```
+
+Use `app_token_tenant_context_required` when platform user lookup or membership
+prerequisite calls return `MISSING_TENANT` or "Tenant context required for app
+tokens"; retry tenant-scoped V4 platform routes before changing tenant members,
+role definitions, Entra configuration, databases, or cloud portals.
 
 ## Machine-Readable Output
 
@@ -426,7 +514,7 @@ terminals used in this workspace:
 
 | CLI | Installed surface | First command |
 |-----|-------------------|---------------|
-| Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` hooks | `/0_business_scenario` |
+| Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` hooks | `/0_gofer_start` |
 | Codex CLI | `.agents/skills/` with a legacy `.system/skills/` mirror | Ask Codex to use the relevant Gofer skill |
 | Gemini CLI | `.gemini/commands/gofer`, `.gemini/extension.json` | `/gofer:1_gofer_research` |
 | GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | Use the Gofer prompt or matching local skill |
@@ -438,31 +526,37 @@ app.
 
 ### Updating an existing repo safely
 
-`eai update` updates the installed CLI package only. It does **not** blindly
-rewrite Gofer assets, template files, or UI components inside an existing
-app repo.
+`eai update` keeps the local EAI toolchain current. It checks the installed CLI
+against npmjs first, falls back to the public static registry when needed, installs the newer CLI when available, then
+refreshes safe Gofer-managed files in the current EAI project. It does **not**
+blindly rewrite template files or UI components inside an existing app repo.
 
-Use these commands instead:
+Use these commands for the full maintenance loop:
 
 ```bash
-# See whether a newer CLI release exists
+# See whether a newer CLI release, Gofer refresh, or template review is available
 eai update --check
 
-# See whether this repo's Gofer-managed files differ from the installed CLI bundle
+# Same report through the broader doctor command
 eai doctor --check-updates
 
 # Preview safe Gofer-managed asset updates for the current repo
 eai gofer refresh --check
 
+# Apply safe Gofer-managed file updates, with backups and conflict detection
+eai gofer refresh
+
 # Preview app-template and UI component drift before copying changes manually
 eai template check
-
-# Apply only the safe Gofer-managed file updates, with backups for replaced files
-eai gofer refresh
 ```
 
 Important boundaries:
 
+- `eai update --check` is read-only. `eai update` may write only
+  Gofer-managed files in an EAI project.
+- `eai gofer refresh` prefers the latest public `eai-gofer` release at runtime,
+  so Gofer asset updates do not require a new `eai` CLI release. If the latest
+  release cannot be reached or prepared, it falls back to the bundled snapshot.
 - `eai gofer refresh` manages the Gofer-owned surfaces copied by `eai init`
   such as `.specify/`, `.claude/`, `.agents/skills/`, `.gemini/`, and
   generated Copilot Gofer files.
@@ -477,6 +571,10 @@ Important boundaries:
 - Template or UI component changes are **not** auto-merged into existing repos
   yet. Copy additions first, then diff/review existing files that `eai template
   check` marks for manual review.
+- During normal interactive CLI use, if the CLI has already cached that a newer
+  release is available, it can ask whether to run `eai update` immediately.
+  That prompt is suppressed for CI, non-TTY, `--describe`, `--format json`, and
+  `--json` output.
 
 ## Development
 
@@ -495,7 +593,7 @@ npm run lint         # Run ESLint
 The documentation site lives in `docs-site/` and renders the source content from
 `.tech-docs/`, the scenario library, and the generated command/API reference.
 GitHub Pages is the public deployment target for both the documentation site and
-the static npm registry used by the install flow.
+the static npm registry fallback used by the install flow.
 
 The `Deploy Docs` workflow builds `docs-site/` on `main` when documentation,
 release-doc, registry, or LLM-help assets change. It uploads `docs-site/build`
@@ -505,13 +603,13 @@ with the official GitHub Pages artifact action and deploys it to the
 Pages serves these public artifacts:
 
 - `/docs/` and `/scenarios/` — documentation and scenario library
-- `/registry/` — static npm registry metadata and tarballs
+- `/registry/` — static npm registry fallback metadata and tarballs
 - `/llms.txt`, `/llms-full.txt`, and `/cli-help.txt` — release-facing AI/help
   surfaces generated from the current CLI
 
 ## Releasing
 
-Releases are managed with `release.sh`. It validates the release candidate locally, bumps the version, refreshes the release-facing docs/help surfaces, regenerates the static registry artifacts, pushes `main` plus the annotated tag, waits for GitHub Actions to create the GitHub release, waits for the docs deployment that updates the static registry, and then verifies the public static registry exposes the new version.
+Releases are managed with `release.sh`. It validates the release candidate locally, bumps the version, refreshes the release-facing docs/help surfaces, regenerates the static registry fallback artifacts, pushes `main` plus the annotated tag, waits for GitHub Actions to publish the npmjs packages and create the GitHub release, waits for the docs deployment that updates the static registry fallback, and then verifies npmjs plus the public static registry expose the new version.
 
 ```bash
 ./release.sh <patch|minor|major> "Release message"
@@ -542,11 +640,44 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 6. Test (`vitest run`)
    - Focused SRP CLI evidence also runs as `npm run test:eai-cli:ci` in
      GitHub Actions check `ci/eai-cli-tests`
-7. Smoke tests — `eai --version`, `eai --help`, and the shipped command groups
+7. Smoke tests — `eai --version`, `eai --help`, `eai update --check`, and the shipped command groups
 8. Docs site build
 9. Release-facing docs/help generation (`llms.txt`, `llms-full.txt`, `cli-help.txt`)
 10. Registry artifact generation (`npm pack` + `generate-registry.cjs`)
-11. Static-registry release metadata stays aligned with the documented install flow
+11. The `eai-cli` npm alias package builds and installs the `eai` command
+12. Static-registry fallback metadata stays aligned with the documented install flow
+13. Full e2e smoke traceability stays aligned with `eai --describe`
+
+### Optional live full e2e smoke
+
+`release:check` always validates the full command/CRUD traceability table in
+[`.tech-docs/full-e2e-smoke-traceability.md`](.tech-docs/full-e2e-smoke-traceability.md).
+The destructive live suite is opt-in because it creates a disposable app,
+publishes Object Types, provisions storage, and CRUDs PostgreSQL, DocumentDB,
+Blob-backed file, and Search-indexed resources in a dedicated test tenant.
+
+Use a dedicated test user and tenant. Do not paste the password into a chat or
+commit it to the repo; store it in your shell only for the run, or in GitHub
+Actions secrets.
+
+```bash
+export EAI_RELEASE_FULL_E2E_SMOKE=1
+export EAI_E2E_TEST_PROFILE=test
+export EAI_E2E_TEST_USERNAME='<dedicated-test-user-email>'
+export EAI_E2E_PARENT_TENANT_ID='<dedicated-test-tenant-id>'
+
+# Authenticate the profile before the run:
+eai --profile "$EAI_E2E_TEST_PROFILE" login
+
+# Or provide a secure bootstrap command that leaves whoami working:
+export EAI_E2E_AUTH_COMMAND='<secure-auth-bootstrap-command>'
+
+npm run smoke:eai-full:live
+```
+
+If an external bootstrap command needs a password, pass it through an
+environment secret such as `EAI_E2E_TEST_PASSWORD`. The smoke runner redacts
+password-like values from failures and does not print or persist the password.
 
 ### What happens after the local checks pass
 
@@ -554,11 +685,11 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 2. It updates the visible `.tech-docs/` release metadata to the new version and release message
 3. It regenerates `docs-site/static/registry/`, `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`
 4. It commits the release, creates an annotated `vX.Y.Z` tag, and pushes `main --follow-tags`
-5. The tag-triggered GitHub Actions `Release` workflow verifies the committed release docs/help surfaces before creating the GitHub release and attaching the packaged tarball
-6. The `Deploy Docs` workflow publishes the matching static registry and release-doc bundle to GitHub Pages
-7. `release.sh` waits for both workflows and verifies `https://eai-tools.github.io/eai/registry/@eai-tools/cli`
+5. The tag-triggered GitHub Actions `Release` workflow verifies the committed release docs/help surfaces, publishes `@enterpriseai/cli` and `eai-cli` to npmjs with trusted publishing, then creates the GitHub release and attaches the packaged tarballs
+6. The `Deploy Docs` workflow publishes the matching static registry fallback and release-doc bundle to GitHub Pages
+7. `release.sh` waits for both workflows and verifies npmjs plus the canonical `@enterpriseai/cli` static fallback
 
-If the static registry does not converge to the new version, the script exits non-zero so the release is treated as incomplete.
+If npmjs or the static registry fallback does not converge to the new version, the script exits non-zero so the release is treated as incomplete.
 
 The EAI CLI is also part of SRP release evidence. Repo-local CLI behavior is
 owned here through `ci/eai-cli-tests`; deployed read-only CLI schema, error,
@@ -566,7 +697,7 @@ auth, and preview canaries live in `enterpriseaigroup/eai-testing-dev` under the
 `eai-cli` cross-service surface. Keep prod CLI canaries read-only; preview
 lifecycle checks must stay explicit and cleanup-backed.
 
-The release path publishes the repository exactly as committed. Bundled Gofer and linked-source refreshes happen separately via `npm run sync:gofer` / `npm run sync:linked-sources` and should be committed before you cut a release instead of being fetched during publish time.
+The release path publishes the repository exactly as committed. Bundled Gofer and linked-source refreshes happen separately via `npm run sync:gofer` / `npm run sync:linked-sources` and should be committed before you cut a release. At runtime, `eai gofer refresh` still checks the public latest `eai-gofer` release and falls back to that bundled snapshot when offline.
 
 Before making or keeping the repository public, run a public-readiness check:
 
@@ -588,9 +719,12 @@ npm run docs:release-assets:check
 
 ### Release channel policy
 
-- **GitHub Pages static registry is the release channel**
-- Configure the registry once with `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
-- Install or update with `npm install -g @eai-tools/cli`, or use `eai update`
+- **npmjs is the primary release and update channel**
+- Recommended install: `npm install -g eai-cli`
+- Canonical package install: `npm install -g @enterpriseai/cli`
+- Static fallback: `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/`
+- Persistent fallback setup: `npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user`
+- Use `eai update` to update the installed CLI and refresh safe project assets
 
 ## Documentation
 
@@ -603,4 +737,4 @@ Full documentation: https://eai-tools.github.io/eai/
 - [ ] `eai types define` — interactive Object Type builder
 - [ ] `eai dev --offline` — local mock gateway for offline development
 - [ ] `eai tunnel` — Cloudflare tunnel for webhook testing
-- [x] Static npm registry on GitHub Pages (`npm install -g @eai-tools/cli`)
+- [x] npmjs install alias (`npm install -g eai-cli`) with static registry fallback

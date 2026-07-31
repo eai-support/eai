@@ -41,7 +41,7 @@ const guide: AgentGuide = {
     {
       command: 'eai update --check',
       mutates: false,
-      purpose: 'Check whether the installed CLI is older than the published static-registry release.',
+      purpose: 'Check whether the installed CLI, Gofer assets, or app-template snapshot need attention.',
     },
     {
       command: 'eai whoami',
@@ -54,6 +54,12 @@ const guide: AgentGuide = {
     'Run read-only diagnostics before mutating fixes.',
     'Use named eai commands before calling eai publicapi directly.',
     'When calling eai publicapi directly, only use /v4 paths.',
+    'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing tenant members, Entra, or role definitions.',
+    'For normal tenant user/admin addition, use eai user invite --email <email> --tenant <tenant-id> --role <role>; do not use tenant bootstrap-admin.',
+    'If user invite fails with a 5xx or EXTERNAL_SERVICE_ERROR, run eai errors explain user_invite_external_service_existing_member --format json, check for an existing member with eai user list, and only then use eai user role set by member ID when approved.',
+    'For files, use eai docs when the file is a document to process, classify, index, or expose to AI context. Use eai resources file only when the file is attached to a typed resource object file property.',
+    'Do not invent standalone PublicAPI v4 blob-upload flows. Ask whether the user needs a document workflow or a resource file property.',
+    'Use eai tenant bootstrap-admin only for first-admin repair on an immediate child tenant.',
     'Do not loop indefinitely; follow retry and stop conditions from eai errors explain.',
     'Do not expose tokens, secrets, local env files, tenant identifiers, or request IDs unless the user explicitly asks to collect escalation evidence.',
   ],
@@ -93,7 +99,7 @@ const guide: AgentGuide = {
         {
           command: 'eai doctor --check-updates',
           mutates: false,
-          purpose: 'Check CLI, Gofer, and template drift.',
+          purpose: 'Check CLI, Gofer, and template drift without changing files.',
         },
       ],
     },
@@ -127,7 +133,7 @@ const guide: AgentGuide = {
       instruction: 'Check login, tenant, CLI release, project assets, and platform-facing contracts.',
       commands: [
         { command: 'eai whoami', mutates: false, purpose: 'Show current user and tenant context.' },
-        { command: 'eai update --check', mutates: false, purpose: 'Check installed CLI release.' },
+        { command: 'eai update --check', mutates: false, purpose: 'Check CLI release plus Gofer/template currency.' },
         { command: 'eai doctor --check-updates', mutates: false, purpose: 'Check CLI, Gofer, and template drift.' },
         { command: 'eai verify calls --format json', mutates: false, purpose: 'Audit platform-facing contracts.' },
       ],
@@ -141,6 +147,37 @@ const guide: AgentGuide = {
         { command: 'eai types diff', mutates: false, purpose: 'Compare local and published object types.' },
         { command: 'eai types seed', mutates: true, purpose: 'Publish object types when validation and diff show it is needed.' },
         { command: 'eai resources schema --format json', mutates: false, purpose: 'Inspect published resource schema.' },
+      ],
+    },
+    {
+      step: 4,
+      title: 'Tenant member management',
+      instruction: 'List available roles, invite or refresh the user by email with the intended role, and verify membership. This is the correct path for "add this person as tenant admin/member" requests. If prerequisite platform user lookups fail with MISSING_TENANT, first confirm tenant-scoped /v4/platform/tenants/<tenant-id>/... routes and deployed API versions.',
+      commands: [
+        { command: 'eai user roles --tenant <tenant-id> --format json', mutates: false, purpose: 'Discover assignable tenant roles before choosing a role.' },
+        { command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin --format json', mutates: true, purpose: 'Add or refresh a user membership and assign tenant-admin.' },
+        { command: 'eai user list --tenant <tenant-id> --search <email> --format json', mutates: false, purpose: 'Verify the user membership and role after invite.' },
+        { command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json', mutates: true, purpose: 'Repair the role on an existing direct member when invite/add fails and the member ID has been verified.' },
+      ],
+    },
+    {
+      step: 5,
+      title: 'Documents, files, and AI context',
+      instruction: 'Choose the public v4 file model before writing code. Use document workflow commands for upload, classification, and RAG; use resource file commands for attachments to typed business records.',
+      commands: [
+        { command: 'eai docs upload <file>', mutates: true, purpose: 'Upload a document for platform processing.' },
+        { command: 'eai docs classify <file>', mutates: true, purpose: 'Classify a document when the workflow needs document type or extraction hints.' },
+        { command: 'eai docs index <document-id>', mutates: true, purpose: 'Index a document so AI/RAG workflows can answer from it.' },
+        { command: 'eai resources file upload <type> <id> <property> <path> --tenant-id <tenant-id>', mutates: true, purpose: 'Attach a file to an existing typed resource object file property.' },
+      ],
+    },
+    {
+      step: 6,
+      title: 'App auth cleanup',
+      instruction: 'When a smoke or test app created an Entra registration that should be removed, deauthorize it explicitly and verify local credentials are gone.',
+      commands: [
+        { command: 'eai provision entra --deauthorize --client-id <client-id> --force', mutates: true, purpose: 'Remove tenant authorization, delete the app registration, and remove local Entra credentials.' },
+        { command: 'eai env list', mutates: false, purpose: 'Confirm local project env no longer contains the removed Entra credential keys.' },
       ],
     },
   ],

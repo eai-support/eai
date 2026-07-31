@@ -10,6 +10,7 @@ env:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
@@ -26,7 +27,11 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
+          registry-url: https://registry.npmjs.org/
           cache: npm
+
+      - name: Use npm with trusted publishing support
+        run: npm install -g npm@11.18.0
 
       - name: Validate version matches tag
         run: |
@@ -66,18 +71,46 @@ jobs:
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           TAG_VERSION="$TAG_VERSION" node <<'EOF'
           const fs = require('node:fs');
-          const packument = JSON.parse(fs.readFileSync('docs-site/static/registry/@eai-tools/cli', 'utf8'));
           const expected = process.env.TAG_VERSION;
-          if (packument['dist-tags']?.latest !== expected) {
-            throw new Error(`packument latest ${packument['dist-tags']?.latest ?? 'missing'} does not match ${expected}`);
+
+          function verifyPackument(file, packageName) {
+            const packument = JSON.parse(fs.readFileSync(file, 'utf8'));
+            if (packument.name !== packageName) {
+              throw new Error(`${file} package name ${packument.name ?? 'missing'} does not match ${packageName}`);
+            }
+            if (packument['dist-tags']?.latest !== expected) {
+              throw new Error(`${file} latest ${packument['dist-tags']?.latest ?? 'missing'} does not match ${expected}`);
+            }
+            if (!packument.versions?.[expected]) {
+              throw new Error(`${file} missing version ${expected}`);
+            }
           }
-          if (!packument.versions?.[expected]) {
-            throw new Error(`packument missing version ${expected}`);
+
+          function verifyTarball(file) {
+            if (!fs.existsSync(file)) {
+              throw new Error(`missing static registry tarball ${file}`);
+            }
           }
+
+          verifyPackument('docs-site/static/registry/@enterpriseai/cli', '@enterpriseai/cli');
+          verifyPackument('docs-site/static/registry/@enterpriseai%2fcli', '@enterpriseai/cli');
+          verifyTarball(`docs-site/static/registry/-/@enterpriseai/cli-${expected}.tgz`);
           EOF
 
       - name: Create npm tarball
         run: npm pack
+
+      - name: Build eai-cli alias package
+        run: node scripts/build-npm-alias-package.cjs
+
+      - name: Create eai-cli alias tarball
+        run: npm pack .release/eai-cli-package
+
+      - name: Publish canonical package to npmjs
+        run: npm publish --access public --provenance
+
+      - name: Publish eai-cli alias package to npmjs
+        run: npm publish .release/eai-cli-package --access public --provenance
 
       - name: Generate changelog
         id: changelog
@@ -104,16 +137,22 @@ jobs:
 
             ## Installation
 
-            Configure the scoped EAI registry once per user:
+            Recommended install:
 
             ```bash
-            npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
+            npm install -g eai-cli
             ```
 
-            Install or update the EnterpriseAI CLI:
+            Canonical package:
 
             ```bash
-            npm install -g @eai-tools/cli
+            npm install -g @enterpriseai/cli
+            ```
+
+            Static registry fallback:
+
+            ```bash
+            npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
             ```
 
             See the [full documentation](https://eai-tools.github.io/eai) for details.

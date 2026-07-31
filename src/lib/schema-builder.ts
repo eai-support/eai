@@ -9,6 +9,7 @@ import { getAgentGuide } from './agent-guide.js';
 export interface CommandSchema {
   command: string;
   description: string;
+  aliases: string[];
   options: OptionSchema[];
   subcommands?: CommandSchema[];
 }
@@ -48,7 +49,7 @@ export function buildCommandSchema(command: Command): CommandSchema {
   const name = command.name();
   const description = command.description();
 
-  const options: OptionSchema[] = command.options.map((opt) => {
+  const options: OptionSchema[] = command.options.filter((opt) => !opt.hidden).map((opt) => {
     const type = inferOptionType(opt);
     const schema: OptionSchema = {
       name: opt.flags.split(' ')[0],
@@ -72,6 +73,7 @@ export function buildCommandSchema(command: Command): CommandSchema {
   const schema: CommandSchema = {
     command: name,
     description,
+    aliases: command.aliases(),
     options,
   };
 

@@ -222,7 +222,7 @@ main() {
 
     if [[ $total_tokens -gt $critical_threshold_tokens ]]; then
         status="critical"
-        recommendation="Run /7_gofer_save immediately, then start new session with /8_gofer_resume."
+        recommendation="Run /7_gofer_save immediately, then start a fresh session from session-checkpoint.md."
         techniques="observation_masking,session_handoff"
     elif [[ $total_tokens -gt $warning_threshold_tokens ]]; then
         status="warning"
@@ -335,7 +335,7 @@ EOF
             echo "  Required Actions:"
             echo -e "    ${RED}1. Run /7_gofer_save NOW to capture session state${NC}"
             echo "    2. Start a new Claude Code session"
-            echo "    3. Run /8_gofer_resume to restore context"
+            echo "    3. Read session-checkpoint.md and continue from the recorded stage"
             echo "    4. Continue with fresh context window"
             echo ""
             echo "  Context Management Techniques (2025-2026 Research):"

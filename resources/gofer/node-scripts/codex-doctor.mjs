@@ -53,7 +53,7 @@ export const READ_ONLY_ASSERTION = Object.freeze({
 // Canonical Gofer skill names — a tenant whose subdirs include enough of these
 // is considered a "Gofer-bundle-shaped" tenant.
 export const CANONICAL_GOFER_STAGES = Object.freeze([
-  '0_business_scenario',
+  '0_gofer_start',
   '0a_problem_validation',
   '1_gofer_research',
   '2_gofer_specify',
@@ -63,7 +63,7 @@ export const CANONICAL_GOFER_STAGES = Object.freeze([
   '6_gofer_validate',
   '7_gofer_save',
   '7a_stakeholder_comms',
-  '8_gofer_resume',
+  '8_gofer_branding',
   '9_gofer_tests',
   '10_gofer_cloud',
   'gofer_constitution',

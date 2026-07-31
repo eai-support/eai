@@ -47,11 +47,12 @@ import { errorsCommand } from './commands/errors.js';
 import { agentCommand } from './commands/agent.js';
 import {
   checkForUpdate,
+  isMachineReadableInvocation,
   notifyIfUpdateAvailable,
   notifyIfUpdateAvailableForDiscovery,
 } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
-import { setActiveProfile, loadActiveProfileFromConfig } from './lib/profile.js';
+import { setActiveProfile } from './lib/profile.js';
 import { describeProgram } from './lib/schema-builder.js';
 
 const program = new Command();
@@ -83,15 +84,13 @@ program
       process.env.FORCE_COLOR = '1';
     }
 
-    // Handle --profile flag, EAI_PROFILE env var, or persisted activeProfile
+    // Handle --profile flag or EAI_PROFILE env var. Plain `eai ...`
+    // intentionally stays on the public production default profile.
     const profileName = opts.profile || process.env.EAI_PROFILE;
     if (profileName) {
       setActiveProfile(profileName);
     } else {
-      const persisted = await loadActiveProfileFromConfig();
-      if (persisted !== 'default') {
-        setActiveProfile(persisted);
-      }
+      setActiveProfile('default');
     }
   });
 
@@ -129,6 +128,7 @@ ${chalk.bold('Getting Started:')}
   ${chalk.cyan('eai init my-app')}     Scaffold an app with Gofer AI CLI assets
   ${chalk.cyan('eai login')}                Authenticate with Entra CIAM
   ${chalk.cyan('eai provision entra')}      Create Entra app registration for end-user auth
+  ${chalk.cyan('eai provision entra --deauthorize --force')} Clean up app auth registration
   ${chalk.cyan('eai env pull')}             Sync app config from cloud
   ${chalk.cyan('eai types seed')}           Publish Object Types to the platform
   ${chalk.cyan('eai dev')}                  Start local development server
@@ -178,15 +178,15 @@ ${chalk.bold('Machine-Readable Output:')}
 
 ${chalk.bold('AI Terminal Workflows:')}
   ${chalk.dim('# New projects include Gofer commands, agents, scripts, hooks, and skills')}
-  ${chalk.cyan('claude')}                   ${chalk.dim('then run /0_business_scenario')}
+  ${chalk.cyan('claude')}                   ${chalk.dim('then run /0_gofer_start')}
   ${chalk.cyan('codex')}                    ${chalk.dim('then ask Codex to use the 1_gofer_research skill')}
   ${chalk.cyan('gemini')}                   ${chalk.dim('then run /gofer:1_gofer_research')}
   ${chalk.cyan('copilot')}                  ${chalk.dim('uses .github/prompts and .github/skills')}
 
 ${chalk.bold('Updates:')}
-  ${chalk.dim('# Check for a newer CLI release and install it safely')}
-  ${chalk.cyan('eai update --check')}       ${chalk.dim('preview the latest published CLI version')}
-  ${chalk.cyan('eai update')}               ${chalk.dim('update the installed CLI package')}
+  ${chalk.dim('# Check/update the CLI, then maintain safe repo-local assets')}
+  ${chalk.cyan('eai update --check')}       ${chalk.dim('preview CLI, Gofer, and template status')}
+  ${chalk.cyan('eai update')}               ${chalk.dim('update the CLI and refresh safe Gofer assets')}
 
   ${chalk.dim('# Preview repo-local Gofer asset updates before writing files')}
   ${chalk.cyan('eai gofer refresh --check')} ${chalk.dim('preview managed Gofer asset updates for this repo')}
@@ -283,7 +283,9 @@ if (cliArgs.includes('--describe')) {
 } else {
   const topLevelCommandName = readTopLevelCommandName(cliArgs);
   const shouldForegroundCheckForUpdate = isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs);
-  const shouldSuppressPostCommandNotice = topLevelCommandName === 'update';
+  const shouldSuppressPostCommandNotice =
+    topLevelCommandName === 'update' ||
+    isMachineReadableInvocation(cliArgs);
 
   if (shouldForegroundCheckForUpdate) {
     await notifyIfUpdateAvailableForDiscovery(pkg.version);
@@ -299,6 +301,6 @@ if (cliArgs.includes('--describe')) {
   await program.parseAsync();
 
   if (!shouldForegroundCheckForUpdate && !shouldSuppressPostCommandNotice) {
-    await notifyIfUpdateAvailable(pkg.version);
+    await notifyIfUpdateAvailable(pkg.version, { args: cliArgs });
   }
 }

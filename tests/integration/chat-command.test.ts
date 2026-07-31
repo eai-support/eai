@@ -45,7 +45,7 @@ function createChatFetchMock(chatResponse: Response): ReturnType<typeof vi.fn> {
       return jsonResponse(tenantListPayload());
     }
 
-    return chatResponse;
+    return chatResponse.clone();
   });
 }
 

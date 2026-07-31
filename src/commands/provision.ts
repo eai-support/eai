@@ -5,6 +5,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import {
@@ -70,6 +71,31 @@ function hasUsableLocalEntraSecret(env: Record<string, string>): boolean {
 
 function hasUsableLocalEntraClientId(env: Record<string, string>): boolean {
   return normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID) !== null;
+}
+
+async function removeEnvFileKeys(projectRoot: string, keys: string[]): Promise<void> {
+  const envPath = join(projectRoot, '.env.local');
+  let content: string;
+  try {
+    content = await readFile(envPath, 'utf-8');
+  } catch {
+    return;
+  }
+
+  const keySet = new Set(keys);
+  const updatedLines = content
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trimStart();
+      for (const key of keySet) {
+        if (line.startsWith(`${key}=`) || trimmed.startsWith(`export ${key}=`)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  const normalized = updatedLines.join('\n').replace(/\n{3,}/g, '\n\n');
+  await writeFile(envPath, normalized.endsWith('\n') ? normalized : `${normalized}\n`, 'utf-8');
 }
 
 function printServerDetail(
@@ -141,8 +167,9 @@ function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
     printServerDetail(ctx, diag);
     out.info('Confirm role with: eai whoami --verbose && eai tenant list');
     if (diag.userOid) {
+      const tenantId = diag.tenantId ?? '<tenant-id>';
       out.info(
-        `Platform team can verify membership at /v4/platform/users/${diag.userOid}/memberships`,
+        `Platform team can verify membership at /v4/platform/tenants/${tenantId}/users/${diag.userOid}/memberships`,
       );
     }
     out.info('Reference: EAI-PROVISION-FORBIDDEN');
@@ -168,6 +195,15 @@ function handleSecretRotationError(err: unknown, diag: DiagnosticsContext): neve
   printServerDetail(ctx, diag);
   out.info('Reference: EAI-PROVISION-ROTATE-SECRET-FAILED');
   out.info('Confirm you are a tenant admin and ENTRA_CLIENT_ID belongs to the active tenant.');
+  process.exit(1);
+}
+
+function handleDeprovisionError(err: unknown, diag: DiagnosticsContext): never {
+  const ctx = readErrorContext(err);
+  out.error('Entra app deprovisioning failed.');
+  printServerDetail(ctx, diag);
+  out.info('Reference: EAI-PROVISION-DEAUTHORIZE-FAILED');
+  out.info('Confirm you are a tenant admin and the client id belongs to the active tenant.');
   process.exit(1);
 }
 
@@ -225,6 +261,9 @@ provisionCommand
   .description('Create an Entra app registration for end-user auth (Auth.js)')
   .option('--force', 'Re-check the remote app registration even if ENTRA_CLIENT_ID already exists locally', false)
   .option('--rotate-secret', 'Rotate the existing ENTRA_CLIENT_ID secret and write the new value to .env.local', false)
+  .option('--deauthorize', 'Remove tenant authorization and delete the Entra app registration for cleanup', false)
+  .option('--client-id <id>', 'Client ID to deauthorize; defaults to ENTRA_CLIENT_ID in .env.local')
+  .option('--keep-registration', 'Only remove tenant authorization; do not delete the Entra app registration', false)
   .option(
     '--redirect-uri <uri>',
     'Additional OAuth redirect URI to register (e.g. a deployed callback). Repeatable. Registered alongside the local callback; the platform merges with existing URIs.',
@@ -237,6 +276,7 @@ Examples:
   $ eai provision entra
   $ eai provision entra --force
   $ eai provision entra --rotate-secret
+  $ eai provision entra --deauthorize --force
   $ eai provision entra --redirect-uri https://abc.com/api/auth/callback/microsoft-entra-id
 
 What happens:
@@ -244,6 +284,7 @@ What happens:
   - Writes ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET to .env.local
   - If the registration already exists, confirms ENTRA_CLIENT_ID without rotating the secret
   - With --rotate-secret, rotates the existing app registration secret through the platform API
+  - With --deauthorize --force, removes tenant authorization, deletes the app registration, and removes local ENTRA_CLIENT_ID/SECRET
   - With --redirect-uri, registers the given deployed callback(s) in addition to the local one (the platform merges them with any already registered)
 
 Diagnostics:
@@ -267,10 +308,11 @@ Diagnostics:
     }
 
     // Check if ENTRA_CLIENT_ID already exists
-    if (hasUsableLocalEntraClientId(env) && !options.force && !options.rotateSecret) {
+    if (hasUsableLocalEntraClientId(env) && !options.force && !options.rotateSecret && !options.deauthorize) {
       out.warn(`ENTRA_CLIENT_ID is already set for ${chalk.cyan(appName)}.`);
       out.info(`Use ${chalk.cyan('eai provision entra --force')} to re-check the remote registration and confirm ENTRA_CLIENT_ID.`);
       out.info(`Use ${chalk.cyan('eai provision entra --rotate-secret')} to rotate and write a new ENTRA_CLIENT_SECRET.`);
+      out.info(`Use ${chalk.cyan('eai provision entra --deauthorize --force')} to clean up the app registration.`);
       process.exit(0);
     }
 
@@ -300,6 +342,56 @@ Diagnostics:
     const diag: DiagnosticsContext = { tenantSlug, tenantId, userOid, debug: Boolean(options.debug) };
 
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
+
+    if (options.deauthorize) {
+      if (options.rotateSecret) {
+        out.error('Choose either --deauthorize or --rotate-secret, not both.');
+        process.exit(1);
+      }
+      if ((options.redirectUri as string[] | undefined)?.length) {
+        out.error('Do not combine --deauthorize with --redirect-uri.');
+        process.exit(1);
+      }
+      if (!options.force) {
+        out.error('Refusing to deauthorize without explicit confirmation.');
+        out.info(`Re-run with ${chalk.cyan('eai provision entra --deauthorize --force')}.`);
+        process.exit(1);
+      }
+
+      const localClientId = normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID);
+      const clientId = normalizeLocalEntraSetting(options.clientId) ?? localClientId;
+      if (!clientId) {
+        out.error('No Entra client id was provided or found in .env.local.');
+        out.info('Pass --client-id <id>, or run from a project with ENTRA_CLIENT_ID in .env.local.');
+        process.exit(1);
+      }
+
+      out.info(`Deauthorizing Entra app registration for ${chalk.cyan(appName)}...`);
+      try {
+        const result = await client.deprovisionEntraApp({
+          tenantId,
+          clientId,
+          deleteRegistration: !options.keepRegistration,
+        });
+        const localEnvCleaned = localClientId === clientId;
+        if (localEnvCleaned) {
+          await removeEnvFileKeys(root, ['ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET']);
+        } else if (localClientId) {
+          out.warn('Local ENTRA_CLIENT_ID belongs to a different app; leaving .env.local unchanged.');
+        }
+        out.success(`Entra app cleanup complete for ${chalk.cyan(appName)}`);
+        out.table([
+          ['Client ID', chalk.dim(result.clientId)],
+          ['Tenant authorization removed', result.tenantDeauthorization.removed ? chalk.green('yes') : chalk.yellow('already absent')],
+          ['App registration found', result.appRegistrationFound ? 'yes' : 'no'],
+          ['App registration deleted', result.appRegistrationDeleted ? 'yes' : options.keepRegistration ? 'kept' : 'already absent'],
+          ['Local env cleaned', localEnvCleaned ? 'ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET' : 'not changed'],
+        ]);
+        return;
+      } catch (err) {
+        handleDeprovisionError(err, diag);
+      }
+    }
 
     if (options.rotateSecret) {
       if (!hasUsableLocalEntraClientId(env)) {
@@ -351,18 +443,28 @@ Diagnostics:
     // so this never drops a previously-registered deployed callback.
     const extraRedirectUris = (options.redirectUri as string[] | undefined) ?? [];
     const redirectUris = [localCallback, ...extraRedirectUris.filter((u) => u !== localCallback)];
+    const existingClientId = normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID);
 
     try {
       result = await client.provisionEntraApp({
         tenantId,
         appName,
         redirectUris,
+        existingClientId: existingClientId ?? undefined,
         // The platform route is intentionally idempotent: it creates on first run and
         // returns the existing app ID on later runs without attempting secret rotation.
         idempotent: true,
       });
     } catch (err) {
       handleProvisionError(err, diag);
+    }
+
+    if (existingClientId && result.clientId !== existingClientId) {
+      out.error('Platform returned a different Entra client id than the one already recorded locally.');
+      out.info(`Local ENTRA_CLIENT_ID: ${chalk.dim(existingClientId)}`);
+      out.info(`Platform ENTRA_CLIENT_ID: ${chalk.dim(result.clientId)}`);
+      out.info('Run `eai provision entra --deauthorize --client-id <old-client-id> --force` for registrations you want to remove, or delete the stale local ENTRA_CLIENT_ID after confirming it is no longer needed.');
+      process.exit(1);
     }
 
     // Build env-var patches that derive from the platform response so the
@@ -375,7 +477,7 @@ Diagnostics:
       optionalEnv.ENTRA_SCOPES = result.scopes.join(' ');
     }
     optionalEnv.ENTRA_REDIRECT_URIS = redirectUris.join(' ');
-    optionalEnv.AUTH_URL = authRuntime.siteUrl;
+    optionalEnv.AUTH_URL = authRuntime.authUrl;
     optionalEnv.NEXTAUTH_URL = authRuntime.siteUrl;
     optionalEnv.AUTH_TRUST_HOST = 'true';
     if (result.environment) {
@@ -612,7 +714,7 @@ function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
-function resolveAuthRuntime(env: Record<string, string>): { siteUrl: string } {
+function resolveAuthRuntime(env: Record<string, string>): { authUrl: string; siteUrl: string } {
   const basePath = normaliseBasePath(env.APP_BASE_PATH);
   const rawUrl = env.NEXTAUTH_URL || env.AUTH_URL || 'http://localhost:3000';
 
@@ -621,9 +723,17 @@ function resolveAuthRuntime(env: Record<string, string>): { siteUrl: string } {
     url.pathname = basePath || stripAuthEndpointPath(url.pathname);
     url.search = '';
     url.hash = '';
-    return { siteUrl: stripTrailingSlash(url.toString()) };
+    const siteUrl = stripTrailingSlash(url.toString());
+    return {
+      authUrl: basePath ? `${siteUrl}/api/auth` : siteUrl,
+      siteUrl,
+    };
   } catch {
-    return { siteUrl: `http://localhost:3000${basePath}` };
+    const siteUrl = `http://localhost:3000${basePath}`;
+    return {
+      authUrl: basePath ? `${siteUrl}/api/auth` : siteUrl,
+      siteUrl,
+    };
   }
 }
 

@@ -1,0 +1,58 @@
+/* @theme gofer-brand */
+
+:root {
+  --gofer-brand-primary: #111827;
+  --gofer-brand-secondary: #f8fafc;
+  --gofer-brand-accent: #0f766e;
+  --gofer-brand-background: #ffffff;
+  --gofer-brand-text: #111827;
+  --gofer-brand-heading-font: "Aptos Display", "Segoe UI", sans-serif;
+  --gofer-brand-body-font: "Aptos", "Segoe UI", sans-serif;
+  --gofer-brand-mono-font: "Cascadia Code", "SFMono-Regular", monospace;
+}
+
+section {
+  background: var(--gofer-brand-background);
+  color: var(--gofer-brand-text);
+  font-family: var(--gofer-brand-body-font);
+  font-size: 28px;
+  line-height: 1.35;
+  padding: 64px 76px;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--gofer-brand-primary);
+  font-family: var(--gofer-brand-heading-font);
+  letter-spacing: -0.02em;
+}
+
+h1 {
+  font-size: 56px;
+}
+
+h2 {
+  font-size: 40px;
+}
+
+strong,
+a {
+  color: var(--gofer-brand-accent);
+}
+
+blockquote {
+  border-left: 8px solid var(--gofer-brand-accent);
+  color: var(--gofer-brand-primary);
+  padding-left: 24px;
+}
+
+code,
+pre {
+  font-family: var(--gofer-brand-mono-font);
+}
+
+footer {
+  color: color-mix(in srgb, var(--gofer-brand-text) 65%, white);
+  font-size: 18px;
+}

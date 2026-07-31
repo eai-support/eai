@@ -22,6 +22,24 @@ description:
 
 # Gofer Plan
 
+## EAI Platform Session Preflight
+
+Before any Gofer stage/helper command does pipeline work:
+
+1. Treat durable delivery as EAI Platform delivery by default, with Azure second
+   and every other stack only by explicit exception.
+2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
+   and an active tenant is visible.
+3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
+   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   approve login/setup before continuing.
+4. For EAI app delivery, do not continue into research, specification, planning,
+   tasks, implementation, or validation until
+   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   app-readiness, and next-action evidence.
+5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+   Gofer artifacts; record only product-safe readiness status and evidence.
+
 ## Token And Cost Policy
 <!-- gofer:token-cost-policy:start -->
 
@@ -74,10 +92,21 @@ This command expects in `.specify/specs/{feature}/`:
 - `research.md` - Codebase analysis (from /1_gofer_research)
 - `spec.md` - Feature specification (from /2_gofer_specify)
 - `goal-ledger.json` - Objective ledger and re-loop triggers (from /1 and /2)
+- `loop-contract.json` - Bounded check-repair contract (from /1 and /2)
 
 If missing, prompt user to run the prerequisite stage.
 
 ---
+
+## Spec Artifact Guard
+
+`spec.md` is the source of truth for scope, acceptance criteria, protected
+boundaries, and downstream traceability. Before planning, the setup script must
+confirm `{FEATURE_DIR}/spec.md` exists, is non-empty, and is not the raw
+`spec-template.md` placeholder seeded by feature bootstrap. If
+`.specify/scripts/bash/setup-plan.sh --json` reports that `spec.md` is missing,
+empty, or `template`, stop and run `/2_gofer_specify`; do not create or refresh
+`plan.md` from research alone.
 
 ## Outline
 
@@ -88,12 +117,15 @@ If missing, prompt user to run the prerequisite stage.
 5. Optional multi-perspective review
 6. Spec coverage validation
 7. Output: `plan.md`, `data-model.md`, `contracts/`, `quickstart.md`
-8. EnterpriseAI profile output: task-ready references to `context-bundle.md`,
+8. Stakeholder PR/FAQ output: `working-backwards-prfaq.md`,
+   `prfaq-history/03-plan.md`, `cto-architecture-summary.md`, and
+   `stakeholder-review-index.md`
+9. EnterpriseAI profile output: task-ready references to `context-bundle.md`,
    `contract-pack.md`, `reuse-scan.md`, `audit-history.md`, and for app
    delivery `ui-review-log.md`, `ui-approval.md`, and
    `service-fit-matrix.md`, including public-readiness, block-porting, source platform
    decoupling, Storybook, theme override, and package-profile decisions
-9. Dynamic-only output: `workflow-dag.md` with shards, inputs, outputs,
+10. Dynamic-only output: `workflow-dag.md` with shards, inputs, outputs,
    reducer expectations, verifier/refuter evidence, budget limits, stop
    conditions, and resumable progress location
 
@@ -136,6 +168,11 @@ Planning dispatches multiple agents — keep main context lightweight.
      exceptions, and public-readiness status when app delivery applies
    - Note whether `goal-ledger.json` exists and which goals, delivery states,
      and re-loop triggers must remain valid through planning
+   - Note whether `loop-contract.json` exists and which evaluation commands,
+     maximum iterations, stop conditions, and escalation triggers must be
+     reflected in implementation phases
+   - If loop-contract.json is missing, initialize it with
+     `node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir {FEATURE_DIR} --stage 3_plan --init --json`
    - Note whether `{FEATURE_DIR}/sequence-diagrams/selected-option.md` exists
 
 3. **Note template path**: `.specify/templates/plan-template.md`
@@ -161,6 +198,7 @@ Read these files for full context:
 - {FEATURE_DIR}/research.md — Technology decisions, integration points, patterns, constraints
 - {FEATURE_DIR}/spec.md — User stories, requirements, success criteria
 - {FEATURE_DIR}/goal-ledger.json — business goals, metrics, delivery states, and re-loop triggers
+- {FEATURE_DIR}/loop-contract.json — bounded loop objective, evaluation commands, max iterations, stop conditions, and escalation rules
 - {FEATURE_DIR}/ui-preview-brief.md — app-delivery preview brief (read if exists, skip if not)
 - {FEATURE_DIR}/ui-review-log.md — app-delivery preview iteration history (read if exists, skip if not)
 - {FEATURE_DIR}/ui-approval.md — app-delivery approval state (read if exists, skip if not)
@@ -199,7 +237,12 @@ Generate the COMPLETE plan.md with these sections:
    - Delivery states (`mock`, `hybrid`, `live`) plus promotion criteria
    - Re-loop triggers that should send the feature back to specify, plan, tasks,
      or validate when contracts, UX scope, assumptions, or implementation drift
-10. AI-Readable Blocks Bridge:
+10. Loop Engineering Plan:
+   - Evaluation commands from loop-contract.json and where they run
+   - Maximum check-repair iteration count per implementation/validation loop
+   - Stop conditions and human escalation triggers
+   - Required ledger evidence to append after each focused loop
+11. AI-Readable Blocks Bridge:
    - Package profile choice: external, internal, or hybrid
    - Package lane for each UI block or package surface
    - Coupling status, including source-platform decoupling boundary or approved
@@ -221,6 +264,8 @@ Rules:
   visible enough for `/4_gofer_tasks` to emit first-class runnable tasks
 - Keep `goal-ledger.json` aligned with any planning-level changes to goals,
   delivery states, or re-loop triggers
+- Keep `loop-contract.json` aligned with plan-level verification commands, stop
+  conditions, and release-critical escalation paths
 
 Write the complete plan to {FEATURE_DIR}/plan.md.
 
@@ -345,6 +390,27 @@ Output to {FEATURE_DIR}/visuals/data-model-erd.md."
 These three artifacts (c4-container.md, bounded-context.md, data-model-erd.md)
 are required for the developer persona pack. The persona-pack completeness gate
 at /4_gofer_tasks start will warn if any are missing.
+
+Visual quality requirements for all planning visuals:
+
+- Answer one review question per visual; split rather than crowding when a
+  diagram has more than about seven primary nodes or steps.
+- Include a plain-language preamble, audience, source inputs, and how to read
+  the visual.
+- Use C4 context/container for boundaries and runtime units, ERD for data,
+  sequence/state for flows, heatmaps for risk/capability priority, and
+  screenshots/storyboards for UI behavior.
+- Keep visuals source-controlled and renderable via Mermaid/D2/Structurizr-style
+  text where practical; otherwise include a markdown-table/text fallback.
+- Generate Marp slide output when stakeholder review needs a simple presentation
+  story; skip it only for small docs-only or mechanical changes where Markdown is
+  clearer.
+- Ensure every human-facing document produced by planning starts with a
+  three-to-five-bullet executive summary in plain language.
+- Link each visual to the requirement, plan decision, contract, code/test path,
+  EAI service/template asset, or validation evidence it summarizes.
+- Do not include tenant-private data, secrets, customer identifiers, or
+  screenshots containing private content.
 
 ### Dynamic-Only: Workflow DAG Writer
 
@@ -600,6 +666,28 @@ Report Red/Yellow/Gray findings with coverage gaps."
 
 ## Step 8: Report and Continue
 
+Before reporting completion, update the stakeholder-facing architecture pack:
+
+1. Update `{FEATURE_DIR}/working-backwards-prfaq.md`.
+   - Add the current architecture story to Internal FAQ CTO / Architecture.
+   - Explain how the solution uses EAI Platform first, the EAI App Template
+     when app delivery applies, Azure as the preferred supporting substrate,
+     and any approved exception.
+   - Summarize auth, authorization, tenant boundary, data model, integration,
+     contract, and deployment assumptions in plain language.
+2. Write `{FEATURE_DIR}/prfaq-history/03-plan.md` as an immutable snapshot.
+3. Create or update `{FEATURE_DIR}/cto-architecture-summary.md` from
+   `.specify/templates/cto-architecture-summary-template.md` using
+   `plan.md`, `contract-pack.md`, `data-model.md`, C4 diagrams,
+   `service-fit-matrix.md`, and `eai-preflight.md` when present.
+4. Update `{FEATURE_DIR}/stakeholder-review-index.md` and explicitly ask
+   CTO / Architecture to approve, revise, or defer the architecture,
+   EAI/Azure fit, auth/tenant model, data model, and integration contracts.
+5. Preserve the existing loop contract: if planning changed eval commands,
+   stop conditions, or escalation rules, update `loop-contract.json` and keep
+   those changes visible in the stakeholder index rather than replacing loop
+   audit behavior.
+
 After all artifacts are created and review gate passes:
 
 ```
@@ -607,9 +695,14 @@ After all artifacts are created and review gate passes:
 
 Artifacts created:
 - plan.md: Implementation phases and architecture
+- loop-contract.json: Bounded evaluation commands and stop rules
 - data-model.md: Entity definitions
 - contracts/: API specifications
 - quickstart.md: Testing guide
+- working-backwards-prfaq.md: Updated product release PR/FAQ
+- prfaq-history/03-plan.md: Architecture-stage PR/FAQ snapshot
+- cto-architecture-summary.md: CTO/EAI Platform architecture review summary
+- stakeholder-review-index.md: Review status and approval asks
 - workflow-dag.md: Dynamic shard/reducer plan (only when effectiveProfile=dynamic)
 
 Engineering Review: PASSED (cycle [N] of 5)

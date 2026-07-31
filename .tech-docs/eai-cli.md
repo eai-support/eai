@@ -14,11 +14,38 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.0 |
-| Released | 2026-06-28 |
-| Last Material Change | Add native app terminology commands |
-| Source Commit | `ff5ebafc7ea71d02bf2a9084c849f14b0647ade0` |
+| Version | 3.8.3 |
+| Released | 2026-07-30 |
+| Last Material Change | Pin generated app template with multi-tab submission ownership |
+| Source Commit | `315f54dae400e3ff2d79da5d37e4c73481e90fc9` |
 
+
+## Install
+
+Recommended install:
+
+```bash
+npm install -g eai-cli
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
+```
 
 ## Common Workflow
 
@@ -52,6 +79,7 @@ eai dev
 | `eai deploy`                            | Translate provider env/secrets and black-box doctor deployed EAI app runtimes.            |
 | `eai gofer`                             | Install and refresh repo-local agent workflow assets.                                     |
 | `eai template`                          | Check app-template and UI drift without writing files.                                    |
+| `eai update`                            | Update the CLI, refresh safe Gofer-managed assets, and report app-template drift.         |
 | `eai verify`, `eai doctor`              | Run connectivity, contract, update, and troubleshooting checks.                           |
 
 ## Output Modes
@@ -78,6 +106,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
 | Work with documents  | `eai docs upload`, `eai docs classify`, `eai docs index` |
+| Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
 
@@ -86,4 +115,5 @@ Prefer product-shaped commands before `eai publicapi`:
 - [Configuration](./configuration.md)
 - [API Reference](./api-reference.md)
 - [Platform Service Patterns](./app-template/service-patterns.md)
+- [V4 Documents And Files](./app-template/documents-and-files.md)
 - [Examples](./examples/index.md)

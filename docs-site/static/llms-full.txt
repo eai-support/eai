@@ -1,17 +1,35 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@eai-tools/cli` v3.6.0.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.8.3.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-npm install -g @eai-tools/cli
+npm install -g eai-cli
+```
+
+Canonical package:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 ```
 
 ## Update & Refresh Model
 
-- `eai update` reinstalls the latest CLI from the scoped EAI registry.
+- `eai update` reinstalls the latest CLI from npmjs, with the static registry as a fallback.
 - `eai gofer refresh` updates Gofer-managed assets without blindly overwriting local work.
 - `eai template check` previews app-template and UI drift without writing files.
 - Template and UI drift are reported by `eai doctor --check-updates` and still require manual review.
@@ -70,6 +88,7 @@ Getting Started:
   eai init my-app     Scaffold an app with Gofer AI CLI assets
   eai login                Authenticate with Entra CIAM
   eai provision entra      Create Entra app registration for end-user auth
+  eai provision entra --deauthorize --force Clean up app auth registration
   eai env pull             Sync app config from cloud
   eai types seed           Publish Object Types to the platform
   eai dev                  Start local development server
@@ -119,15 +138,15 @@ Machine-Readable Output:
 
 AI Terminal Workflows:
   # New projects include Gofer commands, agents, scripts, hooks, and skills
-  claude                   then run /0_business_scenario
+  claude                   then run /0_gofer_start
   codex                    then ask Codex to use the 1_gofer_research skill
   gemini                   then run /gofer:1_gofer_research
   copilot                  uses .github/prompts and .github/skills
 
 Updates:
-  # Check for a newer CLI release and install it safely
-  eai update --check       preview the latest published CLI version
-  eai update               update the installed CLI package
+  # Check/update the CLI, then maintain safe repo-local assets
+  eai update --check       preview CLI, Gofer, and template status
+  eai update               update the CLI and refresh safe Gofer assets
 
   # Preview repo-local Gofer asset updates before writing files
   eai gofer refresh --check preview managed Gofer asset updates for this repo
@@ -167,19 +186,24 @@ Usage: eai update [options]
 Check for and install CLI updates
 
 Options:
-  --check     Only check for updates without installing
-  -h, --help  display help for command
+  --check               Only check for updates without installing
+  --no-project-refresh  Skip Gofer/app-template maintenance for the current
+                        project
+  -h, --help            display help for command
 
 Examples:
   $ eai update --check
   $ eai update
 
 Notes:
-  - The CLI installs from the scoped EAI static registry on GitHub Pages.
-  - One-time setup for manual installs: npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-  - `eai update` upgrades the installed CLI package only; it does not rewrite existing project files.
-  - Use `eai gofer refresh --check` to preview safe repo-local Gofer asset updates.
-  - Use `eai template check` to preview app-template and UI drift before copying changes manually.
+  - The CLI installs from the public npm registry by default.
+  - Recommended install: npm install -g eai-cli
+  - Canonical package install: npm install -g @enterpriseai/cli
+  - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+  - `eai update --check` previews CLI, Gofer, and app-template status without writing files.
+  - `eai update` upgrades the CLI, refreshes safe Gofer-managed files in the current EAI project, and reports app-template drift.
+  - Use `eai gofer refresh --check` to preview Gofer-managed file changes separately.
+  - App-template and UI files are not auto-merged; use `eai template check` to review them.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
 ```
 
@@ -357,7 +381,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.0** (2026-06-28): Add native app terminology commands.
+The current CLI release is **v3.8.3** (2026-07-30): Pin generated app template with multi-tab submission ownership.
 
 
 ## What The Pieces Do
@@ -372,9 +396,27 @@ The current CLI release is **v3.6.0** (2026-06-28): Add native app terminology c
 ## Install The CLI
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-npm install -g @eai-tools/cli
+npm install -g eai-cli
 eai --version
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 ```
 
 ## Create A New App
@@ -453,11 +495,38 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.6.0 |
-| Released | 2026-06-28 |
-| Last Material Change | Add native app terminology commands |
-| Source Commit | `ff5ebafc7ea71d02bf2a9084c849f14b0647ade0` |
+| Version | 3.8.3 |
+| Released | 2026-07-30 |
+| Last Material Change | Pin generated app template with multi-tab submission ownership |
+| Source Commit | `315f54dae400e3ff2d79da5d37e4c73481e90fc9` |
 
+
+## Install
+
+Recommended install:
+
+```bash
+npm install -g eai-cli
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
+```
 
 ## Common Workflow
 
@@ -491,6 +560,7 @@ eai dev
 | `eai deploy`                            | Translate provider env/secrets and black-box doctor deployed EAI app runtimes.            |
 | `eai gofer`                             | Install and refresh repo-local agent workflow assets.                                     |
 | `eai template`                          | Check app-template and UI drift without writing files.                                    |
+| `eai update`                            | Update the CLI, refresh safe Gofer-managed assets, and report app-template drift.         |
 | `eai verify`, `eai doctor`              | Run connectivity, contract, update, and troubleshooting checks.                           |
 
 ## Output Modes
@@ -517,6 +587,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
 | Work with documents  | `eai docs upload`, `eai docs classify`, `eai docs index` |
+| Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
 
@@ -525,6 +596,7 @@ Prefer product-shaped commands before `eai publicapi`:
 - [Configuration](./configuration.md)
 - [API Reference](./api-reference.md)
 - [Platform Service Patterns](./app-template/service-patterns.md)
+- [V4 Documents And Files](./app-template/documents-and-files.md)
 - [Examples](./examples/index.md)
 
 ---
@@ -561,21 +633,24 @@ eai gofer refresh
 Use `--check` before committing to see what would change. Use `--force` only
 when you intentionally want managed files overwritten after review.
 
-## Business Scenario Pipeline
+## Gofer Start Pipeline
 
-For app or platform work, start with the business scenario workflow. The current
+For app or platform work, start with the Gofer Start workflow. The current
 pipeline stages are:
 
-| Stage                 | Purpose                                                                       |
-| --------------------- | ----------------------------------------------------------------------------- |
-| `0_business_scenario` | Triage the business goal and orchestrate the pipeline.                        |
-| `1_gofer_research`    | Discover stakeholders, existing code, platform capabilities, and constraints. |
-| `2_gofer_specify`     | Convert discovery into a feature specification and shared scope.              |
-| `3_gofer_plan`        | Plan architecture, tests, rollback, service usage, and delivery sequencing.   |
-| `4_gofer_tasks`       | Break the plan into implementation tasks.                                     |
-| `5_gofer_implement`   | Implement with tests and focused changes.                                     |
-| `6_gofer_validate`    | Validate correctness, security, integration, tests, and release readiness.    |
-| `7_gofer_save`        | Save evidence and handoff state.                                              |
+| Stage               | Purpose                                                                       |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `0_gofer_start`     | Confirm EAI readiness, frame the business goal, and route the pipeline.       |
+| `1_gofer_research`  | Discover stakeholders, existing code, platform capabilities, and constraints. |
+| `2_gofer_specify`   | Convert discovery into a feature specification and shared scope.              |
+| `3_gofer_plan`      | Plan architecture, tests, rollback, service usage, and delivery sequencing.   |
+| `4_gofer_tasks`     | Break the plan into implementation tasks.                                     |
+| `5_gofer_implement` | Implement with tests and focused changes.                                     |
+| `6_gofer_validate`  | Validate correctness, security, integration, tests, and release readiness.    |
+
+Optional helpers include `0a_problem_validation`, `7_gofer_save`,
+`7a_stakeholder_comms`, `8_gofer_branding`, `9_gofer_tests`, and
+`10_gofer_cloud`.
 
 ## EAI App Delivery Rules
 
@@ -699,6 +774,7 @@ See [Config-Driven UI](./app-template/config-driven-ui.md) for the full pattern.
 | ----------------------- | ------------------------------ | -------------------------------------------------------- |
 | Tenant business records | `useResources('<ObjectType>')` | `eai resources list/get/create/update/delete/query`      |
 | Documents and RAG       | `useDocuments()`               | `eai docs upload`, `eai docs classify`, `eai docs index` |
+| Resource file property  | `useResources().uploadFile`    | `eai resources file upload/get/delete`                   |
 | AI chat                 | `useChat(workflowId, stage)`   | `eai chat send`, `eai chat stream`                       |
 | Advanced route          | server helper or BFF route     | `eai publicapi <method> /v4/...`                         |
 
@@ -707,6 +783,7 @@ See [Config-Driven UI](./app-template/config-driven-ui.md) for the full pattern.
 - [Task Tracker Example](./examples/task-tracker.md)
 - [AI Chat Example](./examples/ai-chat.md)
 - [Platform Service Patterns](./app-template/service-patterns.md)
+- [V4 Documents And Files](./app-template/documents-and-files.md)
 - [eai-gofer](./eai-gofer.md)
 
 ---
@@ -1139,11 +1216,11 @@ should call EAI platform capabilities.
 | Need                 | App Pattern                                                      | CLI Pattern                                                                                 | Notes                                                 |
 | -------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | Frontend composition | `src/eai.config` layout slots plus `src/eai.blocks.tsx` registry | `eai gofer refresh` installs guidance                                                       | Keep config data-only; callbacks belong in overrides. |
-| Data model           | Object Types in `src/eai.config/object-types.ts`                 | `eai types validate`, `eai types seed`, `eai types diff`                                    | Object Types define ResourceAPI contracts.            |
+| Data model           | Object Types in `src/eai.config/object-types.ts`                 | `eai types validate`, `eai types seed`, `eai types diff`                                    | Object Types define resource contracts.               |
 | Structured resources | `useResources(type)` or `client.resources`                       | `eai resources list/get/create/update/delete/query`                                         | Default for tenant business data.                     |
 | Resource actions     | `client.resources.executeAction(type, id, action)`               | named resources command if available; otherwise `eai publicapi post /v4/data/resources/...` | Actions enforce Object Type rules.                    |
 | Resource search      | helper around PublicAPI resource search if SDK support is absent | `eai resources search "<query>" --mode hybrid`                                              | Search is a projection over canonical data.           |
-| Resource files       | helper around resource file routes                               | `eai resources file upload/get/delete`                                                      | Use for file fields on ResourceAPI objects.           |
+| Resource files       | helper around resource file routes                               | `eai resources file upload/get/delete`                                                      | Use for file fields on typed resource objects.        |
 | Documents            | `useDocuments().upload/classify/ragIndex`                        | `eai docs upload`, `eai docs classify`, `eai docs index`                                    | Use for platform document processing and RAG.         |
 | Chat                 | `useChat(workflowId, stage).send/stream`                         | `eai chat send`, `eai chat stream`                                                          | Use `message`, `conversation_id`, and `params`.       |
 | Advanced PublicAPI   | BFF or server helper                                             | `eai publicapi <method> /v4/...`                                                            | Use only when named support is missing.               |
@@ -1206,9 +1283,221 @@ await classify([file]);
 await ragIndex(documentId);
 ```
 
-Use ResourceAPI file routes when the file is a property of a ResourceAPI object.
+Use resource file routes when the file is a property of a typed resource object.
 Use document upload, classification, and RAG routes when the platform should
 process the document content.
+
+For workflow steps, AI-agent questions, and prompting guidance, see
+[V4 Documents And Files](./documents-and-files.md).
+
+---
+
+# V4 Documents And Files
+
+# V4 Documents And Files
+
+Use this guide when deciding how an EAI app, AI agent, or terminal workflow
+should upload files, expose documents to AI, or attach files to business data.
+
+## Decision Tree
+
+| User goal | Correct v4 model | App pattern | CLI pattern |
+| --- | --- | --- | --- |
+| Upload a document so the platform can process, classify, or index it for AI | Document workflow | `useDocuments().upload`, `classify`, `ragIndex` | `eai docs upload`, `eai docs classify`, `eai docs index` |
+| Attach a file to an existing business record | Resource file property | `useResources(type).uploadFile` | `eai resources file upload` |
+| Store an arbitrary blob without a document or resource owner | Not a public v4 app pattern | Ask the user to choose document workflow or resource file property | No named command |
+
+V4 files are not public free-form blob writes. A file belongs to either a
+document workflow or a typed resource property.
+
+## Document Workflow
+
+Use this path when the file itself is the subject of platform processing:
+contracts, policies, evidence packs, supporting documents, reports, PDFs, Word
+files, or knowledge sources.
+
+Step goals:
+
+1. Upload the file with tenant context.
+2. Capture the returned job or document ID.
+3. Classify the document when the app needs type or extraction hints.
+4. Index the document for RAG when chat or workflow stages need to answer from
+   the content.
+5. Pass document IDs and business context into AI workflow calls. Do not give
+   the browser direct blob credentials.
+
+SDK example:
+
+```tsx
+const { upload, classify, ragIndex, getJobStatus } = useDocuments(tenantId);
+
+const uploadResponse = await upload(file, {
+  category: "supporting-document",
+  application_id: applicationId,
+});
+const payload = await uploadResponse.json();
+const documentId =
+  payload.documentId ||
+  payload.documents?.[0]?.documentId ||
+  payload.documents?.[0]?.document_id;
+
+await classify([file]);
+await ragIndex({
+  documentId,
+  businessRequestId: applicationId,
+  documentScope: "br",
+});
+
+if (payload.jobId) {
+  await getJobStatus(payload.jobId);
+}
+```
+
+CLI example:
+
+```bash
+eai docs upload ./supporting-document.pdf
+eai docs classify ./supporting-document.pdf
+eai docs index <document-id>
+```
+
+PublicAPI route:
+
+```text
+POST /v4/data/documents/upload
+```
+
+Use `eai publicapi get /v4/data/documents/jobs/<job-id>` for job status until a
+named CLI job command exists.
+
+## Resource File Property Workflow
+
+Use this path when the file is an attachment to business data: inspection
+photos, signed PDFs, audit evidence, generated reports, or files whose access
+should follow a resource's permissions and lifecycle.
+
+Step goals:
+
+1. Define an Object Type with a `file` property.
+2. Seed the Object Type.
+3. Create or find the owning resource.
+4. Upload the file to the resource file property.
+5. Read, delete, or request short-lived access through the same resource route.
+
+SDK example:
+
+```tsx
+const resources = useResources("ApplicationDocument", tenantId);
+
+const document = await resources.create({
+  title: file.name,
+  applicationId,
+  status: "uploaded",
+});
+
+await resources.uploadFile(document.id, "file", file, {
+  filename: file.name,
+  contentType: file.type || "application/octet-stream",
+});
+
+const fileStatus = await resources.getFileIndexStatus(document.id, "file");
+```
+
+CLI example:
+
+```bash
+eai resources create ApplicationDocument \
+  --tenant-id <tenant-id> \
+  --data '{"title":"supporting-document.pdf","applicationId":"app-123"}'
+
+eai resources file upload ApplicationDocument <resource-id> file ./supporting-document.pdf \
+  --tenant-id <tenant-id>
+```
+
+PublicAPI route:
+
+```text
+POST /v4/data/resources/{tenantId}/{objectType}/{resourceId}/files/{propertyName}
+```
+
+## AI Workflow Access To Documents
+
+AI workflows should receive platform context, not storage URLs. Pass:
+
+- tenant ID;
+- workflow ID and stage;
+- document IDs or resource IDs;
+- the user's goal as `message`;
+- structured IDs and filters in `params` or `runtime_context`.
+
+Example:
+
+```tsx
+await client.chat.send({
+  workflowId: "application-advisor",
+  stage: "review",
+  message: "Summarise the uploaded supporting documents and list missing evidence.",
+  conversationId,
+  params: {
+    applicationId,
+    documentIds: [documentId],
+  },
+  runtime_context: {
+    applicationId,
+    documentIds: [documentId],
+  },
+});
+```
+
+The prompt should ask for an outcome from indexed or attached content, not for a
+blob path.
+
+## Prompt Template For AI Agents
+
+Ask these questions before choosing an API:
+
+```text
+1. Is the file a document to process with AI, or an attachment to a business record?
+2. Should AI answer from the content, classify it, or keep it as evidence only?
+3. Which tenant, workflow, and stage should use the document?
+4. If this is an attachment, which Object Type, resource ID, and file property owns it?
+5. What should happen when the user deletes the resource or document?
+```
+
+If the answer is document processing:
+
+```text
+Use the EAI document workflow: upload, optional classify, optional RAG index,
+then pass document IDs into chat or workflow runtime context.
+```
+
+If the answer is resource attachment:
+
+```text
+Use resource file properties: validate the Object Type file property, create
+or find the resource, upload through the resource file route, and rely on
+resource permissions for access.
+```
+
+If the answer is standalone blob upload:
+
+```text
+There is no public v4 app pattern for arbitrary blob writes. Ask whether the
+user means a document workflow or a resource file property.
+```
+
+## Verification
+
+```bash
+eai whoami
+eai resources schema --tenant-id <tenant-id> --format json
+eai docs upload ./sample.pdf
+eai docs index <document-id>
+eai resources file upload <ObjectType> <resource-id> <property> ./sample.pdf --tenant-id <tenant-id>
+```
+
+Use named commands first. Use `eai publicapi <method> /v4/...` only when an
+authorized v4 route has no named SDK or CLI command yet.
 
 ---
 
@@ -1590,8 +1879,8 @@ Before committing a project that uses the EAI CLI:
 
 # Error Guidance
 
-This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.6.0. The same catalog powers human stderr output, JSON output for AI
+This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
+v3.8.3. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -1605,11 +1894,16 @@ are explicitly listed, and stop when a stop condition matches.
 | `E101` | `not_logged_in` | Not logged in. |
 | `E102` | `access_token_expired` | Access token expired. |
 | `E204` | `permission_denied` | Permission denied. |
+| `E205` | `child_relation_invalid` | The supplied tenant is not an immediate child of the supplied parent. |
+| `E245` | `user_invite_external_service_existing_member` | Tenant member invite failed, but an existing member role repair may be available. |
+| `E246` | `app_token_tenant_context_required` | App-token platform user lookup is missing tenant context. |
 | `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
 | `E270` | `object_type_not_published` | Object Type is not published for the active tenant. |
+| `E275` | `resource_search_embedding_required` | Semantic resource search is not ready for this tenant. |
+| `E276` | `resource_mutation_contract_invalid` | The PublicAPI v4 resource mutation contract is invalid. |
 | `E280` | `workflow_operator_required` | Workflow runtime binding requires operator assistance. |
 | `E244` | `tenant_data_install_no_match` | Tenant data/schema setup is not fully provisioned. |
 
@@ -1737,7 +2031,9 @@ are explicitly listed, and stop when a stop condition matches.
 ### Fixes
 
 - `eai tenant select <tenant>` (changes state) — Switch to a tenant where the user has the required role.
-- `eai tenant bootstrap-admin --parent <parent-id> --child <child-id>` (changes state) — Bootstrap direct child tenant admin access when the user is authorized as the parent tenant admin. Only when the user is already an authorized parent tenant admin.
+- `eai user invite --email <email> --tenant <tenant-id> --role tenant-admin` (changes state) — Add or refresh a user membership and assign a tenant role when you are already tenant-admin for that tenant. Use for normal "add this person as a tenant member/admin" requests.
+- `eai user roles --tenant <tenant-id> --format json` (read-only) — List assignable tenant roles before choosing a role for an invite.
+- `eai tenant bootstrap-admin --parent <parent-id> --child <child-id>` (changes state) — Repair first tenant-admin access for an immediate child tenant. Only when the target tenant is an immediate child of the supplied parent and does not already have usable tenant-admin access.
 
 ### Stop Conditions
 
@@ -1749,6 +2045,127 @@ are explicitly listed, and stop when a stop condition matches.
 - active tenant slug
 - requested command
 - request ID if present
+
+## E205: The supplied tenant is not an immediate child of the supplied parent.
+
+| Field | Value |
+| --- | --- |
+| Reason | `child_relation_invalid` |
+| Category | `authorization` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The child-tenant bootstrap command is intentionally narrow.
+- It only works when the parent ID is the direct parent of the child tenant.
+- This error often appears when an agent uses bootstrap-admin for normal user addition instead of the tenant member invite flow.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the signed-in user and active tenant.
+- `eai tenant info <tenant-id> --format json` (read-only) — Inspect the target tenant before retrying a tenant relationship command.
+- `eai user roles --tenant <tenant-id> --format json` (read-only) — List assignable roles when the intended task is adding or updating a user.
+
+### Fixes
+
+- `eai user invite --email <email> --tenant <tenant-id> --role tenant-admin` (changes state) — Add or update a user as tenant-admin on an existing tenant. Use when the goal is to add a person to a tenant or app context.
+- `eai tenant bootstrap-admin --parent <direct-parent-id> --child <immediate-child-id>` (changes state) — Retry the child bootstrap repair with the direct parent and immediate child IDs. Use only for first-admin child tenant repair, not normal member management.
+
+### Stop Conditions
+
+- The supplied parent and child are not a direct parent-child pair.
+
+### Escalation Evidence
+
+- signed-in email
+- active tenant slug
+- target tenant slug
+- requested command
+
+## E245: Tenant member invite failed, but an existing member role repair may be available.
+
+| Field | Value |
+| --- | --- |
+| Reason | `user_invite_external_service_existing_member` |
+| Category | `external_service` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The invite/add flow reached an external identity or notification dependency that returned a server-side failure.
+- The target person may already exist as a direct tenant member with a lower role, so retrying the same invite can fail without changing access.
+- When a member record already exists, the supported recovery is to update that member through EAI CLI instead of editing data stores or cloud portals directly.
+- Applications may cache tenant role claims in their Auth.js session or JWT, so the user may need to sign out and sign back in after a role change.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the signed-in user, active tenant, and profile before changing membership.
+- `eai user roles --tenant <tenant-id> --format json` (read-only) — Confirm the target role is assignable in this tenant.
+- `eai user list --tenant <tenant-id> --search <email> --format json` (read-only) — Check whether the person already exists as a direct tenant member and capture the member ID.
+
+### Fixes
+
+- `eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json` (changes state) — Update the existing direct member to tenant-admin through the approved EAI tenant-member role endpoint. Use only after eai user list confirms the existing member ID and the user approves the role change.
+- `eai user invite --email <email> --tenant <tenant-id> --role <role> --format json` (changes state) — Retry the normal invite/add flow when no existing direct member is found and the failure was transient. Use only within the retry limit and after read-only diagnostics confirm the tenant and role.
+
+### Stop Conditions
+
+- The same external service error repeats after bounded retry.
+- The existing member is found but role update is not approved by the user.
+- The signed-in user is not allowed to change tenant membership.
+
+### Escalation Evidence
+
+- request ID
+- HTTP status
+- server code
+- CLI version
+- active tenant slug
+- redacted command shape
+
+## E246: App-token platform user lookup is missing tenant context.
+
+| Field | Value |
+| --- | --- |
+| Reason | `app_token_tenant_context_required` |
+| Category | `tenant_context` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The platform call authenticated, but the request did not carry the tenant context required for app-token user or membership operations.
+- This is commonly seen as MISSING_TENANT or "Tenant context required for app tokens" on platform user lookup or membership prerequisite calls.
+- Do not treat this as the first signal to edit tenant members, role definitions, Entra configuration, databases, or cloud portals.
+- For platform automation app-token flows outside tenant app runtime, use the tenant-scoped platform routes instead of root user lookup routes.
+- If the same route works in current main but fails in an environment, the deployed PublicAPI/AdminAPI may be behind the release that adds tenant-scoped routing hardening.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm login, active tenant, profile, and PublicAPI context.
+- `eai tenant list --format json` (read-only) — Confirm the target tenant is visible before retrying tenant-scoped calls.
+- `eai publicapi get /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Verify user lookup through the tenant-scoped platform route.
+- `eai publicapi get /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Verify membership lookup through the tenant-scoped platform route.
+
+### Fixes
+
+- `eai tenant select <tenant>` (changes state) — Select the tenant that should provide app-token context.
+- `Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Replace root platform user lookup with the tenant-scoped V4 route in platform automation app-token flows.
+- `Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Replace root platform membership lookup with the tenant-scoped V4 route in platform automation app-token flows.
+- `Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions` (read-only) — Keep tenant member and role-definition reads on the tenant-scoped V4 surface.
+
+### Stop Conditions
+
+- The tenant-scoped route returns the same MISSING_TENANT result.
+- The environment is running older PublicAPI/AdminAPI versions than the release with tenant-scoped platform routing hardening.
+
+### Escalation Evidence
+
+- CLI version
+- redacted route shape
+- HTTP status
+- server code
+- active tenant slug
+- deployed PublicAPI/AdminAPI versions if visible
 
 ## E242: Tenant data-plane authorization incomplete.
 
@@ -1922,6 +2339,79 @@ None.
 - active tenant slug
 - CLI version
 - types seed summary
+
+## E275: Semantic resource search is not ready for this tenant.
+
+| Field | Value |
+| --- | --- |
+| Reason | `resource_search_embedding_required` |
+| Category | `resource_data` |
+| Severity | `warning` |
+
+### Why This Might Happen
+
+- The v4 resource search endpoint can be available for full-text search while semantic search modes are still not ready.
+- Hybrid and vector search need an additional semantic-search capability before the platform can create query embeddings.
+- This is not fixed by retrying the same hybrid or vector search command; use full-text search or check readiness first.
+- This guidance applies to eai resources commands using the public v4 resource surface.
+
+### Diagnostics
+
+- `eai resources storage doctor --format json` (read-only) — Check whether fulltext, hybrid, and vector search are ready for the active tenant.
+- `eai resources schema --format json` (read-only) — Confirm the tenant has published Object Types to search.
+
+### Fixes
+
+- `eai resources search "<query>" --fulltext` (read-only) — Run a full-text search path that does not require semantic-search readiness. Use this when storage doctor reports fulltext ready but hybrid/vector unavailable.
+
+### Stop Conditions
+
+- The same hybrid or vector command still reports semantic-search readiness as unavailable.
+- Full-text search also fails, which means the issue is broader than semantic-search readiness.
+
+### Escalation Evidence
+
+- active tenant slug
+- search mode used
+- storage doctor search capabilities
+- CLI version
+
+## E276: The PublicAPI v4 resource mutation contract is invalid.
+
+| Field | Value |
+| --- | --- |
+| Reason | `resource_mutation_contract_invalid` |
+| Category | `resource_data` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- PublicAPI v4 intentionally rejects legacy flat resource bodies and PATCH updates.
+- Create requires POST with {"data": {...}}.
+- Update requires PUT with {"data": {...}, "version": n}, where n is the latest resource version.
+- A resource action requires POST with {"params": {...}} and returns the new version for any follow-up update.
+
+### Diagnostics
+
+- `eai resources get <type> <id> --format json` (read-only) — Read the current resource and version before an update. Required for updates, especially after an action or another writer.
+
+### Fixes
+
+- `eai publicapi post /v4/data/resources/<tenant-id>/<type> --data '{"data":{...}}'` (changes state) — Create a resource using the strict v4 data envelope.
+- `eai publicapi put /v4/data/resources/<tenant-id>/<type>/<id> --data '{"data":{...},"version":<current-version>}'` (changes state) — Update a resource with PUT and the latest optimistic-lock version.
+- `eai publicapi post /v4/data/resources/<tenant-id>/<type>/<id>/actions/<action> --data '{"params":{...}}'` (changes state) — Execute a resource action with the strict params envelope.
+
+### Stop Conditions
+
+- The corrected method and body still return the same contract error.
+- The update uses the latest version but returns a version conflict.
+
+### Escalation Evidence
+
+- command without secrets
+- HTTP status
+- server error code
+- request ID
 
 ## E280: Workflow runtime binding requires operator assistance.
 
@@ -2197,15 +2687,76 @@ Soft-delete a tenant.
 ### User Management Commands
 
 #### `eai user invite`
-Add an existing user to a tenant via the tenant-admin provisioning flow.
+Invite or provision a user into a tenant via the V4 tenant member-invite flow.
+Use this when a tenant admin needs to add a member or promote a trusted user to
+`tenant-admin`.
 
 **Options**:
 - `--email <email>` — Email of the user to add
 - `--tenant <id>` — Target tenant (default: active tenant)
+- `--role <role>` — Target base role (default: `tenant-viewer`; supported base roles are `tenant-viewer`, `tenant-staff`, `tenant-builder`, `tenant-admin`)
+- `--role-definition-id <id>` — Assign a specific tenant role definition instead of a base role
+- `--first-name <name>` — Optional first name for invite/provisioning context
+- `--last-name <name>` — Optional last name for invite/provisioning context
+- `--message <message>` — Optional invite message
+- `--redirect-uri <uri>` — Optional post-acceptance redirect URI
+- `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/platform/users/by-email?email=...` — look up the user
-- `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — provision the user into the tenant
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — invite or provision the tenant member with the requested role
+
+---
+
+#### `eai user list`
+List members in the active tenant or an explicit tenant.
+
+**Options**:
+- `--tenant <id>` — Target tenant (default: active tenant)
+- `--search <query>` — Search by email or name
+- `--page <number>` — Page number (default: 1)
+- `--limit <number>` — Page size (default: 25)
+- `--sort <field>` — Sort field (default: email)
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v4/platform/tenants/{tenantId}/members` — list tenant members
+
+---
+
+#### `eai user roles`
+List role definitions available for tenant member invitation.
+
+**Options**:
+- `--tenant <id>` — Target tenant (default: active tenant)
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `GET /v4/platform/tenants/{tenantId}/role-definitions` — list assignable tenant role definitions
+
+---
+
+#### `eai user role set`
+Assign a tenant member role. Email-based role assignment uses the V4 invite/add
+flow so agents can handle "user already exists", "user is new to this tenant",
+and "user needs a tenant-admin role" with one command.
+
+**Options**:
+- `--email <email>` — Add or update a user by email through the invite/add flow
+- `--member-id <id>` — Existing tenant member/user ID for the direct role update endpoint
+- `--tenant <id>` — Target tenant (default: active tenant)
+- `--role <role>` — Role to assign. Email-based updates support `tenant-viewer`, `tenant-staff`, `tenant-builder`, and `tenant-admin`; member-id updates support the platform role update contract.
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoints Used**:
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — email-based add/update with a role
+- `PATCH /v4/platform/tenants/{tenantId}/members/{memberId}/roles` — direct member-id role update
+
+---
+
+**Agent rule**: for normal user addition or tenant-admin assignment, use
+`eai user invite --email <email> --tenant <tenant-id> --role <role>`.
+`eai tenant bootstrap-admin` is only for first-admin repair on an immediate child
+tenant.
 
 ---
 
@@ -2226,15 +2777,20 @@ Create or confirm an Entra app registration for end-user auth (Auth.js).
 **Options**:
 - `--force` — Re-check the remote app registration even if `ENTRA_CLIENT_ID` already exists locally
 - `--rotate-secret` — Rotate the existing secret and write the new value to `.env.local`
+- `--deauthorize` — Remove tenant authorization and delete the app registration for cleanup; requires `--force`
+- `--client-id <id>` — Client ID to deauthorize; defaults to `ENTRA_CLIENT_ID` in `.env.local`
+- `--keep-registration` — Remove tenant authorization without deleting the app registration
 - `--debug` — Print product-safe diagnostics and request identifiers on failure
 
 **What it does**:
 1. Creates/confirms the Entra app registration on the platform
 2. Writes the client ID (and secret) to `.env.local`
+3. With `--deauthorize --force`, removes tenant authorization, deletes the app registration, and removes local `ENTRA_CLIENT_ID`/`ENTRA_CLIENT_SECRET`
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/provisioning/entra-apps` — create/confirm app registration
 - `POST /v4/platform/provisioning/entra-apps/{clientId}/rotate-secret` — rotate secret (with `--rotate-secret`)
+- `DELETE /v4/platform/provisioning/entra-apps/{clientId}` — deauthorize/delete app registration (with `--deauthorize --force`)
 
 ---
 
@@ -2956,7 +3512,7 @@ Audit the platform API contracts used by the CLI. All checks are read-only unles
 - `--chat-message <message>` — Message to send when probing chat
 - `--format <format>` — Output format (text|json, default: text)
 
-**Endpoints probed** (subset, depending on flags): `GET /health`, `GET /v4/platform/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
+**Endpoints probed** (subset, depending on flags): `GET /health`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
 
 ---
 
@@ -2967,19 +3523,59 @@ Comprehensive diagnostics with fix suggestions.
 - `--fix` — Attempt to fix issues automatically
 - `--check-updates` — Report CLI release status plus Gofer/template drift
 
-**API calls**: local checks only; optionally reads the EAI static registry for the update check.
+**API calls**: local checks only; optionally reads npmjs and the EAI static
+registry fallback for the update check.
 
 ---
 
 ### Maintenance Commands
 
 #### `eai update`
-Check for and install CLI updates from the EAI static registry.
+Check for and install CLI updates from npmjs, with the EAI static registry as a
+fallback, then maintain
+safe repo-local project assets when the command is run inside an EAI project.
 
 **Options**:
-- `--check` — Only check for updates without installing
+- `--check` — Only check for CLI, Gofer, and app-template status without installing or writing files
+- `--no-project-refresh` — Skip Gofer/app-template maintenance for the current project
 
-**Update channel**: `https://eai-tools.github.io/eai/registry/@eai-tools/cli`. No platform API calls.
+**Primary update channel**: npmjs package `eai-cli` or `@enterpriseai/cli`.
+**Static fallback channel**: `https://eai-tools.github.io/eai/registry/@enterpriseai/cli`.
+
+Recommended install:
+
+```bash
+npm install -g eai-cli
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
+```
+
+No platform API calls.
+
+**Project maintenance**:
+- Normal `eai update` refreshes safe Gofer-managed files with the same backups
+  and conflict detection as `eai gofer refresh`.
+- App-template and UI files are not auto-merged. The CLI reports drift and
+  points to `eai template check` for manual review.
+- Interactive update prompts are suppressed for CI, non-TTY, `--describe`,
+  `--format json`, and `--json`.
 
 ---
 
@@ -2991,7 +3587,8 @@ Safely refresh Gofer-managed assets in the current project.
 - `--force` — Overwrite conflicting managed files after backing them up
 - `--format <format>` — Output format (text|json, default: text)
 
-**No API calls** — local file diff and copy from the bundled Gofer assets
+**No API calls** — local file diff and copy from the latest public `eai-gofer`
+release when available, falling back to bundled Gofer assets
 
 ---
 
@@ -3021,9 +3618,13 @@ Preview file-level app-template / UI drift without writing to the repo.
 - `POST /v4/platform/tenants/{companyTenantId}/apps` — Create app enrollment
 
 ### Platform — Users & Capabilities
-- `GET /v4/platform/users/by-email` — Look up a user by email
-- `GET /v4/platform/users/{oid}/memberships` — User memberships
+- `GET /v4/platform/tenants/{tenantId}/users/by-email` — Look up a user by email in a tenant context
+- `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships` — User memberships in a tenant context
 - `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — Provision a user into a tenant
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — Invite or provision a tenant member with a role
+- `GET /v4/platform/tenants/{tenantId}/members` — List tenant members
+- `GET /v4/platform/tenants/{tenantId}/role-definitions` — List assignable tenant role definitions
+- `PATCH /v4/platform/tenants/{tenantId}/members/{memberId}/roles` — Update a tenant member role
 - `POST /v4/platform/capabilities/evaluate` — Evaluate a capability decision
 
 ### Platform — Provisioning (Entra)

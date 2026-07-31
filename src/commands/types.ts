@@ -54,7 +54,28 @@ export interface TypeSeedResult {
   error?: string;
 }
 
-interface RemoteObjectTypeDocument {
+export interface TypeDiffEntry {
+  name: string;
+  slug?: string;
+  addedProperties: string[];
+  removedProperties: string[];
+  unchangedProperties: string[];
+}
+
+export interface TypeDiffResult {
+  tenantKey: string;
+  tenantId?: string;
+  resolutionSource?: TenantResolution["source"];
+  localCount: number;
+  remoteCount: number;
+  localOnly: TypeDiffEntry[];
+  remoteOnly: TypeDiffEntry[];
+  changed: TypeDiffEntry[];
+  unchanged: TypeDiffEntry[];
+  error?: string;
+}
+
+export interface RemoteObjectTypeDocument {
   id?: string;
   name: string;
   slug?: string;
@@ -92,6 +113,19 @@ const RESOURCEAPI_SCHEMA_SYNC_NON_FAILURE_STATUSES = new Set([
   "synced",
 ]);
 const RESOURCEAPI_SCHEMA_SYNC_ASYNC_STATUSES = new Set(["pending", "queued"]);
+const RESOURCEAPI_SCHEMA_BACKGROUND_APPLY_UNTRUSTED_INSTALL =
+  "RESOURCEAPI_SCHEMA_BACKGROUND_APPLY_UNTRUSTED_INSTALL";
+const RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT =
+  "RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT";
+
+export interface ResourceApiSchemaSyncGuidance {
+  title: string;
+  currentState: string;
+  reason: string;
+  fix: string;
+  nextSteps: string[];
+  platformActionRequired: boolean;
+}
 
 function isBlockingResourceApiSchemaSyncStatus(
   status: string | undefined,
@@ -100,6 +134,191 @@ function isBlockingResourceApiSchemaSyncStatus(
     return false;
   }
   return !RESOURCEAPI_SCHEMA_SYNC_NON_FAILURE_STATUSES.has(status);
+}
+
+function optionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const result = optionalString(value);
+    if (result) {
+      return result;
+    }
+  }
+  return undefined;
+}
+
+function resourceApiSchemaSyncInstallContext(sync: Record<string, unknown>): {
+  installId?: string;
+  mode?: string;
+  endpoint?: string;
+  tenantId?: string;
+} {
+  const result = isRecord(sync.result) ? sync.result : {};
+  const details = isRecord(sync.details) ? sync.details : {};
+  const trustFingerprint = isRecord(sync.installTrustFingerprint)
+    ? sync.installTrustFingerprint
+    : isRecord(result.installTrustFingerprint)
+      ? result.installTrustFingerprint
+      : isRecord(details.installTrustFingerprint)
+        ? details.installTrustFingerprint
+        : {};
+
+  return {
+    installId: firstString(
+      trustFingerprint.installId,
+      result.installId,
+      details.installId,
+      sync.installId,
+    ),
+    mode: firstString(
+      trustFingerprint.mode,
+      result.mode,
+      details.mode,
+      sync.mode,
+    ),
+    endpoint: firstString(
+      trustFingerprint.endpoint,
+      result.endpoint,
+      details.endpoint,
+      sync.endpoint,
+    ),
+    tenantId: firstString(sync.tenantId, result.tenantId, details.tenantId),
+  };
+}
+
+export function resourceApiSchemaSyncGuidance(
+  sync: Record<string, unknown>,
+): ResourceApiSchemaSyncGuidance | undefined {
+  const errorCode = firstString(sync.errorCode, sync.error_code);
+  if (errorCode === RESOURCEAPI_SCHEMA_BACKGROUND_APPLY_UNTRUSTED_INSTALL) {
+    const { installId, mode, tenantId } =
+      resourceApiSchemaSyncInstallContext(sync);
+    const install = installId
+      ? `EAI resource runtime install ${installId}`
+      : "the selected EAI resource runtime install";
+    const modeSentence = mode
+      ? ` The tenant metadata currently says mode=${mode}.`
+      : "";
+    const tenantFlag = tenantId
+      ? ` --tenant-id ${tenantId}`
+      : " --tenant-id <tenant-id>";
+    const installFlag = installId
+      ? ` --install-id ${installId}`
+      : " --install-id <install-id>";
+
+    return {
+      title:
+        "EAI resource schema apply was skipped because the install is not trusted for automatic apply.",
+      currentState:
+        "The Object Types were published to platform metadata, but the live EAI resource runtime schema was not refreshed. The runtime can still serve an older schema snapshot, so reads or writes for the new Object Types may fail.",
+      reason: `${install} was not accepted as an EAI-hosted install for the background schema apply.${modeSentence} EAI-managed eai-* installs should normally be mode=eai-hosted; customer-hosted-passive is only for an explicit customer-hosted passive install.`,
+      fix: "A platform admin needs to repair the tenant resource runtime install metadata so the EAI-managed install is mode=eai-hosted, then re-run the resource schema apply or publish flow.",
+      nextSteps: [
+        `Check the current schema: eai resources schema${tenantFlag} --format json`,
+        `Repair canonical EAI install metadata using platform administration tooling: npx tsx scripts-new/backfill-resourceapi-installs.ts --env <test|prod>${tenantFlag} --execute [--confirm-prod]`,
+        `Refresh the EAI resource runtime after the metadata repair: eai provision resourceapi-refresh${tenantFlag}${installFlag} --apply --force-overwrite --reason "Repair EAI resource schema after install mode fix"`,
+        "Retry the Object Type publish or seed command and confirm the EAI resource schema includes the new Object Types.",
+      ],
+      platformActionRequired: true,
+    };
+  }
+
+  if (errorCode === RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT) {
+    return {
+      title: "EAI resource schema visibility timed out.",
+      currentState:
+        "The schema apply was queued or started, but the CLI could not see the requested Object Types through the schema read path before its timeout.",
+      reason:
+        "This usually means the background apply is still running, the EAI resource runtime is serving a stale snapshot, or one of the requested Object Types failed to apply.",
+      fix: "Check the EAI resource schema/status output and rerun the apply if the Object Types do not appear after the background work settles.",
+      nextSteps: [
+        "Check schema status: eai resources schema --format json",
+        "If the types are still missing, rerun the EAI resource schema apply for the tenant.",
+        "If it repeats, inspect platform administration and resource runtime logs for the schema apply request.",
+      ],
+      platformActionRequired: true,
+    };
+  }
+
+  return undefined;
+}
+
+export function enrichResourceApiSchemaSync(
+  sync: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!sync) {
+    return undefined;
+  }
+  const guidance = resourceApiSchemaSyncGuidance(sync);
+  return guidance ? { ...sync, guidance } : sync;
+}
+
+function readEmbeddedResourceApiSchemaSyncGuidance(
+  value: unknown,
+): ResourceApiSchemaSyncGuidance | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const nextSteps = readStringArray(value.nextSteps);
+  if (
+    typeof value.title !== "string" ||
+    typeof value.currentState !== "string" ||
+    typeof value.reason !== "string" ||
+    typeof value.fix !== "string" ||
+    nextSteps.length === 0
+  ) {
+    return undefined;
+  }
+  return {
+    title: value.title,
+    currentState: value.currentState,
+    reason: value.reason,
+    fix: value.fix,
+    nextSteps,
+    platformActionRequired: value.platformActionRequired === true,
+  };
+}
+
+function printResourceApiSchemaSyncSummary(
+  resourceApiSchemaSync: Record<string, unknown> | undefined,
+): void {
+  if (!resourceApiSchemaSync) {
+    return;
+  }
+  const syncStatus = optionalString(resourceApiSchemaSync.status);
+  if (!syncStatus) {
+    return;
+  }
+
+  const line = `Resource schema sync: ${chalk.cyan(syncStatus)}`;
+  if (isBlockingResourceApiSchemaSyncStatus(syncStatus.toLowerCase())) {
+    out.warn(line);
+  } else {
+    out.info(line);
+  }
+
+  const guidance =
+    readEmbeddedResourceApiSchemaSyncGuidance(resourceApiSchemaSync.guidance) ??
+    resourceApiSchemaSyncGuidance(resourceApiSchemaSync);
+  if (!guidance) {
+    return;
+  }
+
+  out.warn(guidance.title);
+  out.info(`Current state: ${guidance.currentState}`);
+  out.info(`Reason: ${guidance.reason}`);
+  out.info(`Fix: ${guidance.fix}`);
+  out.info("Next steps:");
+  guidance.nextSteps.forEach((step, index) => {
+    out.info(`${index + 1}. ${step}`);
+  });
 }
 
 export interface TypeDefaultValueValidationIssue {
@@ -121,6 +340,33 @@ const VALID_STORAGE_BACKENDS = [
   "search",
 ] as const;
 const VALID_STORAGE_METADATA_STATUSES = ["draft", "ready"] as const;
+const APP_SQL_DATABASE_ALIAS = "tenant-postgres";
+const LEGACY_SHARED_SQL_DATABASE_ALIAS = "resourceapi-postgres";
+
+export function tenantStorageScope(tenantId: string): string {
+  const scope =
+    tenantId
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "")
+      .slice(-12) || "tenant";
+  return /^[a-z]/.test(scope) ? scope : `t${scope}`;
+}
+
+export function storageNamePrefix(parts: string[], separator = "_"): string {
+  const replacement = separator === "-" ? "-" : "_";
+  return parts
+    .map((part) => String(part || "").toLowerCase().replace(/-/g, separator))
+    .join(separator)
+    .replace(/[^a-z0-9_-]+/g, replacement)
+    .replace(/^[_-]+|[_-]+$/g, "");
+}
+
+export function appOwnedSqlTablePrefix(
+  tenantId: string,
+  tenantKey: string,
+): string {
+  return `${storageNamePrefix([tenantStorageScope(tenantId), tenantKey], "_")}_`;
+}
 
 export function collectTypeDefaultValueValidationIssues(
   objectTypes: Record<string, ObjectTypeDefinition[]>,
@@ -134,6 +380,10 @@ export function collectTypeDefaultValueValidationIssues(
       })),
     ),
   );
+}
+
+export interface TypeStorageValidationOptions {
+  tenantIdsByKey?: Record<string, string | undefined>;
 }
 
 function hasStorageValue(value: unknown): boolean {
@@ -249,12 +499,71 @@ export function validateObjectTypeStorageMetadata(
   return issues;
 }
 
+export function validateObjectTypeAppOwnedStorageMetadata(
+  type: ObjectTypeDefinition,
+  tenantKey: string,
+  tenantId?: string,
+): string[] {
+  const issues: string[] = [];
+  const backend = type.storageBackend || "postgresql";
+  const storageMetadataStatus = type.storageMetadataStatus || "draft";
+
+  if (backend !== "postgresql" || storageMetadataStatus !== "ready") {
+    return issues;
+  }
+
+  const sql = getStorageBindingScope(type.storageBinding, "sql");
+  const databaseAlias = sql?.databaseAlias;
+  const tableName = sql?.tableName;
+  const appKeyFragment = `${storageNamePrefix([tenantKey], "_")}_`;
+
+  if (databaseAlias === LEGACY_SHARED_SQL_DATABASE_ALIAS) {
+    issues.push(
+      `PostgreSQL storageBinding databaseAlias "${LEGACY_SHARED_SQL_DATABASE_ALIAS}" is a legacy shared platform alias. Use "${APP_SQL_DATABASE_ALIAS}" for tenant app Object Types.`,
+    );
+  }
+
+  if (databaseAlias !== APP_SQL_DATABASE_ALIAS) {
+    return issues;
+  }
+
+  if (typeof tableName !== "string" || tableName.trim() === "") {
+    return issues;
+  }
+
+  if (tenantId) {
+    const expectedPrefix = appOwnedSqlTablePrefix(tenantId, tenantKey);
+    if (!tableName.startsWith(expectedPrefix)) {
+      issues.push(
+        `PostgreSQL storageBinding tableName "${tableName}" must start with app-owned prefix "${expectedPrefix}". Run eai app provision, then update Object Type storage bindings before publishing.`,
+      );
+    }
+    return issues;
+  }
+
+  if (!tableName.includes(appKeyFragment)) {
+    issues.push(
+      `PostgreSQL storageBinding tableName "${tableName}" does not include the app key fragment "${appKeyFragment}". Run eai types validate --tenant-key ${tenantKey} --tenant-id <tenant-id> to check the exact app-owned prefix.`,
+    );
+  }
+
+  return issues;
+}
+
 export function collectTypeStorageValidationIssues(
   objectTypes: Record<string, ObjectTypeDefinition[]>,
+  options: TypeStorageValidationOptions = {},
 ): TypeStorageValidationIssue[] {
   return Object.entries(objectTypes).flatMap(([tenantKey, types]) =>
     types.flatMap((type) =>
-      validateObjectTypeStorageMetadata(type).map((issue) => ({
+      [
+        ...validateObjectTypeStorageMetadata(type),
+        ...validateObjectTypeAppOwnedStorageMetadata(
+          type,
+          tenantKey,
+          options.tenantIdsByKey?.[tenantKey],
+        ),
+      ].map((issue) => ({
         tenantKey,
         typeName: type.name,
         issue,
@@ -488,6 +797,107 @@ function findMatchingRemoteType(
   return findMatchingRemoteTypes(remoteDocs, requestedType)[0];
 }
 
+function propertyNames(properties: unknown[]): string[] {
+  return properties
+    .map((property) =>
+      isRecord(property) && typeof property.name === "string"
+        ? property.name
+        : null,
+    )
+    .filter((name): name is string => Boolean(name));
+}
+
+function diffEntry(
+  name: string,
+  slug: string | undefined,
+  addedProperties: string[] = [],
+  removedProperties: string[] = [],
+  unchangedProperties: string[] = [],
+): TypeDiffEntry {
+  return {
+    name,
+    ...(slug ? { slug } : {}),
+    addedProperties,
+    removedProperties,
+    unchangedProperties,
+  };
+}
+
+export function diffObjectTypesForTenant(
+  tenantKey: string,
+  tenantId: string | undefined,
+  resolutionSource: TenantResolution["source"] | undefined,
+  localTypes: ObjectTypeDefinition[],
+  remoteDocs: RemoteObjectTypeDocument[],
+): TypeDiffResult {
+  const matchedRemoteNames = new Set<string>();
+  const result: TypeDiffResult = {
+    tenantKey,
+    tenantId,
+    resolutionSource,
+    localCount: localTypes.length,
+    remoteCount: remoteDocs.length,
+    localOnly: [],
+    remoteOnly: [],
+    changed: [],
+    unchanged: [],
+  };
+
+  for (const localType of localTypes) {
+    const remote = findMatchingRemoteType(remoteDocs, localType.name);
+    if (!remote) {
+      result.localOnly.push(
+        diffEntry(localType.name, toObjectTypeSlug(localType.name)),
+      );
+      continue;
+    }
+
+    matchedRemoteNames.add(remote.name);
+    const localPropNames = new Set(localType.properties.map((p) => p.name));
+    const remotePropNames = new Set(propertyNames(remote.properties));
+    const addedProperties = [...localPropNames].filter(
+      (property) => !remotePropNames.has(property),
+    );
+    const removedProperties = [...remotePropNames].filter(
+      (property) => !localPropNames.has(property),
+    );
+    const unchangedProperties = [...localPropNames].filter((property) =>
+      remotePropNames.has(property),
+    );
+    const entry = diffEntry(
+      localType.name,
+      remote.slug ?? toObjectTypeSlug(localType.name),
+      addedProperties,
+      removedProperties,
+      unchangedProperties,
+    );
+
+    if (addedProperties.length === 0 && removedProperties.length === 0) {
+      result.unchanged.push(entry);
+    } else {
+      result.changed.push(entry);
+    }
+  }
+
+  for (const remote of remoteDocs) {
+    if (!matchedRemoteNames.has(remote.name)) {
+      result.remoteOnly.push(
+        diffEntry(remote.name, remote.slug ?? toObjectTypeSlug(remote.name)),
+      );
+    }
+  }
+
+  return result;
+}
+
+export async function resolveTypesPullOutputPath(
+  root: string,
+  output: string,
+): Promise<string> {
+  const { isAbsolute, join: pathJoin } = await import("node:path");
+  return isAbsolute(output) ? output : pathJoin(root, output);
+}
+
 export async function describeFailedPlatformResponse(
   response: Response,
 ): Promise<string> {
@@ -507,6 +917,26 @@ export async function describeFailedPlatformResponse(
   const requestId = context.requestId ? ` (request ${context.requestId})` : "";
 
   return `${status} - ${code}${truncatedDetail}${requestId}`;
+}
+
+function appOwnedStoragePublishGuidance(
+  message: string,
+  tenantKey: string,
+  tenantId: string,
+): string {
+  if (
+    !/databaseAlias|storageBinding|app-owned prefix|not authorized|tableName/i.test(
+      message,
+    )
+  ) {
+    return "";
+  }
+
+  return [
+    "",
+    "Why this can happen: tenant app Object Types must use app-owned storage bindings. Shared platform aliases and generic table names are rejected by the platform.",
+    `Next steps: run eai app provision ${tenantKey} --tenant-id ${tenantId} --select --format json, update src/eai.config/object-types.ts to use tenant-postgres and app-owned table names, then rerun eai types validate --tenant-key ${tenantKey} --tenant-id ${tenantId} and eai types seed --tenant-key ${tenantKey} --tenant-id ${tenantId}.`,
+  ].join("\n");
 }
 
 async function archiveDuplicateRemoteTypes(
@@ -655,7 +1085,7 @@ export function summarizeAppObjectTypePublish(
     ),
     publishingMode: "app-manifest",
     resourceApiSchemaSync: isRecord(body.resourceApiSchemaSync)
-      ? body.resourceApiSchemaSync
+      ? enrichResourceApiSchemaSync(body.resourceApiSchemaSync)
       : undefined,
   };
 }
@@ -678,8 +1108,9 @@ export async function trySeedViaAppManifestPublish(
     return { fallbackReason: manifestFallbackReason };
   }
   if (!manifestResponse.ok) {
+    const detail = await describeFailedPlatformResponse(manifestResponse);
     throw new Error(
-      `app manifest save failed: ${await describeFailedPlatformResponse(manifestResponse)}`,
+      `app manifest save failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, tenantId)}`,
     );
   }
 
@@ -692,8 +1123,9 @@ export async function trySeedViaAppManifestPublish(
     return { fallbackReason: publishFallbackReason };
   }
   if (!publishResponse.ok) {
+    const detail = await describeFailedPlatformResponse(publishResponse);
     throw new Error(
-      `app manifest publish failed: ${await describeFailedPlatformResponse(publishResponse)}`,
+      `app manifest publish failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, tenantId)}`,
     );
   }
 
@@ -773,11 +1205,11 @@ export async function summarizeResourceApiSchemaSync(
   // reason/error) that resource-store failed results can surface before they land
   // in CLI JSON output, logs, or release evidence. The AdminAPI manifest path
   // already sanitizes this shape; this hardens the direct fallback path too.
-  return {
+  return enrichResourceApiSchemaSync({
     ...(isRecord(payload) ? out.redactSensitiveDeep(payload) : {}),
     ...(missingObjectTypes.length > 0 ? { missingObjectTypes } : {}),
     status: failed ? "failed" : "synced",
-  };
+  }) as Record<string, unknown>;
 }
 
 export function verifyTypeSeedConvergence(
@@ -1027,10 +1459,10 @@ export async function waitForResourceApiSchemaVisibility(
     }
   }
 
-  return {
+  return enrichResourceApiSchemaSync({
     ...resourceApiSchemaSync,
     status: "failed",
-    errorCode: "RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT",
+    errorCode: RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT,
     message:
       "Platform schema sync was queued, but requested Object Types were not visible from the platform schema read path before the CLI timeout.",
     details: {
@@ -1044,7 +1476,7 @@ export async function waitForResourceApiSchemaVisibility(
         : {}),
       ...(lastError ? { lastError } : {}),
     },
-  };
+  }) as Record<string, unknown>;
 }
 
 async function selectTenantKey(
@@ -1246,6 +1678,44 @@ Examples:
         continue;
       }
 
+      const tenantScopedStorageIssues = collectTypeStorageValidationIssues(
+        { [tenantKey]: types },
+        { tenantIdsByKey: { [tenantKey]: tenantId } },
+      );
+      if (tenantScopedStorageIssues.length > 0) {
+        const message = "Object Type app-owned storage binding validation failed";
+        if (options.format !== "json") {
+          out.error(message);
+          for (const issue of tenantScopedStorageIssues) {
+            out.error(`  [${issue.tenantKey}/${issue.typeName}] ${issue.issue}`);
+          }
+          out.info(
+            `Run ${chalk.cyan(`eai app provision ${tenantKey} --tenant-id ${tenantId} --select --format json`)} to confirm the app storage contract, then update ${chalk.cyan("src/eai.config/object-types.ts")}.`,
+          );
+        }
+        jsonResults.push({
+          tenantKey,
+          tenantId,
+          created: 0,
+          updated: 0,
+          failed: types.length,
+          publishingMode: "app-manifest",
+          error: `${message}: ${tenantScopedStorageIssues.map((issue) => issue.issue).join("; ")}`,
+          verification: {
+            tenantId,
+            requestedTypes: types.map((type) => type.name),
+            matchedTypes: [],
+            missingTypes: types.map((type) => type.name),
+            driftedTypes: [],
+            createdCount: 0,
+            updatedCount: 0,
+            failedCount: types.length,
+            converged: false,
+          },
+        });
+        continue;
+      }
+
       if (options.format !== "json") {
         out.heading(
           `Tenant: ${tenantKey} → ${chalk.dim(tenantId)} ${chalk.dim(`(${describeTenantResolutionSource(resolution.source)})`)}`,
@@ -1312,11 +1782,9 @@ Examples:
                 `Verification: partial (${issues || "remote schema did not converge"})`,
               );
             }
-            const syncStatus =
-              appPublishOutcome.result.resourceApiSchemaSync?.status;
-            if (typeof syncStatus === "string" && syncStatus) {
-              out.info(`Resource schema sync: ${chalk.cyan(syncStatus)}`);
-            }
+            printResourceApiSchemaSyncSummary(
+              appPublishOutcome.result.resourceApiSchemaSync,
+            );
             out.blank();
           }
           jsonResults.push(appPublishOutcome.result);
@@ -1590,15 +2058,7 @@ Examples:
             `Verification: partial (${issues || "remote schema did not converge"})`,
           );
         }
-        const syncStatus = resourceApiSchemaSync?.status;
-        if (typeof syncStatus === "string" && syncStatus) {
-          const line = `Resource schema sync: ${chalk.cyan(syncStatus)}`;
-          if (syncStatus === "failed") {
-            out.warn(line);
-          } else {
-            out.info(line);
-          }
-        }
+        printResourceApiSchemaSyncSummary(resourceApiSchemaSync);
       }
       jsonResults.push({
         tenantKey,
@@ -1627,14 +2087,20 @@ Examples:
 typesCommand
   .command("validate")
   .description("Validate Object Types against platform schema rules")
+  .option("--tenant-key <key>", "Specific tenant key from object-types.ts")
+  .option(
+    "--tenant-id <id>",
+    "Check app-owned storage naming for this tenant ID",
+  )
   .addHelpText(
     "after",
     `
 Examples:
   $ eai types validate
+  $ eai types validate --tenant-key post-pilot --tenant-id 5dd8db37-0993-f01c-0487-e8f0fae6c3d7
   `,
   )
-  .action(async () => {
+  .action(async (options: { tenantKey?: string; tenantId?: string }) => {
     const root = await findProjectRoot();
     if (!root) {
       exitWithError(ErrorCode.E001);
@@ -1652,10 +2118,36 @@ Examples:
       process.exit(1);
     }
 
+    if (
+      options.tenantId &&
+      !options.tenantKey &&
+      Object.keys(objectTypes).length > 1
+    ) {
+      exitWithError(ErrorCode.E303, {
+        field: "--tenant-key when using --tenant-id with multiple tenant scopes",
+      });
+    }
+
+    if (options.tenantKey && !objectTypes[options.tenantKey]) {
+      exitWithError(ErrorCode.E303, {
+        field: `--tenant-key ${options.tenantKey} (no matching object-types scope)`,
+      });
+    }
+
+    const entries = options.tenantKey
+      ? ([[options.tenantKey, objectTypes[options.tenantKey] ?? []]] as Array<
+          [string, ObjectTypeDefinition[]]
+        >)
+      : Object.entries(objectTypes);
+    const tenantIdsByKey =
+      options.tenantId && options.tenantKey
+        ? { [options.tenantKey]: options.tenantId }
+        : {};
+
     let errors = 0;
     let warnings = 0;
 
-    for (const [tenantKey, types] of Object.entries(objectTypes)) {
+    for (const [tenantKey, types] of entries) {
       out.heading(`Tenant: ${tenantKey}`);
 
       for (const type of types) {
@@ -1722,6 +2214,13 @@ Examples:
 
         issues.push(...validateObjectTypeDefaultValues(type));
         issues.push(...validateObjectTypeStorageMetadata(type));
+        issues.push(
+          ...validateObjectTypeAppOwnedStorageMetadata(
+            type,
+            tenantKey,
+            tenantIdsByKey[tenantKey],
+          ),
+        );
 
         // Validate link types
         for (const link of type.linkTypes) {
@@ -1818,27 +2317,41 @@ typesCommand
     "--tenant-id <id>",
     "Override the resolved tenant ID (use with --tenant-key)",
   )
+  .option("--format <format>", "Output format (text|json)", "text")
+  .option("--json", "Output raw JSON (deprecated, use --format json)", false)
   .addHelpText(
     "after",
     `
 Examples:
   $ eai types diff
   $ eai types diff --tenant-key council --tenant-id 423b7e9c-9a69-4763-5b9a-69570218f65d
+  $ eai types diff --format json
   `,
   )
   .action(async (options) => {
+    if (options.json) {
+      options.format = "json";
+    }
+    if (!["text", "json"].includes(options.format)) {
+      exitWithError(ErrorCode.E303, {
+        field: "--format",
+        value: options.format,
+        expected: "text or json",
+      });
+    }
+    const jsonOutput = options.format === "json";
     const ctx = await resolveCommandContext({ tenantId: options.tenantId });
     const { root, publicApiUrl } = ctx;
     const activeContext = options.tenantId ? null : ctx;
 
-    const spinner = ora("Loading local Object Types...").start();
+    const spinner = jsonOutput ? null : ora("Loading local Object Types...").start();
 
     let objectTypes: Record<string, ObjectTypeDefinition[]>;
     try {
       objectTypes = await loadObjectTypes(root);
-      spinner.succeed("Loaded local types");
+      spinner?.succeed("Loaded local types");
     } catch (err) {
-      spinner.fail("Failed to load local types");
+      spinner?.fail("Failed to load local types");
       out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
@@ -1864,9 +2377,24 @@ Examples:
       });
     }
 
+    const results: TypeDiffResult[] = [];
+
     for (const [tenantKey, localTypes] of entries) {
       if (!localTypes || localTypes.length === 0) {
-        out.warn(`No local Object Types found for "${tenantKey}"`);
+        if (!jsonOutput) {
+          out.warn(`No local Object Types found for "${tenantKey}"`);
+        }
+        results.push({
+          tenantKey,
+          tenantId: options.tenantId,
+          resolutionSource: options.tenantId ? "option" : undefined,
+          localCount: 0,
+          remoteCount: 0,
+          localOnly: [],
+          remoteOnly: [],
+          changed: [],
+          unchanged: [],
+        });
         continue;
       }
 
@@ -1877,81 +2405,106 @@ Examples:
       );
       const tenantId = resolution.tenantId;
       if (!tenantId) {
-        explainMissingTenantId(tenantKey);
+        if (!jsonOutput) {
+          explainMissingTenantId(tenantKey);
+        }
+        results.push({
+          tenantKey,
+          resolutionSource: resolution.source,
+          localCount: localTypes.length,
+          remoteCount: 0,
+          localOnly: [],
+          remoteOnly: [],
+          changed: [],
+          unchanged: [],
+          error: "Tenant ID could not be resolved",
+        });
         continue;
       }
 
-      out.heading(
-        `Tenant: ${tenantKey} → ${chalk.dim(tenantId)} ${chalk.dim(`(${describeTenantResolutionSource(resolution.source)})`)}`,
-      );
+      if (!jsonOutput) {
+        out.heading(
+          `Tenant: ${tenantKey} → ${chalk.dim(tenantId)} ${chalk.dim(`(${describeTenantResolutionSource(resolution.source)})`)}`,
+        );
+      }
 
       const client = new PlatformAPIClient(publicApiUrl, tenantId);
-      const remoteSpinner = ora("  Fetching remote types...").start();
+      const remoteSpinner = jsonOutput ? null : ora("  Fetching remote types...").start();
 
       try {
         const res = await client.getPublishedObjectTypes({ limit: 100 });
 
         const remoteDocs = extractRemoteObjectTypeDocs(await res.json());
-        remoteSpinner.succeed(`  ${remoteDocs.length} remote types`);
+        remoteSpinner?.succeed(`  ${remoteDocs.length} remote types`);
 
-        const matchedRemoteNames = new Set<string>();
+        const result = diffObjectTypesForTenant(
+          tenantKey,
+          tenantId,
+          resolution.source,
+          localTypes,
+          remoteDocs,
+        );
+        results.push(result);
 
-        // Local-only types
-        for (const localType of localTypes) {
-          const remote = findMatchingRemoteType(remoteDocs, localType.name);
-          if (!remote) {
-            out.info(`  ${out.symbols.added} ${localType.name} — local only`);
-            continue;
+        if (jsonOutput) {
+          continue;
+        }
+
+        for (const entry of result.localOnly) {
+          out.info(`  ${out.symbols.added} ${entry.name} — local only`);
+        }
+
+        for (const entry of result.unchanged) {
+          out.info(
+            `  ${out.symbols.unchanged} ${entry.name} — no changes`,
+          );
+        }
+
+        for (const entry of result.changed) {
+          out.info(`  ${out.symbols.changed} ${entry.name}`);
+          for (const property of entry.addedProperties) {
+            out.info(`    ${out.symbols.added} ${property}`);
           }
-
-          matchedRemoteNames.add(remote.name);
-          const localPropNames = new Set(
-            localType.properties.map((p) => p.name),
-          );
-          const remotePropNames = new Set(
-            (remote.properties as Array<{ name: string }>).map((p) => p.name),
-          );
-
-          const added = [...localPropNames].filter(
-            (p) => !remotePropNames.has(p),
-          );
-          const removed = [...remotePropNames].filter(
-            (p) => !localPropNames.has(p),
-          );
-          const unchanged = [...localPropNames].filter((p) =>
-            remotePropNames.has(p),
-          );
-
-          if (added.length === 0 && removed.length === 0) {
-            out.info(
-              `  ${out.symbols.unchanged} ${localType.name} — no changes`,
-            );
-          } else {
-            out.info(`  ${out.symbols.changed} ${localType.name}`);
-            for (const p of added) {
-              out.info(`    ${out.symbols.added} ${p}`);
-            }
-            for (const p of removed) {
-              out.info(`    ${out.symbols.removed} ${p}`);
-            }
-            if (unchanged.length > 0) {
-              out.dim(`    ${unchanged.length} unchanged`);
-            }
+          for (const property of entry.removedProperties) {
+            out.info(`    ${out.symbols.removed} ${property}`);
+          }
+          if (entry.unchangedProperties.length > 0) {
+            out.dim(`    ${entry.unchangedProperties.length} unchanged`);
           }
         }
 
-        // Remote-only types
-        for (const remote of remoteDocs) {
-          if (!matchedRemoteNames.has(remote.name)) {
-            out.warn(
-              `  ${out.symbols.warning} ${remote.name} — exists remotely but not locally`,
-            );
-          }
+        for (const entry of result.remoteOnly) {
+          out.warn(
+            `  ${out.symbols.warning} ${entry.name} — exists remotely but not locally`,
+          );
         }
       } catch (err) {
-        remoteSpinner.fail("  Failed to fetch remote types");
-        out.error(err instanceof Error ? err.message : String(err));
+        const message = err instanceof Error ? err.message : String(err);
+        remoteSpinner?.fail("  Failed to fetch remote types");
+        if (!jsonOutput) {
+          out.error(message);
+        }
+        results.push({
+          tenantKey,
+          tenantId,
+          resolutionSource: resolution.source,
+          localCount: localTypes.length,
+          remoteCount: 0,
+          localOnly: [],
+          remoteOnly: [],
+          changed: [],
+          unchanged: [],
+          error: message,
+        });
       }
+    }
+
+    if (jsonOutput) {
+      out.json({ tenants: results });
+    }
+
+    if (results.some((result) => result.error)) {
+      process.exitCode = 1;
     }
   });
 
@@ -1990,8 +2543,7 @@ Examples:
       // Generate TypeScript
       const ts = generateTypeScript(types, tenantId);
       const { writeFile: write } = await import("node:fs/promises");
-      const { join: pathJoin } = await import("node:path");
-      const outputPath = pathJoin(root, options.output);
+      const outputPath = await resolveTypesPullOutputPath(root, options.output);
       await write(outputPath, ts, "utf-8");
 
       out.success(`Written to ${chalk.bold(options.output)}`);

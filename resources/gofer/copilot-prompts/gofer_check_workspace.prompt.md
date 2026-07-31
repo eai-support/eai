@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/gofer_check_workspace.md
-  canonicalChecksum: e0769c181e214c03c04ac738f5af89c1ee24addf0fe62abf1bd925c5ecd02e2b
+  canonicalChecksum: 95e354887cb2afc3c2e17c90bd10db8f166ce863c7543cde8f635d40058022f7
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -53,7 +53,7 @@ subdirectory. If needed, walk upward to the nearest directory containing one of:
 Inspect these paths relative to the workspace root:
 
 - `.specify/.gofer-version`
-- `.specify/commands#0_business_scenario.md`
+- `.specify/commands#0_gofer_start.md`
 - `.specify/templates/spec-template.md`
 - `.specify/scripts/bash/create-new-feature.sh`
 - `.specify/scripts/node/parse-stage-command.mjs`

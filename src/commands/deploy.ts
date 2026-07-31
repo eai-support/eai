@@ -372,7 +372,6 @@ type DeployDoctorCategory =
   | 'entra_client_redirect_config'
   | 'eai_publicapi_config'
   | 'tenant_workflow_config'
-  | 'service_identity_app_only_auth_config'
   | 'publicapi_authorization'
   | 'app_code_runtime_error';
 
@@ -420,7 +419,6 @@ function coerceDoctorCategory(value: string | undefined, fallback: DeployDoctorC
     'entra_client_redirect_config',
     'eai_publicapi_config',
     'tenant_workflow_config',
-    'service_identity_app_only_auth_config',
     'publicapi_authorization',
     'app_code_runtime_error',
   ]);
@@ -627,7 +625,7 @@ export async function runDeployDoctor(url: string): Promise<DeployDoctorResult> 
       path: endpoint.path || '/',
       expectedStatus: 200,
       category: endpoint.serverSidePlatformAccess
-        ? 'service_identity_app_only_auth_config'
+        ? 'publicapi_authorization'
         : 'app_code_runtime_error',
     })),
     ...contract.endpoints.smokeTests,

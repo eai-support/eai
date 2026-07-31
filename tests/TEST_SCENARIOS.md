@@ -1342,7 +1342,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai user invite --email new.user@company.com --tenant tenant-id')
 //
-// expectAPICalledGET('/v4/platform/users/by-email?email=new.user@company.com')
+// expectAPICalledGET('/v4/platform/tenants/tenant-id/users/by-email?email=new.user@company.com')
 // expectAPICalledPOST('/v4/platform/tenants/tenant-id/users/user-oid-123/provision', {
 //   tenant_id: 'tenant-id',
 //   user_oid: 'user-oid-123'
@@ -1899,7 +1899,8 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // runCommand('eai update --check')
 //
-// expectRegistryFetched('https://eai-tools.github.io/eai/registry')
+// expectRegistryFetched('https://registry.npmjs.org/')
+// expectFallbackRegistryFetched('https://eai-tools.github.io/eai/registry')
 // expectDisplayedMessage('Current version: 0.1.4')
 // expectDisplayedMessage('Latest version: 0.2.0')
 // expectDisplayedMessage('Update available')
@@ -1920,7 +1921,8 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // runCommand('eai update')
 // respondToPrompt('Install v0.2.0?', 'yes')
 //
-// expectNPMCalled('npm install -g @eai-tools/cli@0.2.0 --@eai-tools:registry=https://eai-tools.github.io/eai/registry')
+// expectNPMCalled('npm install -g @enterpriseai/cli@0.2.0 --registry=https://registry.npmjs.org/ --@enterpriseai:registry=https://registry.npmjs.org/')
+// expectFallbackNPMCalled('npm install -g @enterpriseai/cli@0.2.0 --@enterpriseai:registry=https://eai-tools.github.io/eai/registry')
 // expectSuccessMessage('Updated to v0.2.0')
 ```
 

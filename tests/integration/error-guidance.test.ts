@@ -63,6 +63,102 @@ describe('error guidance catalog', () => {
     expect(guidance?.retry.maxAttempts).toBe(3);
   });
 
+  test('permission guidance sends normal user addition through user invite before child bootstrap repair', () => {
+    const guidance = findGuidanceByCodeOrReason('permission_denied');
+
+    const fixCommands = guidance?.fixes.map((fix) => fix.command) ?? [];
+    expect(fixCommands).toEqual(
+      expect.arrayContaining([
+        'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin',
+        'eai user roles --tenant <tenant-id> --format json',
+        'eai tenant bootstrap-admin --parent <parent-id> --child <child-id>',
+      ]),
+    );
+    expect(guidance?.fixes.find((fix) => fix.command.includes('bootstrap-admin'))?.when)
+      .toContain('immediate child');
+  });
+
+  test('child relation guidance tells agents to use user invite for normal member management', () => {
+    const guidance = findGuidance({
+      serverCode: 'CHILD_RELATION_INVALID',
+      message: 'Tenant child is not an immediate child of parent',
+    });
+
+    expect(guidance?.code).toBe('E205');
+    expect(guidance?.reasonCode).toBe('child_relation_invalid');
+    expect(guidance?.retry.allowed).toBe(false);
+    expect(guidance?.fixes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin',
+          mutates: true,
+        }),
+      ]),
+    );
+  });
+
+  test('user invite external-service guidance routes agents through existing member role repair', () => {
+    const guidance = findGuidance({
+      operation: 'user invite',
+      status: 502,
+      serverCode: 'EXTERNAL_SERVICE_ERROR',
+      message: 'EXTERNAL_SERVICE_ERROR while inviting a tenant member',
+    });
+
+    expect(guidance?.code).toBe('E245');
+    expect(guidance?.reasonCode).toBe('user_invite_external_service_existing_member');
+    expect(guidance?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: 'eai user list --tenant <tenant-id> --search <email> --format json',
+          mutates: false,
+        }),
+      ]),
+    );
+    expect(guidance?.fixes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
+          mutates: true,
+        }),
+      ]),
+    );
+    expect(guidance?.why.join(' ')).toContain('Auth.js session or JWT');
+  });
+
+  test('app-token missing tenant guidance routes agents to tenant-scoped platform paths first', () => {
+    const guidance = findGuidance({
+      operation: 'platform user lookup',
+      status: 502,
+      serverCode: 'MISSING_TENANT',
+      message: 'Tenant context required for app tokens',
+    });
+
+    expect(guidance?.code).toBe('E246');
+    expect(guidance?.reasonCode).toBe('app_token_tenant_context_required');
+    expect(guidance?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: 'eai publicapi get /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>',
+          mutates: false,
+        }),
+        expect.objectContaining({
+          command: 'eai publicapi get /v4/platform/tenants/<tenant-id>/users/<oid>/memberships',
+          mutates: false,
+        }),
+      ]),
+    );
+    expect(guidance?.fixes.map((fix) => fix.command)).toEqual(
+      expect.arrayContaining([
+        'Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>',
+        'Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships',
+        'Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions',
+      ]),
+    );
+    expect(guidance?.why.join(' ')).toContain('Do not treat this as the first signal to edit tenant members');
+    expect(findGuidanceByCodeOrReason('app_token_tenant_context_required')?.code).toBe('E246');
+  });
+
   test('install-registry NO_MATCH maps to non-retryable provisioning guidance', () => {
     const guidance = findGuidance({
       status: 503,
@@ -102,6 +198,65 @@ describe('error guidance catalog', () => {
     );
     expect(findGuidanceByCodeOrReason('resource_search_embedding_required')?.code).toBe('E275');
   });
+
+  test('resource mutation guidance is operation-aware for maintained and raw clients', () => {
+    const updateGuidance = findGuidance({
+      operation: 'resources.update',
+      status: 422,
+      serverCode: 'RESOURCE_MUTATION_CONTRACT_INVALID',
+      message: 'Invalid PublicAPI v4 resource.update request body.',
+    });
+
+    expect(updateGuidance?.code).toBe('E276');
+    expect(updateGuidance?.why.join(' ')).toContain(
+      'resources update client already sends PUT',
+    );
+    expect(updateGuidance?.fixes.map((fix) => fix.command)).toEqual(
+      expect.arrayContaining([
+        'eai update',
+        expect.stringContaining('resources update'),
+      ]),
+    );
+    expect(updateGuidance?.fixes.map((fix) => fix.command).join(' ')).not.toContain(
+      'publicapi',
+    );
+
+    const createGuidance = findGuidance({
+      operation: 'resources.create',
+      status: 422,
+      serverCode: 'RESOURCE_MUTATION_CONTRACT_INVALID',
+    });
+    expect(createGuidance?.why.join(' ')).toContain(
+      'resources create client already sends POST',
+    );
+    expect(createGuidance?.fixes.map((fix) => fix.command)).toContain(
+      'eai resources create <type> --data \'<json>\'',
+    );
+
+    const actionGuidance = findGuidance({
+      operation: 'resources.action',
+      status: 422,
+      serverCode: 'RESOURCE_MUTATION_CONTRACT_INVALID',
+    });
+    expect(actionGuidance?.why.join(' ')).toContain(
+      'resource action client already sends POST',
+    );
+    expect(actionGuidance?.fixes.map((fix) => fix.command).join(' ')).toContain(
+      'action result version',
+    );
+
+    const rawGuidance = findGuidance({
+      operation: 'PATCH /v4/data/resources/tenant/type/id',
+      status: 405,
+      serverCode: 'RESOURCE_MUTATION_METHOD_NOT_ALLOWED',
+    });
+    expect(rawGuidance?.fixes.map((fix) => fix.command)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('publicapi post'),
+        expect.stringContaining('publicapi put'),
+      ]),
+    );
+  });
 });
 
 describe('eai errors command', () => {
@@ -132,7 +287,7 @@ describe('eai errors command', () => {
   });
 
   test('explains a reason code in JSON mode for agents', async () => {
-    const result = await runCommand(ctx, 'eai errors explain tenant_authorization_incomplete --format json');
+    const result = await runCommand(ctx, 'eai errors explain user_invite_external_service_existing_member --format json');
 
     expect(result.exitCode).toBe(0);
     const payload = JSON.parse(result.stdout) as {
@@ -145,11 +300,11 @@ describe('eai errors command', () => {
     };
 
     expect(payload.ok).toBe(true);
-    expect(payload.guidance.code).toBe('E242');
+    expect(payload.guidance.code).toBe('E245');
     expect(payload.guidance.fixes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          command: 'eai provision entra --force --debug',
+          command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
           mutates: true,
         }),
       ]),

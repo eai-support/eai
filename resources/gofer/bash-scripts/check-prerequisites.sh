@@ -106,6 +106,8 @@ if [[ ! -d "$FEATURE_DIR" ]]; then
     exit 1
 fi
 
+require_material_spec "$FEATURE_SPEC" "$FEATURE_DIR" || exit 1
+
 if [[ ! -f "$IMPL_PLAN" ]]; then
     echo "ERROR: plan.md not found in $FEATURE_DIR" >&2
     echo "Run /gofer_plan first to create the implementation plan." >&2

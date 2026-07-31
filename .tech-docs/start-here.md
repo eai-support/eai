@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.6.0** (2026-06-28): Add native app terminology commands.
+The current CLI release is **v3.8.3** (2026-07-30): Pin generated app template with multi-tab submission ownership.
 
 
 ## What The Pieces Do
@@ -29,9 +29,27 @@ The current CLI release is **v3.6.0** (2026-06-28): Add native app terminology c
 ## Install The CLI
 
 ```bash
-npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user
-npm install -g @eai-tools/cli
+npm install -g eai-cli
 eai --version
+```
+
+Canonical package install:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+```
+
+Persistent static fallback setup:
+
+```bash
+npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm install -g @enterpriseai/cli
 ```
 
 ## Create A New App

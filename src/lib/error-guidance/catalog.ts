@@ -208,10 +208,21 @@ export const errorGuidanceCatalog = [
         mutates: true,
       },
       {
-        command: 'eai tenant bootstrap-admin --parent <parent-id> --child <child-id>',
-        purpose: 'Bootstrap direct child tenant admin access when the user is authorized as the parent tenant admin.',
+        command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin',
+        purpose: 'Add or refresh a user membership and assign a tenant role when you are already tenant-admin for that tenant.',
         mutates: true,
-        when: 'Only when the user is already an authorized parent tenant admin.',
+        when: 'Use for normal "add this person as a tenant member/admin" requests.',
+      },
+      {
+        command: 'eai user roles --tenant <tenant-id> --format json',
+        purpose: 'List assignable tenant roles before choosing a role for an invite.',
+        mutates: false,
+      },
+      {
+        command: 'eai tenant bootstrap-admin --parent <parent-id> --child <child-id>',
+        purpose: 'Repair first tenant-admin access for an immediate child tenant.',
+        mutates: true,
+        when: 'Only when the target tenant is an immediate child of the supplied parent and does not already have usable tenant-admin access.',
       },
     ],
     retry: {
@@ -229,6 +240,291 @@ export const errorGuidanceCatalog = [
       mayDeleteData: false,
       publicSafe: true,
     },
+  },
+  {
+    code: 'E205',
+    reasonCode: 'child_relation_invalid',
+    title: 'The supplied tenant is not an immediate child of the supplied parent.',
+    category: 'authorization',
+    severity: 'error',
+    appliesTo: ['tenant.bootstrap-admin', 'user.role', 'user.invite'],
+    publicSafe: true,
+    why: [
+      'The child-tenant bootstrap command is intentionally narrow.',
+      'It only works when the parent ID is the direct parent of the child tenant.',
+      'This error often appears when an agent uses bootstrap-admin for normal user addition instead of the tenant member invite flow.',
+    ],
+    evidenceToCheck: [
+      'Whether the task is normal user addition or first-admin child tenant repair.',
+      'The active tenant shown by eai whoami.',
+      'The target tenant shown by eai tenant info <tenant-id>.',
+    ],
+    diagnostics: [
+      {
+        command: 'eai whoami',
+        purpose: 'Confirm the signed-in user and active tenant.',
+        mutates: false,
+      },
+      {
+        command: 'eai tenant info <tenant-id> --format json',
+        purpose: 'Inspect the target tenant before retrying a tenant relationship command.',
+        mutates: false,
+      },
+      {
+        command: 'eai user roles --tenant <tenant-id> --format json',
+        purpose: 'List assignable roles when the intended task is adding or updating a user.',
+        mutates: false,
+      },
+    ],
+    fixes: [
+      {
+        command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin',
+        purpose: 'Add or update a user as tenant-admin on an existing tenant.',
+        mutates: true,
+        when: 'Use when the goal is to add a person to a tenant or app context.',
+      },
+      {
+        command: 'eai tenant bootstrap-admin --parent <direct-parent-id> --child <immediate-child-id>',
+        purpose: 'Retry the child bootstrap repair with the direct parent and immediate child IDs.',
+        mutates: true,
+        when: 'Use only for first-admin child tenant repair, not normal member management.',
+      },
+    ],
+    retry: {
+      allowed: false,
+      stopWhen: ['The supplied parent and child are not a direct parent-child pair.'],
+    },
+    escalation: {
+      audience: 'tenant-admin',
+      neededWhen: ['The direct parent tenant is not visible to the signed-in user.'],
+      include: ['signed-in email', 'active tenant slug', 'target tenant slug', 'requested command'],
+    },
+    safety: {
+      mutatesState: true,
+      mayWriteSecrets: false,
+      mayDeleteData: false,
+      publicSafe: true,
+    },
+    match: [
+      {
+        serverCode: 'CHILD_RELATION_INVALID',
+      },
+      {
+        messageIncludes: ['CHILD_RELATION_INVALID', 'not an immediate child'],
+      },
+    ],
+  },
+  {
+    code: 'E245',
+    reasonCode: 'user_invite_external_service_existing_member',
+    title: 'Tenant member invite failed, but an existing member role repair may be available.',
+    category: 'external_service',
+    severity: 'error',
+    appliesTo: ['user.invite', 'user.role.set', 'tenant.member.management'],
+    publicSafe: true,
+    why: [
+      'The invite/add flow reached an external identity or notification dependency that returned a server-side failure.',
+      'The target person may already exist as a direct tenant member with a lower role, so retrying the same invite can fail without changing access.',
+      'When a member record already exists, the supported recovery is to update that member through EAI CLI instead of editing data stores or cloud portals directly.',
+      'Applications may cache tenant role claims in their Auth.js session or JWT, so the user may need to sign out and sign back in after a role change.',
+    ],
+    evidenceToCheck: [
+      'HTTP status, server code, and request ID from the failed invite/add command.',
+      'Active tenant and profile from eai whoami.',
+      'Assignable roles from eai user roles --tenant <tenant-id> --format json.',
+      'Existing member record from eai user list --tenant <tenant-id> --search <email> --format json.',
+      'Read-back role after any eai user role set command.',
+    ],
+    diagnostics: [
+      {
+        command: 'eai whoami',
+        purpose: 'Confirm the signed-in user, active tenant, and profile before changing membership.',
+        mutates: false,
+      },
+      {
+        command: 'eai user roles --tenant <tenant-id> --format json',
+        purpose: 'Confirm the target role is assignable in this tenant.',
+        mutates: false,
+      },
+      {
+        command: 'eai user list --tenant <tenant-id> --search <email> --format json',
+        purpose: 'Check whether the person already exists as a direct tenant member and capture the member ID.',
+        mutates: false,
+      },
+    ],
+    fixes: [
+      {
+        command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
+        purpose: 'Update the existing direct member to tenant-admin through the approved EAI tenant-member role endpoint.',
+        mutates: true,
+        when: 'Use only after eai user list confirms the existing member ID and the user approves the role change.',
+      },
+      {
+        command: 'eai user invite --email <email> --tenant <tenant-id> --role <role> --format json',
+        purpose: 'Retry the normal invite/add flow when no existing direct member is found and the failure was transient.',
+        mutates: true,
+        when: 'Use only within the retry limit and after read-only diagnostics confirm the tenant and role.',
+      },
+    ],
+    retry: {
+      allowed: true,
+      maxAttempts: 2,
+      backoffSeconds: [10, 30],
+      stopWhen: [
+        'The same external service error repeats after bounded retry.',
+        'The existing member is found but role update is not approved by the user.',
+        'The signed-in user is not allowed to change tenant membership.',
+      ],
+    },
+    escalation: {
+      audience: 'platform-support',
+      neededWhen: [
+        'No existing direct member is found and the invite/add flow keeps returning a 5xx or EXTERNAL_SERVICE_ERROR.',
+      ],
+      include: [
+        'request ID',
+        'HTTP status',
+        'server code',
+        'CLI version',
+        'active tenant slug',
+        'redacted command shape',
+      ],
+    },
+    safety: {
+      mutatesState: true,
+      mayWriteSecrets: false,
+      mayDeleteData: false,
+      publicSafe: true,
+    },
+    match: [
+      {
+        status: 502,
+        operation: 'user invite',
+        serverCode: 'EXTERNAL_SERVICE_ERROR',
+      },
+      {
+        operation: 'user invite',
+        messageIncludes: ['EXTERNAL_SERVICE_ERROR'],
+      },
+      {
+        operation: 'user role set',
+        messageIncludes: ['EXTERNAL_SERVICE_ERROR'],
+      },
+      {
+        messageIncludes: ['user invite', 'EXTERNAL_SERVICE_ERROR'],
+      },
+    ],
+    learnedFrom: ['Tenant member invite returned a 502 while the user already existed with a lower tenant role.'],
+  },
+  {
+    code: 'E246',
+    reasonCode: 'app_token_tenant_context_required',
+    title: 'App-token platform user lookup is missing tenant context.',
+    category: 'tenant_context',
+    severity: 'error',
+    appliesTo: ['publicapi', 'platform.user.lookup', 'tenant.member.management', 'verify.calls'],
+    publicSafe: true,
+    why: [
+      'The platform call authenticated, but the request did not carry the tenant context required for app-token user or membership operations.',
+      'This is commonly seen as MISSING_TENANT or "Tenant context required for app tokens" on platform user lookup or membership prerequisite calls.',
+      'Do not treat this as the first signal to edit tenant members, role definitions, Entra configuration, databases, or cloud portals.',
+      'For platform automation app-token flows outside tenant app runtime, use the tenant-scoped platform routes instead of root user lookup routes.',
+      'If the same route works in current main but fails in an environment, the deployed PublicAPI/AdminAPI may be behind the release that adds tenant-scoped routing hardening.',
+    ],
+    evidenceToCheck: [
+      'The failed path and whether it is a root platform user route such as /v4/platform/users/by-email or /v4/platform/users/{oid}/memberships.',
+      'Whether the caller is using an app token rather than an end-user identity route.',
+      'Active tenant from eai whoami and eai tenant list --format json.',
+      'PublicAPI/AdminAPI deployed versions when the failure happens in a shared environment.',
+      'Whether a tenant-scoped path succeeds for the same operation.',
+    ],
+    diagnostics: [
+      {
+        command: 'eai whoami',
+        purpose: 'Confirm login, active tenant, profile, and PublicAPI context.',
+        mutates: false,
+      },
+      {
+        command: 'eai tenant list --format json',
+        purpose: 'Confirm the target tenant is visible before retrying tenant-scoped calls.',
+        mutates: false,
+      },
+      {
+        command: 'eai publicapi get /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>',
+        purpose: 'Verify user lookup through the tenant-scoped platform route.',
+        mutates: false,
+      },
+      {
+        command: 'eai publicapi get /v4/platform/tenants/<tenant-id>/users/<oid>/memberships',
+        purpose: 'Verify membership lookup through the tenant-scoped platform route.',
+        mutates: false,
+      },
+    ],
+    fixes: [
+      {
+        command: 'eai tenant select <tenant>',
+        purpose: 'Select the tenant that should provide app-token context.',
+        mutates: true,
+      },
+      {
+        command: 'Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>',
+        purpose: 'Replace root platform user lookup with the tenant-scoped V4 route in platform automation app-token flows.',
+        mutates: false,
+      },
+      {
+        command: 'Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships',
+        purpose: 'Replace root platform membership lookup with the tenant-scoped V4 route in platform automation app-token flows.',
+        mutates: false,
+      },
+      {
+        command: 'Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions',
+        purpose: 'Keep tenant member and role-definition reads on the tenant-scoped V4 surface.',
+        mutates: false,
+      },
+    ],
+    retry: {
+      allowed: true,
+      maxAttempts: 1,
+      stopWhen: [
+        'The tenant-scoped route returns the same MISSING_TENANT result.',
+        'The environment is running older PublicAPI/AdminAPI versions than the release with tenant-scoped platform routing hardening.',
+      ],
+    },
+    escalation: {
+      audience: 'platform-support',
+      neededWhen: [
+        'Tenant-scoped routes still return MISSING_TENANT after confirming the tenant and current deployed versions.',
+        'Production or another shared environment is behind the release that contains tenant-scoped platform routing hardening.',
+      ],
+      include: [
+        'CLI version',
+        'redacted route shape',
+        'HTTP status',
+        'server code',
+        'active tenant slug',
+        'deployed PublicAPI/AdminAPI versions if visible',
+      ],
+    },
+    safety: {
+      mutatesState: true,
+      mayWriteSecrets: false,
+      mayDeleteData: false,
+      publicSafe: true,
+    },
+    match: [
+      {
+        serverCode: 'MISSING_TENANT',
+      },
+      {
+        messageIncludes: ['MISSING_TENANT'],
+      },
+      {
+        messageIncludes: ['Tenant context required for app tokens'],
+      },
+    ],
+    learnedFrom: [
+      'App-token platform user lookup returned MISSING_TENANT until the caller used tenant-scoped V4 platform routes and the environment ran the matching PublicAPI/AdminAPI release.',
+    ],
   },
   {
     code: 'E242',
@@ -542,16 +838,16 @@ export const errorGuidanceCatalog = [
   {
     code: 'E275',
     reasonCode: 'resource_search_embedding_required',
-    title: 'Semantic resource search is not ready for this v4 passive ResourceAPI tenant.',
+    title: 'Semantic resource search is not ready for this tenant.',
     category: 'resource_data',
     severity: 'warning',
     appliesTo: ['resources.search', 'resources.storage.doctor', 'verify.storage'],
     publicSafe: true,
     why: [
-      'The PublicAPI v4 passive ResourceAPI route can be available for full-text search while semantic search modes are still not ready.',
+      'The v4 resource search endpoint can be available for full-text search while semantic search modes are still not ready.',
       'Hybrid and vector search need an additional semantic-search capability before the platform can create query embeddings.',
       'This is not fixed by retrying the same hybrid or vector search command; use full-text search or check readiness first.',
-      'This guidance applies to eai resources commands using the v4 passive ResourceAPI surface, not legacy v1/v3 or active ResourceAPI behavior.',
+      'This guidance applies to eai resources commands using the public v4 resource surface.',
     ],
     evidenceToCheck: [
       'Search capabilities from eai resources storage doctor.',
@@ -561,7 +857,7 @@ export const errorGuidanceCatalog = [
     diagnostics: [
       {
         command: 'eai resources storage doctor --format json',
-        purpose: 'Check whether fulltext, hybrid, and vector search are ready for the active tenant through the v4 passive ResourceAPI route.',
+        purpose: 'Check whether fulltext, hybrid, and vector search are ready for the active tenant.',
         mutates: false,
       },
       {
@@ -610,6 +906,91 @@ export const errorGuidanceCatalog = [
         messageIncludes: ['search_embedding_required'],
       },
     ],
+  },
+  {
+    code: 'E276',
+    reasonCode: 'resource_mutation_contract_invalid',
+    title: 'The PublicAPI v4 resource mutation contract is invalid.',
+    category: 'resource_data',
+    severity: 'error',
+    appliesTo: ['resources.create', 'resources.update', 'resources.action', 'publicapi'],
+    publicSafe: true,
+    why: [
+      'PublicAPI v4 intentionally rejects legacy flat resource bodies and PATCH updates.',
+      'Create requires POST with {"data": {...}}.',
+      'Update requires PUT with {"data": {...}, "version": n}, where n is the latest resource version.',
+      'A resource action requires POST with {"params": {...}} and returns the new version for any follow-up update.',
+    ],
+    evidenceToCheck: [
+      'The HTTP method and path used by the failed request.',
+      'The server error code and expected contract in the response.',
+      'The latest resource version when an update follows another mutation or action.',
+    ],
+    diagnostics: [
+      {
+        command: 'eai resources get <type> <id> --format json',
+        purpose: 'Read the current resource and version before an update.',
+        mutates: false,
+        when: 'Required for updates, especially after an action or another writer.',
+      },
+    ],
+    fixes: [
+      {
+        command:
+          'eai publicapi post /v4/data/resources/<tenant-id>/<type> --data \'{"data":{...}}\'',
+        purpose: 'Create a resource using the strict v4 data envelope.',
+        mutates: true,
+      },
+      {
+        command:
+          'eai publicapi put /v4/data/resources/<tenant-id>/<type>/<id> --data \'{"data":{...},"version":<current-version>}\'',
+        purpose: 'Update a resource with PUT and the latest optimistic-lock version.',
+        mutates: true,
+      },
+      {
+        command:
+          'eai publicapi post /v4/data/resources/<tenant-id>/<type>/<id>/actions/<action> --data \'{"params":{...}}\'',
+        purpose: 'Execute a resource action with the strict params envelope.',
+        mutates: true,
+      },
+    ],
+    retry: {
+      allowed: true,
+      maxAttempts: 1,
+      stopWhen: [
+        'The corrected method and body still return the same contract error.',
+        'The update uses the latest version but returns a version conflict.',
+      ],
+    },
+    escalation: {
+      audience: 'eai-maintainer',
+      neededWhen: [
+        'A request matching the documented strict v4 method and envelope is still rejected.',
+      ],
+      include: ['command without secrets', 'HTTP status', 'server error code', 'request ID'],
+    },
+    safety: {
+      mutatesState: true,
+      mayWriteSecrets: false,
+      mayDeleteData: false,
+      publicSafe: true,
+    },
+    match: [
+      {
+        serverCode: 'RESOURCE_MUTATION_CONTRACT_INVALID',
+      },
+      {
+        serverCode: 'RESOURCE_MUTATION_METHOD_NOT_ALLOWED',
+      },
+      {
+        messageIncludes: [
+          'RESOURCE_MUTATION_CONTRACT_INVALID',
+          'RESOURCE_MUTATION_METHOD_NOT_ALLOWED',
+        ],
+      },
+    ],
+    releaseNotes:
+      'Canonical contract: https://docs.eai.software/services/publicapi/v4/resource-mutation-contract',
   },
   {
     code: 'E280',

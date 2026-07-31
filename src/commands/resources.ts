@@ -153,15 +153,24 @@ function extractErrorPayload(payload: unknown): {
   } = {};
 
   for (const candidate of nested) {
-    if (typeof candidate === 'string' && !result.message) {
-      result.message = candidate;
+    if (typeof candidate === 'string') {
+      if (/^[A-Z][A-Z0-9_]+$/.test(candidate)) {
+        result.code ??= candidate;
+        result.serverCode ??= candidate;
+      } else {
+        result.message ??= candidate;
+      }
       continue;
     }
     if (!isRecord(candidate)) {
       continue;
     }
     if (!result.message) {
-      const message = candidate.message ?? candidate.detail ?? candidate.error;
+      const message = candidate.message ?? candidate.detail ??
+        (typeof candidate.error === 'string' &&
+        !/^[A-Z][A-Z0-9_]+$/.test(candidate.error)
+          ? candidate.error
+          : undefined);
       if (typeof message === 'string') {
         result.message = message;
       }
@@ -180,6 +189,10 @@ function extractErrorPayload(payload: unknown): {
       if (typeof serverCode === 'string') {
         result.serverCode = serverCode;
       }
+    }
+    if (typeof candidate.error === 'string' && /^[A-Z][A-Z0-9_]+$/.test(candidate.error)) {
+      result.code ??= candidate.error;
+      result.serverCode ??= candidate.error;
     }
   }
 
@@ -325,6 +338,14 @@ export function normalizeBatchCreateItems(payload: unknown): Array<{ data: Recor
   throw new Error('Batch create payload must be an object, array, or { items } wrapper');
 }
 
+export function normalizeBatchProjectionMode(value: unknown): 'deferred' | 'sync' {
+  const mode = typeof value === 'string' ? value.trim().toLowerCase() : 'deferred';
+  if (mode === 'deferred' || mode === 'sync') {
+    return mode;
+  }
+  throw new Error('Projection mode must be "deferred" or "sync"');
+}
+
 export function normalizeBatchUpdateItems(payload: unknown): Array<{ id: string; data: Record<string, unknown>; version: number }> {
   const items = Array.isArray(payload)
     ? payload
@@ -348,7 +369,9 @@ export function normalizeBatchUpdateItems(payload: unknown): Array<{ id: string;
 
 export function normalizeBatchDeleteIds(payload: unknown): string[] {
   if (Array.isArray(payload)) {
-    return payload.map(String);
+    return payload.map((item) => (
+      isRecord(item) && typeof item.id === 'string' ? item.id : String(item)
+    ));
   }
   if (isRecord(payload) && Array.isArray(payload.ids)) {
     return payload.ids.map(String);
@@ -482,6 +505,54 @@ resourcesCommand
   });
 
 resourcesCommand
+  .command('batch-import <type>')
+  .description('Import resources through the high-throughput bulk path')
+  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--data <json>', 'Batch payload as JSON array or object')
+  .option('--file <path>', 'Read batch payload from JSON file')
+  .option('--projection-mode <mode>', 'Search projection mode (deferred|sync)', 'deferred')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (type, options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+
+    try {
+      const payload = await loadJsonInput(options);
+      const items = normalizeBatchCreateItems(payload);
+      const projectionMode = normalizeBatchProjectionMode(options.projectionMode);
+      const spinner = makeSpinner(options.format, `Batch importing ${type}...`);
+      const res = await ctx.client.batchImportResources(type, items, { projectionMode });
+      if (!res.ok) {
+        failCommand(spinner, await formatResponseError(res, 'resources.batch.import'));
+        process.exit(1);
+      }
+      const data = await res.json() as {
+        succeeded?: number;
+        failed?: number;
+        projectionMode?: string;
+        projectionDeferred?: boolean;
+        historyCreated?: number;
+        outboxEnqueued?: number;
+      };
+      if (options.format === 'json') {
+        out.json(data);
+      } else {
+        const projection = data.projectionDeferred === true
+          ? 'projection deferred'
+          : `projection ${data.projectionMode ?? projectionMode}`;
+        succeedCommand(
+          spinner,
+          `Batch import complete (${data.succeeded ?? 0} succeeded, ${data.failed ?? 0} failed, ${projection})`,
+        );
+      }
+    } catch (err) {
+      out.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+resourcesCommand
   .command('batch-update <type>')
   .description('Update resources in bulk')
   .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
@@ -521,6 +592,7 @@ resourcesCommand
   .option('--ids <csv>', 'Comma-separated ids to delete')
   .option('--data <json>', 'Batch payload as JSON array or object')
   .option('--file <path>', 'Read batch payload from JSON file')
+  .option('--force', 'Accepted for parity with resources delete; batch delete is non-interactive', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, options) => {
@@ -571,7 +643,7 @@ resourcesCommand
         limit: parseInt(options.limit),
       });
       if (!res.ok) {
-        out.error(`${res.status} ${res.statusText}`);
+        failCommand(null, await formatResponseError(res, 'resources.aggregate'));
         process.exit(1);
       }
       const data = await res.json() as { rows: Array<Record<string, unknown>>; totalRows: number };
@@ -658,9 +730,7 @@ Examples:
     try {
       const res = await ctx.client.createResource(type, data);
       if (!res.ok) {
-        failCommand(spinner, `${res.status} ${res.statusText}`);
-        const body = await res.text();
-        out.error(body);
+        failCommand(spinner, await formatResponseError(res, 'resources.create'));
         process.exit(1);
       }
 
@@ -717,7 +787,7 @@ resourcesCommand
     try {
       const res = await ctx.client.updateResource(type, id, data, version!);
       if (!res.ok) {
-        failCommand(spinner, `${res.status} ${res.statusText}`);
+        failCommand(spinner, await formatResponseError(res, 'resources.update'));
         process.exit(1);
       }
 
@@ -994,7 +1064,11 @@ resourcesCommand
 
 const fileCommand = resourcesCommand
   .command('file')
-  .description('Upload, download, and delete Blob-backed resource files');
+  .description('Upload, download, and delete files attached to typed resource object properties')
+  .addHelpText('after', `
+Use this when the file belongs to an existing typed resource. Use "eai docs"
+when the file is a document to process, classify, or index for AI/RAG.
+`);
 
 fileCommand
   .command('upload <type> <id> <property> <path>')
@@ -1129,6 +1203,104 @@ resourcesCommand
       failCommand(spinner, err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
+  });
+
+resourcesCommand
+  .command('performance-status')
+  .description('Show tenant-scoped resource schema and performance readiness')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+    const spinner = makeSpinner(options.format, 'Fetching resource performance status...');
+    try {
+      const response = await ctx.client.getResourceStorageSchemaStatus();
+      if (!response.ok) {
+        failCommand(spinner, `${response.status} ${response.statusText}`);
+        process.exit(1);
+      }
+      const payload = await response.json() as Record<string, unknown>;
+      if (options.format === 'json') {
+        out.json({
+          ...payload,
+          rawSqlAllowed: false,
+          tenantAdminOperations: ['read_status', 'plan_index_change'],
+          systemAdminOperations: ['apply_index_change', 'force_cache_refresh'],
+        });
+        return;
+      }
+      const state = typeof payload.state === 'string' ? payload.state : 'unknown';
+      const count = typeof payload.objectTypeCount === 'number' ? payload.objectTypeCount : 0;
+      succeedCommand(spinner, `Resource schema ${state} — ${count} Object Types visible`);
+      out.info('Tenant-admin: read status and request an index plan.');
+      out.info('Platform-admin only: apply index changes and force cache refresh.');
+      out.info('Raw SQL: disabled.');
+    } catch (err) {
+      failCommand(spinner, err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+resourcesCommand
+  .command('indexes-plan')
+  .description('Plan validated resource storage/index changes without applying them')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--object-type <slug...>', 'Limit the plan to published Object Type slugs')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .action(async (options) => {
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    options.format = normalizeFormat(options);
+    const spinner = makeSpinner(options.format, 'Planning resource indexes...');
+    const response = await ctx.client.planResourceIndexes(options.objectType);
+    if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
+    const payload = await response.json();
+    if (options.format === 'json') { out.json(payload); return; }
+    succeedCommand(spinner, 'Resource index plan ready (dry run; no changes applied).');
+  });
+
+resourcesCommand
+  .command('indexes-apply')
+  .description('Apply validated resource storage/index changes')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--object-type <slug...>', 'Limit the apply to published Object Type slugs')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--confirm', 'Confirm the tenant-scoped apply', false)
+  .action(async (options) => {
+    options.format = normalizeFormat(options);
+    if (!options.confirm) {
+      exitWithError(ErrorCode.E303, { field: '--confirm' }, options.format);
+    }
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const spinner = makeSpinner(options.format, 'Applying resource indexes...');
+    const response = await ctx.client.applyResourceIndexes(options.objectType);
+    if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
+    const payload = await response.json();
+    if (options.format === 'json') { out.json(payload); return; }
+    succeedCommand(spinner, 'Resource index apply completed.');
+  });
+
+resourcesCommand
+  .command('cache-refresh')
+  .description('Force a resource cache refresh (system-admin operation)')
+  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--object-type <slug...>', 'Limit the refresh to Object Type slugs')
+  .requiredOption('--reason <reason>', 'Audited reason or change ticket')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--confirm', 'Confirm the system-admin cache refresh', false)
+  .action(async (options) => {
+    options.format = normalizeFormat(options);
+    if (!options.confirm) {
+      exitWithError(ErrorCode.E303, { field: '--confirm' }, options.format);
+    }
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const spinner = makeSpinner(options.format, 'Refreshing resource cache...');
+    const response = await ctx.client.refreshResourceCache(options.objectType, options.reason);
+    if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
+    const payload = await response.json();
+    if (options.format === 'json') { out.json(payload); return; }
+    succeedCommand(spinner, 'Resource cache refresh completed.');
   });
 
 resourcesCommand

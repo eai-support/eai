@@ -8,10 +8,20 @@ import { parseStageCommand } from './parse-stage-command.mjs';
 export const GOFER_VERSION_FILE = path.join('.specify', '.gofer-version');
 export const CORE_SENTINELS = [
   GOFER_VERSION_FILE,
-  path.join('.specify', 'commands', '0_business_scenario.md'),
+  path.join('.specify', 'commands', '0_gofer_start.md'),
   path.join('.specify', 'templates', 'spec-template.md'),
+  path.join('.specify', 'templates', 'loop-contract-template.json'),
+  path.join('.specify', 'templates', 'working-backwards-prfaq-template.md'),
+  path.join('.specify', 'templates', 'business-owner-summary-template.md'),
+  path.join('.specify', 'templates', 'cto-architecture-summary-template.md'),
+  path.join('.specify', 'templates', 'ciso-security-summary-template.md'),
+  path.join('.specify', 'templates', 'stakeholder-review-index-template.md'),
+  path.join('.specify', 'templates', 'brand', 'brand-profile-template.json'),
+  path.join('.specify', 'templates', 'brand', 'document-style-template.md'),
+  path.join('.specify', 'templates', 'brand', 'marp-theme-template.css'),
   path.join('.specify', 'scripts', 'bash', 'create-new-feature.sh'),
   path.join('.specify', 'scripts', 'node', 'parse-stage-command.mjs'),
+  path.join('.specify', 'scripts', 'node', 'gofer-loop-audit.mjs'),
   path.join('.specify', 'scripts', 'hooks', 'post-tool-use.mjs'),
   path.join('.specify', 'scripts', 'powershell', 'install-optional-tools.ps1'),
   path.join('.specify', 'references', 'platform', 'README.md'),
@@ -23,6 +33,16 @@ export const CORE_SENTINELS = [
   path.join('.specify', 'specs'),
   path.join('.specify', 'memory'),
 ];
+const LEGACY_MANAGED_PATHS = [
+  path.join('.specify', 'commands', '0_business_scenario.md'),
+  path.join('.claude', 'commands', '0_business_scenario.md'),
+  path.join('.github', 'prompts', '0_business_scenario.prompt.md'),
+  path.join('.agents', 'skills', '0_business_scenario'),
+  path.join('.system', 'skills', '0_business_scenario'),
+  path.join('.gemini', 'commands', 'gofer', '0_business_scenario.md'),
+  path.join('.gemini', 'commands', 'gofer', '0_business_scenario.toml'),
+];
+const LEGACY_MANAGED_ARCHIVE_ROOT = path.join('.specify', 'logs', 'legacy-command-backups');
 
 export const HOST_POLICIES = {
   auto: { required: [] },
@@ -163,6 +183,57 @@ export async function pathExists(targetPath) {
     }
     throw error;
   }
+}
+
+function buildArchiveStamp() {
+  return `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}`;
+}
+
+async function movePathPreservingAcrossDevices(sourcePath, targetPath) {
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  try {
+    await fs.rename(sourcePath, targetPath);
+  } catch (error) {
+    if (error?.code !== 'EXDEV') {
+      throw error;
+    }
+
+    await fs.cp(sourcePath, targetPath, {
+      recursive: true,
+      force: true,
+      dereference: false,
+    });
+    await fs.rm(sourcePath, { recursive: true, force: true });
+  }
+}
+
+async function archiveLegacyManagedPath(workspaceRoot, relativePath, archiveStamp, dryRun) {
+  const archiveRelativePath = path.join(LEGACY_MANAGED_ARCHIVE_ROOT, archiveStamp, relativePath);
+  if (!dryRun) {
+    await movePathPreservingAcrossDevices(
+      path.join(workspaceRoot, relativePath),
+      path.join(workspaceRoot, archiveRelativePath)
+    );
+  }
+
+  return archiveRelativePath;
+}
+
+async function removeLegacyManagedPaths(workspaceRoot, dryRun) {
+  const archived = [];
+  const archiveStamp = buildArchiveStamp();
+  for (const relativePath of LEGACY_MANAGED_PATHS) {
+    const targetPath = path.join(workspaceRoot, relativePath);
+    if (!(await pathExists(targetPath))) {
+      continue;
+    }
+
+    archived.push({
+      relativePath,
+      archivePath: await archiveLegacyManagedPath(workspaceRoot, relativePath, archiveStamp, dryRun),
+    });
+  }
+  return archived;
 }
 
 async function resolveSourcePath(sourceRoot, relativePath) {
@@ -473,22 +544,30 @@ function buildCodeStyleSection(projectInfo) {
 
 function buildEaiRepoContractSection(projectInfo) {
   if (!projectInfo.eaiInitialized) {
-    return '';
+    return `## EAI Platform Readiness
+
+- This repo is not confirmed as EAI-initialized yet. Before any Gofer pipeline work, run \`eai whoami\`.
+- If \`eai\` is missing, login fails, the token is expired, or no active tenant is visible, run \`/gofer:eai-first-run\` before building.
+- Build on EAI Platform first and Azure second. Treat non-EAI runtimes as explicit exceptions only.
+- Do not write tokens, secrets, private tenant IDs, or local \`.env\` values into Gofer artifacts.`;
   }
 
   return `## EAI Repo Contract
 
 - This repo appears to be initialized from the EAI app template. Before app-delivery work, read \`.specify/references/platform/eai-repo-contract.md\` and \`.specify/references/platform/eai-error-catalog.yaml\`.
+- Before any Gofer pipeline work, run \`eai whoami\`. If \`eai\` is missing, login fails, the token is expired, or no active tenant is visible, run \`/gofer:eai-first-run\` before building.
 - If CLI, login, tenant, template, or Gofer readiness is missing or stale, run \`/gofer:eai-first-run\` before building.
 - Use \`eai update --check\`, \`eai --describe\`, \`eai agent guide --format json\`, \`eai template check --format json\`, \`eai gofer refresh --check --format json\`, and \`eai workflow readiness --format json\` when the CLI advertises them before assuming the repo is current.
 - After any \`eai\` command error, use \`eai errors explain <code-or-reason> --format json\` before guessing remediation.
+- If \`eai errors explain\` is unavailable, match \`.specify/references/platform/eai-error-catalog.yaml\`, run read-only diagnostics before mutating fixes, and stop at the retry or escalation condition.
+- For \`eai user invite\` 5xx or \`EXTERNAL_SERVICE_ERROR\`, check existing members with \`eai user list --tenant <tenant-id> --search <email> --format json\`; use \`eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json\` only after verification and user approval, then tell the app user to sign out and sign back in.
 - Build on EAI Platform first and Azure second. Treat non-EAI runtimes as explicit exceptions only.
 - Keep provisioning, types seed, schema/storage health, workflow readiness, and preview as separate gates.`;
 }
 
 export function buildAgentsMd(projectInfo, stages) {
   const corePipelineOrder = [
-    '0_business_scenario',
+    '0_gofer_start',
     '1_gofer_research',
     '2_gofer_specify',
     '3_gofer_plan',
@@ -563,7 +642,19 @@ ${buildCodeStyleSection(projectInfo)}
 
 ## Gofer Pipeline
 
-This project uses Gofer for spec-driven development. Run \`/0_business_scenario\` to start the core pipeline (business scenario -> research -> specify -> plan -> tasks -> implement -> validate). \`/6_gofer_validate\` is the terminal quality gate and includes the final engineering review loop. Artifacts in \`.specify/specs/{feature}/\`.
+This project uses Gofer for spec-driven development. Run \`/0_gofer_start\` to start the core pipeline (Gofer Start -> research -> specify -> plan -> tasks -> implement -> validate). \`/6_gofer_validate\` is the terminal quality gate and includes the final engineering review loop. Artifacts in \`.specify/specs/{feature}/\`.
+
+Each feature should carry a bounded loop contract:
+
+- \`loop-contract.json\` defines the objective, evaluation commands, maximum
+  loop count, stop conditions, and escalation rules.
+- \`loop-ledger.jsonl\` records each implementation/validation check-repair
+  iteration.
+- \`loop-audit-report.md\` is produced by
+  \`node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir .specify/specs/{feature} --stage 6_validate --strict\`.
+
+Implementation and validation must not finish if the loop audit reports
+blocking findings.
 
 ${buildEaiRepoContractSection(projectInfo)}
 
@@ -613,7 +704,13 @@ See @AGENTS.md for project conventions, commands, and code style.
 
 ## Gofer Pipeline
 
-Run \`/0_business_scenario\` to start the core pipeline: business scenario -> research -> specify -> plan -> tasks -> implement -> validate. \`/6_gofer_validate\` is the terminal quality gate and includes the final engineering review loop. Use \`/7_gofer_save\` and \`/8_gofer_resume\` for session continuity. Artifacts go to \`.specify/specs/{feature}/\`.
+Run \`/0_gofer_start\` to start the core pipeline: Gofer Start -> research -> specify -> plan -> tasks -> implement -> validate. \`/6_gofer_validate\` is the terminal quality gate and includes the final engineering review loop. Use \`/7_gofer_save\` for checkpoints and \`/8_gofer_branding\` to apply company, client, or consulting-firm presentation style. Artifacts go to \`.specify/specs/{feature}/\`.
+
+For each active feature, keep \`loop-contract.json\`, \`loop-ledger.jsonl\`, and
+\`loop-audit-report.md\` in the feature directory. The loop contract bounds
+check-repair iterations, and validation must run
+\`node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir .specify/specs/{feature} --stage 6_validate --strict\`
+before declaring the work complete.
 
 ${eaiSection}
 `;
@@ -630,9 +727,9 @@ export function buildCopilotInstructions(projectInfo) {
 
 ## Gofer Pipeline
 
-This project uses Gofer for spec-driven development. Run \`/0_business_scenario\` to start the core pipeline: business scenario -> research -> specify -> plan -> tasks -> implement -> validate.
+This project uses Gofer for spec-driven development. Run \`/0_gofer_start\` to start the core pipeline: Gofer Start -> research -> specify -> plan -> tasks -> implement -> validate.
 
-Key commands: \`/1_gofer_research\`, \`/2_gofer_specify\`, \`/3_gofer_plan\`, \`/4_gofer_tasks\`, \`/5_gofer_implement\`, \`/6_gofer_validate\`. \`/6_gofer_validate\` is the terminal quality gate and includes the final engineering review loop. Use \`/7_gofer_save\` and \`/8_gofer_resume\` for session continuity. Artifacts in \`.specify/specs/{feature}/\`.
+Key commands: \`/1_gofer_research\`, \`/2_gofer_specify\`, \`/3_gofer_plan\`, \`/4_gofer_tasks\`, \`/5_gofer_implement\`, \`/6_gofer_validate\`. \`/6_gofer_validate\` is the terminal quality gate and includes the final engineering review loop. Use \`/7_gofer_save\` for checkpoints and \`/8_gofer_branding\` for branded document/deck templates. Artifacts in \`.specify/specs/{feature}/\`.
 
 ${eaiSection}
 
@@ -830,10 +927,33 @@ This folder contains all project specifications for AI-driven feature developmen
 Run the unified Gofer pipeline with:
 
 \`\`\`
-/0_business_scenario Add user authentication with OAuth2 and JWT
+/0_gofer_start Add user authentication with OAuth2 and JWT
 \`\`\`
 
 Artifacts are stored in \`.specify/specs/{feature}/\`.
+
+Each feature should include a bounded loop contract:
+
+- \`loop-contract.json\` - objective, maximum iterations, stop conditions, and
+  evaluation commands.
+- \`loop-ledger.jsonl\` - append-only check-repair evidence written during
+  implementation and validation.
+- \`loop-audit-report.md\` - generated by
+  \`node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir .specify/specs/{feature} --stage 6_validate --strict\`.
+
+Each feature should also keep a running stakeholder review pack:
+
+- \`working-backwards-prfaq.md\` - product release PR/FAQ that starts as a
+  launch-day fiction and becomes evidence-backed across stages.
+- \`prfaq-history/\` - immutable stage snapshots of the PR/FAQ.
+- \`business-owner-summary.md\` - business scenario, process, value case,
+  success metrics, and assumptions.
+- \`cto-architecture-summary.md\` - EAI Platform/Azure architecture, auth,
+  tenancy, data, integration, and platform-fit evidence.
+- \`ciso-security-summary.md\` - security posture, controls, residual risks,
+  and validation evidence.
+- \`stakeholder-review-index.md\` - what is ready for review and who must
+  approve, revise, or defer.
 
 ## Model Policy
 
@@ -993,6 +1113,13 @@ export async function bootstrapWorkspace({
       }
     }
   }
+
+  const archivedLegacyPaths = await removeLegacyManagedPaths(workspaceRoot, dryRun);
+  changed.push(
+    ...archivedLegacyPaths.map(
+      ({ relativePath, archivePath }) => `${relativePath} (archived legacy to ${archivePath})`
+    )
+  );
 
   if (await mergeGitignore(workspaceRoot, dryRun)) {
     changed.push('.gitignore');

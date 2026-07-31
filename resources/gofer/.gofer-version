@@ -1,5 +1,7 @@
 {
-  "commit": "648e3faa590bb172a6169680455a77220dce1868",
-  "describe": "v3.7.4",
-  "synced_at": "2026-06-28T09:25:13Z"
+  "commit": "6059c0e61377f648a9470b3554ae689e6912ec24",
+  "describe": "v3.7.14",
+  "source": "https://github.com/eai-tools/eai-gofer.git@6059c0e61377f648a9470b3554ae689e6912ec24",
+  "dirty": false,
+  "synced_at": "2026-07-06T03:17:53Z"
 }

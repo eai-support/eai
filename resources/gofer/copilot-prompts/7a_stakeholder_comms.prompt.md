@@ -12,7 +12,7 @@ argument-hint: feature-name-or-description
 gofer:
   workflowProfile: standard
   canonicalSource: .specify/commands/7a_stakeholder_comms.md
-  canonicalChecksum: 37523a42cbe6efaf26039f2ac994a2c2a73bd8529118cced78cd559ce4e1106b
+  canonicalChecksum: 47031d30e808d88cd63abf3bd4e08ce4c14bb1fcec7fe08e0b1dc582d039a20f
   metadataSource: scripts/generate-commands.ts
 ---
 
@@ -23,10 +23,17 @@ Before doing stage/helper work:
 1. Resolve the repository root.
 2. Check the core Gofer sentinels:
    - `.specify/.gofer-version`
-   - `.specify/commands/0_business_scenario.md`
+   - `.specify/commands/0_gofer_start.md`
    - `.specify/templates/spec-template.md`
+   - `.specify/templates/loop-contract-template.json`
+   - `.specify/templates/working-backwards-prfaq-template.md`
+   - `.specify/templates/business-owner-summary-template.md`
+   - `.specify/templates/cto-architecture-summary-template.md`
+   - `.specify/templates/ciso-security-summary-template.md`
+   - `.specify/templates/stakeholder-review-index-template.md`
    - `.specify/scripts/bash/create-new-feature.sh`
    - `.specify/scripts/node/parse-stage-command.mjs`
+   - `.specify/scripts/node/gofer-loop-audit.mjs`
    - `.specify/scripts/hooks/post-tool-use.mjs`
    - `.specify/scripts/powershell/install-optional-tools.ps1`
    - `.specify/templates/gofer-model-policy.yaml`
@@ -47,6 +54,24 @@ Before doing stage/helper work:
 
 
 # Gofer Stakeholder Communications
+
+## EAI Platform Session Preflight
+
+Before any Gofer stage/helper command does pipeline work:
+
+1. Treat durable delivery as EAI Platform delivery by default, with Azure second
+   and every other stack only by explicit exception.
+2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
+   and an active tenant is visible.
+3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
+   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   approve login/setup before continuing.
+4. For EAI app delivery, do not continue into research, specification, planning,
+   tasks, implementation, or validation until
+   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   app-readiness, and next-action evidence.
+5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+   Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
 <!-- gofer:token-cost-policy:start -->
@@ -82,6 +107,11 @@ This command expects in `.specify/specs/{feature}/`:
 - `spec.md` — Feature specification (from #2_gofer_specify)
 - `spec-summary.md` — Executive summary (from #2_gofer_specify)
 - `assumptions.md` — Tracked assumptions
+- `working-backwards-prfaq.md` — Running product release PR/FAQ updated by stages 0-6
+- `business-owner-summary.md` — Business Owner summary updated by stages 1, 2, 5, and 6
+- `cto-architecture-summary.md` — CTO/Architecture summary updated by stages 3, 5, and 6
+- `ciso-security-summary.md` — CISO/Risk summary updated by #6_gofer_validate
+- `stakeholder-review-index.md` — Current stakeholder review status and approve/revise/defer asks
 
 If `validation-report.md` doesn't exist or shows FAIL, do NOT generate comms.
 Instead, inform the user that validation must pass first.
@@ -124,6 +154,11 @@ Instead, inform the user that validation must pass first.
    Parse JSON for FEATURE_DIR
 
 2. **Load all business artifacts**:
+   - `working-backwards-prfaq.md` — Running product release PR/FAQ and internal FAQ
+   - `stakeholder-review-index.md` — Review status and required approvals
+   - `business-owner-summary.md` — Business scenario, process, value, assumptions
+   - `cto-architecture-summary.md` — Architecture, EAI Platform/Azure fit, auth/tenant/data/contracts
+   - `ciso-security-summary.md` — Security posture, controls, residual risk, validation evidence
    - `problem-brief.md` — Original problem and business case
    - `discovery.md` — Business discovery context
    - `spec-summary.md` — Executive summary
@@ -151,6 +186,11 @@ Prompt: "Generate stakeholder communications for feature [FEATURE_NAME].
 Feature directory: {FEATURE_DIR}
 
 Read and use:
+- working-backwards-prfaq.md for the product-release story and FAQ
+- stakeholder-review-index.md for review status and approval asks
+- business-owner-summary.md for business scenario, process, value, and assumptions
+- cto-architecture-summary.md for architecture, EAI Platform/Azure fit, auth, tenancy, data, and contracts
+- ciso-security-summary.md for controls, residual risk, security evidence, and launch gates
 - problem-brief.md for original problem context
 - discovery.md for business discovery findings
 - spec.md for what was specified
@@ -198,13 +238,19 @@ Return structured report (<2000 tokens)."
 Write to `{FEATURE_DIR}/stakeholder-comms.md` using the template at
 `.specify/templates/stakeholder-comms-template.md`.
 
-Populate with comms-writer agent findings. Ensure:
+Populate with comms-writer agent findings and the running PR/FAQ/persona
+summaries. Ensure:
 
 - **All language is non-technical** — no jargon, no acronyms without explanation
 - **Impact is quantified** — use numbers from problem-brief.md
 - **Demo script is actionable** — someone could run the demo from this document
 - **Change management is realistic** — phased rollout with success criteria
 - **Metrics are tied to problem** — connect back to original business case
+- **The PR/FAQ is preserved** — include a "Product Release PR/FAQ" section or
+  direct links to `working-backwards-prfaq.md` and its stage snapshots
+- **Persona summaries are visible** — include links and decision status for
+  `business-owner-summary.md`, `cto-architecture-summary.md`, and
+  `ciso-security-summary.md`
 
 ---
 
@@ -276,12 +322,21 @@ stakeholder communications explaining what changed and why.
 ════════════════════════════════════════════════════════════════
 
   Deliverables:
+  - {FEATURE_DIR}/working-backwards-prfaq.md
+  - {FEATURE_DIR}/business-owner-summary.md
+  - {FEATURE_DIR}/cto-architecture-summary.md
+  - {FEATURE_DIR}/ciso-security-summary.md
+  - {FEATURE_DIR}/stakeholder-review-index.md
   - {FEATURE_DIR}/stakeholder-comms.md
   - {FEATURE_DIR}/business-metrics.md
   - {FEATURE_DIR}/assumptions.md (updated)
 
   Package includes:
+  - Product Release PR/FAQ
   - Executive Summary
+  - Business Owner Summary
+  - CTO Architecture Summary
+  - CISO Security Summary
   - Release Notes (non-technical)
   - Demo Script (5-minute walkthrough)
   - Change Management Brief
@@ -312,17 +367,18 @@ stakeholder communications explaining what changed and why.
 
 ---
 
-## Marp Presentation Deck (EnterpriseAI Profile Extension)
+## Marp Presentation Deck (Opt-In; EnterpriseAI Recommended)
 
-The standard Gofer workflow is the public default. Marp output is opt-in per run
-and remains recommended only for `workflowProfile=enterpriseai`. When Marp output
-is enabled, generate the general stakeholder deck and the persona deck pack.
-Standard-profile runs skip this step only when the user explicitly opts out;
-Release Notes and the Demo Script (5-minute walkthrough) remain the core
+Marp deck generation is opt-in for the standard Gofer workflow and is
+recommended only for `workflowProfile=enterpriseai`, where stakeholders usually
+need a simple walkthrough. When enabled, generate the general stakeholder deck
+and, for larger changes, the persona deck pack. Skip decks only for small
+docs-only or purely mechanical changes where a short Markdown summary is clearer.
+Release Notes and the Demo Script (5-minute walkthrough) remain core
 deliverables as `release-notes.md` and `demo-script.md`.
 
-When enabled, generate `{FEATURE_DIR}/presentation.marp.md`. The file MUST use
-Marp frontmatter and the canonical EnterpriseAI slide deck structure:
+When a deck is generated, write `{FEATURE_DIR}/presentation.marp.md`. The file
+MUST use Marp frontmatter and the canonical stakeholder slide deck structure:
 
 ```markdown
 ---
@@ -418,6 +474,25 @@ node .specify/scripts/node/lib/assemble-stakeholder-pack.mjs $FEATURE_DIR
 The assembler writes `{FEATURE_DIR}/stakeholder-pack.md` and prints which
 artifacts were included vs. missing so the operator can re-run the relevant
 visual generators if needed.
+
+Before presenting the pack, review the included visuals against the visual
+explanation quality gate used by `#6_gofer_validate`:
+
+- Each visual answers one stakeholder question and is simple enough to read
+  without external docs.
+- Each visual has a plain-language preamble, audience, source inputs, and
+  requirement/plan/code/test/EAI evidence links.
+- Each Mermaid/D2/Structurizr-style diagram renders or includes a markdown/text
+  fallback; each UI picture has screenshot, Storybook/component, Playwright, or
+  equivalent render proof.
+- `presentation.marp.md` should exist for substantive stakeholder-facing
+  changes unless the change is small, docs-only, or better explained by a short
+  Markdown summary. If skipped, record the reason in `stakeholder-comms.md`.
+- Every human-facing document starts with a three-to-five-bullet executive
+  summary that explains the decision, value, risk, evidence, and next ask in
+  simple language.
+- Any stale, crowded, private-data-bearing, or untraceable visual is called out
+  in `stakeholder-review-index.md` as `revise visuals <artifact>`.
 
 ---
 

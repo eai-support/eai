@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   createTestEnvironment,
   type TestEnvironment,
@@ -15,6 +16,10 @@ import {
   expectFileExists,
 } from "../helpers/assert-dsl.js";
 import { installGoferResources } from "../../src/lib/gofer-installer.js";
+
+const BUNDLED_GOFER_RESOURCES = fileURLToPath(
+  new URL("../../resources/gofer/", import.meta.url),
+);
 
 async function createGoferFixture(projectRoot: string): Promise<void> {
   await mkdir(join(projectRoot, "src", "eai.config"), { recursive: true });
@@ -153,5 +158,38 @@ describe("eai gofer refresh", () => {
         path.endsWith(join(".github", "copilot-instructions.md")),
       ),
     ).toBe(true);
+  });
+
+  test("can refresh from a newer Gofer resources source without a new CLI release", async () => {
+    const latestResources = join(env.dir, "latest-gofer-resources");
+    await cp(BUNDLED_GOFER_RESOURCES, latestResources, { recursive: true });
+    await writeFile(
+      join(latestResources, ".gofer-version"),
+      JSON.stringify(
+        {
+          commit: "latest-gofer-commit",
+          describe: "v99.0.0",
+          synced_at: "2099-01-01T00:00:00Z",
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf-8",
+    );
+
+    ctx.env.EAI_GOFER_REFRESH_SOURCE = "latest";
+    ctx.env.EAI_GOFER_REFRESH_RESOURCES_PATH = latestResources;
+
+    const result = await runCommand(ctx, "eai gofer refresh --check --format json");
+    expectCommandSucceeded(result);
+
+    const payload = JSON.parse(result.stdout) as {
+      bundle?: { describe?: string; commit?: string; source?: string };
+    };
+    expect(payload.bundle).toMatchObject({
+      describe: "v99.0.0",
+      commit: "latest-gofer-commit",
+      source: "latest",
+    });
   });
 });
