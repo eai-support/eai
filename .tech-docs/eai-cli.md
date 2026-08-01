@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.7.1 |
-| Released | 2026-07-09 |
-| Last Material Change | Reject app-only tenant app data-plane runtime contracts |
-| Source Commit | `9aa4d1240a58f6d93e50fb97019dd130f9556670` |
+| Version | 3.8.3 |
+| Released | 2026-07-30 |
+| Last Material Change | Pin generated app template with multi-tab submission ownership |
+| Source Commit | `315f54dae400e3ff2d79da5d37e4c73481e90fc9` |
 
 
 ## Install

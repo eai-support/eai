@@ -6,10 +6,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import inquirer from 'inquirer';
 import * as auth from '../../src/lib/auth.js';
 import type { StoredTokens } from '../../src/lib/auth.js';
 import * as config from '../../src/lib/config.js';
 import * as profile from '../../src/lib/profile.js';
+import * as tenantContext from '../../src/lib/tenant-context.js';
+import { tenantCommand } from '../../src/commands/tenant.js';
 import {
   buildTenantBootstrapAdminStatusMessages,
   buildTenantHierarchy,
@@ -75,6 +78,22 @@ function restoreEnv(name: string, value: string | undefined): void {
   } else {
     process.env[name] = value;
   }
+}
+
+function parseJsonOutput(spy: ReturnType<typeof vi.spyOn>): unknown[] {
+  return spy.mock.calls
+    .flat()
+    .map((value) => {
+      if (typeof value !== 'string') {
+        return null;
+      }
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    })
+    .filter((value) => value !== null);
 }
 
 beforeEach(() => {
@@ -195,6 +214,7 @@ describe('tenant list filtering', () => {
         slug: 'child',
         isActive: true,
         roles: ['tenant-admin'],
+        parentId: 'parent-tenant',
       },
     ], [
       {
@@ -213,8 +233,8 @@ describe('tenant list filtering', () => {
 
     expect(buildTenantHierarchyTreeLines(roots)).toEqual([
       'parent - Parent Tenant [tenant-admin]',
-      '`- child - Child Tenant [tenant-admin]',
-      '   `- grandchild - Grandchild Tenant [visible via parent]',
+      '\tchild - Child Tenant [tenant-admin]',
+      '\t\tgrandchild - Grandchild Tenant [visible via parent]',
     ]);
   });
 
@@ -240,6 +260,7 @@ describe('tenant list filtering', () => {
           slug: 'tenant-b',
           isActive: true,
           roles: ['tenant-admin'],
+          parentId: 'tenant-a',
         },
       ],
     });
@@ -247,9 +268,139 @@ describe('tenant list filtering', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
       'tenant-a - Tenant A [tenant-admin]',
-      'tenant-b - Tenant B [tenant-admin]',
+      '\ttenant-b - Tenant B [tenant-admin]',
     ]);
     expect(result.warnings).toEqual([]);
+  });
+
+  test('builds hierarchy from tenantPath when parentId is absent', async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error('child tenant lookup should not run for the default list');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await loadTenantHierarchy({
+      publicApiUrl: DEFAULT_PUBLIC_API_URL,
+      memberships: [
+        {
+          id: 'tenant-eai',
+          displayName: 'EAI',
+          slug: 'eai',
+          tenantPath: '/eai',
+          depth: 1,
+          isActive: true,
+          roles: ['tenant-admin'],
+        },
+        {
+          id: 'tenant-compliance',
+          displayName: 'Compliance',
+          slug: 'compliance',
+          tenantPath: '/eai/compliance',
+          depth: 2,
+          isActive: true,
+          roles: ['tenant-admin'],
+        },
+      ],
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
+      'eai - EAI [tenant-admin]',
+      '\tcompliance - Compliance [tenant-admin]',
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  test('interactive tenant selection shows hierarchy tree choices', async () => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
+    vi.spyOn(auth, 'getActiveAuthConfigMismatch').mockResolvedValue(null);
+    vi.spyOn(auth, 'storeTokens').mockResolvedValue();
+    vi.spyOn(profile, 'getActiveProfile').mockReturnValue('default');
+
+    const promptSpy = vi.spyOn(inquirer, 'prompt').mockImplementation(async (questions: Array<Record<string, unknown>>) => {
+      const [question] = questions;
+      expect(question?.message).toBe('Select the tenant to work with now');
+      expect(question?.choices).toEqual([
+        { name: 'parent - Parent Tenant [tenant-admin]', value: 'parent-tenant', disabled: undefined },
+        { name: '\tchild - Child Tenant [tenant-admin]', value: 'child-tenant', disabled: undefined },
+      ]);
+      return { tenantId: 'child-tenant' };
+    });
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/identity/tenants`) {
+        return new Response(
+          JSON.stringify({
+            tenants: [
+              {
+                id: 'parent-tenant',
+                displayName: 'Parent Tenant',
+                slug: 'parent',
+                role: 'tenant-admin',
+                isActive: true,
+                tenantPath: '/parent',
+                depth: 1,
+              },
+              {
+                id: 'child-tenant',
+                displayName: 'Child Tenant',
+                slug: 'child',
+                role: 'tenant-admin',
+                isActive: true,
+                tenantPath: '/parent/child',
+                depth: 2,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/parent-tenant/management`) {
+        return new Response(
+          JSON.stringify({
+            id: 'parent-tenant',
+            displayName: 'Parent Tenant',
+            slug: 'parent',
+            homeRegion: 'au',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/child-tenant/management`) {
+        return new Response(
+          JSON.stringify({
+            id: 'child-tenant',
+            displayName: 'Child Tenant',
+            slug: 'child',
+            parentTenantId: 'parent-tenant',
+            homeRegion: 'au',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(`Unhandled request: ${href}`, { status: 500 });
+    }));
+
+    const originalStdinTty = process.stdin.isTTY;
+    const originalStdoutTty = process.stdout.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+
+    try {
+      const context = await resolveActiveTenantContext({
+        publicApiUrl: DEFAULT_PUBLIC_API_URL,
+        interactive: true,
+        forcePrompt: true,
+      });
+
+      expect(context.activeTenant.id).toBe('child-tenant');
+      expect(promptSpy).toHaveBeenCalledOnce();
+    } finally {
+      Object.defineProperty(process.stdin, 'isTTY', { value: originalStdinTty, configurable: true });
+      Object.defineProperty(process.stdout, 'isTTY', { value: originalStdoutTty, configurable: true });
+    }
   });
 
   test('loads child tenant hierarchy only for an explicit parent', async () => {
@@ -301,9 +452,42 @@ describe('tenant list filtering', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
       'parent - Parent Tenant [tenant-admin]',
-      '`- child - Child Tenant [visible via parent]',
+      '\tchild - Child Tenant [visible via parent]',
     ]);
     expect(result.warnings).toEqual([]);
+  });
+
+  test('normalizes parent tenant metadata from flat membership payloads', () => {
+    const [entry] = normalizeTenantEntries({
+      tenants: [{
+        id: 'tenant-child',
+        displayName: 'Child Tenant',
+        slug: 'child-tenant',
+        isTenantAdmin: true,
+        roles: ['tenant-admin'],
+        parentTenant: { id: 'tenant-parent' },
+      }],
+    });
+
+    expect(entry).toEqual({
+      tenant: {
+        id: 'tenant-child',
+        displayName: 'Child Tenant',
+        slug: 'child-tenant',
+        isActive: true,
+        parent: { id: 'tenant-parent' },
+        parentId: undefined,
+        tenantPath: undefined,
+        depth: undefined,
+        domain: undefined,
+      },
+      isTenantAdmin: true,
+      roles: ['tenant-admin'],
+    });
+    expect(toTenantMembership(entry!)).toEqual(expect.objectContaining({
+      id: 'tenant-child',
+      parentId: 'tenant-parent',
+    }));
   });
 
   test('normalizes flat admin membership payloads into tenant entries', () => {
@@ -323,6 +507,8 @@ describe('tenant list filtering', () => {
         isActive: true,
         parent: undefined,
         parentId: undefined,
+        tenantPath: undefined,
+        depth: undefined,
         domain: undefined,
       },
       isTenantAdmin: true,
@@ -352,6 +538,8 @@ describe('tenant list filtering', () => {
         isActive: true,
         parent: undefined,
         parentId: undefined,
+        tenantPath: undefined,
+        depth: 1,
         domain: undefined,
       },
       role: 'tenant-admin',
@@ -367,6 +555,7 @@ describe('tenant list filtering', () => {
         displayName: 'Canada Workspace',
         slug: 'canada-workspace',
         role: 'tenant-admin',
+        tenantPath: '/canada-workspace',
         depth: 1,
         createdAt: '2026-05-08T00:00:00Z',
         homeRegion: 'ca',
@@ -378,6 +567,8 @@ describe('tenant list filtering', () => {
     const membership = toTenantMembership(entry!);
 
     expect(membership.homeRegion).toBe('ca');
+    expect(membership.tenantPath).toBe('/canada-workspace');
+    expect(membership.depth).toBe(1);
     expect(publicApiUrlForHomeRegion(membership.homeRegion)).toBe(
       'https://api.ca.myenterprise.ai/public',
     );
@@ -424,6 +615,58 @@ describe('tenant list filtering', () => {
     expect(result.memberships[0]?.hqCountryCode).toBe('DK');
     expect(fetchMock).toHaveBeenCalledWith(
       `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/tenant-eu/management`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  test('hydrates missing parentId from tenant management details even when region metadata already exists', async () => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/identity/tenants`) {
+        return new Response(
+          JSON.stringify({
+            tenants: [{
+              id: 'tenant-child',
+              displayName: 'Child Tenant',
+              slug: 'child-tenant',
+              role: 'tenant-admin',
+              isActive: true,
+              homeRegion: 'au',
+              hqCountryCode: 'AU',
+            }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/tenant-child/management`) {
+        return new Response(
+          JSON.stringify({
+            id: 'tenant-child',
+            displayName: 'Child Tenant',
+            slug: 'child-tenant',
+            homeRegion: 'au',
+            hqCountryCode: 'AU',
+            parentTenantId: 'tenant-parent',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(`Unhandled request: ${href}`, { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchTenantAdminMemberships(DEFAULT_PUBLIC_API_URL);
+
+    expect(result.memberships[0]).toEqual(expect.objectContaining({
+      id: 'tenant-child',
+      parentId: 'tenant-parent',
+      homeRegion: 'au',
+      hqCountryCode: 'AU',
+    }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/tenant-child/management`,
       expect.objectContaining({ method: 'GET' }),
     );
   });
@@ -682,6 +925,55 @@ describe('tenant list filtering', () => {
     })).toEqual({
       id: 'tenant-1',
       slug: 'tenant-one',
+    });
+  });
+});
+
+describe('tenant delete hard purge contract', () => {
+  test('fails when the backend only reports a soft delete for a requested hard purge', async () => {
+    vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');
+    vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
+      activeTenant: {
+        id: 'parent-tenant',
+        displayName: 'Parent Tenant',
+        slug: 'parent-tenant',
+        isActive: true,
+      },
+    } as Awaited<ReturnType<typeof tenantContext.resolveActiveTenantContext>>);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      id: 'tenant-1',
+      status: 'deleted',
+      message: 'Account deleted',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(
+      tenantCommand.parseAsync([
+        'delete',
+        'tenant-1',
+        '--force',
+        '--force-hard-purge',
+        '--format',
+        'json',
+      ], { from: 'user' }),
+    ).rejects.toThrow('process.exit 1');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(parseJsonOutput(outputSpy)).toContainEqual({
+      id: 'tenant-1',
+      deleted: true,
+      hardPurged: false,
+      requestedHardPurge: true,
+      error: 'Tenant delete completed but the backend did not confirm a hard purge. Stale tenant-owned data may remain.',
+      response: {
+        id: 'tenant-1',
+        status: 'deleted',
+        message: 'Account deleted',
+      },
     });
   });
 });

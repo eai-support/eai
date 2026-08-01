@@ -240,6 +240,18 @@ describe('eai app', () => {
           verticalKey: 'planning-portal',
           jobId: 'app-prov-123',
           status: 'ready',
+          enrollment: {
+            metadata: {
+              appProvisioning: {
+                storageBindingAllowList: {
+                  postgresql: { aliases: ['tenant-postgres'] },
+                  documentdb: { aliases: ['tenant-documentdb'] },
+                  blob: { aliases: ['tenant-blob'] },
+                  search: { aliases: ['tenant-search'] },
+                },
+              },
+            },
+          },
         });
       }
 
@@ -268,6 +280,28 @@ describe('eai app', () => {
     const envFile = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(envFile).toContain('EAI_APP_KEY=planning-portal');
     expect(envFile).toContain('EAI_VERTICAL_KEY=planning-portal');
+    expect(envFile).toContain(`EAI_TENANT_ID=${COMPANY_TENANT_ID}`);
+    expect(envFile).toContain('EAI_STORAGE_TABLE_PREFIX=ompanytenant_planning_portal_');
+
+    const storageContract = JSON.parse(
+      await readFile(join(env.dir, '.eai', 'storage-bindings.json'), 'utf-8'),
+    );
+    expect(storageContract).toMatchObject({
+      schemaVersion: 1,
+      generatedBy: 'eai app provision',
+      tenantId: COMPANY_TENANT_ID,
+      appKey: 'planning-portal',
+      aliases: {
+        postgresql: ['tenant-postgres'],
+      },
+      storageNamePrefixes: {
+        sql: 'ompanytenant_planning_portal_',
+        blob: 'ompanytenant-planning-portal-',
+      },
+      source: {
+        provisioningJobId: 'app-prov-123',
+      },
+    });
   });
 
   test('HP005 plans app storage readiness without running the provisioning job during dry-run', async () => {

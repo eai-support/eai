@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.7.1** (2026-07-09): Reject app-only tenant app data-plane runtime contracts.
+The current CLI release is **v3.8.3** (2026-07-30): Pin generated app template with multi-tab submission ownership.
 
 
 ## What The Pieces Do

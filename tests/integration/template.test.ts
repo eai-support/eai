@@ -181,4 +181,40 @@ describe('eai template check', () => {
     expectDisplayedMessage(result, 'src/app/api/demo/route.ts: DemoDeps, runDemo');
     expectDisplayedMessage(result, 'Move reusable helpers, dependency interfaces, and test seams into a sibling `handler.ts` or a lib module.');
   });
+
+  test('warns when a project duplicates object-type slug logic or hand-writes resource routes', async () => {
+    const templateRepo = join(tmpdir(), `eai-template-source-${Date.now()}-object-type-audit`);
+    const { initialCommit } = await createTemplateRepo(templateRepo);
+
+    await writeFileRecursive(env.dir, 'package.json', JSON.stringify({
+      name: '@eai-tools/template-check-object-type-fixture',
+      version: '0.0.1',
+      dependencies: {
+        '@enterpriseaigroup/core': '1.0.0',
+      },
+    }, null, 2) + '\n');
+    await writeFileRecursive(env.dir, 'src/eai.config/object-types.ts', 'export const objectTypes = {};\n');
+    await writeFileRecursive(env.dir, 'src/lib/platform/custom-resource-client.ts', [
+      'export function objectTypeSlug(objectType: string): string {',
+      "  return objectType.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();",
+      '}',
+      '',
+      "export const watchTargetUrl = '/v4/data/resources/tenant-a/WatchTarget';",
+    ].join('\n'));
+    await writeFileRecursive(env.dir, '.eai-manifest.json', JSON.stringify({
+      schemaVersion: 1,
+      template: {
+        repo: templateRepo,
+        commit: initialCommit,
+        displaySource: `${templateRepo}@${initialCommit.slice(0, 7)}`,
+      },
+    }, null, 2) + '\n');
+
+    const result = await runCommand(ctx, 'eai template check');
+
+    expectCommandSucceeded(result);
+    expectDisplayedMessage(result, 'Object-type normalization audit found identifier drift risks');
+    expectDisplayedMessage(result, 'src/lib/platform/custom-resource-client.ts: Custom object-type slug normalization found outside the shared helper');
+    expectDisplayedMessage(result, 'src/lib/platform/custom-resource-client.ts: Direct v4 data resource route usage found outside the approved SDK/BFF files');
+  });
 });

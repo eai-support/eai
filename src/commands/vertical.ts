@@ -8,6 +8,8 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import {
   PlatformAPIClient,
@@ -38,6 +40,14 @@ const APP_KEY_ENV = 'EAI_APP_KEY';
 const LEGACY_VERTICAL_KEY_ENV = 'EAI_VERTICAL_KEY';
 const DEFAULT_SOURCE_UNKNOWN_GITHUB_OIDC_AUDIENCE = 'api://enterprise-ai-publicapi/source-unknown';
 const DEFAULT_SOURCE_UNKNOWN_RUNTIME_PATH = 'eai.runtime.json';
+const STORAGE_BINDINGS_PATH = join('.eai', 'storage-bindings.json');
+
+const DEFAULT_APP_STORAGE_ALIASES: Record<string, string[]> = {
+  postgresql: ['tenant-postgres'],
+  documentdb: ['tenant-documentdb'],
+  blob: ['tenant-blob'],
+  search: ['tenant-search'],
+};
 
 export interface VerticalCreateOptions {
   key?: string;
@@ -135,6 +145,101 @@ export interface AppDeploySourceUnknownStatusOptions {
   skipValidate?: boolean;
   format?: string;
   json?: boolean;
+}
+
+function tenantStorageScope(tenantId: string): string {
+  const scope =
+    tenantId
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '')
+      .slice(-12) || 'tenant';
+  return /^[a-z]/.test(scope) ? scope : `t${scope}`;
+}
+
+function storageNamePrefix(parts: string[], separator = '_'): string {
+  const replacement = separator === '-' ? '-' : '_';
+  return parts
+    .map((part) => String(part || '').toLowerCase().replace(/-/g, separator))
+    .join(separator)
+    .replace(/[^a-z0-9_-]+/g, replacement)
+    .replace(/^[_-]+|[_-]+$/g, '');
+}
+
+function normalizeAliasMap(source: unknown): Record<string, string[]> {
+  if (!isRecord(source)) {
+    return { ...DEFAULT_APP_STORAGE_ALIASES };
+  }
+
+  const aliases: Record<string, string[]> = {};
+  for (const [backend, config] of Object.entries(source)) {
+    if (!isRecord(config)) {
+      continue;
+    }
+    const rawAliases = Array.isArray(config.aliases)
+      ? config.aliases
+      : Array.isArray(config.databaseAliases)
+        ? config.databaseAliases
+        : [];
+    aliases[backend] = rawAliases.map(String).filter(Boolean);
+  }
+
+  return Object.keys(aliases).length > 0 ? aliases : { ...DEFAULT_APP_STORAGE_ALIASES };
+}
+
+function extractStorageBindingAllowList(payload: unknown): Record<string, string[]> {
+  if (!isRecord(payload)) {
+    return { ...DEFAULT_APP_STORAGE_ALIASES };
+  }
+
+  const enrollment = isRecord(payload.enrollment) ? payload.enrollment : {};
+  const metadata = isRecord(enrollment.metadata) ? enrollment.metadata : {};
+  const appProvisioning = isRecord(metadata.appProvisioning) ? metadata.appProvisioning : {};
+
+  return normalizeAliasMap(
+    appProvisioning.storageBindingAllowList ||
+      appProvisioning.storageBindings ||
+      metadata.storageBindingAllowList ||
+      metadata.storageBindings ||
+      payload.storageBindingAllowList,
+  );
+}
+
+function buildStorageBindingContract(
+  tenantId: string,
+  appKey: string,
+  payload: unknown,
+): Record<string, unknown> {
+  const tenantScope = tenantStorageScope(tenantId);
+  return {
+    schemaVersion: 1,
+    generatedBy: 'eai app provision',
+    generatedAt: new Date().toISOString(),
+    tenantId,
+    appKey,
+    aliases: extractStorageBindingAllowList(payload),
+    storageNamePrefixes: {
+      sql: `${storageNamePrefix([tenantScope, appKey], '_')}_`,
+      documentdb: `${storageNamePrefix([tenantScope, appKey], '_')}_`,
+      blob: `${storageNamePrefix([tenantScope, appKey], '-')}-`,
+      search: `${storageNamePrefix([tenantScope, appKey], '-')}-`,
+    },
+    source: isRecord(payload) && typeof payload.jobId === 'string'
+      ? { provisioningJobId: payload.jobId }
+      : {},
+  };
+}
+
+async function writeStorageBindingContract(
+  projectRoot: string,
+  contract: Record<string, unknown>,
+): Promise<void> {
+  const dir = join(projectRoot, '.eai');
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(projectRoot, STORAGE_BINDINGS_PATH),
+    `${JSON.stringify(contract, null, 2)}\n`,
+    'utf-8',
+  );
 }
 
 export function buildVerticalEnrollmentData(
@@ -1173,11 +1278,37 @@ verticalCommand
       fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
     }
 
-    if (options.select) {
-      await patchEnvFile(ctx.root, {
+    const storageContract = options.dryRun
+      ? null
+      : buildStorageBindingContract(ctx.tenantId, verticalKey, payload);
+    if (storageContract) {
+      await writeStorageBindingContract(ctx.root, storageContract);
+    }
+
+    if (options.select || storageContract) {
+      const storagePrefixes = isRecord(storageContract?.storageNamePrefixes)
+        ? storageContract.storageNamePrefixes
+        : {};
+      const envPatches: Record<string, string> = {
         [APP_KEY_ENV]: verticalKey,
         [LEGACY_VERTICAL_KEY_ENV]: verticalKey,
-      });
+        EAI_TENANT_ID: ctx.tenantId,
+        NEXT_PUBLIC_EAI_TENANT_ID: ctx.tenantId,
+        NEXT_PUBLIC_EAI_APP_KEY: verticalKey,
+      };
+      if (typeof storagePrefixes.sql === 'string') {
+        envPatches.EAI_STORAGE_TABLE_PREFIX = storagePrefixes.sql;
+      }
+      if (typeof storagePrefixes.blob === 'string') {
+        envPatches.EAI_STORAGE_CONTAINER_PREFIX = storagePrefixes.blob;
+      }
+      if (typeof storagePrefixes.documentdb === 'string') {
+        envPatches.EAI_STORAGE_COLLECTION_PREFIX = storagePrefixes.documentdb;
+      }
+      if (typeof storagePrefixes.search === 'string') {
+        envPatches.EAI_STORAGE_INDEX_PREFIX = storagePrefixes.search;
+      }
+      await patchEnvFile(ctx.root, envPatches);
     }
 
     if (format === 'json') {
@@ -1186,6 +1317,7 @@ verticalCommand
         appKey: verticalKey,
         verticalKey,
         selected: Boolean(options.select),
+        storageBindingsPath: storageContract ? STORAGE_BINDINGS_PATH : undefined,
         ...(options.dryRun ? { dryRun: true, storagePlan: payload } : { provisioning: payload }),
       });
       return;
@@ -1207,5 +1339,8 @@ verticalCommand
     }
     if (options.select) {
       out.success(`Active app set to ${chalk.cyan(verticalKey)} in .env.local`);
+    }
+    if (storageContract) {
+      out.success(`Storage binding contract written to ${chalk.cyan(STORAGE_BINDINGS_PATH)}`);
     }
   });

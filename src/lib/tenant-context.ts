@@ -1,4 +1,3 @@
-import inquirer from "inquirer";
 import { findProjectRoot, loadEnvFile, patchEnvFile } from "./config.js";
 import {
   getAccessToken,
@@ -10,6 +9,11 @@ import {
 import { PlatformAPIClient } from "./api.js";
 import { isRecord } from "./utils.js";
 import { getActiveProfile, loadProfileConfig } from "./profile.js";
+import {
+  buildTenantHierarchy,
+  loadTenantHierarchy,
+  promptForTenantFromHierarchy,
+} from "./tenant-hierarchy.js";
 
 export const DEFAULT_PUBLIC_API_URL = "https://api.au.myenterprise.ai/public";
 
@@ -56,6 +60,8 @@ export interface TenantEntry {
     isActive: boolean;
     parent?: { id?: string } | string | null;
     parentId?: string | null;
+    tenantPath?: string;
+    depth?: number;
     homeRegion?: string | null;
     hqCountryCode?: string | null;
   };
@@ -72,7 +78,12 @@ interface AdminTenantMembership {
   domain?: string;
   isActive?: boolean;
   parent?: { id?: string } | string | null;
+  parentTenant?: { id?: string } | string | null;
   parentId?: string | null;
+  parentTenantId?: string | null;
+  parent_tenant_id?: string | null;
+  tenantPath?: string;
+  depth?: number;
   homeRegion?: string | null;
   hqCountryCode?: string | null;
   role?: string;
@@ -87,6 +98,9 @@ export interface TenantMembership {
   domain?: string;
   isActive: boolean;
   roles: string[];
+  parentId?: string | null;
+  tenantPath?: string;
+  depth?: number;
   homeRegion?: string | null;
   hqCountryCode?: string | null;
 }
@@ -437,8 +451,10 @@ function toTenantEntry(
       slug: value.slug,
       domain: value.domain,
       isActive: value.isActive !== false,
-      parent: value.parent,
-      parentId: value.parentId,
+      parent: value.parent ?? value.parentTenant,
+      parentId: value.parentId ?? value.parentTenantId ?? value.parent_tenant_id,
+      tenantPath: value.tenantPath,
+      depth: value.depth,
       homeRegion: value.homeRegion,
       hqCountryCode: value.hqCountryCode,
     },
@@ -478,6 +494,12 @@ export function toTenantMembership(entry: TenantEntry): TenantMembership {
     domain: entry.tenant.domain,
     isActive: entry.tenant.isActive,
     roles: getTenantRoles(entry),
+    parentId:
+      (typeof entry.tenant.parent === "string"
+        ? entry.tenant.parent
+        : entry.tenant.parent?.id) ?? entry.tenant.parentId,
+    tenantPath: entry.tenant.tenantPath,
+    depth: entry.tenant.depth,
     homeRegion: entry.tenant.homeRegion,
     hqCountryCode: entry.tenant.hqCountryCode,
   };
@@ -505,9 +527,19 @@ function mergeTenantManagementDetails(
 
   const homeRegion = optionalStringOrNull(detail.homeRegion);
   const hqCountryCode = optionalStringOrNull(detail.hqCountryCode);
+  const parentId =
+    optionalStringOrNull(detail.parentTenantId) ??
+    optionalStringOrNull(detail.parentId) ??
+    (isRecord(detail.parentTenant)
+      ? optionalStringOrNull(detail.parentTenant.id)
+      : optionalStringOrNull(detail.parentTenant)) ??
+    (isRecord(detail.parent)
+      ? optionalStringOrNull(detail.parent.id)
+      : optionalStringOrNull(detail.parent));
 
   return {
     ...membership,
+    parentId: parentId === undefined ? membership.parentId : parentId,
     homeRegion: homeRegion === undefined ? membership.homeRegion : homeRegion,
     hqCountryCode:
       hqCountryCode === undefined ? membership.hqCountryCode : hqCountryCode,
@@ -520,7 +552,11 @@ async function hydrateTenantMembershipManagementDetails(
 ): Promise<TenantMembership[]> {
   return Promise.all(
     memberships.map(async (membership) => {
-      if (membership.homeRegion && membership.hqCountryCode) {
+      if (
+        membership.homeRegion &&
+        membership.hqCountryCode &&
+        membership.parentId !== undefined
+      ) {
         return membership;
       }
 
@@ -769,18 +805,16 @@ export async function refreshTenantUsabilityStatus(
 
 async function promptForTenantSelection(
   memberships: TenantMembership[],
+  publicApiUrl: string,
 ): Promise<TenantMembership> {
-  const { tenantId } = await inquirer.prompt([
-    {
-      type: "select",
-      name: "tenantId",
-      message: "Select the tenant to work with now",
-      choices: memberships.map((tenant) => ({
-        name: `${tenant.displayName} (${tenant.slug})${tenant.domain ? ` — ${tenant.domain}` : ""}`,
-        value: tenant.id,
-      })),
-    },
-  ]);
+  const hierarchy = await loadTenantHierarchy({
+    publicApiUrl,
+    memberships,
+  });
+  const roots = hierarchy.roots.length
+    ? hierarchy.roots
+    : buildTenantHierarchy(memberships);
+  const tenantId = await promptForTenantFromHierarchy(roots);
 
   const selected = memberships.find((tenant) => tenant.id === tenantId);
   if (!selected) {
@@ -879,7 +913,7 @@ export async function resolveActiveTenantContext(options?: {
         "Multiple active tenant-admin memberships found. Run `eai tenant select` to choose one.",
       );
     } else {
-      selected = await promptForTenantSelection(memberships);
+      selected = await promptForTenantSelection(memberships, fetched.publicApiUrl);
     }
   }
 

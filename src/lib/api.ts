@@ -681,6 +681,22 @@ export class PlatformAPIClient {
     });
   }
 
+  async batchImportResources(
+    objectType: string,
+    items: Array<{ data: Record<string, unknown> }>,
+    options?: { projectionMode?: 'deferred' | 'sync' },
+  ): Promise<Response> {
+    const normalizedObjectType = toObjectTypeSlug(objectType);
+    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/batch/import`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({
+        items,
+        projectionMode: options?.projectionMode ?? 'deferred',
+      }),
+    });
+  }
+
   async batchUpdateResources(
     objectType: string,
     items: Array<{ id: string; data: Record<string, unknown>; version: number }>,
@@ -876,6 +892,30 @@ export class PlatformAPIClient {
     });
   }
 
+  async planResourceIndexes(objectTypes?: string[]): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/index-plan`,
+      'POST',
+      { objectTypes, apply: false, dryRun: true },
+    );
+  }
+
+  async applyResourceIndexes(objectTypes?: string[]): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/index-plan`,
+      'POST',
+      { objectTypes, apply: true, dryRun: false },
+    );
+  }
+
+  async refreshResourceCache(objectTypes: string[] | undefined, reason: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/cache-refresh`,
+      'POST',
+      { objectTypes, reason },
+    );
+  }
+
   async searchResources(request: {
     query: string;
     objectTypes?: string[];
@@ -906,13 +946,8 @@ export class PlatformAPIClient {
     const { basename } = await import('node:path');
     const normalizedObjectType = toObjectTypeSlug(objectType);
     const content = await readFile(filePath);
-    const token = await getAccessToken();
-    const h: Record<string, string> = {
-      'Content-Type': 'application/octet-stream',
-    };
-    if (token) {
-      h.Authorization = `Bearer ${token}`;
-    }
+    const h = await this.headers();
+    h['Content-Type'] = 'application/octet-stream';
 
     const filename = encodeURIComponent(basename(filePath));
     return fetch(
@@ -1089,6 +1124,28 @@ export class PlatformAPIClient {
 
   // --------------- Documents ---------------
 
+  private inferUploadContentType(filePath: string): string {
+    const extension = filePath.toLowerCase().slice(filePath.lastIndexOf("."));
+    const contentTypes: Record<string, string> = {
+      ".csv": "text/csv",
+      ".doc": "application/msword",
+      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ".gif": "image/gif",
+      ".jpeg": "image/jpeg",
+      ".jpg": "image/jpeg",
+      ".json": "application/json",
+      ".md": "text/markdown",
+      ".pdf": "application/pdf",
+      ".png": "image/png",
+      ".txt": "text/plain",
+      ".webp": "image/webp",
+      ".xls": "application/vnd.ms-excel",
+      ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ".xml": "application/xml",
+    };
+    return contentTypes[extension] ?? "application/octet-stream";
+  }
+
   private async uploadDocumentBatch(
     filePath: string,
     processingMode: 'full' | 'classification',
@@ -1097,7 +1154,12 @@ export class PlatformAPIClient {
     const { basename } = await import('node:path');
     const content = await readFile(filePath);
     const form = new FormData();
-    form.append('files', new Blob([content]), basename(filePath));
+    form.append(
+      'files',
+      new File([content], basename(filePath), {
+        type: this.inferUploadContentType(filePath),
+      }),
+    );
     form.append('tenant_id', this.tenantId);
     form.append('processing_mode', processingMode);
 
@@ -1125,57 +1187,13 @@ export class PlatformAPIClient {
     return this.uploadDocumentBatch(filePath, 'classification');
   }
 
-  async getDocumentRecord(documentId: string): Promise<Response> {
-    return this.publicRequest(`${PUBLIC_DATA_DOCUMENTS_PATH}/records/${encodeURIComponent(documentId)}`, 'GET');
-  }
-
   async indexDocument(documentId: string): Promise<Response> {
-    const lookup = await this.getDocumentRecord(documentId);
-    if (!lookup.ok) {
-      return lookup;
-    }
-
-    const document = await lookup.json() as {
-      id?: string;
-      documentId?: string;
-      title?: string;
-      tenant?: string | { id?: string };
-      businessRequest?: string | { id?: string };
-      fileInfo?: {
-        dataLakeUrl?: string;
-      };
-    };
-
-    const storagePath = document.fileInfo?.dataLakeUrl;
-    if (!storagePath) {
-      return new Response(
-        JSON.stringify({
-          error: 'MISSING_STORAGE_PATH',
-          message: 'The document does not have a dataLakeUrl/storage path and cannot be indexed.',
-        }),
-        {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      );
-    }
-
-    const tenantId = typeof document.tenant === 'string'
-      ? document.tenant
-      : document.tenant?.id || this.tenantId;
-    const businessRequestId = typeof document.businessRequest === 'string'
-      ? document.businessRequest
-      : document.businessRequest?.id;
-
     return fetch(`${this.baseUrl}${PUBLIC_DATA_DOCUMENTS_PATH}/rag-index`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
-        documentId: document.documentId || document.id || documentId,
-        storagePath,
-        tenantId,
-        businessRequestId,
-        title: document.title,
+        documentId,
+        tenantId: this.tenantId,
       }),
     });
   }
@@ -1334,8 +1352,22 @@ export class PlatformAPIClient {
     });
   }
 
-  async deleteTenant(tenantId: string): Promise<Response> {
-    return this.publicRequest(`${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/delete`, 'POST');
+  async deleteTenant(
+    tenantId: string,
+    options: { forceHardPurge?: boolean; reason?: string } = {},
+  ): Promise<Response> {
+    const body = options.forceHardPurge
+      ? {
+          forceHardPurge: true,
+          confirmationTenantId: tenantId,
+          reason: options.reason || 'eai tenant delete --force-hard-purge',
+        }
+      : undefined;
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/delete`,
+      'POST',
+      body,
+    );
   }
 
   async bootstrapChildTenantAdmin(

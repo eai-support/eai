@@ -1,0 +1,412 @@
+import inquirer from "inquirer";
+import { PlatformAPIClient } from "./api.js";
+import type { TenantEntry, TenantMembership } from "./tenant-context.js";
+
+export interface TenantHierarchyItem {
+  id: string;
+  displayName: string;
+  slug: string;
+  domain?: string;
+  isActive: boolean;
+  roles: string[];
+  homeRegion?: string | null;
+  hqCountryCode?: string | null;
+  parentId?: string | null;
+  tenantPath?: string;
+  depth?: number;
+  directMembership: boolean;
+  children: TenantHierarchyItem[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function tenantReferenceId(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value;
+  if (!isRecord(value)) return null;
+  return optionalString(value.id) ?? optionalString(value._id) ?? null;
+}
+
+function tenantParentIdFromRecord(record: Record<string, unknown>): string | null {
+  return (
+    tenantReferenceId(record.parentTenant) ??
+    tenantReferenceId(record.parent) ??
+    optionalString(record.parentTenantId) ??
+    optionalString(record.parentId) ??
+    optionalString(record.parent_tenant_id) ??
+    null
+  );
+}
+
+function normalizeTenantPath(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const segments = value
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (segments.length === 0) return undefined;
+  return `/${segments.join("/")}`;
+}
+
+function parentTenantPath(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const segments = value.split("/").filter(Boolean);
+  if (segments.length <= 1) return undefined;
+  return `/${segments.slice(0, -1).join("/")}`;
+}
+
+function tenantRecordsFromPayload(payload: unknown): Record<string, unknown>[] {
+  if (Array.isArray(payload)) {
+    return payload.filter(isRecord);
+  }
+  if (!isRecord(payload)) return [];
+
+  for (const key of ["children", "tenants", "docs", "items", "data"]) {
+    const value = payload[key];
+    if (Array.isArray(value)) {
+      return value.filter(isRecord);
+    }
+  }
+
+  if (isRecord(payload.tenant)) {
+    return [payload.tenant];
+  }
+  return [];
+}
+
+function tenantHierarchyItemFromMembership(
+  membership: TenantMembership,
+): TenantHierarchyItem {
+  return {
+    id: membership.id,
+    displayName: membership.displayName,
+    slug: membership.slug,
+    domain: membership.domain,
+    isActive: membership.isActive,
+    roles: membership.roles,
+    parentId: membership.parentId,
+    tenantPath: membership.tenantPath,
+    depth: membership.depth,
+    homeRegion: membership.homeRegion,
+    hqCountryCode: membership.hqCountryCode,
+    directMembership: true,
+    children: [],
+  };
+}
+
+function tenantHierarchyItemFromRecord(
+  record: Record<string, unknown>,
+): TenantHierarchyItem | null {
+  const id = optionalString(record.id) ?? optionalString(record._id);
+  if (!id) return null;
+
+  const slug = optionalString(record.slug) ?? id;
+  const displayName =
+    optionalString(record.displayName) ??
+    optionalString(record.name) ??
+    optionalString(record.title) ??
+    slug;
+
+  return {
+    id,
+    displayName,
+    slug,
+    domain: optionalString(record.domain),
+    isActive: record.isActive !== false,
+    roles: [],
+    homeRegion:
+      typeof record.homeRegion === "string" || record.homeRegion === null
+        ? record.homeRegion
+        : undefined,
+    hqCountryCode:
+      typeof record.hqCountryCode === "string" || record.hqCountryCode === null
+        ? record.hqCountryCode
+        : undefined,
+    parentId: tenantParentIdFromRecord(record),
+    tenantPath: normalizeTenantPath(record.tenantPath),
+    depth:
+      typeof record.depth === "number" && Number.isFinite(record.depth)
+        ? record.depth
+        : undefined,
+    directMembership: false,
+    children: [],
+  };
+}
+
+function mergeTenantHierarchyItem(
+  existing: TenantHierarchyItem | undefined,
+  next: TenantHierarchyItem,
+): TenantHierarchyItem {
+  if (!existing) return next;
+
+  return {
+    ...existing,
+    ...next,
+    displayName: next.displayName || existing.displayName,
+    slug: next.slug || existing.slug,
+    domain: next.domain ?? existing.domain,
+    roles: existing.roles.length ? existing.roles : next.roles,
+    directMembership: existing.directMembership || next.directMembership,
+    parentId: next.parentId ?? existing.parentId,
+    tenantPath: next.tenantPath ?? existing.tenantPath,
+    depth: next.depth ?? existing.depth,
+    homeRegion: next.homeRegion ?? existing.homeRegion,
+    hqCountryCode: next.hqCountryCode ?? existing.hqCountryCode,
+    children: [],
+  };
+}
+
+function compareTenantHierarchyItems(
+  left: TenantHierarchyItem,
+  right: TenantHierarchyItem,
+): number {
+  return left.displayName.localeCompare(right.displayName, undefined, {
+    sensitivity: "base",
+  });
+}
+
+export function tenantMatchesParent(
+  entry: TenantEntry,
+  parentId: string,
+): boolean {
+  const parent = entry.tenant.parent;
+  const resolvedParentId =
+    typeof parent === "string" ? parent : (parent?.id ?? entry.tenant.parentId);
+  return resolvedParentId === parentId || entry.tenant.id === parentId;
+}
+
+export function buildTenantHierarchy(
+  directMemberships: TenantMembership[],
+  childRecords: unknown[] = [],
+): TenantHierarchyItem[] {
+  const byId = new Map<string, TenantHierarchyItem>();
+  const byPath = new Map<string, TenantHierarchyItem>();
+
+  for (const membership of directMemberships) {
+    byId.set(
+      membership.id,
+      mergeTenantHierarchyItem(
+        byId.get(membership.id),
+        tenantHierarchyItemFromMembership(membership),
+      ),
+    );
+  }
+
+  for (const record of childRecords) {
+    if (!isRecord(record)) continue;
+    const item = tenantHierarchyItemFromRecord(record);
+    if (!item) continue;
+    byId.set(item.id, mergeTenantHierarchyItem(byId.get(item.id), item));
+  }
+
+  for (const item of byId.values()) {
+    item.children = [];
+    if (item.tenantPath) {
+      byPath.set(item.tenantPath, item);
+    }
+  }
+
+  const roots: TenantHierarchyItem[] = [];
+  for (const item of byId.values()) {
+    const parentFromPath = parentTenantPath(item.tenantPath);
+    const resolvedParentId =
+      (parentFromPath ? byPath.get(parentFromPath)?.id : undefined) ??
+      item.parentId ??
+      undefined;
+
+    if (
+      resolvedParentId &&
+      resolvedParentId !== item.id &&
+      byId.has(resolvedParentId)
+    ) {
+      byId.get(resolvedParentId)!.children.push(item);
+    } else {
+      roots.push(item);
+    }
+  }
+
+  const sortTree = (items: TenantHierarchyItem[]): TenantHierarchyItem[] => {
+    items.sort(compareTenantHierarchyItems);
+    for (const item of items) {
+      sortTree(item.children);
+    }
+    return items;
+  };
+
+  return sortTree(roots);
+}
+
+export function flattenTenantHierarchy(
+  roots: TenantHierarchyItem[],
+): TenantHierarchyItem[] {
+  const items: TenantHierarchyItem[] = [];
+  const visit = (item: TenantHierarchyItem): void => {
+    items.push(item);
+    for (const child of item.children) visit(child);
+  };
+  for (const root of roots) visit(root);
+  return items;
+}
+
+function tenantHierarchyStatus(
+  item: TenantHierarchyItem,
+  activeTenantId?: string,
+): string {
+  const labels: string[] = [];
+  if (item.roles.length) labels.push(item.roles.join(", "));
+  if (!item.directMembership) labels.push("visible via parent");
+  if (activeTenantId === item.id) labels.push("active");
+  return labels.length ? ` [${labels.join("; ")}]` : "";
+}
+
+export function tenantHierarchyLineText(
+  item: TenantHierarchyItem,
+  depth: number,
+  activeTenantId?: string,
+): string {
+  const prefix = "\t".repeat(Math.max(0, depth));
+  const domain = item.domain ? ` (${item.domain})` : "";
+  return `${prefix}${item.slug} - ${item.displayName}${domain}${tenantHierarchyStatus(item, activeTenantId)}`;
+}
+
+export function buildTenantHierarchyTreeLines(
+  roots: TenantHierarchyItem[],
+  options?: { activeTenantId?: string },
+): string[] {
+  const lines: string[] = [];
+  const visit = (
+    item: TenantHierarchyItem,
+    depth: number,
+  ): void => {
+    lines.push(tenantHierarchyLineText(item, depth, options?.activeTenantId));
+    item.children.forEach((child) => visit(child, depth + 1));
+  };
+
+  roots.forEach((root) => visit(root, 0));
+  return lines;
+}
+
+export function tenantHierarchyJson(
+  item: TenantHierarchyItem,
+): Record<string, unknown> {
+  return {
+    id: item.id,
+    displayName: item.displayName,
+    slug: item.slug,
+    domain: item.domain,
+    isActive: item.isActive,
+    roles: item.roles,
+    homeRegion: item.homeRegion,
+    hqCountryCode: item.hqCountryCode,
+    parentId: item.parentId,
+    tenantPath: item.tenantPath,
+    depth: item.depth,
+    directMembership: item.directMembership,
+    children: item.children.map(tenantHierarchyJson),
+  };
+}
+
+export async function loadTenantHierarchy(options: {
+  publicApiUrl: string;
+  memberships: TenantMembership[];
+  parentId?: string;
+  debug?: (message: string, data?: unknown) => void;
+}): Promise<{ roots: TenantHierarchyItem[]; warnings: string[] }> {
+  const warnings: string[] = [];
+  const childRecords: Record<string, unknown>[] = [];
+  const parentMembership = options.parentId
+    ? options.memberships.find(
+        (membership) =>
+          membership.id === options.parentId || membership.slug === options.parentId,
+      )
+    : undefined;
+  const rootMemberships = options.parentId
+    ? [
+        parentMembership ??
+          ({
+            id: options.parentId,
+            displayName: options.parentId,
+            slug: options.parentId,
+            isActive: true,
+            roles: [],
+          } satisfies TenantMembership),
+      ]
+    : options.memberships;
+  const parentsToQuery = options.parentId ? [options.parentId] : [];
+
+  for (const parentId of parentsToQuery) {
+    const client = new PlatformAPIClient(options.publicApiUrl, parentId);
+    try {
+      const response = await client.listTenantChildren(parentId, {
+        includeDescendants: true,
+        limit: 100,
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        const message =
+          `Could not load child tenants for ${parentId}: ${response.status} ${response.statusText}`.trim();
+        warnings.push(message);
+        options.debug?.(message, body || undefined);
+        continue;
+      }
+      childRecords.push(...tenantRecordsFromPayload(await response.json()));
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? `Could not load child tenants for ${parentId}: ${error.message}`
+          : `Could not load child tenants for ${parentId}`;
+      warnings.push(message);
+      options.debug?.(message);
+    }
+  }
+
+  return {
+    roots: buildTenantHierarchy(rootMemberships, childRecords),
+    warnings,
+  };
+}
+
+export async function promptForTenantFromHierarchy(
+  roots: TenantHierarchyItem[],
+  options?: {
+    message?: string;
+    allowIndirect?: boolean;
+    extraChoices?: Array<{ name: string; value: string; disabled?: string }>;
+  },
+): Promise<string> {
+  const choices: Array<{ name: string; value: string; disabled?: string }> = [];
+  const allowIndirect = options?.allowIndirect ?? false;
+  const visit = (
+    item: TenantHierarchyItem,
+    depth: number,
+  ): void => {
+    choices.push({
+      name: tenantHierarchyLineText(item, depth),
+      value: item.id,
+      disabled:
+        allowIndirect || item.directMembership
+          ? undefined
+          : "Visible through parent hierarchy; direct tenant-admin membership is required to select.",
+    });
+    item.children.forEach((child) => visit(child, depth + 1));
+  };
+  roots.forEach((root) => visit(root, 0));
+  if (options?.extraChoices?.length) {
+    choices.push(...options.extraChoices);
+  }
+
+  const { tenantId } = await inquirer.prompt([
+    {
+      type: "select",
+      name: "tenantId",
+      message: options?.message ?? "Select the tenant to work with now",
+      choices,
+    },
+  ]);
+  return String(tenantId);
+}
