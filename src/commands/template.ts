@@ -64,6 +64,7 @@ interface TemplateCheckPlan {
     readonly routeFile: string;
     readonly invalidExports: readonly string[];
   }[];
+  readonly objectTypeNormalizationWarnings: readonly ObjectTypeNormalizationWarning[];
   readonly summary: TemplateCheckSummary;
 }
 
@@ -72,6 +73,12 @@ interface TemplateCheckSummary {
   readonly review: number;
   readonly ui: number;
   readonly unchanged: number;
+}
+
+interface ObjectTypeNormalizationWarning {
+  readonly relativePath: string;
+  readonly kind: "custom-slug-logic" | "direct-resource-route";
+  readonly message: string;
 }
 
 function normalizeRelativePath(path: string): string {
@@ -132,6 +139,76 @@ function shouldIgnoreTemplatePath(relativePath: string): boolean {
 
 function isHighRiskTemplatePath(relativePath: string): boolean {
   return HIGH_RISK_TEMPLATE_PATHS.has(relativePath);
+}
+
+function shouldAuditObjectTypeNormalization(relativePath: string): boolean {
+  return (
+    /^src\/.+\.(?:ts|tsx|js|jsx)$/.test(relativePath) ||
+    /^packages\/[^/]+\/src\/.+\.(?:ts|tsx|js|jsx)$/.test(relativePath)
+  );
+}
+
+function isKnownCanonicalObjectTypeHelper(relativePath: string): boolean {
+  return (
+    relativePath === "packages/platform-sdk/src/object-types.ts" ||
+    relativePath === "src/lib/platform/object-types.ts"
+  );
+}
+
+function mayUseDirectResourceRoutes(relativePath: string): boolean {
+  return (
+    relativePath === "packages/platform-sdk/src/modules/resources.ts" ||
+    relativePath === "src/app/api/eai/[[...rest]]/route.ts" ||
+    relativePath === "src/lib/platform/publicapi-route-family.ts"
+  );
+}
+
+async function scanObjectTypeNormalizationWarnings(
+  projectRoot: string,
+): Promise<ObjectTypeNormalizationWarning[]> {
+  const warnings: ObjectTypeNormalizationWarning[] = [];
+
+  for (const relativePath of await collectFiles(projectRoot)) {
+    if (!shouldAuditObjectTypeNormalization(relativePath)) {
+      continue;
+    }
+
+    const source = await readFile(join(projectRoot, relativePath), "utf-8");
+
+    if (
+      !isKnownCanonicalObjectTypeHelper(relativePath) &&
+      (/function\s+(?:toObjectTypeSlug|objectTypeSlug|slugifyObjectType)\b/.test(
+        source,
+      ) ||
+        /(?:const|let|var)\s+(?:toObjectTypeSlug|objectTypeSlug|slugifyObjectType)\b/.test(
+          source,
+        ) ||
+        source.includes(".replace(/([a-z0-9])([A-Z])/g, '$1-$2')"))
+    ) {
+      warnings.push({
+        relativePath,
+        kind: "custom-slug-logic",
+        message:
+          "Custom object-type slug normalization found outside the shared helper. Reuse the canonical helper so PascalCase names and kebab-case route slugs stay aligned.",
+      });
+    }
+
+    if (
+      !mayUseDirectResourceRoutes(relativePath) &&
+      source.includes("/v4/data/resources")
+    ) {
+      warnings.push({
+        relativePath,
+        kind: "direct-resource-route",
+        message:
+          "Direct v4 data resource route usage found outside the approved SDK/BFF files. Use the shared platform SDK or useResources hook instead of hand-writing object-type paths.",
+      });
+    }
+  }
+
+  return warnings.sort((left, right) =>
+    left.relativePath.localeCompare(right.relativePath),
+  );
 }
 
 async function collectFiles(root: string, baseRoot = root): Promise<string[]> {
@@ -211,10 +288,13 @@ async function planTemplateCheck(
         readonly routeFile: string;
         readonly invalidExports: readonly string[];
       }[];
+      readonly objectTypeNormalizationWarnings: readonly ObjectTypeNormalizationWarning[];
     }
 > {
   const resolvedManifest = await resolveProjectManifest(projectRoot);
   const routeExportViolations = await scanAppRouterRouteExports(projectRoot);
+  const objectTypeNormalizationWarnings =
+    await scanObjectTypeNormalizationWarnings(projectRoot);
   const manifest = resolvedManifest.manifest;
   if (!manifest?.template) {
     out.error("This project does not record template provenance yet.");
@@ -244,11 +324,12 @@ async function planTemplateCheck(
     manifest.template.commit === bundledTemplate.pinnedCommit
   ) {
     return {
-      skipped: "Bundled default template commit matches this project snapshot.",
-      projectTemplateLabel,
-      currentTemplateLabel,
-      routeExportViolations,
-    };
+        skipped: "Bundled default template commit matches this project snapshot.",
+        projectTemplateLabel,
+        currentTemplateLabel,
+        routeExportViolations,
+        objectTypeNormalizationWarnings,
+      };
   }
 
   const sourceToCheck = usesBundledDefault
@@ -344,6 +425,7 @@ async function planTemplateCheck(
       currentTemplateLabel,
       items,
       routeExportViolations,
+      objectTypeNormalizationWarnings,
       summary,
     };
   } finally {
@@ -409,6 +491,7 @@ Notes:
         projectTemplate: plan.projectTemplateLabel,
         currentTemplate: plan.currentTemplateLabel,
         routeExportViolations: plan.routeExportViolations,
+        objectTypeNormalizationWarnings: plan.objectTypeNormalizationWarnings,
         message: plan.skipped,
       });
       return;
@@ -439,6 +522,13 @@ Notes:
           "Move reusable helpers, dependency interfaces, and test seams into a sibling `handler.ts` or a lib module.",
         );
       }
+      if (plan.objectTypeNormalizationWarnings.length > 0) {
+        out.blank();
+        out.warn("Object-type normalization audit found identifier drift risks:");
+        for (const warning of plan.objectTypeNormalizationWarnings) {
+          out.warn(`${warning.relativePath}: ${warning.message}`);
+        }
+      }
       return;
     }
 
@@ -454,6 +544,7 @@ Notes:
           manifestSource: plan.manifestSource,
         },
         routeExportViolations: plan.routeExportViolations,
+        objectTypeNormalizationWarnings: plan.objectTypeNormalizationWarnings,
         summary: plan.summary,
         items: plan.items,
       });
@@ -483,6 +574,17 @@ Notes:
       }
       out.info(
         "Move reusable helpers, dependency interfaces, and test seams into a sibling `handler.ts` or a lib module.",
+      );
+    }
+
+    if (plan.objectTypeNormalizationWarnings.length > 0) {
+      out.blank();
+      out.warn("Object-type normalization audit found identifier drift risks:");
+      for (const warning of plan.objectTypeNormalizationWarnings) {
+        out.warn(`${warning.relativePath}: ${warning.message}`);
+      }
+      out.info(
+        "Keep PascalCase object type names in app code and let the shared SDK helper normalize route slugs. Avoid hand-written `/v4/data/resources/...` paths in feature code.",
       );
     }
 

@@ -6,7 +6,7 @@
 - Broad browser click-through paths belong in the owning frontend repo's Playwright CI/preview suite with controlled fixtures. Keep them out of prod cross-service checks except for stable read-only canaries and monitoring.
 - Provider/data oddities belong in provider contract tests, mocked edge-case tests, and safe non-prod live provider smokes owned by the repo that implements the provider surface.
 - Entra UI/session/cookie changes require controlled auth UI/session tests in the owning frontend repo. Deployed login-smoke plus role/tenant canaries live in `enterpriseaigroup/eai-testing-dev`.
-- EAI CLI behavior is owned by `enterpriseaigroup/eai` through `ci/eai-cli-tests`; `eai-testing-dev` only keeps deployed read-only CLI canaries and release-observability evidence aligned.
+- EAI CLI behavior is owned by `eai-tools/eai` through `ci/eai-cli-tests`; `eai-testing-dev` only keeps deployed read-only CLI canaries and release-observability evidence aligned.
 - Release/SRP evidence changes must keep CI check names, required-test metadata, coverage mappings, and any `eai-testing-dev` dispatch aliases in sync before promotion enforcement is tightened.
 
 See @AGENTS.md for project conventions, commands, and code style.
@@ -67,10 +67,12 @@ See @AGENTS.md for project conventions, commands, and code style.
 - Keep deployed CLI canaries in `eai-testing-dev` read-only for prod; preview
   lifecycle checks must stay explicit and cleanup-backed.
 - Refresh `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt` as part of every release
-- GitHub Pages static registry is the release and update channel, and it must
-  keep matching the current tag
-- Preferred install setup is `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
-- Install or update the CLI with `npm install -g @eai-tools/cli`
+- npmjs is the primary release and update channel; the GitHub Pages static
+  registry remains the fallback and must keep matching the current tag
+- Recommended install is `npm install -g eai-cli`
+- Canonical package install is `npm install -g @enterpriseai/cli`
+- Static fallback install is `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/`
+- Persistent static fallback setup is `npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user`
 - `eai update` upgrades the installed CLI package only; it does not rewrite project repos
 - Use `eai gofer refresh --check` to preview safe Gofer-managed file updates in an existing repo
 - Use `eai doctor --check-updates` to report CLI, Gofer, and template drift

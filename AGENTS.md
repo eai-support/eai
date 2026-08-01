@@ -6,7 +6,7 @@
 - Broad browser click-through paths belong in the owning frontend repo's Playwright CI/preview suite with controlled fixtures. Keep them out of prod cross-service checks except for stable read-only canaries and monitoring.
 - Provider/data oddities belong in provider contract tests, mocked edge-case tests, and safe non-prod live provider smokes owned by the repo that implements the provider surface.
 - Entra UI/session/cookie changes require controlled auth UI/session tests in the owning frontend repo. Deployed login-smoke plus role/tenant canaries live in `enterpriseaigroup/eai-testing-dev`.
-- EAI CLI behavior is owned by `enterpriseaigroup/eai` through `ci/eai-cli-tests`; `eai-testing-dev` only keeps deployed read-only CLI canaries and release-observability evidence aligned.
+- EAI CLI behavior is owned by `eai-tools/eai` through `ci/eai-cli-tests`; `eai-testing-dev` only keeps deployed read-only CLI canaries and release-observability evidence aligned.
 - Release/SRP evidence changes must keep CI check names, required-test metadata, coverage mappings, and any `eai-testing-dev` dispatch aliases in sync before promotion enforcement is tightened.
 
 ## Project Overview
@@ -58,7 +58,7 @@ eai/
 ├── .specify/                    # Gofer pipeline specs
 │   └── specs/
 │       └── cli-help-enhancement/
-├── package.json                 # @eai-tools/cli
+├── package.json                 # @enterpriseai/cli
 ├── tsconfig.json                # TypeScript strict ESM
 ├── CLAUDE.md                    # Workflow instructions
 └── AGENTS.md                    # This file
@@ -159,11 +159,17 @@ const config = await loadConfig();
 - Every release should refresh `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`
 - CLI auth, tenant context, command schema, error envelope, PublicAPI, and preview-lifecycle behavior must keep `ci/eai-cli-tests` green. That check is the repo-owned SRP evidence for the EAI CLI surface.
 - The release workflow dispatches `eai-testing-dev` with `service=eai-cli` for deployed read-only schema/error/auth smoke. Keep prod canaries read-only; preview lifecycle is opt-in and cleanup-backed.
-- GitHub Pages static registry is the release/install channel
-- Before changing release behavior, verify the public packument still works:
-  - `curl https://eai-tools.github.io/eai/registry/@eai-tools/cli`
-- Preferred user setup is `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
-- Install or update the CLI with `npm install -g @eai-tools/cli`
+- npmjs is the primary release/install channel; GitHub Pages static registry is
+  the fallback channel
+- Before changing release behavior, verify npmjs and the public fallback
+  packument still work:
+  - `npm view eai-cli version --registry=https://registry.npmjs.org/`
+  - `npm view @enterpriseai/cli version --registry=https://registry.npmjs.org/ --@enterpriseai:registry=https://registry.npmjs.org/`
+  - `curl https://eai-tools.github.io/eai/registry/@enterpriseai/cli`
+- Recommended install is `npm install -g eai-cli`
+- Canonical package install is `npm install -g @enterpriseai/cli`
+- Static fallback install is `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/`
+- Persistent static fallback setup is `npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user`
 - `eai update` upgrades the installed CLI package only
 - `eai gofer refresh --check` previews safe repo-local Gofer asset updates
 - `eai template check` previews app-template and UI drift for existing repos without writing files

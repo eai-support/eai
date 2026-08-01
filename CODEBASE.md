@@ -13,7 +13,7 @@ Complete reference for the EAI CLI codebase architecture, patterns, and conventi
 
 ## Overview
 
-**Package**: `@eai-tools/cli`
+**Package**: `@enterpriseai/cli`
 **Language**: TypeScript 5.7 (strict mode, ESM)
 **Framework**: Commander.js 13.x
 **Node.js**: ≥20.0.0

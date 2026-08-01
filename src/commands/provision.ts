@@ -167,8 +167,9 @@ function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
     printServerDetail(ctx, diag);
     out.info('Confirm role with: eai whoami --verbose && eai tenant list');
     if (diag.userOid) {
+      const tenantId = diag.tenantId ?? '<tenant-id>';
       out.info(
-        `Platform team can verify membership at /v4/platform/users/${diag.userOid}/memberships`,
+        `Platform team can verify membership at /v4/platform/tenants/${tenantId}/users/${diag.userOid}/memberships`,
       );
     }
     out.info('Reference: EAI-PROVISION-FORBIDDEN');
@@ -442,18 +443,28 @@ Diagnostics:
     // so this never drops a previously-registered deployed callback.
     const extraRedirectUris = (options.redirectUri as string[] | undefined) ?? [];
     const redirectUris = [localCallback, ...extraRedirectUris.filter((u) => u !== localCallback)];
+    const existingClientId = normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID);
 
     try {
       result = await client.provisionEntraApp({
         tenantId,
         appName,
         redirectUris,
+        existingClientId: existingClientId ?? undefined,
         // The platform route is intentionally idempotent: it creates on first run and
         // returns the existing app ID on later runs without attempting secret rotation.
         idempotent: true,
       });
     } catch (err) {
       handleProvisionError(err, diag);
+    }
+
+    if (existingClientId && result.clientId !== existingClientId) {
+      out.error('Platform returned a different Entra client id than the one already recorded locally.');
+      out.info(`Local ENTRA_CLIENT_ID: ${chalk.dim(existingClientId)}`);
+      out.info(`Platform ENTRA_CLIENT_ID: ${chalk.dim(result.clientId)}`);
+      out.info('Run `eai provision entra --deauthorize --client-id <old-client-id> --force` for registrations you want to remove, or delete the stale local ENTRA_CLIENT_ID after confirming it is no longer needed.');
+      process.exit(1);
     }
 
     // Build env-var patches that derive from the platform response so the
@@ -466,7 +477,7 @@ Diagnostics:
       optionalEnv.ENTRA_SCOPES = result.scopes.join(' ');
     }
     optionalEnv.ENTRA_REDIRECT_URIS = redirectUris.join(' ');
-    optionalEnv.AUTH_URL = authRuntime.siteUrl;
+    optionalEnv.AUTH_URL = authRuntime.authUrl;
     optionalEnv.NEXTAUTH_URL = authRuntime.siteUrl;
     optionalEnv.AUTH_TRUST_HOST = 'true';
     if (result.environment) {
@@ -703,7 +714,7 @@ function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
-function resolveAuthRuntime(env: Record<string, string>): { siteUrl: string } {
+function resolveAuthRuntime(env: Record<string, string>): { authUrl: string; siteUrl: string } {
   const basePath = normaliseBasePath(env.APP_BASE_PATH);
   const rawUrl = env.NEXTAUTH_URL || env.AUTH_URL || 'http://localhost:3000';
 
@@ -712,9 +723,17 @@ function resolveAuthRuntime(env: Record<string, string>): { siteUrl: string } {
     url.pathname = basePath || stripAuthEndpointPath(url.pathname);
     url.search = '';
     url.hash = '';
-    return { siteUrl: stripTrailingSlash(url.toString()) };
+    const siteUrl = stripTrailingSlash(url.toString());
+    return {
+      authUrl: basePath ? `${siteUrl}/api/auth` : siteUrl,
+      siteUrl,
+    };
   } catch {
-    return { siteUrl: `http://localhost:3000${basePath}` };
+    const siteUrl = `http://localhost:3000${basePath}`;
+    return {
+      authUrl: basePath ? `${siteUrl}/api/auth` : siteUrl,
+      siteUrl,
+    };
   }
 }
 

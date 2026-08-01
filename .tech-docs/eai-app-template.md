@@ -87,6 +87,7 @@ See [Config-Driven UI](./app-template/config-driven-ui.md) for the full pattern.
 | ----------------------- | ------------------------------ | -------------------------------------------------------- |
 | Tenant business records | `useResources('<ObjectType>')` | `eai resources list/get/create/update/delete/query`      |
 | Documents and RAG       | `useDocuments()`               | `eai docs upload`, `eai docs classify`, `eai docs index` |
+| Resource file property  | `useResources().uploadFile`    | `eai resources file upload/get/delete`                   |
 | AI chat                 | `useChat(workflowId, stage)`   | `eai chat send`, `eai chat stream`                       |
 | Advanced route          | server helper or BFF route     | `eai publicapi <method> /v4/...`                         |
 
@@ -95,4 +96,5 @@ See [Config-Driven UI](./app-template/config-driven-ui.md) for the full pattern.
 - [Task Tracker Example](./examples/task-tracker.md)
 - [AI Chat Example](./examples/ai-chat.md)
 - [Platform Service Patterns](./app-template/service-patterns.md)
+- [V4 Documents And Files](./app-template/documents-and-files.md)
 - [eai-gofer](./eai-gofer.md)

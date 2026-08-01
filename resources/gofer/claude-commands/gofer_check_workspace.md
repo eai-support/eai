@@ -35,7 +35,7 @@ subdirectory. If needed, walk upward to the nearest directory containing one of:
 Inspect these paths relative to the workspace root:
 
 - `.specify/.gofer-version`
-- `.specify/commands/0_business_scenario.md`
+- `.specify/commands/0_gofer_start.md`
 - `.specify/templates/spec-template.md`
 - `.specify/scripts/bash/create-new-feature.sh`
 - `.specify/scripts/node/parse-stage-command.mjs`

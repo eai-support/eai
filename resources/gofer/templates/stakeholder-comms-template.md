@@ -3,6 +3,9 @@ feature: '{{feature-name}}'
 created: '{{ISO-timestamp}}'
 audience: business-stakeholders
 validation-score: '{{score}}/100'
+source_inputs:
+  - .specify/memory/brand-profile.json
+  - .specify/templates/brand/document-style-template.md
 ---
 
 # Stakeholder Communications: {{feature-name}}
@@ -10,6 +13,38 @@ validation-score: '{{score}}/100'
 ## Executive Summary
 
 {{3-sentences: what-was-built, why-it-matters, key-business-outcome}}
+
+---
+
+## Branding And Presentation
+
+Use `.specify/memory/brand-profile.json` for approved logo paths, colors,
+typography, headers, footers, confidentiality labels, and Marp theme guidance.
+If the brand profile is missing or pending approval, use neutral Gofer styling
+and do not invent company or client marks.
+
+For deck-style stakeholder reviews, reference
+`.specify/templates/brand/marp-theme-template.css` or the repo-approved
+replacement theme.
+
+---
+
+## Product Release PR/FAQ
+
+Gofer maintains a Working Backwards product release PR/FAQ throughout the
+pipeline. Use it as the current product story and stakeholder review source.
+
+- Current PR/FAQ: `working-backwards-prfaq.md`
+- Stage snapshots: `prfaq-history/`
+- Review index: `stakeholder-review-index.md`
+
+### Persona Summary Pack
+
+| Persona            | Summary document              | Review focus                                                    |
+| ------------------ | ----------------------------- | --------------------------------------------------------------- |
+| Business Owner     | `business-owner-summary.md`   | Business scenario, process change, business case, assumptions   |
+| CTO / Architecture | `cto-architecture-summary.md` | EAI Platform/Azure architecture, auth, tenancy, data, contracts |
+| CISO / Risk        | `ciso-security-summary.md`    | Controls, residual risk, validation evidence, launch gates      |
 
 ---
 
@@ -95,12 +130,12 @@ rationale and omit app-specific controls.
 
 ---
 
-## Marp Presentation Deck (Optional, Recommended for EnterpriseAI)
+## Marp Presentation Deck (Recommended For Stakeholder Review)
 
-If this run enables Marp output, generate `{FEATURE_DIR}/presentation.marp.md`
-and the persona deck pack in `{FEATURE_DIR}/presentations/`. Standard Gofer is
-the public default; EnterpriseAI Marp guidance is migration-only and used only
-when explicitly requested.
+When stakeholders need a simple walkthrough, generate
+`{FEATURE_DIR}/presentation.marp.md` and, for larger changes, the persona deck
+pack in `{FEATURE_DIR}/presentations/`. Skip decks only for small docs-only or
+purely mechanical changes where a short Markdown summary is clearer.
 
 The general deck uses this required structure:
 
@@ -169,8 +204,8 @@ title: '{{feature-name}} Stakeholder Presentation'
 
 ```
 
-When Marp is not enabled, keep producing `release-notes.md` and `demo-script.md`
-outputs.
+When Marp is not useful for the change, keep producing `release-notes.md` and
+`demo-script.md` outputs and record why slides were skipped.
 
 ### Persona Marp Deck Pack
 

@@ -35,7 +35,7 @@ async function startLocalPublicApi(): Promise<{ baseUrl: string; calls: string[]
       return;
     }
 
-    if (req.method === 'GET' && url.pathname === '/v4/platform/users/test-user-oid/memberships') {
+    if (req.method === 'GET' && url.pathname === '/v4/platform/tenants/tenant-override/users/test-user-oid/memberships') {
       await writeJson(res, 200, {
         tenants: [
           {

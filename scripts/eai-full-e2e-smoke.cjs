@@ -37,6 +37,7 @@ const TRACEABILITY_BASE = [
   ['eai user provision-me', 'create/update', 'live', 'Ensures the authenticated test user is provisioned to the test tenant.'],
   ['eai resources list', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 because it depends on run-specific storage schema.'],
   ['eai resources batch-create', 'create', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 and is cleaned up by batch/per-resource delete.'],
+  ['eai resources batch-import', 'create', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 against PostgreSQL-backed smoke Object Types for high-throughput ingest.'],
   ['eai resources batch-update', 'update', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 against smoke-created rows.'],
   ['eai resources batch-delete', 'delete', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 during cleanup.'],
   ['eai resources aggregate', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 after ResourceAPI CRUD.'],
@@ -54,8 +55,18 @@ const TRACEABILITY_BASE = [
   ['eai resources schema', 'read', 'live', 'Verifies published Object Types are visible through resource schema.'],
   ['eai resources sync-schema', 'create/update', 'live-optional', 'Dry-run runs by default. Non-dry-run requires EAI_E2E_SYNC_SCHEMA_APPLY=1 until ResourceAPI physical cleanup exists.'],
   ['eai resources doctor', 'read', 'live', 'Runs active tenant storage readiness diagnostics.'],
+  ['eai resources performance-status', 'read', 'live', 'Reads bounded resource performance and schema readiness through the platform API.'],
+  ['eai resources indexes-plan', 'read', 'live-optional', 'Plans validated tenant-scoped index changes without applying storage mutations.'],
+  ['eai resources indexes-apply', 'create/update', 'live-optional', 'Applies validated tenant-scoped indexes only after explicit confirmation and server authorization.'],
+  ['eai resources cache-refresh', 'create/update', 'live-optional', 'Forces a signed, reasoned system-admin cache refresh; disabled in default smoke.'],
   ['eai app list', 'read', 'live', 'Lists apps before and after scaffold.'],
   ['eai app create', 'create', 'covered-by-init', 'The scaffold path calls the same app creation API; direct extra app creation is opt-in to avoid orphaned apps.'],
+  ['eai app connect-existing', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids overwriting source metadata on a dedicated tenant app.'],
+  ['eai app adopt-observed', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids marking app infrastructure observed without a managed redeploy path.'],
+  ['eai app workflow-setup', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids issuing one-time source-unknown nonce state.'],
+  ['eai app workflow-evidence', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids consuming source-unknown nonce state.'],
+  ['eai app deploy-source-unknown', 'create/update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids recording deployment handoff state before TenantInfra execution exists.'],
+  ['eai app deploy-source-unknown-status', 'read', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids depending on a pre-existing deployment handoff.'],
   ['eai app select', 'update-local', 'live', 'Writes the app key into the disposable workspace env.'],
   ['eai app provision', 'create/update', 'live', 'Prepares platform storage for the smoke app.'],
   ['eai chat send', 'create/read', 'live-optional', 'Runs only when EAI_E2E_WORKFLOW_KEY is configured and workflow status is available.'],
@@ -77,7 +88,7 @@ const TRACEABILITY_BASE = [
   ['eai verify calls', 'read', 'live', 'Audits platform-facing CLI call contracts.'],
   ['eai doctor', 'read', 'live', 'Runs diagnostics in the smoke workspace.'],
   ['eai whoami', 'read', 'live', 'Confirms dedicated test identity and active tenant context.'],
-  ['eai update', 'read/update', 'check-only', 'Runs `update --check`; installing over the release candidate is not safe inside release smoke.'],
+  ['eai update', 'read/update', 'check-only', 'Runs `update --check`; installing over the release candidate is not safe inside release smoke. Release preflight also runs update checks from the packed canonical and eai-cli alias install paths.'],
   ['eai provision entra', 'create/update/delete', 'live-optional', 'Runs only when EAI_E2E_PROVISION_ENTRA=1 because it creates/rotates/deletes app credentials.'],
   ['eai provision resourceapi-refresh', 'create/update', 'live-optional', 'Runs when passive ResourceAPI bundle/env is configured.'],
   ['eai provision storage', 'create/update', 'live', 'Provisions storage for the active test tenant.'],
@@ -127,6 +138,7 @@ const SMOKE_CALLS = {
   ],
   'eai types validate': [
     'eai types validate',
+    'eai types validate --tenant-id <tenant-id> --tenant-key <app-name>',
   ],
   'eai types diff': [
     'eai types diff --tenant-id <tenant-id> --tenant-key <app-name> --format json',
@@ -182,6 +194,10 @@ const SMOKE_CALLS = {
   'eai resources batch-create': [
     'eai resources batch-create <object-type> --tenant-id <tenant-id> --file batch-create.json --format json',
     'eai resources batch-create <object-type> --tenant-id <tenant-id> --data [{"title":"batch smoke"}] --format json',
+  ],
+  'eai resources batch-import': [
+    'eai resources batch-import <object-type> --tenant-id <tenant-id> --file batch-import.json --projection-mode deferred --format json',
+    'eai resources batch-import <object-type> --tenant-id <tenant-id> --data [{"title":"batch smoke"}] --format json',
   ],
   'eai resources batch-update': [
     'eai resources batch-update <object-type> --tenant-id <tenant-id> --file batch-update.json --format json',
@@ -241,12 +257,42 @@ const SMOKE_CALLS = {
   'eai resources doctor': [
     'eai resources doctor --tenant-id <tenant-id> --format json',
   ],
+  'eai resources performance-status': [
+    'eai resources performance-status --tenant-id <tenant-id> --format json',
+  ],
+  'eai resources indexes-plan': [
+    'eai resources indexes-plan --tenant-id <tenant-id> --format json',
+  ],
+  'eai resources indexes-apply': [
+    'eai resources indexes-apply --tenant-id <tenant-id> --confirm --format json',
+  ],
+  'eai resources cache-refresh': [
+    'eai resources cache-refresh --tenant-id <tenant-id> --reason <change-ticket> --confirm --format json',
+  ],
   'eai app list': [
     'eai app list --tenant-id <tenant-id> --limit 50 --format json',
   ],
   'eai app create': [
     'eai app create <name> --tenant-id <tenant-id> --key <app-key> --template eai-app-template --source eai-cli --app-url https://example.invalid --status pending --format json',
     'eai app create <name> --tenant-id <tenant-id> --parent-tenant <tenant-id> --child-tenant <child-name> --child-tenant-slug <child-slug> --key <app-key> --format json',
+  ],
+  'eai app connect-existing': [
+    'eai app connect-existing <app-key> --tenant-id <tenant-id> --repo <owner/repo> --repo-url https://github.com/<owner>/<repo> --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config src/eai.config/index.ts --runtime src/eai.runtime.ts --format json',
+  ],
+  'eai app adopt-observed': [
+    'eai app adopt-observed <app-key> --tenant-id <tenant-id> --repo <owner/repo> --url https://app.example.test --environment production --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config src/eai.config/index.ts --runtime src/eai.runtime.ts --format json',
+  ],
+  'eai app workflow-setup': [
+    'eai app workflow-setup <app-key> --tenant-id <tenant-id> --environment preview --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --format json',
+  ],
+  'eai app workflow-evidence': [
+    'eai app workflow-evidence <app-key> --tenant-id <tenant-id> --repo <owner/repo> --operation-id <operation-id> --nonce <nonce> --environment preview --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --artifact-digest sha256:<artifact> --image-digest sha256:<image> --workflow-run-id <run-id> --github-oidc-token <token> --github-oidc-audience api://enterprise-ai-publicapi/source-unknown --format json',
+  ],
+  'eai app deploy-source-unknown': [
+    'eai app deploy-source-unknown <app-key> --tenant-id <tenant-id> --operation-id <operation-id> --environment preview --repo <owner/repo> --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --workflow-run-id <run-id> --config-hash sha256:config --artifact-digest sha256:<artifact> --image-digest sha256:<image> --target-kind tenantinfra --release-channel preview --format json',
+  ],
+  'eai app deploy-source-unknown-status': [
+    'eai app deploy-source-unknown-status <app-key> --tenant-id <tenant-id> --format json',
   ],
   'eai app select': [
     'eai app select <app-key> --tenant-id <tenant-id> --skip-validate --format json',
@@ -393,6 +439,10 @@ const OPTION_DECISIONS = {
   'eai types seed': {
     '--env': 'Compatibility label only; tenant-id and tenant-key are the authoritative V4 smoke selectors.',
   },
+  'eai types validate': {
+    '--tenant-id': 'Optional tenant-aware storage binding validation is covered explicitly so app-owned table prefixes can be checked before publish.',
+    '--tenant-key': 'Optional app/tenant binding validation is covered explicitly so scaffolded app-owned storage names can be checked before publish.',
+  },
   'eai env list': {
     '--show-secrets': 'Intentionally not used in release smoke to avoid printing secrets.',
   },
@@ -401,6 +451,9 @@ const OPTION_DECISIONS = {
   },
   'eai tenant create': {
     '--allow-root': 'Administrative backfill escape hatch; intentionally excluded from normal e2e smoke.',
+  },
+  'eai tenant delete': {
+    '--force-hard-purge': 'Permanent subtree purge; covered by command/API contract tests and intentionally excluded from release smoke cleanup.',
   },
   'eai user invite': {
     '--role-definition-id': 'Custom role definition assignment is contract-tested; release smoke uses canonical base roles for portability.',
@@ -411,9 +464,45 @@ const OPTION_DECISIONS = {
   'eai resources list': {
     '--cursor': 'Cursor is data-dependent; pagination is covered through page/limit and cursor remains contract-documented.',
   },
+  'eai resources indexes-plan': {
+    '--object-type': 'Optional published Object Type scope; default smoke plans the tenant-wide validated set without applying changes.',
+  },
+  'eai resources indexes-apply': {
+    '--object-type': 'Optional published Object Type scope; apply is confirmation-gated and disabled in default release smoke.',
+  },
+  'eai resources cache-refresh': {
+    '--object-type': 'Optional Object Type scope; system-admin refresh is reasoned and disabled in default release smoke.',
+  },
   'eai app provision': {
     '--rebuild-search': 'Potentially expensive search rebuild; left as explicit opt-in outside release smoke.',
     '--skip-validate': 'Negative validation bypass; not used in release smoke because the smoke should prove normal validation works.',
+  },
+  'eai app connect-existing': {
+    '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
+  },
+  'eai app adopt-observed': {
+    '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
+    '--repo-url': 'Only needed when the canonical repo URL differs from GitHub owner/name; command integration tests cover the payload contract.',
+    '--deployment-id': 'Observed deployment identifier is platform/runtime specific; mocked command coverage proves it is forwarded.',
+    '--image-digest': 'Observed image digest is optional until managed redeploy evidence exists; mocked command coverage proves it is forwarded.',
+    '--config-hash': 'Observed config hash is optional until managed redeploy evidence exists; mocked command coverage proves it is forwarded.',
+    '--observed-at': 'Observation timestamp defaults to now; mocked command coverage pins it for deterministic evidence.',
+  },
+  'eai app workflow-setup': {
+    '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
+  },
+  'eai app workflow-evidence': {
+    '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
+    '--branch': 'Default branch is main in the smoke example; branch/ref alternatives are covered by command integration tests.',
+    '--workflow': 'Default workflow path is used in the smoke example; path forwarding is covered by command integration tests.',
+    '--ref': 'Ref defaults from branch in the smoke example; explicit ref forwarding is covered by command integration tests.',
+    '--workflow-run-attempt': 'Workflow run attempt is optional and platform-run specific; command integration tests cover forwarding.',
+  },
+  'eai app deploy-source-unknown': {
+    '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
+  },
+  'eai app deploy-source-unknown-status': {
+    '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
   },
   'eai workflow provision': {
     '--vertical': 'Deprecated alias for --app; not used by new V4-native/app vocabulary smoke.',
@@ -449,6 +538,12 @@ const OPTION_DECISIONS = {
 
 const COMMON_OPTION_DECISIONS = {
   '--json': 'Deprecated JSON shortcut; new smoke calls use --format json to keep one V4-native output vocabulary.',
+  '--template-version': 'Schema provenance is covered by mocked source-unknown command tests; live smoke avoids overwriting source metadata.',
+  '--base-template-sha': 'Schema provenance is covered by mocked source-unknown command tests; live smoke avoids overwriting source metadata.',
+  '--approved-source-sha': 'Source-unknown provenance is covered by mocked command tests; live smoke does not bind arbitrary source approvals.',
+  '--approved-release': 'Source-unknown provenance release binding is covered by mocked command tests; live smoke does not bind arbitrary source approvals.',
+  '--schema-digest': 'Schema digest validation is covered by mocked source-unknown command tests; live smoke avoids source metadata mutation.',
+  '--validator-digest': 'Validator digest validation is covered by mocked source-unknown command tests; live smoke avoids source metadata mutation.',
 };
 
 const DEFAULT_ARTIFACT_CLEANUP = {
@@ -508,6 +603,11 @@ const ARTIFACT_CLEANUP = {
     cleanupMechanism: 'eai resources batch-delete and per-resource delete fallback',
     cleanupVerified: 'Yes when cleanup is enabled',
   },
+  'eai resources batch-import': {
+    createsExternalArtifact: 'Yes - ResourceAPI rows, audit history, and async projection work',
+    cleanupMechanism: 'eai resources batch-delete and per-resource delete fallback',
+    cleanupVerified: 'Yes when cleanup is enabled',
+  },
   'eai resources batch-update': {
     createsExternalArtifact: 'Updates ResourceAPI rows',
     cleanupMechanism: 'Rows deleted after smoke',
@@ -548,10 +648,60 @@ const ARTIFACT_CLEANUP = {
     cleanupMechanism: 'No ResourceAPI physical schema cleanup yet; non-dry-run is opt-in',
     cleanupVerified: 'No - destructive apply disabled by default',
   },
+  'eai resources performance-status': {
+    createsExternalArtifact: 'No - bounded status read',
+    cleanupMechanism: 'Not required',
+    cleanupVerified: 'Yes - read/check command',
+  },
+  'eai resources indexes-plan': {
+    createsExternalArtifact: 'No - dry-run plan only',
+    cleanupMechanism: 'Not required',
+    cleanupVerified: 'Yes - no mutation applied',
+  },
+  'eai resources indexes-apply': {
+    createsExternalArtifact: 'Yes - validated tenant-scoped storage indexes',
+    cleanupMechanism: 'Re-run the validated plan or revert the declared Object Type index metadata',
+    cleanupVerified: 'No - live mutation disabled in default smoke',
+  },
+  'eai resources cache-refresh': {
+    createsExternalArtifact: 'Yes - cache invalidation operation',
+    cleanupMechanism: 'No rollback required; refresh is idempotent and scoped',
+    cleanupVerified: 'No - system-admin mutation disabled in default smoke',
+  },
   'eai app create': {
     createsExternalArtifact: 'Yes - app record',
     cleanupMechanism: 'Covered by eai init path; no default app delete command',
     cleanupVerified: 'No - dedicated smoke tenant expected',
+  },
+  'eai app connect-existing': {
+    createsExternalArtifact: 'Updates app source metadata',
+    cleanupMechanism: 'No source registration unlink command yet; command is covered by mocked integration tests',
+    cleanupVerified: 'No - live smoke does not mutate source metadata',
+  },
+  'eai app adopt-observed': {
+    createsExternalArtifact: 'Updates app source metadata and observed deployment status',
+    cleanupMechanism: 'No observed-adoption unlink command yet; command is covered by mocked integration tests',
+    cleanupVerified: 'No - live smoke does not mutate observed source metadata',
+  },
+  'eai app workflow-setup': {
+    createsExternalArtifact: 'Issues source-unknown workflow operation and nonce metadata',
+    cleanupMechanism: 'Operation expires; command is covered by mocked integration tests',
+    cleanupVerified: 'No - live smoke does not issue nonce state',
+  },
+  'eai app workflow-evidence': {
+    createsExternalArtifact: 'Consumes source-unknown workflow operation and records evidence metadata',
+    cleanupMechanism: 'No evidence delete command yet; command is covered by mocked integration tests',
+    cleanupVerified: 'No - live smoke does not consume nonce state',
+  },
+  'eai app deploy-source-unknown': {
+    createsExternalArtifact: 'Records source-unknown deployment handoff metadata',
+    cleanupMechanism: 'No deployment handoff delete command yet; command is covered by mocked integration tests',
+    cleanupVerified: 'No - live smoke does not record deployment handoff state',
+  },
+  'eai app deploy-source-unknown-status': {
+    createsExternalArtifact: 'No - reads latest source-unknown deployment handoff metadata',
+    cleanupMechanism: 'No cleanup required for read-only status',
+    cleanupVerified: 'Yes - read-only',
   },
   'eai app provision': {
     createsExternalArtifact: 'Yes - app storage/provisioning metadata',
@@ -1269,6 +1419,16 @@ function runLiveSmoke(cliPath) {
     batchIds = (batchCreate.results || batchCreate.resources || batchCreate.created || batchCreate.items || [])
       .map((item) => item.id || item.resource?.id)
       .filter(Boolean);
+    const batchImportFile = join(projectRoot, 'batch-import.json');
+    createJsonFile(batchImportFile, [
+      { title: 'batch import smoke one', status: 'draft', count: 30 },
+      { title: 'batch import smoke two', status: 'draft', count: 40 },
+    ]);
+    const batchImport = parseJson(eai(['resources', 'batch-import', pgType, '--tenant-id', parentTenantId, '--file', batchImportFile, '--projection-mode', 'deferred', '--format', 'json']).stdout, {});
+    const batchImportIds = (batchImport.results || batchImport.resources || batchImport.created || batchImport.items || [])
+      .map((item) => item.id || item.resource?.id)
+      .filter(Boolean);
+    batchIds.push(...batchImportIds);
     if (batchIds.length) {
       const batchUpdateFile = join(projectRoot, 'batch-update.json');
       createJsonFile(batchUpdateFile, batchIds.map((id, index) => ({

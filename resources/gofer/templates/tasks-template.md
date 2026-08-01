@@ -10,8 +10,8 @@ description: 'Task list template for feature implementation'
 research.md, goal-ledger.json, data-model.md, contracts/
 
 **Note**: This template is filled in by `/4_gofer_tasks` (or legacy
-`/4_gofer_tasks`). Recommended: Use `/0_business_scenario` to auto-chain the
-entire pipeline.
+`/4_gofer_tasks`). Recommended: Use `/0_gofer_start` to auto-chain the entire
+pipeline.
 
 > **EAI CLI Version Pin** (enterpriseai profile only): deployment tasks in this
 > list inherit the `major.minor` pin recorded in `plan.md` so builds in CI and

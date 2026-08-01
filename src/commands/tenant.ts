@@ -18,16 +18,19 @@ import { loadTokens } from "../lib/auth.js";
 import {
   buildPublicApiEnvSyncNotice,
   fetchTenantAdminMemberships,
-  filterTenantAdminEntries,
-  getTenantRoles,
   normalizeHomeRegion,
-  normalizeTenantEntries,
   refreshTenantUsabilityStatus,
   resolveActiveTenantContext,
   resolvePublicApiUrl,
-  type TenantEntry,
   type TenantUsabilityStatus,
 } from "../lib/tenant-context.js";
+import {
+  buildTenantHierarchyTreeLines,
+  flattenTenantHierarchy,
+  loadTenantHierarchy,
+  promptForTenantFromHierarchy,
+  tenantHierarchyJson,
+} from "../lib/tenant-hierarchy.js";
 import * as out from "../lib/output.js";
 import { ErrorCode, exitWithError } from "../lib/error-codes.js";
 
@@ -37,16 +40,13 @@ export {
   type TenantEntry,
   type TenantRoleAssignment,
 } from "../lib/tenant-context.js";
-
-export function tenantMatchesParent(
-  entry: TenantEntry,
-  parentId: string,
-): boolean {
-  const parent = entry.tenant.parent;
-  const resolvedParentId =
-    typeof parent === "string" ? parent : (parent?.id ?? entry.tenant.parentId);
-  return resolvedParentId === parentId || entry.tenant.id === parentId;
-}
+export {
+  buildTenantHierarchy,
+  buildTenantHierarchyTreeLines,
+  loadTenantHierarchy,
+  tenantMatchesParent,
+  type TenantHierarchyItem,
+} from "../lib/tenant-hierarchy.js";
 
 export interface TenantListZeroState {
   headline: string;
@@ -75,6 +75,7 @@ interface TenantBootstrapAdminCommandOptions {
   format: string;
   json?: boolean;
 }
+
 
 export function extractCreatedTenantRecord(
   payload: Record<string, unknown>,
@@ -389,6 +390,7 @@ tenantCommand
     `
 Examples:
   $ eai tenant list
+  $ eai tenant list --parent <tenant-id> # show the child hierarchy for a parent
   $ eai tenant list --all              # include tenant-viewer / tenant-builder memberships
   $ eai tenant list --debug
   $ eai tenant list --debug --raw-user
@@ -434,28 +436,15 @@ Examples:
         await fetchTenantAdminMemberships(publicApiUrl);
       debug("Membership lookup status", "ok");
 
-      const payload = {
-        tenants: membershipsResponse.memberships.map((membership) => ({
-          tenant: {
-            id: membership.id,
-            displayName: membership.displayName,
-            slug: membership.slug,
-            domain: membership.domain,
-            isActive: membership.isActive,
-          },
-          roles: membership.roles,
-        })),
-      } satisfies { tenants: TenantEntry[] };
-
       if (debugEnabled && options.rawUser) {
-        debug("Raw membership payload", payload);
+        debug("Raw membership payload", membershipsResponse);
       }
 
-      const tenantEntries = normalizeTenantEntries(payload);
-      debug("Tenant entries before filtering", tenantEntries.length);
       const tenants = options.all
-        ? tenantEntries.filter((entry) => entry.tenant?.isActive !== false)
-        : filterTenantAdminEntries(tenantEntries);
+        ? membershipsResponse.memberships.filter(
+            (membership) => membership.isActive !== false,
+          )
+        : membershipsResponse.memberships;
       debug(
         options.all
           ? "Tenant entries (all roles, active only)"
@@ -463,30 +452,51 @@ Examples:
         tenants.length,
       );
 
-      // Filter by parent if requested
-      const filtered = options.parent
-        ? tenants.filter((t) => tenantMatchesParent(t, options.parent))
-        : tenants;
-      debug("Tenant entries after filtering", filtered.length);
+      const hierarchy = await loadTenantHierarchy({
+        publicApiUrl: membershipsResponse.publicApiUrl,
+        memberships: tenants,
+        parentId: options.parent,
+        debug,
+      });
+      const visible = flattenTenantHierarchy(hierarchy.roots);
+      const selectable = visible.filter((tenant) => tenant.directMembership);
+      debug("Tenant hierarchy entries after filtering", visible.length);
 
       if (options.format === "json") {
         out.json({
-          tenants: filtered.map((t) => ({
-            ...t.tenant,
-            roles: getTenantRoles(t),
-            active: tokens.activeTenantId === t.tenant.id,
+          tenants: visible.map((tenant) => ({
+            id: tenant.id,
+            displayName: tenant.displayName,
+            slug: tenant.slug,
+            domain: tenant.domain,
+            isActive: tenant.isActive,
+            roles: tenant.roles,
+            homeRegion: tenant.homeRegion,
+            hqCountryCode: tenant.hqCountryCode,
+            parentId: tenant.parentId,
+            tenantPath: tenant.tenantPath,
+            depth: tenant.depth,
+            directMembership: tenant.directMembership,
+            active: tokens.activeTenantId === tenant.id,
           })),
-          count: filtered.length,
+          hierarchy: hierarchy.roots.map(tenantHierarchyJson),
+          count: visible.length,
+          selectableCount: selectable.length,
         });
         return;
       }
 
-      const countLabel = options.all
-        ? `${filtered.length} membership${filtered.length !== 1 ? "s" : ""}`
-        : `${filtered.length} tenant-admin membership${filtered.length !== 1 ? "s" : ""}`;
+      const countLabel =
+        visible.length === selectable.length
+          ? `${visible.length} tenant-admin membership${visible.length !== 1 ? "s" : ""}`
+          : `${visible.length} visible tenant${visible.length !== 1 ? "s" : ""} (${selectable.length} selectable tenant-admin membership${selectable.length !== 1 ? "s" : ""})`;
       spinner!.succeed(countLabel);
 
-      if (filtered.length === 0) {
+      for (const warning of hierarchy.warnings) {
+        out.warn(warning);
+      }
+
+      if (visible.length === 0) {
         const zeroState = buildTenantListZeroState(tokens);
         out.info(zeroState.headline);
         if (zeroState.tenantContext) {
@@ -500,18 +510,10 @@ Examples:
         return;
       }
 
-      for (const entry of filtered) {
-        const { tenant } = entry;
-        const roleNames = getTenantRoles(entry);
-        const roles = roleNames.length
-          ? chalk.dim(` [${roleNames.join(", ")}]`)
-          : "";
-        const domain = tenant.domain ? chalk.dim(` (${tenant.domain})`) : "";
-        const active =
-          tokens.activeTenantId === tenant.id ? chalk.green(" (active)") : "";
-        out.info(
-          `${chalk.cyan(tenant.slug)} — ${tenant.displayName}${domain}${roles}${active}`,
-        );
+      for (const line of buildTenantHierarchyTreeLines(hierarchy.roots, {
+        activeTenantId: tokens.activeTenantId,
+      })) {
+        out.info(line);
       }
     } catch (err) {
       if (spinner)
@@ -530,12 +532,43 @@ tenantCommand
     const publicApiUrl = await resolvePublicApiUrl(root || undefined);
 
     try {
+      let tenantId = tenant;
+      if (!tenantId) {
+        const fetched = await fetchTenantAdminMemberships(publicApiUrl);
+        const hierarchy = await loadTenantHierarchy({
+          publicApiUrl: fetched.publicApiUrl,
+          memberships: fetched.memberships,
+        });
+        for (const warning of hierarchy.warnings) {
+          out.warn(warning);
+        }
+
+        const selectable = flattenTenantHierarchy(hierarchy.roots).filter(
+          (item) => item.directMembership,
+        );
+        if (selectable.length === 0) {
+          throw new Error(
+            "No active tenant-admin memberships found for the current login. Run `eai tenant list` to inspect your access.",
+          );
+        }
+        if (!process.stdin.isTTY || !process.stdout.isTTY) {
+          if (selectable.length !== 1) {
+            throw new Error(
+              "Multiple active tenant-admin memberships found. Run `eai tenant select <tenant>` to choose one.",
+            );
+          }
+          tenantId = selectable[0]!.id;
+        } else {
+          tenantId = await promptForTenantFromHierarchy(hierarchy.roots);
+        }
+      }
+
       const context = await resolveActiveTenantContext({
         projectRoot: root || undefined,
         publicApiUrl,
-        interactive: true,
-        forcePrompt: !tenant,
-        tenantId: tenant,
+        interactive: false,
+        forcePrompt: false,
+        tenantId,
       });
 
       out.success(
@@ -948,6 +981,7 @@ tenantCommand
   .command("delete <id>")
   .description("Delete a tenant")
   .option("--force", "Skip confirmation", false)
+  .option("--force-hard-purge", "Permanently purge the tenant and all child tenants", false)
   .option("--format <format>", "Output format (text|json)", "text")
   .option("--json", "Output raw JSON (deprecated, use --format json)", false)
   .action(async (id, options) => {
@@ -955,11 +989,14 @@ tenantCommand
 
     if (!options.force) {
       const { default: inquirer } = await import("inquirer");
+      const promptMessage = options.forceHardPurge
+        ? `Permanently hard purge tenant ${id} and all child tenants? This cannot be undone.`
+        : `Delete tenant ${id}?`;
       const { confirm } = await inquirer.prompt([
         {
           type: "confirm",
           name: "confirm",
-          message: `Delete tenant ${id}?`,
+          message: promptMessage,
           default: false,
         },
       ]);
@@ -984,10 +1021,12 @@ tenantCommand
     const spinner =
       options.format === "json"
         ? null
-        : ora(`Deleting tenant "${id}"...`).start();
+        : ora(`${options.forceHardPurge ? "Hard purging" : "Deleting"} tenant "${id}"...`).start();
 
     try {
-      const res = await client.deleteTenant(id);
+      const res = await client.deleteTenant(id, {
+        forceHardPurge: Boolean(options.forceHardPurge),
+      });
       if (!res.ok) {
         const body = await res.text();
         if (options.format === "json") {
@@ -1003,10 +1042,39 @@ tenantCommand
         process.exit(1);
       }
 
+      const responseBody = await res.json().catch(() => null);
+      const backendStatus =
+        responseBody && typeof responseBody === 'object' && 'status' in responseBody
+          ? String((responseBody as { status?: unknown }).status || '')
+          : '';
+      if (options.forceHardPurge && backendStatus !== 'hard_purged') {
+        const message =
+          'Tenant delete completed but the backend did not confirm a hard purge. Stale tenant-owned data may remain.';
+        if (options.format === 'json') {
+          out.json({
+            id,
+            deleted: true,
+            hardPurged: false,
+            requestedHardPurge: true,
+            error: message,
+            response: responseBody,
+          });
+        } else if (spinner) {
+          spinner.fail(message);
+        }
+        process.exit(1);
+      }
       if (options.format === "json") {
-        out.json({ id, deleted: true });
+        out.json({
+          id,
+          deleted: true,
+          hardPurged: backendStatus === 'hard_purged',
+          response: responseBody,
+        });
       } else {
-        spinner!.succeed(`Deleted tenant ${chalk.cyan(id)}`);
+        spinner!.succeed(
+          `${options.forceHardPurge ? "Hard purged" : "Deleted"} tenant ${chalk.cyan(id)}`,
+        );
       }
     } catch (err) {
       if (spinner)

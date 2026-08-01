@@ -3,10 +3,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DOCS_DIR="$ROOT/docs-site"
-PACKUMENT="$ROOT/docs-site/static/registry/@eai-tools/cli"
+PACKUMENT="$ROOT/docs-site/static/registry/@enterpriseai/cli"
 GENERATED_TARBALL=""
+GENERATED_ALIAS_TARBALL=""
 BACKUP_DIR=""
 PACKED_INSTALL_PREFIX=""
+ALIAS_INSTALL_PREFIX=""
 
 section() {
   echo ""
@@ -17,13 +19,17 @@ cleanup() {
   if [[ -n "$GENERATED_TARBALL" ]]; then
     rm -f "$ROOT/$GENERATED_TARBALL" 2>/dev/null || true
   fi
+  if [[ -n "$GENERATED_ALIAS_TARBALL" ]]; then
+    rm -f "$ROOT/$GENERATED_ALIAS_TARBALL" 2>/dev/null || true
+  fi
+  rm -rf "$ROOT/.release" 2>/dev/null || true
   if [[ -n "$BACKUP_DIR" && -d "$BACKUP_DIR" ]]; then
     rm -rf "$ROOT/docs-site/static/registry"
     if [[ -d "$BACKUP_DIR/registry" ]]; then
       cp -R "$BACKUP_DIR/registry" "$ROOT/docs-site/static/registry"
     fi
 
-    for file in llms.txt llms-full.txt cli-help.txt; do
+    for file in llms.txt llms-full.txt cli-help.txt error-guidance.json; do
       rm -f "$ROOT/docs-site/static/$file"
       if [[ -f "$BACKUP_DIR/$file" ]]; then
         cp "$BACKUP_DIR/$file" "$ROOT/docs-site/static/$file"
@@ -34,6 +40,9 @@ cleanup() {
   fi
   if [[ -n "$PACKED_INSTALL_PREFIX" && -d "$PACKED_INSTALL_PREFIX" ]]; then
     rm -rf "$PACKED_INSTALL_PREFIX"
+  fi
+  if [[ -n "$ALIAS_INSTALL_PREFIX" && -d "$ALIAS_INSTALL_PREFIX" ]]; then
+    rm -rf "$ALIAS_INSTALL_PREFIX"
   fi
 }
 
@@ -134,10 +143,13 @@ echo "  ✓ docs-site build"
 
 section "Generating release artifacts"
 GENERATED_TARBALL="$(npm pack --silent)"
+node scripts/build-npm-alias-package.cjs >/dev/null
+GENERATED_ALIAS_TARBALL="$(npm pack --silent .release/eai-cli-package)"
 node scripts/generate-registry.cjs >/dev/null
 node scripts/generate-error-guidance-docs.cjs >/dev/null
 node scripts/generate-release-docs.cjs >/dev/null
 echo "  ✓ npm pack -> $GENERATED_TARBALL"
+echo "  ✓ eai-cli alias pack -> $GENERATED_ALIAS_TARBALL"
 echo "  ✓ static registry metadata regenerated"
 echo "  ✓ release-facing docs regenerated"
 
@@ -147,6 +159,9 @@ npm install --global --omit=dev --prefix "$PACKED_INSTALL_PREFIX" "$ROOT/$GENERA
 PACKED_EAI="$PACKED_INSTALL_PREFIX/bin/eai"
 PACKED_VERSION="$("$PACKED_EAI" --version 2>&1 | tr -d '\r')"
 EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+UPDATE_PACKUMENT_URL="$(
+  node -e "process.stdout.write('data:application/json,' + encodeURIComponent(JSON.stringify({ 'dist-tags': { latest: process.argv[1] } })))" "$EXPECTED_VERSION"
+)"
 if [[ "$PACKED_VERSION" != "$EXPECTED_VERSION" ]]; then
   echo "✗ packed eai --version returned $PACKED_VERSION, expected $EXPECTED_VERSION"
   exit 1
@@ -180,7 +195,31 @@ if ! "$PACKED_EAI" gofer refresh --help >/dev/null 2>&1; then
   echo "✗ packed eai gofer refresh --help failed"
   exit 1
 fi
+if ! EAI_UPDATE_NPMJS_PACKUMENT_URL="$UPDATE_PACKUMENT_URL" EAI_UPDATE_PACKUMENT_URL="$UPDATE_PACKUMENT_URL" NO_COLOR=1 "$PACKED_EAI" update --check --no-project-refresh >/dev/null 2>&1; then
+  echo "✗ packed eai update --check failed"
+  exit 1
+fi
 echo "  ✓ packed CLI starts with production dependencies only"
+echo "  ✓ packed eai update --check succeeds"
+
+section "Smoke testing packed eai-cli alias tarball"
+ALIAS_INSTALL_PREFIX="$(mktemp -d)"
+npm install --global --omit=dev --prefix "$ALIAS_INSTALL_PREFIX" "$ROOT/$GENERATED_ALIAS_TARBALL" --silent
+ALIAS_EAI="$ALIAS_INSTALL_PREFIX/bin/eai"
+ALIAS_VERSION="$("$ALIAS_EAI" --version 2>&1 | tr -d '\r')"
+if [[ "$ALIAS_VERSION" != "$EXPECTED_VERSION" ]]; then
+  echo "✗ packed eai-cli alias eai --version returned $ALIAS_VERSION, expected $EXPECTED_VERSION"
+  exit 1
+fi
+if ! "$ALIAS_EAI" --help >/dev/null 2>&1; then
+  echo "✗ packed eai-cli alias eai --help failed"
+  exit 1
+fi
+if ! "$ALIAS_EAI" update --check --no-project-refresh >/dev/null 2>&1; then
+  echo "✗ packed eai-cli alias eai update --check failed"
+  exit 1
+fi
+echo "  ✓ packed eai-cli alias installs the eai command"
 
 if [[ "${EAI_RELEASE_FULL_E2E_SMOKE:-0}" == "1" ]]; then
   section "Running live full e2e smoke against dedicated test tenant"
@@ -198,11 +237,12 @@ const path = require('node:path');
 
 const root = process.cwd();
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
-const packument = JSON.parse(fs.readFileSync(path.join(root, 'docs-site/static/registry/@eai-tools/cli'), 'utf-8'));
+const packument = JSON.parse(fs.readFileSync(path.join(root, 'docs-site/static/registry/@enterpriseai/cli'), 'utf-8'));
 const version = pkg.version;
-const tarballPath = path.join(root, `docs-site/static/registry/-/@eai-tools/cli-${version}.tgz`);
+const tarballPath = path.join(root, `docs-site/static/registry/-/@enterpriseai/cli-${version}.tgz`);
+const encodedPackumentPath = path.join(root, 'docs-site/static/registry/@enterpriseai%2fcli');
 
-if (packument.name !== '@eai-tools/cli') {
+if (packument.name !== '@enterpriseai/cli') {
   throw new Error(`unexpected package name in packument: ${packument.name}`);
 }
 if (packument['dist-tags']?.latest !== version) {
@@ -214,9 +254,12 @@ if (!packument.versions?.[version]) {
 if (!fs.existsSync(tarballPath)) {
   throw new Error(`registry tarball missing: ${tarballPath}`);
 }
+if (!fs.existsSync(encodedPackumentPath)) {
+  throw new Error(`encoded canonical packument missing: ${encodedPackumentPath}`);
+}
 EOF
 echo "  ✓ packument latest matches package.json"
-echo "  ✓ versioned tarball exists"
+echo "  ✓ versioned tarballs exist"
 
 section "Verifying release metadata"
 node <<'EOF'
@@ -227,8 +270,20 @@ const root = process.cwd();
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf-8');
 
-if (!readme.includes('npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user')) {
-  throw new Error('README install instructions are missing the scoped registry setup command');
+if (!readme.includes('npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user')) {
+  throw new Error('README install instructions are missing the static registry fallback command');
+}
+
+if (!readme.includes('npm install -g eai-cli')) {
+  throw new Error('README install instructions are missing the recommended eai-cli install command');
+}
+
+if (!readme.includes('npm install -g @enterpriseai/cli')) {
+  throw new Error('README install instructions are missing the canonical package install command');
+}
+
+if (!readme.includes('npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/')) {
+  throw new Error('README install instructions are missing the static registry fallback install command');
 }
 
 if (!pkg.files?.includes('resources')) {
@@ -243,8 +298,17 @@ const currentVersion = pkg.version;
 if (!llmsIndex.includes(currentVersion)) {
   throw new Error('llms.txt is missing the current package version');
 }
-if (!llmsIndex.includes('npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user')) {
-  throw new Error('llms.txt is missing the scoped registry setup command');
+if (!llmsIndex.includes('npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user')) {
+  throw new Error('llms.txt is missing the static registry fallback command');
+}
+if (!llmsIndex.includes('npm install -g eai-cli')) {
+  throw new Error('llms.txt is missing the recommended eai-cli install command');
+}
+if (!llmsIndex.includes('npm install -g @enterpriseai/cli')) {
+  throw new Error('llms.txt is missing the canonical package install command');
+}
+if (!llmsIndex.includes('npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/')) {
+  throw new Error('llms.txt is missing the static registry fallback install command');
 }
 if (!llmsIndex.includes('Error Guidance')) {
   throw new Error('llms.txt is missing the error guidance documentation link');
@@ -277,8 +341,21 @@ const guidance = JSON.parse(fs.readFileSync(path.join(root, 'docs-site/static/er
 if (!guidance.entries?.some((entry) => entry.reasonCode === 'tenant_authorization_incomplete')) {
   throw new Error('error-guidance.json is missing tenant authorization guidance');
 }
+const aliasPkg = JSON.parse(fs.readFileSync(path.join(root, '.release/eai-cli-package/package.json'), 'utf-8'));
+if (aliasPkg.name !== 'eai-cli') {
+  throw new Error('alias package name must be eai-cli');
+}
+if (aliasPkg.version !== currentVersion) {
+  throw new Error(`alias package version ${aliasPkg.version} does not match ${currentVersion}`);
+}
+if (aliasPkg.bin?.eai !== 'dist/index.js') {
+  throw new Error('alias package must expose the eai binary');
+}
+if (aliasPkg.publishConfig?.registry !== 'https://registry.npmjs.org/') {
+  throw new Error('alias package must publish to npmjs');
+}
 EOF
-echo "  ✓ README, package metadata, and release docs align with the static-registry release flow"
+echo "  ✓ README, package metadata, alias package, and release docs align with the npmjs release flow"
 
 echo ""
 echo "✓ Release preflight passed"

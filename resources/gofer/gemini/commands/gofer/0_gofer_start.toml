@@ -1,0 +1,2 @@
+description = "Start Gofer, confirm EAI readiness, and route the delivery pipeline."
+prompt = "{{include: ../../../.specify/commands/0_gofer_start.md}}"

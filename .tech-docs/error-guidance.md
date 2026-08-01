@@ -5,8 +5,8 @@ description: Public-safe EAI CLI error explanations and agent recovery commands.
 
 # Error Guidance
 
-This page lists the public-safe error guidance bundled with `@eai-tools/cli`
-v3.6.4. The same catalog powers human stderr output, JSON output for AI
+This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
+v3.8.3. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -21,12 +21,15 @@ are explicitly listed, and stop when a stop condition matches.
 | `E102` | `access_token_expired` | Access token expired. |
 | `E204` | `permission_denied` | Permission denied. |
 | `E205` | `child_relation_invalid` | The supplied tenant is not an immediate child of the supplied parent. |
+| `E245` | `user_invite_external_service_existing_member` | Tenant member invite failed, but an existing member role repair may be available. |
+| `E246` | `app_token_tenant_context_required` | App-token platform user lookup is missing tenant context. |
 | `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
 | `E270` | `object_type_not_published` | Object Type is not published for the active tenant. |
 | `E275` | `resource_search_embedding_required` | Semantic resource search is not ready for this tenant. |
+| `E276` | `resource_mutation_contract_invalid` | The PublicAPI v4 resource mutation contract is invalid. |
 | `E280` | `workflow_operator_required` | Workflow runtime binding requires operator assistance. |
 | `E244` | `tenant_data_install_no_match` | Tenant data/schema setup is not fully provisioned. |
 
@@ -204,6 +207,91 @@ are explicitly listed, and stop when a stop condition matches.
 - active tenant slug
 - target tenant slug
 - requested command
+
+## E245: Tenant member invite failed, but an existing member role repair may be available.
+
+| Field | Value |
+| --- | --- |
+| Reason | `user_invite_external_service_existing_member` |
+| Category | `external_service` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The invite/add flow reached an external identity or notification dependency that returned a server-side failure.
+- The target person may already exist as a direct tenant member with a lower role, so retrying the same invite can fail without changing access.
+- When a member record already exists, the supported recovery is to update that member through EAI CLI instead of editing data stores or cloud portals directly.
+- Applications may cache tenant role claims in their Auth.js session or JWT, so the user may need to sign out and sign back in after a role change.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the signed-in user, active tenant, and profile before changing membership.
+- `eai user roles --tenant <tenant-id> --format json` (read-only) — Confirm the target role is assignable in this tenant.
+- `eai user list --tenant <tenant-id> --search <email> --format json` (read-only) — Check whether the person already exists as a direct tenant member and capture the member ID.
+
+### Fixes
+
+- `eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json` (changes state) — Update the existing direct member to tenant-admin through the approved EAI tenant-member role endpoint. Use only after eai user list confirms the existing member ID and the user approves the role change.
+- `eai user invite --email <email> --tenant <tenant-id> --role <role> --format json` (changes state) — Retry the normal invite/add flow when no existing direct member is found and the failure was transient. Use only within the retry limit and after read-only diagnostics confirm the tenant and role.
+
+### Stop Conditions
+
+- The same external service error repeats after bounded retry.
+- The existing member is found but role update is not approved by the user.
+- The signed-in user is not allowed to change tenant membership.
+
+### Escalation Evidence
+
+- request ID
+- HTTP status
+- server code
+- CLI version
+- active tenant slug
+- redacted command shape
+
+## E246: App-token platform user lookup is missing tenant context.
+
+| Field | Value |
+| --- | --- |
+| Reason | `app_token_tenant_context_required` |
+| Category | `tenant_context` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The platform call authenticated, but the request did not carry the tenant context required for app-token user or membership operations.
+- This is commonly seen as MISSING_TENANT or "Tenant context required for app tokens" on platform user lookup or membership prerequisite calls.
+- Do not treat this as the first signal to edit tenant members, role definitions, Entra configuration, databases, or cloud portals.
+- For platform automation app-token flows outside tenant app runtime, use the tenant-scoped platform routes instead of root user lookup routes.
+- If the same route works in current main but fails in an environment, the deployed PublicAPI/AdminAPI may be behind the release that adds tenant-scoped routing hardening.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm login, active tenant, profile, and PublicAPI context.
+- `eai tenant list --format json` (read-only) — Confirm the target tenant is visible before retrying tenant-scoped calls.
+- `eai publicapi get /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Verify user lookup through the tenant-scoped platform route.
+- `eai publicapi get /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Verify membership lookup through the tenant-scoped platform route.
+
+### Fixes
+
+- `eai tenant select <tenant>` (changes state) — Select the tenant that should provide app-token context.
+- `Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Replace root platform user lookup with the tenant-scoped V4 route in platform automation app-token flows.
+- `Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Replace root platform membership lookup with the tenant-scoped V4 route in platform automation app-token flows.
+- `Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions` (read-only) — Keep tenant member and role-definition reads on the tenant-scoped V4 surface.
+
+### Stop Conditions
+
+- The tenant-scoped route returns the same MISSING_TENANT result.
+- The environment is running older PublicAPI/AdminAPI versions than the release with tenant-scoped platform routing hardening.
+
+### Escalation Evidence
+
+- CLI version
+- redacted route shape
+- HTTP status
+- server code
+- active tenant slug
+- deployed PublicAPI/AdminAPI versions if visible
 
 ## E242: Tenant data-plane authorization incomplete.
 
@@ -413,6 +501,43 @@ None.
 - search mode used
 - storage doctor search capabilities
 - CLI version
+
+## E276: The PublicAPI v4 resource mutation contract is invalid.
+
+| Field | Value |
+| --- | --- |
+| Reason | `resource_mutation_contract_invalid` |
+| Category | `resource_data` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- PublicAPI v4 intentionally rejects legacy flat resource bodies and PATCH updates.
+- Create requires POST with {"data": {...}}.
+- Update requires PUT with {"data": {...}, "version": n}, where n is the latest resource version.
+- A resource action requires POST with {"params": {...}} and returns the new version for any follow-up update.
+
+### Diagnostics
+
+- `eai resources get <type> <id> --format json` (read-only) — Read the current resource and version before an update. Required for updates, especially after an action or another writer.
+
+### Fixes
+
+- `eai publicapi post /v4/data/resources/<tenant-id>/<type> --data '{"data":{...}}'` (changes state) — Create a resource using the strict v4 data envelope.
+- `eai publicapi put /v4/data/resources/<tenant-id>/<type>/<id> --data '{"data":{...},"version":<current-version>}'` (changes state) — Update a resource with PUT and the latest optimistic-lock version.
+- `eai publicapi post /v4/data/resources/<tenant-id>/<type>/<id>/actions/<action> --data '{"params":{...}}'` (changes state) — Execute a resource action with the strict params envelope.
+
+### Stop Conditions
+
+- The corrected method and body still return the same contract error.
+- The update uses the latest version but returns a version conflict.
+
+### Escalation Evidence
+
+- command without secrets
+- HTTP status
+- server error code
+- request ID
 
 ## E280: Workflow runtime binding requires operator assistance.
 

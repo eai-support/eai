@@ -40,6 +40,9 @@ describe('agent guide', () => {
       ]),
     );
     expect(guide.operatingRules).toContain('When calling eai publicapi directly, only use /v4 paths.');
+    expect(guide.operatingRules).toContain(
+      'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing tenant members, Entra, or role definitions.',
+    );
   });
 
   test('catalog tells agents to use user invite for normal tenant member management', () => {
@@ -48,6 +51,9 @@ describe('agent guide', () => {
     expect(guide.operatingRules).toContain(
       'For normal tenant user/admin addition, use eai user invite --email <email> --tenant <tenant-id> --role <role>; do not use tenant bootstrap-admin.',
     );
+    expect(guide.operatingRules).toContain(
+      'If user invite fails with a 5xx or EXTERNAL_SERVICE_ERROR, run eai errors explain user_invite_external_service_existing_member --format json, check for an existing member with eai user list, and only then use eai user role set by member ID when approved.',
+    );
     expect(guide.commonWorkflows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -55,6 +61,38 @@ describe('agent guide', () => {
           commands: expect.arrayContaining([
             expect.objectContaining({
               command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin --format json',
+              mutates: true,
+            }),
+            expect.objectContaining({
+              command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
+              mutates: true,
+            }),
+          ]),
+        }),
+      ]),
+    );
+  });
+
+  test('catalog tells agents how to choose document workflow versus resource files', () => {
+    const guide = getAgentGuide();
+
+    expect(guide.operatingRules).toContain(
+      'For files, use eai docs when the file is a document to process, classify, index, or expose to AI context. Use eai resources file only when the file is attached to a typed resource object file property.',
+    );
+    expect(guide.operatingRules).toContain(
+      'Do not invent standalone PublicAPI v4 blob-upload flows. Ask whether the user needs a document workflow or a resource file property.',
+    );
+    expect(guide.commonWorkflows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Documents, files, and AI context',
+          commands: expect.arrayContaining([
+            expect.objectContaining({
+              command: 'eai docs upload <file>',
+              mutates: true,
+            }),
+            expect.objectContaining({
+              command: 'eai resources file upload <type> <id> <property> <path> --tenant-id <tenant-id>',
               mutates: true,
             }),
           ]),

@@ -11,9 +11,12 @@ const PKG = JSON.parse(
   fs.readFileSync(path.join(ROOT, "package.json"), "utf-8"),
 );
 const VERSION = PKG.version;
-const REGISTRY_SETUP =
-  "npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user";
-const INSTALL_CMD = "npm install -g @eai-tools/cli";
+const STATIC_REGISTRY_SETUP =
+  "npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user";
+const RECOMMENDED_INSTALL_CMD = "npm install -g eai-cli";
+const CANONICAL_INSTALL_CMD = "npm install -g @enterpriseai/cli";
+const STATIC_FALLBACK_INSTALL_CMD =
+  "npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/";
 const DOC_ORDER = [
   "start-here.md",
   "eai-cli.md",
@@ -23,6 +26,7 @@ const DOC_ORDER = [
   "examples/task-tracker.md",
   "examples/ai-chat.md",
   "app-template/service-patterns.md",
+  "app-template/documents-and-files.md",
   "app-template/config-driven-ui.md",
   "configuration.md",
   "error-guidance.md",
@@ -132,8 +136,17 @@ ${output}`,
 Version: ${context.version}
 
 Install / update the CLI:
-${REGISTRY_SETUP}
-${INSTALL_CMD}
+${RECOMMENDED_INSTALL_CMD}
+
+Canonical package:
+${CANONICAL_INSTALL_CMD}
+
+Static fallback:
+${STATIC_FALLBACK_INSTALL_CMD}
+
+Persistent static fallback setup:
+${STATIC_REGISTRY_SETUP}
+${CANONICAL_INSTALL_CMD}
 
 ${sections}
 `;
@@ -146,13 +159,31 @@ function buildLlmsIndex(context) {
 
   return `# EAI CLI Documentation
 
-> Release-aligned documentation surfaces for \`@eai-tools/cli\` v${context.version}.
+> Release-aligned documentation surfaces for \`@enterpriseai/cli\` v${context.version}.
 
 ## Install
 
 \`\`\`bash
-${REGISTRY_SETUP}
-${INSTALL_CMD}
+${RECOMMENDED_INSTALL_CMD}
+\`\`\`
+
+Canonical package:
+
+\`\`\`bash
+${CANONICAL_INSTALL_CMD}
+\`\`\`
+
+Static registry fallback:
+
+\`\`\`bash
+${STATIC_FALLBACK_INSTALL_CMD}
+\`\`\`
+
+Persistent static fallback setup:
+
+\`\`\`bash
+${STATIC_REGISTRY_SETUP}
+${CANONICAL_INSTALL_CMD}
 \`\`\`
 
 ## Key Commands
@@ -171,7 +202,7 @@ ${docsList}
 - [cli-help.txt](/eai/cli-help.txt): Current CLI help snapshots used for release validation
 - [llms-full.txt](/eai/llms-full.txt): Full release-aligned documentation bundle for AI agents
 - [error-guidance.json](/eai/error-guidance.json): Machine-readable error guidance for AI agents
-- [Registry](/eai/registry/): Static EAI package registry on GitHub Pages
+- [Registry](/eai/registry/): Static EAI package registry fallback on GitHub Pages
 `;
 }
 
@@ -199,19 +230,37 @@ ${doc.body.trim()}`,
     .join("\n\n");
 
   return `# EAI CLI — Full Documentation
-> Release-aligned documentation bundle for \`@eai-tools/cli\` v${context.version}.
+> Release-aligned documentation bundle for \`@enterpriseai/cli\` v${context.version}.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
 
 \`\`\`bash
-${REGISTRY_SETUP}
-${INSTALL_CMD}
+${RECOMMENDED_INSTALL_CMD}
+\`\`\`
+
+Canonical package:
+
+\`\`\`bash
+${CANONICAL_INSTALL_CMD}
+\`\`\`
+
+Static registry fallback:
+
+\`\`\`bash
+${STATIC_FALLBACK_INSTALL_CMD}
+\`\`\`
+
+Persistent static fallback setup:
+
+\`\`\`bash
+${STATIC_REGISTRY_SETUP}
+${CANONICAL_INSTALL_CMD}
 \`\`\`
 
 ## Update & Refresh Model
 
-- \`eai update\` reinstalls the latest CLI from the scoped EAI registry.
+- \`eai update\` reinstalls the latest CLI from npmjs, with the static registry as a fallback.
 - \`eai gofer refresh\` updates Gofer-managed assets without blindly overwriting local work.
 - \`eai template check\` previews app-template and UI drift without writing files.
 - Template and UI drift are reported by \`eai doctor --check-updates\` and still require manual review.

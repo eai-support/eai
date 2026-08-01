@@ -27,7 +27,11 @@ const sidebars = {
     {
       type: "category",
       label: "EAI App Template",
-      items: ["app-template/service-patterns", "app-template/config-driven-ui"],
+      items: [
+        "app-template/service-patterns",
+        "app-template/documents-and-files",
+        "app-template/config-driven-ui",
+      ],
     },
     {
       type: "category",

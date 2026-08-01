@@ -12,15 +12,37 @@ To enable documentation deployment:
 
 ## Package Registry
 
-This project publishes the CLI through the **static scoped registry** on GitHub Pages.
+This project publishes the CLI through npmjs first, with the GitHub Pages static
+registry kept as a fallback.
 
 Release channel responsibilities:
 
-- **GitHub Pages static registry** is available at `https://eai-tools.github.io/eai/registry/`
-- Users should configure it once with `npm config set @eai-tools:registry https://eai-tools.github.io/eai/registry/ --location=user`
-- Install or update with `npm install -g @eai-tools/cli`
-- The release workflow creates the GitHub release from the pushed release tag
-- The docs workflow deploys the matching static registry metadata from `main`
+- **npmjs primary package**: `eai-cli`
+- **npmjs canonical package**: `@enterpriseai/cli`
+- **GitHub Pages static registry fallback**: `https://eai-tools.github.io/eai/registry/`
+- Recommended install: `npm install -g eai-cli`
+- Canonical install: `npm install -g @enterpriseai/cli`
+- Static fallback install: `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/`
+- Persistent static fallback setup: `npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user`
+- The release workflow publishes both npmjs packages using trusted publishing,
+  then creates the GitHub release from the pushed release tag.
+- The docs workflow deploys the matching static registry fallback metadata from `main`.
+
+Configure npm Trusted Publishing for both `@enterpriseai/cli` and `eai-cli`:
+
+1. Go to each package on npmjs.com.
+2. Add a trusted publisher for GitHub Actions.
+3. Use owner `eai-tools`, repository `eai`, workflow filename `release.yml`.
+4. Allow `npm publish`.
+
+Do not add `NPM_TOKEN` or `NODE_AUTH_TOKEN` for normal releases. Trusted
+publishing uses GitHub OIDC through the `id-token: write` workflow permission.
+If either npmjs package has never existed before and npm does not expose package
+settings yet, create it with a one-off owner-controlled public publish, then
+enable trusted publishing before returning to the normal `release.sh` flow.
+Do not configure or publish the legacy scoped CLI package name on npmjs; legacy
+installers are handled only through the GitHub Pages static-registry
+compatibility bridge for older installed CLIs.
 
 ## Branch Protection Rules
 
@@ -47,9 +69,9 @@ This will:
 1. Run the local release preflight (`npm run release:check`).
 2. Bump the version, refresh `.tech-docs/` release metadata plus `docs-site/static/registry/`, `docs-site/static/llms.txt`, `docs-site/static/llms-full.txt`, and `docs-site/static/cli-help.txt`, then commit and tag.
 3. Push `main` and the annotated `vX.Y.Z` tag.
-4. Wait for the GitHub `Release` workflow to create the GitHub release.
-5. Wait for `Deploy Docs` to push the matching static registry update to GitHub Pages.
-6. Verify the public static registry reports the new version.
+4. Wait for the GitHub `Release` workflow to publish both npmjs packages and create the GitHub release.
+5. Wait for `Deploy Docs` to push the matching static registry fallback update to GitHub Pages.
+6. Verify npmjs and the public static registry fallback report the new version.
 
 The release path also verifies that the committed AI-facing docs and CLI help snapshots are current before the GitHub release is created.
 
@@ -71,8 +93,10 @@ Before switching repository visibility to public, verify:
    `.env` files, and customer/tenant data are not tracked.
 5. Rewritten history has been checked for personal paths, obvious token shapes,
    private keys, and cloud account-key literals.
-6. The static registry still reports the latest version:
+6. npmjs and the static registry fallback still report the latest version:
 
 ```bash
-curl https://eai-tools.github.io/eai/registry/@eai-tools/cli
+npm view eai-cli version --registry=https://registry.npmjs.org/
+npm view @enterpriseai/cli version --registry=https://registry.npmjs.org/ --@enterpriseai:registry=https://registry.npmjs.org/
+curl https://eai-tools.github.io/eai/registry/@enterpriseai/cli
 ```
