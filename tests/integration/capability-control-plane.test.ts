@@ -140,6 +140,55 @@ describe('CapabilityControlPlaneClient', () => {
     );
   });
 
+  test('uses typed read-only shared-content routes and natural-key bindings', async () => {
+    const requestPublicApi = vi.fn().mockImplementation(async () => response({ items: [] }));
+    const client = new CapabilityControlPlaneClient({ requestPublicApi }, 'tenant-123');
+
+    await client.listContent('document-templates');
+    await client.getContent('knowledge-articles', 'planning-policy');
+    await client.listSharedAssetTypes();
+    await client.listSharedAssets('shared-asset-service-centre');
+    await client.setAssetBinding('my-app', {
+      bindingKey: 'approvalTemplate',
+      capabilityKey: 'templates.documents',
+      assetType: 'shared-document-template',
+      assetKey: 'approval-letter',
+    });
+
+    expect(requestPublicApi).toHaveBeenNthCalledWith(1,
+      '/v4/platform/tenants/tenant-123/content/document-templates',
+      undefined,
+    );
+    expect(requestPublicApi).toHaveBeenNthCalledWith(2,
+      '/v4/platform/tenants/tenant-123/content/knowledge-articles/planning-policy',
+      undefined,
+    );
+    expect(requestPublicApi).toHaveBeenNthCalledWith(3,
+      '/v4/platform/tenants/tenant-123/content/shared-asset-types',
+      undefined,
+    );
+    expect(requestPublicApi).toHaveBeenNthCalledWith(4,
+      '/v4/platform/tenants/tenant-123/content/shared-assets',
+      { params: { assetType: 'shared-asset-service-centre' } },
+    );
+    expect(requestPublicApi).toHaveBeenNthCalledWith(5,
+      '/v4/platform/tenants/tenant-123/apps/my-app/capability-bindings',
+      {
+        method: 'PUT',
+        body: {
+          bindings: [{
+            bindingKey: 'approvalTemplate',
+            logicalAlias: 'approvalTemplate',
+            capabilityKey: 'templates.documents',
+            assetType: 'shared-document-template',
+            assetKey: 'approval-letter',
+            environment: 'default',
+          }],
+        },
+      },
+    );
+  });
+
   test('rejects outbound secret material and redacts accidental inbound credentials', () => {
     expect(() => assertNoSecretMaterial({ clientSecret: 'do-not-send' })).toThrow(/Admin Portal/);
     expect(() => assertNoSecretMaterial({ providerApiKey: 'do-not-send' })).toThrow(/Admin Portal/);

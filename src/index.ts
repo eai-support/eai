@@ -49,6 +49,7 @@ import { capabilityCommand } from './commands/capability.js';
 import { integrationCommand } from './commands/integration.js';
 import { aiCommand } from './commands/ai.js';
 import { promptCommand } from './commands/prompt.js';
+import { contentCommand } from './commands/content.js';
 import {
   checkForUpdate,
   isMachineReadableInvocation,
@@ -129,6 +130,7 @@ program.addCommand(capabilityCommand);
 program.addCommand(integrationCommand);
 program.addCommand(aiCommand);
 program.addCommand(promptCommand);
+program.addCommand(contentCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -161,6 +163,7 @@ ${chalk.bold('Development Workflows:')}
   ${chalk.dim('# Inspect and bind shared tenant capabilities')}
   ${chalk.cyan('eai capability doctor')}
   ${chalk.cyan('eai integration test azure-openai')}
+  ${chalk.cyan('eai content document-template list')}
   ${chalk.cyan('eai ai profile use default-chat --app my-app --as chatProfile')}
   ${chalk.cyan('eai app bindings validate my-app')}
 

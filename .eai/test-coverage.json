@@ -32,6 +32,7 @@
             "tests/integration/no-v3-runtime.test.ts",
             "tests/integration/platform-api-client.test.ts",
             "tests/integration/capability-control-plane.test.ts",
+            "tests/integration/content-command.test.ts",
             "tests/integration/capability.test.ts",
             "tests/integration/integration-command.test.ts",
             "tests/integration/ai-profile.test.ts",

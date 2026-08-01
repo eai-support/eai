@@ -15,6 +15,16 @@ export type CapabilitySetupMode =
 /** CLI-safe logical asset kinds; wire requests map these to backing Object Types. */
 export type CapabilityAssetKind = 'integration' | 'ai-profile' | 'prompt' | 'workflow';
 
+/** Read-only content domains backed by tenant Advanced Settings records. */
+export type CapabilityContentDomain =
+  | 'document-templates'
+  | 'email-templates'
+  | 'knowledge-articles'
+  | 'policies'
+  | 'document-types'
+  | 'document-checklists'
+  | 'requirement-groups';
+
 /** Normalized PublicAPI capability definition used by discovery and setup guidance. */
 export interface CapabilityDefinition extends Record<string, unknown> {
   key: string;
@@ -38,6 +48,15 @@ export interface AppCapabilityBindingRequest {
   bindingKey: string;
   capabilityKey: string;
   assetKind: CapabilityAssetKind;
+  assetKey: string;
+  environment?: string;
+}
+
+/** Natural-key binding request for Portal-managed shared content. */
+export interface ContentCapabilityBindingRequest {
+  bindingKey: string;
+  capabilityKey: string;
+  assetType: string;
   assetKey: string;
   environment?: string;
 }
@@ -73,6 +92,12 @@ function segment(value: string, label: string): string {
     throw new Error(`${label} is required.`);
   }
   return encodeURIComponent(normalized);
+}
+
+function requiredValue(value: string, label: string): string {
+  const normalized = value.trim();
+  if (!normalized) throw new Error(`${label} is required.`);
+  return normalized;
 }
 
 function readServerDetail(payload: unknown): { message?: string; code?: string } {
@@ -364,15 +389,42 @@ export class CapabilityControlPlaneClient {
     );
   }
 
+  async listContent(domain: CapabilityContentDomain): Promise<unknown> {
+    return this.request(this.tenantPath(`/content/${domain}`), `List ${domain}`);
+  }
+
+  async getContent(domain: CapabilityContentDomain, key: string): Promise<unknown> {
+    return this.request(
+      this.tenantPath(`/content/${domain}/${segment(key, `${domain} key`)}`),
+      `Get ${domain}`,
+    );
+  }
+
+  async listSharedAssetTypes(): Promise<unknown> {
+    return this.request(this.tenantPath('/content/shared-asset-types'), 'List shared asset types');
+  }
+
+  async listSharedAssets(assetType: string): Promise<unknown> {
+    return this.request(this.tenantPath('/content/shared-assets'), 'List shared assets', {
+      params: { assetType: requiredValue(assetType, 'Shared asset type') },
+    });
+  }
+
+  async getSharedAsset(assetType: string, assetKey: string): Promise<unknown> {
+    return this.request(
+      this.tenantPath(`/content/shared-assets/${segment(assetKey, 'Shared asset key')}`),
+      'Get shared asset',
+      { params: { assetType: requiredValue(assetType, 'Shared asset type') } },
+    );
+  }
+
   async listBindings(appKey: string): Promise<unknown> {
     return this.request(this.bindingPath(appKey), 'List app capability bindings');
   }
 
   async setBinding(appKey: string, binding: AppCapabilityBindingRequest): Promise<unknown> {
-    assertNoSecretMaterial(binding);
-    const input = {
+    return this.setAssetBinding(appKey, {
       bindingKey: binding.bindingKey,
-      logicalAlias: binding.bindingKey,
       capabilityKey: binding.capabilityKey,
       assetType: {
         integration: 'tenant-integration-source',
@@ -380,6 +432,18 @@ export class CapabilityControlPlaneClient {
         prompt: 'shared-chatbot-config',
         workflow: 'shared-workflow-config',
       }[binding.assetKind],
+      assetKey: binding.assetKey,
+      ...(binding.environment ? { environment: binding.environment } : {}),
+    });
+  }
+
+  async setAssetBinding(appKey: string, binding: ContentCapabilityBindingRequest): Promise<unknown> {
+    assertNoSecretMaterial(binding);
+    const input = {
+      bindingKey: binding.bindingKey,
+      logicalAlias: binding.bindingKey,
+      capabilityKey: binding.capabilityKey,
+      assetType: binding.assetType,
       assetKey: binding.assetKey,
       environment: binding.environment ?? 'default',
     };
