@@ -254,7 +254,9 @@ export function formatControlPlaneError(error: unknown): string {
   const message = sanitizeDiagnosticText(error.serverMessage || error.message);
   const code = error.serverCode ? ` (${error.serverCode})` : '';
   const requestId = error.requestId ? ` Request ID: ${error.requestId}.` : '';
-  return `${message}${code}.${requestId}`.replace('..', '.');
+  const detail = `${message}${code}`;
+  const terminator = detail.endsWith('.') ? '' : '.';
+  return `${detail}${terminator}${requestId}`;
 }
 
 /** Parse typed extension fields while rejecting credentials before any API call. */

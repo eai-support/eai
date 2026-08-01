@@ -2,9 +2,11 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   CapabilityControlPlaneClient,
   assertNoSecretMaterial,
+  formatControlPlaneError,
   sanitizeControlPlaneValue,
   type CapabilityControlPlaneTransport,
 } from '../../src/lib/capability-control-plane.js';
+import { PlatformAPIRequestError } from '../../src/lib/api.js';
 
 function response(payload: unknown, status = 200): Response {
   return new Response(status === 204 ? null : JSON.stringify(payload), {
@@ -235,6 +237,20 @@ describe('CapabilityControlPlaneClient', () => {
       providerMessage: 'Sensitive provider details were redacted.',
       nested: { connection_string: '[REDACTED]' },
     });
+  });
+
+  test('formats repeated punctuation without incomplete string replacement', () => {
+    const error = new PlatformAPIRequestError({
+      operation: 'test integration',
+      status: 502,
+      statusText: 'Bad Gateway',
+      serverMessage: 'Provider unavailable.',
+      requestId: 'request-123',
+    });
+
+    expect(formatControlPlaneError(error)).toBe(
+      'Provider unavailable. Request ID: request-123.',
+    );
   });
 
   test('encodes tenant and app path segments', async () => {
