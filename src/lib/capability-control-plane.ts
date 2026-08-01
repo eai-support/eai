@@ -89,15 +89,24 @@ export interface CapabilityControlPlaneTransport {
   ): Promise<Response>;
 }
 
-const SENSITIVE_FIELD = /(?:api[-_]?key|secret|password|credential|connection[-_]?string|(?:access|refresh|oauth|bearer|id)[-_]?token|token$)/i;
+const SENSITIVE_FIELD = /(?:api[-_]?key|secret|password|credential|connection[-_]?string|authorization|auth[-_]?header|private[-_]?key|signing[-_]?key|signature|cookie|sas|(?:access|refresh|oauth|bearer|id)[-_]?token|token$)/i;
 const SAFE_REFERENCE_FIELD = /(?:ref|reference|name)$/i;
+const SAFE_REFERENCE_VALUE = /^(?:kv|keyvault):\/\/[A-Za-z0-9._~:/-]+$|^https:\/\/[A-Za-z0-9.-]+\.vault\.azure\.net\/secrets\/[A-Za-z0-9-]+(?:\/[A-Za-z0-9-]+)?$/i;
+const CREDENTIAL_TEXT = /(?:\bbearer\s+[^\s,;]+|\b(?:authorization|api[-_ ]?key|client[-_ ]?secret|password|connection[-_ ]?string|signing[-_ ]?key|signature|sas|sig)\b\s*[:=]\s*[^\s,;]+)/i;
 
 function isSensitiveField(key: string): boolean {
   return SENSITIVE_FIELD.test(key);
 }
 
-function isSafeReferenceField(key: string): boolean {
-  return isSensitiveField(key) && SAFE_REFERENCE_FIELD.test(key);
+function isSafeReference(key: string, value: unknown): boolean {
+  return isSensitiveField(key)
+    && SAFE_REFERENCE_FIELD.test(key)
+    && typeof value === 'string'
+    && SAFE_REFERENCE_VALUE.test(value.trim());
+}
+
+function sanitizeDiagnosticText(value: string): string {
+  return CREDENTIAL_TEXT.test(value) ? 'Sensitive provider details were redacted.' : value;
 }
 
 function segment(value: string, label: string): string {
@@ -212,10 +221,11 @@ function normalizeConnection(value: unknown): TenantCapabilityConnection | null 
  */
 export function sanitizeControlPlaneValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitizeControlPlaneValue);
+  if (typeof value === 'string') return sanitizeDiagnosticText(value);
   if (!isRecord(value)) return value;
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [
     key,
-    isSensitiveField(key) && !isSafeReferenceField(key)
+    isSensitiveField(key) && !isSafeReference(key, item)
       ? '[REDACTED]'
       : sanitizeControlPlaneValue(item),
   ]));
@@ -229,7 +239,7 @@ export function assertNoSecretMaterial(value: unknown, path = 'data'): void {
   }
   if (!isRecord(value)) return;
   for (const [key, item] of Object.entries(value)) {
-    if (isSensitiveField(key) && !isSafeReferenceField(key)) {
+    if (isSensitiveField(key) && !isSafeReference(key, item)) {
       throw new Error(`${path}.${key} is secret material. Configure credentials in Admin Portal and pass only a safe integration reference.`);
     }
     assertNoSecretMaterial(item, `${path}.${key}`);
@@ -239,9 +249,9 @@ export function assertNoSecretMaterial(value: unknown, path = 'data'): void {
 /** Render safe server diagnostics without exposing raw response bodies. */
 export function formatControlPlaneError(error: unknown): string {
   if (!(error instanceof PlatformAPIRequestError)) {
-    return error instanceof Error ? error.message : String(error);
+    return sanitizeDiagnosticText(error instanceof Error ? error.message : String(error));
   }
-  const message = error.serverMessage || error.message;
+  const message = sanitizeDiagnosticText(error.serverMessage || error.message);
   const code = error.serverCode ? ` (${error.serverCode})` : '';
   const requestId = error.requestId ? ` Request ID: ${error.requestId}.` : '';
   return `${message}${code}.${requestId}`.replace('..', '.');

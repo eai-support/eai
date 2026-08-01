@@ -16,6 +16,25 @@ interface CapabilityOptions {
   json?: boolean;
 }
 
+export interface CapabilityDiagnosis {
+  gateApplied: boolean;
+  ready: boolean | null;
+}
+
+export function diagnoseCapabilityConnections(
+  connections: TenantCapabilityConnection[],
+  gateApplied: boolean,
+): CapabilityDiagnosis {
+  return {
+    gateApplied,
+    ready: gateApplied
+      ? connections.length > 0 && connections.every((item) => (
+        item.entitled && item.configured && item.bound && item.runtimeReady
+      ))
+      : null,
+  };
+}
+
 function printConnection(connection: TenantCapabilityConnection): void {
   out.heading(`Capability: ${connection.capabilityKey}`);
   out.table([
@@ -187,14 +206,12 @@ capabilityCommand
         : await ctx.controlPlane.listConnections();
       const diagnosis = {
         tenantId: ctx.tenantId,
-        ready: connections.length > 0 && connections.every((item) => (
-          item.entitled && item.configured && item.bound && item.runtimeReady
-        )),
+        ...diagnoseCapabilityConnections(connections, key !== undefined),
         connections,
       };
       if (normalizeFormat(options) === 'json') {
         out.json(sanitizeControlPlaneValue(diagnosis));
-        if (!diagnosis.ready) process.exitCode = 1;
+        if (connections.length === 0 || diagnosis.ready === false) process.exitCode = 1;
         return;
       }
       if (connections.length === 0) {
@@ -203,7 +220,9 @@ capabilityCommand
         return;
       }
       for (const connection of connections) printConnection(connection);
-      if (diagnosis.ready) {
+      if (!diagnosis.gateApplied) {
+        out.info('Tenant capability diagnostics completed. Use a capability key or app bindings validate for a readiness gate.');
+      } else if (diagnosis.ready) {
         out.success('All selected capabilities are ready.');
       } else {
         out.warn('One or more readiness states require attention.');

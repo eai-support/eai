@@ -215,16 +215,24 @@ describe('CapabilityControlPlaneClient', () => {
   test('rejects outbound secret material and redacts accidental inbound credentials', () => {
     expect(() => assertNoSecretMaterial({ clientSecret: 'do-not-send' })).toThrow(/Admin Portal/);
     expect(() => assertNoSecretMaterial({ providerApiKey: 'do-not-send' })).toThrow(/Admin Portal/);
-    expect(() => assertNoSecretMaterial({ credentialRef: 'tenant-ai-provider' })).not.toThrow();
+    expect(() => assertNoSecretMaterial({ authorization: 'Bearer do-not-send' })).toThrow(/Admin Portal/);
+    expect(() => assertNoSecretMaterial({ signingKey: 'do-not-send' })).toThrow(/Admin Portal/);
+    expect(() => assertNoSecretMaterial({ sas: 'sig=do-not-send' })).toThrow(/Admin Portal/);
+    expect(() => assertNoSecretMaterial({ credentialRef: 'raw-secret' })).toThrow(/Admin Portal/);
+    expect(() => assertNoSecretMaterial({ credentialRef: 'keyvault://tenant-ai-provider' })).not.toThrow();
     expect(sanitizeControlPlaneValue({
       integrationKey: 'azure-openai',
       accessToken: 'do-not-print',
-      credentialRef: 'tenant-ai-provider',
+      credentialRef: 'keyvault://tenant-ai-provider',
+      signingKey: 'do-not-print',
+      providerMessage: 'Authorization: Bearer do-not-print',
       nested: { connection_string: 'do-not-print' },
     })).toEqual({
       integrationKey: 'azure-openai',
       accessToken: '[REDACTED]',
-      credentialRef: 'tenant-ai-provider',
+      credentialRef: 'keyvault://tenant-ai-provider',
+      signingKey: '[REDACTED]',
+      providerMessage: 'Sensitive provider details were redacted.',
       nested: { connection_string: '[REDACTED]' },
     });
   });
