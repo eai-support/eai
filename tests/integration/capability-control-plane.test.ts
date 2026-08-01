@@ -140,6 +140,29 @@ describe('CapabilityControlPlaneClient', () => {
     );
   });
 
+  test('sends canonical capability requirements to persisted binding validation', async () => {
+    const requestPublicApi = vi.fn().mockResolvedValue(response({ valid: true, bindings: [] }));
+    const client = new CapabilityControlPlaneClient({ requestPublicApi }, 'tenant-123');
+    const capabilityRequirements = {
+      schemaVersion: 'eai.app_capabilities.v1' as const,
+      appKey: 'my-app',
+      requirements: [{
+        alias: 'primary-workflow',
+        capability: 'workflows.runtime',
+        required: true,
+        description: 'Workflow executed by the generated application.',
+        compatibleAssetTypes: ['shared-workflow-*', 'workflow-template'],
+      }],
+    };
+
+    await client.validateBindings('my-app', capabilityRequirements);
+
+    expect(requestPublicApi).toHaveBeenCalledWith(
+      '/v4/platform/tenants/tenant-123/apps/my-app/capability-bindings/validate',
+      { method: 'POST', body: { capabilityRequirements } },
+    );
+  });
+
   test('uses typed read-only shared-content routes and natural-key bindings', async () => {
     const requestPublicApi = vi.fn().mockImplementation(async () => response({ items: [] }));
     const client = new CapabilityControlPlaneClient({ requestPublicApi }, 'tenant-123');

@@ -64,6 +64,39 @@ interface LinkedSourcesManifest {
   };
 }
 
+function generatedCapabilityRequirements(appKey: string) {
+  return {
+    schemaVersion: "eai.app_capabilities.v1",
+    appKey,
+    requirements: [
+      {
+        alias: "primary-workflow",
+        capability: "workflows.runtime",
+        required: true,
+        description: "Workflow executed by the generated application.",
+      },
+      {
+        alias: "assistant-prompt",
+        capability: "ai.chat",
+        required: false,
+        description: "Governed prompt selected for AI-assisted steps.",
+      },
+      {
+        alias: "assistant-model",
+        capability: "ai.profiles",
+        required: false,
+        description: "Governed AI model profile used by AI-assisted steps.",
+      },
+      {
+        alias: "business-system",
+        capability: "integrations",
+        required: false,
+        description: "Tenant integration used by workflow actions.",
+      },
+    ],
+  } as const;
+}
+
 export interface TemplateClonePlan {
   readonly cloneSource: string;
   readonly displaySource: string;
@@ -506,6 +539,11 @@ Use --no-gofer only when you need a bare app scaffold.
       await writeFile(
         join(targetDir, "src", "eai.config", "object-types.ts"),
         typesContent,
+        "utf-8",
+      );
+      await writeFile(
+        join(targetDir, "src", "eai.config", "capabilities.generated.json"),
+        `${JSON.stringify(generatedCapabilityRequirements(initOptions.name), null, 2)}\n`,
         "utf-8",
       );
       typesSpinner.succeed("Created Object Types scaffold");

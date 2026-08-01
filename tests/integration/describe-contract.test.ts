@@ -57,6 +57,7 @@ const TOP_LEVEL_COMMANDS = [
   "errors",
   "agent",
   "capability",
+  "content",
   "integration",
   "ai",
   "prompt",

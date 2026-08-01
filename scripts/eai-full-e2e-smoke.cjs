@@ -73,6 +73,30 @@ const TRACEABILITY_BASE = [
   ['eai app bindings set', 'create/update', 'covered-by-cli', 'Repo-owned tests prove logical aliases and backing asset keys; live mutation requires controlled capability fixtures.'],
   ['eai app bindings remove', 'delete', 'covered-by-cli', 'Repo-owned tests cover guarded deletion; deployed cleanup runs only with controlled capability fixtures.'],
   ['eai app bindings validate', 'read', 'covered-by-cli', 'Repo-owned tests cover four-state validation; deployed readiness evidence belongs to the capability contract surface.'],
+  ['eai content document-template list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized Portal-managed document template discovery.'],
+  ['eai content document-template show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key document template lookup.'],
+  ['eai content document-template use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical document-template binding without content mutation.'],
+  ['eai content email-template list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized Portal-managed email template discovery.'],
+  ['eai content email-template show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key email template lookup.'],
+  ['eai content email-template use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical email-template binding without content mutation.'],
+  ['eai content knowledge-article list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized Portal-managed knowledge discovery.'],
+  ['eai content knowledge-article show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key knowledge article lookup.'],
+  ['eai content knowledge-article use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical knowledge binding without content mutation.'],
+  ['eai content policy list', 'read', 'covered-by-cli', 'Repo-owned tests cover read-only policy discovery.'],
+  ['eai content policy show', 'read', 'covered-by-cli', 'Repo-owned tests cover read-only natural-key policy lookup.'],
+  ['eai content document-type list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized document type discovery.'],
+  ['eai content document-type show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key document type lookup.'],
+  ['eai content document-type use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical document type binding.'],
+  ['eai content document-checklist list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized checklist discovery.'],
+  ['eai content document-checklist show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key checklist lookup.'],
+  ['eai content document-checklist use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical checklist binding.'],
+  ['eai content requirement-group list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized requirement-group discovery.'],
+  ['eai content requirement-group show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key requirement-group lookup.'],
+  ['eai content requirement-group use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical requirement-group binding.'],
+  ['eai content shared-asset types', 'read', 'covered-by-cli', 'Repo-owned tests cover exact tenant-declared shared-asset type discovery.'],
+  ['eai content shared-asset list', 'read', 'covered-by-cli', 'Repo-owned tests cover validated dynamic shared-asset listing.'],
+  ['eai content shared-asset show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key dynamic shared-asset lookup.'],
+  ['eai content shared-asset use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical dynamic shared-asset binding.'],
   ['eai capability list', 'read', 'covered-by-cli', 'Repo-owned tests cover definition and tenant projection normalization.'],
   ['eai capability status', 'read', 'covered-by-cli', 'Repo-owned tests preserve entitled, configured, bound, and runtime-ready as independent states.'],
   ['eai capability setup', 'read', 'covered-by-cli', 'Setup is guidance-only and cannot mutate Portal-governed credentials or billing.'],
@@ -341,7 +365,79 @@ const SMOKE_CALLS = {
     'eai app bindings remove <app-key> <binding-key> --tenant-id <tenant-id> --force --format json',
   ],
   'eai app bindings validate': [
-    'eai app bindings validate <app-key> --tenant-id <tenant-id> --format json',
+    'eai app bindings validate <app-key> --tenant-id <tenant-id> --requirements src/eai.config/capabilities.generated.json --format json',
+  ],
+  'eai content document-template list': [
+    'eai content document-template list --tenant <tenant-id> --format json',
+  ],
+  'eai content document-template show': [
+    'eai content document-template show <template-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content document-template use': [
+    'eai content document-template use <template-key> --app <app-key> --as <alias> --capability templates.documents --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai content email-template list': [
+    'eai content email-template list --tenant <tenant-id> --format json',
+  ],
+  'eai content email-template show': [
+    'eai content email-template show <template-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content email-template use': [
+    'eai content email-template use <template-key> --app <app-key> --as <alias> --capability templates.email --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai content knowledge-article list': [
+    'eai content knowledge-article list --tenant <tenant-id> --format json',
+  ],
+  'eai content knowledge-article show': [
+    'eai content knowledge-article show <article-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content knowledge-article use': [
+    'eai content knowledge-article use <article-key> --app <app-key> --as <alias> --capability knowledge --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai content policy list': [
+    'eai content policy list --tenant <tenant-id> --format json',
+  ],
+  'eai content policy show': [
+    'eai content policy show <policy-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content document-type list': [
+    'eai content document-type list --tenant <tenant-id> --format json',
+  ],
+  'eai content document-type show': [
+    'eai content document-type show <document-type-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content document-type use': [
+    'eai content document-type use <document-type-key> --app <app-key> --as <alias> --capability documents --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai content document-checklist list': [
+    'eai content document-checklist list --tenant <tenant-id> --format json',
+  ],
+  'eai content document-checklist show': [
+    'eai content document-checklist show <checklist-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content document-checklist use': [
+    'eai content document-checklist use <checklist-key> --app <app-key> --as <alias> --capability document-checklists --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai content requirement-group list': [
+    'eai content requirement-group list --tenant <tenant-id> --format json',
+  ],
+  'eai content requirement-group show': [
+    'eai content requirement-group show <group-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content requirement-group use': [
+    'eai content requirement-group use <group-key> --app <app-key> --as <alias> --capability document-checklists --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai content shared-asset types': [
+    'eai content shared-asset types --tenant <tenant-id> --format json',
+  ],
+  'eai content shared-asset list': [
+    'eai content shared-asset list --type <shared-asset-type> --tenant <tenant-id> --format json',
+  ],
+  'eai content shared-asset show': [
+    'eai content shared-asset show <asset-key> --type <shared-asset-type> --tenant <tenant-id> --format json',
+  ],
+  'eai content shared-asset use': [
+    'eai content shared-asset use <asset-key> --type <shared-asset-type> --app <app-key> --as <alias> --capability shared-assets --environment test --tenant <tenant-id> --format json',
   ],
   'eai capability list': [
     'eai capability list --tenant <tenant-id> --format json',

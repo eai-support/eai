@@ -61,6 +61,20 @@ export interface ContentCapabilityBindingRequest {
   environment?: string;
 }
 
+/** Canonical source-controlled manifest accepted by PublicAPI validation. */
+export interface AppCapabilityRequirements {
+  schemaVersion: 'eai.app_capabilities.v1';
+  appKey: string;
+  requirements: Array<{
+    alias: string;
+    capability: string;
+    required: boolean;
+    description: string;
+    compatibleProviders?: string[];
+    compatibleAssetTypes?: string[];
+  }>;
+}
+
 /** Reports whether typed provisioning created or version-updated a tenant asset. */
 export interface CapabilityAssetUpsertResult {
   action: 'created' | 'updated';
@@ -457,10 +471,11 @@ export class CapabilityControlPlaneClient {
     return this.request(`${this.bindingPath(appKey)}/${segment(bindingKey, 'Binding key')}`, 'Remove app capability binding', { method: 'DELETE' });
   }
 
-  async validateBindings(appKey: string): Promise<unknown> {
+  async validateBindings(appKey: string, capabilityRequirements?: AppCapabilityRequirements): Promise<unknown> {
+    if (capabilityRequirements) assertNoSecretMaterial(capabilityRequirements);
     return this.request(`${this.bindingPath(appKey)}/validate`, 'Validate app capability bindings', {
       method: 'POST',
-      body: {},
+      body: capabilityRequirements ? { capabilityRequirements } : {},
     });
   }
 

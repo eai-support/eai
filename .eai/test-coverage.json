@@ -5,7 +5,7 @@
       "features": [
         {
           "id": "eai-cli-command-contracts",
-          "description": "CLI command contracts, local stack compatibility, and deployed read-only CLI smoke.",
+          "description": "CLI command contracts, canonical app capability-manifest materialization and validation, local stack compatibility, and deployed read-only CLI smoke.",
           "owned_paths": [
             "src/**",
             "tests/**",
