@@ -932,6 +932,12 @@ Notes:
     const schemaPath = String(options.schema || '').trim();
 
     if (!schemaPath) {
+      const installId = String(options.installId || '').trim();
+      if (!installId) {
+        out.error('--install-id is required when --schema is omitted.');
+        out.info('Pass the customer storage install registry ID for the PublicAPI provisioning target.');
+        process.exit(1);
+      }
       const { client, tenantId } = await resolveResourceApiProvisioningContext({
         tenantId: options.tenantId,
       });
@@ -941,7 +947,7 @@ Notes:
         {
           method: 'POST',
           body: {
-            installId: options.installId,
+            installId,
             productKey: options.product,
             schemaVersion: options.schemaVersion,
             apply: Boolean(options.apply),

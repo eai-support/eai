@@ -526,6 +526,28 @@ describe('eai provision entra', () => {
     });
   });
 
+  test('resourceapi-bundle requires an install id before server-backed provisioning', { timeout: 10000 }, async () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      provisionCommand.parseAsync([
+        'resourceapi-bundle',
+        '--tenant-id',
+        'test-tenant-id',
+        '--format',
+        'json',
+      ], { from: 'user' }),
+    ).rejects.toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).toContain('--install-id is required when --schema is omitted');
+  });
+
   test('resourceapi-bundle refuses to call PublicAPI when the caller is not logged in', { timeout: 10000 }, async () => {
     // Regression coverage for the shared resolveResourceApiProvisioningContext()
     // helper extracted for both resourceapi-bundle and resourceapi-refresh: the
