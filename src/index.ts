@@ -45,6 +45,10 @@ import { blocksCommand } from './commands/blocks.js';
 import { publicApiCommand } from './commands/publicapi.js';
 import { errorsCommand } from './commands/errors.js';
 import { agentCommand } from './commands/agent.js';
+import { capabilityCommand } from './commands/capability.js';
+import { integrationCommand } from './commands/integration.js';
+import { aiCommand } from './commands/ai.js';
+import { promptCommand } from './commands/prompt.js';
 import {
   checkForUpdate,
   isMachineReadableInvocation,
@@ -121,6 +125,10 @@ program.addCommand(blocksCommand);
 program.addCommand(publicApiCommand);
 program.addCommand(errorsCommand);
 program.addCommand(agentCommand);
+program.addCommand(capabilityCommand);
+program.addCommand(integrationCommand);
+program.addCommand(aiCommand);
+program.addCommand(promptCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -149,6 +157,12 @@ ${chalk.bold('Development Workflows:')}
   ${chalk.cyan('eai workflow readiness strategy-monitor')}
   ${chalk.cyan('eai workflow status strategy-monitor')}
   ${chalk.cyan('eai workflow request strategy-monitor --reason "CEO strategy cockpit"')}
+
+  ${chalk.dim('# Inspect and bind shared tenant capabilities')}
+  ${chalk.cyan('eai capability doctor')}
+  ${chalk.cyan('eai integration test azure-openai')}
+  ${chalk.cyan('eai ai profile use default-chat --app my-app --as chatProfile')}
+  ${chalk.cyan('eai app bindings validate my-app')}
 
   ${chalk.dim('# Check login, tenant, and API connectivity')}
   ${chalk.cyan('eai verify && eai doctor')}

@@ -25,6 +25,7 @@ import {
   resolvePublicApiUrl,
 } from '../lib/tenant-context.js';
 import { findProjectRoot, patchEnvFile } from '../lib/config.js';
+import { createAppBindingsCommand } from './app-bindings.js';
 import {
   errMsg,
   isRecord,
@@ -1344,3 +1345,5 @@ verticalCommand
       out.success(`Storage binding contract written to ${chalk.cyan(STORAGE_BINDINGS_PATH)}`);
     }
   });
+
+verticalCommand.addCommand(createAppBindingsCommand());

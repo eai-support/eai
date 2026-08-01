@@ -8,12 +8,6 @@ import { loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { normalizeFormat, resolveCommandContext } from '../lib/context.js';
 import { setCloudEnvValues } from '../lib/cloud-env.js';
 import {
-  PlatformAPIRequestError,
-  type BuilderReadinessResult,
-  type RuntimeWorkflowRequestResult,
-  type RuntimeWorkflowStatusResult,
-} from '../lib/api.js';
-import {
   buildWorkflowAiRuntimeBindingPayloads,
   buildWorkflowProvisionPayloads,
   parseEnvMapping,
@@ -30,9 +24,28 @@ import {
 } from '../lib/workflow-provisioning.js';
 import { isRecord } from '../lib/utils.js';
 import * as out from '../lib/output.js';
+import { registerAssetCrudCommands } from './control-plane-assets.js';
+import {
+  createCapabilityControlPlaneClient,
+  formatControlPlaneError,
+  type CapabilityAssetKind,
+} from '../lib/capability-control-plane.js';
+import {
+  handleWorkflowError,
+  printBuilderReadiness,
+  printWorkflowRequest,
+  printWorkflowStatus,
+} from './workflow-output.js';
 
 export const workflowCommand = new Command('workflow')
   .description('Provision app workflow configs and inspect AI runtime workflow bindings');
+
+registerAssetCrudCommands(workflowCommand, {
+  kind: 'workflow',
+  keyField: 'workflowKey',
+  displayName: 'workflow',
+  defaultCapability: 'workflows.runtime',
+});
 
 interface ResourceDoc {
   id?: string;
@@ -146,64 +159,18 @@ async function upsertWorkflowResource(
   return { id: readResourceId(createPayload), action: 'created' };
 }
 
-function printWorkflowStatus(result: RuntimeWorkflowStatusResult): void {
-  out.heading(`Workflow: ${result.workflowKey}`);
-  out.table([
-    ['Tenant', chalk.dim(result.tenantId || 'unknown')],
-    ['Status', result.status === 'available' ? chalk.green(result.status) : chalk.yellow(result.status)],
-    ['Reason', result.reasonCode],
-  ]);
-  out.info(result.reasonMessage);
-  if (result.runtimeWorkflowRef) {
-    out.success(`Runtime workflow ref: ${chalk.dim(result.runtimeWorkflowRef)}`);
-  }
-  if (result.nextAction) {
-    out.warn(result.nextAction);
-  }
-}
-
-function printWorkflowRequest(result: RuntimeWorkflowRequestResult): void {
-  out.heading(`Workflow request: ${result.workflowKey}`);
-  out.table([
-    ['Request ID', chalk.dim(result.requestId)],
-    ['Tenant', chalk.dim(result.tenantId)],
-    ['Status', result.status === 'available' ? chalk.green(result.status) : chalk.yellow(result.status)],
-    ['Reason', result.reasonCode],
-  ]);
-  out.info(result.reasonMessage);
-  if (result.runtimeWorkflowRef) {
-    out.success(`Runtime workflow ref: ${chalk.dim(result.runtimeWorkflowRef)}`);
-  }
-  if (result.nextAction) {
-    out.warn(result.nextAction);
-  }
-}
-
-function printBuilderReadiness(result: BuilderReadinessResult): void {
-  out.heading(`Builder readiness: ${result.tenantId}`);
-  out.table([
-    ['Status', result.status === 'available' ? chalk.green(result.status) : chalk.yellow(result.status)],
-    ['Checks', String(result.checks.length)],
-  ]);
-  for (const check of result.checks) {
-    const status = check.status === 'available' ? chalk.green(check.status) : chalk.yellow(check.status);
-    out.info(`${check.key}: ${status} — ${check.reasonMessage}`);
-    if (check.nextAction) {
-      out.warn(check.nextAction);
-    }
-  }
-}
-
-function handleWorkflowError(err: unknown): never {
-  if (err instanceof PlatformAPIRequestError) {
-    out.error(err.serverMessage || err.message);
-    if (err.requestId) {
-      out.info(`Request ID: ${err.requestId}`);
-    }
-    process.exit(1);
-  }
-  out.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
+async function upsertTypedWorkflowAsset(
+  context: Awaited<ReturnType<typeof resolveCommandContext>>,
+  kind: Exclude<CapabilityAssetKind, 'integration'>,
+  key: string,
+  data: Record<string, unknown>,
+): Promise<{ id?: string; action: 'created' | 'updated' }> {
+  const controlPlane = createCapabilityControlPlaneClient(context.client, context.tenantId);
+  const result = await controlPlane.upsertAsset(kind, key, data);
+  return {
+    id: readResourceId(result.item),
+    action: result.action,
+  };
 }
 
 workflowCommand
@@ -303,13 +270,10 @@ Examples:
         });
       }
 
-      const workflow = await upsertWorkflowResource(
+      const workflow = await upsertTypedWorkflowAsset(
         context,
-        SHARED_WORKFLOW_CONFIG_OBJECT_TYPE,
-        {
-          tenantId: context.tenantId,
-          workflowKey: normalizedWorkflowKey,
-        },
+        'workflow',
+        normalizedWorkflowKey,
         payloads.workflowConfig,
       );
       const vertical = await upsertWorkflowResource(
@@ -322,17 +286,23 @@ Examples:
         },
         payloads.verticalConfig,
       );
+      const workflowBinding = await createCapabilityControlPlaneClient(
+        context.client,
+        context.tenantId,
+      ).setBinding(normalizedVerticalKey, {
+        bindingKey: `workflow:${normalizedWorkflowKey}`,
+        capabilityKey: 'workflows.runtime',
+        assetKind: 'workflow',
+        assetKey: normalizedWorkflowKey,
+      });
       const aiRuntime: Array<{ objectType: string; key: string; id?: string; action: string }> = [];
 
       if (runtimePayloads) {
         const profileKey = String(runtimePayloads.aiProfile.profileKey);
-        const profile = await upsertWorkflowResource(
+        const profile = await upsertTypedWorkflowAsset(
           context,
-          SHARED_AI_PROFILE_OBJECT_TYPE,
-          {
-            tenantId: context.tenantId,
-            profileKey,
-          },
+          'ai-profile',
+          profileKey,
           runtimePayloads.aiProfile,
         );
         aiRuntime.push({
@@ -343,13 +313,10 @@ Examples:
         });
         for (const chatbotConfig of runtimePayloads.chatbotConfigs) {
           const configKey = String(chatbotConfig.configKey);
-          const config = await upsertWorkflowResource(
+          const config = await upsertTypedWorkflowAsset(
             context,
-            SHARED_CHATBOT_CONFIG_OBJECT_TYPE,
-            {
-              tenantId: context.tenantId,
-              configKey,
-            },
+            'prompt',
+            configKey,
             chatbotConfig,
           );
           aiRuntime.push({
@@ -406,6 +373,7 @@ Examples:
           configKey: workflowVerticalConfigKey(normalizedWorkflowKey),
         },
         aiRuntime,
+        capabilityBinding: workflowBinding,
         env: envValues,
         appConfig: appConfig ?? null,
       };
@@ -432,7 +400,7 @@ Examples:
         out.info(`${key}=${chalk.dim(value)}`);
       }
     } catch (err) {
-      fail(err instanceof Error ? err.message : String(err));
+      fail(formatControlPlaneError(err));
     }
   });
 

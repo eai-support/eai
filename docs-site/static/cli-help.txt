@@ -60,6 +60,13 @@ Commands:
   publicapi              Call authorized PublicAPI V4 routes directly
   errors                 Explain EAI CLI errors and agent-safe recovery steps
   agent                  Show AI-agent discovery and recovery guidance
+  capability             Discover tenant capabilities and diagnose control-plane
+                         readiness
+  integration            Inspect, test, and bind Portal-configured tenant
+                         integrations
+  ai                     Manage tenant AI control-plane assets
+  prompt                 Manage tenant prompts through typed PublicAPI
+                         operations
   help [command]         display help for command
 
 Getting Started:
@@ -87,6 +94,12 @@ Development Workflows:
   eai workflow readiness strategy-monitor
   eai workflow status strategy-monitor
   eai workflow request strategy-monitor --reason "CEO strategy cockpit"
+
+  # Inspect and bind shared tenant capabilities
+  eai capability doctor
+  eai integration test azure-openai
+  eai ai profile use default-chat --app my-app --as chatProfile
+  eai app bindings validate my-app
 
   # Check login, tenant, and API connectivity
   eai verify && eai doctor
