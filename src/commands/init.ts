@@ -371,6 +371,29 @@ async function copyTemplateIntoTargetDir(
   }
 }
 
+/**
+ * `--from` accepts any GitHub repo or local path, and install runs after
+ * .env.local has been generated and hydrated. Only the canonical template is
+ * trusted to execute npm lifecycle scripts on the developer machine.
+ */
+export function buildTemplateInstallArgs(from: string): string[] {
+  const args = ["install", "--no-audit", "--no-fund"];
+  if (from !== TEMPLATE_REPO) args.push("--ignore-scripts");
+  return args;
+}
+
+/**
+ * Tenant binding produced by the most recent `init` run, so the guided `create`
+ * flow can report against the runtime tenant instead of the parent workspace.
+ */
+let lastInitBinding: InitTenantAppBinding | undefined;
+
+export function consumeLastInitBinding(): InitTenantAppBinding | undefined {
+  const binding = lastInitBinding;
+  lastInitBinding = undefined;
+  return binding;
+}
+
 export const initCommand = new Command("init")
   .description("Scaffold a new application")
   .argument("[name]", "Name for the app (kebab-case)")
@@ -460,6 +483,7 @@ Use --no-gofer only when you need a bare app scaffold.
       );
       parentTenantId = binding.parentTenantId;
       tenantId = binding.runtimeTenantId;
+      lastInitBinding = binding;
       const capabilities = tenantId
         ? await evaluateInitCapabilities(publicApiUrl, tenantId)
         : defaultInitCapabilities();
@@ -540,6 +564,7 @@ Use --no-gofer only when you need a bare app scaffold.
       );
       parentTenantId = binding.parentTenantId;
       tenantId = binding.runtimeTenantId;
+      lastInitBinding = binding;
 
       const featureAnswers = await promptFeatureOptions(publicApiUrl, tenantId);
 
@@ -702,9 +727,19 @@ Use --no-gofer only when you need a bare app scaffold.
 
     // Step 9: Install project dependencies
     if (options.install !== false) {
+      const installArgs = buildTemplateInstallArgs(options.from);
+      const trusted = !installArgs.includes("--ignore-scripts");
+      if (!trusted) {
+        out.warn(
+          `Installing a custom template with ${chalk.cyan("--ignore-scripts")} because ${chalk.cyan(options.from)} is not the canonical EAI app template.`,
+        );
+        out.nestedInfo(
+          `If you trust that source, run ${chalk.cyan("npm rebuild")} inside ${chalk.cyan(targetDir)} to execute its lifecycle scripts.`,
+        );
+      }
       const installSpinner = startEaiStep("Installing app dependencies...");
       try {
-        await exec("npm", ["install", "--no-audit", "--no-fund"], {
+        await exec("npm", installArgs, {
           cwd: targetDir,
         });
         installSpinner.succeed("Installed app dependencies");
@@ -920,10 +955,10 @@ async function runCreateFlow(
     const bootstrapPublicApiUrl = await resolvePublicApiUrl();
     let tenantContext: Awaited<ReturnType<typeof resolveActiveTenantContext>>;
     try {
-      tenantContext = await resolveActiveTenantContext({
-        publicApiUrl: bootstrapPublicApiUrl,
-        interactive: true,
-      });
+      tenantContext = await resolveCreateTenantContext(
+        bootstrapPublicApiUrl,
+        options,
+      );
     } catch (error) {
       out.error(error instanceof Error ? error.message : String(error));
       out.nestedInfo(`Complete Website signup, then retry: ${ONBOARDING_DOCS_URL}`);
@@ -943,13 +978,17 @@ async function runCreateFlow(
     );
     await initCommand.parseAsync(initArgs, { from: "user" });
 
+    // `init` may have bound the app to a freshly created child company. Readiness
+    // must be checked against that runtime tenant, not the parent workspace.
+    const binding = consumeLastInitBinding();
     const targetDir = answers.useCurrentDirectory
       ? resolve(process.cwd())
       : resolve(process.cwd(), answers.name);
     await reportCreateCompletion(
       targetDir,
-      tenantContext.publicApiUrl,
-      tenantContext.activeTenant.id,
+      publicApiUrlForHomeRegion(binding?.runtimeTenantHomeRegion) ||
+        tenantContext.publicApiUrl,
+      binding?.runtimeTenantId || tenantContext.activeTenant.id,
       answers.aiTool,
       options.gofer !== false,
     );
@@ -957,6 +996,24 @@ async function runCreateFlow(
     out.error(describeCreateFlowFailure(error));
     process.exit(1);
   }
+}
+
+/**
+ * Resolve the workspace for guided create.
+ *
+ * An explicit --company-tenant/--tenant is passed through as `tenantId` so the
+ * membership is validated and the cached active tenant cannot silently replace
+ * the operator's choice on a state-changing app create.
+ */
+export function resolveCreateTenantContext(
+  publicApiUrl: string,
+  options: CreateCommandOptions,
+): ReturnType<typeof resolveActiveTenantContext> {
+  return resolveActiveTenantContext({
+    publicApiUrl,
+    interactive: true,
+    tenantId: options.companyTenant || options.tenant,
+  });
 }
 
 export function buildForwardedInitArgs(
@@ -971,6 +1028,8 @@ export function buildForwardedInitArgs(
   if (options.skipPrompts || answers) args.push("--skip-prompts");
   args.push("--no-splash");
 
+  // `tenantId` is the validated resolution of the explicit options, so the two
+  // can no longer disagree; prefer it because it is always a canonical ID.
   const companyTenant = tenantId || options.companyTenant || options.tenant;
   if (companyTenant) args.push("--company-tenant", companyTenant);
   if (options.parentTenant) args.push("--parent-tenant", options.parentTenant);
@@ -1178,10 +1237,12 @@ async function reportCreateCompletion(
     out.warn("Gofer assets were not found; run `eai gofer refresh` inside the project.");
   }
 
+  let builderReady = false;
   try {
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
     const readiness = await client.getBuilderReadiness({ tenantId, workflowKeys: [] });
-    if (readiness.status === "available") {
+    builderReady = readiness.status === "available";
+    if (builderReady) {
       out.nestedSuccess("Builder readiness is available");
     } else {
       out.warn(`Builder readiness: ${readiness.status}`);
@@ -1196,13 +1257,43 @@ async function reportCreateCompletion(
   }
 
   out.blank();
-  out.heading(`${chalk.green("✔")} Your EAI workspace is ready`);
+  const summary = buildCreateCompletionSummary(builderReady, aiTool);
+  out.heading(summary.heading);
   out.nestedInfo(`Project folder: ${chalk.cyan(targetDir)}`);
   out.nestedInfo(`AI tool: ${chalk.cyan(CREATE_AI_TOOL_LABELS[aiTool])}`);
-  out.nestedInfo(`Open that folder in ${CREATE_AI_TOOL_LABELS[aiTool]}, then start:`);
-  out.nestedInfo(chalk.cyan("/0_business_scenario <describe what you want to build>"));
+  for (const step of summary.steps) out.nestedInfo(step);
   out.nestedDim(`Setup guide: ${ONBOARDING_DOCS_URL}`);
   out.blank();
+}
+
+/**
+ * Next-step copy for guided create. A failed or unchecked builder readiness must
+ * not be presented as a ready workspace, and must not send the builder straight
+ * into a hand-off that is known to be unproven.
+ */
+export function buildCreateCompletionSummary(
+  builderReady: boolean,
+  aiTool: CreateAiTool,
+): { heading: string; steps: string[] } {
+  const toolLabel = CREATE_AI_TOOL_LABELS[aiTool];
+  if (builderReady) {
+    return {
+      heading: `${chalk.green("✔")} Your EAI workspace is ready`,
+      steps: [
+        `Open that folder in ${toolLabel}, then start:`,
+        chalk.cyan("/0_business_scenario <describe what you want to build>"),
+      ],
+    };
+  }
+
+  return {
+    heading: `${chalk.yellow("!")} Project created; builder setup is not confirmed yet`,
+    steps: [
+      `Re-check with ${chalk.cyan("eai doctor")} inside the project folder.`,
+      `If it stays unavailable, ask your workspace tenant-admin to finish setup: ${ONBOARDING_DOCS_URL}`,
+      `Once readiness reports available, open the folder in ${toolLabel} and start ${chalk.cyan("/0_business_scenario")}.`,
+    ],
+  };
 }
 
 export function toKebabCase(value: string): string {

@@ -42,4 +42,23 @@ describe("EAI splash", () => {
   test("can be disabled explicitly", () => {
     expect(shouldShowEaiSplash(false, { isTTY: true })).toBe(false);
   });
+
+  test("honors --no-color applied after module import", () => {
+    const previousNoColor = process.env.NO_COLOR;
+    const previousForceColor = process.env.FORCE_COLOR;
+    // The root command sets these in preAction, long after splash.ts loads.
+    process.env.FORCE_COLOR = "1";
+    try {
+      // eslint-disable-next-line no-control-regex
+      expect(renderEaiSplash(true)).toMatch(/\x1b\[/);
+      process.env.NO_COLOR = "1";
+      // eslint-disable-next-line no-control-regex
+      expect(renderEaiSplash(true)).not.toMatch(/\x1b\[/);
+    } finally {
+      if (previousNoColor === undefined) delete process.env.NO_COLOR;
+      else process.env.NO_COLOR = previousNoColor;
+      if (previousForceColor === undefined) delete process.env.FORCE_COLOR;
+      else process.env.FORCE_COLOR = previousForceColor;
+    }
+  });
 });

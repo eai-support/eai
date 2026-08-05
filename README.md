@@ -96,34 +96,35 @@ npm install -g ./docs-site/static/registry/-/@enterpriseai/cli-latest.tgz
 # 1. Run the guided first-time setup
 eai create my-app
 cd my-app
-npm install
 
 # `eai create` checks local tooling, signs you in, confirms the signup
-# workspace, creates the app, verifies Gofer, and checks builder readiness.
-# Use `/0_business_scenario` in your AI tool when it finishes.
+# workspace, creates the app, installs dependencies, verifies Gofer, and
+# checks builder readiness. Use `/0_business_scenario` in your AI tool when
+# it finishes. Pass `--no-install` to skip the install and run
+# `npm install` yourself.
 
 # 2. For an existing login or automation, use the lower-level commands:
 eai whoami
 eai tenant select
 
-# 4. Create child tenants only when you need them
+# 3. Create child tenants only when you need them
 #    `eai tenant create --parent <id>` now creates the tenant record,
 #    attempts first-admin bootstrap for the current login, and only marks
 #    the tenant usable after direct tenant-admin membership is confirmed.
 #    The child home region defaults to the parent region; pass
 #    `--home-region au|ca|eu` when the child must use another region.
 
-# 5. Sync project environment if your app needs local configuration
+# 4. Sync project environment if your app needs local configuration
 eai env pull --include-secrets
 
-# 6. Define your data model
+# 5. Define your data model
 #    Edit src/eai.config/object-types.ts
 
-# 7. Validate and seed
+# 6. Validate and seed
 eai types validate
 eai types seed
 
-# 8. Start developing
+# 7. Start developing
 eai dev
 ```
 

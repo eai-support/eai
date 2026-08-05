@@ -78,16 +78,19 @@ function renderBannerLine(line: string, lineIndex: number, mode: ColorMode): str
   return paint(WORDMARK, line, mode);
 }
 
+/**
+ * Resolved per render, not at import time: the root command applies --no-color
+ * and --color in its preAction hook, long after this module is loaded.
+ */
 function colorMode(): ColorMode {
-  if (process.env.NO_COLOR || !process.stdout.isTTY) return "none";
+  if (process.env.NO_COLOR) return "none";
+  if (!process.env.FORCE_COLOR && !process.stdout.isTTY) return "none";
   return /truecolor|24bit/i.test(process.env.COLORTERM ?? "")
     ? "truecolor"
     : "256";
 }
 
-const MODE = colorMode();
-
-function paint(rgb: RGB, text: string, mode = MODE): string {
+function paint(rgb: RGB, text: string, mode: ColorMode = colorMode()): string {
   if (mode === "none") return text;
   if (mode === "truecolor") {
     return `${ESC}38;2;${rgb[0]};${rgb[1]};${rgb[2]}m${text}${RESET}`;
@@ -138,12 +141,12 @@ function buildCardLines(mode: ColorMode): string[] {
 }
 
 export function renderEaiWordmark(colored = true): string {
-  const mode = colored ? MODE : "none";
+  const mode = colored ? colorMode() : "none";
   return BANNER.map((line, index) => renderBannerLine(line, index, mode)).join("\n");
 }
 
 export function renderEaiSplash(colored = true): string {
-  const mode = colored ? MODE : "none";
+  const mode = colored ? colorMode() : "none";
   return buildCardLines(mode).join("\n");
 }
 
@@ -163,7 +166,7 @@ export function shouldShowEaiSplash(
 export async function renderSplash(
   options: { animate?: boolean } = {},
 ): Promise<void> {
-  const mode = MODE;
+  const mode = colorMode();
   const animate = (options.animate ?? true) && mode !== "none";
   const lines = buildCardLines(mode);
 

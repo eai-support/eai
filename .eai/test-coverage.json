@@ -20,6 +20,8 @@
             "tests/integration/whoami.test.ts",
             "tests/integration/tenant.test.ts",
             "tests/integration/init.test.ts",
+            "tests/integration/create.test.ts",
+            "tests/integration/splash.test.ts",
             "tests/integration/help.test.ts",
             "tests/integration/describe-contract.test.ts",
             "tests/integration/dev.test.ts",

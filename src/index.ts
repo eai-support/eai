@@ -126,7 +126,7 @@ program.addCommand(agentCommand);
 // Custom help footer
 program.addHelpText('after', `
 ${chalk.bold('Getting Started:')}
-  ${chalk.cyan('eai create my-app')}   Scaffold an app with Gofer AI CLI assets
+  ${chalk.cyan('eai create my-app')}        Scaffold an app with Gofer AI CLI assets
   ${chalk.cyan('eai login')}                Authenticate with Entra CIAM
   ${chalk.cyan('eai provision entra')}      Create Entra app registration for end-user auth
   ${chalk.cyan('eai provision entra --deauthorize --force')} Clean up app auth registration

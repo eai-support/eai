@@ -90,7 +90,12 @@ Public documentation only describes generic runtime environment variables:
 |----------|-------------|
 | `NO_COLOR` | Disable colored terminal output |
 | `FORCE_COLOR` | Force colored terminal output |
+| `EAI_NO_SPLASH` | Set to `1` to suppress the startup EAI wordmark |
+| `EAI_NO_ANIMATION` | Set to `1` to print the startup wordmark without line animation |
 | `NODE_ENV` | Standard Node.js runtime mode |
+
+`EAI_NO_SPLASH` and `EAI_NO_ANIMATION` are local terminal preferences read from
+the CLI process only. They have no App Configuration or infrastructure mapping.
 
 Do not put credentials, tokens, endpoint URLs, or tenant-specific values into
 committed files. Automation credentials should be stored in your CI provider's
