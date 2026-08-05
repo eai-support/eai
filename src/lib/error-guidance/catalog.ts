@@ -240,6 +240,18 @@ export const errorGuidanceCatalog = [
       mayDeleteData: false,
       publicSafe: true,
     },
+    match: [
+      {
+        serverCode: 'TENANT_ADMIN_REQUIRED',
+      },
+      {
+        messageIncludes: ['Tenant admin role required'],
+      },
+      {
+        operation: 'tenant app create',
+        status: 403,
+      },
+    ],
   },
   {
     code: 'E205',

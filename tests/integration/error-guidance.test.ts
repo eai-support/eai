@@ -63,6 +63,24 @@ describe('error guidance catalog', () => {
     expect(guidance?.retry.maxAttempts).toBe(3);
   });
 
+  test('tenant app creation permission failures explain the admin recovery path', () => {
+    const guidance = findGuidance({
+      operation: 'tenant app create',
+      status: 403,
+      serverCode: 'TENANT_ADMIN_REQUIRED',
+      message: 'Tenant admin role required for tenant tenant-123',
+    });
+
+    expect(guidance?.code).toBe('E204');
+    expect(guidance?.title).toContain('tenant-admin access to create an EAI app');
+    expect(guidance?.fixes.map((fix) => fix.command)).toEqual(
+      expect.arrayContaining([
+        'eai tenant select <tenant>',
+        'Ask the workspace tenant-admin to grant your account tenant-admin access',
+      ]),
+    );
+  });
+
   test('permission guidance sends normal user addition through user invite before child bootstrap repair', () => {
     const guidance = findGuidanceByCodeOrReason('permission_denied');
 

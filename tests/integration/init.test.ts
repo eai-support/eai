@@ -12,7 +12,9 @@ import { promisify } from "node:util";
 import inquirer from "inquirer";
 import { describe, test, beforeEach, afterEach, expect, vi } from "vitest";
 import {
+  describeAppCreationFailure,
   describeCloneFailure,
+  describeCreateFlowFailure,
   initCommand,
   isDefaultTemplateSource,
   resolveTemplateClonePlan,
@@ -1393,6 +1395,43 @@ describe("describeCloneFailure", () => {
         new Error("fatal: unable to access repository"),
       ),
     ).toBe("fatal: unable to access repository");
+  });
+});
+
+describe("describeAppCreationFailure", () => {
+  test("explains tenant-admin failures and links to setup guidance", () => {
+    const message = describeAppCreationFailure({
+      status: 403,
+      code: "TENANT_ADMIN_REQUIRED",
+      message: "Tenant admin role required for tenant tenant-123",
+    });
+
+    expect(message).toContain("You need tenant-admin access to create an EAI app.");
+    expect(message).toContain("eai whoami");
+    expect(message).toContain("eai tenant list --all --format json");
+    expect(message).toContain("Ask the workspace tenant-admin");
+    expect(message).toContain("https://www.enterpriseaigroup.com/docs/getting-started");
+  });
+
+  test("provides generic recovery steps for an unknown app creation error", () => {
+    const message = describeAppCreationFailure({
+      status: 500,
+      message: "Unexpected platform failure",
+    });
+
+    expect(message).toContain("eai errors list");
+    expect(message).toContain("https://www.enterpriseaigroup.com/docs/getting-started");
+  });
+});
+
+describe("describeCreateFlowFailure", () => {
+  test("adds recovery commands and the setup guide to unexpected create errors", () => {
+    const message = describeCreateFlowFailure(new Error("Browser login failed"));
+
+    expect(message).toContain("Browser login failed");
+    expect(message).toContain("eai whoami");
+    expect(message).toContain("eai errors list");
+    expect(message).toContain("https://www.enterpriseaigroup.com/docs/getting-started");
   });
 });
 

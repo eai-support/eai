@@ -105,6 +105,15 @@ export function success(msg: string): void {
   }
 }
 
+export function nestedSuccess(msg: string): void {
+  const safeMsg = redactSensitiveText(msg);
+  if (simpleMode) {
+    console.log(`  SUCCESS: ${safeMsg}`);
+  } else {
+    console.log(`  ${symbols.success} ${safeMsg}`);
+  }
+}
+
 export function error(msg: string): void {
   const safeMsg = redactSensitiveText(msg);
   if (simpleMode) {
@@ -132,6 +141,15 @@ export function info(msg: string): void {
   }
 }
 
+export function nestedInfo(msg: string): void {
+  const safeMsg = redactSensitiveText(msg);
+  if (simpleMode) {
+    console.log(`  -> ${safeMsg}`);
+  } else {
+    console.log(`  ${symbols.info} ${chalk.dim(safeMsg)}`);
+  }
+}
+
 export function heading(msg: string): void {
   const safeMsg = redactSensitiveText(msg);
   if (useColor && !simpleMode) {
@@ -148,6 +166,10 @@ export function dim(msg: string): void {
   } else {
     console.log(safeMsg);
   }
+}
+
+export function nestedDim(msg: string): void {
+  dim(`  ${msg}`);
 }
 
 export function table(rows: Array<[string, string]>): void {

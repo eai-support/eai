@@ -30,6 +30,7 @@ interface DescribeCommand {
 const cliEntry = fileURLToPath(new URL("../../dist/index.js", import.meta.url));
 
 const TOP_LEVEL_COMMANDS = [
+  "create",
   "init",
   "dev",
   "login",
