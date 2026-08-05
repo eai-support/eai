@@ -66,7 +66,7 @@ Commands:
   help [command]           display help for command
 
 Getting Started:
-  eai create my-app   Scaffold an app with Gofer AI CLI assets
+  eai create my-app        Scaffold an app with Gofer AI CLI assets
   eai login                Authenticate with Entra CIAM
   eai provision entra      Create Entra app registration for end-user auth
   eai provision entra --deauthorize --force Clean up app auth registration

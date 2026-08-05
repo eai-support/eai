@@ -15,9 +15,9 @@ and gofer asset refresh.
 | Field | Value |
 | --- | --- |
 | Version | 3.9.0 |
-| Released | 2026-07-30 |
+| Released | 2026-08-05 |
 | Last Material Change | Add guided EAI create onboarding command |
-| Source Commit | `84eb4cf8692ba52ec036cb3be8d2208aabbd9729` |
+| Source Commit | `5e2c64898a83b5cec3c6bd9d79231822b2999271` |
 
 
 ## Install

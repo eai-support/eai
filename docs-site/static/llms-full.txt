@@ -88,7 +88,7 @@ Commands:
   help [command]           display help for command
 
 Getting Started:
-  eai create my-app   Scaffold an app with Gofer AI CLI assets
+  eai create my-app        Scaffold an app with Gofer AI CLI assets
   eai login                Authenticate with Entra CIAM
   eai provision entra      Create Entra app registration for end-user auth
   eai provision entra --deauthorize --force Clean up app auth registration
@@ -384,7 +384,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.9.0** (2026-07-30): Add guided EAI create onboarding command.
+The current CLI release is **v3.9.0** (2026-08-05): Add guided EAI create onboarding command.
 
 
 ## What The Pieces Do
@@ -499,9 +499,9 @@ and gofer asset refresh.
 | Field | Value |
 | --- | --- |
 | Version | 3.9.0 |
-| Released | 2026-07-30 |
+| Released | 2026-08-05 |
 | Last Material Change | Add guided EAI create onboarding command |
-| Source Commit | `84eb4cf8692ba52ec036cb3be8d2208aabbd9729` |
+| Source Commit | `5e2c64898a83b5cec3c6bd9d79231822b2999271` |
 
 
 ## Install
@@ -1721,7 +1721,12 @@ Public documentation only describes generic runtime environment variables:
 |----------|-------------|
 | `NO_COLOR` | Disable colored terminal output |
 | `FORCE_COLOR` | Force colored terminal output |
+| `EAI_NO_SPLASH` | Set to `1` to suppress the startup EAI wordmark |
+| `EAI_NO_ANIMATION` | Set to `1` to print the startup wordmark without line animation |
 | `NODE_ENV` | Standard Node.js runtime mode |
+
+`EAI_NO_SPLASH` and `EAI_NO_ANIMATION` are local terminal preferences read from
+the CLI process only. They have no App Configuration or infrastructure mapping.
 
 Do not put credentials, tokens, endpoint URLs, or tenant-specific values into
 committed files. Automation credentials should be stored in your CI provider's
