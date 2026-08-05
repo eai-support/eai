@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   EAI_ACCENT_COLOR,
-  EAI_LOGOMARK,
+  EAI_BORDER_COLOR,
   EAI_WORDMARK,
   EAI_WORDMARK_COLOR,
   renderEaiSplash,
@@ -18,15 +18,21 @@ describe("EAI splash", () => {
   });
 
   test("uses the approved EAI primary color", () => {
-    expect(EAI_WORDMARK_COLOR).toBe("#1A3754");
-    expect(EAI_ACCENT_COLOR).toBe("#8EDFF9");
+    expect(EAI_WORDMARK_COLOR).toBe("#FFFFFF");
+    expect(EAI_ACCENT_COLOR).toBe("#83DBF9");
+    expect(EAI_BORDER_COLOR).toBe("#5A8C9E");
   });
 
-  test("places the EAI dot-and-arrow mark to the right of the wordmark", () => {
+  test("renders the ANSI terminal card", () => {
     const splash = renderEaiSplash(false);
-    expect(splash).toContain(EAI_LOGOMARK[0].dark);
-    expect(splash).toContain(EAI_LOGOMARK[1].accent);
-    expect(splash).toContain("▲");
+    for (const line of EAI_WORDMARK) {
+      expect(splash).toContain(line);
+    }
+    expect(splash).toContain("╭");
+    expect(splash).toContain("╰");
+    expect(splash).toContain("Welcome to Enterprise AI v");
+    expect(splash).toContain("eai help");
+    expect(splash).not.toContain("●");
   });
 
   test("only shows in an interactive terminal", () => {

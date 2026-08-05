@@ -439,6 +439,7 @@ const OPTION_DECISIONS = {
     '--no-splash': 'Interactive branding opt-out; smoke runs remain non-interactive and do not require the terminal wordmark.',
     '--display-name': 'Guided eai create collects the display name and forwards it to the non-interactive init path; release smoke uses the default humanized name.',
     '--description': 'Guided eai create collects the business description and forwards it to the non-interactive init path; release smoke uses the default description.',
+    '--no-install': 'Dependency installation is covered by init integration tests; release smoke keeps the generated workspace setup bounded and uses the default install behavior.',
   },
   'eai create': {
     '--from': 'Template source override is covered by the underlying init command; guided release smoke uses help only to avoid cloning or browser auth.',
@@ -454,6 +455,7 @@ const OPTION_DECISIONS = {
     '--package-profile': 'Package profile is forwarded to init; release smoke uses the external default.',
     '--tool': 'AI-tool selection is covered by the guided onboarding contract; all four supported tool surfaces are installed as Gofer assets.',
     '--no-splash': 'Interactive branding opt-out; smoke runs remain non-interactive and do not require the terminal wordmark.',
+    '--no-install': 'Dependency installation is covered by init integration tests; guided release smoke uses help only to avoid cloning or browser auth.',
   },
   'eai dev': {
     '--turbo': 'Default dev server mode; release smoke documents it but does not start a long-running server.',

@@ -75,6 +75,15 @@ describe("eai create onboarding helpers", () => {
     ]);
   });
 
+  test("can explicitly skip automatic dependency installation", () => {
+    expect(
+      buildForwardedInitArgs("my-app", {
+        ...baseOptions,
+        install: false,
+      }),
+    ).toContain("--no-install");
+  });
+
   test("lets --skip-onboarding fall back to the legacy interactive prompts", () => {
     expect(
       buildForwardedInitArgs("my-app", {
