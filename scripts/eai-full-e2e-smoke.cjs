@@ -11,6 +11,7 @@ const TRACEABILITY_DOC = join(ROOT, '.tech-docs', 'full-e2e-smoke-traceability.m
 
 const TRACEABILITY_BASE = [
   ['eai init', 'create', 'live', 'Scaffolds a disposable app workspace and creates the app binding in the test tenant.'],
+  ['eai create', 'create', 'help', 'Guided first-run wrapper is covered by focused onboarding tests and help/contract checks; release live smoke uses the non-interactive eai init path to avoid browser auth.'],
   ['eai dev', 'read', 'help', 'Runtime server command is validated by help/contract checks; live release smoke does not start a long-running dev server.'],
   ['eai login', 'auth-create', 'external-auth', 'Browser PKCE is validated by the dedicated test profile; non-interactive password grant is intentionally not added.'],
   ['eai logout', 'auth-delete', 'manual', 'Not run in live smoke because it would destroy the authenticated test profile used by later checks.'],
@@ -113,6 +114,9 @@ const TRACEABILITY_BASE = [
 const SMOKE_CALLS = {
   'eai init': [
     'eai init <app-name> --skip-prompts --current-dir --company-tenant <tenant-id> --package-profile external',
+  ],
+  'eai create': [
+    'eai create <app-name> --help',
   ],
   'eai dev': [
     'eai dev --port 3000 --no-turbo --skip-checks',
@@ -432,6 +436,26 @@ const OPTION_DECISIONS = {
     '--child-tenant': 'Covered by app create child-tenant flow and opt-in child tenant smoke.',
     '--create-child-tenant': 'Interactive prompt path; non-interactive smoke uses explicit company tenant and app create covers child creation options.',
     '--no-gofer': 'Negative scaffold mode is covered by unit tests; release live smoke keeps Gofer assets installed so follow-up refresh can run.',
+    '--no-splash': 'Interactive branding opt-out; smoke runs remain non-interactive and do not require the terminal wordmark.',
+    '--display-name': 'Guided eai create collects the display name and forwards it to the non-interactive init path; release smoke uses the default humanized name.',
+    '--description': 'Guided eai create collects the business description and forwards it to the non-interactive init path; release smoke uses the default description.',
+    '--no-install': 'Dependency installation is covered by init integration tests; release smoke keeps the generated workspace setup bounded and uses the default install behavior.',
+  },
+  'eai create': {
+    '--from': 'Template source override is covered by the underlying init command; guided release smoke uses help only to avoid cloning or browser auth.',
+    '--skip-prompts': 'Automation escape hatch forwards directly to the legacy init command and is covered by init integration tests.',
+    '--skip-onboarding': 'Compatibility escape hatch intentionally delegates to the legacy init prompt flow; focused create tests cover argument forwarding.',
+    '--current-dir': 'Current-folder scaffold mode is covered by init integration tests; guided setup asks this question interactively.',
+    '--tenant': 'Deprecated alias for --company-tenant; retained for compatibility and not used by the guided path.',
+    '--company-tenant': 'Guided setup resolves the active signup workspace and forwards its ID; direct override is retained for automation.',
+    '--parent-tenant': 'Child-company hierarchy is covered by init and tenant integration tests; guided setup defaults to the selected signup workspace.',
+    '--child-tenant': 'Child-company creation is covered by init and tenant integration tests; guided setup keeps the standard workspace boundary by default.',
+    '--create-child-tenant': 'Interactive child-company creation is an explicit opt-in and is covered by init integration tests.',
+    '--no-gofer': 'Bare scaffold mode is covered by init integration tests; guided setup installs Gofer by default.',
+    '--package-profile': 'Package profile is forwarded to init; release smoke uses the external default.',
+    '--tool': 'AI-tool selection is covered by the guided onboarding contract; all four supported tool surfaces are installed as Gofer assets.',
+    '--no-splash': 'Interactive branding opt-out; smoke runs remain non-interactive and do not require the terminal wordmark.',
+    '--no-install': 'Dependency installation is covered by init integration tests; guided release smoke uses help only to avoid cloning or browser auth.',
   },
   'eai dev': {
     '--turbo': 'Default dev server mode; release smoke documents it but does not start a long-running server.',

@@ -124,6 +124,66 @@ function tailorResourceMutationGuidance(
   return guidance;
 }
 
+function tailorTenantAppAuthorizationGuidance(
+  guidance: ErrorGuidance,
+  operation: string | undefined,
+): ErrorGuidance {
+  if (guidance.code !== 'E204' || !normalize(operation).includes('tenant app create')) {
+    return guidance;
+  }
+
+  return {
+    ...guidance,
+    title: 'You need tenant-admin access to create an EAI app.',
+    appliesTo: ['tenant app create'],
+    why: [
+      'The selected EAI workspace requires tenant-admin access to create an app.',
+      'You are signed in, but this account does not currently have the required role in that workspace.',
+    ],
+    evidenceToCheck: [
+      'The signed-in account and selected workspace shown by eai whoami.',
+      'Workspace memberships and roles returned by eai tenant list --all --format json.',
+    ],
+    diagnostics: [
+      {
+        command: 'eai whoami',
+        purpose: 'Confirm which account and workspace the CLI is using.',
+        mutates: false,
+      },
+      {
+        command: 'eai tenant list --all --format json',
+        purpose: 'Check whether the account has tenant-admin access to the selected workspace.',
+        mutates: false,
+      },
+    ],
+    fixes: [
+      {
+        command: 'eai tenant select <tenant>',
+        purpose: 'Select a workspace where the account has tenant-admin access.',
+        mutates: true,
+      },
+      {
+        command: 'Ask the workspace tenant-admin to grant your account tenant-admin access',
+        purpose: 'A tenant administrator must update the membership before app creation can succeed.',
+        mutates: false,
+      },
+    ],
+    retry: {
+      allowed: false,
+      stopWhen: [
+        'The account still does not have tenant-admin access after selecting the correct workspace or receiving an updated membership.',
+      ],
+    },
+    escalation: {
+      audience: 'tenant-admin',
+      neededWhen: [
+        'The expected workspace is not visible or the tenant-admin role cannot be granted.',
+      ],
+      include: ['signed-in email', 'workspace ID', 'CLI version', 'request ID if present'],
+    },
+  };
+}
+
 export function findGuidance(input: GuidanceLookupInput): ErrorGuidance | undefined {
   let guidance: ErrorGuidance | undefined;
   if (input.code) {
@@ -133,5 +193,7 @@ export function findGuidance(input: GuidanceLookupInput): ErrorGuidance | undefi
     guidance = findGuidanceByCodeOrReason(input.reasonCode);
   }
   guidance ??= listErrorGuidance().find((entry) => matchEntry(entry, input));
-  return guidance ? tailorResourceMutationGuidance(guidance, input.operation) : undefined;
+  if (!guidance) return undefined;
+  const tailored = tailorResourceMutationGuidance(guidance, input.operation);
+  return tailorTenantAppAuthorizationGuidance(tailored, input.operation);
 }

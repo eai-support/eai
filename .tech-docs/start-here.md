@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.8.3** (2026-07-30): Pin generated app template with multi-tab submission ownership.
+The current CLI release is **v3.9.0** (2026-08-05): Add guided EAI create onboarding command.
 
 
 ## What The Pieces Do
