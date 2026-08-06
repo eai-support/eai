@@ -1,7 +1,7 @@
 # EAI Config-Driven UI Reference
 
 Use this public-safe guide when eai-gofer is planning, generating, or modifying
-an app based on `https://github.com/eai-tools/eai-app-template`.
+an app based on `https://github.com/eai-support/eai-app-template`.
 
 ## Source Files
 

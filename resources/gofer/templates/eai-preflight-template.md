@@ -31,11 +31,11 @@ updated: '{{iso_timestamp}}'
 
 ## Safe Public Sources Used
 
-- EAI CLI overview: https://eai-tools.github.io/eai/docs/overview
-- EAI API reference: https://eai-tools.github.io/eai/docs/api-reference
-- EAI static registry: https://eai-tools.github.io/eai/registry/
-- EAI scenario library: https://eai-tools.github.io/eai/scenarios
-- EAI app template: https://github.com/eai-tools/eai-app-template
+- EAI CLI overview: https://eai-support.github.io/eai/docs/overview
+- EAI API reference: https://eai-support.github.io/eai/docs/api-reference
+- EAI static registry: https://eai-support.github.io/eai/registry/
+- EAI scenario library: https://eai-support.github.io/eai/scenarios
+- EAI app template: https://github.com/eai-support/eai-app-template
 
 ## Commands Run
 

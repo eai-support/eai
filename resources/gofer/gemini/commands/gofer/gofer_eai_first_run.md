@@ -86,14 +86,14 @@ If `eai` is missing, or if the user asks to update it, ask for approval and run:
 ```bash
 npm install -g eai-cli
 # If npmjs is unavailable:
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 eai --version
 ```
 
 Use the same commands in PowerShell. Do not edit `.npmrc` by shell redirection.
 
 Use the static fallback command only when npmjs is unavailable. If `npm config get @enterpriseai:registry` already equals
-`https://eai-tools.github.io/eai/registry/`, do not rewrite it. If it points
+`https://eai-support.github.io/eai/registry/`, do not rewrite it. If it points
 somewhere else, show the current value and ask before changing it.
 
 If `eai` is already installed, run:

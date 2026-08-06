@@ -3,7 +3,7 @@
 import { themes as prismThemes } from "prism-react-renderer";
 
 const siteUrl =
-  process.env.EAI_DOCS_SITE_URL || "https://eai-tools.github.io";
+  process.env.EAI_DOCS_SITE_URL || "https://eai-support.github.io";
 const baseUrl = process.env.EAI_DOCS_BASE_URL || "/eai/";
 const normalizedSiteUrl = siteUrl.replace(/\/$/, "");
 const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
@@ -17,7 +17,7 @@ const config = {
   favicon: "img/favicon.ico",
   url: siteUrl,
   baseUrl,
-  organizationName: "eai-tools",
+  organizationName: "eai-support",
   projectName: "eai",
   deploymentBranch: "gh-pages",
   trailingSlash: false,
@@ -111,12 +111,12 @@ const config = {
           label: "Scenarios",
         },
         {
-          href: "https://github.com/eai-tools/eai/releases",
+          href: "https://github.com/eai-support/eai/releases",
           label: "Releases",
           position: "left",
         },
         {
-          href: "https://github.com/eai-tools/eai",
+          href: "https://github.com/eai-support/eai",
           label: "GitHub",
           position: "right",
         },

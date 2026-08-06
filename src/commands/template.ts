@@ -22,7 +22,7 @@ import {
 
 const exec = promisify(execFile);
 const DEFAULT_TEMPLATE_SOURCE =
-  "https://github.com/eai-tools/eai-app-template.git";
+  "https://github.com/eai-support/eai-app-template.git";
 const IGNORE_EXACT_PATHS = new Set([
   ".eai-manifest.json",
   ".env.local",

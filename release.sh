@@ -2,12 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-REPO="eai-tools/eai"
+REPO="eai-support/eai"
 NPM_PACKAGE="@enterpriseai/cli"
 NPM_ALIAS_PACKAGE="eai-cli"
 NPM_REGISTRY_URL="https://registry.npmjs.org/"
-STATIC_REGISTRY_URL="https://eai-tools.github.io/eai/registry/"
-STATIC_PACKUMENT_URL="https://eai-tools.github.io/eai/registry/@enterpriseai/cli"
+STATIC_REGISTRY_URL="https://eai-support.github.io/eai/registry/"
+STATIC_PACKUMENT_URL="https://eai-support.github.io/eai/registry/@enterpriseai/cli"
 
 BUMP="${1:-}"
 MESSAGE="${2:-}"

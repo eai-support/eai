@@ -103,7 +103,7 @@ deployCommand
 Examples:
   $ eai deploy trigger
   $ eai deploy trigger --branch develop
-  $ eai deploy trigger --repo eai-tools/my-app --format json
+  $ eai deploy trigger --repo eai-support/my-app --format json
   `)
   .action(async (options) => {
     let repo = options.repo;

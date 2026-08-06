@@ -140,7 +140,7 @@ describe('CLI help output', () => {
     expect(updateResult.stdout).toContain('The CLI installs from the public npm registry by default.');
     expect(updateResult.stdout).toContain('Recommended install: npm install -g eai-cli');
     expect(updateResult.stdout).toContain('Canonical package install: npm install -g @enterpriseai/cli');
-    expect(updateResult.stdout).toContain('Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/');
+    expect(updateResult.stdout).toContain('Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/');
     expect(updateResult.stdout).toContain('eai gofer refresh --check');
     expect(updateResult.stdout).toContain('eai template check');
 

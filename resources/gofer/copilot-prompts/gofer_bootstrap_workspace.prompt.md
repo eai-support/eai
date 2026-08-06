@@ -61,7 +61,7 @@ Use the first source that exists:
 3. Download the latest public bundle zip and extract it to a temporary folder:
 
 ```bash
-curl -fsSL https://eai-tools.github.io/eai-gofer/releases/eai-gofer-agent-plugin-latest.zip \
+curl -fsSL https://eai-support.github.io/eai-gofer/releases/eai-gofer-agent-plugin-latest.zip \
   -o /tmp/eai-gofer-agent-plugin-latest.zip
 rm -rf /tmp/eai-gofer-bootstrap
 mkdir -p /tmp/eai-gofer-bootstrap

@@ -1,6 +1,6 @@
 # EAI App Template Reference
 
-Use `https://github.com/eai-tools/eai-app-template` as the canonical public app
+Use `https://github.com/eai-support/eai-app-template` as the canonical public app
 template for EnterpriseAI app-delivery work.
 
 ## Source Of Truth

@@ -59,11 +59,11 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/eai-tools/eai.git"
+    "url": "git+https://github.com/eai-support/eai.git"
   },
-  "homepage": "https://eai-tools.github.io/eai",
+  "homepage": "https://eai-support.github.io/eai",
   "bugs": {
-    "url": "https://github.com/eai-tools/eai/issues"
+    "url": "https://github.com/eai-support/eai/issues"
   },
   "publishConfig": {
     "access": "public",

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Sync bundled gofer assets from the canonical eai-tools/eai-gofer repository.
+ * Sync bundled gofer assets from the canonical eai-support/eai-gofer repository.
  *
  * The `eai init` command installs everything under `resources/gofer/` into a
  * user's workspace, so that directory must mirror the gofer release pinned in
@@ -25,7 +25,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const REPO = 'https://github.com/eai-tools/eai-gofer.git';
+const REPO = 'https://github.com/eai-support/eai-gofer.git';
 const ROOT = path.resolve(__dirname, '..');
 const PIN_FILE = path.join(ROOT, '.gofer-version');
 const TARGET = path.join(ROOT, 'resources', 'gofer');

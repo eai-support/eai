@@ -16,7 +16,7 @@ import {
 } from "../../src/commands/init.js";
 
 const baseOptions: CreateCommandOptions = {
-  from: "https://github.com/eai-tools/eai-app-template.git",
+  from: "https://github.com/eai-support/eai-app-template.git",
   skipPrompts: false,
   skipOnboarding: false,
   currentDir: false,
@@ -157,7 +157,7 @@ describe("template install trust boundary", () => {
   test("runs lifecycle scripts only for the canonical template", () => {
     expect(
       buildTemplateInstallArgs(
-        "https://github.com/eai-tools/eai-app-template.git",
+        "https://github.com/eai-support/eai-app-template.git",
       ),
     ).not.toContain("--ignore-scripts");
   });

@@ -144,7 +144,7 @@ describe('buildUpdateInstallArgs', () => {
       '-g',
       '@enterpriseai/cli@1.2.3',
       '--prefer-online',
-      '--@enterpriseai:registry=https://eai-tools.github.io/eai/registry/',
+      '--@enterpriseai:registry=https://eai-support.github.io/eai/registry/',
     ]);
   });
 });
@@ -239,7 +239,7 @@ describe('update permission guidance', () => {
   test('includes the static fallback registry when retrying a static-registry install', () => {
     expect(buildUpdatePermissionGuidance('1.2.3', 'static-registry', 'darwin')).toEqual([
       'Your global npm install location is not writable from this shell.',
-      'Retry from a shell that can write to your global npm directory: npm install -g @enterpriseai/cli@1.2.3 --prefer-online --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/',
+      'Retry from a shell that can write to your global npm directory: npm install -g @enterpriseai/cli@1.2.3 --prefer-online --@enterpriseai:registry=https://eai-support.github.io/eai/registry/',
       'If you use nvm, Homebrew, or Volta, prefer their user-writable install path instead of sudo.',
     ]);
   });
