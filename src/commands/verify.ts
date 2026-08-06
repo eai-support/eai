@@ -34,7 +34,7 @@ import { isDefaultTemplateSource, resolveTemplateClonePlan } from "./init.js";
 const require = createRequire(import.meta.url);
 const pkg = require("../../package.json") as { version: string };
 const DEFAULT_TEMPLATE_SOURCE =
-  "https://github.com/eai-tools/eai-app-template.git";
+  "https://github.com/eai-support/eai-app-template.git";
 
 interface VerifyEnvironment {
   root: string;

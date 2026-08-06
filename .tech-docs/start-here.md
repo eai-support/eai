@@ -42,13 +42,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 
@@ -60,7 +60,7 @@ cd task-tracker
 npm install
 ```
 
-`eai init` uses `https://github.com/eai-tools/eai-app-template` by default and
+`eai init` uses `https://github.com/eai-support/eai-app-template` by default and
 installs gofer workflow assets unless you pass `--no-gofer`.
 If you already created and entered a project folder, run `eai init`, enter the
 kebab-case app name, and choose the current-folder option. Scripts can use

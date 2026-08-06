@@ -64,8 +64,8 @@ const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pkg = require("../../package.json") as { version: string };
 
-const TEMPLATE_REPO = "https://github.com/eai-tools/eai-app-template.git";
-const GITHUB_ORG = "eai-tools";
+const TEMPLATE_REPO = "https://github.com/eai-support/eai-app-template.git";
+const GITHUB_ORG = "eai-support";
 const TEMPLATE_REPO_LABEL = `${GITHUB_ORG}/eai-app-template`;
 const ONBOARDING_DOCS_URL = "https://www.enterpriseaigroup.com/docs/getting-started";
 

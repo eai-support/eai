@@ -23,7 +23,7 @@
         "typescript": "6.0.3"
       },
       "dist": {
-        "tarball": "https://eai-tools.github.io/eai/registry/-/@enterpriseai/cli-3.9.0.tgz",
+        "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.9.0.tgz",
         "shasum": "308d749b2f78135e4ab5e5e1f50637eed9078ed2",
         "integrity": "sha512-g0ac4DVUkRhBhDtE7QtL7sFZPblefsmxmMG3XfKmVOHViZXaqIemTI923susBBRRl8MMUX36tzeJuS45UydUag=="
       }

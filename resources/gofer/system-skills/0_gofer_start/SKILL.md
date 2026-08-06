@@ -87,11 +87,11 @@ the EAI Gofer app-delivery path before continuing.
 
 Use current public EAI documentation as the safe source of truth:
 
-- EAI CLI docs: `https://eai-tools.github.io/eai/docs/overview`
-- EAI API reference: `https://eai-tools.github.io/eai/docs/api-reference`
-- EAI static registry: `https://eai-tools.github.io/eai/registry/`
-- EAI scenario library: `https://eai-tools.github.io/eai/scenarios`
-- EAI app template: `https://github.com/eai-tools/eai-app-template`
+- EAI CLI docs: `https://eai-support.github.io/eai/docs/overview`
+- EAI API reference: `https://eai-support.github.io/eai/docs/api-reference`
+- EAI static registry: `https://eai-support.github.io/eai/registry/`
+- EAI scenario library: `https://eai-support.github.io/eai/scenarios`
+- EAI app template: `https://github.com/eai-support/eai-app-template`
 
 ### EAI Platform And Azure App Stack Policy
 
@@ -152,7 +152,7 @@ with an unrelated non-EAI stack.
      ```bash
      npm install -g eai-cli
      # If npmjs is unavailable:
-     npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+     npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
      eai --version
      ```
    - On Windows, use the same npm commands in PowerShell and avoid shell

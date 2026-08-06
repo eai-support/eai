@@ -13,7 +13,7 @@ import chalk from 'chalk';
 
 const EAI_DIR = join(homedir(), '.eai');
 const CACHE_FILE = join(EAI_DIR, 'update-check.json');
-export const STATIC_REGISTRY_URL = 'https://eai-tools.github.io/eai/registry/';
+export const STATIC_REGISTRY_URL = 'https://eai-support.github.io/eai/registry/';
 export const STATIC_PACKUMENT_URL = `${STATIC_REGISTRY_URL}@enterpriseai/cli`;
 export const NPMJS_REGISTRY_URL = 'https://registry.npmjs.org/';
 export const NPMJS_PACKUMENT_URL = `${NPMJS_REGISTRY_URL}@enterpriseai%2fcli`;

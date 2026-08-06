@@ -1347,7 +1347,7 @@ describe("eai init", () => {
 describe("describeCloneFailure", () => {
   test("explains unreachable default template repository failures", () => {
     const message = describeCloneFailure(
-      "https://github.com/eai-tools/eai-app-template.git",
+      "https://github.com/eai-support/eai-app-template.git",
       new Error(
         "Command failed: git clone ...\nremote: Repository not found.\nfatal: repository not found",
       ),
@@ -1360,13 +1360,13 @@ describe("describeCloneFailure", () => {
 
   test("explains when git is not installed", () => {
     const message = describeCloneFailure(
-      "https://github.com/eai-tools/eai-app-template.git",
+      "https://github.com/eai-support/eai-app-template.git",
       new Error("spawn git ENOENT"),
     );
 
     expect(message).toContain("`git` is required");
     expect(message).toContain("winget install --id Git.Git -e");
-    expect(message).toContain("eai-tools/eai-app-template.git");
+    expect(message).toContain("eai-support/eai-app-template.git");
   });
 
   test("passes through unrelated clone errors", () => {
@@ -1420,26 +1420,26 @@ describe("resolveTemplateClonePlan", () => {
   test("treats only the canonical app template URL as the default source", () => {
     expect(
       isDefaultTemplateSource(
-        "https://github.com/eai-tools/eai-app-template.git",
+        "https://github.com/eai-support/eai-app-template.git",
       ),
     ).toBe(true);
     expect(
       isDefaultTemplateSource(
-        "https://github.com/eai-tools/old-internal-template.git",
+        "https://github.com/eai-support/old-internal-template.git",
       ),
     ).toBe(false);
   });
 
   test("returns the linked-source pin for the default template", () => {
     const plan = resolveTemplateClonePlan(
-      "https://github.com/eai-tools/eai-app-template.git",
+      "https://github.com/eai-support/eai-app-template.git",
     );
     expect(plan.cloneSource).toBe(
-      "https://github.com/eai-tools/eai-app-template.git",
+      "https://github.com/eai-support/eai-app-template.git",
     );
     expect(plan.pinnedCommit).toBe(linkedSources.appTemplate.commit);
     expect(plan.displaySource).toBe(
-      `eai-tools/eai-app-template@${linkedSources.appTemplate.commit.slice(0, 7)}`,
+      `eai-support/eai-app-template@${linkedSources.appTemplate.commit.slice(0, 7)}`,
     );
   });
 

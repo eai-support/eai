@@ -17,8 +17,8 @@ import type { GoferManagedFileState, ProjectManifest } from './project-manifest.
 import { saveProjectManifest } from './project-manifest.js';
 
 const execFileAsync = promisify(execFile);
-const GOFER_REPO_URL = 'https://github.com/eai-tools/eai-gofer.git';
-const GOFER_RELEASE_MANIFEST_URL = 'https://eai-tools.github.io/eai-gofer/releases/plugins/eai-gofer/gemini-extension.json';
+const GOFER_REPO_URL = 'https://github.com/eai-support/eai-gofer.git';
+const GOFER_RELEASE_MANIFEST_URL = 'https://eai-support.github.io/eai-gofer/releases/plugins/eai-gofer/gemini-extension.json';
 const GOFER_FETCH_TIMEOUT_MS = 5000;
 const GOFER_CACHE_ROOT = join(homedir(), '.eai', 'gofer-cache');
 const GOFER_BASE_RESOURCE_DIR = join('extension', 'resources');

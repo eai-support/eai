@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/eai-tools/eai/security/advisories/new
+    url: https://github.com/eai-support/eai/security/advisories/new
     about: Report suspected vulnerabilities privately.
   - name: Documentation
-    url: https://eai-tools.github.io/eai/
+    url: https://eai-support.github.io/eai/
     about: Read the public EAI CLI documentation.

@@ -465,11 +465,11 @@ explicitly `enterpriseai`, generate:
 4. `{FEATURE_DIR}/eai-preflight.md` (EAI app delivery only, created by
    `#0_gofer_start` when possible and updated here when missing or stale)
    - Verify the safe public EAI source set used for research:
-     `https://eai-tools.github.io/eai/docs/overview`,
-     `https://eai-tools.github.io/eai/docs/api-reference`,
-     `https://eai-tools.github.io/eai/registry/`,
-     `https://eai-tools.github.io/eai/scenarios`, and
-     `https://github.com/eai-tools/eai-app-template`.
+     `https://eai-support.github.io/eai/docs/overview`,
+     `https://eai-support.github.io/eai/docs/api-reference`,
+     `https://eai-support.github.io/eai/registry/`,
+     `https://eai-support.github.io/eai/scenarios`, and
+     `https://github.com/eai-support/eai-app-template`.
    - Record whether `eai --describe` found the expected scaffolding,
      authentication, tenant, app, resource schema, workflow
      readiness, block catalog, diagnostics, Gofer-refresh, and template-check

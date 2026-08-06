@@ -12,11 +12,11 @@ const PKG = JSON.parse(
 );
 const VERSION = PKG.version;
 const STATIC_REGISTRY_SETUP =
-  "npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user";
+  "npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user";
 const RECOMMENDED_INSTALL_CMD = "npm install -g eai-cli";
 const CANONICAL_INSTALL_CMD = "npm install -g @enterpriseai/cli";
 const STATIC_FALLBACK_INSTALL_CMD =
-  "npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/";
+  "npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/";
 const DOC_ORDER = [
   "start-here.md",
   "eai-cli.md",
