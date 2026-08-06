@@ -66,6 +66,7 @@ const pkg = require("../../package.json") as { version: string };
 
 const TEMPLATE_REPO = "https://github.com/eai-support/eai-app-template.git";
 const GITHUB_ORG = "eai-support";
+const PACKAGE_SCOPE = "eai-tools";
 const TEMPLATE_REPO_LABEL = `${GITHUB_ORG}/eai-app-template`;
 const ONBOARDING_DOCS_URL = "https://www.enterpriseaigroup.com/docs/getting-started";
 
@@ -619,7 +620,7 @@ Use --no-gofer only when you need a bare app scaffold.
     try {
       const pkgPath = join(targetDir, "package.json");
       const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
-      pkg.name = `@${GITHUB_ORG}/${initOptions.name}`;
+      pkg.name = `@${PACKAGE_SCOPE}/${initOptions.name}`;
       pkg.description = initOptions.description;
       pkg.version = "0.1.0";
       await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
