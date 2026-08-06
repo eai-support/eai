@@ -1,104 +1,141 @@
-import { readFile, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { describe, expect, test } from 'vitest';
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, test } from "vitest";
 import {
   GOFER_REPO,
   extractEnterprisePackageVersions,
   hashJson,
   parseScopedRegistry,
-} from '../../scripts/sync-linked-sources.js';
+} from "../../scripts/sync-linked-sources.js";
 import {
   DEFAULT_GOFER_RELEASE_MANIFEST_URL,
   DEFAULT_GOFER_REPO_URL,
-} from '../../src/lib/gofer-refresh.js';
+} from "../../src/lib/gofer-refresh.js";
 
-const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
-async function readFilesRecursively(root: string): Promise<string[]> {
-  const contents: string[] = [];
+interface TextFile {
+  path: string;
+  contents: string;
+}
+
+async function readFilesRecursively(root: string): Promise<TextFile[]> {
+  const files: TextFile[] = [];
   for (const entry of await readdir(root, { withFileTypes: true })) {
     const entryPath = join(root, entry.name);
     if (entry.isDirectory()) {
-      contents.push(...(await readFilesRecursively(entryPath)));
+      files.push(...(await readFilesRecursively(entryPath)));
     } else if (entry.isFile()) {
-      contents.push(await readFile(entryPath, 'utf-8'));
+      files.push({
+        path: entryPath,
+        contents: await readFile(entryPath, "utf-8"),
+      });
     }
   }
-  return contents;
+  return files;
 }
 
-describe('extractEnterprisePackageVersions', () => {
-  test('keeps only @enterpriseaigroup packages with stable ordering', () => {
+describe("extractEnterprisePackageVersions", () => {
+  test("keeps only @enterpriseaigroup packages with stable ordering", () => {
     const packages = extractEnterprisePackageVersions({
       packages: {
-        'node_modules/lodash': { version: '4.17.21' },
-        'node_modules/@enterpriseaigroup/demo': {
-          version: '1.0.57',
-          resolved: 'https://example.test/demo-1.0.57.tgz',
+        "node_modules/lodash": { version: "4.17.21" },
+        "node_modules/@enterpriseaigroup/demo": {
+          version: "1.0.57",
+          resolved: "https://example.test/demo-1.0.57.tgz",
         },
-        'node_modules/@enterpriseaigroup/core': {
-          version: '1.0.68',
-          resolved: 'https://example.test/core-1.0.68.tgz',
+        "node_modules/@enterpriseaigroup/core": {
+          version: "1.0.68",
+          resolved: "https://example.test/core-1.0.68.tgz",
         },
       },
     });
 
     expect(packages).toEqual({
-      '@enterpriseaigroup/core': {
-        version: '1.0.68',
-        resolved: 'https://example.test/core-1.0.68.tgz',
+      "@enterpriseaigroup/core": {
+        version: "1.0.68",
+        resolved: "https://example.test/core-1.0.68.tgz",
       },
-      '@enterpriseaigroup/demo': {
-        version: '1.0.57',
-        resolved: 'https://example.test/demo-1.0.57.tgz',
+      "@enterpriseaigroup/demo": {
+        version: "1.0.57",
+        resolved: "https://example.test/demo-1.0.57.tgz",
       },
     });
   });
 });
 
-describe('parseScopedRegistry', () => {
-  test('reads the scoped registry from npmrc content', () => {
-    expect(parseScopedRegistry(`
+describe("parseScopedRegistry", () => {
+  test("reads the scoped registry from npmrc content", () => {
+    expect(
+      parseScopedRegistry(`
       # comment
       @enterpriseaigroup:registry=https://enterpriseaigroup.github.io/enterpriseai-packages/registry
-    `)).toBe('https://enterpriseaigroup.github.io/enterpriseai-packages/registry');
+    `),
+    ).toBe(
+      "https://enterpriseaigroup.github.io/enterpriseai-packages/registry",
+    );
   });
 
-  test('returns null when the scope is not configured', () => {
-    expect(parseScopedRegistry('registry=https://registry.npmjs.org/')).toBeNull();
+  test("returns null when the scope is not configured", () => {
+    expect(
+      parseScopedRegistry("registry=https://registry.npmjs.org/"),
+    ).toBeNull();
   });
 });
 
-describe('hashJson', () => {
-  test('is stable for identical payloads', () => {
+describe("hashJson", () => {
+  test("is stable for identical payloads", () => {
     const payload = {
-      '@enterpriseaigroup/core': { version: '1.0.68', resolved: null },
-      '@enterpriseaigroup/demo': { version: '1.0.57', resolved: null },
+      "@enterpriseaigroup/core": { version: "1.0.68", resolved: null },
+      "@enterpriseaigroup/demo": { version: "1.0.57", resolved: null },
     };
 
     expect(hashJson(payload)).toBe(hashJson(payload));
   });
 });
 
-describe('Gofer source ownership', () => {
-  test('uses eai-support for source sync and runtime refresh defaults', async () => {
-    expect(GOFER_REPO).toBe('https://github.com/eai-support/eai-gofer.git');
-    expect(DEFAULT_GOFER_REPO_URL).toBe('https://github.com/eai-support/eai-gofer.git');
+describe("Gofer source ownership", () => {
+  test("uses eai-support for source sync and runtime refresh defaults", async () => {
+    expect(GOFER_REPO).toBe("https://github.com/eai-support/eai-gofer.git");
+    expect(DEFAULT_GOFER_REPO_URL).toBe(
+      "https://github.com/eai-support/eai-gofer.git",
+    );
     expect(DEFAULT_GOFER_RELEASE_MANIFEST_URL).toBe(
-      'https://eai-support.github.io/eai-gofer/releases/plugins/eai-gofer/gemini-extension.json',
+      "https://eai-support.github.io/eai-gofer/releases/plugins/eai-gofer/gemini-extension.json",
     );
 
     const linkedSources = JSON.parse(
-      await readFile(join(REPO_ROOT, 'resources', 'linked-sources.json'), 'utf-8'),
+      await readFile(
+        join(REPO_ROOT, "resources", "linked-sources.json"),
+        "utf-8",
+      ),
     ) as { gofer?: { repo?: string } };
-    expect(linkedSources.gofer?.repo).toBe('https://github.com/eai-support/eai-gofer.git');
+    expect(linkedSources.gofer?.repo).toBe(
+      "https://github.com/eai-support/eai-gofer.git",
+    );
 
-    const activeSourceContents = [
-      await readFile(join(REPO_ROOT, 'scripts', 'sync-gofer-resources.cjs'), 'utf-8'),
-      ...(await readFilesRecursively(join(REPO_ROOT, 'resources', 'gofer'))),
-    ].join('\n');
-    expect(activeSourceContents).not.toContain('https://github.com/eai-tools/eai-gofer');
-    expect(activeSourceContents).not.toContain('https://eai-tools.github.io/eai-gofer');
+    const syncScriptPath = join(
+      REPO_ROOT,
+      "scripts",
+      "sync-gofer-resources.cjs",
+    );
+    const activeSourceFiles: TextFile[] = [
+      {
+        path: syncScriptPath,
+        contents: await readFile(syncScriptPath, "utf-8"),
+      },
+      ...(await readFilesRecursively(join(REPO_ROOT, "resources", "gofer"))),
+    ];
+    const retiredUrls = [
+      "https://github.com/eai-tools/eai-gofer",
+      "https://eai-tools.github.io/eai-gofer",
+    ];
+    const violations = activeSourceFiles.flatMap(({ path, contents }) =>
+      retiredUrls
+        .filter((url) => contents.includes(url))
+        .map((url) => ({ path, url })),
+    );
+    expect(violations).toEqual([]);
   });
 });
