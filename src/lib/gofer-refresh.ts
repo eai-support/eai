@@ -17,8 +17,8 @@ import type { GoferManagedFileState, ProjectManifest } from './project-manifest.
 import { saveProjectManifest } from './project-manifest.js';
 
 const execFileAsync = promisify(execFile);
-const GOFER_REPO_URL = 'https://github.com/eai-support/eai-gofer.git';
-const GOFER_RELEASE_MANIFEST_URL = 'https://eai-support.github.io/eai-gofer/releases/plugins/eai-gofer/gemini-extension.json';
+export const DEFAULT_GOFER_REPO_URL = 'https://github.com/eai-support/eai-gofer.git';
+export const DEFAULT_GOFER_RELEASE_MANIFEST_URL = 'https://eai-support.github.io/eai-gofer/releases/plugins/eai-gofer/gemini-extension.json';
 const GOFER_FETCH_TIMEOUT_MS = 5000;
 const GOFER_CACHE_ROOT = join(homedir(), '.eai', 'gofer-cache');
 const GOFER_BASE_RESOURCE_DIR = join('extension', 'resources');
@@ -140,11 +140,11 @@ function shouldUseLatestGoferSource(): boolean {
 }
 
 function getLatestManifestUrl(): string {
-  return process.env['EAI_GOFER_REFRESH_MANIFEST_URL'] || GOFER_RELEASE_MANIFEST_URL;
+  return process.env['EAI_GOFER_REFRESH_MANIFEST_URL'] || DEFAULT_GOFER_RELEASE_MANIFEST_URL;
 }
 
 function getGoferRepoUrl(): string {
-  return process.env['EAI_GOFER_REFRESH_REPO_URL'] || GOFER_REPO_URL;
+  return process.env['EAI_GOFER_REFRESH_REPO_URL'] || DEFAULT_GOFER_REPO_URL;
 }
 
 function getGoferCacheRoot(): string {

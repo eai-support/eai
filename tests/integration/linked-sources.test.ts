@@ -1,9 +1,32 @@
+import { readFile, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
+  GOFER_REPO,
   extractEnterprisePackageVersions,
   hashJson,
   parseScopedRegistry,
 } from '../../scripts/sync-linked-sources.js';
+import {
+  DEFAULT_GOFER_RELEASE_MANIFEST_URL,
+  DEFAULT_GOFER_REPO_URL,
+} from '../../src/lib/gofer-refresh.js';
+
+const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
+
+async function readFilesRecursively(root: string): Promise<string[]> {
+  const contents: string[] = [];
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const entryPath = join(root, entry.name);
+    if (entry.isDirectory()) {
+      contents.push(...(await readFilesRecursively(entryPath)));
+    } else if (entry.isFile()) {
+      contents.push(await readFile(entryPath, 'utf-8'));
+    }
+  }
+  return contents;
+}
 
 describe('extractEnterprisePackageVersions', () => {
   test('keeps only @enterpriseaigroup packages with stable ordering', () => {
@@ -55,5 +78,27 @@ describe('hashJson', () => {
     };
 
     expect(hashJson(payload)).toBe(hashJson(payload));
+  });
+});
+
+describe('Gofer source ownership', () => {
+  test('uses eai-support for source sync and runtime refresh defaults', async () => {
+    expect(GOFER_REPO).toBe('https://github.com/eai-support/eai-gofer.git');
+    expect(DEFAULT_GOFER_REPO_URL).toBe('https://github.com/eai-support/eai-gofer.git');
+    expect(DEFAULT_GOFER_RELEASE_MANIFEST_URL).toBe(
+      'https://eai-support.github.io/eai-gofer/releases/plugins/eai-gofer/gemini-extension.json',
+    );
+
+    const linkedSources = JSON.parse(
+      await readFile(join(REPO_ROOT, 'resources', 'linked-sources.json'), 'utf-8'),
+    ) as { gofer?: { repo?: string } };
+    expect(linkedSources.gofer?.repo).toBe('https://github.com/eai-support/eai-gofer.git');
+
+    const activeSourceContents = [
+      await readFile(join(REPO_ROOT, 'scripts', 'sync-gofer-resources.cjs'), 'utf-8'),
+      ...(await readFilesRecursively(join(REPO_ROOT, 'resources', 'gofer'))),
+    ].join('\n');
+    expect(activeSourceContents).not.toContain('https://github.com/eai-tools/eai-gofer');
+    expect(activeSourceContents).not.toContain('https://eai-tools.github.io/eai-gofer');
   });
 });

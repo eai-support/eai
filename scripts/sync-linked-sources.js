@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const GOFER_REPO = "https://github.com/eai-support/eai-gofer.git";
+export const GOFER_REPO = "https://github.com/eai-support/eai-gofer.git";
 const TEMPLATE_REPO = "https://github.com/eai-support/eai-app-template.git";
 const ENTERPRISE_SCOPE = "@enterpriseaigroup";
 const GOFER_PIN_FILE = path.join(ROOT, ".gofer-version");
