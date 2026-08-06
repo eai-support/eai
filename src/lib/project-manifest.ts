@@ -83,14 +83,14 @@ function coerceTemplateRepoFromDisplaySource(displaySource: string): {
   const trimmed = displaySource.trim();
   const defaultMatch = trimmed.match(
     new RegExp(
-      `^(eai-support\\/${DEFAULT_TEMPLATE_REPO_NAME})(?:@([0-9a-f]{7,40}))?$`,
+      `^(?:eai-support|eai-tools)\\/${DEFAULT_TEMPLATE_REPO_NAME}(?:@([0-9a-f]{7,40}))?$`,
       "i",
     ),
   );
   if (defaultMatch) {
     return {
       repo: DEFAULT_TEMPLATE_REPO,
-      commit: defaultMatch[2],
+      commit: defaultMatch[1],
     };
   }
 
