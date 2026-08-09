@@ -713,6 +713,8 @@ appAuthCommand
 This is a read-only check. It does not provision Entra, alter authorizedApps,
 or create an app-only credential. Entra permission and consent details are
 reported as not observable when the platform has no read-only Graph endpoint.
+Local runtime mode is reported only when the current project's app key or
+client ID matches the requested app; otherwise it is reported as not observable.
 `)
   .action(async (key: string, options) => {
     const appKey = key.trim();
@@ -750,22 +752,34 @@ reported as not observable when the platform has no read-only Graph endpoint.
       (entry) => typeof entry.appId === 'string' && entry.appId.toLowerCase() === clientId.toLowerCase(),
     );
 
-    let runtimeMode: 'user-delegated' | 'app-only' = 'user-delegated';
-    let runtimeContract = 'generic-app-default';
-    try {
-      const loaded = await loadRuntimeContract(ctx.root);
-      runtimeContract = loaded.contractPath;
-      runtimeMode = loaded.contract.serviceIdentityDeclared ? 'app-only' : 'user-delegated';
-    } catch {
-      // Generic EAI apps use delegated user access unless a runtime contract
-      // explicitly declares service identity.
-    }
-
     const localEnv = await loadEnvFile(ctx.root);
     const locallyConfiguredClientId = localEnv.ENTRA_CLIENT_ID?.trim();
-    const registrationStatus = locallyConfiguredClientId?.toLowerCase() === clientId.toLowerCase()
+    const locallyConfiguredAppKey = (localEnv[APP_KEY_ENV] || localEnv[LEGACY_VERTICAL_KEY_ENV])?.trim();
+    const localClientIdMatches = locallyConfiguredClientId?.toLowerCase() === clientId.toLowerCase();
+    const localAppKeyMatches = locallyConfiguredAppKey?.toLowerCase() === appKey.toLowerCase();
+    const localRuntimeIdentityMatches = Boolean(locallyConfiguredClientId || locallyConfiguredAppKey)
+      && (locallyConfiguredClientId ? localClientIdMatches : true)
+      && (locallyConfiguredAppKey ? localAppKeyMatches : true);
+    const registrationStatus = localClientIdMatches
       ? 'configured-locally'
       : 'not-observable';
+    let runtimeMode: 'user-delegated' | 'app-only' | 'not-observable' = 'not-observable';
+    let runtimeContract = 'not-observable';
+    let runtimeEvidence = 'The local project identifiers do not match the requested app and client ID.';
+    if (localRuntimeIdentityMatches) {
+      runtimeMode = 'user-delegated';
+      runtimeContract = 'generic-app-default';
+      runtimeEvidence = 'The local project identity matches the requested app; generic apps default to delegated user access.';
+      try {
+        const loaded = await loadRuntimeContract(ctx.root);
+        runtimeContract = loaded.contractPath;
+        runtimeMode = loaded.contract.serviceIdentityDeclared ? 'app-only' : 'user-delegated';
+        runtimeEvidence = 'The runtime contract belongs to the matching local app identity.';
+      } catch {
+        // The matching local app uses the generic delegated-access default
+        // when it does not declare a runtime contract.
+      }
+    }
     const result = {
       readOnly: true,
       tenantId,
@@ -794,10 +808,13 @@ reported as not observable when the platform has no read-only Graph endpoint.
       runtimeAuth: {
         mode: runtimeMode,
         contract: runtimeContract,
+        evidence: runtimeEvidence,
         userDelegated: runtimeMode === 'user-delegated'
           ? (authorized ? 'authorized' : 'not-authorized')
-          : 'not-applicable',
-        appOnlyIdentity: runtimeMode === 'user-delegated' ? 'not-required' : 'required',
+          : runtimeMode === 'app-only' ? 'not-applicable' : 'not-observable',
+        appOnlyIdentity: runtimeMode === 'user-delegated'
+          ? 'not-required'
+          : runtimeMode === 'app-only' ? 'required' : 'not-observable',
       },
       next: 'Use eai provision entra --force --debug only when reconciliation is intended; it is not a read-only status command.',
     };

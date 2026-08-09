@@ -287,6 +287,107 @@ describe('eai app', () => {
     );
   });
 
+  test('does not attribute an unrelated local runtime contract to the requested app client', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    await writeFile(join(env.dir, '.env.local'), [
+      `BASE_URL_PUBLIC_API=${API_BASE}`,
+      'ENTRA_CLIENT_ID=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      'EAI_APP_KEY=another-app',
+    ].join('\n'));
+    await writeFile(join(env.dir, 'eai.runtime.json'), JSON.stringify({
+      schemaVersion: 1,
+      serviceIdentity: { required: true },
+    }));
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      const method = requestMethod(init);
+
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        return jsonResponse({
+          tenants: [{
+            id: COMPANY_TENANT_ID,
+            displayName: 'Builder Workspace',
+            slug: 'builder-workspace',
+            isActive: true,
+            roles: ['tenant-admin'],
+          }],
+        });
+      }
+
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}` && method === 'GET') {
+        return jsonResponse({
+          id: COMPANY_TENANT_ID,
+          displayName: 'Builder Workspace',
+          slug: 'builder-workspace',
+          isActive: true,
+          roles: ['tenant-admin'],
+          homeRegion: 'au',
+        });
+      }
+
+      if (
+        url.startsWith(`${API_BASE}/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)
+        && method === 'GET'
+      ) {
+        return jsonResponse({
+          docs: [{
+            id: 'app-boardapp',
+            data: {
+              tenantId: COMPANY_TENANT_ID,
+              verticalKey: 'boardapp-og',
+              displayName: 'BoardApp',
+            },
+          }],
+        });
+      }
+
+      if (
+        url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/authorized-apps`
+        && method === 'GET'
+      ) {
+        return jsonResponse({
+          authorizedApps: [{ appId: '1c1927cb-646c-45c6-9ec8-7f2473f4679e' }],
+          authorizedAppsCount: 1,
+        });
+      }
+
+      return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appCommand.parseAsync([
+      'auth',
+      'status',
+      'boardapp-og',
+      '--tenant-id',
+      COMPANY_TENANT_ID,
+      '--client-id',
+      '1c1927cb-646c-45c6-9ec8-7f2473f4679e',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    const output = outputSpy.mock.calls.flat().join('');
+    const result = JSON.parse(output) as {
+      entraRegistration: { status: string };
+      tenantAuthorizedApps: { status: string };
+      runtimeAuth: { mode: string; userDelegated: string; appOnlyIdentity: string; evidence: string };
+    };
+    expect(result).toMatchObject({
+      entraRegistration: { status: 'not-observable' },
+      tenantAuthorizedApps: { status: 'authorized' },
+      runtimeAuth: {
+        mode: 'not-observable',
+        userDelegated: 'not-observable',
+        appOnlyIdentity: 'not-observable',
+      },
+    });
+    expect(result.runtimeAuth.evidence).toContain('do not match the requested app');
+    expect(fetchMock.mock.calls.every(([, init]) => requestMethod(init) === 'GET')).toBe(true);
+  });
+
   test('HP003 writes canonical and legacy app env keys when selecting an app', async () => {
     await seedLoggedInTenant();
     await seedProjectRoot(env.dir);

@@ -489,10 +489,13 @@ current signed-in CLI user. It does not test or authorize another app client.
       const provisionRes = await client.provisionMe();
       if (!provisionRes.ok) {
         const context = await extractServerErrorContext(provisionRes);
-        const code = provisionRes.status === 403
+        const callingApplicationNotAuthorized =
+          context.serverCode === 'CALLING_APPLICATION_NOT_AUTHORIZED'
+          || /application not authorized for this tenant/i.test(context.serverMessage ?? '');
+        const code = callingApplicationNotAuthorized
           ? 'CALLING_APPLICATION_NOT_AUTHORIZED'
-          : context.serverCode || 'PROVISION_ME_FAILED';
-        const message = provisionRes.status === 403
+          : context.serverCode || (provisionRes.status === 403 ? 'FORBIDDEN' : 'PROVISION_ME_FAILED');
+        const message = callingApplicationNotAuthorized
           ? 'The calling EAI CLI application is not authorized for this tenant.'
           : context.serverMessage || `Provisioning failed with HTTP ${provisionRes.status}.`;
         const result = {
@@ -505,9 +508,11 @@ current signed-in CLI user. It does not test or authorize another app client.
           scope: 'current-cli-session',
           note: 'This operation checks the EAI CLI client and does not test another app client ID.',
           ...(context.requestId ? { requestId: context.requestId } : {}),
-          next: provisionRes.status === 403
+          next: callingApplicationNotAuthorized
             ? 'Authorize the calling CLI client for this tenant, or use eai app auth status to inspect a different app client.'
-            : 'Retry with --format json and provide the request ID to platform support.',
+            : provisionRes.status === 403
+              ? 'Review the reported tenant self-provisioning policy or access condition before retrying.'
+              : 'Retry with --format json and provide the request ID to platform support.',
         };
         provisionSpinner?.fail(message);
         if (jsonOutput) {

@@ -174,6 +174,40 @@ describe('eai user', () => {
     expect(payload.note).toContain('does not test another app client ID');
   });
 
+  test('provision-me preserves a tenant self-provisioning 403 instead of blaming the CLI client', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      error: 'FORBIDDEN',
+      message: 'Self-provisioning is not enabled for this tenant',
+    }), {
+      status: 403,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(userCommand.parseAsync([
+      'provision-me',
+      '--tenant',
+      'different-tenant',
+      '--format',
+      'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    const payload = parseJsonOutput(outputSpy).find((value): value is {
+      code: string;
+      message: string;
+      next: string;
+    } => typeof value === 'object' && value !== null && 'code' in value);
+    expect(payload).toMatchObject({
+      code: 'FORBIDDEN',
+      message: 'Self-provisioning is not enabled for this tenant',
+    });
+    expect(payload?.next).toContain('self-provisioning policy');
+    expect(payload?.next).not.toContain('Authorize the calling CLI client');
+  });
+
   test('invite calls the V4 tenant member invite route with role and JSON output', async () => {
     const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const fetchMock = vi
