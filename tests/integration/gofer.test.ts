@@ -138,6 +138,15 @@ describe("eai gofer refresh", () => {
     );
     await expectFileExists(
       ctx,
+      ".specify/contracts/object-type-routing-v1.json",
+    );
+    await expectFileContains(
+      ctx,
+      ".specify/contracts/object-type-routing-v1.json",
+      '"authoritativeTransportIdentifier": "slug"',
+    );
+    await expectFileExists(
+      ctx,
       ".specify/schemas/object-type-identifier-audit-v1.schema.json",
     );
     await expectFileExists(
@@ -215,10 +224,11 @@ describe("eai gofer refresh", () => {
 });
 
 describe("bundled Gofer Object Type routing assets", () => {
-  test("syncs config and schemas from the Gofer source tree into installable resource paths", async () => {
+  test("syncs config, contracts, and schemas into installable resource paths", async () => {
     const source = await readFile(GOFER_SYNC_SCRIPT, "utf-8");
 
     expect(source).toContain("['.specify/config', 'config']");
+    expect(source).toContain("['.specify/contracts', 'contracts']");
     expect(source).toContain("['.specify/schemas', 'schemas']");
     expect(source).toContain("'--others'");
     expect(source).toContain("'--exclude-standard'");

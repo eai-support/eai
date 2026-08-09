@@ -32,6 +32,7 @@ const TARGET = path.join(ROOT, 'resources', 'gofer');
 const BASE_RESOURCE_DIR = path.join('extension', 'resources');
 const EXTRA_RESOURCE_MAPPINGS = [
   ['.specify/config', 'config'],
+  ['.specify/contracts', 'contracts'],
   ['.specify/commands', 'commands'],
   ['.specify/memory', 'memory'],
   ['.specify/references', 'references'],
