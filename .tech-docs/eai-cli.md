@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.9.0 |
-| Released | 2026-08-05 |
-| Last Material Change | Add guided EAI create onboarding command |
-| Source Commit | `5e2c64898a83b5cec3c6bd9d79231822b2999271` |
+| Version | 3.10.0 |
+| Released | 2026-08-09 |
+| Last Material Change | Add app authorization and authenticated readiness diagnostics |
+| Source Commit | `d5644bd64ed94610d0a3f19f43b02655b0131779` |
 
 
 ## Install
