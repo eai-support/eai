@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:eai:schema:object-type-identifier-audit:v1",
+  "title": "EAI Object Type Identifier Audit",
+  "description": "Read-only findings and regional inventory reports for eai.object-type-routing/v1.",
+  "oneOf": [
+    {"$ref": "#/$defs/IdentifierFinding"},
+    {"$ref": "#/$defs/InventoryRun"}
+  ],
+  "$defs": {
+    "Digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "JsonScalar": {
+      "type": ["string", "number", "integer", "boolean", "null"]
+    },
+    "SourceLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "file", "line"],
+      "properties": {
+        "kind": {"const": "source"},
+        "file": {"type": "string", "minLength": 1},
+        "line": {"type": "integer", "minimum": 1},
+        "column": {"type": "integer", "minimum": 1}
+      }
+    },
+    "PersistedLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "tenantRef", "recordRef"],
+      "properties": {
+        "kind": {"const": "persisted"},
+        "tenantRef": {"type": "string", "minLength": 1},
+        "recordRef": {"type": "string", "minLength": 1}
+      }
+    },
+    "InventoryLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "environment", "region"],
+      "properties": {
+        "kind": {"const": "inventory"},
+        "environment": {"enum": ["dev", "test", "prod"]},
+        "region": {"enum": ["ae", "cc", "gwc"]}
+      }
+    },
+    "IdentifierFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractVersion",
+        "rule",
+        "classification",
+        "severity",
+        "location",
+        "field",
+        "offendingValue",
+        "remediation"
+      ],
+      "properties": {
+        "contractVersion": {"const": "eai.object-type-routing/v1"},
+        "rule": {
+          "enum": [
+            "OBJECT_TYPE_NAME_NON_CANONICAL",
+            "OBJECT_TYPE_SLUG_MISSING",
+            "OBJECT_TYPE_SLUG_NON_CANONICAL",
+            "OBJECT_TYPE_SLUG_DERIVATION_MISMATCH",
+            "OBJECT_TYPE_DIRECT_ROUTE_CONSTRUCTION",
+            "OBJECT_TYPE_INVENTORY_INCOMPLETE"
+          ]
+        },
+        "classification": {
+          "enum": [
+            "blocking_source_drift",
+            "report_only_persisted_legacy_drift",
+            "activation_blocker"
+          ]
+        },
+        "severity": {"enum": ["error", "warning", "info"]},
+        "location": {
+          "oneOf": [
+            {"$ref": "#/$defs/SourceLocation"},
+            {"$ref": "#/$defs/PersistedLocation"},
+            {"$ref": "#/$defs/InventoryLocation"}
+          ]
+        },
+        "field": {"type": ["string", "null"]},
+        "offendingValue": {"$ref": "#/$defs/JsonScalar"},
+        "expectedValue": {
+          "oneOf": [
+            {"$ref": "#/$defs/JsonScalar"},
+            {"type": "object"}
+          ]
+        },
+        "remediation": {"type": "string", "minLength": 1}
+      }
+    },
+    "PaginationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pageCount", "recordCount", "terminal"],
+      "properties": {
+        "pageCount": {"type": "integer", "minimum": 0},
+        "recordCount": {"type": "integer", "minimum": 0},
+        "terminal": {"const": true}
+      }
+    },
+    "ObjectTypePaginationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenantRef", "pageCount", "recordCount", "terminal"],
+      "properties": {
+        "tenantRef": {"type": "string", "minLength": 1},
+        "pageCount": {"type": "integer", "minimum": 0},
+        "recordCount": {"type": "integer", "minimum": 0},
+        "terminal": {"const": true}
+      }
+    },
+    "InventoryRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "contractVersion",
+        "status",
+        "writeAttemptCount",
+        "environment",
+        "region",
+        "snapshotStartedAt",
+        "snapshotCompletedAt",
+        "releaseOwnerUserRef",
+        "identityKind",
+        "roleVisibilityComplete",
+        "snapshotBasis",
+        "sourceEndpoints",
+        "tenantSetDigestAlgorithm",
+        "expectedActiveTenantCount",
+        "scannedTenantCount",
+        "expectedTenantSetDigest",
+        "scannedTenantSetDigest",
+        "prePostUniverseStable",
+        "tenantPagination",
+        "objectTypePagination",
+        "objectTypePageCount",
+        "objectTypeRecordCount",
+        "sourceErrorCount",
+        "findingsSummary",
+        "findings",
+        "digestAlgorithm",
+        "digest"
+      ],
+      "properties": {
+        "schemaVersion": {"const": "eai.object-type-routing.inventory/v1"},
+        "contractVersion": {"const": "eai.object-type-routing/v1"},
+        "status": {"enum": ["complete", "incomplete"]},
+        "writeAttemptCount": {"type": "integer", "const": 0},
+        "environment": {"enum": ["dev", "test", "prod"]},
+        "region": {"enum": ["ae", "cc", "gwc"]},
+        "snapshotStartedAt": {"type": "string", "format": "date-time"},
+        "snapshotCompletedAt": {"type": "string", "format": "date-time"},
+        "releaseOwnerUserRef": {"type": "string", "minLength": 1},
+        "identityKind": {"const": "USER"},
+        "roleVisibilityComplete": {"type": "boolean"},
+        "snapshotBasis": {"enum": ["server_snapshot", "stable_pre_post_enumeration"]},
+        "sourceEndpoints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tenants", "objectTypes"],
+          "properties": {
+            "tenants": {"type": "string", "pattern": "^GET /v4/platform/tenants"},
+            "objectTypes": {"type": "string", "pattern": "^GET /v4/data/resources/object-types"}
+          }
+        },
+        "tenantSetDigestAlgorithm": {"const": "HMAC-SHA256"},
+        "expectedActiveTenantCount": {"type": "integer", "minimum": 0},
+        "scannedTenantCount": {"type": "integer", "minimum": 0},
+        "expectedTenantSetDigest": {"$ref": "#/$defs/Digest"},
+        "scannedTenantSetDigest": {"$ref": "#/$defs/Digest"},
+        "preTenantSetDigest": {"$ref": "#/$defs/Digest"},
+        "postTenantSetDigest": {"$ref": "#/$defs/Digest"},
+        "prePostUniverseStable": {"type": "boolean"},
+        "tenantPagination": {"$ref": "#/$defs/PaginationEvidence"},
+        "objectTypePagination": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/ObjectTypePaginationEvidence"}
+        },
+        "objectTypePageCount": {"type": "integer", "minimum": 0},
+        "objectTypeRecordCount": {"type": "integer", "minimum": 0},
+        "sourceErrorCount": {"type": "integer", "minimum": 0},
+        "findingsSummary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "blocking_source_drift",
+            "report_only_persisted_legacy_drift",
+            "activation_blocker"
+          ],
+          "properties": {
+            "blocking_source_drift": {"type": "integer", "minimum": 0},
+            "report_only_persisted_legacy_drift": {"type": "integer", "minimum": 0},
+            "activation_blocker": {"type": "integer", "minimum": 0}
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/IdentifierFinding"}
+        },
+        "digestAlgorithm": {"const": "SHA-256/RFC8785"},
+        "digest": {"$ref": "#/$defs/Digest"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"snapshotBasis": {"const": "stable_pre_post_enumeration"}}},
+          "then": {"required": ["preTenantSetDigest", "postTenantSetDigest"]}
+        }
+      ]
+    }
+  }
+}

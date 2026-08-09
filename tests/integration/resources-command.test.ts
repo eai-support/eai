@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createMockServer } from '../helpers/mock-server.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
-import { resourcesCommand } from '../../src/commands/resources.js';
+import { matchPublishedType, resourcesCommand } from '../../src/commands/resources.js';
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
 
 const API_BASE = 'https://test-api.example.com';
@@ -245,5 +245,20 @@ describe('eai resources command guidance', () => {
       ],
       projectionMode: 'deferred',
     });
+  });
+});
+
+describe('published Object Type identifier matching', () => {
+  test('keeps a legacy remote slug readable without deriving a replacement from its name', () => {
+    const legacy = {
+      name: 'GitHubConnection',
+      slug: 'github-connection',
+      properties: [],
+      linkTypes: [],
+      actions: [],
+    };
+
+    expect(matchPublishedType('github-connection', [legacy]).matchedType).toEqual(legacy);
+    expect(matchPublishedType('git-hub-connection', [legacy]).matchedType).toBeUndefined();
   });
 });

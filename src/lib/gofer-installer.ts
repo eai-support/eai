@@ -85,9 +85,11 @@ const GOFER_GITIGNORE_ENTRIES = [
 ] as const;
 
 export const GOFER_RESOURCE_MAPPINGS: readonly GoferManagedResourceMapping[] = [
+  { sourceSubdirectory: 'config', targetSegments: ['.specify', 'config'] },
   { sourceSubdirectory: 'commands', targetSegments: ['.specify', 'commands'] },
   { sourceSubdirectory: 'templates', targetSegments: ['.specify', 'templates'] },
   { sourceSubdirectory: 'references', targetSegments: ['.specify', 'references'] },
+  { sourceSubdirectory: 'schemas', targetSegments: ['.specify', 'schemas'] },
   { sourceSubdirectory: 'bash-scripts', targetSegments: ['.specify', 'scripts', 'bash'], makeExecutable: true },
   { sourceSubdirectory: 'powershell-scripts', targetSegments: ['.specify', 'scripts', 'powershell'] },
   { sourceSubdirectory: 'node-scripts', targetSegments: ['.specify', 'scripts', 'node'], makeExecutable: true },

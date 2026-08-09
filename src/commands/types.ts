@@ -15,6 +15,7 @@ import inquirer from "inquirer";
 import {
   findProjectRoot,
   loadObjectTypes,
+  validateObjectTypeDefinitions,
   type ObjectTypeDefinition,
 } from "../lib/config.js";
 import { extractServerErrorContext, PlatformAPIClient } from "../lib/api.js";
@@ -646,26 +647,27 @@ function compareRemoteDocs(
     return publishedDelta;
   }
 
-  const aSlug = typeof a.slug === "string" ? a.slug : toObjectTypeSlug(a.name);
-  const bSlug = typeof b.slug === "string" ? b.slug : toObjectTypeSlug(b.name);
+  const aSlug = typeof a.slug === "string" ? a.slug : a.name;
+  const bSlug = typeof b.slug === "string" ? b.slug : b.name;
   return aSlug.localeCompare(bSlug) || a.name.localeCompare(b.name);
 }
 
 function matchesRequestedType(
   doc: RemoteObjectTypeDocument,
-  requestedType: string,
+  requestedType: string | Pick<ObjectTypeDefinition, "name" | "slug">,
 ): boolean {
-  const requestedSlug = toObjectTypeSlug(requestedType);
+  const requestedName = typeof requestedType === "string" ? requestedType : requestedType.name;
+  const requestedSlug = typeof requestedType === "string"
+    ? toObjectTypeSlug(requestedType)
+    : requestedType.slug ?? toObjectTypeSlug(requestedType.name);
   return (
-    doc.name === requestedType ||
-    doc.slug === requestedSlug ||
-    toObjectTypeSlug(doc.name) === requestedSlug
+    doc.name === requestedName || doc.slug === requestedSlug
   );
 }
 
 export function findMatchingRemoteTypes(
   remoteDocs: RemoteObjectTypeDocument[],
-  requestedType: string,
+  requestedType: string | Pick<ObjectTypeDefinition, "name" | "slug">,
 ): RemoteObjectTypeDocument[] {
   return remoteDocs
     .filter((doc) => matchesRequestedType(doc, requestedType))
@@ -678,8 +680,7 @@ function dedupeRemoteObjectTypeDocs(
   const bySlug = new Map<string, RemoteObjectTypeDocument>();
 
   for (const doc of remoteDocs) {
-    const slug =
-      typeof doc.slug === "string" ? doc.slug : toObjectTypeSlug(doc.name);
+    const slug = typeof doc.slug === "string" ? doc.slug : doc.name;
     const existing = bySlug.get(slug);
     if (!existing || compareRemoteDocs(doc, existing) < 0) {
       bySlug.set(slug, doc);
@@ -701,13 +702,11 @@ function extractRemoteTypeState(payload: unknown): {
       return;
     }
 
-    const slug =
-      typeof value.slug === "string"
-        ? value.slug
-        : toObjectTypeSlug(value.name);
-    available.add(slug);
-    if (isPublished) {
-      published.add(slug);
+    if (typeof value.slug === "string") {
+      available.add(value.slug);
+      if (isPublished) {
+        published.add(value.slug);
+      }
     }
   };
 
@@ -726,8 +725,8 @@ function extractRemoteTypeState(payload: unknown): {
       if (typeof value !== "string" || !value.trim()) {
         return;
       }
-      available.add(toObjectTypeSlug(value));
-      published.add(toObjectTypeSlug(value));
+      available.add(value);
+      published.add(value);
     });
     return { published, available };
   }
@@ -792,7 +791,7 @@ function extractRemoteObjectTypeDocs(
 
 function findMatchingRemoteType(
   remoteDocs: RemoteObjectTypeDocument[],
-  requestedType: string,
+  requestedType: string | Pick<ObjectTypeDefinition, "name" | "slug">,
 ): RemoteObjectTypeDocument | undefined {
   return findMatchingRemoteTypes(remoteDocs, requestedType)[0];
 }
@@ -844,10 +843,10 @@ export function diffObjectTypesForTenant(
   };
 
   for (const localType of localTypes) {
-    const remote = findMatchingRemoteType(remoteDocs, localType.name);
+    const remote = findMatchingRemoteType(remoteDocs, localType);
     if (!remote) {
       result.localOnly.push(
-        diffEntry(localType.name, toObjectTypeSlug(localType.name)),
+        diffEntry(localType.name, localType.slug ?? toObjectTypeSlug(localType.name)),
       );
       continue;
     }
@@ -866,7 +865,7 @@ export function diffObjectTypesForTenant(
     );
     const entry = diffEntry(
       localType.name,
-      remote.slug ?? toObjectTypeSlug(localType.name),
+      remote.slug ?? remote.name,
       addedProperties,
       removedProperties,
       unchangedProperties,
@@ -882,7 +881,7 @@ export function diffObjectTypesForTenant(
   for (const remote of remoteDocs) {
     if (!matchedRemoteNames.has(remote.name)) {
       result.remoteOnly.push(
-        diffEntry(remote.name, remote.slug ?? toObjectTypeSlug(remote.name)),
+        diffEntry(remote.name, remote.slug ?? remote.name),
       );
     }
   }
@@ -1579,6 +1578,7 @@ Examples:
     let objectTypes: Record<string, ObjectTypeDefinition[]>;
     try {
       objectTypes = await loadObjectTypes(root);
+      validateObjectTypeDefinitions(objectTypes);
       const totalTypes = Object.values(objectTypes).reduce(
         (sum, types) => sum + types.length,
         0,
@@ -1845,7 +1845,7 @@ Examples:
           options.format === "json" ? null : ora(`  ${type.name}`).start();
 
         try {
-          const matches = findMatchingRemoteTypes(remoteDocs, type.name);
+          const matches = findMatchingRemoteTypes(remoteDocs, type);
           const existing = matches[0];
           const duplicates = matches.slice(1).filter((doc) => doc.id);
 
@@ -1865,8 +1865,10 @@ Examples:
           if (existing?.id) {
             // Update
             const updateRes = await client.updateObjectType(existing.id, {
-              name: type.name,
-              slug: toObjectTypeSlug(type.name),
+              // Existing remote pairs may be legacy; a publish must not repair
+              // their stored identifiers as a side effect.
+              name: existing.name,
+              ...(existing.slug ? { slug: existing.slug } : {}),
               tenant: tenantId,
               displayName: type.displayName,
               description: type.description,
@@ -1898,8 +1900,8 @@ Examples:
                 doc.id === existing.id
                   ? {
                       ...doc,
-                      name: type.name,
-                      slug: toObjectTypeSlug(type.name),
+                      name: existing.name,
+                      slug: existing.slug,
                       properties: type.properties,
                       linkTypes: type.linkTypes,
                       actions: type.actions,
@@ -1924,7 +1926,7 @@ Examples:
             // Create
             const createRes = await client.createObjectType({
               name: type.name,
-              slug: toObjectTypeSlug(type.name),
+              slug: type.slug!,
               displayName: type.displayName,
               description: type.description,
               properties: type.properties,
@@ -1954,7 +1956,7 @@ Examples:
               created++;
               remoteDocs.push({
                 name: type.name,
-                slug: toObjectTypeSlug(type.name),
+                slug: type.slug,
                 properties: type.properties,
                 linkTypes: type.linkTypes,
                 actions: type.actions,
@@ -2026,9 +2028,9 @@ Examples:
         resourceApiSchemaSync = await summarizeResourceApiSchemaSync(
           await client.syncStorageSchema({
             dryRun: false,
-            objectTypes: types.map((type) => toObjectTypeSlug(type.name)),
+            objectTypes: types.map((type) => type.slug!),
           }),
-          types.map((type) => toObjectTypeSlug(type.name)),
+          types.map((type) => type.slug!),
         );
       }
 
@@ -2111,6 +2113,7 @@ Examples:
     let objectTypes: Record<string, ObjectTypeDefinition[]>;
     try {
       objectTypes = await loadObjectTypes(root);
+      validateObjectTypeDefinitions(objectTypes);
       spinner.succeed("Loaded Object Types");
     } catch (err) {
       spinner.fail("Failed to load Object Types");
@@ -2349,6 +2352,7 @@ Examples:
     let objectTypes: Record<string, ObjectTypeDefinition[]>;
     try {
       objectTypes = await loadObjectTypes(root);
+      validateObjectTypeDefinitions(objectTypes);
       spinner?.succeed("Loaded local types");
     } catch (err) {
       spinner?.fail("Failed to load local types");

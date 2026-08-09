@@ -6,7 +6,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { buildPayloadEqualsParams, PlatformAPIClient } from '../../src/lib/api.js';
-import { loadObjectTypes, type ObjectTypeDefinition, type ObjectTypeProperty } from '../../src/lib/config.js';
+import {
+  loadObjectTypes,
+  validateObjectTypeDefinitions,
+  type ObjectTypeDefinition,
+  type ObjectTypeProperty,
+} from '../../src/lib/config.js';
 import { validateObjectTypeDefaultValues } from '../../src/lib/object-type-defaults.js';
 import {
   appOwnedSqlTablePrefix,
@@ -1102,6 +1107,31 @@ describe('shouldFailTypeSeedRun', () => {
 });
 
 describe('loadObjectTypes', () => {
+  test('rejects a new source definition with a missing or mismatched canonical slug before provisioning', () => {
+    expect(() => validateObjectTypeDefinitions({
+      template: [{
+        name: 'GitHubConnection',
+        displayName: 'GitHub connection',
+        properties: [],
+        linkTypes: [],
+        actions: [],
+        status: 'draft',
+      }],
+    })).toThrow(/OBJECT_TYPE_SLUG_MISSING/);
+
+    expect(() => validateObjectTypeDefinitions({
+      template: [{
+        name: 'GitHubConnection',
+        slug: 'github-connection',
+        displayName: 'GitHub connection',
+        properties: [],
+        linkTypes: [],
+        actions: [],
+        status: 'draft',
+      }],
+    })).toThrow(/OBJECT_TYPE_SLUG_DERIVATION_MISMATCH/);
+  });
+
   test('loads object types through a file URL compatible temp import path', async () => {
     const env = await createTestEnvironment();
     const objectTypesDir = join(env.dir, 'src', 'eai.config');

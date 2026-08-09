@@ -48,6 +48,7 @@ describe("EAI splash", () => {
     const previousForceColor = process.env.FORCE_COLOR;
     // The root command sets these in preAction, long after splash.ts loads.
     process.env.FORCE_COLOR = "1";
+    delete process.env.NO_COLOR;
     try {
       // eslint-disable-next-line no-control-regex
       expect(renderEaiSplash(true)).toMatch(/\x1b\[/);
