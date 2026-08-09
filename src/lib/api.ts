@@ -1246,6 +1246,14 @@ export class PlatformAPIClient {
     );
   }
 
+  /** Read the tenant's exact app-client allowlist without mutating authorization. */
+  async getTenantAuthorizedApps(tenantId: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/authorized-apps`,
+      'GET',
+    );
+  }
+
   async createAppProvisioningJob(verticalKey: string): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/provisioning-jobs`,

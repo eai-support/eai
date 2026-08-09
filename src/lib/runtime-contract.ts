@@ -30,6 +30,7 @@ export interface RuntimeValidationResult {
   };
 }
 
+/** Declarative smoke request; header templates remain unresolved until execution. */
 export interface RuntimeSmokeTest {
   name: string;
   method: string;
@@ -37,6 +38,8 @@ export interface RuntimeSmokeTest {
   expectedStatus: number | number[];
   category?: string;
   optional?: boolean;
+  headers?: Record<string, string>;
+  requiresSecret?: string;
 }
 
 export interface RuntimePublicEndpoint {
@@ -123,6 +126,15 @@ function normalizeSmokeTest(value: unknown): RuntimeSmokeTest | null {
 
   if (!name || !path) return null;
 
+  const headers = isRecord(value.headers)
+    ? Object.fromEntries(
+        Object.entries(value.headers).filter(
+          (entry): entry is [string, string] =>
+            entry[0].trim() !== '' && typeof entry[1] === 'string',
+        ),
+      )
+    : undefined;
+
   return {
     name,
     method,
@@ -130,6 +142,10 @@ function normalizeSmokeTest(value: unknown): RuntimeSmokeTest | null {
     expectedStatus,
     category: typeof value.category === 'string' ? value.category : undefined,
     optional: value.optional === true,
+    ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+    ...(typeof value.requiresSecret === 'string' && value.requiresSecret.trim()
+      ? { requiresSecret: value.requiresSecret.trim() }
+      : {}),
   };
 }
 

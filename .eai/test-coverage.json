@@ -25,6 +25,7 @@
             "tests/integration/help.test.ts",
             "tests/integration/describe-contract.test.ts",
             "tests/integration/dev.test.ts",
+            "tests/integration/error-guidance.test.ts",
             "tests/integration/output.test.ts",
             "tests/integration/provision.test.ts",
             "tests/integration/types.test.ts",
@@ -32,7 +33,9 @@
             "tests/integration/publicapi.test.ts",
             "tests/integration/no-v3-runtime.test.ts",
             "tests/integration/platform-api-client.test.ts",
+            "tests/integration/runtime-contract.test.ts",
             "tests/integration/vertical.test.ts",
+            "tests/integration/verify-calls.test.ts",
             "tests/integration/dedicated-tenant-lifecycle.test.ts",
             "tests/integration/full-e2e-smoke.test.ts"
           ],
