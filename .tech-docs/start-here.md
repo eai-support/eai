@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.9.0** (2026-08-05): Add guided EAI create onboarding command.
+The current CLI release is **v3.10.0** (2026-08-09): Add app authorization and authenticated readiness diagnostics.
 
 
 ## What The Pieces Do
