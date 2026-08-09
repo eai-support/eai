@@ -168,6 +168,12 @@ describe('runContractAudit', () => {
     expect(report.summary.failed).toBe(0);
     expect(report.summary.passed).toBeGreaterThanOrEqual(5);
     expect(report.summary.skipped).toBeGreaterThan(0);
+    expect(report.summary.coverageComplete).toBe(false);
+    expect(
+      report.checks
+        .filter((check) => check.status === 'skipped')
+        .every((check) => check.details.trim().length > 0),
+    ).toBe(true);
     expect(report.checks.find((check) => check.id === 'backend-config')?.status).toBe('passed');
     expect(report.checks.find((check) => check.id === 'schema')?.status).toBe('passed');
     expect(report.checks.find((check) => check.id === 'resource-get')?.status).toBe('passed');

@@ -102,6 +102,78 @@ describe('eai user', () => {
     await env.cleanup();
   });
 
+  test('provision-me is idempotent when the current CLI user already has direct membership', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+
+    await userCommand.parseAsync([
+      'provision-me',
+      '--tenant',
+      TENANT_ID,
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    const payload = parseJsonOutput(outputSpy).find((value): value is {
+      status: string;
+      tenantId: string;
+      callingApplication: { clientId: string; kind: string };
+      note: string;
+    } => typeof value === 'object' && value !== null && 'callingApplication' in value);
+    expect(payload).toMatchObject({
+      status: 'already-provisioned',
+      tenantId: TENANT_ID,
+      callingApplication: {
+        clientId: DEFAULT_PROD_AUTH_CLIENT_ID,
+        kind: 'eai-cli',
+      },
+    });
+    expect(payload.note).toContain('not another application client ID');
+  });
+
+  test('provision-me identifies the calling CLI client on tenant authorization failure', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      error: 'FORBIDDEN',
+      message: 'Application not authorized for this tenant',
+    }), {
+      status: 403,
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'req-provision-me-403',
+      },
+    }));
+    vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(userCommand.parseAsync([
+      'provision-me',
+      '--tenant',
+      'different-tenant',
+      '--format',
+      'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(`${API_BASE}/v4/identity/me/provision`);
+    expect(JSON.parse(String(init?.body))).toEqual({ tenant_id: 'different-tenant' });
+    const payload = parseJsonOutput(outputSpy).find((value): value is {
+      code: string;
+      callingApplication: { clientId: string };
+      note: string;
+      requestId: string;
+    } => typeof value === 'object' && value !== null && 'callingApplication' in value);
+    expect(payload).toMatchObject({
+      code: 'CALLING_APPLICATION_NOT_AUTHORIZED',
+      callingApplication: { clientId: DEFAULT_PROD_AUTH_CLIENT_ID },
+      requestId: 'req-provision-me-403',
+    });
+    expect(payload.note).toContain('does not test another app client ID');
+  });
+
   test('invite calls the V4 tenant member invite route with role and JSON output', async () => {
     const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const fetchMock = vi

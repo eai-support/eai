@@ -65,6 +65,7 @@ export interface ContractCheckResult {
   details: string;
 }
 
+/** Machine-readable call coverage, including the reason for every skipped check. */
 export interface ContractAuditReport {
   generatedAt: string;
   publicApiUrl: string;
@@ -75,6 +76,7 @@ export interface ContractAuditReport {
     passed: number;
     failed: number;
     skipped: number;
+    coverageComplete: boolean;
   };
 }
 
@@ -178,7 +180,7 @@ function addCheck(
 function summarizeChecks(
   checks: ContractCheckResult[],
 ): ContractAuditReport["summary"] {
-  return checks.reduce<ContractAuditReport["summary"]>(
+  const counts = checks.reduce(
     (summary, check) => {
       summary[check.status]++;
       return summary;
@@ -189,6 +191,10 @@ function summarizeChecks(
       skipped: 0,
     },
   );
+  return {
+    ...counts,
+    coverageComplete: counts.skipped === 0,
+  };
 }
 
 function describeShape(value: unknown): string {
@@ -254,12 +260,16 @@ function renderContractAudit(report: ContractAuditReport): void {
 
   out.blank();
   if (report.summary.failed === 0) {
-    out.success(
-      `${report.summary.passed} passed, ${report.summary.skipped} skipped`,
-    );
+    if (report.summary.skipped > 0) {
+      out.warn(
+        `${report.summary.passed} passed, ${report.summary.skipped} skipped — verification is incomplete; skipped checks are not passes and each reason is listed above.`,
+      );
+    } else {
+      out.success(`${report.summary.passed} passed, 0 skipped — all declared checks were exercised.`);
+    }
   } else {
     out.warn(
-      `${report.summary.passed} passed, ${report.summary.failed} failed, ${report.summary.skipped} skipped`,
+      `${report.summary.passed} passed, ${report.summary.failed} failed, ${report.summary.skipped} skipped — review every failed and skipped reason above.`,
     );
   }
 }

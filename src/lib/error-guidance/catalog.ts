@@ -539,12 +539,76 @@ export const errorGuidanceCatalog = [
     ],
   },
   {
+    code: 'E247',
+    reasonCode: 'calling_application_not_authorized',
+    title: 'The application making this request is not authorized for the tenant.',
+    category: 'app_provisioning',
+    severity: 'error',
+    appliesTo: ['user.provision-me'],
+    publicSafe: true,
+    why: [
+      'The authorization decision applies to the client ID in the current CLI token.',
+      'It does not evaluate a different tenant app client, even when provision-me was run while diagnosing that app.',
+      'If the current user already has direct membership, provisioning is unnecessary.',
+    ],
+    evidenceToCheck: [
+      'callingApplication.clientId in the structured error.',
+      'eai whoami active tenant and direct membership.',
+      'The intended app client from eai app auth status when diagnosing another app.',
+    ],
+    diagnostics: [
+      {
+        command: 'eai whoami',
+        purpose: 'Confirm the current CLI identity, active tenant, and calling client context.',
+        mutates: false,
+      },
+      {
+        command: 'eai app auth status <app-key> --tenant-id <tenant-id> --client-id <app-client-id> --format json',
+        purpose: 'Inspect a different app client without changing tenant authorization.',
+        mutates: false,
+      },
+    ],
+    fixes: [
+      {
+        command: 'Ask platform support to authorize the reported calling CLI client only if provision-me is required',
+        purpose: 'Repair the caller-specific authorization without changing the target app or creating credentials.',
+        mutates: true,
+      },
+    ],
+    retry: {
+      allowed: false,
+      maxAttempts: 0,
+      backoffSeconds: [],
+      stopWhen: ['Authorization state has not changed.'],
+    },
+    escalation: {
+      audience: 'platform-support',
+      neededWhen: ['Direct membership is absent and the reported calling CLI client must perform user provisioning.'],
+      include: ['request ID', 'CLI version', 'tenant ID', 'callingApplication.clientId', 'reason code'],
+    },
+    safety: {
+      mutatesState: true,
+      mayWriteSecrets: false,
+      mayDeleteData: false,
+      publicSafe: true,
+    },
+    match: [
+      {
+        serverCode: 'CALLING_APPLICATION_NOT_AUTHORIZED',
+      },
+      {
+        operation: 'user provision-me',
+        messageIncludes: ['Application not authorized for this tenant'],
+      },
+    ],
+  },
+  {
     code: 'E242',
     reasonCode: 'tenant_authorization_incomplete',
     title: 'Tenant data-plane authorization incomplete.',
     category: 'app_provisioning',
     severity: 'error',
-    appliesTo: ['provision.entra', 'user.provision-me', 'types.seed', 'vertical.provision'],
+    appliesTo: ['provision.entra', 'types.seed', 'vertical.provision'],
     publicSafe: true,
     why: [
       'The app registration exists, but the selected tenant has not completed app authorization.',
@@ -605,9 +669,6 @@ export const errorGuidanceCatalog = [
       publicSafe: true,
     },
     match: [
-      {
-        messageIncludes: ['Application not authorized for this tenant'],
-      },
       {
         messageIncludes: ['Tenant data-plane authorization incomplete'],
       },

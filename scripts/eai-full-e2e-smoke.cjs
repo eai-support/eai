@@ -61,6 +61,7 @@ const TRACEABILITY_BASE = [
   ['eai resources indexes-apply', 'create/update', 'live-optional', 'Applies validated tenant-scoped indexes only after explicit confirmation and server authorization.'],
   ['eai resources cache-refresh', 'create/update', 'live-optional', 'Forces a signed, reasoned system-admin cache refresh; disabled in default smoke.'],
   ['eai app list', 'read', 'live', 'Lists apps before and after scaffold.'],
+  ['eai app auth status', 'read', 'live-optional', 'Reads app-client authorization when the smoke provisions an Entra registration.'],
   ['eai app create', 'create', 'covered-by-init', 'The scaffold path calls the same app creation API; direct extra app creation is opt-in to avoid orphaned apps.'],
   ['eai app connect-existing', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids overwriting source metadata on a dedicated tenant app.'],
   ['eai app adopt-observed', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids marking app infrastructure observed without a managed redeploy path.'],
@@ -190,7 +191,7 @@ const SMOKE_CALLS = {
     'EAI_E2E_INVITE_TEST_USER=<email> eai user role set --email <email> --tenant <tenant-id> --role <role> --format json',
   ],
   'eai user provision-me': [
-    'eai user provision-me --tenant <tenant-id>',
+    'eai user provision-me --tenant <tenant-id> --format json',
   ],
   'eai resources list': [
     'eai resources list <object-type> --tenant-id <tenant-id> --page 1 --limit 20 --sort -created_at --where {"status":{"equals":"updated"}} --format json',
@@ -275,6 +276,9 @@ const SMOKE_CALLS = {
   ],
   'eai app list': [
     'eai app list --tenant-id <tenant-id> --limit 50 --format json',
+  ],
+  'eai app auth status': [
+    'EAI_E2E_PROVISION_ENTRA=1 eai app auth status <app-key> --tenant-id <tenant-id> --client-id <entra-client-id> --format json',
   ],
   'eai app create': [
     'eai app create <name> --tenant-id <tenant-id> --key <app-key> --template eai-app-template --source eai-cli --app-url https://example.invalid --status pending --format json',
@@ -500,6 +504,9 @@ const OPTION_DECISIONS = {
   'eai app provision': {
     '--rebuild-search': 'Potentially expensive search rebuild; left as explicit opt-in outside release smoke.',
     '--skip-validate': 'Negative validation bypass; not used in release smoke because the smoke should prove normal validation works.',
+  },
+  'eai app auth status': {
+    '--skip-validate': 'Negative validation bypass is covered by command integration tests; live status proves normal app lookup.',
   },
   'eai app connect-existing': {
     '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
@@ -1263,7 +1270,7 @@ function runLiveSmoke(cliPath) {
   }
 
   eai(['init', appName, '--skip-prompts', '--current-dir', '--company-tenant', parentTenantId]);
-  eai(['user', 'provision-me', '--tenant', parentTenantId]);
+  eai(['user', 'provision-me', '--tenant', parentTenantId, '--format', 'json']);
   eai(['user', 'roles', '--tenant', parentTenantId, '--format', 'json']);
   eai([
     'user',
@@ -1355,6 +1362,20 @@ function runLiveSmoke(cliPath) {
     }
   }
   eai(['app', 'list', '--tenant-id', parentTenantId, '--format', 'json']);
+  if (provisionedEntraClientId) {
+    eai([
+      'app',
+      'auth',
+      'status',
+      appName,
+      '--tenant-id',
+      parentTenantId,
+      '--client-id',
+      provisionedEntraClientId,
+      '--format',
+      'json',
+    ]);
+  }
   eai(['app', 'select', appName, '--tenant-id', parentTenantId, '--format', 'json']);
   eai(['app', 'provision', appName, '--tenant-id', parentTenantId, '--select', '--format', 'json']);
   eai(['provision', 'storage', '--tenant-id', parentTenantId, '--format', 'json']);

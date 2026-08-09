@@ -141,6 +141,17 @@ describe('eai app', () => {
         });
       }
 
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}` && method === 'GET') {
+        return jsonResponse({
+          id: COMPANY_TENANT_ID,
+          displayName: 'Builder Workspace',
+          slug: 'builder-workspace',
+          isActive: true,
+          roles: ['tenant-admin'],
+          homeRegion: 'au',
+        });
+      }
+
       if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps` && method === 'POST') {
         return jsonResponse({ app: { id: 'app-1', verticalKey: 'planning-portal' } }, 201);
       }
@@ -177,6 +188,105 @@ describe('eai app', () => {
     );
   });
 
+  test('reports user-delegated app authorization without creating credentials or mutating state', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    await writeFile(join(env.dir, '.env.local'), [
+      `BASE_URL_PUBLIC_API=${API_BASE}`,
+      'ENTRA_CLIENT_ID=1c1927cb-646c-45c6-9ec8-7f2473f4679e',
+    ].join('\n'));
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      const method = requestMethod(init);
+
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        return jsonResponse({
+          tenants: [{
+            id: COMPANY_TENANT_ID,
+            displayName: 'Builder Workspace',
+            slug: 'builder-workspace',
+            isActive: true,
+            roles: ['tenant-admin'],
+          }],
+        });
+      }
+
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}` && method === 'GET') {
+        return jsonResponse({
+          id: COMPANY_TENANT_ID,
+          displayName: 'Builder Workspace',
+          slug: 'builder-workspace',
+          isActive: true,
+          roles: ['tenant-admin'],
+          homeRegion: 'au',
+        });
+      }
+
+      if (
+        url.startsWith(`${API_BASE}/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)
+        && method === 'GET'
+      ) {
+        return jsonResponse({
+          docs: [{
+            id: 'app-boardapp',
+            data: {
+              tenantId: COMPANY_TENANT_ID,
+              verticalKey: 'boardapp-og',
+              displayName: 'BoardApp',
+            },
+          }],
+        });
+      }
+
+      if (
+        url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/authorized-apps`
+        && method === 'GET'
+      ) {
+        return jsonResponse({
+          authorizedApps: [{ appId: '1c1927cb-646c-45c6-9ec8-7f2473f4679e' }],
+          authorizedAppsCount: 1,
+        });
+      }
+
+      return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appCommand.parseAsync([
+      'auth',
+      'status',
+      'boardapp-og',
+      '--tenant-id',
+      COMPANY_TENANT_ID,
+      '--client-id',
+      '1c1927cb-646c-45c6-9ec8-7f2473f4679e',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    const output = outputSpy.mock.calls.flat().join('');
+    const result = JSON.parse(output) as {
+      readOnly: boolean;
+      tenantAuthorizedApps: { status: string };
+      runtimeAuth: { mode: string; userDelegated: string; appOnlyIdentity: string };
+    };
+    expect(result).toMatchObject({
+      readOnly: true,
+      tenantAuthorizedApps: { status: 'authorized' },
+      runtimeAuth: {
+        mode: 'user-delegated',
+        userDelegated: 'authorized',
+        appOnlyIdentity: 'not-required',
+      },
+    });
+    expect(fetchMock.mock.calls.every(([, init]) => requestMethod(init) === 'GET')).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/authorized-apps`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
   test('HP003 writes canonical and legacy app env keys when selecting an app', async () => {
     await seedLoggedInTenant();
     await seedProjectRoot(env.dir);
@@ -197,6 +307,7 @@ describe('eai app', () => {
   test('HP004 provisions app resources through the v4 app provisioning job', async () => {
     await seedLoggedInTenant();
     await seedProjectRoot(env.dir);
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = requestUrl(input);
       const method = requestMethod(init);
@@ -240,6 +351,12 @@ describe('eai app', () => {
           verticalKey: 'planning-portal',
           jobId: 'app-prov-123',
           status: 'ready',
+          steps: [{
+            key: 'identity',
+            label: 'App identity',
+            status: 'skipped',
+            message: 'Skipped until an app URL or deployment config exists.',
+          }],
           enrollment: {
             metadata: {
               appProvisioning: {
@@ -302,6 +419,12 @@ describe('eai app', () => {
         provisioningJobId: 'app-prov-123',
       },
     });
+    const cliResult = JSON.parse(outputSpy.mock.calls.flat().join('')) as {
+      provisioning: { steps: Array<{ key: string; message: string }> };
+    };
+    expect(cliResult.provisioning.steps.find((step) => step.key === 'identity')?.message).toBe(
+      'Not applicable: this generic app uses user-delegated PublicAPI access.',
+    );
   });
 
   test('HP005 plans app storage readiness without running the provisioning job during dry-run', async () => {
