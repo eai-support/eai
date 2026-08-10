@@ -54,6 +54,11 @@ interface DiagnosticsContext {
   debug: boolean;
 }
 
+interface ResourceApiProvisioningContext {
+  client: PlatformAPIClient;
+  tenantId: string;
+}
+
 function normalizeLocalEntraSetting(value: string | undefined): string | null {
   const normalized = value?.trim();
   if (!normalized) {
@@ -71,6 +76,46 @@ function hasUsableLocalEntraSecret(env: Record<string, string>): boolean {
 
 function hasUsableLocalEntraClientId(env: Record<string, string>): boolean {
   return normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID) !== null;
+}
+
+async function resolveResourceApiProvisioningContext(options: {
+  tenantId?: string;
+}): Promise<ResourceApiProvisioningContext> {
+  const root = await findProjectRoot();
+  if (!root) {
+    exitWithError(ErrorCode.E001);
+  }
+
+  const publicApiUrl = await resolvePublicApiUrl(root);
+  let tenantId: string | undefined = options.tenantId;
+  try {
+    const context = await resolveActiveTenantContext({
+      projectRoot: root,
+      publicApiUrl,
+      tenantId,
+      interactive: !tenantId,
+      forceRefresh: Boolean(tenantId),
+    });
+    tenantId = context.activeTenant.id;
+  } catch (err) {
+    out.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
+  const token = await getAccessToken();
+  if (!token) {
+    out.error('Not logged in. Run `eai login` before calling server-backed provisioning.');
+    process.exit(1);
+  }
+  if (!tenantId) {
+    out.error('Unable to resolve active tenant for ResourceAPI provisioning.');
+    process.exit(1);
+  }
+
+  return {
+    client: new PlatformAPIClient(publicApiUrl, tenantId),
+    tenantId,
+  };
 }
 
 async function removeEnvFileKeys(projectRoot: string, keys: string[]): Promise<void> {
@@ -576,8 +621,7 @@ Diagnostics:
 
 provisionCommand
   .command('resourceapi-refresh')
-  .description('Refresh a passive customer storage schema snapshot through the management service')
-  .requiredOption('--admin-api-url <url>', 'Management service URL for server-backed orchestration')
+  .description('Refresh a passive customer storage schema snapshot through PublicAPI')
   .option('--tenant-id <id>', 'Tenant ID the refresh is scoped to')
   .option('--install-id <id>', 'Customer storage install registry ID')
   .option('--apply', 'Apply the refreshed snapshot after planning', false)
@@ -595,53 +639,25 @@ provisionCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', `
 Examples:
-  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId>
-  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply --dry-run --force-overwrite
-  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply --force-overwrite --reason "Repair passive schema drift"
+  $ eai provision resourceapi-refresh --tenant-id <tenantId> --install-id <installId>
+  $ eai provision resourceapi-refresh --tenant-id <tenantId> --install-id <installId> --apply --dry-run --force-overwrite
+  $ eai provision resourceapi-refresh --tenant-id <tenantId> --install-id <installId> --apply --force-overwrite --reason "Repair passive schema drift"
 
 Notes:
-  - This is a super-admin repair path for passive customer storage schema metadata.
+  - This is a PublicAPI-routed super-admin repair path for passive customer storage schema metadata.
   - It updates the tenant install registry only after the storage service accepts and verifies the refreshed snapshot.
   `)
   .action(async (options) => {
     const jsonOutput = options.json || options.format === 'json';
-    const adminApiUrl = String(options.adminApiUrl || '').trim().replace(/\/+$/, '');
-    const root = await findProjectRoot();
-    if (!root) {
-      exitWithError(ErrorCode.E001);
-    }
+    const { client, tenantId } = await resolveResourceApiProvisioningContext({
+      tenantId: options.tenantId,
+    });
 
-    const publicApiUrl = await resolvePublicApiUrl(root);
-    let tenantId: string = options.tenantId;
-    try {
-      const context = await resolveActiveTenantContext({
-        projectRoot: root,
-        publicApiUrl,
-        tenantId,
-        interactive: !tenantId,
-        forceRefresh: Boolean(tenantId),
-      });
-      tenantId = context.activeTenant.id;
-    } catch (err) {
-      out.error(err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    }
-
-    const token = await getAccessToken();
-    if (!token) {
-      out.error('Not logged in. Run `eai login` before calling server-backed provisioning.');
-      process.exit(1);
-    }
-
-    const response = await fetch(
-      `${adminApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-refresh`,
+    const response = await client.requestPublicApi(
+      `/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-refresh`,
       {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+        body: {
           installId: options.installId,
           productKey: options.product,
           schemaVersion: options.schemaVersion,
@@ -654,7 +670,7 @@ Notes:
           updateInstallRegistry: options.updateInstallRegistry !== false,
           reason: options.reason,
           changeTicket: options.changeTicket,
-        }),
+        },
       },
     );
     if (!response.ok) {
@@ -892,8 +908,7 @@ provisionCommand
   .option('--schema <file>', 'Object-types export JSON for local bundle generation')
   .option('--tenant-id <id>', 'Tenant ID the bundle is scoped to')
   .option('--install-id <id>', 'Customer storage install registry ID')
-  .option('--admin-api-url <url>', 'Management service URL for server-backed orchestration')
-  .option('--apply', 'Ask the management service to push the signed bundle to the customer storage install', false)
+  .option('--apply', 'Ask PublicAPI to push the signed bundle to the customer storage install', false)
   .option('--dry-run', 'Plan schema application without applying customer storage changes', false)
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--rebuild-search', 'Request search projection rebuild after schema sync', false)
@@ -905,61 +920,41 @@ provisionCommand
   .addHelpText('after', `
 Examples:
   $ eai provision resourceapi-bundle --schema object-types.json --tenant-id <tenantId> --install-id <installId> --out resourceapi-bundle.json
-  $ eai provision resourceapi-bundle --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply
+  $ eai provision resourceapi-bundle --tenant-id <tenantId> --install-id <installId> --apply
   $ eai provision resourceapi-bundle --schema object-types.json --tenant-id <tenantId> --install-id <installId> --product daisy-assist --format json
 
 Notes:
-  - With --admin-api-url, the management service reads the platform schema source of truth, signs the bundle, and can push it.
+  - Without --schema, PublicAPI reads the platform schema source of truth, signs the bundle, and can push it.
   - Local --schema mode is for offline inspection only and does not own provisioning policy.
   `)
   .action(async (options) => {
     const jsonOutput = options.json || options.format === 'json';
-    const adminApiUrl = String(options.adminApiUrl || '').trim().replace(/\/+$/, '');
+    const schemaPath = String(options.schema || '').trim();
 
-    if (adminApiUrl) {
-      const root = await findProjectRoot();
-      if (!root) {
-        exitWithError(ErrorCode.E001);
-      }
-      const publicApiUrl = await resolvePublicApiUrl(root);
-      let tenantId: string = options.tenantId;
-      try {
-        const context = await resolveActiveTenantContext({
-          projectRoot: root,
-          publicApiUrl,
-          tenantId,
-          interactive: !tenantId,
-          forceRefresh: Boolean(tenantId),
-        });
-        tenantId = context.activeTenant.id;
-      } catch (err) {
-        out.error(err instanceof Error ? err.message : String(err));
+    if (!schemaPath) {
+      const installId = String(options.installId || '').trim();
+      if (!installId) {
+        out.error('--install-id is required when --schema is omitted.');
+        out.info('Pass the customer storage install registry ID for the PublicAPI provisioning target.');
         process.exit(1);
       }
+      const { client, tenantId } = await resolveResourceApiProvisioningContext({
+        tenantId: options.tenantId,
+      });
 
-      const token = await getAccessToken();
-      if (!token) {
-        out.error('Not logged in. Run `eai login` before calling server-backed provisioning.');
-        process.exit(1);
-      }
-
-      const response = await fetch(
-        `${adminApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-bundle`,
+      const response = await client.requestPublicApi(
+        `/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-bundle`,
         {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            installId: options.installId,
+          body: {
+            installId,
             productKey: options.product,
             schemaVersion: options.schemaVersion,
             apply: Boolean(options.apply),
             dryRun: Boolean(options.dryRun),
             backend: options.backend,
             rebuildSearch: Boolean(options.rebuildSearch),
-          }),
+          },
         },
       );
       if (!response.ok) {
@@ -999,10 +994,9 @@ Notes:
       return;
     }
 
-    const schemaPath = String(options.schema || '').trim();
     if (!schemaPath || !options.tenantId || !options.installId) {
       out.error('--schema, --tenant-id, and --install-id are required for local bundle generation.');
-      out.info('Use --admin-api-url to let the management service build the bundle from the platform schema source of truth.');
+      out.info('Omit --schema to let PublicAPI build the bundle from the platform schema source of truth.');
       process.exit(1);
     }
 
