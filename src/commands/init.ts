@@ -1950,6 +1950,7 @@ function generateObjectTypesScaffold(opts: InitOptions): string {
     ? `
     {
       name: 'Document',
+      slug: 'document',
       displayName: 'Document',
       description: 'Uploaded file with classification metadata',
       ...postgresqlResourceStorage,
@@ -2095,6 +2096,7 @@ export type ObjectTypeStatus = 'draft' | 'published' | 'deprecated';
 
 export interface ObjectTypeDefinition {
   name: string;
+  slug: string;
   displayName: string;
   description?: string;
   properties: PropertyDefinition[];
@@ -2121,6 +2123,7 @@ export const objectTypes = {
   '${tenantKey}': [
     {
       name: 'Record',
+      slug: 'record',
       displayName: 'Record',
       description: 'A sample record — replace with your domain model',
       ...postgresqlResourceStorage,

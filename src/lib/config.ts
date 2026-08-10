@@ -11,6 +11,10 @@ import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import {
+  ObjectTypeIdentifierError,
+  validateObjectTypeIdentifierPair,
+} from './object-type-identifiers.js';
 
 export type JsonValue =
   | string
@@ -108,6 +112,8 @@ export interface StorageBindingDefinition {
 
 export interface ObjectTypeDefinition {
   name: string;
+  /** Required for new source manifests; optional in the TypeScript shape for legacy reads. */
+  slug?: string;
   displayName: string;
   description?: string;
   properties: ObjectTypeProperty[];
@@ -119,6 +125,30 @@ export interface ObjectTypeDefinition {
   storageBinding?: StorageBindingDefinition;
   provisioningHints?: Record<string, unknown>;
   status: "draft" | "published" | "deprecated";
+}
+
+/** Validate new local source definitions before any CLI write or provision action. */
+export function validateObjectTypeDefinitions(
+  objectTypes: Record<string, ObjectTypeDefinition[]>,
+): void {
+  for (const [tenantKey, types] of Object.entries(objectTypes)) {
+    for (const type of types) {
+      try {
+        validateObjectTypeIdentifierPair(
+          { name: type.name, slug: type.slug },
+          { requireExplicitSlug: true },
+        );
+      } catch (error) {
+        if (error instanceof ObjectTypeIdentifierError) {
+          throw new Error(
+            `[${tenantKey}/${type.name}] ${error.code}: ${error.message}`,
+            { cause: error },
+          );
+        }
+        throw error;
+      }
+    }
+  }
 }
 
 /**

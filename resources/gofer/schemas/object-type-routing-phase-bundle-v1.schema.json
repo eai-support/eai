@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:eai:schema:object-type-routing-phase-bundle:v1",
+  "title": "EAI Object Type Routing Phase Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "repository", "phase", "baselineSha", "semantics", "entries", "rootDigest"],
+  "properties": {
+    "schemaVersion": { "const": "eai.object-type-routing.phase-bundle/v1" },
+    "repository": { "type": "string", "minLength": 1 },
+    "phase": { "enum": ["P0", "A0", "P1", "A1"] },
+    "baselineSha": { "type": "string", "pattern": "^[a-f0-9]{40,64}$" },
+    "semantics": { "const": "cumulative_from_baseline" },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind", "mode", "deleted", "contentBase64", "contentDigest", "entryDigest"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          },
+          "kind": { "enum": ["file", "symlink", "deletion"] },
+          "mode": { "enum": ["100644", "100755", "120000"] },
+          "deleted": { "type": "boolean" },
+          "contentBase64": { "type": ["string", "null"] },
+          "contentDigest": {
+            "oneOf": [{ "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }, { "type": "null" }]
+          },
+          "entryDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "rootDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}
