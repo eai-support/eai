@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.10.0 |
-| Released | 2026-08-09 |
-| Last Material Change | Add app authorization and authenticated readiness diagnostics |
-| Source Commit | `d5644bd64ed94610d0a3f19f43b02655b0131779` |
+| Version | 3.11.0 |
+| Released | 2026-08-10 |
+| Last Material Change | Add canonical object type routing identifiers |
+| Source Commit | `1181967cbc4905cf4b88ea07a719f7d5f2113879` |
 
 
 ## Install
