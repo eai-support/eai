@@ -9,6 +9,7 @@ import type { TestContext } from '../helpers/setup-dsl.js';
 import { workingDirectoryIs } from '../helpers/setup-dsl.js';
 import { runCommand } from '../helpers/action-dsl.js';
 import { expectCommandSucceeded, expectDisplayedMessage } from '../helpers/assert-dsl.js';
+import { resolveProjectManifest } from '../../src/lib/project-manifest.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -135,6 +136,31 @@ describe('eai template check', () => {
     expectDisplayedMessage(result, 'Template provenance was inferred from the original `eai init` scaffold commit');
     expectDisplayedMessage(result, 'src/components/Hero.tsx');
     expectDisplayedMessage(result, 'src/components/Badge.tsx');
+  });
+
+  test('normalizes legacy eai-tools template labels from eai init scaffold commits', async () => {
+    await writeFileRecursive(env.dir, 'package.json', JSON.stringify({
+      name: '@eai-tools/template-check-legacy-label-fixture',
+      version: '0.0.1',
+    }, null, 2) + '\n');
+
+    await git(env.dir, ['init']);
+    await git(env.dir, ['add', '.']);
+    await git(
+      env.dir,
+      [
+        'commit',
+        '-m',
+        'Initial scaffold from template\n\nApp: Legacy Fixture\nCreated by: eai init\nTemplate: eai-tools/eai-app-template@abc1234',
+      ],
+    );
+
+    const result = await resolveProjectManifest(env.dir);
+
+    expect(result.source).toBe('inferred-init-commit');
+    expect(result.manifest?.template?.repo).toBe('https://github.com/eai-support/eai-app-template.git');
+    expect(result.manifest?.template?.commit).toBe('abc1234');
+    expect(result.manifest?.template?.displaySource).toBe('eai-tools/eai-app-template@abc1234');
   });
 
   test('warns when App Router route.ts files export unsupported symbols', async () => {

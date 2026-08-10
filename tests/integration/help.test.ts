@@ -55,6 +55,16 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain("run 'eai tenant select' to choose the tenant");
   });
 
+  test('create help explains the guided first-run flow', async () => {
+    const result = await runCommand(ctx, 'eai create --help');
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Guide a new builder through EAI setup');
+    expect(result.stdout).toContain('Check Git, Node.js, and npm');
+    expect(result.stdout).toContain('Check builder readiness');
+    expect(result.stdout).toContain('--skip-onboarding');
+  });
+
   test('docs help includes the simple upload-classify-index workflow', async () => {
     const result = await runCommand(ctx, 'eai docs --help');
 
@@ -130,7 +140,7 @@ describe('CLI help output', () => {
     expect(updateResult.stdout).toContain('The CLI installs from the public npm registry by default.');
     expect(updateResult.stdout).toContain('Recommended install: npm install -g eai-cli');
     expect(updateResult.stdout).toContain('Canonical package install: npm install -g @enterpriseai/cli');
-    expect(updateResult.stdout).toContain('Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/');
+    expect(updateResult.stdout).toContain('Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/');
     expect(updateResult.stdout).toContain('eai gofer refresh --check');
     expect(updateResult.stdout).toContain('eai template check');
 

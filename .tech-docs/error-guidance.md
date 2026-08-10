@@ -6,7 +6,7 @@ description: Public-safe EAI CLI error explanations and agent recovery commands.
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.8.3. The same catalog powers human stderr output, JSON output for AI
+v3.11.0. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -23,6 +23,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E205` | `child_relation_invalid` | The supplied tenant is not an immediate child of the supplied parent. |
 | `E245` | `user_invite_external_service_existing_member` | Tenant member invite failed, but an existing member role repair may be available. |
 | `E246` | `app_token_tenant_context_required` | App-token platform user lookup is missing tenant context. |
+| `E247` | `calling_application_not_authorized` | The application making this request is not authorized for the tenant. |
 | `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
@@ -292,6 +293,41 @@ are explicitly listed, and stop when a stop condition matches.
 - server code
 - active tenant slug
 - deployed PublicAPI/AdminAPI versions if visible
+
+## E247: The application making this request is not authorized for the tenant.
+
+| Field | Value |
+| --- | --- |
+| Reason | `calling_application_not_authorized` |
+| Category | `app_provisioning` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The authorization decision applies to the client ID in the current CLI token.
+- It does not evaluate a different tenant app client, even when provision-me was run while diagnosing that app.
+- If the current user already has direct membership, provisioning is unnecessary.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the current CLI identity, active tenant, and calling client context.
+- `eai app auth status <app-key> --tenant-id <tenant-id> --client-id <app-client-id> --format json` (read-only) — Inspect a different app client without changing tenant authorization.
+
+### Fixes
+
+- `Ask platform support to authorize the reported calling CLI client only if provision-me is required` (changes state) — Repair the caller-specific authorization without changing the target app or creating credentials.
+
+### Stop Conditions
+
+- Authorization state has not changed.
+
+### Escalation Evidence
+
+- request ID
+- CLI version
+- tenant ID
+- callingApplication.clientId
+- reason code
 
 ## E242: Tenant data-plane authorization incomplete.
 

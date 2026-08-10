@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Sync bundled gofer assets from the canonical eai-tools/eai-gofer repository.
+ * Sync bundled gofer assets from the canonical eai-support/eai-gofer repository.
  *
  * The `eai init` command installs everything under `resources/gofer/` into a
  * user's workspace, so that directory must mirror the gofer release pinned in
@@ -25,15 +25,18 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const REPO = 'https://github.com/eai-tools/eai-gofer.git';
+const REPO = 'https://github.com/eai-support/eai-gofer.git';
 const ROOT = path.resolve(__dirname, '..');
 const PIN_FILE = path.join(ROOT, '.gofer-version');
 const TARGET = path.join(ROOT, 'resources', 'gofer');
 const BASE_RESOURCE_DIR = path.join('extension', 'resources');
 const EXTRA_RESOURCE_MAPPINGS = [
+  ['.specify/config', 'config'],
+  ['.specify/contracts', 'contracts'],
   ['.specify/commands', 'commands'],
   ['.specify/memory', 'memory'],
   ['.specify/references', 'references'],
+  ['.specify/schemas', 'schemas'],
   ['.system/skills', 'system-skills'],
   ['.agents/skills', 'agents-skills'],
 ];
@@ -90,9 +93,23 @@ function mirror(workdir, sourceRelativeDir, targetDir) {
 }
 
 function listTrackedFiles(workdir, sourceRelativeDir) {
-  const output = execFileSync('git', ['-C', workdir, 'ls-files', '-z', '--', sourceRelativeDir], {
-    encoding: 'utf-8',
-  });
+  // Local feature validation must be able to mirror newly generated files
+  // before a commit exists; clean tagged sources produce the same list.
+  const output = execFileSync(
+    'git',
+    [
+      '-C',
+      workdir,
+      'ls-files',
+      '-z',
+      '--cached',
+      '--others',
+      '--exclude-standard',
+      '--',
+      sourceRelativeDir,
+    ],
+    { encoding: 'utf-8' },
+  );
   return output.split('\0').filter(Boolean);
 }
 

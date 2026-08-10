@@ -103,7 +103,7 @@ deployCommand
 Examples:
   $ eai deploy trigger
   $ eai deploy trigger --branch develop
-  $ eai deploy trigger --repo eai-tools/my-app --format json
+  $ eai deploy trigger --repo eai-support/my-app --format json
   `)
   .action(async (options) => {
     let repo = options.repo;
@@ -372,6 +372,9 @@ type DeployDoctorCategory =
   | 'entra_client_redirect_config'
   | 'eai_publicapi_config'
   | 'tenant_workflow_config'
+  | 'config_missing'
+  | 'authenticated_probe_not_available'
+  | 'app_bff_authorization'
   | 'publicapi_authorization'
   | 'app_code_runtime_error';
 
@@ -419,15 +422,37 @@ function coerceDoctorCategory(value: string | undefined, fallback: DeployDoctorC
     'entra_client_redirect_config',
     'eai_publicapi_config',
     'tenant_workflow_config',
+    'config_missing',
+    'authenticated_probe_not_available',
+    'app_bff_authorization',
     'publicapi_authorization',
     'app_code_runtime_error',
   ]);
   return value && allowed.has(value as DeployDoctorCategory) ? (value as DeployDoctorCategory) : fallback;
 }
 
-function classifyStatus(pathValue: string, httpStatus: number, fallback: DeployDoctorCategory): DeployDoctorCategory {
-  if (httpStatus === 401 || httpStatus === 403) return 'publicapi_authorization';
+function isPublicApiFailure(pathValue: string, body: unknown): boolean {
+  if (pathValue.startsWith('/v4/')) return true;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  const payload = body as Record<string, unknown>;
+  const source = String(payload.source ?? payload.upstream ?? '').toLowerCase();
+  const code = String(payload.code ?? payload.error ?? '').toUpperCase();
+  return source === 'publicapi' || code.startsWith('PUBLICAPI_');
+}
+
+function classifyStatus(
+  pathValue: string,
+  httpStatus: number,
+  fallback: DeployDoctorCategory,
+  body: unknown,
+): DeployDoctorCategory {
+  if (httpStatus === 401 || httpStatus === 403) {
+    return isPublicApiFailure(pathValue, body)
+      ? 'publicapi_authorization'
+      : 'app_bff_authorization';
+  }
   if (httpStatus === 404 && pathValue.includes('/api/auth')) return 'authjs_config';
+  if (httpStatus === 503) return 'app_code_runtime_error';
   if (httpStatus >= 500 && pathValue.includes('/api/eai')) return 'app_code_runtime_error';
   if (httpStatus >= 500) return 'app_not_running';
   return fallback;
@@ -476,19 +501,78 @@ function hasAuthProvidersProblem(body: unknown): string | null {
   return null;
 }
 
-async function runDoctorCheck(baseUrl: string, test: RuntimeSmokeTest, fallbackCategory: DeployDoctorCategory): Promise<DeployDoctorCheck> {
+interface ResolvedSmokeHeaders {
+  headers?: Record<string, string>;
+  missing: string[];
+  missingSecret: boolean;
+}
+
+const ENV_REFERENCE_PATTERN = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+
+function resolveSmokeHeaders(
+  test: RuntimeSmokeTest,
+  environment: NodeJS.ProcessEnv,
+): ResolvedSmokeHeaders {
+  const missing = new Set<string>();
+  const headers: Record<string, string> = {};
+
+  if (test.requiresSecret && !environment[test.requiresSecret]) {
+    missing.add(test.requiresSecret);
+  }
+
+  for (const [name, template] of Object.entries(test.headers ?? {})) {
+    headers[name] = template.replace(ENV_REFERENCE_PATTERN, (_match, variable: string) => {
+      const value = environment[variable];
+      if (value === undefined || value === '') {
+        missing.add(variable);
+        return '';
+      }
+      return value;
+    });
+  }
+
+  return {
+    ...(Object.keys(headers).length > 0 ? { headers } : {}),
+    missing: [...missing],
+    missingSecret: Boolean(test.requiresSecret && missing.has(test.requiresSecret)),
+  };
+}
+
+async function runDoctorCheck(
+  baseUrl: string,
+  test: RuntimeSmokeTest,
+  fallbackCategory: DeployDoctorCategory,
+  environment: NodeJS.ProcessEnv,
+): Promise<DeployDoctorCheck> {
   const url = combineUrl(baseUrl, test.path);
   const expected = expectedStatuses(test);
   const category = coerceDoctorCategory(test.category, fallbackCategory);
+  const resolved = resolveSmokeHeaders(test, environment);
+  if (resolved.missing.length > 0) {
+    const missingNames = resolved.missing.join(', ');
+    return {
+      name: test.name,
+      method: test.method,
+      path: test.path,
+      url,
+      category: resolved.missingSecret
+        ? 'authenticated_probe_not_available'
+        : 'config_missing',
+      status: test.optional ? 'warning' : 'fail',
+      message: `Probe was not sent because required environment configuration is unavailable: ${missingNames}.`,
+      fix: `Set ${missingNames} in the deploy-doctor process environment, then run the command again.`,
+    };
+  }
   try {
     const response = await fetch(url, {
       method: test.method,
+      ...(resolved.headers ? { headers: resolved.headers } : {}),
       signal: AbortSignal.timeout(10_000),
     });
     const body = await readJsonSafely(response);
 
     if (!expected.includes(response.status)) {
-      const failureCategory = classifyStatus(test.path, response.status, category);
+      const failureCategory = classifyStatus(test.path, response.status, category, body);
       const optionalStatus = test.optional ? 'warning' : 'fail';
       return {
         name: test.name,
@@ -563,19 +647,20 @@ async function runDoctorCheck(baseUrl: string, test: RuntimeSmokeTest, fallbackC
 }
 
 function dedupeSmokeTests(tests: RuntimeSmokeTest[]): RuntimeSmokeTest[] {
-  const seen = new Set<string>();
-  const unique: RuntimeSmokeTest[] = [];
+  const unique = new Map<string, RuntimeSmokeTest>();
   for (const test of tests) {
     const key = `${test.method}:${test.path}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(test);
-    }
+    const previous = unique.get(key);
+    unique.set(key, previous ? { ...previous, ...test } : test);
   }
-  return unique;
+  return [...unique.values()];
 }
 
-export async function runDeployDoctor(url: string): Promise<DeployDoctorResult> {
+/** Execute declared runtime probes without returning resolved header or secret values. */
+export async function runDeployDoctor(
+  url: string,
+  options: { environment?: NodeJS.ProcessEnv } = {},
+): Promise<DeployDoctorResult> {
   const baseUrl = normalizeBaseUrl(url);
   const validation = await validateRuntimeContract();
   const loaded = await loadRuntimeContract(validation.projectRoot);
@@ -632,7 +717,14 @@ export async function runDeployDoctor(url: string): Promise<DeployDoctorResult> 
   ]);
 
   for (const test of tests) {
-    checks.push(await runDoctorCheck(baseUrl, test, 'app_code_runtime_error'));
+    checks.push(
+      await runDoctorCheck(
+        baseUrl,
+        test,
+        'app_code_runtime_error',
+        options.environment ?? process.env,
+      ),
+    );
   }
 
   const hasBffSmoke = tests.some(
@@ -680,6 +772,10 @@ deployCommand
 Examples:
   $ eai deploy doctor --url https://my-app.example.com
   $ eai deploy doctor --url https://my-app.example.com --format json
+
+Authenticated probes resolve declared \${ENV_NAME} header values from this
+process environment. Secret values are sent only to the declared endpoint and
+are never included in doctor output.
   `)
   .action(async (options) => {
     if (options.json) options.format = 'json';

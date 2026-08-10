@@ -5,7 +5,7 @@
 ```bash
 npm install -g eai-cli                 # Recommended install
 npm install -g @enterpriseai/cli          # Canonical package
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/  # Static fallback
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/  # Static fallback
 eai update                             # Update to latest
 eai update --check                     # Check without installing
 ```

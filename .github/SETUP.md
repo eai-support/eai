@@ -19,11 +19,11 @@ Release channel responsibilities:
 
 - **npmjs primary package**: `eai-cli`
 - **npmjs canonical package**: `@enterpriseai/cli`
-- **GitHub Pages static registry fallback**: `https://eai-tools.github.io/eai/registry/`
+- **GitHub Pages static registry fallback**: `https://eai-support.github.io/eai/registry/`
 - Recommended install: `npm install -g eai-cli`
 - Canonical install: `npm install -g @enterpriseai/cli`
-- Static fallback install: `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/`
-- Persistent static fallback setup: `npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user`
+- Static fallback install: `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/`
+- Persistent static fallback setup: `npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user`
 - The release workflow publishes both npmjs packages using trusted publishing,
   then creates the GitHub release from the pushed release tag.
 - The docs workflow deploys the matching static registry fallback metadata from `main`.
@@ -32,7 +32,7 @@ Configure npm Trusted Publishing for both `@enterpriseai/cli` and `eai-cli`:
 
 1. Go to each package on npmjs.com.
 2. Add a trusted publisher for GitHub Actions.
-3. Use owner `eai-tools`, repository `eai`, workflow filename `release.yml`.
+3. Use owner `eai-support`, repository `eai`, workflow filename `release.yml`.
 4. Allow `npm publish`.
 
 Do not add `NPM_TOKEN` or `NODE_AUTH_TOKEN` for normal releases. Trusted
@@ -98,5 +98,5 @@ Before switching repository visibility to public, verify:
 ```bash
 npm view eai-cli version --registry=https://registry.npmjs.org/
 npm view @enterpriseai/cli version --registry=https://registry.npmjs.org/ --@enterpriseai:registry=https://registry.npmjs.org/
-curl https://eai-tools.github.io/eai/registry/@enterpriseai/cli
+curl https://eai-support.github.io/eai/registry/@enterpriseai/cli
 ```

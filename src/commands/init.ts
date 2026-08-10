@@ -25,7 +25,14 @@ import inquirer from "inquirer";
 import * as out from "../lib/output.js";
 import { installGoferResources } from "../lib/gofer-installer.js";
 import { applyGoferRefresh, planGoferRefresh } from "../lib/gofer-refresh.js";
-import { isAuthenticated, loadTokens } from "../lib/auth.js";
+import {
+  browserLogin,
+  isAuthenticated,
+  loadTokens,
+  resolveAuthConfig,
+  storeTokens,
+  validateResolvedAuthConfig,
+} from "../lib/auth.js";
 import {
   publicApiUrlForHomeRegion,
   resolveActiveTenantContext,
@@ -41,21 +48,128 @@ import {
   parseApiError,
   PlatformAPIClient,
   type CapabilityDecision,
+  type ParsedApiError,
 } from "../lib/api.js";
-import { patchEnvFile } from "../lib/config.js";
+import { findProjectRoot, patchEnvFile } from "../lib/config.js";
 import { pullCloudEnvValues } from "../lib/cloud-env.js";
+import { findGuidance } from "../lib/error-guidance/match.js";
+import { formatGuidanceText } from "../lib/error-guidance/render.js";
 import { getActiveProfile, loadProfileConfig } from "../lib/profile.js";
 import { errMsg, normalizeChildTenantDisplayNameOption } from "../lib/utils.js";
 import type { ProjectManifest } from "../lib/project-manifest.js";
 import { saveProjectManifest } from "../lib/project-manifest.js";
+import { printEaiSplash } from "../lib/splash.js";
 
 const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pkg = require("../../package.json") as { version: string };
 
-const TEMPLATE_REPO = "https://github.com/eai-tools/eai-app-template.git";
-const GITHUB_ORG = "eai-tools";
+const TEMPLATE_REPO = "https://github.com/eai-support/eai-app-template.git";
+const GITHUB_ORG = "eai-support";
+const PACKAGE_SCOPE = "eai-tools";
 const TEMPLATE_REPO_LABEL = `${GITHUB_ORG}/eai-app-template`;
+const ONBOARDING_DOCS_URL = "https://www.enterpriseaigroup.com/docs/getting-started";
+
+export function describeAppCreationFailure(error: ParsedApiError): string {
+  const guidance = findGuidance({
+    operation: "tenant app create",
+    status: error.status,
+    serverCode: error.code,
+    message: error.message,
+  });
+
+  const lines = [`App creation failed: ${error.message}`];
+  if (guidance) {
+    lines.push("", formatGuidanceText(guidance));
+  } else {
+    lines.push(
+      "",
+      "Try next:",
+      "1. eai whoami [read-only]",
+      "   Confirm the signed-in account and selected workspace.",
+      "2. eai tenant list --all --format json [read-only]",
+      "   Check that the account can access the workspace.",
+      "3. eai errors list [read-only]",
+      "   Inspect known recovery guidance before retrying.",
+    );
+  }
+
+  lines.push(
+    "",
+    `Getting started: ${ONBOARDING_DOCS_URL}`,
+  );
+  return lines.join("\n");
+}
+
+export function describeCreateFlowFailure(error: unknown): string {
+  return [
+    errMsg(error),
+    "",
+    "Try next:",
+    "1. eai whoami [read-only]",
+    "   Confirm the signed-in account and selected workspace.",
+    "2. eai errors list [read-only]",
+    "   Inspect known recovery guidance before retrying.",
+    `3. Read the setup guide: ${ONBOARDING_DOCS_URL}`,
+  ].join("\n");
+}
+
+function startEaiStep(message: string) {
+  return ora({
+    text: message,
+    spinner: { interval: 120, frames: ["◇"] },
+    color: "cyan",
+    indent: 2,
+  }).start();
+}
+
+function showCreateSection(title: string): void {
+  out.blank();
+  out.heading(`${chalk.cyan("◇")} ${title}`);
+}
+
+type CreateAiTool = "codex" | "claude" | "vscode" | "gemini";
+
+const CREATE_AI_TOOL_CHOICES: Array<{ name: string; value: CreateAiTool }> = [
+  { name: "Codex", value: "codex" },
+  { name: "Claude", value: "claude" },
+  { name: "VS Code", value: "vscode" },
+  { name: "Gemini", value: "gemini" },
+];
+
+const CREATE_AI_TOOL_LABELS: Record<CreateAiTool, string> = {
+  codex: "Codex",
+  claude: "Claude",
+  vscode: "VS Code",
+  gemini: "Gemini",
+};
+
+const CREATE_PROMPT_THEME = {
+  prefix: {
+    idle: chalk.cyan("◇"),
+    done: chalk.green("✔"),
+  },
+  style: {
+    message: (text: string) => chalk.bold(text),
+  },
+};
+
+const CREATE_SELECT_THEME = {
+  ...CREATE_PROMPT_THEME,
+  icon: { cursor: chalk.cyan("●") },
+  style: {
+    message: (text: string, status: string) =>
+      status === "done" ? "" : chalk.bold(text),
+  },
+};
+
+const CREATE_NESTED_PROMPT_THEME = {
+  ...CREATE_PROMPT_THEME,
+  prefix: {
+    idle: `  ${chalk.cyan("◇")}`,
+    done: `  ${chalk.green("✔")}`,
+  },
+};
 
 interface LinkedSourcesManifest {
   readonly appTemplate?: {
@@ -258,6 +372,29 @@ async function copyTemplateIntoTargetDir(
   }
 }
 
+/**
+ * `--from` accepts any GitHub repo or local path, and install runs after
+ * .env.local has been generated and hydrated. Only the canonical template is
+ * trusted to execute npm lifecycle scripts on the developer machine.
+ */
+export function buildTemplateInstallArgs(from: string): string[] {
+  const args = ["install", "--no-audit", "--no-fund"];
+  if (from !== TEMPLATE_REPO) args.push("--ignore-scripts");
+  return args;
+}
+
+/**
+ * Tenant binding produced by the most recent `init` run, so the guided `create`
+ * flow can report against the runtime tenant instead of the parent workspace.
+ */
+let lastInitBinding: InitTenantAppBinding | undefined;
+
+export function consumeLastInitBinding(): InitTenantAppBinding | undefined {
+  const binding = lastInitBinding;
+  lastInitBinding = undefined;
+  return binding;
+}
+
 export const initCommand = new Command("init")
   .description("Scaffold a new application")
   .argument("[name]", "Name for the app (kebab-case)")
@@ -290,11 +427,15 @@ export const initCommand = new Command("init")
     "Prompt for a child company tenant instead of using the selected company tenant",
   )
   .option("--no-gofer", "Skip installing Gofer AI CLI assets")
+  .option("--no-install", "Skip installing the generated app dependencies")
   .option(
     "--package-profile <profile>",
     "Package profile to record for block catalog discovery: external, internal, or hybrid",
     "external",
   )
+  .option("--display-name <name>", "Display name for the app")
+  .option("--description <description>", "One-sentence description for the app")
+  .option("--no-splash", "Skip the interactive EAI wordmark")
   .addHelpText(
     "after",
     `
@@ -313,6 +454,7 @@ Use --no-gofer only when you need a bare app scaffold.
 `,
   )
   .action(async (nameArg, options) => {
+    await printEaiSplash(options.splash);
     const publicApiUrl = await resolvePublicApiUrl();
     const tenantContext = await loadActiveTenantForInit(publicApiUrl);
     const activeTenant = tenantContext.activeTenant;
@@ -334,7 +476,7 @@ Use --no-gofer only when you need a bare app scaffold.
         options.parentTenant,
         {
           slug: nameArg,
-          displayName: toDisplayName(nameArg),
+          displayName: options.displayName || toDisplayName(nameArg),
         },
         options.childTenant,
         Boolean(options.createChildTenant),
@@ -342,13 +484,16 @@ Use --no-gofer only when you need a bare app scaffold.
       );
       parentTenantId = binding.parentTenantId;
       tenantId = binding.runtimeTenantId;
+      lastInitBinding = binding;
       const capabilities = tenantId
         ? await evaluateInitCapabilities(publicApiUrl, tenantId)
         : defaultInitCapabilities();
       initOptions = {
         name: nameArg,
-        displayName: toDisplayName(nameArg),
-        description: `${toDisplayName(nameArg)} application`,
+        displayName: options.displayName || toDisplayName(nameArg),
+        description:
+          options.description ||
+          `${options.displayName || toDisplayName(nameArg)} application`,
         parentTenantId,
         tenantId,
         tenantHomeRegion:
@@ -364,7 +509,7 @@ Use --no-gofer only when you need a bare app scaffold.
           type: "input",
           name: "name",
           message: "App name (kebab-case):",
-          default: nameArg,
+          default: nameArg || undefined,
           validate: (input: string) => {
             if (!/^[a-z][a-z0-9-]*$/.test(input)) {
               return "Must be lowercase, start with a letter, and contain only letters, numbers, and hyphens";
@@ -376,14 +521,15 @@ Use --no-gofer only when you need a bare app scaffold.
           type: "input",
           name: "displayName",
           message: "Display name:",
-          default: (answers: { name: string }) => toDisplayName(answers.name),
+          default: (answers: { name: string }) =>
+            options.displayName || toDisplayName(answers.name),
         },
         {
           type: "input",
           name: "description",
           message: "Description:",
           default: (answers: { displayName: string }) =>
-            `${answers.displayName} application`,
+            options.description || `${answers.displayName} application`,
         },
       ]);
 
@@ -419,6 +565,7 @@ Use --no-gofer only when you need a bare app scaffold.
       );
       parentTenantId = binding.parentTenantId;
       tenantId = binding.runtimeTenantId;
+      lastInitBinding = binding;
 
       const featureAnswers = await promptFeatureOptions(publicApiUrl, tenantId);
 
@@ -441,11 +588,11 @@ Use --no-gofer only when you need a bare app scaffold.
       };
     }
 
-    out.heading(`Creating ${chalk.cyan(initOptions.displayName)}`);
+    out.heading(`  ${chalk.cyan("◇")} Creating ${chalk.cyan(initOptions.displayName)}`);
     out.blank();
 
     // Step 1: Clone template
-    const cloneSpinner = ora("Cloning template...").start();
+    const cloneSpinner = startEaiStep("Cloning template...");
     const templatePlan = resolveTemplateClonePlan(options.from);
     try {
       if (targetUsesCurrentDir) {
@@ -469,11 +616,11 @@ Use --no-gofer only when you need a bare app scaffold.
     }
 
     // Step 2: Update package.json
-    const pkgSpinner = ora("Customizing package.json...").start();
+    const pkgSpinner = startEaiStep("Customizing package.json...");
     try {
       const pkgPath = join(targetDir, "package.json");
       const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
-      pkg.name = `@${GITHUB_ORG}/${initOptions.name}`;
+      pkg.name = `@${PACKAGE_SCOPE}/${initOptions.name}`;
       pkg.description = initOptions.description;
       pkg.version = "0.1.0";
       await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
@@ -483,7 +630,7 @@ Use --no-gofer only when you need a bare app scaffold.
     }
 
     // Step 3: Generate .env.local with placeholders
-    const envSpinner = ora("Generating .env.local...").start();
+    const envSpinner = startEaiStep("Generating .env.local...");
     try {
       const envContent = generateEnvFile(initOptions);
       await writeFile(join(targetDir, ".env.local"), envContent, "utf-8");
@@ -500,7 +647,7 @@ Use --no-gofer only when you need a bare app scaffold.
     }
 
     // Step 4: Generate Object Types scaffold
-    const typesSpinner = ora("Creating Object Types scaffold...").start();
+    const typesSpinner = startEaiStep("Creating Object Types scaffold...");
     try {
       const typesContent = generateObjectTypesScaffold(initOptions);
       await writeFile(
@@ -514,7 +661,7 @@ Use --no-gofer only when you need a bare app scaffold.
     }
 
     // Step 5: Generate deploy workflow
-    const deploySpinner = ora("Creating deployment workflow...").start();
+    const deploySpinner = startEaiStep("Creating deployment workflow...");
     try {
       const workflowDir = join(targetDir, ".github", "workflows");
       await mkdir(workflowDir, { recursive: true });
@@ -530,7 +677,7 @@ Use --no-gofer only when you need a bare app scaffold.
     }
 
     // Step 6: Generate project CLAUDE.md
-    const claudeSpinner = ora("Generating CLAUDE.md...").start();
+    const claudeSpinner = startEaiStep("Generating CLAUDE.md...");
     try {
       const claudeContent = generateClaudeMd(initOptions);
       await writeFile(join(targetDir, "CLAUDE.md"), claudeContent, "utf-8");
@@ -541,7 +688,7 @@ Use --no-gofer only when you need a bare app scaffold.
 
     // Step 7: Install Gofer AI CLI assets
     if (options.gofer) {
-      const goferSpinner = ora("Installing Gofer AI CLI assets...").start();
+      const goferSpinner = startEaiStep("Installing Gofer AI CLI assets...");
       try {
         const summary = await installGoferResources(targetDir, {
           workflowProfile: "enterpriseai",
@@ -557,7 +704,7 @@ Use --no-gofer only when you need a bare app scaffold.
     }
 
     // Step 8: Record project manifest for future safe refreshes
-    const manifestSpinner = ora("Recording project manifest...").start();
+    const manifestSpinner = startEaiStep("Recording project manifest...");
     try {
       const initialManifest = buildInitialProjectManifest(
         templatePlan,
@@ -579,8 +726,36 @@ Use --no-gofer only when you need a bare app scaffold.
       process.exit(1);
     }
 
-    // Step 9: Initialize git
-    const gitSpinner = ora("Initializing git...").start();
+    // Step 9: Install project dependencies
+    if (options.install !== false) {
+      const installArgs = buildTemplateInstallArgs(options.from);
+      const trusted = !installArgs.includes("--ignore-scripts");
+      if (!trusted) {
+        out.warn(
+          `Installing a custom template with ${chalk.cyan("--ignore-scripts")} because ${chalk.cyan(options.from)} is not the canonical EAI app template.`,
+        );
+        out.nestedInfo(
+          `If you trust that source, run ${chalk.cyan("npm rebuild")} inside ${chalk.cyan(targetDir)} to execute its lifecycle scripts.`,
+        );
+      }
+      const installSpinner = startEaiStep("Installing app dependencies...");
+      try {
+        await exec("npm", installArgs, {
+          cwd: targetDir,
+        });
+        installSpinner.succeed("Installed app dependencies");
+      } catch (err) {
+        installSpinner.fail("Failed to install app dependencies");
+        out.error(errMsg(err));
+        out.nestedInfo(
+          `Run \`npm install\` inside ${chalk.cyan(targetDir)} and retry.`,
+        );
+        process.exit(1);
+      }
+    }
+
+    // Step 10: Initialize git
+    const gitSpinner = startEaiStep("Initializing git...");
     try {
       await exec("git", ["init"], { cwd: targetDir });
       await exec("git", ["add", "."], { cwd: targetDir });
@@ -628,31 +803,508 @@ Use --no-gofer only when you need a bare app scaffold.
     }
 
     out.blank();
-    out.success(
+    out.nestedSuccess(
       `Created ${chalk.bold(initOptions.displayName)} at ${chalk.cyan(targetDir)}`,
     );
     out.blank();
-    out.heading("Next steps:");
+    out.heading("  Next steps:");
     out.blank();
     if (initOptions.tenantId) {
-      out.dim(`Main company tenant: ${chalk.cyan(initOptions.parentTenantId)}`);
-      out.dim(`Bound to tenant: ${chalk.cyan(initOptions.tenantId)}`);
+      out.nestedDim(`Main company tenant: ${chalk.cyan(initOptions.parentTenantId)}`);
+      out.nestedDim(`Bound to tenant: ${chalk.cyan(initOptions.tenantId)}`);
     }
     if (!entraProvisioned) {
-      out.dim(
+      out.nestedDim(
         `Run ${chalk.cyan("eai provision entra")} inside the project to set up Entra authentication.`,
       );
     }
-    out.dim(`Template: ${templatePlan.displaySource}`);
+    out.nestedDim(`Template: ${templatePlan.displaySource}`);
     if (options.gofer) {
-      out.dim(
+      out.nestedDim(
         "Gofer: Claude /0_gofer_start; Codex uses the repo-local Gofer skills; Gemini /gofer:1_gofer_research; Copilot .github prompts/skills.",
       );
     }
-    out.dim(`Package profile: ${initOptions.packageProfile}`);
-    out.dim(`CLI docs: https://github.com/${GITHUB_ORG}/eai`);
+    out.nestedDim(`Package profile: ${initOptions.packageProfile}`);
+    out.nestedDim(`CLI docs: https://github.com/${GITHUB_ORG}/eai`);
     out.blank();
   });
+
+export interface CreateCommandOptions {
+  from: string;
+  skipPrompts: boolean;
+  skipOnboarding: boolean;
+  currentDir: boolean;
+  tenant?: string;
+  companyTenant?: string;
+  parentTenant?: string;
+  childTenant?: string;
+  createChildTenant?: boolean;
+  gofer?: boolean;
+  install?: boolean;
+  packageProfile: string;
+  tool?: string;
+  splash?: boolean;
+}
+
+interface CreateOnboardingAnswers {
+  name: string;
+  displayName: string;
+  description: string;
+  useCurrentDirectory: boolean;
+  aiTool: CreateAiTool;
+}
+
+/**
+ * Guided first-run setup matching the public Getting Started flow.
+ *
+ * The legacy `init` command remains the low-level scaffold entry point. This
+ * command owns the first-run experience: local checks, browser auth, tenant
+ * confirmation, non-interactive scaffolding, and the hand-off to Gofer.
+ */
+export const createCommand = new Command("create")
+  .description("Guide a new builder through EAI setup and create an application")
+  .argument("[name]", "Name for the app (kebab-case)")
+  .option(
+    "--from <repo>",
+    "GitHub repo URL or local path for template",
+    TEMPLATE_REPO,
+  )
+  .option("--skip-prompts", "Use defaults without interactive prompts", false)
+  .option(
+    "--skip-onboarding",
+    "Skip first-run checks and use the legacy init scaffold flow",
+    false,
+  )
+  .option(
+    "--current-dir",
+    "Scaffold into the current directory instead of creating ./<name>",
+    false,
+  )
+  .option(
+    "--tenant <id>",
+    "Main company tenant ID (deprecated alias for --company-tenant)",
+  )
+  .option("--company-tenant <id>", "Main company tenant ID that owns this app")
+  .option(
+    "--parent-tenant <id>",
+    "Immediate parent company tenant ID for the new child company",
+  )
+  .option(
+    "--child-tenant <name>",
+    "Create or reuse a child company tenant display name for the app runtime boundary",
+  )
+  .option(
+    "--create-child-tenant",
+    "Prompt for a child company tenant instead of using the selected company tenant",
+  )
+  .option("--no-gofer", "Skip installing Gofer AI CLI assets")
+  .option("--no-install", "Skip installing the generated app dependencies")
+  .option(
+    "--package-profile <profile>",
+    "Package profile to record for block catalog discovery: external, internal, or hybrid",
+    "external",
+  )
+  .option("--tool <tool>", "AI tool to prepare for: codex, claude, vscode, or gemini")
+  .option("--no-splash", "Skip the interactive EAI wordmark")
+  .addHelpText(
+    "after",
+    `
+Guided setup:
+  1. Check Git, Node.js, and npm
+  2. Sign in with the browser and choose the signup workspace
+  3. Confirm the project name and folder
+  4. Create the app with Gofer AI CLI assets
+  5. Check builder readiness and hand off to /0_business_scenario
+
+The command does not create a root tenant. Complete Website signup first so
+the CLI can use the onboarding-created company workspace.
+
+Use --skip-onboarding for the legacy scaffold prompts, or use eai init for
+the low-level scaffold command directly.
+`,
+  )
+  .action(async (nameArg, options: CreateCommandOptions) => {
+    await runCreateFlow(nameArg, options);
+  });
+
+async function runCreateFlow(
+  nameArg: string | undefined,
+  options: CreateCommandOptions,
+): Promise<void> {
+  await printEaiSplash(options.splash);
+
+  if (options.skipOnboarding || options.skipPrompts) {
+    const initArgs = buildForwardedInitArgs(nameArg, options);
+    await initCommand.parseAsync(initArgs, { from: "user" });
+    return;
+  }
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    out.error(
+      "Guided `eai create` requires an interactive terminal. Use `eai create <name> --skip-prompts` for automation, or run it from a real terminal.",
+    );
+    process.exit(1);
+  }
+
+  try {
+    await runCreatePreflight();
+    const answers = await promptCreateOnboarding(nameArg, options);
+    showCreateSection("Sign in to EAI");
+    await ensureCreateAuthentication();
+
+    showCreateSection("Choose your EAI workspace");
+    const bootstrapPublicApiUrl = await resolvePublicApiUrl();
+    let tenantContext: Awaited<ReturnType<typeof resolveActiveTenantContext>>;
+    try {
+      tenantContext = await resolveCreateTenantContext(
+        bootstrapPublicApiUrl,
+        options,
+      );
+    } catch (error) {
+      out.error(error instanceof Error ? error.message : String(error));
+      out.nestedInfo(`Complete Website signup, then retry: ${ONBOARDING_DOCS_URL}`);
+      process.exit(1);
+    }
+
+    out.nestedSuccess(
+      `Using company workspace ${chalk.cyan(tenantContext.activeTenant.displayName)} ${chalk.dim(`(${tenantContext.activeTenant.id})`)}`,
+    );
+
+    showCreateSection("Build your project");
+    const initArgs = buildForwardedInitArgs(
+      answers.name,
+      options,
+      answers,
+      tenantContext.activeTenant.id,
+    );
+    await initCommand.parseAsync(initArgs, { from: "user" });
+
+    // `init` may have bound the app to a freshly created child company. Readiness
+    // must be checked against that runtime tenant, not the parent workspace.
+    const binding = consumeLastInitBinding();
+    const targetDir = answers.useCurrentDirectory
+      ? resolve(process.cwd())
+      : resolve(process.cwd(), answers.name);
+    await reportCreateCompletion(
+      targetDir,
+      publicApiUrlForHomeRegion(binding?.runtimeTenantHomeRegion) ||
+        tenantContext.publicApiUrl,
+      binding?.runtimeTenantId || tenantContext.activeTenant.id,
+      answers.aiTool,
+      options.gofer !== false,
+    );
+  } catch (error) {
+    out.error(describeCreateFlowFailure(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Resolve the workspace for guided create.
+ *
+ * An explicit --company-tenant/--tenant is passed through as `tenantId` so the
+ * membership is validated and the cached active tenant cannot silently replace
+ * the operator's choice on a state-changing app create.
+ */
+export function resolveCreateTenantContext(
+  publicApiUrl: string,
+  options: CreateCommandOptions,
+): ReturnType<typeof resolveActiveTenantContext> {
+  return resolveActiveTenantContext({
+    publicApiUrl,
+    interactive: true,
+    tenantId: options.companyTenant || options.tenant,
+  });
+}
+
+export function buildForwardedInitArgs(
+  nameArg: string | undefined,
+  options: CreateCommandOptions,
+  answers?: CreateOnboardingAnswers,
+  tenantId?: string,
+): string[] {
+  const appName = answers?.name || nameArg;
+  const args: string[] = [];
+  if (appName) args.push(appName);
+  if (options.skipPrompts || answers) args.push("--skip-prompts");
+  args.push("--no-splash");
+
+  // `tenantId` is the validated resolution of the explicit options, so the two
+  // can no longer disagree; prefer it because it is always a canonical ID.
+  const companyTenant = tenantId || options.companyTenant || options.tenant;
+  if (companyTenant) args.push("--company-tenant", companyTenant);
+  if (options.parentTenant) args.push("--parent-tenant", options.parentTenant);
+  if (options.childTenant) args.push("--child-tenant", options.childTenant);
+  if (options.createChildTenant) args.push("--create-child-tenant");
+  if (answers?.useCurrentDirectory || options.currentDir) {
+    args.push("--current-dir");
+  }
+  if (answers?.displayName) args.push("--display-name", answers.displayName);
+  if (answers?.description) args.push("--description", answers.description);
+  if (options.from && options.from !== TEMPLATE_REPO) {
+    args.push("--from", options.from);
+  }
+  if (options.gofer === false) args.push("--no-gofer");
+  if (options.install === false) args.push("--no-install");
+  if (options.packageProfile) {
+    args.push("--package-profile", options.packageProfile);
+  }
+  return args;
+}
+
+async function runCreatePreflight(): Promise<void> {
+  showCreateSection("Making sure your computer has the correct prerequisites.");
+  const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] || "0", 10);
+  if (nodeMajor < 20) {
+    throw new Error(
+      `Node.js ${process.versions.node} is too old. EAI CLI requires Node.js 20 or newer.`,
+    );
+  }
+
+  const checks: Array<{ label: string; command: string; args: string[] }> = [
+    { label: "Git", command: "git", args: ["--version"] },
+    { label: "npm", command: "npm", args: ["--version"] },
+  ];
+
+  out.nestedSuccess(`Node.js ${process.versions.node}`);
+  for (const check of checks) {
+    try {
+      const result = await exec(check.command, check.args);
+      const version = result.stdout.trim() || result.stderr.trim();
+      out.nestedSuccess(`${check.label} ${version}`);
+    } catch {
+      throw new Error(
+        `${check.label} is required before creating an EAI app. Install it, reopen your terminal, and run \`npx eai-cli create\` again.`,
+      );
+    }
+  }
+
+  out.nestedSuccess("Local tooling is ready");
+}
+
+async function promptCreateOnboarding(
+  nameArg: string | undefined,
+  options: CreateCommandOptions,
+): Promise<CreateOnboardingAnswers> {
+  const requestedTool = options.tool?.trim().toLowerCase();
+  if (
+    requestedTool &&
+    !CREATE_AI_TOOL_CHOICES.some((choice) => choice.value === requestedTool)
+  ) {
+    throw new Error(
+      `Unknown --tool "${options.tool}". Use codex, claude, vscode, or gemini.`,
+    );
+  }
+
+  out.blank();
+  const toolAnswer = requestedTool
+    ? { aiTool: requestedTool as CreateAiTool }
+    : await inquirer.prompt([
+        {
+          type: "select",
+          name: "aiTool",
+          message: "Which AI tool will you use for this project?",
+          choices: CREATE_AI_TOOL_CHOICES,
+          default: "codex",
+          theme: CREATE_SELECT_THEME,
+        },
+      ]);
+
+  out.blank();
+  const nameAnswer = await inquirer.prompt([
+    {
+      type: "input",
+      name: "name",
+      message: "What is the name of your project?\n  ",
+      default: nameArg ? toKebabCase(nameArg) : undefined,
+      theme: CREATE_PROMPT_THEME,
+      validate: (input: string) => {
+        if (!/^[a-z][a-z0-9-]*$/.test(input.trim())) {
+          return "Use lowercase letters, numbers, and hyphens; start with a letter";
+        }
+        return true;
+      },
+    },
+  ]);
+
+  out.blank();
+  const displayNameAnswer = await inquirer.prompt([
+    {
+      type: "input",
+      name: "displayName",
+      message: "What should we call your project?\n  ",
+      default: toDisplayName(String(nameAnswer.name)),
+      theme: CREATE_PROMPT_THEME,
+    },
+  ]);
+
+  out.blank();
+  const descriptionAnswer = await inquirer.prompt([
+    {
+      type: "input",
+      name: "description",
+      message: "What does your project do?\n  ",
+      default: `${displayNameAnswer.displayName} application`,
+      theme: CREATE_PROMPT_THEME,
+    },
+  ]);
+
+  const appName = String(nameAnswer.name).trim();
+  let useCurrentDirectory = true;
+  if (!options.currentDir) {
+    out.blank();
+    const locationAnswer = await inquirer.prompt([
+      {
+        type: "select",
+        name: "location",
+        message: "Where should we create your project?",
+        choices: [
+          { name: `New folder ./${appName}`, value: "new" },
+          {
+            name: `Current folder ./${basename(process.cwd())}`,
+            value: "current",
+          },
+        ],
+        default: "new",
+        theme: CREATE_SELECT_THEME,
+      },
+    ]);
+    useCurrentDirectory = String(locationAnswer.location) === "current";
+  }
+
+  return {
+    name: appName,
+    displayName: String(displayNameAnswer.displayName).trim(),
+    description: String(descriptionAnswer.description).trim(),
+    useCurrentDirectory,
+    aiTool: String(toolAnswer.aiTool) as CreateAiTool,
+  };
+}
+
+async function ensureCreateAuthentication(): Promise<void> {
+  if (await isAuthenticated()) {
+    out.nestedSuccess("EAI login is already active");
+    return;
+  }
+
+  const { proceed } = await inquirer.prompt([
+    {
+      type: "confirm",
+      name: "proceed",
+      message: "No EAI login was found. Open the browser to sign in now?\n    ",
+      default: true,
+      theme: CREATE_NESTED_PROMPT_THEME,
+    },
+  ]);
+  if (!proceed) {
+    throw new Error("Sign-in is required before creating an EAI app.");
+  }
+
+  const profile = getActiveProfile();
+  const projectRoot = await findProjectRoot();
+  const resolvedConfig = await resolveAuthConfig(projectRoot || undefined, profile);
+  const configIssue = validateResolvedAuthConfig(resolvedConfig);
+  if (configIssue) throw new Error(configIssue);
+
+  out.nestedInfo("Opening your browser to complete EAI sign-in...");
+  const tokens = await browserLogin(
+    resolvedConfig.tenantName,
+    resolvedConfig.tenantId,
+    resolvedConfig.clientId,
+    resolvedConfig.authScope,
+  );
+  await storeTokens(tokens);
+  out.nestedSuccess(`Authenticated as ${chalk.bold(tokens.upn || "user")}`);
+}
+
+async function reportCreateCompletion(
+  targetDir: string,
+  publicApiUrl: string,
+  tenantId: string,
+  aiTool: CreateAiTool,
+  goferExpected: boolean,
+): Promise<void> {
+  const hasGofer = await Promise.all([
+    access(join(targetDir, ".specify")),
+    access(join(targetDir, ".agents")),
+  ])
+    .then(() => true)
+    .catch(() => false);
+
+  out.blank();
+  if (goferExpected && hasGofer) {
+    out.nestedSuccess("Gofer AI CLI assets confirmed");
+  } else if (goferExpected) {
+    out.warn("Gofer assets were not found; run `eai gofer refresh` inside the project.");
+  }
+
+  let builderReady = false;
+  try {
+    const client = new PlatformAPIClient(publicApiUrl, tenantId);
+    const readiness = await client.getBuilderReadiness({ tenantId, workflowKeys: [] });
+    builderReady = readiness.status === "available";
+    if (builderReady) {
+      out.nestedSuccess("Builder readiness is available");
+    } else {
+      out.warn(`Builder readiness: ${readiness.status}`);
+      for (const check of readiness.checks) {
+        out.nestedInfo(`${check.key}: ${check.status} — ${check.reasonMessage}`);
+      }
+    }
+  } catch (error) {
+    out.warn(
+      `Builder readiness could not be checked yet: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  out.blank();
+  const summary = buildCreateCompletionSummary(builderReady, aiTool);
+  out.heading(summary.heading);
+  out.nestedInfo(`Project folder: ${chalk.cyan(targetDir)}`);
+  out.nestedInfo(`AI tool: ${chalk.cyan(CREATE_AI_TOOL_LABELS[aiTool])}`);
+  for (const step of summary.steps) out.nestedInfo(step);
+  out.nestedDim(`Setup guide: ${ONBOARDING_DOCS_URL}`);
+  out.blank();
+}
+
+/**
+ * Next-step copy for guided create. A failed or unchecked builder readiness must
+ * not be presented as a ready workspace, and must not send the builder straight
+ * into a hand-off that is known to be unproven.
+ */
+export function buildCreateCompletionSummary(
+  builderReady: boolean,
+  aiTool: CreateAiTool,
+): { heading: string; steps: string[] } {
+  const toolLabel = CREATE_AI_TOOL_LABELS[aiTool];
+  if (builderReady) {
+    return {
+      heading: `${chalk.green("✔")} Your EAI workspace is ready`,
+      steps: [
+        `Open that folder in ${toolLabel}, then start:`,
+        chalk.cyan("/0_business_scenario <describe what you want to build>"),
+      ],
+    };
+  }
+
+  return {
+    heading: `${chalk.yellow("!")} Project created; builder setup is not confirmed yet`,
+    steps: [
+      `Re-check with ${chalk.cyan("eai doctor")} inside the project folder.`,
+      `If it stays unavailable, ask your workspace tenant-admin to finish setup: ${ONBOARDING_DOCS_URL}`,
+      `Once readiness reports available, open the folder in ${toolLabel} and start ${chalk.cyan("/0_business_scenario")}.`,
+    ],
+  };
+}
+
+export function toKebabCase(value: string): string {
+  return value
+    .trim()
+    .replace(/([a-z])([A-Z])/g, "$1-$2")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+}
 
 function resolvePackageProfile(value: unknown): PackageProfile {
   if (value === "external" || value === "internal" || value === "hybrid") {
@@ -676,7 +1328,7 @@ async function provisionEntraInline(
   tenantId: string,
   publicApiUrl: string,
 ): Promise<boolean> {
-  const spinner = ora("Provisioning Entra app registration...").start();
+  const spinner = startEaiStep("Provisioning Entra app registration...");
   try {
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
     const authSiteUrl = `http://localhost:3000/${appName}`;
@@ -1026,7 +1678,7 @@ async function createTenantAppForInit(
 
   if (!res.ok) {
     const error = await parseApiError(res);
-    out.error(`App creation failed: ${error.message}`);
+    out.error(describeAppCreationFailure(error));
     process.exit(1);
   }
 
@@ -1037,7 +1689,7 @@ async function createTenantAppForInit(
       ? String((childTenant as Record<string, unknown>).id || "")
       : "";
   if (!childTenantId) {
-    out.info(
+    out.nestedInfo(
       `Created app ${chalk.cyan(appSeed.slug)} under company tenant ${chalk.cyan(immediateParentTenantId)}.`,
     );
     return {
@@ -1047,7 +1699,7 @@ async function createTenantAppForInit(
     };
   }
 
-  out.info(
+  out.nestedInfo(
     `Created app ${chalk.cyan(appSeed.slug)} under main company ${chalk.cyan(companyTenantId)} with child company ${chalk.cyan(childTenantId)}.`,
   );
   const childTenantHomeRegion =
@@ -1298,6 +1950,7 @@ function generateObjectTypesScaffold(opts: InitOptions): string {
     ? `
     {
       name: 'Document',
+      slug: 'document',
       displayName: 'Document',
       description: 'Uploaded file with classification metadata',
       ...postgresqlResourceStorage,
@@ -1443,6 +2096,7 @@ export type ObjectTypeStatus = 'draft' | 'published' | 'deprecated';
 
 export interface ObjectTypeDefinition {
   name: string;
+  slug: string;
   displayName: string;
   description?: string;
   properties: PropertyDefinition[];
@@ -1469,6 +2123,7 @@ export const objectTypes = {
   '${tenantKey}': [
     {
       name: 'Record',
+      slug: 'record',
       displayName: 'Record',
       description: 'A sample record — replace with your domain model',
       ...postgresqlResourceStorage,

@@ -12,7 +12,9 @@ import { promisify } from "node:util";
 import inquirer from "inquirer";
 import { describe, test, beforeEach, afterEach, expect, vi } from "vitest";
 import {
+  describeAppCreationFailure,
   describeCloneFailure,
+  describeCreateFlowFailure,
   initCommand,
   isDefaultTemplateSource,
   resolveTemplateClonePlan,
@@ -1080,6 +1082,7 @@ describe("eai init", () => {
     expect(objectTypes).toContain("storageMetadataStatus: 'ready' as const");
     expect(objectTypes).toContain("export type StorageBackend");
     expect(objectTypes).toContain("export interface ObjectTypeDefinition");
+    expect(objectTypes).toContain("slug: 'record'");
     expect(objectTypes).toContain("databaseAlias: 'tenant-postgres'");
     expect(objectTypes).not.toContain("resourceapi-postgres");
     expect(objectTypes).toContain(
@@ -1345,7 +1348,7 @@ describe("eai init", () => {
 describe("describeCloneFailure", () => {
   test("explains unreachable default template repository failures", () => {
     const message = describeCloneFailure(
-      "https://github.com/eai-tools/eai-app-template.git",
+      "https://github.com/eai-support/eai-app-template.git",
       new Error(
         "Command failed: git clone ...\nremote: Repository not found.\nfatal: repository not found",
       ),
@@ -1358,13 +1361,13 @@ describe("describeCloneFailure", () => {
 
   test("explains when git is not installed", () => {
     const message = describeCloneFailure(
-      "https://github.com/eai-tools/eai-app-template.git",
+      "https://github.com/eai-support/eai-app-template.git",
       new Error("spawn git ENOENT"),
     );
 
     expect(message).toContain("`git` is required");
     expect(message).toContain("winget install --id Git.Git -e");
-    expect(message).toContain("eai-tools/eai-app-template.git");
+    expect(message).toContain("eai-support/eai-app-template.git");
   });
 
   test("passes through unrelated clone errors", () => {
@@ -1377,30 +1380,67 @@ describe("describeCloneFailure", () => {
   });
 });
 
+describe("describeAppCreationFailure", () => {
+  test("explains tenant-admin failures and links to setup guidance", () => {
+    const message = describeAppCreationFailure({
+      status: 403,
+      code: "TENANT_ADMIN_REQUIRED",
+      message: "Tenant admin role required for tenant tenant-123",
+    });
+
+    expect(message).toContain("You need tenant-admin access to create an EAI app.");
+    expect(message).toContain("eai whoami");
+    expect(message).toContain("eai tenant list --all --format json");
+    expect(message).toContain("Ask the workspace tenant-admin");
+    expect(message).toContain("https://www.enterpriseaigroup.com/docs/getting-started");
+  });
+
+  test("provides generic recovery steps for an unknown app creation error", () => {
+    const message = describeAppCreationFailure({
+      status: 500,
+      message: "Unexpected platform failure",
+    });
+
+    expect(message).toContain("eai errors list");
+    expect(message).toContain("https://www.enterpriseaigroup.com/docs/getting-started");
+  });
+});
+
+describe("describeCreateFlowFailure", () => {
+  test("adds recovery commands and the setup guide to unexpected create errors", () => {
+    const message = describeCreateFlowFailure(new Error("Browser login failed"));
+
+    expect(message).toContain("Browser login failed");
+    expect(message).toContain("eai whoami");
+    expect(message).toContain("eai errors list");
+    expect(message).toContain("https://www.enterpriseaigroup.com/docs/getting-started");
+  });
+});
+
 describe("resolveTemplateClonePlan", () => {
   test("treats only the canonical app template URL as the default source", () => {
     expect(
       isDefaultTemplateSource(
-        "https://github.com/eai-tools/eai-app-template.git",
+        "https://github.com/eai-support/eai-app-template.git",
       ),
     ).toBe(true);
     expect(
       isDefaultTemplateSource(
-        "https://github.com/eai-tools/old-internal-template.git",
+        "https://github.com/eai-support/old-internal-template.git",
       ),
     ).toBe(false);
   });
 
   test("returns the linked-source pin for the default template", () => {
     const plan = resolveTemplateClonePlan(
-      "https://github.com/eai-tools/eai-app-template.git",
+      "https://github.com/eai-support/eai-app-template.git",
     );
     expect(plan.cloneSource).toBe(
-      "https://github.com/eai-tools/eai-app-template.git",
+      "https://github.com/eai-support/eai-app-template.git",
     );
     expect(plan.pinnedCommit).toBe(linkedSources.appTemplate.commit);
     expect(plan.displaySource).toBe(
-      `eai-tools/eai-app-template@${linkedSources.appTemplate.commit.slice(0, 7)}`,
+      `eai-support/eai-app-template@${linkedSources.appTemplate.commit.slice(0, 7)}`,
     );
   });
 

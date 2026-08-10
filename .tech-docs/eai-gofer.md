@@ -56,7 +56,7 @@ Optional helpers include `0a_problem_validation`, `7_gofer_save`,
 
 When gofer helps generate or modify an EAI app, it should:
 
-1. Use `https://github.com/eai-tools/eai-app-template` as the canonical public
+1. Use `https://github.com/eai-support/eai-app-template` as the canonical public
    scaffold.
 2. Inspect `src/eai.config`, `src/eai.blocks.tsx`, `src/hooks`, and the
    platform service docs before inventing calls.

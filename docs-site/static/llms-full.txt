@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.8.3.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.11.0.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -17,13 +17,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 
@@ -44,48 +44,51 @@ Usage: eai [options] [command]
 Enterprise AI Platform CLI — scaffold, seed, deploy, and manage applications
 
 Options:
-  -V, --cli-version      output the version number
-  --simple               Plain text output without colors or symbols (for screen
-                         readers)
-  --no-color             Disable colored output
-  --color                Force colored output
-  --profile <name>       Use a locally configured private profile
-  --describe             Output JSON schema of all commands
-  -h, --help             display help for command
+  -V, --cli-version        output the version number
+  --simple                 Plain text output without colors or symbols (for
+                           screen readers)
+  --no-color               Disable colored output
+  --color                  Force colored output
+  --profile <name>         Use a locally configured private profile
+  --describe               Output JSON schema of all commands
+  -h, --help               display help for command
 
 Commands:
-  init [options] [name]  Scaffold a new application
-  dev [options]          Start local development server
-  login [options]        Authenticate with Entra CIAM
-  logout                 Clear stored authentication tokens
-  env                    Manage environment variables
-  types                  Manage Object Type definitions
-  tenant                 Manage tenants on the platform
-  user                   Manage users on the platform
-  resources              CRUD operations on platform resources
-  app|vertical           Manage apps under the active company tenant
-  chat                   Chat with AI workflows
-  workflow               Provision app workflow configs and inspect AI runtime
-                         workflow bindings
-  docs                   Document upload, classification, and indexing
-  deploy                 Deployment management
-  runtime                Validate the provider-neutral EAI app runtime contract
-  verify [options]       Run platform connectivity checks
-  doctor [options]       Diagnose common issues and suggest fixes
-  whoami                 Show auth status and tenant info
-  update [options]       Check for and install CLI updates
-  provision              Provision platform resources for this app
-  gofer                  Inspect and refresh Gofer-managed project assets
-  template               Preview application template and UI component drift for
-                         the current project
-  blocks                 Discover AI-readable EAI UI block manifests
-  publicapi              Call authorized PublicAPI V4 routes directly
-  errors                 Explain EAI CLI errors and agent-safe recovery steps
-  agent                  Show AI-agent discovery and recovery guidance
-  help [command]         display help for command
+  init [options] [name]    Scaffold a new application
+  create [options] [name]  Guide a new builder through EAI setup and create an
+                           application
+  dev [options]            Start local development server
+  login [options]          Authenticate with Entra CIAM
+  logout                   Clear stored authentication tokens
+  env                      Manage environment variables
+  types                    Manage Object Type definitions
+  tenant                   Manage tenants on the platform
+  user                     Manage users on the platform
+  resources                CRUD operations on platform resources
+  app|vertical             Manage apps under the active company tenant
+  chat                     Chat with AI workflows
+  workflow                 Provision app workflow configs and inspect AI runtime
+                           workflow bindings
+  docs                     Document upload, classification, and indexing
+  deploy                   Deployment management
+  runtime                  Validate the provider-neutral EAI app runtime
+                           contract
+  verify [options]         Run platform connectivity checks
+  doctor [options]         Diagnose common issues and suggest fixes
+  whoami                   Show auth status and tenant info
+  update [options]         Check for and install CLI updates
+  provision                Provision platform resources for this app
+  gofer                    Inspect and refresh Gofer-managed project assets
+  template                 Preview application template and UI component drift
+                           for the current project
+  blocks                   Discover AI-readable EAI UI block manifests
+  publicapi                Call authorized PublicAPI V4 routes directly
+  errors                   Explain EAI CLI errors and agent-safe recovery steps
+  agent                    Show AI-agent discovery and recovery guidance
+  help [command]           display help for command
 
 Getting Started:
-  eai init my-app     Scaffold an app with Gofer AI CLI assets
+  eai create my-app        Scaffold an app with Gofer AI CLI assets
   eai login                Authenticate with Entra CIAM
   eai provision entra      Create Entra app registration for end-user auth
   eai provision entra --deauthorize --force Clean up app auth registration
@@ -199,7 +202,7 @@ Notes:
   - The CLI installs from the public npm registry by default.
   - Recommended install: npm install -g eai-cli
   - Canonical package install: npm install -g @enterpriseai/cli
-  - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+  - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
   - `eai update --check` previews CLI, Gofer, and app-template status without writing files.
   - `eai update` upgrades the CLI, refreshes safe Gofer-managed files in the current EAI project, and reports app-template drift.
   - Use `eai gofer refresh --check` to preview Gofer-managed file changes separately.
@@ -381,7 +384,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.8.3** (2026-07-30): Pin generated app template with multi-tab submission ownership.
+The current CLI release is **v3.11.0** (2026-08-10): Add canonical object type routing identifiers.
 
 
 ## What The Pieces Do
@@ -409,13 +412,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 
@@ -427,7 +430,7 @@ cd task-tracker
 npm install
 ```
 
-`eai init` uses `https://github.com/eai-tools/eai-app-template` by default and
+`eai init` uses `https://github.com/eai-support/eai-app-template` by default and
 installs gofer workflow assets unless you pass `--no-gofer`.
 If you already created and entered a project folder, run `eai init`, enter the
 kebab-case app name, and choose the current-folder option. Scripts can use
@@ -495,10 +498,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.8.3 |
-| Released | 2026-07-30 |
-| Last Material Change | Pin generated app template with multi-tab submission ownership |
-| Source Commit | `315f54dae400e3ff2d79da5d37e4c73481e90fc9` |
+| Version | 3.11.0 |
+| Released | 2026-08-10 |
+| Last Material Change | Add canonical object type routing identifiers |
+| Source Commit | `1181967cbc4905cf4b88ea07a719f7d5f2113879` |
 
 
 ## Install
@@ -518,13 +521,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 
@@ -656,7 +659,7 @@ Optional helpers include `0a_problem_validation`, `7_gofer_save`,
 
 When gofer helps generate or modify an EAI app, it should:
 
-1. Use `https://github.com/eai-tools/eai-app-template` as the canonical public
+1. Use `https://github.com/eai-support/eai-app-template` as the canonical public
    scaffold.
 2. Inspect `src/eai.config`, `src/eai.blocks.tsx`, `src/hooks`, and the
    platform service docs before inventing calls.
@@ -1718,7 +1721,12 @@ Public documentation only describes generic runtime environment variables:
 |----------|-------------|
 | `NO_COLOR` | Disable colored terminal output |
 | `FORCE_COLOR` | Force colored terminal output |
+| `EAI_NO_SPLASH` | Set to `1` to suppress the startup EAI wordmark |
+| `EAI_NO_ANIMATION` | Set to `1` to print the startup wordmark without line animation |
 | `NODE_ENV` | Standard Node.js runtime mode |
+
+`EAI_NO_SPLASH` and `EAI_NO_ANIMATION` are local terminal preferences read from
+the CLI process only. They have no App Configuration or infrastructure mapping.
 
 Do not put credentials, tokens, endpoint URLs, or tenant-specific values into
 committed files. Automation credentials should be stored in your CI provider's
@@ -1880,7 +1888,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.8.3. The same catalog powers human stderr output, JSON output for AI
+v3.11.0. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -1897,6 +1905,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E205` | `child_relation_invalid` | The supplied tenant is not an immediate child of the supplied parent. |
 | `E245` | `user_invite_external_service_existing_member` | Tenant member invite failed, but an existing member role repair may be available. |
 | `E246` | `app_token_tenant_context_required` | App-token platform user lookup is missing tenant context. |
+| `E247` | `calling_application_not_authorized` | The application making this request is not authorized for the tenant. |
 | `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
@@ -2166,6 +2175,41 @@ are explicitly listed, and stop when a stop condition matches.
 - server code
 - active tenant slug
 - deployed PublicAPI/AdminAPI versions if visible
+
+## E247: The application making this request is not authorized for the tenant.
+
+| Field | Value |
+| --- | --- |
+| Reason | `calling_application_not_authorized` |
+| Category | `app_provisioning` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The authorization decision applies to the client ID in the current CLI token.
+- It does not evaluate a different tenant app client, even when provision-me was run while diagnosing that app.
+- If the current user already has direct membership, provisioning is unnecessary.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the current CLI identity, active tenant, and calling client context.
+- `eai app auth status <app-key> --tenant-id <tenant-id> --client-id <app-client-id> --format json` (read-only) — Inspect a different app client without changing tenant authorization.
+
+### Fixes
+
+- `Ask platform support to authorize the reported calling CLI client only if provision-me is required` (changes state) — Repair the caller-specific authorization without changing the target app or creating credentials.
+
+### Stop Conditions
+
+- Authorization state has not changed.
+
+### Escalation Evidence
+
+- request ID
+- CLI version
+- tenant ID
+- callingApplication.clientId
+- reason code
 
 ## E242: Tenant data-plane authorization incomplete.
 
@@ -2522,7 +2566,7 @@ The v4 surface is grouped by domain prefix:
 Scaffold a new application from the EAI app template.
 
 **Options**:
-- `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-tools/eai-app-template.git`)
+- `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-support/eai-app-template.git`)
 - `--skip-prompts` — Use defaults without interactive prompts
 - `--current-dir` — Scaffold into the current directory instead of creating `./<name>`
 - `--company-tenant <id>` — Main company tenant ID that owns this app
@@ -3540,7 +3584,7 @@ safe repo-local project assets when the command is run inside an EAI project.
 - `--no-project-refresh` — Skip Gofer/app-template maintenance for the current project
 
 **Primary update channel**: npmjs package `eai-cli` or `@enterpriseai/cli`.
-**Static fallback channel**: `https://eai-tools.github.io/eai/registry/@enterpriseai/cli`.
+**Static fallback channel**: `https://eai-support.github.io/eai/registry/@enterpriseai/cli`.
 
 Recommended install:
 
@@ -3557,13 +3601,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 

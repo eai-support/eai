@@ -42,7 +42,7 @@ const ALL_SURFACES = [
   'codex-config',
 ];
 
-const PUBLIC_SITE_URL = 'https://eai-tools.github.io/eai-gofer';
+const PUBLIC_SITE_URL = 'https://eai-support.github.io/eai-gofer';
 const PUBLIC_RELEASES_URL = `${PUBLIC_SITE_URL}/releases`;
 const PUBLIC_PLUGIN_URL = `${PUBLIC_RELEASES_URL}/plugins/eai-gofer`;
 const SURFACE_WORKSPACE_HOSTS = {

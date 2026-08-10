@@ -1,6 +1,6 @@
 # EAI CLI Documentation
 
-> Release-aligned documentation surfaces for `@enterpriseai/cli` v3.8.3.
+> Release-aligned documentation surfaces for `@enterpriseai/cli` v3.11.0.
 
 ## Install
 
@@ -17,13 +17,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 

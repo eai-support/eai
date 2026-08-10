@@ -83,8 +83,8 @@ same source repository and release tag.
 
 ## Trust Signals
 
-- Source: https://github.com/eai-tools/eai
-- Documentation: https://eai-tools.github.io/eai/
+- Source: https://github.com/eai-support/eai
+- Documentation: https://eai-support.github.io/eai/
 - License: Apache-2.0
 - Runtime: Node.js 20 or newer
 - Publishing: GitHub Actions trusted publishing with npm provenance

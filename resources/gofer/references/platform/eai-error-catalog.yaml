@@ -9,7 +9,7 @@ catalog:
     likelyCause: Local workstation or container is missing the CLI.
     recovery:
       - 'npm install -g eai-cli'
-      - 'If npmjs is unavailable: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/'
+      - 'If npmjs is unavailable: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/'
       - 'eai --version'
     nextGate: cli_installed
   - errorId: EAI_CLI_OUTDATED

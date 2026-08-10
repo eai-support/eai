@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-07-30T05:06:24.181Z"
-source_commit: "315f54dae400e3ff2d79da5d37e4c73481e90fc9"
+generated_at: "2026-08-10T08:13:06.915Z"
+source_commit: "1181967cbc4905cf4b88ea07a719f7d5f2113879"
 ---
 # EAI CLI — API Reference
 
@@ -40,7 +40,7 @@ The v4 surface is grouped by domain prefix:
 Scaffold a new application from the EAI app template.
 
 **Options**:
-- `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-tools/eai-app-template.git`)
+- `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-support/eai-app-template.git`)
 - `--skip-prompts` — Use defaults without interactive prompts
 - `--current-dir` — Scaffold into the current directory instead of creating `./<name>`
 - `--company-tenant <id>` — Main company tenant ID that owns this app
@@ -1058,7 +1058,7 @@ safe repo-local project assets when the command is run inside an EAI project.
 - `--no-project-refresh` — Skip Gofer/app-template maintenance for the current project
 
 **Primary update channel**: npmjs package `eai-cli` or `@enterpriseai/cli`.
-**Static fallback channel**: `https://eai-tools.github.io/eai/registry/@enterpriseai/cli`.
+**Static fallback channel**: `https://eai-support.github.io/eai/registry/@enterpriseai/cli`.
 
 Recommended install:
 
@@ -1075,13 +1075,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 

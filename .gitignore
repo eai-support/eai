@@ -16,7 +16,7 @@ mcp_sharepoint.log
 # Astro build cache
 docs/.astro/
 
-# Homebrew tap (separate repository: eai-tools/homebrew-tap)
+# Homebrew tap (separate repository: eai-support/homebrew-tap)
 homebrew-tap/
 
 # Gofer runtime files (auto-generated, should not be committed)

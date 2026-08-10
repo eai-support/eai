@@ -274,8 +274,8 @@ export function matchPublishedType(
   const requestedSlug = toObjectTypeSlug(requestedType);
   const matchedType = schemaTypes.find((schemaType) => (
     schemaType.name === requestedType
+    || schemaType.slug === requestedType
     || schemaType.slug === requestedSlug
-    || toObjectTypeSlug(schemaType.name) === requestedSlug
   ));
 
   return {

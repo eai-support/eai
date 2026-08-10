@@ -63,6 +63,40 @@ describe('error guidance catalog', () => {
     expect(guidance?.retry.maxAttempts).toBe(3);
   });
 
+  test('calling application guidance does not reinterpret provision-me as target app authorization', () => {
+    const guidance = findGuidance({
+      operation: 'user provision-me',
+      status: 403,
+      serverCode: 'CALLING_APPLICATION_NOT_AUTHORIZED',
+      message: 'The calling application is not authorized for this tenant.',
+    });
+
+    expect(guidance?.code).toBe('E247');
+    expect(guidance?.why.join(' ')).toContain('does not evaluate a different tenant app client');
+    expect(guidance?.diagnostics.map((diagnostic) => diagnostic.command)).toContain(
+      'eai app auth status <app-key> --tenant-id <tenant-id> --client-id <app-client-id> --format json',
+    );
+    expect(guidance?.fixes.map((fix) => fix.command)).not.toContain('eai provision entra --force --debug');
+  });
+
+  test('tenant app creation permission failures explain the admin recovery path', () => {
+    const guidance = findGuidance({
+      operation: 'tenant app create',
+      status: 403,
+      serverCode: 'TENANT_ADMIN_REQUIRED',
+      message: 'Tenant admin role required for tenant tenant-123',
+    });
+
+    expect(guidance?.code).toBe('E204');
+    expect(guidance?.title).toContain('tenant-admin access to create an EAI app');
+    expect(guidance?.fixes.map((fix) => fix.command)).toEqual(
+      expect.arrayContaining([
+        'eai tenant select <tenant>',
+        'Ask the workspace tenant-admin to grant your account tenant-admin access',
+      ]),
+    );
+  });
+
   test('permission guidance sends normal user addition through user invite before child bootstrap repair', () => {
     const guidance = findGuidanceByCodeOrReason('permission_denied');
 
