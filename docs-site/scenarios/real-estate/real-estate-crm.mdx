@@ -177,8 +177,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'showings', targetObjectType: 'Showing', cardinality: 'one-to-many' as const },
-        { name: 'offers', targetObjectType: 'Offer', cardinality: 'one-to-many' as const },
+        { name: 'showings', targetObjectType: 'showing', cardinality: 'one-to-many' as const },
+        { name: 'offers', targetObjectType: 'offer', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -210,7 +210,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'lead', targetObjectType: 'Lead', cardinality: 'many-to-one' as const },
+        { name: 'lead', targetObjectType: 'lead', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -233,7 +233,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'lead', targetObjectType: 'Lead', cardinality: 'many-to-one' as const },
+        { name: 'lead', targetObjectType: 'lead', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

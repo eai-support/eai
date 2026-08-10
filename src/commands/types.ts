@@ -13,6 +13,7 @@ import ora from "ora";
 import chalk from "chalk";
 import inquirer from "inquirer";
 import {
+  canonicalizeObjectTypeRelationshipTargets,
   findProjectRoot,
   loadObjectTypes,
   validateObjectTypeDefinitions,
@@ -1579,6 +1580,7 @@ Examples:
     try {
       objectTypes = await loadObjectTypes(root);
       validateObjectTypeDefinitions(objectTypes);
+      objectTypes = canonicalizeObjectTypeRelationshipTargets(objectTypes);
       const totalTypes = Object.values(objectTypes).reduce(
         (sum, types) => sum + types.length,
         0,
@@ -2114,6 +2116,7 @@ Examples:
     try {
       objectTypes = await loadObjectTypes(root);
       validateObjectTypeDefinitions(objectTypes);
+      objectTypes = canonicalizeObjectTypeRelationshipTargets(objectTypes);
       spinner.succeed("Loaded Object Types");
     } catch (err) {
       spinner.fail("Failed to load Object Types");
@@ -2353,6 +2356,7 @@ Examples:
     try {
       objectTypes = await loadObjectTypes(root);
       validateObjectTypeDefinitions(objectTypes);
+      objectTypes = canonicalizeObjectTypeRelationshipTargets(objectTypes);
       spinner?.succeed("Loaded local types");
     } catch (err) {
       spinner?.fail("Failed to load local types");

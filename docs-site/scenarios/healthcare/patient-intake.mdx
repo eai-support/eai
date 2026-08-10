@@ -171,8 +171,8 @@ export const objectTypes = {
         { name: 'insuranceId', type: 'text' as const, required: true, indexed: true },
       ],
       linkTypes: [
-        { name: 'assessments', targetObjectType: 'TriageAssessment', cardinality: 'one-to-many' as const },
-        { name: 'appointments', targetObjectType: 'Appointment', cardinality: 'one-to-many' as const },
+        { name: 'assessments', targetObjectType: 'triage-assessment', cardinality: 'one-to-many' as const },
+        { name: 'appointments', targetObjectType: 'appointment', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -197,7 +197,7 @@ export const objectTypes = {
         { name: 'heartRate', type: 'number' as const, required: true },
       ],
       linkTypes: [
-        { name: 'patient', targetObjectType: 'Patient', cardinality: 'many-to-one' as const },
+        { name: 'patient', targetObjectType: 'patient', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -232,7 +232,7 @@ export const objectTypes = {
         },
       ],
       linkTypes: [
-        { name: 'patient', targetObjectType: 'Patient', cardinality: 'many-to-one' as const },
+        { name: 'patient', targetObjectType: 'patient', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

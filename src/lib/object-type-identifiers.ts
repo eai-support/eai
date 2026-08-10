@@ -10,7 +10,8 @@ export type ObjectTypeIdentifierErrorCode =
   | 'OBJECT_TYPE_NAME_NON_CANONICAL'
   | 'OBJECT_TYPE_SLUG_MISSING'
   | 'OBJECT_TYPE_SLUG_NON_CANONICAL'
-  | 'OBJECT_TYPE_SLUG_DERIVATION_MISMATCH';
+  | 'OBJECT_TYPE_SLUG_DERIVATION_MISMATCH'
+  | 'OBJECT_TYPE_LINK_TARGET_UNRESOLVED';
 
 export class ObjectTypeIdentifierError extends Error {
   public constructor(
@@ -55,6 +56,14 @@ export function deriveObjectTypeSlugV1(name: string): string {
     .toLowerCase();
 }
 
+/** Return whether a value is safe to use as an exact Object Type route slug. */
+export function isCanonicalObjectTypeSlug(value: string): boolean {
+  return (
+    OBJECT_TYPE_SLUG_PATTERN.test(value) &&
+    !RESERVED_OBJECT_TYPE_SLUGS.has(value)
+  );
+}
+
 export function validateObjectTypeIdentifierPair(
   input: ObjectTypeIdentifierInput,
   options: ObjectTypeIdentifierValidationOptions = {},
@@ -80,10 +89,7 @@ export function validateObjectTypeIdentifierPair(
     };
   }
 
-  if (
-    !OBJECT_TYPE_SLUG_PATTERN.test(input.slug) ||
-    RESERVED_OBJECT_TYPE_SLUGS.has(input.slug)
-  ) {
+  if (!isCanonicalObjectTypeSlug(input.slug)) {
     throw new ObjectTypeIdentifierError(
       'OBJECT_TYPE_SLUG_NON_CANONICAL',
       `Object Type slug "${input.slug}" must be a non-reserved canonical kebab-case slug.`,

@@ -177,8 +177,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'milestones', targetObjectType: 'Milestone', cardinality: 'one-to-many' as const },
-        { name: 'complianceChecks', targetObjectType: 'ComplianceCheck', cardinality: 'one-to-many' as const },
+        { name: 'milestones', targetObjectType: 'milestone', cardinality: 'one-to-many' as const },
+        { name: 'complianceChecks', targetObjectType: 'compliance-check', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -210,7 +210,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'grant', targetObjectType: 'Grant', cardinality: 'many-to-one' as const },
+        { name: 'grant', targetObjectType: 'grant', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -241,7 +241,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'grant', targetObjectType: 'Grant', cardinality: 'many-to-one' as const },
+        { name: 'grant', targetObjectType: 'grant', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,

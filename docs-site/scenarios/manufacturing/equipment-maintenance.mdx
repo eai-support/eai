@@ -175,8 +175,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'maintenanceSchedules', targetObjectType: 'MaintenanceSchedule', cardinality: 'one-to-many' as const },
-        { name: 'repairLogs', targetObjectType: 'RepairLog', cardinality: 'one-to-many' as const },
+        { name: 'maintenanceSchedules', targetObjectType: 'maintenance-schedule', cardinality: 'one-to-many' as const },
+        { name: 'repairLogs', targetObjectType: 'repair-log', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -201,7 +201,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'equipment', targetObjectType: 'Equipment', cardinality: 'many-to-one' as const },
+        { name: 'equipment', targetObjectType: 'equipment', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -230,7 +230,7 @@ export const objectTypes = {
         { name: 'repairedDate', type: 'date' as const, required: true, indexed: true },
       ],
       linkTypes: [
-        { name: 'equipment', targetObjectType: 'Equipment', cardinality: 'many-to-one' as const },
+        { name: 'equipment', targetObjectType: 'equipment', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,

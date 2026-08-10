@@ -195,8 +195,8 @@ export const objectTypes = {
         },
       ],
       linkTypes: [
-        { name: 'adjudications', targetObjectType: 'Adjudication', cardinality: 'one-to-many' as const },
-        { name: 'payments', targetObjectType: 'Payment', cardinality: 'one-to-many' as const },
+        { name: 'adjudications', targetObjectType: 'adjudication', cardinality: 'one-to-many' as const },
+        { name: 'payments', targetObjectType: 'payment', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -232,7 +232,7 @@ export const objectTypes = {
         { name: 'reviewDate', type: 'date' as const, required: true },
       ],
       linkTypes: [
-        { name: 'claim', targetObjectType: 'Claim', cardinality: 'many-to-one' as const },
+        { name: 'claim', targetObjectType: 'claim', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -275,7 +275,7 @@ export const objectTypes = {
         { name: 'payee', type: 'text' as const, required: true },
       ],
       linkTypes: [
-        { name: 'claim', targetObjectType: 'Claim', cardinality: 'many-to-one' as const },
+        { name: 'claim', targetObjectType: 'claim', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

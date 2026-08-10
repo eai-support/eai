@@ -4,6 +4,7 @@ import {
   OBJECT_TYPE_ROUTING_CONTRACT_VERSION,
   ObjectTypeIdentifierError,
   deriveObjectTypeSlugV1,
+  isCanonicalObjectTypeSlug,
   validateObjectTypeIdentifierPair,
 } from '../../src/lib/object-type-identifiers.js';
 
@@ -45,6 +46,13 @@ describe('Object Type identifier contract', () => {
         slug,
       });
     }
+  });
+
+  it('accepts only non-reserved kebab-case transport slugs', () => {
+    expect(isCanonicalObjectTypeSlug('opameasure')).toBe(true);
+    expect(isCanonicalObjectTypeSlug('opa-measure')).toBe(true);
+    expect(isCanonicalObjectTypeSlug('OPAMeasure')).toBe(false);
+    expect(isCanonicalObjectTypeSlug('operations')).toBe(false);
   });
 
   it.each([

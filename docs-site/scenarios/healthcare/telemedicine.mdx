@@ -182,8 +182,8 @@ export const objectTypes = {
         { name: 'duration', type: 'number' as const, required: false },
       ],
       linkTypes: [
-        { name: 'provider', targetObjectType: 'Provider', cardinality: 'many-to-one' as const },
-        { name: 'patientRecord', targetObjectType: 'PatientRecord', cardinality: 'many-to-one' as const },
+        { name: 'provider', targetObjectType: 'provider', cardinality: 'many-to-one' as const },
+        { name: 'patientRecord', targetObjectType: 'patient-record', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -208,7 +208,7 @@ export const objectTypes = {
         { name: 'availability', type: 'text' as const, required: true },
       ],
       linkTypes: [
-        { name: 'consultations', targetObjectType: 'Consultation', cardinality: 'one-to-many' as const },
+        { name: 'consultations', targetObjectType: 'consultation', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -234,7 +234,7 @@ export const objectTypes = {
         { name: 'lastVisitDate', type: 'date' as const, required: false },
       ],
       linkTypes: [
-        { name: 'consultations', targetObjectType: 'Consultation', cardinality: 'one-to-many' as const },
+        { name: 'consultations', targetObjectType: 'consultation', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,

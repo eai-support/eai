@@ -177,8 +177,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'tenants', targetObjectType: 'Tenant', cardinality: 'one-to-many' as const },
-        { name: 'leases', targetObjectType: 'Lease', cardinality: 'one-to-many' as const },
+        { name: 'tenants', targetObjectType: 'tenant', cardinality: 'one-to-many' as const },
+        { name: 'leases', targetObjectType: 'lease', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -194,7 +194,7 @@ export const objectTypes = {
         { name: 'unit', type: 'text' as const, required: true },
       ],
       linkTypes: [
-        { name: 'property', targetObjectType: 'Property', cardinality: 'many-to-one' as const },
+        { name: 'property', targetObjectType: 'property', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -215,8 +215,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'property', targetObjectType: 'Property', cardinality: 'many-to-one' as const },
-        { name: 'tenant', targetObjectType: 'Tenant', cardinality: 'many-to-one' as const },
+        { name: 'property', targetObjectType: 'property', cardinality: 'many-to-one' as const },
+        { name: 'tenant', targetObjectType: 'tenant', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

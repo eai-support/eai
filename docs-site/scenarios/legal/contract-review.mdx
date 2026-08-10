@@ -182,8 +182,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'reviewTasks', targetObjectType: 'ReviewTask', cardinality: 'one-to-many' as const },
-        { name: 'approvals', targetObjectType: 'Approval', cardinality: 'one-to-many' as const },
+        { name: 'reviewTasks', targetObjectType: 'review-task', cardinality: 'one-to-many' as const },
+        { name: 'approvals', targetObjectType: 'approval', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -214,7 +214,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'contract', targetObjectType: 'Contract', cardinality: 'many-to-one' as const },
+        { name: 'contract', targetObjectType: 'contract', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -245,7 +245,7 @@ export const objectTypes = {
         { name: 'decidedDate', type: 'date' as const, required: false, indexed: true },
       ],
       linkTypes: [
-        { name: 'contract', targetObjectType: 'Contract', cardinality: 'many-to-one' as const },
+        { name: 'contract', targetObjectType: 'contract', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,
