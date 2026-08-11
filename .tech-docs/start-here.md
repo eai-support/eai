@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.11.1** (2026-08-11): Canonical Object Type routing.
+The current CLI release is **v3.11.2** (2026-08-11): Migrate PublicAPI consumers to v4.
 
 
 ## What The Pieces Do
