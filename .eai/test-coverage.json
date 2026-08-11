@@ -16,6 +16,7 @@
             "src/lib/gofer-installer.ts",
             "scripts/sync-gofer-resources.cjs",
             "resources/gofer/config/object-type-routing.json",
+            "resources/gofer/contracts/object-type-routing-v1.json",
             "resources/gofer/schemas/object-type-identifier-audit-v1.schema.json",
             "resources/gofer/schemas/object-type-routing-phase-bundle-v1.schema.json",
             "tests/unit/object-type-identifiers.test.ts",

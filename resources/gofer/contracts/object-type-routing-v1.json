@@ -18,8 +18,12 @@
   },
   "derivation": {
     "algorithm": "eai.object-type-routing/v1",
+    "establishedNameSlugs": {
+      "GitHubConnection": "github-connection"
+    },
     "steps": [
       "trim",
+      "apply-established-name-slug-mapping",
       "split-acronym-before-title-word",
       "split-lower-or-digit-before-upper",
       "replace-ascii-whitespace-or-underscore-runs",
@@ -32,7 +36,7 @@
       {"input": "APIKey", "output": "api-key", "manifestNameValid": true},
       {"input": "HTTPFeedItem", "output": "http-feed-item", "manifestNameValid": true},
       {"input": "V2FeedItem", "output": "v2-feed-item", "manifestNameValid": true},
-      {"input": "GitHubConnection", "output": "git-hub-connection", "manifestNameValid": true},
+      {"input": "GitHubConnection", "output": "github-connection", "manifestNameValid": true},
       {"input": "Sent_Post", "output": "sent-post", "manifestNameValid": false},
       {"input": "  Feed  Item  ", "output": "feed-item", "manifestNameValid": false},
       {"input": "Draft--Item", "output": "draft-item", "manifestNameValid": false},

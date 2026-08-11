@@ -5,8 +5,8 @@ export const OBJECT_TYPE_ROUTING_CONTRACT_VERSION = 'eai.object-type-routing/v1'
 const OBJECT_TYPE_NAME_PATTERN = /^[A-Z][A-Za-z0-9]*$/;
 const OBJECT_TYPE_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const RESERVED_OBJECT_TYPE_SLUGS = new Set(['operations', 'query', 'search', 'storage']);
+const ESTABLISHED_NAME_SLUGS = new Map([['GitHubConnection', 'github-connection']]);
 const SUPPORTED_LEGACY_IDENTIFIER_PAIRS = new Set([
-  'GitHubConnection\u0000github-connection',
   'ObservabilityAISummary\u0000observability-aisummary',
   'OPAMeasure\u0000opameasure',
 ]);
@@ -51,8 +51,11 @@ export interface ObjectTypeIdentifierValidationOptions {
  * validated separately and may not use a normalized name or a reserved slug.
  */
 export function deriveObjectTypeSlugV1(name: string): string {
-  return name
-    .replace(/^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/g, '')
+  const normalizedName = name.replace(/^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/g, '');
+  const establishedSlug = ESTABLISHED_NAME_SLUGS.get(normalizedName);
+  if (establishedSlug) return establishedSlug;
+
+  return normalizedName
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
     .replace(/[\t\n\v\f\r ]+|_+/g, '-')
