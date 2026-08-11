@@ -316,7 +316,7 @@ Diagnostics:
       process.exit(0);
     }
 
-    let publicApiUrl = await resolvePublicApiUrl(root);
+    const publicApiUrl = await resolvePublicApiUrl(root);
     let tenantId: string;
     let tenantSlug: string | undefined;
     let userOid: string | undefined;
