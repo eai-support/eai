@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.11.2 |
+| Version | 3.11.3 |
 | Released | 2026-08-11 |
-| Last Material Change | Migrate PublicAPI consumers to v4 |
-| Source Commit | `05cff8c28a0c5a8e713f488bf8861e62baa637b8` |
+| Last Material Change | Canonical GitHub connection slug derivation and refreshed app template source |
+| Source Commit | `e469c44e2f77cd43bf57d69f8ddde0dd510e2156` |
 
 
 ## Install
