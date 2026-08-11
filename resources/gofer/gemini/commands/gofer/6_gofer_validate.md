@@ -319,6 +319,19 @@ Validation MUST treat the closed-loop and loop audits as objective gates:
 - If the audit only reports low-severity warnings with no recommended reopen
   stage, continue but record them in the validation report.
 
+## Object Type Identifier Contract
+
+- Preserve PascalCase source/model `name` and exact lowercase kebab-case
+  transport/storage `slug` as distinct identifiers.
+- Generated `linkTypes[].targetObjectType`, runtime `target_type`, paths, and
+  governed v4 fields contain exact stored slugs.
+- Resolve same-manifest model-name shorthand through the declared slug before
+  publication; reject unresolved names instead of guessing.
+- Use the shared platform SDK for app routes. Never hand-write v4 resource
+  paths or add a local slugifier.
+- Historical stored slugs are authoritative. Never normalize, alias, or rename
+  them to match current derivation.
+
 ---
 
 # Phase A — Rubric Validation

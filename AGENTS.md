@@ -15,6 +15,21 @@
 - **Language**: TypeScript
 - **Package Manager**: npm
 
+## Object Type Identifier Contract
+
+- Keep the PascalCase source/model `name` (for example `BoardAppUser`) distinct
+  from its explicit lowercase kebab-case transport `slug`
+  (`board-app-user`). Do not convert every field to one case.
+- Emitted/persisted `linkTypes[].targetObjectType`, runtime `target_type`, path
+  parameters, and governed v4 query fields contain exact stored slugs.
+- A same-manifest PascalCase relationship target is source shorthand only. The
+  CLI must resolve it through the target's declared `slug` before diffing or
+  seeding; it must reject an unresolved model name instead of guessing.
+- Historical stored slugs are authoritative. Do not silently re-derive,
+  normalize, alias, or rename them.
+- App feature code uses the shared SDK for route construction. CLI code must
+  not encourage hand-written v4 resource paths or app-local slugifiers.
+
 ## Commands
 
 - **Build**: `npm run build`

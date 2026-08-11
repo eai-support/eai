@@ -11,6 +11,11 @@
 
 See @AGENTS.md for project conventions, commands, and code style.
 
+The Object Type identifier contract in `AGENTS.md` is mandatory for CLI code,
+docs, scaffolds, and bundled Gofer instructions: model names are PascalCase,
+transport and relationship identifiers are exact stored slugs, and historical
+slugs must never be re-derived or renamed.
+
 ## Workflow
 
 1. **Plan First**

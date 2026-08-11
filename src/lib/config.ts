@@ -116,8 +116,9 @@ export interface StorageBindingDefinition {
 }
 
 export interface ObjectTypeDefinition {
+  /** PascalCase configuration/model identifier; never emitted as a v4 slug. */
   name: string;
-  /** Required for new source manifests; optional in the TypeScript shape for legacy reads. */
+  /** Exact stored transport identifier; required for new source, legacy-readable here. */
   slug?: string;
   displayName: string;
   description?: string;
