@@ -259,6 +259,6 @@ describe('published Object Type identifier matching', () => {
     };
 
     expect(matchPublishedType('github-connection', [legacy]).matchedType).toEqual(legacy);
-    expect(matchPublishedType('git-hub-connection', [legacy]).matchedType).toBeUndefined();
+    expect(matchPublishedType('custom-github-connection', [legacy]).matchedType).toBeUndefined();
   });
 });

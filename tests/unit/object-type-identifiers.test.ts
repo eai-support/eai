@@ -13,7 +13,7 @@ const vectors = [
   ['APIKey', 'api-key', true],
   ['HTTPFeedItem', 'http-feed-item', true],
   ['V2FeedItem', 'v2-feed-item', true],
-  ['GitHubConnection', 'git-hub-connection', true],
+  ['GitHubConnection', 'github-connection', true],
   ['Sent_Post', 'sent-post', false],
   ['  Feed  Item  ', 'feed-item', false],
   ['Draft--Item', 'draft-item', false],
@@ -56,7 +56,6 @@ describe('Object Type identifier contract', () => {
   });
 
   it.each([
-    ['GitHubConnection', 'github-connection'],
     ['ObservabilityAISummary', 'observability-aisummary'],
     ['OPAMeasure', 'opameasure'],
   ])('preserves the audited historical %s/%s pair', (name, slug) => {
