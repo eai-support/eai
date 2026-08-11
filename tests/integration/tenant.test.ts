@@ -1149,6 +1149,7 @@ describe('active tenant PublicAPI env sync', () => {
         previousPublicApiUrl: DEFAULT_PUBLIC_API_URL,
         homeRegion: 'eu',
       });
+      expect(context.publicApiUrl).toBe('https://api.eu.myenterprise.ai/public');
       expect(buildPublicApiEnvSyncNotice(context.publicApiEnvSync)).toEqual({
         level: 'warn',
         message:
@@ -1158,6 +1159,7 @@ describe('active tenant PublicAPI env sync', () => {
       expect(storeTokensSpy).toHaveBeenCalledWith(expect.objectContaining({
         activeTenantId: 'tenant-eu',
         activeTenantHomeRegion: 'eu',
+        publicApiUrl: 'https://api.eu.myenterprise.ai/public',
       }));
       await expect(readFile(join(projectRoot, '.env.local'), 'utf-8')).resolves.toContain(
         'BASE_URL_PUBLIC_API=https://api.eu.myenterprise.ai/public',

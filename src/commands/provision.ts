@@ -17,7 +17,7 @@ import {
 import { getAccessToken, loadTokens } from '../lib/auth.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
-import { buildPassiveResourceApiBundle } from '../lib/resourceapi-bundle.js';
+import { buildPassiveResourceApiBundle, extractObjectTypesForPassiveBundle } from '../lib/resourceapi-bundle.js';
 import { findGuidanceByCode } from '../lib/error-guidance/catalog.js';
 import { formatGuidanceText } from '../lib/error-guidance/render.js';
 
@@ -316,7 +316,7 @@ Diagnostics:
       process.exit(0);
     }
 
-    const publicApiUrl = await resolvePublicApiUrl(root);
+    let publicApiUrl = await resolvePublicApiUrl(root);
     let tenantId: string;
     let tenantSlug: string | undefined;
     let userOid: string | undefined;
@@ -610,7 +610,7 @@ Notes:
       exitWithError(ErrorCode.E001);
     }
 
-    const publicApiUrl = await resolvePublicApiUrl(root);
+    let publicApiUrl = await resolvePublicApiUrl(root);
     let tenantId: string = options.tenantId;
     try {
       const context = await resolveActiveTenantContext({
@@ -621,6 +621,7 @@ Notes:
         forceRefresh: Boolean(tenantId),
       });
       tenantId = context.activeTenant.id;
+      publicApiUrl = context.publicApiUrl;
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -807,6 +808,27 @@ function reportTenantAuthorization(
   );
 }
 
+async function readObjectTypeSlugsFromSchema(schemaPath: string): Promise<string[]> {
+  const raw = await readFile(schemaPath, 'utf-8');
+  const schemaExport = JSON.parse(raw) as unknown;
+  const slugs = extractObjectTypesForPassiveBundle(schemaExport)
+    .map((objectType) => {
+      const slug = objectType.slug;
+      if (typeof slug === 'string' && slug.trim()) {
+        return slug.trim();
+      }
+      const name = objectType.name;
+      return typeof name === 'string' && name.trim() ? name.trim() : null;
+    })
+    .filter((slug): slug is string => Boolean(slug));
+
+  if (slugs.length === 0) {
+    throw new Error('Schema export did not contain any published object type slugs.');
+  }
+
+  return Array.from(new Set(slugs)).sort();
+}
+
 // ─── eai provision storage ───────────────────────────────────────────────
 
 provisionCommand
@@ -824,7 +846,7 @@ provisionCommand
       exitWithError(ErrorCode.E001);
     }
 
-    const publicApiUrl = await resolvePublicApiUrl(root);
+    let publicApiUrl = await resolvePublicApiUrl(root);
     let tenantId: string = options.tenantId;
 
     try {
@@ -836,6 +858,7 @@ provisionCommand
         forceRefresh: Boolean(tenantId),
       });
       tenantId = context.activeTenant.id;
+      publicApiUrl = context.publicApiUrl;
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -908,18 +931,19 @@ Examples:
 
 Notes:
   - Without --schema, PublicAPI reads the platform schema source of truth, signs the bundle, and can push it.
-  - Local --schema mode is for offline inspection only and does not own provisioning policy.
+  - Local --schema mode without --apply is for offline inspection only and does not own provisioning policy.
+  - With --schema --apply, the command still calls PublicAPI v4 and sends only the selected object type slugs.
   `)
   .action(async (options) => {
     const jsonOutput = options.json || options.format === 'json';
     const schemaPath = String(options.schema || '').trim();
 
-    if (!schemaPath) {
+    if (!schemaPath || options.apply) {
       const root = await findProjectRoot();
       if (!root) {
         exitWithError(ErrorCode.E001);
       }
-      const publicApiUrl = await resolvePublicApiUrl(root);
+      let publicApiUrl = await resolvePublicApiUrl(root);
       let tenantId: string = options.tenantId;
       try {
         const context = await resolveActiveTenantContext({
@@ -930,6 +954,7 @@ Notes:
           forceRefresh: Boolean(tenantId),
         });
         tenantId = context.activeTenant.id;
+        publicApiUrl = context.publicApiUrl;
       } catch (err) {
         out.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
@@ -941,6 +966,20 @@ Notes:
         process.exit(1);
       }
 
+      const objectTypes = schemaPath ? await readObjectTypeSlugsFromSchema(schemaPath) : undefined;
+      const body: Record<string, unknown> = {
+        installId: options.installId,
+        productKey: options.product,
+        schemaVersion: options.schemaVersion,
+        apply: Boolean(options.apply),
+        dryRun: Boolean(options.dryRun),
+        backend: options.backend,
+        rebuildSearch: Boolean(options.rebuildSearch),
+      };
+      if (objectTypes) {
+        body.objectTypes = objectTypes;
+      }
+
       const response = await fetch(
         `${publicApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-bundle`,
         {
@@ -949,15 +988,7 @@ Notes:
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            installId: options.installId,
-            productKey: options.product,
-            schemaVersion: options.schemaVersion,
-            apply: Boolean(options.apply),
-            dryRun: Boolean(options.dryRun),
-            backend: options.backend,
-            rebuildSearch: Boolean(options.rebuildSearch),
-          }),
+          body: JSON.stringify(body),
         },
       );
       if (!response.ok) {
