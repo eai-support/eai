@@ -56,11 +56,29 @@ describe('Object Type identifier contract', () => {
   });
 
   it.each([
+    ['GitHubConnection', 'github-connection'],
+    ['ObservabilityAISummary', 'observability-aisummary'],
+    ['OPAMeasure', 'opameasure'],
+  ])('preserves the audited historical %s/%s pair', (name, slug) => {
+    expect(
+      validateObjectTypeIdentifierPair(
+        { name, slug },
+        { requireExplicitSlug: true },
+      ),
+    ).toEqual({
+      contractVersion: OBJECT_TYPE_ROUTING_CONTRACT_VERSION,
+      name,
+      slug,
+    });
+  });
+
+  it.each([
     [{ name: 'Sent_Post', slug: 'sent-post' }, 'OBJECT_TYPE_NAME_NON_CANONICAL'],
     [{ name: 'FeedItem', slug: '' }, 'OBJECT_TYPE_SLUG_MISSING'],
     [{ name: 'FeedItem', slug: 'FeedItem' }, 'OBJECT_TYPE_SLUG_NON_CANONICAL'],
     [{ name: 'FeedItem', slug: 'operations' }, 'OBJECT_TYPE_SLUG_NON_CANONICAL'],
     [{ name: 'FeedItem', slug: 'feeditem' }, 'OBJECT_TYPE_SLUG_DERIVATION_MISMATCH'],
+    [{ name: 'BusinessCase', slug: 'businesscase' }, 'OBJECT_TYPE_SLUG_DERIVATION_MISMATCH'],
   ])('rejects invalid new source pair %#', (pair, code) => {
     expect(() => validateObjectTypeIdentifierPair(pair)).toThrow(ObjectTypeIdentifierError);
 
