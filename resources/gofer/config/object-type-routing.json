@@ -20,5 +20,5 @@
     "__tests__"
   ],
   "soleOwner": "front/eai-app-template/packages/platform-sdk/src/resource-routing.ts",
-  "canonicalGuidance": "Do not hand-write /v4/data/resources/.../<type> paths in feature code. Use the shared platform SDK, useResources, or client.resources so PascalCase Object Type names and canonical route slugs stay aligned."
+  "canonicalGuidance": "Keep PascalCase model names separate from exact stored slugs. Emitted linkTypes[].targetObjectType, runtime target_type, paths, and governed v4 fields use slugs. Resolve same-manifest name shorthand through its declared slug, use the shared platform SDK for routes, and never re-derive or rename historical stored slugs."
 }

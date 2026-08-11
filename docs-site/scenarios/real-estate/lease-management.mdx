@@ -177,8 +177,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'renewals', targetObjectType: 'Renewal', cardinality: 'one-to-many' as const },
-        { name: 'payments', targetObjectType: 'Payment', cardinality: 'one-to-many' as const },
+        { name: 'renewals', targetObjectType: 'renewal', cardinality: 'one-to-many' as const },
+        { name: 'payments', targetObjectType: 'payment', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -209,7 +209,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'leaseAgreement', targetObjectType: 'LeaseAgreement', cardinality: 'many-to-one' as const },
+        { name: 'leaseAgreement', targetObjectType: 'lease-agreement', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -241,7 +241,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'leaseAgreement', targetObjectType: 'LeaseAgreement', cardinality: 'many-to-one' as const },
+        { name: 'leaseAgreement', targetObjectType: 'lease-agreement', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

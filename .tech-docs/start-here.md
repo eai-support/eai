@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.11.0** (2026-08-10): Add canonical object type routing identifiers.
+The current CLI release is **v3.11.1** (2026-08-11): Canonical Object Type routing.
 
 
 ## What The Pieces Do
@@ -84,13 +84,18 @@ receive raw downstream credentials.
 ## Publish And Verify The Data Model
 
 Object Types are the platform contract for tenant-scoped resource data.
+Keep the PascalCase source/model `name` separate from the exact lowercase
+kebab-case persisted/transport `slug`. Relationship targets, runtime
+`target_type`, resource command arguments, paths, and governed v4 fields use
+the exact stored slug. Historical stored slugs are authoritative and are not
+re-derived from names.
 
 ```bash
 eai types validate
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
+eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type <resource-type>
+eai verify calls --tenant-id <tenant-id> --resource-type <object-type-slug>
 ```
 
 Do not build app workflows on top of a tenant until `eai types diff` converges.

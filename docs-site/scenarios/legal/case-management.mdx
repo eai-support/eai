@@ -182,8 +182,8 @@ export const objectTypes = {
         { name: 'filingDate', type: 'date' as const, required: true, indexed: true },
       ],
       linkTypes: [
-        { name: 'documents', targetObjectType: 'CaseDocument', cardinality: 'one-to-many' as const },
-        { name: 'hearings', targetObjectType: 'Hearing', cardinality: 'one-to-many' as const },
+        { name: 'documents', targetObjectType: 'case-document', cardinality: 'one-to-many' as const },
+        { name: 'hearings', targetObjectType: 'hearing', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -217,7 +217,7 @@ export const objectTypes = {
         { name: 'uploadedDate', type: 'date' as const, required: true, indexed: true },
       ],
       linkTypes: [
-        { name: 'case', targetObjectType: 'Case', cardinality: 'many-to-one' as const },
+        { name: 'case', targetObjectType: 'case', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -239,7 +239,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'case', targetObjectType: 'Case', cardinality: 'many-to-one' as const },
+        { name: 'case', targetObjectType: 'case', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,

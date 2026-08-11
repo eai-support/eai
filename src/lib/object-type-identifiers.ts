@@ -5,12 +5,18 @@ export const OBJECT_TYPE_ROUTING_CONTRACT_VERSION = 'eai.object-type-routing/v1'
 const OBJECT_TYPE_NAME_PATTERN = /^[A-Z][A-Za-z0-9]*$/;
 const OBJECT_TYPE_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const RESERVED_OBJECT_TYPE_SLUGS = new Set(['operations', 'query', 'search', 'storage']);
+const SUPPORTED_LEGACY_IDENTIFIER_PAIRS = new Set([
+  'GitHubConnection\u0000github-connection',
+  'ObservabilityAISummary\u0000observability-aisummary',
+  'OPAMeasure\u0000opameasure',
+]);
 
 export type ObjectTypeIdentifierErrorCode =
   | 'OBJECT_TYPE_NAME_NON_CANONICAL'
   | 'OBJECT_TYPE_SLUG_MISSING'
   | 'OBJECT_TYPE_SLUG_NON_CANONICAL'
-  | 'OBJECT_TYPE_SLUG_DERIVATION_MISMATCH';
+  | 'OBJECT_TYPE_SLUG_DERIVATION_MISMATCH'
+  | 'OBJECT_TYPE_LINK_TARGET_UNRESOLVED';
 
 export class ObjectTypeIdentifierError extends Error {
   public constructor(
@@ -55,6 +61,14 @@ export function deriveObjectTypeSlugV1(name: string): string {
     .toLowerCase();
 }
 
+/** Return whether a value is safe to use as an exact Object Type route slug. */
+export function isCanonicalObjectTypeSlug(value: string): boolean {
+  return (
+    OBJECT_TYPE_SLUG_PATTERN.test(value) &&
+    !RESERVED_OBJECT_TYPE_SLUGS.has(value)
+  );
+}
+
 export function validateObjectTypeIdentifierPair(
   input: ObjectTypeIdentifierInput,
   options: ObjectTypeIdentifierValidationOptions = {},
@@ -80,10 +94,7 @@ export function validateObjectTypeIdentifierPair(
     };
   }
 
-  if (
-    !OBJECT_TYPE_SLUG_PATTERN.test(input.slug) ||
-    RESERVED_OBJECT_TYPE_SLUGS.has(input.slug)
-  ) {
+  if (!isCanonicalObjectTypeSlug(input.slug)) {
     throw new ObjectTypeIdentifierError(
       'OBJECT_TYPE_SLUG_NON_CANONICAL',
       `Object Type slug "${input.slug}" must be a non-reserved canonical kebab-case slug.`,
@@ -91,7 +102,10 @@ export function validateObjectTypeIdentifierPair(
   }
 
   const expectedSlug = deriveObjectTypeSlugV1(input.name);
-  if (input.slug !== expectedSlug) {
+  const supportedLegacyPair = SUPPORTED_LEGACY_IDENTIFIER_PAIRS.has(
+    `${input.name}\u0000${input.slug}`,
+  );
+  if (input.slug !== expectedSlug && !supportedLegacyPair) {
     throw new ObjectTypeIdentifierError(
       'OBJECT_TYPE_SLUG_DERIVATION_MISMATCH',
       `Object Type slug "${input.slug}" must equal the v1 derivation "${expectedSlug}" for "${input.name}".`,

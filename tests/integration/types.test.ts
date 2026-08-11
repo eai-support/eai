@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { buildPayloadEqualsParams, PlatformAPIClient } from '../../src/lib/api.js';
 import {
+  canonicalizeObjectTypeRelationshipTargets,
   loadObjectTypes,
   validateObjectTypeDefinitions,
   type ObjectTypeDefinition,
@@ -1107,7 +1108,62 @@ describe('shouldFailTypeSeedRun', () => {
 });
 
 describe('loadObjectTypes', () => {
-  test('rejects a new source definition with a missing or mismatched canonical slug before provisioning', () => {
+  test('resolves relationship model names through the declared stored slug without deriving at runtime', () => {
+    const definitions: Record<string, ObjectTypeDefinition[]> = {
+      template: [
+        {
+          name: 'OPAMeasure',
+          slug: 'opameasure',
+          displayName: 'OPA measure',
+          properties: [],
+          linkTypes: [],
+          actions: [],
+          status: 'published',
+        },
+        {
+          name: 'BusinessCase',
+          slug: 'business-case',
+          displayName: 'Business case',
+          properties: [],
+          linkTypes: [
+            {
+              name: 'opaMeasures',
+              targetObjectType: 'OPAMeasure',
+              cardinality: 'one-to-many',
+            },
+          ],
+          actions: [],
+          status: 'published',
+        },
+      ],
+    };
+
+    expect(() => validateObjectTypeDefinitions(definitions)).not.toThrow();
+    const canonical = canonicalizeObjectTypeRelationshipTargets(definitions);
+
+    expect(canonical.template?.[1]?.linkTypes[0]?.targetObjectType).toBe('opameasure');
+    expect(definitions.template?.[1]?.linkTypes[0]?.targetObjectType).toBe('OPAMeasure');
+  });
+
+  test('rejects an unresolved relationship model name instead of guessing a route slug', () => {
+    expect(() => validateObjectTypeDefinitions({
+      template: [{
+        name: 'BusinessCase',
+        slug: 'business-case',
+        displayName: 'Business case',
+        properties: [],
+        linkTypes: [{
+          name: 'opaMeasures',
+          targetObjectType: 'OPAMeasure',
+          cardinality: 'one-to-many',
+        }],
+        actions: [],
+        status: 'published',
+      }],
+    })).toThrow(/OBJECT_TYPE_LINK_TARGET_UNRESOLVED/);
+  });
+
+  test('rejects a new source definition with a missing or unsupported mismatched slug before provisioning', () => {
     expect(() => validateObjectTypeDefinitions({
       template: [{
         name: 'GitHubConnection',
@@ -1121,9 +1177,9 @@ describe('loadObjectTypes', () => {
 
     expect(() => validateObjectTypeDefinitions({
       template: [{
-        name: 'GitHubConnection',
-        slug: 'github-connection',
-        displayName: 'GitHub connection',
+        name: 'BusinessCase',
+        slug: 'businesscase',
+        displayName: 'Business case',
         properties: [],
         linkTypes: [],
         actions: [],

@@ -182,7 +182,7 @@ export const objectTypes = {
         { name: 'interpretation', type: 'text' as const, required: false },
       ],
       linkTypes: [
-        { name: 'treatmentPlans', targetObjectType: 'TreatmentPlan', cardinality: 'one-to-many' as const },
+        { name: 'treatmentPlans', targetObjectType: 'treatment-plan', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -217,8 +217,8 @@ export const objectTypes = {
         },
       ],
       linkTypes: [
-        { name: 'assessment', targetObjectType: 'Assessment', cardinality: 'many-to-one' as const },
-        { name: 'sessions', targetObjectType: 'Session', cardinality: 'one-to-many' as const },
+        { name: 'assessment', targetObjectType: 'assessment', cardinality: 'many-to-one' as const },
+        { name: 'sessions', targetObjectType: 'session', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -244,7 +244,7 @@ export const objectTypes = {
         { name: 'moodRating', type: 'number' as const, required: false },
       ],
       linkTypes: [
-        { name: 'treatmentPlan', targetObjectType: 'TreatmentPlan', cardinality: 'many-to-one' as const },
+        { name: 'treatmentPlan', targetObjectType: 'treatment-plan', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

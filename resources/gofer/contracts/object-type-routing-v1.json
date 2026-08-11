@@ -49,6 +49,18 @@
     "parent_object_type",
     "target_type"
   ],
+  "relationshipReferences": {
+    "sourceField": "linkTypes[].targetObjectType",
+    "sourceAcceptedIdentifiers": [
+      "same-manifest-name",
+      "slug"
+    ],
+    "adapterMustEmit": "slug",
+    "persistedIdentifier": "slug",
+    "runtimeField": "target_type",
+    "runtimeIdentifier": "slug",
+    "historicalStoredSlugIsAuthoritative": true
+  },
   "artifacts": {
     "openapi": "/openapi.json",
     "manifestSchema": "/v4/data/contracts/object-type-manifest.schema.json",

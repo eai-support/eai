@@ -189,8 +189,8 @@ export const objectTypes = {
         { name: 'inceptionDate', type: 'date' as const, required: true },
       ],
       linkTypes: [
-        { name: 'holdings', targetObjectType: 'Holding', cardinality: 'one-to-many' as const },
-        { name: 'rebalanceOrders', targetObjectType: 'RebalanceOrder', cardinality: 'one-to-many' as const },
+        { name: 'holdings', targetObjectType: 'holding', cardinality: 'one-to-many' as const },
+        { name: 'rebalanceOrders', targetObjectType: 'rebalance-order', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -225,7 +225,7 @@ export const objectTypes = {
         },
       ],
       linkTypes: [
-        { name: 'portfolio', targetObjectType: 'Portfolio', cardinality: 'many-to-one' as const },
+        { name: 'portfolio', targetObjectType: 'portfolio', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -261,7 +261,7 @@ export const objectTypes = {
         { name: 'totalValue', type: 'number' as const, required: true },
       ],
       linkTypes: [
-        { name: 'portfolio', targetObjectType: 'Portfolio', cardinality: 'many-to-one' as const },
+        { name: 'portfolio', targetObjectType: 'portfolio', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

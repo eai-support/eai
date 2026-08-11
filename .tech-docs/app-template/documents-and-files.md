@@ -115,11 +115,11 @@ const fileStatus = await resources.getFileIndexStatus(document.id, "file");
 CLI example:
 
 ```bash
-eai resources create ApplicationDocument \
+eai resources create application-document \
   --tenant-id <tenant-id> \
   --data '{"title":"supporting-document.pdf","applicationId":"app-123"}'
 
-eai resources file upload ApplicationDocument <resource-id> file ./supporting-document.pdf \
+eai resources file upload application-document <resource-id> file ./supporting-document.pdf \
   --tenant-id <tenant-id>
 ```
 
@@ -202,7 +202,7 @@ eai whoami
 eai resources schema --tenant-id <tenant-id> --format json
 eai docs upload ./sample.pdf
 eai docs index <document-id>
-eai resources file upload <ObjectType> <resource-id> <property> ./sample.pdf --tenant-id <tenant-id>
+eai resources file upload <object-type-slug> <resource-id> <property> ./sample.pdf --tenant-id <tenant-id>
 ```
 
 Use named commands first. Use `eai publicapi <method> /v4/...` only when an

@@ -177,8 +177,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'notifications', targetObjectType: 'Notification', cardinality: 'one-to-many' as const },
-        { name: 'proofOfDelivery', targetObjectType: 'ProofOfDelivery', cardinality: 'one-to-many' as const },
+        { name: 'notifications', targetObjectType: 'notification', cardinality: 'one-to-many' as const },
+        { name: 'proofOfDelivery', targetObjectType: 'proof-of-delivery', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -214,7 +214,7 @@ export const objectTypes = {
         { name: 'recipient', type: 'text' as const, required: true },
       ],
       linkTypes: [
-        { name: 'deliveryAssignment', targetObjectType: 'DeliveryAssignment', cardinality: 'many-to-one' as const },
+        { name: 'deliveryAssignment', targetObjectType: 'delivery-assignment', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -230,7 +230,7 @@ export const objectTypes = {
         { name: 'notes', type: 'text' as const, required: false },
       ],
       linkTypes: [
-        { name: 'deliveryAssignment', targetObjectType: 'DeliveryAssignment', cardinality: 'many-to-one' as const },
+        { name: 'deliveryAssignment', targetObjectType: 'delivery-assignment', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,

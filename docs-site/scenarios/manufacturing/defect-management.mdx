@@ -182,8 +182,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'rootCauseAnalyses', targetObjectType: 'RootCauseAnalysis', cardinality: 'one-to-many' as const },
-        { name: 'resolutions', targetObjectType: 'Resolution', cardinality: 'one-to-many' as const },
+        { name: 'rootCauseAnalyses', targetObjectType: 'root-cause-analysis', cardinality: 'one-to-many' as const },
+        { name: 'resolutions', targetObjectType: 'resolution', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -215,7 +215,7 @@ export const objectTypes = {
         { name: 'completedDate', type: 'date' as const, required: false },
       ],
       linkTypes: [
-        { name: 'defectReport', targetObjectType: 'DefectReport', cardinality: 'many-to-one' as const },
+        { name: 'defectReport', targetObjectType: 'defect-report', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -236,7 +236,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'defectReport', targetObjectType: 'DefectReport', cardinality: 'many-to-one' as const },
+        { name: 'defectReport', targetObjectType: 'defect-report', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

@@ -175,8 +175,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'maintenanceRecords', targetObjectType: 'MaintenanceRecord', cardinality: 'one-to-many' as const },
-        { name: 'fuelLogs', targetObjectType: 'FuelLog', cardinality: 'one-to-many' as const },
+        { name: 'maintenanceRecords', targetObjectType: 'maintenance-record', cardinality: 'one-to-many' as const },
+        { name: 'fuelLogs', targetObjectType: 'fuel-log', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -199,7 +199,7 @@ export const objectTypes = {
         { name: 'mileageAtService', type: 'number' as const, required: true },
       ],
       linkTypes: [
-        { name: 'vehicle', targetObjectType: 'Vehicle', cardinality: 'many-to-one' as const },
+        { name: 'vehicle', targetObjectType: 'vehicle', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -215,7 +215,7 @@ export const objectTypes = {
         { name: 'odometer', type: 'number' as const, required: true },
       ],
       linkTypes: [
-        { name: 'vehicle', targetObjectType: 'Vehicle', cardinality: 'many-to-one' as const },
+        { name: 'vehicle', targetObjectType: 'vehicle', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,

@@ -179,7 +179,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'defects', targetObjectType: 'Defect', cardinality: 'one-to-many' as const },
+        { name: 'defects', targetObjectType: 'defect', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -210,8 +210,8 @@ export const objectTypes = {
         { name: 'description', type: 'text' as const, required: true },
       ],
       linkTypes: [
-        { name: 'inspection', targetObjectType: 'Inspection', cardinality: 'many-to-one' as const },
-        { name: 'correctiveActions', targetObjectType: 'CorrectiveAction', cardinality: 'one-to-many' as const },
+        { name: 'inspection', targetObjectType: 'inspection', cardinality: 'many-to-one' as const },
+        { name: 'correctiveActions', targetObjectType: 'corrective-action', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -233,7 +233,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'defect', targetObjectType: 'Defect', cardinality: 'many-to-one' as const },
+        { name: 'defect', targetObjectType: 'defect', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

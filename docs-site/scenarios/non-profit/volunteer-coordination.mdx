@@ -175,7 +175,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'hourLogs', targetObjectType: 'HourLog', cardinality: 'one-to-many' as const },
+        { name: 'hourLogs', targetObjectType: 'hour-log', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -197,7 +197,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'hourLogs', targetObjectType: 'HourLog', cardinality: 'one-to-many' as const },
+        { name: 'hourLogs', targetObjectType: 'hour-log', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -225,8 +225,8 @@ export const objectTypes = {
         { name: 'loggedDate', type: 'date' as const, required: true, indexed: true },
       ],
       linkTypes: [
-        { name: 'volunteer', targetObjectType: 'Volunteer', cardinality: 'many-to-one' as const },
-        { name: 'shift', targetObjectType: 'Shift', cardinality: 'many-to-one' as const },
+        { name: 'volunteer', targetObjectType: 'volunteer', cardinality: 'many-to-one' as const },
+        { name: 'shift', targetObjectType: 'shift', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

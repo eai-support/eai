@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Version: 3.11.0
+Version: 3.11.1
 
 Install / update the CLI:
 npm install -g eai-cli
