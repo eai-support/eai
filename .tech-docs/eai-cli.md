@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.11.0 |
-| Released | 2026-08-10 |
-| Last Material Change | Add canonical object type routing identifiers |
-| Source Commit | `1181967cbc4905cf4b88ea07a719f7d5f2113879` |
+| Version | 3.11.1 |
+| Released | 2026-08-11 |
+| Last Material Change | Canonical Object Type routing |
+| Source Commit | `b9bcfa1ae1776fccf41fda086ad659f5636ade0c` |
 
 
 ## Install

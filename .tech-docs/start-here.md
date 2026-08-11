@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.11.0** (2026-08-10): Add canonical object type routing identifiers.
+The current CLI release is **v3.11.1** (2026-08-11): Canonical Object Type routing.
 
 
 ## What The Pieces Do
