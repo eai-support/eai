@@ -63,6 +63,23 @@ eai resources schema --tenant-id <tenant-id> --format json
 eai dev
 ```
 
+## Object Type Identifiers
+
+Do not move every Object Type field to kebab-case. A definition keeps both a
+PascalCase source/model `name`, such as `BoardAppUser`, and an explicit exact
+transport/storage `slug`, such as `board-app-user`.
+
+Generated and persisted `linkTypes[].targetObjectType`, runtime `target_type`,
+path parameters, and other governed v4 fields contain slugs. The CLI accepts a
+same-manifest PascalCase relationship target only as authoring shorthand and
+resolves it through that target's declared slug before diff or seed. An
+unresolved model name is an error; the CLI does not guess.
+
+For existing Object Types, the exact stored slug is authoritative even when
+today's derivation from the name would differ. Do not normalize or rename it.
+App code should use `useResources` or `client.resources` so the SDK owns route
+construction.
+
 ## Command Groups
 
 | Command                                 | Purpose                                                                                   |

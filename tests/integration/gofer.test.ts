@@ -136,6 +136,11 @@ describe("eai gofer refresh", () => {
       ".specify/config/object-type-routing.json",
       '"contractVersion": "eai.object-type-routing/v1"',
     );
+    await expectFileContains(
+      ctx,
+      ".specify/config/object-type-routing.json",
+      "never re-derive or rename historical stored slugs",
+    );
     await expectFileExists(
       ctx,
       ".specify/contracts/object-type-routing-v1.json",
@@ -144,6 +149,16 @@ describe("eai gofer refresh", () => {
       ctx,
       ".specify/contracts/object-type-routing-v1.json",
       '"authoritativeTransportIdentifier": "slug"',
+    );
+    await expectFileContains(
+      ctx,
+      ".specify/contracts/object-type-routing-v1.json",
+      '"sourceField": "linkTypes[].targetObjectType"',
+    );
+    await expectFileContains(
+      ctx,
+      ".specify/commands/6_gofer_validate.md",
+      "Generated `linkTypes[].targetObjectType`",
     );
     await expectFileExists(
       ctx,

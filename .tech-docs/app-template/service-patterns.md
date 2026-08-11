@@ -63,6 +63,16 @@ legacy payloads such as `chat_input` for new apps.
 
 ## Resource Payload Pattern
 
+An Object Type has two identifiers: the PascalCase configuration/model `name`
+and the exact lowercase kebab-case persisted/transport `slug`. Generated
+`linkTypes[].targetObjectType`, runtime `target_type`, route parameters, and
+governed query fields contain slugs, never model names. Same-manifest names are
+authoring shorthand only and must be resolved before publishing. Existing
+stored slugs are authoritative and must not be re-derived or renamed.
+
+Use `useResources` or `client.resources` for app calls. Do not hand-write v4
+resource paths or create a local slugifier.
+
 ```ts
 const { list, create, update, executeAction } = useResources<ApplicationData>(
   "Application",

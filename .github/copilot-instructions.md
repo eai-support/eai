@@ -4,6 +4,14 @@
 
 **eai** is a TypeScript project. Package manager: npm.
 
+## Object Type Identifiers
+
+Keep PascalCase model `name` separate from exact lowercase kebab-case transport
+`slug`. Emitted relationship/runtime fields contain stored slugs. Resolve
+same-manifest relationship names through the declared slug, reject unresolved
+names, use the SDK for app routes, and never re-derive or rename historical
+stored slugs.
+
 ## Available Commands
 
 ### Gofer Integration
