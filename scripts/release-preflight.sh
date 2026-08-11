@@ -112,16 +112,7 @@ node scripts/eai-full-e2e-smoke.cjs --check --write-doc
 echo "  ✓ full e2e smoke traceability is current"
 
 section "Scanning for internal platform terminology leaks"
-IP_TERMS="Configurator|ResourceAPI|AICore|PayloadCMS|OPA|Rego|HyPE|OBO"
-LEAKS="$(
-  grep -rn \
-    --include='*.ts' \
-    --include='*.md' \
-    -E "$IP_TERMS" \
-    src/ README.md AGENTS.md CLAUDE.md 2>/dev/null \
-    | grep -v node_modules || true
-)"
-if [[ -n "$LEAKS" ]]; then
+if ! LEAKS="$(node scripts/verify-release-terminology.cjs)"; then
   echo "✗ Internal platform terms found in release surface:"
   echo "$LEAKS"
   exit 1
