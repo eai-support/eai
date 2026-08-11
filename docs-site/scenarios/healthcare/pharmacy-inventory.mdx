@@ -180,8 +180,8 @@ export const objectTypes = {
         { name: 'expirationDate', type: 'date' as const, required: true },
       ],
       linkTypes: [
-        { name: 'prescriptions', targetObjectType: 'Prescription', cardinality: 'one-to-many' as const },
-        { name: 'supplierOrders', targetObjectType: 'SupplierOrder', cardinality: 'one-to-many' as const },
+        { name: 'prescriptions', targetObjectType: 'prescription', cardinality: 'one-to-many' as const },
+        { name: 'supplierOrders', targetObjectType: 'supplier-order', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -217,7 +217,7 @@ export const objectTypes = {
         { name: 'prescribedDate', type: 'date' as const, required: true },
       ],
       linkTypes: [
-        { name: 'medication', targetObjectType: 'Medication', cardinality: 'many-to-one' as const },
+        { name: 'medication', targetObjectType: 'medication', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -253,7 +253,7 @@ export const objectTypes = {
         { name: 'expectedDate', type: 'date' as const, required: true },
       ],
       linkTypes: [
-        { name: 'medication', targetObjectType: 'Medication', cardinality: 'many-to-one' as const },
+        { name: 'medication', targetObjectType: 'medication', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

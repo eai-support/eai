@@ -176,8 +176,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'services', targetObjectType: 'Service', cardinality: 'one-to-many' as const },
-        { name: 'outcomes', targetObjectType: 'Outcome', cardinality: 'one-to-many' as const },
+        { name: 'services', targetObjectType: 'service', cardinality: 'one-to-many' as const },
+        { name: 'outcomes', targetObjectType: 'outcome', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -205,7 +205,7 @@ export const objectTypes = {
         { name: 'duration', type: 'number' as const, required: false },
       ],
       linkTypes: [
-        { name: 'beneficiary', targetObjectType: 'Beneficiary', cardinality: 'many-to-one' as const },
+        { name: 'beneficiary', targetObjectType: 'beneficiary', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -222,7 +222,7 @@ export const objectTypes = {
         { name: 'measuredDate', type: 'date' as const, required: true, indexed: true },
       ],
       linkTypes: [
-        { name: 'beneficiary', targetObjectType: 'Beneficiary', cardinality: 'many-to-one' as const },
+        { name: 'beneficiary', targetObjectType: 'beneficiary', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,

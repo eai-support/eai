@@ -176,7 +176,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'donations', targetObjectType: 'Donation', cardinality: 'one-to-many' as const },
+        { name: 'donations', targetObjectType: 'donation', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -198,7 +198,7 @@ export const objectTypes = {
         { name: 'acknowledged', type: 'boolean' as const, required: true, defaultValue: false },
       ],
       linkTypes: [
-        { name: 'donor', targetObjectType: 'Donor', cardinality: 'many-to-one' as const },
+        { name: 'donor', targetObjectType: 'donor', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

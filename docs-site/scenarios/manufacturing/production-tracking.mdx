@@ -180,7 +180,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'batches', targetObjectType: 'Batch', cardinality: 'one-to-many' as const },
+        { name: 'batches', targetObjectType: 'batch', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -212,8 +212,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'productionOrder', targetObjectType: 'ProductionOrder', cardinality: 'many-to-one' as const },
-        { name: 'qualityChecks', targetObjectType: 'QualityCheck', cardinality: 'one-to-many' as const },
+        { name: 'productionOrder', targetObjectType: 'production-order', cardinality: 'many-to-one' as const },
+        { name: 'qualityChecks', targetObjectType: 'quality-check', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -245,7 +245,7 @@ export const objectTypes = {
         { name: 'checkedAt', type: 'date' as const, required: true, indexed: true },
       ],
       linkTypes: [
-        { name: 'batch', targetObjectType: 'Batch', cardinality: 'many-to-one' as const },
+        { name: 'batch', targetObjectType: 'batch', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,

@@ -180,7 +180,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'workOrders', targetObjectType: 'WorkOrder', cardinality: 'one-to-many' as const },
+        { name: 'workOrders', targetObjectType: 'work-order', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -212,8 +212,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'request', targetObjectType: 'MaintenanceRequest', cardinality: 'many-to-one' as const },
-        { name: 'vendor', targetObjectType: 'Vendor', cardinality: 'many-to-one' as const },
+        { name: 'request', targetObjectType: 'maintenance-request', cardinality: 'many-to-one' as const },
+        { name: 'vendor', targetObjectType: 'vendor', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -242,7 +242,7 @@ export const objectTypes = {
         { name: 'hourlyRate', type: 'number' as const, required: false },
       ],
       linkTypes: [
-        { name: 'workOrders', targetObjectType: 'WorkOrder', cardinality: 'one-to-many' as const },
+        { name: 'workOrders', targetObjectType: 'work-order', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
