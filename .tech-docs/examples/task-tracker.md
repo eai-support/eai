@@ -89,6 +89,7 @@ export const objectTypes = {
   "task-tracker": [
     {
       name: "Task",
+      slug: "task",
       displayName: "Task",
       description: "A trackable unit of work",
       storageBackend: "postgresql",
@@ -120,6 +121,7 @@ export const objectTypes = {
         },
         { name: "dueDate", type: "date", required: false },
       ],
+      linkTypes: [],
       actions: [
         {
           name: "start",
@@ -151,13 +153,17 @@ export const objectTypes = {
 
 ```bash
 eai types validate
-eai types seed --tenant-key task-tracker --tenant-id <tenant-id> --format json
 eai types diff --tenant-key task-tracker --tenant-id <tenant-id>
+eai types seed --tenant-key task-tracker --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type Task
+eai verify calls --tenant-id <tenant-id> --resource-type task
 ```
 
 Do not continue until the diff is clean.
+
+`Task` is the model name used in configuration and TypeScript. `task` is the
+exact stored slug used by resource commands, routes, relationship targets, and
+runtime requests. Do not derive a different slug at the call site.
 
 ## 6. Use The Resource Hook
 

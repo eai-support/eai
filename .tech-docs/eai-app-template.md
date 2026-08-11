@@ -26,8 +26,8 @@ eai tenant list --format json
 eai tenant select <tenant-slug>
 eai whoami
 eai types validate
-eai types seed --tenant-key template --tenant-id <tenant-id> --format json
 eai types diff --tenant-key template --tenant-id <tenant-id>
+eai types seed --tenant-key template --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
 ```
 
@@ -57,6 +57,14 @@ eai resources schema --tenant-id <tenant-id> --format json
 
 Object Types are the contract for tenant business data. Use `postgresql` for
 most canonical structured resources unless another backend is clearly required.
+
+Each definition keeps a PascalCase source/model `name` and an explicit exact
+lowercase kebab-case persisted/transport `slug`. Do not convert the complete
+definition to one case. Emitted `linkTypes[].targetObjectType`, runtime
+`target_type`, resource command arguments, paths, and governed v4 fields use
+exact stored slugs. Same-manifest model names may be authoring shorthand only
+when tooling resolves them through the declared slug before publication.
+Historical stored slugs remain authoritative.
 
 | Backend      | Use For                                                                                      |
 | ------------ | -------------------------------------------------------------------------------------------- |

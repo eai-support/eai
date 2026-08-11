@@ -27,13 +27,17 @@ npm install
 eai login
 eai tenant select <tenant-slug>
 eai types validate
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
+eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type <resource-type>
+eai verify calls --tenant-id <tenant-id> --resource-type <object-type-slug>
 
 eai dev
 ```
+
+Object Type model names remain PascalCase. Resource commands, relationship
+targets, runtime fields, and routes use the exact published lowercase
+kebab-case slug. Do not normalize a historical stored slug.
 
 For agent-assisted delivery, run `eai gofer refresh --check` before planning and
 keep the service-fit matrix updated as you choose ResourceAPI, documents, chat,

@@ -454,13 +454,18 @@ receive raw downstream credentials.
 ## Publish And Verify The Data Model
 
 Object Types are the platform contract for tenant-scoped resource data.
+Keep the PascalCase source/model `name` separate from the exact lowercase
+kebab-case persisted/transport `slug`. Relationship targets, runtime
+`target_type`, resource command arguments, paths, and governed v4 fields use
+the exact stored slug. Historical stored slugs are authoritative and are not
+re-derived from names.
 
 ```bash
 eai types validate
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
+eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type <resource-type>
+eai verify calls --tenant-id <tenant-id> --resource-type <object-type-slug>
 ```
 
 Do not build app workflows on top of a tenant until `eai types diff` converges.
@@ -546,6 +551,23 @@ eai resources schema --tenant-id <tenant-id> --format json
 
 eai dev
 ```
+
+## Object Type Identifiers
+
+Do not move every Object Type field to kebab-case. A definition keeps both a
+PascalCase source/model `name`, such as `BoardAppUser`, and an explicit exact
+transport/storage `slug`, such as `board-app-user`.
+
+Generated and persisted `linkTypes[].targetObjectType`, runtime `target_type`,
+path parameters, and other governed v4 fields contain slugs. The CLI accepts a
+same-manifest PascalCase relationship target only as authoring shorthand and
+resolves it through that target's declared slug before diff or seed. An
+unresolved model name is an error; the CLI does not guess.
+
+For existing Object Types, the exact stored slug is authoritative even when
+today's derivation from the name would differ. Do not normalize or rename it.
+App code should use `useResources` or `client.resources` so the SDK owns route
+construction.
 
 ## Command Groups
 
@@ -716,8 +738,8 @@ eai tenant list --format json
 eai tenant select <tenant-slug>
 eai whoami
 eai types validate
-eai types seed --tenant-key template --tenant-id <tenant-id> --format json
 eai types diff --tenant-key template --tenant-id <tenant-id>
+eai types seed --tenant-key template --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
 ```
 
@@ -747,6 +769,14 @@ eai resources schema --tenant-id <tenant-id> --format json
 
 Object Types are the contract for tenant business data. Use `postgresql` for
 most canonical structured resources unless another backend is clearly required.
+
+Each definition keeps a PascalCase source/model `name` and an explicit exact
+lowercase kebab-case persisted/transport `slug`. Do not convert the complete
+definition to one case. Emitted `linkTypes[].targetObjectType`, runtime
+`target_type`, resource command arguments, paths, and governed v4 fields use
+exact stored slugs. Same-manifest model names may be authoring shorthand only
+when tooling resolves them through the declared slug before publication.
+Historical stored slugs remain authoritative.
 
 | Backend      | Use For                                                                                      |
 | ------------ | -------------------------------------------------------------------------------------------- |
@@ -817,13 +847,17 @@ npm install
 eai login
 eai tenant select <tenant-slug>
 eai types validate
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
+eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type <resource-type>
+eai verify calls --tenant-id <tenant-id> --resource-type <object-type-slug>
 
 eai dev
 ```
+
+Object Type model names remain PascalCase. Resource commands, relationship
+targets, runtime fields, and routes use the exact published lowercase
+kebab-case slug. Do not normalize a historical stored slug.
 
 For agent-assisted delivery, run `eai gofer refresh --check` before planning and
 keep the service-fit matrix updated as you choose ResourceAPI, documents, chat,
@@ -919,6 +953,7 @@ export const objectTypes = {
   "task-tracker": [
     {
       name: "Task",
+      slug: "task",
       displayName: "Task",
       description: "A trackable unit of work",
       storageBackend: "postgresql",
@@ -950,6 +985,7 @@ export const objectTypes = {
         },
         { name: "dueDate", type: "date", required: false },
       ],
+      linkTypes: [],
       actions: [
         {
           name: "start",
@@ -981,13 +1017,17 @@ export const objectTypes = {
 
 ```bash
 eai types validate
-eai types seed --tenant-key task-tracker --tenant-id <tenant-id> --format json
 eai types diff --tenant-key task-tracker --tenant-id <tenant-id>
+eai types seed --tenant-key task-tracker --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type Task
+eai verify calls --tenant-id <tenant-id> --resource-type task
 ```
 
 Do not continue until the diff is clean.
+
+`Task` is the model name used in configuration and TypeScript. `task` is the
+exact stored slug used by resource commands, routes, relationship targets, and
+runtime requests. Do not derive a different slug at the call site.
 
 ## 6. Use The Resource Hook
 
@@ -1257,6 +1297,16 @@ legacy payloads such as `chat_input` for new apps.
 
 ## Resource Payload Pattern
 
+An Object Type has two identifiers: the PascalCase configuration/model `name`
+and the exact lowercase kebab-case persisted/transport `slug`. Generated
+`linkTypes[].targetObjectType`, runtime `target_type`, route parameters, and
+governed query fields contain slugs, never model names. Same-manifest names are
+authoring shorthand only and must be resolved before publishing. Existing
+stored slugs are authoritative and must not be re-derived or renamed.
+
+Use `useResources` or `client.resources` for app calls. Do not hand-write v4
+resource paths or create a local slugifier.
+
 ```ts
 const { list, create, update, executeAction } = useResources<ApplicationData>(
   "Application",
@@ -1409,11 +1459,11 @@ const fileStatus = await resources.getFileIndexStatus(document.id, "file");
 CLI example:
 
 ```bash
-eai resources create ApplicationDocument \
+eai resources create application-document \
   --tenant-id <tenant-id> \
   --data '{"title":"supporting-document.pdf","applicationId":"app-123"}'
 
-eai resources file upload ApplicationDocument <resource-id> file ./supporting-document.pdf \
+eai resources file upload application-document <resource-id> file ./supporting-document.pdf \
   --tenant-id <tenant-id>
 ```
 
@@ -1496,7 +1546,7 @@ eai whoami
 eai resources schema --tenant-id <tenant-id> --format json
 eai docs upload ./sample.pdf
 eai docs index <document-id>
-eai resources file upload <ObjectType> <resource-id> <property> ./sample.pdf --tenant-id <tenant-id>
+eai resources file upload <object-type-slug> <resource-id> <property> ./sample.pdf --tenant-id <tenant-id>
 ```
 
 Use named commands first. Use `eai publicapi <method> /v4/...` only when an
@@ -2900,6 +2950,17 @@ Push local config overrides to the cloud (admin).
 
 ### Object Type Commands
 
+#### Identifier contract
+
+An Object Type definition keeps two identifiers: a PascalCase source/model
+`name` and an explicit exact lowercase kebab-case persisted/transport `slug`.
+They are not interchangeable. Generated and persisted
+`linkTypes[].targetObjectType`, runtime `target_type`, resource command
+arguments, path parameters, and governed v4 query fields use exact stored
+slugs. A same-manifest model name may be accepted as source shorthand only
+when it resolves through the target's declared slug before diff or seed.
+Historical stored slugs are authoritative and are never silently re-derived.
+
 #### `eai types validate`
 Validate Object Type definitions in `src/eai.config/object-types.ts` against platform schema rules, locally.
 
@@ -2956,7 +3017,7 @@ All resource routes are tenant-scoped: the active tenant (or `--tenant-id`) is p
 List resources of a specific Object Type.
 
 **Arguments**:
-- `<type>` — Object Type name
+- `<type>` — Exact published Object Type slug, for example `board-app-user`
 
 **Options**:
 - `--tenant-id <id>` — Target tenant (default: active tenant)
@@ -3043,7 +3104,7 @@ Cross-type query with filters.
 
 **Options**:
 - `--tenant-id <id>` — Target tenant (default: active tenant)
-- `--types <types>` — Comma-separated Object Type names (required)
+- `--types <types>` — Comma-separated exact published Object Type slugs (required)
 - `--where <json>` — Filter conditions as JSON
 - `--limit <number>` — Max results (default: 20)
 - `--format <format>` — Output format (text|json, default: text)
@@ -3078,7 +3139,7 @@ Search tenant resource projections.
 
 **Options**:
 - `--tenant-id <id>` — Target tenant (default: active tenant)
-- `--types <types>` — Comma-separated Object Type names
+- `--types <types>` — Comma-separated exact published Object Type slugs
 - `--mode <mode>` — `fulltext|hybrid|vector` (default: `hybrid`)
 - `--hybrid` / `--vector` / `--fulltext` — Shorthands that override `--mode`
 - `--limit <number>` — Max results (default: 10)
@@ -3816,7 +3877,7 @@ scripting a subcommand; status-only commands such as `eai whoami` and quick
 
 ```bash
 # Get JSON output
-eai resources list User --format json
+eai resources list board-app-user --format json
 
 # Parse with jq
 eai tenant list --format json | jq '.tenants[].slug'
