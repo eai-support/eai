@@ -374,6 +374,17 @@ Push local config overrides to the cloud (admin).
 
 ### Object Type Commands
 
+#### Identifier contract
+
+An Object Type definition keeps two identifiers: a PascalCase source/model
+`name` and an explicit exact lowercase kebab-case persisted/transport `slug`.
+They are not interchangeable. Generated and persisted
+`linkTypes[].targetObjectType`, runtime `target_type`, resource command
+arguments, path parameters, and governed v4 query fields use exact stored
+slugs. A same-manifest model name may be accepted as source shorthand only
+when it resolves through the target's declared slug before diff or seed.
+Historical stored slugs are authoritative and are never silently re-derived.
+
 #### `eai types validate`
 Validate Object Type definitions in `src/eai.config/object-types.ts` against platform schema rules, locally.
 
@@ -430,7 +441,7 @@ All resource routes are tenant-scoped: the active tenant (or `--tenant-id`) is p
 List resources of a specific Object Type.
 
 **Arguments**:
-- `<type>` — Object Type name
+- `<type>` — Exact published Object Type slug, for example `board-app-user`
 
 **Options**:
 - `--tenant-id <id>` — Target tenant (default: active tenant)
@@ -517,7 +528,7 @@ Cross-type query with filters.
 
 **Options**:
 - `--tenant-id <id>` — Target tenant (default: active tenant)
-- `--types <types>` — Comma-separated Object Type names (required)
+- `--types <types>` — Comma-separated exact published Object Type slugs (required)
 - `--where <json>` — Filter conditions as JSON
 - `--limit <number>` — Max results (default: 20)
 - `--format <format>` — Output format (text|json, default: text)
@@ -552,7 +563,7 @@ Search tenant resource projections.
 
 **Options**:
 - `--tenant-id <id>` — Target tenant (default: active tenant)
-- `--types <types>` — Comma-separated Object Type names
+- `--types <types>` — Comma-separated exact published Object Type slugs
 - `--mode <mode>` — `fulltext|hybrid|vector` (default: `hybrid`)
 - `--hybrid` / `--vector` / `--fulltext` — Shorthands that override `--mode`
 - `--limit <number>` — Max results (default: 10)
@@ -1290,7 +1301,7 @@ scripting a subcommand; status-only commands such as `eai whoami` and quick
 
 ```bash
 # Get JSON output
-eai resources list User --format json
+eai resources list board-app-user --format json
 
 # Parse with jq
 eai tenant list --format json | jq '.tenants[].slug'

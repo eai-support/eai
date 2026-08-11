@@ -119,10 +119,14 @@ eai env pull --include-secrets
 
 # 5. Define your data model
 #    Edit src/eai.config/object-types.ts
+#    Keep name PascalCase and declare an exact lowercase kebab-case slug.
+#    Relationship targets use the target's exact stored slug.
 
-# 6. Validate and seed
+# 6. Validate, inspect, publish, and verify
 eai types validate
+eai types diff
 eai types seed
+eai resources schema --format json
 
 # 7. Start developing
 eai dev
@@ -214,6 +218,35 @@ machine to tunnel the callback into the Codespace.
 
 ### Object Types
 
+Object Types keep two different identifiers. The source/model `name` is
+PascalCase, such as `BoardAppUser`. The explicit persisted and transport
+`slug` is exact lowercase kebab-case, such as `board-app-user`. Do not convert
+every field to the same case.
+
+Generated or persisted `linkTypes[].targetObjectType`, runtime `target_type`,
+resource command arguments, path parameters, and governed v4 query fields use
+the exact stored slug. A same-manifest PascalCase relationship target is only
+source shorthand: the CLI resolves it through the target's declared `slug`
+before diff or seed and rejects unresolved names. Historical stored slugs are
+authoritative and must never be silently re-derived or renamed.
+
+```ts
+{
+  name: "BoardAppMembership",
+  slug: "board-app-membership",
+  linkTypes: [
+    {
+      name: "user",
+      targetObjectType: "board-app-user",
+      cardinality: "many-to-one",
+    },
+  ],
+}
+```
+
+Use this publication sequence: `eai app provision`, `eai types validate`,
+`eai types diff`, `eai types seed`, then `eai resources schema`.
+
 | Command | Description |
 |---------|-------------|
 | `eai types validate` | Check types against platform schema rules |
@@ -222,6 +255,11 @@ machine to tunnel the callback into the Codespace.
 | `eai types pull` | Download remote types to local TypeScript |
 
 ### Resources
+
+In every command below, `<type>` and each value passed to `--types` mean an
+exact published Object Type slug, not its PascalCase model name. App feature
+code should use `useResources` or `client.resources` so the shared SDK owns
+route construction.
 
 | Command | Description |
 |---------|-------------|
@@ -383,7 +421,7 @@ eai login ───────────────────────�
 eai tenant select ──────────────────→ Current-user memberships → active tenant context
 eai env pull ───────────────────────→ Azure App Config + Key Vault
 eai types seed ─────────────────────→ Platform API → Type Registry
-eai resources list ─────────────────→ Platform API → Data Service
+eai resources list <object-type-slug> → Platform API → Data Service
 eai workflow status ────────────────→ Platform API → AI runtime readiness
 eai chat stream ────────────────────→ Platform API → AI Service
 eai docs classify ──────────────────→ Platform API → AI Service
@@ -469,7 +507,7 @@ scripting a subcommand; status-only commands such as `eai whoami` and quick
 
 ```bash
 # Get JSON output
-eai resources list User --format json
+eai resources list board-app-user --format json
 
 # Parse with jq
 eai tenant list --format json | jq '.tenants[] | .slug'

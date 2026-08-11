@@ -69,8 +69,8 @@ this gate order:
 6. `eai provision entra` when required
 7. `eai env pull` when required
 8. `eai types validate`
-9. `eai types seed`
-10. `eai types diff`
+9. `eai types diff`
+10. `eai types seed`
 11. `eai resources schema`
 12. Storage diagnostics and verification
 13. Workflow readiness and resource-call verification
@@ -83,6 +83,12 @@ Treat these as separate gates:
 - schema/storage health
 - workflow readiness
 - preview readiness
+
+For Object Types, keep the PascalCase configuration/model `name` distinct from
+the exact lowercase kebab-case stored `slug`. Emitted relationship targets,
+runtime `target_type`, resource commands, paths, and governed v4 fields use the
+stored slug. Historical stored slugs are authoritative and must not be
+re-derived during validation or repair.
 
 ## Error Recovery Rule
 
