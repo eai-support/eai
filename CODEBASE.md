@@ -76,7 +76,7 @@ export const myCommand = new Command("my-command")
 
       // 2. Call platform API
       const client = createAPIClient(token);
-      const result = await client.get("/v3/endpoint");
+      const result = await client.get("/v4/platform/tenants");
 
       // 3. Handle output format
       if (options.format === "json") {
@@ -114,16 +114,16 @@ import { createAPIClient } from "./lib/api.js";
 const client = createAPIClient(token);
 
 // GET request
-const result = await client.get("/v3/object-types");
+const result = await client.get("/v4/data/resources/object-types");
 
 // POST request
-const created = await client.post("/v3/resources", { data });
+const created = await client.post("/v4/data/resources/{tenantId}/{objectType}", { data });
 
 // PUT request
-const updated = await client.put("/v3/resources/123", { data });
+const updated = await client.put("/v4/data/resources/{tenantId}/{objectType}/{resourceId}", { data });
 
 // DELETE request
-await client.delete("/v3/resources/123");
+await client.delete("/v4/data/resources/{tenantId}/{objectType}/{resourceId}");
 ```
 
 **Key features**:
@@ -343,7 +343,7 @@ const client = createAPIClient(token);
 
 // 3. Make request with error handling
 try {
-  const result = await client.get("/v3/endpoint");
+  const result = await client.get("/v4/platform/tenants");
   return result;
 } catch (err) {
   exitWithError(ErrorCode.E203, { details: err.message }, options.format);

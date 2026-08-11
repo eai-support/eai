@@ -140,7 +140,7 @@ import { getToken } from '../lib/auth.js';
 
 const token = await getToken();
 const client = createAPIClient(token);
-const result = await client.get('/v3/object-types');
+const result = await client.get('/v4/data/resources/object-types');
 ```
 
 **Config Loading**:
