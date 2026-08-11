@@ -52,10 +52,9 @@ export interface ObjectTypeIdentifierValidationOptions {
  */
 export function deriveObjectTypeSlugV1(name: string): string {
   const normalizedName = name.replace(/^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/g, '');
-  const establishedSlug = ESTABLISHED_NAME_SLUGS.get(normalizedName);
-  if (establishedSlug) return establishedSlug;
+  const derivationSource = ESTABLISHED_NAME_SLUGS.get(normalizedName) ?? normalizedName;
 
-  return normalizedName
+  return derivationSource
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
     .replace(/[\t\n\v\f\r ]+|_+/g, '-')
