@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.11.1 |
+| Version | 3.11.2 |
 | Released | 2026-08-11 |
-| Last Material Change | Canonical Object Type routing |
-| Source Commit | `b9bcfa1ae1776fccf41fda086ad659f5636ade0c` |
+| Last Material Change | Migrate PublicAPI consumers to v4 |
+| Source Commit | `05cff8c28a0c5a8e713f488bf8861e62baa637b8` |
 
 
 ## Install
