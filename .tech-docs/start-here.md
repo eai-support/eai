@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.11.2** (2026-08-11): Migrate PublicAPI consumers to v4.
+The current CLI release is **v3.11.3** (2026-08-11): Canonical GitHub connection slug derivation and refreshed app template source.
 
 
 ## What The Pieces Do
