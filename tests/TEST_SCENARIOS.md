@@ -686,7 +686,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 // projectHasObjectType({
 //   name: 'Order',
 //   displayName: 'Order',
-//   linkTypes: [{ name: 'customer', targetObjectType: 'Customer', cardinality: 'many-to-some' }]
+//   linkTypes: [{ name: 'customer', targetObjectType: 'customer', cardinality: 'many-to-some' }]
 // })
 //
 // runCommand('eai types validate')

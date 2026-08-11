@@ -176,7 +176,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'reviewItems', targetObjectType: 'ReviewItem', cardinality: 'one-to-many' as const },
+        { name: 'reviewItems', targetObjectType: 'review-item', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -209,7 +209,7 @@ export const objectTypes = {
         { name: 'reviewedDate', type: 'date' as const, required: false },
       ],
       linkTypes: [
-        { name: 'collection', targetObjectType: 'Collection', cardinality: 'many-to-one' as const },
+        { name: 'collection', targetObjectType: 'collection', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

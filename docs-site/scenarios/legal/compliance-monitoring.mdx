@@ -176,7 +176,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'filings', targetObjectType: 'Filing', cardinality: 'one-to-many' as const },
+        { name: 'filings', targetObjectType: 'filing', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -197,8 +197,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'obligation', targetObjectType: 'Obligation', cardinality: 'many-to-one' as const },
-        { name: 'auditTrail', targetObjectType: 'AuditTrail', cardinality: 'one-to-many' as const, cascadeDelete: true },
+        { name: 'obligation', targetObjectType: 'obligation', cardinality: 'many-to-one' as const },
+        { name: 'auditTrail', targetObjectType: 'audit-trail', cardinality: 'one-to-many' as const, cascadeDelete: true },
       ],
       actions: [
         {
@@ -226,7 +226,7 @@ export const objectTypes = {
         { name: 'details', type: 'text' as const, required: false },
       ],
       linkTypes: [
-        { name: 'filing', targetObjectType: 'Filing', cardinality: 'many-to-one' as const },
+        { name: 'filing', targetObjectType: 'filing', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,

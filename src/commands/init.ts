@@ -1940,7 +1940,7 @@ function generateObjectTypesScaffold(opts: InitOptions): string {
     ? `      linkTypes: [
         {
           name: 'documents',
-          targetObjectType: 'Document',
+          targetObjectType: 'document',
           cardinality: 'one-to-many' as const,
           cascadeDelete: true,
         },
@@ -2064,6 +2064,7 @@ export type Cardinality = 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-t
 
 export interface LinkTypeDefinition {
   name: string;
+  /** Exact stored Object Type slug used on relationship routes. */
   targetObjectType: string;
   cardinality: Cardinality;
   cascadeDelete?: boolean;

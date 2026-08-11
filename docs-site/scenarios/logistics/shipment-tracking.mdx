@@ -177,8 +177,8 @@ export const objectTypes = {
         { name: 'estimatedDelivery', type: 'date' as const, required: true, indexed: true },
       ],
       linkTypes: [
-        { name: 'trackingEvents', targetObjectType: 'TrackingEvent', cardinality: 'one-to-many' as const },
-        { name: 'deliveries', targetObjectType: 'Delivery', cardinality: 'one-to-many' as const },
+        { name: 'trackingEvents', targetObjectType: 'tracking-event', cardinality: 'one-to-many' as const },
+        { name: 'deliveries', targetObjectType: 'delivery', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -205,7 +205,7 @@ export const objectTypes = {
         { name: 'description', type: 'text' as const, required: false },
       ],
       linkTypes: [
-        { name: 'shipment', targetObjectType: 'Shipment', cardinality: 'many-to-one' as const },
+        { name: 'shipment', targetObjectType: 'shipment', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -221,7 +221,7 @@ export const objectTypes = {
         { name: 'notes', type: 'text' as const, required: false },
       ],
       linkTypes: [
-        { name: 'shipment', targetObjectType: 'Shipment', cardinality: 'many-to-one' as const },
+        { name: 'shipment', targetObjectType: 'shipment', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,

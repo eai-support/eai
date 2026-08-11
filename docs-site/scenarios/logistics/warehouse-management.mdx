@@ -171,7 +171,7 @@ export const objectTypes = {
         { name: 'sku', type: 'text' as const, required: true, indexed: true },
       ],
       linkTypes: [
-        { name: 'adjustments', targetObjectType: 'StockAdjustment', cardinality: 'one-to-many' as const },
+        { name: 'adjustments', targetObjectType: 'stock-adjustment', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -227,7 +227,7 @@ export const objectTypes = {
         { name: 'adjustedDate', type: 'date' as const, required: true, indexed: true },
       ],
       linkTypes: [
-        { name: 'inventoryItem', targetObjectType: 'InventoryItem', cardinality: 'many-to-one' as const },
+        { name: 'inventoryItem', targetObjectType: 'inventory-item', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,
