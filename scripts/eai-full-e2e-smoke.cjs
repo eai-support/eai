@@ -63,6 +63,7 @@ const TRACEABILITY_BASE = [
   ['eai app list', 'read', 'live', 'Lists apps before and after scaffold.'],
   ['eai app auth status', 'read', 'live-optional', 'Reads app-client authorization when the smoke provisions an Entra registration.'],
   ['eai app create', 'create', 'covered-by-init', 'The scaffold path calls the same app creation API; direct extra app creation is opt-in to avoid orphaned apps.'],
+  ['eai app delete', 'delete', 'covered-by-cli', 'Exact-confirmation and verified receipt behavior are covered by integration tests; deployed destructive proof runs only on the disposable lifecycle harness.'],
   ['eai app connect-existing', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids overwriting source metadata on a dedicated tenant app.'],
   ['eai app adopt-observed', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids marking app infrastructure observed without a managed redeploy path.'],
   ['eai app workflow-setup', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids issuing one-time source-unknown nonce state.'],
@@ -283,6 +284,9 @@ const SMOKE_CALLS = {
   'eai app create': [
     'eai app create <name> --tenant-id <tenant-id> --key <app-key> --template eai-app-template --source eai-cli --app-url https://example.invalid --status pending --format json',
     'eai app create <name> --tenant-id <tenant-id> --parent-tenant <tenant-id> --child-tenant <child-name> --child-tenant-slug <child-slug> --key <app-key> --format json',
+  ],
+  'eai app delete': [
+    'eai app delete <app-key> --tenant-id <tenant-id> --confirm <app-key> --non-interactive --format json',
   ],
   'eai app connect-existing': [
     'eai app connect-existing <app-key> --tenant-id <tenant-id> --repo <owner/repo> --repo-url https://github.com/<owner>/<repo> --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config src/eai.config/index.ts --runtime src/eai.runtime.ts --format json',
@@ -586,7 +590,7 @@ const DEFAULT_ARTIFACT_CLEANUP = {
 const ARTIFACT_CLEANUP = {
   'eai init': {
     createsExternalArtifact: 'Yes - app binding and local workspace',
-    cleanupMechanism: 'Disposable local workspace retained for evidence; no app delete command in default smoke',
+    cleanupMechanism: 'eai app delete can remove the platform app; the disposable local workspace remains local evidence',
     cleanupVerified: 'Partial - summary records workspace path',
   },
   'eai env push': {
@@ -701,8 +705,13 @@ const ARTIFACT_CLEANUP = {
   },
   'eai app create': {
     createsExternalArtifact: 'Yes - app record',
-    cleanupMechanism: 'Covered by eai init path; no default app delete command',
-    cleanupVerified: 'No - dedicated smoke tenant expected',
+    cleanupMechanism: 'eai app delete <app-key> with exact non-interactive confirmation',
+    cleanupVerified: 'Yes in the disposable deployed lifecycle harness; disabled in the default CLI smoke',
+  },
+  'eai app delete': {
+    createsExternalArtifact: 'No - destructive cleanup command',
+    cleanupMechanism: 'Deletes and verifies the exact app-owned platform scope',
+    cleanupVerified: 'Yes when the verified deletion receipt is returned',
   },
   'eai app connect-existing': {
     createsExternalArtifact: 'Updates app source metadata',
