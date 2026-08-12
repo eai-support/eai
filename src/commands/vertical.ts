@@ -44,6 +44,16 @@ const DEFAULT_SOURCE_UNKNOWN_RUNTIME_PATH = 'eai.runtime.json';
 const STORAGE_BINDINGS_PATH = join('.eai', 'storage-bindings.json');
 const GENERIC_APP_IDENTITY_MESSAGE = 'Not applicable: this generic app uses user-delegated PublicAPI access.';
 const APP_DELETE_WARNING = 'This cannot be undone. All application data and metadata will be deleted.';
+const APP_DELETION_ENVIRONMENTS = ['preview', 'dev', 'test', 'prod'] as const;
+
+/** Require the immutable deletion plan to cover every deployment environment exactly once. */
+export function isCompleteAppDeletionEnvironmentSet(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length === APP_DELETION_ENVIRONMENTS.length &&
+    APP_DELETION_ENVIRONMENTS.every(environment => value.includes(environment))
+  );
+}
 
 /** Reject unattended deletion unless the supplied confirmation matches the immutable app key. */
 export function validateNonInteractiveAppDeleteConfirmation(
@@ -740,14 +750,12 @@ verticalCommand
       );
     }
     const manifestHash = typeof plan.ownershipManifestHash === 'string' ? plan.ownershipManifestHash : '';
-    const environments = Array.isArray(plan.environments)
-      ? plan.environments.filter((value): value is string => typeof value === 'string')
-      : [];
+    const environments = plan.environments;
     if (
       plan.appKey !== appKey ||
       plan.confirmationRequired !== appKey ||
       !/^[a-f0-9]{64}$/.test(manifestHash) ||
-      environments.length === 0
+      !isCompleteAppDeletionEnvironmentSet(environments)
     ) {
       fail('The platform returned an invalid app deletion ownership plan. No data was deleted.');
     }

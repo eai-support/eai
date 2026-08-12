@@ -16,6 +16,7 @@ import {
   buildSourceUnknownDeploymentData,
   buildSourceUnknownRegistrationData,
   buildSourceUnknownWorkflowEvidenceData,
+  isCompleteAppDeletionEnvironmentSet,
   validateNonInteractiveAppDeleteConfirmation,
   verticalCommand,
 } from '../../src/commands/vertical.js';
@@ -276,6 +277,13 @@ describe('eai app', () => {
     expect(() => validateNonInteractiveAppDeleteConfirmation('post-pilot', 'PostPilot')).toThrow(
       'Non-interactive deletion requires --confirm post-pilot.',
     );
+  });
+
+  test('requires every app deletion environment exactly once', () => {
+    expect(isCompleteAppDeletionEnvironmentSet(['preview', 'dev', 'test', 'prod'])).toBe(true);
+    expect(isCompleteAppDeletionEnvironmentSet(['preview', 'dev', 'test'])).toBe(false);
+    expect(isCompleteAppDeletionEnvironmentSet(['preview', 'dev', 'test', 'test'])).toBe(false);
+    expect(isCompleteAppDeletionEnvironmentSet(['preview', 'dev', 'test', 'prod', 'other'])).toBe(false);
   });
 
   test('reports user-delegated app authorization without creating credentials or mutating state', async () => {
