@@ -99,7 +99,7 @@ cd my-app
 
 # `eai create` checks local tooling, signs you in, confirms the signup
 # workspace, creates the app, installs dependencies, verifies Gofer, and
-# checks builder readiness. Use `/0_business_scenario` in your AI tool when
+# checks builder readiness. Use `eai start` to open a supported AI workspace when
 # it finishes. Pass `--no-install` to skip the install and run
 # `npm install` yourself.
 
@@ -559,10 +559,11 @@ terminals used in this workspace:
 
 | CLI | Installed surface | First command |
 |-----|-------------------|---------------|
-| Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` hooks | `/0_gofer_start` |
-| Codex CLI | `.agents/skills/` with a legacy `.system/skills/` mirror | Ask Codex to use the relevant Gofer skill |
-| Gemini CLI | `.gemini/commands/gofer`, `.gemini/extension.json` | `/gofer:1_gofer_research` |
-| GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | Use the Gofer prompt or matching local skill |
+| GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | `eai start` and use the public EAI skill |
+| Claude | `.claude/commands`, `.claude/skills`, `.claude/settings.json` hooks | `eai start` and use the public EAI skill |
+| Codex | `.agents/skills/` with a legacy `.system/skills/` mirror | `eai start` and use the public EAI skill |
+| Grok Build | `.grok/skills/` | `eai start` and use the public EAI skill |
+| Gemini CLI | `.gemini/commands/gofer`, `.gemini/extension.json` | Use the public EAI command |
 
 The shared workflow artifacts live under `.specify/`: commands, scripts,
 templates, hooks, memory, logs, and generated feature specs. Runtime state is

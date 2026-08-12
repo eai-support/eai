@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.11.4** (2026-08-12): Repair incomplete Gofer refresh caches.
+The current CLI release is **v3.12.0** (2026-08-12): Add guided AI workspace onboarding.
 
 
 ## What The Pieces Do
@@ -68,6 +68,23 @@ kebab-case app name, and choose the current-folder option. Scripts can use
 existing files and Git metadata, and updates files that are part of the
 generated scaffold.
 
+## Start In An AI Workspace
+
+```bash
+eai start --check
+eai start
+```
+
+The check reads installed command and application metadata only. It does not
+read provider accounts or project files. On first use, choose GitHub Copilot,
+Claude, Codex, or Grok; EAI remembers the last workspace that opens
+successfully. Starting it confirms that the selected provider may read the
+project and use the user's provider account.
+
+The prepared first conversation begins with the business outcome, explains EAI
+capabilities as they become relevant, and pauses once for approval of the
+business specification before implementation.
+
 ## Connect To A Tenant
 
 ```bash
@@ -108,7 +125,9 @@ eai gofer refresh
 ```
 
 Use gofer to keep agent instructions, plan templates, service-fit checklists,
-and public-safe platform references aligned with the CLI and app template.
+and public-safe platform references aligned with the CLI and app template. In
+the AI workspace, use the public `eai` skill; numbered delivery stages are
+internal implementation details.
 
 ## Choose Your Next Page
 

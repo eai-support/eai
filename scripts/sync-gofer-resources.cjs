@@ -39,6 +39,7 @@ const EXTRA_RESOURCE_MAPPINGS = [
   ['.specify/schemas', 'schemas'],
   ['.system/skills', 'system-skills'],
   ['.agents/skills', 'agents-skills'],
+  ['.grok/skills', 'grok-skills'],
 ];
 
 function readPinnedRef() {

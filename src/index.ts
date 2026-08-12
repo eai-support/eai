@@ -45,6 +45,7 @@ import { blocksCommand } from './commands/blocks.js';
 import { publicApiCommand } from './commands/publicapi.js';
 import { errorsCommand } from './commands/errors.js';
 import { agentCommand } from './commands/agent.js';
+import { startCommand } from './commands/start.js';
 import {
   checkForUpdate,
   isMachineReadableInvocation,
@@ -122,6 +123,7 @@ program.addCommand(blocksCommand);
 program.addCommand(publicApiCommand);
 program.addCommand(errorsCommand);
 program.addCommand(agentCommand);
+program.addCommand(startCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -133,6 +135,7 @@ ${chalk.bold('Getting Started:')}
   ${chalk.cyan('eai env pull')}             Sync app config from cloud
   ${chalk.cyan('eai types seed')}           Publish Object Types to the platform
   ${chalk.cyan('eai dev')}                  Start local development server
+  ${chalk.cyan('eai start')}                Open this app in your AI workspace
 
 ${chalk.bold('Development Workflows:')}
   ${chalk.dim('# Define your types, validate them, then publish them')}
@@ -177,12 +180,10 @@ ${chalk.bold('Machine-Readable Output:')}
   ${chalk.cyan('eai --describe')}
   ${chalk.cyan('eai agent guide --format json')}
 
-${chalk.bold('AI Terminal Workflows:')}
-  ${chalk.dim('# New projects include Gofer commands, agents, scripts, hooks, and skills')}
-  ${chalk.cyan('claude')}                   ${chalk.dim('then run /0_gofer_start')}
-  ${chalk.cyan('codex')}                    ${chalk.dim('then ask Codex to use the 1_gofer_research skill')}
-  ${chalk.cyan('gemini')}                   ${chalk.dim('then run /gofer:1_gofer_research')}
-  ${chalk.cyan('copilot')}                  ${chalk.dim('uses .github/prompts and .github/skills')}
+${chalk.bold('AI Workspace:')}
+  ${chalk.dim('# Detect installed AI workspaces, then start this app with the public EAI skill')}
+  ${chalk.cyan('eai start --check')}
+  ${chalk.cyan('eai start')}
 
 ${chalk.bold('Updates:')}
   ${chalk.dim('# Check/update the CLI, then maintain safe repo-local assets')}
