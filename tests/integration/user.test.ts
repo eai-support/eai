@@ -471,6 +471,53 @@ describe('eai user', () => {
     expect(outputSpy.mock.calls.flat().join('')).toContain('"role": "tenant-admin"');
   });
 
+  test('role set forwards complete invitation details for a user who is not in Entra', async () => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        status: 'invited',
+        email: 'new-user@example.com',
+        role: 'tenant-admin',
+        userId: 'user-456',
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+
+    await userCommand.parseAsync([
+      'role',
+      'set',
+      '--email',
+      'new-user@example.com',
+      '--tenant',
+      TENANT_ID,
+      '--role',
+      'tenant-admin',
+      '--first-name',
+      'EAI',
+      '--last-name',
+      'Test Admin',
+      '--message',
+      'Welcome to the test harness',
+      '--redirect-uri',
+      'https://admin-portal.example.com/login',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'new-user@example.com',
+      role: 'tenant-admin',
+      firstName: 'EAI',
+      lastName: 'Test Admin',
+      message: 'Welcome to the test harness',
+      redirectUri: 'https://admin-portal.example.com/login',
+    });
+  });
+
   test('role set by member id calls the V4 member role update route', async () => {
     const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const fetchMock = vi
