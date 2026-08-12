@@ -45,6 +45,7 @@ const STORAGE_BINDINGS_PATH = join('.eai', 'storage-bindings.json');
 const GENERIC_APP_IDENTITY_MESSAGE = 'Not applicable: this generic app uses user-delegated PublicAPI access.';
 const APP_DELETE_WARNING = 'This cannot be undone. All application data and metadata will be deleted.';
 
+/** Reject unattended deletion unless the supplied confirmation matches the immutable app key. */
 export function validateNonInteractiveAppDeleteConfirmation(
   appKey: string,
   confirmation: unknown,
@@ -724,9 +725,12 @@ verticalCommand
       tenantId: options.tenantId,
       interactive: !options.tenantId && !options.nonInteractive,
     });
-    const client = new PlatformAPIClient(ctx.publicApiUrl, ctx.tenantId);
+    const companyTenantId = options.tenantId
+      ? ctx.tenantId
+      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
 
-    const planResponse = await client.getAppDeletionPlan(ctx.tenantId, appKey);
+    const planResponse = await client.getAppDeletionPlan(companyTenantId, appKey);
     const plan = await readResponsePayload(planResponse);
     if (!planResponse.ok || !isRecord(plan)) {
       fail(
@@ -773,7 +777,7 @@ verticalCommand
     }
 
     const spinner = makeSpinner(format, `Deleting app ${appKey}...`);
-    const response = await client.deleteApp(ctx.tenantId, appKey, {
+    const response = await client.deleteApp(companyTenantId, appKey, {
       confirmationAppKey: appKey,
       ownershipManifestHash: manifestHash,
       environments,
@@ -787,7 +791,16 @@ verticalCommand
           : `${response.status} ${response.statusText}`,
       );
     }
-    if (receipt.status !== 'deleted' || receipt.verified !== true || receipt.appKey !== appKey) {
+    if (
+      receipt.schemaVersion !== 'eai.app-deletion-receipt.v1' ||
+      typeof receipt.operationId !== 'string' ||
+      receipt.operationId.length === 0 ||
+      receipt.planHash !== manifestHash ||
+      receipt.status !== 'deleted' ||
+      receipt.verified !== true ||
+      receipt.appKey !== appKey ||
+      receipt.tenantId !== companyTenantId
+    ) {
       spinner?.fail('App deletion could not be verified');
       fail('The platform did not return a verified app deletion receipt.');
     }

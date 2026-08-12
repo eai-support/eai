@@ -191,6 +191,7 @@ describe('eai app', () => {
 
   test('deletes an app through the V4 ownership plan and emits a verified JSON receipt', async () => {
     await seedLoggedInTenant();
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const manifestHash = 'a'.repeat(64);
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = requestUrl(input);
@@ -222,6 +223,9 @@ describe('eai app', () => {
       }
       if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/post-pilot` && method === 'DELETE') {
         return jsonResponse({
+          schemaVersion: 'eai.app-deletion-receipt.v1',
+          operationId: 'appdel-operation-1',
+          planHash: manifestHash,
           tenantId: COMPANY_TENANT_ID,
           appKey: 'post-pilot',
           ownershipManifestHash: manifestHash,
@@ -259,6 +263,13 @@ describe('eai app', () => {
         }),
       }),
     );
+    const emitted = outputSpy.mock.calls.map(call => String(call[0])).join('');
+    expect(JSON.parse(emitted)).toMatchObject({
+      tenantId: COMPANY_TENANT_ID,
+      appKey: 'post-pilot',
+      status: 'deleted',
+      verified: true,
+    });
   });
 
   test('requires an exact app-key confirmation for non-interactive deletion', () => {
