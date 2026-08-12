@@ -85,6 +85,7 @@ construction.
 | Command                                 | Purpose                                                                                   |
 | --------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `eai init`                              | Scaffold an app from the EAI App Template.                                                |
+| `eai start`                             | Detect or open a supported AI workspace for the current EAI app.                          |
 | `eai login`, `eai logout`, `eai whoami` | Manage local authentication and inspect active context.                                   |
 | `eai tenant`                            | List, select, create, inspect, and administer tenant context.                             |
 | `eai types`                             | Validate, seed, diff, and pull Object Type definitions.                                   |
@@ -117,6 +118,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Need                 | Preferred CLI                                            |
 | -------------------- | -------------------------------------------------------- |
 | Scaffold app         | `eai init <name>` or `eai init <name> --current-dir`     |
+| Start AI workspace   | `eai start --check`, then `eai start`                    |
 | Select tenant        | `eai tenant list`, `eai tenant select <slug>`            |
 | Publish Object Types | `eai types validate`, `eai types seed`, `eai types diff` |
 | Inspect schemas      | `eai resources schema --tenant-id <tenant-id>`           |

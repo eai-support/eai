@@ -21,6 +21,7 @@ const GOFER_EXTRA_RESOURCE_MAPPINGS = [
   [".specify/references", "references"],
   [".system/skills", "system-skills"],
   [".agents/skills", "agents-skills"],
+  [".grok/skills", "grok-skills"],
 ];
 
 export function extractEnterprisePackageVersions(lockfile) {

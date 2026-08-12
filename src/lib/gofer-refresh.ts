@@ -28,6 +28,7 @@ const GOFER_EXTRA_RESOURCE_MAPPINGS: readonly (readonly [string, string])[] = [
   ['.specify/references', 'references'],
   ['.system/skills', 'system-skills'],
   ['.agents/skills', 'agents-skills'],
+  ['.grok/skills', 'grok-skills'],
 ];
 
 interface GoferBundleMetadata {

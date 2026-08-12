@@ -128,19 +128,21 @@ function showCreateSection(title: string): void {
   out.heading(`${chalk.cyan("◇")} ${title}`);
 }
 
-type CreateAiTool = "codex" | "claude" | "vscode" | "gemini";
+type CreateAiTool = "codex" | "claude" | "vscode" | "grok" | "gemini";
 
 const CREATE_AI_TOOL_CHOICES: Array<{ name: string; value: CreateAiTool }> = [
   { name: "Codex", value: "codex" },
   { name: "Claude", value: "claude" },
-  { name: "VS Code", value: "vscode" },
+  { name: "GitHub Copilot in VS Code", value: "vscode" },
+  { name: "Grok Build", value: "grok" },
   { name: "Gemini", value: "gemini" },
 ];
 
 const CREATE_AI_TOOL_LABELS: Record<CreateAiTool, string> = {
   codex: "Codex",
   claude: "Claude",
-  vscode: "VS Code",
+  vscode: "GitHub Copilot in VS Code",
+  grok: "Grok Build",
   gemini: "Gemini",
 };
 
@@ -821,7 +823,7 @@ Use --no-gofer only when you need a bare app scaffold.
     out.nestedDim(`Template: ${templatePlan.displaySource}`);
     if (options.gofer) {
       out.nestedDim(
-        "Gofer: Claude /0_gofer_start; Codex uses the repo-local Gofer skills; Gemini /gofer:1_gofer_research; Copilot .github prompts/skills.",
+        "Gofer: run eai start to open this project in a detected AI workspace with the public EAI skill.",
       );
     }
     out.nestedDim(`Package profile: ${initOptions.packageProfile}`);
@@ -1281,8 +1283,8 @@ export function buildCreateCompletionSummary(
     return {
       heading: `${chalk.green("✔")} Your EAI workspace is ready`,
       steps: [
-        `Open that folder in ${toolLabel}, then start:`,
-        chalk.cyan("/0_business_scenario <describe what you want to build>"),
+        `${toolLabel} is your selected AI workspace. Start it with:`,
+        chalk.cyan("eai start"),
       ],
     };
   }
@@ -1292,7 +1294,7 @@ export function buildCreateCompletionSummary(
     steps: [
       `Re-check with ${chalk.cyan("eai doctor")} inside the project folder.`,
       `If it stays unavailable, ask your workspace tenant-admin to finish setup: ${ONBOARDING_DOCS_URL}`,
-      `Once readiness reports available, open the folder in ${toolLabel} and start ${chalk.cyan("/0_business_scenario")}.`,
+      `Once readiness reports available, start ${toolLabel} with ${chalk.cyan("eai start")}.`,
     ],
   };
 }
