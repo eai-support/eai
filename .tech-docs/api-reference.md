@@ -263,6 +263,10 @@ and "user needs a tenant-admin role" with one command.
 - `--member-id <id>` — Existing tenant member/user ID for the direct role update endpoint
 - `--tenant <id>` — Target tenant (default: active tenant)
 - `--role <role>` — Role to assign. Email-based updates support `tenant-viewer`, `tenant-staff`, `tenant-builder`, and `tenant-admin`; member-id updates support the platform role update contract.
+- `--first-name <name>` — Optional first name for a new email invitation
+- `--last-name <name>` — Optional last name for a new email invitation
+- `--message <message>` — Optional message for a new email invitation
+- `--redirect-uri <uri>` — Optional absolute post-invite redirect URI
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
