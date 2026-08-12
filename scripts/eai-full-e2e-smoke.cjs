@@ -193,7 +193,7 @@ const SMOKE_CALLS = {
     'eai user roles --tenant <tenant-id> --format json',
   ],
   'eai user role set': [
-    'EAI_E2E_INVITE_TEST_USER=<email> eai user role set --email <email> --tenant <tenant-id> --role <role> --format json',
+    'EAI_E2E_INVITE_TEST_USER=<email> eai user role set --email <email> --tenant <tenant-id> --role <role> --first-name <name> --last-name <name> --message <message> --redirect-uri <uri> --format json',
   ],
   'eai user provision-me': [
     'eai user provision-me --tenant <tenant-id> --format json',
@@ -1334,6 +1334,10 @@ function runLiveSmoke(cliPath) {
       childTenantId || parentTenantId,
       '--role',
       process.env.EAI_E2E_INVITE_ROLE || 'tenant-viewer',
+      ...(process.env.EAI_E2E_INVITE_FIRST_NAME ? ['--first-name', process.env.EAI_E2E_INVITE_FIRST_NAME] : []),
+      ...(process.env.EAI_E2E_INVITE_LAST_NAME ? ['--last-name', process.env.EAI_E2E_INVITE_LAST_NAME] : []),
+      ...(process.env.EAI_E2E_INVITE_MESSAGE ? ['--message', process.env.EAI_E2E_INVITE_MESSAGE] : []),
+      ...(process.env.EAI_E2E_INVITE_REDIRECT_URI ? ['--redirect-uri', process.env.EAI_E2E_INVITE_REDIRECT_URI] : []),
       '--format',
       'json',
     ]);

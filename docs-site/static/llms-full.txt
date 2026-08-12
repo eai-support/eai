@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.11.4.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.12.1.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -44,48 +44,51 @@ Usage: eai [options] [command]
 Enterprise AI Platform CLI — scaffold, seed, deploy, and manage applications
 
 Options:
-  -V, --cli-version        output the version number
-  --simple                 Plain text output without colors or symbols (for
-                           screen readers)
-  --no-color               Disable colored output
-  --color                  Force colored output
-  --profile <name>         Use a locally configured private profile
-  --describe               Output JSON schema of all commands
-  -h, --help               display help for command
+  -V, --cli-version            output the version number
+  --simple                     Plain text output without colors or symbols (for
+                               screen readers)
+  --no-color                   Disable colored output
+  --color                      Force colored output
+  --profile <name>             Use a locally configured private profile
+  --describe                   Output JSON schema of all commands
+  -h, --help                   display help for command
 
 Commands:
-  init [options] [name]    Scaffold a new application
-  create [options] [name]  Guide a new builder through EAI setup and create an
-                           application
-  dev [options]            Start local development server
-  login [options]          Authenticate with Entra CIAM
-  logout                   Clear stored authentication tokens
-  env                      Manage environment variables
-  types                    Manage Object Type definitions
-  tenant                   Manage tenants on the platform
-  user                     Manage users on the platform
-  resources                CRUD operations on platform resources
-  app|vertical             Manage apps under the active company tenant
-  chat                     Chat with AI workflows
-  workflow                 Provision app workflow configs and inspect AI runtime
-                           workflow bindings
-  docs                     Document upload, classification, and indexing
-  deploy                   Deployment management
-  runtime                  Validate the provider-neutral EAI app runtime
-                           contract
-  verify [options]         Run platform connectivity checks
-  doctor [options]         Diagnose common issues and suggest fixes
-  whoami                   Show auth status and tenant info
-  update [options]         Check for and install CLI updates
-  provision                Provision platform resources for this app
-  gofer                    Inspect and refresh Gofer-managed project assets
-  template                 Preview application template and UI component drift
-                           for the current project
-  blocks                   Discover AI-readable EAI UI block manifests
-  publicapi                Call authorized PublicAPI V4 routes directly
-  errors                   Explain EAI CLI errors and agent-safe recovery steps
-  agent                    Show AI-agent discovery and recovery guidance
-  help [command]           display help for command
+  init [options] [name]        Scaffold a new application
+  create [options] [name]      Guide a new builder through EAI setup and create
+                               an application
+  dev [options]                Start local development server
+  login [options]              Authenticate with Entra CIAM
+  logout                       Clear stored authentication tokens
+  env                          Manage environment variables
+  types                        Manage Object Type definitions
+  tenant                       Manage tenants on the platform
+  user                         Manage users on the platform
+  resources                    CRUD operations on platform resources
+  app|vertical                 Manage apps under the active company tenant
+  chat                         Chat with AI workflows
+  workflow                     Provision app workflow configs and inspect AI
+                               runtime workflow bindings
+  docs                         Document upload, classification, and indexing
+  deploy                       Deployment management
+  runtime                      Validate the provider-neutral EAI app runtime
+                               contract
+  verify [options]             Run platform connectivity checks
+  doctor [options]             Diagnose common issues and suggest fixes
+  whoami                       Show auth status and tenant info
+  update [options]             Check for and install CLI updates
+  provision                    Provision platform resources for this app
+  gofer                        Inspect and refresh Gofer-managed project assets
+  template                     Preview application template and UI component
+                               drift for the current project
+  blocks                       Discover AI-readable EAI UI block manifests
+  publicapi                    Call authorized PublicAPI V4 routes directly
+  errors                       Explain EAI CLI errors and agent-safe recovery
+                               steps
+  agent                        Show AI-agent discovery and recovery guidance
+  start [options] [directory]  Detect or start a supported AI workspace for an
+                               EAI project
+  help [command]               display help for command
 
 Getting Started:
   eai create my-app        Scaffold an app with Gofer AI CLI assets
@@ -95,6 +98,7 @@ Getting Started:
   eai env pull             Sync app config from cloud
   eai types seed           Publish Object Types to the platform
   eai dev                  Start local development server
+  eai start                Open this app in your AI workspace
 
 Development Workflows:
   # Define your types, validate them, then publish them
@@ -139,12 +143,10 @@ Machine-Readable Output:
   eai --describe
   eai agent guide --format json
 
-AI Terminal Workflows:
-  # New projects include Gofer commands, agents, scripts, hooks, and skills
-  claude                   then run /0_gofer_start
-  codex                    then ask Codex to use the 1_gofer_research skill
-  gemini                   then run /gofer:1_gofer_research
-  copilot                  uses .github/prompts and .github/skills
+AI Workspace:
+  # Detect installed AI workspaces, then start this app with the public EAI skill
+  eai start --check
+  eai start
 
 Updates:
   # Check/update the CLI, then maintain safe repo-local assets
@@ -384,7 +386,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.11.4** (2026-08-12): Repair incomplete Gofer refresh caches.
+The current CLI release is **v3.12.1** (2026-08-12): Fix complete new-user tenant-role invitations.
 
 
 ## What The Pieces Do
@@ -438,6 +440,23 @@ kebab-case app name, and choose the current-folder option. Scripts can use
 existing files and Git metadata, and updates files that are part of the
 generated scaffold.
 
+## Start In An AI Workspace
+
+```bash
+eai start --check
+eai start
+```
+
+The check reads installed command and application metadata only. It does not
+read provider accounts or project files. On first use, choose GitHub Copilot,
+Claude, Codex, or Grok; EAI remembers the last workspace that opens
+successfully. Starting it confirms that the selected provider may read the
+project and use the user's provider account.
+
+The prepared first conversation begins with the business outcome, explains EAI
+capabilities as they become relevant, and pauses once for approval of the
+business specification before implementation.
+
 ## Connect To A Tenant
 
 ```bash
@@ -478,7 +497,9 @@ eai gofer refresh
 ```
 
 Use gofer to keep agent instructions, plan templates, service-fit checklists,
-and public-safe platform references aligned with the CLI and app template.
+and public-safe platform references aligned with the CLI and app template. In
+the AI workspace, use the public `eai` skill; numbered delivery stages are
+internal implementation details.
 
 ## Choose Your Next Page
 
@@ -503,10 +524,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.11.4 |
+| Version | 3.12.1 |
 | Released | 2026-08-12 |
-| Last Material Change | Repair incomplete Gofer refresh caches |
-| Source Commit | `6d82bb2ec7fbca2e6306ed72bb68000d09660429` |
+| Last Material Change | Fix complete new-user tenant-role invitations |
+| Source Commit | `e41b05da1cb9218b22171348754b634c9c732735` |
 
 
 ## Install
@@ -574,6 +595,7 @@ construction.
 | Command                                 | Purpose                                                                                   |
 | --------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `eai init`                              | Scaffold an app from the EAI App Template.                                                |
+| `eai start`                             | Detect or open a supported AI workspace for the current EAI app.                          |
 | `eai login`, `eai logout`, `eai whoami` | Manage local authentication and inspect active context.                                   |
 | `eai tenant`                            | List, select, create, inspect, and administer tenant context.                             |
 | `eai types`                             | Validate, seed, diff, and pull Object Type definitions.                                   |
@@ -606,6 +628,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Need                 | Preferred CLI                                            |
 | -------------------- | -------------------------------------------------------- |
 | Scaffold app         | `eai init <name>` or `eai init <name> --current-dir`     |
+| Start AI workspace   | `eai start --check`, then `eai start`                    |
 | Select tenant        | `eai tenant list`, `eai tenant select <slug>`            |
 | Publish Object Types | `eai types validate`, `eai types seed`, `eai types diff` |
 | Inspect schemas      | `eai resources schema --tenant-id <tenant-id>`           |
@@ -660,22 +683,14 @@ when you intentionally want managed files overwritten after review.
 
 ## Gofer Start Pipeline
 
-For app or platform work, start with the Gofer Start workflow. The current
-pipeline stages are:
+Start the project with `eai start`, then use the public `eai` skill in the AI
+workspace. The agent begins with the business outcome, researches the existing
+system, writes a testable business specification, and asks for approval once.
+After approval it plans, builds, tests, and validates the work unless a material
+business, security, cost, deployment, or destructive decision needs approval.
 
-| Stage               | Purpose                                                                       |
-| ------------------- | ----------------------------------------------------------------------------- |
-| `0_gofer_start`     | Confirm EAI readiness, frame the business goal, and route the pipeline.       |
-| `1_gofer_research`  | Discover stakeholders, existing code, platform capabilities, and constraints. |
-| `2_gofer_specify`   | Convert discovery into a feature specification and shared scope.              |
-| `3_gofer_plan`      | Plan architecture, tests, rollback, service usage, and delivery sequencing.   |
-| `4_gofer_tasks`     | Break the plan into implementation tasks.                                     |
-| `5_gofer_implement` | Implement with tests and focused changes.                                     |
-| `6_gofer_validate`  | Validate correctness, security, integration, tests, and release readiness.    |
-
-Optional helpers include `0a_problem_validation`, `7_gofer_save`,
-`7a_stakeholder_comms`, `8_gofer_branding`, `9_gofer_tests`, and
-`10_gofer_cloud`.
+The numbered Gofer stage files remain available as internal execution
+contracts. Users and AI agents do not need to select or understand them.
 
 ## EAI App Delivery Rules
 
@@ -1938,7 +1953,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.11.4. The same catalog powers human stderr output, JSON output for AI
+v3.12.1. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -2839,6 +2854,10 @@ and "user needs a tenant-admin role" with one command.
 - `--member-id <id>` — Existing tenant member/user ID for the direct role update endpoint
 - `--tenant <id>` — Target tenant (default: active tenant)
 - `--role <role>` — Role to assign. Email-based updates support `tenant-viewer`, `tenant-staff`, `tenant-builder`, and `tenant-admin`; member-id updates support the platform role update contract.
+- `--first-name <name>` — Optional first name for a new email invitation
+- `--last-name <name>` — Optional last name for a new email invitation
+- `--message <message>` — Optional message for a new email invitation
+- `--redirect-uri <uri>` — Optional absolute post-invite redirect URI
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:

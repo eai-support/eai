@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-08-12T11:37:09.819Z"
-source_commit: "6d82bb2ec7fbca2e6306ed72bb68000d09660429"
+generated_at: "2026-08-12T21:36:58.678Z"
+source_commit: "e41b05da1cb9218b22171348754b634c9c732735"
 ---
 # EAI CLI — API Reference
 
@@ -263,6 +263,10 @@ and "user needs a tenant-admin role" with one command.
 - `--member-id <id>` — Existing tenant member/user ID for the direct role update endpoint
 - `--tenant <id>` — Target tenant (default: active tenant)
 - `--role <role>` — Role to assign. Email-based updates support `tenant-viewer`, `tenant-staff`, `tenant-builder`, and `tenant-admin`; member-id updates support the platform role update contract.
+- `--first-name <name>` — Optional first name for a new email invitation
+- `--last-name <name>` — Optional last name for a new email invitation
+- `--message <message>` — Optional message for a new email invitation
+- `--redirect-uri <uri>` — Optional absolute post-invite redirect URI
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:

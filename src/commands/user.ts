@@ -46,6 +46,10 @@ interface SetUserRoleCommandOptions extends UserCommandOptions {
   email?: string;
   memberId?: string;
   role: string;
+  firstName?: string;
+  lastName?: string;
+  message?: string;
+  redirectUri?: string;
 }
 
 interface TenantMember {
@@ -356,10 +360,15 @@ userRoleCommand
   .option('--email <email>', 'Email address to add or update through the invite/add flow')
   .option('--member-id <id>', 'Existing tenant member/user ID for the direct role update endpoint')
   .requiredOption('--role <role>', 'Role to assign. Email-based updates support tenant-viewer|tenant-staff|tenant-builder|tenant-admin; member-id updates support member|tenant-admin.')
+  .option('--first-name <name>', 'Optional first name for new email invitations')
+  .option('--last-name <name>', 'Optional last name for new email invitations')
+  .option('--message <message>', 'Optional invitation message for new email invitations')
+  .option('--redirect-uri <uri>', 'Optional post-invite redirect URI for new email invitations')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .addHelpText('after', `
 Examples:
   $ eai user role set --email user@example.com --role tenant-admin
+  $ eai user role set --email user@example.com --role tenant-admin --first-name Poppy --last-name Lucas --redirect-uri https://admin-portal.example.com/login
   $ eai user role set --member-id <member-id> --role tenant-admin
 
 For normal "add this person as tenant admin/member" requests, prefer email-based
@@ -386,6 +395,10 @@ membership in one V4 flow.
       const response = await client.inviteTenantMember(tenantId, {
         email: options.email,
         role: options.role,
+        firstName: options.firstName,
+        lastName: options.lastName,
+        message: options.message,
+        redirectUri: options.redirectUri,
       });
       if (!response.ok) {
         await failResponse(response, {
