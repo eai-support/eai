@@ -325,7 +325,7 @@ export function buildAiLaunchPlan(inventory: AiSurfaceInventory, surfaceId: AiSu
     case 'codex-cli':
       return { ...common, mode: 'terminal', command: surface.executable, args: [EAI_FIRST_PROMPT], preparedPrompt: true, userMessage: 'A terminal will open an interactive Codex EAI session.' };
     case 'grok-cli':
-      return { ...common, mode: 'terminal', command: surface.executable, args: ['--cwd', project, '--prompt', EAI_FIRST_PROMPT], preparedPrompt: true, userMessage: 'A terminal will open an interactive Grok EAI session.' };
+      return { ...common, mode: 'terminal', command: surface.executable, args: [], preparedPrompt: false, userMessage: 'A terminal will open Grok in this project. Start with /eai.' };
   }
 }
 

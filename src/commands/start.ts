@@ -116,10 +116,14 @@ Privacy:
     }
 
     await executeAiLaunchPlan(plan, inventory.platform);
-    if (options.remember !== false) await rememberAiSurface(surfaceId);
+    let remembered = false;
+    if (options.remember !== false) {
+      remembered = await rememberAiSurface(surfaceId).then(() => true).catch(() => false);
+    }
     const payload = {
       action: 'launch',
       launched: true,
+      remembered,
       surfaceId,
       surfaceName: surface.name,
       projectDirectory,
@@ -130,5 +134,8 @@ Privacy:
     else {
       out.success(`Started ${surface.name}.`);
       out.info(plan.userMessage);
+      if (options.remember !== false && !remembered) {
+        out.warn('The workspace opened, but EAI could not remember this choice.');
+      }
     }
   });

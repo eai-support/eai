@@ -108,8 +108,10 @@ describe('AI surface contract', () => {
     });
     expect(buildAiLaunchPlan(inventory, 'grok-cli')).toMatchObject({
       mode: 'terminal',
-      args: ['--cwd', '/work/customer-portal', '--prompt', expect.stringContaining('business outcome')],
-      preparedPrompt: true,
+      cwd: '/work/customer-portal',
+      args: [],
+      preparedPrompt: false,
+      userMessage: expect.stringContaining('/eai'),
     });
   });
 
