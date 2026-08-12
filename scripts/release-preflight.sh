@@ -190,8 +190,13 @@ if ! EAI_UPDATE_NPMJS_PACKUMENT_URL="$UPDATE_PACKUMENT_URL" EAI_UPDATE_PACKUMENT
   echo "✗ packed eai update --check failed"
   exit 1
 fi
+if ! node scripts/smoke-gofer-refresh-cache.cjs "$PACKED_EAI"; then
+  echo "✗ packed eai update Gofer refresh cache smoke failed"
+  exit 1
+fi
 echo "  ✓ packed CLI starts with production dependencies only"
 echo "  ✓ packed eai update --check succeeds"
+echo "  ✓ packed eai update repairs incomplete Gofer caches"
 
 section "Smoke testing packed eai-cli alias tarball"
 ALIAS_INSTALL_PREFIX="$(mktemp -d)"

@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { access, chmod, copyFile, cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { access, chmod, copyFile, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -23,12 +23,18 @@ const GOFER_FETCH_TIMEOUT_MS = 5000;
 const GOFER_CACHE_ROOT = join(homedir(), '.eai', 'gofer-cache');
 const GOFER_BASE_RESOURCE_DIR = join('extension', 'resources');
 const GOFER_EXTRA_RESOURCE_MAPPINGS: readonly (readonly [string, string])[] = [
+  ['.specify/config', 'config'],
+  ['.specify/contracts', 'contracts'],
   ['.specify/commands', 'commands'],
   ['.specify/memory', 'memory'],
   ['.specify/references', 'references'],
+  ['.specify/schemas', 'schemas'],
   ['.system/skills', 'system-skills'],
   ['.agents/skills', 'agents-skills'],
 ];
+const REQUIRED_GOFER_RESOURCE_DIRECTORIES = [
+  ...new Set(GOFER_RESOURCE_MAPPINGS.map((mapping) => mapping.sourceSubdirectory)),
+] as const;
 
 interface GoferBundleMetadata {
   readonly commit?: string;
@@ -229,13 +235,55 @@ async function writeResourcesMetadata(root: string, metadata: GoferBundleMetadat
   }, null, 2) + '\n');
 }
 
+async function directoryContainsFile(root: string): Promise<boolean> {
+  if (!(await isDirectoryPath(root))) {
+    return false;
+  }
+  const entries = await readdir(root, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isFile()) {
+      return true;
+    }
+    if (entry.isDirectory() && await directoryContainsFile(join(root, entry.name))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function findIncompleteGoferResourceDirectories(root: string): Promise<string[]> {
+  const checks = await Promise.all(
+    REQUIRED_GOFER_RESOURCE_DIRECTORIES.map(async (directory) => ({
+      directory,
+      complete: await directoryContainsFile(join(root, directory)),
+    })),
+  );
+  return checks
+    .filter((check) => !check.complete)
+    .map((check) => check.directory);
+}
+
+async function assertCompleteGoferResources(root: string): Promise<void> {
+  const incomplete = await findIncompleteGoferResourceDirectories(root);
+  if (incomplete.length > 0) {
+    throw new Error(
+      `eai-gofer resources are incomplete; missing or empty required directories: ${incomplete.join(', ')}`,
+    );
+  }
+}
+
 async function normalizeGoferResourcesCheckout(
   checkoutRoot: string,
   metadata: GoferBundleMetadata,
 ): Promise<string> {
   const resourcesRoot = join(dirname(checkoutRoot), 'resources');
   const currentMetadata = await readResourcesMetadata(resourcesRoot);
-  if (currentMetadata.commit && metadata.commit && currentMetadata.commit === metadata.commit) {
+  if (
+    currentMetadata.commit &&
+    metadata.commit &&
+    currentMetadata.commit === metadata.commit &&
+    (await findIncompleteGoferResourceDirectories(resourcesRoot)).length === 0
+  ) {
     return resourcesRoot;
   }
 
@@ -244,18 +292,31 @@ async function normalizeGoferResourcesCheckout(
     throw new Error(`eai-gofer checkout is missing ${GOFER_BASE_RESOURCE_DIR}`);
   }
 
-  await rm(resourcesRoot, { recursive: true, force: true });
-  await mkdir(resourcesRoot, { recursive: true });
-  await cp(baseResources, resourcesRoot, { recursive: true, force: true });
-  for (const [sourceRelative, targetRelative] of GOFER_EXTRA_RESOURCE_MAPPINGS) {
-    await copyDirectoryIfPresent(join(checkoutRoot, sourceRelative), join(resourcesRoot, targetRelative));
+  const stagingRoot = join(
+    dirname(resourcesRoot),
+    `.resources-${process.pid}-${randomUUID()}`,
+  );
+  await rm(stagingRoot, { recursive: true, force: true });
+  try {
+    await mkdir(stagingRoot, { recursive: true });
+    await cp(baseResources, stagingRoot, { recursive: true, force: true });
+    for (const [sourceRelative, targetRelative] of GOFER_EXTRA_RESOURCE_MAPPINGS) {
+      await copyDirectoryIfPresent(join(checkoutRoot, sourceRelative), join(stagingRoot, targetRelative));
+    }
+    await assertCompleteGoferResources(stagingRoot);
+    await writeResourcesMetadata(stagingRoot, metadata);
+    await rm(resourcesRoot, { recursive: true, force: true });
+    await rename(stagingRoot, resourcesRoot);
+  } catch (error) {
+    await rm(stagingRoot, { recursive: true, force: true });
+    throw error;
   }
-  await writeResourcesMetadata(resourcesRoot, metadata);
   return resourcesRoot;
 }
 
 async function resolveBundledGoferResourcesSource(warning?: string): Promise<GoferResourcesSource> {
   const root = resolveGoferResourcesPath();
+  await assertCompleteGoferResources(root);
   return {
     root,
     metadata: {
@@ -270,6 +331,7 @@ async function resolveLatestGoferResourcesSource(): Promise<GoferResourcesSource
   const overridePath = process.env['EAI_GOFER_REFRESH_RESOURCES_PATH'];
   if (overridePath) {
     const root = resolve(overridePath);
+    await assertCompleteGoferResources(root);
     return {
       root,
       metadata: {
@@ -321,6 +383,7 @@ export async function readGoferBundleMetadata(): Promise<GoferBundleMetadata> {
 
 async function collectBundledCandidates(resourcesRoot: string): Promise<ManagedCandidate[]> {
   const candidates: ManagedCandidate[] = [];
+  await assertCompleteGoferResources(resourcesRoot);
 
   for (const mapping of GOFER_RESOURCE_MAPPINGS) {
     const sourceRoot = join(resourcesRoot, mapping.sourceSubdirectory);
