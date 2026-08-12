@@ -15,10 +15,13 @@ const GOFER_PIN_FILE = path.join(ROOT, ".gofer-version");
 const GOFER_RESOURCES_TARGET = path.join(ROOT, "resources", "gofer");
 const LINKED_SOURCES_FILE = path.join(ROOT, "resources", "linked-sources.json");
 const GOFER_BASE_RESOURCE_DIR = path.join("extension", "resources");
-const GOFER_EXTRA_RESOURCE_MAPPINGS = [
+export const GOFER_EXTRA_RESOURCE_MAPPINGS = [
+  [".specify/config", "config"],
+  [".specify/contracts", "contracts"],
   [".specify/commands", "commands"],
   [".specify/memory", "memory"],
   [".specify/references", "references"],
+  [".specify/schemas", "schemas"],
   [".system/skills", "system-skills"],
   [".agents/skills", "agents-skills"],
   [".grok/skills", "grok-skills"],

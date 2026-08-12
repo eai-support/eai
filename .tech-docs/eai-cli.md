@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.11.3 |
-| Released | 2026-08-11 |
-| Last Material Change | Canonical GitHub connection slug derivation and refreshed app template source |
-| Source Commit | `e469c44e2f77cd43bf57d69f8ddde0dd510e2156` |
+| Version | 3.11.4 |
+| Released | 2026-08-12 |
+| Last Material Change | Repair incomplete Gofer refresh caches |
+| Source Commit | `6d82bb2ec7fbca2e6306ed72bb68000d09660429` |
 
 
 ## Install
