@@ -22,7 +22,7 @@ export const DEFAULT_GOFER_RELEASE_MANIFEST_URL = 'https://eai-support.github.io
 const GOFER_FETCH_TIMEOUT_MS = 5000;
 const GOFER_CACHE_ROOT = join(homedir(), '.eai', 'gofer-cache');
 const GOFER_BASE_RESOURCE_DIR = join('extension', 'resources');
-const GOFER_EXTRA_RESOURCE_MAPPINGS: readonly (readonly [string, string])[] = [
+export const GOFER_EXTRA_RESOURCE_MAPPINGS: readonly (readonly [string, string])[] = [
   ['.specify/config', 'config'],
   ['.specify/contracts', 'contracts'],
   ['.specify/commands', 'commands'],

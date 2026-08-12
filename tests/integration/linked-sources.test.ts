@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
+  GOFER_EXTRA_RESOURCE_MAPPINGS as LINKED_SOURCE_RESOURCE_MAPPINGS,
   GOFER_REPO,
   extractEnterprisePackageVersions,
   hashJson,
@@ -11,6 +12,7 @@ import {
 import {
   DEFAULT_GOFER_RELEASE_MANIFEST_URL,
   DEFAULT_GOFER_REPO_URL,
+  GOFER_EXTRA_RESOURCE_MAPPINGS as RUNTIME_RESOURCE_MAPPINGS,
 } from "../../src/lib/gofer-refresh.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -96,6 +98,19 @@ describe("hashJson", () => {
 });
 
 describe("Gofer source ownership", () => {
+  test("keeps linked-source and runtime resource normalization aligned", () => {
+    expect(LINKED_SOURCE_RESOURCE_MAPPINGS).toEqual(
+      RUNTIME_RESOURCE_MAPPINGS,
+    );
+    expect(LINKED_SOURCE_RESOURCE_MAPPINGS).toEqual(
+      expect.arrayContaining([
+        [".specify/config", "config"],
+        [".specify/contracts", "contracts"],
+        [".specify/schemas", "schemas"],
+      ]),
+    );
+  });
+
   test("uses eai-support for source sync and runtime refresh defaults", async () => {
     expect(GOFER_REPO).toBe("https://github.com/eai-support/eai-gofer.git");
     expect(DEFAULT_GOFER_REPO_URL).toBe(
