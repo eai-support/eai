@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.11.3.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.11.4.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -384,7 +384,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.11.3** (2026-08-11): Canonical GitHub connection slug derivation and refreshed app template source.
+The current CLI release is **v3.11.4** (2026-08-12): Repair incomplete Gofer refresh caches.
 
 
 ## What The Pieces Do
@@ -503,10 +503,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.11.3 |
-| Released | 2026-08-11 |
-| Last Material Change | Canonical GitHub connection slug derivation and refreshed app template source |
-| Source Commit | `e469c44e2f77cd43bf57d69f8ddde0dd510e2156` |
+| Version | 3.11.4 |
+| Released | 2026-08-12 |
+| Last Material Change | Repair incomplete Gofer refresh caches |
+| Source Commit | `6d82bb2ec7fbca2e6306ed72bb68000d09660429` |
 
 
 ## Install
@@ -1938,7 +1938,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.11.3. The same catalog powers human stderr output, JSON output for AI
+v3.11.4. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
