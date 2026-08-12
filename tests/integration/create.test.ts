@@ -142,7 +142,7 @@ describe("guided create completion reporting", () => {
   test("only claims the workspace is ready when builder readiness is available", () => {
     const ready = buildCreateCompletionSummary(true, "codex");
     expect(ready.heading).toContain("ready");
-    expect(ready.steps.join("\n")).toContain("/0_business_scenario");
+    expect(ready.steps.join("\n")).toContain("eai start");
   });
 
   test("does not send the builder into an unproven hand-off", () => {

@@ -11,6 +11,7 @@ const TRACEABILITY_DOC = join(ROOT, '.tech-docs', 'full-e2e-smoke-traceability.m
 
 const TRACEABILITY_BASE = [
   ['eai init', 'create', 'live', 'Scaffolds a disposable app workspace and creates the app binding in the test tenant.'],
+  ['eai start', 'read/launch-local', 'live', 'Detects supported local AI workspaces in release smoke; provider launch remains user-confirmed.'],
   ['eai create', 'create', 'help', 'Guided first-run wrapper is covered by focused onboarding tests and help/contract checks; release live smoke uses the non-interactive eai init path to avoid browser auth.'],
   ['eai dev', 'read', 'help', 'Runtime server command is validated by help/contract checks; live release smoke does not start a long-running dev server.'],
   ['eai login', 'auth-create', 'external-auth', 'Browser PKCE is validated by the dedicated test profile; non-interactive password grant is intentionally not added.'],
@@ -115,6 +116,9 @@ const TRACEABILITY_BASE = [
 const SMOKE_CALLS = {
   'eai init': [
     'eai init <app-name> --skip-prompts --current-dir --company-tenant <tenant-id> --package-profile external',
+  ],
+  'eai start': [
+    'eai start --check --format json',
   ],
   'eai create': [
     'eai create <app-name> --help',
@@ -433,6 +437,12 @@ const SMOKE_CALLS = {
 };
 
 const OPTION_DECISIONS = {
+  'eai start': {
+    '--surface': 'Explicit provider selection is covered by command integration tests; release smoke keeps detection read-only.',
+    '--install': 'Opening an external provider installation page requires a user click and is not performed by automated release smoke.',
+    '--dry-run': 'Provider launch-plan output is covered by integration tests; release smoke uses the stronger read-only detection contract.',
+    '--no-remember': 'Preference suppression is covered by the local preference unit contract; release smoke does not launch or persist a provider.',
+  },
   'eai init': {
     '--from': 'Template source override is exercised by existing init tests; release live smoke uses the default public template.',
     '--tenant': 'Deprecated alias for --company-tenant; kept as backward-compatible vocabulary and not used in new smoke calls.',

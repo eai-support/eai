@@ -31,6 +31,7 @@ export const GOFER_EXTRA_RESOURCE_MAPPINGS: readonly (readonly [string, string])
   ['.specify/schemas', 'schemas'],
   ['.system/skills', 'system-skills'],
   ['.agents/skills', 'agents-skills'],
+  ['.grok/skills', 'grok-skills'],
 ];
 const REQUIRED_GOFER_RESOURCE_DIRECTORIES = [
   ...new Set(GOFER_RESOURCE_MAPPINGS.map((mapping) => mapping.sourceSubdirectory)),

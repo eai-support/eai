@@ -57,6 +57,7 @@ const TOP_LEVEL_COMMANDS = [
   "publicapi",
   "errors",
   "agent",
+  "start",
 ] as const;
 
 const SOURCE_UNKNOWN_APP_FLAGS: Readonly<Record<string, readonly string[]>> = {
