@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.11.4** (2026-08-12): Repair incomplete Gofer refresh caches.
+The current CLI release is **v3.12.0** (2026-08-12): Add guided AI workspace onboarding.
 
 
 ## What The Pieces Do
