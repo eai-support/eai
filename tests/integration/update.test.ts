@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'vitest';
+import { execFile } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
-import { access, chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, chmod, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { delimiter, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import {
   buildUpdateInstallExecConfig,
   buildUpdateInstallArgs,
@@ -22,6 +25,13 @@ import type { TestContext } from '../helpers/setup-dsl.js';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json') as { version: string };
+const execFileAsync = promisify(execFile);
+const BUNDLED_GOFER_RESOURCES = fileURLToPath(
+  new URL('../../resources/gofer/', import.meta.url),
+);
+const RELEASE_PREFLIGHT = fileURLToPath(
+  new URL('../../scripts/release-preflight.sh', import.meta.url),
+);
 
 async function startPackumentServer(latestVersion: string): Promise<{ readonly url: string; readonly close: () => Promise<void> }> {
   const server: Server = createServer((_request, response) => {
@@ -80,6 +90,42 @@ async function createEaiProjectFixture(root: string): Promise<void> {
     }, null, 2)}\n`,
     'utf-8',
   );
+}
+
+async function createIncompleteLatestGoferCache(
+  root: string,
+  version: string,
+): Promise<{ readonly cacheRoot: string; readonly resourcesRoot: string }> {
+  const cacheRoot = join(root, 'gofer-cache');
+  const versionRoot = join(cacheRoot, `v${version}`);
+  const checkoutRoot = join(versionRoot, 'repo');
+  const baseResources = join(checkoutRoot, 'extension', 'resources');
+  const resourcesRoot = join(versionRoot, 'resources');
+
+  await cp(BUNDLED_GOFER_RESOURCES, baseResources, { recursive: true });
+  await rm(join(baseResources, 'config'), { recursive: true, force: true });
+  await cp(
+    join(BUNDLED_GOFER_RESOURCES, 'config'),
+    join(checkoutRoot, '.specify', 'config'),
+    { recursive: true },
+  );
+
+  await execFileAsync('git', ['init', '--quiet'], { cwd: checkoutRoot });
+  await execFileAsync('git', ['config', 'user.email', 'eai-test@example.com'], { cwd: checkoutRoot });
+  await execFileAsync('git', ['config', 'user.name', 'EAI Test'], { cwd: checkoutRoot });
+  await execFileAsync('git', ['add', '.'], { cwd: checkoutRoot });
+  await execFileAsync('git', ['commit', '--quiet', '-m', 'fixture'], { cwd: checkoutRoot });
+  const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: checkoutRoot });
+  const commit = stdout.trim();
+
+  await cp(baseResources, resourcesRoot, { recursive: true });
+  await writeFile(
+    join(resourcesRoot, '.gofer-version'),
+    `${JSON.stringify({ commit, describe: `v${version}` }, null, 2)}\n`,
+    'utf-8',
+  );
+
+  return { cacheRoot, resourcesRoot };
 }
 
 async function createNpmShim(root: string): Promise<{ readonly binDir: string; readonly logPath: string }> {
@@ -546,5 +592,41 @@ describe('eai update project maintenance', () => {
     } finally {
       await close();
     }
+  });
+
+  test('repairs a matching-version Gofer cache missing normalized config during update', async () => {
+    const { env, ctx, close } = await createMaintenanceContext();
+    const goferVersion = '99.0.1';
+    try {
+      const { cacheRoot, resourcesRoot } = await createIncompleteLatestGoferCache(
+        env.dir,
+        goferVersion,
+      );
+      ctx.env.EAI_GOFER_REFRESH_SOURCE = 'latest';
+      ctx.env.EAI_GOFER_REFRESH_CACHE_DIR = cacheRoot;
+      ctx.env.EAI_GOFER_REFRESH_MANIFEST_URL =
+        `data:application/json,${encodeURIComponent(JSON.stringify({ version: goferVersion }))}`;
+
+      const result = await runCommand(ctx, 'eai update');
+
+      expect(result, `${result.stdout}\n${result.stderr}`).toMatchObject({ exitCode: 0 });
+      expect(result.stderr).not.toContain('ENOENT');
+      expect(result.stdout).toContain('Gofer-managed assets refreshed');
+      expect(await pathExists(join(resourcesRoot, 'config'))).toBe(true);
+      expect(await pathExists(join(env.dir, '.specify', 'config', 'object-type-routing.json'))).toBe(true);
+    } finally {
+      await close();
+    }
+  });
+
+  test('release preflight exercises packed eai update cache recovery', async () => {
+    const preflight = await readFile(RELEASE_PREFLIGHT, 'utf-8');
+    const packedInstallIndex = preflight.indexOf('PACKED_EAI="$PACKED_INSTALL_PREFIX/bin/eai"');
+    const cacheSmokeIndex = preflight.indexOf(
+      'node scripts/smoke-gofer-refresh-cache.cjs "$PACKED_EAI"',
+    );
+
+    expect(packedInstallIndex).toBeGreaterThan(-1);
+    expect(cacheSmokeIndex).toBeGreaterThan(packedInstallIndex);
   });
 });
