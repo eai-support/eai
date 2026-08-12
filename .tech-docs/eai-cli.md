@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.12.0 |
+| Version | 3.12.1 |
 | Released | 2026-08-12 |
-| Last Material Change | Add guided AI workspace onboarding |
-| Source Commit | `2e875d30e63a5e76656d4a1896e55647da72f9a8` |
+| Last Material Change | Fix complete new-user tenant-role invitations |
+| Source Commit | `e41b05da1cb9218b22171348754b634c9c732735` |
 
 
 ## Install

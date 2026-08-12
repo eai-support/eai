@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.12.0** (2026-08-12): Add guided AI workspace onboarding.
+The current CLI release is **v3.12.1** (2026-08-12): Fix complete new-user tenant-role invitations.
 
 
 ## What The Pieces Do
