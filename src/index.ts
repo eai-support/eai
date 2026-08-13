@@ -46,6 +46,7 @@ import { publicApiCommand } from './commands/publicapi.js';
 import { errorsCommand } from './commands/errors.js';
 import { agentCommand } from './commands/agent.js';
 import { startCommand } from './commands/start.js';
+import { classifierCommand } from './commands/classifier.js';
 import {
   checkForUpdate,
   isMachineReadableInvocation,
@@ -124,6 +125,7 @@ program.addCommand(publicApiCommand);
 program.addCommand(errorsCommand);
 program.addCommand(agentCommand);
 program.addCommand(startCommand);
+program.addCommand(classifierCommand);
 
 // Custom help footer
 program.addHelpText('after', `
