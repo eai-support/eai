@@ -65,6 +65,7 @@ function requiredString(
   return value.trim();
 }
 
+/** Validates an untrusted JSON file before any tenant-scoped classifier mutation is attempted. */
 export function parseClassifierDraft(value: unknown): ClassifierDraft {
   if (!isRecord(value))
     throw new Error("Classifier file must contain a JSON object.");
