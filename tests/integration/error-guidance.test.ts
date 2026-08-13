@@ -14,6 +14,16 @@ describe('error guidance catalog', () => {
     expect(issues).toEqual([]);
   });
 
+  test('validation errors explain how to inspect the rejected request field', () => {
+    const guidance = findGuidanceByCodeOrReason('VALIDATION_ERROR');
+
+    expect(guidance?.reasonCode).toBe('validation_error');
+    expect(guidance?.diagnostics.map((item) => item.command)).toContain(
+      'Re-run the failed eai command and read the field path before changing the request',
+    );
+    expect(guidance?.retry.maxAttempts).toBe(1);
+  });
+
   test('text errors explain why the error happened and what to try next', () => {
     const message = formatError(ErrorCode.E101);
 
@@ -343,6 +353,29 @@ describe('eai errors command', () => {
         }),
       ]),
     );
+  });
+
+  test('explains the server VALIDATION_ERROR reason in JSON mode', async () => {
+    const result = await runCommand(
+      ctx,
+      'eai errors explain VALIDATION_ERROR --format json',
+    );
+
+    expect(result.exitCode).toBe(0);
+    const payload = JSON.parse(result.stdout) as {
+      ok: boolean;
+      guidance: {
+        code: string;
+        reasonCode: string;
+      };
+    };
+    expect(payload).toMatchObject({
+      ok: true,
+      guidance: {
+        code: 'E422',
+        reasonCode: 'validation_error',
+      },
+    });
   });
 
   test('lists known guidance in JSON mode', async () => {

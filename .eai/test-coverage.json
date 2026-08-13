@@ -65,6 +65,7 @@
             "tests/integration/gofer.test.ts",
             "tests/integration/linked-sources.test.ts",
             "tests/integration/error-guidance.test.ts",
+            "tests/integration/docs-classify.test.ts",
             "tests/integration/output.test.ts",
             "tests/integration/provision.test.ts",
             "tests/integration/types.test.ts",

@@ -1127,6 +1127,68 @@ export const errorGuidanceCatalog = [
     ],
   },
   {
+    code: 'E422',
+    reasonCode: 'validation_error',
+    title: 'The request did not satisfy the API contract.',
+    category: 'platform',
+    severity: 'error',
+    appliesTo: ['docs.index', 'docs.upload', 'docs.classify', 'publicapi'],
+    publicSafe: true,
+    why: [
+      'A required request field may be missing or have the wrong shape.',
+      'The document may not yet be in a state that supports the requested operation.',
+      'The field path printed with the error identifies the first contract issue to correct.',
+    ],
+    evidenceToCheck: [
+      'The HTTP 422 field path and message printed by the failed command.',
+      'The active tenant from eai whoami.',
+      'The document ID and current job status without file contents or access tokens.',
+    ],
+    diagnostics: [
+      {
+        command: 'Re-run the failed eai command and read the field path before changing the request',
+        purpose: 'Capture the rejected field and reason without guessing at prerequisites.',
+        mutates: false,
+      },
+      {
+        command: 'eai whoami',
+        purpose: 'Confirm the command is scoped to the intended tenant.',
+        mutates: false,
+      },
+    ],
+    fixes: [
+      {
+        command: 'Correct the named field or wait for the reported document prerequisite, then retry once',
+        purpose: 'Retry only after the field-level validation reason has been addressed.',
+        mutates: true,
+      },
+    ],
+    retry: {
+      allowed: true,
+      maxAttempts: 1,
+      stopWhen: ['The corrected request returns the same field path and validation message.'],
+    },
+    escalation: {
+      audience: 'platform-support',
+      neededWhen: ['No field path is returned, or a corrected request is rejected with the same validation error.'],
+      include: ['command without secrets', 'active tenant slug', 'document ID', 'field path', 'request ID', 'CLI version'],
+    },
+    safety: {
+      mutatesState: true,
+      mayWriteSecrets: false,
+      mayDeleteData: false,
+      publicSafe: true,
+    },
+    match: [
+      {
+        status: 422,
+      },
+      {
+        serverCode: 'VALIDATION_ERROR',
+      },
+    ],
+  },
+  {
     code: 'E244',
     reasonCode: 'tenant_data_install_no_match',
     title: 'Tenant data/schema setup is not fully provisioned.',

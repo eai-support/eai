@@ -431,10 +431,12 @@ function normalizePublicApiV4Path(path: string): string {
 
 export async function parseApiError(response: Response): Promise<ParsedApiError> {
   const bodyText = await response.text();
+  const validationCode = response.status === 422 ? 'VALIDATION_ERROR' : undefined;
 
   if (!bodyText) {
     return {
       status: response.status,
+      code: validationCode,
       message: response.statusText || `HTTP ${response.status}`,
     };
   }
@@ -444,34 +446,64 @@ export async function parseApiError(response: Response): Promise<ParsedApiError>
       detail?: {
         error?: string;
         message?: string;
-      } | string;
+      } | Array<{
+        loc?: Array<string | number>;
+        msg?: string;
+      }> | string;
       error?: string;
       message?: string;
+      details?: string | { message?: string };
     };
 
     const detail = body.detail;
+    if (Array.isArray(detail)) {
+      const messages = detail
+        .map((issue) => {
+          if (!issue || typeof issue !== 'object' || typeof issue.msg !== 'string') {
+            return null;
+          }
+          const location = Array.isArray(issue.loc)
+            ? issue.loc.map((part) => String(part)).join('.')
+            : '';
+          return location ? `${location}: ${issue.msg}` : issue.msg;
+        })
+        .filter((value): value is string => Boolean(value));
+      return {
+        status: response.status,
+        code: validationCode,
+        message: messages.join('; ') || response.statusText || `HTTP ${response.status}`,
+        bodyText,
+      };
+    }
+
     if (detail && typeof detail === 'object') {
       return {
         status: response.status,
-        code: detail.error,
+        code: detail.error || validationCode,
         message: detail.message || response.statusText || `HTTP ${response.status}`,
         bodyText,
       };
     }
 
+    const details = typeof body.details === 'string'
+      ? body.details
+      : body.details?.message;
     return {
       status: response.status,
-      code: typeof body.error === 'string' ? body.error : undefined,
+      code: typeof body.error === 'string' ? body.error : validationCode,
       message: typeof body.message === 'string'
         ? body.message
         : typeof detail === 'string'
           ? detail
-          : response.statusText || `HTTP ${response.status}`,
+          : details
+            ? details
+            : response.statusText || `HTTP ${response.status}`,
       bodyText,
     };
   } catch {
     return {
       status: response.status,
+      code: validationCode,
       message: bodyText,
       bodyText,
     };

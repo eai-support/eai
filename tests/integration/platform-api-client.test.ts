@@ -4,11 +4,38 @@ vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => '<fixture-access-token>'),
 }))
 
-import { PlatformAPIClient } from '../../src/lib/api.js'
+import { parseApiError, PlatformAPIClient } from '../../src/lib/api.js'
 
 describe('PlatformAPIClient', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  test('formats FastAPI field validation details with a stable reason code', async () => {
+    const parsed = await parseApiError(new Response(JSON.stringify({
+      detail: [
+        {
+          type: 'missing',
+          loc: ['body', 'storagePath'],
+          msg: 'Field required',
+          input: { documentId: 'DOC-123' },
+        },
+        {
+          type: 'value_error',
+          loc: ['body', 'documentId'],
+          msg: 'Invalid document state',
+          input: 'DOC-123',
+        },
+      ],
+    }), {
+      status: 422,
+      statusText: 'Unprocessable Entity',
+    }))
+
+    expect(parsed.code).toBe('VALIDATION_ERROR')
+    expect(parsed.message).toBe(
+      'body.storagePath: Field required; body.documentId: Invalid document state',
+    )
   })
 
   test('caps published object type preflight lookups at the orchestrator limit', async () => {
