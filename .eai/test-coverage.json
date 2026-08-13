@@ -5,11 +5,12 @@
       "features": [
         {
           "id": "eai-cli-tenant-workflow-classifiers",
-          "description": "CLI users validate and save portable classifier JSON, list tenant drafts, and directly publish immutable versions through the PublicAPI v4 control plane.",
+          "description": "CLI users validate and save reusable classifier JSON, publish immutable versions, and separately associate an exact published version with an app workflow through PublicAPI v4.",
           "owned_paths": [
             "src/commands/classifier.ts",
             "src/index.ts",
             "scripts/eai-full-e2e-smoke.cjs",
+            "tests/integration/classifier.test.ts",
             "tests/integration/describe-contract.test.ts"
           ],
           "required_repo_tests": [
