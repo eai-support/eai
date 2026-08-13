@@ -123,6 +123,40 @@ describe("eai classifier", () => {
     ).toThrow("forked classifiers require at least two labels");
   });
 
+  test("allows unique classifier labels to share a stable document type", () => {
+    const parsed = parseClassifierDraft({
+      ...draft,
+      definition: {
+        labels: [
+          draft.definition.labels[0],
+          {
+            ...draft.definition.labels[1],
+            documentTypeKey: draft.definition.labels[0].documentTypeKey,
+          },
+        ],
+      },
+    });
+
+    expect(parsed.definition.labels.map((label) => label.documentTypeKey)).toEqual([
+      "policy",
+      "policy",
+    ]);
+    expect(() =>
+      parseClassifierDraft({
+        ...draft,
+        definition: {
+          labels: [
+            draft.definition.labels[0],
+            {
+              ...draft.definition.labels[1],
+              key: draft.definition.labels[0].key,
+            },
+          ],
+        },
+      }),
+    ).toThrow("Classifier label keys must be unique");
+  });
+
   test("rejects missing, partial, and malformed parent lineage", () => {
     expect(() =>
       parseClassifierDraft({ ...draft, sourceMode: "inherit" }),

@@ -142,11 +142,6 @@ export function parseClassifierDraft(value: unknown): ClassifierDraft {
   if (new Set(labels.map((label) => label.key)).size !== labels.length) {
     throw new Error("Classifier label keys must be unique.");
   }
-  if (
-    new Set(labels.map((label) => label.documentTypeKey)).size !== labels.length
-  ) {
-    throw new Error("Classifier documentTypeKey values must be unique.");
-  }
 
   return {
     classifierKey,
