@@ -4,6 +4,15 @@
     "eai": {
       "features": [
         {
+          "id": "eai-cli-tenant-workflow-classifiers",
+          "description": "CLI users validate and save portable classifier JSON, list tenant drafts, and directly publish immutable versions through the PublicAPI v4 control plane.",
+          "owned_paths": ["src/commands/classifier.ts", "src/index.ts"],
+          "required_repo_tests": ["tests/integration/classifier.test.ts"],
+          "required_ci_checks": ["ci/eai-cli-tests"],
+          "required_cross_service_surfaces": ["eai-cli", "backend"],
+          "required_deployed_contracts": []
+        },
+        {
           "id": "canonical-object-type-routing",
           "description": "Canonical v1 Object Type source identifiers, CLI scaffolding, remote legacy readability, and installed Gofer contract assets.",
           "owned_paths": [
