@@ -41,7 +41,6 @@ interface ClassifierDraft {
   status?: "draft" | "published" | "disabled";
   definition: {
     labels: ClassifierLabel[];
-    instructions?: string;
     minimumConfidence?: number;
   };
   sourceMode?: "local" | "inherit" | "extend" | "fork";
@@ -158,10 +157,6 @@ export function parseClassifierDraft(value: unknown): ClassifierDraft {
         : "draft",
     definition: {
       labels,
-      instructions:
-        typeof value.definition.instructions === "string"
-          ? value.definition.instructions.trim() || undefined
-          : undefined,
       minimumConfidence:
         typeof value.definition.minimumConfidence === "number"
           ? value.definition.minimumConfidence
