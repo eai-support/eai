@@ -18,6 +18,12 @@ interface ClassifierCommandOptions {
   json?: boolean;
 }
 
+interface ClassifierTargetOptions extends ClassifierCommandOptions {
+  app: string;
+  workflow: string;
+  version?: string;
+}
+
 interface ClassifierLabel {
   key: string;
   displayName: string;
@@ -30,8 +36,8 @@ interface ClassifierDraft {
   classifierKey: string;
   displayName: string;
   description?: string;
-  verticalKey: string;
-  workflowKey: string;
+  verticalKey?: string;
+  workflowKey?: string;
   status?: "draft" | "published" | "disabled";
   definition: {
     labels: ClassifierLabel[];
@@ -63,6 +69,14 @@ function requiredString(
     throw new Error(`${field} is required.`);
   }
   return value.trim();
+}
+
+function optionalString(
+  record: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  const value = record[field];
+  return typeof value === "string" ? value.trim() || undefined : undefined;
 }
 
 /** Validates an untrusted JSON file before any tenant-scoped classifier mutation is attempted. */
@@ -108,8 +122,8 @@ export function parseClassifierDraft(value: unknown): ClassifierDraft {
       typeof value.description === "string"
         ? value.description.trim() || undefined
         : undefined,
-    verticalKey: requiredString(value, "verticalKey"),
-    workflowKey: requiredString(value, "workflowKey"),
+    verticalKey: optionalString(value, "verticalKey"),
+    workflowKey: optionalString(value, "workflowKey"),
     status:
       value.status === "published" || value.status === "disabled"
         ? value.status
@@ -261,15 +275,15 @@ async function listClassifiers(
     return;
   }
   for (const classifier of rows) {
-    out.table([
+    const details: [string, string][] = [
       ["Classifier", classifier.classifierKey],
-      ["Workflow", `${classifier.verticalKey}/${classifier.workflowKey}`],
       [
         "Status",
         `${classifier.status ?? "draft"}${classifier.publishedVersion ? ` v${classifier.publishedVersion}` : ""}`,
       ],
       ["Labels", String(classifier.definition.labels.length)],
-    ]);
+    ];
+    out.table(details);
     out.blank();
   }
 }
@@ -294,8 +308,6 @@ async function publishClassifier(
         version: nextVersion,
         displayName: draft.displayName,
         description: draft.description,
-        verticalKey: draft.verticalKey,
-        workflowKey: draft.workflowKey,
         definition: draft.definition,
         sourceMode: draft.sourceMode ?? "local",
         sourceTenantId: draft.sourceTenantId,
@@ -335,9 +347,53 @@ async function publishClassifier(
   );
 }
 
+async function targetClassifier(
+  classifierKey: string,
+  options: ClassifierTargetOptions,
+): Promise<void> {
+  const format = normalizeFormat(options);
+  const context = await resolveCommandContext({ tenantId: options.tenantId });
+  const draft = await findClassifier(context.client, classifierKey);
+  if (!draft) {
+    throw new Error(`Classifier draft ${classifierKey} was not found.`);
+  }
+  const requestedVersion = options.version
+    ? Number.parseInt(options.version, 10)
+    : draft.publishedVersion;
+  if (!requestedVersion || requestedVersion < 1) {
+    throw new Error(
+      `Classifier ${classifierKey} must be published before it can be targeted.`,
+    );
+  }
+  const verticalKey = options.app.trim();
+  const workflowKey = options.workflow.trim();
+  if (!verticalKey || !workflowKey) {
+    throw new Error("--app and --workflow are required.");
+  }
+  const response = await context.client.requestPublicApi(
+    `/v4/data/documents/content-understanding/classifiers/${encodeURIComponent(classifierKey)}/targets`,
+    {
+      method: "POST",
+      body: {
+        tenantId: context.tenantId,
+        classifierKey,
+        classifierVersion: requestedVersion,
+        verticalKey,
+        workflowKey,
+      },
+    },
+  );
+  const targeted = await requireJson(response, "Classifier target association");
+  printResult(
+    format,
+    targeted,
+    `Associated classifier ${classifierKey} version ${requestedVersion} with ${verticalKey}/${workflowKey}`,
+  );
+}
+
 export const classifierCommand = new Command("classifier")
   .description(
-    "Create, inspect, and publish tenant workflow document classifiers",
+    "Create, inspect, publish, and target tenant document classifiers",
   )
   .addHelpText(
     "after",
@@ -346,6 +402,7 @@ Examples:
   eai classifier save --file classifier.json
   eai classifier list --format json
   eai classifier publish compliance-documents
+  eai classifier target compliance-documents --app mysnm --workflow compliance-review
 `,
   );
 
@@ -368,8 +425,22 @@ classifierCommand
 
 classifierCommand
   .command("publish <classifier-key>")
-  .description("Publish the next immutable version and bind it to its workflow")
+  .description("Publish the next immutable reusable classifier version")
   .option("--tenant-id <id>", "Target tenant ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
   .action(publishClassifier);
+
+classifierCommand
+  .command("target <classifier-key>")
+  .description("Associate a published classifier version with an app workflow")
+  .requiredOption("--app <app-key>", "Target app key")
+  .requiredOption("--workflow <workflow-key>", "Target workflow key")
+  .option(
+    "--version <number>",
+    "Published version (defaults to the draft pointer)",
+  )
+  .option("--tenant-id <id>", "Target tenant ID")
+  .option("--format <format>", "Output format: text or json", "text")
+  .option("--json", "Shortcut for --format json")
+  .action(targetClassifier);

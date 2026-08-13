@@ -19,8 +19,6 @@ const draft = {
   classifierKey: "compliance",
   displayName: "Compliance documents",
   description: "Classifies compliance inputs",
-  verticalKey: "mysnm",
-  workflowKey: "compliance-review",
   status: "draft" as const,
   definition: {
     labels: [
@@ -174,7 +172,7 @@ describe("eai classifier", () => {
           providerAnalyzerId: "Classifier_opaque_compliance_v3",
           definitionDigest: "a".repeat(64),
           status: "published",
-          workflowConfigKey: "document-classifier:compliance-review",
+          workflowConfigKey: null,
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       ),
@@ -203,10 +201,14 @@ describe("eai classifier", () => {
         body: expect.objectContaining({
           tenantId: "tenant-1",
           version: 3,
-          verticalKey: "mysnm",
-          workflowKey: "compliance-review",
         }),
       }),
+    );
+    expect(requestPublicApi.mock.calls[0]?.[1]?.body).not.toHaveProperty(
+      "verticalKey",
+    );
+    expect(requestPublicApi.mock.calls[0]?.[1]?.body).not.toHaveProperty(
+      "workflowKey",
     );
     expect(updateResource).toHaveBeenCalledWith(
       "shared-document-classifier",
@@ -217,6 +219,64 @@ describe("eai classifier", () => {
         publishedVersionId: "version-id",
       }),
       4,
+    );
+  });
+
+  test("associates an exact published version with an app workflow", async () => {
+    listResources.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          docs: [
+            {
+              id: "draft-id",
+              version: 4,
+              data: { ...draft, publishedVersion: 3 },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    requestPublicApi.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          classifierKey: "compliance",
+          classifierVersion: 3,
+          verticalKey: "mysnm",
+          workflowKey: "compliance-review",
+          workflowConfigKey: "document-classifier:compliance-review",
+          status: "associated",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await classifierCommand.parseAsync([
+      "node",
+      "classifier",
+      "target",
+      "compliance",
+      "--app",
+      "mysnm",
+      "--workflow",
+      "compliance-review",
+      "--format",
+      "json",
+    ]);
+
+    expect(requestPublicApi).toHaveBeenCalledWith(
+      "/v4/data/documents/content-understanding/classifiers/compliance/targets",
+      {
+        method: "POST",
+        body: {
+          tenantId: "tenant-1",
+          classifierKey: "compliance",
+          classifierVersion: 3,
+          verticalKey: "mysnm",
+          workflowKey: "compliance-review",
+        },
+      },
     );
   });
 });
