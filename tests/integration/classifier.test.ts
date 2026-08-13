@@ -213,6 +213,63 @@ describe("eai classifier", () => {
     });
   });
 
+  test("preserves the immutable publication pointer when saving revised draft content", async () => {
+    const tempDirectory = await mkdtemp(join(tmpdir(), "eai-classifier-revision-"));
+    const draftPath = join(tempDirectory, "classifier.json");
+    await writeFile(draftPath, JSON.stringify(draft), "utf8");
+    listResources.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          docs: [
+            {
+              id: "draft-id",
+              version: 4,
+              data: {
+                ...draft,
+                status: "published",
+                publishedVersion: 2,
+                publishedVersionId: "version-v2-id",
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    updateResource.mockResolvedValue(
+      new Response(JSON.stringify({ id: "draft-id", version: 5 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    try {
+      await classifierCommand.parseAsync([
+        "node",
+        "classifier",
+        "save",
+        "--file",
+        draftPath,
+        "--format",
+        "json",
+      ]);
+    } finally {
+      await rm(tempDirectory, { recursive: true, force: true });
+    }
+
+    expect(updateResource).toHaveBeenCalledWith(
+      "shared-document-classifier",
+      "draft-id",
+      expect.objectContaining({
+        status: "draft",
+        publishedVersion: 2,
+        publishedVersionId: "version-v2-id",
+      }),
+      4,
+    );
+  });
+
   test("publishes the next immutable version and updates the draft pointer", async () => {
     listResources.mockResolvedValue(
       new Response(

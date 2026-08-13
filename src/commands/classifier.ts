@@ -259,6 +259,14 @@ async function saveClassifier(
   const existing = await findClassifier(context.client, draft.classifierKey);
   const data: Record<string, unknown> = {
     ...draft,
+    ...(existing
+      ? {
+          publishedVersion:
+            existing.publishedVersion ?? draft.publishedVersion,
+          publishedVersionId:
+            existing.publishedVersionId ?? draft.publishedVersionId,
+        }
+      : {}),
     tenantId: context.tenantId,
     updatedAt: new Date().toISOString(),
   };
