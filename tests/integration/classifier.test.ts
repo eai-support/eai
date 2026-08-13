@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 vi.mock("../../src/lib/context.js", async (importOriginal) => {
   const actual =
@@ -41,6 +44,7 @@ const draft = {
 
 describe("eai classifier", () => {
   const listResources = vi.fn();
+  const createResource = vi.fn();
   const requestPublicApi = vi.fn();
   const updateResource = vi.fn();
 
@@ -50,6 +54,7 @@ describe("eai classifier", () => {
       tenantId: "tenant-1",
       client: {
         listResources,
+        createResource,
         requestPublicApi,
         updateResource,
       },
@@ -74,6 +79,73 @@ describe("eai classifier", () => {
         definition: { labels: [draft.definition.labels[0]] },
       }),
     ).toThrow("at least two labels");
+  });
+
+  test("saves a validated tenant-owned draft from JSON", async () => {
+    const tempDirectory = await mkdtemp(join(tmpdir(), "eai-classifier-"));
+    const draftPath = join(tempDirectory, "classifier.json");
+    await writeFile(draftPath, JSON.stringify(draft), "utf8");
+    listResources.mockResolvedValue(
+      new Response(JSON.stringify({ docs: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    createResource.mockResolvedValue(
+      new Response(JSON.stringify({ id: "draft-id", version: 1 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    try {
+      await classifierCommand.parseAsync([
+        "node",
+        "classifier",
+        "save",
+        "--file",
+        draftPath,
+        "--format",
+        "json",
+      ]);
+    } finally {
+      await rm(tempDirectory, { recursive: true, force: true });
+    }
+
+    expect(createResource).toHaveBeenCalledWith(
+      "shared-document-classifier",
+      expect.objectContaining({
+        tenantId: "tenant-1",
+        classifierKey: "compliance",
+        status: "draft",
+      }),
+    );
+  });
+
+  test("lists only valid classifier draft records for the active tenant", async () => {
+    listResources.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          docs: [{ id: "draft-id", version: 1, data: draft }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await classifierCommand.parseAsync([
+      "node",
+      "classifier",
+      "list",
+      "--format",
+      "json",
+    ]);
+
+    expect(listResources).toHaveBeenCalledWith("shared-document-classifier", {
+      limit: 100,
+      sort: "displayName",
+    });
   });
 
   test("publishes the next immutable version and updates the draft pointer", async () => {
