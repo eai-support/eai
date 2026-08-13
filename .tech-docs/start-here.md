@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.12.1** (2026-08-12): Fix complete new-user tenant-role invitations.
+The current CLI release is **v3.13.0** (2026-08-13): Add verified PublicAPI V4 app deletion.
 
 
 ## What The Pieces Do
