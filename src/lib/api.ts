@@ -1246,6 +1246,29 @@ export class PlatformAPIClient {
     );
   }
 
+  async getAppDeletionPlan(tenantId: string, appKey: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/deletion-plan`,
+      'GET',
+    );
+  }
+
+  async deleteApp(
+    tenantId: string,
+    appKey: string,
+    request: {
+      confirmationAppKey: string;
+      ownershipManifestHash: string;
+      environments: string[];
+    },
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}`,
+      'DELETE',
+      request,
+    );
+  }
+
   /** Read the tenant's exact app-client allowlist without mutating authorization. */
   async getTenantAuthorizedApps(tenantId: string): Promise<Response> {
     return this.publicRequest(

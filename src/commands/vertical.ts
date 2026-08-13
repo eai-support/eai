@@ -43,6 +43,27 @@ const DEFAULT_SOURCE_UNKNOWN_GITHUB_OIDC_AUDIENCE = 'api://enterprise-ai-publica
 const DEFAULT_SOURCE_UNKNOWN_RUNTIME_PATH = 'eai.runtime.json';
 const STORAGE_BINDINGS_PATH = join('.eai', 'storage-bindings.json');
 const GENERIC_APP_IDENTITY_MESSAGE = 'Not applicable: this generic app uses user-delegated PublicAPI access.';
+const APP_DELETE_WARNING = 'This cannot be undone. All application data and metadata will be deleted.';
+const APP_DELETION_ENVIRONMENTS = ['preview', 'dev', 'test', 'prod'] as const;
+
+/** Require the immutable deletion plan to cover every deployment environment exactly once. */
+export function isCompleteAppDeletionEnvironmentSet(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length === APP_DELETION_ENVIRONMENTS.length &&
+    APP_DELETION_ENVIRONMENTS.every(environment => value.includes(environment))
+  );
+}
+
+/** Reject unattended deletion unless the supplied confirmation matches the immutable app key. */
+export function validateNonInteractiveAppDeleteConfirmation(
+  appKey: string,
+  confirmation: unknown,
+): void {
+  if (confirmation !== appKey) {
+    throw new Error(`Non-interactive deletion requires --confirm ${appKey}.`);
+  }
+}
 
 const DEFAULT_APP_STORAGE_ALIASES: Record<string, string[]> = {
   postgresql: ['tenant-postgres'],
@@ -695,6 +716,108 @@ verticalCommand
       const data = doc.data ?? {};
       out.info(`${chalk.cyan(String(data.verticalKey ?? doc.id ?? 'unknown'))} — ${String(data.displayName ?? 'Untitled')} (${String(data.status ?? 'unknown')})`);
     }
+  });
+
+verticalCommand
+  .command('delete <key>')
+  .description('Permanently delete an app and every manifest-owned child')
+  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--confirm <app-key>', 'Confirm the exact app key for automation')
+  .option('--non-interactive', 'Disable prompts; requires --confirm with the exact app key', false)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (key: string, options) => {
+    const appKey = key.trim();
+    if (!appKey) fail('App key is required.');
+    if (options.json) options.format = 'json';
+    const format = normalizeFormat(options);
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId && !options.nonInteractive,
+    });
+    const companyTenantId = options.tenantId
+      ? ctx.tenantId
+      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+
+    const planResponse = await client.getAppDeletionPlan(companyTenantId, appKey);
+    const plan = await readResponsePayload(planResponse);
+    if (!planResponse.ok || !isRecord(plan)) {
+      fail(
+        isRecord(plan) && typeof plan.message === 'string'
+          ? plan.message
+          : `Could not prepare app deletion: ${planResponse.status} ${planResponse.statusText}`,
+      );
+    }
+    const manifestHash = typeof plan.ownershipManifestHash === 'string' ? plan.ownershipManifestHash : '';
+    const environments = plan.environments;
+    if (
+      plan.appKey !== appKey ||
+      plan.confirmationRequired !== appKey ||
+      !/^[a-f0-9]{64}$/.test(manifestHash) ||
+      !isCompleteAppDeletionEnvironmentSet(environments)
+    ) {
+      fail('The platform returned an invalid app deletion ownership plan. No data was deleted.');
+    }
+
+    if (options.nonInteractive) {
+      try {
+        validateNonInteractiveAppDeleteConfirmation(appKey, options.confirm);
+      } catch (error) {
+        fail(errMsg(error));
+      }
+    } else {
+      if (!process.stdin.isTTY) {
+        fail(`Interactive confirmation requires a terminal. Use --confirm ${appKey} --non-interactive.`);
+      }
+      out.warn(APP_DELETE_WARNING);
+      const { typedAppKey } = await (
+        await import('inquirer')
+      ).default.prompt([
+        {
+          type: 'input',
+          name: 'typedAppKey',
+          message: `Type ${appKey} to confirm:`,
+          validate: (value: unknown) => value === appKey || `Type ${appKey} exactly to continue.`,
+        },
+      ]);
+      if (typedAppKey !== appKey) fail('App deletion confirmation did not match.');
+    }
+
+    const spinner = makeSpinner(format, `Deleting app ${appKey}...`);
+    const response = await client.deleteApp(companyTenantId, appKey, {
+      confirmationAppKey: appKey,
+      ownershipManifestHash: manifestHash,
+      environments,
+    });
+    const receipt = await readResponsePayload(response);
+    if (!response.ok || !isRecord(receipt)) {
+      spinner?.fail('App deletion failed');
+      fail(
+        isRecord(receipt) && typeof receipt.message === 'string'
+          ? receipt.message
+          : `${response.status} ${response.statusText}`,
+      );
+    }
+    if (
+      receipt.schemaVersion !== 'eai.app-deletion-receipt.v1' ||
+      typeof receipt.operationId !== 'string' ||
+      receipt.operationId.length === 0 ||
+      receipt.planHash !== manifestHash ||
+      receipt.status !== 'deleted' ||
+      receipt.verified !== true ||
+      receipt.appKey !== appKey ||
+      receipt.tenantId !== companyTenantId
+    ) {
+      spinner?.fail('App deletion could not be verified');
+      fail('The platform did not return a verified app deletion receipt.');
+    }
+
+    if (format === 'json') {
+      out.json(receipt);
+      return;
+    }
+    spinner?.succeed(`Deleted app ${chalk.cyan(appKey)} and verified owned resources are gone`);
   });
 
 const appAuthCommand = verticalCommand

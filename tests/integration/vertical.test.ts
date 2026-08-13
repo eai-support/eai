@@ -16,6 +16,8 @@ import {
   buildSourceUnknownDeploymentData,
   buildSourceUnknownRegistrationData,
   buildSourceUnknownWorkflowEvidenceData,
+  isCompleteAppDeletionEnvironmentSet,
+  validateNonInteractiveAppDeleteConfirmation,
   verticalCommand,
 } from '../../src/commands/vertical.js';
 
@@ -186,6 +188,102 @@ describe('eai app', () => {
       expect.stringContaining(`/v4/platform/tenants/${PLATFORM_PARENT_ID}/apps`),
       expect.anything(),
     );
+  });
+
+  test('deletes an app through the V4 ownership plan and emits a verified JSON receipt', async () => {
+    await seedLoggedInTenant();
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const manifestHash = 'a'.repeat(64);
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      const method = requestMethod(init);
+
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        return jsonResponse({
+          tenants: [{
+            id: COMPANY_TENANT_ID,
+            displayName: 'Builder Workspace',
+            slug: 'builder-workspace',
+            isActive: true,
+            roles: ['tenant-admin'],
+          }],
+        });
+      }
+      if (
+        url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/post-pilot/deletion-plan` &&
+        method === 'GET'
+      ) {
+        return jsonResponse({
+          tenantId: COMPANY_TENANT_ID,
+          appKey: 'post-pilot',
+          confirmationRequired: 'post-pilot',
+          ownershipManifestHash: manifestHash,
+          environments: ['preview', 'dev', 'test', 'prod'],
+          warning: 'This cannot be undone. All application data and metadata will be deleted.',
+        });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/post-pilot` && method === 'DELETE') {
+        return jsonResponse({
+          schemaVersion: 'eai.app-deletion-receipt.v1',
+          operationId: 'appdel-operation-1',
+          planHash: manifestHash,
+          tenantId: COMPANY_TENANT_ID,
+          appKey: 'post-pilot',
+          ownershipManifestHash: manifestHash,
+          status: 'deleted',
+          verified: true,
+          deleted: { resourceAPI: { resources: 3 } },
+          retained: { sharedObjectTypes: ['shared-user'] },
+          steps: { resourceAPI: 'verified' },
+        });
+      }
+      return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appCommand.parseAsync([
+      'delete',
+      'post-pilot',
+      '--tenant-id',
+      COMPANY_TENANT_ID,
+      '--confirm',
+      'post-pilot',
+      '--non-interactive',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/post-pilot`,
+      expect.objectContaining({
+        method: 'DELETE',
+        body: JSON.stringify({
+          confirmationAppKey: 'post-pilot',
+          ownershipManifestHash: manifestHash,
+          environments: ['preview', 'dev', 'test', 'prod'],
+        }),
+      }),
+    );
+    const emitted = outputSpy.mock.calls.map(call => String(call[0])).join('');
+    expect(JSON.parse(emitted)).toMatchObject({
+      tenantId: COMPANY_TENANT_ID,
+      appKey: 'post-pilot',
+      status: 'deleted',
+      verified: true,
+    });
+  });
+
+  test('requires an exact app-key confirmation for non-interactive deletion', () => {
+    expect(() => validateNonInteractiveAppDeleteConfirmation('post-pilot', 'PostPilot')).toThrow(
+      'Non-interactive deletion requires --confirm post-pilot.',
+    );
+  });
+
+  test('requires every app deletion environment exactly once', () => {
+    expect(isCompleteAppDeletionEnvironmentSet(['preview', 'dev', 'test', 'prod'])).toBe(true);
+    expect(isCompleteAppDeletionEnvironmentSet(['preview', 'dev', 'test'])).toBe(false);
+    expect(isCompleteAppDeletionEnvironmentSet(['preview', 'dev', 'test', 'test'])).toBe(false);
+    expect(isCompleteAppDeletionEnvironmentSet(['preview', 'dev', 'test', 'prod', 'other'])).toBe(false);
   });
 
   test('reports user-delegated app authorization without creating credentials or mutating state', async () => {

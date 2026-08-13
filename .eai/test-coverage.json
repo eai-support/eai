@@ -33,9 +33,7 @@
             "tests/integration/resources-command.test.ts",
             "tests/integration/gofer.test.ts"
           ],
-          "required_ci_checks": [
-            "ci/eai-cli-tests"
-          ]
+          "required_ci_checks": ["ci/eai-cli-tests"]
         },
         {
           "id": "eai-cli-command-contracts",
@@ -80,12 +78,8 @@
             "tests/integration/dedicated-tenant-lifecycle.test.ts",
             "tests/integration/full-e2e-smoke.test.ts"
           ],
-          "required_ci_checks": [
-            "ci/eai-cli-tests"
-          ],
-          "required_cross_service_surfaces": [
-            "eai-cli"
-          ],
+          "required_ci_checks": ["ci/eai-cli-tests"],
+          "required_cross_service_surfaces": ["eai-cli"],
           "required_deployed_contracts": [
             {
               "repository": "eai-testing-dev",
@@ -105,6 +99,27 @@
               "path": "eai-testing-dev deployed eai types seed -> ResourceAPI schema-sync handoff",
               "reason": "This mutates tenant Object Type metadata and ResourceAPI runtime schema; eai-cli integration tests cover the command contract until a stable disposable deployed fixture exists.",
               "owner": "eai-cli"
+            }
+          ]
+        },
+        {
+          "id": "eai-cli-app-delete",
+          "description": "The CLI obtains the immutable V4 deletion plan, requires exact app-key confirmation, invokes the verified deletion saga, and emits the machine-readable cleanup receipt.",
+          "owned_paths": [
+            ".eai/test-coverage.json",
+            "src/commands/vertical.ts",
+            "src/lib/api.ts"
+          ],
+          "required_repo_tests": ["tests/integration/vertical.test.ts"],
+          "required_ci_checks": ["ci/eai-cli-tests"],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "publicapi-v4-mutating-lifecycle"
+          ],
+          "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/platform-lifecycle/publicapi-v4-platform-lifecycle.spec.ts"
             }
           ]
         }
