@@ -79,6 +79,73 @@ describe("eai classifier", () => {
     ).toThrow("at least two labels");
   });
 
+  test("matches PublicAPI source-mode lineage and label cardinality", () => {
+    const oneLabelDefinition = { labels: [draft.definition.labels[0]] };
+    const parentLineage = {
+      sourceTenantId: "parent-tenant",
+      sourceClassifierKey: "parent-compliance",
+      sourceVersion: 2,
+    };
+
+    expect(parseClassifierDraft(draft).sourceMode).toBe("local");
+    expect(() =>
+      parseClassifierDraft({ ...draft, ...parentLineage }),
+    ).toThrow("cannot declare parent lineage");
+
+    expect(
+      parseClassifierDraft({
+        ...draft,
+        sourceMode: "inherit",
+        ...parentLineage,
+        definition: oneLabelDefinition,
+      }),
+    ).toEqual(expect.objectContaining({ sourceMode: "inherit", ...parentLineage }));
+
+    expect(
+      parseClassifierDraft({
+        ...draft,
+        sourceMode: "extend",
+        ...parentLineage,
+        definition: oneLabelDefinition,
+      }),
+    ).toEqual(expect.objectContaining({ sourceMode: "extend", ...parentLineage }));
+
+    expect(
+      parseClassifierDraft({ ...draft, sourceMode: "fork", ...parentLineage }),
+    ).toEqual(expect.objectContaining({ sourceMode: "fork", ...parentLineage }));
+    expect(() =>
+      parseClassifierDraft({
+        ...draft,
+        sourceMode: "fork",
+        ...parentLineage,
+        definition: oneLabelDefinition,
+      }),
+    ).toThrow("forked classifiers require at least two labels");
+  });
+
+  test("rejects missing, partial, and malformed parent lineage", () => {
+    expect(() =>
+      parseClassifierDraft({ ...draft, sourceMode: "inherit" }),
+    ).toThrow("require complete parent lineage");
+    expect(() =>
+      parseClassifierDraft({
+        ...draft,
+        sourceMode: "extend",
+        sourceTenantId: "parent-tenant",
+        sourceClassifierKey: "parent-compliance",
+      }),
+    ).toThrow("require complete parent lineage");
+    expect(() =>
+      parseClassifierDraft({
+        ...draft,
+        sourceMode: "fork",
+        sourceTenantId: "parent-tenant",
+        sourceClassifierKey: "parent-compliance",
+        sourceVersion: 0,
+      }),
+    ).toThrow("sourceVersion must be a positive integer");
+  });
+
   test("saves a validated tenant-owned draft from JSON", async () => {
     const tempDirectory = await mkdtemp(join(tmpdir(), "eai-classifier-"));
     const draftPath = join(tempDirectory, "classifier.json");

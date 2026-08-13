@@ -92,6 +92,35 @@ export function parseClassifierDraft(value: unknown): ClassifierDraft {
   if (!isRecord(value.definition) || !Array.isArray(value.definition.labels)) {
     throw new Error("definition.labels must be an array.");
   }
+  const sourceMode = value.sourceMode ?? "local";
+  if (
+    sourceMode !== "local" &&
+    sourceMode !== "inherit" &&
+    sourceMode !== "extend" &&
+    sourceMode !== "fork"
+  ) {
+    throw new Error("sourceMode must be local, inherit, extend, or fork.");
+  }
+  const sourceTenantId = optionalString(value, "sourceTenantId");
+  const sourceClassifierKey = optionalString(value, "sourceClassifierKey");
+  const sourceVersion = value.sourceVersion;
+  if (
+    sourceVersion !== undefined &&
+    (typeof sourceVersion !== "number" ||
+      !Number.isInteger(sourceVersion) ||
+      sourceVersion < 1)
+  ) {
+    throw new Error("sourceVersion must be a positive integer.");
+  }
+  const lineage = [sourceTenantId, sourceClassifierKey, sourceVersion];
+  if (sourceMode === "local" && lineage.some((item) => item !== undefined)) {
+    throw new Error("Local classifiers cannot declare parent lineage.");
+  }
+  if (sourceMode !== "local" && lineage.some((item) => item === undefined)) {
+    throw new Error(
+      "Inherited, extended, and forked classifiers require complete parent lineage.",
+    );
+  }
   const labels = value.definition.labels.map(
     (candidate, index): ClassifierLabel => {
       if (!isRecord(candidate))
@@ -104,8 +133,12 @@ export function parseClassifierDraft(value: unknown): ClassifierDraft {
       };
     },
   );
-  if (labels.length < 2)
-    throw new Error("A classifier requires at least two labels.");
+  if (labels.length < 1) {
+    throw new Error("A classifier definition requires at least one label.");
+  }
+  if ((sourceMode === "local" || sourceMode === "fork") && labels.length < 2) {
+    throw new Error("Local and forked classifiers require at least two labels.");
+  }
   if (new Set(labels.map((label) => label.key)).size !== labels.length) {
     throw new Error("Classifier label keys must be unique.");
   }
@@ -139,22 +172,10 @@ export function parseClassifierDraft(value: unknown): ClassifierDraft {
           ? value.definition.minimumConfidence
           : undefined,
     },
-    sourceMode:
-      value.sourceMode === "inherit" ||
-      value.sourceMode === "extend" ||
-      value.sourceMode === "fork"
-        ? value.sourceMode
-        : "local",
-    sourceTenantId:
-      typeof value.sourceTenantId === "string"
-        ? value.sourceTenantId
-        : undefined,
-    sourceClassifierKey:
-      typeof value.sourceClassifierKey === "string"
-        ? value.sourceClassifierKey
-        : undefined,
-    sourceVersion:
-      typeof value.sourceVersion === "number" ? value.sourceVersion : undefined,
+    sourceMode,
+    sourceTenantId,
+    sourceClassifierKey,
+    sourceVersion,
     visibleToChildren: value.visibleToChildren !== false,
     publishedVersion:
       typeof value.publishedVersion === "number"
