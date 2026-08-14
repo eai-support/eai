@@ -78,10 +78,22 @@ function optionalString(
   return typeof value === "string" ? value.trim() || undefined : undefined;
 }
 
-/** Validates an untrusted JSON file before any tenant-scoped classifier mutation is attempted. */
-export function parseClassifierDraft(value: unknown): ClassifierDraft {
+function parseClassifierRecord(
+  value: unknown,
+  allowServerManagedFields: boolean,
+): ClassifierDraft {
   if (!isRecord(value))
     throw new Error("Classifier file must contain a JSON object.");
+  if (
+    !allowServerManagedFields &&
+    ["status", "publishedVersion", "publishedVersionId"].some(
+      (field) => value[field] !== undefined,
+    )
+  ) {
+    throw new Error(
+      "Classifier files cannot set server-managed publication fields.",
+    );
+  }
   const classifierKey = requiredString(value, "classifierKey");
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(classifierKey)) {
     throw new Error(
@@ -136,7 +148,9 @@ export function parseClassifierDraft(value: unknown): ClassifierDraft {
     throw new Error("A classifier definition requires at least one label.");
   }
   if ((sourceMode === "local" || sourceMode === "fork") && labels.length < 2) {
-    throw new Error("Local and forked classifiers require at least two labels.");
+    throw new Error(
+      "Local and forked classifiers require at least two labels.",
+    );
   }
   if (new Set(labels.map((label) => label.key)).size !== labels.length) {
     throw new Error("Classifier label keys must be unique.");
@@ -152,7 +166,8 @@ export function parseClassifierDraft(value: unknown): ClassifierDraft {
     verticalKey: optionalString(value, "verticalKey"),
     workflowKey: optionalString(value, "workflowKey"),
     status:
-      value.status === "published" || value.status === "disabled"
+      allowServerManagedFields &&
+      (value.status === "published" || value.status === "disabled")
         ? value.status
         : "draft",
     definition: {
@@ -168,15 +183,20 @@ export function parseClassifierDraft(value: unknown): ClassifierDraft {
     sourceVersion,
     visibleToChildren: value.visibleToChildren !== false,
     publishedVersion:
-      typeof value.publishedVersion === "number"
+      allowServerManagedFields && typeof value.publishedVersion === "number"
         ? value.publishedVersion
         : undefined,
     publishedVersionId:
-      typeof value.publishedVersionId === "string"
+      allowServerManagedFields && typeof value.publishedVersionId === "string"
         ? value.publishedVersionId
         : undefined,
     metadata: isRecord(value.metadata) ? value.metadata : undefined,
   };
+}
+
+/** Validates an untrusted authoring file before any tenant-scoped classifier mutation is attempted. */
+export function parseClassifierDraft(value: unknown): ClassifierDraft {
+  return parseClassifierRecord(value, false);
 }
 
 async function requireJson(
@@ -208,7 +228,11 @@ function classifierResources(payload: unknown): ClassifierResource[] {
     }
     try {
       return [
-        { ...parseClassifierDraft(row.data), id: row.id, version: row.version },
+        {
+          ...parseClassifierRecord(row.data, true),
+          id: row.id,
+          version: row.version,
+        },
       ];
     } catch {
       return [];
@@ -251,10 +275,8 @@ async function saveClassifier(
     ...draft,
     ...(existing
       ? {
-          publishedVersion:
-            existing.publishedVersion ?? draft.publishedVersion,
-          publishedVersionId:
-            existing.publishedVersionId ?? draft.publishedVersionId,
+          publishedVersion: existing.publishedVersion,
+          publishedVersionId: existing.publishedVersionId,
         }
       : {}),
     tenantId: context.tenantId,

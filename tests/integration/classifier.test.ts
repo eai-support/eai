@@ -19,7 +19,6 @@ const draft = {
   classifierKey: "compliance",
   displayName: "Compliance documents",
   description: "Classifies compliance inputs",
-  status: "draft" as const,
   definition: {
     labels: [
       {
@@ -79,6 +78,18 @@ describe("eai classifier", () => {
     ).toThrow("at least two labels");
   });
 
+  test("rejects server-managed publication fields in authoring files", () => {
+    for (const serverFields of [
+      { status: "published" },
+      { publishedVersion: 99 },
+      { publishedVersionId: "forged-version-id" },
+    ]) {
+      expect(() => parseClassifierDraft({ ...draft, ...serverFields })).toThrow(
+        "cannot set server-managed publication fields",
+      );
+    }
+  });
+
   test("matches PublicAPI source-mode lineage and label cardinality", () => {
     const oneLabelDefinition = { labels: [draft.definition.labels[0]] };
     const parentLineage = {
@@ -88,9 +99,9 @@ describe("eai classifier", () => {
     };
 
     expect(parseClassifierDraft(draft).sourceMode).toBe("local");
-    expect(() =>
-      parseClassifierDraft({ ...draft, ...parentLineage }),
-    ).toThrow("cannot declare parent lineage");
+    expect(() => parseClassifierDraft({ ...draft, ...parentLineage })).toThrow(
+      "cannot declare parent lineage",
+    );
 
     expect(
       parseClassifierDraft({
@@ -99,7 +110,9 @@ describe("eai classifier", () => {
         ...parentLineage,
         definition: oneLabelDefinition,
       }),
-    ).toEqual(expect.objectContaining({ sourceMode: "inherit", ...parentLineage }));
+    ).toEqual(
+      expect.objectContaining({ sourceMode: "inherit", ...parentLineage }),
+    );
 
     expect(
       parseClassifierDraft({
@@ -108,11 +121,15 @@ describe("eai classifier", () => {
         ...parentLineage,
         definition: oneLabelDefinition,
       }),
-    ).toEqual(expect.objectContaining({ sourceMode: "extend", ...parentLineage }));
+    ).toEqual(
+      expect.objectContaining({ sourceMode: "extend", ...parentLineage }),
+    );
 
     expect(
       parseClassifierDraft({ ...draft, sourceMode: "fork", ...parentLineage }),
-    ).toEqual(expect.objectContaining({ sourceMode: "fork", ...parentLineage }));
+    ).toEqual(
+      expect.objectContaining({ sourceMode: "fork", ...parentLineage }),
+    );
     expect(() =>
       parseClassifierDraft({
         ...draft,
@@ -137,10 +154,9 @@ describe("eai classifier", () => {
       },
     });
 
-    expect(parsed.definition.labels.map((label) => label.documentTypeKey)).toEqual([
-      "policy",
-      "policy",
-    ]);
+    expect(
+      parsed.definition.labels.map((label) => label.documentTypeKey),
+    ).toEqual(["policy", "policy"]);
     expect(() =>
       parseClassifierDraft({
         ...draft,
@@ -248,7 +264,9 @@ describe("eai classifier", () => {
   });
 
   test("preserves the immutable publication pointer when saving revised draft content", async () => {
-    const tempDirectory = await mkdtemp(join(tmpdir(), "eai-classifier-revision-"));
+    const tempDirectory = await mkdtemp(
+      join(tmpdir(), "eai-classifier-revision-"),
+    );
     const draftPath = join(tempDirectory, "classifier.json");
     await writeFile(draftPath, JSON.stringify(draft), "utf8");
     listResources.mockResolvedValue(
