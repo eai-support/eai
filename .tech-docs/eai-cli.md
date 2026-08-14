@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.14.0 |
+| Version | 3.15.0 |
 | Released | 2026-08-14 |
-| Last Material Change | Add tenant classifier lifecycle commands and canonical cross-service surfaces |
-| Source Commit | `140e250bd1d1a38a1bec7c08b1e722cb24f45121` |
+| Last Material Change | Allow setup to reuse existing EAI apps |
+| Source Commit | `700d13ffa4c7a5ed3aa8b65f7a9508700ce2010b` |
 
 
 ## Install
