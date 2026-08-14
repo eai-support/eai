@@ -73,6 +73,9 @@ const TRACEABILITY_BASE = [
   ['eai app deploy-source-unknown-status', 'read', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids depending on a pre-existing deployment handoff.'],
   ['eai app select', 'update-local', 'live', 'Writes the app key into the disposable workspace env.'],
   ['eai app provision', 'create/update', 'live', 'Prepares platform storage for the smoke app.'],
+  ['eai classifier delete', 'delete', 'covered-by-cli', 'Permanently removes only a disabled unpublished draft after exact classifier-key confirmation; command integration tests mock the API boundary.'],
+  ['eai classifier disable', 'update', 'covered-by-cli', 'Reversibly disables classifier mutation, targeting, and runtime use while retaining immutable history; command integration tests mock the API boundary.'],
+  ['eai classifier enable', 'update', 'covered-by-cli', 'Re-enables a disabled classifier at its prior draft or published lifecycle state; command integration tests mock the API boundary.'],
   ['eai classifier list', 'read', 'covered-by-cli', 'Lists tenant classifier drafts through the tenant-scoped ResourceAPI client.'],
   ['eai classifier save', 'create/update', 'covered-by-cli', 'Validates portable JSON and saves the mutable tenant-owned draft; command integration tests mock the API boundary.'],
   ['eai classifier publish', 'create/update', 'covered-by-cli', 'Publishes an immutable reusable version; command integration tests mock provider materialization.'],
@@ -320,6 +323,15 @@ const SMOKE_CALLS = {
   'eai app provision': [
     'eai app provision <app-key> --tenant-id <tenant-id> --backend all --dry-run --format json',
     'eai app provision <app-key> --tenant-id <tenant-id> --backend all --select --format json',
+  ],
+  'eai classifier delete': [
+    'eai classifier delete <classifier-key> --confirm <classifier-key> --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier disable': [
+    'eai classifier disable <classifier-key> --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier enable': [
+    'eai classifier enable <classifier-key> --tenant-id <tenant-id> --format json',
   ],
   'eai classifier list': [
     'eai classifier list --tenant-id <tenant-id> --format json',
@@ -773,6 +785,21 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'Yes - app storage/provisioning metadata',
     cleanupMechanism: 'No app storage deprovision command yet; dedicated smoke tenant expected',
     cleanupVerified: 'No - cleanup gap documented',
+  },
+  'eai classifier delete': {
+    createsExternalArtifact: 'No - permanently removes one mutable classifier draft',
+    cleanupMechanism: 'Exact classifier-key confirmation plus disabled and unpublished lifecycle guards; command integration tests mock the API boundary',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
+  },
+  'eai classifier disable': {
+    createsExternalArtifact: 'Yes - updates classifier lifecycle and blocks its targets',
+    cleanupMechanism: 'eai classifier enable reverses the lifecycle state; command integration tests mock both API boundaries',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
+  },
+  'eai classifier enable': {
+    createsExternalArtifact: 'Yes - restores the classifier lifecycle state',
+    cleanupMechanism: 'eai classifier disable reverses the lifecycle state; command integration tests mock both API boundaries',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
   },
   'eai classifier save': {
     createsExternalArtifact: 'Yes - mutable tenant classifier draft',

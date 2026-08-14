@@ -386,16 +386,7 @@ describe("eai classifier", () => {
     expect(requestPublicApi.mock.calls[0]?.[1]?.body).not.toHaveProperty(
       "workflowKey",
     );
-    expect(updateResource).toHaveBeenCalledWith(
-      "shared-document-classifier",
-      "draft-id",
-      expect.objectContaining({
-        status: "published",
-        publishedVersion: 3,
-        publishedVersionId: "version-id",
-      }),
-      4,
-    );
+    expect(updateResource).not.toHaveBeenCalled();
   });
 
   test("associates an exact published version with an app workflow", async () => {
@@ -454,5 +445,288 @@ describe("eai classifier", () => {
         },
       },
     );
+  });
+
+  test.each([
+    ["disable", "disabled"],
+    ["enable", "published"],
+  ])(
+    "HP001 CLASSIFIER-LIFECYCLE-001: %ss a classifier with its exact mutable version",
+    async (operation, status) => {
+      listResources.mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            docs: [
+              {
+                id: "draft-id",
+                version: 7,
+                data: {
+                  ...draft,
+                  status: operation === "enable" ? "disabled" : "published",
+                  publishedVersion: 3,
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+      requestPublicApi.mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            classifierKey: "compliance",
+            status,
+            affectedTargets: operation === "disable" ? 2 : 0,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+      vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+      await classifierCommand.parseAsync([
+        "node",
+        "classifier",
+        operation,
+        "compliance",
+        "--format",
+        "json",
+      ]);
+
+      expect(requestPublicApi).toHaveBeenCalledWith(
+        `/v4/data/documents/content-understanding/classifiers/compliance/${operation}`,
+        {
+          method: "POST",
+          body: { tenantId: "tenant-1", expectedVersion: 7 },
+        },
+      );
+    },
+  );
+
+  test("HP002 CLASSIFIER-LIFECYCLE-001: deletes a disabled unpublished draft only after exact confirmation", async () => {
+    listResources.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          docs: [
+            {
+              id: "draft-id",
+              version: 8,
+              data: { ...draft, status: "disabled" },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    requestPublicApi.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          classifierKey: "compliance",
+          status: "deleted",
+          deleted: true,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await classifierCommand.parseAsync([
+      "node",
+      "classifier",
+      "delete",
+      "compliance",
+      "--confirm",
+      "compliance",
+      "--format",
+      "json",
+    ]);
+
+    expect(requestPublicApi).toHaveBeenCalledWith(
+      "/v4/data/documents/content-understanding/classifiers/compliance",
+      {
+        method: "DELETE",
+        body: {
+          tenantId: "tenant-1",
+          expectedVersion: 8,
+          confirmation: "compliance",
+        },
+      },
+    );
+  });
+
+  test("BP001 CLASSIFIER-LIFECYCLE-001: rejects mismatched delete confirmation before tenant or network access", async () => {
+    await expect(
+      classifierCommand.parseAsync([
+        "node",
+        "classifier",
+        "delete",
+        "compliance",
+        "--confirm",
+        "wrong-key",
+      ]),
+    ).rejects.toThrow("--confirm must exactly match compliance");
+
+    expect(resolveCommandContext).not.toHaveBeenCalled();
+    expect(listResources).not.toHaveBeenCalled();
+    expect(requestPublicApi).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [
+      { ...draft, status: "published", publishedVersion: 2 },
+      "Disable classifier compliance before deleting it",
+    ],
+    [
+      { ...draft, status: "disabled", publishedVersion: 2 },
+      "has immutable publication history and cannot be deleted",
+    ],
+  ])(
+    "BP002 CLASSIFIER-LIFECYCLE-001: refuses unsafe permanent deletion",
+    async (storedDraft, expectedMessage) => {
+      listResources.mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            docs: [{ id: "draft-id", version: 8, data: storedDraft }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+
+      await expect(
+        classifierCommand.parseAsync([
+          "node",
+          "classifier",
+          "delete",
+          "compliance",
+          "--confirm",
+          "compliance",
+        ]),
+      ).rejects.toThrow(expectedMessage);
+      expect(requestPublicApi).not.toHaveBeenCalled();
+    },
+  );
+
+  test(
+    "BP003 CLASSIFIER-LIFECYCLE-001: save refuses to overwrite an existing disabled classifier",
+    async () => {
+      const tempDirectory = await mkdtemp(
+        join(tmpdir(), "eai-classifier-locked-"),
+      );
+      const draftPath = join(tempDirectory, "classifier.json");
+      await writeFile(draftPath, JSON.stringify(draft), "utf8");
+      listResources.mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            docs: [
+              {
+                id: "draft-id",
+                version: 8,
+                data: { ...draft, status: "disabled" },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+
+      try {
+        await expect(
+          classifierCommand.parseAsync([
+            "node",
+            "classifier",
+            "save",
+            "--file",
+            draftPath,
+          ]),
+        ).rejects.toThrow(/Enable classifier/);
+      } finally {
+        await rm(tempDirectory, { recursive: true, force: true });
+      }
+      expect(updateResource).not.toHaveBeenCalled();
+    },
+  );
+
+  test("BP004 CLASSIFIER-LIFECYCLE-001: targeting refuses a disabled classifier before any runtime request", async () => {
+    listResources.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          docs: [
+            {
+              id: "draft-id",
+              version: 8,
+              data: {
+                ...draft,
+                status: "disabled",
+                publishedVersion: 3,
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await expect(
+      classifierCommand.parseAsync([
+        "node",
+        "classifier",
+        "target",
+        "compliance",
+        "--app",
+        "mysnm",
+        "--workflow",
+        "compliance-review",
+      ]),
+    ).rejects.toThrow(
+      "Enable classifier compliance before associating a target",
+    );
+    expect(requestPublicApi).not.toHaveBeenCalled();
+  });
+
+  test("BP004 CLASSIFIER-LIFECYCLE-001: renders lifecycle validation failures without rejected values or server detail", async () => {
+    listResources.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          docs: [
+            {
+              id: "draft-id",
+              version: 7,
+              data: { ...draft, status: "published", publishedVersion: 3 },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    requestPublicApi.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message: "expectedVersion rejected; secret=do-not-print",
+          invalidFields: [
+            {
+              path: "body.expectedVersion",
+              message: "secret=do-not-print",
+              value: "do-not-print",
+            },
+          ],
+        }),
+        { status: 422, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    let failure: Error | undefined;
+    try {
+      await classifierCommand.parseAsync([
+        "node",
+        "classifier",
+        "disable",
+        "compliance",
+      ]);
+    } catch (error) {
+      failure = error as Error;
+    }
+
+    expect(failure?.message).toContain("body.expectedVersion");
+    expect(failure?.message).not.toContain("do-not-print");
+    expect(failure?.message).not.toContain("secret");
   });
 });

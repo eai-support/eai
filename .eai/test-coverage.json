@@ -5,7 +5,7 @@
       "features": [
         {
           "id": "eai-cli-tenant-workflow-classifiers",
-          "description": "CLI users validate and save reusable classifier JSON, publish immutable versions, and separately associate an exact published version with an app workflow through PublicAPI v4.",
+          "description": "CLI users validate and save reusable classifier JSON, publish immutable versions, separately associate exact published versions with app workflows, reversibly disable or enable classifiers, and permanently delete only disabled unpublished drafts through PublicAPI v4.",
           "owned_paths": [
             "src/commands/classifier.ts",
             "src/index.ts",

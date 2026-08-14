@@ -1,5 +1,5 @@
 /**
- * eai classifier — author and publish tenant workflow document classifiers.
+ * eai classifier — author, publish, and manage tenant workflow document classifiers.
  */
 
 import { readFile } from "node:fs/promises";
@@ -22,6 +22,10 @@ interface ClassifierTargetOptions extends ClassifierCommandOptions {
   app: string;
   workflow: string;
   version?: string;
+}
+
+interface ClassifierDeleteOptions extends ClassifierCommandOptions {
+  confirm?: string;
 }
 
 interface ClassifierLabel {
@@ -271,6 +275,11 @@ async function saveClassifier(
   );
   const context = await resolveCommandContext({ tenantId: options.tenantId });
   const existing = await findClassifier(context.client, draft.classifierKey);
+  if (existing?.status === "disabled") {
+    throw new Error(
+      `Enable classifier ${draft.classifierKey} before editing it.`,
+    );
+  }
   const data: Record<string, unknown> = {
     ...draft,
     ...(existing
@@ -338,6 +347,9 @@ async function publishClassifier(
   const draft = await findClassifier(context.client, classifierKey);
   if (!draft)
     throw new Error(`Classifier draft ${classifierKey} was not found.`);
+  if (draft.status === "disabled") {
+    throw new Error(`Enable classifier ${classifierKey} before publishing it.`);
+  }
   const nextVersion = (draft.publishedVersion ?? 0) + 1;
   const response = await context.client.requestPublicApi(
     `/v4/data/documents/content-understanding/classifiers/${encodeURIComponent(classifierKey)}/publish`,
@@ -365,22 +377,6 @@ async function publishClassifier(
   ) {
     throw new Error("Classifier publish returned an invalid response.");
   }
-  await requireJson(
-    await context.client.updateResource(
-      CLASSIFIER_OBJECT_TYPE,
-      draft.id,
-      {
-        ...draft,
-        tenantId: context.tenantId,
-        status: "published",
-        publishedVersion: published.version,
-        publishedVersionId: published.versionId,
-        updatedAt: new Date().toISOString(),
-      },
-      draft.version,
-    ),
-    "Classifier draft publication pointer update",
-  );
   printResult(
     format,
     published,
@@ -397,6 +393,11 @@ async function targetClassifier(
   const draft = await findClassifier(context.client, classifierKey);
   if (!draft) {
     throw new Error(`Classifier draft ${classifierKey} was not found.`);
+  }
+  if (draft.status === "disabled") {
+    throw new Error(
+      `Enable classifier ${classifierKey} before associating a target.`,
+    );
   }
   const requestedVersion = options.version
     ? Number.parseInt(options.version, 10)
@@ -432,9 +433,88 @@ async function targetClassifier(
   );
 }
 
+async function changeClassifierLifecycle(
+  classifierKey: string,
+  operation: "disable" | "enable",
+  options: ClassifierCommandOptions,
+): Promise<void> {
+  const format = normalizeFormat(options);
+  const context = await resolveCommandContext({ tenantId: options.tenantId });
+  const draft = await findClassifier(context.client, classifierKey);
+  if (!draft) {
+    throw new Error(`Classifier draft ${classifierKey} was not found.`);
+  }
+  const response = await context.client.requestPublicApi(
+    `/v4/data/documents/content-understanding/classifiers/${encodeURIComponent(classifierKey)}/${operation}`,
+    {
+      method: "POST",
+      body: {
+        tenantId: context.tenantId,
+        expectedVersion: draft.version,
+      },
+    },
+  );
+  const result = await requireJson(response, `Classifier ${operation}`);
+  printResult(
+    format,
+    result,
+    `${operation === "disable" ? "Disabled" : "Enabled"} classifier ${classifierKey}`,
+  );
+}
+
+async function disableClassifier(
+  classifierKey: string,
+  options: ClassifierCommandOptions,
+): Promise<void> {
+  await changeClassifierLifecycle(classifierKey, "disable", options);
+}
+
+async function enableClassifier(
+  classifierKey: string,
+  options: ClassifierCommandOptions,
+): Promise<void> {
+  await changeClassifierLifecycle(classifierKey, "enable", options);
+}
+
+async function deleteClassifier(
+  classifierKey: string,
+  options: ClassifierDeleteOptions,
+): Promise<void> {
+  if (options.confirm !== classifierKey) {
+    throw new Error(`--confirm must exactly match ${classifierKey}.`);
+  }
+  const format = normalizeFormat(options);
+  const context = await resolveCommandContext({ tenantId: options.tenantId });
+  const draft = await findClassifier(context.client, classifierKey);
+  if (!draft) {
+    throw new Error(`Classifier draft ${classifierKey} was not found.`);
+  }
+  if (draft.status !== "disabled") {
+    throw new Error(`Disable classifier ${classifierKey} before deleting it.`);
+  }
+  if (draft.publishedVersion) {
+    throw new Error(
+      `Classifier ${classifierKey} has immutable publication history and cannot be deleted. Leave it disabled instead.`,
+    );
+  }
+  const response = await context.client.requestPublicApi(
+    `/v4/data/documents/content-understanding/classifiers/${encodeURIComponent(classifierKey)}`,
+    {
+      method: "DELETE",
+      body: {
+        tenantId: context.tenantId,
+        expectedVersion: draft.version,
+        confirmation: classifierKey,
+      },
+    },
+  );
+  const result = await requireJson(response, "Classifier delete");
+  printResult(format, result, `Deleted classifier ${classifierKey}`);
+}
+
 export const classifierCommand = new Command("classifier")
   .description(
-    "Create, inspect, publish, and target tenant document classifiers",
+    "Create, inspect, publish, target, disable, enable, and delete tenant document classifiers",
   )
   .addHelpText(
     "after",
@@ -444,6 +524,9 @@ Examples:
   eai classifier list --format json
   eai classifier publish compliance-documents
   eai classifier target compliance-documents --app mysnm --workflow compliance-review
+  eai classifier disable compliance-documents
+  eai classifier enable compliance-documents
+  eai classifier delete compliance-documents --confirm compliance-documents
 `,
   );
 
@@ -485,3 +568,33 @@ classifierCommand
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
   .action(targetClassifier);
+
+classifierCommand
+  .command("disable <classifier-key>")
+  .description("Reversibly block publication, targets, and runtime use")
+  .option("--tenant-id <id>", "Target tenant ID")
+  .option("--format <format>", "Output format: text or json", "text")
+  .option("--json", "Shortcut for --format json")
+  .action(disableClassifier);
+
+classifierCommand
+  .command("enable <classifier-key>")
+  .description("Re-enable a disabled classifier")
+  .option("--tenant-id <id>", "Target tenant ID")
+  .option("--format <format>", "Output format: text or json", "text")
+  .option("--json", "Shortcut for --format json")
+  .action(enableClassifier);
+
+classifierCommand
+  .command("delete <classifier-key>")
+  .description(
+    "Permanently delete a disabled classifier draft that was never published",
+  )
+  .requiredOption(
+    "--confirm <classifier-key>",
+    "Exact classifier key required for permanent deletion",
+  )
+  .option("--tenant-id <id>", "Target tenant ID")
+  .option("--format <format>", "Output format: text or json", "text")
+  .option("--json", "Shortcut for --format json")
+  .action(deleteClassifier);
