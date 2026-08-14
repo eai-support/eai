@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.13.0** (2026-08-13): Add verified PublicAPI V4 app deletion.
+The current CLI release is **v3.14.0** (2026-08-14): Add tenant classifier lifecycle commands and canonical cross-service surfaces.
 
 
 ## What The Pieces Do
