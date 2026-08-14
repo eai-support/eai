@@ -257,11 +257,71 @@ export interface DeprovisionEntraAppResult {
   appRegistrationDeleted: boolean;
 }
 
+/** Safe API error summary; rejected request bodies are never retained for HTTP 422. */
 export interface ParsedApiError {
   status: number;
   code?: string;
   message: string;
   bodyText?: string;
+}
+
+interface ValidationFieldIssue {
+  path?: unknown;
+  code?: unknown;
+}
+
+const VALIDATION_PATH_SEGMENT = /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/;
+const VALIDATION_CODE = /^[a-z][a-z0-9_.]{0,63}$/;
+const CALLER_CONTROLLED_LOCATION_CODES = new Set(['extra_forbidden', 'invalid_key']);
+
+function normalizeValidationCode(value: unknown): string {
+  return typeof value === 'string' && VALIDATION_CODE.test(value) ? value : 'invalid';
+}
+
+function normalizeValidationPath(value: unknown, code: string): string | undefined {
+  const rawParts = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split('.')
+      : [];
+  if (rawParts.length === 0) {
+    return undefined;
+  }
+
+  const parts = rawParts.slice(0, 8).map((part) => {
+    if (typeof part === 'number') {
+      return '*';
+    }
+    if (part === '*' || part === '<field>') {
+      return part;
+    }
+    return typeof part === 'string' && VALIDATION_PATH_SEGMENT.test(part)
+      ? part
+      : '<field>';
+  });
+  if (CALLER_CONTROLLED_LOCATION_CODES.has(code) && parts.length > 1) {
+    parts[parts.length - 1] = '<field>';
+  }
+  return parts.join('.');
+}
+
+function formatValidationIssues(issues: ValidationFieldIssue[]): string | undefined {
+  const messages = issues
+    .map((issue) => {
+      const code = normalizeValidationCode(issue.code);
+      const path = normalizeValidationPath(issue.path, code);
+      if (!path) {
+        return null;
+      }
+      const guidance = code === 'missing'
+        ? 'Field required'
+        : code === 'extra_forbidden'
+          ? 'Unexpected field'
+          : 'Invalid value';
+      return `${path}: ${guidance}`;
+    })
+    .filter((value): value is string => Boolean(value));
+  return messages.length > 0 ? [...new Set(messages)].join('; ') : undefined;
 }
 
 export interface PlatformAPIRequestErrorOptions {
@@ -429,9 +489,14 @@ function normalizePublicApiV4Path(path: string): string {
   return normalized;
 }
 
+/**
+ * Extracts published validation locations or compatible FastAPI detail metadata
+ * without returning rejected values or server-provided validation messages.
+ */
 export async function parseApiError(response: Response): Promise<ParsedApiError> {
   const bodyText = await response.text();
   const validationCode = response.status === 422 ? 'VALIDATION_ERROR' : undefined;
+  const safeBodyText = validationCode ? {} : { bodyText };
 
   if (!bodyText) {
     return {
@@ -449,30 +514,46 @@ export async function parseApiError(response: Response): Promise<ParsedApiError>
       } | Array<{
         loc?: Array<string | number>;
         msg?: string;
+        type?: string;
       }> | string;
       error?: string;
       message?: string;
       details?: string | { message?: string };
+      invalidFields?: ValidationFieldIssue[];
     };
+
+    const publishedValidationMessage = Array.isArray(body.invalidFields)
+      ? formatValidationIssues(body.invalidFields)
+      : undefined;
+    if (publishedValidationMessage) {
+      return {
+        status: response.status,
+        code: typeof body.error === 'string' ? body.error : validationCode,
+        message: publishedValidationMessage,
+        ...safeBodyText,
+      };
+    }
 
     const detail = body.detail;
     if (Array.isArray(detail)) {
-      const messages = detail
-        .map((issue) => {
-          if (!issue || typeof issue !== 'object' || typeof issue.msg !== 'string') {
-            return null;
-          }
-          const location = Array.isArray(issue.loc)
-            ? issue.loc.map((part) => String(part)).join('.')
-            : '';
-          return location ? `${location}: ${issue.msg}` : issue.msg;
-        })
-        .filter((value): value is string => Boolean(value));
+      const validationMessage = formatValidationIssues(
+        detail
+          .filter((issue): issue is NonNullable<typeof issue> => Boolean(issue) && typeof issue === 'object')
+          .map((issue) => ({ path: issue.loc, code: issue.type })),
+      );
       return {
         status: response.status,
         code: validationCode,
-        message: messages.join('; ') || response.statusText || `HTTP ${response.status}`,
-        bodyText,
+        message: validationMessage || response.statusText || `HTTP ${response.status}`,
+        ...safeBodyText,
+      };
+    }
+
+    if (validationCode) {
+      return {
+        status: response.status,
+        code: typeof body.error === 'string' ? body.error : validationCode,
+        message: 'Request validation failed',
       };
     }
 
@@ -481,7 +562,7 @@ export async function parseApiError(response: Response): Promise<ParsedApiError>
         status: response.status,
         code: detail.error || validationCode,
         message: detail.message || response.statusText || `HTTP ${response.status}`,
-        bodyText,
+        ...safeBodyText,
       };
     }
 
@@ -498,14 +579,16 @@ export async function parseApiError(response: Response): Promise<ParsedApiError>
           : details
             ? details
             : response.statusText || `HTTP ${response.status}`,
-      bodyText,
+      ...safeBodyText,
     };
   } catch {
     return {
       status: response.status,
       code: validationCode,
-      message: bodyText,
-      bodyText,
+      message: validationCode
+        ? response.statusText || `HTTP ${response.status}`
+        : bodyText,
+      ...safeBodyText,
     };
   }
 }

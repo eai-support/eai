@@ -23,8 +23,8 @@ describe('PlatformAPIClient', () => {
         {
           type: 'value_error',
           loc: ['body', 'documentId'],
-          msg: 'Invalid document state',
-          input: 'DOC-123',
+          msg: 'Invalid document state: tax-file-secret',
+          input: 'tax-file-secret',
         },
       ],
     }), {
@@ -34,8 +34,45 @@ describe('PlatformAPIClient', () => {
 
     expect(parsed.code).toBe('VALIDATION_ERROR')
     expect(parsed.message).toBe(
-      'body.storagePath: Field required; body.documentId: Invalid document state',
+      'body.storagePath: Field required; body.documentId: Invalid value',
     )
+    expect(parsed.message).not.toContain('tax-file-secret')
+    expect(parsed.bodyText).toBeUndefined()
+  })
+
+  test('parses the PublicAPI validation envelope without exposing rejected values', async () => {
+    const parsed = await parseApiError(new Response(JSON.stringify({
+      error: 'VALIDATION_ERROR',
+      message: 'Request validation failed',
+      invalidFields: [
+        { path: 'body.storagePath', code: 'missing' },
+        { path: 'body.<field>', code: 'extra_forbidden' },
+      ],
+      rejectedValue: 'tax-file-secret',
+    }), {
+      status: 422,
+      statusText: 'Unprocessable Entity',
+    }))
+
+    expect(parsed.code).toBe('VALIDATION_ERROR')
+    expect(parsed.message).toBe(
+      'body.storagePath: Field required; body.<field>: Unexpected field',
+    )
+    expect(parsed.message).not.toContain('tax-file-secret')
+    expect(parsed.bodyText).toBeUndefined()
+  })
+
+  test('does not expose opaque validation response bodies', async () => {
+    const parsed = await parseApiError(new Response('tax-file-secret', {
+      status: 422,
+      statusText: 'Unprocessable Entity',
+    }))
+
+    expect(parsed).toEqual({
+      status: 422,
+      code: 'VALIDATION_ERROR',
+      message: 'Unprocessable Entity',
+    })
   })
 
   test('caps published object type preflight lookups at the orchestrator limit', async () => {

@@ -146,18 +146,18 @@ describe('PlatformAPIClient.classifyDocument', () => {
 
   test('document errors preserve field-level validation guidance', async () => {
     const message = await readResponseError(new Response(JSON.stringify({
-      detail: [
-        {
-          type: 'missing',
-          loc: ['body', 'storagePath'],
-          msg: 'Field required',
-        },
+      error: 'VALIDATION_ERROR',
+      message: 'Request validation failed',
+      invalidFields: [
+        { path: 'body.storagePath', code: 'missing' },
       ],
+      rejectedValue: 'tax-file-secret',
     }), {
       status: 422,
       statusText: 'Unprocessable Entity',
     }));
 
     expect(message).toBe('VALIDATION_ERROR: body.storagePath: Field required');
+    expect(message).not.toContain('tax-file-secret');
   });
 });
