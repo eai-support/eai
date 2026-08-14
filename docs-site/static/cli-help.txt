@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Version: 3.13.0
+Version: 3.14.0
 
 Install / update the CLI:
 npm install -g eai-cli
@@ -66,6 +66,8 @@ Commands:
   agent                        Show AI-agent discovery and recovery guidance
   start [options] [directory]  Detect or start a supported AI workspace for an
                                EAI project
+  classifier                   Create, inspect, publish, target, disable,
+                               enable, and delete tenant document classifiers
   help [command]               display help for command
 
 Getting Started:

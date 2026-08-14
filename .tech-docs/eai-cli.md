@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.13.0 |
-| Released | 2026-08-13 |
-| Last Material Change | Add verified PublicAPI V4 app deletion |
-| Source Commit | `7cf6a0a72ec5279058af9f862f052db8f9b79a52` |
+| Version | 3.14.0 |
+| Released | 2026-08-14 |
+| Last Material Change | Add tenant classifier lifecycle commands and canonical cross-service surfaces |
+| Source Commit | `140e250bd1d1a38a1bec7c08b1e722cb24f45121` |
 
 
 ## Install
