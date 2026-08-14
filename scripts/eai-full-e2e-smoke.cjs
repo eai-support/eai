@@ -485,6 +485,7 @@ const OPTION_DECISIONS = {
     '--no-splash': 'Interactive branding opt-out; smoke runs remain non-interactive and do not require the terminal wordmark.',
     '--display-name': 'Guided eai create collects the display name and forwards it to the non-interactive init path; release smoke uses the default humanized name.',
     '--description': 'Guided eai create collects the business description and forwards it to the non-interactive init path; release smoke uses the default description.',
+    '--app-key': 'Existing-app binding is covered by the init integration contract; live release smoke keeps the default create-new-app path to avoid changing tenant state.',
     '--no-install': 'Dependency installation is covered by init integration tests; release smoke keeps the generated workspace setup bounded and uses the default install behavior.',
   },
   'eai create': {
@@ -500,6 +501,7 @@ const OPTION_DECISIONS = {
     '--no-gofer': 'Bare scaffold mode is covered by init integration tests; guided setup installs Gofer by default.',
     '--package-profile': 'Package profile is forwarded to init; release smoke uses the external default.',
     '--tool': 'AI-tool selection is covered by the guided onboarding contract; all four supported tool surfaces are installed as Gofer assets.',
+    '--app-key': 'Existing-app binding is forwarded to init and covered by the create argument contract; guided release smoke keeps the default create-new-app path to avoid changing tenant state.',
     '--no-splash': 'Interactive branding opt-out; smoke runs remain non-interactive and do not require the terminal wordmark.',
     '--no-install': 'Dependency installation is covered by init integration tests; guided release smoke uses help only to avoid cloning or browser auth.',
   },
