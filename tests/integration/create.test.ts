@@ -94,6 +94,25 @@ describe("eai create onboarding helpers", () => {
     ).toContain("--no-install");
   });
 
+  test("forwards an existing app binding without changing the create flow", () => {
+    expect(
+      buildForwardedInitArgs("local-project", {
+        ...baseOptions,
+        skipPrompts: true,
+        companyTenant: "tenant-456",
+        appKey: "existing-app",
+      }),
+    ).toContain("--app-key");
+    expect(
+      buildForwardedInitArgs("local-project", {
+        ...baseOptions,
+        skipPrompts: true,
+        companyTenant: "tenant-456",
+        appKey: "existing-app",
+      }),
+    ).toContain("existing-app");
+  });
+
   test("lets --skip-onboarding fall back to the legacy interactive prompts", () => {
     expect(
       buildForwardedInitArgs("my-app", {

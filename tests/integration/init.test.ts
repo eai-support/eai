@@ -18,6 +18,7 @@ import {
   initCommand,
   isDefaultTemplateSource,
   resolveTemplateClonePlan,
+  selectExistingAppSelection,
 } from "../../src/commands/init.js";
 import * as auth from "../../src/lib/auth.js";
 import { PlatformAPIClient } from "../../src/lib/api.js";
@@ -1345,6 +1346,56 @@ describe("eai init", () => {
   // TC008: Generated object-types.ts is valid
   // TC009: Generated deployment workflow is valid
   // TC010: Init creates initial git commit
+});
+
+describe("existing app selection", () => {
+  test("uses the app enrollment runtime tenant without creating a new app", () => {
+    expect(
+      selectExistingAppSelection(
+        {
+          docs: [
+            {
+              id: "enrollment-1",
+              data: {
+                verticalKey: "customer-portal",
+                displayName: "Customer Portal",
+                parentTenantId: "runtime-tenant-1",
+                tenantId: "company-tenant-1",
+              },
+            },
+          ],
+        },
+        "customer-portal",
+      ),
+    ).toEqual({
+      appKey: "customer-portal",
+      displayName: "Customer Portal",
+      runtimeTenantId: "runtime-tenant-1",
+    });
+  });
+
+  test("fails closed when the app record has no runtime tenant", () => {
+    expect(() =>
+      selectExistingAppSelection(
+        { docs: [{ data: { verticalKey: "customer-portal" } }] },
+        "customer-portal",
+      ),
+    ).toThrow(/does not identify a runtime tenant/);
+  });
+
+  test("rejects duplicate exact app enrollments", () => {
+    expect(() =>
+      selectExistingAppSelection(
+        {
+          docs: [
+            { data: { verticalKey: "customer-portal", tenantId: "tenant-a" } },
+            { data: { verticalKey: "customer-portal", tenantId: "tenant-b" } },
+          ],
+        },
+        "customer-portal",
+      ),
+    ).toThrow(/More than one enrollment/);
+  });
 });
 
 describe("describeCloneFailure", () => {
