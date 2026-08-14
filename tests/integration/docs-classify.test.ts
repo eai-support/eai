@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PlatformAPIClient } from '../../src/lib/api.js';
+import { readResponseError } from '../../src/commands/docs.js';
 import { createMockServer } from '../helpers/mock-server.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { cleanupTestTokens, type TestContext, userIsLoggedIn } from '../helpers/setup-dsl.js';
