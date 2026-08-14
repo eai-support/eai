@@ -73,6 +73,13 @@ const TRACEABILITY_BASE = [
   ['eai app deploy-source-unknown-status', 'read', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids depending on a pre-existing deployment handoff.'],
   ['eai app select', 'update-local', 'live', 'Writes the app key into the disposable workspace env.'],
   ['eai app provision', 'create/update', 'live', 'Prepares platform storage for the smoke app.'],
+  ['eai classifier delete', 'delete', 'covered-by-cli', 'Permanently removes only a disabled unpublished draft after exact classifier-key confirmation; command integration tests mock the API boundary.'],
+  ['eai classifier disable', 'update', 'covered-by-cli', 'Reversibly disables classifier mutation, targeting, and runtime use while retaining immutable history; command integration tests mock the API boundary.'],
+  ['eai classifier enable', 'update', 'covered-by-cli', 'Re-enables a disabled classifier at its prior draft or published lifecycle state; command integration tests mock the API boundary.'],
+  ['eai classifier list', 'read', 'covered-by-cli', 'Lists tenant classifier drafts through the tenant-scoped ResourceAPI client.'],
+  ['eai classifier save', 'create/update', 'covered-by-cli', 'Validates portable JSON and saves the mutable tenant-owned draft; command integration tests mock the API boundary.'],
+  ['eai classifier publish', 'create/update', 'covered-by-cli', 'Publishes an immutable reusable version; command integration tests mock provider materialization.'],
+  ['eai classifier target', 'create/update', 'covered-by-cli', 'Associates an exact published classifier version with an app workflow; command integration tests mock the API boundary.'],
   ['eai chat send', 'create/read', 'live-optional', 'Runs only when EAI_E2E_WORKFLOW_KEY is configured and workflow status is available.'],
   ['eai chat stream', 'create/read', 'help', 'Interactive streaming is validated by help/contract; non-interactive chat send covers AI request path.'],
   ['eai workflow provision', 'create/update', 'live-optional', 'Runs when EAI_E2E_WORKFLOW_PROVISION=1 because workflow provisioning may require runtime/provider setup.'],
@@ -316,6 +323,27 @@ const SMOKE_CALLS = {
   'eai app provision': [
     'eai app provision <app-key> --tenant-id <tenant-id> --backend all --dry-run --format json',
     'eai app provision <app-key> --tenant-id <tenant-id> --backend all --select --format json',
+  ],
+  'eai classifier delete': [
+    'eai classifier delete <classifier-key> --confirm <classifier-key> --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier disable': [
+    'eai classifier disable <classifier-key> --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier enable': [
+    'eai classifier enable <classifier-key> --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier list': [
+    'eai classifier list --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier save': [
+    'eai classifier save --file classifier.json --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier publish': [
+    'eai classifier publish <classifier-key> --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier target': [
+    'eai classifier target <classifier-key> --app <app-key> --workflow <workflow-key> --version <version> --tenant-id <tenant-id> --format json',
   ],
   'eai chat send': [
     'EAI_E2E_WORKFLOW_KEY=<workflow-id> eai chat send --workflow <workflow-id> --stage chat --conversation-id <conversation-id>',
@@ -757,6 +785,36 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'Yes - app storage/provisioning metadata',
     cleanupMechanism: 'No app storage deprovision command yet; dedicated smoke tenant expected',
     cleanupVerified: 'No - cleanup gap documented',
+  },
+  'eai classifier delete': {
+    createsExternalArtifact: 'No - permanently removes one mutable classifier draft',
+    cleanupMechanism: 'Exact classifier-key confirmation plus disabled and unpublished lifecycle guards; command integration tests mock the API boundary',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
+  },
+  'eai classifier disable': {
+    createsExternalArtifact: 'Yes - updates classifier lifecycle and blocks its targets',
+    cleanupMechanism: 'eai classifier enable reverses the lifecycle state; command integration tests mock both API boundaries',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
+  },
+  'eai classifier enable': {
+    createsExternalArtifact: 'Yes - restores the classifier lifecycle state',
+    cleanupMechanism: 'eai classifier disable reverses the lifecycle state; command integration tests mock both API boundaries',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
+  },
+  'eai classifier save': {
+    createsExternalArtifact: 'Yes - mutable tenant classifier draft',
+    cleanupMechanism: 'Command integration coverage mocks the API; live release smoke does not create a draft',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
+  },
+  'eai classifier publish': {
+    createsExternalArtifact: 'Yes - immutable version and provider materialization',
+    cleanupMechanism: 'Command integration coverage mocks the API; immutable publications are intentionally not deleted',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
+  },
+  'eai classifier target': {
+    createsExternalArtifact: 'Yes - app workflow binding to an immutable classifier version',
+    cleanupMechanism: 'Command integration coverage mocks the API; live release smoke does not mutate workflow bindings',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
   },
   'eai chat send': {
     createsExternalArtifact: 'Yes - chat/workflow conversation',

@@ -5,6 +5,7 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
+import { parseApiError } from '../lib/api.js';
 import { resolveCommandContext } from '../lib/context.js';
 
 interface BatchDocumentSummary {
@@ -35,27 +36,11 @@ interface BatchJobResponse {
   };
 }
 
-async function readResponseError(response: Response): Promise<string> {
-  const text = await response.text();
-  if (!text) {
-    return `${response.status} ${response.statusText}`;
-  }
-
-  try {
-    const payload = JSON.parse(text) as {
-      error?: string;
-      message?: string;
-      details?: string | { message?: string };
-    };
-    const detail = typeof payload.details === 'string'
-      ? payload.details
-      : payload.details?.message;
-    return [payload.error, payload.message, detail]
-      .filter((value): value is string => Boolean(value))
-      .join(': ');
-  } catch {
-    return text;
-  }
+export async function readResponseError(response: Response): Promise<string> {
+  const parsed = await parseApiError(response);
+  return [parsed.code, parsed.message]
+    .filter((value): value is string => Boolean(value))
+    .join(': ');
 }
 
 export const docsCommand = new Command('docs')

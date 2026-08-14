@@ -46,6 +46,7 @@ import { publicApiCommand } from './commands/publicapi.js';
 import { errorsCommand } from './commands/errors.js';
 import { agentCommand } from './commands/agent.js';
 import { startCommand } from './commands/start.js';
+import { classifierCommand } from './commands/classifier.js';
 import {
   checkForUpdate,
   isMachineReadableInvocation,
@@ -53,7 +54,7 @@ import {
   notifyIfUpdateAvailableForDiscovery,
 } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
-import { setActiveProfile } from './lib/profile.js';
+import { resolveCommandProfile, setActiveProfile } from './lib/profile.js';
 import { describeProgram } from './lib/schema-builder.js';
 
 const program = new Command();
@@ -68,7 +69,7 @@ program
   .option('--profile <name>', 'Use a locally configured private profile')
   .option('--describe', 'Output JSON schema of all commands')
   .hook('preAction', async (thisCommand) => {
-    const opts = thisCommand.opts();
+    const opts = thisCommand.optsWithGlobals();
 
     // Handle --simple flag
     if (opts.simple) {
@@ -87,12 +88,7 @@ program
 
     // Handle --profile flag or EAI_PROFILE env var. Plain `eai ...`
     // intentionally stays on the public production default profile.
-    const profileName = opts.profile || process.env.EAI_PROFILE;
-    if (profileName) {
-      setActiveProfile(profileName);
-    } else {
-      setActiveProfile('default');
-    }
+    setActiveProfile(resolveCommandProfile(thisCommand));
   });
 
 // Register all commands
@@ -124,6 +120,7 @@ program.addCommand(publicApiCommand);
 program.addCommand(errorsCommand);
 program.addCommand(agentCommand);
 program.addCommand(startCommand);
+program.addCommand(classifierCommand);
 
 // Custom help footer
 program.addHelpText('after', `
