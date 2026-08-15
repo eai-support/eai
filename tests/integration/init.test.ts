@@ -21,7 +21,10 @@ import {
   selectExistingAppSelection,
 } from "../../src/commands/init.js";
 import * as auth from "../../src/lib/auth.js";
-import { getNpmExecutable } from "../../src/lib/npm.js";
+import {
+  getNpmExecOptions,
+  getNpmExecutable,
+} from "../../src/lib/npm.js";
 import { PlatformAPIClient } from "../../src/lib/api.js";
 import * as tenantContext from "../../src/lib/tenant-context.js";
 import {
@@ -143,6 +146,12 @@ describe("eai init", () => {
     expect(getNpmExecutable("win32")).toBe("npm.cmd");
     expect(getNpmExecutable("darwin")).toBe("npm");
     expect(getNpmExecutable("linux")).toBe("npm");
+  });
+
+  test("uses cmd.exe for the Windows npm launcher", () => {
+    expect(getNpmExecOptions("win32")).toEqual({ shell: true });
+    expect(getNpmExecOptions("darwin")).toEqual({ shell: false });
+    expect(getNpmExecOptions("linux")).toEqual({ shell: false });
   });
 
   test("TC001: Initialize new app interactively", async () => {
