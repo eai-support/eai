@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.15.0.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.15.1.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -388,7 +388,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.0** (2026-08-14): Allow setup to reuse existing EAI apps.
+The current CLI release is **v3.15.1** (2026-08-15): Fix Windows npm launcher during app initialization.
 
 
 ## What The Pieces Do
@@ -526,10 +526,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.0 |
-| Released | 2026-08-14 |
-| Last Material Change | Allow setup to reuse existing EAI apps |
-| Source Commit | `700d13ffa4c7a5ed3aa8b65f7a9508700ce2010b` |
+| Version | 3.15.1 |
+| Released | 2026-08-15 |
+| Last Material Change | Fix Windows npm launcher during app initialization |
+| Source Commit | `02fd1a8f3c0d514158990b8888d3d1a96505a013` |
 
 
 ## Install
@@ -1955,7 +1955,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.15.0. The same catalog powers human stderr output, JSON output for AI
+v3.15.1. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
