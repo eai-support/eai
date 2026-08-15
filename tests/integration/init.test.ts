@@ -21,6 +21,7 @@ import {
   selectExistingAppSelection,
 } from "../../src/commands/init.js";
 import * as auth from "../../src/lib/auth.js";
+import { getNpmExecutable } from "../../src/lib/npm.js";
 import { PlatformAPIClient } from "../../src/lib/api.js";
 import * as tenantContext from "../../src/lib/tenant-context.js";
 import {
@@ -136,6 +137,12 @@ describe("eai init", () => {
     } else {
       process.env.BASE_URL_PUBLIC_API = originalPublicApiUrl;
     }
+  });
+
+  test("uses the platform npm launcher for init", () => {
+    expect(getNpmExecutable("win32")).toBe("npm.cmd");
+    expect(getNpmExecutable("darwin")).toBe("npm");
+    expect(getNpmExecutable("linux")).toBe("npm");
   });
 
   test("TC001: Initialize new app interactively", async () => {
