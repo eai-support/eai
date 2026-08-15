@@ -41,6 +41,7 @@ const TOP_LEVEL_COMMANDS = [
   "user",
   "resources",
   "app",
+  "classifier",
   "chat",
   "workflow",
   "docs",
@@ -62,6 +63,7 @@ const TOP_LEVEL_COMMANDS = [
   "integration",
   "ai",
   "prompt",
+  "start",
 ] as const;
 
 const SOURCE_UNKNOWN_APP_FLAGS: Readonly<Record<string, readonly string[]>> = {

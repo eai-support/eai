@@ -102,6 +102,112 @@ describe('eai user', () => {
     await env.cleanup();
   });
 
+  test('provision-me is idempotent when the current CLI user already has direct membership', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+
+    await userCommand.parseAsync([
+      'provision-me',
+      '--tenant',
+      TENANT_ID,
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    const payload = parseJsonOutput(outputSpy).find((value): value is {
+      status: string;
+      tenantId: string;
+      callingApplication: { clientId: string; kind: string };
+      note: string;
+    } => typeof value === 'object' && value !== null && 'callingApplication' in value);
+    expect(payload).toMatchObject({
+      status: 'already-provisioned',
+      tenantId: TENANT_ID,
+      callingApplication: {
+        clientId: DEFAULT_PROD_AUTH_CLIENT_ID,
+        kind: 'eai-cli',
+      },
+    });
+    expect(payload.note).toContain('not another application client ID');
+  });
+
+  test('provision-me identifies the calling CLI client on tenant authorization failure', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      error: 'FORBIDDEN',
+      message: 'Application not authorized for this tenant',
+    }), {
+      status: 403,
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'req-provision-me-403',
+      },
+    }));
+    vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(userCommand.parseAsync([
+      'provision-me',
+      '--tenant',
+      'different-tenant',
+      '--format',
+      'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(`${API_BASE}/v4/identity/me/provision`);
+    expect(JSON.parse(String(init?.body))).toEqual({ tenant_id: 'different-tenant' });
+    const payload = parseJsonOutput(outputSpy).find((value): value is {
+      code: string;
+      callingApplication: { clientId: string };
+      note: string;
+      requestId: string;
+    } => typeof value === 'object' && value !== null && 'callingApplication' in value);
+    expect(payload).toMatchObject({
+      code: 'CALLING_APPLICATION_NOT_AUTHORIZED',
+      callingApplication: { clientId: DEFAULT_PROD_AUTH_CLIENT_ID },
+      requestId: 'req-provision-me-403',
+    });
+    expect(payload.note).toContain('does not test another app client ID');
+  });
+
+  test('provision-me preserves a tenant self-provisioning 403 instead of blaming the CLI client', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      error: 'FORBIDDEN',
+      message: 'Self-provisioning is not enabled for this tenant',
+    }), {
+      status: 403,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(userCommand.parseAsync([
+      'provision-me',
+      '--tenant',
+      'different-tenant',
+      '--format',
+      'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    const payload = parseJsonOutput(outputSpy).find((value): value is {
+      code: string;
+      message: string;
+      next: string;
+    } => typeof value === 'object' && value !== null && 'code' in value);
+    expect(payload).toMatchObject({
+      code: 'FORBIDDEN',
+      message: 'Self-provisioning is not enabled for this tenant',
+    });
+    expect(payload?.next).toContain('self-provisioning policy');
+    expect(payload?.next).not.toContain('Authorize the calling CLI client');
+  });
+
   test('invite calls the V4 tenant member invite route with role and JSON output', async () => {
     const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const fetchMock = vi
@@ -363,6 +469,53 @@ describe('eai user', () => {
       role: 'tenant-admin',
     });
     expect(outputSpy.mock.calls.flat().join('')).toContain('"role": "tenant-admin"');
+  });
+
+  test('role set forwards complete invitation details for a user who is not in Entra', async () => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({
+        status: 'invited',
+        email: 'new-user@example.com',
+        role: 'tenant-admin',
+        userId: 'user-456',
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+
+    await userCommand.parseAsync([
+      'role',
+      'set',
+      '--email',
+      'new-user@example.com',
+      '--tenant',
+      TENANT_ID,
+      '--role',
+      'tenant-admin',
+      '--first-name',
+      'EAI',
+      '--last-name',
+      'Test Admin',
+      '--message',
+      'Welcome to the test harness',
+      '--redirect-uri',
+      'https://admin-portal.example.com/login',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'new-user@example.com',
+      role: 'tenant-admin',
+      firstName: 'EAI',
+      lastName: 'Test Admin',
+      message: 'Welcome to the test harness',
+      redirectUri: 'https://admin-portal.example.com/login',
+    });
   });
 
   test('role set by member id calls the V4 member role update route', async () => {

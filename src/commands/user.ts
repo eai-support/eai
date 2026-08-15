@@ -46,6 +46,10 @@ interface SetUserRoleCommandOptions extends UserCommandOptions {
   email?: string;
   memberId?: string;
   role: string;
+  firstName?: string;
+  lastName?: string;
+  message?: string;
+  redirectUri?: string;
 }
 
 interface TenantMember {
@@ -356,10 +360,15 @@ userRoleCommand
   .option('--email <email>', 'Email address to add or update through the invite/add flow')
   .option('--member-id <id>', 'Existing tenant member/user ID for the direct role update endpoint')
   .requiredOption('--role <role>', 'Role to assign. Email-based updates support tenant-viewer|tenant-staff|tenant-builder|tenant-admin; member-id updates support member|tenant-admin.')
+  .option('--first-name <name>', 'Optional first name for new email invitations')
+  .option('--last-name <name>', 'Optional last name for new email invitations')
+  .option('--message <message>', 'Optional invitation message for new email invitations')
+  .option('--redirect-uri <uri>', 'Optional post-invite redirect URI for new email invitations')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .addHelpText('after', `
 Examples:
   $ eai user role set --email user@example.com --role tenant-admin
+  $ eai user role set --email user@example.com --role tenant-admin --first-name Poppy --last-name Lucas --redirect-uri https://admin-portal.example.com/login
   $ eai user role set --member-id <member-id> --role tenant-admin
 
 For normal "add this person as tenant admin/member" requests, prefer email-based
@@ -386,6 +395,10 @@ membership in one V4 flow.
       const response = await client.inviteTenantMember(tenantId, {
         email: options.email,
         role: options.role,
+        firstName: options.firstName,
+        lastName: options.lastName,
+        message: options.message,
+        redirectUri: options.redirectUri,
       });
       if (!response.ok) {
         await failResponse(response, {
@@ -434,33 +447,119 @@ membership in one V4 flow.
 
 userCommand
   .command('provision-me')
-  .description('Provision yourself to a tenant (for first-time setup)')
+  .description('Provision the current EAI CLI user identity to a tenant')
   .option('--tenant <id>', 'Tenant ID to provision yourself to (defaults to the active tenant)')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `
+This command validates the EAI CLI calling application and provisions the
+current signed-in CLI user. It does not test or authorize another app client.
+`)
   .action(async (options) => {
+    if (options.json) options.format = 'json';
+    assertTextOrJson(options.format);
+    const jsonOutput = options.format === 'json';
     const ctx = await resolveCommandContext({ interactive: false });
     const tenantId = options.tenant || ctx.tenantId;
     const client = new PlatformAPIClient(ctx.publicApiUrl, tenantId);
+    const callingApplication = {
+      clientId: ctx.tokens.clientId,
+      kind: 'eai-cli',
+    };
+    const directMembership = ctx.memberships.find(
+      (membership) => membership.id === tenantId && membership.isActive,
+    );
 
-    const provisionSpinner = ora(`Provisioning you to tenant ${tenantId}...`).start();
+    if (directMembership) {
+      const result = {
+        ok: true,
+        status: 'already-provisioned',
+        tenantId,
+        callingApplication,
+        membership: {
+          direct: true,
+          roles: directMembership.roles,
+        },
+        message: 'Direct tenant membership already exists; no provisioning request was sent.',
+        scope: 'current-cli-session',
+        note: 'This result validates the EAI CLI identity, not another application client ID.',
+      };
+      if (jsonOutput) {
+        out.json(result);
+      } else {
+        out.success(result.message);
+        out.info(`Calling application: ${callingApplication.clientId} (${callingApplication.kind})`);
+        out.info(result.note);
+      }
+      return;
+    }
+
+    const provisionSpinner = jsonOutput
+      ? null
+      : ora(`Provisioning the current CLI user to tenant ${tenantId}...`).start();
 
     try {
       const provisionRes = await client.provisionMe();
       if (!provisionRes.ok) {
-        const body = await provisionRes.text();
-        provisionSpinner.fail(`Provisioning failed: ${provisionRes.status}: ${body}`);
+        const context = await extractServerErrorContext(provisionRes);
+        const callingApplicationNotAuthorized =
+          context.serverCode === 'CALLING_APPLICATION_NOT_AUTHORIZED'
+          || /application not authorized for this tenant/i.test(context.serverMessage ?? '');
+        const code = callingApplicationNotAuthorized
+          ? 'CALLING_APPLICATION_NOT_AUTHORIZED'
+          : context.serverCode || (provisionRes.status === 403 ? 'FORBIDDEN' : 'PROVISION_ME_FAILED');
+        const message = callingApplicationNotAuthorized
+          ? 'The calling EAI CLI application is not authorized for this tenant.'
+          : context.serverMessage || `Provisioning failed with HTTP ${provisionRes.status}.`;
+        const result = {
+          ok: false,
+          status: provisionRes.status,
+          code,
+          message,
+          tenantId,
+          callingApplication,
+          scope: 'current-cli-session',
+          note: 'This operation checks the EAI CLI client and does not test another app client ID.',
+          ...(context.requestId ? { requestId: context.requestId } : {}),
+          next: callingApplicationNotAuthorized
+            ? 'Authorize the calling CLI client for this tenant, or use eai app auth status to inspect a different app client.'
+            : provisionRes.status === 403
+              ? 'Review the reported tenant self-provisioning policy or access condition before retrying.'
+              : 'Retry with --format json and provide the request ID to platform support.',
+        };
+        provisionSpinner?.fail(message);
+        if (jsonOutput) {
+          out.json(result);
+        } else {
+          out.error(`${code}: ${message}`);
+          out.info(`Calling application: ${callingApplication.clientId} (${callingApplication.kind})`);
+          out.info(result.note);
+          out.info(`Next: ${result.next}`);
+        }
         process.exit(1);
+        return;
       }
 
       const result = await provisionRes.json() as { success?: boolean; message?: string; user?: unknown };
-      provisionSpinner.succeed(
+      provisionSpinner?.succeed(
         `Successfully provisioned to tenant ${chalk.cyan(tenantId)}`,
       );
 
-      if (result.message) {
+      if (jsonOutput) {
+        out.json({
+          ok: true,
+          status: 'provisioned',
+          tenantId,
+          callingApplication,
+          scope: 'current-cli-session',
+          note: 'This result validates the EAI CLI identity, not another application client ID.',
+          response: result,
+        });
+      } else if (result.message) {
         out.info(result.message);
       }
     } catch (err) {
-      provisionSpinner.fail(err instanceof Error ? err.message : String(err));
+      provisionSpinner?.fail(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });

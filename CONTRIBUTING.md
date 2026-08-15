@@ -7,7 +7,7 @@ safe to share externally.
 ## Development Setup
 
 ```bash
-git clone https://github.com/eai-tools/eai.git
+git clone https://github.com/eai-support/eai.git
 cd eai
 npm install
 npm run build

@@ -18,6 +18,7 @@ import {
   initCommand,
   isDefaultTemplateSource,
   resolveTemplateClonePlan,
+  selectExistingAppSelection,
 } from "../../src/commands/init.js";
 import * as auth from "../../src/lib/auth.js";
 import { PlatformAPIClient } from "../../src/lib/api.js";
@@ -1101,6 +1102,9 @@ describe("eai init", () => {
     expect(objectTypes).toContain("storageMetadataStatus: 'ready' as const");
     expect(objectTypes).toContain("export type StorageBackend");
     expect(objectTypes).toContain("export interface ObjectTypeDefinition");
+    expect(objectTypes).toContain("slug: 'record'");
+    expect(objectTypes).toContain("targetObjectType: 'document'");
+    expect(objectTypes).not.toContain("targetObjectType: 'Document'");
     expect(objectTypes).toContain("databaseAlias: 'tenant-postgres'");
     expect(objectTypes).not.toContain("resourceapi-postgres");
     expect(objectTypes).toContain(
@@ -1363,10 +1367,60 @@ describe("eai init", () => {
   // TC010: Init creates initial git commit
 });
 
+describe("existing app selection", () => {
+  test("uses the app enrollment runtime tenant without creating a new app", () => {
+    expect(
+      selectExistingAppSelection(
+        {
+          docs: [
+            {
+              id: "enrollment-1",
+              data: {
+                verticalKey: "customer-portal",
+                displayName: "Customer Portal",
+                parentTenantId: "runtime-tenant-1",
+                tenantId: "company-tenant-1",
+              },
+            },
+          ],
+        },
+        "customer-portal",
+      ),
+    ).toEqual({
+      appKey: "customer-portal",
+      displayName: "Customer Portal",
+      runtimeTenantId: "runtime-tenant-1",
+    });
+  });
+
+  test("fails closed when the app record has no runtime tenant", () => {
+    expect(() =>
+      selectExistingAppSelection(
+        { docs: [{ data: { verticalKey: "customer-portal" } }] },
+        "customer-portal",
+      ),
+    ).toThrow(/does not identify a runtime tenant/);
+  });
+
+  test("rejects duplicate exact app enrollments", () => {
+    expect(() =>
+      selectExistingAppSelection(
+        {
+          docs: [
+            { data: { verticalKey: "customer-portal", tenantId: "tenant-a" } },
+            { data: { verticalKey: "customer-portal", tenantId: "tenant-b" } },
+          ],
+        },
+        "customer-portal",
+      ),
+    ).toThrow(/More than one enrollment/);
+  });
+});
+
 describe("describeCloneFailure", () => {
   test("explains unreachable default template repository failures", () => {
     const message = describeCloneFailure(
-      "https://github.com/eai-tools/eai-app-template.git",
+      "https://github.com/eai-support/eai-app-template.git",
       new Error(
         "Command failed: git clone ...\nremote: Repository not found.\nfatal: repository not found",
       ),
@@ -1379,13 +1433,13 @@ describe("describeCloneFailure", () => {
 
   test("explains when git is not installed", () => {
     const message = describeCloneFailure(
-      "https://github.com/eai-tools/eai-app-template.git",
+      "https://github.com/eai-support/eai-app-template.git",
       new Error("spawn git ENOENT"),
     );
 
     expect(message).toContain("`git` is required");
     expect(message).toContain("winget install --id Git.Git -e");
-    expect(message).toContain("eai-tools/eai-app-template.git");
+    expect(message).toContain("eai-support/eai-app-template.git");
   });
 
   test("passes through unrelated clone errors", () => {
@@ -1439,26 +1493,26 @@ describe("resolveTemplateClonePlan", () => {
   test("treats only the canonical app template URL as the default source", () => {
     expect(
       isDefaultTemplateSource(
-        "https://github.com/eai-tools/eai-app-template.git",
+        "https://github.com/eai-support/eai-app-template.git",
       ),
     ).toBe(true);
     expect(
       isDefaultTemplateSource(
-        "https://github.com/eai-tools/old-internal-template.git",
+        "https://github.com/eai-support/old-internal-template.git",
       ),
     ).toBe(false);
   });
 
   test("returns the linked-source pin for the default template", () => {
     const plan = resolveTemplateClonePlan(
-      "https://github.com/eai-tools/eai-app-template.git",
+      "https://github.com/eai-support/eai-app-template.git",
     );
     expect(plan.cloneSource).toBe(
-      "https://github.com/eai-tools/eai-app-template.git",
+      "https://github.com/eai-support/eai-app-template.git",
     );
     expect(plan.pinnedCommit).toBe(linkedSources.appTemplate.commit);
     expect(plan.displaySource).toBe(
-      `eai-tools/eai-app-template@${linkedSources.appTemplate.commit.slice(0, 7)}`,
+      `eai-support/eai-app-template@${linkedSources.appTemplate.commit.slice(0, 7)}`,
     );
   });
 

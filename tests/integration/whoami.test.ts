@@ -226,6 +226,33 @@ describe('eai whoami', () => {
     expectDisplayedMessage(profiled, 'test');
   });
 
+  test('nested commands inherit the explicit root profile option', { timeout: 15000 }, async () => {
+    workingDirectoryIs(ctx, env.dir);
+    ctx.env.HOME = env.dir;
+    ctx.env.USERPROFILE = env.dir;
+
+    await mkdir(join(env.dir, '.eai'), { recursive: true });
+    await writeFile(
+      join(env.dir, '.eai', 'config.json'),
+      JSON.stringify({
+        profiles: {
+          test: {
+            publicApiUrl: 'https://test-api.example.com/public',
+            authTenantName: PROD_AUTH_TENANT_NAME,
+            authTenantId: PROD_AUTH_TENANT_ID,
+            authClientId: PROD_AUTH_CLIENT_ID,
+          },
+        },
+      }),
+    );
+    await writeStoredTokens(env.dir, '.eai/tokens/test.json', 'profile-test@example.com');
+
+    const result = await runCommand(ctx, 'eai --profile test classifier list --format json');
+
+    expect(result.stderr).not.toContain('Not logged in');
+    expect(result.stderr).toContain('Not in an EAI project');
+  });
+
   test('TC018: Whoami when not logged in', { timeout: 15000 }, async () => {
     // TC018: Whoami when not logged in
     // Traces to: Auth-US3-ERR1

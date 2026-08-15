@@ -4,6 +4,14 @@
 
 **eai** is a TypeScript project. Package manager: npm.
 
+## Object Type Identifiers
+
+Keep PascalCase model `name` separate from exact lowercase kebab-case transport
+`slug`. Emitted relationship/runtime fields contain stored slugs. Resolve
+same-manifest relationship names through the declared slug, reject unresolved
+names, use the SDK for app routes, and never re-derive or rename historical
+stored slugs.
+
 ## Available Commands
 
 ### Gofer Integration
@@ -40,11 +48,11 @@ or workflow logs.
 - Verify npmjs and the public static fallback registry explicitly:
   - `npm view eai-cli version --registry=https://registry.npmjs.org/`
   - `npm view @enterpriseai/cli version --registry=https://registry.npmjs.org/ --@enterpriseai:registry=https://registry.npmjs.org/`
-  - `curl https://eai-tools.github.io/eai/registry/@enterpriseai/cli`
+  - `curl https://eai-support.github.io/eai/registry/@enterpriseai/cli`
 - Recommended install is `npm install -g eai-cli`
 - Canonical package install is `npm install -g @enterpriseai/cli`
-- Static fallback install is `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/`
-- Persistent static fallback setup is `npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user`
+- Static fallback install is `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/`
+- Persistent static fallback setup is `npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user`
 - `eai update` upgrades the installed CLI package only
 - `eai gofer refresh --check` previews safe Gofer-managed repo updates
 - `eai doctor --check-updates` reports CLI, Gofer, and template drift

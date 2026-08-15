@@ -11,6 +11,11 @@ import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import {
+  ObjectTypeIdentifierError,
+  isCanonicalObjectTypeSlug,
+  validateObjectTypeIdentifierPair,
+} from './object-type-identifiers.js';
 
 export type JsonValue =
   | string
@@ -40,6 +45,10 @@ export interface ObjectTypeProperty {
 
 export interface ObjectTypeLinkType {
   name: string;
+  /**
+   * Exact stored Object Type slug used on relationship routes. A same-manifest
+   * model name is accepted only as source input and resolved before transport.
+   */
   targetObjectType: string;
   cardinality: "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
   cascadeDelete?: boolean;
@@ -107,7 +116,10 @@ export interface StorageBindingDefinition {
 }
 
 export interface ObjectTypeDefinition {
+  /** PascalCase configuration/model identifier; never emitted as a v4 slug. */
   name: string;
+  /** Exact stored transport identifier; required for new source, legacy-readable here. */
+  slug?: string;
   displayName: string;
   description?: string;
   properties: ObjectTypeProperty[];
@@ -119,6 +131,73 @@ export interface ObjectTypeDefinition {
   storageBinding?: StorageBindingDefinition;
   provisioningHints?: Record<string, unknown>;
   status: "draft" | "published" | "deprecated";
+}
+
+/**
+ * Resolve relationship model names through the exact slug declared in the
+ * same manifest; already-canonical external slugs pass through unchanged.
+ */
+export function canonicalizeObjectTypeRelationshipTargets(
+  objectTypes: Record<string, ObjectTypeDefinition[]>,
+): Record<string, ObjectTypeDefinition[]> {
+  return Object.fromEntries(
+    Object.entries(objectTypes).map(([tenantKey, types]) => {
+      const slugByName = new Map(
+        types
+          .filter(
+            (type): type is ObjectTypeDefinition & { slug: string } =>
+              typeof type.slug === "string" && type.slug.length > 0,
+          )
+          .map((type) => [type.name, type.slug]),
+      );
+
+      return [
+        tenantKey,
+        types.map((type) => ({
+          ...type,
+          linkTypes: type.linkTypes.map((link) => {
+            const declaredSlug = slugByName.get(link.targetObjectType);
+            if (declaredSlug) {
+              return { ...link, targetObjectType: declaredSlug };
+            }
+            if (isCanonicalObjectTypeSlug(link.targetObjectType)) {
+              return { ...link };
+            }
+            throw new ObjectTypeIdentifierError(
+              "OBJECT_TYPE_LINK_TARGET_UNRESOLVED",
+              `OBJECT_TYPE_LINK_TARGET_UNRESOLVED: [${tenantKey}/${type.name}/${link.name}] Relationship target "${link.targetObjectType}" must be an exact canonical slug or the name of an Object Type declared in the same manifest.`,
+            );
+          }),
+        })),
+      ];
+    }),
+  );
+}
+
+/** Validate new local source definitions before any CLI write or provision action. */
+export function validateObjectTypeDefinitions(
+  objectTypes: Record<string, ObjectTypeDefinition[]>,
+): void {
+  for (const [tenantKey, types] of Object.entries(objectTypes)) {
+    for (const type of types) {
+      try {
+        validateObjectTypeIdentifierPair(
+          { name: type.name, slug: type.slug },
+          { requireExplicitSlug: true },
+        );
+      } catch (error) {
+        if (error instanceof ObjectTypeIdentifierError) {
+          throw new Error(
+            `[${tenantKey}/${type.name}] ${error.code}: ${error.message}`,
+            { cause: error },
+          );
+        }
+        throw error;
+      }
+    }
+  }
+
+  canonicalizeObjectTypeRelationshipTargets(objectTypes);
 }
 
 /**

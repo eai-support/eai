@@ -50,6 +50,8 @@ import { integrationCommand } from './commands/integration.js';
 import { aiCommand } from './commands/ai.js';
 import { promptCommand } from './commands/prompt.js';
 import { contentCommand } from './commands/content.js';
+import { startCommand } from './commands/start.js';
+import { classifierCommand } from './commands/classifier.js';
 import {
   checkForUpdate,
   isMachineReadableInvocation,
@@ -57,7 +59,7 @@ import {
   notifyIfUpdateAvailableForDiscovery,
 } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
-import { setActiveProfile } from './lib/profile.js';
+import { resolveCommandProfile, setActiveProfile } from './lib/profile.js';
 import { describeProgram } from './lib/schema-builder.js';
 
 const program = new Command();
@@ -72,7 +74,7 @@ program
   .option('--profile <name>', 'Use a locally configured private profile')
   .option('--describe', 'Output JSON schema of all commands')
   .hook('preAction', async (thisCommand) => {
-    const opts = thisCommand.opts();
+    const opts = thisCommand.optsWithGlobals();
 
     // Handle --simple flag
     if (opts.simple) {
@@ -91,12 +93,7 @@ program
 
     // Handle --profile flag or EAI_PROFILE env var. Plain `eai ...`
     // intentionally stays on the public production default profile.
-    const profileName = opts.profile || process.env.EAI_PROFILE;
-    if (profileName) {
-      setActiveProfile(profileName);
-    } else {
-      setActiveProfile('default');
-    }
+    setActiveProfile(resolveCommandProfile(thisCommand));
   });
 
 // Register all commands
@@ -132,6 +129,8 @@ program.addCommand(integrationCommand);
 program.addCommand(aiCommand);
 program.addCommand(promptCommand);
 program.addCommand(contentCommand);
+program.addCommand(startCommand);
+program.addCommand(classifierCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -143,6 +142,7 @@ ${chalk.bold('Getting Started:')}
   ${chalk.cyan('eai env pull')}             Sync app config from cloud
   ${chalk.cyan('eai types seed')}           Publish Object Types to the platform
   ${chalk.cyan('eai dev')}                  Start local development server
+  ${chalk.cyan('eai start')}                Open this app in your AI workspace
 
 ${chalk.bold('Development Workflows:')}
   ${chalk.dim('# Define your types, validate them, then publish them')}
@@ -194,12 +194,10 @@ ${chalk.bold('Machine-Readable Output:')}
   ${chalk.cyan('eai --describe')}
   ${chalk.cyan('eai agent guide --format json')}
 
-${chalk.bold('AI Terminal Workflows:')}
-  ${chalk.dim('# New projects include Gofer commands, agents, scripts, hooks, and skills')}
-  ${chalk.cyan('claude')}                   ${chalk.dim('then run /0_gofer_start')}
-  ${chalk.cyan('codex')}                    ${chalk.dim('then ask Codex to use the 1_gofer_research skill')}
-  ${chalk.cyan('gemini')}                   ${chalk.dim('then run /gofer:1_gofer_research')}
-  ${chalk.cyan('copilot')}                  ${chalk.dim('uses .github/prompts and .github/skills')}
+${chalk.bold('AI Workspace:')}
+  ${chalk.dim('# Detect installed AI workspaces, then start this app with the public EAI skill')}
+  ${chalk.cyan('eai start --check')}
+  ${chalk.cyan('eai start')}
 
 ${chalk.bold('Updates:')}
   ${chalk.dim('# Check/update the CLI, then maintain safe repo-local assets')}

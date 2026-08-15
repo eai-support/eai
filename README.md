@@ -1,9 +1,9 @@
 # eai — EnterpriseAI CLI
 
-[![CI](https://github.com/eai-tools/eai/actions/workflows/ci.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/ci.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/eai-tools/eai/badge)](https://securityscorecards.dev/viewer/?uri=github.com/eai-tools/eai)
-[![Docs](https://github.com/eai-tools/eai/actions/workflows/docs.yml/badge.svg)](https://github.com/eai-tools/eai/actions/workflows/docs.yml)
-[![License](https://img.shields.io/github/license/eai-tools/eai)](LICENSE)
+[![CI](https://github.com/eai-support/eai/actions/workflows/ci.yml/badge.svg)](https://github.com/eai-support/eai/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/eai-support/eai/badge)](https://securityscorecards.dev/viewer/?uri=github.com/eai-support/eai)
+[![Docs](https://github.com/eai-support/eai/actions/workflows/docs.yml/badge.svg)](https://github.com/eai-support/eai/actions/workflows/docs.yml)
+[![License](https://img.shields.io/github/license/eai-support/eai)](LICENSE)
 
 Scaffold, configure, validate, and operate EAI applications from a developer
 terminal.
@@ -37,11 +37,11 @@ and find the maintained documentation.
 
 | Surface | URL | Purpose |
 |---------|-----|---------|
-| Source | https://github.com/eai-tools/eai | CLI source, issues, pull requests, and release tags |
-| Documentation | https://eai-tools.github.io/eai/ | Docusaurus documentation, scenarios, and command reference |
+| Source | https://github.com/eai-support/eai | CLI source, issues, pull requests, and release tags |
+| Documentation | https://eai-support.github.io/eai/ | Docusaurus documentation, scenarios, and command reference |
 | npmjs packages | https://www.npmjs.com/package/eai-cli and https://www.npmjs.com/package/@enterpriseai/cli | Primary install/update channel for the `eai` command |
-| Static npm registry fallback | https://eai-tools.github.io/eai/registry/ | GitHub Pages fallback for `@enterpriseai/cli` when npmjs is unavailable |
-| Releases | https://github.com/eai-tools/eai/releases | Versioned GitHub releases and packaged tarballs |
+| Static npm registry fallback | https://eai-support.github.io/eai/registry/ | GitHub Pages fallback for `@enterpriseai/cli` when npmjs is unavailable |
+| Releases | https://github.com/eai-support/eai/releases | Versioned GitHub releases and packaged tarballs |
 | Security | [SECURITY.md](SECURITY.md) | Private vulnerability reporting and supported versions |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) | Public-safe contribution and release workflow |
 | License | [Apache-2.0](LICENSE) | Open source license and patent grant |
@@ -72,13 +72,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 
@@ -99,7 +99,7 @@ cd my-app
 
 # `eai create` checks local tooling, signs you in, confirms the signup
 # workspace, creates the app, installs dependencies, verifies Gofer, and
-# checks builder readiness. Use `/0_business_scenario` in your AI tool when
+# checks builder readiness. Use `eai start` to open a supported AI workspace when
 # it finishes. Pass `--no-install` to skip the install and run
 # `npm install` yourself.
 
@@ -119,10 +119,14 @@ eai env pull --include-secrets
 
 # 5. Define your data model
 #    Edit src/eai.config/object-types.ts
+#    Keep name PascalCase and declare an exact lowercase kebab-case slug.
+#    Relationship targets use the target's exact stored slug.
 
-# 6. Validate and seed
+# 6. Validate, inspect, publish, and verify
 eai types validate
+eai types diff
 eai types seed
+eai resources schema --format json
 
 # 7. Start developing
 eai dev
@@ -214,6 +218,35 @@ machine to tunnel the callback into the Codespace.
 
 ### Object Types
 
+Object Types keep two different identifiers. The source/model `name` is
+PascalCase, such as `BoardAppUser`. The explicit persisted and transport
+`slug` is exact lowercase kebab-case, such as `board-app-user`. Do not convert
+every field to the same case.
+
+Generated or persisted `linkTypes[].targetObjectType`, runtime `target_type`,
+resource command arguments, path parameters, and governed v4 query fields use
+the exact stored slug. A same-manifest PascalCase relationship target is only
+source shorthand: the CLI resolves it through the target's declared `slug`
+before diff or seed and rejects unresolved names. Historical stored slugs are
+authoritative and must never be silently re-derived or renamed.
+
+```ts
+{
+  name: "BoardAppMembership",
+  slug: "board-app-membership",
+  linkTypes: [
+    {
+      name: "user",
+      targetObjectType: "board-app-user",
+      cardinality: "many-to-one",
+    },
+  ],
+}
+```
+
+Use this publication sequence: `eai app provision`, `eai types validate`,
+`eai types diff`, `eai types seed`, then `eai resources schema`.
+
 | Command | Description |
 |---------|-------------|
 | `eai types validate` | Check types against platform schema rules |
@@ -222,6 +255,11 @@ machine to tunnel the callback into the Codespace.
 | `eai types pull` | Download remote types to local TypeScript |
 
 ### Resources
+
+In every command below, `<type>` and each value passed to `--types` mean an
+exact published Object Type slug, not its PascalCase model name. App feature
+code should use `useResources` or `client.resources` so the shared SDK owns
+route construction.
 
 | Command | Description |
 |---------|-------------|
@@ -383,7 +421,7 @@ eai login ───────────────────────�
 eai tenant select ──────────────────→ Current-user memberships → active tenant context
 eai env pull ───────────────────────→ Azure App Config + Key Vault
 eai types seed ─────────────────────→ Platform API → Type Registry
-eai resources list ─────────────────→ Platform API → Data Service
+eai resources list <object-type-slug> → Platform API → Data Service
 eai workflow status ────────────────→ Platform API → AI runtime readiness
 eai chat stream ────────────────────→ Platform API → AI Service
 eai docs classify ──────────────────→ Platform API → AI Service
@@ -469,7 +507,7 @@ scripting a subcommand; status-only commands such as `eai whoami` and quick
 
 ```bash
 # Get JSON output
-eai resources list User --format json
+eai resources list board-app-user --format json
 
 # Parse with jq
 eai tenant list --format json | jq '.tenants[] | .slug'
@@ -521,10 +559,11 @@ terminals used in this workspace:
 
 | CLI | Installed surface | First command |
 |-----|-------------------|---------------|
-| Claude CLI | `.claude/commands`, `.claude/agents`, `.claude/settings.json` hooks | `/0_gofer_start` |
-| Codex CLI | `.agents/skills/` with a legacy `.system/skills/` mirror | Ask Codex to use the relevant Gofer skill |
-| Gemini CLI | `.gemini/commands/gofer`, `.gemini/extension.json` | `/gofer:1_gofer_research` |
-| GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | Use the Gofer prompt or matching local skill |
+| GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | `eai start` and use the public EAI skill |
+| Claude | `.claude/commands`, `.claude/skills`, `.claude/settings.json` hooks | `eai start` and use the public EAI skill |
+| Codex | `.agents/skills/` with a legacy `.system/skills/` mirror | `eai start` and use the public EAI skill |
+| Grok Build | `.grok/skills/` | `eai start` and use the public EAI skill |
+| Gemini CLI | `.gemini/commands/gofer`, `.gemini/extension.json` | Use the public EAI command |
 
 The shared workflow artifacts live under `.specify/`: commands, scripts,
 templates, hooks, memory, logs, and generated feature specs. Runtime state is
@@ -586,7 +625,7 @@ Important boundaries:
 ## Development
 
 ```bash
-git clone https://github.com/eai-tools/eai.git
+git clone https://github.com/eai-support/eai.git
 cd eai
 npm install
 npm run build        # Compile TypeScript
@@ -729,13 +768,13 @@ npm run docs:release-assets:check
 - **npmjs is the primary release and update channel**
 - Recommended install: `npm install -g eai-cli`
 - Canonical package install: `npm install -g @enterpriseai/cli`
-- Static fallback: `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/`
-- Persistent fallback setup: `npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user`
+- Static fallback: `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/`
+- Persistent fallback setup: `npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user`
 - Use `eai update` to update the installed CLI and refresh safe project assets
 
 ## Documentation
 
-Full documentation: https://eai-tools.github.io/eai/
+Full documentation: https://eai-support.github.io/eai/
 
 93 pages covering getting started, guides, concepts, command reference, 50 industry scenarios, and examples in 7 languages.
 

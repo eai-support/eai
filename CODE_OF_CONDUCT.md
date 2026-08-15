@@ -32,7 +32,7 @@ behavior they determine to be inappropriate, threatening, offensive, or harmful.
 
 Report conduct concerns privately through GitHub:
 
-https://github.com/eai-tools/eai/security/advisories/new
+https://github.com/eai-support/eai/security/advisories/new
 
 If the concern is not security-sensitive, you may also contact the maintainers
 through a GitHub issue and request a private follow-up.

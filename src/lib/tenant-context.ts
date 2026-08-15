@@ -917,17 +917,22 @@ export async function resolveActiveTenantContext(options?: {
     }
   }
 
+  const namedProfilePinsEndpoint = getActiveProfile() !== "default";
+  const publicApiEnvSync = namedProfilePinsEndpoint
+    ? undefined
+    : await syncProjectPublicApiUrlForTenant(selected, options?.projectRoot);
+  const selectedPublicApiUrl =
+    publicApiEnvSync?.status === "updated" ||
+    publicApiEnvSync?.status === "already-current"
+      ? publicApiEnvSync.publicApiUrl
+      : fetched.publicApiUrl;
   const updatedTokens = await saveActiveTenantSelection(
     selected,
-    fetched.publicApiUrl,
+    selectedPublicApiUrl,
     tokens,
   );
-  const publicApiEnvSync = await syncProjectPublicApiUrlForTenant(
-    selected,
-    options?.projectRoot,
-  );
   return {
-    publicApiUrl: fetched.publicApiUrl,
+    publicApiUrl: selectedPublicApiUrl,
     tokens: updatedTokens,
     activeTenant: selected,
     memberships,

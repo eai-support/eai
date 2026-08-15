@@ -112,16 +112,7 @@ node scripts/eai-full-e2e-smoke.cjs --check --write-doc
 echo "  ✓ full e2e smoke traceability is current"
 
 section "Scanning for internal platform terminology leaks"
-IP_TERMS="Configurator|ResourceAPI|AICore|PayloadCMS|OPA|Rego|HyPE|OBO"
-LEAKS="$(
-  grep -rn \
-    --include='*.ts' \
-    --include='*.md' \
-    -E "$IP_TERMS" \
-    src/ README.md AGENTS.md CLAUDE.md 2>/dev/null \
-    | grep -v node_modules || true
-)"
-if [[ -n "$LEAKS" ]]; then
+if ! LEAKS="$(node scripts/verify-release-terminology.cjs)"; then
   echo "✗ Internal platform terms found in release surface:"
   echo "$LEAKS"
   exit 1
@@ -199,8 +190,13 @@ if ! EAI_UPDATE_NPMJS_PACKUMENT_URL="$UPDATE_PACKUMENT_URL" EAI_UPDATE_PACKUMENT
   echo "✗ packed eai update --check failed"
   exit 1
 fi
+if ! node scripts/smoke-gofer-refresh-cache.cjs "$PACKED_EAI"; then
+  echo "✗ packed eai update Gofer refresh cache smoke failed"
+  exit 1
+fi
 echo "  ✓ packed CLI starts with production dependencies only"
 echo "  ✓ packed eai update --check succeeds"
+echo "  ✓ packed eai update repairs incomplete Gofer caches"
 
 section "Smoke testing packed eai-cli alias tarball"
 ALIAS_INSTALL_PREFIX="$(mktemp -d)"
@@ -270,7 +266,7 @@ const root = process.cwd();
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf-8');
 
-if (!readme.includes('npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user')) {
+if (!readme.includes('npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user')) {
   throw new Error('README install instructions are missing the static registry fallback command');
 }
 
@@ -282,7 +278,7 @@ if (!readme.includes('npm install -g @enterpriseai/cli')) {
   throw new Error('README install instructions are missing the canonical package install command');
 }
 
-if (!readme.includes('npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/')) {
+if (!readme.includes('npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/')) {
   throw new Error('README install instructions are missing the static registry fallback install command');
 }
 
@@ -298,7 +294,7 @@ const currentVersion = pkg.version;
 if (!llmsIndex.includes(currentVersion)) {
   throw new Error('llms.txt is missing the current package version');
 }
-if (!llmsIndex.includes('npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user')) {
+if (!llmsIndex.includes('npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user')) {
   throw new Error('llms.txt is missing the static registry fallback command');
 }
 if (!llmsIndex.includes('npm install -g eai-cli')) {
@@ -307,7 +303,7 @@ if (!llmsIndex.includes('npm install -g eai-cli')) {
 if (!llmsIndex.includes('npm install -g @enterpriseai/cli')) {
   throw new Error('llms.txt is missing the canonical package install command');
 }
-if (!llmsIndex.includes('npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/')) {
+if (!llmsIndex.includes('npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/')) {
   throw new Error('llms.txt is missing the static registry fallback install command');
 }
 if (!llmsIndex.includes('Error Guidance')) {

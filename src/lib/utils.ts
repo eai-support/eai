@@ -6,14 +6,10 @@
  * Convert an object type name (camelCase or snake_case) to a kebab-case slug.
  * Previously duplicated in: api.ts, types.ts, resources.ts
  */
+import { deriveObjectTypeSlugV1 } from './object-type-identifiers.js';
+
 export function toObjectTypeSlug(objectType: string): string {
-  return objectType
-    .trim()
-    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
-    .replace(/[_\s]+/g, '-')
-    .replace(/-+/g, '-')
-    .toLowerCase();
+  return deriveObjectTypeSlugV1(objectType);
 }
 
 /**

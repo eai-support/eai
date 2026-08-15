@@ -176,7 +176,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'purchaseOrders', targetObjectType: 'PurchaseOrder', cardinality: 'one-to-many' as const },
+        { name: 'purchaseOrders', targetObjectType: 'purchase-order', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -199,8 +199,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'supplier', targetObjectType: 'Supplier', cardinality: 'many-to-one' as const },
-        { name: 'deliveries', targetObjectType: 'Delivery', cardinality: 'one-to-many' as const },
+        { name: 'supplier', targetObjectType: 'supplier', cardinality: 'many-to-one' as const },
+        { name: 'deliveries', targetObjectType: 'delivery', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -232,7 +232,7 @@ export const objectTypes = {
         { name: 'notes', type: 'text' as const, required: false },
       ],
       linkTypes: [
-        { name: 'purchaseOrder', targetObjectType: 'PurchaseOrder', cardinality: 'many-to-one' as const },
+        { name: 'purchaseOrder', targetObjectType: 'purchase-order', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

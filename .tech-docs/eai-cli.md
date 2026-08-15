@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.9.0 |
-| Released | 2026-08-05 |
-| Last Material Change | Add guided EAI create onboarding command |
-| Source Commit | `5e2c64898a83b5cec3c6bd9d79231822b2999271` |
+| Version | 3.15.0 |
+| Released | 2026-08-14 |
+| Last Material Change | Allow setup to reuse existing EAI apps |
+| Source Commit | `700d13ffa4c7a5ed3aa8b65f7a9508700ce2010b` |
 
 ## Next Release
 
@@ -59,13 +59,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 
@@ -85,11 +85,29 @@ eai resources schema --tenant-id <tenant-id> --format json
 eai dev
 ```
 
+## Object Type Identifiers
+
+Do not move every Object Type field to kebab-case. A definition keeps both a
+PascalCase source/model `name`, such as `BoardAppUser`, and an explicit exact
+transport/storage `slug`, such as `board-app-user`.
+
+Generated and persisted `linkTypes[].targetObjectType`, runtime `target_type`,
+path parameters, and other governed v4 fields contain slugs. The CLI accepts a
+same-manifest PascalCase relationship target only as authoring shorthand and
+resolves it through that target's declared slug before diff or seed. An
+unresolved model name is an error; the CLI does not guess.
+
+For existing Object Types, the exact stored slug is authoritative even when
+today's derivation from the name would differ. Do not normalize or rename it.
+App code should use `useResources` or `client.resources` so the SDK owns route
+construction.
+
 ## Command Groups
 
 | Command                                 | Purpose                                                                                   |
 | --------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `eai init`                              | Scaffold an app from the EAI App Template.                                                |
+| `eai start`                             | Detect or open a supported AI workspace for the current EAI app.                          |
 | `eai login`, `eai logout`, `eai whoami` | Manage local authentication and inspect active context.                                   |
 | `eai tenant`                            | List, select, create, inspect, and administer tenant context.                             |
 | `eai types`                             | Validate, seed, diff, and pull Object Type definitions.                                   |
@@ -127,6 +145,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Need                 | Preferred CLI                                            |
 | -------------------- | -------------------------------------------------------- |
 | Scaffold app         | `eai init <name>` or `eai init <name> --current-dir`     |
+| Start AI workspace   | `eai start --check`, then `eai start`                    |
 | Select tenant        | `eai tenant list`, `eai tenant select <slug>`            |
 | Publish Object Types | `eai types validate`, `eai types seed`, `eai types diff` |
 | Inspect schemas      | `eai resources schema --tenant-id <tenant-id>`           |

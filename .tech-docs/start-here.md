@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.9.0** (2026-08-05): Add guided EAI create onboarding command.
+The current CLI release is **v3.15.0** (2026-08-14): Allow setup to reuse existing EAI apps.
 
 
 ## What The Pieces Do
@@ -42,13 +42,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 
@@ -60,13 +60,30 @@ cd task-tracker
 npm install
 ```
 
-`eai init` uses `https://github.com/eai-tools/eai-app-template` by default and
+`eai init` uses `https://github.com/eai-support/eai-app-template` by default and
 installs gofer workflow assets unless you pass `--no-gofer`.
 If you already created and entered a project folder, run `eai init`, enter the
 kebab-case app name, and choose the current-folder option. Scripts can use
 `eai init task-tracker --current-dir`. Current-folder init preserves unrelated
 existing files and Git metadata, and updates files that are part of the
 generated scaffold.
+
+## Start In An AI Workspace
+
+```bash
+eai start --check
+eai start
+```
+
+The check reads installed command and application metadata only. It does not
+read provider accounts or project files. On first use, choose GitHub Copilot,
+Claude, Codex, or Grok; EAI remembers the last workspace that opens
+successfully. Starting it confirms that the selected provider may read the
+project and use the user's provider account.
+
+The prepared first conversation begins with the business outcome, explains EAI
+capabilities as they become relevant, and pauses once for approval of the
+business specification before implementation.
 
 ## Connect To A Tenant
 
@@ -84,13 +101,18 @@ receive raw downstream credentials.
 ## Publish And Verify The Data Model
 
 Object Types are the platform contract for tenant-scoped resource data.
+Keep the PascalCase source/model `name` separate from the exact lowercase
+kebab-case persisted/transport `slug`. Relationship targets, runtime
+`target_type`, resource command arguments, paths, and governed v4 fields use
+the exact stored slug. Historical stored slugs are authoritative and are not
+re-derived from names.
 
 ```bash
 eai types validate
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
+eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type <resource-type>
+eai verify calls --tenant-id <tenant-id> --resource-type <object-type-slug>
 ```
 
 Do not build app workflows on top of a tenant until `eai types diff` converges.
@@ -103,7 +125,9 @@ eai gofer refresh
 ```
 
 Use gofer to keep agent instructions, plan templates, service-fit checklists,
-and public-safe platform references aligned with the CLI and app template.
+and public-safe platform references aligned with the CLI and app template. In
+the AI workspace, use the public `eai` skill; numbered delivery stages are
+internal implementation details.
 
 ## Choose Your Next Page
 

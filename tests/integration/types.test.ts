@@ -6,7 +6,13 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { buildPayloadEqualsParams, PlatformAPIClient } from '../../src/lib/api.js';
-import { loadObjectTypes, type ObjectTypeDefinition, type ObjectTypeProperty } from '../../src/lib/config.js';
+import {
+  canonicalizeObjectTypeRelationshipTargets,
+  loadObjectTypes,
+  validateObjectTypeDefinitions,
+  type ObjectTypeDefinition,
+  type ObjectTypeProperty,
+} from '../../src/lib/config.js';
 import { validateObjectTypeDefaultValues } from '../../src/lib/object-type-defaults.js';
 import {
   appOwnedSqlTablePrefix,
@@ -1102,6 +1108,86 @@ describe('shouldFailTypeSeedRun', () => {
 });
 
 describe('loadObjectTypes', () => {
+  test('resolves relationship model names through the declared stored slug without deriving at runtime', () => {
+    const definitions: Record<string, ObjectTypeDefinition[]> = {
+      template: [
+        {
+          name: 'OPAMeasure',
+          slug: 'opameasure',
+          displayName: 'OPA measure',
+          properties: [],
+          linkTypes: [],
+          actions: [],
+          status: 'published',
+        },
+        {
+          name: 'BusinessCase',
+          slug: 'business-case',
+          displayName: 'Business case',
+          properties: [],
+          linkTypes: [
+            {
+              name: 'opaMeasures',
+              targetObjectType: 'OPAMeasure',
+              cardinality: 'one-to-many',
+            },
+          ],
+          actions: [],
+          status: 'published',
+        },
+      ],
+    };
+
+    expect(() => validateObjectTypeDefinitions(definitions)).not.toThrow();
+    const canonical = canonicalizeObjectTypeRelationshipTargets(definitions);
+
+    expect(canonical.template?.[1]?.linkTypes[0]?.targetObjectType).toBe('opameasure');
+    expect(definitions.template?.[1]?.linkTypes[0]?.targetObjectType).toBe('OPAMeasure');
+  });
+
+  test('rejects an unresolved relationship model name instead of guessing a route slug', () => {
+    expect(() => validateObjectTypeDefinitions({
+      template: [{
+        name: 'BusinessCase',
+        slug: 'business-case',
+        displayName: 'Business case',
+        properties: [],
+        linkTypes: [{
+          name: 'opaMeasures',
+          targetObjectType: 'OPAMeasure',
+          cardinality: 'one-to-many',
+        }],
+        actions: [],
+        status: 'published',
+      }],
+    })).toThrow(/OBJECT_TYPE_LINK_TARGET_UNRESOLVED/);
+  });
+
+  test('rejects a new source definition with a missing or unsupported mismatched slug before provisioning', () => {
+    expect(() => validateObjectTypeDefinitions({
+      template: [{
+        name: 'GitHubConnection',
+        displayName: 'GitHub connection',
+        properties: [],
+        linkTypes: [],
+        actions: [],
+        status: 'draft',
+      }],
+    })).toThrow(/OBJECT_TYPE_SLUG_MISSING/);
+
+    expect(() => validateObjectTypeDefinitions({
+      template: [{
+        name: 'BusinessCase',
+        slug: 'businesscase',
+        displayName: 'Business case',
+        properties: [],
+        linkTypes: [],
+        actions: [],
+        status: 'draft',
+      }],
+    })).toThrow(/OBJECT_TYPE_SLUG_DERIVATION_MISMATCH/);
+  });
+
   test('loads object types through a file URL compatible temp import path', async () => {
     const env = await createTestEnvironment();
     const objectTypesDir = join(env.dir, 'src', 'eai.config');

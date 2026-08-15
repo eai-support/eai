@@ -17,7 +17,7 @@ Please do not report security vulnerabilities through public GitHub issues.
 
 Use GitHub private vulnerability reporting:
 
-https://github.com/eai-tools/eai/security/advisories/new
+https://github.com/eai-support/eai/security/advisories/new
 
 Include as much detail as possible:
 

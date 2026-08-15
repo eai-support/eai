@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-08-05T07:18:03.662Z"
-source_commit: "5e2c64898a83b5cec3c6bd9d79231822b2999271"
+generated_at: "2026-08-14T22:29:39.432Z"
+source_commit: "700d13ffa4c7a5ed3aa8b65f7a9508700ce2010b"
 ---
 # EAI CLI — API Reference
 
@@ -40,7 +40,7 @@ The v4 surface is grouped by domain prefix:
 Scaffold a new application from the EAI app template.
 
 **Options**:
-- `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-tools/eai-app-template.git`)
+- `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-support/eai-app-template.git`)
 - `--skip-prompts` — Use defaults without interactive prompts
 - `--current-dir` — Scaffold into the current directory instead of creating `./<name>`
 - `--company-tenant <id>` — Main company tenant ID that owns this app
@@ -263,6 +263,10 @@ and "user needs a tenant-admin role" with one command.
 - `--member-id <id>` — Existing tenant member/user ID for the direct role update endpoint
 - `--tenant <id>` — Target tenant (default: active tenant)
 - `--role <role>` — Role to assign. Email-based updates support `tenant-viewer`, `tenant-staff`, `tenant-builder`, and `tenant-admin`; member-id updates support the platform role update contract.
+- `--first-name <name>` — Optional first name for a new email invitation
+- `--last-name <name>` — Optional last name for a new email invitation
+- `--message <message>` — Optional message for a new email invitation
+- `--redirect-uri <uri>` — Optional absolute post-invite redirect URI
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
@@ -374,6 +378,17 @@ Push local config overrides to the cloud (admin).
 
 ### Object Type Commands
 
+#### Identifier contract
+
+An Object Type definition keeps two identifiers: a PascalCase source/model
+`name` and an explicit exact lowercase kebab-case persisted/transport `slug`.
+They are not interchangeable. Generated and persisted
+`linkTypes[].targetObjectType`, runtime `target_type`, resource command
+arguments, path parameters, and governed v4 query fields use exact stored
+slugs. A same-manifest model name may be accepted as source shorthand only
+when it resolves through the target's declared slug before diff or seed.
+Historical stored slugs are authoritative and are never silently re-derived.
+
 #### `eai types validate`
 Validate Object Type definitions in `src/eai.config/object-types.ts` against platform schema rules, locally.
 
@@ -430,7 +445,7 @@ All resource routes are tenant-scoped: the active tenant (or `--tenant-id`) is p
 List resources of a specific Object Type.
 
 **Arguments**:
-- `<type>` — Object Type name
+- `<type>` — Exact published Object Type slug, for example `board-app-user`
 
 **Options**:
 - `--tenant-id <id>` — Target tenant (default: active tenant)
@@ -517,7 +532,7 @@ Cross-type query with filters.
 
 **Options**:
 - `--tenant-id <id>` — Target tenant (default: active tenant)
-- `--types <types>` — Comma-separated Object Type names (required)
+- `--types <types>` — Comma-separated exact published Object Type slugs (required)
 - `--where <json>` — Filter conditions as JSON
 - `--limit <number>` — Max results (default: 20)
 - `--format <format>` — Output format (text|json, default: text)
@@ -552,7 +567,7 @@ Search tenant resource projections.
 
 **Options**:
 - `--tenant-id <id>` — Target tenant (default: active tenant)
-- `--types <types>` — Comma-separated Object Type names
+- `--types <types>` — Comma-separated exact published Object Type slugs
 - `--mode <mode>` — `fulltext|hybrid|vector` (default: `hybrid`)
 - `--hybrid` / `--vector` / `--fulltext` — Shorthands that override `--mode`
 - `--limit <number>` — Max results (default: 10)
@@ -1058,7 +1073,7 @@ safe repo-local project assets when the command is run inside an EAI project.
 - `--no-project-refresh` — Skip Gofer/app-template maintenance for the current project
 
 **Primary update channel**: npmjs package `eai-cli` or `@enterpriseai/cli`.
-**Static fallback channel**: `https://eai-tools.github.io/eai/registry/@enterpriseai/cli`.
+**Static fallback channel**: `https://eai-support.github.io/eai/registry/@enterpriseai/cli`.
 
 Recommended install:
 
@@ -1075,13 +1090,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 
@@ -1290,7 +1305,7 @@ scripting a subcommand; status-only commands such as `eai whoami` and quick
 
 ```bash
 # Get JSON output
-eai resources list User --format json
+eai resources list board-app-user --format json
 
 # Parse with jq
 eai tenant list --format json | jq '.tenants[].slug'

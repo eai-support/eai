@@ -176,8 +176,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'impactMetrics', targetObjectType: 'ImpactMetric', cardinality: 'one-to-many' as const },
-        { name: 'reports', targetObjectType: 'Report', cardinality: 'one-to-many' as const },
+        { name: 'impactMetrics', targetObjectType: 'impact-metric', cardinality: 'one-to-many' as const },
+        { name: 'reports', targetObjectType: 'report', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -194,7 +194,7 @@ export const objectTypes = {
         { name: 'unit', type: 'text' as const, required: true },
       ],
       linkTypes: [
-        { name: 'program', targetObjectType: 'Program', cardinality: 'many-to-one' as const },
+        { name: 'program', targetObjectType: 'program', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -214,7 +214,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'program', targetObjectType: 'Program', cardinality: 'many-to-one' as const },
+        { name: 'program', targetObjectType: 'program', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

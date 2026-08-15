@@ -12,6 +12,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import type { Command, OptionValues } from 'commander';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,18 @@ export function setActiveProfile(name: string): void {
 
 export function getActiveProfile(): string {
   return _activeProfileName;
+}
+
+/** Resolves the root profile option for nested commands while preserving plain-command production defaults. */
+export function resolveCommandProfile(
+  command: Pick<Command, 'optsWithGlobals'>,
+  environmentProfile = process.env.EAI_PROFILE,
+): string {
+  const options = command.optsWithGlobals<OptionValues>();
+  const explicitProfile = typeof options.profile === 'string'
+    ? options.profile.trim()
+    : '';
+  return explicitProfile || environmentProfile?.trim() || 'default';
 }
 
 // ── Paths ────────────────────────────────────────────────────────────────────

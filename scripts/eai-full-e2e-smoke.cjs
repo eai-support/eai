@@ -11,6 +11,7 @@ const TRACEABILITY_DOC = join(ROOT, '.tech-docs', 'full-e2e-smoke-traceability.m
 
 const TRACEABILITY_BASE = [
   ['eai init', 'create', 'live', 'Scaffolds a disposable app workspace and creates the app binding in the test tenant.'],
+  ['eai start', 'read/launch-local', 'live', 'Detects supported local AI workspaces in release smoke; provider launch remains user-confirmed.'],
   ['eai create', 'create', 'help', 'Guided first-run wrapper is covered by focused onboarding tests and help/contract checks; release live smoke uses the non-interactive eai init path to avoid browser auth.'],
   ['eai dev', 'read', 'help', 'Runtime server command is validated by help/contract checks; live release smoke does not start a long-running dev server.'],
   ['eai login', 'auth-create', 'external-auth', 'Browser PKCE is validated by the dedicated test profile; non-interactive password grant is intentionally not added.'],
@@ -61,7 +62,9 @@ const TRACEABILITY_BASE = [
   ['eai resources indexes-apply', 'create/update', 'live-optional', 'Applies validated tenant-scoped indexes only after explicit confirmation and server authorization.'],
   ['eai resources cache-refresh', 'create/update', 'live-optional', 'Forces a signed, reasoned system-admin cache refresh; disabled in default smoke.'],
   ['eai app list', 'read', 'live', 'Lists apps before and after scaffold.'],
+  ['eai app auth status', 'read', 'live-optional', 'Reads app-client authorization when the smoke provisions an Entra registration.'],
   ['eai app create', 'create', 'covered-by-init', 'The scaffold path calls the same app creation API; direct extra app creation is opt-in to avoid orphaned apps.'],
+  ['eai app delete', 'delete', 'covered-by-cli', 'Exact-confirmation and verified receipt behavior are covered by integration tests; deployed destructive proof runs only on the disposable lifecycle harness.'],
   ['eai app connect-existing', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids overwriting source metadata on a dedicated tenant app.'],
   ['eai app adopt-observed', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids marking app infrastructure observed without a managed redeploy path.'],
   ['eai app workflow-setup', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids issuing one-time source-unknown nonce state.'],
@@ -118,6 +121,13 @@ const TRACEABILITY_BASE = [
   ['eai prompt update', 'update', 'covered-by-cli', 'Repo-owned tests cover scoped optimistic prompt updates.'],
   ['eai prompt delete', 'delete', 'covered-by-cli', 'Repo-owned tests cover guarded prompt deletion.'],
   ['eai prompt use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical prompt aliases.'],
+  ['eai classifier delete', 'delete', 'covered-by-cli', 'Permanently removes only a disabled unpublished draft after exact classifier-key confirmation; command integration tests mock the API boundary.'],
+  ['eai classifier disable', 'update', 'covered-by-cli', 'Reversibly disables classifier mutation, targeting, and runtime use while retaining immutable history; command integration tests mock the API boundary.'],
+  ['eai classifier enable', 'update', 'covered-by-cli', 'Re-enables a disabled classifier at its prior draft or published lifecycle state; command integration tests mock the API boundary.'],
+  ['eai classifier list', 'read', 'covered-by-cli', 'Lists tenant classifier drafts through the tenant-scoped ResourceAPI client.'],
+  ['eai classifier save', 'create/update', 'covered-by-cli', 'Validates portable JSON and saves the mutable tenant-owned draft; command integration tests mock the API boundary.'],
+  ['eai classifier publish', 'create/update', 'covered-by-cli', 'Publishes an immutable reusable version; command integration tests mock provider materialization.'],
+  ['eai classifier target', 'create/update', 'covered-by-cli', 'Associates an exact published classifier version with an app workflow; command integration tests mock the API boundary.'],
   ['eai chat send', 'create/read', 'live-optional', 'Runs only when EAI_E2E_WORKFLOW_KEY is configured and workflow status is available.'],
   ['eai chat stream', 'create/read', 'help', 'Interactive streaming is validated by help/contract; non-interactive chat send covers AI request path.'],
   ['eai workflow provision', 'create/update', 'live-optional', 'Runs when EAI_E2E_WORKFLOW_PROVISION=1 because workflow provisioning may require runtime/provider setup.'],
@@ -168,6 +178,9 @@ const TRACEABILITY_BASE = [
 const SMOKE_CALLS = {
   'eai init': [
     'eai init <app-name> --skip-prompts --current-dir --company-tenant <tenant-id> --package-profile external',
+  ],
+  'eai start': [
+    'eai start --check --format json',
   ],
   'eai create': [
     'eai create <app-name> --help',
@@ -241,10 +254,10 @@ const SMOKE_CALLS = {
     'eai user roles --tenant <tenant-id> --format json',
   ],
   'eai user role set': [
-    'EAI_E2E_INVITE_TEST_USER=<email> eai user role set --email <email> --tenant <tenant-id> --role <role> --format json',
+    'EAI_E2E_INVITE_TEST_USER=<email> eai user role set --email <email> --tenant <tenant-id> --role <role> --first-name <name> --last-name <name> --message <message> --redirect-uri <uri> --format json',
   ],
   'eai user provision-me': [
-    'eai user provision-me --tenant <tenant-id>',
+    'eai user provision-me --tenant <tenant-id> --format json',
   ],
   'eai resources list': [
     'eai resources list <object-type> --tenant-id <tenant-id> --page 1 --limit 20 --sort -created_at --where {"status":{"equals":"updated"}} --format json',
@@ -330,9 +343,15 @@ const SMOKE_CALLS = {
   'eai app list': [
     'eai app list --tenant-id <tenant-id> --limit 50 --format json',
   ],
+  'eai app auth status': [
+    'EAI_E2E_PROVISION_ENTRA=1 eai app auth status <app-key> --tenant-id <tenant-id> --client-id <entra-client-id> --format json',
+  ],
   'eai app create': [
     'eai app create <name> --tenant-id <tenant-id> --key <app-key> --template eai-app-template --source eai-cli --app-url https://example.invalid --status pending --format json',
     'eai app create <name> --tenant-id <tenant-id> --parent-tenant <tenant-id> --child-tenant <child-name> --child-tenant-slug <child-slug> --key <app-key> --format json',
+  ],
+  'eai app delete': [
+    'eai app delete <app-key> --tenant-id <tenant-id> --confirm <app-key> --non-interactive --format json',
   ],
   'eai app connect-existing': [
     'eai app connect-existing <app-key> --tenant-id <tenant-id> --repo <owner/repo> --repo-url https://github.com/<owner>/<repo> --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config src/eai.config/index.ts --runtime src/eai.runtime.ts --format json',
@@ -503,6 +522,27 @@ const SMOKE_CALLS = {
   'eai prompt use': [
     'eai prompt use <prompt-key> --tenant <tenant-id> --app <app-key> --as <alias> --capability ai.chat --environment test --format json',
   ],
+  'eai classifier delete': [
+    'eai classifier delete <classifier-key> --confirm <classifier-key> --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier disable': [
+    'eai classifier disable <classifier-key> --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier enable': [
+    'eai classifier enable <classifier-key> --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier list': [
+    'eai classifier list --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier save': [
+    'eai classifier save --file classifier.json --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier publish': [
+    'eai classifier publish <classifier-key> --tenant-id <tenant-id> --format json',
+  ],
+  'eai classifier target': [
+    'eai classifier target <classifier-key> --app <app-key> --workflow <workflow-key> --version <version> --tenant-id <tenant-id> --format json',
+  ],
   'eai chat send': [
     'EAI_E2E_WORKFLOW_KEY=<workflow-id> eai chat send --workflow <workflow-id> --stage chat --conversation-id <conversation-id>',
   ],
@@ -587,7 +627,7 @@ const SMOKE_CALLS = {
     'EAI_E2E_PROVISION_ENTRA=1 EAI_E2E_CLEANUP=1 eai provision entra --deauthorize --client-id <client-id> --force --debug',
   ],
   'eai provision resourceapi-refresh': [
-    'EAI_E2E_RESOURCEAPI_REFRESH=1 eai provision resourceapi-refresh --admin-api-url <url> --tenant-id <tenant-id> --install-id <install-id> --apply --dry-run --backend all --rebuild-search --force-overwrite --reason smoke --change-ticket E2E-SMOKE --product <app-key> --schema-version 1 --format json',
+    'EAI_E2E_RESOURCEAPI_REFRESH=1 eai provision resourceapi-refresh --tenant-id <tenant-id> --install-id <install-id> --apply --dry-run --backend all --rebuild-search --force-overwrite --reason smoke --change-ticket E2E-SMOKE --product <app-key> --schema-version 1 --format json',
   ],
   'eai provision storage': [
     'eai provision storage --tenant-id <tenant-id> --backend all --dry-run --format json',
@@ -595,7 +635,7 @@ const SMOKE_CALLS = {
   ],
   'eai provision resourceapi-bundle': [
     'eai provision resourceapi-bundle --schema smoke-object-types.json --tenant-id <tenant-id> --install-id <install-id> --backend all --product <app-key> --schema-version 1 --out resourceapi-bundle.json --format json',
-    'EAI_E2E_RESOURCEAPI_BUNDLE_APPLY=1 eai provision resourceapi-bundle --schema smoke-object-types.json --tenant-id <tenant-id> --install-id <install-id> --admin-api-url <url> --apply --dry-run --backend all --rebuild-search --product <app-key> --schema-version 1 --format json',
+    'EAI_E2E_RESOURCEAPI_BUNDLE_APPLY=1 eai provision resourceapi-bundle --schema smoke-object-types.json --tenant-id <tenant-id> --install-id <install-id> --apply --dry-run --backend all --rebuild-search --product <app-key> --schema-version 1 --format json',
   ],
   'eai gofer refresh': [
     'eai gofer refresh --check --format json',
@@ -645,6 +685,12 @@ const SMOKE_CALLS = {
 };
 
 const OPTION_DECISIONS = {
+  'eai start': {
+    '--surface': 'Explicit provider selection is covered by command integration tests; release smoke keeps detection read-only.',
+    '--install': 'Opening an external provider installation page requires a user click and is not performed by automated release smoke.',
+    '--dry-run': 'Provider launch-plan output is covered by integration tests; release smoke uses the stronger read-only detection contract.',
+    '--no-remember': 'Preference suppression is covered by the local preference unit contract; release smoke does not launch or persist a provider.',
+  },
   'eai init': {
     '--from': 'Template source override is exercised by existing init tests; release live smoke uses the default public template.',
     '--tenant': 'Deprecated alias for --company-tenant; kept as backward-compatible vocabulary and not used in new smoke calls.',
@@ -655,6 +701,7 @@ const OPTION_DECISIONS = {
     '--no-splash': 'Interactive branding opt-out; smoke runs remain non-interactive and do not require the terminal wordmark.',
     '--display-name': 'Guided eai create collects the display name and forwards it to the non-interactive init path; release smoke uses the default humanized name.',
     '--description': 'Guided eai create collects the business description and forwards it to the non-interactive init path; release smoke uses the default description.',
+    '--app-key': 'Existing-app binding is covered by the init integration contract; live release smoke keeps the default create-new-app path to avoid changing tenant state.',
     '--no-install': 'Dependency installation is covered by init integration tests; release smoke keeps the generated workspace setup bounded and uses the default install behavior.',
   },
   'eai create': {
@@ -670,6 +717,7 @@ const OPTION_DECISIONS = {
     '--no-gofer': 'Bare scaffold mode is covered by init integration tests; guided setup installs Gofer by default.',
     '--package-profile': 'Package profile is forwarded to init; release smoke uses the external default.',
     '--tool': 'AI-tool selection is covered by the guided onboarding contract; all four supported tool surfaces are installed as Gofer assets.',
+    '--app-key': 'Existing-app binding is forwarded to init and covered by the create argument contract; guided release smoke keeps the default create-new-app path to avoid changing tenant state.',
     '--no-splash': 'Interactive branding opt-out; smoke runs remain non-interactive and do not require the terminal wordmark.',
     '--no-install': 'Dependency installation is covered by init integration tests; guided release smoke uses help only to avoid cloning or browser auth.',
   },
@@ -716,6 +764,9 @@ const OPTION_DECISIONS = {
   'eai app provision': {
     '--rebuild-search': 'Potentially expensive search rebuild; left as explicit opt-in outside release smoke.',
     '--skip-validate': 'Negative validation bypass; not used in release smoke because the smoke should prove normal validation works.',
+  },
+  'eai app auth status': {
+    '--skip-validate': 'Negative validation bypass is covered by command integration tests; live status proves normal app lookup.',
   },
   'eai app connect-existing': {
     '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
@@ -795,7 +846,7 @@ const DEFAULT_ARTIFACT_CLEANUP = {
 const ARTIFACT_CLEANUP = {
   'eai init': {
     createsExternalArtifact: 'Yes - app binding and local workspace',
-    cleanupMechanism: 'Disposable local workspace retained for evidence; no app delete command in default smoke',
+    cleanupMechanism: 'eai app delete can remove the platform app; the disposable local workspace remains local evidence',
     cleanupVerified: 'Partial - summary records workspace path',
   },
   'eai env push': {
@@ -910,8 +961,13 @@ const ARTIFACT_CLEANUP = {
   },
   'eai app create': {
     createsExternalArtifact: 'Yes - app record',
-    cleanupMechanism: 'Covered by eai init path; no default app delete command',
-    cleanupVerified: 'No - dedicated smoke tenant expected',
+    cleanupMechanism: 'eai app delete <app-key> with exact non-interactive confirmation',
+    cleanupVerified: 'Yes in the disposable deployed lifecycle harness; disabled in the default CLI smoke',
+  },
+  'eai app delete': {
+    createsExternalArtifact: 'No - destructive cleanup command',
+    cleanupMechanism: 'Deletes and verifies the exact app-owned platform scope',
+    cleanupVerified: 'Yes when the verified deletion receipt is returned',
   },
   'eai app connect-existing': {
     createsExternalArtifact: 'Updates app source metadata',
@@ -947,6 +1003,36 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'Yes - app storage/provisioning metadata',
     cleanupMechanism: 'No app storage deprovision command yet; dedicated smoke tenant expected',
     cleanupVerified: 'No - cleanup gap documented',
+  },
+  'eai classifier delete': {
+    createsExternalArtifact: 'No - permanently removes one mutable classifier draft',
+    cleanupMechanism: 'Exact classifier-key confirmation plus disabled and unpublished lifecycle guards; command integration tests mock the API boundary',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
+  },
+  'eai classifier disable': {
+    createsExternalArtifact: 'Yes - updates classifier lifecycle and blocks its targets',
+    cleanupMechanism: 'eai classifier enable reverses the lifecycle state; command integration tests mock both API boundaries',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
+  },
+  'eai classifier enable': {
+    createsExternalArtifact: 'Yes - restores the classifier lifecycle state',
+    cleanupMechanism: 'eai classifier disable reverses the lifecycle state; command integration tests mock both API boundaries',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
+  },
+  'eai classifier save': {
+    createsExternalArtifact: 'Yes - mutable tenant classifier draft',
+    cleanupMechanism: 'Command integration coverage mocks the API; live release smoke does not create a draft',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
+  },
+  'eai classifier publish': {
+    createsExternalArtifact: 'Yes - immutable version and provider materialization',
+    cleanupMechanism: 'Command integration coverage mocks the API; immutable publications are intentionally not deleted',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
+  },
+  'eai classifier target': {
+    createsExternalArtifact: 'Yes - app workflow binding to an immutable classifier version',
+    cleanupMechanism: 'Command integration coverage mocks the API; live release smoke does not mutate workflow bindings',
+    cleanupVerified: 'No - live mutation is disabled in the default smoke',
   },
   'eai chat send': {
     createsExternalArtifact: 'Yes - chat/workflow conversation',
@@ -1479,7 +1565,7 @@ function runLiveSmoke(cliPath) {
   }
 
   eai(['init', appName, '--skip-prompts', '--current-dir', '--company-tenant', parentTenantId]);
-  eai(['user', 'provision-me', '--tenant', parentTenantId]);
+  eai(['user', 'provision-me', '--tenant', parentTenantId, '--format', 'json']);
   eai(['user', 'roles', '--tenant', parentTenantId, '--format', 'json']);
   eai([
     'user',
@@ -1524,6 +1610,10 @@ function runLiveSmoke(cliPath) {
       childTenantId || parentTenantId,
       '--role',
       process.env.EAI_E2E_INVITE_ROLE || 'tenant-viewer',
+      ...(process.env.EAI_E2E_INVITE_FIRST_NAME ? ['--first-name', process.env.EAI_E2E_INVITE_FIRST_NAME] : []),
+      ...(process.env.EAI_E2E_INVITE_LAST_NAME ? ['--last-name', process.env.EAI_E2E_INVITE_LAST_NAME] : []),
+      ...(process.env.EAI_E2E_INVITE_MESSAGE ? ['--message', process.env.EAI_E2E_INVITE_MESSAGE] : []),
+      ...(process.env.EAI_E2E_INVITE_REDIRECT_URI ? ['--redirect-uri', process.env.EAI_E2E_INVITE_REDIRECT_URI] : []),
       '--format',
       'json',
     ]);
@@ -1571,6 +1661,20 @@ function runLiveSmoke(cliPath) {
     }
   }
   eai(['app', 'list', '--tenant-id', parentTenantId, '--format', 'json']);
+  if (provisionedEntraClientId) {
+    eai([
+      'app',
+      'auth',
+      'status',
+      appName,
+      '--tenant-id',
+      parentTenantId,
+      '--client-id',
+      provisionedEntraClientId,
+      '--format',
+      'json',
+    ]);
+  }
   eai(['app', 'select', appName, '--tenant-id', parentTenantId, '--format', 'json']);
   eai(['app', 'provision', appName, '--tenant-id', parentTenantId, '--select', '--format', 'json']);
   eai(['provision', 'storage', '--tenant-id', parentTenantId, '--format', 'json']);
@@ -1594,6 +1698,61 @@ function runLiveSmoke(cliPath) {
     '--format',
     'json',
   ]);
+  if (process.env.EAI_E2E_RESOURCEAPI_BUNDLE_APPLY === '1') {
+    const bundleApply = parseJson(eai([
+      'provision',
+      'resourceapi-bundle',
+      '--schema',
+      bundleSchema,
+      '--tenant-id',
+      parentTenantId,
+      '--install-id',
+      `eai-smoke-${runId}`,
+      '--apply',
+      '--dry-run',
+      '--backend',
+      'all',
+      '--rebuild-search',
+      '--product',
+      appName,
+      '--schema-version',
+      '1',
+      '--format',
+      'json',
+    ]).stdout, {});
+    if (bundleApply.tenantId !== parentTenantId || !bundleApply.applyResult) {
+      throw new Error('resourceapi-bundle --schema --apply did not return the expected PublicAPI v4 mutation result');
+    }
+  }
+  if (process.env.EAI_E2E_RESOURCEAPI_REFRESH === '1') {
+    const refresh = parseJson(eai([
+      'provision',
+      'resourceapi-refresh',
+      '--tenant-id',
+      parentTenantId,
+      '--install-id',
+      `eai-smoke-${runId}`,
+      '--apply',
+      '--dry-run',
+      '--backend',
+      'all',
+      '--rebuild-search',
+      '--force-overwrite',
+      '--reason',
+      'eai full e2e smoke',
+      '--change-ticket',
+      'EAI-E2E-SMOKE',
+      '--product',
+      appName,
+      '--schema-version',
+      '1',
+      '--format',
+      'json',
+    ]).stdout, {});
+    if (refresh.tenantId !== parentTenantId || !refresh.currentDiff) {
+      throw new Error('resourceapi-refresh did not return the expected PublicAPI v4 mutation result');
+    }
+  }
 
   eai(['types', 'validate']);
   eai(['types', 'seed', '--tenant-id', parentTenantId, '--tenant-key', appName, '--format', 'json']);

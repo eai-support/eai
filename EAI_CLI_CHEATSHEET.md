@@ -5,7 +5,7 @@
 ```bash
 npm install -g eai-cli                 # Recommended install
 npm install -g @enterpriseai/cli          # Canonical package
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/  # Static fallback
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/  # Static fallback
 eai update                             # Update to latest
 eai update --check                     # Check without installing
 ```
@@ -32,7 +32,9 @@ cd my-app
 eai login                              # Authenticate (browser PKCE flow)
 eai env pull                           # Sync cloud config → .env.local
 eai types validate                     # Check Object Types
+eai types diff                         # Preview local vs published types
 eai types seed                         # Push types to platform
+eai resources schema                   # Verify published exact slugs
 eai dev                                # Start dev server (port 3000)
 ```
 
@@ -85,15 +87,24 @@ eai env push --key MY_VAR              # Push a single key
 
 ```bash
 eai types validate                     # Validate local type definitions
+eai types diff                         # Compare local vs remote types
 eai types seed                         # Push types to platform
 eai types seed --dry-run               # Preview without changes
 eai types seed --tenant-key myTenant   # Seed a specific tenant
-eai types diff                         # Compare local vs remote types
 eai types pull --tenant-id <id>        # Download remote types as TypeScript
 ```
 
-**Validation checks:** PascalCase names, valid statuses, property types, select
-options, link cardinality, action roles.
+**Identifier rule:** keep the PascalCase model `name` and the exact lowercase
+kebab-case stored `slug` as separate fields. Generated or persisted
+`linkTypes[].targetObjectType`, runtime `target_type`, resource command
+arguments, paths, and governed v4 fields use the exact stored slug. A
+same-manifest model name is relationship shorthand only and must resolve
+through its declared slug before publication. Historical stored slugs are
+authoritative; never re-derive or rename them.
+
+**Validation checks:** PascalCase names, explicit exact slugs, relationship
+targets, valid statuses, property types, select options, link cardinality, and
+action roles.
 
 ---
 
@@ -122,28 +133,29 @@ eai user provision-me --tenant <id>                 # Add yourself to tenant
 ## Resources (CRUD)
 
 ```bash
+# Use exact published Object Type slugs, never PascalCase model names.
 # List
-eai resources list User                # List resources of type User
-eai resources list User --limit 50     # Custom page size
-eai resources list User --sort name    # Sort ascending by field
-eai resources list User --sort -created_at  # Sort descending
+eai resources list board-app-user                # List BoardAppUser resources
+eai resources list board-app-user --limit 50     # Custom page size
+eai resources list board-app-user --sort name    # Sort ascending by field
+eai resources list board-app-user --sort -created_at  # Sort descending
 
 # Get
-eai resources get User <id>            # Fetch single resource
+eai resources get board-app-user <id>            # Fetch single resource
 
 # Create
-eai resources create User --data '{"name":"Alice"}'
-eai resources create User --file user.json
+eai resources create board-app-user --data '{"name":"Alice"}'
+eai resources create board-app-user --file user.json
 
 # Update
-eai resources update User <id> --data '{"name":"Bob"}'
+eai resources update board-app-user <id> --data '{"name":"Bob"}'
 
 # Delete
-eai resources delete User <id>         # Prompts for confirmation
-eai resources delete User <id> --force # Skip confirmation
+eai resources delete board-app-user <id>         # Prompts for confirmation
+eai resources delete board-app-user <id> --force # Skip confirmation
 
 # Query (cross-type)
-eai resources query --types User,Project --where '{"status":"active"}' --limit 10
+eai resources query --types board-app-user,board-app-project --where '{"status":"active"}' --limit 10
 
 # Schema
 eai resources schema                   # Show published types for tenant
@@ -196,7 +208,7 @@ deploy workflow, node_modules, platform SDK.
 Every command with data output supports `--format json`:
 
 ```bash
-eai resources list User --format json | jq '.[].id'
+eai resources list board-app-user --format json | jq '.[].id'
 eai tenant list --format json
 eai types seed --format json
 eai deploy status --format json
@@ -239,7 +251,7 @@ eai dev --skip-checks                  # Skip pre-flight connectivity checks
 | Sync config | `eai env pull` |
 | Publish types | `eai types seed` |
 | Start dev | `eai dev` |
-| List resources | `eai resources list <Type>` |
+| List resources | `eai resources list <object-type-slug>` |
 | Health check | `eai verify` |
 | Diagnose | `eai doctor` |
 | Deploy | `eai deploy trigger` |

@@ -176,7 +176,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'stops', targetObjectType: 'Stop', cardinality: 'one-to-many' as const },
+        { name: 'stops', targetObjectType: 'stop', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -213,7 +213,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'route', targetObjectType: 'Route', cardinality: 'many-to-one' as const },
+        { name: 'route', targetObjectType: 'route', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -244,7 +244,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'routes', targetObjectType: 'Route', cardinality: 'one-to-many' as const },
+        { name: 'routes', targetObjectType: 'route', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,

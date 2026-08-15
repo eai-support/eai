@@ -85,9 +85,12 @@ const GOFER_GITIGNORE_ENTRIES = [
 ] as const;
 
 export const GOFER_RESOURCE_MAPPINGS: readonly GoferManagedResourceMapping[] = [
+  { sourceSubdirectory: 'config', targetSegments: ['.specify', 'config'] },
+  { sourceSubdirectory: 'contracts', targetSegments: ['.specify', 'contracts'] },
   { sourceSubdirectory: 'commands', targetSegments: ['.specify', 'commands'] },
   { sourceSubdirectory: 'templates', targetSegments: ['.specify', 'templates'] },
   { sourceSubdirectory: 'references', targetSegments: ['.specify', 'references'] },
+  { sourceSubdirectory: 'schemas', targetSegments: ['.specify', 'schemas'] },
   { sourceSubdirectory: 'bash-scripts', targetSegments: ['.specify', 'scripts', 'bash'], makeExecutable: true },
   { sourceSubdirectory: 'powershell-scripts', targetSegments: ['.specify', 'scripts', 'powershell'] },
   { sourceSubdirectory: 'node-scripts', targetSegments: ['.specify', 'scripts', 'node'], makeExecutable: true },
@@ -98,6 +101,7 @@ export const GOFER_RESOURCE_MAPPINGS: readonly GoferManagedResourceMapping[] = [
   { sourceSubdirectory: 'copilot-instructions', targetSegments: ['.github', 'instructions'] },
   { sourceSubdirectory: 'system-skills', targetSegments: ['.system', 'skills'] },
   { sourceSubdirectory: 'agents-skills', targetSegments: ['.agents', 'skills'] },
+  { sourceSubdirectory: 'grok-skills', targetSegments: ['.grok', 'skills'] },
   { sourceSubdirectory: 'gemini', targetSegments: ['.gemini'] },
 ] as const;
 
@@ -159,6 +163,7 @@ async function createGoferDirectories(workspacePath: string): Promise<void> {
   const directories = [
     join(workspacePath, '.specify', 'memory'),
     join(workspacePath, '.specify', 'commands'),
+    join(workspacePath, '.specify', 'contracts'),
     join(workspacePath, '.specify', 'scripts', 'bash'),
     join(workspacePath, '.specify', 'scripts', 'powershell'),
     join(workspacePath, '.specify', 'scripts', 'node'),
@@ -176,6 +181,8 @@ async function createGoferDirectories(workspacePath: string): Promise<void> {
     join(workspacePath, '.gemini'),
     join(workspacePath, '.gemini', 'commands'),
     join(workspacePath, '.gemini', 'commands', 'gofer'),
+    join(workspacePath, '.grok'),
+    join(workspacePath, '.grok', 'skills'),
     join(workspacePath, '.github', 'skills'),
   ];
 
@@ -730,12 +737,12 @@ This folder contains project specifications for AI-driven feature development.
 - **scripts/** - Helper scripts for workflow automation
 - **logs/** - Runtime logs and diagnostics
 
-## AI Terminal Commands
+## AI Workspace
 
-- Claude CLI: \`/0_gofer_start\`
-- Codex CLI: ask Codex to use the relevant Gofer skill from \`.agents/skills/\`
-- Gemini CLI: \`/gofer:1_gofer_research\`
-- GitHub Copilot: prompts are in \`.github/prompts\`; CLI skills are in \`.github/skills\`
+Run \`eai start --check\` to see compatible AI workspaces on this computer.
+Run \`eai start\` to open the project and use the public \`eai\` skill. Gofer
+keeps numbered delivery stages internal across Claude, Codex, GitHub Copilot,
+Grok, and Gemini-compatible surfaces.
 
 All artifacts are stored in \`.specify/specs/{feature}/\`.
 `;

@@ -55,7 +55,11 @@ import { pullCloudEnvValues } from "../lib/cloud-env.js";
 import { findGuidance } from "../lib/error-guidance/match.js";
 import { formatGuidanceText } from "../lib/error-guidance/render.js";
 import { getActiveProfile, loadProfileConfig } from "../lib/profile.js";
-import { errMsg, normalizeChildTenantDisplayNameOption } from "../lib/utils.js";
+import {
+  errMsg,
+  isRecord,
+  normalizeChildTenantDisplayNameOption,
+} from "../lib/utils.js";
 import type { ProjectManifest } from "../lib/project-manifest.js";
 import { saveProjectManifest } from "../lib/project-manifest.js";
 import { printEaiSplash } from "../lib/splash.js";
@@ -64,8 +68,9 @@ const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pkg = require("../../package.json") as { version: string };
 
-const TEMPLATE_REPO = "https://github.com/eai-tools/eai-app-template.git";
-const GITHUB_ORG = "eai-tools";
+const TEMPLATE_REPO = "https://github.com/eai-support/eai-app-template.git";
+const GITHUB_ORG = "eai-support";
+const PACKAGE_SCOPE = "eai-tools";
 const TEMPLATE_REPO_LABEL = `${GITHUB_ORG}/eai-app-template`;
 const ONBOARDING_DOCS_URL = "https://www.enterpriseaigroup.com/docs/getting-started";
 
@@ -127,19 +132,21 @@ function showCreateSection(title: string): void {
   out.heading(`${chalk.cyan("◇")} ${title}`);
 }
 
-type CreateAiTool = "codex" | "claude" | "vscode" | "gemini";
+type CreateAiTool = "codex" | "claude" | "vscode" | "grok" | "gemini";
 
 const CREATE_AI_TOOL_CHOICES: Array<{ name: string; value: CreateAiTool }> = [
   { name: "Codex", value: "codex" },
   { name: "Claude", value: "claude" },
-  { name: "VS Code", value: "vscode" },
+  { name: "GitHub Copilot in VS Code", value: "vscode" },
+  { name: "Grok Build", value: "grok" },
   { name: "Gemini", value: "gemini" },
 ];
 
 const CREATE_AI_TOOL_LABELS: Record<CreateAiTool, string> = {
   codex: "Codex",
   claude: "Claude",
-  vscode: "VS Code",
+  vscode: "GitHub Copilot in VS Code",
+  grok: "Grok Build",
   gemini: "Gemini",
 };
 
@@ -244,6 +251,7 @@ function buildInitialProjectManifest(
 
 interface InitOptions {
   name: string;
+  appKey: string;
   displayName: string;
   description: string;
   parentTenantId: string;
@@ -467,6 +475,10 @@ export const initCommand = new Command("init")
   )
   .option("--display-name <name>", "Display name for the app")
   .option("--description <description>", "One-sentence description for the app")
+  .option(
+    "--app-key <key>",
+    "Bind the local project to an existing app instead of creating a new app",
+  )
   .option("--no-splash", "Skip the interactive EAI wordmark")
   .addHelpText(
     "after",
@@ -501,19 +513,27 @@ Use --no-gofer only when you need a bare app scaffold.
     if (options.skipPrompts && nameArg) {
       targetUsesCurrentDir = Boolean(options.currentDir);
       targetDir = await resolveInitTargetDir(nameArg, targetUsesCurrentDir);
-      const binding = await createTenantAppForInit(
-        publicApiUrl,
-        tenantContext,
-        options.companyTenant || options.tenant,
-        options.parentTenant,
-        {
-          slug: nameArg,
-          displayName: options.displayName || toDisplayName(nameArg),
-        },
-        options.childTenant,
-        Boolean(options.createChildTenant),
-        false,
-      );
+      const binding = options.appKey
+        ? await reuseTenantAppForInit(
+            publicApiUrl,
+            tenantContext,
+            options.companyTenant || options.tenant,
+            options.appKey,
+            false,
+          )
+        : await createTenantAppForInit(
+            publicApiUrl,
+            tenantContext,
+            options.companyTenant || options.tenant,
+            options.parentTenant,
+            {
+              slug: nameArg,
+              displayName: options.displayName || toDisplayName(nameArg),
+            },
+            options.childTenant,
+            Boolean(options.createChildTenant),
+            false,
+          );
       parentTenantId = binding.parentTenantId;
       tenantId = binding.runtimeTenantId;
       lastInitBinding = binding;
@@ -522,6 +542,7 @@ Use --no-gofer only when you need a bare app scaffold.
         : defaultInitCapabilities();
       initOptions = {
         name: nameArg,
+        appKey: binding.appKey,
         displayName: options.displayName || toDisplayName(nameArg),
         description:
           options.description ||
@@ -582,19 +603,27 @@ Use --no-gofer only when you need a bare app scaffold.
 
       targetDir = await resolveInitTargetDir(appName, targetUsesCurrentDir);
 
-      const binding = await createTenantAppForInit(
-        publicApiUrl,
-        tenantContext,
-        options.companyTenant || options.tenant,
-        options.parentTenant,
-        {
-          slug: String(baseAnswers.name),
-          displayName: String(baseAnswers.displayName),
-        },
-        options.childTenant,
-        Boolean(options.createChildTenant),
-        true,
-      );
+      const binding = options.appKey
+        ? await reuseTenantAppForInit(
+            publicApiUrl,
+            tenantContext,
+            options.companyTenant || options.tenant,
+            options.appKey,
+            true,
+          )
+        : await createTenantAppForInit(
+            publicApiUrl,
+            tenantContext,
+            options.companyTenant || options.tenant,
+            options.parentTenant,
+            {
+              slug: String(baseAnswers.name),
+              displayName: String(baseAnswers.displayName),
+            },
+            options.childTenant,
+            Boolean(options.createChildTenant),
+            true,
+          );
       parentTenantId = binding.parentTenantId;
       tenantId = binding.runtimeTenantId;
       lastInitBinding = binding;
@@ -607,6 +636,7 @@ Use --no-gofer only when you need a bare app scaffold.
           displayName: string;
           description: string;
         }),
+        appKey: binding.appKey,
         parentTenantId,
         tenantId,
         tenantHomeRegion:
@@ -652,7 +682,7 @@ Use --no-gofer only when you need a bare app scaffold.
     try {
       const pkgPath = join(targetDir, "package.json");
       const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
-      pkg.name = `@${GITHUB_ORG}/${initOptions.name}`;
+      pkg.name = `@${PACKAGE_SCOPE}/${initOptions.name}`;
       pkg.description = initOptions.description;
       pkg.version = "0.1.0";
       await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
@@ -672,6 +702,7 @@ Use --no-gofer only when you need a bare app scaffold.
         initOptions.parentTenantId,
         initOptions.tenantId,
         initOptions.tenantHomeRegion,
+        initOptions.appKey,
       );
       envSpinner.succeed("Generated .env.local");
     } catch (_err) {
@@ -858,7 +889,7 @@ Use --no-gofer only when you need a bare app scaffold.
     out.nestedDim(`Template: ${templatePlan.displaySource}`);
     if (options.gofer) {
       out.nestedDim(
-        "Gofer: Claude /0_gofer_start; Codex uses the repo-local Gofer skills; Gemini /gofer:1_gofer_research; Copilot .github prompts/skills.",
+        "Gofer: run eai start to open this project in a detected AI workspace with the public EAI skill.",
       );
     }
     out.nestedDim(`Package profile: ${initOptions.packageProfile}`);
@@ -879,6 +910,7 @@ export interface CreateCommandOptions {
   gofer?: boolean;
   install?: boolean;
   packageProfile: string;
+  appKey?: string;
   tool?: string;
   splash?: boolean;
 }
@@ -940,6 +972,10 @@ export const createCommand = new Command("create")
     "--package-profile <profile>",
     "Package profile to record for block catalog discovery: external, internal, or hybrid",
     "external",
+  )
+  .option(
+    "--app-key <key>",
+    "Bind the local project to an existing app instead of creating a new app",
   )
   .option("--tool <tool>", "AI tool to prepare for: codex, claude, vscode, or gemini")
   .option("--no-splash", "Skip the interactive EAI wordmark")
@@ -1070,6 +1106,7 @@ export function buildForwardedInitArgs(
   // can no longer disagree; prefer it because it is always a canonical ID.
   const companyTenant = tenantId || options.companyTenant || options.tenant;
   if (companyTenant) args.push("--company-tenant", companyTenant);
+  if (options.appKey) args.push("--app-key", options.appKey);
   if (options.parentTenant) args.push("--parent-tenant", options.parentTenant);
   if (options.childTenant) args.push("--child-tenant", options.childTenant);
   if (options.createChildTenant) args.push("--create-child-tenant");
@@ -1318,8 +1355,8 @@ export function buildCreateCompletionSummary(
     return {
       heading: `${chalk.green("✔")} Your EAI workspace is ready`,
       steps: [
-        `Open that folder in ${toolLabel}, then start:`,
-        chalk.cyan("/0_business_scenario <describe what you want to build>"),
+        `${toolLabel} is your selected AI workspace. Start it with:`,
+        chalk.cyan("eai start"),
       ],
     };
   }
@@ -1329,7 +1366,7 @@ export function buildCreateCompletionSummary(
     steps: [
       `Re-check with ${chalk.cyan("eai doctor")} inside the project folder.`,
       `If it stays unavailable, ask your workspace tenant-admin to finish setup: ${ONBOARDING_DOCS_URL}`,
-      `Once readiness reports available, open the folder in ${toolLabel} and start ${chalk.cyan("/0_business_scenario")}.`,
+      `Once readiness reports available, start ${toolLabel} with ${chalk.cyan("eai start")}.`,
     ],
   };
 }
@@ -1506,6 +1543,7 @@ async function assertTenantExists(
 }
 
 interface InitTenantAppBinding {
+  appKey: string;
   parentTenantId: string;
   runtimeTenantId: string;
   childTenantId?: string;
@@ -1611,6 +1649,148 @@ async function promptCompanyTenantForInit(
 
   await assertTenantExists(publicApiUrl, trimmed);
   return resolveMainCompanyTenantId(publicApiUrl, trimmed);
+}
+
+interface ExistingAppSelection {
+  appKey: string;
+  displayName: string;
+  runtimeTenantId: string;
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+async function readJsonPayload(response: Response): Promise<unknown> {
+  const body = await response.text();
+  if (!body.trim()) return {};
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    return { message: body };
+  }
+}
+
+/** Select one exact app enrollment and derive its recorded runtime tenant. */
+export function selectExistingAppSelection(
+  payload: unknown,
+  requestedAppKey: string,
+): ExistingAppSelection {
+  const appKey = requestedAppKey.trim();
+  const docs =
+    isRecord(payload) && Array.isArray(payload.docs)
+      ? payload.docs.filter(isRecord)
+      : isRecord(payload) && Array.isArray(payload.items)
+        ? payload.items.filter(isRecord)
+        : [];
+  const matches = docs.filter((doc) => {
+    const data = isRecord(doc.data) ? doc.data : doc;
+    return nonEmptyString(data.verticalKey) === appKey;
+  });
+
+  if (matches.length === 0) {
+    throw new Error(
+      `No app named ${appKey} was found in the selected company workspace. Choose Create a new app or select an app listed for that workspace.`,
+    );
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `More than one enrollment was returned for app ${appKey}. The app cannot be selected until the platform record is unambiguous.`,
+    );
+  }
+
+  const record = matches[0];
+  const data = isRecord(record.data) ? record.data : record;
+  const runtimeTenantId =
+    nonEmptyString(data.childTenantId) ||
+    nonEmptyString(data.parentTenantId) ||
+    nonEmptyString(data.tenantId);
+  if (!runtimeTenantId) {
+    throw new Error(
+      `The platform record for app ${appKey} does not identify a runtime tenant. Choose Create a new app or ask a company administrator to repair the app record.`,
+    );
+  }
+
+  return {
+    appKey,
+    displayName: nonEmptyString(data.displayName) || appKey,
+    runtimeTenantId,
+  };
+}
+
+async function reuseTenantAppForInit(
+  publicApiUrl: string,
+  tenantContext: InitTenantContext,
+  companyFlag: string | undefined,
+  requestedAppKey: string,
+  interactive: boolean,
+): Promise<InitTenantAppBinding> {
+  const appKey = requestedAppKey.trim();
+  if (!appKey) {
+    out.error("An existing app key is required when using --app-key.");
+    process.exit(1);
+  }
+
+  const companyTenantId = await promptCompanyTenantForInit(
+    publicApiUrl,
+    tenantContext,
+    companyFlag,
+    interactive,
+  );
+  const client = new PlatformAPIClient(publicApiUrl, companyTenantId);
+  const res = await client.listResources("tenant-vertical-enrollment", {
+    limit: 50,
+    where: { verticalKey: appKey },
+  });
+  const payload = await readJsonPayload(res);
+  if (!res.ok) {
+    const error = await parseApiError(
+      new Response(JSON.stringify(payload), {
+        status: res.status,
+        statusText: res.statusText,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    out.error(`Existing app lookup failed: ${error.message}`);
+    process.exit(1);
+  }
+
+  let selection: ExistingAppSelection;
+  try {
+    selection = selectExistingAppSelection(payload, appKey);
+  } catch (error) {
+    out.error(errMsg(error));
+    process.exit(1);
+  }
+
+  let runtimeTenantHomeRegion: string | null | undefined =
+    tenantContext.activeTenant?.id === selection.runtimeTenantId
+      ? tenantContext.activeTenant.homeRegion
+      : undefined;
+  if (runtimeTenantHomeRegion === undefined) {
+    const tenantResponse = await client.getTenant(selection.runtimeTenantId);
+    if (tenantResponse.ok) {
+      const tenantPayload = await readJsonPayload(tenantResponse);
+      const tenantRecord =
+        isRecord(tenantPayload) && isRecord(tenantPayload.tenant)
+          ? tenantPayload.tenant
+          : tenantPayload;
+      runtimeTenantHomeRegion =
+        isRecord(tenantRecord) && typeof tenantRecord.homeRegion === "string"
+          ? tenantRecord.homeRegion
+          : null;
+    }
+  }
+
+  out.nestedInfo(
+    `Using existing app ${chalk.cyan(selection.appKey)} in company tenant ${chalk.cyan(companyTenantId)}; no new platform app will be created.`,
+  );
+  return {
+    appKey: selection.appKey,
+    parentTenantId: companyTenantId,
+    runtimeTenantId: selection.runtimeTenantId,
+    runtimeTenantHomeRegion,
+  };
 }
 
 async function createTenantAppForInit(
@@ -1730,6 +1910,7 @@ async function createTenantAppForInit(
       `Created app ${chalk.cyan(appSeed.slug)} under company tenant ${chalk.cyan(immediateParentTenantId)}.`,
     );
     return {
+      appKey: appSeed.slug,
       parentTenantId: companyTenantId,
       runtimeTenantId: immediateParentTenantId,
       runtimeTenantHomeRegion: activeTenant?.homeRegion,
@@ -1744,6 +1925,7 @@ async function createTenantAppForInit(
       ? (childTenant as Record<string, unknown>).homeRegion
       : undefined;
   return {
+    appKey: appSeed.slug,
     parentTenantId: companyTenantId,
     runtimeTenantId: childTenantId,
     childTenantId,
@@ -1760,6 +1942,7 @@ async function hydrateEnvFromLoginContext(
   parentTenantId: string,
   platformTenantId: string,
   tenantHomeRegion?: string | null,
+  appKey?: string,
 ): Promise<void> {
   const patches: Record<string, string> = {};
   const envKey = appName.replace(/-/g, "_").toUpperCase();
@@ -1807,6 +1990,12 @@ async function hydrateEnvFromLoginContext(
   if (platformTenantId) {
     patches.EAI_TENANT_ID = platformTenantId;
     patches[`TENANT_${envKey}_ID`] = platformTenantId;
+  }
+
+  if (appKey) {
+    patches.EAI_APP_KEY = appKey;
+    patches.EAI_VERTICAL_KEY = appKey;
+    patches.NEXT_PUBLIC_EAI_APP_KEY = appKey;
   }
 
   if (Object.keys(patches).length > 0) {
@@ -1910,6 +2099,9 @@ function generateEnvFile(opts: InitOptions): string {
 NEXT_PUBLIC_APP_NAME=${opts.name}
 APP_BASE_PATH=/${opts.name}
 NEXT_PUBLIC_APP_BASE_PATH=/${opts.name}
+EAI_APP_KEY=${opts.appKey}
+EAI_VERTICAL_KEY=${opts.appKey}
+NEXT_PUBLIC_EAI_APP_KEY=${opts.appKey}
 
 # =============================================================================
 # Platform API
@@ -1977,7 +2169,7 @@ function generateObjectTypesScaffold(opts: InitOptions): string {
     ? `      linkTypes: [
         {
           name: 'documents',
-          targetObjectType: 'Document',
+          targetObjectType: 'document',
           cardinality: 'one-to-many' as const,
           cascadeDelete: true,
         },
@@ -1987,6 +2179,7 @@ function generateObjectTypesScaffold(opts: InitOptions): string {
     ? `
     {
       name: 'Document',
+      slug: 'document',
       displayName: 'Document',
       description: 'Uploaded file with classification metadata',
       ...postgresqlResourceStorage,
@@ -2100,6 +2293,7 @@ export type Cardinality = 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-t
 
 export interface LinkTypeDefinition {
   name: string;
+  /** Exact stored Object Type slug used on relationship routes. */
   targetObjectType: string;
   cardinality: Cardinality;
   cascadeDelete?: boolean;
@@ -2132,6 +2326,7 @@ export type ObjectTypeStatus = 'draft' | 'published' | 'deprecated';
 
 export interface ObjectTypeDefinition {
   name: string;
+  slug: string;
   displayName: string;
   description?: string;
   properties: PropertyDefinition[];
@@ -2158,6 +2353,7 @@ export const objectTypes = {
   '${tenantKey}': [
     {
       name: 'Record',
+      slug: 'record',
       displayName: 'Record',
       description: 'A sample record — replace with your domain model',
       ...postgresqlResourceStorage,

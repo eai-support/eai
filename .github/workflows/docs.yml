@@ -127,7 +127,7 @@ jobs:
             Source deployment: `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`
             Source commit: `${{ github.sha }}`
 
-            The source of truth remains `eai-tools/eai`; this PR only updates the
+            The source of truth remains `eai-support/eai`; this PR only updates the
             website-hosted static copy.
           labels: |
             documentation

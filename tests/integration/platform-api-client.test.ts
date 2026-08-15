@@ -4,13 +4,76 @@ vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => '<fixture-access-token>'),
 }))
 
-import { PlatformAPIClient } from '../../src/lib/api.js'
+import { PlatformAPIClient, parseApiError } from '../../src/lib/api.js'
 
 describe('PlatformAPIClient', () => {
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
+  test('formats FastAPI field validation details with a stable reason code', async () => {
+    const parsed = await parseApiError(new Response(JSON.stringify({
+      detail: [
+        {
+          type: 'missing',
+          loc: ['body', 'storagePath'],
+          msg: 'Field required',
+          input: { documentId: 'DOC-123' },
+        },
+        {
+          type: 'value_error',
+          loc: ['body', 'documentId'],
+          msg: 'Invalid document state: tax-file-secret',
+          input: 'tax-file-secret',
+        },
+      ],
+    }), {
+      status: 422,
+      statusText: 'Unprocessable Entity',
+    }))
+
+    expect(parsed.code).toBe('VALIDATION_ERROR')
+    expect(parsed.message).toBe(
+      'body.storagePath: Field required; body.documentId: Invalid value',
+    )
+    expect(parsed.message).not.toContain('tax-file-secret')
+    expect(parsed.bodyText).toBeUndefined()
+  })
+
+  test('parses the PublicAPI validation envelope without exposing rejected values', async () => {
+    const parsed = await parseApiError(new Response(JSON.stringify({
+      error: 'VALIDATION_ERROR',
+      message: 'Request validation failed',
+      invalidFields: [
+        { path: 'body.storagePath', code: 'missing' },
+        { path: 'body.<field>', code: 'extra_forbidden' },
+      ],
+      rejectedValue: 'tax-file-secret',
+    }), {
+      status: 422,
+      statusText: 'Unprocessable Entity',
+    }))
+
+    expect(parsed.code).toBe('VALIDATION_ERROR')
+    expect(parsed.message).toBe(
+      'body.storagePath: Field required; body.<field>: Unexpected field',
+    )
+    expect(parsed.message).not.toContain('tax-file-secret')
+    expect(parsed.bodyText).toBeUndefined()
+  })
+
+  test('does not expose opaque validation response bodies', async () => {
+    const parsed = await parseApiError(new Response('tax-file-secret', {
+      status: 422,
+      statusText: 'Unprocessable Entity',
+    }))
+
+    expect(parsed).toEqual({
+      status: 422,
+      code: 'VALIDATION_ERROR',
+      message: 'Unprocessable Entity',
+    })
+  })
   test('caps published object type preflight lookups at the orchestrator limit', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

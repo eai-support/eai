@@ -182,8 +182,8 @@ export const objectTypes = {
         { name: 'jurisdiction', type: 'text' as const, required: true, indexed: true },
       ],
       linkTypes: [
-        { name: 'identityDocuments', targetObjectType: 'IdentityDocument', cardinality: 'one-to-many' as const },
-        { name: 'riskAssessments', targetObjectType: 'RiskAssessment', cardinality: 'one-to-many' as const },
+        { name: 'identityDocuments', targetObjectType: 'identity-document', cardinality: 'one-to-many' as const },
+        { name: 'riskAssessments', targetObjectType: 'risk-assessment', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -208,7 +208,7 @@ export const objectTypes = {
         { name: 'uploadedDate', type: 'date' as const, required: true },
       ],
       linkTypes: [
-        { name: 'customer', targetObjectType: 'Customer', cardinality: 'many-to-one' as const },
+        { name: 'customer', targetObjectType: 'customer', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -242,7 +242,7 @@ export const objectTypes = {
         { name: 'assessmentDate', type: 'date' as const, required: true },
       ],
       linkTypes: [
-        { name: 'customer', targetObjectType: 'Customer', cardinality: 'many-to-one' as const },
+        { name: 'customer', targetObjectType: 'customer', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

@@ -31,6 +31,13 @@ patterns in `eai-app-template/docs/platform/eai-service-patterns.md`.
 
 ## Storage Backend Rules
 
+Keep Object Type identifiers in their correct layer. Configuration/model
+`name` is PascalCase; the exact stored `slug` is the lowercase
+kebab-case identifier used by relationship targets, runtime `target_type`,
+resource commands, paths, and governed v4 fields. Resolve same-manifest model
+name shorthand through the declared slug before publication. Never normalize
+or rename a historical stored slug.
+
 - `postgresql`: canonical structured resource storage.
 - `documentdb`: document-model persistence when the data genuinely needs it.
 - `blob`: large files or file-like resources behind API-mediated access.

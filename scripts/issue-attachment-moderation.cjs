@@ -143,7 +143,7 @@ Security note: this issue contains an archive, script, installer, or executable 
 
 Maintainers do not open unsolicited ZIPs, scripts, installers, or binaries from public issues. Please edit the issue to remove the attachment and paste commands, sanitized logs, or text snippets directly into the issue instead.
 
-If the attachment is required for a vulnerability report, please use private vulnerability reporting instead: https://github.com/eai-tools/eai/security/advisories/new`;
+If the attachment is required for a vulnerability report, please use private vulnerability reporting instead: https://github.com/eai-support/eai/security/advisories/new`;
 }
 
 async function githubRequest(path, { method = 'GET', body, token, apiUrl = 'https://api.github.com' } = {}) {

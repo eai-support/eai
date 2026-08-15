@@ -195,8 +195,8 @@ export const objectTypes = {
         },
       ],
       linkTypes: [
-        { name: 'creditChecks', targetObjectType: 'CreditCheck', cardinality: 'one-to-many' as const },
-        { name: 'disbursements', targetObjectType: 'Disbursement', cardinality: 'one-to-many' as const },
+        { name: 'creditChecks', targetObjectType: 'credit-check', cardinality: 'one-to-many' as const },
+        { name: 'disbursements', targetObjectType: 'disbursement', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -223,7 +223,7 @@ export const objectTypes = {
         { name: 'debtToIncomeRatio', type: 'number' as const, required: true },
       ],
       linkTypes: [
-        { name: 'loanApplication', targetObjectType: 'LoanApplication', cardinality: 'many-to-one' as const },
+        { name: 'loanApplication', targetObjectType: 'loan-application', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {
@@ -265,7 +265,7 @@ export const objectTypes = {
         { name: 'referenceNumber', type: 'text' as const, required: false },
       ],
       linkTypes: [
-        { name: 'loanApplication', targetObjectType: 'LoanApplication', cardinality: 'many-to-one' as const },
+        { name: 'loanApplication', targetObjectType: 'loan-application', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

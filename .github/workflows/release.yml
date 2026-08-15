@@ -152,10 +152,10 @@ jobs:
             Static registry fallback:
 
             ```bash
-            npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+            npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
             ```
 
-            See the [full documentation](https://eai-tools.github.io/eai) for details.
+            See the [full documentation](https://eai-support.github.io/eai) for details.
           files: |
             *.tgz
           make_latest: true

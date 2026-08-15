@@ -180,8 +180,8 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'checklistItems', targetObjectType: 'ChecklistItem', cardinality: 'one-to-many' as const, cascadeDelete: true },
-        { name: 'issues', targetObjectType: 'Issue', cardinality: 'one-to-many' as const },
+        { name: 'checklistItems', targetObjectType: 'checklist-item', cardinality: 'one-to-many' as const, cascadeDelete: true },
+        { name: 'issues', targetObjectType: 'issue', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -213,7 +213,7 @@ export const objectTypes = {
         { name: 'photos', type: 'file' as const, required: false },
       ],
       linkTypes: [
-        { name: 'inspection', targetObjectType: 'Inspection', cardinality: 'many-to-one' as const },
+        { name: 'inspection', targetObjectType: 'inspection', cardinality: 'many-to-one' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -239,7 +239,7 @@ export const objectTypes = {
         ]},
       ],
       linkTypes: [
-        { name: 'inspection', targetObjectType: 'Inspection', cardinality: 'many-to-one' as const },
+        { name: 'inspection', targetObjectType: 'inspection', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

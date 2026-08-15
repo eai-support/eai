@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 
 export const PROJECT_MANIFEST_RELATIVE_PATH = ".eai-manifest.json";
 const DEFAULT_TEMPLATE_REPO =
-  "https://github.com/eai-tools/eai-app-template.git";
+  "https://github.com/eai-support/eai-app-template.git";
 const DEFAULT_TEMPLATE_REPO_NAME = "eai-app-template";
 const execFileAsync = promisify(execFile);
 
@@ -83,14 +83,14 @@ function coerceTemplateRepoFromDisplaySource(displaySource: string): {
   const trimmed = displaySource.trim();
   const defaultMatch = trimmed.match(
     new RegExp(
-      `^(eai-tools\\/${DEFAULT_TEMPLATE_REPO_NAME})(?:@([0-9a-f]{7,40}))?$`,
+      `^(?:eai-support|eai-tools)\\/${DEFAULT_TEMPLATE_REPO_NAME}(?:@([0-9a-f]{7,40}))?$`,
       "i",
     ),
   );
   if (defaultMatch) {
     return {
       repo: DEFAULT_TEMPLATE_REPO,
-      commit: defaultMatch[2],
+      commit: defaultMatch[1],
     };
   }
 
@@ -232,7 +232,7 @@ async function inferManifestFromLegacyProjectStructure(
       schemaVersion: 1,
       template: {
         repo: DEFAULT_TEMPLATE_REPO,
-        displaySource: "eai-tools/eai-app-template (legacy scaffold inferred)",
+        displaySource: "eai-support/eai-app-template (legacy scaffold inferred)",
       },
     };
   } catch {

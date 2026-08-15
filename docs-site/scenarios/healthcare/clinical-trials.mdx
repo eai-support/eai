@@ -191,7 +191,7 @@ export const objectTypes = {
         { name: 'endDate', type: 'date' as const, required: false },
       ],
       linkTypes: [
-        { name: 'enrollments', targetObjectType: 'Enrollment', cardinality: 'one-to-many' as const },
+        { name: 'enrollments', targetObjectType: 'enrollment', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -217,8 +217,8 @@ export const objectTypes = {
         { name: 'site', type: 'text' as const, required: true },
       ],
       linkTypes: [
-        { name: 'trial', targetObjectType: 'Trial', cardinality: 'many-to-one' as const },
-        { name: 'outcomes', targetObjectType: 'Outcome', cardinality: 'one-to-many' as const },
+        { name: 'trial', targetObjectType: 'trial', cardinality: 'many-to-one' as const },
+        { name: 'outcomes', targetObjectType: 'outcome', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -254,7 +254,7 @@ export const objectTypes = {
         },
       ],
       linkTypes: [
-        { name: 'enrollment', targetObjectType: 'Enrollment', cardinality: 'many-to-one' as const },
+        { name: 'enrollment', targetObjectType: 'enrollment', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

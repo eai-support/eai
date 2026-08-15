@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -88,6 +88,33 @@ async function createRuntimeProject(): Promise<string> {
     ].join('\n'),
   );
   return root;
+}
+
+async function addProtectedReadinessSmoke(root: string): Promise<void> {
+  const contract = JSON.parse(
+    await readFile(join(root, 'eai.runtime.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const endpoints = contract.endpoints as Record<string, unknown>;
+  endpoints.smokeTests = [
+    ...(endpoints.smokeTests as unknown[]),
+    {
+      name: 'readiness',
+      method: 'GET',
+      path: '/api/eai/readiness',
+      expectedStatus: 200,
+      category: 'app_code_runtime_error',
+      headers: {
+        'x-eai-readiness-probe': 'tenantinfra',
+        authorization: 'Bearer ${EAI_READINESS_PROBE_TOKEN}',
+        'x-eai-tenant-id': '${EAI_TENANT_ID}',
+        'x-eai-app-key': 'boardapp-og',
+        'x-eai-environment': '${EAI_ENVIRONMENT}',
+        'x-eai-config-hash': '${EAI_CONFIG_HASH}',
+      },
+      requiresSecret: 'EAI_READINESS_PROBE_TOKEN',
+    },
+  ];
+  await writeFile(join(root, 'eai.runtime.json'), JSON.stringify(contract, null, 2));
 }
 
 describe('runtime contract validation and deploy doctor', () => {
@@ -202,6 +229,158 @@ describe('runtime contract validation and deploy doctor', () => {
             name: 'runtime-config',
             category: 'tenant_workflow_config',
             status: 'fail',
+          }),
+        ]),
+      );
+    } finally {
+      process.chdir(originalCwd);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('preserves, interpolates, and sends authenticated readiness headers without exposing secrets', async () => {
+    const root = await createRuntimeProject();
+    await addProtectedReadinessSmoke(root);
+    const originalCwd = process.cwd();
+    process.chdir(root);
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/api/auth/providers')) {
+        return new Response(JSON.stringify({ entra: { id: 'entra' } }), { status: 200 });
+      }
+      if (url.endsWith('/api/eai/config')) {
+        return new Response(JSON.stringify({
+          tenants: { boardapp: { tenantId: 'tenant-id', workflowId: 'workflow-id' } },
+        }), { status: 200 });
+      }
+      if (url.endsWith('/api/eai/readiness')) {
+        const headers = new Headers(init?.headers);
+        expect(headers.get('authorization')).toBe('Bearer probe-secret-value');
+        expect(headers.get('x-eai-readiness-probe')).toBe('tenantinfra');
+        expect(headers.get('x-eai-tenant-id')).toBe('tenant-id');
+        expect(headers.get('x-eai-app-key')).toBe('boardapp-og');
+        expect(headers.get('x-eai-environment')).toBe('production');
+        expect(headers.get('x-eai-config-hash')).toBe('config-hash');
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const validation = await validateRuntimeContract(root);
+      expect(validation.summary.smokeTests).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'readiness',
+            requiresSecret: 'EAI_READINESS_PROBE_TOKEN',
+            headers: expect.objectContaining({
+              authorization: 'Bearer ${EAI_READINESS_PROBE_TOKEN}',
+            }),
+          }),
+        ]),
+      );
+
+      const result = await runDeployDoctor('https://app.example.com', {
+        environment: {
+          EAI_READINESS_PROBE_TOKEN: 'probe-secret-value',
+          EAI_TENANT_ID: 'tenant-id',
+          EAI_ENVIRONMENT: 'production',
+          EAI_CONFIG_HASH: 'config-hash',
+        },
+      });
+
+      expect(result.checks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'readiness', status: 'pass', httpStatus: 200 }),
+        ]),
+      );
+      expect(JSON.stringify(result)).not.toContain('probe-secret-value');
+      await expect(access(join(root, '.eai', 'deploy-doctor.json'))).rejects.toThrow();
+    } finally {
+      process.chdir(originalCwd);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('does not send a protected readiness request when the required secret is missing', async () => {
+    const root = await createRuntimeProject();
+    await addProtectedReadinessSmoke(root);
+    const originalCwd = process.cwd();
+    process.chdir(root);
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/auth/providers')) {
+        return new Response(JSON.stringify({ entra: { id: 'entra' } }), { status: 200 });
+      }
+      if (url.endsWith('/api/eai/config')) {
+        return new Response(JSON.stringify({
+          tenants: { boardapp: { tenantId: 'tenant-id', workflowId: 'workflow-id' } },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const result = await runDeployDoctor('https://app.example.com', {
+        environment: {
+          EAI_TENANT_ID: 'tenant-id',
+          EAI_ENVIRONMENT: 'production',
+          EAI_CONFIG_HASH: 'config-hash',
+        },
+      });
+
+      expect(result.checks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'readiness',
+            status: 'fail',
+            category: 'authenticated_probe_not_available',
+            message: expect.stringContaining('EAI_READINESS_PROBE_TOKEN'),
+          }),
+        ]),
+      );
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/api/eai/readiness'))).toBe(false);
+    } finally {
+      process.chdir(originalCwd);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('classifies a local BFF 401 separately from PublicAPI authorization', async () => {
+    const root = await createRuntimeProject();
+    await addProtectedReadinessSmoke(root);
+    const originalCwd = process.cwd();
+    process.chdir(root);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/api/auth/providers')) {
+        return new Response(JSON.stringify({ entra: { id: 'entra' } }), { status: 200 });
+      }
+      if (url.endsWith('/api/eai/config')) {
+        return new Response(JSON.stringify({
+          tenants: { boardapp: { tenantId: 'tenant-id', workflowId: 'workflow-id' } },
+        }), { status: 200 });
+      }
+      if (url.endsWith('/api/eai/readiness')) {
+        return new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status: 401 });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }));
+
+    try {
+      const result = await runDeployDoctor('https://app.example.com', {
+        environment: {
+          EAI_READINESS_PROBE_TOKEN: 'probe-secret-value',
+          EAI_TENANT_ID: 'tenant-id',
+          EAI_ENVIRONMENT: 'production',
+          EAI_CONFIG_HASH: 'config-hash',
+        },
+      });
+      expect(result.checks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'readiness',
+            status: 'fail',
+            category: 'app_bff_authorization',
+            httpStatus: 401,
           }),
         ]),
       );

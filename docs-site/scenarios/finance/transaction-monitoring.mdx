@@ -180,7 +180,7 @@ export const objectTypes = {
         { name: 'currency', type: 'text' as const, required: true },
       ],
       linkTypes: [
-        { name: 'alerts', targetObjectType: 'Alert', cardinality: 'one-to-many' as const },
+        { name: 'alerts', targetObjectType: 'alert', cardinality: 'one-to-many' as const },
       ],
       actions: [],
       status: 'published' as const,
@@ -213,8 +213,8 @@ export const objectTypes = {
         { name: 'createdAt', type: 'datetime' as const, required: true },
       ],
       linkTypes: [
-        { name: 'transaction', targetObjectType: 'Transaction', cardinality: 'many-to-one' as const },
-        { name: 'investigations', targetObjectType: 'Investigation', cardinality: 'one-to-many' as const },
+        { name: 'transaction', targetObjectType: 'transaction', cardinality: 'many-to-one' as const },
+        { name: 'investigations', targetObjectType: 'investigation', cardinality: 'one-to-many' as const },
       ],
       actions: [
         {
@@ -249,7 +249,7 @@ export const objectTypes = {
         { name: 'closedDate', type: 'date' as const, required: false },
       ],
       linkTypes: [
-        { name: 'alert', targetObjectType: 'Alert', cardinality: 'many-to-one' as const },
+        { name: 'alert', targetObjectType: 'alert', cardinality: 'many-to-one' as const },
       ],
       actions: [
         {

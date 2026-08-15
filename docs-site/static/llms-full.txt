@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.9.0.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.15.0.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -17,13 +17,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 
@@ -44,57 +44,62 @@ Usage: eai [options] [command]
 Enterprise AI Platform CLI — scaffold, seed, deploy, and manage applications
 
 Options:
-  -V, --cli-version        output the version number
-  --simple                 Plain text output without colors or symbols (for
-                           screen readers)
-  --no-color               Disable colored output
-  --color                  Force colored output
-  --profile <name>         Use a locally configured private profile
-  --describe               Output JSON schema of all commands
-  -h, --help               display help for command
+  -V, --cli-version            output the version number
+  --simple                     Plain text output without colors or symbols (for
+                               screen readers)
+  --no-color                   Disable colored output
+  --color                      Force colored output
+  --profile <name>             Use a locally configured private profile
+  --describe                   Output JSON schema of all commands
+  -h, --help                   display help for command
 
 Commands:
-  init [options] [name]    Scaffold a new application
-  create [options] [name]  Guide a new builder through EAI setup and create an
-                           application
-  dev [options]            Start local development server
-  login [options]          Authenticate with Entra CIAM
-  logout                   Clear stored authentication tokens
-  env                      Manage environment variables
-  types                    Manage Object Type definitions
-  tenant                   Manage tenants on the platform
-  user                     Manage users on the platform
-  resources                CRUD operations on platform resources
-  app|vertical             Manage apps under the active company tenant
-  chat                     Chat with AI workflows
-  workflow                 Provision app workflow configs and inspect AI runtime
-                           workflow bindings
-  docs                     Document upload, classification, and indexing
-  deploy                   Deployment management
-  runtime                  Validate the provider-neutral EAI app runtime
-                           contract
-  verify [options]         Run platform connectivity checks
-  doctor [options]         Diagnose common issues and suggest fixes
-  whoami                   Show auth status and tenant info
-  update [options]         Check for and install CLI updates
-  provision                Provision platform resources for this app
-  gofer                    Inspect and refresh Gofer-managed project assets
-  template                 Preview application template and UI component drift
-                           for the current project
-  blocks                   Discover AI-readable EAI UI block manifests
-  publicapi                Call authorized PublicAPI V4 routes directly
-  errors                   Explain EAI CLI errors and agent-safe recovery steps
-  agent                    Show AI-agent discovery and recovery guidance
-  capability               Discover tenant capabilities and diagnose
-                           control-plane readiness
-  integration              Inspect, test, and bind Portal-configured tenant
-                           integrations
-  ai                       Manage tenant AI control-plane assets
-  prompt                   Manage tenant prompts through typed PublicAPI
-                           operations
-  content                  Discover and bind Portal-managed shared content
-                           without mutating it
-  help [command]           display help for command
+  init [options] [name]        Scaffold a new application
+  create [options] [name]      Guide a new builder through EAI setup and create
+                               an application
+  dev [options]                Start local development server
+  login [options]              Authenticate with Entra CIAM
+  logout                       Clear stored authentication tokens
+  env                          Manage environment variables
+  types                        Manage Object Type definitions
+  tenant                       Manage tenants on the platform
+  user                         Manage users on the platform
+  resources                    CRUD operations on platform resources
+  app|vertical                 Manage apps under the active company tenant
+  chat                         Chat with AI workflows
+  workflow                     Provision app workflow configs and inspect AI
+                               runtime workflow bindings
+  docs                         Document upload, classification, and indexing
+  deploy                       Deployment management
+  runtime                      Validate the provider-neutral EAI app runtime
+                               contract
+  verify [options]             Run platform connectivity checks
+  doctor [options]             Diagnose common issues and suggest fixes
+  whoami                       Show auth status and tenant info
+  update [options]             Check for and install CLI updates
+  provision                    Provision platform resources for this app
+  gofer                        Inspect and refresh Gofer-managed project assets
+  template                     Preview application template and UI component
+                               drift for the current project
+  blocks                       Discover AI-readable EAI UI block manifests
+  publicapi                    Call authorized PublicAPI V4 routes directly
+  errors                       Explain EAI CLI errors and agent-safe recovery
+                               steps
+  agent                        Show AI-agent discovery and recovery guidance
+  capability                   Discover tenant capabilities and diagnose
+                               control-plane readiness
+  integration                  Inspect, test, and bind Portal-configured tenant
+                               integrations
+  ai                           Manage tenant AI control-plane assets
+  prompt                       Manage tenant prompts through typed PublicAPI
+                               operations
+  content                      Discover and bind Portal-managed shared content
+                               without mutating it
+  start [options] [directory]  Detect or start a supported AI workspace for an
+                               EAI project
+  classifier                   Create, inspect, publish, target, disable,
+                               enable, and delete tenant document classifiers
+  help [command]               display help for command
 
 Getting Started:
   eai create my-app        Scaffold an app with Gofer AI CLI assets
@@ -104,6 +109,7 @@ Getting Started:
   eai env pull             Sync app config from cloud
   eai types seed           Publish Object Types to the platform
   eai dev                  Start local development server
+  eai start                Open this app in your AI workspace
 
 Development Workflows:
   # Define your types, validate them, then publish them
@@ -155,12 +161,10 @@ Machine-Readable Output:
   eai --describe
   eai agent guide --format json
 
-AI Terminal Workflows:
-  # New projects include Gofer commands, agents, scripts, hooks, and skills
-  claude                   then run /0_gofer_start
-  codex                    then ask Codex to use the 1_gofer_research skill
-  gemini                   then run /gofer:1_gofer_research
-  copilot                  uses .github/prompts and .github/skills
+AI Workspace:
+  # Detect installed AI workspaces, then start this app with the public EAI skill
+  eai start --check
+  eai start
 
 Updates:
   # Check/update the CLI, then maintain safe repo-local assets
@@ -218,7 +222,7 @@ Notes:
   - The CLI installs from the public npm registry by default.
   - Recommended install: npm install -g eai-cli
   - Canonical package install: npm install -g @enterpriseai/cli
-  - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+  - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
   - `eai update --check` previews CLI, Gofer, and app-template status without writing files.
   - `eai update` upgrades the CLI, refreshes safe Gofer-managed files in the current EAI project, and reports app-template drift.
   - Use `eai gofer refresh --check` to preview Gofer-managed file changes separately.
@@ -400,7 +404,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.9.0** (2026-08-05): Add guided EAI create onboarding command.
+The current CLI release is **v3.15.0** (2026-08-14): Allow setup to reuse existing EAI apps.
 
 
 ## What The Pieces Do
@@ -428,13 +432,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 
@@ -446,13 +450,30 @@ cd task-tracker
 npm install
 ```
 
-`eai init` uses `https://github.com/eai-tools/eai-app-template` by default and
+`eai init` uses `https://github.com/eai-support/eai-app-template` by default and
 installs gofer workflow assets unless you pass `--no-gofer`.
 If you already created and entered a project folder, run `eai init`, enter the
 kebab-case app name, and choose the current-folder option. Scripts can use
 `eai init task-tracker --current-dir`. Current-folder init preserves unrelated
 existing files and Git metadata, and updates files that are part of the
 generated scaffold.
+
+## Start In An AI Workspace
+
+```bash
+eai start --check
+eai start
+```
+
+The check reads installed command and application metadata only. It does not
+read provider accounts or project files. On first use, choose GitHub Copilot,
+Claude, Codex, or Grok; EAI remembers the last workspace that opens
+successfully. Starting it confirms that the selected provider may read the
+project and use the user's provider account.
+
+The prepared first conversation begins with the business outcome, explains EAI
+capabilities as they become relevant, and pauses once for approval of the
+business specification before implementation.
 
 ## Connect To A Tenant
 
@@ -470,13 +491,18 @@ receive raw downstream credentials.
 ## Publish And Verify The Data Model
 
 Object Types are the platform contract for tenant-scoped resource data.
+Keep the PascalCase source/model `name` separate from the exact lowercase
+kebab-case persisted/transport `slug`. Relationship targets, runtime
+`target_type`, resource command arguments, paths, and governed v4 fields use
+the exact stored slug. Historical stored slugs are authoritative and are not
+re-derived from names.
 
 ```bash
 eai types validate
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
+eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type <resource-type>
+eai verify calls --tenant-id <tenant-id> --resource-type <object-type-slug>
 ```
 
 Do not build app workflows on top of a tenant until `eai types diff` converges.
@@ -489,7 +515,9 @@ eai gofer refresh
 ```
 
 Use gofer to keep agent instructions, plan templates, service-fit checklists,
-and public-safe platform references aligned with the CLI and app template.
+and public-safe platform references aligned with the CLI and app template. In
+the AI workspace, use the public `eai` skill; numbered delivery stages are
+internal implementation details.
 
 ## Choose Your Next Page
 
@@ -514,10 +542,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.9.0 |
-| Released | 2026-08-05 |
-| Last Material Change | Add guided EAI create onboarding command |
-| Source Commit | `5e2c64898a83b5cec3c6bd9d79231822b2999271` |
+| Version | 3.15.0 |
+| Released | 2026-08-14 |
+| Last Material Change | Allow setup to reuse existing EAI apps |
+| Source Commit | `700d13ffa4c7a5ed3aa8b65f7a9508700ce2010b` |
 
 ## Next Release
 
@@ -559,13 +587,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 
@@ -585,11 +613,29 @@ eai resources schema --tenant-id <tenant-id> --format json
 eai dev
 ```
 
+## Object Type Identifiers
+
+Do not move every Object Type field to kebab-case. A definition keeps both a
+PascalCase source/model `name`, such as `BoardAppUser`, and an explicit exact
+transport/storage `slug`, such as `board-app-user`.
+
+Generated and persisted `linkTypes[].targetObjectType`, runtime `target_type`,
+path parameters, and other governed v4 fields contain slugs. The CLI accepts a
+same-manifest PascalCase relationship target only as authoring shorthand and
+resolves it through that target's declared slug before diff or seed. An
+unresolved model name is an error; the CLI does not guess.
+
+For existing Object Types, the exact stored slug is authoritative even when
+today's derivation from the name would differ. Do not normalize or rename it.
+App code should use `useResources` or `client.resources` so the SDK owns route
+construction.
+
 ## Command Groups
 
 | Command                                 | Purpose                                                                                   |
 | --------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `eai init`                              | Scaffold an app from the EAI App Template.                                                |
+| `eai start`                             | Detect or open a supported AI workspace for the current EAI app.                          |
 | `eai login`, `eai logout`, `eai whoami` | Manage local authentication and inspect active context.                                   |
 | `eai tenant`                            | List, select, create, inspect, and administer tenant context.                             |
 | `eai types`                             | Validate, seed, diff, and pull Object Type definitions.                                   |
@@ -627,6 +673,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Need                 | Preferred CLI                                            |
 | -------------------- | -------------------------------------------------------- |
 | Scaffold app         | `eai init <name>` or `eai init <name> --current-dir`     |
+| Start AI workspace   | `eai start --check`, then `eai start`                    |
 | Select tenant        | `eai tenant list`, `eai tenant select <slug>`            |
 | Publish Object Types | `eai types validate`, `eai types seed`, `eai types diff` |
 | Inspect schemas      | `eai resources schema --tenant-id <tenant-id>`           |
@@ -681,28 +728,20 @@ when you intentionally want managed files overwritten after review.
 
 ## Gofer Start Pipeline
 
-For app or platform work, start with the Gofer Start workflow. The current
-pipeline stages are:
+Start the project with `eai start`, then use the public `eai` skill in the AI
+workspace. The agent begins with the business outcome, researches the existing
+system, writes a testable business specification, and asks for approval once.
+After approval it plans, builds, tests, and validates the work unless a material
+business, security, cost, deployment, or destructive decision needs approval.
 
-| Stage               | Purpose                                                                       |
-| ------------------- | ----------------------------------------------------------------------------- |
-| `0_gofer_start`     | Confirm EAI readiness, frame the business goal, and route the pipeline.       |
-| `1_gofer_research`  | Discover stakeholders, existing code, platform capabilities, and constraints. |
-| `2_gofer_specify`   | Convert discovery into a feature specification and shared scope.              |
-| `3_gofer_plan`      | Plan architecture, tests, rollback, service usage, and delivery sequencing.   |
-| `4_gofer_tasks`     | Break the plan into implementation tasks.                                     |
-| `5_gofer_implement` | Implement with tests and focused changes.                                     |
-| `6_gofer_validate`  | Validate correctness, security, integration, tests, and release readiness.    |
-
-Optional helpers include `0a_problem_validation`, `7_gofer_save`,
-`7a_stakeholder_comms`, `8_gofer_branding`, `9_gofer_tests`, and
-`10_gofer_cloud`.
+The numbered Gofer stage files remain available as internal execution
+contracts. Users and AI agents do not need to select or understand them.
 
 ## EAI App Delivery Rules
 
 When gofer helps generate or modify an EAI app, it should:
 
-1. Use `https://github.com/eai-tools/eai-app-template` as the canonical public
+1. Use `https://github.com/eai-support/eai-app-template` as the canonical public
    scaffold.
 2. Inspect `src/eai.config`, `src/eai.blocks.tsx`, `src/hooks`, and the
    platform service docs before inventing calls.
@@ -759,8 +798,8 @@ eai tenant list --format json
 eai tenant select <tenant-slug>
 eai whoami
 eai types validate
-eai types seed --tenant-key template --tenant-id <tenant-id> --format json
 eai types diff --tenant-key template --tenant-id <tenant-id>
+eai types seed --tenant-key template --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
 ```
 
@@ -790,6 +829,14 @@ eai resources schema --tenant-id <tenant-id> --format json
 
 Object Types are the contract for tenant business data. Use `postgresql` for
 most canonical structured resources unless another backend is clearly required.
+
+Each definition keeps a PascalCase source/model `name` and an explicit exact
+lowercase kebab-case persisted/transport `slug`. Do not convert the complete
+definition to one case. Emitted `linkTypes[].targetObjectType`, runtime
+`target_type`, resource command arguments, paths, and governed v4 fields use
+exact stored slugs. Same-manifest model names may be authoring shorthand only
+when tooling resolves them through the declared slug before publication.
+Historical stored slugs remain authoritative.
 
 | Backend      | Use For                                                                                      |
 | ------------ | -------------------------------------------------------------------------------------------- |
@@ -860,13 +907,17 @@ npm install
 eai login
 eai tenant select <tenant-slug>
 eai types validate
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
+eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type <resource-type>
+eai verify calls --tenant-id <tenant-id> --resource-type <object-type-slug>
 
 eai dev
 ```
+
+Object Type model names remain PascalCase. Resource commands, relationship
+targets, runtime fields, and routes use the exact published lowercase
+kebab-case slug. Do not normalize a historical stored slug.
 
 For agent-assisted delivery, run `eai gofer refresh --check` before planning and
 keep the service-fit matrix updated as you choose ResourceAPI, documents, chat,
@@ -962,6 +1013,7 @@ export const objectTypes = {
   "task-tracker": [
     {
       name: "Task",
+      slug: "task",
       displayName: "Task",
       description: "A trackable unit of work",
       storageBackend: "postgresql",
@@ -993,6 +1045,7 @@ export const objectTypes = {
         },
         { name: "dueDate", type: "date", required: false },
       ],
+      linkTypes: [],
       actions: [
         {
           name: "start",
@@ -1024,13 +1077,17 @@ export const objectTypes = {
 
 ```bash
 eai types validate
-eai types seed --tenant-key task-tracker --tenant-id <tenant-id> --format json
 eai types diff --tenant-key task-tracker --tenant-id <tenant-id>
+eai types seed --tenant-key task-tracker --tenant-id <tenant-id> --format json
 eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type Task
+eai verify calls --tenant-id <tenant-id> --resource-type task
 ```
 
 Do not continue until the diff is clean.
+
+`Task` is the model name used in configuration and TypeScript. `task` is the
+exact stored slug used by resource commands, routes, relationship targets, and
+runtime requests. Do not derive a different slug at the call site.
 
 ## 6. Use The Resource Hook
 
@@ -1300,6 +1357,16 @@ legacy payloads such as `chat_input` for new apps.
 
 ## Resource Payload Pattern
 
+An Object Type has two identifiers: the PascalCase configuration/model `name`
+and the exact lowercase kebab-case persisted/transport `slug`. Generated
+`linkTypes[].targetObjectType`, runtime `target_type`, route parameters, and
+governed query fields contain slugs, never model names. Same-manifest names are
+authoring shorthand only and must be resolved before publishing. Existing
+stored slugs are authoritative and must not be re-derived or renamed.
+
+Use `useResources` or `client.resources` for app calls. Do not hand-write v4
+resource paths or create a local slugifier.
+
 ```ts
 const { list, create, update, executeAction } = useResources<ApplicationData>(
   "Application",
@@ -1452,11 +1519,11 @@ const fileStatus = await resources.getFileIndexStatus(document.id, "file");
 CLI example:
 
 ```bash
-eai resources create ApplicationDocument \
+eai resources create application-document \
   --tenant-id <tenant-id> \
   --data '{"title":"supporting-document.pdf","applicationId":"app-123"}'
 
-eai resources file upload ApplicationDocument <resource-id> file ./supporting-document.pdf \
+eai resources file upload application-document <resource-id> file ./supporting-document.pdf \
   --tenant-id <tenant-id>
 ```
 
@@ -1539,7 +1606,7 @@ eai whoami
 eai resources schema --tenant-id <tenant-id> --format json
 eai docs upload ./sample.pdf
 eai docs index <document-id>
-eai resources file upload <ObjectType> <resource-id> <property> ./sample.pdf --tenant-id <tenant-id>
+eai resources file upload <object-type-slug> <resource-id> <property> ./sample.pdf --tenant-id <tenant-id>
 ```
 
 Use named commands first. Use `eai publicapi <method> /v4/...` only when an
@@ -1931,7 +1998,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.9.0. The same catalog powers human stderr output, JSON output for AI
+v3.15.0. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -1948,6 +2015,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E205` | `child_relation_invalid` | The supplied tenant is not an immediate child of the supplied parent. |
 | `E245` | `user_invite_external_service_existing_member` | Tenant member invite failed, but an existing member role repair may be available. |
 | `E246` | `app_token_tenant_context_required` | App-token platform user lookup is missing tenant context. |
+| `E247` | `calling_application_not_authorized` | The application making this request is not authorized for the tenant. |
 | `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
@@ -2217,6 +2285,41 @@ are explicitly listed, and stop when a stop condition matches.
 - server code
 - active tenant slug
 - deployed PublicAPI/AdminAPI versions if visible
+
+## E247: The application making this request is not authorized for the tenant.
+
+| Field | Value |
+| --- | --- |
+| Reason | `calling_application_not_authorized` |
+| Category | `app_provisioning` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The authorization decision applies to the client ID in the current CLI token.
+- It does not evaluate a different tenant app client, even when provision-me was run while diagnosing that app.
+- If the current user already has direct membership, provisioning is unnecessary.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm the current CLI identity, active tenant, and calling client context.
+- `eai app auth status <app-key> --tenant-id <tenant-id> --client-id <app-client-id> --format json` (read-only) — Inspect a different app client without changing tenant authorization.
+
+### Fixes
+
+- `Ask platform support to authorize the reported calling CLI client only if provision-me is required` (changes state) — Repair the caller-specific authorization without changing the target app or creating credentials.
+
+### Stop Conditions
+
+- Authorization state has not changed.
+
+### Escalation Evidence
+
+- request ID
+- CLI version
+- tenant ID
+- callingApplication.clientId
+- reason code
 
 ## E242: Tenant data-plane authorization incomplete.
 
@@ -2573,7 +2676,7 @@ The v4 surface is grouped by domain prefix:
 Scaffold a new application from the EAI app template.
 
 **Options**:
-- `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-tools/eai-app-template.git`)
+- `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-support/eai-app-template.git`)
 - `--skip-prompts` — Use defaults without interactive prompts
 - `--current-dir` — Scaffold into the current directory instead of creating `./<name>`
 - `--company-tenant <id>` — Main company tenant ID that owns this app
@@ -2796,6 +2899,10 @@ and "user needs a tenant-admin role" with one command.
 - `--member-id <id>` — Existing tenant member/user ID for the direct role update endpoint
 - `--tenant <id>` — Target tenant (default: active tenant)
 - `--role <role>` — Role to assign. Email-based updates support `tenant-viewer`, `tenant-staff`, `tenant-builder`, and `tenant-admin`; member-id updates support the platform role update contract.
+- `--first-name <name>` — Optional first name for a new email invitation
+- `--last-name <name>` — Optional last name for a new email invitation
+- `--message <message>` — Optional message for a new email invitation
+- `--redirect-uri <uri>` — Optional absolute post-invite redirect URI
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
@@ -2907,6 +3014,17 @@ Push local config overrides to the cloud (admin).
 
 ### Object Type Commands
 
+#### Identifier contract
+
+An Object Type definition keeps two identifiers: a PascalCase source/model
+`name` and an explicit exact lowercase kebab-case persisted/transport `slug`.
+They are not interchangeable. Generated and persisted
+`linkTypes[].targetObjectType`, runtime `target_type`, resource command
+arguments, path parameters, and governed v4 query fields use exact stored
+slugs. A same-manifest model name may be accepted as source shorthand only
+when it resolves through the target's declared slug before diff or seed.
+Historical stored slugs are authoritative and are never silently re-derived.
+
 #### `eai types validate`
 Validate Object Type definitions in `src/eai.config/object-types.ts` against platform schema rules, locally.
 
@@ -2963,7 +3081,7 @@ All resource routes are tenant-scoped: the active tenant (or `--tenant-id`) is p
 List resources of a specific Object Type.
 
 **Arguments**:
-- `<type>` — Object Type name
+- `<type>` — Exact published Object Type slug, for example `board-app-user`
 
 **Options**:
 - `--tenant-id <id>` — Target tenant (default: active tenant)
@@ -3050,7 +3168,7 @@ Cross-type query with filters.
 
 **Options**:
 - `--tenant-id <id>` — Target tenant (default: active tenant)
-- `--types <types>` — Comma-separated Object Type names (required)
+- `--types <types>` — Comma-separated exact published Object Type slugs (required)
 - `--where <json>` — Filter conditions as JSON
 - `--limit <number>` — Max results (default: 20)
 - `--format <format>` — Output format (text|json, default: text)
@@ -3085,7 +3203,7 @@ Search tenant resource projections.
 
 **Options**:
 - `--tenant-id <id>` — Target tenant (default: active tenant)
-- `--types <types>` — Comma-separated Object Type names
+- `--types <types>` — Comma-separated exact published Object Type slugs
 - `--mode <mode>` — `fulltext|hybrid|vector` (default: `hybrid`)
 - `--hybrid` / `--vector` / `--fulltext` — Shorthands that override `--mode`
 - `--limit <number>` — Max results (default: 10)
@@ -3591,7 +3709,7 @@ safe repo-local project assets when the command is run inside an EAI project.
 - `--no-project-refresh` — Skip Gofer/app-template maintenance for the current project
 
 **Primary update channel**: npmjs package `eai-cli` or `@enterpriseai/cli`.
-**Static fallback channel**: `https://eai-tools.github.io/eai/registry/@enterpriseai/cli`.
+**Static fallback channel**: `https://eai-support.github.io/eai/registry/@enterpriseai/cli`.
 
 Recommended install:
 
@@ -3608,13 +3726,13 @@ npm install -g @enterpriseai/cli
 Static registry fallback:
 
 ```bash
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 ```
 
 Persistent static fallback setup:
 
 ```bash
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 ```
 
@@ -3823,7 +3941,7 @@ scripting a subcommand; status-only commands such as `eai whoami` and quick
 
 ```bash
 # Get JSON output
-eai resources list User --format json
+eai resources list board-app-user --format json
 
 # Parse with jq
 eai tenant list --format json | jq '.tenants[].slug'

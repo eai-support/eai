@@ -17,7 +17,7 @@ import { getActiveProfile, setActiveProfile } from '../../src/lib/profile.js';
 import { DEFAULT_PUBLIC_API_URL } from '../../src/lib/tenant-context.js';
 
 const API_BASE = 'https://test-api.example.com';
-const ADMIN_API_BASE = 'https://test-admin-api.example.com';
+const EU_API_BASE = 'https://api.eu.myenterprise.ai/public';
 const PROFILE_API_BASE = 'https://profile-test.example.test/public';
 const DEV_PROFILE_API_BASE = 'https://profile-dev.example.test/public';
 const PROD_AUTH_TENANT_NAME = 'enterpriseaiplatform';
@@ -381,7 +381,7 @@ describe('eai provision entra', () => {
     });
   });
 
-  test('resourceapi bundle provisioning uses the AdminAPI v4 passive route', { timeout: 10000 }, async () => {
+  test('resourceapi bundle provisioning uses the PublicAPI v4 passive route', { timeout: 10000 }, async () => {
     let requestBody: unknown;
 
     mockServer.server.use(
@@ -403,7 +403,7 @@ describe('eai provision entra', () => {
         });
       }),
       http.post(
-        `${ADMIN_API_BASE}/v4/platform/tenants/test-tenant-id/resourceapi/passive-bundle`,
+        `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/test-tenant-id/resourceapi/passive-bundle`,
         async ({ request }) => {
           expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
           requestBody = await request.json();
@@ -421,8 +421,6 @@ describe('eai provision entra', () => {
 
     await provisionCommand.parseAsync([
       'resourceapi-bundle',
-      '--admin-api-url',
-      ADMIN_API_BASE,
       '--tenant-id',
       'test-tenant-id',
       '--install-id',
@@ -451,7 +449,7 @@ describe('eai provision entra', () => {
     });
   });
 
-  test('resourceapi refresh uses the AdminAPI v4 super-admin repair route', { timeout: 10000 }, async () => {
+  test('resourceapi refresh uses the PublicAPI v4 super-admin repair route', { timeout: 10000 }, async () => {
     let requestBody: unknown;
 
     mockServer.server.use(
@@ -473,7 +471,7 @@ describe('eai provision entra', () => {
         });
       }),
       http.post(
-        `${ADMIN_API_BASE}/v4/platform/tenants/test-tenant-id/resourceapi/passive-refresh`,
+        `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/test-tenant-id/resourceapi/passive-refresh`,
         async ({ request }) => {
           expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
           requestBody = await request.json();
@@ -494,8 +492,6 @@ describe('eai provision entra', () => {
 
     await provisionCommand.parseAsync([
       'resourceapi-refresh',
-      '--admin-api-url',
-      ADMIN_API_BASE,
       '--tenant-id',
       'test-tenant-id',
       '--install-id',
@@ -529,6 +525,204 @@ describe('eai provision entra', () => {
       updateInstallRegistry: true,
       reason: 'Repair passive schema drift',
     });
+  });
+
+  test('resourceapi refresh posts to the selected tenant regional PublicAPI URL', { timeout: 10000 }, async () => {
+    let staleRegionHit = false;
+    let regionalRequestBody: unknown;
+
+    mockServer.server.use(
+      http.get(`${API_BASE}/v4/identity/tenants`, async ({ request }) => {
+        expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
+        return HttpResponse.json({
+          tenants: [
+            {
+              id: 'tenant-eu',
+              displayName: 'EU Tenant',
+              slug: 'eu-tenant',
+              isActive: true,
+              roles: ['tenant-admin'],
+              isTenantAdmin: true,
+              homeRegion: 'eu',
+              hqCountryCode: 'DK',
+            },
+          ],
+        });
+      }),
+      http.post(`${API_BASE}/v4/platform/tenants/tenant-eu/resourceapi/passive-refresh`, async () => {
+        staleRegionHit = true;
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(`${EU_API_BASE}/v4/platform/tenants/tenant-eu/resourceapi/passive-refresh`, async ({ request }) => {
+        regionalRequestBody = await request.json();
+        return HttpResponse.json({
+          tenantId: 'tenant-eu',
+          installId: 'install-1',
+          schemaHash: 'snapshot-hash',
+          objectTypeCount: 2,
+          storageBackends: ['documentdb', 'search'],
+          verified: true,
+          installRegistryUpdated: true,
+          currentDiff: { missingObjectTypes: [] },
+          verifyDiff: { missingObjectTypes: [], schemaHashMatches: true },
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync([
+      'resourceapi-refresh',
+      '--tenant-id',
+      'tenant-eu',
+      '--install-id',
+      'install-1',
+      '--apply',
+      '--dry-run',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(staleRegionHit).toBe(false);
+    expect(regionalRequestBody).toEqual(expect.objectContaining({
+      installId: 'install-1',
+      apply: true,
+      dryRun: true,
+    }));
+  });
+
+  test('resourceapi bundle with schema and apply still mutates through PublicAPI v4', { timeout: 10000 }, async () => {
+    let requestBody: unknown;
+    await writeFile(
+      join(env.dir, 'smoke-object-types.json'),
+      JSON.stringify({
+        objectTypes: [
+          { slug: 'planning-application', status: 'published', storageBackend: 'mongo' },
+          { slug: 'draft-only', status: 'draft', storageBackend: 'postgresql' },
+        ],
+      }),
+    );
+
+    mockServer.server.use(
+      http.get(`${API_BASE}/v4/identity/tenants`, async ({ request }) => {
+        expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
+        return HttpResponse.json({
+          tenants: [
+            {
+              id: 'test-tenant-id',
+              displayName: 'Test Tenant',
+              slug: 'test-tenant',
+              isActive: true,
+              roles: ['tenant-admin'],
+              isTenantAdmin: true,
+              homeRegion: 'au',
+              hqCountryCode: 'AU',
+            },
+          ],
+        });
+      }),
+      http.post(`${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/test-tenant-id/resourceapi/passive-bundle`, async ({ request }) => {
+        expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
+        requestBody = await request.json();
+        return HttpResponse.json({
+          tenantId: 'test-tenant-id',
+          installId: 'install-1',
+          objectTypeCount: 1,
+          storageBackends: ['documentdb'],
+          bundle: { tenantId: 'test-tenant-id', objectTypes: ['planning-application'] },
+          applyResult: { results: [{ operation: 'apply', status: 'planned' }] },
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync([
+      'resourceapi-bundle',
+      '--schema',
+      'smoke-object-types.json',
+      '--tenant-id',
+      'test-tenant-id',
+      '--install-id',
+      'install-1',
+      '--apply',
+      '--dry-run',
+      '--backend',
+      'all',
+      '--rebuild-search',
+      '--product',
+      'daisy-assist',
+      '--schema-version',
+      '42',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(requestBody).toEqual({
+      installId: 'install-1',
+      productKey: 'daisy-assist',
+      schemaVersion: '42',
+      apply: true,
+      dryRun: true,
+      backend: 'all',
+      rebuildSearch: true,
+      objectTypes: ['planning-application'],
+    });
+  });
+
+  test('resourceapi bundle posts to the selected tenant regional PublicAPI URL', { timeout: 10000 }, async () => {
+    let staleRegionHit = false;
+    let regionalRequestBody: unknown;
+
+    mockServer.server.use(
+      http.get(`${API_BASE}/v4/identity/tenants`, async ({ request }) => {
+        expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
+        return HttpResponse.json({
+          tenants: [
+            {
+              id: 'tenant-eu',
+              displayName: 'EU Tenant',
+              slug: 'eu-tenant',
+              isActive: true,
+              roles: ['tenant-admin'],
+              isTenantAdmin: true,
+              homeRegion: 'eu',
+              hqCountryCode: 'DK',
+            },
+          ],
+        });
+      }),
+      http.post(`${API_BASE}/v4/platform/tenants/tenant-eu/resourceapi/passive-bundle`, async () => {
+        staleRegionHit = true;
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(`${EU_API_BASE}/v4/platform/tenants/tenant-eu/resourceapi/passive-bundle`, async ({ request }) => {
+        regionalRequestBody = await request.json();
+        return HttpResponse.json({
+          tenantId: 'tenant-eu',
+          installId: 'install-1',
+          objectTypeCount: 1,
+          storageBackends: ['documentdb'],
+          bundle: { tenantId: 'tenant-eu' },
+          applyResult: { results: [] },
+        });
+      }),
+    );
+
+    await provisionCommand.parseAsync([
+      'resourceapi-bundle',
+      '--tenant-id',
+      'tenant-eu',
+      '--install-id',
+      'install-1',
+      '--apply',
+      '--dry-run',
+      '--format',
+      'json',
+    ], { from: 'user' });
+
+    expect(staleRegionHit).toBe(false);
+    expect(regionalRequestBody).toEqual(expect.objectContaining({
+      installId: 'install-1',
+      apply: true,
+      dryRun: true,
+    }));
   });
 
   test('default profile provisions through the prod PublicAPI when no local API URL is configured', { timeout: 10000 }, async () => {

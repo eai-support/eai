@@ -20,6 +20,9 @@ import { installGoferResources } from "../../src/lib/gofer-installer.js";
 const BUNDLED_GOFER_RESOURCES = fileURLToPath(
   new URL("../../resources/gofer/", import.meta.url),
 );
+const GOFER_SYNC_SCRIPT = fileURLToPath(
+  new URL("../../scripts/sync-gofer-resources.cjs", import.meta.url),
+);
 
 async function createGoferFixture(projectRoot: string): Promise<void> {
   await mkdir(join(projectRoot, "src", "eai.config"), { recursive: true });
@@ -124,6 +127,47 @@ describe("eai gofer refresh", () => {
       ".specify/references/platform/eai-config-driven-ui.md",
       "Config-Driven UI Reference",
     );
+    await expectFileExists(
+      ctx,
+      ".specify/config/object-type-routing.json",
+    );
+    await expectFileContains(
+      ctx,
+      ".specify/config/object-type-routing.json",
+      '"contractVersion": "eai.object-type-routing/v1"',
+    );
+    await expectFileContains(
+      ctx,
+      ".specify/config/object-type-routing.json",
+      "never re-derive or rename historical stored slugs",
+    );
+    await expectFileExists(
+      ctx,
+      ".specify/contracts/object-type-routing-v1.json",
+    );
+    await expectFileContains(
+      ctx,
+      ".specify/contracts/object-type-routing-v1.json",
+      '"authoritativeTransportIdentifier": "slug"',
+    );
+    await expectFileContains(
+      ctx,
+      ".specify/contracts/object-type-routing-v1.json",
+      '"sourceField": "linkTypes[].targetObjectType"',
+    );
+    await expectFileContains(
+      ctx,
+      ".specify/commands/6_gofer_validate.md",
+      "Generated `linkTypes[].targetObjectType`",
+    );
+    await expectFileExists(
+      ctx,
+      ".specify/schemas/object-type-identifier-audit-v1.schema.json",
+    );
+    await expectFileExists(
+      ctx,
+      ".specify/schemas/object-type-routing-phase-bundle-v1.schema.json",
+    );
   });
 
   test("detects local edits as conflicts and only overwrites them when forced", async () => {
@@ -191,5 +235,17 @@ describe("eai gofer refresh", () => {
       commit: "latest-gofer-commit",
       source: "latest",
     });
+  });
+});
+
+describe("bundled Gofer Object Type routing assets", () => {
+  test("syncs config, contracts, and schemas into installable resource paths", async () => {
+    const source = await readFile(GOFER_SYNC_SCRIPT, "utf-8");
+
+    expect(source).toContain("['.specify/config', 'config']");
+    expect(source).toContain("['.specify/contracts', 'contracts']");
+    expect(source).toContain("['.specify/schemas', 'schemas']");
+    expect(source).toContain("'--others'");
+    expect(source).toContain("'--exclude-standard'");
   });
 });

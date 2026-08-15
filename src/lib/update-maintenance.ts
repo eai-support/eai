@@ -9,7 +9,7 @@ import * as out from "./output.js";
 import { isDefaultTemplateSource, resolveTemplateClonePlan } from "../commands/init.js";
 
 const DEFAULT_TEMPLATE_SOURCE =
-  "https://github.com/eai-tools/eai-app-template.git";
+  "https://github.com/eai-support/eai-app-template.git";
 
 export type ProjectMaintenanceMode = "check" | "apply";
 

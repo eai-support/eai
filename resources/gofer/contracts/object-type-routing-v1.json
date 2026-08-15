@@ -1,0 +1,73 @@
+{
+  "contractVersion": "eai.object-type-routing/v1",
+  "authoritativeTransportIdentifier": "slug",
+  "name": {
+    "role": "configuration-and-model-only",
+    "pattern": "^[A-Z][A-Za-z0-9]*$"
+  },
+  "slug": {
+    "role": "v4-transport-and-exact-lookup",
+    "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+    "format": "eai-object-type-slug",
+    "reserved": [
+      "operations",
+      "query",
+      "search",
+      "storage"
+    ]
+  },
+  "derivation": {
+    "algorithm": "eai.object-type-routing/v1",
+    "establishedNameSlugs": {
+      "GitHubConnection": "github-connection"
+    },
+    "steps": [
+      "trim",
+      "apply-established-name-slug-mapping",
+      "split-acronym-before-title-word",
+      "split-lower-or-digit-before-upper",
+      "replace-ascii-whitespace-or-underscore-runs",
+      "collapse-and-trim-hyphens",
+      "ascii-lowercase",
+      "validate-pattern-and-reserved-set"
+    ],
+    "vectors": [
+      {"input": "FeedItem", "output": "feed-item", "manifestNameValid": true},
+      {"input": "APIKey", "output": "api-key", "manifestNameValid": true},
+      {"input": "HTTPFeedItem", "output": "http-feed-item", "manifestNameValid": true},
+      {"input": "V2FeedItem", "output": "v2-feed-item", "manifestNameValid": true},
+      {"input": "GitHubConnection", "output": "github-connection", "manifestNameValid": true},
+      {"input": "Sent_Post", "output": "sent-post", "manifestNameValid": false},
+      {"input": "  Feed  Item  ", "output": "feed-item", "manifestNameValid": false},
+      {"input": "Draft--Item", "output": "draft-item", "manifestNameValid": false},
+      {"input": "operations", "output": "operations", "manifestNameValid": false},
+      {"input": "", "output": "", "manifestNameValid": false},
+      {"input": "---", "output": "", "manifestNameValid": false}
+    ]
+  },
+  "governedTransportFields": [
+    "object_type",
+    "parent_type",
+    "objectTypes",
+    "object_types",
+    "parent_object_type",
+    "target_type"
+  ],
+  "relationshipReferences": {
+    "sourceField": "linkTypes[].targetObjectType",
+    "sourceAcceptedIdentifiers": [
+      "same-manifest-name",
+      "slug"
+    ],
+    "adapterMustEmit": "slug",
+    "persistedIdentifier": "slug",
+    "runtimeField": "target_type",
+    "runtimeIdentifier": "slug",
+    "historicalStoredSlugIsAuthoritative": true
+  },
+  "artifacts": {
+    "openapi": "/openapi.json",
+    "manifestSchema": "/v4/data/contracts/object-type-manifest.schema.json",
+    "resourceActionSchema": "/v4/data/contracts/resource-action.schema.json"
+  }
+}

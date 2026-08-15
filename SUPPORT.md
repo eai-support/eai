@@ -4,7 +4,7 @@
 
 Start with the public documentation:
 
-https://eai-tools.github.io/eai/
+https://eai-support.github.io/eai/
 
 The docs include getting started guides, command reference, scenarios, and
 release-facing AI help surfaces.
@@ -14,7 +14,7 @@ release-facing AI help surfaces.
 Use GitHub issues for reproducible bugs, documentation problems, and feature
 requests:
 
-https://github.com/eai-tools/eai/issues
+https://github.com/eai-support/eai/issues
 
 Please include:
 

@@ -17,7 +17,7 @@ import {
 import { getAccessToken, loadTokens } from '../lib/auth.js';
 import * as out from '../lib/output.js';
 import { ErrorCode, exitWithError } from '../lib/error-codes.js';
-import { buildPassiveResourceApiBundle } from '../lib/resourceapi-bundle.js';
+import { buildPassiveResourceApiBundle, extractObjectTypesForPassiveBundle } from '../lib/resourceapi-bundle.js';
 import { findGuidanceByCode } from '../lib/error-guidance/catalog.js';
 import { formatGuidanceText } from '../lib/error-guidance/render.js';
 
@@ -576,8 +576,7 @@ Diagnostics:
 
 provisionCommand
   .command('resourceapi-refresh')
-  .description('Refresh a passive customer storage schema snapshot through the management service')
-  .requiredOption('--admin-api-url <url>', 'Management service URL for server-backed orchestration')
+  .description('Refresh a passive customer storage schema snapshot through PublicAPI v4')
   .option('--tenant-id <id>', 'Tenant ID the refresh is scoped to')
   .option('--install-id <id>', 'Customer storage install registry ID')
   .option('--apply', 'Apply the refreshed snapshot after planning', false)
@@ -595,23 +594,23 @@ provisionCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', `
 Examples:
-  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId>
-  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply --dry-run --force-overwrite
-  $ eai provision resourceapi-refresh --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply --force-overwrite --reason "Repair passive schema drift"
+  $ eai provision resourceapi-refresh --tenant-id <tenantId> --install-id <installId>
+  $ eai provision resourceapi-refresh --tenant-id <tenantId> --install-id <installId> --apply --dry-run --force-overwrite
+  $ eai provision resourceapi-refresh --tenant-id <tenantId> --install-id <installId> --apply --force-overwrite --reason "Repair passive schema drift"
 
 Notes:
   - This is a super-admin repair path for passive customer storage schema metadata.
+  - Server-backed refresh always goes through PublicAPI v4 before AdminAPI.
   - It updates the tenant install registry only after the storage service accepts and verifies the refreshed snapshot.
   `)
   .action(async (options) => {
     const jsonOutput = options.json || options.format === 'json';
-    const adminApiUrl = String(options.adminApiUrl || '').trim().replace(/\/+$/, '');
     const root = await findProjectRoot();
     if (!root) {
       exitWithError(ErrorCode.E001);
     }
 
-    const publicApiUrl = await resolvePublicApiUrl(root);
+    let publicApiUrl = await resolvePublicApiUrl(root);
     let tenantId: string = options.tenantId;
     try {
       const context = await resolveActiveTenantContext({
@@ -622,6 +621,7 @@ Notes:
         forceRefresh: Boolean(tenantId),
       });
       tenantId = context.activeTenant.id;
+      publicApiUrl = context.publicApiUrl;
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -629,12 +629,12 @@ Notes:
 
     const token = await getAccessToken();
     if (!token) {
-      out.error('Not logged in. Run `eai login` before calling server-backed provisioning.');
+      out.error('Not logged in. Run `eai login` before calling PublicAPI-backed provisioning.');
       process.exit(1);
     }
 
     const response = await fetch(
-      `${adminApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-refresh`,
+      `${publicApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-refresh`,
       {
         method: 'POST',
         headers: {
@@ -808,6 +808,27 @@ function reportTenantAuthorization(
   );
 }
 
+async function readObjectTypeSlugsFromSchema(schemaPath: string): Promise<string[]> {
+  const raw = await readFile(schemaPath, 'utf-8');
+  const schemaExport = JSON.parse(raw) as unknown;
+  const slugs = extractObjectTypesForPassiveBundle(schemaExport)
+    .map((objectType) => {
+      const slug = objectType.slug;
+      if (typeof slug === 'string' && slug.trim()) {
+        return slug.trim();
+      }
+      const name = objectType.name;
+      return typeof name === 'string' && name.trim() ? name.trim() : null;
+    })
+    .filter((slug): slug is string => Boolean(slug));
+
+  if (slugs.length === 0) {
+    throw new Error('Schema export did not contain any published object type slugs.');
+  }
+
+  return Array.from(new Set(slugs)).sort();
+}
+
 // ─── eai provision storage ───────────────────────────────────────────────
 
 provisionCommand
@@ -825,7 +846,7 @@ provisionCommand
       exitWithError(ErrorCode.E001);
     }
 
-    const publicApiUrl = await resolvePublicApiUrl(root);
+    let publicApiUrl = await resolvePublicApiUrl(root);
     let tenantId: string = options.tenantId;
 
     try {
@@ -837,6 +858,7 @@ provisionCommand
         forceRefresh: Boolean(tenantId),
       });
       tenantId = context.activeTenant.id;
+      publicApiUrl = context.publicApiUrl;
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -892,8 +914,7 @@ provisionCommand
   .option('--schema <file>', 'Object-types export JSON for local bundle generation')
   .option('--tenant-id <id>', 'Tenant ID the bundle is scoped to')
   .option('--install-id <id>', 'Customer storage install registry ID')
-  .option('--admin-api-url <url>', 'Management service URL for server-backed orchestration')
-  .option('--apply', 'Ask the management service to push the signed bundle to the customer storage install', false)
+  .option('--apply', 'Ask PublicAPI to push the signed bundle to the customer storage install', false)
   .option('--dry-run', 'Plan schema application without applying customer storage changes', false)
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--rebuild-search', 'Request search projection rebuild after schema sync', false)
@@ -905,23 +926,24 @@ provisionCommand
   .addHelpText('after', `
 Examples:
   $ eai provision resourceapi-bundle --schema object-types.json --tenant-id <tenantId> --install-id <installId> --out resourceapi-bundle.json
-  $ eai provision resourceapi-bundle --admin-api-url https://admin-api.example --tenant-id <tenantId> --install-id <installId> --apply
+  $ eai provision resourceapi-bundle --tenant-id <tenantId> --install-id <installId> --apply
   $ eai provision resourceapi-bundle --schema object-types.json --tenant-id <tenantId> --install-id <installId> --product daisy-assist --format json
 
 Notes:
-  - With --admin-api-url, the management service reads the platform schema source of truth, signs the bundle, and can push it.
-  - Local --schema mode is for offline inspection only and does not own provisioning policy.
+  - Without --schema, PublicAPI reads the platform schema source of truth, signs the bundle, and can push it.
+  - Local --schema mode without --apply is for offline inspection only and does not own provisioning policy.
+  - With --schema --apply, the command still calls PublicAPI v4 and sends only the selected object type slugs.
   `)
   .action(async (options) => {
     const jsonOutput = options.json || options.format === 'json';
-    const adminApiUrl = String(options.adminApiUrl || '').trim().replace(/\/+$/, '');
+    const schemaPath = String(options.schema || '').trim();
 
-    if (adminApiUrl) {
+    if (!schemaPath || options.apply) {
       const root = await findProjectRoot();
       if (!root) {
         exitWithError(ErrorCode.E001);
       }
-      const publicApiUrl = await resolvePublicApiUrl(root);
+      let publicApiUrl = await resolvePublicApiUrl(root);
       let tenantId: string = options.tenantId;
       try {
         const context = await resolveActiveTenantContext({
@@ -932,6 +954,7 @@ Notes:
           forceRefresh: Boolean(tenantId),
         });
         tenantId = context.activeTenant.id;
+        publicApiUrl = context.publicApiUrl;
       } catch (err) {
         out.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
@@ -939,27 +962,33 @@ Notes:
 
       const token = await getAccessToken();
       if (!token) {
-        out.error('Not logged in. Run `eai login` before calling server-backed provisioning.');
+        out.error('Not logged in. Run `eai login` before calling PublicAPI-backed provisioning.');
         process.exit(1);
       }
 
+      const objectTypes = schemaPath ? await readObjectTypeSlugsFromSchema(schemaPath) : undefined;
+      const body: Record<string, unknown> = {
+        installId: options.installId,
+        productKey: options.product,
+        schemaVersion: options.schemaVersion,
+        apply: Boolean(options.apply),
+        dryRun: Boolean(options.dryRun),
+        backend: options.backend,
+        rebuildSearch: Boolean(options.rebuildSearch),
+      };
+      if (objectTypes) {
+        body.objectTypes = objectTypes;
+      }
+
       const response = await fetch(
-        `${adminApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-bundle`,
+        `${publicApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-bundle`,
         {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            installId: options.installId,
-            productKey: options.product,
-            schemaVersion: options.schemaVersion,
-            apply: Boolean(options.apply),
-            dryRun: Boolean(options.dryRun),
-            backend: options.backend,
-            rebuildSearch: Boolean(options.rebuildSearch),
-          }),
+          body: JSON.stringify(body),
         },
       );
       if (!response.ok) {
@@ -986,11 +1015,11 @@ Notes:
       }
 
       if (options.apply) {
-        out.success('Storage schema bundle applied through the management service');
+        out.success('Storage schema bundle applied through PublicAPI');
       } else if (options.out) {
         out.success(`Storage schema bundle written to ${chalk.cyan(options.out)}`);
       } else {
-        out.success('Storage schema bundle prepared through the management service');
+        out.success('Storage schema bundle prepared through PublicAPI');
       }
       out.info(`Tenant: ${chalk.cyan(payload.tenantId)}`);
       out.info(`Install: ${chalk.dim(payload.installId)}`);
@@ -999,10 +1028,9 @@ Notes:
       return;
     }
 
-    const schemaPath = String(options.schema || '').trim();
     if (!schemaPath || !options.tenantId || !options.installId) {
       out.error('--schema, --tenant-id, and --install-id are required for local bundle generation.');
-      out.info('Use --admin-api-url to let the management service build the bundle from the platform schema source of truth.');
+      out.info('Omit --schema to let PublicAPI build the bundle from the platform schema source of truth.');
       process.exit(1);
     }
 

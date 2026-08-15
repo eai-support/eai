@@ -4,6 +4,59 @@
     "eai": {
       "features": [
         {
+          "id": "eai-cli-tenant-workflow-classifiers",
+          "description": "CLI users validate and save reusable classifier JSON, publish immutable versions, separately associate exact published versions with app workflows, reversibly disable or enable classifiers, and permanently delete only disabled unpublished drafts through PublicAPI v4.",
+          "owned_paths": [
+            "src/commands/classifier.ts",
+            "src/index.ts",
+            "scripts/eai-full-e2e-smoke.cjs",
+            "tests/integration/classifier.test.ts",
+            "tests/integration/describe-contract.test.ts"
+          ],
+          "required_repo_tests": [
+            "tests/integration/classifier.test.ts",
+            "tests/integration/describe-contract.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts"
+          ],
+          "required_ci_checks": ["ci/eai-cli-tests"],
+          "required_cross_service_surfaces": ["eai-cli", "backend"],
+          "required_deployed_contracts": []
+        },
+        {
+          "id": "canonical-object-type-routing",
+          "description": "Canonical v1 Object Type source identifiers, CLI scaffolding, remote legacy readability, and installed Gofer contract assets.",
+          "owned_paths": [
+            "src/lib/object-type-identifiers.ts",
+            "src/lib/utils.ts",
+            "src/lib/config.ts",
+            "src/commands/init.ts",
+            "src/commands/types.ts",
+            "src/commands/resources.ts",
+            "src/lib/gofer-installer.ts",
+            "scripts/sync-gofer-resources.cjs",
+            "resources/gofer/config/object-type-routing.json",
+            "resources/gofer/contracts/object-type-routing-v1.json",
+            "resources/gofer/schemas/object-type-identifier-audit-v1.schema.json",
+            "resources/gofer/schemas/object-type-routing-phase-bundle-v1.schema.json",
+            "tests/unit/object-type-identifiers.test.ts",
+            "tests/integration/init.test.ts",
+            "tests/integration/types.test.ts",
+            "tests/integration/resources-command.test.ts",
+            "tests/integration/gofer.test.ts",
+            "package.json"
+          ],
+          "required_repo_tests": [
+            "tests/unit/object-type-identifiers.test.ts",
+            "tests/integration/init.test.ts",
+            "tests/integration/types.test.ts",
+            "tests/integration/resources-command.test.ts",
+            "tests/integration/gofer.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ]
+        },
+        {
           "id": "eai-cli-command-contracts",
           "description": "CLI command contracts, canonical app capability-manifest materialization and validation, local stack compatibility, and deployed read-only CLI smoke.",
           "owned_paths": [
@@ -12,7 +65,11 @@
             ".tech-docs/full-e2e-smoke-traceability.md",
             ".tech-docs/eai-cli.md",
             "scripts/eai-full-e2e-smoke.cjs",
+            "scripts/smoke-gofer-refresh-cache.cjs",
+            "scripts/release-preflight.sh",
+            "scripts/sync-linked-sources.js",
             "scripts/smoke-resourceapi-schema-sync-lifecycle.sh",
+            "release.sh",
             "resources/**",
             "package.json"
           ],
@@ -26,6 +83,10 @@
             "tests/integration/help.test.ts",
             "tests/integration/describe-contract.test.ts",
             "tests/integration/dev.test.ts",
+            "tests/integration/update.test.ts",
+            "tests/integration/gofer.test.ts",
+            "tests/integration/linked-sources.test.ts",
+            "tests/integration/error-guidance.test.ts",
             "tests/integration/output.test.ts",
             "tests/integration/provision.test.ts",
             "tests/integration/types.test.ts",
@@ -41,7 +102,9 @@
             "tests/integration/prompt.test.ts",
             "tests/integration/app-bindings.test.ts",
             "tests/integration/workflow.test.ts",
+            "tests/integration/runtime-contract.test.ts",
             "tests/integration/vertical.test.ts",
+            "tests/integration/verify-calls.test.ts",
             "tests/integration/dedicated-tenant-lifecycle.test.ts",
             "tests/integration/full-e2e-smoke.test.ts"
           ],
@@ -70,6 +133,31 @@
               "path": "eai-testing-dev deployed eai types seed -> ResourceAPI schema-sync handoff",
               "reason": "This mutates tenant Object Type metadata and ResourceAPI runtime schema; eai-cli integration tests cover the command contract until a stable disposable deployed fixture exists.",
               "owner": "eai-cli"
+            }
+          ]
+        },
+        {
+          "id": "eai-cli-app-delete",
+          "description": "The CLI obtains the immutable V4 deletion plan, requires exact app-key confirmation, invokes the verified deletion saga, and emits the machine-readable cleanup receipt.",
+          "owned_paths": [
+            ".eai/test-coverage.json",
+            "src/commands/vertical.ts",
+            "src/lib/api.ts"
+          ],
+          "required_repo_tests": [
+            "tests/integration/vertical.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "publicapi-platform"
+          ],
+          "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/platform-lifecycle/publicapi-v4-platform-lifecycle.spec.ts"
             }
           ]
         }

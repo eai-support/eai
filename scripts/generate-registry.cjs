@@ -17,7 +17,7 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const REGISTRY_DIR = path.join(ROOT, 'docs-site', 'static', 'registry');
-const BASE_URL = 'https://eai-tools.github.io/eai/registry';
+const BASE_URL = 'https://eai-support.github.io/eai/registry';
 const CANONICAL_PACKAGE = '@enterpriseai/cli';
 
 function main() {
@@ -203,10 +203,10 @@ npm install -g eai-cli
 npm install -g @enterpriseai/cli
 
 # Static registry fallback without changing user npm config
-npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-tools.github.io/eai/registry/
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 
 # Persistent static fallback setup
-npm config set @enterpriseai:registry https://eai-tools.github.io/eai/registry/ --location=user
+npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 
 # Local repo checkout smoke test

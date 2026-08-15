@@ -16,7 +16,7 @@ import {
 } from "../../src/commands/init.js";
 
 const baseOptions: CreateCommandOptions = {
-  from: "https://github.com/eai-tools/eai-app-template.git",
+  from: "https://github.com/eai-support/eai-app-template.git",
   skipPrompts: false,
   skipOnboarding: false,
   currentDir: false,
@@ -94,6 +94,25 @@ describe("eai create onboarding helpers", () => {
     ).toContain("--no-install");
   });
 
+  test("forwards an existing app binding without changing the create flow", () => {
+    expect(
+      buildForwardedInitArgs("local-project", {
+        ...baseOptions,
+        skipPrompts: true,
+        companyTenant: "tenant-456",
+        appKey: "existing-app",
+      }),
+    ).toContain("--app-key");
+    expect(
+      buildForwardedInitArgs("local-project", {
+        ...baseOptions,
+        skipPrompts: true,
+        companyTenant: "tenant-456",
+        appKey: "existing-app",
+      }),
+    ).toContain("existing-app");
+  });
+
   test("lets --skip-onboarding fall back to the legacy interactive prompts", () => {
     expect(
       buildForwardedInitArgs("my-app", {
@@ -142,7 +161,7 @@ describe("guided create completion reporting", () => {
   test("only claims the workspace is ready when builder readiness is available", () => {
     const ready = buildCreateCompletionSummary(true, "codex");
     expect(ready.heading).toContain("ready");
-    expect(ready.steps.join("\n")).toContain("/0_business_scenario");
+    expect(ready.steps.join("\n")).toContain("eai start");
   });
 
   test("does not send the builder into an unproven hand-off", () => {
@@ -157,7 +176,7 @@ describe("template install trust boundary", () => {
   test("runs lifecycle scripts only for the canonical template", () => {
     expect(
       buildTemplateInstallArgs(
-        "https://github.com/eai-tools/eai-app-template.git",
+        "https://github.com/eai-support/eai-app-template.git",
       ),
     ).not.toContain("--ignore-scripts");
   });

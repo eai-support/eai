@@ -1099,6 +1099,46 @@ describe('PublicAPI URL routing order', () => {
 });
 
 describe('active tenant PublicAPI env sync', () => {
+  test('named profiles preserve their configured endpoint when tenant metadata has a production region', async () => {
+    vi.mocked(profile.getActiveProfile).mockReturnValue('local');
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
+    vi.spyOn(auth, 'getActiveAuthConfigMismatch').mockResolvedValue(null);
+    const patchEnvFileSpy = vi.spyOn(config, 'patchEnvFile').mockResolvedValue();
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === 'http://localhost:8000/v4/identity/tenants') {
+        return new Response(
+          JSON.stringify({
+            tenants: [{
+              id: 'tenant-au',
+              displayName: 'Local Tenant',
+              slug: 'local-tenant',
+              role: 'tenant-admin',
+              isActive: true,
+              parentId: null,
+              homeRegion: 'au',
+              hqCountryCode: 'AU',
+            }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(`Unhandled request: ${href}`, { status: 500 });
+    }));
+
+    const context = await resolveActiveTenantContext({
+      projectRoot: '/workspace',
+      publicApiUrl: 'http://localhost:8000',
+      interactive: false,
+      tenantId: 'tenant-au',
+    });
+
+    expect(context.publicApiUrl).toBe('http://localhost:8000');
+    expect(context.publicApiEnvSync).toBeUndefined();
+    expect(patchEnvFileSpy).not.toHaveBeenCalled();
+  });
+
   test('HP001 TENANT-REGION-001: selecting an EU tenant updates stale AU BASE_URL_PUBLIC_API', async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), 'eai-tenant-region-'));
     await writeFile(
@@ -1149,6 +1189,7 @@ describe('active tenant PublicAPI env sync', () => {
         previousPublicApiUrl: DEFAULT_PUBLIC_API_URL,
         homeRegion: 'eu',
       });
+      expect(context.publicApiUrl).toBe('https://api.eu.myenterprise.ai/public');
       expect(buildPublicApiEnvSyncNotice(context.publicApiEnvSync)).toEqual({
         level: 'warn',
         message:
@@ -1158,6 +1199,7 @@ describe('active tenant PublicAPI env sync', () => {
       expect(storeTokensSpy).toHaveBeenCalledWith(expect.objectContaining({
         activeTenantId: 'tenant-eu',
         activeTenantHomeRegion: 'eu',
+        publicApiUrl: 'https://api.eu.myenterprise.ai/public',
       }));
       await expect(readFile(join(projectRoot, '.env.local'), 'utf-8')).resolves.toContain(
         'BASE_URL_PUBLIC_API=https://api.eu.myenterprise.ai/public',

@@ -35,28 +35,20 @@ when you intentionally want managed files overwritten after review.
 
 ## Gofer Start Pipeline
 
-For app or platform work, start with the Gofer Start workflow. The current
-pipeline stages are:
+Start the project with `eai start`, then use the public `eai` skill in the AI
+workspace. The agent begins with the business outcome, researches the existing
+system, writes a testable business specification, and asks for approval once.
+After approval it plans, builds, tests, and validates the work unless a material
+business, security, cost, deployment, or destructive decision needs approval.
 
-| Stage               | Purpose                                                                       |
-| ------------------- | ----------------------------------------------------------------------------- |
-| `0_gofer_start`     | Confirm EAI readiness, frame the business goal, and route the pipeline.       |
-| `1_gofer_research`  | Discover stakeholders, existing code, platform capabilities, and constraints. |
-| `2_gofer_specify`   | Convert discovery into a feature specification and shared scope.              |
-| `3_gofer_plan`      | Plan architecture, tests, rollback, service usage, and delivery sequencing.   |
-| `4_gofer_tasks`     | Break the plan into implementation tasks.                                     |
-| `5_gofer_implement` | Implement with tests and focused changes.                                     |
-| `6_gofer_validate`  | Validate correctness, security, integration, tests, and release readiness.    |
-
-Optional helpers include `0a_problem_validation`, `7_gofer_save`,
-`7a_stakeholder_comms`, `8_gofer_branding`, `9_gofer_tests`, and
-`10_gofer_cloud`.
+The numbered Gofer stage files remain available as internal execution
+contracts. Users and AI agents do not need to select or understand them.
 
 ## EAI App Delivery Rules
 
 When gofer helps generate or modify an EAI app, it should:
 
-1. Use `https://github.com/eai-tools/eai-app-template` as the canonical public
+1. Use `https://github.com/eai-support/eai-app-template` as the canonical public
    scaffold.
 2. Inspect `src/eai.config`, `src/eai.blocks.tsx`, `src/hooks`, and the
    platform service docs before inventing calls.
