@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.1 |
-| Released | 2026-08-15 |
+| Version | 3.15.2 |
+| Released | 2026-08-16 |
 | Last Material Change | Fix Windows npm launcher during app initialization |
-| Source Commit | `02fd1a8f3c0d514158990b8888d3d1a96505a013` |
+| Source Commit | `7ab22293b7faef189523d17ac0deb7f5ac0a4b25` |
 
 
 ## Install

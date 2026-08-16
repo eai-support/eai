@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.1** (2026-08-15): Fix Windows npm launcher during app initialization.
+The current CLI release is **v3.15.2** (2026-08-16): Fix Windows npm launcher during app initialization.
 
 
 ## What The Pieces Do
