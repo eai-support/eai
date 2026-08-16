@@ -55,6 +55,7 @@ import { pullCloudEnvValues } from "../lib/cloud-env.js";
 import { findGuidance } from "../lib/error-guidance/match.js";
 import { formatGuidanceText } from "../lib/error-guidance/render.js";
 import { getActiveProfile, loadProfileConfig } from "../lib/profile.js";
+import { getNpmExecutable } from "../lib/npm.js";
 import {
   errMsg,
   isRecord,
@@ -808,7 +809,7 @@ Use --no-gofer only when you need a bare app scaffold.
       }
       const installSpinner = startEaiStep("Installing app dependencies...");
       try {
-        await exec("npm", installArgs, {
+        await exec(getNpmExecutable(), installArgs, {
           cwd: targetDir,
         });
         installSpinner.succeed("Installed app dependencies");
@@ -1137,7 +1138,7 @@ async function runCreatePreflight(): Promise<void> {
 
   const checks: Array<{ label: string; command: string; args: string[] }> = [
     { label: "Git", command: "git", args: ["--version"] },
-    { label: "npm", command: "npm", args: ["--version"] },
+    { label: "npm", command: getNpmExecutable(), args: ["--version"] },
   ];
 
   out.nestedSuccess(`Node.js ${process.versions.node}`);
