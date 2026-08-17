@@ -8,7 +8,6 @@ import {
   detectAiSurfaces,
   readAiPreferences,
   rememberAiSurface,
-  resolveDetachedCommand,
   type SurfaceProbe,
 } from '../../src/lib/ai-surfaces.js';
 
@@ -124,28 +123,43 @@ describe('AI surface contract', () => {
     }
   });
 
-  it('launches Windows command shims through the command interpreter', () => {
-    const command = resolveDetachedCommand(
-      'C:\\Users\\Test User\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd',
-      ['chat', '-m', 'agent', 'Start this EAI app.'],
-      'win32',
-      'C:\\Windows\\System32\\cmd.exe',
-    );
+  it('resolves the native Windows VS Code executable before launching Copilot', async () => {
+    const codeShim = 'C:\\Users\\test\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd';
+    const codeExe = 'C:\\Users\\test\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe';
+    const inventory = await detectAiSurfaces({
+      platform: 'win32',
+      home: 'C:\\Users\\test',
+      projectDirectory: 'C:\\work\\customer-portal',
+      preferredSurface: null,
+      probe: probe(
+        { code: codeShim },
+        [codeExe],
+        { [codeExe]: 'GitHub.copilot-chat\nGitHub.copilot' },
+      ),
+    });
 
-    expect(command.command).toBe('C:\\Windows\\System32\\cmd.exe');
-    expect(command.args.slice(0, 3)).toEqual(['/D', '/S', '/C']);
-    expect(command.args[3]).toContain('call "C:\\Users\\Test User\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd"');
-    expect(command.args[3]).toContain('"Start this EAI app."');
-    expect(command.waitForExit).toBe(true);
-    expect(command.windowsVerbatimArguments).toBe(true);
+    expect(inventory.surfaces.find((surface) => surface.id === 'vscode-copilot')?.executable).toBe(codeExe);
+    expect(buildAiLaunchPlan(inventory, 'vscode-copilot')).toMatchObject({
+      mode: 'process',
+      command: codeExe,
+      args: ['chat', '-m', 'agent', expect.stringContaining('business outcome')],
+    });
   });
 
-  it('launches native Windows applications directly', () => {
-    expect(resolveDetachedCommand('C:\\Program Files\\App\\app.exe', ['C:\\work\\project'], 'win32')).toEqual({
-      command: 'C:\\Program Files\\App\\app.exe',
-      args: ['C:\\work\\project'],
-      waitForExit: false,
-      windowsVerbatimArguments: false,
+  it('launches the native Codex desktop app on Windows even when its CLI is installed', async () => {
+    const codexExe = 'C:\\Users\\test\\AppData\\Local\\Programs\\Codex\\Codex.exe';
+    const inventory = await detectAiSurfaces({
+      platform: 'win32',
+      home: 'C:\\Users\\test',
+      projectDirectory: 'C:\\work\\customer-portal',
+      preferredSurface: null,
+      probe: probe({ codex: 'C:\\Users\\test\\AppData\\Roaming\\npm\\codex.cmd' }, [codexExe]),
+    });
+
+    expect(buildAiLaunchPlan(inventory, 'codex-desktop')).toMatchObject({
+      mode: 'application',
+      command: codexExe,
+      args: ['C:\\work\\customer-portal'],
     });
   });
 

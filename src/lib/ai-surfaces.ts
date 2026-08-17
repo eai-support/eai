@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile, chmod } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve, win32 as win32Path } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 
 export type AiSurfaceId =
@@ -89,8 +89,8 @@ export const AI_SURFACES: readonly AiSurfaceDefinition[] = [
     commands: ['code'],
     macApplications: ['/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code'],
     windowsApplications: [
-      'AppData/Local/Programs/Microsoft VS Code/bin/code.cmd',
       'AppData/Local/Programs/Microsoft VS Code/Code.exe',
+      'AppData/Local/Programs/Microsoft VS Code/bin/code.cmd',
     ],
   },
   {
@@ -222,7 +222,7 @@ function candidateApplicationPaths(surface: AiSurfaceDefinition, platform: NodeJ
   }
   if (platform === 'win32') {
     return (surface.windowsApplications ?? []).map((path) =>
-      /^[A-Za-z]:[\\/]/.test(path) ? path : join(home, path),
+      /^[A-Za-z]:[\\/]/.test(path) ? path : win32Path.join(home, path),
     );
   }
   return [];
@@ -234,6 +234,28 @@ function findSurfaceExecutable(
   home: string,
   probe: SurfaceProbe,
 ): string | null {
+  if (platform === 'win32' && surface.id === 'vscode-copilot') {
+    const candidates: string[] = [];
+    for (const command of surface.commands) {
+      const found = probe.commandPath(command);
+      if (!found) continue;
+      if (/\.(?:cmd|bat)$/i.test(found)) {
+        candidates.push(win32Path.resolve(win32Path.dirname(found), '..', 'Code.exe'));
+      } else if (/\.(?:exe|com)$/i.test(found)) {
+        candidates.push(found);
+      }
+    }
+    candidates.push(
+      ...candidateApplicationPaths(surface, platform, home).filter((path) => /\.(?:exe|com)$/i.test(path)),
+    );
+
+    for (const candidate of [...new Set(candidates)]) {
+      const extensions = probe.commandOutput(candidate, ['--list-extensions'])?.toLowerCase() ?? '';
+      if (extensions.includes('github.copilot')) return candidate;
+    }
+    return null;
+  }
+
   for (const command of surface.commands) {
     const found = probe.commandPath(command);
     if (found) {
@@ -273,7 +295,9 @@ export async function detectAiSurfaces(options: {
   return {
     contractVersion: 'eai.ai-surfaces/v1',
     platform,
-    projectDirectory: resolve(options.projectDirectory ?? process.cwd()),
+    projectDirectory: platform === 'win32'
+      ? win32Path.resolve(options.projectDirectory ?? process.cwd())
+      : resolve(options.projectDirectory ?? process.cwd()),
     preferredSurface,
     recommendedSurface,
     surfaces: installed.map(({ surface, executable }) => ({
@@ -321,6 +345,9 @@ export function buildAiLaunchPlan(inventory: AiSurfaceInventory, surfaceId: AiSu
     case 'claude-cli':
       return { ...common, mode: 'terminal', command: surface.executable, args: [EAI_FIRST_PROMPT], preparedPrompt: true, userMessage: 'A terminal will open an interactive Claude EAI session.' };
     case 'codex-desktop': {
+      if (inventory.platform === 'win32') {
+        return { ...common, mode: 'application', command: surface.executable, args: [project], preparedPrompt: false, userMessage: 'Codex will open this project. Start with /eai.' };
+      }
       const codexCli = inventory.surfaces.find((candidate) => candidate.id === 'codex-cli');
       return codexCli?.installed && codexCli.executable
         ? { ...common, mode: 'process', command: codexCli.executable, args: ['app', project], preparedPrompt: false, userMessage: 'Codex will open this project. Start with /eai.' }
@@ -338,54 +365,18 @@ function shellQuote(value: string, platform: NodeJS.Platform): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-export interface DetachedCommand {
-  command: string;
-  args: string[];
-  waitForExit: boolean;
-  windowsVerbatimArguments: boolean;
-}
-
-export function resolveDetachedCommand(
-  command: string,
-  args: readonly string[],
-  platform: NodeJS.Platform = process.platform,
-  commandInterpreter = process.env.ComSpec ?? 'cmd.exe',
-): DetachedCommand {
-  if (platform === 'win32' && /\.(?:cmd|bat)$/i.test(command)) {
-    const commandLine = ['call', shellQuote(command, platform), ...args.map((value) => shellQuote(value, platform))].join(' ');
-    return {
-      command: commandInterpreter,
-      args: ['/D', '/S', '/C', commandLine],
-      waitForExit: true,
-      windowsVerbatimArguments: true,
-    };
-  }
-  return { command, args: [...args], waitForExit: false, windowsVerbatimArguments: false };
-}
-
 function spawnDetached(
   command: string,
   args: readonly string[],
   cwd?: string,
-  platform: NodeJS.Platform = process.platform,
 ): Promise<void> {
   return new Promise((resolvePromise, rejectPromise) => {
-    const resolved = resolveDetachedCommand(command, args, platform);
-    const child = spawn(resolved.command, resolved.args, {
+    const child = spawn(command, [...args], {
       cwd,
-      detached: !resolved.waitForExit,
+      detached: true,
       stdio: 'ignore',
       windowsHide: true,
-      windowsVerbatimArguments: resolved.windowsVerbatimArguments,
     });
-    if (resolved.waitForExit) {
-      child.once('error', rejectPromise);
-      child.once('close', (code) => {
-        if (code === 0) resolvePromise();
-        else rejectPromise(new Error(`The Windows launcher exited with status ${code ?? 'unknown'}.`));
-      });
-      return;
-    }
     child.once('spawn', () => {
       child.unref();
       resolvePromise();
@@ -398,9 +389,9 @@ export async function openExternalUrl(url: string, platform: NodeJS.Platform = p
   if (!/^https:\/\//.test(url)) {
     throw new Error('EAI refused to open a non-HTTPS provider location.');
   }
-  if (platform === 'darwin') await spawnDetached('open', [url], undefined, platform);
-  else if (platform === 'win32') await spawnDetached('rundll32.exe', ['url.dll,FileProtocolHandler', url], undefined, platform);
-  else await spawnDetached('xdg-open', [url], undefined, platform);
+  if (platform === 'darwin') await spawnDetached('open', [url]);
+  else if (platform === 'win32') await spawnDetached('rundll32.exe', ['url.dll,FileProtocolHandler', url]);
+  else await spawnDetached('xdg-open', [url]);
 }
 
 export async function executeAiLaunchPlan(plan: LaunchPlan, platform: NodeJS.Platform = process.platform): Promise<void> {
@@ -409,23 +400,23 @@ export async function executeAiLaunchPlan(plan: LaunchPlan, platform: NodeJS.Pla
     return;
   }
   if (plan.mode === 'application') {
-    if (platform === 'darwin') await spawnDetached('open', ['-a', plan.command, ...plan.args], undefined, platform);
-    else await spawnDetached(plan.command, plan.args, plan.cwd, platform);
+    if (platform === 'darwin') await spawnDetached('open', ['-a', plan.command, ...plan.args]);
+    else await spawnDetached(plan.command, plan.args, plan.cwd);
     return;
   }
   if (plan.mode === 'process') {
-    await spawnDetached(plan.command, plan.args, plan.cwd, platform);
+    await spawnDetached(plan.command, plan.args, plan.cwd);
     return;
   }
 
   const commandLine = [plan.command, ...plan.args].map((value) => shellQuote(value, platform)).join(' ');
   if (platform === 'darwin') {
     const escaped = `cd ${shellQuote(plan.cwd, platform)} && ${commandLine}`.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    await spawnDetached('osascript', ['-e', `tell application "Terminal" to do script "${escaped}"`], undefined, platform);
+    await spawnDetached('osascript', ['-e', `tell application "Terminal" to do script "${escaped}"`]);
   } else if (platform === 'win32') {
-    await spawnDetached('cmd.exe', ['/k', `cd /d ${shellQuote(plan.cwd, platform)} && ${commandLine}`], undefined, platform);
+    await spawnDetached('cmd.exe', ['/k', `cd /d ${shellQuote(plan.cwd, platform)} && ${commandLine}`]);
   } else {
-    await spawnDetached('x-terminal-emulator', ['-e', 'sh', '-lc', `cd ${shellQuote(plan.cwd, platform)} && ${commandLine}`], undefined, platform);
+    await spawnDetached('x-terminal-emulator', ['-e', 'sh', '-lc', `cd ${shellQuote(plan.cwd, platform)} && ${commandLine}`]);
   }
 }
 
