@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.2 |
-| Released | 2026-08-16 |
-| Last Material Change | Fix Windows npm launcher during app initialization |
-| Source Commit | `7ab22293b7faef189523d17ac0deb7f5ac0a4b25` |
+| Version | 3.15.3 |
+| Released | 2026-08-17 |
+| Last Material Change | Use the Windows-compatible EAI app template |
+| Source Commit | `e2b96c124d81893c9ddbb1b3065c367f9bf13d44` |
 
 
 ## Install

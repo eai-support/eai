@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.2** (2026-08-16): Fix Windows npm launcher during app initialization.
+The current CLI release is **v3.15.3** (2026-08-17): Use the Windows-compatible EAI app template.
 
 
 ## What The Pieces Do
