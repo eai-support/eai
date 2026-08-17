@@ -8,6 +8,7 @@ import {
   detectAiSurfaces,
   readAiPreferences,
   rememberAiSurface,
+  resolveDetachedCommand,
   type SurfaceProbe,
 } from '../../src/lib/ai-surfaces.js';
 
@@ -121,6 +122,31 @@ describe('AI surface contract', () => {
       expect(surface.installUrl).toMatch(/^https:\/\//);
       expect(surface.installUrl).not.toContain('localhost');
     }
+  });
+
+  it('launches Windows command shims through the command interpreter', () => {
+    const command = resolveDetachedCommand(
+      'C:\\Users\\Test User\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd',
+      ['chat', '-m', 'agent', 'Start this EAI app.'],
+      'win32',
+      'C:\\Windows\\System32\\cmd.exe',
+    );
+
+    expect(command.command).toBe('C:\\Windows\\System32\\cmd.exe');
+    expect(command.args.slice(0, 3)).toEqual(['/D', '/S', '/C']);
+    expect(command.args[3]).toContain('call "C:\\Users\\Test User\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd"');
+    expect(command.args[3]).toContain('"Start this EAI app."');
+    expect(command.waitForExit).toBe(true);
+    expect(command.windowsVerbatimArguments).toBe(true);
+  });
+
+  it('launches native Windows applications directly', () => {
+    expect(resolveDetachedCommand('C:\\Program Files\\App\\app.exe', ['C:\\work\\project'], 'win32')).toEqual({
+      command: 'C:\\Program Files\\App\\app.exe',
+      args: ['C:\\work\\project'],
+      waitForExit: false,
+      windowsVerbatimArguments: false,
+    });
   });
 
   it('stores only the selected surface in a private local preference file', async () => {

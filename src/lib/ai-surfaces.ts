@@ -194,7 +194,11 @@ function defaultCommandPath(command: string): string | null {
   const resolver = process.platform === 'win32' ? 'where.exe' : 'which';
   const result = spawnSync(resolver, [command], { encoding: 'utf8', windowsHide: true });
   if (result.status !== 0) return null;
-  return result.stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? null;
+  const candidates = result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (process.platform === 'win32') {
+    return candidates.find((candidate) => /\.(?:exe|com|cmd|bat)$/i.test(candidate)) ?? candidates[0] ?? null;
+  }
+  return candidates[0] ?? null;
 }
 
 export const systemSurfaceProbe: SurfaceProbe = {
@@ -334,9 +338,54 @@ function shellQuote(value: string, platform: NodeJS.Platform): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function spawnDetached(command: string, args: readonly string[], cwd?: string): Promise<void> {
+export interface DetachedCommand {
+  command: string;
+  args: string[];
+  waitForExit: boolean;
+  windowsVerbatimArguments: boolean;
+}
+
+export function resolveDetachedCommand(
+  command: string,
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+  commandInterpreter = process.env.ComSpec ?? 'cmd.exe',
+): DetachedCommand {
+  if (platform === 'win32' && /\.(?:cmd|bat)$/i.test(command)) {
+    const commandLine = ['call', shellQuote(command, platform), ...args.map((value) => shellQuote(value, platform))].join(' ');
+    return {
+      command: commandInterpreter,
+      args: ['/D', '/S', '/C', commandLine],
+      waitForExit: true,
+      windowsVerbatimArguments: true,
+    };
+  }
+  return { command, args: [...args], waitForExit: false, windowsVerbatimArguments: false };
+}
+
+function spawnDetached(
+  command: string,
+  args: readonly string[],
+  cwd?: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, [...args], { cwd, detached: true, stdio: 'ignore', windowsHide: true });
+    const resolved = resolveDetachedCommand(command, args, platform);
+    const child = spawn(resolved.command, resolved.args, {
+      cwd,
+      detached: !resolved.waitForExit,
+      stdio: 'ignore',
+      windowsHide: true,
+      windowsVerbatimArguments: resolved.windowsVerbatimArguments,
+    });
+    if (resolved.waitForExit) {
+      child.once('error', rejectPromise);
+      child.once('close', (code) => {
+        if (code === 0) resolvePromise();
+        else rejectPromise(new Error(`The Windows launcher exited with status ${code ?? 'unknown'}.`));
+      });
+      return;
+    }
     child.once('spawn', () => {
       child.unref();
       resolvePromise();
@@ -349,9 +398,9 @@ export async function openExternalUrl(url: string, platform: NodeJS.Platform = p
   if (!/^https:\/\//.test(url)) {
     throw new Error('EAI refused to open a non-HTTPS provider location.');
   }
-  if (platform === 'darwin') await spawnDetached('open', [url]);
-  else if (platform === 'win32') await spawnDetached('rundll32.exe', ['url.dll,FileProtocolHandler', url]);
-  else await spawnDetached('xdg-open', [url]);
+  if (platform === 'darwin') await spawnDetached('open', [url], undefined, platform);
+  else if (platform === 'win32') await spawnDetached('rundll32.exe', ['url.dll,FileProtocolHandler', url], undefined, platform);
+  else await spawnDetached('xdg-open', [url], undefined, platform);
 }
 
 export async function executeAiLaunchPlan(plan: LaunchPlan, platform: NodeJS.Platform = process.platform): Promise<void> {
@@ -360,23 +409,23 @@ export async function executeAiLaunchPlan(plan: LaunchPlan, platform: NodeJS.Pla
     return;
   }
   if (plan.mode === 'application') {
-    if (platform === 'darwin') await spawnDetached('open', ['-a', plan.command, ...plan.args]);
-    else await spawnDetached(plan.command, plan.args, plan.cwd);
+    if (platform === 'darwin') await spawnDetached('open', ['-a', plan.command, ...plan.args], undefined, platform);
+    else await spawnDetached(plan.command, plan.args, plan.cwd, platform);
     return;
   }
   if (plan.mode === 'process') {
-    await spawnDetached(plan.command, plan.args, plan.cwd);
+    await spawnDetached(plan.command, plan.args, plan.cwd, platform);
     return;
   }
 
   const commandLine = [plan.command, ...plan.args].map((value) => shellQuote(value, platform)).join(' ');
   if (platform === 'darwin') {
     const escaped = `cd ${shellQuote(plan.cwd, platform)} && ${commandLine}`.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    await spawnDetached('osascript', ['-e', `tell application "Terminal" to do script "${escaped}"`]);
+    await spawnDetached('osascript', ['-e', `tell application "Terminal" to do script "${escaped}"`], undefined, platform);
   } else if (platform === 'win32') {
-    await spawnDetached('cmd.exe', ['/k', `cd /d ${shellQuote(plan.cwd, platform)} && ${commandLine}`]);
+    await spawnDetached('cmd.exe', ['/k', `cd /d ${shellQuote(plan.cwd, platform)} && ${commandLine}`], undefined, platform);
   } else {
-    await spawnDetached('x-terminal-emulator', ['-e', 'sh', '-lc', `cd ${shellQuote(plan.cwd, platform)} && ${commandLine}`]);
+    await spawnDetached('x-terminal-emulator', ['-e', 'sh', '-lc', `cd ${shellQuote(plan.cwd, platform)} && ${commandLine}`], undefined, platform);
   }
 }
 
