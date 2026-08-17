@@ -11,10 +11,16 @@ import {
   type SurfaceProbe,
 } from '../../src/lib/ai-surfaces.js';
 
-function probe(commands: Record<string, string>, files: string[] = [], outputs: Record<string, string> = {}): SurfaceProbe {
+function probe(
+  commands: Record<string, string>,
+  files: string[] = [],
+  outputs: Record<string, string> = {},
+  contents: Record<string, string> = {},
+): SurfaceProbe {
   return {
     commandPath: (command) => commands[command] ?? null,
     fileExists: (path) => files.includes(path),
+    fileContent: (path) => contents[path] ?? null,
     commandOutput: (command) => outputs[command] ?? null,
   };
 }
@@ -126,6 +132,8 @@ describe('AI surface contract', () => {
   it('resolves the native Windows VS Code executable before launching Copilot', async () => {
     const codeShim = 'C:\\Users\\test\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd';
     const codeExe = 'C:\\Users\\test\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe';
+    const cliScript = 'C:\\Users\\test\\AppData\\Local\\Programs\\Microsoft VS Code\\a5b5009513\\resources\\app\\out\\cli.js';
+    const builtInCopilot = 'C:\\Users\\test\\AppData\\Local\\Programs\\Microsoft VS Code\\a5b5009513\\resources\\app\\extensions\\copilot';
     const inventory = await detectAiSurfaces({
       platform: 'win32',
       home: 'C:\\Users\\test',
@@ -133,8 +141,9 @@ describe('AI surface contract', () => {
       preferredSurface: null,
       probe: probe(
         { code: codeShim },
-        [codeExe],
-        { [codeExe]: 'GitHub.copilot-chat\nGitHub.copilot' },
+        [codeShim, codeExe, cliScript, builtInCopilot],
+        {},
+        { [codeShim]: '@echo off\n"%~dp0..\\Code.exe" "%~dp0..\\a5b5009513\\resources\\app\\out\\cli.js" %*' },
       ),
     });
 
@@ -142,7 +151,8 @@ describe('AI surface contract', () => {
     expect(buildAiLaunchPlan(inventory, 'vscode-copilot')).toMatchObject({
       mode: 'process',
       command: codeExe,
-      args: ['chat', '-m', 'agent', expect.stringContaining('business outcome')],
+      args: [cliScript, 'chat', '-m', 'agent', expect.stringContaining('business outcome')],
+      environment: { ELECTRON_RUN_AS_NODE: '1' },
     });
   });
 
