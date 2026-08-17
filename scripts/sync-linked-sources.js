@@ -109,6 +109,29 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf-8"));
 }
 
+export function assertCrossPlatformTemplateLifecycleScripts(packageJson) {
+  const lifecycleNames = [
+    "preinstall",
+    "install",
+    "postinstall",
+    "prepare",
+    "prepack",
+  ];
+  const scripts = packageJson?.scripts ?? {};
+  const unsafe = lifecycleNames.filter((name) => {
+    const command = scripts[name];
+    return (
+      typeof command === "string" &&
+      (/\bthen\b/.test(command) || /\bfi\b/.test(command) || /\[\s+[^\]]+\]/.test(command))
+    );
+  });
+  if (unsafe.length > 0) {
+    throw new Error(
+      `eai-app-template contains shell-specific lifecycle scripts that cannot run on every supported operating system: ${unsafe.join(", ")}`,
+    );
+  }
+}
+
 function readGoferResourceCommit() {
   const metadataPath = path.join(GOFER_RESOURCES_TARGET, ".gofer-version");
   if (!fs.existsSync(metadataPath)) {
@@ -124,6 +147,8 @@ function readGoferResourceCommit() {
 }
 
 function buildTemplateMetadata(workdir) {
+  const packageJson = readJson(path.join(workdir, "package.json"));
+  assertCrossPlatformTemplateLifecycleScripts(packageJson);
   const packageLockPath = path.join(workdir, "package-lock.json");
   const npmrcPath = path.join(workdir, ".npmrc");
   const packageLockText = fs.readFileSync(packageLockPath, "utf-8");
