@@ -1,7 +1,7 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile, chmod } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve, win32 as win32Path } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 
 export type AiSurfaceId =
@@ -32,6 +32,8 @@ export interface AiSurfaceDefinition {
 export interface DetectedAiSurface extends AiSurfaceDefinition {
   installed: boolean;
   executable: string | null;
+  launchArgsPrefix: string[];
+  launchEnvironment: Record<string, string>;
   recommended: boolean;
   previouslyUsed: boolean;
   status: 'ready' | 'not-installed';
@@ -50,7 +52,8 @@ export interface AiSurfaceInventory {
 export interface SurfaceProbe {
   commandPath(command: string): string | null;
   fileExists(path: string): boolean;
-  commandOutput(command: string, args: readonly string[]): string | null;
+  fileContent?(path: string): string | null;
+  commandOutput(command: string, args: readonly string[], environment?: Readonly<Record<string, string>>): string | null;
 }
 
 export interface LaunchPlan {
@@ -60,6 +63,7 @@ export interface LaunchPlan {
   mode: 'process' | 'terminal' | 'url' | 'application';
   command: string;
   args: string[];
+  environment?: Record<string, string>;
   cwd: string;
   preparedPrompt: boolean;
   userMessage: string;
@@ -89,8 +93,8 @@ export const AI_SURFACES: readonly AiSurfaceDefinition[] = [
     commands: ['code'],
     macApplications: ['/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code'],
     windowsApplications: [
-      'AppData/Local/Programs/Microsoft VS Code/bin/code.cmd',
       'AppData/Local/Programs/Microsoft VS Code/Code.exe',
+      'AppData/Local/Programs/Microsoft VS Code/bin/code.cmd',
     ],
   },
   {
@@ -194,14 +198,30 @@ function defaultCommandPath(command: string): string | null {
   const resolver = process.platform === 'win32' ? 'where.exe' : 'which';
   const result = spawnSync(resolver, [command], { encoding: 'utf8', windowsHide: true });
   if (result.status !== 0) return null;
-  return result.stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? null;
+  const candidates = result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (process.platform === 'win32') {
+    return candidates.find((candidate) => /\.(?:exe|com|cmd|bat)$/i.test(candidate)) ?? candidates[0] ?? null;
+  }
+  return candidates[0] ?? null;
 }
 
 export const systemSurfaceProbe: SurfaceProbe = {
   commandPath: defaultCommandPath,
   fileExists: existsSync,
-  commandOutput(command, args) {
-    const result = spawnSync(command, [...args], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+  fileContent(path) {
+    try {
+      return readFileSync(path, 'utf8');
+    } catch {
+      return null;
+    }
+  },
+  commandOutput(command, args, environment) {
+    const result = spawnSync(command, [...args], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 5000,
+      env: { ...process.env, ...environment },
+    });
     if (result.status !== 0) return null;
     return `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
   },
@@ -218,18 +238,69 @@ function candidateApplicationPaths(surface: AiSurfaceDefinition, platform: NodeJ
   }
   if (platform === 'win32') {
     return (surface.windowsApplications ?? []).map((path) =>
-      /^[A-Za-z]:[\\/]/.test(path) ? path : join(home, path),
+      /^[A-Za-z]:[\\/]/.test(path) ? path : win32Path.join(home, path),
     );
   }
   return [];
 }
 
-function findSurfaceExecutable(
+interface SurfaceTarget {
+  executable: string;
+  launchArgsPrefix: string[];
+  launchEnvironment: Record<string, string>;
+}
+
+function windowsVsCodeTarget(
+  surface: AiSurfaceDefinition,
+  home: string,
+  probe: SurfaceProbe,
+): SurfaceTarget | null {
+  const shims = new Set<string>();
+  const executables = new Set<string>();
+  for (const command of surface.commands) {
+    const found = probe.commandPath(command);
+    if (!found) continue;
+    if (/\.(?:cmd|bat)$/i.test(found)) shims.add(found);
+    else if (/\.(?:exe|com)$/i.test(found)) executables.add(found);
+  }
+  for (const candidate of candidateApplicationPaths(surface, 'win32', home)) {
+    if (/\.(?:cmd|bat)$/i.test(candidate)) shims.add(candidate);
+    else if (/\.(?:exe|com)$/i.test(candidate)) executables.add(candidate);
+  }
+  for (const executable of executables) {
+    shims.add(win32Path.join(win32Path.dirname(executable), 'bin', 'code.cmd'));
+  }
+
+  for (const shim of shims) {
+    if (!probe.fileExists(shim)) continue;
+    const executable = win32Path.resolve(win32Path.dirname(shim), '..', 'Code.exe');
+    if (!probe.fileExists(executable)) continue;
+    const content = probe.fileContent?.(shim) ?? '';
+    const cliMatch = content.match(/"%~dp0([^"\r\n]*\\resources\\app\\out\\cli\.js)"/i);
+    if (!cliMatch) continue;
+    const cliScript = win32Path.resolve(win32Path.dirname(shim), cliMatch[1]);
+    const installRoot = `${win32Path.dirname(executable).toLowerCase()}\\`;
+    if (!cliScript.toLowerCase().startsWith(installRoot) || !probe.fileExists(cliScript)) continue;
+
+    const environment = { ELECTRON_RUN_AS_NODE: '1' };
+    const builtInCopilot = win32Path.resolve(win32Path.dirname(cliScript), '..', 'extensions', 'copilot');
+    const installedExtensions = probe.commandOutput(executable, [cliScript, '--list-extensions'], environment)?.toLowerCase() ?? '';
+    if (!probe.fileExists(builtInCopilot) && !installedExtensions.includes('github.copilot')) continue;
+    return { executable, launchArgsPrefix: [cliScript], launchEnvironment: environment };
+  }
+  return null;
+}
+
+function findSurfaceTarget(
   surface: AiSurfaceDefinition,
   platform: NodeJS.Platform,
   home: string,
   probe: SurfaceProbe,
-): string | null {
+): SurfaceTarget | null {
+  if (platform === 'win32' && surface.id === 'vscode-copilot') {
+    return windowsVsCodeTarget(surface, home, probe);
+  }
+
   for (const command of surface.commands) {
     const found = probe.commandPath(command);
     if (found) {
@@ -237,10 +308,11 @@ function findSurfaceExecutable(
         const extensions = probe.commandOutput(found, ['--list-extensions'])?.toLowerCase() ?? '';
         if (!extensions.includes('github.copilot')) continue;
       }
-      return found;
+      return { executable: found, launchArgsPrefix: [], launchEnvironment: {} };
     }
   }
-  return candidateApplicationPaths(surface, platform, home).find((path) => probe.fileExists(path)) ?? null;
+  const executable = candidateApplicationPaths(surface, platform, home).find((path) => probe.fileExists(path));
+  return executable ? { executable, launchArgsPrefix: [], launchEnvironment: {} } : null;
 }
 
 export async function detectAiSurfaces(options: {
@@ -256,30 +328,34 @@ export async function detectAiSurfaces(options: {
   const preferences = options.preferredSurface === undefined ? await readAiPreferences(home) : { version: 1 as const, lastAiSurface: options.preferredSurface ?? undefined };
   const installed = AI_SURFACES.map((surface) => ({
     surface,
-    executable: findSurfaceExecutable(surface, platform, home, probe),
+    target: findSurfaceTarget(surface, platform, home, probe),
   }));
-  const availableIds = new Set(installed.filter((item) => item.executable).map((item) => item.surface.id));
+  const availableIds = new Set(installed.filter((item) => item.target).map((item) => item.surface.id));
   const preferredSurface = preferences.lastAiSurface && availableIds.has(preferences.lastAiSurface)
     ? preferences.lastAiSurface
     : null;
   const recommendedSurface = preferredSurface
-    ?? installed.find((item) => item.executable)?.surface.id
+    ?? installed.find((item) => item.target)?.surface.id
     ?? 'vscode-copilot';
 
   return {
     contractVersion: 'eai.ai-surfaces/v1',
     platform,
-    projectDirectory: resolve(options.projectDirectory ?? process.cwd()),
+    projectDirectory: platform === 'win32'
+      ? win32Path.resolve(options.projectDirectory ?? process.cwd())
+      : resolve(options.projectDirectory ?? process.cwd()),
     preferredSurface,
     recommendedSurface,
-    surfaces: installed.map(({ surface, executable }) => ({
+    surfaces: installed.map(({ surface, target }) => ({
       ...surface,
-      installed: Boolean(executable),
-      executable,
+      installed: Boolean(target),
+      executable: target?.executable ?? null,
+      launchArgsPrefix: target?.launchArgsPrefix ?? [],
+      launchEnvironment: target?.launchEnvironment ?? {},
       recommended: surface.id === recommendedSurface,
       previouslyUsed: surface.id === preferredSurface,
-      status: executable ? 'ready' : 'not-installed',
-      nextAction: executable
+      status: target ? 'ready' : 'not-installed',
+      nextAction: target
         ? `Start EAI in ${surface.name}`
         : `Get ${surface.name} from ${surface.provider}`,
     })),
@@ -307,7 +383,7 @@ export function buildAiLaunchPlan(inventory: AiSurfaceInventory, surfaceId: AiSu
 
   switch (surfaceId) {
     case 'vscode-copilot':
-      return { ...common, mode: 'process', command: surface.executable, args: ['chat', '-m', 'agent', EAI_FIRST_PROMPT], preparedPrompt: true, userMessage: 'VS Code will open this project and start an EAI Copilot chat.' };
+      return { ...common, mode: 'process', command: surface.executable, args: [...surface.launchArgsPrefix, 'chat', '-m', 'agent', EAI_FIRST_PROMPT], environment: surface.launchEnvironment, preparedPrompt: true, userMessage: 'VS Code will open this project and start an EAI Copilot chat.' };
     case 'copilot-cli':
       return { ...common, mode: 'terminal', command: surface.executable, args: ['-C', project, '-i', EAI_FIRST_PROMPT], preparedPrompt: true, userMessage: 'A terminal will open an interactive EAI Copilot session.' };
     case 'copilot-desktop':
@@ -317,6 +393,9 @@ export function buildAiLaunchPlan(inventory: AiSurfaceInventory, surfaceId: AiSu
     case 'claude-cli':
       return { ...common, mode: 'terminal', command: surface.executable, args: [EAI_FIRST_PROMPT], preparedPrompt: true, userMessage: 'A terminal will open an interactive Claude EAI session.' };
     case 'codex-desktop': {
+      if (inventory.platform === 'win32') {
+        return { ...common, mode: 'application', command: surface.executable, args: [project], preparedPrompt: false, userMessage: 'Codex will open this project. Start with /eai.' };
+      }
       const codexCli = inventory.surfaces.find((candidate) => candidate.id === 'codex-cli');
       return codexCli?.installed && codexCli.executable
         ? { ...common, mode: 'process', command: codexCli.executable, args: ['app', project], preparedPrompt: false, userMessage: 'Codex will open this project. Start with /eai.' }
@@ -334,9 +413,20 @@ function shellQuote(value: string, platform: NodeJS.Platform): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function spawnDetached(command: string, args: readonly string[], cwd?: string): Promise<void> {
+function spawnDetached(
+  command: string,
+  args: readonly string[],
+  cwd?: string,
+  environment?: Readonly<Record<string, string>>,
+): Promise<void> {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, [...args], { cwd, detached: true, stdio: 'ignore', windowsHide: true });
+    const child = spawn(command, [...args], {
+      cwd,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      env: { ...process.env, ...environment },
+    });
     child.once('spawn', () => {
       child.unref();
       resolvePromise();
@@ -365,7 +455,7 @@ export async function executeAiLaunchPlan(plan: LaunchPlan, platform: NodeJS.Pla
     return;
   }
   if (plan.mode === 'process') {
-    await spawnDetached(plan.command, plan.args, plan.cwd);
+    await spawnDetached(plan.command, plan.args, plan.cwd, plan.environment);
     return;
   }
 

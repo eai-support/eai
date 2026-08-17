@@ -11,10 +11,16 @@ import {
   type SurfaceProbe,
 } from '../../src/lib/ai-surfaces.js';
 
-function probe(commands: Record<string, string>, files: string[] = [], outputs: Record<string, string> = {}): SurfaceProbe {
+function probe(
+  commands: Record<string, string>,
+  files: string[] = [],
+  outputs: Record<string, string> = {},
+  contents: Record<string, string> = {},
+): SurfaceProbe {
   return {
     commandPath: (command) => commands[command] ?? null,
     fileExists: (path) => files.includes(path),
+    fileContent: (path) => contents[path] ?? null,
     commandOutput: (command) => outputs[command] ?? null,
   };
 }
@@ -121,6 +127,50 @@ describe('AI surface contract', () => {
       expect(surface.installUrl).toMatch(/^https:\/\//);
       expect(surface.installUrl).not.toContain('localhost');
     }
+  });
+
+  it('resolves the native Windows VS Code executable before launching Copilot', async () => {
+    const codeShim = 'C:\\Users\\test\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd';
+    const codeExe = 'C:\\Users\\test\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe';
+    const cliScript = 'C:\\Users\\test\\AppData\\Local\\Programs\\Microsoft VS Code\\a5b5009513\\resources\\app\\out\\cli.js';
+    const builtInCopilot = 'C:\\Users\\test\\AppData\\Local\\Programs\\Microsoft VS Code\\a5b5009513\\resources\\app\\extensions\\copilot';
+    const inventory = await detectAiSurfaces({
+      platform: 'win32',
+      home: 'C:\\Users\\test',
+      projectDirectory: 'C:\\work\\customer-portal',
+      preferredSurface: null,
+      probe: probe(
+        { code: codeShim },
+        [codeShim, codeExe, cliScript, builtInCopilot],
+        {},
+        { [codeShim]: '@echo off\n"%~dp0..\\Code.exe" "%~dp0..\\a5b5009513\\resources\\app\\out\\cli.js" %*' },
+      ),
+    });
+
+    expect(inventory.surfaces.find((surface) => surface.id === 'vscode-copilot')?.executable).toBe(codeExe);
+    expect(buildAiLaunchPlan(inventory, 'vscode-copilot')).toMatchObject({
+      mode: 'process',
+      command: codeExe,
+      args: [cliScript, 'chat', '-m', 'agent', expect.stringContaining('business outcome')],
+      environment: { ELECTRON_RUN_AS_NODE: '1' },
+    });
+  });
+
+  it('launches the native Codex desktop app on Windows even when its CLI is installed', async () => {
+    const codexExe = 'C:\\Users\\test\\AppData\\Local\\Programs\\Codex\\Codex.exe';
+    const inventory = await detectAiSurfaces({
+      platform: 'win32',
+      home: 'C:\\Users\\test',
+      projectDirectory: 'C:\\work\\customer-portal',
+      preferredSurface: null,
+      probe: probe({ codex: 'C:\\Users\\test\\AppData\\Roaming\\npm\\codex.cmd' }, [codexExe]),
+    });
+
+    expect(buildAiLaunchPlan(inventory, 'codex-desktop')).toMatchObject({
+      mode: 'application',
+      command: codexExe,
+      args: ['C:\\work\\customer-portal'],
+    });
   });
 
   it('stores only the selected surface in a private local preference file', async () => {
