@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.3** (2026-08-17): Use the Windows-compatible EAI app template.
+The current CLI release is **v3.15.4** (2026-08-17): Fix Windows AI workspace launch.
 
 
 ## What The Pieces Do

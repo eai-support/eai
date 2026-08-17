@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.3 |
+| Version | 3.15.4 |
 | Released | 2026-08-17 |
-| Last Material Change | Use the Windows-compatible EAI app template |
-| Source Commit | `e2b96c124d81893c9ddbb1b3065c367f9bf13d44` |
+| Last Material Change | Fix Windows AI workspace launch |
+| Source Commit | `a751bf2352418a6f8faaee05fd98531e73a30e0f` |
 
 
 ## Install
