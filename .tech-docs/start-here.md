@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.5** (2026-08-19): Generate build-ready app manifests safely.
+The current CLI release is **v3.15.6** (2026-08-19): Make Windows clean-machine app setup reliable.
 
 
 ## What The Pieces Do
