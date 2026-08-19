@@ -686,9 +686,29 @@ Use --no-gofer only when you need a bare app scaffold.
         typesContent,
         "utf-8",
       );
-      typesSpinner.succeed("Created Object Types scaffold");
-    } catch (_err) {
+      const generatorPath = join(
+        targetDir,
+        "scripts",
+        "generate-object-types-json.mjs",
+      );
+      let generatorAvailable = true;
+      try {
+        await access(generatorPath);
+      } catch {
+        generatorAvailable = false;
+      }
+      if (generatorAvailable) {
+        await exec(process.execPath, [generatorPath], { cwd: targetDir });
+      }
+      typesSpinner.succeed(
+        generatorAvailable
+          ? "Created Object Types scaffold and runtime manifests"
+          : "Created Object Types scaffold",
+      );
+    } catch (err) {
       typesSpinner.fail("Failed to create Object Types scaffold");
+      out.error(errMsg(err));
+      process.exit(1);
     }
 
     // Step 5: Generate deploy workflow
@@ -2297,10 +2317,20 @@ export interface ObjectTypeDefinition {
   slug: string;
   displayName: string;
   description?: string;
+  authorization?: { privacyClass: 'owner_private' | 'shared_private' };
   properties: PropertyDefinition[];
   linkTypes: LinkTypeDefinition[];
   actions: ActionDefinition[];
   storageBackend: StorageBackend;
+  schemaVersion?: number;
+  storageMetadataStatus?: 'draft' | 'ready';
+  storageBinding?: {
+    sql?: {
+      databaseAlias: 'tenant-postgres';
+      tenantSchemaStrategy: 'per-tenant-schema';
+      tableName: string;
+    };
+  };
   status: ObjectTypeStatus;
 }
 
@@ -2310,14 +2340,14 @@ const postgresqlResourceStorage = {
   storageMetadataStatus: 'ready' as const,
   storageBinding: {
     sql: {
-      databaseAlias: 'tenant-postgres',
+      databaseAlias: 'tenant-postgres' as const,
       tenantSchemaStrategy: 'per-tenant-schema' as const,
       tableName: '${tenantResourcesTableName}',
     },
   },
 };
 
-export const objectTypes = {
+export const objectTypes: Record<string, ObjectTypeDefinition[]> = {
   '${tenantKey}': [
     {
       name: 'Record',

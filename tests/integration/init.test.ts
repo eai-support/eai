@@ -55,6 +55,7 @@ import {
 const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pkg = require("../../package.json") as { version: string };
+const tscPath = require.resolve("typescript/bin/tsc");
 const linkedSources = require("../../resources/linked-sources.json") as {
   appTemplate: { commit: string };
 };
@@ -72,6 +73,7 @@ function allowedCapability() {
 async function createLocalTemplateRepo(baseDir: string): Promise<string> {
   const templateDir = join(baseDir, "eai-app-template");
   await mkdir(join(templateDir, "src", "eai.config"), { recursive: true });
+  await mkdir(join(templateDir, "scripts"), { recursive: true });
   await writeFile(
     join(templateDir, "package.json"),
     JSON.stringify(
@@ -87,6 +89,18 @@ async function createLocalTemplateRepo(baseDir: string): Promise<string> {
   await writeFile(
     join(templateDir, "src", "eai.config", "object-types.ts"),
     "export const objectTypes = {};\n",
+  );
+  await writeFile(
+    join(templateDir, "scripts", "generate-object-types-json.mjs"),
+    `import { readFileSync, writeFileSync } from 'node:fs';
+
+const source = readFileSync('src/eai.config/object-types.ts', 'utf8');
+const tenantKey = /export const objectTypes[^=]*=\\s*{\\s*'([^']+)'/.exec(source)?.[1];
+if (!tenantKey) throw new Error('Generated Object Type tenant key was not found');
+const output = JSON.stringify({ generatedTenant: tenantKey }, null, 2) + '\\n';
+writeFileSync('src/eai.config/object-types.json', output);
+writeFileSync('src/eai.config/object-types.provisioning.json', output);
+`,
   );
   await exec("git", ["init"], { cwd: templateDir });
   await exec("git", ["config", "user.email", "tests@example.com"], {
@@ -1099,10 +1113,22 @@ describe("eai init", () => {
     expect(objectTypes).toContain("storageMetadataStatus: 'ready' as const");
     expect(objectTypes).toContain("export type StorageBackend");
     expect(objectTypes).toContain("export interface ObjectTypeDefinition");
+    expect(objectTypes).toContain(
+      "authorization?: { privacyClass: 'owner_private' | 'shared_private' }",
+    );
+    expect(objectTypes).toContain("schemaVersion?: number");
+    expect(objectTypes).toContain(
+      "storageMetadataStatus?: 'draft' | 'ready'",
+    );
+    expect(objectTypes).toContain("storageBinding?: {");
+    expect(objectTypes).toContain(
+      "export const objectTypes: Record<string, ObjectTypeDefinition[]>",
+    );
     expect(objectTypes).toContain("slug: 'record'");
     expect(objectTypes).toContain("targetObjectType: 'document'");
     expect(objectTypes).not.toContain("targetObjectType: 'Document'");
     expect(objectTypes).toContain("databaseAlias: 'tenant-postgres'");
+    expect(objectTypes).toContain("databaseAlias: 'tenant-postgres' as const");
     expect(objectTypes).not.toContain("resourceapi-postgres");
     expect(objectTypes).toContain(
       "tenantSchemaStrategy: 'per-tenant-schema' as const",
@@ -1111,6 +1137,70 @@ describe("eai init", () => {
       "tableName: 'nantquickapp_quick_app_tenant_resources'",
     );
     expect(objectTypes).toContain("tableName: 'nantquickapp_quick_app_records'");
+    await expectFileContains(
+      ctx,
+      "quick-app/src/eai.config/object-types.json",
+      '"generatedTenant": "quick-app"',
+    );
+    await expectFileContains(
+      ctx,
+      "quick-app/src/eai.config/object-types.provisioning.json",
+      '"generatedTenant": "quick-app"',
+    );
+
+    const objectTypeContractPath = join(
+      env.dir,
+      "quick-app",
+      "object-types-contract.ts",
+    );
+    await writeFile(
+      objectTypeContractPath,
+      `import { objectTypes, type ObjectTypeDefinition } from './src/eai.config/object-types.js';
+
+const tenantKey: string = 'quick-app';
+const generatedType: ObjectTypeDefinition | undefined = objectTypes[tenantKey]?.[0];
+void generatedType?.authorization;
+
+const contractType: ObjectTypeDefinition = {
+  name: 'ContractType',
+  slug: 'contract-type',
+  displayName: 'Contract Type',
+  authorization: { privacyClass: 'owner_private' },
+  properties: [],
+  linkTypes: [],
+  actions: [],
+  storageBackend: 'postgresql',
+  schemaVersion: 1,
+  storageMetadataStatus: 'ready',
+  storageBinding: {
+    sql: {
+      databaseAlias: 'tenant-postgres',
+      tenantSchemaStrategy: 'per-tenant-schema',
+      tableName: 'contract_types',
+    },
+  },
+  status: 'published',
+};
+void contractType;
+`,
+    );
+    await exec(
+      process.execPath,
+      [
+        tscPath,
+        "--noEmit",
+        "--strict",
+        "--skipLibCheck",
+        "--target",
+        "ES2022",
+        "--module",
+        "NodeNext",
+        "--moduleResolution",
+        "NodeNext",
+        objectTypeContractPath,
+      ],
+      { cwd: join(env.dir, "quick-app") },
+    );
     expectNoPrompts(ctx);
   }, 30_000);
 
