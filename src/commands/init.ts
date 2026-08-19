@@ -383,12 +383,20 @@ async function copyTemplateIntoTargetDir(
 /**
  * `--from` accepts any GitHub repo or local path, and install runs after
  * .env.local has been generated and hydrated. Only the canonical template is
- * trusted to execute npm lifecycle scripts on the developer machine.
+ * trusted to execute scripts on the developer machine unless the user opts in
+ * explicitly for a custom source.
  */
 export function buildTemplateInstallArgs(from: string): string[] {
   const args = ["install", "--no-audit", "--no-fund"];
   if (from !== TEMPLATE_REPO) args.push("--ignore-scripts");
   return args;
+}
+
+export function canRunTemplateScripts(
+  from: string,
+  trustTemplateScripts: boolean,
+): boolean {
+  return isDefaultTemplateSource(from) || trustTemplateScripts;
 }
 
 /**
@@ -410,6 +418,11 @@ export const initCommand = new Command("init")
     "--from <repo>",
     "GitHub repo URL or local path for template",
     TEMPLATE_REPO,
+  )
+  .option(
+    "--trust-template-scripts",
+    "Allow a custom template to run its Object Type generator",
+    false,
   )
   .option("--skip-prompts", "Use defaults without interactive prompts", false)
   .option(
@@ -686,9 +699,29 @@ Use --no-gofer only when you need a bare app scaffold.
         typesContent,
         "utf-8",
       );
-      typesSpinner.succeed("Created Object Types scaffold");
-    } catch (_err) {
+      const generatorPath = join(
+        targetDir,
+        "scripts",
+        "generate-object-types-json.mjs",
+      );
+      if (!canRunTemplateScripts(options.from, options.trustTemplateScripts)) {
+        throw new Error(
+          "Custom template scripts are not run automatically. Review the template, then rerun with --trust-template-scripts only if you trust its code.",
+        );
+      }
+      try {
+        await access(generatorPath);
+      } catch {
+        throw new Error(
+          "The app template is missing its Object Type manifest generator. Update the template and try again.",
+        );
+      }
+      await exec(process.execPath, [generatorPath], { cwd: targetDir });
+      typesSpinner.succeed("Created Object Types scaffold and runtime manifests");
+    } catch (err) {
       typesSpinner.fail("Failed to create Object Types scaffold");
+      out.error(errMsg(err));
+      process.exit(1);
     }
 
     // Step 5: Generate deploy workflow
@@ -863,6 +896,7 @@ Use --no-gofer only when you need a bare app scaffold.
 
 export interface CreateCommandOptions {
   from: string;
+  trustTemplateScripts?: boolean;
   skipPrompts: boolean;
   skipOnboarding: boolean;
   currentDir: boolean;
@@ -901,6 +935,11 @@ export const createCommand = new Command("create")
     "--from <repo>",
     "GitHub repo URL or local path for template",
     TEMPLATE_REPO,
+  )
+  .option(
+    "--trust-template-scripts",
+    "Allow a custom template to run its Object Type generator",
+    false,
   )
   .option("--skip-prompts", "Use defaults without interactive prompts", false)
   .option(
@@ -1082,6 +1121,7 @@ export function buildForwardedInitArgs(
   if (options.from && options.from !== TEMPLATE_REPO) {
     args.push("--from", options.from);
   }
+  if (options.trustTemplateScripts) args.push("--trust-template-scripts");
   if (options.gofer === false) args.push("--no-gofer");
   if (options.install === false) args.push("--no-install");
   if (options.packageProfile) {
@@ -2297,10 +2337,20 @@ export interface ObjectTypeDefinition {
   slug: string;
   displayName: string;
   description?: string;
+  authorization?: { privacyClass: 'owner_private' | 'shared_private' };
   properties: PropertyDefinition[];
   linkTypes: LinkTypeDefinition[];
   actions: ActionDefinition[];
   storageBackend: StorageBackend;
+  schemaVersion?: number;
+  storageMetadataStatus?: 'draft' | 'ready';
+  storageBinding?: {
+    sql?: {
+      databaseAlias: 'tenant-postgres';
+      tenantSchemaStrategy: 'per-tenant-schema';
+      tableName: string;
+    };
+  };
   status: ObjectTypeStatus;
 }
 
@@ -2310,14 +2360,14 @@ const postgresqlResourceStorage = {
   storageMetadataStatus: 'ready' as const,
   storageBinding: {
     sql: {
-      databaseAlias: 'tenant-postgres',
+      databaseAlias: 'tenant-postgres' as const,
       tenantSchemaStrategy: 'per-tenant-schema' as const,
       tableName: '${tenantResourcesTableName}',
     },
   },
 };
 
-export const objectTypes = {
+export const objectTypes: Record<string, ObjectTypeDefinition[]> = {
   '${tenantKey}': [
     {
       name: 'Record',
