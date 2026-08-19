@@ -658,7 +658,7 @@ Use --no-gofer only when you need a bare app scaffold.
       process.exit(1);
     }
 
-    // Step 2: Update package.json
+    // Step 2: Update package metadata
     const pkgSpinner = startEaiStep("Customizing package.json...");
     try {
       const pkgPath = join(targetDir, "package.json");
@@ -667,6 +667,27 @@ Use --no-gofer only when you need a bare app scaffold.
       pkg.description = initOptions.description;
       pkg.version = "0.1.0";
       await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+
+      const lockPath = join(targetDir, "package-lock.json");
+      try {
+        const lock = JSON.parse(await readFile(lockPath, "utf-8"));
+        lock.name = pkg.name;
+        lock.version = pkg.version;
+        if (isRecord(lock.packages?.[""])) {
+          lock.packages[""].name = pkg.name;
+          lock.packages[""].version = pkg.version;
+        }
+        await writeFile(
+          lockPath,
+          JSON.stringify(lock, null, 2) + "\n",
+          "utf-8",
+        );
+      } catch (error) {
+        const code = isRecord(error) ? error.code : undefined;
+        if (code !== "ENOENT") {
+          throw error;
+        }
+      }
       pkgSpinner.succeed("Updated package.json");
     } catch (_err) {
       pkgSpinner.fail("Failed to update package.json");
@@ -824,16 +845,26 @@ Use --no-gofer only when you need a bare app scaffold.
     try {
       await exec("git", ["init"], { cwd: targetDir });
       await exec("git", ["add", "."], { cwd: targetDir });
-      await exec(
-        "git",
-        [
-          "commit",
-          "-m",
-          `Initial scaffold from template\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${templatePlan.displaySource}`,
-        ],
-        { cwd: targetDir },
-      );
-      gitSpinner.succeed("Initialized git repository");
+      try {
+        await exec(
+          "git",
+          [
+            "commit",
+            "-m",
+            `Initial scaffold from template\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${templatePlan.displaySource}`,
+          ],
+          { cwd: targetDir },
+        );
+        gitSpinner.succeed("Initialized git repository");
+      } catch (err) {
+        if (isMissingGitIdentity(err)) {
+          gitSpinner.succeed("Initialized git repository; first commit is pending");
+          out.warn(describeGitCommitFailure(err));
+        } else {
+          gitSpinner.warn("Initialized git repository; first commit was not created");
+          out.warn(describeGitCommitFailure(err));
+        }
+      }
     } catch (err) {
       gitSpinner.fail("Failed to initialize git");
       out.warn(describeGitInitFailure(err));
@@ -2037,6 +2068,24 @@ function describeGitInitFailure(error: unknown): string {
     return "`git` was not found on your PATH, so the project was created without an initialized repository. Install Git and run `git init` inside the new project if you want version control.";
   }
   return message;
+}
+
+export function isMissingGitIdentity(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /author identity unknown|please tell me who you are|unable to auto-detect email address/i.test(
+    message,
+  );
+}
+
+export function describeGitCommitFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (isMissingGitIdentity(error)) {
+    return [
+      "The Git repository is ready and the project files are staged, but the first commit is waiting for your Git name and email.",
+      'Set them once with `git config --global user.name "Your Name"` and `git config --global user.email "you@example.com"`, then run `git commit -m "Initial scaffold from template"` inside the project.',
+    ].join(" ");
+  }
+  return `The Git repository is ready and the project files are staged, but the first commit could not be created: ${message}`;
 }
 
 function tenantStorageScope(tenantId: string): string {

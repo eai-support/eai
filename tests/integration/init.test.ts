@@ -15,8 +15,10 @@ import {
   describeAppCreationFailure,
   describeCloneFailure,
   describeCreateFlowFailure,
+  describeGitCommitFailure,
   initCommand,
   isDefaultTemplateSource,
+  isMissingGitIdentity,
   resolveTemplateClonePlan,
   selectExistingAppSelection,
 } from "../../src/commands/init.js";
@@ -81,6 +83,25 @@ async function createLocalTemplateRepo(baseDir: string): Promise<string> {
         name: "eai-app-template",
         version: "0.0.1",
         type: "module",
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await writeFile(
+    join(templateDir, "package-lock.json"),
+    JSON.stringify(
+      {
+        name: "eai-app-template",
+        version: "0.0.1",
+        lockfileVersion: 3,
+        requires: true,
+        packages: {
+          "": {
+            name: "eai-app-template",
+            version: "0.0.1",
+          },
+        },
       },
       null,
       2,
@@ -166,6 +187,20 @@ describe("eai init", () => {
     expect(getNpmExecOptions("win32")).toEqual({ shell: true });
     expect(getNpmExecOptions("darwin")).toEqual({ shell: false });
     expect(getNpmExecOptions("linux")).toEqual({ shell: false });
+  });
+
+  test("keeps a missing Git identity recoverable", () => {
+    const error = new Error(
+      "Author identity unknown. Please tell me who you are. fatal: unable to auto-detect email address",
+    );
+
+    expect(isMissingGitIdentity(error)).toBe(true);
+    expect(describeGitCommitFailure(error)).toContain(
+      "repository is ready and the project files are staged",
+    );
+    expect(describeGitCommitFailure(error)).toContain(
+      "git config --global user.name",
+    );
   });
 
   test("TC001: Initialize new app interactively", async () => {
@@ -296,6 +331,16 @@ describe("eai init", () => {
       ctx,
       "my-app/package.json",
       '"name": "@eai-tools/my-app"',
+    );
+    await expectFileContains(
+      ctx,
+      "my-app/package-lock.json",
+      '"name": "@eai-tools/my-app"',
+    );
+    await expectFileContains(
+      ctx,
+      "my-app/package-lock.json",
+      '"version": "0.1.0"',
     );
     await expectFileExists(ctx, "my-app/.env.local");
     await expectFileContains(

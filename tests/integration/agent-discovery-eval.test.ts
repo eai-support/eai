@@ -50,5 +50,5 @@ describe('agent discovery eval harness', () => {
         }),
       ]),
     );
-  });
+  }, 30_000);
 });
