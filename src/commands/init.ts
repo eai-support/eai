@@ -659,7 +659,7 @@ Use --no-gofer only when you need a bare app scaffold.
     }
 
     // Step 2: Update package metadata
-    const pkgSpinner = startEaiStep("Customizing package.json...");
+    const pkgSpinner = startEaiStep("Customizing package metadata...");
     try {
       const pkgPath = join(targetDir, "package.json");
       const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
@@ -688,9 +688,9 @@ Use --no-gofer only when you need a bare app scaffold.
           throw error;
         }
       }
-      pkgSpinner.succeed("Updated package.json");
+      pkgSpinner.succeed("Updated package metadata");
     } catch (_err) {
-      pkgSpinner.fail("Failed to update package.json");
+      pkgSpinner.fail("Failed to update package metadata");
     }
 
     // Step 3: Generate .env.local with placeholders
