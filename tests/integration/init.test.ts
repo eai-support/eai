@@ -265,7 +265,7 @@ describe("eai init", () => {
     const consoleCapture = captureConsole();
 
     try {
-      await initCommand.parseAsync(["my-app", "--from", templateRepo], {
+      await initCommand.parseAsync(["my-app", "--from", templateRepo, "--trust-template-scripts"], {
         from: "user",
       });
       expect(createTenantAppSpy).toHaveBeenCalledWith(
@@ -464,7 +464,7 @@ describe("eai init", () => {
       );
 
     try {
-      await initCommand.parseAsync(["--from", templateRepo], {
+      await initCommand.parseAsync(["--from", templateRepo, "--trust-template-scripts"], {
         from: "user",
       });
       expect(createTenantAppSpy).toHaveBeenCalledWith(
@@ -574,7 +574,7 @@ describe("eai init", () => {
     const consoleCapture = captureConsole();
 
     try {
-      await initCommand.parseAsync(["--from", templateRepo], {
+      await initCommand.parseAsync(["--from", templateRepo, "--trust-template-scripts"], {
         from: "user",
       });
       expect(createTenantAppSpy).toHaveBeenCalledWith(
@@ -723,7 +723,7 @@ describe("eai init", () => {
       );
 
     try {
-      await initCommand.parseAsync(["hierarchy-app", "--from", templateRepo], {
+      await initCommand.parseAsync(["hierarchy-app", "--from", templateRepo, "--trust-template-scripts"], {
         from: "user",
       });
       expect(createTenantAppSpy).toHaveBeenCalledWith(
@@ -815,6 +815,7 @@ describe("eai init", () => {
           "tenant-parent",
           "--from",
           templateRepo,
+          "--trust-template-scripts",
         ],
         { from: "user" },
       );
@@ -921,7 +922,7 @@ describe("eai init", () => {
       );
 
     try {
-      await initCommand.parseAsync(["child-app", "--from", templateRepo], {
+      await initCommand.parseAsync(["child-app", "--from", templateRepo, "--trust-template-scripts"], {
         from: "user",
       });
       const envContent = await readFile(
@@ -1044,6 +1045,7 @@ describe("eai init", () => {
           "Quick App",
           "--from",
           templateRepo,
+          "--trust-template-scripts",
         ],
         { from: "user" },
       );
@@ -1280,6 +1282,7 @@ void contractType;
           "Plain App",
           "--from",
           templateRepo,
+          "--trust-template-scripts",
         ],
         { from: "user" },
       );
@@ -1389,6 +1392,7 @@ void contractType;
           "Prefilled App",
           "--from",
           templateRepo,
+          "--trust-template-scripts",
         ],
         { from: "user" },
       );
