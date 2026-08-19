@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.5 |
+| Version | 3.15.6 |
 | Released | 2026-08-19 |
-| Last Material Change | Generate build-ready app manifests safely |
-| Source Commit | `401d237fca23d595bc6563c424036eae0bc4e717` |
+| Last Material Change | Make Windows clean-machine app setup reliable |
+| Source Commit | `b8e5f93356e8bb5a41b5cb3287b7984e93c503a6` |
 
 
 ## Install
