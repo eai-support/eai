@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile, chmod } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve, win32 as win32Path } from 'node:path';
@@ -53,6 +53,7 @@ export interface SurfaceProbe {
   commandPath(command: string): string | null;
   fileExists(path: string): boolean;
   fileContent?(path: string): string | null;
+  realPath?(path: string): string | null;
   commandOutput(command: string, args: readonly string[], environment?: Readonly<Record<string, string>>): string | null;
 }
 
@@ -123,7 +124,7 @@ export const AI_SURFACES: readonly AiSurfaceDefinition[] = [
     provider: 'Anthropic',
     kind: 'desktop',
     installUrl: 'https://claude.ai/download',
-    launchSupport: 'manual-project',
+    launchSupport: 'project-and-prompt',
     commands: [],
     macApplications: ['/Applications/Claude.app'],
     windowsApplications: ['AppData/Local/AnthropicClaude/Claude.exe', 'AppData/Local/Programs/Claude/Claude.exe'],
@@ -139,21 +140,24 @@ export const AI_SURFACES: readonly AiSurfaceDefinition[] = [
   },
   {
     id: 'codex-desktop',
-    name: 'Codex Desktop',
+    name: 'ChatGPT Desktop (Codex)',
     provider: 'OpenAI',
     kind: 'desktop',
-    installUrl: 'https://openai.com/codex/',
-    launchSupport: 'project-only',
+    installUrl: 'https://learn.chatgpt.com/docs/app',
+    launchSupport: 'manual-project',
     commands: [],
-    macApplications: ['/Applications/Codex.app'],
-    windowsApplications: ['AppData/Local/Programs/Codex/Codex.exe'],
+    macApplications: ['/Applications/ChatGPT.app', '/Applications/Codex.app'],
+    windowsApplications: [
+      'AppData/Local/Programs/ChatGPT/ChatGPT.exe',
+      'AppData/Local/Programs/Codex/Codex.exe',
+    ],
   },
   {
     id: 'codex-cli',
     name: 'Codex CLI',
     provider: 'OpenAI',
     kind: 'cli',
-    installUrl: 'https://developers.openai.com/codex/cli/',
+    installUrl: 'https://learn.chatgpt.com/docs/codex/cli',
     launchSupport: 'project-and-prompt',
     commands: ['codex'],
   },
@@ -211,6 +215,13 @@ export const systemSurfaceProbe: SurfaceProbe = {
   fileContent(path) {
     try {
       return readFileSync(path, 'utf8');
+    } catch {
+      return null;
+    }
+  },
+  realPath(path) {
+    try {
+      return realpathSync(path);
     } catch {
       return null;
     }
@@ -291,6 +302,34 @@ function windowsVsCodeTarget(
   return null;
 }
 
+function vscodeHasCopilot(command: string, probe: SurfaceProbe): boolean {
+  const extensions = probe.commandOutput(command, ['--list-extensions'])?.toLowerCase() ?? '';
+  if (extensions.includes('github.copilot')) return true;
+
+  const resolvedCommand = probe.realPath?.(command) ?? command;
+  const commandDirectory = dirname(resolvedCommand);
+  return [
+    resolve(commandDirectory, '..', 'extensions', 'copilot'),
+    resolve(commandDirectory, '..', 'resources', 'app', 'extensions', 'copilot'),
+  ].some((candidate) => probe.fileExists(candidate));
+}
+
+function registeredUrlSchemeTarget(
+  scheme: 'claude' | 'ghapp',
+  platform: NodeJS.Platform,
+  probe: SurfaceProbe,
+): SurfaceTarget | null {
+  if (platform === 'win32') {
+    const registered = probe.commandOutput('reg.exe', ['query', `HKCR\\${scheme}\\shell\\open\\command`, '/ve']);
+    return registered ? { executable: `${scheme}://`, launchArgsPrefix: [], launchEnvironment: {} } : null;
+  }
+  if (platform === 'linux') {
+    const desktopHandler = probe.commandOutput('xdg-mime', ['query', 'default', `x-scheme-handler/${scheme}`])?.trim();
+    return desktopHandler ? { executable: `${scheme}://`, launchArgsPrefix: [], launchEnvironment: {} } : null;
+  }
+  return null;
+}
+
 function findSurfaceTarget(
   surface: AiSurfaceDefinition,
   platform: NodeJS.Platform,
@@ -304,15 +343,15 @@ function findSurfaceTarget(
   for (const command of surface.commands) {
     const found = probe.commandPath(command);
     if (found) {
-      if (surface.id === 'vscode-copilot') {
-        const extensions = probe.commandOutput(found, ['--list-extensions'])?.toLowerCase() ?? '';
-        if (!extensions.includes('github.copilot')) continue;
-      }
+      if (surface.id === 'vscode-copilot' && !vscodeHasCopilot(found, probe)) continue;
       return { executable: found, launchArgsPrefix: [], launchEnvironment: {} };
     }
   }
   const executable = candidateApplicationPaths(surface, platform, home).find((path) => probe.fileExists(path));
-  return executable ? { executable, launchArgsPrefix: [], launchEnvironment: {} } : null;
+  if (executable) return { executable, launchArgsPrefix: [], launchEnvironment: {} };
+  if (surface.id === 'claude-desktop') return registeredUrlSchemeTarget('claude', platform, probe);
+  if (surface.id === 'copilot-desktop') return registeredUrlSchemeTarget('ghapp', platform, probe);
+  return null;
 }
 
 export async function detectAiSurfaces(options: {
@@ -387,24 +426,28 @@ export function buildAiLaunchPlan(inventory: AiSurfaceInventory, surfaceId: AiSu
     case 'copilot-cli':
       return { ...common, mode: 'terminal', command: surface.executable, args: ['-C', project, '-i', EAI_FIRST_PROMPT], preparedPrompt: true, userMessage: 'A terminal will open an interactive EAI Copilot session.' };
     case 'copilot-desktop':
-      return { ...common, mode: 'application', command: surface.executable, args: [], preparedPrompt: false, userMessage: 'GitHub Copilot will open. Choose this project folder once, then enter /eai.' };
+      return { ...common, mode: 'url', command: 'ghapp://recent', args: [], preparedPrompt: false, userMessage: 'GitHub Copilot will open. Choose this project folder once, then ask it to use the repository EAI skill.' };
     case 'claude-desktop':
-      return { ...common, mode: 'application', command: surface.executable, args: [], preparedPrompt: false, userMessage: 'Claude Desktop will open. Start a Local session, choose this project folder, then enter /eai.' };
+      return {
+        ...common,
+        mode: 'url',
+        command: `claude://code/new?q=${encodeURIComponent(EAI_FIRST_PROMPT)}&folder=${encodeURIComponent(project)}`,
+        args: [],
+        preparedPrompt: true,
+        userMessage: 'Claude Desktop will open a Code session for this project with the EAI starting prompt ready to review.',
+      };
     case 'claude-cli':
       return { ...common, mode: 'terminal', command: surface.executable, args: [EAI_FIRST_PROMPT], preparedPrompt: true, userMessage: 'A terminal will open an interactive Claude EAI session.' };
     case 'codex-desktop': {
-      if (inventory.platform === 'win32') {
-        return { ...common, mode: 'application', command: surface.executable, args: [project], preparedPrompt: false, userMessage: 'Codex will open this project. Start with /eai.' };
-      }
       const codexCli = inventory.surfaces.find((candidate) => candidate.id === 'codex-cli');
       return codexCli?.installed && codexCli.executable
-        ? { ...common, mode: 'process', command: codexCli.executable, args: ['app', project], preparedPrompt: false, userMessage: 'Codex will open this project. Start with /eai.' }
-        : { ...common, mode: 'application', command: surface.executable, args: [project], preparedPrompt: false, userMessage: 'Codex will open this project. Start with /eai.' };
+        ? { ...common, mode: 'process', command: codexCli.executable, args: ['app', project], preparedPrompt: false, userMessage: 'ChatGPT Desktop will open this project in Codex. Ask it to use the repository EAI skill.' }
+        : { ...common, mode: 'application', command: surface.executable, args: [], preparedPrompt: false, userMessage: 'ChatGPT Desktop will open. Choose this project folder, select Codex, then ask it to use the repository EAI skill.' };
     }
     case 'codex-cli':
       return { ...common, mode: 'terminal', command: surface.executable, args: [EAI_FIRST_PROMPT], preparedPrompt: true, userMessage: 'A terminal will open an interactive Codex EAI session.' };
     case 'grok-cli':
-      return { ...common, mode: 'terminal', command: surface.executable, args: [], preparedPrompt: false, userMessage: 'A terminal will open Grok in this project. Start with /eai.' };
+      return { ...common, mode: 'terminal', command: surface.executable, args: ['--cwd', project, '--prompt', EAI_FIRST_PROMPT], preparedPrompt: true, userMessage: 'A terminal will open an interactive Grok EAI session.' };
   }
 }
 
@@ -444,9 +487,18 @@ export async function openExternalUrl(url: string, platform: NodeJS.Platform = p
   else await spawnDetached('xdg-open', [url]);
 }
 
+async function openTrustedSurfaceUrl(url: string, platform: NodeJS.Platform): Promise<void> {
+  if (!/^(?:claude:\/\/code\/new(?:[?#]|$)|ghapp:\/\/recent(?:[?#]|$))/.test(url)) {
+    throw new Error('EAI refused to open an unsupported AI workspace location.');
+  }
+  if (platform === 'darwin') await spawnDetached('open', [url]);
+  else if (platform === 'win32') await spawnDetached('rundll32.exe', ['url.dll,FileProtocolHandler', url]);
+  else await spawnDetached('xdg-open', [url]);
+}
+
 export async function executeAiLaunchPlan(plan: LaunchPlan, platform: NodeJS.Platform = process.platform): Promise<void> {
   if (plan.mode === 'url') {
-    await openExternalUrl(plan.command, platform);
+    await openTrustedSurfaceUrl(plan.command, platform);
     return;
   }
   if (plan.mode === 'application') {

@@ -16,11 +16,13 @@ function probe(
   files: string[] = [],
   outputs: Record<string, string> = {},
   contents: Record<string, string> = {},
+  realPaths: Record<string, string> = {},
 ): SurfaceProbe {
   return {
     commandPath: (command) => commands[command] ?? null,
     fileExists: (path) => files.includes(path),
     fileContent: (path) => contents[path] ?? null,
+    realPath: (path) => realPaths[path] ?? path,
     commandOutput: (command) => outputs[command] ?? null,
   };
 }
@@ -53,6 +55,41 @@ describe('AI surface contract', () => {
     });
     expect(inventory.preferredSurface).toBeNull();
     expect(inventory.recommendedSurface).toBe('grok-cli');
+  });
+
+  it('detects Copilot when current Linux VS Code supplies it as a built-in feature', async () => {
+    const codeCommand = '/usr/bin/code';
+    const resolvedCode = '/usr/share/code/bin/code';
+    const builtInCopilot = '/usr/share/code/resources/app/extensions/copilot';
+    const inventory = await detectAiSurfaces({
+      platform: 'linux',
+      home: '/home/test',
+      preferredSurface: null,
+      probe: probe(
+        { code: codeCommand },
+        [builtInCopilot],
+        { [codeCommand]: '' },
+        {},
+        { [codeCommand]: resolvedCode },
+      ),
+    });
+
+    expect(inventory.surfaces.find((surface) => surface.id === 'vscode-copilot')).toMatchObject({
+      installed: true,
+      executable: codeCommand,
+      recommended: true,
+    });
+  });
+
+  it('does not mistake plain VS Code for a Copilot-ready workspace', async () => {
+    const inventory = await detectAiSurfaces({
+      platform: 'linux',
+      home: '/home/test',
+      preferredSurface: null,
+      probe: probe({ code: '/usr/bin/code' }, [], { '/usr/bin/code': '' }),
+    });
+
+    expect(inventory.surfaces.find((surface) => surface.id === 'vscode-copilot')?.installed).toBe(false);
   });
 
   it('recommends the most complete supported workspace when none is installed', async () => {
@@ -96,7 +133,39 @@ describe('AI surface contract', () => {
     });
   });
 
-  it('uses documented manual desktop and Grok interactive launch contracts', async () => {
+  it('builds an explicit launch contract for every supported AI workspace', async () => {
+    const inventory = await detectAiSurfaces({
+      platform: 'darwin',
+      home: '/Users/test',
+      projectDirectory: '/work/customer-portal',
+      preferredSurface: null,
+      probe: probe(
+        {
+          code: '/usr/local/bin/code',
+          copilot: '/usr/local/bin/copilot',
+          claude: '/usr/local/bin/claude',
+          codex: '/usr/local/bin/codex',
+          grok: '/usr/local/bin/grok',
+        },
+        ['/Applications/GitHub Copilot.app', '/Applications/Claude.app', '/Applications/ChatGPT.app'],
+        { '/usr/local/bin/code': 'GitHub.copilot-chat' },
+      ),
+    });
+
+    const plans = Object.fromEntries(AI_SURFACES.map((surface) => [surface.id, buildAiLaunchPlan(inventory, surface.id)]));
+    expect(plans).toMatchObject({
+      'vscode-copilot': { mode: 'process', preparedPrompt: true },
+      'copilot-cli': { mode: 'terminal', preparedPrompt: true },
+      'copilot-desktop': { mode: 'url', preparedPrompt: false },
+      'claude-desktop': { mode: 'url', preparedPrompt: true },
+      'claude-cli': { mode: 'terminal', preparedPrompt: true },
+      'codex-desktop': { mode: 'process', preparedPrompt: false },
+      'codex-cli': { mode: 'terminal', preparedPrompt: true },
+      'grok-cli': { mode: 'terminal', preparedPrompt: true },
+    });
+  });
+
+  it('uses the documented Claude Desktop deep link and Grok launch contracts', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'darwin',
       home: '/Users/test',
@@ -108,17 +177,38 @@ describe('AI surface contract', () => {
       ),
     });
     expect(buildAiLaunchPlan(inventory, 'claude-desktop')).toMatchObject({
-      mode: 'application',
-      preparedPrompt: false,
+      mode: 'url',
+      command: expect.stringMatching(/^claude:\/\/code\/new\?/),
+      preparedPrompt: true,
       args: [],
     });
     expect(buildAiLaunchPlan(inventory, 'grok-cli')).toMatchObject({
       mode: 'terminal',
       cwd: '/work/customer-portal',
-      args: [],
-      preparedPrompt: false,
-      userMessage: expect.stringContaining('/eai'),
+      args: ['--cwd', '/work/customer-portal', '--prompt', expect.stringContaining('business outcome')],
+      preparedPrompt: true,
     });
+  });
+
+  it('detects packaged desktop apps through their registered URL handlers', async () => {
+    const inventory = await detectAiSurfaces({
+      platform: 'linux',
+      home: '/home/test',
+      preferredSurface: null,
+      probe: {
+        commandPath: () => null,
+        fileExists: () => false,
+        commandOutput: (command, args) => {
+          if (command !== 'xdg-mime') return null;
+          if (args.at(-1) === 'x-scheme-handler/claude') return 'claude.desktop';
+          if (args.at(-1) === 'x-scheme-handler/ghapp') return 'github-copilot.desktop';
+          return null;
+        },
+      },
+    });
+
+    expect(inventory.surfaces.find((surface) => surface.id === 'claude-desktop')?.installed).toBe(true);
+    expect(inventory.surfaces.find((surface) => surface.id === 'copilot-desktop')?.installed).toBe(true);
   });
 
   it('uses fixed HTTPS official installation sources', () => {
@@ -156,20 +246,21 @@ describe('AI surface contract', () => {
     });
   });
 
-  it('launches the native Codex desktop app on Windows even when its CLI is installed', async () => {
+  it('uses the native desktop fallback when Codex CLI is not installed on Windows', async () => {
     const codexExe = 'C:\\Users\\test\\AppData\\Local\\Programs\\Codex\\Codex.exe';
     const inventory = await detectAiSurfaces({
       platform: 'win32',
       home: 'C:\\Users\\test',
       projectDirectory: 'C:\\work\\customer-portal',
       preferredSurface: null,
-      probe: probe({ codex: 'C:\\Users\\test\\AppData\\Roaming\\npm\\codex.cmd' }, [codexExe]),
+      probe: probe({}, [codexExe]),
     });
 
     expect(buildAiLaunchPlan(inventory, 'codex-desktop')).toMatchObject({
       mode: 'application',
       command: codexExe,
-      args: ['C:\\work\\customer-portal'],
+      args: [],
+      userMessage: expect.stringContaining('Choose this project folder'),
     });
   });
 
