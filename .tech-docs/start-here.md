@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.4** (2026-08-17): Fix Windows AI workspace launch.
+The current CLI release is **v3.15.5** (2026-08-19): Generate build-ready app manifests safely.
 
 
 ## What The Pieces Do

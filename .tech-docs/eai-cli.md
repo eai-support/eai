@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.4 |
-| Released | 2026-08-17 |
-| Last Material Change | Fix Windows AI workspace launch |
-| Source Commit | `a751bf2352418a6f8faaee05fd98531e73a30e0f` |
+| Version | 3.15.5 |
+| Released | 2026-08-19 |
+| Last Material Change | Generate build-ready app manifests safely |
+| Source Commit | `401d237fca23d595bc6563c424036eae0bc4e717` |
 
 
 ## Install

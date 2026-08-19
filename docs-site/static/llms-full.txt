@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.15.4.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.15.5.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -388,7 +388,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.4** (2026-08-17): Fix Windows AI workspace launch.
+The current CLI release is **v3.15.5** (2026-08-19): Generate build-ready app manifests safely.
 
 
 ## What The Pieces Do
@@ -526,10 +526,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.4 |
-| Released | 2026-08-17 |
-| Last Material Change | Fix Windows AI workspace launch |
-| Source Commit | `a751bf2352418a6f8faaee05fd98531e73a30e0f` |
+| Version | 3.15.5 |
+| Released | 2026-08-19 |
+| Last Material Change | Generate build-ready app manifests safely |
+| Source Commit | `401d237fca23d595bc6563c424036eae0bc4e717` |
 
 
 ## Install
@@ -1955,7 +1955,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.15.4. The same catalog powers human stderr output, JSON output for AI
+v3.15.5. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
