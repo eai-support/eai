@@ -691,20 +691,15 @@ Use --no-gofer only when you need a bare app scaffold.
         "scripts",
         "generate-object-types-json.mjs",
       );
-      let generatorAvailable = true;
       try {
         await access(generatorPath);
       } catch {
-        generatorAvailable = false;
+        throw new Error(
+          "The app template is missing its Object Type manifest generator. Update the template and try again.",
+        );
       }
-      if (generatorAvailable) {
-        await exec(process.execPath, [generatorPath], { cwd: targetDir });
-      }
-      typesSpinner.succeed(
-        generatorAvailable
-          ? "Created Object Types scaffold and runtime manifests"
-          : "Created Object Types scaffold",
-      );
+      await exec(process.execPath, [generatorPath], { cwd: targetDir });
+      typesSpinner.succeed("Created Object Types scaffold and runtime manifests");
     } catch (err) {
       typesSpinner.fail("Failed to create Object Types scaffold");
       out.error(errMsg(err));
