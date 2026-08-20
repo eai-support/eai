@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.15.6.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.15.7.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -388,7 +388,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.6** (2026-08-19): Make Windows clean-machine app setup reliable.
+The current CLI release is **v3.15.7** (2026-08-20): Improve reliable AI workspace launch across current providers.
 
 
 ## What The Pieces Do
@@ -459,6 +459,23 @@ The prepared first conversation begins with the business outcome, explains EAI
 capabilities as they become relevant, and pauses once for approval of the
 business specification before implementation.
 
+Current handoff support:
+
+| AI workspace | What `eai start` does | Remaining user action |
+|---|---|---|
+| GitHub Copilot in VS Code | Opens the project and starts the EAI prompt. It recognises both bundled and separately installed Copilot. | Sign in to GitHub if VS Code asks. |
+| GitHub Copilot CLI | Opens the project in an interactive session and sends the EAI prompt. | Sign in if the CLI asks. |
+| GitHub Copilot app | Opens the app. | Choose the local project folder, then use the repository EAI skill. |
+| Claude Desktop | Opens a Code session with the EAI prompt when its secure app link is available; otherwise opens Claude for a manual project choice. | Confirm or choose the project folder when Claude asks. |
+| Claude Code | Starts an interactive session in the project and sends the EAI prompt. | Sign in if Claude asks. |
+| ChatGPT Desktop with Codex | Uses `codex app <folder>` when Codex CLI is available. Otherwise it opens the desktop app. | If only the app is available, choose the folder and use the repository EAI skill. |
+| Codex CLI | Starts an interactive session in the project and sends the EAI prompt. | Sign in if Codex asks. |
+| Grok Build | Starts in the project with the EAI prompt. | Sign in if Grok asks. |
+
+`eai start --check` confirms local software capability only. Provider account,
+subscription, organization policy, and sign-in state are confirmed by the
+provider when the workspace opens.
+
 ## Connect To A Tenant
 
 ```bash
@@ -526,10 +543,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.6 |
-| Released | 2026-08-19 |
-| Last Material Change | Make Windows clean-machine app setup reliable |
-| Source Commit | `b8e5f93356e8bb5a41b5cb3287b7984e93c503a6` |
+| Version | 3.15.7 |
+| Released | 2026-08-20 |
+| Last Material Change | Improve reliable AI workspace launch across current providers |
+| Source Commit | `8cf062bb0d676af0cabe433d9f884527db23374b` |
 
 
 ## Install
@@ -1955,7 +1972,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.15.6. The same catalog powers human stderr output, JSON output for AI
+v3.15.7. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
