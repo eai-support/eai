@@ -85,6 +85,23 @@ The prepared first conversation begins with the business outcome, explains EAI
 capabilities as they become relevant, and pauses once for approval of the
 business specification before implementation.
 
+Current handoff support:
+
+| AI workspace | What `eai start` does | Remaining user action |
+|---|---|---|
+| GitHub Copilot in VS Code | Opens the project and starts the EAI prompt. It recognises both bundled and separately installed Copilot. | Sign in to GitHub if VS Code asks. |
+| GitHub Copilot CLI | Opens the project in an interactive session and sends the EAI prompt. | Sign in if the CLI asks. |
+| GitHub Copilot app | Opens the app. | Choose the local project folder, then use the repository EAI skill. |
+| Claude Desktop | Opens a Code session with the EAI prompt when its secure app link is available; otherwise opens Claude for a manual project choice. | Confirm or choose the project folder when Claude asks. |
+| Claude Code | Starts an interactive session in the project and sends the EAI prompt. | Sign in if Claude asks. |
+| ChatGPT Desktop with Codex | Uses `codex app <folder>` when Codex CLI is available. Otherwise it opens the desktop app. | If only the app is available, choose the folder and use the repository EAI skill. |
+| Codex CLI | Starts an interactive session in the project and sends the EAI prompt. | Sign in if Codex asks. |
+| Grok Build | Starts in the project with the EAI prompt. | Sign in if Grok asks. |
+
+`eai start --check` confirms local software capability only. Provider account,
+subscription, organization policy, and sign-in state are confirmed by the
+provider when the workspace opens.
+
 ## Connect To A Tenant
 
 ```bash
