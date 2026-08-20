@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.6** (2026-08-19): Make Windows clean-machine app setup reliable.
+The current CLI release is **v3.15.7** (2026-08-20): Improve reliable AI workspace launch across current providers.
 
 
 ## What The Pieces Do
