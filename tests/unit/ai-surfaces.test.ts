@@ -1,15 +1,51 @@
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   AI_SURFACES,
   buildAiLaunchPlan,
   detectAiSurfaces,
+  executeAiLaunchPlan,
   readAiPreferences,
   rememberAiSurface,
+  type LaunchPlan,
   type SurfaceProbe,
 } from '../../src/lib/ai-surfaces.js';
+
+const spawnMock = vi.hoisted(() => vi.fn());
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, spawn: spawnMock };
+});
+
+function urlLaunchPlan(command: string): LaunchPlan {
+  return {
+    surfaceId: 'claude-desktop',
+    surfaceName: 'Claude Desktop',
+    projectDirectory: '/work/customer-portal',
+    mode: 'url',
+    command,
+    args: [],
+    cwd: '/work/customer-portal',
+    preparedPrompt: true,
+    userMessage: 'Claude Desktop will open.',
+  };
+}
+
+function allowDetachedLaunch(): void {
+  spawnMock.mockImplementation(() => {
+    const child = {
+      once: (event: string, listener: () => void) => {
+        if (event === 'spawn') listener();
+        return child;
+      },
+      unref: vi.fn(),
+    };
+    return child;
+  });
+}
 
 function probe(
   commands: Record<string, string>,
@@ -233,6 +269,39 @@ describe('AI surface contract', () => {
       command: claudeApp,
       preparedPrompt: false,
     });
+  });
+
+  it.each([
+    ['claude://code/new?q=Start&folder=%2Fwork%2Fcustomer-portal', 'open', 'darwin'],
+    ['ghapp://recent', 'rundll32.exe', 'win32'],
+  ] as const)('launches the approved desktop deep link %s', async (url, launcher, platform) => {
+    spawnMock.mockReset();
+    allowDetachedLaunch();
+
+    await executeAiLaunchPlan(urlLaunchPlan(url), platform);
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(spawnMock).toHaveBeenCalledWith(
+      launcher,
+      platform === 'darwin' ? [url] : ['url.dll,FileProtocolHandler', url],
+      expect.objectContaining({ detached: true, windowsHide: true }),
+    );
+  });
+
+  it.each([
+    'https://example.com',
+    'file:///tmp/customer-portal',
+    'claude://settings',
+    'claude://code/newer?q=Start',
+    'ghapp://settings',
+    'ghapp://recently-opened',
+  ])('rejects the unapproved desktop location %s before launch', async (url) => {
+    spawnMock.mockReset();
+
+    await expect(executeAiLaunchPlan(urlLaunchPlan(url), 'darwin')).rejects.toThrow(
+      'EAI refused to open an unsupported AI workspace location.',
+    );
+    expect(spawnMock).not.toHaveBeenCalled();
   });
 
   it('uses fixed HTTPS official installation sources', () => {
