@@ -347,10 +347,16 @@ function findSurfaceTarget(
       return { executable: found, launchArgsPrefix: [], launchEnvironment: {} };
     }
   }
+  if (surface.id === 'claude-desktop') {
+    const handler = registeredUrlSchemeTarget('claude', platform, probe);
+    if (handler) return handler;
+  }
+  if (surface.id === 'copilot-desktop') {
+    const handler = registeredUrlSchemeTarget('ghapp', platform, probe);
+    if (handler) return handler;
+  }
   const executable = candidateApplicationPaths(surface, platform, home).find((path) => probe.fileExists(path));
   if (executable) return { executable, launchArgsPrefix: [], launchEnvironment: {} };
-  if (surface.id === 'claude-desktop') return registeredUrlSchemeTarget('claude', platform, probe);
-  if (surface.id === 'copilot-desktop') return registeredUrlSchemeTarget('ghapp', platform, probe);
   return null;
 }
 
@@ -426,16 +432,27 @@ export function buildAiLaunchPlan(inventory: AiSurfaceInventory, surfaceId: AiSu
     case 'copilot-cli':
       return { ...common, mode: 'terminal', command: surface.executable, args: ['-C', project, '-i', EAI_FIRST_PROMPT], preparedPrompt: true, userMessage: 'A terminal will open an interactive EAI Copilot session.' };
     case 'copilot-desktop':
-      return { ...common, mode: 'url', command: 'ghapp://recent', args: [], preparedPrompt: false, userMessage: 'GitHub Copilot will open. Choose this project folder once, then ask it to use the repository EAI skill.' };
+      return surface.executable === 'ghapp://'
+        ? { ...common, mode: 'url', command: 'ghapp://recent', args: [], preparedPrompt: false, userMessage: 'GitHub Copilot will open. Choose this project folder once, then ask it to use the repository EAI skill.' }
+        : { ...common, mode: 'application', command: surface.executable, args: [], preparedPrompt: false, userMessage: 'GitHub Copilot will open. Choose this project folder once, then ask it to use the repository EAI skill.' };
     case 'claude-desktop':
-      return {
-        ...common,
-        mode: 'url',
-        command: `claude://code/new?q=${encodeURIComponent(EAI_FIRST_PROMPT)}&folder=${encodeURIComponent(project)}`,
-        args: [],
-        preparedPrompt: true,
-        userMessage: 'Claude Desktop will open a Code session for this project with the EAI starting prompt ready to review.',
-      };
+      return surface.executable === 'claude://'
+        ? {
+            ...common,
+            mode: 'url',
+            command: `claude://code/new?q=${encodeURIComponent(EAI_FIRST_PROMPT)}&folder=${encodeURIComponent(project)}`,
+            args: [],
+            preparedPrompt: true,
+            userMessage: 'Claude Desktop will open a Code session for this project with the EAI starting prompt ready to review.',
+          }
+        : {
+            ...common,
+            mode: 'application',
+            command: surface.executable,
+            args: [],
+            preparedPrompt: false,
+            userMessage: 'Claude Desktop will open. Choose this project folder, start a Code session, then ask it to use the repository EAI skill.',
+          };
     case 'claude-cli':
       return { ...common, mode: 'terminal', command: surface.executable, args: [EAI_FIRST_PROMPT], preparedPrompt: true, userMessage: 'A terminal will open an interactive Claude EAI session.' };
     case 'codex-desktop': {

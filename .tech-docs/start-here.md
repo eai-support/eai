@@ -92,7 +92,7 @@ Current handoff support:
 | GitHub Copilot in VS Code | Opens the project and starts the EAI prompt. It recognises both bundled and separately installed Copilot. | Sign in to GitHub if VS Code asks. |
 | GitHub Copilot CLI | Opens the project in an interactive session and sends the EAI prompt. | Sign in if the CLI asks. |
 | GitHub Copilot app | Opens the app. | Choose the local project folder, then use the repository EAI skill. |
-| Claude Desktop | Opens a Code session for the project with the EAI prompt prepared. | Confirm the folder when Claude asks. |
+| Claude Desktop | Opens a Code session with the EAI prompt when its secure app link is available; otherwise opens Claude for a manual project choice. | Confirm or choose the project folder when Claude asks. |
 | Claude Code | Starts an interactive session in the project and sends the EAI prompt. | Sign in if Claude asks. |
 | ChatGPT Desktop with Codex | Uses `codex app <folder>` when Codex CLI is available. Otherwise it opens the desktop app. | If only the app is available, choose the folder and use the repository EAI skill. |
 | Codex CLI | Starts an interactive session in the project and sends the EAI prompt. | Sign in if Codex asks. |

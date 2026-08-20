@@ -156,8 +156,8 @@ describe('AI surface contract', () => {
     expect(plans).toMatchObject({
       'vscode-copilot': { mode: 'process', preparedPrompt: true },
       'copilot-cli': { mode: 'terminal', preparedPrompt: true },
-      'copilot-desktop': { mode: 'url', preparedPrompt: false },
-      'claude-desktop': { mode: 'url', preparedPrompt: true },
+      'copilot-desktop': { mode: 'application', preparedPrompt: false },
+      'claude-desktop': { mode: 'application', preparedPrompt: false },
       'claude-cli': { mode: 'terminal', preparedPrompt: true },
       'codex-desktop': { mode: 'process', preparedPrompt: false },
       'codex-cli': { mode: 'terminal', preparedPrompt: true },
@@ -167,14 +167,15 @@ describe('AI surface contract', () => {
 
   it('uses the documented Claude Desktop deep link and Grok launch contracts', async () => {
     const inventory = await detectAiSurfaces({
-      platform: 'darwin',
-      home: '/Users/test',
+      platform: 'linux',
+      home: '/home/test',
       projectDirectory: '/work/customer-portal',
       preferredSurface: null,
-      probe: probe(
-        { grok: '/usr/local/bin/grok' },
-        ['/Applications/Claude.app'],
-      ),
+      probe: {
+        ...probe({ grok: '/usr/local/bin/grok' }),
+        commandOutput: (command, args) =>
+          command === 'xdg-mime' && args.at(-1) === 'x-scheme-handler/claude' ? 'claude.desktop' : null,
+      },
     });
     expect(buildAiLaunchPlan(inventory, 'claude-desktop')).toMatchObject({
       mode: 'url',
@@ -209,6 +210,29 @@ describe('AI surface contract', () => {
 
     expect(inventory.surfaces.find((surface) => surface.id === 'claude-desktop')?.installed).toBe(true);
     expect(inventory.surfaces.find((surface) => surface.id === 'copilot-desktop')?.installed).toBe(true);
+  });
+
+  it('falls back to the installed desktop app when its deep-link handler is unavailable', async () => {
+    const copilotApp = '/Applications/GitHub Copilot.app';
+    const claudeApp = '/Applications/Claude.app';
+    const inventory = await detectAiSurfaces({
+      platform: 'darwin',
+      home: '/Users/test',
+      projectDirectory: '/work/customer-portal',
+      preferredSurface: null,
+      probe: probe({}, [copilotApp, claudeApp]),
+    });
+
+    expect(buildAiLaunchPlan(inventory, 'copilot-desktop')).toMatchObject({
+      mode: 'application',
+      command: copilotApp,
+      preparedPrompt: false,
+    });
+    expect(buildAiLaunchPlan(inventory, 'claude-desktop')).toMatchObject({
+      mode: 'application',
+      command: claudeApp,
+      preparedPrompt: false,
+    });
   });
 
   it('uses fixed HTTPS official installation sources', () => {
