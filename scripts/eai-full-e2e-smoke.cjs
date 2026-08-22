@@ -501,6 +501,11 @@ const SMOKE_CALLS = {
   ],
 };
 
+const CONNECTION_WAIT_OPTION_DECISIONS = {
+  '--wait': 'Regional activation polling is covered by CLI contract tests; deployed release smoke stays read-only until the regional activation endpoint and rollout gate are enabled.',
+  '--wait-timeout-seconds': 'Bounded timeout and non-zero incomplete outcomes are covered by CLI contract tests; deployed release smoke does not infer readiness before backend activation evidence exists.',
+};
+
 const OPTION_DECISIONS = {
   'eai start': {
     '--surface': 'Explicit provider selection is covered by command integration tests; release smoke keeps detection read-only.',
@@ -614,6 +619,13 @@ const OPTION_DECISIONS = {
   'eai app deploy-source-unknown-status': {
     '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
   },
+  'eai connection get': CONNECTION_WAIT_OPTION_DECISIONS,
+  'eai connection create': CONNECTION_WAIT_OPTION_DECISIONS,
+  'eai connection update': CONNECTION_WAIT_OPTION_DECISIONS,
+  'eai connection activate': CONNECTION_WAIT_OPTION_DECISIONS,
+  'eai connection suspend': CONNECTION_WAIT_OPTION_DECISIONS,
+  'eai connection revoke': CONNECTION_WAIT_OPTION_DECISIONS,
+  'eai connection rotate-key': CONNECTION_WAIT_OPTION_DECISIONS,
   'eai workflow provision': {
     '--vertical': 'Deprecated alias for --app; not used by new V4-native/app vocabulary smoke.',
     '--write-app-config': 'Writes cloud configuration; opt-in outside the default destructive smoke.',

@@ -38,6 +38,8 @@ describe('full e2e smoke traceability', () => {
     expect(output).toContain('Smoke calls / options');
     expect(output).toContain('Deferred options');
     expect(output).toContain('`eai vertical list`');
+    expect(output).toContain('--wait: Regional activation polling is covered by CLI contract tests;');
+    expect(output).toContain('--wait-timeout-seconds: Bounded timeout and non-zero incomplete outcomes are covered by CLI contract tests;');
   });
 
   test('redacts password-like values when live auth preflight fails', () => {
