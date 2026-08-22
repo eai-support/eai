@@ -4,6 +4,33 @@
     "eai": {
       "features": [
         {
+          "id": "tenant-machine-connections-cli",
+          "description": "Tenant-admin CLI lifecycle for Standard API Key and Advanced Security connections with text and JSON output.",
+          "owned_paths": [
+            "src/commands/connection.ts",
+            "src/index.ts",
+            "scripts/eai-full-e2e-smoke.cjs",
+            "tests/unit/connection-command.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts"
+          ],
+          "required_repo_tests": [
+            "tests/unit/connection-command.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "machine-connections"
+          ],
+          "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/backend/machine-connections.spec.ts"
+            }
+          ]
+        },
+        {
           "id": "eai-cli-tenant-workflow-classifiers",
           "description": "CLI users validate and save reusable classifier JSON, publish immutable versions, separately associate exact published versions with app workflows, reversibly disable or enable classifiers, and permanently delete only disabled unpublished drafts through PublicAPI v4.",
           "owned_paths": [
