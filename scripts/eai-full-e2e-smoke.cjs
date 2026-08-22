@@ -73,6 +73,14 @@ const TRACEABILITY_BASE = [
   ['eai app deploy-source-unknown-status', 'read', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids depending on a pre-existing deployment handoff.'],
   ['eai app select', 'update-local', 'live', 'Writes the app key into the disposable workspace env.'],
   ['eai app provision', 'create/update', 'live', 'Prepares platform storage for the smoke app.'],
+  ['eai connection list', 'read', 'covered-by-cli', 'Lists tenant-owned machine connections; deployed proof starts only after the disabled-by-default platform gates are enabled.'],
+  ['eai connection get', 'read', 'covered-by-cli', 'Reads one tenant-owned machine connection without returning credential material.'],
+  ['eai connection create', 'create', 'covered-by-cli', 'Creates Standard API Key or Advanced Security metadata; the one-time key is redacted unless the operator explicitly requests reveal.'],
+  ['eai connection update', 'update', 'covered-by-cli', 'Updates least-privilege grant, owner, expiry, network, and rate metadata with optimistic concurrency.'],
+  ['eai connection activate', 'update', 'covered-by-cli', 'Activates an eligible connection with optimistic concurrency.'],
+  ['eai connection suspend', 'update', 'covered-by-cli', 'Immediately blocks a connection while preserving its audit record.'],
+  ['eai connection revoke', 'delete', 'covered-by-cli', 'Irreversibly revokes runtime use while retaining the management and audit record.'],
+  ['eai connection rotate-key', 'update', 'covered-by-cli', 'Rotates a Standard key and redacts the one-time replacement unless explicitly revealed.'],
   ['eai classifier delete', 'delete', 'covered-by-cli', 'Permanently removes only a disabled unpublished draft after exact classifier-key confirmation; command integration tests mock the API boundary.'],
   ['eai classifier disable', 'update', 'covered-by-cli', 'Reversibly disables classifier mutation, targeting, and runtime use while retaining immutable history; command integration tests mock the API boundary.'],
   ['eai classifier enable', 'update', 'covered-by-cli', 'Re-enables a disabled classifier at its prior draft or published lifecycle state; command integration tests mock the API boundary.'],
@@ -324,6 +332,31 @@ const SMOKE_CALLS = {
     'eai app provision <app-key> --tenant-id <tenant-id> --backend all --dry-run --format json',
     'eai app provision <app-key> --tenant-id <tenant-id> --backend all --select --format json',
   ],
+  'eai connection list': [
+    'eai connection list --page 1 --limit 50 --tenant-id <tenant-id> --format json --json',
+  ],
+  'eai connection get': [
+    'eai connection get <connection-id> --tenant-id <tenant-id> --format json --json',
+  ],
+  'eai connection create': [
+    'eai connection create --name <name> --owner-name <name> --owner-email <email> --model api-key --description <purpose> --action read --action query --object-type <object-type> --expires-at <utc> --allowed-cidr <cidr> --requests-per-minute 60 --directory-tenant-id <directory-tenant-id> --client-id <client-id> --reveal-key --tenant-id <tenant-id> --format json --json',
+  ],
+  'eai connection update': [
+    'eai connection update <connection-id> --expected-version 1 --name <name> --description <purpose> --owner-name <name> --owner-email <email> --action read --object-type <object-type> --expires-at <utc> --allowed-cidr <cidr> --requests-per-minute 60 --tenant-id <tenant-id> --format json --json',
+    'eai connection update <connection-id> --expected-version 1 --clear-description --clear-expiry --clear-rate-limit --tenant-id <tenant-id> --format json',
+  ],
+  'eai connection activate': [
+    'eai connection activate <connection-id> --expected-version 1 --tenant-id <tenant-id> --format json --json',
+  ],
+  'eai connection suspend': [
+    'eai connection suspend <connection-id> --expected-version 1 --tenant-id <tenant-id> --format json --json',
+  ],
+  'eai connection revoke': [
+    'eai connection revoke <connection-id> --expected-version 1 --tenant-id <tenant-id> --format json --json',
+  ],
+  'eai connection rotate-key': [
+    'eai connection rotate-key <connection-id> --expected-version 1 --tenant-id <tenant-id> --format json --json --reveal-key',
+  ],
   'eai classifier delete': [
     'eai classifier delete <classifier-key> --confirm <classifier-key> --tenant-id <tenant-id> --format json',
   ],
@@ -468,6 +501,11 @@ const SMOKE_CALLS = {
   ],
 };
 
+const CONNECTION_WAIT_OPTION_DECISIONS = {
+  '--wait': 'Regional activation polling is covered by CLI contract tests; deployed release smoke stays read-only until the regional activation endpoint and rollout gate are enabled.',
+  '--wait-timeout-seconds': 'Bounded timeout and non-zero incomplete outcomes are covered by CLI contract tests; deployed release smoke does not infer readiness before backend activation evidence exists.',
+};
+
 const OPTION_DECISIONS = {
   'eai start': {
     '--surface': 'Explicit provider selection is covered by command integration tests; release smoke keeps detection read-only.',
@@ -581,6 +619,13 @@ const OPTION_DECISIONS = {
   'eai app deploy-source-unknown-status': {
     '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
   },
+  'eai connection get': CONNECTION_WAIT_OPTION_DECISIONS,
+  'eai connection create': CONNECTION_WAIT_OPTION_DECISIONS,
+  'eai connection update': CONNECTION_WAIT_OPTION_DECISIONS,
+  'eai connection activate': CONNECTION_WAIT_OPTION_DECISIONS,
+  'eai connection suspend': CONNECTION_WAIT_OPTION_DECISIONS,
+  'eai connection revoke': CONNECTION_WAIT_OPTION_DECISIONS,
+  'eai connection rotate-key': CONNECTION_WAIT_OPTION_DECISIONS,
   'eai workflow provision': {
     '--vertical': 'Deprecated alias for --app; not used by new V4-native/app vocabulary smoke.',
     '--write-app-config': 'Writes cloud configuration; opt-in outside the default destructive smoke.',
@@ -789,6 +834,36 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'Yes - app storage/provisioning metadata',
     cleanupMechanism: 'No app storage deprovision command yet; dedicated smoke tenant expected',
     cleanupVerified: 'No - cleanup gap documented',
+  },
+  'eai connection create': {
+    createsExternalArtifact: 'Yes - tenant machine-connection record and, for Standard, a one-time credential',
+    cleanupMechanism: 'eai connection revoke <connection-id> retains audit history and permanently blocks runtime use',
+    cleanupVerified: 'No - live mutation remains disabled until the platform rollout gate is enabled',
+  },
+  'eai connection update': {
+    createsExternalArtifact: 'Updates tenant machine-connection grant metadata',
+    cleanupMechanism: 'Restore the prior optimistic versioned grant or revoke the connection',
+    cleanupVerified: 'No - live mutation remains disabled until the platform rollout gate is enabled',
+  },
+  'eai connection activate': {
+    createsExternalArtifact: 'Updates connection lifecycle state',
+    cleanupMechanism: 'eai connection suspend or revoke',
+    cleanupVerified: 'No - live mutation remains disabled until the platform rollout gate is enabled',
+  },
+  'eai connection suspend': {
+    createsExternalArtifact: 'Updates connection lifecycle state',
+    cleanupMechanism: 'eai connection activate after review, or revoke permanently',
+    cleanupVerified: 'No - live mutation remains disabled until the platform rollout gate is enabled',
+  },
+  'eai connection revoke': {
+    createsExternalArtifact: 'No new runtime authority; permanently removes runtime use',
+    cleanupMechanism: 'No reversal by design; create a new reviewed connection if access is needed later',
+    cleanupVerified: 'No - live mutation remains disabled until the platform rollout gate is enabled',
+  },
+  'eai connection rotate-key': {
+    createsExternalArtifact: 'Replaces a Standard credential and invalidates the prior key',
+    cleanupMechanism: 'Rotate again or revoke the connection',
+    cleanupVerified: 'No - live mutation remains disabled until the platform rollout gate is enabled',
   },
   'eai classifier delete': {
     createsExternalArtifact: 'No - permanently removes one mutable classifier draft',
