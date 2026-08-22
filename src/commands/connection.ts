@@ -19,6 +19,8 @@ interface CommonOptions {
   format?: string;
   json?: boolean;
   revealKey?: boolean;
+  wait?: boolean;
+  waitTimeoutSeconds?: string;
 }
 
 interface CreateOptions extends CommonOptions {
@@ -66,6 +68,32 @@ interface ConnectionContext {
   tenantId: string;
 }
 
+/** Closed transport states for applying one saved target across all regions. */
+export type RegionalActivationState = "saved" | "activating" | "active";
+
+/** Safe regional progress returned separately from connection lifecycle. */
+export interface RegionalActivation {
+  state: RegionalActivationState;
+  targetGrantVersion?: number;
+  targetProjectionVersion?: number;
+  securityEpoch?: number;
+  requiredRegionCount?: number;
+  confirmedRegionCount?: number;
+  startedAt?: string;
+  deadlineAt?: string;
+  failClosed?: boolean;
+  reasonCode?: string;
+  pollAfterSeconds?: number;
+}
+
+interface RegionalActivationWaitDependencies {
+  initialResult?: Record<string, unknown> | unknown[];
+  poll: () => Promise<Record<string, unknown> | unknown[]>;
+  timeoutMs: number;
+  now?: () => number;
+  sleep?: (milliseconds: number) => Promise<void>;
+}
+
 function repeated(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
@@ -78,6 +106,18 @@ function common(command: Command): Command {
     )
     .option("--format <format>", "Output format (text|json)", "text")
     .option("--json", "Shortcut for --format json");
+}
+
+function withRegionalActivationWait(command: Command): Command {
+  return command
+    .option(
+      "--wait",
+      "Wait until every required serving region confirms this saved change",
+    )
+    .option(
+      "--wait-timeout-seconds <seconds>",
+      "Maximum wait before returning an incomplete, non-zero result (1-600)",
+    );
 }
 
 async function context(options: CommonOptions): Promise<ConnectionContext> {
@@ -117,6 +157,16 @@ function positiveRate(value?: string): number | undefined {
   return parsed;
 }
 
+/** Enforces the CLI's finite 1-600 second regional confirmation window. */
+export function boundedWaitTimeoutMs(value?: string): number {
+  if (value === undefined) return 60_000;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 600) {
+    throw new Error("--wait-timeout-seconds must be an integer from 1 to 600.");
+  }
+  return parsed * 1_000;
+}
+
 function boundedListNumber(
   value: string,
   flag: "--page" | "--limit",
@@ -147,6 +197,116 @@ export function buildConnectionListSuffix(
 
 function unique(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Reads direct or wrapped activation responses without treating a legacy
+ * response as proof; unknown states fail closed.
+ */
+export function regionalActivationFromResult(
+  result: Record<string, unknown> | unknown[],
+): RegionalActivation | null {
+  if (Array.isArray(result)) return null;
+  const connection = isRecord(result.connection) ? result.connection : result;
+  const candidate = connection.regionalActivation ?? result.regionalActivation;
+  if (!isRecord(candidate)) return null;
+  if (!["saved", "activating", "active"].includes(String(candidate.state))) {
+    throw new Error("Regional activation returned an unsupported state.");
+  }
+  return candidate as unknown as RegionalActivation;
+}
+
+function regionalActivationLabel(
+  activation: RegionalActivation | null,
+): "Saved" | "Activating" | "Active" | "Not yet reported" {
+  if (activation === null) return "Not yet reported";
+  if (activation.state === "saved") return "Saved";
+  if (activation.state === "activating") return "Activating";
+  return "Active";
+}
+
+function connectionIdFromResult(
+  result: Record<string, unknown> | unknown[],
+): string | null {
+  if (Array.isArray(result)) return null;
+  const connection = isRecord(result.connection) ? result.connection : result;
+  return typeof connection.id === "string" && connection.id.length > 0
+    ? connection.id
+    : null;
+}
+
+function resultWithRegionalActivation(
+  result: Record<string, unknown> | unknown[],
+  activation: RegionalActivation,
+): Record<string, unknown> | unknown[] {
+  if (Array.isArray(result)) return result;
+  if (isRecord(result.connection)) {
+    return {
+      ...result,
+      regionalActivation: activation,
+      connection: { ...result.connection, regionalActivation: activation },
+    };
+  }
+  return { ...result, regionalActivation: activation };
+}
+
+function defaultSleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+/**
+ * Wait for explicit regional proof. Elapsed time, lifecycle status and a
+ * successful save never count as regional activation.
+ */
+export async function waitForRegionalActivation({
+  initialResult,
+  poll,
+  timeoutMs,
+  now = Date.now,
+  sleep = defaultSleep,
+}: RegionalActivationWaitDependencies): Promise<RegionalActivation> {
+  const startedAt = now();
+  let activation = initialResult
+    ? regionalActivationFromResult(initialResult)
+    : null;
+
+  while (true) {
+    if (activation?.state === "active") return activation;
+    const remainingMs = timeoutMs - (now() - startedAt);
+    if (remainingMs <= 0) {
+      throw new Error(
+        `Regional activation is incomplete after ${Math.ceil(timeoutMs / 1_000)} seconds. The change is saved, but not confirmed active in every required region.`,
+      );
+    }
+    if (activation !== null) {
+      const pollAfterMs = Math.min(
+        Math.max(activation.pollAfterSeconds ?? 2, 1) * 1_000,
+        10_000,
+        remainingMs,
+      );
+      await sleep(pollAfterMs);
+    }
+    let polled: Record<string, unknown> | unknown[];
+    try {
+      polled = await poll();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Regional activation could not be confirmed: ${detail}. The change may be saved, but regional readiness is incomplete.`,
+        { cause: error },
+      );
+    }
+    activation = regionalActivationFromResult(polled);
+    if (activation === null) {
+      throw new Error(
+        "Regional activation status was not reported. The change may be saved, but it cannot be confirmed active.",
+      );
+    }
+  }
 }
 
 export function buildConnectionCreatePayload(
@@ -232,13 +392,12 @@ function buildConnectionUpdatePayload(
   return body;
 }
 
-async function request(
+async function requestWithContext(
+  ctx: ConnectionContext,
   method: PlatformMethod,
   suffix: string,
   body: unknown,
-  options: CommonOptions,
 ): Promise<Record<string, unknown> | unknown[]> {
-  const ctx = await context(options);
   const response = await ctx.client.requestPublicApi(
     path(ctx.tenantId, suffix),
     { method, body },
@@ -248,6 +407,48 @@ async function request(
     throw new Error(`${error.status} ${error.message}`);
   }
   return (await response.json()) as Record<string, unknown> | unknown[];
+}
+
+async function request(
+  method: PlatformMethod,
+  suffix: string,
+  body: unknown,
+  options: CommonOptions,
+): Promise<Record<string, unknown> | unknown[]> {
+  return requestWithContext(await context(options), method, suffix, body);
+}
+
+async function requestAndMaybeWait(
+  method: PlatformMethod,
+  suffix: string,
+  body: unknown,
+  options: CommonOptions,
+  knownConnectionId?: string,
+): Promise<Record<string, unknown> | unknown[]> {
+  if (!options.wait && options.waitTimeoutSeconds !== undefined) {
+    throw new Error("--wait-timeout-seconds requires --wait.");
+  }
+  const ctx = await context(options);
+  const result = await requestWithContext(ctx, method, suffix, body);
+  if (!options.wait) return result;
+  const connectionId = knownConnectionId ?? connectionIdFromResult(result);
+  if (!connectionId) {
+    throw new Error(
+      "Regional activation cannot be confirmed because the response did not include a connection ID.",
+    );
+  }
+  const activation = await waitForRegionalActivation({
+    initialResult: result,
+    timeoutMs: boundedWaitTimeoutMs(options.waitTimeoutSeconds),
+    poll: () =>
+      requestWithContext(
+        ctx,
+        "GET",
+        `/${encodeURIComponent(connectionId)}/regional-activation`,
+        undefined,
+      ),
+  });
+  return resultWithRegionalActivation(result, activation);
 }
 
 export function resultForOutput(
@@ -282,9 +483,10 @@ function printResult(
     out.table(
       connectionRows.map((item) => {
         const record = item as Record<string, unknown>;
+        const activation = regionalActivationFromResult(record);
         return [
           String(record.name ?? record.id ?? ""),
-          `${record.securityModel ?? ""} · ${record.status ?? ""}`,
+          `${record.securityModel ?? ""} · lifecycle ${record.status ?? ""} · regional ${regionalActivationLabel(activation)}`,
         ];
       }),
     );
@@ -295,11 +497,20 @@ function printResult(
     string,
     unknown
   >;
+  const activation = regionalActivationFromResult(visibleRecord);
   out.table([
     ["Connection", String(connection.name ?? connection.id ?? "")],
     ["ID", String(connection.id ?? "")],
     ["Security", String(connection.securityModel ?? "")],
-    ["Status", String(connection.status ?? "")],
+    ["Lifecycle", String(connection.status ?? "")],
+    ["Regional activation", regionalActivationLabel(activation)],
+    [
+      "Regional progress",
+      activation?.requiredRegionCount !== undefined
+        ? `${activation.confirmedRegionCount ?? 0}/${activation.requiredRegionCount}`
+        : "not reported",
+    ],
+    ["Regional reason", activation?.reasonCode ?? ""],
     ["Grant version", String(connection.grantVersion ?? "")],
   ]);
   const oneTime = (result as Record<string, unknown>).oneTimeCredential as
@@ -348,110 +559,124 @@ connectionCommand.addCommand(
 );
 
 connectionCommand.addCommand(
-  common(
-    new Command("get")
-      .description("Get one tenant API connection")
-      .argument("<connectionId>"),
+  withRegionalActivationWait(
+    common(
+      new Command("get")
+        .description("Get one tenant API connection")
+        .argument("<connectionId>"),
+    ),
   ).action((connectionId: string, options: CommonOptions) =>
     run(
       () =>
-        request(
+        requestAndMaybeWait(
           "GET",
           `/${encodeURIComponent(connectionId)}`,
           undefined,
           options,
+          connectionId,
         ),
       options,
     ),
   ),
 );
 
-const create = common(
-  new Command("create")
-    .description("Create a Standard API Key or Advanced Security connection")
-    .requiredOption("--name <name>", "Connection name")
-    .requiredOption("--owner-name <name>", "Named business owner")
-    .requiredOption("--owner-email <email>", "Business owner email")
-    .addOption(
-      new Option("--model <model>", "Security model")
-        .choices(["api-key", "advanced"])
-        .default("api-key"),
-    )
-    .option("--description <description>", "Business purpose")
-    .option(
-      "--action <action>",
-      "Allowed action: read or query (repeatable)",
-      repeated,
-      ["read"],
-    )
-    .requiredOption(
-      "--object-type <slug>",
-      "Exact Object Type slug (repeatable)",
-      repeated,
-      [],
-    )
-    .option("--expires-at <isoDate>", "Optional UTC expiry")
-    .option(
-      "--allowed-cidr <cidr>",
-      "Allowed IP network (repeatable)",
-      repeated,
-      [],
-    )
-    .option("--requests-per-minute <number>", "Recorded request-rate limit")
-    .option(
-      "--directory-tenant-id <uuid>",
-      "Customer Entra directory tenant ID",
-    )
-    .option("--client-id <uuid>", "Customer Entra application client ID")
-    .option(
-      "--reveal-key",
-      "Print the one-time Standard API key to this terminal",
-    ),
+const create = withRegionalActivationWait(
+  common(
+    new Command("create")
+      .description("Create a Standard API Key or Advanced Security connection")
+      .requiredOption("--name <name>", "Connection name")
+      .requiredOption("--owner-name <name>", "Named business owner")
+      .requiredOption("--owner-email <email>", "Business owner email")
+      .addOption(
+        new Option("--model <model>", "Security model")
+          .choices(["api-key", "advanced"])
+          .default("api-key"),
+      )
+      .option("--description <description>", "Business purpose")
+      .option(
+        "--action <action>",
+        "Allowed action: read or query (repeatable)",
+        repeated,
+        ["read"],
+      )
+      .requiredOption(
+        "--object-type <slug>",
+        "Exact Object Type slug (repeatable)",
+        repeated,
+        [],
+      )
+      .option("--expires-at <isoDate>", "Optional UTC expiry")
+      .option(
+        "--allowed-cidr <cidr>",
+        "Allowed IP network (repeatable)",
+        repeated,
+        [],
+      )
+      .option("--requests-per-minute <number>", "Recorded request-rate limit")
+      .option(
+        "--directory-tenant-id <uuid>",
+        "Customer Entra directory tenant ID",
+      )
+      .option("--client-id <uuid>", "Customer Entra application client ID")
+      .option(
+        "--reveal-key",
+        "Print the one-time Standard API key to this terminal",
+      ),
+  ),
 );
 create.action((options: CreateOptions) =>
   run(
-    () => request("POST", "", buildConnectionCreatePayload(options), options),
+    () =>
+      requestAndMaybeWait(
+        "POST",
+        "",
+        buildConnectionCreatePayload(options),
+        options,
+      ),
     options,
   ),
 );
 connectionCommand.addCommand(create);
 
-const update = common(
-  new Command("update")
-    .description(
-      "Update a connection owner, permission grant, expiry, or network restriction",
-    )
-    .argument("<connectionId>")
-    .requiredOption("--expected-version <number>", "Current grant version")
-    .option("--name <name>", "Connection name")
-    .option("--description <description>", "Business purpose")
-    .option("--clear-description", "Remove the current business purpose")
-    .option("--owner-name <name>", "Named business owner")
-    .option("--owner-email <email>", "Business owner email")
-    .option("--action <action>", "Allowed action (repeatable)", repeated)
-    .option(
-      "--object-type <slug>",
-      "Exact Object Type slug (repeatable)",
-      repeated,
-    )
-    .option("--expires-at <isoDate>", "UTC expiry")
-    .option("--clear-expiry", "Remove the current expiry")
-    .option(
-      "--allowed-cidr <cidr>",
-      "Allowed IP network (repeatable)",
-      repeated,
-    )
-    .option("--requests-per-minute <number>", "Recorded request-rate limit")
-    .option("--clear-rate-limit", "Remove the recorded request-rate limit"),
+const update = withRegionalActivationWait(
+  common(
+    new Command("update")
+      .description(
+        "Update a connection owner, permission grant, expiry, or network restriction",
+      )
+      .argument("<connectionId>")
+      .requiredOption("--expected-version <number>", "Current grant version")
+      .option("--name <name>", "Connection name")
+      .option("--description <description>", "Business purpose")
+      .option("--clear-description", "Remove the current business purpose")
+      .option("--owner-name <name>", "Named business owner")
+      .option("--owner-email <email>", "Business owner email")
+      .option("--action <action>", "Allowed action (repeatable)", repeated)
+      .option(
+        "--object-type <slug>",
+        "Exact Object Type slug (repeatable)",
+        repeated,
+      )
+      .option("--expires-at <isoDate>", "UTC expiry")
+      .option("--clear-expiry", "Remove the current expiry")
+      .option(
+        "--allowed-cidr <cidr>",
+        "Allowed IP network (repeatable)",
+        repeated,
+      )
+      .option("--requests-per-minute <number>", "Recorded request-rate limit")
+      .option("--clear-rate-limit", "Remove the recorded request-rate limit"),
+  ),
 );
 update.action((connectionId: string, options: UpdateOptions) =>
   run(
     () =>
-      request(
+      requestAndMaybeWait(
         "PATCH",
         `/${encodeURIComponent(connectionId)}`,
         buildConnectionUpdatePayload(options),
         options,
+        connectionId,
       ),
     options,
   ),
@@ -471,6 +696,7 @@ for (const action of ["activate", "suspend", "revoke", "rotate-key"] as const) {
       "Print the one-time replacement API key to this terminal",
     );
   }
+  actionCommand = withRegionalActivationWait(actionCommand);
   actionCommand.action((connectionId: string, options: ActionOptions) =>
     run(
       () =>
@@ -480,13 +706,14 @@ for (const action of ["activate", "suspend", "revoke", "rotate-key"] as const) {
                 "API key rotation requires --reveal-key so the replacement is not lost.",
               ),
             )
-          : request(
+          : requestAndMaybeWait(
               "POST",
               `/${encodeURIComponent(connectionId)}/${action}`,
               {
                 expectedGrantVersion: positiveVersion(options.expectedVersion),
               },
               options,
+              connectionId,
             ),
       options,
     ),
