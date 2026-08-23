@@ -55,7 +55,7 @@ import { pullCloudEnvValues } from "../lib/cloud-env.js";
 import { findGuidance } from "../lib/error-guidance/match.js";
 import { formatGuidanceText } from "../lib/error-guidance/render.js";
 import { getActiveProfile, loadProfileConfig } from "../lib/profile.js";
-import { getNpmExecutable } from "../lib/npm.js";
+import { getNpmExecOptions, getNpmExecutable } from "../lib/npm.js";
 import {
   errMsg,
   isRecord,
@@ -416,12 +416,20 @@ async function copyTemplateIntoTargetDir(
 /**
  * `--from` accepts any GitHub repo or local path, and install runs after
  * .env.local has been generated and hydrated. Only the canonical template is
- * trusted to execute npm lifecycle scripts on the developer machine.
+ * trusted to execute scripts on the developer machine unless the user opts in
+ * explicitly for a custom source.
  */
 export function buildTemplateInstallArgs(from: string): string[] {
   const args = ["install", "--no-audit", "--no-fund"];
   if (from !== TEMPLATE_REPO) args.push("--ignore-scripts");
   return args;
+}
+
+export function canRunTemplateScripts(
+  from: string,
+  trustTemplateScripts: boolean,
+): boolean {
+  return isDefaultTemplateSource(from) || trustTemplateScripts;
 }
 
 /**
@@ -443,6 +451,11 @@ export const initCommand = new Command("init")
     "--from <repo>",
     "GitHub repo URL or local path for template",
     TEMPLATE_REPO,
+  )
+  .option(
+    "--trust-template-scripts",
+    "Allow a custom template to run its Object Type generator",
+    false,
   )
   .option("--skip-prompts", "Use defaults without interactive prompts", false)
   .option(
@@ -678,8 +691,8 @@ Use --no-gofer only when you need a bare app scaffold.
       process.exit(1);
     }
 
-    // Step 2: Update package.json
-    const pkgSpinner = startEaiStep("Customizing package.json...");
+    // Step 2: Update package metadata
+    const pkgSpinner = startEaiStep("Customizing package metadata...");
     try {
       const pkgPath = join(targetDir, "package.json");
       const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
@@ -687,9 +700,30 @@ Use --no-gofer only when you need a bare app scaffold.
       pkg.description = initOptions.description;
       pkg.version = "0.1.0";
       await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
-      pkgSpinner.succeed("Updated package.json");
+
+      const lockPath = join(targetDir, "package-lock.json");
+      try {
+        const lock = JSON.parse(await readFile(lockPath, "utf-8"));
+        lock.name = pkg.name;
+        lock.version = pkg.version;
+        if (isRecord(lock.packages?.[""])) {
+          lock.packages[""].name = pkg.name;
+          lock.packages[""].version = pkg.version;
+        }
+        await writeFile(
+          lockPath,
+          JSON.stringify(lock, null, 2) + "\n",
+          "utf-8",
+        );
+      } catch (error) {
+        const code = isRecord(error) ? error.code : undefined;
+        if (code !== "ENOENT") {
+          throw error;
+        }
+      }
+      pkgSpinner.succeed("Updated package metadata");
     } catch (_err) {
-      pkgSpinner.fail("Failed to update package.json");
+      pkgSpinner.fail("Failed to update package metadata");
     }
 
     // Step 3: Generate .env.local with placeholders
@@ -724,9 +758,29 @@ Use --no-gofer only when you need a bare app scaffold.
         `${JSON.stringify(generatedCapabilityRequirements(initOptions.name), null, 2)}\n`,
         "utf-8",
       );
-      typesSpinner.succeed("Created Object Types scaffold");
-    } catch (_err) {
+      const generatorPath = join(
+        targetDir,
+        "scripts",
+        "generate-object-types-json.mjs",
+      );
+      if (!canRunTemplateScripts(options.from, options.trustTemplateScripts)) {
+        throw new Error(
+          "Custom template scripts are not run automatically. Review the template, then rerun with --trust-template-scripts only if you trust its code.",
+        );
+      }
+      try {
+        await access(generatorPath);
+      } catch {
+        throw new Error(
+          "The app template is missing its Object Type manifest generator. Update the template and try again.",
+        );
+      }
+      await exec(process.execPath, [generatorPath], { cwd: targetDir });
+      typesSpinner.succeed("Created Object Types scaffold and runtime manifests");
+    } catch (err) {
       typesSpinner.fail("Failed to create Object Types scaffold");
+      out.error(errMsg(err));
+      process.exit(1);
     }
 
     // Step 5: Generate deploy workflow
@@ -811,6 +865,7 @@ Use --no-gofer only when you need a bare app scaffold.
       try {
         await exec(getNpmExecutable(), installArgs, {
           cwd: targetDir,
+          ...getNpmExecOptions(),
         });
         installSpinner.succeed("Installed app dependencies");
       } catch (err) {
@@ -828,16 +883,26 @@ Use --no-gofer only when you need a bare app scaffold.
     try {
       await exec("git", ["init"], { cwd: targetDir });
       await exec("git", ["add", "."], { cwd: targetDir });
-      await exec(
-        "git",
-        [
-          "commit",
-          "-m",
-          `Initial scaffold from template\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${templatePlan.displaySource}`,
-        ],
-        { cwd: targetDir },
-      );
-      gitSpinner.succeed("Initialized git repository");
+      try {
+        await exec(
+          "git",
+          [
+            "commit",
+            "-m",
+            `Initial scaffold from template\n\nApp: ${initOptions.displayName}\nCreated by: eai init\nTemplate: ${templatePlan.displaySource}`,
+          ],
+          { cwd: targetDir },
+        );
+        gitSpinner.succeed("Initialized git repository");
+      } catch (err) {
+        if (isMissingGitIdentity(err)) {
+          gitSpinner.succeed("Initialized git repository; first commit is pending");
+          out.warn(describeGitCommitFailure(err));
+        } else {
+          gitSpinner.warn("Initialized git repository; first commit was not created");
+          out.warn(describeGitCommitFailure(err));
+        }
+      }
     } catch (err) {
       gitSpinner.fail("Failed to initialize git");
       out.warn(describeGitInitFailure(err));
@@ -900,6 +965,7 @@ Use --no-gofer only when you need a bare app scaffold.
 
 export interface CreateCommandOptions {
   from: string;
+  trustTemplateScripts?: boolean;
   skipPrompts: boolean;
   skipOnboarding: boolean;
   currentDir: boolean;
@@ -938,6 +1004,11 @@ export const createCommand = new Command("create")
     "--from <repo>",
     "GitHub repo URL or local path for template",
     TEMPLATE_REPO,
+  )
+  .option(
+    "--trust-template-scripts",
+    "Allow a custom template to run its Object Type generator",
+    false,
   )
   .option("--skip-prompts", "Use defaults without interactive prompts", false)
   .option(
@@ -1119,6 +1190,7 @@ export function buildForwardedInitArgs(
   if (options.from && options.from !== TEMPLATE_REPO) {
     args.push("--from", options.from);
   }
+  if (options.trustTemplateScripts) args.push("--trust-template-scripts");
   if (options.gofer === false) args.push("--no-gofer");
   if (options.install === false) args.push("--no-install");
   if (options.packageProfile) {
@@ -1144,8 +1216,12 @@ async function runCreatePreflight(): Promise<void> {
   out.nestedSuccess(`Node.js ${process.versions.node}`);
   for (const check of checks) {
     try {
-      const result = await exec(check.command, check.args);
-      const version = result.stdout.trim() || result.stderr.trim();
+      const result = await exec(
+        check.command,
+        check.args,
+        check.command === getNpmExecutable() ? getNpmExecOptions() : undefined,
+      );
+      const version = String(result.stdout).trim() || String(result.stderr).trim();
       out.nestedSuccess(`${check.label} ${version}`);
     } catch {
       throw new Error(
@@ -2032,6 +2108,24 @@ function describeGitInitFailure(error: unknown): string {
   return message;
 }
 
+export function isMissingGitIdentity(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /author identity unknown|please tell me who you are|unable to auto-detect email address/i.test(
+    message,
+  );
+}
+
+export function describeGitCommitFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (isMissingGitIdentity(error)) {
+    return [
+      "The Git repository is ready and the project files are staged, but the first commit is waiting for your Git name and email.",
+      'Set them once with `git config --global user.name "Your Name"` and `git config --global user.email "you@example.com"`, then run `git commit -m "Initial scaffold from template"` inside the project.',
+    ].join(" ");
+  }
+  return `The Git repository is ready and the project files are staged, but the first commit could not be created: ${message}`;
+}
+
 function tenantStorageScope(tenantId: string): string {
   const scope =
     tenantId
@@ -2330,10 +2424,20 @@ export interface ObjectTypeDefinition {
   slug: string;
   displayName: string;
   description?: string;
+  authorization?: { privacyClass: 'owner_private' | 'shared_private' };
   properties: PropertyDefinition[];
   linkTypes: LinkTypeDefinition[];
   actions: ActionDefinition[];
   storageBackend: StorageBackend;
+  schemaVersion?: number;
+  storageMetadataStatus?: 'draft' | 'ready';
+  storageBinding?: {
+    sql?: {
+      databaseAlias: 'tenant-postgres';
+      tenantSchemaStrategy: 'per-tenant-schema';
+      tableName: string;
+    };
+  };
   status: ObjectTypeStatus;
 }
 
@@ -2343,14 +2447,14 @@ const postgresqlResourceStorage = {
   storageMetadataStatus: 'ready' as const,
   storageBinding: {
     sql: {
-      databaseAlias: 'tenant-postgres',
+      databaseAlias: 'tenant-postgres' as const,
       tenantSchemaStrategy: 'per-tenant-schema' as const,
       tableName: '${tenantResourcesTableName}',
     },
   },
 };
 
-export const objectTypes = {
+export const objectTypes: Record<string, ObjectTypeDefinition[]> = {
   '${tenantKey}': [
     {
       name: 'Record',

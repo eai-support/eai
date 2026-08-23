@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import {
   GOFER_EXTRA_RESOURCE_MAPPINGS as LINKED_SOURCE_RESOURCE_MAPPINGS,
   GOFER_REPO,
+  assertCrossPlatformTemplateLifecycleScripts,
   extractEnterprisePackageVersions,
   hashJson,
   parseScopedRegistry,
@@ -94,6 +95,24 @@ describe("hashJson", () => {
     };
 
     expect(hashJson(payload)).toBe(hashJson(payload));
+  });
+});
+
+describe("app template lifecycle scripts", () => {
+  test("accepts package-manager-neutral lifecycle commands", () => {
+    expect(() =>
+      assertCrossPlatformTemplateLifecycleScripts({
+        scripts: { prepare: "husky" },
+      }),
+    ).not.toThrow();
+  });
+
+  test("rejects POSIX shell conditionals before capturing a template release", () => {
+    expect(() =>
+      assertCrossPlatformTemplateLifecycleScripts({
+        scripts: { prepare: 'if [ "$HUSKY" != "0" ]; then husky; fi' },
+      }),
+    ).toThrow(/shell-specific lifecycle scripts.*prepare/);
   });
 });
 

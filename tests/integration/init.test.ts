@@ -15,13 +15,18 @@ import {
   describeAppCreationFailure,
   describeCloneFailure,
   describeCreateFlowFailure,
+  describeGitCommitFailure,
   initCommand,
   isDefaultTemplateSource,
+  isMissingGitIdentity,
   resolveTemplateClonePlan,
   selectExistingAppSelection,
 } from "../../src/commands/init.js";
 import * as auth from "../../src/lib/auth.js";
-import { getNpmExecutable } from "../../src/lib/npm.js";
+import {
+  getNpmExecOptions,
+  getNpmExecutable,
+} from "../../src/lib/npm.js";
 import { PlatformAPIClient } from "../../src/lib/api.js";
 import * as tenantContext from "../../src/lib/tenant-context.js";
 import {
@@ -52,6 +57,7 @@ import {
 const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pkg = require("../../package.json") as { version: string };
+const tscPath = require.resolve("typescript/bin/tsc");
 const linkedSources = require("../../resources/linked-sources.json") as {
   appTemplate: { commit: string };
 };
@@ -69,6 +75,7 @@ function allowedCapability() {
 async function createLocalTemplateRepo(baseDir: string): Promise<string> {
   const templateDir = join(baseDir, "eai-app-template");
   await mkdir(join(templateDir, "src", "eai.config"), { recursive: true });
+  await mkdir(join(templateDir, "scripts"), { recursive: true });
   await writeFile(
     join(templateDir, "package.json"),
     JSON.stringify(
@@ -82,8 +89,39 @@ async function createLocalTemplateRepo(baseDir: string): Promise<string> {
     ) + "\n",
   );
   await writeFile(
+    join(templateDir, "package-lock.json"),
+    JSON.stringify(
+      {
+        name: "eai-app-template",
+        version: "0.0.1",
+        lockfileVersion: 3,
+        requires: true,
+        packages: {
+          "": {
+            name: "eai-app-template",
+            version: "0.0.1",
+          },
+        },
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await writeFile(
     join(templateDir, "src", "eai.config", "object-types.ts"),
     "export const objectTypes = {};\n",
+  );
+  await writeFile(
+    join(templateDir, "scripts", "generate-object-types-json.mjs"),
+    `import { readFileSync, writeFileSync } from 'node:fs';
+
+const source = readFileSync('src/eai.config/object-types.ts', 'utf8');
+const tenantKey = /export const objectTypes[^=]*=\\s*{\\s*'([^']+)'/.exec(source)?.[1];
+if (!tenantKey) throw new Error('Generated Object Type tenant key was not found');
+const output = JSON.stringify({ generatedTenant: tenantKey }, null, 2) + '\\n';
+writeFileSync('src/eai.config/object-types.json', output);
+writeFileSync('src/eai.config/object-types.provisioning.json', output);
+`,
   );
   await exec("git", ["init"], { cwd: templateDir });
   await exec("git", ["config", "user.email", "tests@example.com"], {
@@ -143,6 +181,26 @@ describe("eai init", () => {
     expect(getNpmExecutable("win32")).toBe("npm.cmd");
     expect(getNpmExecutable("darwin")).toBe("npm");
     expect(getNpmExecutable("linux")).toBe("npm");
+  });
+
+  test("uses cmd.exe for the Windows npm launcher", () => {
+    expect(getNpmExecOptions("win32")).toEqual({ shell: true });
+    expect(getNpmExecOptions("darwin")).toEqual({ shell: false });
+    expect(getNpmExecOptions("linux")).toEqual({ shell: false });
+  });
+
+  test("keeps a missing Git identity recoverable", () => {
+    const error = new Error(
+      "Author identity unknown. Please tell me who you are. fatal: unable to auto-detect email address",
+    );
+
+    expect(isMissingGitIdentity(error)).toBe(true);
+    expect(describeGitCommitFailure(error)).toContain(
+      "repository is ready and the project files are staged",
+    );
+    expect(describeGitCommitFailure(error)).toContain(
+      "git config --global user.name",
+    );
   });
 
   test("TC001: Initialize new app interactively", async () => {
@@ -242,7 +300,7 @@ describe("eai init", () => {
     const consoleCapture = captureConsole();
 
     try {
-      await initCommand.parseAsync(["my-app", "--from", templateRepo], {
+      await initCommand.parseAsync(["my-app", "--from", templateRepo, "--trust-template-scripts"], {
         from: "user",
       });
       expect(createTenantAppSpy).toHaveBeenCalledWith(
@@ -273,6 +331,16 @@ describe("eai init", () => {
       ctx,
       "my-app/package.json",
       '"name": "@eai-tools/my-app"',
+    );
+    await expectFileContains(
+      ctx,
+      "my-app/package-lock.json",
+      '"name": "@eai-tools/my-app"',
+    );
+    await expectFileContains(
+      ctx,
+      "my-app/package-lock.json",
+      '"version": "0.1.0"',
     );
     await expectFileExists(ctx, "my-app/.env.local");
     await expectFileContains(
@@ -441,7 +509,7 @@ describe("eai init", () => {
       );
 
     try {
-      await initCommand.parseAsync(["--from", templateRepo], {
+      await initCommand.parseAsync(["--from", templateRepo, "--trust-template-scripts"], {
         from: "user",
       });
       expect(createTenantAppSpy).toHaveBeenCalledWith(
@@ -551,7 +619,7 @@ describe("eai init", () => {
     const consoleCapture = captureConsole();
 
     try {
-      await initCommand.parseAsync(["--from", templateRepo], {
+      await initCommand.parseAsync(["--from", templateRepo, "--trust-template-scripts"], {
         from: "user",
       });
       expect(createTenantAppSpy).toHaveBeenCalledWith(
@@ -700,7 +768,7 @@ describe("eai init", () => {
       );
 
     try {
-      await initCommand.parseAsync(["hierarchy-app", "--from", templateRepo], {
+      await initCommand.parseAsync(["hierarchy-app", "--from", templateRepo, "--trust-template-scripts"], {
         from: "user",
       });
       expect(createTenantAppSpy).toHaveBeenCalledWith(
@@ -792,6 +860,7 @@ describe("eai init", () => {
           "tenant-parent",
           "--from",
           templateRepo,
+          "--trust-template-scripts",
         ],
         { from: "user" },
       );
@@ -898,7 +967,7 @@ describe("eai init", () => {
       );
 
     try {
-      await initCommand.parseAsync(["child-app", "--from", templateRepo], {
+      await initCommand.parseAsync(["child-app", "--from", templateRepo, "--trust-template-scripts"], {
         from: "user",
       });
       const envContent = await readFile(
@@ -1021,6 +1090,7 @@ describe("eai init", () => {
           "Quick App",
           "--from",
           templateRepo,
+          "--trust-template-scripts",
         ],
         { from: "user" },
       );
@@ -1109,10 +1179,22 @@ describe("eai init", () => {
     expect(objectTypes).toContain("storageMetadataStatus: 'ready' as const");
     expect(objectTypes).toContain("export type StorageBackend");
     expect(objectTypes).toContain("export interface ObjectTypeDefinition");
+    expect(objectTypes).toContain(
+      "authorization?: { privacyClass: 'owner_private' | 'shared_private' }",
+    );
+    expect(objectTypes).toContain("schemaVersion?: number");
+    expect(objectTypes).toContain(
+      "storageMetadataStatus?: 'draft' | 'ready'",
+    );
+    expect(objectTypes).toContain("storageBinding?: {");
+    expect(objectTypes).toContain(
+      "export const objectTypes: Record<string, ObjectTypeDefinition[]>",
+    );
     expect(objectTypes).toContain("slug: 'record'");
     expect(objectTypes).toContain("targetObjectType: 'document'");
     expect(objectTypes).not.toContain("targetObjectType: 'Document'");
     expect(objectTypes).toContain("databaseAlias: 'tenant-postgres'");
+    expect(objectTypes).toContain("databaseAlias: 'tenant-postgres' as const");
     expect(objectTypes).not.toContain("resourceapi-postgres");
     expect(objectTypes).toContain(
       "tenantSchemaStrategy: 'per-tenant-schema' as const",
@@ -1121,6 +1203,70 @@ describe("eai init", () => {
       "tableName: 'nantquickapp_quick_app_tenant_resources'",
     );
     expect(objectTypes).toContain("tableName: 'nantquickapp_quick_app_records'");
+    await expectFileContains(
+      ctx,
+      "quick-app/src/eai.config/object-types.json",
+      '"generatedTenant": "quick-app"',
+    );
+    await expectFileContains(
+      ctx,
+      "quick-app/src/eai.config/object-types.provisioning.json",
+      '"generatedTenant": "quick-app"',
+    );
+
+    const objectTypeContractPath = join(
+      env.dir,
+      "quick-app",
+      "object-types-contract.ts",
+    );
+    await writeFile(
+      objectTypeContractPath,
+      `import { objectTypes, type ObjectTypeDefinition } from './src/eai.config/object-types.js';
+
+const tenantKey: string = 'quick-app';
+const generatedType: ObjectTypeDefinition | undefined = objectTypes[tenantKey]?.[0];
+void generatedType?.authorization;
+
+const contractType: ObjectTypeDefinition = {
+  name: 'ContractType',
+  slug: 'contract-type',
+  displayName: 'Contract Type',
+  authorization: { privacyClass: 'owner_private' },
+  properties: [],
+  linkTypes: [],
+  actions: [],
+  storageBackend: 'postgresql',
+  schemaVersion: 1,
+  storageMetadataStatus: 'ready',
+  storageBinding: {
+    sql: {
+      databaseAlias: 'tenant-postgres',
+      tenantSchemaStrategy: 'per-tenant-schema',
+      tableName: 'contract_types',
+    },
+  },
+  status: 'published',
+};
+void contractType;
+`,
+    );
+    await exec(
+      process.execPath,
+      [
+        tscPath,
+        "--noEmit",
+        "--strict",
+        "--skipLibCheck",
+        "--target",
+        "ES2022",
+        "--module",
+        "NodeNext",
+        "--moduleResolution",
+        "NodeNext",
+        objectTypeContractPath,
+      ],
+      { cwd: join(env.dir, "quick-app") },
+    );
     expectNoPrompts(ctx);
   }, 30_000);
 
@@ -1200,6 +1346,7 @@ describe("eai init", () => {
           "Plain App",
           "--from",
           templateRepo,
+          "--trust-template-scripts",
         ],
         { from: "user" },
       );
@@ -1309,6 +1456,7 @@ describe("eai init", () => {
           "Prefilled App",
           "--from",
           templateRepo,
+          "--trust-template-scripts",
         ],
         { from: "user" },
       );

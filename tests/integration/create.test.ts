@@ -10,6 +10,7 @@ import {
   buildCreateCompletionSummary,
   buildForwardedInitArgs,
   buildTemplateInstallArgs,
+  canRunTemplateScripts,
   resolveCreateTenantContext,
   toKebabCase,
   type CreateCommandOptions,
@@ -83,6 +84,16 @@ describe("eai create onboarding helpers", () => {
       "--package-profile",
       "external",
     ]);
+  });
+
+  test("forwards explicit trust for custom template scripts", () => {
+    expect(
+      buildForwardedInitArgs("my-app", {
+        ...baseOptions,
+        from: "./reviewed-template",
+        trustTemplateScripts: true,
+      }),
+    ).toContain("--trust-template-scripts");
   });
 
   test("can explicitly skip automatic dependency installation", () => {
@@ -188,5 +199,16 @@ describe("template install trust boundary", () => {
     expect(
       buildTemplateInstallArgs("https://github.com/someone/untrusted.git"),
     ).toContain("--ignore-scripts");
+  });
+
+  test("requires explicit trust before running a custom template generator", () => {
+    expect(
+      canRunTemplateScripts(
+        "https://github.com/eai-support/eai-app-template.git",
+        false,
+      ),
+    ).toBe(true);
+    expect(canRunTemplateScripts("./local-template", false)).toBe(false);
+    expect(canRunTemplateScripts("./local-template", true)).toBe(true);
   });
 });

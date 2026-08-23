@@ -693,6 +693,7 @@ const OPTION_DECISIONS = {
   },
   'eai init': {
     '--from': 'Template source override is exercised by existing init tests; release live smoke uses the default public template.',
+    '--trust-template-scripts': 'Security opt-in for reviewed custom templates; integration tests prove custom scripts are blocked by default and allowed only after explicit trust.',
     '--tenant': 'Deprecated alias for --company-tenant; kept as backward-compatible vocabulary and not used in new smoke calls.',
     '--parent-tenant': 'Covered by app create child-tenant flow; init live smoke keeps one direct company-tenant binding unless child tenant smoke is explicitly enabled.',
     '--child-tenant': 'Covered by app create child-tenant flow and opt-in child tenant smoke.',
@@ -706,6 +707,7 @@ const OPTION_DECISIONS = {
   },
   'eai create': {
     '--from': 'Template source override is covered by the underlying init command; guided release smoke uses help only to avoid cloning or browser auth.',
+    '--trust-template-scripts': 'Security opt-in forwarded to init only for a reviewed custom template; the normal guided flow uses the trusted canonical template.',
     '--skip-prompts': 'Automation escape hatch forwards directly to the legacy init command and is covered by init integration tests.',
     '--skip-onboarding': 'Compatibility escape hatch intentionally delegates to the legacy init prompt flow; focused create tests cover argument forwarding.',
     '--current-dir': 'Current-folder scaffold mode is covered by init integration tests; guided setup asks this question interactively.',

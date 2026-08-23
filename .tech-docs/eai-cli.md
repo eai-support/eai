@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.1 |
-| Released | 2026-08-15 |
-| Last Material Change | Fix Windows npm launcher during app initialization |
-| Source Commit | `02fd1a8f3c0d514158990b8888d3d1a96505a013` |
+| Version | 3.15.7 |
+| Released | 2026-08-20 |
+| Last Material Change | Improve reliable AI workspace launch across current providers |
+| Source Commit | `8cf062bb0d676af0cabe433d9f884527db23374b` |
 
 ## Next Release
 

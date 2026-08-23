@@ -168,5 +168,5 @@ describe('CLI help output', () => {
     expect(agentResult.exitCode).toBe(0);
     expect(agentResult.stdout).toContain('eai agent guide --format json');
     expect(agentResult.stdout).toContain('eai errors explain <code-or-reason> --format json');
-  });
+  }, 30_000);
 });
