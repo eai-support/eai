@@ -29,8 +29,48 @@ describe("connection command", () => {
       securityModel: "api-key",
       owner: { name: "Finance Platform", email: "finance@example.com" },
       capabilities: { actions: ["read"], objectTypes: ["invoice"] },
+      accessMode: "custom",
       allowedCidrs: ["203.0.113.0/24"],
     });
+  });
+
+  it.each(["tenant-admin", "tenant-member"] as const)(
+    "builds one governed %s role without a parallel Custom grant",
+    (accessMode) => {
+      const payload = buildConnectionCreatePayload({
+        name: "Governed app",
+        ownerName: "App Team",
+        ownerEmail: "apps@example.com",
+        model: "api-key",
+        accessMode,
+        confirmTenantAdmin: accessMode === "tenant-admin",
+        action: ["read"],
+        objectType: [],
+        allowedCidr: [],
+        revealKey: true,
+      });
+      expect(payload).toMatchObject({
+        accessMode,
+        tenantRoleGrant: { role: accessMode, roleContractVersion: 1 },
+      });
+      expect(payload).not.toHaveProperty("capabilities");
+    },
+  );
+
+  it("requires explicit confirmation for Tenant Administrator", () => {
+    expect(() =>
+      buildConnectionCreatePayload({
+        name: "Administrator app",
+        ownerName: "App Team",
+        ownerEmail: "apps@example.com",
+        model: "api-key",
+        accessMode: "tenant-admin",
+        action: ["read"],
+        objectType: [],
+        allowedCidr: [],
+        revealKey: true,
+      }),
+    ).toThrow(/confirm-tenant-admin/i);
   });
 
   it("requires the exact customer Entra identity for Advanced Security", () => {

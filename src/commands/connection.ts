@@ -29,6 +29,8 @@ interface CreateOptions extends CommonOptions {
   ownerName: string;
   ownerEmail: string;
   model: "api-key" | "advanced";
+  accessMode?: "tenant-admin" | "tenant-member" | "custom";
+  confirmTenantAdmin?: boolean;
   action: string[];
   objectType: string[];
   expiresAt?: string;
@@ -317,16 +319,27 @@ export function buildConnectionCreatePayload(
       "Standard API Key creation requires --reveal-key so the credential is not lost.",
     );
   }
+  const objectTypes = unique(options.objectType);
+  const accessMode = options.accessMode ?? (objectTypes.length > 0 ? "custom" : undefined);
+  if (!accessMode) {
+    throw new Error(
+      "Choose --access-mode tenant-admin|tenant-member, or provide --object-type for a legacy Custom grant.",
+    );
+  }
+  if (accessMode === "tenant-admin" && options.confirmTenantAdmin !== true) {
+    throw new Error(
+      "Tenant Administrator requires --confirm-tenant-admin because it enables everything available in the tenant.",
+    );
+  }
   const actions = unique(options.action);
   if (
-    actions.length === 0 ||
-    actions.some((action) => !["read", "query"].includes(action))
+    accessMode === "custom" &&
+    (actions.length === 0 ||
+      actions.some((action) => !["read", "query"].includes(action)) ||
+      objectTypes.length === 0)
   ) {
-    throw new Error("--action must include read and/or query.");
+    throw new Error("Custom access requires --action read|query and at least one --object-type.");
   }
-  const objectTypes = unique(options.objectType);
-  if (objectTypes.length === 0)
-    throw new Error("At least one --object-type is required.");
   if (
     options.model === "advanced" &&
     (!options.directoryTenantId || !options.clientId)
@@ -339,8 +352,16 @@ export function buildConnectionCreatePayload(
     name: options.name,
     ...(options.description ? { description: options.description } : {}),
     securityModel: options.model,
+    accessMode,
     owner: { name: options.ownerName, email: options.ownerEmail },
-    capabilities: { actions, objectTypes },
+    ...(accessMode === "custom"
+      ? { capabilities: { actions, objectTypes } }
+      : {
+          tenantRoleGrant: {
+            role: accessMode,
+            roleContractVersion: 1,
+          },
+        }),
     ...(options.expiresAt ? { expiresAt: options.expiresAt } : {}),
     allowedCidrs: unique(options.allowedCidr),
     ...(positiveRate(options.requestsPerMinute)
@@ -486,7 +507,7 @@ function printResult(
         const activation = regionalActivationFromResult(record);
         return [
           String(record.name ?? record.id ?? ""),
-          `${record.securityModel ?? ""} · lifecycle ${record.status ?? ""} · regional ${regionalActivationLabel(activation)}`,
+          `${record.securityModel ?? ""} · access ${record.accessMode ?? "custom"} · lifecycle ${record.status ?? ""} · regional ${regionalActivationLabel(activation)}`,
         ];
       }),
     );
@@ -502,6 +523,7 @@ function printResult(
     ["Connection", String(connection.name ?? connection.id ?? "")],
     ["ID", String(connection.id ?? "")],
     ["Security", String(connection.securityModel ?? "")],
+    ["Access", String(connection.accessMode ?? "custom")],
     ["Lifecycle", String(connection.status ?? "")],
     ["Regional activation", regionalActivationLabel(activation)],
     [
@@ -592,6 +614,16 @@ const create = withRegionalActivationWait(
           .choices(["api-key", "advanced"])
           .default("api-key"),
       )
+      .addOption(
+        new Option(
+          "--access-mode <mode>",
+          "Tenant role: tenant-admin or tenant-member; custom is retained for existing bounded grants",
+        ).choices(["tenant-admin", "tenant-member", "custom"]),
+      )
+      .option(
+        "--confirm-tenant-admin",
+        "Confirm that Tenant Administrator enables everything available in this tenant",
+      )
       .option("--description <description>", "Business purpose")
       .option(
         "--action <action>",
@@ -599,9 +631,9 @@ const create = withRegionalActivationWait(
         repeated,
         ["read"],
       )
-      .requiredOption(
+      .option(
         "--object-type <slug>",
-        "Exact Object Type slug (repeatable)",
+        "Exact Object Type slug for a Custom grant (repeatable)",
         repeated,
         [],
       )
