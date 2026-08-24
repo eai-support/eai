@@ -840,6 +840,94 @@ export const errorGuidanceCatalog = [
     },
   },
   {
+    code: 'E261',
+    reasonCode: 'app_manifest_validation_failed',
+    title: 'The app Object Type manifest request did not match the deployed platform contract.',
+    category: 'schema',
+    severity: 'error',
+    appliesTo: ['types.seed'],
+    publicSafe: true,
+    why: [
+      'The source Object Type schema is not the app-manifest HTTP request schema.',
+      'Some deployed platform releases derive the transport slug from the validated model name. Other releases accept the explicit source slug.',
+      'The current CLI supports both request shapes. A repeated failure can indicate an older CLI or a separate field validation error.',
+    ],
+    evidenceToCheck: [
+      'Installed CLI version and update status.',
+      'Local Object Type validation result.',
+      'The request ID returned after the CLI tried both supported request shapes.',
+    ],
+    diagnostics: [
+      {
+        command: 'eai update --check',
+        purpose: 'Check whether the installed CLI includes app-manifest compatibility support.',
+        mutates: false,
+      },
+      {
+        command: 'eai types validate --tenant-key <key> --tenant-id <tenant-id>',
+        purpose: 'Validate source names, slugs, relationships, and storage metadata without publishing.',
+        mutates: false,
+      },
+      {
+        command: 'eai types seed --tenant-key <key> --tenant-id <tenant-id> --dry-run --format json',
+        purpose: 'Confirm the CLI can load the intended tenant scope without changing platform state.',
+        mutates: false,
+      },
+    ],
+    fixes: [
+      {
+        command: 'eai update',
+        purpose: 'Install the CLI release that negotiates the deployed app-manifest request shape.',
+        mutates: true,
+        when: 'Run when eai update --check reports an older CLI.',
+      },
+      {
+        command: 'eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json',
+        purpose: 'Publish once through the maintained compatibility adapter.',
+        mutates: true,
+        when: 'Run after update and local validation succeed.',
+      },
+    ],
+    retry: {
+      allowed: true,
+      maxAttempts: 1,
+      stopWhen: [
+        'The current CLI reports that both supported app-manifest request shapes failed.',
+      ],
+    },
+    escalation: {
+      audience: 'platform-support',
+      neededWhen: [
+        'Both supported request shapes fail after the CLI is current and local validation succeeds.',
+      ],
+      include: [
+        'CLI version',
+        'app key',
+        'tenant ID',
+        'Object Type names only',
+        'request IDs for both rejected requests',
+      ],
+    },
+    safety: {
+      mutatesState: true,
+      mayWriteSecrets: false,
+      mayDeleteData: false,
+      publicSafe: true,
+    },
+    match: [
+      {
+        operation: 'types.seed',
+        status: 422,
+      },
+      {
+        messageIncludes: [
+          'app manifest save failed',
+          'app manifest save failed for both supported request shapes',
+        ],
+      },
+    ],
+  },
+  {
     code: 'E270',
     reasonCode: 'object_type_not_published',
     title: 'Object Type is not published for the active tenant.',

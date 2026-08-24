@@ -43,14 +43,20 @@ export interface TypeSeedVerificationResult {
   converged: boolean;
 }
 
+/** Reports either a planned or completed tenant-scoped Object Type publication. */
 export interface TypeSeedResult {
   tenantKey: string;
   tenantId: string;
+  dryRun?: boolean;
+  requestedObjectTypes?: Array<{ name: string; slug?: string }>;
   created: number;
   updated: number;
   failed: number;
   verification?: TypeSeedVerificationResult;
   publishingMode?: "app-manifest" | "direct-object-types";
+  appManifestRequestShape?:
+    | "name-derived-slug"
+    | "explicit-name-and-slug";
   resourceApiSchemaSync?: Record<string, unknown>;
   appManifestFallbackReason?: string;
   error?: string;
@@ -93,12 +99,16 @@ export interface RemoteObjectTypeDocument {
   publishedAt?: string | null;
 }
 
+/** Treats dry runs as plans and completed runs as successful only after convergence. */
 export function shouldFailTypeSeedRun(
   results: Array<
-    Pick<TypeSeedResult, "verification" | "resourceApiSchemaSync">
+    Pick<TypeSeedResult, "dryRun" | "verification" | "resourceApiSchemaSync">
   >,
 ): boolean {
   return results.some((result) => {
+    if (result.dryRun) {
+      return false;
+    }
     const syncStatus = isRecord(result.resourceApiSchemaSync)
       ? String(result.resourceApiSchemaSync.status ?? "").toLowerCase()
       : undefined;
@@ -993,13 +1003,53 @@ export async function appObjectTypePublishFallbackReason(
   return null;
 }
 
+/**
+ * Serializes source Object Types into either deployed app-manifest request shape.
+ * Relationship targets remain exact source slugs in both shapes.
+ */
 export function toAppManifestObjectTypes(
   types: ObjectTypeDefinition[],
+  requestShape:
+    | "name-derived-slug"
+    | "explicit-name-and-slug" = "explicit-name-and-slug",
 ): Record<string, unknown>[] {
-  return types.map((type) => ({
-    ...type,
-    status: type.status ?? "published",
-  }));
+  return types.map((type) => {
+    if (requestShape === "explicit-name-and-slug") {
+      return {
+        ...type,
+        status: type.status ?? "published",
+      };
+    }
+
+    const manifestType: Record<string, unknown> = { ...type };
+    delete manifestType.slug;
+    return {
+      ...manifestType,
+      status: type.status ?? "published",
+    };
+  });
+}
+
+/** Builds a non-mutating publication plan without claiming platform convergence. */
+export function buildTypeSeedDryRunResult(
+  tenantKey: string,
+  tenantId: string,
+  types: ObjectTypeDefinition[],
+): TypeSeedResult {
+  return {
+    tenantKey,
+    tenantId,
+    dryRun: true,
+    requestedObjectTypes: types.map((type) => ({
+      name: type.name,
+      ...(type.slug ? { slug: type.slug } : {}),
+    })),
+    created: 0,
+    updated: 0,
+    failed: 0,
+    publishingMode: "app-manifest",
+    appManifestRequestShape: "explicit-name-and-slug",
+  };
 }
 
 function readStringArray(value: unknown): string[] {
@@ -1048,11 +1098,13 @@ function readTypeSeedVerification(
   };
 }
 
+/** Converts the app-manifest publish response into the stable CLI seed result. */
 export function summarizeAppObjectTypePublish(
   tenantKey: string,
   tenantId: string,
   types: ObjectTypeDefinition[],
   payload: unknown,
+  appManifestRequestShape?: TypeSeedResult["appManifestRequestShape"],
 ): TypeSeedResult {
   const body = isRecord(payload) ? payload : {};
   const results = Array.isArray(body.results)
@@ -1084,19 +1136,26 @@ export function summarizeAppObjectTypePublish(
       counts,
     ),
     publishingMode: "app-manifest",
+    ...(appManifestRequestShape ? { appManifestRequestShape } : {}),
     resourceApiSchemaSync: isRecord(body.resourceApiSchemaSync)
       ? enrichResourceApiSchemaSync(body.resourceApiSchemaSync)
       : undefined,
   };
 }
 
+/**
+ * Publishes through the app manifest and negotiates the receiver's slug shape once.
+ * Falls back to legacy direct writes only when the app-manifest route is unavailable.
+ */
 export async function trySeedViaAppManifestPublish(
   client: PlatformAPIClient,
   tenantKey: string,
   tenantId: string,
   types: ObjectTypeDefinition[],
 ): Promise<{ result?: TypeSeedResult; fallbackReason?: string }> {
-  const manifestResponse = await client.saveAppObjectTypeManifest(
+  let appManifestRequestShape: TypeSeedResult["appManifestRequestShape"] =
+    "explicit-name-and-slug";
+  let manifestResponse = await client.saveAppObjectTypeManifest(
     tenantKey,
     toAppManifestObjectTypes(types),
   );
@@ -1107,6 +1166,35 @@ export async function trySeedViaAppManifestPublish(
   if (manifestFallbackReason) {
     return { fallbackReason: manifestFallbackReason };
   }
+
+  // INVARIANT: A 422 saves no manifest, so only that response permits the
+  // one alternate-shape retry without duplicating a platform write.
+  if (manifestResponse.status === 422) {
+    const explicitFailure = await describeFailedPlatformResponse(
+      manifestResponse,
+    );
+    const nameDerivedResponse = await client.saveAppObjectTypeManifest(
+      tenantKey,
+      toAppManifestObjectTypes(types, "name-derived-slug"),
+    );
+    if (nameDerivedResponse.ok) {
+      manifestResponse = nameDerivedResponse;
+      appManifestRequestShape = "name-derived-slug";
+    } else {
+      const nameDerivedFailure = await describeFailedPlatformResponse(
+        nameDerivedResponse,
+      );
+      throw new Error(
+        [
+          "app manifest save failed for both supported request shapes",
+          `explicit-name-and-slug: ${explicitFailure}`,
+          `name-derived-slug: ${nameDerivedFailure}`,
+          "Run eai errors explain app_manifest_validation_failed --format json.",
+        ].join("\n"),
+      );
+    }
+  }
+
   if (!manifestResponse.ok) {
     const detail = await describeFailedPlatformResponse(manifestResponse);
     throw new Error(
@@ -1134,6 +1222,7 @@ export async function trySeedViaAppManifestPublish(
     tenantId,
     types,
     await publishResponse.json(),
+    appManifestRequestShape,
   );
 
   return { result };
@@ -1725,12 +1814,21 @@ Examples:
       }
 
       if (options.dryRun) {
+        const dryRunResult = buildTypeSeedDryRunResult(
+          tenantKey,
+          tenantId,
+          types,
+        );
         if (options.format !== "json") {
           for (const type of types) {
             out.info(`Would publish: ${chalk.cyan(type.name)}`);
           }
+          out.info(
+            `App manifest request shape: ${chalk.cyan("explicit-name-and-slug")}`,
+          );
           out.info("Dry run — no changes made");
         }
+        jsonResults.push(dryRunResult);
         continue;
       }
 
