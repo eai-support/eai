@@ -339,7 +339,9 @@ const SMOKE_CALLS = {
     'eai connection get <connection-id> --tenant-id <tenant-id> --format json --json',
   ],
   'eai connection create': [
-    'eai connection create --name <name> --owner-name <name> --owner-email <email> --model api-key --description <purpose> --action read --action query --object-type <object-type> --expires-at <utc> --allowed-cidr <cidr> --requests-per-minute 60 --directory-tenant-id <directory-tenant-id> --client-id <client-id> --reveal-key --tenant-id <tenant-id> --format json --json',
+    'eai connection create --name <name> --owner-name <name> --owner-email <email> --model api-key --access-mode tenant-admin --confirm-tenant-admin --description <purpose> --expires-at <utc> --allowed-cidr <cidr> --requests-per-minute 60 --reveal-key --tenant-id <tenant-id> --format json --json',
+    'eai connection create --name <name> --owner-name <name> --owner-email <email> --model advanced --access-mode tenant-member --description <purpose> --directory-tenant-id <directory-tenant-id> --client-id <client-id> --tenant-id <tenant-id> --format json',
+    'eai connection create --name <name> --owner-name <name> --owner-email <email> --model api-key --access-mode custom --description <purpose> --action read --action query --object-type <object-type> --tenant-id <tenant-id> --format json',
   ],
   'eai connection update': [
     'eai connection update <connection-id> --expected-version 1 --name <name> --description <purpose> --owner-name <name> --owner-email <email> --action read --object-type <object-type> --expires-at <utc> --allowed-cidr <cidr> --requests-per-minute 60 --tenant-id <tenant-id> --format json --json',
