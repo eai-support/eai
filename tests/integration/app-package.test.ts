@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -10,9 +11,12 @@ import {
 } from '../../src/commands/vertical.js';
 import {
   buildApplicationPackage,
+  canonicalizeApplicationPackage,
   createApplicationPackageDraft,
+  digestApplicationPackage,
   validateApplicationPackage,
 } from '../../src/lib/application-package.js';
+import { materializeFixture } from '../../src/lib/generated/application-package-runtime.mjs';
 
 describe('eai app package', () => {
   let env: TestEnvironment;
@@ -43,13 +47,13 @@ describe('eai app package', () => {
     expect(validateApplicationPackage({
       ...base,
       artifact: { ...base.artifact as object, repository: 'registry.example/app:latest' },
-    })).toContain('artifact.repository must be an untagged OCI repository; artifact.digest supplies the immutable identity');
+    })).toEqual(expect.arrayContaining([expect.stringMatching(/artifact\.repository/)]));
     expect(validateApplicationPackage({
       ...base,
       capabilities: { contractVersion: 'eai.app_capabilities.v1', interactive: ['*'], workload: [] },
-    })).toContain('capabilities.interactive must not contain wildcards');
-    expect(validateApplicationPackage({ ...base, clientSecret: 'not-allowed' })).toContain(
-      'Unknown application package field: clientSecret',
+    })).toEqual(expect.arrayContaining([expect.stringMatching(/capabilities\.interactive/)]));
+    expect(validateApplicationPackage({ ...base, clientSecret: 'not-allowed' })).toEqual(
+      expect.arrayContaining([expect.stringMatching(/clientSecret/)]),
     );
   });
 
@@ -62,9 +66,47 @@ describe('eai app package', () => {
     const first = await buildApplicationPackage(env.dir);
     const second = await buildApplicationPackage(env.dir);
 
-    expect(first.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(first.digest).toBe(digestApplicationPackage(source));
     expect(second).toEqual(first);
-    expect(JSON.parse(await readFile(first.outputPath, 'utf8'))).toEqual(source);
+    expect(await readFile(first.outputPath, 'utf8')).toBe(canonicalizeApplicationPackage(source));
+  });
+
+  test('enforces every canonical schema constraint instead of a local subset', () => {
+    expect(validateApplicationPackage({
+      ...validPackage(),
+      displayName: 'x'.repeat(121),
+    })).toEqual(expect.arrayContaining([expect.stringMatching(/displayName/)]));
+    expect(validateApplicationPackage({
+      ...validPackage(),
+      dataGovernance: {
+        ...(validPackage().dataGovernance as object),
+        classifications: ['not-a-classification'],
+      },
+    })).toEqual(expect.arrayContaining([expect.stringMatching(/classifications/)]));
+  });
+
+  test('fails closed if generated contract bytes drift from tech-docs', async () => {
+    for (const [url, expected] of [
+      [new URL('../../src/lib/generated/application-package.schema.json', import.meta.url), '1d20803fac09adbf7e5276137082b5c737ad621cdeb383581ab61ef9ae0fbc47'],
+      [new URL('../../src/lib/generated/application-package-runtime.mjs', import.meta.url), '3f0999722404d9dff9dc0545a36ec5071f8a2339de0ad6456d4368a191421972'],
+    ] as const) {
+      expect(createHash('sha256').update(await readFile(url)).digest('hex')).toBe(expected);
+    }
+  });
+
+  test('accepts and rejects the complete authoritative fixture corpus', async () => {
+    const base = JSON.parse(await readFile(
+      new URL('../../src/lib/generated/fixtures/application-package.valid.json', import.meta.url),
+      'utf8',
+    )) as Record<string, unknown>;
+    const fixtures = JSON.parse(await readFile(
+      new URL('../../src/lib/generated/fixtures/application-package.fixtures.json', import.meta.url),
+      'utf8',
+    )) as { readonly name: string; readonly valid: boolean; readonly set?: Record<string, unknown>; readonly delete?: string[] }[];
+    for (const fixture of fixtures) {
+      expect(validateApplicationPackage(materializeFixture(base, fixture)).length === 0, fixture.name)
+        .toBe(fixture.valid);
+    }
   });
 
   test('uses only the dedicated regional PublicAPI publisher ingress', () => {
@@ -92,7 +134,7 @@ function validPackage(): Record<string, unknown> {
     publisher: { id: 'eai-partner', kind: 'partner', displayName: 'EAI Partner' },
     distribution: { visibility: 'distributable' },
     version: '1.0.0',
-    source: { repository: 'github.com/example/testing-studio', digest: `sha256:${'b'.repeat(64)}` },
+    source: { repository: 'https://github.com/example/testing-studio', digest: `sha256:${'b'.repeat(64)}` },
     artifact: {
       repository: 'registry.example/testing-studio',
       digest: `sha256:${'c'.repeat(64)}`,

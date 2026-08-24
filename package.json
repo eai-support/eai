@@ -7,7 +7,7 @@
     "eai": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-application-package-contract.mjs",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "lint": "eslint src/",
@@ -22,7 +22,7 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "prepare": "tsc",
+    "prepare": "npm run build",
     "lint:no-placeholder": "! grep -r EAI_CLI_CLIENT_ID_PLACEHOLDER src/",
     "sync:gofer": "node scripts/sync-gofer-resources.cjs",
     "sync:linked-sources": "node scripts/sync-linked-sources.js",

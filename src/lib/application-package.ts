@@ -1,27 +1,29 @@
-import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
-export const APPLICATION_PACKAGE_SCHEMA_VERSION = 'eai.application-package.v1';
+import {
+  APPLICATION_PACKAGE_SCHEMA_VERSION as CONTRACT_SCHEMA_VERSION,
+  canonicalizeJson,
+  digestCanonicalJson,
+  validateApplicationPackageContract,
+} from './generated/application-package-runtime.mjs';
+
+const applicationPackageSchema = JSON.parse(
+  readFileSync(new URL('./generated/application-package.schema.json', import.meta.url), 'utf8'),
+) as Record<string, unknown>;
+
+export const APPLICATION_PACKAGE_SCHEMA_VERSION = CONTRACT_SCHEMA_VERSION;
 export const APPLICATION_PACKAGE_FILE = 'eai.application.json';
 
-const TOP_LEVEL_FIELDS = new Set([
-  'schemaVersion', 'packageId', 'appKey', 'displayName', 'publisher', 'version',
-  'distribution', 'source', 'artifact', 'manifestDigest', 'runtime', 'routes',
-  'objectTypes', 'services', 'capabilities', 'dataGovernance', 'callbacks',
-  'commercial', 'support', 'compatibility', 'lifecycle', 'evidence',
-]);
-const REQUIRED_FIELDS = [...TOP_LEVEL_FIELDS];
-const SECRET_FIELD = /(secret|password|credential|accessToken|refreshToken|privateKey|connectionString)/i;
-const SHA256 = /^sha256:[a-f0-9]{64}$/;
-const OCI_REPOSITORY = /^[a-z0-9.-]+(?:\/[a-z0-9._-]+)+$/;
-
+/** User-owned metadata used to create an incomplete, non-publishable package draft. */
 export interface ApplicationPackageDraftInput {
   readonly appKey: string;
   readonly displayName: string;
   readonly publisherRef: string;
 }
 
+/** Validated canonical package bytes and digest prepared for a publisher submission. */
 export interface ApplicationPackageBuildResult {
   readonly digest: string;
   readonly outputPath: string;
@@ -36,16 +38,16 @@ export async function createApplicationPackageDraft(
   const appKey = input.appKey.trim();
   const displayName = input.displayName.trim();
   const publisherRef = input.publisherRef.trim();
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(appKey)) {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(appKey)) {
     throw new Error('appKey must be lowercase kebab-case.');
   }
   if (!displayName || !publisherRef) {
     throw new Error('displayName and publisherRef are required.');
   }
   const publisherId = publisherRef
-    .replace(/^publisher:/, '')
-    .replace(/[^a-z0-9-]+/gi, '-')
-    .replace(/^-|-$/g, '')
+    .replace(/^publisher:/u, '')
+    .replace(/[^a-z0-9-]+/giu, '-')
+    .replace(/^-|-$/gu, '')
     .toLowerCase() || appKey;
   const draft: Record<string, unknown> = {
     schemaVersion: APPLICATION_PACKAGE_SCHEMA_VERSION,
@@ -92,55 +94,24 @@ export async function createApplicationPackageDraft(
   return draft;
 }
 
-/** Validate the security-critical package invariants before any remote submission. */
+/** Validate against the exact published schema and its security invariants. */
 export function validateApplicationPackage(value: unknown): string[] {
-  if (!isRecord(value)) return ['Application package must be a JSON object.'];
-  const errors: string[] = [];
-  for (const field of Object.keys(value)) {
-    if (!TOP_LEVEL_FIELDS.has(field)) errors.push(`Unknown application package field: ${field}`);
-  }
-  for (const field of REQUIRED_FIELDS) {
-    if (!(field in value)) errors.push(`Missing application package field: ${field}`);
-  }
-  if (value.schemaVersion !== APPLICATION_PACKAGE_SCHEMA_VERSION) {
-    errors.push(`schemaVersion must be ${APPLICATION_PACKAGE_SCHEMA_VERSION}`);
-  }
-  if (typeof value.appKey !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.appKey)) {
-    errors.push('appKey must be lowercase kebab-case');
-  }
-  const source = isRecord(value.source) ? value.source : {};
-  if (!SHA256.test(String(source.digest ?? ''))) errors.push('source.digest must be sha256:<64 hex>');
-  const artifact = isRecord(value.artifact) ? value.artifact : {};
-  if (!SHA256.test(String(artifact.digest ?? ''))) errors.push('artifact.digest must be sha256:<64 hex>');
-  if (!OCI_REPOSITORY.test(String(artifact.repository ?? ''))) {
-    errors.push('artifact.repository must be an untagged OCI repository; artifact.digest supplies the immutable identity');
-  }
-  if (!SHA256.test(String(value.manifestDigest ?? ''))) errors.push('manifestDigest must be sha256:<64 hex>');
-  const runtime = isRecord(value.runtime) ? value.runtime : {};
-  if (!['trusted-embedded', 'isolated-hosted'].includes(String(runtime.type ?? ''))) {
-    errors.push('runtime.type must be trusted-embedded or isolated-hosted');
-  }
-  if (!['eai-owned-embedded', 'eai-hosted', 'buyer-hosted'].includes(String(runtime.topology ?? ''))) {
-    errors.push('runtime.topology must be eai-owned-embedded, eai-hosted or buyer-hosted');
-  }
-  const capabilities = isRecord(value.capabilities) ? value.capabilities : {};
-  if (capabilities.contractVersion !== 'eai.app_capabilities.v1') {
-    errors.push('capabilities.contractVersion must be eai.app_capabilities.v1');
-  }
-  for (const field of ['interactive', 'workload']) {
-    const items = capabilities[field];
-    if (!Array.isArray(items)) errors.push(`capabilities.${field} must be an array`);
-    else if (items.some((item) => typeof item !== 'string' || !item || item.includes('*'))) {
-      errors.push(`capabilities.${field} must not contain wildcards`);
-    }
-  }
-  visit(value, [], (path, field, child) => {
-    if (SECRET_FIELD.test(field)) errors.push(`${path} must not contain credentials or secrets`);
-    if (typeof child === 'string' && /\b(?:Bearer\s+|client_secret=|password=)/i.test(child)) {
-      errors.push(`${path} contains a secret-like value`);
-    }
-  });
-  return [...new Set(errors)].sort();
+  return validateApplicationPackageContract(
+    applicationPackageSchema,
+    value,
+  ).sort();
+}
+
+/** Serialize package bytes with the platform canonicalizer. */
+export function canonicalizeApplicationPackage(value: unknown): string {
+  return canonicalizeJson(value);
+}
+
+/** Validate and digest one package using the platform canonicalizer. */
+export function digestApplicationPackage(value: unknown): `sha256:${string}` {
+  const errors = validateApplicationPackage(value);
+  if (errors.length > 0) throw new Error(errors.join('; '));
+  return digestCanonicalJson(value) as `sha256:${string}`;
 }
 
 /** Build content-addressed canonical JSON for review; this does not approve or publish it. */
@@ -152,44 +123,21 @@ export async function buildApplicationPackage(
   const errors = validateApplicationPackage(parsed);
   if (errors.length > 0) throw new Error(errors.join('; '));
   const packageValue = parsed as Record<string, unknown>;
-  const canonical = `${JSON.stringify(sortValue(packageValue), null, 2)}\n`;
-  const digest = `sha256:${createHash('sha256').update(canonical).digest('hex')}`;
+  const canonical = canonicalizeApplicationPackage(packageValue);
+  const digest = digestCanonicalJson(packageValue);
   const outputPath = join(projectRoot, '.eai', 'application-package', 'application-package.json');
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, canonical, 'utf8');
   return { digest, outputPath, package: packageValue };
 }
 
-export async function readApplicationPackage(projectRoot: string, inputPath = APPLICATION_PACKAGE_FILE): Promise<Record<string, unknown>> {
+/** Read and validate a local application package without changing it. */
+export async function readApplicationPackage(
+  projectRoot: string,
+  inputPath = APPLICATION_PACKAGE_FILE,
+): Promise<Record<string, unknown>> {
   const parsed = JSON.parse(await readFile(resolve(projectRoot, inputPath), 'utf8')) as unknown;
   const errors = validateApplicationPackage(parsed);
   if (errors.length > 0) throw new Error(errors.join('; '));
   return parsed as Record<string, unknown>;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function sortValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortValue);
-  if (!isRecord(value)) return value;
-  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortValue(value[key])]));
-}
-
-function visit(
-  value: unknown,
-  path: string[],
-  callback: (path: string, field: string, value: unknown) => void,
-): void {
-  if (Array.isArray(value)) {
-    value.forEach((child, index) => visit(child, [...path, String(index)], callback));
-    return;
-  }
-  if (!isRecord(value)) return;
-  for (const [field, child] of Object.entries(value)) {
-    const next = [...path, field];
-    callback(next.join('.'), field, child);
-    visit(child, next, callback);
-  }
 }
