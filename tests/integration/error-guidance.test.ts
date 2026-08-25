@@ -301,6 +301,9 @@ describe('error guidance catalog', () => {
     expect(guidance?.why.join(' ')).toContain(
       'source Object Type schema is not the app-manifest HTTP request schema',
     );
+    expect(guidance?.why.join(' ')).toContain(
+      'stops instead of using name derivation',
+    );
     expect(guidance?.diagnostics.map((item) => item.command)).toEqual(
       expect.arrayContaining([
         'eai update --check',

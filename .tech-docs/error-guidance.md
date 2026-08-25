@@ -480,6 +480,7 @@ None.
 
 - The source Object Type schema is not the app-manifest HTTP request schema.
 - Some deployed platform releases derive the transport slug from the validated model name. Other releases accept the explicit source slug.
+- The CLI stops instead of using name derivation when that would change an established stored slug.
 - The current CLI supports both request shapes. A repeated failure can indicate an older CLI or a separate field validation error.
 
 ### Diagnostics
@@ -496,6 +497,7 @@ None.
 ### Stop Conditions
 
 - The current CLI reports that both supported app-manifest request shapes failed.
+- The CLI reports that the deployed platform needs explicit slug support to preserve an established stored slug.
 
 ### Escalation Evidence
 

@@ -347,6 +347,49 @@ describe('app object-type publish helpers', () => {
     );
   });
 
+  test('does not use name-derived compatibility when it would change a historical slug', async () => {
+    const objectType = {
+      name: 'OPAMeasure',
+      slug: 'opameasure',
+      displayName: 'OPA measure',
+      properties: [],
+      linkTypes: [],
+      actions: [],
+      status: 'published',
+    } as ObjectTypeDefinition;
+    const savedPayloads: Record<string, unknown>[][] = [];
+    const client = {
+      saveAppObjectTypeManifest: async (
+        _appKey: string,
+        objectTypes: Record<string, unknown>[],
+      ) => {
+        savedPayloads.push(objectTypes);
+        return new Response(JSON.stringify({ message: 'Request validation failed' }), {
+          status: 422,
+          headers: { 'content-type': 'application/json' },
+        });
+      },
+      publishAppObjectTypes: async () => {
+        throw new Error('publish must not run when the exact slug cannot be preserved');
+      },
+    } as unknown as PlatformAPIClient;
+
+    await expect(
+      trySeedViaAppManifestPublish(
+        client,
+        'observability',
+        'tenant-1',
+        [objectType],
+      ),
+    ).rejects.toThrow(/requires explicit slug support.*OPAMeasure.*opameasure/s);
+
+    expect(savedPayloads).toHaveLength(1);
+    expect(savedPayloads[0]?.[0]).toMatchObject({
+      name: 'OPAMeasure',
+      slug: 'opameasure',
+    });
+  });
+
   test('preserves list-valued requiredStatus rules for app manifest publication', () => {
     const objectType = {
       name: 'Draft',
