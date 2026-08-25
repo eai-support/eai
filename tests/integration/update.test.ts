@@ -22,6 +22,7 @@ import { getNpmExecutable } from '../../src/lib/npm.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { runCommand } from '../helpers/action-dsl.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
+import { expectGoferSurfaceContract } from '../helpers/gofer-surface-contract.js';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json') as { version: string };
@@ -589,6 +590,7 @@ describe('eai update project maintenance', () => {
       expect(result.stdout).toContain('Gofer-managed assets refreshed');
       expect(await pathExists(join(env.dir, '.eai-manifest.json'))).toBe(true);
       expect(await pathExists(join(env.dir, '.specify', 'commands', '0_gofer_start.md'))).toBe(true);
+      await expectGoferSurfaceContract(ctx);
     } finally {
       await close();
     }
@@ -614,6 +616,7 @@ describe('eai update project maintenance', () => {
       expect(result.stdout).toContain('Gofer-managed assets refreshed');
       expect(await pathExists(join(resourcesRoot, 'config'))).toBe(true);
       expect(await pathExists(join(env.dir, '.specify', 'config', 'object-type-routing.json'))).toBe(true);
+      await expectGoferSurfaceContract(ctx);
     } finally {
       await close();
     }

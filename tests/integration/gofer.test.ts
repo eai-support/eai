@@ -16,6 +16,7 @@ import {
   expectFileExists,
   expectFileNotExists,
 } from "../helpers/assert-dsl.js";
+import { expectGoferSurfaceContract } from "../helpers/gofer-surface-contract.js";
 import { installGoferResources } from "../../src/lib/gofer-installer.js";
 
 const BUNDLED_GOFER_RESOURCES = fileURLToPath(
@@ -185,6 +186,7 @@ describe("eai gofer refresh", () => {
       ctx,
       ".specify/schemas/object-type-routing-phase-bundle-v1.schema.json",
     );
+    await expectGoferSurfaceContract(ctx);
   });
 
   test("detects local edits as conflicts and only overwrites them when forced", async () => {
@@ -299,6 +301,7 @@ describe("eai gofer refresh", () => {
     await expectFileNotExists(ctx, ".gemini/commands/gofer/0_gofer_start.toml");
     await expectFileExists(ctx, ".specify/commands/0_gofer_start.md");
     await expectFileExists(ctx, ".claude/agents/codebase-analyzer.md");
+    await expectGoferSurfaceContract(ctx, "", { checkPublicGuidance: false });
   });
 });
 

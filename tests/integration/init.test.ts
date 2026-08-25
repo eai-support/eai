@@ -53,6 +53,7 @@ import {
   expectNoPrompts,
   expectExitCode,
 } from "../helpers/assert-dsl.js";
+import { expectGoferSurfaceContract } from "../helpers/gofer-surface-contract.js";
 
 const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
@@ -464,6 +465,7 @@ describe("eai init", () => {
       "my-app/.eai-manifest.json",
       '"displaySource":',
     );
+    await expectGoferSurfaceContract(ctx, "my-app");
     expect(consoleCapture.stdout.join("\n")).toContain("Created My App");
   }, 30_000);
 
@@ -1192,6 +1194,7 @@ describe("eai init", () => {
       "quick-app/.github/skills/0-gofer-start/SKILL.md",
     );
     await expectFileExists(ctx, "quick-app/.github/skills/eai/SKILL.md");
+    await expectGoferSurfaceContract(ctx, "quick-app");
     const objectTypes = await readFile(
       join(env.dir, "quick-app", "src", "eai.config", "object-types.ts"),
       "utf-8",
