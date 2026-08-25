@@ -92,7 +92,7 @@ describe('eai start', () => {
     ]);
 
     expectCleanJsonFailure(execution, 'Unknown AI surface: not-a-surface');
-  });
+  }, AI_SURFACE_INTEGRATION_TIMEOUT_MS);
 
   it('returns a clean JSON failure for a missing project folder', async () => {
     const missingProjectDirectory = `${cliEntry}/missing-project`;
