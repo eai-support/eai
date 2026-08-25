@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.7 |
-| Released | 2026-08-20 |
-| Last Material Change | Improve reliable AI workspace launch across current providers |
-| Source Commit | `8cf062bb0d676af0cabe433d9f884527db23374b` |
+| Version | 3.15.8 |
+| Released | 2026-08-25 |
+| Last Material Change | Support current production Object Type seeding |
+| Source Commit | `2cc03fb6920e7c7e612943e5da90c4e39997e1be` |
 
 
 ## Install

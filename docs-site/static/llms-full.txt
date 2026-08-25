@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.15.7.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.15.8.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -388,7 +388,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.7** (2026-08-20): Improve reliable AI workspace launch across current providers.
+The current CLI release is **v3.15.8** (2026-08-25): Support current production Object Type seeding.
 
 
 ## What The Pieces Do
@@ -543,10 +543,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.7 |
-| Released | 2026-08-20 |
-| Last Material Change | Improve reliable AI workspace launch across current providers |
-| Source Commit | `8cf062bb0d676af0cabe433d9f884527db23374b` |
+| Version | 3.15.8 |
+| Released | 2026-08-25 |
+| Last Material Change | Support current production Object Type seeding |
+| Source Commit | `2cc03fb6920e7c7e612943e5da90c4e39997e1be` |
 
 
 ## Install
@@ -1972,7 +1972,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.15.7. The same catalog powers human stderr output, JSON output for AI
+v3.15.8. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -2446,6 +2446,7 @@ None.
 
 - The source Object Type schema is not the app-manifest HTTP request schema.
 - Some deployed platform releases derive the transport slug from the validated model name. Other releases accept the explicit source slug.
+- The CLI stops instead of using name derivation when that would change an established stored slug.
 - The current CLI supports both request shapes. A repeated failure can indicate an older CLI or a separate field validation error.
 
 ### Diagnostics
@@ -2462,6 +2463,7 @@ None.
 ### Stop Conditions
 
 - The current CLI reports that both supported app-manifest request shapes failed.
+- The CLI reports that the deployed platform needs explicit slug support to preserve an established stored slug.
 
 ### Escalation Evidence
 

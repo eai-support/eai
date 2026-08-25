@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.7** (2026-08-20): Improve reliable AI workspace launch across current providers.
+The current CLI release is **v3.15.8** (2026-08-25): Support current production Object Type seeding.
 
 
 ## What The Pieces Do
