@@ -1,7 +1,7 @@
 # EAI App Template Reference
 
-Use `https://github.com/eai-support/eai-app-template` as the canonical public app
-template for EnterpriseAI app-delivery work.
+Use `https://github.com/eai-support/eai-app-template` as the canonical public
+app template for EnterpriseAI app-delivery work.
 
 ## Source Of Truth
 
@@ -27,10 +27,10 @@ template for EnterpriseAI app-delivery work.
 ## Implementation Contract
 
 - Use Object Types as the data model contract.
-- Keep the PascalCase model `name` distinct from the exact lowercase
-  kebab-case stored `slug`. Emitted `linkTypes[].targetObjectType`, runtime
-  `target_type`, paths, resource commands, and governed v4 fields use exact
-  stored slugs. Never re-derive historical stored slugs.
+- Keep the PascalCase model `name` distinct from the exact lowercase kebab-case
+  stored `slug`. Emitted `linkTypes[].targetObjectType`, runtime `target_type`,
+  paths, resource commands, and governed v4 fields use exact stored slugs. Never
+  re-derive historical stored slugs.
 - Use the template SDK and hooks for resources, documents, and chat.
 - Use config slots with `{ components: [...] }`, not stale array-only slot
   examples.
@@ -39,11 +39,11 @@ template for EnterpriseAI app-delivery work.
 - Use the CLI for setup and verification:
   - `eai login`
   - `eai tenant select <tenant-slug>`
-  - `eai types validate`
-  - `eai types diff --tenant-key <key> --tenant-id <tenant-id>`
+  - `eai types validate --tenant-key <key> --tenant-id <tenant-id>`
   - `eai types seed --tenant-key <key> --tenant-id <tenant-id>`
+  - `eai types diff --tenant-key <key> --tenant-id <tenant-id>`
   - `eai resources schema --tenant-id <tenant-id>`
-  - `eai verify calls --tenant-id <tenant-id> --resource-type <object-type-slug>`
+  - `eai verify calls --tenant-id <tenant-id> --resource-type <type>`
 
 Do not describe retired templates as canonical scaffolds. The surviving public
 scaffold is the EAI App Template.

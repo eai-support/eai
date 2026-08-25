@@ -118,14 +118,14 @@ Why relevant: [Explanation]
 - **Coupling status**: [source-platform-coupled / source-platform-decoupled /
   hybrid-adapter]
 - **Public-readiness target**: [required / deferred / not applicable]
-- **EAI App Template constraints**: [approved blocks/patterns to reuse first]
+- **EAI App Template constraints**: [selected blocks/patterns to reuse first]
 - **Block catalog discovery**: [`eai --describe`, `eai blocks list`, candidate
   `eai blocks describe <id>` results, and `eai resources schema` evidence]
 - **Selected block IDs**: [stable IDs, required resources, bindings, override
   points, Storybook story IDs, theme override points, package lane, coupling
   status, and custom-block exceptions]
 - **Block porting plan**: [reuse as-is, port to package, or custom-block
-  exception with owner and approval path]
+  exception with owner and review path]
 - **source-platform decoupling plan**: [adapter/resource-schema boundary or
   approved restricted-source exception]
 - **Branding inputs**: [logos, colors, voice, or "not in scope"]
@@ -137,7 +137,8 @@ Why relevant: [Explanation]
 - **Capability discovery sources**: [`eai --describe`, `eai whoami`, `eai tenant
   select`, `eai resources schema`, `eai verify calls --format json`, or
   equivalent]
-- **What must be decided after UI approval**: [service selection questions]
+- **What must be decided after the first visible UI direction**: [service
+  selection questions]
 - **Non-app note**: [write "Not applicable" when this feature is non-app work]
 
 ## Recommended Architecture Direction

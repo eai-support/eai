@@ -10,6 +10,15 @@ Use this fallback when external CLI documentation is unavailable.
 
 ## Command Guidance Contract
 
+- Do not invent, guess, or complete EAI CLI commands from memory.
+- Before suggesting or running an `eai ...` command, verify the exact command
+  and flags from the installed CLI.
+- Start with `eai --describe`.
+- For a specific command, run `eai <command> --help` or the CLI-described
+  equivalent before using subcommands, flags, or examples.
+- If the command is not listed or help fails, do not run it. Say the installed
+  EAI CLI does not expose that command, then choose a safe listed command or ask
+  the user to update EAI CLI.
 - Use live CLI discovery before assuming syntax:
   - `eai update --check`
   - `eai --describe`
@@ -22,6 +31,9 @@ Use this fallback when external CLI documentation is unavailable.
   - `eai workflow readiness --format json` when advertised
   - `eai provision entra` when identity callback or Entra registration setup is
     in scope
+- Before architecture or storage decisions, read
+  `.specify/references/platform/eai-service-patterns.md` and record the service
+  choice in `.specify/specs/{feature}/service-fit-matrix.md`.
 - When any `eai` command fails, run
   `eai errors explain <code-or-reason> --format json` when advertised and use
   its public-safe reasons and next commands before guessing remediation.
@@ -49,8 +61,28 @@ Unless the live CLI advertises a different dependency order:
 4. Confirm or create/select the app
 5. Provision app resources
 6. Run object-type validation and publish
-7. Verify schema, storage, and workflow readiness
+7. Verify schema, storage, workflow, goals, targets, and platform AI readiness
 8. Start preview or dev runtime
+
+## Platform Service Selection
+
+For EAI app delivery, Gofer should choose the normal platform service without
+making the business user learn the platform internals.
+
+- Use PostgreSQL for relational, transactional, reporting, workflow state, and
+  structured tenant business data.
+- Use DocumentDB for flexible JSON documents, nested records, and high-change
+  document models.
+- Use Blob Storage for files, media, exports, and large binary content.
+- Use AI Search as a derived search projection over a source of record.
+- Use content understanding and document services for extraction,
+  classification, summarization, and Retrieval-Augmented Generation.
+- Use workflows, goals, and targets for business processes, approvals,
+  service-level tracking, and operating outcomes.
+- Use platform AI services before direct provider SDKs or provider keys.
+
+Ask for user input only when the choice changes cost, security, compliance,
+deployment, data residency, external systems, or material business scope.
 
 Do not treat provisioning, object-type publish, schema/storage health, workflow
 readiness, and preview as interchangeable states.

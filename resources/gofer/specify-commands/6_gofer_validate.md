@@ -23,23 +23,36 @@ description:
 
 # Gofer Validate
 
-## EAI Platform Session Preflight
+## Application Classification And EAI Preflight
 
-Before any Gofer stage/helper command does pipeline work:
+Before any EAI CLI, login, tenant, template, or app-enrollment action:
 
-1. Treat durable delivery as EAI Platform delivery by default, with Azure second
-   and every other stack only by explicit exception.
-2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
-3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
-   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
-   approve login/setup before continuing.
-4. For EAI app delivery, do not continue into research, specification, planning,
+1. Classify the request as **EAI app delivery** or **non-application work** using
+   the signals in `.specify/commands/0_gofer_start.md`.
+2. If the request is EAI app delivery or ambiguous, continue directly into the
+   EAI app delivery path. Do not ask for confirmation just because app delivery
+   is inferred.
+3. If the request is clearly non-application work, confirm once before taking
+   the non-app path:
+   - **"This looks like non-app work, so I will skip EAI tenant/app setup and
+     continue the Gofer research/docs path. Is that right?"**
+4. If the user confirms non-app, record the decision in the feature discovery or
+   context bundle, do not run `eai whoami`, `eai tenant select`, `eai init`, or
+   `/gofer:eai-first-run`, and continue the appropriate non-app pipeline path.
+5. If the user says it is app work, switch to EAI app delivery and run EAI app
+   preflight.
+6. For EAI app delivery, treat durable delivery as EAI Platform delivery by
+   default, with Azure second and every other stack only by explicit exception.
+7. For EAI app delivery, run `eai whoami` and confirm the EAI CLI is installed,
+   the user is logged in, and an active tenant is visible.
+8. If app-delivery readiness is missing, stop and run `/gofer:eai-first-run` or
+   ask the user to approve login/setup before continuing.
+9. For EAI app delivery, do not continue into research, specification, planning,
    tasks, implementation, or validation until
    `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
    app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
-   Gofer artifacts; record only product-safe readiness status and evidence.
+10. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+    Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
 <!-- gofer:token-cost-policy:start -->
@@ -58,6 +71,69 @@ Before spawning agents, calling tools, or loading large files:
 6. Escalate model tier only when a cheaper pass is low-confidence, contradictory, security-sensitive, or blocking release quality.
 <!-- gofer:token-cost-policy:end -->
 
+## Business-Friendly Progress Contract
+<!-- gofer:business-progress:start -->
+
+Default user-facing updates must be concise, business-level, and easy to scan.
+Keep the technical work rigorous in artifacts, tests, logs, and code, but do
+not lead with implementation jargon unless the user asks for it.
+
+Use ASD-STE100 Simplified Technical English as the target writing standard for
+all Gofer-authored chat, documents, commands, summaries, PR notes, error
+guidance, and validation artifacts. ASD-STE100 is copyright and a trademark of
+ASD; do not bundle the protected ASD dictionary and do not claim ASD
+certification.
+
+1. Explain progress as what is being connected, changed, checked, or fixed and
+   why it matters to the business outcome.
+2. Use the running build map: create or update
+   `.specify/specs/{feature}/build-map.md` from
+   `.specify/templates/build-map-template.md` for application delivery, and
+   refer to its plain-language areas in progress updates.
+3. When there is a problem, translate it into business impact, current status,
+   next action, and what input or approval is needed. Keep raw stack traces,
+   command logs, IDs, and acronyms out of chat unless asked.
+4. If the user asks for technical depth, provide it on request and point to the
+   durable artifact that contains the evidence.
+5. Prefer a compact update shape:
+   - `Working on`: the build-map area or stakeholder outcome
+   - `Why it matters`: user/business impact
+   - `Status`: done, checking, fixing, blocked, or needs decision
+6. Use one action per instruction.
+7. Keep instructions to 20 words or fewer where possible.
+8. Use active voice unless the actor is unknown or not important.
+9. Use simple verb forms: simple present, simple past, simple future,
+   infinitive, or imperative.
+10. Define acronyms on first use and use approved project terms.
+11. Avoid idioms, marketing adjectives, vague praise, and hedging.
+12. Use vertical lists for complex information and one topic per paragraph.
+13. For errors, state what happened, why it matters, what to do next, and the
+    exact safe command when one exists.
+14. Do not remove technical validation, security checks, EAI preflights, tests,
+   or loop evidence. This contract changes presentation, not engineering
+   standards.
+15. Before each user-facing reply, check that it leads with the business effect,
+    uses concise simple language, and includes only useful technical detail.
+16. If any check fails, rewrite the reply before sending it.
+<!-- gofer:business-progress:end -->
+
+## App Preview Runner Contract
+<!-- gofer:app-preview-runner:start -->
+
+For EAI app delivery, every UI preview must use the repo runner when it exists.
+
+1. Use `./run.sh dev 3001` on macOS, Linux, and GitHub Codespaces.
+2. Use `run.bat dev 3001` on Windows.
+3. Use a different port only when the feature notes record the reason.
+4. The runner must stop any process on the selected port before it restarts the app.
+5. Do not use direct `npm run dev`, `next dev`, or package-manager preview commands when `run.sh`, `run.bat`, or `run.ps1` exists.
+6. After every UI-facing change, run:
+   - `node .specify/scripts/node/gofer-ui-preview.mjs --feature-dir {FEATURE_DIR} --command "./run.sh dev 3001" --open auto --screenshot --change "<change summary>"`
+7. On Windows, use:
+   - `node .specify/scripts/node/gofer-ui-preview.mjs --feature-dir {FEATURE_DIR} --command "run.bat dev 3001" --open auto --screenshot --change "<change summary>"`
+8. If the runner is missing in an EAI app template repo, refresh the template before preview work continues.
+<!-- gofer:app-preview-runner:end -->
+
 ## User Input
 
 ```text
@@ -65,6 +141,14 @@ $ARGUMENTS
 ```
 
 You **MUST** consider the user input before proceeding (if not empty).
+
+## Delivery Lineage Contract
+
+Before completing validation, read `.specify/references/delivery-lineage.md`,
+reconcile `.specify/specs/{feature}/delivery-lineage.json` against actual
+customer code/docs/tests, and run the headless lineage validation and
+customer-projection checks. Missing, stale, broken, or superseded evidence must
+remain visible to the documentation viewer.
 
 ## Execution Profile And Validation Cost
 
@@ -161,7 +245,7 @@ For pre-2026 Copilot environments, execute the validation phases
 | 4   | Security Posture             | 10     | Zero hardcoded secrets, no disabled security features, no client-side keys                                                                                                             | validation-security                                                                                                        |
 | 5   | Integration Reality          | 10     | Integration tests use real dependencies where possible. Contract tests validate boundaries                                                                                             | validation-integration                                                                                                     |
 | 6   | Error Path Coverage          | 10     | Public functions tested for failure modes. No empty catch blocks                                                                                                                       | validation-correctness + validation-standards                                                                              |
-| 7   | Architecture Compliance      | 10     | File structure, patterns, visual explanations, and human-facing document summaries match plan.md and research.md. Required visuals are simple, rendered or fallback-safe, and traceable to requirements, code, and EAI Platform decisions | validation-standards                                                                                                       |
+| 7   | Architecture Compliance      | 10     | File structure, patterns, visual explanations, `build-map.md`, and human-facing document summaries match plan.md and research.md. Required visuals are simple, rendered or fallback-safe, and traceable to requirements, code, and EAI Platform decisions | validation-standards                                                                                                       |
 | 8   | Performance Baseline         | 5      | No synchronous I/O in async paths, no unbounded loops, no N+1 patterns                                                                                                                 | validation-performance                                                                                                     |
 | 9   | Code Hygiene                 | 10     | Zero AI slop: no TODO placeholders, no redundant comments, no magic numbers                                                                                                            | validation-standards                                                                                                       |
 | 10  | Specification Traceability   | 5      | Every user story maps to tests, every test maps to code                                                                                                                                | validation-correctness                                                                                                     |
@@ -197,6 +281,19 @@ Phrases like `likely correct`, `appears wired`, or `should be passing` are NOT
 evidence and MUST NOT contribute to any score. Any rubric category where
 evidence is absent, unverifiable, fabricated, or implied scores exactly 0 — no
 partial credit.
+
+## Object Type Identifier Contract
+
+- Preserve PascalCase source/model `name` and exact lowercase kebab-case
+  transport/storage `slug` as distinct identifiers.
+- Generated `linkTypes[].targetObjectType`, runtime `target_type`, paths, and
+  governed v4 fields contain exact stored slugs.
+- Resolve same-manifest model-name shorthand through the declared slug before
+  publication; reject unresolved names instead of guessing.
+- Use the shared platform SDK for app routes. Never hand-write v4 resource
+  paths or add a local slugifier.
+- Historical stored slugs are authoritative. Never normalize, alias, or rename
+  them to match current derivation.
 
 ---
 
@@ -300,18 +397,46 @@ Validation MUST treat the closed-loop and loop audits as objective gates:
 - If the audit only reports low-severity warnings with no recommended reopen
   stage, continue but record them in the validation report.
 
-## Object Type Identifier Contract
+## Step 1.6: PublicAPI V4 Resource Mutation Contract Gate
 
-- Preserve PascalCase source/model `name` and exact lowercase kebab-case
-  transport/storage `slug` as distinct identifiers.
-- Generated `linkTypes[].targetObjectType`, runtime `target_type`, paths, and
-  governed v4 fields contain exact stored slugs.
-- Resolve same-manifest model-name shorthand through the declared slug before
-  publication; reject unresolved names instead of guessing.
-- Use the shared platform SDK for app routes. Never hand-write v4 resource
-  paths or add a local slugifier.
-- Historical stored slugs are authoritative. Never normalize, alias, or rename
-  them to match current derivation.
+Run the deterministic application-source guard:
+
+```bash
+node .specify/scripts/node/validate-v4-resource-contract.mjs --workspace . --json
+```
+
+This gate fails when application source:
+
+- sends `PATCH` to a PublicAPI v4 resource record update;
+- sends a flat create, update, or action body instead of the required envelope;
+- performs an action followed by an update without using the action result's
+  version or the canonical `updateFrom(...)` helper.
+- constructs `/v4/data/resources/.../<type>` directly outside the single
+  platform SDK route owner declared in `.specify/config/object-type-routing.json`.
+
+The Object Type route audit has an immutable denominator: it scans only the
+configured source roots, skips dependencies, build outputs, generated mirrors,
+documentation, and declared fixtures, and emits deterministic structured
+`OBJECT_TYPE_DIRECT_ROUTE_CONSTRUCTION` findings. Feature code must use the
+shared platform SDK, `useResources`, or `client.resources`; do not add local
+exceptions or edit a workspace copy of the config to widen the audit.
+
+Object Type management remains a separate contract and may use its documented
+`PATCH /v4/data/resources/object-types/{id}` route. Do not weaken this guard by
+allowing legacy record mutations. Fix the source and rerun the gate. Use at
+most three fix-and-validate attempts; after the third identical failure, mark
+validation failed with the rule ID, file, line, attempted fixes, and the reason
+the contract cannot be satisfied.
+
+For EAI apps that publish Object Types, validation also requires the
+`app-manifest-name-slug-negotiation-v1` capability, dry-run evidence for the
+preferred shape and exact declared name/slug pairs, a successful mutating result
+that records the shape used, and a converged `eai types diff`. A dry run alone
+is not deployed receiver evidence. Do not report the app ready when any part is
+missing.
+
+Canonical contract:
+https://docs.eai.software/services/publicapi/v4/resource-mutation-contract
 
 ---
 
@@ -1906,7 +2031,15 @@ review report are written:
    status, business value confidence, and any validated/disproven assumptions.
 5. Refresh `{FEATURE_DIR}/cto-architecture-summary.md` with validation status,
    blast-radius verdict, and any architecture/security exceptions.
-6. Update `{FEATURE_DIR}/stakeholder-review-index.md` and make the final
+6. For application delivery, validate `{FEATURE_DIR}/build-map.md`:
+   - It exists and is not the raw template.
+   - Its areas match the delivered feature, EAI Platform usage, security
+     posture, integrations, preview/release state, and known issues.
+   - Its latest update is plain-language and tells a business user what is
+     ready, what is being fixed, and what decision remains.
+   - Any unresolved validation, security, platform, or UX issue appears in the
+     relevant "Issue / fix" and "Business impact" columns.
+7. Update `{FEATURE_DIR}/stakeholder-review-index.md` and make the final
    approve/revise/defer asks explicit:
    - Business Owner: release value, user/process impact, assumptions.
    - CTO / Architecture: platform/architecture evidence and exceptions.
@@ -2083,13 +2216,32 @@ For application delivery, validation MUST also check
 - Each journey step preserves its business goal, AI assistance mode, data/context
   used, completion signal, human controls, evidence/confidence display, audit
   trail, and fallback/escalation path.
-- `{FEATURE_DIR}/ui-review-log.md` contains at least one pre-presentation
-  self-review entry for each preview round that was shown to the stakeholder,
-  with screenshot, local render proof, Playwright-style evidence, or an
-  explicit reasoned exception.
-- `{FEATURE_DIR}/ui-approval.md` records the approved preview, approved
-  branding/logo decisions, any approved EAI App Template exceptions, the
-  approver, and approval timestamp.
+- `{FEATURE_DIR}/ui-review-log.md` contains a `gofer-ui-preview.mjs` run or
+  equivalent opened-browser evidence for every UI-facing change after the first
+  repo runner command/URL was established.
+- `{FEATURE_DIR}/business-scenarios.json` maps every in-scope user story to its
+  business outcome, all screens/states crossed, and executable browser test
+  files. Missing stories, unnamed screens, missing test files, or unit-only
+  coverage are release-blocking.
+- `{FEATURE_DIR}/business-scenario-report.json` comes from the latest UI state,
+  reports a recognized Playwright/Cypress/browser runner, and is `passed`.
+  Validation reruns
+  `gofer-ui-preview.mjs --feature-dir {FEATURE_DIR} --command "./run.sh dev 3001" --require-scenarios`;
+  use `run.bat dev 3001` on Windows. A screenshot or component render without a
+  successful click-through does not satisfy the functional UI gate.
+- When the host supports an integrated browser, validation also clicks through
+  the same scenarios visibly and records the URL, screens visited, outcomes,
+  console errors, failed requests, responsive viewport, and any mismatch with
+  automation in `ui-show-and-tell.md`. Playwright remains the repeatable
+  fallback and CI gate.
+- Each preview entry records the changed surface, repo runner command or URL,
+  opened local URL, browser target, screenshot path or clear capture limitation,
+  and pre-presentation self-review notes before stakeholder feedback.
+- `{FEATURE_DIR}/ui-show-and-tell.md` records the latest opened preview URL,
+  latest preview-helper run, screenshot/browser evidence, user feedback,
+  branding/logo notes, any EAI App Template exceptions, changes made from
+  feedback, and unresolved UX issues. This is show-and-tell evidence, not
+  release approval.
 - `{FEATURE_DIR}/service-fit-matrix.md` records each desired platform
   capability, the evidence source used to evaluate it, and whether it is
   accessible now, purchasable but unavailable now, or unavailable without new
@@ -2100,13 +2252,13 @@ For application delivery, validation MUST also check
   unmanaged database, or unrelated SaaS dependency is rejected unless it is
   recorded as an approved integration/migration/exception with rationale, owner,
   expiry, and validation evidence.
-- The approved external/internal/hybrid profile choice, package lane, coupling
+- The selected external/internal/hybrid profile choice, package lane, coupling
   status, Storybook story IDs, theme override points, public-readiness target,
-  and custom-block exceptions are present in the preview/approval/service-fit
+  and custom-block exceptions are present in the preview/show-and-tell/service-fit
   artifacts and match the delivered implementation.
 - Validation confirms that app-delivery runs used EAI App Template blocks by
-  default and that any create-new UI concept was explicitly approved rather
-  than silently introduced.
+  default and that any create-new UI concept was explicitly shown to the user,
+  recorded with rationale, and not silently introduced.
 - Validation confirms that block-porting tasks produced the expected package
   surface and that public or hybrid lanes do not directly depend on source platform
   internals unless an approved restricted-source exception is recorded.
@@ -2115,7 +2267,7 @@ For application delivery, validation MUST also check
   in scope.
 
 For explicit non-app work, validation MUST treat `ui-preview-brief.md`,
-`ui-review-log.md`, `ui-approval.md`, and `service-fit-matrix.md` as
+`ui-review-log.md`, `ui-show-and-tell.md`, and `service-fit-matrix.md` as
 **not applicable** rather than as missing blocking artifacts.
 
 ### Log Summary Entry
@@ -2256,3 +2408,19 @@ This also logs quality metrics (rubric scores, finding counts) to:
 - **Score the rubric honestly** — the goal is to catch real problems, not to
   pass
 - Log stage completion for observability tracking
+
+## Local Settings Cleanup Contract
+<!-- gofer:local-settings-cleanup:start -->
+
+After any Gofer install, update, release refresh, or workspace bootstrap:
+
+1. Archive stale Gofer command and skill entries before continuing.
+2. Prefer the repo helper:
+   - `node .specify/scripts/node/gofer-local-settings-cleanup.mjs --workspace . --apply --json`
+3. If the repo helper is missing, use the stable plugin bundle helper:
+   - macOS/Linux: `node ~/plugins/eai-gofer/.specify/scripts/node/gofer-local-settings-cleanup.mjs --workspace . --apply --json`
+   - Windows: `node %USERPROFILE%\plugins\eai-gofer\.specify\scripts\node\gofer-local-settings-cleanup.mjs --workspace . --apply --json`
+4. This cleanup covers old Claude, Codex, Copilot, Gemini, Grok, VS Code, desktop, and CLI command surfaces.
+5. Do not remove the current public `eai` entrypoint.
+6. Ask the user to refresh or restart the host command picker only after cleanup completes.
+<!-- gofer:local-settings-cleanup:end -->

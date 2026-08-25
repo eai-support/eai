@@ -1,2 +1,0 @@
-description = "Execute all tasks from tasks.md phase by phase with feedback loops and engineering review."
-prompt = "{{include: ../../../.specify/commands/5_gofer_implement.md}}"

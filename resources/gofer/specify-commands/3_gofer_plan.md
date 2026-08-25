@@ -22,23 +22,36 @@ description:
 
 # Gofer Plan
 
-## EAI Platform Session Preflight
+## Application Classification And EAI Preflight
 
-Before any Gofer stage/helper command does pipeline work:
+Before any EAI CLI, login, tenant, template, or app-enrollment action:
 
-1. Treat durable delivery as EAI Platform delivery by default, with Azure second
-   and every other stack only by explicit exception.
-2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
-3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
-   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
-   approve login/setup before continuing.
-4. For EAI app delivery, do not continue into research, specification, planning,
+1. Classify the request as **EAI app delivery** or **non-application work** using
+   the signals in `.specify/commands/0_gofer_start.md`.
+2. If the request is EAI app delivery or ambiguous, continue directly into the
+   EAI app delivery path. Do not ask for confirmation just because app delivery
+   is inferred.
+3. If the request is clearly non-application work, confirm once before taking
+   the non-app path:
+   - **"This looks like non-app work, so I will skip EAI tenant/app setup and
+     continue the Gofer research/docs path. Is that right?"**
+4. If the user confirms non-app, record the decision in the feature discovery or
+   context bundle, do not run `eai whoami`, `eai tenant select`, `eai init`, or
+   `/gofer:eai-first-run`, and continue the appropriate non-app pipeline path.
+5. If the user says it is app work, switch to EAI app delivery and run EAI app
+   preflight.
+6. For EAI app delivery, treat durable delivery as EAI Platform delivery by
+   default, with Azure second and every other stack only by explicit exception.
+7. For EAI app delivery, run `eai whoami` and confirm the EAI CLI is installed,
+   the user is logged in, and an active tenant is visible.
+8. If app-delivery readiness is missing, stop and run `/gofer:eai-first-run` or
+   ask the user to approve login/setup before continuing.
+9. For EAI app delivery, do not continue into research, specification, planning,
    tasks, implementation, or validation until
    `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
    app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
-   Gofer artifacts; record only product-safe readiness status and evidence.
+10. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+    Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
 <!-- gofer:token-cost-policy:start -->
@@ -57,6 +70,69 @@ Before spawning agents, calling tools, or loading large files:
 6. Escalate model tier only when a cheaper pass is low-confidence, contradictory, security-sensitive, or blocking release quality.
 <!-- gofer:token-cost-policy:end -->
 
+## Business-Friendly Progress Contract
+<!-- gofer:business-progress:start -->
+
+Default user-facing updates must be concise, business-level, and easy to scan.
+Keep the technical work rigorous in artifacts, tests, logs, and code, but do
+not lead with implementation jargon unless the user asks for it.
+
+Use ASD-STE100 Simplified Technical English as the target writing standard for
+all Gofer-authored chat, documents, commands, summaries, PR notes, error
+guidance, and validation artifacts. ASD-STE100 is copyright and a trademark of
+ASD; do not bundle the protected ASD dictionary and do not claim ASD
+certification.
+
+1. Explain progress as what is being connected, changed, checked, or fixed and
+   why it matters to the business outcome.
+2. Use the running build map: create or update
+   `.specify/specs/{feature}/build-map.md` from
+   `.specify/templates/build-map-template.md` for application delivery, and
+   refer to its plain-language areas in progress updates.
+3. When there is a problem, translate it into business impact, current status,
+   next action, and what input or approval is needed. Keep raw stack traces,
+   command logs, IDs, and acronyms out of chat unless asked.
+4. If the user asks for technical depth, provide it on request and point to the
+   durable artifact that contains the evidence.
+5. Prefer a compact update shape:
+   - `Working on`: the build-map area or stakeholder outcome
+   - `Why it matters`: user/business impact
+   - `Status`: done, checking, fixing, blocked, or needs decision
+6. Use one action per instruction.
+7. Keep instructions to 20 words or fewer where possible.
+8. Use active voice unless the actor is unknown or not important.
+9. Use simple verb forms: simple present, simple past, simple future,
+   infinitive, or imperative.
+10. Define acronyms on first use and use approved project terms.
+11. Avoid idioms, marketing adjectives, vague praise, and hedging.
+12. Use vertical lists for complex information and one topic per paragraph.
+13. For errors, state what happened, why it matters, what to do next, and the
+    exact safe command when one exists.
+14. Do not remove technical validation, security checks, EAI preflights, tests,
+   or loop evidence. This contract changes presentation, not engineering
+   standards.
+15. Before each user-facing reply, check that it leads with the business effect,
+    uses concise simple language, and includes only useful technical detail.
+16. If any check fails, rewrite the reply before sending it.
+<!-- gofer:business-progress:end -->
+
+## App Preview Runner Contract
+<!-- gofer:app-preview-runner:start -->
+
+For EAI app delivery, every UI preview must use the repo runner when it exists.
+
+1. Use `./run.sh dev 3001` on macOS, Linux, and GitHub Codespaces.
+2. Use `run.bat dev 3001` on Windows.
+3. Use a different port only when the feature notes record the reason.
+4. The runner must stop any process on the selected port before it restarts the app.
+5. Do not use direct `npm run dev`, `next dev`, or package-manager preview commands when `run.sh`, `run.bat`, or `run.ps1` exists.
+6. After every UI-facing change, run:
+   - `node .specify/scripts/node/gofer-ui-preview.mjs --feature-dir {FEATURE_DIR} --command "./run.sh dev 3001" --open auto --screenshot --change "<change summary>"`
+7. On Windows, use:
+   - `node .specify/scripts/node/gofer-ui-preview.mjs --feature-dir {FEATURE_DIR} --command "run.bat dev 3001" --open auto --screenshot --change "<change summary>"`
+8. If the runner is missing in an EAI app template repo, refresh the template before preview work continues.
+<!-- gofer:app-preview-runner:end -->
+
 ## User Input
 
 ```text
@@ -64,6 +140,13 @@ $ARGUMENTS
 ```
 
 You **MUST** consider the user input before proceeding (if not empty).
+
+## Delivery Lineage Contract
+
+Before completing this stage, read `.specify/references/delivery-lineage.md`
+and update `.specify/specs/{feature}/delivery-lineage.json` with customer
+architecture, decisions, approvers, evidence, and PublicAPI capability
+dependencies. Store concise decision rationale, never hidden reasoning.
 
 ## Execution Profile And Planning Surface
 
@@ -84,6 +167,30 @@ Use the research/spec risk classification to choose planning depth:
 Avoid artifact churn. Optional diagrams, extended architecture councils,
 generated issue packs, and broad release plans are only warranted when risk is
 full/dynamic-depth or the user asks for them.
+
+## EAI Platform Service Planning
+
+For EAI app delivery, read `.specify/references/platform/eai-service-patterns.md`
+before writing `plan.md`, `data-model.md`, contracts, or `service-fit-matrix.md`.
+
+Make the normal EAI Platform choice on behalf of the business user:
+
+1. Use PostgreSQL for relational, transactional, reporting, workflow state,
+   audit, and structured tenant business data.
+2. Use DocumentDB for flexible JSON documents, nested records, high-change
+   schemas, and user-authored document state.
+3. Use Blob Storage for large files, binary content, exports, and file-like
+   resources behind API-mediated access.
+4. Use AI Search as a derived search projection, not as the source of record.
+5. Use EAI content understanding and document services for extraction,
+   classification, summarization, and Retrieval-Augmented Generation.
+6. Use EAI workflows, goals, and targets for approvals, long-running work,
+   service goals, operating targets, and auditable process state.
+7. Use platform AI services and workflow-backed agents before direct provider
+   SDKs or provider keys.
+8. Ask the user only when the choice affects cost, security, compliance,
+   deployment, data residency, external systems, or material business scope.
+9. Record each choice, reason, evidence, and exception in `service-fit-matrix.md`.
 
 ## Prerequisites
 
@@ -116,13 +223,14 @@ empty, or `template`, stop and run `/2_gofer_specify`; do not create or refresh
 4. Review agent outputs
 5. Optional multi-perspective review
 6. Spec coverage validation
-7. Output: `plan.md`, `data-model.md`, `contracts/`, `quickstart.md`
+7. Output: `plan.md`, `data-model.md`, `contracts/`, `quickstart.md`, and
+   for app delivery an updated `build-map.md`
 8. Stakeholder PR/FAQ output: `working-backwards-prfaq.md`,
    `prfaq-history/03-plan.md`, `cto-architecture-summary.md`, and
    `stakeholder-review-index.md`
 9. EnterpriseAI profile output: task-ready references to `context-bundle.md`,
    `contract-pack.md`, `reuse-scan.md`, `audit-history.md`, and for app
-   delivery `ui-review-log.md`, `ui-approval.md`, and
+   delivery `ui-review-log.md`, `ui-show-and-tell.md`, and
    `service-fit-matrix.md`, including public-readiness, block-porting, source platform
    decoupling, Storybook, theme override, and package-profile decisions
 10. Dynamic-only output: `workflow-dag.md` with shards, inputs, outputs,
@@ -162,7 +270,7 @@ Planning dispatches multiple agents — keep main context lightweight.
    - Note feature name from FEATURE_DIR
    - Note whether `discovery.md`, `.specify/memory/constitution.md` exist
    - Note whether `ui-preview-brief.md`, `ui-review-log.md`,
-     `ui-approval.md`, and `service-fit-matrix.md` exist
+     `ui-show-and-tell.md`, and `service-fit-matrix.md` exist
    - Note external/internal/hybrid profile choice, package lane, coupling
      status, Storybook story IDs, theme override points, custom-block
      exceptions, and public-readiness status when app delivery applies
@@ -201,7 +309,7 @@ Read these files for full context:
 - {FEATURE_DIR}/loop-contract.json — bounded loop objective, evaluation commands, max iterations, stop conditions, and escalation rules
 - {FEATURE_DIR}/ui-preview-brief.md — app-delivery preview brief (read if exists, skip if not)
 - {FEATURE_DIR}/ui-review-log.md — app-delivery preview iteration history (read if exists, skip if not)
-- {FEATURE_DIR}/ui-approval.md — app-delivery approval state (read if exists, skip if not)
+- {FEATURE_DIR}/ui-show-and-tell.md — app-delivery show-and-tell state, latest opened preview, and user feedback (read if exists, skip if not)
 - {FEATURE_DIR}/service-fit-matrix.md — app-delivery capability selections (read if exists, skip if not)
 - .specify/templates/plan-template.md — Plan template structure
 - .specify/memory/constitution.md — Project principles (read if exists)
@@ -680,10 +788,15 @@ Before reporting completion, update the stakeholder-facing architecture pack:
    `.specify/templates/cto-architecture-summary-template.md` using
    `plan.md`, `contract-pack.md`, `data-model.md`, C4 diagrams,
    `service-fit-matrix.md`, and `eai-preflight.md` when present.
-4. Update `{FEATURE_DIR}/stakeholder-review-index.md` and explicitly ask
+4. For application delivery, update `{FEATURE_DIR}/build-map.md` so the EAI
+   Platform, data/workflow, login/security, integrations, and preview/release
+   rows reflect the selected architecture in plain language. The latest update
+   should say what is being connected, why it matters, and what remains to
+   prove before implementation.
+5. Update `{FEATURE_DIR}/stakeholder-review-index.md` and explicitly ask
    CTO / Architecture to approve, revise, or defer the architecture,
    EAI/Azure fit, auth/tenant model, data model, and integration contracts.
-5. Preserve the existing loop contract: if planning changed eval commands,
+6. Preserve the existing loop contract: if planning changed eval commands,
    stop conditions, or escalation rules, update `loop-contract.json` and keep
    those changes visible in the stakeholder index rather than replacing loop
    audit behavior.
@@ -776,23 +889,39 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
    completion signal, user controls, audit trail, and fallback/escalation path.
    If the plan expands beyond four user-facing steps, document why those steps
    cannot be combined, automated, or handled by the AI assistant.
-9. **UI-first approval gate handoff** — for app delivery, reference
+9. **UI-first show-and-tell handoff** — for app delivery, reference
    `{FEATURE_DIR}/ui-preview-brief.md` and require the planning stage to lock
    the preview loop before plan/tasks are considered complete. The plan MUST:
    - keep the first preview constrained to EAI App Template blocks unless an
-     approved extension is recorded
+     explicit extension exception is recorded
    - cite `eai blocks describe <id>` evidence for every selected block ID,
      plus the ResourceAPI/Object Type fields from `eai resources schema` that
      feed each block
    - record override points for theme tokens, `presentationConfig`, copy,
      data/action bindings, and client extension blocks
    - capture whether client branding/logos are in scope
-   - require screenshot, local render proof, or Playwright-style self-review
-     evidence before stakeholder presentation
-   - update `{FEATURE_DIR}/ui-review-log.md` for each iteration and require
-     explicit stakeholder approval in `{FEATURE_DIR}/ui-approval.md`
+   - record the repo runner as the preview command or URL, expected local URL,
+     and browser target strategy for integrated-browser first and
+     external-browser fallback
+   - require this helper after every UI-facing change. Prefer
+     `./run.sh dev 3001` on macOS/Linux/Codespaces and `run.bat dev 3001` on
+     Windows:
+     ```bash
+     node .specify/scripts/node/gofer-ui-preview.mjs --feature-dir {FEATURE_DIR} --command "./run.sh dev 3001" --require-scenarios --open auto --screenshot --change "<change summary>"
+     ```
+   - create `{FEATURE_DIR}/business-scenarios.json` mapping each in-scope user
+     story and outcome to every screen/state crossed and its executable browser
+     test; require a passing `business-scenario-report.json`
+   - require screenshot, local render proof, integrated-browser walkthrough,
+     and repeatable Playwright/Cypress scenario evidence before stakeholder
+     presentation
+   - update `{FEATURE_DIR}/ui-review-log.md` for each iteration and keep
+     `{FEATURE_DIR}/ui-show-and-tell.md` current with the latest opened preview,
+     screenshot evidence, user feedback, accepted revisions, and unresolved UX
+     questions. Do not treat this as release approval or a blocking gate.
 10. **EnterpriseAI service-fit handoff** — for app delivery, the plan MUST
-   produce or update `{FEATURE_DIR}/service-fit-matrix.md` after UI approval and
+   produce or update `{FEATURE_DIR}/service-fit-matrix.md` after a concrete UI
+   direction is visible and
    before tasks are treated as complete. The matrix must distinguish:
    - accessible now
    - purchasable but unavailable now
@@ -824,12 +953,14 @@ Plan both:
 - **AI-augmented app process**: for application delivery, the four-step-or-fewer
   journey with AI assistance, contextual prefill, conversational support,
   completion checks, and human controls at each step.
-- **App-delivery preview and approval loop**: for application delivery, the
+- **App-delivery preview and show-and-tell loop**: for application delivery, the
   local preview creation, self-review, stakeholder feedback, branding updates,
-  and approval-gate behavior that must occur before plan/tasks are finalized.
-- **EnterpriseAI service-fit gate**: for application delivery, the post-approval
+  and rapid browser/screenshot evidence that must occur before plan/tasks are
+  finalized.
+- **EnterpriseAI service-fit gate**: for application delivery, the post-preview
   capability-selection discussion that binds chosen platform services to the
-  approved UI and distinguishes accessible now vs purchasable vs unavailable.
+  visible UI direction and distinguishes accessible now vs purchasable vs
+  unavailable.
 - **Internal orchestration flows**: platform services, ResourceAPI calls,
   events, data movement, tenant boundaries, deployment steps, and observability.
 
@@ -860,3 +991,19 @@ Logs to: `.specify/logs/pipeline.jsonl`
 - All NEEDS CLARIFICATION must be resolved before completing
 - Plan must be specific enough for task generation
 - Log stage completion for observability tracking
+
+## Local Settings Cleanup Contract
+<!-- gofer:local-settings-cleanup:start -->
+
+After any Gofer install, update, release refresh, or workspace bootstrap:
+
+1. Archive stale Gofer command and skill entries before continuing.
+2. Prefer the repo helper:
+   - `node .specify/scripts/node/gofer-local-settings-cleanup.mjs --workspace . --apply --json`
+3. If the repo helper is missing, use the stable plugin bundle helper:
+   - macOS/Linux: `node ~/plugins/eai-gofer/.specify/scripts/node/gofer-local-settings-cleanup.mjs --workspace . --apply --json`
+   - Windows: `node %USERPROFILE%\plugins\eai-gofer\.specify\scripts\node\gofer-local-settings-cleanup.mjs --workspace . --apply --json`
+4. This cleanup covers old Claude, Codex, Copilot, Gemini, Grok, VS Code, desktop, and CLI command surfaces.
+5. Do not remove the current public `eai` entrypoint.
+6. Ask the user to refresh or restart the host command picker only after cleanup completes.
+<!-- gofer:local-settings-cleanup:end -->

@@ -1,32 +1,7 @@
 {
   "version": "1.0",
-  "generated": "2026-07-06T03:02:48.159Z",
+  "generated": "2026-08-25T08:35:59.244Z",
   "commands": [
-    "0_gofer_start",
-    "0a_problem_validation",
-    "10_gofer_cloud",
-    "1_gofer_research",
-    "2_gofer_specify",
-    "3_gofer_plan",
-    "4_gofer_tasks",
-    "5_gofer_implement",
-    "6_gofer_validate",
-    "7_gofer_save",
-    "7a_stakeholder_comms",
-    "8_gofer_branding",
-    "9_gofer_tests",
-    "gofer:bootstrap-workspace",
-    "gofer:check-workspace",
-    "gofer:diagnose",
-    "gofer:eai-first-run",
-    "gofer:personality",
-    "gofer:plan",
-    "gofer:side",
-    "gofer:spec-summary",
-    "gofer:tdd",
-    "gofer:vocabulary",
-    "gofer:zoom-out",
-    "gofer_constitution",
-    "gofer_hydrate"
+    "eai"
   ]
 }

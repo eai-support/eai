@@ -1,0 +1,2 @@
+description = "Start or continue the EAI delivery pipeline. Use when the user says Get started with EAI or asks EAI to guide application delivery."
+prompt = "{{include: ./eai.md}}"

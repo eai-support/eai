@@ -14,6 +14,7 @@ import {
   expectDisplayedMessage,
   expectFileContains,
   expectFileExists,
+  expectFileNotExists,
 } from "../helpers/assert-dsl.js";
 import { installGoferResources } from "../../src/lib/gofer-installer.js";
 
@@ -109,6 +110,22 @@ describe("eai gofer refresh", () => {
       ".eai-manifest.json",
       '".github/copilot-instructions.md"',
     );
+    await expectFileContains(
+      ctx,
+      ".eai-manifest.json",
+      '".claude/skills/eai/SKILL.md"',
+    );
+    await expectFileExists(ctx, ".claude/skills/eai/SKILL.md");
+    await expectFileContains(
+      ctx,
+      ".claude/skills/eai/SKILL.md",
+      "## Local Settings Cleanup Contract",
+    );
+    await expectFileNotExists(ctx, ".agents/skills/0_gofer_start/SKILL.md");
+    await expectFileNotExists(ctx, ".github/skills/0-gofer-start/SKILL.md");
+    await expectFileExists(ctx, ".gemini/commands/gofer/eai.md");
+    await expectFileNotExists(ctx, ".gemini/commands/gofer/0_gofer_start.md");
+    await expectFileNotExists(ctx, ".gemini/commands/gofer/0_gofer_start.toml");
     await expectFileExists(
       ctx,
       ".specify/references/platform/eai-app-template.md",
@@ -235,6 +252,53 @@ describe("eai gofer refresh", () => {
       commit: "latest-gofer-commit",
       source: "latest",
     });
+  });
+
+  test("installs a plain-language Claude skill from a newer Gofer resources source", async () => {
+    const latestCheckout = join(env.dir, "latest-gofer-checkout");
+    const latestResources = join(latestCheckout, "extension", "resources");
+    const eaiSkillDirectory = join(latestResources, "claude-skills", "eai");
+    await cp(BUNDLED_GOFER_RESOURCES, latestResources, { recursive: true });
+    await mkdir(eaiSkillDirectory, { recursive: true });
+    await writeFile(
+      join(eaiSkillDirectory, "SKILL.md"),
+      [
+        "---",
+        "name: eai",
+        'description: "Use when the user says Get started with EAI."',
+        "---",
+        "",
+        "## Welcome to Enterprise AI 👋",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    ctx.env.EAI_GOFER_REFRESH_SOURCE = "latest";
+    ctx.env.EAI_GOFER_REFRESH_RESOURCES_PATH = latestCheckout;
+    ctx.env.EAI_GOFER_REFRESH_CACHE_DIR = join(env.dir, "gofer-cache");
+
+    const result = await runCommand(ctx, "eai gofer refresh");
+    expectCommandSucceeded(result);
+    await expectFileContains(
+      ctx,
+      ".claude/skills/eai/SKILL.md",
+      "Use when the user says Get started with EAI",
+    );
+    await expectFileContains(
+      ctx,
+      ".claude/skills/eai/SKILL.md",
+      "Welcome to Enterprise AI 👋",
+    );
+    await expectFileExists(ctx, ".claude/commands/eai.md");
+    await expectFileNotExists(ctx, ".claude/commands/0_gofer_start.md");
+    await expectFileNotExists(ctx, ".agents/skills/0_gofer_start/SKILL.md");
+    await expectFileNotExists(ctx, ".github/skills/0-gofer-start/SKILL.md");
+    await expectFileExists(ctx, ".gemini/commands/gofer/eai.md");
+    await expectFileNotExists(ctx, ".gemini/commands/gofer/0_gofer_start.md");
+    await expectFileNotExists(ctx, ".gemini/commands/gofer/0_gofer_start.toml");
+    await expectFileExists(ctx, ".specify/commands/0_gofer_start.md");
+    await expectFileExists(ctx, ".claude/agents/codebase-analyzer.md");
   });
 });
 

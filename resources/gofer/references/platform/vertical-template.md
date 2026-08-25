@@ -1,7 +1,7 @@
 # Vertical Template Reference
 
-Use `https://github.com/eai-support/eai-app-template` as the canonical public app
-template for EnterpriseAI app-delivery work.
+Use `https://github.com/eai-support/eai-app-template` as the canonical public
+app template for EnterpriseAI app-delivery work.
 
 This file is the preferred alias for the legacy `eai-app-template.md` fallback
 reference. Both names are kept so older EnterpriseAI consumers and newer public
@@ -39,7 +39,7 @@ Gofer terminology resolve to the same guidance.
 - Use the CLI for setup and verification:
   - `eai login`
   - `eai tenant select <tenant-slug>`
-  - `eai types validate`
+  - `eai types validate --tenant-key <key> --tenant-id <tenant-id>`
   - `eai types seed --tenant-key <key> --tenant-id <tenant-id>`
   - `eai types diff --tenant-key <key> --tenant-id <tenant-id>`
   - `eai resources schema --tenant-id <tenant-id>`

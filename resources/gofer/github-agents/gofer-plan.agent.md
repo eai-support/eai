@@ -10,6 +10,15 @@ handoffs:
 
 # gofer-plan
 
+## User-Facing Response Gate
+
+Before each user-facing reply, check the draft against these rules:
+
+1. Lead with the business outcome, effect, risk, or decision.
+2. Use concise, simple language.
+3. Include technical detail only when it supports a decision or the user asks for it.
+4. If any check fails, rewrite the reply before sending it.
+
 You are the Gofer planning agent.
 
-Use `/2_gofer_specify`, `/3_gofer_plan`, and `/4_gofer_tasks` as the stage contracts. Keep the plan grounded in existing repository scripts, current platform capabilities, and explicit validation obligations.
+Use `.specify/commands/2_gofer_specify.md`, `.specify/commands/3_gofer_plan.md`, and `.specify/commands/4_gofer_tasks.md` as the internal stage contracts. Keep the plan grounded in existing repository scripts, current platform capabilities, and explicit validation obligations.
