@@ -26,6 +26,7 @@ describe('agent guide', () => {
     const guide = getAgentGuide();
 
     expect(guide.firstCommands.map((entry) => entry.command)).toContain('eai --describe');
+    expect(guide.capabilities).toContain('app-manifest-name-slug-negotiation-v1');
     expect(guide.recoveryLoop).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -40,6 +41,9 @@ describe('agent guide', () => {
       ]),
     );
     expect(guide.operatingRules).toContain('When calling eai publicapi directly, only use /v4 paths.');
+    expect(guide.operatingRules).toContain(
+      'Before Object Type publication, require app-manifest-name-slug-negotiation-v1. The CLI preserves source slugs and selects a safe deployed request shape. A dry-run preferred shape does not prove that the deployed platform accepts that shape.',
+    );
     expect(guide.operatingRules).toContain(
       'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing tenant members, Entra, or role definitions.',
     );
@@ -107,6 +111,7 @@ describe('agent guide', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('EAI agent operating guide');
     expect(result.stdout).toContain('Recovery loop');
+    expect(result.stdout).toContain('app-manifest-name-slug-negotiation-v1');
     expect(result.stdout).toContain('eai errors explain <code-or-reason> --format json');
   });
 
@@ -117,6 +122,7 @@ describe('agent guide', () => {
     const payload = JSON.parse(result.stdout) as ReturnType<typeof getAgentGuide>;
 
     expect(payload.audience).toBe('ai-agents');
+    expect(payload.capabilities).toContain('app-manifest-name-slug-negotiation-v1');
     expect(payload.firstCommands).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

@@ -16,6 +16,7 @@ export interface AgentGuide {
   schemaVersion: 1;
   audience: 'ai-agents';
   purpose: string;
+  capabilities: string[];
   firstCommands: AgentGuideCommand[];
   operatingRules: string[];
   recoveryLoop: AgentGuideStep[];
@@ -27,6 +28,7 @@ const guide: AgentGuide = {
   schemaVersion: 1,
   audience: 'ai-agents',
   purpose: 'Help an AI agent discover EAI CLI capabilities, prefer structured output, and recover from known errors without private platform knowledge.',
+  capabilities: ['app-manifest-name-slug-negotiation-v1'],
   firstCommands: [
     {
       command: 'eai --describe',
@@ -53,6 +55,7 @@ const guide: AgentGuide = {
     'Prefer commands that advertise --format json in eai --describe or command help.',
     'Run read-only diagnostics before mutating fixes.',
     'Use named eai commands before calling eai publicapi directly.',
+    'Before Object Type publication, require app-manifest-name-slug-negotiation-v1. The CLI preserves source slugs and selects a safe deployed request shape. A dry-run preferred shape does not prove that the deployed platform accepts that shape.',
     'When calling eai publicapi directly, only use /v4 paths.',
     'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing tenant members, Entra, or role definitions.',
     'For normal tenant user/admin addition, use eai user invite --email <email> --tenant <tenant-id> --role <role>; do not use tenant bootstrap-admin.',

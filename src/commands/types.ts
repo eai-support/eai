@@ -22,6 +22,7 @@ import {
 import { extractServerErrorContext, PlatformAPIClient } from "../lib/api.js";
 import { resolveCommandContext } from "../lib/context.js";
 import { validateObjectTypeDefaultValues } from "../lib/object-type-defaults.js";
+import { deriveObjectTypeSlugV1 } from "../lib/object-type-identifiers.js";
 import { isRecord, toObjectTypeSlug } from "../lib/utils.js";
 import * as out from "../lib/output.js";
 import { ErrorCode, exitWithError } from "../lib/error-codes.js";
@@ -1173,6 +1174,21 @@ export async function trySeedViaAppManifestPublish(
     const explicitFailure = await describeFailedPlatformResponse(
       manifestResponse,
     );
+    const exactSlugType = types.find(
+      (type) =>
+        typeof type.slug === "string" &&
+        type.slug !== deriveObjectTypeSlugV1(type.name),
+    );
+    if (exactSlugType) {
+      throw new Error(
+        [
+          `app manifest save failed: ${explicitFailure}`,
+          `The deployed platform requires explicit slug support to preserve Object Type "${exactSlugType.name}" with slug "${exactSlugType.slug}".`,
+          "Do not remove or rename the source slug. Upgrade the platform receiver, then retry once.",
+          "Run eai errors explain app_manifest_validation_failed --format json.",
+        ].join("\n"),
+      );
+    }
     const nameDerivedResponse = await client.saveAppObjectTypeManifest(
       tenantKey,
       toAppManifestObjectTypes(types, "name-derived-slug"),
