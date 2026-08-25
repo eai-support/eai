@@ -5,7 +5,7 @@ description: "Start or continue the EAI delivery pipeline. Use when the user say
 
 # Eai
 
-Version: 3.10.9
+Version: 3.10.8
 Host: Claude Code
 
 # Eai
