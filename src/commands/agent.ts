@@ -33,6 +33,11 @@ function printGuideText(): void {
     console.log(`- ${formatCommand(command)}`);
   }
 
+  out.heading('Capabilities');
+  for (const capability of guide.capabilities) {
+    console.log(`- ${chalk.cyan(capability)}`);
+  }
+
   out.heading('Operating rules');
   for (const rule of guide.operatingRules) {
     console.log(`- ${rule}`);

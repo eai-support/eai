@@ -291,6 +291,33 @@ describe('error guidance catalog', () => {
       ]),
     );
   });
+
+  test('app manifest validation guidance keeps request-shape repair inside the CLI', () => {
+    const guidance = findGuidanceByCodeOrReason(
+      'app_manifest_validation_failed',
+    );
+
+    expect(guidance?.code).toBe('E261');
+    expect(guidance?.why.join(' ')).toContain(
+      'source Object Type schema is not the app-manifest HTTP request schema',
+    );
+    expect(guidance?.why.join(' ')).toContain(
+      'stops instead of using name derivation',
+    );
+    expect(guidance?.diagnostics.map((item) => item.command)).toEqual(
+      expect.arrayContaining([
+        'eai update --check',
+        'eai types validate --tenant-key <key> --tenant-id <tenant-id>',
+      ]),
+    );
+    expect(guidance?.fixes.map((item) => item.command)).toEqual(
+      expect.arrayContaining([
+        'eai update',
+        'eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json',
+      ]),
+    );
+    expect(guidance?.retry.maxAttempts).toBe(1);
+  });
 });
 
 describe('eai errors command', () => {

@@ -11,6 +11,7 @@
 import { findGuidanceByCode } from './error-guidance/catalog.js';
 import { guidanceToJSON, formatGuidanceText } from './error-guidance/render.js';
 
+/** Stable public codes used by CLI output, automation, and support guidance. */
 export enum ErrorCode {
   // E001-E099: Project errors
   E001 = 'E001',
@@ -36,6 +37,7 @@ export enum ErrorCode {
   E243 = 'E243',
   E250 = 'E250',
   E260 = 'E260',
+  E261 = 'E261',
   E270 = 'E270',
   E280 = 'E280',
 
@@ -134,6 +136,10 @@ export const errorCatalog: Record<ErrorCode, Omit<ErrorDefinition, 'code'>> = {
   [ErrorCode.E260]: {
     message: 'Object Type validation failed',
     suggestion: 'Run `eai types validate`, fix the reported Object Type definitions, then run `eai types seed`',
+  },
+  [ErrorCode.E261]: {
+    message: 'App Object Type manifest validation failed',
+    suggestion: 'Run `eai update`, validate the Object Types, then retry `eai types seed` once',
   },
   [ErrorCode.E270]: {
     message: 'Object Type is not published for the active tenant',
