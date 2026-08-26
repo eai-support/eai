@@ -281,7 +281,7 @@ npm test -- --version
 
 - Vitest ^2.1.0
 - MSW ^2.6.0
-- Node.js >=20.0.0
+- Node.js >=24.0.0
 - Git (for E2E tests)
 - Azure CLI (for env tests - can mock)
 - GitHub CLI (for deploy tests - can mock)

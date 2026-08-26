@@ -16,7 +16,7 @@ Complete reference for the EAI CLI codebase architecture, patterns, and conventi
 **Package**: `@enterpriseai/cli`
 **Language**: TypeScript 5.7 (strict mode, ESM)
 **Framework**: Commander.js 13.x
-**Node.js**: ≥20.0.0
+**Node.js**: ≥24.0.0
 
 The CLI provides a developer-friendly interface to the EAI Platform, abstracting away all platform internals. Every command wraps platform API calls with clear error messages, structured error codes, and machine-readable output.
 
