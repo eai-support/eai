@@ -71,6 +71,24 @@ catalog:
       - 'Tell the affected app user to sign out and sign back in because Auth.js session or JWT role data may be cached'
       - 'Do not edit databases or cloud portals directly unless EAI guidance reports an operator-only block'
     nextGate: tenant_member_role_verified
+  - errorId: EAI_APP_TOKEN_TENANT_CONTEXT_REQUIRED
+    match:
+      containsAny:
+        - 'app_token_tenant_context_required'
+        - 'MISSING_TENANT'
+        - 'Tenant context required for app tokens'
+    meaning: A platform automation app-token user lookup reached EAI but did not carry the required tenant context.
+    likelyCause: The caller used a root platform user or membership route such as /v4/platform/users/by-email or /v4/platform/users/{oid}/memberships instead of the tenant-scoped /v4/platform/tenants/{tenantId}/... route family, or the target environment has not deployed the matching PublicAPI/AdminAPI tenant-scoped routing hardening.
+    recovery:
+      - 'Run eai errors explain app_token_tenant_context_required --format json when advertised'
+      - 'eai whoami'
+      - 'eai tenant list --format json'
+      - 'Do not start by changing tenant members, role definitions, Entra configuration, databases, or cloud portals'
+      - 'Retry user lookup through /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>'
+      - 'Retry membership lookup through /v4/platform/tenants/<tenant-id>/users/<oid>/memberships'
+      - 'Keep tenant member and role-definition reads on /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions'
+      - 'If tenant-scoped routes still return MISSING_TENANT, capture redacted route shape, HTTP status, server code, CLI version, active tenant slug, and deployed PublicAPI/AdminAPI versions for platform support'
+    nextGate: tenant_scoped_platform_route_verified
   - errorId: EAI_ENTRA_REDIRECT_URI_MISMATCH
     match:
       containsAny:
@@ -149,7 +167,21 @@ catalog:
     likelyCause: '`eai types seed` ran before `eai app provision` completed.'
     recovery:
       - 'eai app provision <key> --tenant-id <tenant-id> --select --format json'
-      - 'eai types validate'
+      - 'eai types validate --tenant-key <key> --tenant-id <tenant-id>'
+      - 'eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json'
+    nextGate: types_publish_ready
+  - errorId: EAI_APP_MANIFEST_VALIDATION_FAILED
+    match:
+      containsAny:
+        - 'app_manifest_validation_failed'
+        - 'app manifest save failed for both supported request shapes'
+    meaning: The maintained CLI could not match the deployed app-manifest request contract.
+    likelyCause: The installed CLI is old, or another manifest field fails after request-shape negotiation.
+    recovery:
+      - 'eai update --check'
+      - 'If eai update --check reports upgrade_required, obtain approval and run eai update'
+      - 'eai types validate --tenant-key <key> --tenant-id <tenant-id>'
+      - 'eai types seed --tenant-key <key> --tenant-id <tenant-id> --dry-run --format json'
       - 'eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json'
     nextGate: types_publish_ready
   - errorId: EAI_RESOURCE_NOT_READY
@@ -167,6 +199,34 @@ catalog:
       - 'eai verify storage --tenant-id <tenant-id>'
       - 'eai resources schema --tenant-id <tenant-id> --format json'
     nextGate: schema_storage_ready
+  - errorId: EAI_RESOURCEAPI_TENANT_CONTEXT_MISSING
+    match:
+      containsAny:
+        - 'RESOURCEAPI_TENANT_CONTEXT_MISSING'
+        - 'missing_tenant_context'
+    meaning: PublicAPI could not resolve tenant context for a tenant-scoped ResourceAPI request.
+    likelyCause: The app or caller omitted the effective tenant headers, or the BFF stripped tenant context before forwarding the request.
+    recovery:
+      - 'Retry the same /v4/data/resources/<tenant-id>/... request in four modes: path tenant only, tenant header only, X-Tenant-Id only, and both headers'
+      - 'Inspect the app BFF or proxy and confirm it forwards both tenant and X-Tenant-Id server-authoritatively for tenant-scoped calls'
+      - 'Use eai publicapi get /v4/platform/tenants/<tenant-id>/resource-metadata to confirm the tenant-level public contract'
+      - 'Use eai resources storage doctor --tenant-id <tenant-id> --format json after tenant context is fixed'
+    nextGate: tenant_context_resolved
+  - errorId: EAI_RESOURCEAPI_INSTALL_UNAVAILABLE
+    match:
+      containsAny:
+        - 'RESOURCEAPI_INSTALL_UNAVAILABLE'
+        - 'install_registry_no_match'
+        - 'RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH'
+    meaning: PublicAPI could not resolve a usable ResourceAPI install for the tenant-scoped request.
+    likelyCause: Either tenant context was inconsistent across path and headers, or the tenant metadata/schema projection is incomplete for this app.
+    recovery:
+      - 'Compare /v4/platform/tenants/<tenant-id>/resource-metadata with /v4/data/resources/<tenant-id>/storage before concluding the tenant is unprovisioned'
+      - 'If the same /storage request flips between 200 and 503 by header mode, treat it as a tenant-context contract mismatch first'
+      - 'Check publishedObjectTypes in tenant resource metadata and treat it as operational state'
+      - 'Run eai resources storage doctor --tenant-id <tenant-id> --format json'
+      - 'Inspect the app BFF or proxy before escalating to a platform-only fault'
+    nextGate: storage_contract_verified
   - errorId: EAI_RESOURCE_SEARCH_EMBEDDING_REQUIRED
     match:
       containsAny:

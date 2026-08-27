@@ -276,10 +276,15 @@ async function assertCompleteGoferResources(root: string): Promise<void> {
 async function normalizeGoferResourcesCheckout(
   checkoutRoot: string,
   metadata: GoferBundleMetadata,
+  options: {
+    readonly resourcesRoot?: string;
+    readonly force?: boolean;
+  } = {},
 ): Promise<string> {
-  const resourcesRoot = join(dirname(checkoutRoot), 'resources');
+  const resourcesRoot = options.resourcesRoot ?? join(dirname(checkoutRoot), 'resources');
   const currentMetadata = await readResourcesMetadata(resourcesRoot);
   if (
+    !options.force &&
     currentMetadata.commit &&
     metadata.commit &&
     currentMetadata.commit === metadata.commit &&
@@ -332,6 +337,26 @@ async function resolveLatestGoferResourcesSource(): Promise<GoferResourcesSource
   const overridePath = process.env['EAI_GOFER_REFRESH_RESOURCES_PATH'];
   if (overridePath) {
     const root = resolve(overridePath);
+    if (await isDirectoryPath(join(root, GOFER_BASE_RESOURCE_DIR))) {
+      const [commit, describe] = await Promise.all([
+        runGit(['rev-parse', 'HEAD'], root).catch(() => undefined),
+        runGit(['describe', '--tags', '--always', '--dirty'], root).catch(() => undefined),
+      ]);
+      const metadata: GoferBundleMetadata = {
+        commit,
+        describe,
+        source: 'latest',
+      };
+      const cacheKey = createHash('sha256').update(root).digest('hex').slice(0, 16);
+      const resourcesRoot = join(getGoferCacheRoot(), 'local-checkout', cacheKey, 'resources');
+      return {
+        root: await normalizeGoferResourcesCheckout(root, metadata, {
+          resourcesRoot,
+          force: true,
+        }),
+        metadata,
+      };
+    }
     await assertCompleteGoferResources(root);
     return {
       root,
@@ -391,6 +416,9 @@ async function collectBundledCandidates(resourcesRoot: string): Promise<ManagedC
     const files = await collectDirectoryFiles(sourceRoot);
     for (const sourcePath of files) {
       const relativeSource = normalizeRelativePath(relative(sourceRoot, sourcePath));
+      if (mapping.includeFile && !mapping.includeFile(relativeSource)) {
+        continue;
+      }
       candidates.push({
         relativePath: normalizeRelativePath(join(...mapping.targetSegments, relativeSource)),
         contents: await readFile(sourcePath),

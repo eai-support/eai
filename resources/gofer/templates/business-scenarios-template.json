@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1.0",
+  "runner": "playwright",
+  "command": "npm run test:business-scenarios",
+  "scenarios": [
+    {
+      "id": "BS-001",
+      "userStory": "US-01",
+      "outcome": "Replace with the business result a user must achieve",
+      "screens": ["Replace with every screen or state crossed by this journey"],
+      "testFiles": ["tests/e2e/replace-with-business-scenario.spec.ts"]
+    }
+  ]
+}

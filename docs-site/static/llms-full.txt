@@ -449,8 +449,9 @@ eai start --check
 eai start
 ```
 
-The check reads installed command and application metadata only. It does not
-read provider accounts or project files. On first use, choose GitHub Copilot,
+The check reads installed command and application metadata plus the selected
+project's Git root and origin URL. It does not read provider accounts or source
+files. On first use, choose GitHub Copilot,
 Claude, Codex, or Grok; EAI remembers the last workspace that opens
 successfully. Starting it confirms that the selected provider may read the
 project and use the user's provider account.
@@ -465,16 +466,28 @@ Current handoff support:
 |---|---|---|
 | GitHub Copilot in VS Code | Opens the project and starts the EAI prompt. It recognises both bundled and separately installed Copilot. | Sign in to GitHub if VS Code asks. |
 | GitHub Copilot CLI | Opens the project in an interactive session and sends the EAI prompt. | Sign in if the CLI asks. |
-| GitHub Copilot app | Opens the app. | Choose the local project folder, then use the repository EAI skill. |
-| Claude Desktop | Opens a Code session with the EAI prompt when its secure app link is available; otherwise opens Claude for a manual project choice. | Confirm or choose the project folder when Claude asks. |
+| GitHub Copilot app | Prefers GitHub's installed app bridge so the exact local folder opens in a new session. On macOS, an explicitly authorised handoff verifies that Copilot's official confirmation names that exact folder, presses only its unique Allow button, and inserts the first EAI prompt into one verified empty Message field without pressing Send. If the local bridge is unavailable, a verified `github.com` origin can use GitHub's documented prompt link. Older, permission-blocked, or non-authorised connections keep the Copy first message fallback. | Click the installer workspace once, or use the standalone consent flag shown below. Review the prepared message, then press Send. If macOS asks for permission, allow EAI Setup when using the installer, or allow the app that launched `eai` when using Terminal. You can always use Copy first message instead. |
+| Claude Desktop | Opens a Code session for the project with the EAI prompt ready when the installed app exposes its secure link; otherwise opens Claude for a manual project choice and prints the first message for copy/paste. | Confirm the folder when Claude asks, review the prompt, then press Send. |
 | Claude Code | Starts an interactive session in the project and sends the EAI prompt. | Sign in if Claude asks. |
-| ChatGPT Desktop with Codex | Uses `codex app <folder>` when Codex CLI is available. Otherwise it opens the desktop app. | If only the app is available, choose the folder and use the repository EAI skill. |
+| Codex Desktop | Opens a new project chat with the EAI prompt ready when the installed app exposes its secure link; otherwise opens the desktop app and prints the first message for copy/paste. | Review the prepared prompt and press Send, or choose the folder manually on an older app. |
 | Codex CLI | Starts an interactive session in the project and sends the EAI prompt. | Sign in if Codex asks. |
 | Grok Build | Starts in the project with the EAI prompt. | Sign in if Grok asks. |
 
 `eai start --check` confirms local software capability only. Provider account,
 subscription, organization policy, and sign-in state are confirmed by the
 provider when the workspace opens.
+
+For the same bounded GitHub Copilot app handoff directly from Terminal, make
+the prompt-insertion permission explicit:
+
+```bash
+eai start . --surface copilot-desktop --allow-copilot-prompt-insertion
+```
+
+Without that flag, EAI can still open the exact Copilot project and prints the
+first message for copy/paste, but it will not press Copilot's Allow button or
+fill the message box. This keeps older installer versions and automated callers
+fail-closed.
 
 ## Connect To A Tenant
 

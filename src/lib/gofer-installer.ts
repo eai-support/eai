@@ -7,6 +7,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  rm,
   writeFile,
 } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -32,6 +33,7 @@ export interface GoferManagedResourceMapping {
   readonly sourceSubdirectory: string;
   readonly targetSegments: readonly string[];
   readonly makeExecutable?: boolean;
+  readonly includeFile?: (relativePath: string) => boolean;
 }
 
 interface MutableGoferInstallSummary {
@@ -84,6 +86,33 @@ const GOFER_GITIGNORE_ENTRIES = [
   '.specify/specs/*/research-index.json',
 ] as const;
 
+const PUBLIC_GOFER_SKILLS = new Set(['eai', 'gofer-documentation']);
+const LEGACY_PUBLIC_GOFER_SKILLS = new Set(['eai-gofer']);
+const PUBLIC_GEMINI_COMMAND_FILES = new Set([
+  'commands/gofer/eai.md',
+  'commands/gofer/eai.toml',
+  'commands/gofer/manifest.json',
+]);
+
+function isPublicGoferSkillFile(relativePath: string): boolean {
+  const [skillName] = relativePath.replace(/\\/g, '/').split('/');
+  return Boolean(skillName && PUBLIC_GOFER_SKILLS.has(skillName));
+}
+
+function isPublicEaiCommandFile(relativePath: string): boolean {
+  return relativePath.replace(/\\/g, '/') === 'eai.md';
+}
+
+function isPublicEaiPromptFile(relativePath: string): boolean {
+  return relativePath.replace(/\\/g, '/') === 'eai.prompt.md';
+}
+
+function isPublicGeminiResourceFile(relativePath: string): boolean {
+  const normalizedPath = relativePath.replace(/\\/g, '/');
+  return !normalizedPath.startsWith('commands/gofer/')
+    || PUBLIC_GEMINI_COMMAND_FILES.has(normalizedPath);
+}
+
 export const GOFER_RESOURCE_MAPPINGS: readonly GoferManagedResourceMapping[] = [
   { sourceSubdirectory: 'config', targetSegments: ['.specify', 'config'] },
   { sourceSubdirectory: 'contracts', targetSegments: ['.specify', 'contracts'] },
@@ -95,14 +124,43 @@ export const GOFER_RESOURCE_MAPPINGS: readonly GoferManagedResourceMapping[] = [
   { sourceSubdirectory: 'powershell-scripts', targetSegments: ['.specify', 'scripts', 'powershell'] },
   { sourceSubdirectory: 'node-scripts', targetSegments: ['.specify', 'scripts', 'node'], makeExecutable: true },
   { sourceSubdirectory: 'hook-scripts', targetSegments: ['.specify', 'scripts', 'hooks'] },
-  { sourceSubdirectory: 'claude-commands', targetSegments: ['.claude', 'commands'] },
+  {
+    sourceSubdirectory: 'claude-commands',
+    targetSegments: ['.claude', 'commands'],
+    includeFile: isPublicEaiCommandFile,
+  },
   { sourceSubdirectory: 'claude-agents', targetSegments: ['.claude', 'agents'] },
-  { sourceSubdirectory: 'copilot-prompts', targetSegments: ['.github', 'prompts'] },
+  {
+    sourceSubdirectory: 'claude-skills',
+    targetSegments: ['.claude', 'skills'],
+    includeFile: isPublicGoferSkillFile,
+  },
+  {
+    sourceSubdirectory: 'copilot-prompts',
+    targetSegments: ['.github', 'prompts'],
+    includeFile: isPublicEaiPromptFile,
+  },
   { sourceSubdirectory: 'copilot-instructions', targetSegments: ['.github', 'instructions'] },
-  { sourceSubdirectory: 'system-skills', targetSegments: ['.system', 'skills'] },
-  { sourceSubdirectory: 'agents-skills', targetSegments: ['.agents', 'skills'] },
-  { sourceSubdirectory: 'grok-skills', targetSegments: ['.grok', 'skills'] },
-  { sourceSubdirectory: 'gemini', targetSegments: ['.gemini'] },
+  {
+    sourceSubdirectory: 'system-skills',
+    targetSegments: ['.system', 'skills'],
+    includeFile: isPublicGoferSkillFile,
+  },
+  {
+    sourceSubdirectory: 'agents-skills',
+    targetSegments: ['.agents', 'skills'],
+    includeFile: isPublicGoferSkillFile,
+  },
+  {
+    sourceSubdirectory: 'grok-skills',
+    targetSegments: ['.grok', 'skills'],
+    includeFile: isPublicGoferSkillFile,
+  },
+  {
+    sourceSubdirectory: 'gemini',
+    targetSegments: ['.gemini'],
+    includeFile: isPublicGeminiResourceFile,
+  },
 ] as const;
 
 export async function installGoferResources(
@@ -125,21 +183,34 @@ export async function installGoferResources(
   await assertDirectory(resourcesPath);
   await createGoferDirectories(targetPath);
 
+  const commands = await readGoferCommands(resourcesPath);
+  await removeLegacyGoferEntrypoints(targetPath, commands.map((command) => command.name));
+
   for (const mapping of GOFER_RESOURCE_MAPPINGS) {
     await copyResourceDirectory(
       resourcesPath,
       mapping.sourceSubdirectory,
       join(targetPath, ...mapping.targetSegments),
       summary,
-      { makeExecutable: mapping.makeExecutable },
+      {
+        makeExecutable: mapping.makeExecutable,
+        includeFile: mapping.includeFile,
+      },
     );
   }
 
-  summary.commands = await countFiles(join(resourcesPath, 'claude-commands'), '.md');
+  summary.commands = await countFiles(
+    join(resourcesPath, 'claude-commands'),
+    '.md',
+    isPublicEaiCommandFile,
+  );
   summary.agents = await countFiles(join(resourcesPath, 'claude-agents'), '.md');
-  summary.skills = await countFilesRecursive(join(resourcesPath, 'agents-skills'), 'SKILL.md');
+  summary.skills = await countFilesRecursive(
+    join(resourcesPath, 'agents-skills'),
+    'SKILL.md',
+    isPublicGoferSkillFile,
+  );
 
-  const commands = await readGoferCommands(resourcesPath);
   await generateCopilotCliSkills(targetPath, commands, workflowProfile, summary);
   await installClaudeHooks(targetPath);
   await ensureDefaultInstructions(targetPath, resourcesPath);
@@ -174,6 +245,7 @@ async function createGoferDirectories(workspacePath: string): Promise<void> {
     join(workspacePath, '.specify', 'logs'),
     join(workspacePath, '.claude', 'commands'),
     join(workspacePath, '.claude', 'agents'),
+    join(workspacePath, '.claude', 'skills'),
     join(workspacePath, '.github', 'prompts'),
     join(workspacePath, '.github', 'instructions'),
     join(workspacePath, '.system', 'skills'),
@@ -194,17 +266,24 @@ async function copyResourceDirectory(
   sourceSubdirectory: string,
   targetDirectory: string,
   summary: MutableGoferInstallSummary,
-  options: { readonly makeExecutable?: boolean } = {},
+  options: {
+    readonly makeExecutable?: boolean;
+    readonly includeFile?: (relativePath: string) => boolean;
+  } = {},
 ): Promise<void> {
   const sourceDirectory = join(resourcesPath, sourceSubdirectory);
-  await copyDirectory(sourceDirectory, targetDirectory, summary, options);
+  await copyDirectory(sourceDirectory, targetDirectory, summary, options, '');
 }
 
 async function copyDirectory(
   sourceDirectory: string,
   targetDirectory: string,
   summary: MutableGoferInstallSummary,
-  options: { readonly makeExecutable?: boolean } = {},
+  options: {
+    readonly makeExecutable?: boolean;
+    readonly includeFile?: (relativePath: string) => boolean;
+  } = {},
+  relativeDirectory = '',
 ): Promise<void> {
   const entries = await readdir(sourceDirectory, { withFileTypes: true });
   await mkdir(targetDirectory, { recursive: true });
@@ -212,13 +291,18 @@ async function copyDirectory(
   for (const entry of entries) {
     const sourcePath = join(sourceDirectory, entry.name);
     const targetPath = join(targetDirectory, entry.name);
+    const relativePath = join(relativeDirectory, entry.name);
 
     if (entry.isDirectory()) {
-      await copyDirectory(sourcePath, targetPath, summary, options);
+      await copyDirectory(sourcePath, targetPath, summary, options, relativePath);
       continue;
     }
 
     if (!entry.isFile()) {
+      continue;
+    }
+
+    if (options.includeFile && !options.includeFile(relativePath)) {
       continue;
     }
 
@@ -264,25 +348,67 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-async function countFiles(directory: string, extension: string): Promise<number> {
+async function countFiles(
+  directory: string,
+  extension: string,
+  includeFile: (relativePath: string) => boolean = () => true,
+): Promise<number> {
   const entries = await readdir(directory, { withFileTypes: true });
-  return entries.filter((entry) => entry.isFile() && entry.name.endsWith(extension)).length;
+  return entries.filter(
+    (entry) => entry.isFile() && entry.name.endsWith(extension) && includeFile(entry.name),
+  ).length;
 }
 
-async function countFilesRecursive(directory: string, filename: string): Promise<number> {
+async function countFilesRecursive(
+  directory: string,
+  filename: string,
+  includeFile: (relativePath: string) => boolean = () => true,
+  relativeDirectory = '',
+): Promise<number> {
   const entries = await readdir(directory, { withFileTypes: true });
   let count = 0;
 
   for (const entry of entries) {
     const entryPath = join(directory, entry.name);
+    const relativePath = join(relativeDirectory, entry.name);
     if (entry.isDirectory()) {
-      count += await countFilesRecursive(entryPath, filename);
-    } else if (entry.isFile() && entry.name === filename) {
+      count += await countFilesRecursive(entryPath, filename, includeFile, relativePath);
+    } else if (entry.isFile() && entry.name === filename && includeFile(relativePath)) {
       count += 1;
     }
   }
 
   return count;
+}
+
+async function removeLegacyGoferEntrypoints(
+  workspacePath: string,
+  commandNames: readonly string[],
+): Promise<void> {
+  const internalNames = new Set([
+    ...commandNames.filter((name) => name !== 'eai'),
+    ...LEGACY_PUBLIC_GOFER_SKILLS,
+  ]);
+  const legacyFiles: string[] = [];
+
+  for (const name of internalNames) {
+    const skillName = toCopilotSkillName(name);
+    legacyFiles.push(
+      join('.claude', 'commands', `${name}.md`),
+      join('.claude', 'skills', name, 'SKILL.md'),
+      join('.agents', 'skills', name, 'SKILL.md'),
+      join('.system', 'skills', name, 'SKILL.md'),
+      join('.grok', 'skills', name, 'SKILL.md'),
+      join('.github', 'skills', skillName, 'SKILL.md'),
+      join('.github', 'prompts', `${name}.prompt.md`),
+      join('.gemini', 'commands', 'gofer', `${name}.md`),
+      join('.gemini', 'commands', 'gofer', `${name}.toml`),
+    );
+  }
+
+  await Promise.all(
+    legacyFiles.map((relativePath) => rm(join(workspacePath, relativePath), { force: true })),
+  );
 }
 
 async function readGoferCommands(resourcesPath: string): Promise<GoferCommand[]> {
@@ -300,7 +426,10 @@ async function readGoferCommands(resourcesPath: string): Promise<GoferCommand[]>
     const filePath = join(commandsDirectory, file);
     const content = await readFile(filePath, 'utf-8');
     const { frontmatter, body } = splitFrontmatter(content);
-    const description = readFrontmatterString(frontmatter, 'description') ?? `Run the ${name} Gofer workflow stage`;
+    const description = readFrontmatterString(frontmatter, 'description')
+      ?? (name === 'eai'
+        ? 'Start or continue the EAI delivery pipeline. Use when the user says Get started with EAI or asks EAI to guide application delivery.'
+        : `Run the ${name} Gofer workflow stage`);
 
     commands.push({
       name,
@@ -385,7 +514,7 @@ async function generateCopilotCliSkills(
   workflowProfile: GoferWorkflowProfile,
   summary: MutableGoferInstallSummary,
 ): Promise<void> {
-  for (const command of commands) {
+  for (const command of commands.filter((candidate) => candidate.name === 'eai')) {
     const skillName = toCopilotSkillName(command.name);
     const skillContent = generateCopilotCliSkill(command, skillName, workflowProfile);
     await writeTrackedFile(join(workspacePath, '.github', 'skills', skillName, 'SKILL.md'), skillContent, summary);
@@ -781,7 +910,7 @@ export async function renderGoferManagedTextFiles(
     content: generateGoferReadmeContent(),
   });
 
-  for (const command of commands) {
+  for (const command of commands.filter((candidate) => candidate.name === 'eai')) {
     const skillName = toCopilotSkillName(command.name);
     files.push({
       relativePath: join('.github', 'skills', skillName, 'SKILL.md'),

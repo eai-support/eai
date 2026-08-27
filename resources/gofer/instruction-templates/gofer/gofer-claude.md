@@ -1,5 +1,7 @@
-Run `/0_gofer_start` to start the core pipeline: business scenario -> research
--> specify -> plan -> tasks -> implement -> validate. `/6_gofer_validate` is the
-terminal quality gate and includes the final engineering review loop. Use
-`/7_gofer_save` for checkpoints and `/8_gofer_branding` for branded
-document/deck templates. Artifacts go to `.specify/specs/{feature}/`.
+Run `/eai` to start or continue the core pipeline: Gofer Start -> research ->
+specify -> plan -> tasks -> implement -> validate. Gofer routes
+internally through `.specify/commands/*.md`; validation is the terminal quality
+gate. Before EAI readiness, app delivery continues directly, while clear non-app
+work asks once before skipping EAI tenant/app setup. Checkpointing, branding, tests,
+stakeholder communications, first-run setup, and diagnostics remain internal contracts.
+Artifacts go to `.specify/specs/{feature}/`. When the user says `Get started with EAI`, including decorative emoji, load the public `eai` skill; for a new app conversation, show its Required First-Run Response before running preflight or asking setup questions.

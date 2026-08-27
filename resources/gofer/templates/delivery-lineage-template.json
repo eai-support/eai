@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "eai.delivery_lineage.v1",
+  "plane": "customer",
+  "featureId": "replace-with-feature-id",
+  "generatedAt": "1970-01-01T00:00:00.000Z",
+  "nodes": [],
+  "edges": []
+}

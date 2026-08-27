@@ -1,9 +1,14 @@
-This project uses Gofer for spec-driven development. Run `/0_gofer_start` to
-start the core pipeline: business scenario -> research -> specify -> plan ->
-tasks -> implement -> validate.
+This project uses Gofer for spec-driven development. In GitHub Copilot Chat, run
+`#eai` to start or continue the core pipeline: Gofer Start -> research ->
+specify -> plan -> tasks -> implement -> validate.
 
-Key commands: `/1_gofer_research`, `/2_gofer_specify`, `/3_gofer_plan`,
-`/4_gofer_tasks`, `/5_gofer_implement`, `/6_gofer_validate`. `/6_gofer_validate`
-is the terminal quality gate and includes the final engineering review loop. Use
-`/7_gofer_save` for checkpoints and `/8_gofer_branding` for branded
-document/deck templates. Artifacts in `.specify/specs/{feature}/`.
+When the user says `Get started with EAI`, activate the `eai` skill and send
+its Required First-Run Response before preflight, setup questions, or routing.
+
+Gofer routes internally through `.specify/commands/*.md` contracts; validation
+is the terminal quality gate and includes the final engineering review loop.
+Before EAI readiness, classify the request: app delivery continues directly,
+while clear non-app work asks once before skipping EAI tenant/app setup.
+Checkpointing, branding, tests, stakeholder communications, first-run setup, and
+workspace diagnostics remain available as internal contracts routed by Gofer
+when needed. Artifacts in `.specify/specs/{feature}/`.

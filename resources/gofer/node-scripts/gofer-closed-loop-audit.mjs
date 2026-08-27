@@ -673,7 +673,7 @@ async function analyzeFeature({ featureDir, workspaceRoot }) {
     latestMtimeMs(path.join(featureDir, 'contract-pack.md')),
     latestMtimeMs(path.join(featureDir, 'contracts')),
     latestMtimeMs(path.join(featureDir, 'ui-preview-brief.md')),
-    latestMtimeMs(path.join(featureDir, 'ui-approval.md')),
+    latestMtimeMs(path.join(featureDir, 'ui-show-and-tell.md')),
     latestMtimeMs(path.join(featureDir, 'service-fit-matrix.md')),
   ]);
 

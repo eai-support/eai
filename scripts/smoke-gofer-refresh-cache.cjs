@@ -35,6 +35,53 @@ const requiredDirectories = [
   'agents-skills',
   'gemini',
 ];
+const publicSurfaceFiles = [
+  '.claude/commands/eai.md',
+  '.claude/skills/eai/SKILL.md',
+  '.agents/skills/eai/SKILL.md',
+  '.system/skills/eai/SKILL.md',
+  '.github/prompts/eai.prompt.md',
+  '.github/skills/eai/SKILL.md',
+  '.github/copilot-instructions.md',
+  '.gemini/extension.json',
+  '.gemini/commands/gofer/eai.md',
+  '.gemini/commands/gofer/eai.toml',
+  '.gemini/commands/gofer/manifest.json',
+  '.grok/skills/eai/SKILL.md',
+  '.vscode/settings.json',
+];
+const staleVisibleSurfaceFiles = [
+  '.claude/commands/gofer.md',
+  '.claude/commands/0_gofer_start.md',
+  '.agents/skills/gofer/SKILL.md',
+  '.agents/skills/0_gofer_start/SKILL.md',
+  '.system/skills/0_gofer_start/SKILL.md',
+  '.github/prompts/gofer.prompt.md',
+  '.github/prompts/0_gofer_start.prompt.md',
+  '.github/skills/0-gofer-start/SKILL.md',
+  '.gemini/commands/gofer/gofer.toml',
+  '.gemini/commands/gofer/0_gofer_start.toml',
+  '.grok/skills/gofer/SKILL.md',
+  '.grok/skills/0_gofer_start/SKILL.md',
+];
+const internalCommandFiles = [
+  '0_gofer_start',
+  '0a_problem_validation',
+  '1_gofer_research',
+  '2_gofer_specify',
+  '3_gofer_plan',
+  '4_gofer_tasks',
+  '5_gofer_implement',
+  '6_gofer_validate',
+  '7_gofer_save',
+  '7a_stakeholder_comms',
+  '8_gofer_branding',
+  '9_gofer_tests',
+  '10_gofer_cloud',
+  'gofer_bootstrap_workspace',
+  'gofer_check_workspace',
+  'gofer_eai_first_run',
+];
 
 function fail(message, result) {
   console.error(`Gofer refresh cache smoke failed: ${message}`);
@@ -163,6 +210,29 @@ try {
   }
   if (!fs.existsSync(path.join(projectRoot, '.specify', 'config', 'object-type-routing.json'))) {
     fail('eai update did not install normalized Gofer config into the project');
+  }
+  for (const relativePath of publicSurfaceFiles) {
+    if (!fs.existsSync(path.join(projectRoot, relativePath))) {
+      fail(`eai update did not install public Gofer surface: ${relativePath}`);
+    }
+  }
+  for (const relativePath of staleVisibleSurfaceFiles) {
+    if (fs.existsSync(path.join(projectRoot, relativePath))) {
+      fail(`eai update left stale visible Gofer surface: ${relativePath}`);
+    }
+  }
+  for (const command of internalCommandFiles) {
+    if (!fs.existsSync(path.join(projectRoot, '.specify', 'commands', `${command}.md`))) {
+      fail(`eai update did not install internal Gofer command: ${command}`);
+    }
+  }
+  const claudeCommands = fs.readdirSync(path.join(projectRoot, '.claude', 'commands')).sort();
+  if (JSON.stringify(claudeCommands) !== JSON.stringify(['eai.md'])) {
+    fail(`Claude visible commands are not clean: ${claudeCommands.join(', ')}`);
+  }
+  const geminiCommands = fs.readdirSync(path.join(projectRoot, '.gemini', 'commands', 'gofer')).sort();
+  if (JSON.stringify(geminiCommands) !== JSON.stringify(['eai.md', 'eai.toml', 'manifest.json'])) {
+    fail(`Gemini visible commands are not clean: ${geminiCommands.join(', ')}`);
   }
 
   console.log('Gofer refresh cache smoke passed');

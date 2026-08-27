@@ -32,13 +32,14 @@ implementation:
 
 - `goal-ledger.json` exists and records goals, metrics, delivery states, and
   re-loop triggers
-- `ui-approval.md` exists and is approved
+- `ui-show-and-tell.md` exists and records what was shown to the user, where it
+  opened, feedback received, and unresolved UX issues
 - `service-fit-matrix.md` exists and distinguishes accessible now, purchasable,
   and unavailable platform capabilities
 - normal build tasks use the EAI app template, EAI platform services, and
   Azure-compatible support services before any custom or third-party app
   substrate
-- preview work stays inside approved EAI App Template blocks unless an exception
+- preview work stays inside selected EAI App Template blocks unless an exception
   task is recorded
 - package lane, coupling status, Storybook story IDs, theme override points,
   custom-block exceptions, and external/internal/hybrid profile choice are
@@ -49,7 +50,7 @@ block-porting, and source-platform decoupling tasks before user-story
 implementation.
 
 For explicit non-app work, mark this section "Not applicable" and continue with
-the shared stages without app-only gates.
+the shared stages without app-only show-and-tell/service-fit prerequisites.
 
 ## Format: `[ID] [P?] [Story] Description`
 

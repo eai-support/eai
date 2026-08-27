@@ -56,9 +56,10 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 ├── research.md          # Codebase research (/1_gofer_research)
 ├── journeys/
 │   └── base-journey.md  # AI-augmented app journey when app delivery applies
+├── build-map.md         # Plain-language picture of the build and current status
 ├── ui-preview-brief.md  # App-delivery preview brief when app delivery applies
 ├── ui-review-log.md     # App-delivery preview evidence and iteration log
-├── ui-approval.md       # App-delivery approval gate record
+├── ui-show-and-tell.md  # App-delivery show-and-tell and user feedback record
 ├── service-fit-matrix.md # App-delivery capability selection evidence
 ├── plan.md              # This file (/3_gofer_plan)
 ├── data-model.md        # Data model design (/3_gofer_plan)
@@ -155,18 +156,18 @@ architecture needs model-as-code consistency.
 
 ## UI Preview And Service-Fit Gate
 
-For application delivery, the plan must lock the approved preview and service
-selection before downstream implementation is treated as complete. For non-app
-work, state why this gate is not applicable.
+For application delivery, the plan must lock the preview/show-and-tell loop and
+service selection before downstream implementation is treated as complete. For
+non-app work, state why this review is not applicable.
 
-| Gate              | Required Artifact                              | Validation                                                                                               |
+| Review Area       | Required Artifact                              | Validation                                                                                               |
 | ----------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | Preview scope     | `ui-preview-brief.md`                          | [how the MVP preview scope is defined]                                                                   |
 | Platform describe | `eai --describe`                               | [CLI version, tenant/platform capability notes, package lane]                                            |
 | Block catalog     | `eai blocks list` / `eai blocks describe <id>` | [selected IDs, Storybook story IDs, theme override points, coupling status, and custom-block exceptions] |
 | Resource bindings | `eai resources schema`                         | [object fields/actions/events feeding selected blocks]                                                   |
 | Preview evidence  | `ui-review-log.md`                             | [screenshot, local render, or Playwright-style proof]                                                    |
-| UI approval       | `ui-approval.md`                               | [who approves and when]                                                                                  |
+| UI show-and-tell  | `ui-show-and-tell.md`                          | [what was shown, where it opened, user feedback, accepted revisions, and open UX issues]                 |
 | Service fit       | `service-fit-matrix.md`                        | [how accessible vs purchasable vs unavailable is proved]                                                 |
 
 ## AI-Readable Blocks Bridge

@@ -1,7 +1,7 @@
 {
-  "commit": "6059c0e61377f648a9470b3554ae689e6912ec24",
-  "describe": "v3.7.14",
-  "source": "https://github.com/eai-support/eai-gofer.git@6059c0e61377f648a9470b3554ae689e6912ec24",
+  "commit": "baa1bc3d1176e6a7c7e4bb8fba1bb6deaa2f8bd3",
+  "describe": "v3.10.8-6-gbaa1bc3d",
+  "source": "https://github.com/eai-support/eai-gofer.git@baa1bc3d1176e6a7c7e4bb8fba1bb6deaa2f8bd3",
   "dirty": false,
-  "synced_at": "2026-07-06T03:17:53Z"
+  "synced_at": "2026-08-25T23:57:23Z"
 }

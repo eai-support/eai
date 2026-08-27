@@ -473,6 +473,7 @@ const OPTION_DECISIONS = {
     '--surface': 'Explicit provider selection is covered by command integration tests; release smoke keeps detection read-only.',
     '--install': 'Opening an external provider installation page requires a user click and is not performed by automated release smoke.',
     '--dry-run': 'Provider launch-plan output is covered by integration tests; release smoke uses the stronger read-only detection contract.',
+    '--allow-copilot-prompt-insertion': 'Explicit macOS UI-automation consent is covered by launcher unit, CLI integration, and installer contract tests; release smoke never controls a desktop app.',
     '--no-remember': 'Preference suppression is covered by the local preference unit contract; release smoke does not launch or persist a provider.',
   },
   'eai init': {
