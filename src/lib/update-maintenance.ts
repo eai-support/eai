@@ -259,11 +259,37 @@ export function runCurrentCliCommand(args: readonly string[]): Promise<boolean> 
   });
 }
 
+export interface InstalledEaiCommandExecConfig {
+  readonly command: string;
+  readonly args: string[];
+  readonly shell: boolean;
+}
+
+export function buildInstalledEaiCommandExecConfig(
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): InstalledEaiCommandExecConfig {
+  if (platform === "win32") {
+    return {
+      command: "cmd.exe",
+      args: ["/d", "/s", "/c", "eai.cmd", ...args],
+      shell: false,
+    };
+  }
+
+  return {
+    command: "eai",
+    args: [...args],
+    shell: false,
+  };
+}
+
 export function runInstalledEaiCommand(args: readonly string[]): Promise<boolean> {
   return new Promise((resolve) => {
-    const executable = process.platform === "win32" ? "eai.cmd" : "eai";
-    const child = spawn(executable, args, {
+    const config = buildInstalledEaiCommandExecConfig(args);
+    const child = spawn(config.command, config.args, {
       stdio: "inherit",
+      shell: config.shell,
       env: {
         ...process.env,
         NO_UPDATE_NOTIFIER: "1",
