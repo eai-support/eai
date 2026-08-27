@@ -19,6 +19,28 @@ and gofer asset refresh.
 | Last Material Change | Require Node 24 and fix Windows update restart |
 | Source Commit | `d6a57c2afdeb15116cd320c9caad1dbd7acdee9a` |
 
+## Next Release
+
+The CLI now consumes the shared tenant capability control plane used by Admin
+Portal. Use `eai capability` for four-state readiness, `eai integration` for
+redacted discovery and safe tests, and typed `eai ai profile`, `eai prompt`, and
+`eai workflow` commands for configuration. `eai app bindings` stores logical
+application aliases server-side. OAuth, Stripe, secret capture, credentials,
+and billing operations remain Admin Portal-only.
+
+```bash
+eai capability doctor
+eai integration test azure-openai
+eai ai profile create --key default-chat --provider azure-openai \
+  --model gpt-5 --integration azure-openai
+eai prompt create --key support-system --profile default-chat \
+  --scope application --app my-app \
+  --content "Answer using approved tenant context."
+eai app bindings set my-app --binding-key chatProfile \
+  --capability ai.chat --asset-kind ai-profile --asset-key default-chat
+eai app bindings validate my-app
+```
+
 
 ## Install
 
@@ -93,6 +115,11 @@ construction.
 | `eai docs`                              | Upload, classify, and index documents for platform processing and RAG.                    |
 | `eai chat`                              | Send or stream chat requests through configured AI workflows.                             |
 | `eai publicapi`                         | Call authorized PublicAPI V4 routes when a named command does not exist yet.              |
+| `eai capability`                       | Inspect entitlement, configuration, binding, and runtime readiness separately.            |
+| `eai integration`                      | Inspect, test, and bind Portal-configured integrations without reading secrets.            |
+| `eai ai profile`, `eai prompt`          | Manage typed tenant AI profiles and prompts.                                               |
+| `eai workflow`                         | Manage typed workflows, provisioning, binding readiness, and runtime requests.             |
+| `eai app bindings`                     | Store and validate logical application capability aliases server-side.                     |
 | `eai runtime`                           | Validate the host-neutral `eai.runtime.json` app runtime contract.                        |
 | `eai deploy`                            | Translate provider env/secrets and black-box doctor deployed EAI app runtimes.            |
 | `eai gofer`                             | Install and refresh repo-local agent workflow assets.                                     |

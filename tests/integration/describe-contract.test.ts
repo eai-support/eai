@@ -58,6 +58,11 @@ const TOP_LEVEL_COMMANDS = [
   "publicapi",
   "errors",
   "agent",
+  "capability",
+  "content",
+  "integration",
+  "ai",
+  "prompt",
   "start",
 ] as const;
 

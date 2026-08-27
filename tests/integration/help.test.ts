@@ -44,6 +44,23 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain('eai errors explain E101 --format json');
     expect(result.stdout).toContain('eai agent guide --format json');
     expect(result.stdout).toContain('eai publicapi get /v4/identity/me --format json');
+    expect(result.stdout).toContain('eai capability doctor');
+    expect(result.stdout).toContain('eai app bindings validate my-app');
+  });
+
+  test('capability command families explain shared versus governed operations', async () => {
+    const capabilityResult = await runCommand(ctx, 'eai capability setup --help');
+    const integrationResult = await runCommand(ctx, 'eai integration --help');
+    const profileResult = await runCommand(ctx, 'eai ai profile --help');
+    const promptResult = await runCommand(ctx, 'eai prompt --help');
+    const bindingsResult = await runCommand(ctx, 'eai app bindings --help');
+
+    expect(capabilityResult.exitCode).toBe(0);
+    expect(capabilityResult.stdout).toContain('without changing credentials');
+    expect(integrationResult.stdout).toContain('OAuth and secret capture stay in Admin Portal');
+    expect(profileResult.stdout).toContain('create');
+    expect(promptResult.stdout).toContain('update');
+    expect(bindingsResult.stdout).toContain('validate');
   });
 
   test('login help explains the sign-in and tenant selection flow', async () => {
