@@ -29,14 +29,14 @@ npm install
 ```
 
 **Expected Dependencies:**
-- `vitest@^2.1.0`
-- `@vitest/ui@^2.1.0`
-- `msw@^2.6.0`
+- `vitest@4.1.8`
+- `@vitest/ui@4.1.8`
+- `msw@2.14.6`
 
 **Validation:**
 ```bash
 npm test -- --version
-# Should show: Vitest v2.1.0
+# Should show: Vitest v4.1.8
 ```
 
 ---
@@ -279,8 +279,8 @@ npm test -- --version
 
 ### External Dependencies
 
-- Vitest ^2.1.0
-- MSW ^2.6.0
+- Vitest 4.1.8
+- MSW 2.14.6
 - Node.js >=24.0.0
 - Git (for E2E tests)
 - Azure CLI (for env tests - can mock)
