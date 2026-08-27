@@ -86,7 +86,7 @@ same source repository and release tag.
 - Source: https://github.com/eai-support/eai
 - Documentation: https://eai-support.github.io/eai/
 - License: Apache-2.0
-- Runtime: Node.js 20 or newer
+- Runtime: Node.js 24 LTS or newer
 - Publishing: GitHub Actions trusted publishing with npm provenance
 `;
 }

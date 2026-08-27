@@ -25,7 +25,7 @@ environments.
 | License | Apache-2.0 |
 | Source | Public GitHub repository with issues, releases, and CI |
 | Publishing | GitHub Actions trusted publishing with npm provenance |
-| Runtime | Node.js 20 or newer |
+| Runtime | Node.js 24 LTS or newer |
 | Secrets | No secrets, tenant credentials, or local environment files are committed or published |
 | Support | Security issues are handled through [SECURITY.md](SECURITY.md); product issues through GitHub Issues |
 

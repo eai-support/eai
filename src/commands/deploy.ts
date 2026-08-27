@@ -841,7 +841,7 @@ on:
 
 env:
   APP_NAME: ${appName}
-  NODE_VERSION: '20.x'
+  NODE_VERSION: '24.x'
 
 jobs:
   build-and-deploy:
