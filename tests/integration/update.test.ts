@@ -18,6 +18,7 @@ import {
   selectNewestRelease,
   shouldOfferInteractiveUpdatePrompt,
 } from '../../src/lib/update-check.js';
+import { buildInstalledEaiCommandExecConfig } from '../../src/lib/update-maintenance.js';
 import { getNpmExecutable } from '../../src/lib/npm.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { runCommand } from '../helpers/action-dsl.js';
@@ -207,10 +208,14 @@ describe('getNpmExecutable', () => {
 });
 
 describe('eai update install execution', () => {
-  test('uses shell mode only on Windows so npm.cmd can launch reliably', () => {
+  test('uses cmd.exe on Windows so npm.cmd can launch without shell true', () => {
     expect(buildUpdateInstallExecConfig('1.2.3', 'npmjs', '@enterpriseai/cli', 'win32')).toEqual({
-      command: 'npm.cmd',
+      command: 'cmd.exe',
       args: [
+        '/d',
+        '/s',
+        '/c',
+        'npm.cmd',
         'install',
         '-g',
         '@enterpriseai/cli@1.2.3',
@@ -218,7 +223,7 @@ describe('eai update install execution', () => {
         '--registry=https://registry.npmjs.org/',
         '--@enterpriseai:registry=https://registry.npmjs.org/',
       ],
-      shell: true,
+      shell: false,
     });
 
     expect(buildUpdateInstallExecConfig('1.2.3', 'npmjs', '@enterpriseai/cli', 'darwin')).toEqual({
@@ -264,6 +269,29 @@ describe('eai update install execution', () => {
       await server.close();
       await env.cleanup();
     }
+  });
+});
+
+describe('eai update project maintenance restart', () => {
+  test('uses cmd.exe on Windows so eai.cmd can launch without spawn EINVAL', () => {
+    expect(buildInstalledEaiCommandExecConfig(['update', '--project-maintenance-only'], 'win32')).toEqual({
+      command: 'cmd.exe',
+      args: ['/d', '/s', '/c', 'eai.cmd', 'update', '--project-maintenance-only'],
+      shell: false,
+    });
+  });
+
+  test('uses the installed eai executable directly on macOS and Linux', () => {
+    expect(buildInstalledEaiCommandExecConfig(['update', '--project-maintenance-only'], 'darwin')).toEqual({
+      command: 'eai',
+      args: ['update', '--project-maintenance-only'],
+      shell: false,
+    });
+    expect(buildInstalledEaiCommandExecConfig(['update', '--project-maintenance-only'], 'linux')).toEqual({
+      command: 'eai',
+      args: ['update', '--project-maintenance-only'],
+      shell: false,
+    });
   });
 });
 
