@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.8 |
-| Released | 2026-08-25 |
-| Last Material Change | Support current production Object Type seeding |
-| Source Commit | `2cc03fb6920e7c7e612943e5da90c4e39997e1be` |
+| Version | 3.15.9 |
+| Released | 2026-08-27 |
+| Last Material Change | Require Node 24 and fix Windows update restart |
+| Source Commit | `d6a57c2afdeb15116cd320c9caad1dbd7acdee9a` |
 
 
 ## Install

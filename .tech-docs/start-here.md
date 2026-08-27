@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.8** (2026-08-25): Support current production Object Type seeding.
+The current CLI release is **v3.15.9** (2026-08-27): Require Node 24 and fix Windows update restart.
 
 
 ## What The Pieces Do
