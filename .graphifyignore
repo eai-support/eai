@@ -28,3 +28,10 @@
 *.mov
 *.ogg
 *.webm
+
+# Generated documentation navigation; source runtime remains included.
+docs-site/sidebars*.js
+
+# Generated docs and release verification tooling; source runtime remains included.
+scripts/generate-error-guidance-docs.cjs
+scripts/verify-error-guidance.cjs
