@@ -1,0 +1,30 @@
+# Graphify v1 pilot: code/config structural extraction only.
+# Semantic document, paper, image, and audio/video inputs are deferred.
+*.md
+*.mdx
+*.rst
+*.qmd
+*.skill
+*.txt
+*.yaml
+*.yml
+*.html
+*.pdf
+*.docx
+*.xlsx
+*.gif
+*.webp
+*.jpg
+*.jpeg
+*.svg
+*.png
+*.mp3
+*.mp4
+*.m4a
+*.wav
+*.mkv
+*.m4v
+*.avi
+*.mov
+*.ogg
+*.webm
