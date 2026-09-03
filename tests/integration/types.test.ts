@@ -17,6 +17,7 @@ import { validateObjectTypeDefaultValues } from '../../src/lib/object-type-defau
 import {
   appOwnedSqlTablePrefix,
   appObjectTypePublishFallbackReason,
+  buildTypeSeedDryRunResult,
   collectTypeDefaultValueValidationIssues,
   collectTypeStorageValidationIssues,
   describeFailedPlatformResponse,
@@ -204,6 +205,191 @@ describe('app object-type publish helpers', () => {
     ]);
   });
 
+  test('uses explicit source slugs without losing relationship slugs', () => {
+    const objectType = {
+      name: 'SubmissionFile',
+      slug: 'submission-file',
+      displayName: 'Submission file',
+      properties: [],
+      linkTypes: [
+        {
+          name: 'submission',
+          targetObjectType: 'workflow-submission',
+          cardinality: 'many-to-one',
+        },
+      ],
+      actions: [],
+    } as unknown as ObjectTypeDefinition;
+
+    expect(toAppManifestObjectTypes([objectType])).toEqual([
+      {
+        name: 'SubmissionFile',
+        slug: 'submission-file',
+        displayName: 'Submission file',
+        properties: [],
+        linkTypes: [
+          {
+            name: 'submission',
+            targetObjectType: 'workflow-submission',
+            cardinality: 'many-to-one',
+          },
+        ],
+        actions: [],
+        status: 'published',
+      },
+    ]);
+  });
+
+  test('preserves established slugs that must not be re-derived from names', () => {
+    const objectTypes = [
+      {
+        name: 'GitHubConnection',
+        slug: 'github-connection',
+        displayName: 'GitHub connection',
+        properties: [],
+        linkTypes: [],
+        actions: [],
+      },
+      {
+        name: 'OPAMeasure',
+        slug: 'opameasure',
+        displayName: 'OPA measure',
+        properties: [],
+        linkTypes: [],
+        actions: [],
+      },
+    ] as ObjectTypeDefinition[];
+
+    expect(
+      toAppManifestObjectTypes(objectTypes).map((type) => type.slug),
+    ).toEqual(['github-connection', 'opameasure']);
+  });
+
+  test('retries without top-level source slugs for an older deployed receiver', async () => {
+    const objectType = {
+      name: 'SubmissionFile',
+      slug: 'submission-file',
+      displayName: 'Submission file',
+      properties: [],
+      linkTypes: [],
+      actions: [],
+      status: 'published',
+    } as ObjectTypeDefinition;
+    const savedPayloads: Record<string, unknown>[][] = [];
+    const client = {
+      saveAppObjectTypeManifest: async (
+        _appKey: string,
+        objectTypes: Record<string, unknown>[],
+      ) => {
+        savedPayloads.push(objectTypes);
+        return savedPayloads.length === 1
+          ? new Response(JSON.stringify({ message: 'Request validation failed' }), {
+              status: 422,
+              headers: { 'content-type': 'application/json' },
+            })
+          : new Response('{}', { status: 200 });
+      },
+      publishAppObjectTypes: async () =>
+        new Response(
+          JSON.stringify({
+            results: [{ name: 'SubmissionFile', status: 'created' }],
+            verification: {
+              tenantId: 'tenant-1',
+              requestedTypes: ['SubmissionFile'],
+              matchedTypes: ['SubmissionFile'],
+              missingTypes: [],
+              driftedTypes: [],
+              createdCount: 1,
+              updatedCount: 0,
+              failedCount: 0,
+              converged: true,
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+    } as unknown as PlatformAPIClient;
+
+    const outcome = await trySeedViaAppManifestPublish(
+      client,
+      'no-code-builder',
+      'tenant-1',
+      [objectType],
+    );
+
+    expect(savedPayloads).toEqual([
+      [
+        {
+          name: 'SubmissionFile',
+          slug: 'submission-file',
+          displayName: 'Submission file',
+          properties: [],
+          linkTypes: [],
+          actions: [],
+          status: 'published',
+        },
+      ],
+      [
+        {
+          name: 'SubmissionFile',
+          displayName: 'Submission file',
+          properties: [],
+          linkTypes: [],
+          actions: [],
+          status: 'published',
+        },
+      ],
+    ]);
+    expect(outcome.result?.appManifestRequestShape).toBe(
+      'name-derived-slug',
+    );
+  });
+
+  test('does not use name-derived compatibility when it would change a historical slug', async () => {
+    const objectType = {
+      name: 'OPAMeasure',
+      slug: 'opameasure',
+      displayName: 'OPA measure',
+      properties: [],
+      linkTypes: [],
+      actions: [],
+      status: 'published',
+    } as ObjectTypeDefinition;
+    const savedPayloads: Record<string, unknown>[][] = [];
+    const client = {
+      saveAppObjectTypeManifest: async (
+        _appKey: string,
+        objectTypes: Record<string, unknown>[],
+      ) => {
+        savedPayloads.push(objectTypes);
+        return new Response(JSON.stringify({ message: 'Request validation failed' }), {
+          status: 422,
+          headers: { 'content-type': 'application/json' },
+        });
+      },
+      publishAppObjectTypes: async () => {
+        throw new Error('publish must not run when the exact slug cannot be preserved');
+      },
+    } as unknown as PlatformAPIClient;
+
+    await expect(
+      trySeedViaAppManifestPublish(
+        client,
+        'observability',
+        'tenant-1',
+        [objectType],
+      ),
+    ).rejects.toThrow(/requires explicit slug support.*OPAMeasure.*opameasure/s);
+
+    expect(savedPayloads).toHaveLength(1);
+    expect(savedPayloads[0]?.[0]).toMatchObject({
+      name: 'OPAMeasure',
+      slug: 'opameasure',
+    });
+  });
+
   test('preserves list-valued requiredStatus rules for app manifest publication', () => {
     const objectType = {
       name: 'Draft',
@@ -367,6 +553,7 @@ describe('app object-type publish helpers', () => {
     const outcome = await trySeedViaAppManifestPublish(client, 'no-code-builder', 'tenant-1', [objectType]);
 
     expect(outcome.fallbackReason).toBeUndefined();
+    expect(outcome.result?.appManifestRequestShape).toBe('explicit-name-and-slug');
     expect(outcome.result?.resourceApiSchemaSync).toMatchObject({
       status: 'queued',
     });
@@ -965,6 +1152,14 @@ describe('findMatchingRemoteTypes', () => {
 });
 
 describe('shouldFailTypeSeedRun', () => {
+  test('returns false for dry-run results without convergence claims', () => {
+    expect(shouldFailTypeSeedRun([
+      {
+        dryRun: true,
+      },
+    ])).toBe(false);
+  });
+
   test('returns false when every tenant verification converged', () => {
     expect(shouldFailTypeSeedRun([
       {
@@ -1104,6 +1299,38 @@ describe('shouldFailTypeSeedRun', () => {
         },
       },
     ])).toBe(true);
+  });
+});
+
+describe('buildTypeSeedDryRunResult', () => {
+  test('reports source names and slugs without claiming a tenant write', () => {
+    expect(buildTypeSeedDryRunResult(
+      'nic-app',
+      'tenant-1',
+      [
+        {
+          name: 'AttendanceRecord',
+          slug: 'attendance-record',
+          displayName: 'Attendance record',
+          properties: [],
+        },
+      ],
+    )).toEqual({
+      tenantKey: 'nic-app',
+      tenantId: 'tenant-1',
+      dryRun: true,
+      requestedObjectTypes: [
+        {
+          name: 'AttendanceRecord',
+          slug: 'attendance-record',
+        },
+      ],
+      created: 0,
+      updated: 0,
+      failed: 0,
+      publishingMode: 'app-manifest',
+      appManifestRequestShape: 'explicit-name-and-slug',
+    });
   });
 });
 

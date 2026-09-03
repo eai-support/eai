@@ -6,8 +6,8 @@ applyTo: '**/*.ts,**/*.tsx'
 
 You are working on Gofer, a TypeScript project using:
 
-- TypeScript 5.7.2 with strict mode
-- Node.js 18+ (ES2022 modules)
+- TypeScript 6.0.3 with strict mode
+- Node.js 24+ (ES2022 modules)
 - VSCode Extension API
 - vscode-languageserver 9.0.1
 

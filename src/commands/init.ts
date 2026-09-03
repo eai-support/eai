@@ -1164,9 +1164,9 @@ export function buildForwardedInitArgs(
 async function runCreatePreflight(): Promise<void> {
   showCreateSection("Making sure your computer has the correct prerequisites.");
   const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] || "0", 10);
-  if (nodeMajor < 20) {
+  if (nodeMajor < 24) {
     throw new Error(
-      `Node.js ${process.versions.node} is too old. EAI CLI requires Node.js 20 or newer.`,
+      `Node.js ${process.versions.node} is too old. EAI CLI requires Node.js 24 or newer.`,
     );
   }
 
@@ -2719,7 +2719,7 @@ on:
 
 env:
   APP_NAME: ${opts.name}
-  NODE_VERSION: '20.x'
+  NODE_VERSION: '24.x'
 
 jobs:
   build-and-deploy:

@@ -1,6 +1,6 @@
 {
   "name": "@enterpriseai/cli",
-  "version": "3.15.7",
+  "version": "3.15.9",
   "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
   "type": "module",
   "bin": {
@@ -71,7 +71,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   },
   "dependencies": {
     "chalk": "5.6.2",
@@ -83,7 +83,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@types/node": "25.8.0",
+    "@types/node": "24.13.3",
     "@vitest/ui": "4.1.8",
     "eslint": "10.4.1",
     "msw": "2.14.6",

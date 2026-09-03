@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.7 |
-| Released | 2026-08-20 |
-| Last Material Change | Improve reliable AI workspace launch across current providers |
-| Source Commit | `8cf062bb0d676af0cabe433d9f884527db23374b` |
+| Version | 3.15.9 |
+| Released | 2026-08-27 |
+| Last Material Change | Require Node 24 and fix Windows update restart |
+| Source Commit | `d6a57c2afdeb15116cd320c9caad1dbd7acdee9a` |
 
 
 ## Install

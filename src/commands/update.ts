@@ -72,10 +72,21 @@ export function buildUpdateInstallExecConfig(
   packageName = '@enterpriseai/cli',
   platform: NodeJS.Platform = process.platform,
 ): { command: string; args: string[]; shell: boolean } {
+  const npmExecutable = getNpmExecutable(platform);
+  const installArgs = buildUpdateInstallArgs(version, channel, packageName);
+
+  if (platform === 'win32') {
+    return {
+      command: 'cmd.exe',
+      args: ['/d', '/s', '/c', npmExecutable, ...installArgs],
+      shell: false,
+    };
+  }
+
   return {
-    command: getNpmExecutable(platform),
-    args: buildUpdateInstallArgs(version, channel, packageName),
-    shell: platform === 'win32',
+    command: npmExecutable,
+    args: installArgs,
+    shell: false,
   };
 }
 

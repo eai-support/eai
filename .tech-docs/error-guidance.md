@@ -6,7 +6,7 @@ description: Public-safe EAI CLI error explanations and agent recovery commands.
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.15.7. The same catalog powers human stderr output, JSON output for AI
+v3.15.9. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -28,6 +28,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
+| `E261` | `app_manifest_validation_failed` | The app Object Type manifest request did not match the deployed platform contract. |
 | `E270` | `object_type_not_published` | Object Type is not published for the active tenant. |
 | `E275` | `resource_search_embedding_required` | Semantic resource search is not ready for this tenant. |
 | `E276` | `resource_mutation_contract_invalid` | The PublicAPI v4 resource mutation contract is invalid. |
@@ -466,6 +467,45 @@ None.
 - Object Type name
 - validation message
 - CLI version
+
+## E261: The app Object Type manifest request did not match the deployed platform contract.
+
+| Field | Value |
+| --- | --- |
+| Reason | `app_manifest_validation_failed` |
+| Category | `schema` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The source Object Type schema is not the app-manifest HTTP request schema.
+- Some deployed platform releases derive the transport slug from the validated model name. Other releases accept the explicit source slug.
+- The CLI stops instead of using name derivation when that would change an established stored slug.
+- The current CLI supports both request shapes. A repeated failure can indicate an older CLI or a separate field validation error.
+
+### Diagnostics
+
+- `eai update --check` (read-only) — Check whether the installed CLI includes app-manifest compatibility support.
+- `eai types validate --tenant-key <key> --tenant-id <tenant-id>` (read-only) — Validate source names, slugs, relationships, and storage metadata without publishing.
+- `eai types seed --tenant-key <key> --tenant-id <tenant-id> --dry-run --format json` (read-only) — Confirm the CLI can load the intended tenant scope without changing platform state.
+
+### Fixes
+
+- `eai update` (changes state) — Install the CLI release that negotiates the deployed app-manifest request shape. Run when eai update --check reports an older CLI.
+- `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json` (changes state) — Publish once through the maintained compatibility adapter. Run after update and local validation succeed.
+
+### Stop Conditions
+
+- The current CLI reports that both supported app-manifest request shapes failed.
+- The CLI reports that the deployed platform needs explicit slug support to preserve an established stored slug.
+
+### Escalation Evidence
+
+- CLI version
+- app key
+- tenant ID
+- Object Type names only
+- request IDs for both rejected requests
 
 ## E270: Object Type is not published for the active tenant.
 
