@@ -1,0 +1,23 @@
+[
+  { "name": "valid-isolated-distributable", "valid": true },
+  {
+    "name": "valid-trusted-first-party",
+    "valid": true,
+    "set": {
+      "publisher.kind": "eai",
+      "distribution.visibility": "first-party",
+      "runtime": {
+        "staticImport": "@enterpriseaigroup/eai-evals",
+        "topology": "eai-owned-embedded",
+        "type": "trusted-embedded"
+      }
+    }
+  },
+  { "name": "reject-missing-identity", "valid": false, "delete": ["appKey"] },
+  { "name": "reject-mutable-artifact", "valid": false, "set": { "artifact.digest": "latest" } },
+  { "name": "reject-wildcard-capability", "valid": false, "set": { "capabilities.interactive": ["resource.*"] } },
+  { "name": "reject-secret-value", "valid": false, "set": { "support.password": "sk-this-value-must-never-be-packaged" } },
+  { "name": "reject-tenant-specific-value", "valid": false, "set": { "distribution.tenantId": "buyer-a" } },
+  { "name": "reject-dynamic-package-import", "valid": false, "set": { "runtime.entrypoint": "@partner/runtime" } },
+  { "name": "reject-model-name-as-transport-slug", "valid": false, "set": { "objectTypes": [{ "manifestRef": "object-types/feed-item.json", "name": "FeedItem", "slug": "FeedItem" }] } }
+]
