@@ -50,7 +50,11 @@ interface ChildResult {
 function runChild(
   executable: string,
   args: readonly string[],
-  options: { readonly cwd: string; readonly env?: NodeJS.ProcessEnv },
+  options: {
+    readonly cwd: string;
+    readonly env?: NodeJS.ProcessEnv;
+    readonly timeoutMs?: number;
+  },
 ): Promise<ChildResult> {
   return new Promise((resolve) => {
     const child = spawn(executable, args, {
@@ -64,7 +68,7 @@ function runChild(
     const timeout = setTimeout(() => {
       didTimeOut = true;
       child.kill("SIGKILL");
-    }, 5_000);
+    }, options.timeoutMs ?? 5_000);
     child.stdout.setEncoding("utf-8");
     child.stderr.setEncoding("utf-8");
     child.stdout.on("data", (chunk: string) => {
@@ -493,6 +497,9 @@ esac
           ],
           {
             cwd: fixtureRoot,
+            // PowerShell cold starts on hosted Linux runners can exceed the
+            // generic child-process timeout before the fixture npm is invoked.
+            timeoutMs: 15_000,
             env: {
               ...process.env,
               PATH: `${fixtureRoot}:/usr/bin:/bin`,
