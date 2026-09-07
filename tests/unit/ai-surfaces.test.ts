@@ -370,6 +370,16 @@ function linuxVsCodeCatalogProbe(applicationSha256 = '437e3d7f233868437287680753
 }
 
 describe('AI surface contract', () => {
+  it('requires an explicit architecture when simulating another operating system', async () => {
+    const simulatedPlatform = process.platform === 'win32' ? 'linux' : 'win32';
+
+    await expect(detectAiSurfaces({
+      platform: simulatedPlatform,
+      preferredSurface: null,
+      probe: probe({}, []),
+    })).rejects.toThrow(`An explicit architecture is required when detecting ${simulatedPlatform}`);
+  });
+
   it('publishes exactly six graphical surfaces, including VS Code with Copilot', () => {
     expect(AI_SURFACES.map((surface) => surface.id)).toEqual([
       'vscode-copilot',
@@ -551,6 +561,7 @@ describe('AI surface contract', () => {
   it('detects VS Code only when Copilot is installed and recommends it first', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'darwin',
+      architecture: 'arm64',
       home: '/Users/test',
       projectDirectory: '/work/app',
       preferredSurface: null,
@@ -777,6 +788,7 @@ describe('AI surface contract', () => {
   it('falls back from a stale preference to the best installed surface', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: 'codex-desktop',
       probe: probe({ grok: '/home/test/.grok/bin/grok' }),
@@ -791,6 +803,7 @@ describe('AI surface contract', () => {
     const builtInCopilot = '/usr/share/code/resources/app/extensions/copilot';
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe(
@@ -884,6 +897,7 @@ describe('AI surface contract', () => {
   it('does not mistake plain VS Code for a Copilot-ready workspace', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe({ code: '/usr/bin/code' }, [], { '/usr/bin/code': '' }),
@@ -895,6 +909,7 @@ describe('AI surface contract', () => {
   it('requires an exact VS Code Copilot extension identifier line', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe(
@@ -910,6 +925,7 @@ describe('AI surface contract', () => {
   it('recommends the most complete supported workspace when none is installed', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       projectDirectory: 'C:\\work\\app',
       preferredSurface: null,
@@ -926,6 +942,7 @@ describe('AI surface contract', () => {
   it('builds provider-specific plans without executing them', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'darwin',
+      architecture: 'arm64',
       home: '/Users/test',
       projectDirectory: '/work/customer-portal',
       preferredSurface: null,
@@ -957,6 +974,7 @@ describe('AI surface contract', () => {
   it('builds launch contracts only for authenticated macOS workspaces', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'darwin',
+      architecture: 'arm64',
       home: '/Users/test',
       projectDirectory: '/work/customer-portal',
       preferredSurface: null,
@@ -1027,6 +1045,7 @@ describe('AI surface contract', () => {
   it('uses the authenticated Claude Desktop contract and rejects unproven macOS CLIs', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'darwin',
+      architecture: 'arm64',
       home: '/Users/test',
       projectDirectory: '/work/customer-portal',
       preferredSurface: null,
@@ -1048,6 +1067,7 @@ describe('AI surface contract', () => {
   it('does not mistake an unrelated grok command for the official Grok Build CLI', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe({ grok: '/usr/bin/grok' }, [], { '/usr/bin/grok': 'community grok tool 2.0' }),
@@ -1059,6 +1079,7 @@ describe('AI surface contract', () => {
   it('rejects Grok Build on Linux without immutable package or artifact identity', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       projectDirectory: '/work/customer-portal',
       preferredSurface: null,
@@ -1083,6 +1104,7 @@ describe('AI surface contract', () => {
   it('rejects Antigravity CLI on Linux without immutable package or artifact identity', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       projectDirectory: '/work/customer-portal',
       preferredSurface: null,
@@ -1107,6 +1129,7 @@ describe('AI surface contract', () => {
   it('does not mistake an unrelated agy command for the official Antigravity CLI', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe(
@@ -1127,6 +1150,7 @@ describe('AI surface contract', () => {
     const copilotApp = 'C:\\Users\\test\\AppData\\Local\\Programs\\GitHub Copilot\\github.exe';
     const inventory = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       projectDirectory: 'C:\\work\\customer-portal',
       preferredSurface: null,
@@ -1165,6 +1189,7 @@ describe('AI surface contract', () => {
   it('keeps macOS Codex CLI capabilities conservative without signed version metadata', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'darwin',
+      architecture: 'arm64',
       home: '/Users/test',
       projectDirectory: '/work/customer-portal',
       preferredSurface: null,
@@ -1193,6 +1218,7 @@ describe('AI surface contract', () => {
   it('rejects Claude Code on Linux without signed-index payload binding', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       projectDirectory: '/work/customer-portal',
       preferredSurface: null,
@@ -1219,6 +1245,7 @@ describe('AI surface contract', () => {
     const realAntigravity = '/usr/share/antigravity/bin/antigravity';
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe(
@@ -1269,6 +1296,7 @@ describe('AI surface contract', () => {
     const executable = '/home/test/Downloads/Antigravity-arm64/antigravity';
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe({}, [executable]),
@@ -1366,6 +1394,7 @@ describe('AI surface contract', () => {
     const executable = 'C:\\Users\\test\\AppData\\Local\\Programs\\Grok Bot\\Grok Bot.exe';
     const inventory = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       preferredSurface: null,
       probe: probe({}, [executable]),
@@ -1381,6 +1410,7 @@ describe('AI surface contract', () => {
   it('rejects an unrelated Linux executable named grok-bot', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe({}, ['/usr/bin/grok-bot']),
@@ -1394,6 +1424,7 @@ describe('AI surface contract', () => {
     const desktopEntry = '/usr/share/applications/grok-bot.desktop';
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe(
@@ -1544,6 +1575,7 @@ describe('AI surface contract', () => {
     const desktopEntry = '/home/test/.local/share/applications/unrelated.desktop';
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe(
@@ -1651,6 +1683,7 @@ describe('AI surface contract', () => {
     const desktopEntry = '/usr/share/applications/grok-bot.desktop';
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe(
@@ -1669,6 +1702,7 @@ describe('AI surface contract', () => {
     const ownedPath = '/usr/share/antigravity/bin/antigravity';
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe(
@@ -1714,6 +1748,7 @@ describe('AI surface contract', () => {
     const codex = `${home}/.local/bin/codex`;
     const inventory = await detectAiSurfaces({
       platform,
+      architecture: 'arm64',
       home,
       preferredSurface: null,
       probe: probe(
@@ -1746,6 +1781,7 @@ describe('AI surface contract', () => {
     const copilot = 'D:\\Profiles\\test\\Local\\Microsoft\\WinGet\\Links\\copilot.exe';
     const inventory = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       environment: { localappdata: 'D:\\Profiles\\test\\Local' },
       preferredSurface: null,
@@ -1770,6 +1806,7 @@ describe('AI surface contract', () => {
     const copilot = 'E:\\Profiles\\test\\Roaming\\npm\\copilot.cmd';
     const inventory = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       environment: { APPDATA: 'E:\\Profiles\\test\\Roaming' },
       preferredSurface: null,
@@ -1941,12 +1978,14 @@ describe('AI surface contract', () => {
     const files = ['/usr/bin/github', '/usr/share/applications/GitHub Copilot.desktop'];
     const unrelated = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe({}, files, { 'dpkg-query': 'another-package\tarm64\t1.1.15' }),
     });
     const official = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe({}, files, { 'dpkg-query': 'github\tarm64\t1.1.15' }),
@@ -2095,6 +2134,7 @@ describe('AI surface contract', () => {
     const files = ['/usr/bin/github', '/usr/share/applications/GitHub Copilot.desktop'];
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe({}, files, { rpm: 'github\taarch64\t1.1.15-1' }),
@@ -2187,6 +2227,7 @@ describe('AI surface contract', () => {
   it('recommends authenticated Grok Bot when Grok Build identity is unproven', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'darwin',
+      architecture: 'arm64',
       home: '/Users/test',
       preferredSurface: null,
       probe: probe(
@@ -2204,6 +2245,7 @@ describe('AI surface contract', () => {
     const copilotDesktopEntry = '/usr/share/applications/github-copilot.desktop';
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe(
@@ -2316,6 +2358,7 @@ describe('AI surface contract', () => {
     const desktopEntry = '/home/test/.local/share/applications/claude.desktop';
     const inventory = await detectAiSurfaces({
       platform: 'linux',
+      architecture: 'arm64',
       home: '/home/test',
       preferredSurface: null,
       probe: probe(
@@ -2344,6 +2387,7 @@ describe('AI surface contract', () => {
     const copilotApp = 'C:\\Users\\test\\AppData\\Local\\Programs\\GitHub Copilot\\github.exe';
     const inventory = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       projectDirectory: 'C:\\work\\customer-portal',
       preferredSurface: null,
@@ -2375,12 +2419,14 @@ describe('AI surface contract', () => {
     const copilotApp = 'C:\\Users\\test\\AppData\\Local\\Programs\\GitHub Copilot\\github.exe';
     const unsigned = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       preferredSurface: null,
       probe: probe({}, [copilotApp]),
     });
     const wrongPublisher = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       preferredSurface: null,
       probe: probe(
@@ -2406,6 +2452,7 @@ describe('AI surface contract', () => {
     const machineCopilot = 'D:\\Apps\\GitHub Copilot\\github.exe';
     const inventory = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       environment: {
         LOCALAPPDATA: 'D:\\Profiles\\test\\Local',
@@ -2502,6 +2549,7 @@ describe('AI surface contract', () => {
   ])('recognises the signed official Windows Claude executable at %s', async (executable) => {
     const inventory = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       preferredSurface: null,
       probe: probe(
@@ -2534,6 +2582,7 @@ describe('AI surface contract', () => {
     const executable = 'C:\\Users\\test\\AppData\\Local\\AnthropicClaude\\Claude.exe';
     const inventory = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       preferredSurface: null,
       probe: probe(
@@ -2553,6 +2602,7 @@ describe('AI surface contract', () => {
     const executable = 'D:\\Portable\\Claude.exe';
     const valid = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       preferredSurface: null,
       probe: probe(
@@ -2573,6 +2623,7 @@ describe('AI surface contract', () => {
     });
     const spoofed = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       preferredSurface: null,
       probe: probe(
@@ -2586,6 +2637,7 @@ describe('AI surface contract', () => {
     });
     const unsafeRegistration = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       preferredSurface: null,
       probe: probe(
@@ -2682,6 +2734,7 @@ describe('AI surface contract', () => {
     const builtInCopilot = 'C:\\Users\\test\\AppData\\Local\\Programs\\Microsoft VS Code\\a5b5009513\\resources\\app\\extensions\\copilot';
     const inventory = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       projectDirectory: 'C:\\work\\customer-portal',
       preferredSurface: null,
@@ -2993,6 +3046,7 @@ describe('AI surface contract', () => {
     const codexExe = 'C:\\Users\\test\\AppData\\Local\\Programs\\Codex\\Codex.exe';
     const inventory = await detectAiSurfaces({
       platform: 'win32',
+      architecture: 'arm64',
       home: 'C:\\Users\\test',
       projectDirectory: 'C:\\work\\customer-portal',
       preferredSurface: null,

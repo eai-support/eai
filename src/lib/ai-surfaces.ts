@@ -3229,6 +3229,13 @@ export async function detectAiSurfaces(options: {
   preferredSurface?: AiSurfaceId | null;
 } = {}): Promise<AiSurfaceInventory> {
   const platform = options.platform ?? process.platform;
+  if (options.platform !== undefined
+    && options.platform !== process.platform
+    && options.architecture === undefined) {
+    throw new Error(
+      `An explicit architecture is required when detecting ${options.platform} AI surfaces on ${process.platform}.`,
+    );
+  }
   const architecture = options.architecture ?? process.arch;
   const home = options.home ?? homedir();
   const environment = options.environment ?? process.env;
