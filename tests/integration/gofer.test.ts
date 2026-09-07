@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -20,9 +24,69 @@ import { installGoferResources } from "../../src/lib/gofer-installer.js";
 const BUNDLED_GOFER_RESOURCES = fileURLToPath(
   new URL("../../resources/gofer/", import.meta.url),
 );
+const ACTIVE_SPECIFY_RESOURCES = fileURLToPath(
+  new URL("../../.specify/scripts/", import.meta.url),
+);
+const START_HERE_DOCUMENT = fileURLToPath(
+  new URL("../../.tech-docs/start-here.md", import.meta.url),
+);
 const GOFER_SYNC_SCRIPT = fileURLToPath(
   new URL("../../scripts/sync-gofer-resources.cjs", import.meta.url),
 );
+const GOFER_VERSION_FILE = join(BUNDLED_GOFER_RESOURCES, ".gofer-version");
+const GOFER_BASE_COMMIT = "6059c0e61377f648a9470b3554ae689e6912ec24";
+const GOFER_OPTIONAL_INSTALLER_OVERLAY_COMMIT = "03f3c5d7c6a0aa1121f85b0da4a31cdfe1218b8d";
+const GOFER_OPTIONAL_INSTALLER_SHA256 = {
+  "bash-scripts/install-optional-tools.sh": "9b870c7c803df01738a614aab115e41e1e880d08244992e905694456ee73abac",
+  "powershell-scripts/install-optional-tools.ps1": "a7fbfefad761074480f634504fb88d6739050ac95c501dd1d59380e258879811",
+} as const;
+
+interface ChildResult {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+function runChild(
+  executable: string,
+  args: readonly string[],
+  options: {
+    readonly cwd: string;
+    readonly env?: NodeJS.ProcessEnv;
+    readonly timeoutMs?: number;
+  },
+): Promise<ChildResult> {
+  return new Promise((resolve) => {
+    const child = spawn(executable, args, {
+      cwd: options.cwd,
+      env: options.env ?? process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let didTimeOut = false;
+    const timeout = setTimeout(() => {
+      didTimeOut = true;
+      child.kill("SIGKILL");
+    }, options.timeoutMs ?? 5_000);
+    child.stdout.setEncoding("utf-8");
+    child.stderr.setEncoding("utf-8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout = `${stdout}${chunk}`.slice(-131_072);
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr = `${stderr}${chunk}`.slice(-131_072);
+    });
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      resolve({ exitCode: 127, stdout, stderr: `${stderr}${error.message}` });
+    });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      resolve({ exitCode: didTimeOut ? 124 : (code ?? 1), stdout, stderr });
+    });
+  });
+}
 
 async function createGoferFixture(projectRoot: string): Promise<void> {
   await mkdir(join(projectRoot, "src", "eai.config"), { recursive: true });
@@ -247,5 +311,245 @@ describe("bundled Gofer Object Type routing assets", () => {
     expect(source).toContain("['.specify/schemas', 'schemas']");
     expect(source).toContain("'--others'");
     expect(source).toContain("'--exclude-standard'");
+  });
+});
+
+describe("bundled optional AI tool installers", () => {
+  test("record clean composite provenance for the exact optional-installer overlay", async () => {
+    const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, "utf-8")) as {
+      commit?: string;
+      source?: string;
+      dirty?: boolean;
+      overlay_source?: string;
+      overlay_commit?: string;
+      overlays?: string[];
+    };
+
+    expect(metadata).toMatchObject({
+      commit: GOFER_BASE_COMMIT,
+      source: `https://github.com/eai-support/eai-gofer.git@${GOFER_BASE_COMMIT}`,
+      dirty: false,
+      overlay_source: `https://github.com/eai-support/eai-gofer.git@${GOFER_OPTIONAL_INSTALLER_OVERLAY_COMMIT}`,
+      overlay_commit: GOFER_OPTIONAL_INSTALLER_OVERLAY_COMMIT,
+      overlays: Object.keys(GOFER_OPTIONAL_INSTALLER_SHA256),
+    });
+
+    for (const [relativePath, expectedSha256] of Object.entries(GOFER_OPTIONAL_INSTALLER_SHA256)) {
+      const contents = await readFile(join(BUNDLED_GOFER_RESOURCES, relativePath));
+      expect(createHash("sha256").update(contents).digest("hex")).toBe(expectedSha256);
+    }
+  });
+
+  test("match the active .specify installers exactly", async () => {
+    const installerPaths = [
+      ["bash", "install-optional-tools.sh", "bash-scripts"],
+      ["powershell", "install-optional-tools.ps1", "powershell-scripts"],
+    ] as const;
+
+    for (const [activeDirectory, fileName, bundledDirectory] of installerPaths) {
+      const [activeInstaller, bundledInstaller] = await Promise.all([
+        readFile(join(ACTIVE_SPECIFY_RESOURCES, activeDirectory, fileName), "utf-8"),
+        readFile(join(BUNDLED_GOFER_RESOURCES, bundledDirectory, fileName), "utf-8"),
+      ]);
+
+      expect(activeInstaller).toBe(bundledInstaller);
+    }
+  });
+
+  test("use current provider-owned CLI installers and never install Gemini as Antigravity", async () => {
+    const bashInstaller = await readFile(
+      join(BUNDLED_GOFER_RESOURCES, "bash-scripts", "install-optional-tools.sh"),
+      "utf-8",
+    );
+    const powershellInstaller = await readFile(
+      join(BUNDLED_GOFER_RESOURCES, "powershell-scripts", "install-optional-tools.ps1"),
+      "utf-8",
+    );
+    const installers = `${bashInstaller}\n${powershellInstaller}`;
+
+    for (const url of [
+      "https://antigravity.google/cli/install.sh",
+      "https://antigravity.google/cli/install.ps1",
+      "https://claude.ai/install.sh",
+      "https://claude.ai/install.ps1",
+      "https://chatgpt.com/codex/install.sh",
+      "https://chatgpt.com/codex/install.ps1",
+      "https://x.ai/cli/install.sh",
+      "https://x.ai/cli/install.ps1",
+    ]) {
+      expect(installers).toContain(url);
+    }
+    expect(installers).toContain("@github/copilot@1.0.83");
+    expect(installers).toContain("sha512-M8uZI0V0dahYV1KZij3nGDxaXEGG7I7YUZzQPI7NEZkL/83Nl/tNTbPdxKtdWZbOmWoXsPKXty/eEYoj6RHDhA==");
+    expect(installers).toContain("https://registry.npmjs.org/");
+    expect(installers).not.toContain("@google/gemini-cli");
+    expect(installers).not.toContain("@openai/codex-cli");
+    expect(installers).not.toContain("@anthropic-ai/claude-code");
+    expect(installers).toContain("claude auth login");
+    expect(installers).not.toMatch(/\bclaude login\b/);
+    expect(bashInstaller).toContain("--proto '=https' --proto-redir '=https' --tlsv1.2");
+    expect(bashInstaller).toContain("--max-redirs 5 --connect-timeout 15 --max-time 120 --max-filesize 1048576");
+    expect(bashInstaller).toContain("Refusing $tool_name installer because its SHA-256 digest changed");
+    expect(bashInstaller).toContain("compute_sha256 /dev/fd/8");
+    expect(bashInstaller).toContain("run_sanitized_installer \"$shell_name\" /dev/fd/9");
+    expect(bashInstaller).toContain("INSTALLER_TIMEOUT_SECONDS=900");
+    expect(bashInstaller).toContain("validate_installed_cli");
+    expect(bashInstaller).toContain("apt-cache show azure-cli >/dev/null 2>&1");
+    expect(bashInstaller).toContain("Azure CLI is unavailable from the configured apt repositories");
+    expect(powershellInstaller).toContain("$handler.AllowAutoRedirect = $false");
+    expect(powershellInstaller).toContain("$allowedOrigins -cnotcontains $currentOrigin");
+    expect(powershellInstaller).toContain("$sha256.ComputeHash($installerBytes)");
+    expect(powershellInstaller).toContain("-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command -");
+    expect(powershellInstaller).toContain("$startInfo.RedirectStandardInput = $true");
+    expect(powershellInstaller).toContain("$startInfo.EnvironmentVariables.Clear()");
+    expect(powershellInstaller).toContain("CopyToAsync([System.IO.Stream]::Null)");
+    expect(powershellInstaller).toContain("[DateTime]::UtcNow.AddMinutes(15)");
+    expect(powershellInstaller).toContain("Test-InstalledCli");
+    expect(powershellInstaller).not.toContain("Invoke-Expression");
+  });
+
+  test("pins every provider bootstrap and suppresses untrusted installer output", async () => {
+    const bashInstaller = await readFile(
+      join(BUNDLED_GOFER_RESOURCES, "bash-scripts", "install-optional-tools.sh"),
+      "utf-8",
+    );
+    const powershellInstaller = await readFile(
+      join(BUNDLED_GOFER_RESOURCES, "powershell-scripts", "install-optional-tools.ps1"),
+      "utf-8",
+    );
+
+    expect(bashInstaller.match(/^[ \t]*"[0-9a-f]{64}"[ \t]*\\?$/gm)).toHaveLength(4);
+    expect(powershellInstaller.match(/-ExpectedSha256 '[0-9a-f]{64}'/g)).toHaveLength(4);
+    expect(bashInstaller).toContain('>/dev/null 2>&1');
+    expect(powershellInstaller).toContain('$startInfo.RedirectStandardOutput = $true');
+    expect(powershellInstaller).toContain('$startInfo.RedirectStandardError = $true');
+    expect(powershellInstaller).toContain('ConvertTo-SafeDiagnostic');
+    expect(powershellInstaller).toContain("if ([string]::IsNullOrEmpty($Message))");
+    expect(powershellInstaller).toContain("return 'No diagnostic details were provided.'");
+  });
+
+  test("rejects malformed Bash options and does not echo untrusted option contents", async () => {
+    const bashInstaller = join(
+      BUNDLED_GOFER_RESOURCES,
+      "bash-scripts",
+      "install-optional-tools.sh",
+    );
+    const cases = [
+      ["--tools"],
+      ["--workspace-path", "--unexpected"],
+      ["--unknown", "credential=do-not-print"],
+    ];
+
+    for (const args of cases) {
+      const result = await runChild("/bin/bash", [bashInstaller, ...args], {
+        cwd: BUNDLED_GOFER_RESOURCES,
+        env: { ...process.env, HOME: BUNDLED_GOFER_RESOURCES },
+      });
+      expect(result.exitCode).toBe(64);
+      expect(`${result.stdout}${result.stderr}`).not.toContain("credential=do-not-print");
+    }
+  });
+
+  const powershellPath = ["/usr/bin/pwsh", "/opt/homebrew/bin/pwsh"].find(existsSync);
+  test.runIf(Boolean(powershellPath))(
+    "does not validate Copilot after its PowerShell npm install fails",
+    async () => {
+      const fixtureRoot = await mkdtemp(join(tmpdir(), "eai-optional-installer-test-"));
+      const fakeNpm = join(fixtureRoot, "npm");
+      const callLog = join(fixtureRoot, "npm-calls.txt");
+      try {
+        await writeFile(
+          fakeNpm,
+          `#!/bin/sh
+printf '%s\\n' "$*" >> "$FAKE_NPM_LOG"
+case "$1" in
+  view)
+    printf '%s\\n' '"sha512-M8uZI0V0dahYV1KZij3nGDxaXEGG7I7YUZzQPI7NEZkL/83Nl/tNTbPdxKtdWZbOmWoXsPKXty/eEYoj6RHDhA=="'
+    exit 0
+    ;;
+  install)
+    exit 23
+    ;;
+  *)
+    exit 99
+    ;;
+esac
+`,
+          "utf-8",
+        );
+        await chmod(fakeNpm, 0o755);
+
+        const powershellInstaller = join(
+          BUNDLED_GOFER_RESOURCES,
+          "powershell-scripts",
+          "install-optional-tools.ps1",
+        );
+        const result = await runChild(
+          powershellPath as string,
+          [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            powershellInstaller,
+            "-WorkspacePath",
+            fixtureRoot,
+            "-Tools",
+            "copilot",
+          ],
+          {
+            cwd: fixtureRoot,
+            // PowerShell cold starts on hosted Linux runners can exceed the
+            // generic child-process timeout before the fixture npm is invoked.
+            timeoutMs: 15_000,
+            env: {
+              ...process.env,
+              PATH: `${fixtureRoot}:/usr/bin:/bin`,
+              HOME: fixtureRoot,
+              USERPROFILE: fixtureRoot,
+              FAKE_NPM_LOG: callLog,
+            },
+          },
+        );
+
+        const npmCalls = await readFile(callLog, "utf-8");
+        expect(result.exitCode).toBe(1);
+        expect(npmCalls).toContain("install --global");
+        expect(npmCalls).not.toContain("prefix --global");
+        expect(`${result.stdout}${result.stderr}`).not.toContain(
+          "Validating the installed GitHub Copilot CLI executable path",
+        );
+      } finally {
+        await rm(fixtureRoot, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("current AI workspace documentation", () => {
+  test("lists exactly six graphical surfaces followed by five CLI surfaces", async () => {
+    const source = await readFile(START_HERE_DOCUMENT, "utf-8");
+    const catalogSection = source
+      .split("Current handoff support, in catalog order:")[1]
+      ?.split("\n\nOn Linux")[0];
+    expect(catalogSection).toBeTruthy();
+    const labels = [...(catalogSection ?? "").matchAll(/^\| ([^|]+?) \|/gm)]
+      .map((match) => match[1])
+      .filter((label) => label !== "AI workspace");
+
+    expect(labels).toEqual([
+      "GitHub Copilot in VS Code",
+      "GitHub Copilot app",
+      "Google Antigravity 2.0",
+      "Claude Desktop",
+      "ChatGPT desktop (Codex)",
+      "Grok Bot",
+      "GitHub Copilot CLI",
+      "Antigravity CLI (`agy`)",
+      "Claude Code",
+      "Codex CLI",
+      "Grok Build",
+    ]);
+    expect(catalogSection).not.toMatch(/Gemini/i);
   });
 });
