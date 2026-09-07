@@ -20,6 +20,10 @@ function Write-Warn {
 function ConvertTo-SafeDiagnostic {
   param([string]$Message)
 
+  if ([string]::IsNullOrEmpty($Message)) {
+    return 'No diagnostic details were provided.'
+  }
+
   $safeMessage = $Message
   foreach ($localRoot in @(
     $WorkspacePath,

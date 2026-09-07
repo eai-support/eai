@@ -35,10 +35,10 @@ const GOFER_SYNC_SCRIPT = fileURLToPath(
 );
 const GOFER_VERSION_FILE = join(BUNDLED_GOFER_RESOURCES, ".gofer-version");
 const GOFER_BASE_COMMIT = "6059c0e61377f648a9470b3554ae689e6912ec24";
-const GOFER_OPTIONAL_INSTALLER_OVERLAY_COMMIT = "4baf7af1d17d02e97d34b4c0a437579b43a37804";
+const GOFER_OPTIONAL_INSTALLER_OVERLAY_COMMIT = "03f3c5d7c6a0aa1121f85b0da4a31cdfe1218b8d";
 const GOFER_OPTIONAL_INSTALLER_SHA256 = {
   "bash-scripts/install-optional-tools.sh": "9b870c7c803df01738a614aab115e41e1e880d08244992e905694456ee73abac",
-  "powershell-scripts/install-optional-tools.ps1": "530c21f8beafcebce88e903a734a4ee7cab8c263a31e2a98a8d5084b8d1abb3f",
+  "powershell-scripts/install-optional-tools.ps1": "a7fbfefad761074480f634504fb88d6739050ac95c501dd1d59380e258879811",
 } as const;
 
 interface ChildResult {
@@ -424,6 +424,8 @@ describe("bundled optional AI tool installers", () => {
     expect(powershellInstaller).toContain('$startInfo.RedirectStandardOutput = $true');
     expect(powershellInstaller).toContain('$startInfo.RedirectStandardError = $true');
     expect(powershellInstaller).toContain('ConvertTo-SafeDiagnostic');
+    expect(powershellInstaller).toContain("if ([string]::IsNullOrEmpty($Message))");
+    expect(powershellInstaller).toContain("return 'No diagnostic details were provided.'");
   });
 
   test("rejects malformed Bash options and does not echo untrusted option contents", async () => {
