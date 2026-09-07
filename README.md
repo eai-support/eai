@@ -133,9 +133,9 @@ eai dev
 ```
 
 `eai create` installs Gofer AI terminal assets by default. New app repos include
-Claude commands and agents, Codex skills, Gemini commands, Copilot prompts and
-CLI skills, and the `.specify` commands/scripts/templates/hooks required to run
-the Gofer pipeline.
+Claude commands and agents, shared Antigravity/Codex skills, Grok skills,
+Copilot prompts and CLI skills, and the `.specify`
+commands/scripts/templates/hooks required to run the Gofer pipeline.
 Use `eai create my-app --no-gofer` only when you need a bare scaffold. `eai init`
 remains available as the low-level, backwards-compatible scaffold command.
 Use `eai create my-app --skip-onboarding` when you want the old init prompts
@@ -555,15 +555,43 @@ JSON decision.
 ## Gofer AI Terminal Assets
 
 Every `eai init` project includes the repo-local Gofer assets needed by the AI
-terminals used in this workspace:
+providers used in this workspace:
 
-| CLI | Installed surface | First command |
+| Provider | Installed surface | First command |
 |-----|-------------------|---------------|
 | GitHub Copilot | `.github/prompts`, `.github/instructions`, `.github/skills` | `eai start` and use the public EAI skill |
 | Claude | `.claude/commands`, `.claude/skills`, `.claude/settings.json` hooks | `eai start` and use the public EAI skill |
-| Codex | `.agents/skills/` with a legacy `.system/skills/` mirror | `eai start` and use the public EAI skill |
+| Google Antigravity 2.0 | `AGENTS.md`, `.agents/skills/` | `eai start` and choose Antigravity desktop or CLI |
+| Codex | `AGENTS.md`, `.agents/skills/` with a legacy `.system/skills/` mirror | `eai start` and use the public EAI skill |
 | Grok Build | `.grok/skills/` | `eai start` and use the public EAI skill |
-| Gemini CLI | `.gemini/commands/gofer`, `.gemini/extension.json` | Use the public EAI command |
+
+The v2 launcher catalog is deliberately fixed and ordered. Its six graphical
+choices are GitHub Copilot in VS Code, GitHub Copilot app, Google Antigravity
+2.0, Claude Desktop, ChatGPT desktop (Codex), and Grok Bot. Its five CLI
+choices are GitHub Copilot CLI, Antigravity CLI (`agy`), Claude Code, Codex
+CLI, and Grok Build. Current installers come only from the official
+[VS Code and Copilot](https://code.visualstudio.com/docs/setup/copilot),
+[GitHub Copilot app](https://docs.github.com/en/copilot/get-started/quickstart-copilot-app),
+[Google Antigravity](https://antigravity.google/download),
+[Claude](https://claude.com/download),
+[Codex](https://learn.chatgpt.com/docs/app), and
+[Grok](https://docs.x.ai/grok-bot/get-started) pages.
+
+`eai start` reports an accepted operating-system launch request, not a verified
+provider startup or project handoff. In JSON, `launched` remains as an EAI Setup
+0.3.19 compatibility alias for `dispatched`; new consumers should use
+`dispatched`, `confirmed`, and `launchState`. Detection defaults to the v1
+contract for Setup 0.3.19, while current Setup explicitly requests v2 with
+`--contract-version v2`.
+
+`eai start --check` never executes a provider binary. Desktop detection binds
+macOS/Windows signatures or Linux package ownership, architecture, repository,
+and signing keys; unsigned Linux portable apps require catalogued immutable
+hashes and are checked again before launch. Unsupported identities fail closed.
+Official Antigravity 2.0 and Grok Bot releases include Windows ARM64, and their
+Linux downloads include ARM64, but architecture availability alone is not
+proof of identity. EAI reports an installed surface only when that exact build
+matches trusted signer, package, or immutable artifact-catalog evidence.
 
 The shared workflow artifacts live under `.specify/`: commands, scripts,
 templates, hooks, memory, logs, and generated feature specs. Runtime state is
@@ -604,8 +632,8 @@ Important boundaries:
   so Gofer asset updates do not require a new `eai` CLI release. If the latest
   release cannot be reached or prepared, it falls back to the bundled snapshot.
 - `eai gofer refresh` manages the Gofer-owned surfaces copied by `eai init`
-  such as `.specify/`, `.claude/`, `.agents/skills/`, `.gemini/`, and
-  generated Copilot Gofer files.
+  such as `.specify/`, `.claude/`, `.agents/skills/`, the legacy `.gemini/`
+  compatibility layout, and generated Copilot Gofer files.
 - It writes or updates `.eai-manifest.json` so future refreshes can detect
   local edits and avoid overwriting them accidentally.
 - If a tracked managed file has local edits, refresh leaves it untouched unless

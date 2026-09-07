@@ -474,6 +474,7 @@ const OPTION_DECISIONS = {
     '--install': 'Opening an external provider installation page requires a user click and is not performed by automated release smoke.',
     '--dry-run': 'Provider launch-plan output is covered by integration tests; release smoke uses the stronger read-only detection contract.',
     '--no-remember': 'Preference suppression is covered by the local preference unit contract; release smoke does not launch or persist a provider.',
+    '--contract-version': 'Compatibility negotiation is covered by start integration tests: released Setup 0.3.19 receives default v1, while current Setup explicitly requests v2.',
   },
   'eai init': {
     '--from': 'Template source override is exercised by existing init tests; release live smoke uses the default public template.',

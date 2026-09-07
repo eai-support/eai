@@ -133,14 +133,19 @@ function showCreateSection(title: string): void {
   out.heading(`${chalk.cyan("◇")} ${title}`);
 }
 
-type CreateAiTool = "codex" | "claude" | "vscode" | "grok" | "gemini";
+type CreateAiTool =
+  | "codex"
+  | "claude"
+  | "vscode"
+  | "grok"
+  | "antigravity";
 
 const CREATE_AI_TOOL_CHOICES: Array<{ name: string; value: CreateAiTool }> = [
   { name: "Codex", value: "codex" },
   { name: "Claude", value: "claude" },
   { name: "GitHub Copilot in VS Code", value: "vscode" },
   { name: "Grok Build", value: "grok" },
-  { name: "Gemini", value: "gemini" },
+  { name: "Google Antigravity 2.0", value: "antigravity" },
 ];
 
 const CREATE_AI_TOOL_LABELS: Record<CreateAiTool, string> = {
@@ -148,7 +153,7 @@ const CREATE_AI_TOOL_LABELS: Record<CreateAiTool, string> = {
   claude: "Claude",
   vscode: "GitHub Copilot in VS Code",
   grok: "Grok Build",
-  gemini: "Gemini",
+  antigravity: "Google Antigravity 2.0",
 };
 
 const CREATE_PROMPT_THEME = {
@@ -467,8 +472,8 @@ export const initCommand = new Command("init")
 Gofer AI CLI assets are installed by default:
   .specify/ commands, scripts, templates, hooks, and memory folders
   .claude/ commands and agents for Claude CLI
-  .system/skills and .agents/skills for Codex CLI
-  .gemini/commands/gofer and .gemini/extension.json for Gemini CLI
+  AGENTS.md and .agents/skills for Google Antigravity and Codex CLI
+  .system/skills as a legacy Codex mirror
   .github/prompts, .github/instructions, and .github/skills for GitHub Copilot
 
 The default public template is pinned to the latest eai-app-template main
@@ -1011,7 +1016,10 @@ export const createCommand = new Command("create")
     "--app-key <key>",
     "Bind the local project to an existing app instead of creating a new app",
   )
-  .option("--tool <tool>", "AI tool to prepare for: codex, claude, vscode, or gemini")
+  .option(
+    "--tool <tool>",
+    "AI tool to prepare for: codex, claude, vscode, grok, or antigravity",
+  )
   .option("--no-splash", "Skip the interactive EAI wordmark")
   .addHelpText(
     "after",
@@ -1038,6 +1046,7 @@ async function runCreateFlow(
   nameArg: string | undefined,
   options: CreateCommandOptions,
 ): Promise<void> {
+  validateCreateAiTool(options.tool);
   await printEaiSplash(options.splash);
 
   if (options.skipOnboarding || options.skipPrompts) {
@@ -1104,6 +1113,17 @@ async function runCreateFlow(
     out.error(describeCreateFlowFailure(error));
     process.exit(1);
   }
+}
+
+function validateCreateAiTool(value: string | undefined): CreateAiTool | undefined {
+  const normalized = value?.trim().toLowerCase();
+  const tool = normalized === "agy" ? "antigravity" : normalized;
+  if (tool && !Object.prototype.hasOwnProperty.call(CREATE_AI_TOOL_LABELS, tool)) {
+    throw new Error(
+      `Unknown --tool "${value}". Use codex, claude, vscode, grok, or antigravity.`,
+    );
+  }
+  return tool as CreateAiTool | undefined;
 }
 
 /**
@@ -1199,15 +1219,7 @@ async function promptCreateOnboarding(
   nameArg: string | undefined,
   options: CreateCommandOptions,
 ): Promise<CreateOnboardingAnswers> {
-  const requestedTool = options.tool?.trim().toLowerCase();
-  if (
-    requestedTool &&
-    !CREATE_AI_TOOL_CHOICES.some((choice) => choice.value === requestedTool)
-  ) {
-    throw new Error(
-      `Unknown --tool "${options.tool}". Use codex, claude, vscode, or gemini.`,
-    );
-  }
+  const requestedTool = validateCreateAiTool(options.tool);
 
   out.blank();
   const toolAnswer = requestedTool

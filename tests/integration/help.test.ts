@@ -63,6 +63,16 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain('Check Git, Node.js, and npm');
     expect(result.stdout).toContain('Check builder readiness');
     expect(result.stdout).toContain('--skip-onboarding');
+    expect(result.stdout).toContain('antigravity');
+    expect(result.stdout).not.toContain('AI tool to prepare for: codex, claude, vscode, or gemini');
+  });
+
+  test('create rejects Gemini as a selectable workspace tool', async () => {
+    const result = await runCommand(ctx, 'eai create test-app --skip-prompts --tool gemini --no-splash');
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('Unknown --tool "gemini"');
+    expect(result.stderr).toContain('antigravity');
   });
 
   test('docs help includes the simple upload-classify-index workflow', async () => {

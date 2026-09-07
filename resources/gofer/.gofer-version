@@ -3,5 +3,11 @@
   "describe": "v3.7.14",
   "source": "https://github.com/eai-support/eai-gofer.git@6059c0e61377f648a9470b3554ae689e6912ec24",
   "dirty": false,
-  "synced_at": "2026-07-06T03:17:53Z"
+  "overlay_source": "https://github.com/eai-support/eai-gofer.git@4baf7af1d17d02e97d34b4c0a437579b43a37804",
+  "overlay_commit": "4baf7af1d17d02e97d34b4c0a437579b43a37804",
+  "overlays": [
+    "bash-scripts/install-optional-tools.sh",
+    "powershell-scripts/install-optional-tools.ps1"
+  ],
+  "synced_at": "2026-09-07T14:23:04Z"
 }
