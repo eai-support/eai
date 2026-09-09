@@ -99,6 +99,7 @@
             "tests/integration/user.test.ts",
             "tests/integration/publicapi.test.ts",
             "tests/integration/no-v3-runtime.test.ts",
+            "tests/integration/docs-classify.test.ts",
             "tests/integration/platform-api-client.test.ts",
             "tests/integration/runtime-contract.test.ts",
             "tests/integration/vertical.test.ts",
