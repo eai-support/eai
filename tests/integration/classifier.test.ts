@@ -47,6 +47,8 @@ describe("eai classifier", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    classifierCommand.commands.find((command) => command.name() === "target")!
+      .setOptionValue("documentLifecycle", undefined);
     vi.mocked(resolveCommandContext).mockResolvedValue({
       tenantId: "tenant-1",
       client: {
@@ -389,7 +391,7 @@ describe("eai classifier", () => {
     expect(updateResource).not.toHaveBeenCalled();
   });
 
-  test("associates an exact published version with an app workflow", async () => {
+  test.each([undefined, "planning-assist-v1", "planning-assess-v1", "business-document-v1"])("associates an exact published version with lifecycle %s", async (documentLifecycle) => {
     listResources.mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -430,6 +432,7 @@ describe("eai classifier", () => {
       "compliance-review",
       "--format",
       "json",
+      ...(documentLifecycle ? ["--document-lifecycle", documentLifecycle] : []),
     ]);
 
     expect(requestPublicApi).toHaveBeenCalledWith(
@@ -442,9 +445,21 @@ describe("eai classifier", () => {
           classifierVersion: 3,
           verticalKey: "mysnm",
           workflowKey: "compliance-review",
+          ...(documentLifecycle ? { documentLifecycle } : {}),
         },
       },
     );
+  });
+
+  test("rejects unsupported lifecycle mappings before any platform request", async () => {
+    const target = classifierCommand.commands.find((command) => command.name() === "target")!;
+    target.exitOverride().configureOutput({ writeErr: () => undefined });
+    await expect(target.parseAsync([
+      "compliance", "--app", "business-docs", "--workflow", "review",
+      "--document-lifecycle", "arbitrary-storage-target",
+    ], { from: "user" })).rejects.toThrow(/invalid|Allowed choices/);
+    expect(resolveCommandContext).not.toHaveBeenCalled();
+    expect(requestPublicApi).not.toHaveBeenCalled();
   });
 
   test.each([

@@ -30,7 +30,9 @@ should call EAI platform capabilities.
 | Resource actions     | `client.resources.executeAction(type, id, action)`               | named resources command if available; otherwise `eai publicapi post /v4/data/resources/...` | Actions enforce Object Type rules.                    |
 | Resource search      | helper around PublicAPI resource search if SDK support is absent | `eai resources search "<query>" --mode hybrid`                                              | Search is a projection over canonical data.           |
 | Resource files       | helper around resource file routes                               | `eai resources file upload/get/delete`                                                      | Use for file fields on typed resource objects.        |
-| Documents            | `useDocuments().upload/classify/ragIndex`                        | `eai docs upload`, `eai docs classify`, `eai docs index`                                    | Use for platform document processing and RAG.         |
+| Upload documents | `useDocuments().upload(file, context)` | `eai docs upload <file> --planning-application-id <id>` | One queued upload; full processing must be supported by the configured lifecycle. |
+| Classify documents | `useDocuments().classify(files, context)` | `eai docs classify <file> --vertical-key <app-key> --workflow-key <workflow-key>` | One queued ResourceAPI upload with authorised parent or paired app/workflow context. |
+| Direct URL analysis | `useDocuments().classifyByUrl(url, { verticalKey, workflowKey })` | `eai publicapi post /v4/data/documents/classify-by-url` | Direct analysis, not durable upload or saved results. |
 | Chat                 | `useChat(workflowId, stage).send/stream`                         | `eai chat send`, `eai chat stream`                                                          | Use `message`, `conversation_id`, and `params`.       |
 | Advanced PublicAPI   | BFF or server helper                                             | `eai publicapi <method> /v4/...`                                                            | Use only when named support is missing.               |
 
@@ -90,17 +92,25 @@ Updates require the current `version` for optimistic locking.
 ## Document Pattern
 
 ```ts
-const { upload, classify, ragIndex } = useDocuments(tenantId);
+const { classify, getJobStatus, getRecord } = useDocuments(tenantId);
 
-const uploaded = await upload(file, {
-  category: "supporting-document",
-  application_id: applicationId,
+const response = await classify([file], {
+  verticalKey: "business-docs",
+  workflowKey: "document-review",
 });
-const documentId = uploaded.documentId;
-
-await classify([file]);
-await ragIndex(documentId);
+const queued = await response.json();
+const status = await (await getJobStatus(queued.jobId)).json();
+// Poll this same job until terminal; do not upload the file again.
+// On completion, read the retained document using its returned document_id.
+// getRecord(documentId) returns persisted stages, not just queue acceptance.
 ```
+
+The app/workflow must have a published classifier target with the configured
+`business-document-v1` lifecycle and ready private storage. Existing DAISY and
+Assess callers retain their authorised planning/case context. Classification
+uploads once and returns a queued job, not an immediate analysis. Business
+`full`/`rag` processing is rejected until that lifecycle supports indexing;
+do not report a queued job or unsupported indexing as success.
 
 Use resource file routes when the file is a property of a typed resource object.
 Use document upload, classification, and RAG routes when the platform should

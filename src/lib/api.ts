@@ -57,7 +57,7 @@ export function validateDocumentUploadContext(context: DocumentUploadContext): b
     context.verticalKey, context.workflowKey];
   const contextual = fields.some((value) => value !== undefined);
   if (!contextual) {
-    throw new Error('Legacy document uploads are deprecated. Use /v4/data/documents/upload with --business-request-id or --planning-application-id for an existing authorized Curate project.');
+    throw new Error('Legacy document uploads are deprecated. Supply --vertical-key and --workflow-key for a configured document lifecycle, or --business-request-id or --planning-application-id for an existing authorized Curate project.');
   }
   if (fields.some((value) => value !== undefined && (typeof value !== 'string' || !value.trim()))) {
     throw new Error('Document upload context fields must not be empty.');
@@ -65,11 +65,11 @@ export function validateDocumentUploadContext(context: DocumentUploadContext): b
   if (context.storageTarget !== undefined && context.storageTarget !== 'resourceapi') {
     throw new Error('Contextual uploads support only resourceapi storage.');
   }
-  if (!context.businessRequestId && !context.planningApplicationId) {
-    throw new Error('Curate document uploads require --business-request-id or --planning-application-id.');
-  }
   if (Boolean(context.verticalKey) !== Boolean(context.workflowKey)) {
     throw new Error('Supply --vertical-key and --workflow-key together.');
+  }
+  if (!context.businessRequestId && !context.planningApplicationId && !context.verticalKey) {
+    throw new Error('Curate document uploads require a configured app/workflow or an existing authorized project.');
   }
   return true;
 }

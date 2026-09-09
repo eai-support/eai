@@ -17,7 +17,7 @@ interface DocumentCommandOptions extends DocumentUploadContext {
 function addUploadOptions(command: Command): Command {
   return command
     .option('--tenant-id <id>', 'Use a specific tenant with the current user login')
-    .option('--storage-target <target>', 'Curate storage target (resourceapi); requires a project context')
+    .option('--storage-target <target>', 'Curate storage target (resourceapi); requires app/workflow or project context')
     .option('--business-request-id <id>', 'Existing authorized Curate business request')
     .option('--planning-application-id <id>', 'Existing authorized Curate planning-application resource')
     .option('--vertical-key <key>', 'App key for the published workflow classifier')
@@ -64,14 +64,18 @@ export const docsCommand = new Command('docs')
   .description('Document upload, classification, and indexing')
   .addHelpText('after', `
 Examples:
-  $ eai docs upload ./reports/contract.pdf
-  $ eai docs classify ./reports/contract.pdf
-  $ eai docs index <documentId>
+  $ eai docs classify ./reports/contract.pdf --vertical-key business-docs --workflow-key review
+  $ eai docs classify ./reports/site-plan.pdf --planning-application-id <projectId>
+  $ eai docs upload ./reports/site-plan.pdf --planning-application-id <projectId>
 
 Typical workflow:
-  1. Upload a file
-  2. Classify it if your platform uses document classification
-  3. Index the document ID if you want it available to RAG or chat workflows
+  1. Configure and publish the app's document schemas and workflow classifier
+  2. Run classify once to upload and queue analysis, or upload for full processing
+  3. Poll the returned job ID and read the saved results; acceptance is not completion
+
+Standalone documents require a business document lifecycle enabled on the
+app/workflow binding. PublicAPI checks readiness and permissions before writing.
+Do not invent a planning ID or repeat the upload when a job is still processing.
 
 Use docs commands when the file is the subject of document processing or AI
 context. Use "eai resources file" when the file is an attachment to a typed

@@ -159,6 +159,28 @@ describe("eai gofer refresh", () => {
     await env.cleanup();
   });
 
+  test("installs the source-pinned document lifecycle guidance without changing the base Gofer pin", async () => {
+    const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, 'utf8'));
+    expect(metadata.commit).toBe(GOFER_BASE_COMMIT);
+    expect(metadata.document_lifecycle_overlay).toMatchObject({
+      commit: 'b9cc180288efbf857b763cf1e2565ec093f15765',
+      source: 'https://github.com/eai-support/eai-gofer',
+      section: 'Document Lifecycle Rules',
+      dirty: false,
+    });
+    const relativePath = 'references/platform/eai-service-patterns.md';
+    const bundled = await readFile(join(BUNDLED_GOFER_RESOURCES, relativePath), 'utf8');
+    const section = '## Document Lifecycle Rules\n' + bundled
+      .split('## Document Lifecycle Rules\n')[1].split('\n## Storage Backend Rules')[0].trimEnd() + '\n';
+    expect(createHash('sha256').update(section).digest('hex'))
+      .toBe(metadata.document_lifecycle_overlay.section_sha256);
+    const installed = await readFile(join(env.dir, '.specify', relativePath), 'utf8');
+    expect(installed).toContain(section.trimEnd());
+    expect(installed).toContain('business-document-v1');
+    expect(installed).toContain('Preserve working DAISY/Assess');
+    expect(installed).toContain('never re-upload automatically');
+  });
+
   test("records the current managed snapshot on the first refresh without rewriting matching files", async () => {
     const result = await runCommand(ctx, "eai gofer refresh");
 

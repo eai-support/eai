@@ -1,12 +1,25 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PlatformAPIClient, validateDocumentUploadContext, type DocumentUploadContext } from '../../src/lib/api.js';
 import { docsCommand, readResponseError } from '../../src/commands/docs.js';
 import { createMockServer } from '../helpers/mock-server.js';
 import { createTestEnvironment, createTestProject, type TestEnvironment } from '../helpers/test-env.js';
 import { cleanupTestTokens, type TestContext, userIsLoggedIn } from '../helpers/setup-dsl.js';
+
+test.each(['app-template/service-patterns.md', 'examples/ai-chat.md'])(
+  'bundled guidance uses one configured classification submission: %s',
+  async (path) => {
+    const guide = await readFile(new URL(`../../.tech-docs/${path}`, import.meta.url), 'utf8');
+    expect(guide).toContain('verticalKey: "business-docs"');
+    expect(guide).toContain('workflowKey: "document-review"');
+    expect(guide).toContain('business-document-v1');
+    expect(guide).not.toContain('application_id: applicationId');
+    expect(guide).not.toContain('await classify([file]);');
+    expect(guide).not.toContain('uploaded.documentId');
+  },
+);
 
 describe('PlatformAPIClient.classifyDocument', () => {
   let env: TestEnvironment;
@@ -19,6 +32,11 @@ describe('PlatformAPIClient.classifyDocument', () => {
   let ctx: TestContext;
 
   beforeEach(async () => {
+    for (const command of docsCommand.commands) {
+      for (const field of ['tenantId', 'storageTarget', 'businessRequestId', 'planningApplicationId', 'verticalKey', 'workflowKey']) {
+        command.setOptionValue(field, undefined);
+      }
+    }
     originalCwd = process.cwd();
     originalExitCode = process.exitCode;
     env = await createTestEnvironment();
@@ -207,7 +225,8 @@ describe('PlatformAPIClient.classifyDocument', () => {
   test.each([
     {},
     { storageTarget: 'resourceapi' },
-    { verticalKey: 'sample-app', workflowKey: 'sample-workflow' },
+    { verticalKey: 'sample-app' },
+    { workflowKey: 'sample-workflow' },
     { businessRequestId: 'BR-1', verticalKey: 'sample-app' },
     { businessRequestId: 'BR-1', workflowKey: 'sample-workflow' },
     { businessRequestId: ' ' },
@@ -217,6 +236,36 @@ describe('PlatformAPIClient.classifyDocument', () => {
     await expect(client.classifyDocument('/nonexistent.pdf', context as DocumentUploadContext)).rejects.toThrow(
       /Legacy document uploads are deprecated|Curate document uploads require|Supply --vertical-key|must not be empty|only resourceapi/,
     );
+  });
+
+  test.each(['classification', 'full'] as const)('preserves configured standalone %s admission or rejection without retry', async (mode) => {
+    const filePath = join(env.dir, 'trust-deed.pdf');
+    await writeFile(filePath, 'pdf-bytes');
+    let calls = 0;
+    mockServer.server.use(http.post('https://test-api.example.com/v4/data/documents/upload', async ({ request }) => {
+      calls += 1;
+      expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
+      const form = await request.formData();
+      expect(Object.fromEntries([...form.entries()].filter(([key]) => key !== 'files'))).toEqual({
+        tenant_id: 'tenant-one', processing_mode: mode, storage_target: 'resourceapi',
+        verticalKey: 'business-docs', workflowKey: 'trust-review',
+      });
+      expect(form.has('planning_application_id')).toBe(false);
+      expect(form.has('business_request_id')).toBe(false);
+      expect(form.has('documentLifecycle')).toBe(false);
+      return mode === 'full'
+        ? HttpResponse.json({ error: 'DOCUMENT_LIFECYCLE_MODE_UNSUPPORTED' }, { status: 400 })
+        : HttpResponse.json({ jobId: 'job_business', documents: [{ documentId: 'DOC-BUSINESS' }] }, { status: 202 });
+    }));
+    const client = new PlatformAPIClient('https://test-api.example.com', 'tenant-one');
+    const context = { verticalKey: 'business-docs', workflowKey: 'trust-review' };
+    const response = mode === 'full'
+      ? await client.uploadDocument(filePath, context)
+      : await client.classifyDocument(filePath, context);
+    expect(response.status).toBe(mode === 'full' ? 400 : 202);
+    expect(await response.json()).toMatchObject(mode === 'full'
+      ? { error: 'DOCUMENT_LIFECYCLE_MODE_UNSUPPORTED' } : { jobId: 'job_business' });
+    expect(calls).toBe(1);
   });
 
   test.each(['classify', 'upload'])('%s forwards command context and returns clean acceptance JSON', async (command) => {
@@ -243,6 +292,43 @@ describe('PlatformAPIClient.classifyDocument', () => {
     expect(JSON.parse(output.mock.calls.flat().join(''))).toEqual({
       ok: true, status: 202, body: { jobId: 'job_123', processingMode: mode },
     });
+  });
+
+  test.each(['classify', 'upload'])('%s reports the standalone server verdict without inventing a job or retry', async (command) => {
+    const project = await createTestProject(env.dir, { name: 'app', hasEnvFile: true, hasObjectTypes: true });
+    process.chdir(project);
+    const filePath = join(env.dir, 'standalone.pdf');
+    await writeFile(filePath, 'pdf-bytes');
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    let calls = 0;
+    mockServer.server.use(http.post('https://test-api.example.com/v4/data/documents/upload', async ({ request }) => {
+      calls += 1;
+      const form = await request.formData();
+      expect(form.get('verticalKey')).toBe('business-docs');
+      expect(form.get('workflowKey')).toBe('trust-review');
+      expect(form.has('planning_application_id')).toBe(false);
+      expect(form.has('business_request_id')).toBe(false);
+      expect(form.get('processing_mode')).toBe(command === 'upload' ? 'full' : 'classification');
+      return command === 'upload'
+        ? HttpResponse.json({ error: 'DOCUMENT_LIFECYCLE_MODE_UNSUPPORTED' }, { status: 400 })
+        : HttpResponse.json({ jobId: 'job_business', status: 'processing' }, { status: 202 });
+    }));
+    await docsCommand.parseAsync([command, filePath, '--tenant-id', 'tenant-one',
+      '--vertical-key', 'business-docs', '--workflow-key', 'trust-review', '--format', 'json'], { from: 'user' });
+    expect(calls).toBe(1);
+    const result = JSON.parse(output.mock.calls.flat().join(''));
+    if (command === 'upload') {
+      expect(process.exitCode).toBe(1);
+      expect(result).toMatchObject({
+        ok: false, status: 400,
+        error: { message: expect.stringContaining('DOCUMENT_LIFECYCLE_MODE_UNSUPPORTED') },
+      });
+      expect(result).not.toHaveProperty('body');
+    } else {
+      expect(result).toEqual({
+        ok: true, status: 202, body: { jobId: 'job_business', status: 'processing' },
+      });
+    }
   });
 
   test.each(['classify', 'upload'])('%s reports HTTP rejection as failure JSON', async (command) => {

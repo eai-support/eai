@@ -343,7 +343,7 @@ const SMOKE_CALLS = {
     'eai classifier publish <classifier-key> --tenant-id <tenant-id> --format json',
   ],
   'eai classifier target': [
-    'eai classifier target <classifier-key> --app <app-key> --workflow <workflow-key> --version <version> --tenant-id <tenant-id> --format json',
+    'eai classifier target <classifier-key> --app <app-key> --workflow <workflow-key> --version <version> --document-lifecycle business-document-v1 --tenant-id <tenant-id> --format json',
   ],
   'eai chat send': [
     'EAI_E2E_WORKFLOW_KEY=<workflow-id> eai chat send --workflow <workflow-id> --stage chat --conversation-id <conversation-id>',

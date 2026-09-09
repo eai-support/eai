@@ -75,13 +75,17 @@ describe('CLI help output', () => {
     expect(result.stderr).toContain('antigravity');
   });
 
-  test('docs help includes the simple upload-classify-index workflow', async () => {
+  test('docs help uses one configured submission and separates acceptance from completion', async () => {
     const result = await runCommand(ctx, 'eai docs --help');
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Typical workflow:');
-    expect(result.stdout).toContain('eai docs upload ./reports/contract.pdf');
-    expect(result.stdout).toContain('eai docs index <documentId>');
+    expect(result.stdout).toContain('eai docs classify ./reports/contract.pdf --vertical-key business-docs --workflow-key review');
+    expect(result.stdout).toContain('eai docs upload ./reports/site-plan.pdf --planning-application-id <projectId>');
+    expect(result.stdout).toContain('Run classify once');
+    expect(result.stdout).toContain('acceptance is not completion');
+    expect(result.stdout).toContain('Do not invent a planning ID or repeat the upload');
+    expect(result.stdout).not.toContain('eai docs index <documentId>');
   });
 
   test('--describe outputs valid parseable JSON with the agent recovery guide', async () => {
