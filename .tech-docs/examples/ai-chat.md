@@ -146,8 +146,8 @@ process document content.
 
 ```bash
 eai chat send "What can you help with?" --workflow <workflow-id> --stage chat
-eai docs upload ./sample.pdf
-eai docs classify ./sample.pdf
+eai docs upload ./sample.pdf --planning-application-id <authorized-project-id>
+eai docs classify ./sample.pdf --planning-application-id <authorized-project-id> --vertical-key <app-key> --workflow-key <workflow-key>
 eai docs index <document-id>
 ```
 

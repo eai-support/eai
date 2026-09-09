@@ -770,6 +770,15 @@ Request an operator-assisted runtime workflow binding.
 
 ### Document Commands
 
+Uploads require an existing authorized Curate project: pass
+`--planning-application-id <id>` or `--business-request-id <id>`.
+The CLI selects `storage_target=resourceapi` and refuses context-free legacy
+uploads before reading the file. Both commands support `--tenant-id`,
+`--format json`, and paired `--vertical-key` / `--workflow-key` options for a
+published tenant classifier. These options do not provision tenant schemas.
+HTTP 202 means accepted; poll `/v4/data/documents/jobs/{jobId}` for completion
+and verify the saved result. Direct URL analysis is not this queued lifecycle.
+
 #### `eai docs upload <file>`
 Upload a document.
 
@@ -786,7 +795,7 @@ Classify a document.
 **Arguments**: `<file>`
 
 **Platform API Endpoints Used**:
-- `POST /v4/data/documents/classify` — `multipart/form-data` (`files`, `tenant_id`, `processing_mode=classification`)
+- `POST /v4/data/documents/upload` — `multipart/form-data` (`files`, `tenant_id`, `storage_target=resourceapi`, authorized project context, `processing_mode=classification`)
 
 ---
 

@@ -65,8 +65,8 @@ if (payload.jobId) {
 CLI example:
 
 ```bash
-eai docs upload ./supporting-document.pdf
-eai docs classify ./supporting-document.pdf
+eai docs upload ./supporting-document.pdf --planning-application-id <authorized-project-id>
+eai docs classify ./supporting-document.pdf --planning-application-id <authorized-project-id> --vertical-key <app-key> --workflow-key <workflow-key>
 eai docs index <document-id>
 ```
 
@@ -200,7 +200,7 @@ user means a document workflow or a resource file property.
 ```bash
 eai whoami
 eai resources schema --tenant-id <tenant-id> --format json
-eai docs upload ./sample.pdf
+eai docs upload ./sample.pdf --planning-application-id <authorized-project-id>
 eai docs index <document-id>
 eai resources file upload <object-type-slug> <resource-id> <property> ./sample.pdf --tenant-id <tenant-id>
 ```

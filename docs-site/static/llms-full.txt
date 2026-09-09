@@ -1292,8 +1292,8 @@ process document content.
 
 ```bash
 eai chat send "What can you help with?" --workflow <workflow-id> --stage chat
-eai docs upload ./sample.pdf
-eai docs classify ./sample.pdf
+eai docs upload ./sample.pdf --planning-application-id <authorized-project-id>
+eai docs classify ./sample.pdf --planning-application-id <authorized-project-id> --vertical-key <app-key> --workflow-key <workflow-key>
 eai docs index <document-id>
 ```
 
@@ -1476,8 +1476,8 @@ if (payload.jobId) {
 CLI example:
 
 ```bash
-eai docs upload ./supporting-document.pdf
-eai docs classify ./supporting-document.pdf
+eai docs upload ./supporting-document.pdf --planning-application-id <authorized-project-id>
+eai docs classify ./supporting-document.pdf --planning-application-id <authorized-project-id> --vertical-key <app-key> --workflow-key <workflow-key>
 eai docs index <document-id>
 ```
 
@@ -1611,7 +1611,7 @@ user means a document workflow or a resource file property.
 ```bash
 eai whoami
 eai resources schema --tenant-id <tenant-id> --format json
-eai docs upload ./sample.pdf
+eai docs upload ./sample.pdf --planning-application-id <authorized-project-id>
 eai docs index <document-id>
 eai resources file upload <object-type-slug> <resource-id> <property> ./sample.pdf --tenant-id <tenant-id>
 ```
@@ -3453,6 +3453,15 @@ Request an operator-assisted runtime workflow binding.
 
 ### Document Commands
 
+Uploads require an existing authorized Curate project: pass
+`--planning-application-id <id>` or `--business-request-id <id>`.
+The CLI selects `storage_target=resourceapi` and refuses context-free legacy
+uploads before reading the file. Both commands support `--tenant-id`,
+`--format json`, and paired `--vertical-key` / `--workflow-key` options for a
+published tenant classifier. These options do not provision tenant schemas.
+HTTP 202 means accepted; poll `/v4/data/documents/jobs/{jobId}` for completion
+and verify the saved result. Direct URL analysis is not this queued lifecycle.
+
 #### `eai docs upload <file>`
 Upload a document.
 
@@ -3469,7 +3478,7 @@ Classify a document.
 **Arguments**: `<file>`
 
 **Platform API Endpoints Used**:
-- `POST /v4/data/documents/classify` — `multipart/form-data` (`files`, `tenant_id`, `processing_mode=classification`)
+- `POST /v4/data/documents/upload` — `multipart/form-data` (`files`, `tenant_id`, `storage_target=resourceapi`, authorized project context, `processing_mode=classification`)
 
 ---
 
