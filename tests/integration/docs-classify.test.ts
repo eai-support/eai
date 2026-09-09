@@ -21,6 +21,21 @@ test.each(['app-template/service-patterns.md', 'examples/ai-chat.md'])(
   },
 );
 
+test('release bundle matches active document guides without duplicate submission instructions', async () => {
+  const bundle = await readFile(new URL('../../docs-site/static/llms-full.txt', import.meta.url), 'utf8');
+  for (const path of ['app-template/service-patterns.md', 'app-template/documents-and-files.md', 'examples/ai-chat.md']) {
+    const guide = await readFile(new URL(`../../.tech-docs/${path}`, import.meta.url), 'utf8');
+    const content = guide.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').trim();
+    expect(bundle).toContain(content);
+  }
+  expect(bundle).not.toContain('application_id: applicationId');
+  expect(bundle).not.toContain('await classify([file]);');
+  expect(bundle).not.toContain('uploaded.documentId');
+  expect(bundle).not.toContain('POST /v4/data/documents/classify`');
+  const scenarios = await readFile(new URL('../TEST_SCENARIOS.md', import.meta.url), 'utf8');
+  expect(scenarios).not.toContain("expectAPICalledPOST('/v4/data/documents/classify'");
+});
+
 describe('PlatformAPIClient.classifyDocument', () => {
   let env: TestEnvironment;
   let mockServer: ReturnType<typeof createMockServer>;

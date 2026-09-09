@@ -44,6 +44,7 @@ export interface PublicApiRequestOptions {
   params?: Record<string, unknown>;
 }
 
+/** Caller-selected workflow or existing project; the server resolves and authorizes storage mappings. */
 export interface DocumentUploadContext {
   storageTarget?: 'resourceapi';
   businessRequestId?: string;
@@ -52,6 +53,7 @@ export interface DocumentUploadContext {
   workflowKey?: string;
 }
 
+/** Validate explicit Curate context before reading file bytes; throws on absent or incomplete context. */
 export function validateDocumentUploadContext(context: DocumentUploadContext): boolean {
   const fields = [context.storageTarget, context.businessRequestId, context.planningApplicationId,
     context.verticalKey, context.workflowKey];

@@ -1230,8 +1230,8 @@ Preview file-level app-template / UI drift without writing to the repo.
 - `POST /v4/data/resources/{tenantId}/storage/sync-schema` — Reconcile storage from Object Type metadata
 
 ### Data — Documents
-- `POST /v4/data/documents/upload` — Upload a document
-- `POST /v4/data/documents/classify` — Classify a document
+- `POST /v4/data/documents/upload` — Submit once with authorised Curate app/workflow or project context; select `processing_mode=classification` for classification only
+- `GET /v4/data/documents/jobs/{jobId}` — Poll the same queued job; acceptance is not completed analysis
 - `GET /v4/data/documents/records/{documentId}` — Fetch a document record
 - `POST /v4/data/documents/rag-index` — Index a document for RAG
 

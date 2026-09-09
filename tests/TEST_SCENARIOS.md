@@ -1567,13 +1567,17 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 //
 // userIsLoggedIn()
 // fileExists('/tmp/invoice.pdf')
-// publicAPIReturnsClassification({ category: 'invoice', confidence: 0.95 })
+// publishedDocumentWorkflow('business-docs', 'invoice-review')
+// publicAPIReturnsQueuedJob({ jobId: 'job-123', documentId: 'doc-123' })
 //
-// runCommand('eai docs classify /tmp/invoice.pdf')
+// runCommand('eai docs classify /tmp/invoice.pdf --vertical-key business-docs --workflow-key invoice-review')
 //
-// expectAPICalledPOST('/v4/data/documents/classify', FormData({ file: '/tmp/invoice.pdf' }))
-// expectDisplayedMessage('Category: invoice')
-// expectDisplayedMessage('Confidence: 95%')
+// expectAPICalledPOST('/v4/data/documents/upload', FormData({
+//   file: '/tmp/invoice.pdf', storage_target: 'resourceapi', processing_mode: 'classification',
+//   vertical_key: 'business-docs', workflow_key: 'invoice-review',
+// }))
+// pollJob('/v4/data/documents/jobs/job-123')
+// expectPersistedClassification('doc-123', { category: 'invoice', confidence: 0.95 })
 ```
 
 ### Scenario 82: Index Document for RAG

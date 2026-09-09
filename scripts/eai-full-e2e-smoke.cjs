@@ -86,9 +86,9 @@ const TRACEABILITY_BASE = [
   ['eai workflow readiness', 'read', 'live', 'Checks tenant workflow readiness.'],
   ['eai workflow status', 'read', 'live-optional', 'Runs when EAI_E2E_WORKFLOW_KEY is configured.'],
   ['eai workflow request', 'create', 'live-optional', 'Runs only when explicitly enabled because it creates operator-facing requests.'],
-  ['eai docs upload', 'create', 'live-optional', 'Runs when EAI_E2E_DOCS=1 because document classification/indexing can consume provider quota.'],
-  ['eai docs classify', 'read/create', 'live-optional', 'Runs when EAI_E2E_DOCS=1 after document upload.'],
-  ['eai docs index', 'create/update', 'live-optional', 'Runs when EAI_E2E_DOCS=1 after document upload.'],
+  ['eai docs upload', 'create', 'covered-by-cli', 'Controlled command tests only; optional lifecycle submits once through classify.'],
+  ['eai docs classify', 'read/create', 'live-optional', 'EAI_E2E_DOCS=1 requires EAI_E2E_DOCS_TENANT_ID, EAI_E2E_DOCS_VERTICAL_KEY, EAI_E2E_DOCS_WORKFLOW_KEY, EAI_E2E_DOCS_FILE and EAI_E2E_DOCS_EXPECTED_TYPE. Requires a published business-document lifecycle, installed storage, and read/delete permission. EAI_E2E_DOCS_WAIT_MS defaults to 180000 (maximum 600000). Polls one job, reads persisted classification and always cleans up.'],
+  ['eai docs index', 'create/update', 'covered-by-cli', 'Controlled command tests only; indexing is not executed or claimed by the classification smoke.'],
   ['eai deploy setup', 'create-local', 'live', 'Generates deployment workflow in the disposable workspace.'],
   ['eai deploy trigger', 'create', 'manual', 'Not run by release smoke because it triggers a host deployment outside the CLI test tenant.'],
   ['eai deploy status', 'read', 'help', 'Validated by help/contract unless a deployment run id is provided.'],
@@ -115,7 +115,7 @@ const TRACEABILITY_BASE = [
   ['eai publicapi post', 'create', 'covered-by-cli', 'Prefer first-class CLI commands for writes; direct PublicAPI write is reserved for explicit endpoint tests.'],
   ['eai publicapi patch', 'update', 'covered-by-cli', 'Prefer first-class CLI commands for writes; resource update covers the write path.'],
   ['eai publicapi put', 'update', 'covered-by-cli', 'Prefer first-class CLI commands for writes; no generic PUT smoke without a stable idempotent V4 endpoint.'],
-  ['eai publicapi delete', 'delete', 'covered-by-cli', 'Prefer first-class CLI commands for deletes; resource/file delete covers delete paths.'],
+  ['eai publicapi delete', 'delete', 'live-optional', 'EAI_E2E_DOCS=1 deletes only submission-returned document IDs and verifies removal.'],
   ['eai errors list', 'read', 'live', 'Lists public-safe error guidance.'],
   ['eai errors explain', 'read', 'live', 'Explains a representative error code.'],
   ['eai agent guide', 'read', 'live', 'Shows AI-agent operating guide in JSON.'],
@@ -363,15 +363,11 @@ const SMOKE_CALLS = {
   'eai workflow request': [
     'EAI_E2E_WORKFLOW_REQUEST=1 eai workflow request <workflow-key> --tenant <tenant-id> --display-name <name> --reason smoke --format json',
   ],
-  'eai docs upload': [
-    'EAI_E2E_DOCS=1 eai docs upload smoke-document.txt',
-  ],
+  'eai docs upload': [],
   'eai docs classify': [
-    'EAI_E2E_DOCS=1 eai docs classify smoke-document.txt',
+    'EAI_E2E_DOCS=1 eai docs classify <EAI_E2E_DOCS_FILE> --tenant-id <EAI_E2E_DOCS_TENANT_ID> --storage-target resourceapi --vertical-key <EAI_E2E_DOCS_VERTICAL_KEY> --workflow-key <EAI_E2E_DOCS_WORKFLOW_KEY> --format json',
   ],
-  'eai docs index': [
-    'EAI_E2E_DOCS=1 eai docs index <document-id>',
-  ],
+  'eai docs index': [],
   'eai deploy setup': [
     'eai deploy setup --repo <owner/repo>',
   ],
@@ -443,6 +439,8 @@ const SMOKE_CALLS = {
     'eai blocks validate --file <manifest.json> --strict --format json',
   ],
   'eai publicapi get': [
+    'EAI_E2E_DOCS=1 eai publicapi get /v4/data/documents/jobs/<job-id> --tenant-id <EAI_E2E_DOCS_TENANT_ID> --format json',
+    'EAI_E2E_DOCS=1 eai publicapi get /v4/data/documents/records/<document-id>?storage_target=resourceapi&job_id=<job-id> --tenant-id <EAI_E2E_DOCS_TENANT_ID> --format json',
     'eai publicapi get /v4/data/resources/object-types --tenant-id <tenant-id> --param limit=1 --include-headers --format json',
   ],
   'eai publicapi post': [
@@ -455,7 +453,7 @@ const SMOKE_CALLS = {
     'EAI_E2E_PUBLICAPI_PUT_PATH=<path> eai publicapi put <path> --tenant-id <tenant-id> --data {} --file body.json --param dryRun=true --include-headers --format json',
   ],
   'eai publicapi delete': [
-    'EAI_E2E_PUBLICAPI_DELETE_PATH=<path> eai publicapi delete <path> --tenant-id <tenant-id> --data {} --file body.json --param dryRun=true --include-headers --format json',
+    'EAI_E2E_DOCS=1 eai publicapi delete /v4/data/documents/records/<document-id>?storage_target=resourceapi&job_id=<job-id> --tenant-id <EAI_E2E_DOCS_TENANT_ID> --format json',
   ],
   'eai errors list': [
     'eai errors list --format json',
@@ -623,6 +621,12 @@ const OPTION_DECISIONS = {
   'eai publicapi get': {
     '--data': 'GET body is supported by the generic client but not used for the stable read smoke.',
     '--file': 'GET body file is supported by the generic client but not used for the stable read smoke.',
+  },
+  'eai publicapi delete': {
+    '--data': 'Document cleanup requires no request body.',
+    '--file': 'Document cleanup requires no body file.',
+    '--param': 'Document cleanup supplies storage_target and job_id in the path query.',
+    '--include-headers': 'Cleanup verification uses the JSON receipt and subsequent 404, not response headers.',
   },
 };
 
@@ -849,19 +853,24 @@ const ARTIFACT_CLEANUP = {
     cleanupVerified: 'No - disabled by default',
   },
   'eai docs upload': {
-    createsExternalArtifact: 'Yes - document asset',
-    cleanupMechanism: 'Opt-in only; no default document cleanup command',
-    cleanupVerified: 'No - disabled by default',
+    createsExternalArtifact: 'No - not executed',
+    cleanupMechanism: 'Not required; controlled command tests only',
+    cleanupVerified: 'Not applicable',
   },
   'eai docs classify': {
-    createsExternalArtifact: 'May create classification result',
-    cleanupMechanism: 'Tied to optional document artifact cleanup gap',
-    cleanupVerified: 'No - disabled by default',
+    createsExternalArtifact: 'Yes - document, file and analysis',
+    cleanupMechanism: 'Finally: tenant-bound publicapi delete records/{id}?storage_target=resourceapi&job_id={jobId}; only submission-returned IDs; independent of EAI_E2E_CLEANUP',
+    cleanupVerified: 'Requires complete analysis cleanup receipt and GET 404; failures report remaining IDs/job and preserve original error',
   },
   'eai docs index': {
-    createsExternalArtifact: 'May create search/index artifact',
-    cleanupMechanism: 'Tied to optional document artifact cleanup gap',
-    cleanupVerified: 'No - disabled by default',
+    createsExternalArtifact: 'No - not executed',
+    cleanupMechanism: 'Not required; indexing is not covered by this lifecycle',
+    cleanupVerified: 'Not applicable',
+  },
+  'eai publicapi delete': {
+    createsExternalArtifact: 'No - cleanup command',
+    cleanupMechanism: 'Deletes only documents returned by the optional classify submission, including file and analysis',
+    cleanupVerified: 'Requires analysisCleanupComplete receipt and subsequent record GET 404',
   },
   'eai deploy setup': {
     createsExternalArtifact: 'Creates local deployment workflow files',
@@ -975,6 +984,7 @@ function runCommand(command, args, options = {}) {
     env: { ...process.env, ...(options.env || {}) },
     encoding: 'utf8',
     shell: false,
+    timeout: options.timeout,
   });
 
   const stdout = result.stdout || '';
@@ -982,7 +992,7 @@ function runCommand(command, args, options = {}) {
   if (result.status !== 0 && !options.allowFailure) {
     throw new Error(`Command failed: eai ${args.join(' ')}\n${redact(`${stdout}\n${stderr}`).trim()}`);
   }
-  return { status: result.status || 0, stdout, stderr };
+  return { status: result.status ?? 1, stdout, stderr };
 }
 
 function redact(value) {
@@ -1122,7 +1132,7 @@ function checkTraceability(schema) {
   const stale = traced.filter((command) => !leaves.includes(command));
   const duplicateRows = traced.filter((command, index) => traced.indexOf(command) !== index);
   const missingCalls = TRACEABILITY
-    .filter((row) => !row.calls || row.calls.length === 0)
+    .filter((row) => row.coverage !== 'covered-by-cli' && (!row.calls || row.calls.length === 0))
     .map((row) => row.command);
   const missingArtifactCleanup = TRACEABILITY
     .filter((row) => !row.createsExternalArtifact || !row.cleanupMechanism || !row.cleanupVerified)
@@ -1236,7 +1246,119 @@ function expectEaiFailure(eai, args, label, options = {}) {
   return result;
 }
 
+function documentSmokeConfig(env) {
+  if (env.EAI_E2E_DOCS !== '1') return null;
+  const required = ['TENANT_ID', 'VERTICAL_KEY', 'WORKFLOW_KEY', 'FILE', 'EXPECTED_TYPE'];
+  const missing = required.filter((key) => !env[`EAI_E2E_DOCS_${key}`]?.trim());
+  if (missing.length) throw new Error(`EAI_E2E_DOCS requires ${missing.map((key) => `EAI_E2E_DOCS_${key}`).join(', ')}`);
+  const waitMs = Number(env.EAI_E2E_DOCS_WAIT_MS || 180000);
+  if (!Number.isInteger(waitMs) || waitMs < 1 || waitMs > 600000) {
+    throw new Error('EAI_E2E_DOCS_WAIT_MS must be an integer from 1 to 600000');
+  }
+  const file = resolve(env.EAI_E2E_DOCS_FILE);
+  if (!existsSync(file)) throw new Error(`EAI_E2E_DOCS_FILE does not exist: ${file}`);
+  return { tenantId: env.EAI_E2E_DOCS_TENANT_ID, verticalKey: env.EAI_E2E_DOCS_VERTICAL_KEY,
+    workflowKey: env.EAI_E2E_DOCS_WORKFLOW_KEY, expectedType: env.EAI_E2E_DOCS_EXPECTED_TYPE, file, waitMs };
+}
+
+function runOptionalDocumentSmoke(eai, env = process.env, { now = Date.now, wait = sleep } = {}) {
+  const config = documentSmokeConfig(env);
+  if (!config) return { skipped: true };
+  const scope = ['--tenant-id', config.tenantId, '--format', 'json'];
+  const ids = new Set();
+  let jobId;
+  let submitted = false;
+  let originalError;
+  const leftovers = [];
+  const deadline = now() + config.waitMs;
+  function request(args, cleanup = false) {
+    const timeout = cleanup ? 30000 : Math.max(1, deadline - now());
+    const result = eai(args, { allowFailure: true, timeout });
+    const envelope = JSON.parse(result.stdout);
+    return { result, envelope };
+  }
+  function body(args, cleanup = false) {
+    const { result, envelope } = request(args, cleanup);
+    if (result.status !== 0 || envelope.ok !== true || envelope.body?.success === false) {
+      throw new Error(`Document smoke request failed: ${JSON.stringify(envelope)}`);
+    }
+    if (!envelope.body || typeof envelope.body !== 'object') throw new Error('Missing document response body');
+    return envelope.body;
+  }
+  function recordPath(id) {
+    return `/v4/data/documents/records/${encodeURIComponent(id)}?storage_target=resourceapi${jobId ? `&job_id=${encodeURIComponent(jobId)}` : ''}`;
+  }
+  const validId = (id) => typeof id === 'string' && id.trim().length > 0;
+  try {
+    submitted = true;
+    const queued = body(['docs', 'classify', config.file, ...scope, '--storage-target', 'resourceapi',
+      '--vertical-key', config.verticalKey, '--workflow-key', config.workflowKey]);
+    jobId = queued.jobId || queued.job_id;
+    if (!validId(jobId)) jobId = undefined;
+    for (const doc of queued.documents || []) {
+      const id = doc.documentId || doc.document_id;
+      if (validId(id)) ids.add(id);
+    }
+    if (!jobId || ids.size !== 1 || queued.documents?.length !== 1) {
+      throw new Error('Submission must return an explicit job ID and exactly one document ID; IDs will not be inferred');
+    }
+    const [id] = ids;
+    let completed = false;
+    while (now() < deadline) {
+      const job = body(['publicapi', 'get', `/v4/data/documents/jobs/${encodeURIComponent(jobId)}`, ...scope]);
+      if ((job.jobId || job.job_id) !== jobId || (job.tenantId || job.tenant_id) !== config.tenantId
+        || job.documents?.length !== 1 || (job.documents[0].documentId || job.documents[0].document_id) !== id) {
+        throw new Error('Document job identity or tenant mismatch');
+      }
+      const doc = job.documents[0];
+      if (['failed', 'completed_with_errors'].includes(job.status)
+        || [doc.storage, doc.classification, doc.rag].some((stage) => stage?.status === 'failed')) {
+        throw new Error(`Document job failed: ${JSON.stringify(job)}`);
+      }
+      if (job.status === 'completed') {
+        if (doc.storage?.status !== 'completed' || doc.classification?.status !== 'completed'
+          || (doc.classification.detectedType || doc.classification.detected_type) !== config.expectedType) {
+          throw new Error('Completed job is missing the expected storage/classification result');
+        }
+        completed = true;
+        break;
+      }
+      wait(Math.min(2000, Math.max(0, deadline - now())));
+    }
+    if (!completed || now() >= deadline) throw new Error(`Document job ${jobId} timed out after ${config.waitMs}ms`);
+    const record = body(['publicapi', 'get', recordPath(id), ...scope]);
+    if (record.documentId !== id || record.storageTarget !== 'resourceapi' || record.processingStatus !== 'complete'
+      || record.classification?.documentType !== config.expectedType || !validId(record.resourceId)) {
+      throw new Error('Persisted document is missing the expected identity or completed classification result');
+    }
+  } catch (error) {
+    originalError = error;
+  } finally {
+    for (const id of ids) {
+      try {
+        const receipt = body(['publicapi', 'delete', recordPath(id), ...scope], true);
+        if (receipt.success !== true || receipt.documentId !== id || receipt.storageTarget !== 'resourceapi'
+          || receipt.analysisCleanupComplete !== true) throw new Error('Incomplete document cleanup receipt');
+        const { result, envelope } = request(['publicapi', 'get', recordPath(id), ...scope], true);
+        if (result.status === 0 || envelope.ok !== false || envelope.status !== 404) {
+          throw new Error('Deleted document is not confirmed absent');
+        }
+      } catch (error) {
+        leftovers.push({ documentId: id, jobId, error: error.message });
+      }
+    }
+    if (submitted && !ids.size) leftovers.push({ jobId, error: 'Submission returned no usable document ID; possible records cannot be safely identified or deleted' });
+  }
+  if (originalError || leftovers.length) {
+    const error = originalError || new Error('Document cleanup failed');
+    if (leftovers.length) error.message += `\nDocument leftovers: ${JSON.stringify(leftovers)}`;
+    throw error;
+  }
+  return { jobId, documentIds: [...ids], cleanupVerified: true };
+}
+
 function runLiveSmoke(cliPath) {
+  documentSmokeConfig(process.env);
   const profile = process.env.EAI_E2E_TEST_PROFILE || 'test';
   const expectedUsername = process.env.EAI_E2E_TEST_USERNAME || '';
   const cleanup = process.env.EAI_E2E_CLEANUP !== '0';
@@ -1257,6 +1379,7 @@ function runLiveSmoke(cliPath) {
       cwd: options.cwd || projectRoot,
       allowFailure: options.allowFailure,
       env: options.env,
+      timeout: options.timeout,
     });
     summary.push({ command: `eai --profile ${profile} ${args.join(' ')}`, status: result.status });
     return result;
@@ -1671,16 +1794,7 @@ function runLiveSmoke(cliPath) {
     eai(['workflow', 'status', '--tenant', parentTenantId, process.env.EAI_E2E_WORKFLOW_KEY, '--format', 'json'], { allowFailure: true });
     eai(['chat', 'send', '--workflow', process.env.EAI_E2E_WORKFLOW_KEY, '--message', `Smoke ${runId}`, '--format', 'json'], { allowFailure: true });
   }
-  if (process.env.EAI_E2E_DOCS === '1') {
-    const docFile = join(projectRoot, 'smoke-document.txt');
-    writeFileSync(docFile, `EAI document smoke ${runId}\n`, 'utf8');
-    const uploaded = parseJson(eai(['docs', 'upload', docFile]).stdout, {});
-    const docId = extractId(uploaded);
-    if (docId) {
-      eai(['docs', 'classify', docFile], { allowFailure: true });
-      eai(['docs', 'index', docId], { allowFailure: true });
-    }
-  }
+  runOptionalDocumentSmoke(eai);
 
   if (cleanup) {
     const cleanupFailures = [];
@@ -1899,9 +2013,13 @@ function main() {
   runLiveSmoke(args.cli);
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(`✗ ${redact(error instanceof Error ? error.message : String(error))}`);
-  process.exit(1);
+module.exports = { runOptionalDocumentSmoke, redact };
+
+if (require.main === module) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`✗ ${redact(error instanceof Error ? error.message : String(error))}`);
+    process.exit(1);
+  }
 }
