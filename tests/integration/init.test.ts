@@ -1125,6 +1125,25 @@ describe("eai init", () => {
       "quick-app/src/eai.config/object-types.ts",
       "tableName: 'nantquickapp_quick_app_tenant_resources'",
     );
+    const capabilityRequirements = JSON.parse(
+      await readFile(
+        join(
+          env.dir,
+          "quick-app",
+          "src",
+          "eai.config",
+          "capabilities.generated.json",
+        ),
+        "utf8",
+      ),
+    );
+    expect(capabilityRequirements).toEqual(
+      expect.objectContaining({
+        schemaVersion: "eai.app_capabilities.v1",
+        appKey: "quick-app",
+      }),
+    );
+    expect(JSON.stringify(capabilityRequirements)).not.toContain("tenant-");
     await expectFileExists(
       ctx,
       "quick-app/.claude/commands/0_gofer_start.md",

@@ -25,6 +25,7 @@ import {
   resolvePublicApiUrl,
 } from '../lib/tenant-context.js';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
+import { createAppBindingsCommand } from './app-bindings.js';
 import { loadRuntimeContract } from '../lib/runtime-contract.js';
 import {
   errMsg,
@@ -1630,3 +1631,5 @@ verticalCommand
       out.success(`Storage binding contract written to ${chalk.cyan(STORAGE_BINDINGS_PATH)}`);
     }
   });
+
+verticalCommand.addCommand(createAppBindingsCommand());

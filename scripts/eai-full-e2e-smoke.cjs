@@ -73,6 +73,54 @@ const TRACEABILITY_BASE = [
   ['eai app deploy-source-unknown-status', 'read', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids depending on a pre-existing deployment handoff.'],
   ['eai app select', 'update-local', 'live', 'Writes the app key into the disposable workspace env.'],
   ['eai app provision', 'create/update', 'live', 'Prepares platform storage for the smoke app.'],
+  ['eai app bindings list', 'read', 'covered-by-cli', 'Repo-owned client and command tests cover the binding projection; deployed read parity belongs to eai-testing-dev.'],
+  ['eai app bindings set', 'create/update', 'covered-by-cli', 'Repo-owned tests prove logical aliases and backing asset keys; live mutation requires controlled capability fixtures.'],
+  ['eai app bindings remove', 'delete', 'covered-by-cli', 'Repo-owned tests cover guarded deletion; deployed cleanup runs only with controlled capability fixtures.'],
+  ['eai app bindings validate', 'read', 'covered-by-cli', 'Repo-owned tests cover four-state validation; deployed readiness evidence belongs to the capability contract surface.'],
+  ['eai content document-template list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized Portal-managed document template discovery.'],
+  ['eai content document-template show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key document template lookup.'],
+  ['eai content document-template use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical document-template binding without content mutation.'],
+  ['eai content email-template list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized Portal-managed email template discovery.'],
+  ['eai content email-template show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key email template lookup.'],
+  ['eai content email-template use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical email-template binding without content mutation.'],
+  ['eai content knowledge-article list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized Portal-managed knowledge discovery.'],
+  ['eai content knowledge-article show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key knowledge article lookup.'],
+  ['eai content knowledge-article use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical knowledge binding without content mutation.'],
+  ['eai content policy list', 'read', 'covered-by-cli', 'Repo-owned tests cover read-only policy discovery.'],
+  ['eai content policy show', 'read', 'covered-by-cli', 'Repo-owned tests cover read-only natural-key policy lookup.'],
+  ['eai content document-type list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized document type discovery.'],
+  ['eai content document-type show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key document type lookup.'],
+  ['eai content document-type use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical document type binding.'],
+  ['eai content document-checklist list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized checklist discovery.'],
+  ['eai content document-checklist show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key checklist lookup.'],
+  ['eai content document-checklist use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical checklist binding.'],
+  ['eai content requirement-group list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized requirement-group discovery.'],
+  ['eai content requirement-group show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key requirement-group lookup.'],
+  ['eai content requirement-group use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical requirement-group binding.'],
+  ['eai content shared-asset types', 'read', 'covered-by-cli', 'Repo-owned tests cover exact tenant-declared shared-asset type discovery.'],
+  ['eai content shared-asset list', 'read', 'covered-by-cli', 'Repo-owned tests cover validated dynamic shared-asset listing.'],
+  ['eai content shared-asset show', 'read', 'covered-by-cli', 'Repo-owned tests cover natural-key dynamic shared-asset lookup.'],
+  ['eai content shared-asset use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical dynamic shared-asset binding.'],
+  ['eai capability list', 'read', 'covered-by-cli', 'Repo-owned tests cover definition and tenant projection normalization.'],
+  ['eai capability status', 'read', 'covered-by-cli', 'Repo-owned tests preserve entitled, configured, bound, and runtime-ready as independent states.'],
+  ['eai capability setup', 'read', 'covered-by-cli', 'Setup is guidance-only and cannot mutate Portal-governed credentials or billing.'],
+  ['eai capability doctor', 'read', 'covered-by-cli', 'Repo-owned tests cover aggregate four-state diagnostics.'],
+  ['eai integration list', 'read', 'covered-by-cli', 'Repo-owned tests cover sanitized integration metadata.'],
+  ['eai integration show', 'read', 'covered-by-cli', 'Repo-owned tests cover one sanitized integration projection.'],
+  ['eai integration test', 'create/read', 'covered-by-cli', 'Safe provider tests are controlled-fixture operations and never return credentials.'],
+  ['eai integration use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical app binding without OAuth or secret mutation.'],
+  ['eai ai profile list', 'read', 'covered-by-cli', 'Repo-owned typed client tests cover profile listing.'],
+  ['eai ai profile show', 'read', 'covered-by-cli', 'Repo-owned typed client tests cover profile lookup.'],
+  ['eai ai profile create', 'create', 'covered-by-cli', 'Repo-owned typed client tests cover safe profile creation; live mutation needs a controlled integration.'],
+  ['eai ai profile update', 'update', 'covered-by-cli', 'Repo-owned typed client tests cover optimistic version updates.'],
+  ['eai ai profile delete', 'delete', 'covered-by-cli', 'Repo-owned tests cover guarded deletion and controlled fixture cleanup.'],
+  ['eai ai profile use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical profile aliases without exposing record ids.'],
+  ['eai prompt list', 'read', 'covered-by-cli', 'Repo-owned typed client tests cover prompt listing.'],
+  ['eai prompt show', 'read', 'covered-by-cli', 'Repo-owned typed client tests cover prompt lookup.'],
+  ['eai prompt create', 'create', 'covered-by-cli', 'Repo-owned tests cover scoped prompt creation.'],
+  ['eai prompt update', 'update', 'covered-by-cli', 'Repo-owned tests cover scoped optimistic prompt updates.'],
+  ['eai prompt delete', 'delete', 'covered-by-cli', 'Repo-owned tests cover guarded prompt deletion.'],
+  ['eai prompt use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical prompt aliases.'],
   ['eai classifier delete', 'delete', 'covered-by-cli', 'Permanently removes only a disabled unpublished draft after exact classifier-key confirmation; command integration tests mock the API boundary.'],
   ['eai classifier disable', 'update', 'covered-by-cli', 'Reversibly disables classifier mutation, targeting, and runtime use while retaining immutable history; command integration tests mock the API boundary.'],
   ['eai classifier enable', 'update', 'covered-by-cli', 'Re-enables a disabled classifier at its prior draft or published lifecycle state; command integration tests mock the API boundary.'],
@@ -86,6 +134,12 @@ const TRACEABILITY_BASE = [
   ['eai workflow readiness', 'read', 'live', 'Checks tenant workflow readiness.'],
   ['eai workflow status', 'read', 'live-optional', 'Runs when EAI_E2E_WORKFLOW_KEY is configured.'],
   ['eai workflow request', 'create', 'live-optional', 'Runs only when explicitly enabled because it creates operator-facing requests.'],
+  ['eai workflow list', 'read', 'covered-by-cli', 'Repo-owned typed client tests cover workflow listing.'],
+  ['eai workflow show', 'read', 'covered-by-cli', 'Repo-owned typed client tests cover workflow lookup.'],
+  ['eai workflow create', 'create', 'covered-by-cli', 'Repo-owned tests cover typed workflow creation.'],
+  ['eai workflow update', 'update', 'covered-by-cli', 'Repo-owned tests cover optimistic workflow updates.'],
+  ['eai workflow delete', 'delete', 'covered-by-cli', 'Repo-owned tests cover guarded workflow deletion.'],
+  ['eai workflow use', 'create/update', 'covered-by-cli', 'Repo-owned tests cover logical workflow aliases.'],
   ['eai docs upload', 'create', 'live-optional', 'Runs when EAI_E2E_DOCS=1 because document classification/indexing can consume provider quota.'],
   ['eai docs classify', 'read/create', 'live-optional', 'Runs when EAI_E2E_DOCS=1 after document upload.'],
   ['eai docs index', 'create/update', 'live-optional', 'Runs when EAI_E2E_DOCS=1 after document upload.'],
@@ -324,6 +378,150 @@ const SMOKE_CALLS = {
     'eai app provision <app-key> --tenant-id <tenant-id> --backend all --dry-run --format json',
     'eai app provision <app-key> --tenant-id <tenant-id> --backend all --select --format json',
   ],
+  'eai app bindings list': [
+    'eai app bindings list <app-key> --tenant-id <tenant-id> --format json',
+  ],
+  'eai app bindings set': [
+    'eai app bindings set <app-key> --tenant-id <tenant-id> --binding-key <alias> --capability ai.chat --asset-kind ai-profile --asset-key <profile-key> --environment test --format json',
+  ],
+  'eai app bindings remove': [
+    'eai app bindings remove <app-key> <binding-key> --tenant-id <tenant-id> --force --format json',
+  ],
+  'eai app bindings validate': [
+    'eai app bindings validate <app-key> --tenant-id <tenant-id> --requirements src/eai.config/capabilities.generated.json --format json',
+  ],
+  'eai content document-template list': [
+    'eai content document-template list --tenant <tenant-id> --format json',
+  ],
+  'eai content document-template show': [
+    'eai content document-template show <template-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content document-template use': [
+    'eai content document-template use <template-key> --app <app-key> --as <alias> --capability templates.documents --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai content email-template list': [
+    'eai content email-template list --tenant <tenant-id> --format json',
+  ],
+  'eai content email-template show': [
+    'eai content email-template show <template-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content email-template use': [
+    'eai content email-template use <template-key> --app <app-key> --as <alias> --capability templates.email --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai content knowledge-article list': [
+    'eai content knowledge-article list --tenant <tenant-id> --format json',
+  ],
+  'eai content knowledge-article show': [
+    'eai content knowledge-article show <article-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content knowledge-article use': [
+    'eai content knowledge-article use <article-key> --app <app-key> --as <alias> --capability knowledge --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai content policy list': [
+    'eai content policy list --tenant <tenant-id> --format json',
+  ],
+  'eai content policy show': [
+    'eai content policy show <policy-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content document-type list': [
+    'eai content document-type list --tenant <tenant-id> --format json',
+  ],
+  'eai content document-type show': [
+    'eai content document-type show <document-type-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content document-type use': [
+    'eai content document-type use <document-type-key> --app <app-key> --as <alias> --capability documents --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai content document-checklist list': [
+    'eai content document-checklist list --tenant <tenant-id> --format json',
+  ],
+  'eai content document-checklist show': [
+    'eai content document-checklist show <checklist-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content document-checklist use': [
+    'eai content document-checklist use <checklist-key> --app <app-key> --as <alias> --capability document-checklists --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai content requirement-group list': [
+    'eai content requirement-group list --tenant <tenant-id> --format json',
+  ],
+  'eai content requirement-group show': [
+    'eai content requirement-group show <group-key> --tenant <tenant-id> --format json',
+  ],
+  'eai content requirement-group use': [
+    'eai content requirement-group use <group-key> --app <app-key> --as <alias> --capability document-checklists --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai content shared-asset types': [
+    'eai content shared-asset types --tenant <tenant-id> --format json',
+  ],
+  'eai content shared-asset list': [
+    'eai content shared-asset list --type <shared-asset-type> --tenant <tenant-id> --format json',
+  ],
+  'eai content shared-asset show': [
+    'eai content shared-asset show <asset-key> --type <shared-asset-type> --tenant <tenant-id> --format json',
+  ],
+  'eai content shared-asset use': [
+    'eai content shared-asset use <asset-key> --type <shared-asset-type> --app <app-key> --as <alias> --capability shared-assets --environment test --tenant <tenant-id> --format json',
+  ],
+  'eai capability list': [
+    'eai capability list --tenant <tenant-id> --format json',
+  ],
+  'eai capability status': [
+    'eai capability status ai.chat --tenant <tenant-id> --format json',
+  ],
+  'eai capability setup': [
+    'eai capability setup ai.chat --tenant <tenant-id> --format json',
+  ],
+  'eai capability doctor': [
+    'eai capability doctor ai.chat --tenant <tenant-id> --format json',
+  ],
+  'eai integration list': [
+    'eai integration list --tenant <tenant-id> --format json',
+  ],
+  'eai integration show': [
+    'eai integration show <integration-key> --tenant <tenant-id> --format json',
+  ],
+  'eai integration test': [
+    'eai integration test <integration-key> --tenant <tenant-id> --format json',
+  ],
+  'eai integration use': [
+    'eai integration use <integration-key> --tenant <tenant-id> --app <app-key> --as <alias> --capability integrations.ai-provider --environment test --format json',
+  ],
+  'eai ai profile list': [
+    'eai ai profile list --tenant <tenant-id> --format json',
+  ],
+  'eai ai profile show': [
+    'eai ai profile show <profile-key> --tenant <tenant-id> --format json',
+  ],
+  'eai ai profile create': [
+    'eai ai profile create --key <profile-key> --tenant <tenant-id> --display-name <name> --provider azure-openai --model gpt-5 --integration <integration-key> --temperature 0.2 --status active --data {} --format json',
+  ],
+  'eai ai profile update': [
+    'eai ai profile update <profile-key> --tenant <tenant-id> --display-name <name> --provider azure-openai --model gpt-5 --integration <integration-key> --temperature 0.2 --status active --data {} --format json',
+  ],
+  'eai ai profile delete': [
+    'eai ai profile delete <profile-key> --tenant <tenant-id> --force --format json',
+  ],
+  'eai ai profile use': [
+    'eai ai profile use <profile-key> --tenant <tenant-id> --app <app-key> --as <alias> --capability ai.chat --environment test --format json',
+  ],
+  'eai prompt list': [
+    'eai prompt list --tenant <tenant-id> --format json',
+  ],
+  'eai prompt show': [
+    'eai prompt show <prompt-key> --tenant <tenant-id> --format json',
+  ],
+  'eai prompt create': [
+    'eai prompt create --key <prompt-key> --tenant <tenant-id> --display-name <name> --status active --content <content> --profile <profile-key> --scope application --app <app-key> --workflow <workflow-key> --stage <stage-key> --step <step-key> --data {} --format json',
+  ],
+  'eai prompt update': [
+    'eai prompt update <prompt-key> --tenant <tenant-id> --display-name <name> --status active --content <content> --profile <profile-key> --scope step --app <app-key> --workflow <workflow-key> --stage <stage-key> --step <step-key> --data {} --format json',
+  ],
+  'eai prompt delete': [
+    'eai prompt delete <prompt-key> --tenant <tenant-id> --force --format json',
+  ],
+  'eai prompt use': [
+    'eai prompt use <prompt-key> --tenant <tenant-id> --app <app-key> --as <alias> --capability ai.chat --environment test --format json',
+  ],
   'eai classifier delete': [
     'eai classifier delete <classifier-key> --confirm <classifier-key> --tenant-id <tenant-id> --format json',
   ],
@@ -362,6 +560,24 @@ const SMOKE_CALLS = {
   ],
   'eai workflow request': [
     'EAI_E2E_WORKFLOW_REQUEST=1 eai workflow request <workflow-key> --tenant <tenant-id> --display-name <name> --reason smoke --format json',
+  ],
+  'eai workflow list': [
+    'eai workflow list --tenant <tenant-id> --format json',
+  ],
+  'eai workflow show': [
+    'eai workflow show <workflow-key> --tenant <tenant-id> --format json',
+  ],
+  'eai workflow create': [
+    'eai workflow create --key <workflow-key> --tenant <tenant-id> --display-name <name> --status active --definition {} --data {} --format json',
+  ],
+  'eai workflow update': [
+    'eai workflow update <workflow-key> --tenant <tenant-id> --display-name <name> --status active --definition {} --data {} --format json',
+  ],
+  'eai workflow delete': [
+    'eai workflow delete <workflow-key> --tenant <tenant-id> --force --format json',
+  ],
+  'eai workflow use': [
+    'eai workflow use <workflow-key> --tenant <tenant-id> --app <app-key> --as <alias> --capability workflows.runtime --environment test --format json',
   ],
   'eai docs upload': [
     'EAI_E2E_DOCS=1 eai docs upload smoke-document.txt',

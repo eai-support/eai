@@ -64,6 +64,15 @@ Commands:
   errors                       Explain EAI CLI errors and agent-safe recovery
                                steps
   agent                        Show AI-agent discovery and recovery guidance
+  capability                   Discover tenant capabilities and diagnose
+                               control-plane readiness
+  integration                  Inspect, test, and bind Portal-configured tenant
+                               integrations
+  ai                           Manage tenant AI control-plane assets
+  prompt                       Manage tenant prompts through typed PublicAPI
+                               operations
+  content                      Discover and bind Portal-managed shared content
+                               without mutating it
   start [options] [directory]  Detect or start a supported AI workspace for an
                                EAI project
   classifier                   Create, inspect, publish, target, disable,
@@ -96,6 +105,13 @@ Development Workflows:
   eai workflow readiness strategy-monitor
   eai workflow status strategy-monitor
   eai workflow request strategy-monitor --reason "CEO strategy cockpit"
+
+  # Inspect and bind shared tenant capabilities
+  eai capability doctor
+  eai integration test azure-openai
+  eai content document-template list
+  eai ai profile use default-chat --app my-app --as chatProfile
+  eai app bindings validate my-app
 
   # Check login, tenant, and API connectivity
   eai verify && eai doctor

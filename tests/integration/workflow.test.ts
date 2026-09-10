@@ -88,6 +88,21 @@ describe("eai workflow", () => {
     process.chdir(env.dir);
   });
 
+  test("exposes typed CRUD and logical app binding alongside provision/runtime commands", () => {
+    expect(workflowCommand.commands.map((command) => command.name())).toEqual(expect.arrayContaining([
+      "list",
+      "show",
+      "create",
+      "update",
+      "delete",
+      "use",
+      "provision",
+      "readiness",
+      "status",
+      "request",
+    ]));
+  });
+
   afterEach(async () => {
     vi.restoreAllMocks();
     process.chdir(originalCwd);
@@ -232,27 +247,22 @@ describe("eai workflow", () => {
     { timeout: 10000 },
     async () => {
       const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-      const listRequests: string[] = [];
+      const lookupRequests: string[] = [];
       let sharedCreateBody: unknown;
       let verticalCreateBody: unknown;
+      let capabilityBindingBody: unknown;
 
       mockServer.server.use(
         http.get(
-          `${API_BASE}/v4/data/resources/test-tenant-id/shared-workflow-config`,
+          `${API_BASE}/v4/platform/tenants/test-tenant-id/workflows/configurator`,
           ({ request }) => {
-            listRequests.push(request.url);
-            return HttpResponse.json({
-              docs: [],
-              totalDocs: 0,
-              page: 1,
-              totalPages: 0,
-            });
+            lookupRequests.push(request.url);
+            return HttpResponse.json({ detail: "workflow not found" }, { status: 404 });
           },
         ),
         http.get(
           `${API_BASE}/v4/data/resources/test-tenant-id/vertical-product-config`,
-          ({ request }) => {
-            listRequests.push(request.url);
+          () => {
             return HttpResponse.json({
               docs: [],
               totalDocs: 0,
@@ -262,13 +272,20 @@ describe("eai workflow", () => {
           },
         ),
         http.post(
-          `${API_BASE}/v4/data/resources/test-tenant-id/shared-workflow-config`,
+          `${API_BASE}/v4/platform/tenants/test-tenant-id/workflows`,
           async ({ request }) => {
             sharedCreateBody = await request.json();
             return HttpResponse.json(
-              { id: "workflow-record-1" },
+              { id: "workflow-record-1", key: "configurator", version: 1, data: {} },
               { status: 201 },
             );
+          },
+        ),
+        http.put(
+          `${API_BASE}/v4/platform/tenants/test-tenant-id/apps/no-code-builder/capability-bindings`,
+          async ({ request }) => {
+            capabilityBindingBody = await request.json();
+            return HttpResponse.json({ tenantId: "test-tenant-id", appKey: "no-code-builder", bindings: [] });
           },
         ),
         http.post(
@@ -311,9 +328,9 @@ describe("eai workflow", () => {
         { from: "user" },
       );
 
-      expect(listRequests.some((url) => url.includes("workflowKey"))).toBe(
-        true,
-      );
+      expect(lookupRequests).toEqual([
+        `${API_BASE}/v4/platform/tenants/test-tenant-id/workflows/configurator`,
+      ]);
       expect(sharedCreateBody).toEqual({
         data: expect.objectContaining({
           tenantId: "test-tenant-id",
@@ -357,6 +374,16 @@ describe("eai workflow", () => {
           }),
         }),
       });
+      expect(capabilityBindingBody).toEqual({
+        bindings: [{
+          bindingKey: "workflow:configurator",
+          logicalAlias: "workflow:configurator",
+          capabilityKey: "workflows.runtime",
+          assetType: "shared-workflow-config",
+          assetKey: "configurator",
+          environment: "default",
+        }],
+      });
 
       const output = outputSpy.mock.calls.flat().join("\n");
       expect(output).toContain('"appKey": "no-code-builder"');
@@ -377,14 +404,8 @@ describe("eai workflow", () => {
 
       mockServer.server.use(
         http.get(
-          `${API_BASE}/v4/data/resources/test-tenant-id/shared-workflow-config`,
-          () =>
-            HttpResponse.json({
-              docs: [],
-              totalDocs: 0,
-              page: 1,
-              totalPages: 0,
-            }),
+          `${API_BASE}/v4/platform/tenants/test-tenant-id/workflows/configurator`,
+          () => HttpResponse.json({ detail: "workflow not found" }, { status: 404 }),
         ),
         http.get(
           `${API_BASE}/v4/data/resources/test-tenant-id/vertical-product-config`,
@@ -397,49 +418,41 @@ describe("eai workflow", () => {
             }),
         ),
         http.get(
-          `${API_BASE}/v4/data/resources/test-tenant-id/shared-ai-profile`,
-          () =>
-            HttpResponse.json({
-              docs: [],
-              totalDocs: 0,
-              page: 1,
-              totalPages: 0,
-            }),
+          `${API_BASE}/v4/platform/tenants/test-tenant-id/ai/profiles/configurator-runtime`,
+          () => HttpResponse.json({ detail: "profile not found" }, { status: 404 }),
         ),
         http.get(
-          `${API_BASE}/v4/data/resources/test-tenant-id/shared-chatbot-config`,
-          () =>
-            HttpResponse.json({
-              docs: [],
-              totalDocs: 0,
-              page: 1,
-              totalPages: 0,
-            }),
+          `${API_BASE}/v4/platform/tenants/test-tenant-id/ai/prompts/:key`,
+          () => HttpResponse.json({ detail: "prompt not found" }, { status: 404 }),
         ),
         http.post(
-          `${API_BASE}/v4/data/resources/test-tenant-id/shared-workflow-config`,
-          () => HttpResponse.json({ id: "workflow-record-1" }, { status: 201 }),
+          `${API_BASE}/v4/platform/tenants/test-tenant-id/workflows`,
+          () => HttpResponse.json({ id: "workflow-record-1", key: "configurator", version: 1, data: {} }, { status: 201 }),
         ),
         http.post(
           `${API_BASE}/v4/data/resources/test-tenant-id/vertical-product-config`,
           () => HttpResponse.json({ id: "vertical-config-1" }, { status: 201 }),
         ),
         http.post(
-          `${API_BASE}/v4/data/resources/test-tenant-id/shared-ai-profile`,
+          `${API_BASE}/v4/platform/tenants/test-tenant-id/ai/profiles`,
           async ({ request }) => {
             createdProfiles.push(await request.json());
-            return HttpResponse.json({ id: "ai-profile-1" }, { status: 201 });
+            return HttpResponse.json({ id: "ai-profile-1", key: "configurator-runtime", version: 1, data: {} }, { status: 201 });
           },
         ),
         http.post(
-          `${API_BASE}/v4/data/resources/test-tenant-id/shared-chatbot-config`,
+          `${API_BASE}/v4/platform/tenants/test-tenant-id/ai/prompts`,
           async ({ request }) => {
             createdPrompts.push(await request.json());
             return HttpResponse.json(
-              { id: `prompt-${createdPrompts.length}` },
+              { id: `prompt-${createdPrompts.length}`, key: `prompt-${createdPrompts.length}`, version: 1, data: {} },
               { status: 201 },
             );
           },
+        ),
+        http.put(
+          `${API_BASE}/v4/platform/tenants/test-tenant-id/apps/no-code-builder/capability-bindings`,
+          () => HttpResponse.json({ tenantId: "test-tenant-id", appKey: "no-code-builder", bindings: [] }),
         ),
       );
 
