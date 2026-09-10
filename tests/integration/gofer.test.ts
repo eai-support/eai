@@ -545,6 +545,7 @@ esac
         await rm(fixtureRoot, { recursive: true, force: true });
       }
     },
+    20_000,
   );
 });
 
