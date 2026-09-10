@@ -468,7 +468,19 @@ const SMOKE_CALLS = {
   ],
 };
 
+const DOCUMENT_CONTEXT_OPTION_DECISIONS = {
+  '--tenant-id': 'Explicit tenant forwarding is covered by docs command/API tests; live Curate acceptance requires an approved customer project and identity.',
+  '--storage-target': 'ResourceAPI multipart routing and rejection of legacy context are covered by docs-classify.test.ts; not a deployed Curate lifecycle pass.',
+  '--business-request-id': 'Queued upload context is contract-tested; default release smoke has no approved Curate business request to mutate.',
+  '--planning-application-id': 'Queued upload context is contract-tested; live acceptance requires a provisioned tenant-owned project and cleanup policy.',
+  '--vertical-key': 'Published classifier binding is contract-tested with workflow-key; customer provider execution remains an explicit live acceptance step.',
+  '--workflow-key': 'Paired classifier keys and incomplete-context rejection are contract-tested; default smoke does not select a customer classifier.',
+  '--format': 'Structured success and error JSON are covered by docs command tests; HTTP acceptance is not lifecycle completion.',
+};
+
 const OPTION_DECISIONS = {
+  'eai docs upload': DOCUMENT_CONTEXT_OPTION_DECISIONS,
+  'eai docs classify': DOCUMENT_CONTEXT_OPTION_DECISIONS,
   'eai start': {
     '--surface': 'Explicit provider selection is covered by command integration tests; release smoke keeps detection read-only.',
     '--install': 'Opening an external provider installation page requires a user click and is not performed by automated release smoke.',
