@@ -290,8 +290,8 @@ route construction.
 | `eai workflow readiness [keys...]` | Check tenant access, plan metadata, and optional workflow readiness together |
 | `eai workflow status <key>` | Check whether an AI runtime workflow key is bound for the active tenant |
 | `eai workflow request <key>` | Request operator-assisted workflow binding when a workflow is not ready yet |
-| `eai docs upload <file>` | Upload a document |
-| `eai docs classify <file>` | Classify a document |
+| `eai docs upload <file>` | Submit once for full processing with authorised app/workflow or project context |
+| `eai docs classify <file>` | Submit once for classification with paired `--vertical-key` and `--workflow-key`, or authorised project context |
 | `eai docs index <id>` | Index a document for RAG |
 
 ### PublicAPI V4

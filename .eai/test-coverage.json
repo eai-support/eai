@@ -4,6 +4,32 @@
     "eai": {
       "features": [
         {
+          "id": "configurable-document-lifecycle",
+          "description": "Existing planning and configured standalone business uploads share the queued PublicAPI contract; lifecycle selection is an explicit administrator binding, not a client storage override.",
+          "owned_paths": [
+            "src/lib/api.ts",
+            "src/commands/docs.ts",
+            "src/commands/classifier.ts",
+            "tests/integration/docs-classify.test.ts",
+            "tests/integration/classifier.test.ts",
+            "resources/gofer/references/platform/eai-service-patterns.md",
+            "resources/gofer/.gofer-version",
+            ".tech-docs/app-template/documents-and-files.md",
+            ".tech-docs/app-template/service-patterns.md",
+            ".tech-docs/examples/ai-chat.md",
+            ".tech-docs/api-reference.md"
+          ],
+          "required_repo_tests": [
+            "tests/integration/docs-classify.test.ts",
+            "tests/integration/classifier.test.ts",
+            "tests/integration/gofer.test.ts",
+            "tests/integration/describe-contract.test.ts"
+          ],
+          "required_ci_checks": ["ci/eai-cli-tests"],
+          "required_cross_service_surfaces": ["eai-cli", "backend"],
+          "required_deployed_contracts": []
+        },
+        {
           "id": "eai-cli-tenant-workflow-classifiers",
           "description": "CLI users validate and save reusable classifier JSON, publish immutable versions, separately associate exact published versions with app workflows, reversibly disable or enable classifiers, and permanently delete only disabled unpublished drafts through PublicAPI v4.",
           "owned_paths": [
@@ -99,6 +125,7 @@
             "tests/integration/user.test.ts",
             "tests/integration/publicapi.test.ts",
             "tests/integration/no-v3-runtime.test.ts",
+            "tests/integration/docs-classify.test.ts",
             "tests/integration/platform-api-client.test.ts",
             "tests/integration/runtime-contract.test.ts",
             "tests/integration/vertical.test.ts",

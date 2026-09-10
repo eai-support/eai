@@ -9,5 +9,15 @@
     "bash-scripts/install-optional-tools.sh",
     "powershell-scripts/install-optional-tools.ps1"
   ],
-  "synced_at": "2026-09-07T14:53:46Z"
+  "synced_at": "2026-09-07T14:53:46Z",
+  "document_lifecycle_overlay": {
+    "source": "https://github.com/eai-support/eai-gofer",
+    "commit": "b9cc180288efbf857b763cf1e2565ec093f15765",
+    "source_path": ".specify/references/platform/eai-service-patterns.md",
+    "section": "Document Lifecycle Rules",
+    "section_sha256": "b17c29c4970f833407880e12f178465174907148a347e451ca8e51e822887e05",
+    "target_path": "references/platform/eai-service-patterns.md",
+    "includes_document_matrix_row": true,
+    "dirty": false
+  }
 }
