@@ -64,9 +64,9 @@ export const docsCommand = new Command('docs')
   .description('Document upload, classification, and indexing')
   .addHelpText('after', `
 Examples:
-  $ eai docs classify ./reports/contract.pdf --vertical-key business-docs --workflow-key review
-  $ eai docs classify ./reports/site-plan.pdf --planning-application-id <projectId>
-  $ eai docs upload ./reports/site-plan.pdf --planning-application-id <projectId>
+  $ eai docs classify ./reports/contract.pdf --storage-target resourceapi --vertical-key business-docs --workflow-key review
+  $ eai docs classify ./reports/site-plan.pdf --storage-target resourceapi --planning-application-id <projectId>
+  $ eai docs upload ./reports/site-plan.pdf --storage-target resourceapi --planning-application-id <projectId>
 
 Typical workflow:
   1. Configure and publish the app's document schemas and workflow classifier

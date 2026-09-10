@@ -44,9 +44,13 @@ export interface PublicApiRequestOptions {
   params?: Record<string, unknown>;
 }
 
-/** Caller-selected workflow or existing project; the server resolves and authorizes storage mappings. */
+/**
+ * Caller-selected workflow or existing project. Runtime input stays stringly
+ * typed until validation so unsupported storage targets are rejected clearly.
+ * The server, not the caller, resolves and authorizes storage mappings.
+ */
 export interface DocumentUploadContext {
-  storageTarget?: 'resourceapi';
+  storageTarget?: string;
   businessRequestId?: string;
   planningApplicationId?: string;
   verticalKey?: string;

@@ -50,8 +50,10 @@ const response = await classify(files, {
   verticalKey: "business-docs",
   workflowKey: "classify",
 });
+if (!response.ok) throw new Error(`Document admission failed (${response.status})`);
 const admission = await response.json();
 const statusResponse = await getJobStatus(admission.jobId);
+if (!statusResponse.ok) throw new Error(`Document job read failed (${statusResponse.status})`);
 const job = await statusResponse.json();
 ```
 

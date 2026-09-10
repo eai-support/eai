@@ -80,8 +80,8 @@ describe('CLI help output', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Typical workflow:');
-    expect(result.stdout).toContain('eai docs classify ./reports/contract.pdf --vertical-key business-docs --workflow-key review');
-    expect(result.stdout).toContain('eai docs upload ./reports/site-plan.pdf --planning-application-id <projectId>');
+    expect(result.stdout).toContain('eai docs classify ./reports/contract.pdf --storage-target resourceapi --vertical-key business-docs --workflow-key review');
+    expect(result.stdout).toContain('eai docs upload ./reports/site-plan.pdf --storage-target resourceapi --planning-application-id <projectId>');
     expect(result.stdout).toContain('Run classify once');
     expect(result.stdout).toContain('acceptance is not completion');
     expect(result.stdout).toContain('Do not invent a planning ID or repeat the upload');

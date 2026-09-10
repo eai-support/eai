@@ -98,8 +98,11 @@ const response = await classify([file], {
   verticalKey: "business-docs",
   workflowKey: "document-review",
 });
+if (!response.ok) throw new Error(`Document admission failed (${response.status})`);
 const queued = await response.json();
-const status = await (await getJobStatus(queued.jobId)).json();
+const jobResponse = await getJobStatus(queued.jobId);
+if (!jobResponse.ok) throw new Error(`Document job read failed (${jobResponse.status})`);
+const status = await jobResponse.json();
 // Poll this same job until terminal; do not upload the file again.
 // On completion, read the retained document using its returned document_id.
 // getRecord(documentId) returns persisted stages, not just queue acceptance.

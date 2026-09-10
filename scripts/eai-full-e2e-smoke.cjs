@@ -1347,7 +1347,7 @@ function runOptionalDocumentSmoke(eai, env = process.env, { now = Date.now, wait
         leftovers.push({ documentId: id, jobId, error: error.message });
       }
     }
-    if (submitted && !ids.size) leftovers.push({ jobId, error: 'Submission returned no usable document ID; possible records cannot be safely identified or deleted' });
+    if (!ids.size) leftovers.push({ jobId, error: 'Submission returned no usable document ID; possible records cannot be safely identified or deleted' });
   }
   if (originalError || leftovers.length) {
     const error = originalError || new Error('Document cleanup failed');

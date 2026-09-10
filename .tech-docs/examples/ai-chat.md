@@ -119,6 +119,10 @@ export function DocumentUploader({ tenantId }: { tenantId: string }) {
         verticalKey: "business-docs",
         workflowKey: "document-review",
       });
+      if (!response.ok) {
+        setStatus(`Submission failed (${response.status})`);
+        return;
+      }
       const queued = await response.json();
       setStatus(`Queued: ${queued.jobId}`);
     } catch {
