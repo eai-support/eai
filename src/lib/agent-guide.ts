@@ -55,6 +55,7 @@ const guide: AgentGuide = {
     'Prefer commands that advertise --format json in eai --describe or command help.',
     'Run read-only diagnostics before mutating fixes.',
     'Use named eai commands before calling eai publicapi directly.',
+    'Use eai app package for distributable application preparation and submission; local files never approve or publish an app.',
     'Before Object Type publication, require app-manifest-name-slug-negotiation-v1. The CLI preserves source slugs and selects a safe deployed request shape. A dry-run preferred shape does not prove that the deployed platform accepts that shape.',
     'When calling eai publicapi directly, only use /v4 paths.',
     'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing tenant members, Entra, or role definitions.',
@@ -181,6 +182,18 @@ const guide: AgentGuide = {
       commands: [
         { command: 'eai provision entra --deauthorize --client-id <client-id> --force', mutates: true, purpose: 'Remove tenant authorization, delete the app registration, and remove local Entra credentials.' },
         { command: 'eai env list', mutates: false, purpose: 'Confirm local project env no longer contains the removed Entra credential keys.' },
+      ],
+    },
+    {
+      step: 7,
+      title: 'Prepare a distributable app',
+      instruction: 'Create and validate a credential-free application package locally, build deterministic review bytes, then submit it through the regional PublicAPI publisher ingress. Platform review remains authoritative.',
+      commands: [
+        { command: 'eai app package init --app-key <key> --display-name <name> --publisher-ref <ref>', mutates: true, purpose: 'Create the local package draft.' },
+        { command: 'eai app package validate --format json', mutates: false, purpose: 'Reject unsafe or incomplete local package declarations.' },
+        { command: 'eai app package build --format json', mutates: true, purpose: 'Create deterministic content-addressed review bytes.' },
+        { command: 'eai app package submit --format json', mutates: true, purpose: 'Submit through regional PublicAPI for governed platform review.' },
+        { command: 'eai app package status <submission-id> --format json', mutates: false, purpose: 'Read the authoritative platform review status.' },
       ],
     },
   ],

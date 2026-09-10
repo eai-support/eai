@@ -135,6 +135,40 @@
           ]
         },
         {
+          "id": "eai-cli-app-marketplace-package",
+          "description": "Tenant administrators prepare deterministic credential-free application packages locally and submit them through the dedicated regional PublicAPI publisher ingress for authoritative review.",
+          "owned_paths": [
+            ".eai/test-coverage.json",
+            "src/commands/vertical.ts",
+            "src/lib/application-package.ts",
+            "src/lib/agent-guide.ts",
+            "tests/integration/app-package.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts",
+            "scripts/eai-full-e2e-smoke.cjs",
+            ".tech-docs/full-e2e-smoke-traceability.md",
+            "package.json"
+          ],
+          "required_repo_tests": [
+            "tests/integration/app-package.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts",
+            "tests/integration/describe-contract.test.ts",
+            "tests/integration/agent-guide.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "publicapi-platform"
+          ],
+          "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/app-marketplace/publisher-ingress.spec.ts"
+            }
+          ]
+        },
+        {
           "id": "eai-cli-app-delete",
           "description": "The CLI obtains the immutable V4 deletion plan, requires exact app-key confirmation, invokes the verified deletion saga, and emits the machine-readable cleanup receipt.",
           "owned_paths": [

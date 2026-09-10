@@ -8,7 +8,7 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import {
@@ -34,6 +34,12 @@ import {
   toObjectTypeSlug,
 } from '../lib/utils.js';
 import * as out from '../lib/output.js';
+import {
+  APPLICATION_PACKAGE_FILE,
+  buildApplicationPackage,
+  createApplicationPackageDraft,
+  validateApplicationPackage,
+} from '../lib/application-package.js';
 
 const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
 const DEFAULT_VERTICAL_SOURCE = ['eai', 'cli'].join('-');
@@ -673,6 +679,175 @@ export const appCommand = new Command('app')
   .description('Manage apps under the active company tenant');
 
 export const verticalCommand = appCommand;
+
+interface AppPackageLocalOptions {
+  path?: string;
+  appKey?: string;
+  displayName?: string;
+  publisherRef?: string;
+  format?: string;
+  json?: boolean;
+}
+
+interface AppPackageRemoteOptions extends AppPackageLocalOptions {
+  tenantId?: string;
+  idempotencyKey?: string;
+}
+
+export function applicationPackageSubmissionPath(): string {
+  return '/v4/platform/app-marketplace/publisher/submissions';
+}
+
+export function applicationPackageStatusPath(submissionId: string): string {
+  const value = submissionId.trim();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(value)) {
+    throw new Error('submissionId must contain only letters, numbers, underscores or hyphens.');
+  }
+  return `${applicationPackageSubmissionPath()}/${encodeURIComponent(value)}`;
+}
+
+export function applicationPackageSubmissionBody(
+  packageValue: Record<string, unknown>,
+  packageDigest: string,
+  idempotencyKey?: string,
+): Record<string, unknown> {
+  if (!/^sha256:[a-f0-9]{64}$/.test(packageDigest)) {
+    throw new Error('packageDigest must be sha256:<64 hex>.');
+  }
+  return {
+    package: packageValue,
+    packageDigest,
+    idempotencyKey: idempotencyKey?.trim() || packageDigest,
+  };
+}
+
+const packageCommand = verticalCommand
+  .command('package')
+  .description('Prepare and submit an immutable application package for marketplace review');
+
+packageCommand
+  .command('init')
+  .description('Create a local application package draft')
+  .requiredOption('--app-key <key>', 'Lowercase kebab-case application key')
+  .requiredOption('--display-name <name>', 'Application display name')
+  .requiredOption('--publisher-ref <ref>', 'Opaque publisher profile reference')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (options: AppPackageLocalOptions) => {
+    const format = normalizeFormat(options);
+    try {
+      const packageValue = await createApplicationPackageDraft(process.cwd(), {
+        appKey: options.appKey ?? '',
+        displayName: options.displayName ?? '',
+        publisherRef: options.publisherRef ?? '',
+      });
+      if (format === 'json') {
+        out.json({ path: APPLICATION_PACKAGE_FILE, package: packageValue, authoritative: false });
+        return;
+      }
+      out.success(`Created ${chalk.cyan(APPLICATION_PACKAGE_FILE)}`);
+      out.info('Complete the immutable artifact and evidence fields, then run `eai app package validate`.');
+    } catch (error) {
+      fail(errMsg(error));
+    }
+  });
+
+packageCommand
+  .command('validate')
+  .description('Validate the local application package without publishing it')
+  .option('--path <path>', 'Application package path', APPLICATION_PACKAGE_FILE)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (options: AppPackageLocalOptions) => {
+    const format = normalizeFormat(options);
+    try {
+      const raw = JSON.parse(await readFile(join(process.cwd(), options.path ?? APPLICATION_PACKAGE_FILE), 'utf8')) as unknown;
+      const errors = validateApplicationPackage(raw);
+      if (errors.length > 0) fail(errors.join('; '));
+      if (format === 'json') {
+        out.json({ valid: true, path: options.path ?? APPLICATION_PACKAGE_FILE, authoritative: false });
+        return;
+      }
+      out.success('Application package is valid for local submission preparation.');
+    } catch (error) {
+      fail(errMsg(error));
+    }
+  });
+
+packageCommand
+  .command('build')
+  .description('Build deterministic content-addressed package JSON')
+  .option('--path <path>', 'Application package path', APPLICATION_PACKAGE_FILE)
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (options: AppPackageLocalOptions) => {
+    const format = normalizeFormat(options);
+    try {
+      const result = await buildApplicationPackage(process.cwd(), options.path ?? APPLICATION_PACKAGE_FILE);
+      if (format === 'json') {
+        out.json({ digest: result.digest, outputPath: result.outputPath, authoritative: false });
+        return;
+      }
+      out.success(`Built ${chalk.cyan(result.outputPath)}`);
+      out.info(`Digest: ${chalk.cyan(result.digest)}`);
+    } catch (error) {
+      fail(errMsg(error));
+    }
+  });
+
+packageCommand
+  .command('submit')
+  .description('Submit a validated package through the regional PublicAPI publisher ingress')
+  .option('--path <path>', 'Application package path', APPLICATION_PACKAGE_FILE)
+  .option('--tenant-id <id>', 'Run against a specific builder tenant')
+  .option('--idempotency-key <key>', 'Stable retry key for this submission')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (options: AppPackageRemoteOptions) => {
+    const format = normalizeFormat(options);
+    try {
+      const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+      const built = await buildApplicationPackage(ctx.root, options.path ?? APPLICATION_PACKAGE_FILE);
+      const response = await ctx.client.requestPublicApi(applicationPackageSubmissionPath(), {
+        method: 'POST',
+        body: applicationPackageSubmissionBody(built.package, built.digest, options.idempotencyKey),
+      });
+      const payload = await readResponsePayload(response);
+      if (!response.ok) fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${response.status} ${response.statusText}`);
+      if (format === 'json') {
+        out.json(payload);
+        return;
+      }
+      out.success('Application package submitted for platform review.');
+      if (isRecord(payload) && typeof payload.submissionId === 'string') out.info(`Submission: ${chalk.cyan(payload.submissionId)}`);
+    } catch (error) {
+      fail(errMsg(error));
+    }
+  });
+
+packageCommand
+  .command('status <submission-id>')
+  .description('Read platform review status through regional PublicAPI')
+  .option('--tenant-id <id>', 'Run against a specific builder tenant')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .action(async (submissionId: string, options: AppPackageRemoteOptions) => {
+    const format = normalizeFormat(options);
+    try {
+      const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+      const response = await ctx.client.requestPublicApi(applicationPackageStatusPath(submissionId));
+      const payload = await readResponsePayload(response);
+      if (!response.ok) fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${response.status} ${response.statusText}`);
+      if (format === 'json') {
+        out.json(payload);
+        return;
+      }
+      const status = isRecord(payload) && typeof payload.status === 'string' ? payload.status : 'unknown';
+      out.success(`Submission status: ${chalk.cyan(status)}`);
+    } catch (error) {
+      fail(errMsg(error));
+    }
+  });
 
 verticalCommand
   .command('list')

@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.enterpriseai.group/app-marketplace/v1/application-package.schema.json",
+  "title": "EnterpriseAI application package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "packageId",
+    "appKey",
+    "displayName",
+    "version",
+    "publisher",
+    "distribution",
+    "source",
+    "artifact",
+    "manifestDigest",
+    "runtime",
+    "routes",
+    "objectTypes",
+    "services",
+    "capabilities",
+    "dataGovernance",
+    "callbacks",
+    "commercial",
+    "support",
+    "compatibility",
+    "lifecycle",
+    "evidence"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "eai.application-package.v1" },
+    "packageId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,127}$" },
+    "appKey": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$" },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "publisher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "displayName"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,127}$" },
+        "kind": { "enum": ["eai", "customer", "partner"] },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 }
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["visibility"],
+      "properties": {
+        "visibility": { "enum": ["private", "first-party", "distributable"] }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "digest"],
+      "properties": {
+        "repository": { "type": "string", "pattern": "^(?:https://github\\.com/|git@github\\.com:)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\\.git)?$" },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "digest", "provenanceRef", "signatureRef", "sbomRef"],
+      "properties": {
+        "repository": { "type": "string", "pattern": "^[a-z0-9.-]+(?:/[a-z0-9._-]+)+$" },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "provenanceRef": { "type": "string", "minLength": 1 },
+        "signatureRef": { "type": "string", "minLength": 1 },
+        "sbomRef": { "type": "string", "minLength": 1 }
+      }
+    },
+    "manifestDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "topology"],
+      "properties": {
+        "type": { "enum": ["trusted-embedded", "isolated-hosted"] },
+        "topology": { "enum": ["eai-owned-embedded", "eai-hosted", "buyer-hosted"] },
+        "staticImport": { "type": "string", "pattern": "^@enterpriseaigroup/[a-z0-9-]+(?:/[A-Za-z0-9._/-]+)?$" },
+        "healthPath": { "type": "string", "pattern": "^/[A-Za-z0-9._~!$&'()+,;=:@/-]+$" }
+      }
+    },
+    "routes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "methods"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9.-]+$" },
+          "path": { "type": "string", "pattern": "^/[A-Za-z0-9._~!$&'()+,;=:@/{}/-]*$" },
+          "methods": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] }
+          }
+        }
+      }
+    },
+    "objectTypes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "slug", "manifestRef"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "manifestRef": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "services": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "minimumContractVersion"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9.-]+$" },
+          "minimumContractVersion": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "interactive", "workload"],
+      "properties": {
+        "contractVersion": { "const": "eai.app_capabilities.v1" },
+        "interactive": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9.-]+$" }
+        },
+        "workload": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9.-]+$" }
+        }
+      }
+    },
+    "dataGovernance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["purposes", "classifications", "residency", "retentionDays", "export", "deletionPolicyRef"],
+      "properties": {
+        "purposes": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "classifications": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["public", "internal", "personal", "sensitive"] }
+        },
+        "residency": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z]{2,3}$" } },
+        "retentionDays": { "type": "integer", "minimum": 1, "maximum": 3650 },
+        "export": { "enum": ["none", "buyer-approved"] },
+        "deletionPolicyRef": { "type": "string", "minLength": 1 }
+      }
+    },
+    "callbacks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "authMode", "idempotencyRequired", "replayWindowSeconds"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9.-]+$" },
+          "path": { "type": "string", "pattern": "^/[A-Za-z0-9._~!$&'()+,;=:@/{}/-]+$" },
+          "authMode": { "const": "signed-workload" },
+          "idempotencyRequired": { "const": true },
+          "replayWindowSeconds": { "type": "integer", "minimum": 1, "maximum": 300 }
+        }
+      }
+    },
+    "commercial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "termsRef"],
+      "properties": {
+        "model": { "enum": ["free", "subscription", "usage", "manual-pilot"] },
+        "meterRef": { "type": "string", "minLength": 1 },
+        "termsRef": { "type": "string", "minLength": 1 }
+      }
+    },
+    "support": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "slaRef", "runbookRef"],
+      "properties": {
+        "owner": { "type": "string", "minLength": 1 },
+        "slaRef": { "type": "string", "minLength": 1 },
+        "runbookRef": { "type": "string", "minLength": 1 }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platformContract", "minimumTemplateVersion"],
+      "properties": {
+        "platformContract": { "const": "eai.app-marketplace/v1" },
+        "minimumTemplateVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["installRef", "updateRef", "uninstallRef", "migrationRef", "rollbackRef"],
+      "properties": {
+        "installRef": { "type": "string", "minLength": 1 },
+        "updateRef": { "type": "string", "minLength": 1 },
+        "uninstallRef": { "type": "string", "minLength": 1 },
+        "migrationRef": { "type": "string", "minLength": 1 },
+        "rollbackRef": { "type": "string", "minLength": 1 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ciRef", "securityRef", "tenantIsolationRef", "accessibilityRef"],
+      "properties": {
+        "ciRef": { "type": "string", "minLength": 1 },
+        "securityRef": { "type": "string", "minLength": 1 },
+        "tenantIsolationRef": { "type": "string", "minLength": 1 },
+        "accessibilityRef": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
