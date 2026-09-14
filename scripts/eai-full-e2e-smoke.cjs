@@ -86,9 +86,9 @@ const TRACEABILITY_BASE = [
   ['eai workflow readiness', 'read', 'live', 'Checks tenant workflow readiness.'],
   ['eai workflow status', 'read', 'live-optional', 'Runs when EAI_E2E_WORKFLOW_KEY is configured.'],
   ['eai workflow request', 'create', 'live-optional', 'Runs only when explicitly enabled because it creates operator-facing requests.'],
-  ['eai docs upload', 'create', 'live-optional', 'Runs when EAI_E2E_DOCS=1 because document classification/indexing can consume provider quota.'],
-  ['eai docs classify', 'read/create', 'live-optional', 'Runs when EAI_E2E_DOCS=1 after document upload.'],
-  ['eai docs index', 'create/update', 'live-optional', 'Runs when EAI_E2E_DOCS=1 after document upload.'],
+  ['eai docs upload', 'create', 'covered-by-cli', 'The upload command is contract-tested. The cleanup-backed deployed lifecycle uses classification mode directly.'],
+  ['eai docs classify', 'create/read/delete', 'live-optional', 'Runs only when EAI_E2E_DOCS=1 and an explicit Curate app/workflow fixture is supplied; the smoke deletes its returned record.'],
+  ['eai docs index', 'create/update', 'covered-by-cli', 'Command contract is tested locally; the generic document lifecycle does not index a customer document by default.'],
   ['eai deploy setup', 'create-local', 'live', 'Generates deployment workflow in the disposable workspace.'],
   ['eai deploy trigger', 'create', 'manual', 'Not run by release smoke because it triggers a host deployment outside the CLI test tenant.'],
   ['eai deploy status', 'read', 'help', 'Validated by help/contract unless a deployment run id is provided.'],
@@ -364,10 +364,10 @@ const SMOKE_CALLS = {
     'EAI_E2E_WORKFLOW_REQUEST=1 eai workflow request <workflow-key> --tenant <tenant-id> --display-name <name> --reason smoke --format json',
   ],
   'eai docs upload': [
-    'EAI_E2E_DOCS=1 eai docs upload smoke-document.txt',
+    'eai docs upload smoke-document.txt --vertical-key <app-key> --workflow-key <workflow-key>',
   ],
   'eai docs classify': [
-    'EAI_E2E_DOCS=1 eai docs classify smoke-document.txt',
+    'EAI_E2E_DOCS=1 EAI_E2E_DOCS_VERTICAL_KEY=<app-key> EAI_E2E_DOCS_WORKFLOW_KEY=<workflow-key> eai docs classify smoke-document.txt --vertical-key <app-key> --workflow-key <workflow-key>',
   ],
   'eai docs index': [
     'EAI_E2E_DOCS=1 eai docs index <document-id>',
@@ -1672,14 +1672,31 @@ function runLiveSmoke(cliPath) {
     eai(['chat', 'send', '--workflow', process.env.EAI_E2E_WORKFLOW_KEY, '--message', `Smoke ${runId}`, '--format', 'json'], { allowFailure: true });
   }
   if (process.env.EAI_E2E_DOCS === '1') {
+    const verticalKey = (process.env.EAI_E2E_DOCS_VERTICAL_KEY || '').trim();
+    const workflowKey = (process.env.EAI_E2E_DOCS_WORKFLOW_KEY || '').trim();
+    if (!verticalKey || !workflowKey) {
+      throw new Error(
+        'EAI_E2E_DOCS=1 requires EAI_E2E_DOCS_VERTICAL_KEY and EAI_E2E_DOCS_WORKFLOW_KEY so the smoke can use and clean up the supported Curate lifecycle.',
+      );
+    }
     const docFile = join(projectRoot, 'smoke-document.txt');
     writeFileSync(docFile, `EAI document smoke ${runId}\n`, 'utf8');
-    const uploaded = parseJson(eai(['docs', 'upload', docFile]).stdout, {});
-    const docId = extractId(uploaded);
-    if (docId) {
-      eai(['docs', 'classify', docFile], { allowFailure: true });
-      eai(['docs', 'index', docId], { allowFailure: true });
+    const contextArgs = [
+      '--tenant-id', parentTenantId,
+      '--vertical-key', verticalKey,
+      '--workflow-key', workflowKey,
+      '--format', 'json',
+    ];
+    const classified = parseJson(eai(['docs', 'classify', docFile, ...contextArgs]).stdout, {});
+    const body = classified.body || {};
+    const jobId = body.jobId || body.job_id || '';
+    const document = body.documents?.[0] || {};
+    const documentId = body.documentId || body.document_id || document.documentId || document.document_id || '';
+    if (!jobId || !documentId) {
+      throw new Error('Configured Curate classification did not return both a document id and job id for cleanup.');
     }
+    const deletePath = `/v4/data/documents/records/${encodeURIComponent(documentId)}?storage_target=resourceapi&job_id=${encodeURIComponent(jobId)}`;
+    eai(['publicapi', 'delete', deletePath, '--tenant-id', parentTenantId, '--format', 'json']);
   }
 
   if (cleanup) {

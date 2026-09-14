@@ -90,4 +90,13 @@ describe('full e2e smoke traceability', () => {
     expect(source).toContain('tenant');
     expect(source).toContain('delete');
   });
+
+  test('optional document smoke uses an explicit Curate binding and deletes its record', () => {
+    const source = readFileSync(scriptPath, 'utf8');
+
+    expect(source).toContain('EAI_E2E_DOCS_VERTICAL_KEY');
+    expect(source).toContain('EAI_E2E_DOCS_WORKFLOW_KEY');
+    expect(source).toContain("['docs', 'classify', docFile, ...contextArgs]");
+    expect(source).toContain('/v4/data/documents/records/${encodeURIComponent(documentId)}');
+  });
 });

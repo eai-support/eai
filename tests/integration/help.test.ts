@@ -81,6 +81,9 @@ describe('CLI help output', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Typical workflow:');
     expect(result.stdout).toContain('eai docs upload ./reports/contract.pdf');
+    expect(result.stdout).toContain('--vertical-key <app> --workflow-key <workflow>');
+    expect(result.stdout).toContain('Classification uses the supported Curate upload lifecycle.');
+    expect(result.stdout).toContain('classification upload route is not used.');
     expect(result.stdout).toContain('eai docs index <documentId>');
   });
 

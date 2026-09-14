@@ -65,17 +65,21 @@ export const docsCommand = new Command('docs')
   .addHelpText('after', `
 Examples:
   $ eai docs upload ./reports/contract.pdf
-  $ eai docs classify ./reports/contract.pdf
+  $ eai docs classify ./reports/contract.pdf --vertical-key <app> --workflow-key <workflow>
   $ eai docs index <documentId>
 
 Typical workflow:
   1. Upload a file
-  2. Classify it if your platform uses document classification
+  2. Classify it with its configured Curate app and workflow
   3. Index the document ID if you want it available to RAG or chat workflows
 
 Use docs commands when the file is the subject of document processing or AI
 context. Use "eai resources file" when the file is an attachment to a typed
 resource object.
+
+Classification uses the supported Curate upload lifecycle. Supply either an
+authorised Curate parent or both --vertical-key and --workflow-key; the legacy
+classification upload route is not used.
   `);
 
 // ─── eai docs upload ─────────────────────────────────────────────────────

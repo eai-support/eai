@@ -45,7 +45,9 @@ export interface PublicApiRequestOptions {
 }
 
 export interface DocumentUploadContext {
-  storageTarget?: 'resourceapi';
+  // CLI option parsing accepts arbitrary strings; validation below restricts
+  // contextual uploads to the only supported value.
+  storageTarget?: string;
   businessRequestId?: string;
   planningApplicationId?: string;
   verticalKey?: string;
