@@ -168,8 +168,8 @@ const guide: AgentGuide = {
       title: 'Documents, files, and AI context',
       instruction: 'Choose the public v4 file model before writing code. Use document workflow commands for upload, classification, and RAG; use resource file commands for attachments to typed business records.',
       commands: [
-        { command: 'eai docs upload <file>', mutates: true, purpose: 'Upload a document for platform processing.' },
-        { command: 'eai docs classify <file>', mutates: true, purpose: 'Classify a document when the workflow needs document type or extraction hints.' },
+        { command: 'eai docs upload <file>', mutates: true, purpose: 'Submit once for full processing with authorised app/workflow or project context; poll the returned job.' },
+        { command: 'eai docs classify <file>', mutates: true, purpose: 'Submit once for classification with paired --vertical-key and --workflow-key or authorised project context; do not upload the file first.' },
         { command: 'eai docs index <document-id>', mutates: true, purpose: 'Index a document so AI/RAG workflows can answer from it.' },
         { command: 'eai resources file upload <type> <id> <property> <path> --tenant-id <tenant-id>', mutates: true, purpose: 'Attach a file to an existing typed resource object file property.' },
       ],

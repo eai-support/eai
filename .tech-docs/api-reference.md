@@ -770,13 +770,48 @@ Request an operator-assisted runtime workflow binding.
 
 ### Document Commands
 
+Uploads require authorized context: either an existing Curate planning project
+(`--planning-application-id <id>` or `--business-request-id <id>`), or paired
+`--vertical-key <app-key>` and `--workflow-key <workflow-key>` for a configured
+standalone document workflow. Do not invent a planning record for business files.
+The CLI selects `storage_target=resourceapi` and refuses missing or incomplete
+context before reading the file. Both commands support `--tenant-id` and
+`--format json`. PublicAPI selects the lifecycle from the saved binding; callers
+cannot supply a lifecycle, storage mapping or owner override in upload fields.
+These options do not provision tenant schemas or enable a provider.
+HTTP 202 means accepted; poll `/v4/data/documents/jobs/{jobId}` for completion
+and verify the saved result. Direct URL analysis is not this queued lifecycle.
+
+The administrator must publish the required Object Types and classifier, then
+bind it to the app/workflow. `eai classifier target <classifier-key> --app <app-key> --workflow <workflow-key>` supports
+`--document-lifecycle planning-assist-v1|planning-assess-v1|business-document-v1`.
+Omitting this option preserves an existing binding's lifecycle. Existing DAISY
+and Assess requests without classifier keys retain their established context.
+
+For standalone classification, submit once:
+
+```bash
+eai docs classify ./trust-deed.pdf --vertical-key <app-key> --workflow-key <workflow-key> --format json
+eai publicapi get /v4/data/documents/jobs/<job-id> --format json
+eai publicapi get /v4/data/documents/records/<document-id> --param storage_target=resourceapi --format json
+eai publicapi delete /v4/data/documents/records/<document-id> --param storage_target=resourceapi --format json
+```
+
+Keep the returned job/document IDs. A polling timeout is not permission to upload
+again. Record deletion requires the owner's authority and removes the owned file
+and analysis, not the parent or classifier configuration. Optional `job_id` is a
+lookup cross-check, not authority. Original content is available through the
+authorized `/records/{documentId}/content?storage_target=resourceapi` route.
+The configured server candidate must support the lifecycle and have storage and
+provider readiness; CLI acceptance alone does not prove it is deployed.
+
 #### `eai docs upload <file>`
 Upload a document.
 
 **Arguments**: `<file>`
 
 **Platform API Endpoints Used**:
-- `POST /v4/data/documents/upload` — `multipart/form-data` (`files`, `tenant_id`, `processing_mode=full`)
+- `POST /v4/data/documents/upload` — `multipart/form-data` (`files`, `tenant_id`, `storage_target=resourceapi`, authorized context, `processing_mode=full`). Requested stages must be supported by the configured lifecycle; unsupported indexing fails explicitly.
 
 ---
 
@@ -786,7 +821,7 @@ Classify a document.
 **Arguments**: `<file>`
 
 **Platform API Endpoints Used**:
-- `POST /v4/data/documents/classify` — `multipart/form-data` (`files`, `tenant_id`, `processing_mode=classification`)
+- `POST /v4/data/documents/upload` — `multipart/form-data` (`files`, `tenant_id`, `storage_target=resourceapi`, authorized project or paired app/workflow context, `processing_mode=classification`). This uploads and queues classification once; do not call upload first.
 
 ---
 
@@ -1195,8 +1230,8 @@ Preview file-level app-template / UI drift without writing to the repo.
 - `POST /v4/data/resources/{tenantId}/storage/sync-schema` — Reconcile storage from Object Type metadata
 
 ### Data — Documents
-- `POST /v4/data/documents/upload` — Upload a document
-- `POST /v4/data/documents/classify` — Classify a document
+- `POST /v4/data/documents/upload` — Submit once with authorised Curate app/workflow or project context; select `processing_mode=classification` for classification only
+- `GET /v4/data/documents/jobs/{jobId}` — Poll the same queued job; acceptance is not completed analysis
 - `GET /v4/data/documents/records/{documentId}` — Fetch a document record
 - `POST /v4/data/documents/rag-index` — Index a document for RAG
 

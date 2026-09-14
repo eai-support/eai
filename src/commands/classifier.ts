@@ -3,7 +3,7 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { PlatformAPIClient, parseApiError } from "../lib/api.js";
 import { normalizeFormat, resolveCommandContext } from "../lib/context.js";
 import * as out from "../lib/output.js";
@@ -22,6 +22,7 @@ interface ClassifierTargetOptions extends ClassifierCommandOptions {
   app: string;
   workflow: string;
   version?: string;
+  documentLifecycle?: "planning-assist-v1" | "planning-assess-v1" | "business-document-v1";
 }
 
 interface ClassifierDeleteOptions extends ClassifierCommandOptions {
@@ -422,6 +423,7 @@ async function targetClassifier(
         classifierVersion: requestedVersion,
         verticalKey,
         workflowKey,
+        ...(options.documentLifecycle ? { documentLifecycle: options.documentLifecycle } : {}),
       },
     },
   );
@@ -560,6 +562,8 @@ classifierCommand
   .description("Associate a published classifier version with an app workflow")
   .requiredOption("--app <app-key>", "Target app key")
   .requiredOption("--workflow <workflow-key>", "Target workflow key")
+  .addOption(new Option("--document-lifecycle <profile>", "Document lifecycle for this app/workflow; omission preserves its existing setting")
+    .choices(["planning-assist-v1", "planning-assess-v1", "business-document-v1"]))
   .option(
     "--version <number>",
     "Published version (defaults to the draft pointer)",
