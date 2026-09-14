@@ -781,12 +781,18 @@ Upload a document.
 ---
 
 #### `eai docs classify <file>`
-Classify a document.
+Queue a Curate-backed document classification. The command never uses the retired
+`POST /v4/data/documents/classify` endpoint.
 
 **Arguments**: `<file>`
 
+**Required context**: either an authorised `--business-request-id` or
+`--planning-application-id`, or both `--vertical-key` and `--workflow-key` for
+a standalone tenant document. The app/workflow pair must resolve to an exact
+published tenant classifier.
+
 **Platform API Endpoints Used**:
-- `POST /v4/data/documents/classify` — `multipart/form-data` (`files`, `tenant_id`, `processing_mode=classification`)
+- `POST /v4/data/documents/upload` — `multipart/form-data` (`files`, `tenant_id`, `storage_target=resourceapi`, `processing_mode=classification`)
 
 ---
 
@@ -1196,7 +1202,7 @@ Preview file-level app-template / UI drift without writing to the repo.
 
 ### Data — Documents
 - `POST /v4/data/documents/upload` — Upload a document
-- `POST /v4/data/documents/classify` — Classify a document
+- `POST /v4/data/documents/upload` with `processing_mode=classification` — Queue a configured Curate document classification
 - `GET /v4/data/documents/records/{documentId}` — Fetch a document record
 - `POST /v4/data/documents/rag-index` — Index a document for RAG
 

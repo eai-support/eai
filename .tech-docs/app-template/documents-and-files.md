@@ -65,9 +65,10 @@ if (payload.jobId) {
 CLI example:
 
 ```bash
-eai docs upload ./supporting-document.pdf
-eai docs classify ./supporting-document.pdf
-eai docs index <document-id>
+eai docs classify ./supporting-document.pdf \
+  --storage-target resourceapi \
+  --vertical-key <app-key> \
+  --workflow-key <workflow-key>
 ```
 
 PublicAPI route:
@@ -76,7 +77,10 @@ PublicAPI route:
 POST /v4/data/documents/upload
 ```
 
-Use `eai publicapi get /v4/data/documents/jobs/<job-id>` for job status until a
+The app/workflow pair selects a tenant-published classifier. The command creates
+a Curate document and analysis lifecycle; it does not call the retired
+`/v4/data/documents/classify` convenience endpoint. Use
+`eai publicapi get /v4/data/documents/jobs/<job-id>` for job status until a
 named CLI job command exists.
 
 ## Resource File Property Workflow

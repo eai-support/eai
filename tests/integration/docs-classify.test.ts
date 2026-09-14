@@ -73,46 +73,11 @@ describe('PlatformAPIClient.classifyDocument', () => {
     }
   });
 
-  test('posts classification requests to the direct PublicAPI classify endpoint', async () => {
-    const filePath = join(env.dir, 'sample.pdf');
-    await writeFile(filePath, 'pdf-bytes');
-
-    mockServer.server.use(
-      http.post('https://test-api.example.com/v4/data/documents/classify', async ({ request }) => {
-        expect(request.headers.get('authorization')).toBe('Bearer <fixture-access-token>');
-        expect(request.headers.get('x-tenant-id')).toBe('tenant-one');
-
-        const formData = await request.formData();
-        expect(formData.get('tenant_id')).toBe('tenant-one');
-        expect(formData.get('processing_mode')).toBe('classification');
-
-        const uploaded = formData.get('files');
-        expect(uploaded).toBeInstanceOf(File);
-        expect((uploaded as File).name).toBe('sample.pdf');
-        expect((uploaded as File).type).toBe('application/pdf');
-
-        return HttpResponse.json({
-          status: 'accepted',
-          jobId: 'job-123',
-          documents: [{ documentId: 'doc-123' }],
-        });
-      }),
-    );
-
+  test('rejects unscoped classification before reading a file or calling the retired endpoint', async () => {
     const client = new PlatformAPIClient('https://test-api.example.com', 'tenant-one');
-    const response = await client.classifyDocument(filePath);
-    const payload = await response.json() as {
-      status: string;
-      jobId: string;
-      documents: Array<{ documentId: string }>;
-    };
-
-    expect(response.ok).toBe(true);
-    expect(payload).toMatchObject({
-      status: 'accepted',
-      jobId: 'job-123',
-      documents: [{ documentId: 'doc-123' }],
-    });
+    await expect(client.classifyDocument('/does-not-exist.pdf')).rejects.toThrow(
+      'eai docs classify requires a Curate parent context or both --vertical-key and --workflow-key.',
+    );
   });
 
   test('preserves supported Office document MIME types for upload requests', async () => {
@@ -204,9 +169,36 @@ describe('PlatformAPIClient.classifyDocument', () => {
     expect(called).toBe(true);
   });
 
+  test('an exact app and workflow scope selects the standalone Curate lifecycle', async () => {
+    const filePath = join(env.dir, 'trust-deed.pdf');
+    await writeFile(filePath, 'pdf-bytes');
+    let called = false;
+    mockServer.server.use(http.post('https://test-api.example.com/v4/data/documents/upload', async ({ request }) => {
+      called = true;
+      const form = await request.formData();
+      expect(Object.fromEntries([...form.entries()].filter(([key]) => key !== 'files'))).toEqual({
+        tenant_id: 'tenant-one',
+        processing_mode: 'classification',
+        storage_target: 'resourceapi',
+        verticalKey: 'business-documents',
+        workflowKey: 'trust-deed-review',
+      });
+      return HttpResponse.json({ jobId: 'job_123', documents: [{ documentId: 'DOC-123' }] }, { status: 202 });
+    }));
+    const client = new PlatformAPIClient('https://test-api.example.com', 'tenant-one');
+
+    const response = await client.classifyDocument(filePath, {
+      storageTarget: 'resourceapi',
+      verticalKey: 'business-documents',
+      workflowKey: 'trust-deed-review',
+    });
+
+    expect(response.status).toBe(202);
+    expect(called).toBe(true);
+  });
+
   test.each([
     { storageTarget: 'resourceapi' },
-    { verticalKey: 'sample-app', workflowKey: 'sample-workflow' },
     { businessRequestId: 'BR-1', verticalKey: 'sample-app' },
     { businessRequestId: 'BR-1', workflowKey: 'sample-workflow' },
     { businessRequestId: ' ' },

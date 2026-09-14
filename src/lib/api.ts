@@ -63,11 +63,17 @@ export function validateDocumentUploadContext(context: DocumentUploadContext): b
   if (context.storageTarget !== undefined && context.storageTarget !== 'resourceapi') {
     throw new Error('Contextual uploads support only resourceapi storage.');
   }
-  if (!context.businessRequestId && !context.planningApplicationId) {
-    throw new Error('Curate document uploads require --business-request-id or --planning-application-id.');
-  }
   if (Boolean(context.verticalKey) !== Boolean(context.workflowKey)) {
     throw new Error('Supply --vertical-key and --workflow-key together.');
+  }
+  if (
+    !context.businessRequestId
+    && !context.planningApplicationId
+    && !(context.verticalKey && context.workflowKey)
+  ) {
+    throw new Error(
+      'Curate document uploads require --business-request-id, --planning-application-id, or both --vertical-key and --workflow-key.',
+    );
   }
   return true;
 }
@@ -1326,11 +1332,7 @@ export class PlatformAPIClient {
     if (token) h['Authorization'] = `Bearer ${token}`;
     h['X-Tenant-Id'] = this.tenantId;
 
-    const endpoint = processingMode === 'classification' && !contextual
-      ? `${PUBLIC_DATA_DOCUMENTS_PATH}/classify`
-      : `${PUBLIC_DATA_DOCUMENTS_PATH}/upload`;
-
-    return fetch(`${this.baseUrl}${endpoint}`, {
+    return fetch(`${this.baseUrl}${PUBLIC_DATA_DOCUMENTS_PATH}/upload`, {
       method: 'POST',
       headers: h,
       body: form,
@@ -1342,6 +1344,11 @@ export class PlatformAPIClient {
   }
 
   async classifyDocument(filePath: string, context: DocumentUploadContext = {}): Promise<Response> {
+    if (!validateDocumentUploadContext(context)) {
+      throw new Error(
+        'eai docs classify requires a Curate parent context or both --vertical-key and --workflow-key.',
+      );
+    }
     return this.uploadDocumentBatch(filePath, 'classification', context);
   }
 
