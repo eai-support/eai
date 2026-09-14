@@ -1267,7 +1267,6 @@ function runOptionalDocumentSmoke(eai, env = process.env, { now = Date.now, wait
   const scope = ['--tenant-id', config.tenantId, '--format', 'json'];
   const ids = new Set();
   let jobId;
-  let submitted = false;
   let originalError;
   const leftovers = [];
   const deadline = now() + config.waitMs;
@@ -1290,7 +1289,6 @@ function runOptionalDocumentSmoke(eai, env = process.env, { now = Date.now, wait
   }
   const validId = (id) => typeof id === 'string' && id.trim().length > 0;
   try {
-    submitted = true;
     const queued = body(['docs', 'classify', config.file, ...scope, '--storage-target', 'resourceapi',
       '--vertical-key', config.verticalKey, '--workflow-key', config.workflowKey]);
     jobId = queued.jobId || queued.job_id;
