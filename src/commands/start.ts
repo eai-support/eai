@@ -6,6 +6,7 @@ import * as out from '../lib/output.js';
 import {
   AI_SURFACES,
   buildAiLaunchPlan,
+  companionCliForSurface,
   detectAiSurfaces,
   executeAiLaunchPlan,
   getAiSurface,
@@ -14,7 +15,12 @@ import {
   serializeAiSurfaceInventory,
   type AiSurfaceContractVersion,
   type AiSurfaceId,
+  type AiSurfaceInventory,
 } from '../lib/ai-surfaces.js';
+import {
+  installAndVerifyCompanionCli,
+  runCompanionCliInstaller,
+} from '../lib/ai-surface-installer.js';
 
 interface StartOptions {
   check?: boolean;
@@ -34,6 +40,82 @@ function parseContractVersion(value: string | undefined): AiSurfaceContractVersi
 
 function isSurfaceId(value: string): value is AiSurfaceId {
   return AI_SURFACES.some((surface) => surface.id === value);
+}
+
+interface SurfaceInstallDependencies {
+  readonly runInstaller: typeof runCompanionCliInstaller;
+  readonly detect: typeof detectAiSurfaces;
+  readonly openUrl: typeof openExternalUrl;
+}
+
+const defaultSurfaceInstallDependencies: SurfaceInstallDependencies = {
+  runInstaller: runCompanionCliInstaller,
+  detect: detectAiSurfaces,
+  openUrl: openExternalUrl,
+};
+
+export async function performAiSurfaceInstall(options: {
+  readonly surfaceId: AiSurfaceId;
+  readonly inventory: AiSurfaceInventory;
+  readonly projectDirectory: string;
+  readonly dryRun: boolean;
+  readonly dependencies?: SurfaceInstallDependencies;
+}): Promise<Record<string, unknown>> {
+  const dependencies = options.dependencies ?? defaultSurfaceInstallDependencies;
+  const surface = getAiSurface(options.inventory, options.surfaceId);
+  const companionCli = companionCliForSurface(options.surfaceId);
+  if (!companionCli) throw new Error(`${surface.name} does not define a companion CLI.`);
+  const companionSurface = getAiSurface(options.inventory, companionCli);
+  const desktopNeedsInstall = surface.kind !== 'cli' && !surface.installed;
+  if (options.dryRun) {
+    return {
+      ok: true, action: 'install-ai-surface', surfaceId: options.surfaceId,
+      surfaceName: surface.name, companionCli,
+      companionCliInstalled: companionSurface.installed, companionCliStatus: 'planned',
+      companionCliError: null, desktopInstallPageOpened: false,
+      companionInstallPageOpened: false, desktopUserActionRequired: desktopNeedsInstall,
+      userActionRequired: desktopNeedsInstall,
+      url: desktopNeedsInstall ? surface.installUrl : companionSurface.installUrl,
+      message: `EAI will install or update ${companionSurface.name}, then verify it.`,
+    };
+  }
+  const companionResult = await installAndVerifyCompanionCli({
+    companionCli,
+    wasInstalled: companionSurface.installed,
+    runInstaller: async () => dependencies.runInstaller({
+      platform: options.inventory.platform,
+      workspacePath: options.projectDirectory,
+      companionCli,
+    }),
+    verifyInstalled: async () => {
+      const refreshed = await dependencies.detect({ projectDirectory: options.projectDirectory });
+      return getAiSurface(refreshed, companionCli).installed;
+    },
+  });
+  let desktopInstallPageOpened = false;
+  if (desktopNeedsInstall) {
+    desktopInstallPageOpened = await dependencies.openUrl(surface.installUrl, options.inventory.platform)
+      .then(() => true).catch(() => false);
+  }
+  let companionInstallPageOpened = false;
+  if (companionResult.userActionRequired) {
+    companionInstallPageOpened = await dependencies.openUrl(companionSurface.installUrl, options.inventory.platform)
+      .then(() => true).catch(() => false);
+  }
+  const userActionRequired = companionResult.userActionRequired || desktopNeedsInstall;
+  return {
+    ok: !userActionRequired, action: 'install-ai-surface', surfaceId: options.surfaceId,
+    surfaceName: surface.name, companionCli,
+    companionCliInstalled: companionResult.installed, companionCliStatus: companionResult.status,
+    companionCliError: companionResult.userActionRequired
+      ? 'Complete the official installation step, then run detection again.' : null,
+    desktopInstallPageOpened, companionInstallPageOpened,
+    desktopUserActionRequired: desktopNeedsInstall, userActionRequired,
+    url: desktopNeedsInstall ? surface.installUrl : companionSurface.installUrl,
+    message: userActionRequired
+      ? 'User action is required. Use the official URL for any password, consent, terms, or sign-in step, then run this command again.'
+      : `${companionSurface.name} is installed and verified.`,
+  };
 }
 
 async function selectSurface(options: StartOptions, inventory: Awaited<ReturnType<typeof detectAiSurfaces>>): Promise<AiSurfaceId> {
@@ -63,7 +145,7 @@ export const startCommand = new Command('start')
   .argument('[directory]', 'Project folder to open', '.')
   .option('--check', 'Detect supported AI workspaces without opening or changing anything', false)
   .option('--surface <id>', `Use a specific surface (${AI_SURFACES.map((surface) => surface.id).join('|')})`)
-  .option('--install', 'Open the selected provider official installation page', false)
+  .option('--install', 'Install or update the required companion CLI and verify it')
   .option('--dry-run', 'Show the launch plan without starting the provider', false)
   .option('--no-remember', 'Do not remember this dispatched workspace choice')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -86,27 +168,9 @@ Privacy:
   .action(async (directory: string, options: StartOptions) => {
     const projectDirectory = resolve(directory);
     const contractVersion = parseContractVersion(options.contractVersion);
-    if (options.install && options.surface) {
-      if (!isSurfaceId(options.surface)) throw new Error(`Unknown AI surface: ${options.surface}`);
-      const surface = AI_SURFACES.find((candidate) => candidate.id === options.surface);
-      if (!surface) throw new Error(`Unknown AI surface: ${options.surface}`);
-      if (options.dryRun) {
-        const payload = { action: 'open-install-source', opened: false, surfaceId: surface.id, surfaceName: surface.name, url: surface.installUrl, officialProvider: surface.provider };
-        if (options.format === 'json') out.json(payload);
-        else console.log(`${surface.name}: ${surface.installUrl}`);
-        return;
-      }
-      await openExternalUrl(surface.installUrl);
-      const payload = { action: 'open-install-source', opened: true, surfaceId: surface.id, surfaceName: surface.name, url: surface.installUrl, officialProvider: surface.provider };
-      if (options.format === 'json') out.json(payload);
-      else out.success(`Opened the official ${surface.provider} page for ${surface.name}.`);
-      return;
-    }
-    if (!options.install) {
-      await access(projectDirectory).catch(() => {
-        throw new Error(`Project folder does not exist: ${projectDirectory}`);
-      });
-    }
+    await access(projectDirectory).catch(() => {
+      throw new Error(`Project folder does not exist: ${projectDirectory}`);
+    });
     const inventory = await detectAiSurfaces({ projectDirectory });
 
     if (options.check) {
@@ -124,16 +188,12 @@ Privacy:
     const surfaceId = await selectSurface(options, inventory);
     const surface = getAiSurface(inventory, surfaceId);
     if (options.install) {
-      if (options.dryRun) {
-        const payload = { action: 'open-install-source', opened: false, surfaceId, surfaceName: surface.name, url: surface.installUrl, officialProvider: surface.provider };
-        if (options.format === 'json') out.json(payload);
-        else console.log(`${surface.name}: ${surface.installUrl}`);
-        return;
-      }
-      await openExternalUrl(surface.installUrl, inventory.platform);
-      const payload = { action: 'open-install-source', opened: true, surfaceId, surfaceName: surface.name, url: surface.installUrl, officialProvider: surface.provider };
+      const payload = await performAiSurfaceInstall({
+        surfaceId, inventory, projectDirectory, dryRun: options.dryRun === true,
+      });
       if (options.format === 'json') out.json(payload);
-      else out.success(`Opened the official ${surface.provider} page for ${surface.name}.`);
+      else if (payload.userActionRequired) out.warn(String(payload.message));
+      else out.success(String(payload.message));
       return;
     }
 

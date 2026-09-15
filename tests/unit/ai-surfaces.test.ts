@@ -4,10 +4,12 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   AI_SURFACES,
+  AI_SURFACE_COMPANION_CLIS,
   buildCommandOutputInvocation,
   buildLinuxTerminalInvocation,
   buildWindowsCommandInvocation,
   buildAiLaunchPlan,
+  companionCliForSurface,
   detectAiSurfaces,
   executeAiLaunchPlan,
   readAiPreferences,
@@ -536,6 +538,12 @@ describe('AI surface contract', () => {
         previouslyUsed: false,
         status: 'not-installed',
         nextAction: `Get ${name} from ${provider}`,
+        ...(id in AI_SURFACE_COMPANION_CLIS ? {
+          companionCli: AI_SURFACE_COMPANION_CLIS[id as keyof typeof AI_SURFACE_COMPANION_CLIS],
+          companionCliInstalled: false,
+          companionCliStatus: 'not-installed',
+          companionCliError: null,
+        } : {}),
       })),
     });
     for (const surface of serializeAiSurfaceInventory(inventory, 'v2').surfaces) {
@@ -543,6 +551,19 @@ describe('AI surface contract', () => {
       expect(surface).not.toHaveProperty('launchEnvironment');
       expect(surface).not.toHaveProperty('commands');
     }
+  });
+
+  it('defines the six graphical companion CLI pairs and maps CLI rows to themselves', () => {
+    expect(AI_SURFACE_COMPANION_CLIS).toEqual({
+      'vscode-copilot': 'copilot-cli',
+      'copilot-desktop': 'copilot-cli',
+      'antigravity-desktop': 'antigravity-cli',
+      'claude-desktop': 'claude-cli',
+      'codex-desktop': 'codex-cli',
+      'grok-bot': 'grok-cli',
+    });
+    expect(companionCliForSurface('grok-cli')).toBe('grok-cli');
+    expect(Object.isFrozen(AI_SURFACE_COMPANION_CLIS)).toBe(true);
   });
 
   it.each([

@@ -5,9 +5,25 @@ import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
+import { vi } from 'vitest';
+import { AI_SURFACES, type AiSurfaceId, type AiSurfaceInventory } from '../../src/lib/ai-surfaces.js';
+import { performAiSurfaceInstall } from '../../src/commands/start.js';
 
 const execFileAsync = promisify(execFile);
 const cliEntry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
+
+function installInventory(installedIds: readonly AiSurfaceId[]): AiSurfaceInventory {
+  return {
+    contractVersion: 'eai.ai-surfaces/v2', platform: 'linux', projectDirectory: '/work/app',
+    preferredSurface: null, recommendedSurface: null,
+    surfaces: AI_SURFACES.map((surface) => ({
+      ...surface, installed: installedIds.includes(surface.id), executable: null,
+      launchArgsPrefix: [], launchEnvironment: {}, capabilities: [], recommended: false,
+      previouslyUsed: false, status: installedIds.includes(surface.id) ? 'ready' : 'not-installed',
+      nextAction: '',
+    })),
+  };
+}
 
 describe('eai start', () => {
   it('returns the stable read-only detection contract', { timeout: 30_000 }, async () => {
@@ -77,6 +93,10 @@ describe('eai start', () => {
     ]);
     expect(Object.keys(inventory.surfaces[0]).sort()).toEqual([
       'capabilities',
+      'companionCli',
+      'companionCliError',
+      'companionCliInstalled',
+      'companionCliStatus',
       'id',
       'installUrl',
       'installed',
@@ -116,7 +136,7 @@ describe('eai start', () => {
     expect(stdout).toContain('"name": "--contract-version"');
   });
 
-  it('exposes a fixed official provider source without opening it in dry-run mode', async () => {
+  it('plans the paired CLI install without running it or opening a page', async () => {
     const { stdout } = await execFileAsync(process.execPath, [
       cliEntry,
       'start',
@@ -128,12 +148,62 @@ describe('eai start', () => {
       'json',
     ], { env: { ...process.env, EAI_UPDATE_CHECK_DISABLED: '1' } });
     expect(JSON.parse(stdout)).toMatchObject({
-      action: 'open-install-source',
-      opened: false,
+      ok: true,
+      action: 'install-ai-surface',
       surfaceId: 'vscode-copilot',
-      officialProvider: 'GitHub',
+      companionCli: 'copilot-cli',
+      companionCliStatus: 'planned',
+      desktopInstallPageOpened: false,
       url: expect.stringMatching(/^https:\/\//),
     });
+  });
+
+  it('keeps dry-run free of installer, detection, and browser side effects', async () => {
+    const runInstaller = vi.fn();
+    const detect = vi.fn();
+    const openUrl = vi.fn();
+    const result = await performAiSurfaceInstall({
+      surfaceId: 'claude-desktop', inventory: installInventory([]),
+      projectDirectory: '/work/app', dryRun: true,
+      dependencies: { runInstaller, detect, openUrl },
+    });
+    expect(result).toMatchObject({ companionCli: 'claude-cli', companionCliStatus: 'planned' });
+    expect(runInstaller).not.toHaveBeenCalled();
+    expect(detect).not.toHaveBeenCalled();
+    expect(openUrl).not.toHaveBeenCalled();
+  });
+
+  it('runs, verifies, and reports a companion CLI update', async () => {
+    const runInstaller = vi.fn().mockResolvedValue({ ok: true, reason: 'completed' });
+    const detect = vi.fn().mockResolvedValue(installInventory(['codex-cli']));
+    const openUrl = vi.fn();
+    const result = await performAiSurfaceInstall({
+      surfaceId: 'codex-cli', inventory: installInventory(['codex-cli']),
+      projectDirectory: '/work/app', dryRun: false,
+      dependencies: { runInstaller, detect, openUrl },
+    });
+    expect(runInstaller).toHaveBeenCalledWith(expect.objectContaining({ platform: 'linux', companionCli: 'codex-cli' }));
+    expect(result).toMatchObject({ ok: true, companionCliStatus: 'updated', companionCliInstalled: true });
+    expect(openUrl).not.toHaveBeenCalled();
+  });
+
+  it('opens official pages and returns safe fields when installation needs user action', async () => {
+    const openUrl = vi.fn().mockResolvedValue(undefined);
+    const result = await performAiSurfaceInstall({
+      surfaceId: 'grok-bot', inventory: installInventory([]),
+      projectDirectory: '/work/app', dryRun: false,
+      dependencies: {
+        runInstaller: vi.fn().mockResolvedValue({ ok: false, reason: 'failed', stderr: 'private' }),
+        detect: vi.fn(), openUrl,
+      },
+    });
+    expect(result).toMatchObject({
+      ok: false, companionCli: 'grok-cli', companionCliStatus: 'failed',
+      desktopInstallPageOpened: true, companionInstallPageOpened: true,
+      userActionRequired: true,
+    });
+    expect(JSON.stringify(result)).not.toContain('private');
+    expect(openUrl).toHaveBeenCalledTimes(2);
   });
 
   it('opens Google Antigravity rather than Gemini as the current Google source', async () => {
@@ -148,11 +218,11 @@ describe('eai start', () => {
       'json',
     ], { env: { ...process.env, EAI_UPDATE_CHECK_DISABLED: '1' } });
     expect(JSON.parse(stdout)).toMatchObject({
-      action: 'open-install-source',
-      opened: false,
+      action: 'install-ai-surface',
       surfaceId: 'antigravity-cli',
       surfaceName: 'Antigravity CLI (agy)',
-      officialProvider: 'Google',
+      companionCli: 'antigravity-cli',
+      companionCliStatus: 'planned',
       url: 'https://antigravity.google/docs/cli/install/',
     });
   });

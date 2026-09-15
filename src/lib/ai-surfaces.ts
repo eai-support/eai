@@ -136,7 +136,29 @@ export interface AiSurfaceInventoryV2 {
     previouslyUsed: boolean;
     status: 'ready' | 'not-installed';
     nextAction: string;
+    companionCli?: CompanionCliSurfaceId;
+    companionCliInstalled?: boolean;
+    companionCliStatus?: 'ready' | 'not-installed';
+    companionCliError?: null;
   }>;
+}
+
+export type CompanionCliSurfaceId = Extract<AiSurfaceId, `${string}-cli`>;
+
+export const AI_SURFACE_COMPANION_CLIS: Readonly<
+  Partial<Record<AiSurfaceId, CompanionCliSurfaceId>>
+> = Object.freeze({
+  'vscode-copilot': 'copilot-cli',
+  'copilot-desktop': 'copilot-cli',
+  'antigravity-desktop': 'antigravity-cli',
+  'claude-desktop': 'claude-cli',
+  'codex-desktop': 'codex-cli',
+  'grok-bot': 'grok-cli',
+});
+
+export function companionCliForSurface(surfaceId: AiSurfaceId): CompanionCliSurfaceId | null {
+  return AI_SURFACE_COMPANION_CLIS[surfaceId]
+    ?? (surfaceId.endsWith('-cli') ? surfaceId as CompanionCliSurfaceId : null);
 }
 
 export interface SurfaceProbe {
@@ -3562,20 +3584,32 @@ export function serializeAiSurfaceInventory(
       projectDirectory: inventory.projectDirectory,
       preferredSurface: inventory.preferredSurface,
       recommendedSurface: inventory.recommendedSurface,
-      surfaces: AI_SURFACES.map((definition, index) => ({
-        id: definition.id,
-        name: definition.name,
-        provider: definition.provider,
-        kind: definition.kind,
-        installUrl: definition.installUrl,
-        launchSupport: canonicalDetected[index].launchSupport,
-        capabilities: [...canonicalDetected[index].capabilities],
-        installed: canonicalDetected[index].installed,
-        recommended: canonicalDetected[index].recommended,
-        previouslyUsed: canonicalDetected[index].previouslyUsed,
-        status: canonicalDetected[index].status,
-        nextAction: canonicalDetected[index].nextAction,
-      })),
+      surfaces: AI_SURFACES.map((definition, index) => {
+        const companionCli = AI_SURFACE_COMPANION_CLIS[definition.id];
+        const companion = companionCli
+          ? canonicalDetected.find((surface) => surface.id === companionCli)
+          : undefined;
+        return {
+          id: definition.id,
+          name: definition.name,
+          provider: definition.provider,
+          kind: definition.kind,
+          installUrl: definition.installUrl,
+          launchSupport: canonicalDetected[index].launchSupport,
+          capabilities: [...canonicalDetected[index].capabilities],
+          installed: canonicalDetected[index].installed,
+          recommended: canonicalDetected[index].recommended,
+          previouslyUsed: canonicalDetected[index].previouslyUsed,
+          status: canonicalDetected[index].status,
+          nextAction: canonicalDetected[index].nextAction,
+          ...(companionCli && companion ? {
+            companionCli,
+            companionCliInstalled: companion.installed,
+            companionCliStatus: companion.installed ? 'ready' as const : 'not-installed' as const,
+            companionCliError: null,
+          } : {}),
+        };
+      }),
     };
   }
 
