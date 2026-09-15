@@ -1,0 +1,277 @@
+# Industry Variant Templates for Journey Generation
+#
+# These templates define industry-specific patterns and innovations
+# that can be applied when generating journey variants.
+#
+# @see spec.md FR-017 through FR-020
+
+industries:
+  retail:
+    name: Retail
+    keywords:
+      - shopping
+      - cart
+      - checkout
+      - inventory
+      - product catalog
+    patterns:
+      - Abandoned cart recovery
+      - Personalized recommendations
+      - Loyalty programs
+      - Omnichannel experience
+      - Real-time inventory sync
+    innovations:
+      - AI-powered virtual try-on
+      - Voice commerce integration
+      - AR product visualization
+      - Predictive inventory management
+      - Hyper-personalization via ML
+    touchpoints:
+      - Mobile app
+      - Website
+      - In-store kiosk
+      - Customer service chat
+      - Email/SMS notifications
+
+  healthcare:
+    name: Healthcare
+    keywords:
+      - patient
+      - appointment
+      - medical
+      - health records
+      - diagnosis
+    patterns:
+      - Patient portal access
+      - Appointment scheduling
+      - Secure messaging
+      - Prescription management
+      - Telehealth visits
+    innovations:
+      - AI symptom checker
+      - Remote patient monitoring
+      - Predictive health analytics
+      - Natural language clinical notes
+      - Drug interaction AI
+    touchpoints:
+      - Patient portal
+      - Mobile health app
+      - Wearable devices
+      - Video consultation
+      - Pharmacy integration
+
+  finance:
+    name: Finance
+    keywords:
+      - account
+      - transaction
+      - payment
+      - investment
+      - loan
+    patterns:
+      - Multi-factor authentication
+      - Real-time fraud detection
+      - Budget tracking
+      - Automated savings
+      - Investment portfolio management
+    innovations:
+      - AI-powered financial advisor
+      - Predictive spending insights
+      - Voice-activated banking
+      - Blockchain verification
+      - Biometric authentication
+    touchpoints:
+      - Mobile banking app
+      - Web portal
+      - ATM
+      - Customer service
+      - Third-party fintech integrations
+
+  education:
+    name: Education
+    keywords:
+      - student
+      - course
+      - learning
+      - assessment
+      - curriculum
+    patterns:
+      - Learning management system
+      - Progress tracking
+      - Peer collaboration
+      - Assignment submission
+      - Grade reporting
+    innovations:
+      - Adaptive learning AI
+      - AI tutoring assistants
+      - VR/AR learning experiences
+      - Automated essay feedback
+      - Learning path optimization
+    touchpoints:
+      - LMS platform
+      - Mobile learning app
+      - Video conferencing
+      - Discussion forums
+      - Parent portal
+
+  hospitality:
+    name: Hospitality
+    keywords:
+      - booking
+      - reservation
+      - guest
+      - room
+      - amenity
+    patterns:
+      - Online booking
+      - Digital check-in/out
+      - Room service ordering
+      - Loyalty rewards
+      - Guest preferences
+    innovations:
+      - AI concierge service
+      - Smart room controls
+      - Facial recognition check-in
+      - Predictive maintenance
+      - Dynamic pricing AI
+    touchpoints:
+      - Booking website
+      - Mobile app
+      - In-room tablet
+      - Front desk kiosk
+      - Voice assistant
+
+  logistics:
+    name: Logistics
+    keywords:
+      - shipment
+      - tracking
+      - delivery
+      - warehouse
+      - supply chain
+    patterns:
+      - Real-time tracking
+      - Route optimization
+      - Inventory management
+      - Returns processing
+      - Proof of delivery
+    innovations:
+      - AI demand forecasting
+      - Autonomous delivery vehicles
+      - Drone delivery
+      - Digital twin warehouses
+      - Predictive maintenance for fleet
+    touchpoints:
+      - Tracking portal
+      - Driver mobile app
+      - Warehouse management system
+      - Customer notifications
+      - API integrations
+
+  manufacturing:
+    name: Manufacturing
+    keywords:
+      - production
+      - quality
+      - assembly
+      - equipment
+      - maintenance
+    patterns:
+      - Production scheduling
+      - Quality control
+      - Equipment monitoring
+      - Supply chain visibility
+      - Work order management
+    innovations:
+      - Predictive maintenance AI
+      - Digital twin simulation
+      - Computer vision QC
+      - Cobots (collaborative robots)
+      - Generative design AI
+    touchpoints:
+      - Shop floor terminals
+      - SCADA systems
+      - Mobile maintenance app
+      - ERP integration
+      - Supplier portal
+
+  legal:
+    name: Legal
+    keywords:
+      - case
+      - document
+      - contract
+      - client
+      - billing
+    patterns:
+      - Case management
+      - Document version control
+      - Time tracking
+      - Client portal
+      - E-discovery
+    innovations:
+      - AI contract analysis
+      - Legal research AI
+      - Predictive case outcomes
+      - Automated document assembly
+      - NLP for document review
+    touchpoints:
+      - Case management system
+      - Client portal
+      - Document management
+      - Billing system
+      - Court filing integration
+
+  real_estate:
+    name: Real Estate
+    keywords:
+      - property
+      - listing
+      - showing
+      - offer
+      - closing
+    patterns:
+      - Property search
+      - Virtual tours
+      - Offer management
+      - Document signing
+      - Closing coordination
+    innovations:
+      - AI property valuation
+      - VR property tours
+      - Predictive market analysis
+      - Automated lead scoring
+      - Smart contract closings
+    touchpoints:
+      - Property portal
+      - Mobile app
+      - Virtual tour platform
+      - E-signature system
+      - MLS integration
+
+  entertainment:
+    name: Entertainment
+    keywords:
+      - content
+      - streaming
+      - ticket
+      - event
+      - subscription
+    patterns:
+      - Content discovery
+      - Personalized recommendations
+      - Social sharing
+      - Subscription management
+      - Event ticketing
+    innovations:
+      - AI content curation
+      - Interactive streaming
+      - AR/VR experiences
+      - AI-generated content
+      - Dynamic ad personalization
+    touchpoints:
+      - Streaming app
+      - Smart TV app
+      - Mobile app
+      - Social media integration
+      - Ticketing platform

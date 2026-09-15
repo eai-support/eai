@@ -584,6 +584,12 @@ provider startup or project handoff. In JSON, `launched` remains as an EAI Setup
 contract for Setup 0.3.19, while current Setup explicitly requests v2 with
 `--contract-version v2`.
 
+Each graphical v2 entry reports its required CLI and verified installation
+state. `eai start --surface <graphical-id> --install` quietly installs or
+updates that CLI, then runs trusted detection again. A missing desktop app can
+open its official page. If quiet installation cannot complete, EAI opens or
+returns the official URL for visible password, consent, terms, or sign-in work.
+
 `eai start --check` never executes a provider binary. Desktop detection binds
 macOS/Windows signatures or Linux package ownership, architecture, repository,
 and signing keys; unsigned Linux portable apps require catalogued immutable

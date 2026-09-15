@@ -7,17 +7,58 @@ description: 'Task list template for feature implementation'
 **Input**: Design documents from `.specify/specs/[###-feature-name]/`
 
 **Prerequisites**: plan.md (required), spec.md (required for user stories),
-research.md, data-model.md, contracts/
+research.md, goal-ledger.json, data-model.md, contracts/
 
 **Note**: This template is filled in by `/4_gofer_tasks` (or legacy
-`/4_gofer_tasks`). Recommended: Use `/0_business_scenario` to auto-chain the
-entire pipeline.
+`/4_gofer_tasks`). Recommended: Use `/0_gofer_start` to auto-chain the entire
+pipeline.
+
+> **EAI CLI Version Pin** (enterpriseai profile only): deployment tasks in this
+> list inherit the `major.minor` pin recorded in `plan.md` so builds in CI and
+> on developer machines use the same `eai` toolchain. Standard-profile runs
+> ignore this section.
 
 **Tests**: The examples below include test tasks. Tests are OPTIONAL - only
 include them if explicitly requested in the feature specification.
 
+**Priority protection**: Maintain `priority-plan.json` from its template. Record
+the latest approved direction in `decisions.md`, the ordered critical path,
+dependencies and `allowedEditScope` per task. Place the first outcome proof
+after its minimum runtime prerequisites. Record approval for independent
+parallel work. Use `.specify/references/priority-outcome-protection.md`; retain
+all later release checks and do not add future auth or deployment requirements
+to local MVP work.
+
 **Organization**: Tasks are grouped by user story to enable independent
 implementation and testing of each story.
+
+## App-Delivery Preconditions
+
+When the feature is classified as application delivery, tasks must preserve the
+shared numbered stages **and** enforce these prerequisites before downstream
+implementation:
+
+- `goal-ledger.json` exists and records goals, metrics, delivery states, and
+  re-loop triggers
+- `ui-show-and-tell.md` exists and records what was shown to the user, where it
+  opened, feedback received, and unresolved UX issues
+- `service-fit-matrix.md` exists and distinguishes accessible now, purchasable,
+  and unavailable platform capabilities
+- normal build tasks use the EAI app template, EAI platform services, and
+  Azure-compatible support services before any custom or third-party app
+  substrate
+- preview work stays inside selected EAI App Template blocks unless an exception
+  task is recorded
+- package lane, coupling status, Storybook story IDs, theme override points,
+  custom-block exceptions, and external/internal/hybrid profile choice are
+  recorded before UI implementation tasks begin
+
+External and hybrid profiles must include first-class public-readiness,
+block-porting, and source-platform decoupling tasks before user-story
+implementation.
+
+For explicit non-app work, mark this section "Not applicable" and continue with
+the shared stages without app-only show-and-tell/service-fit prerequisites.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -77,6 +118,16 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] T007 Create base models/entities that all stories depend on
 - [ ] T008 Configure error handling and logging infrastructure
 - [ ] T009 Setup environment configuration management
+- [ ] T010 Lock external/internal/hybrid package profile and package lane from
+      `ui-preview-brief.md`
+- [ ] T011 Run `eai --describe`, `eai blocks list`, `eai blocks describe <id>`,
+      and `eai resources schema`; record block IDs, resource bindings, coupling
+      status, Storybook story IDs, theme override points, and custom-block
+      exceptions
+- [ ] T012 Update `goal-ledger.json` with planned requirement, task, code, and
+      test links plus any new delivery-state promotion criteria
+- [ ] T013 Add block-porting, source-platform decoupling, and public-readiness
+      work for external or hybrid package lanes
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in
 parallel
@@ -200,6 +251,11 @@ independently
   with US1/US2 but should be independently testable
 
 ### Within Each User Story
+
+- Reference the supporting goal IDs, requirement IDs, and planned code/test
+  files in `traceability.md`
+- Keep `goal-ledger.json` current whenever a task changes the target metric,
+  owner, delivery state, or re-loop trigger
 
 - Tests (if included) MUST be written and FAIL before implementation
 - Models before services

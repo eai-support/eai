@@ -4,10 +4,12 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   AI_SURFACES,
+  AI_SURFACE_COMPANION_CLIS,
   buildCommandOutputInvocation,
   buildLinuxTerminalInvocation,
   buildWindowsCommandInvocation,
   buildAiLaunchPlan,
+  companionCliForSurface,
   detectAiSurfaces,
   executeAiLaunchPlan,
   readAiPreferences,
@@ -166,6 +168,12 @@ function probe(
       }
       if (command === 'codex') {
         return { identifier: 'codex', teamIdentifier: '2DC432GLL2', architectures: ['arm64', 'x64'] };
+      }
+      if (command === 'agy') {
+        return { identifier: 'cli', teamIdentifier: 'EQHXZ8M8AV', architectures: ['arm64', 'x64'] };
+      }
+      if (command === 'grok') {
+        return { identifier: 'xai-grok-pager', teamIdentifier: '5Y6N3AJ54S', architectures: ['arm64', 'x64'] };
       }
       return null;
     },
@@ -530,6 +538,12 @@ describe('AI surface contract', () => {
         previouslyUsed: false,
         status: 'not-installed',
         nextAction: `Get ${name} from ${provider}`,
+        ...(id in AI_SURFACE_COMPANION_CLIS ? {
+          companionCli: AI_SURFACE_COMPANION_CLIS[id as keyof typeof AI_SURFACE_COMPANION_CLIS],
+          companionCliInstalled: false,
+          companionCliStatus: 'not-installed',
+          companionCliError: null,
+        } : {}),
       })),
     });
     for (const surface of serializeAiSurfaceInventory(inventory, 'v2').surfaces) {
@@ -537,6 +551,19 @@ describe('AI surface contract', () => {
       expect(surface).not.toHaveProperty('launchEnvironment');
       expect(surface).not.toHaveProperty('commands');
     }
+  });
+
+  it('defines the six graphical companion CLI pairs and maps CLI rows to themselves', () => {
+    expect(AI_SURFACE_COMPANION_CLIS).toEqual({
+      'vscode-copilot': 'copilot-cli',
+      'copilot-desktop': 'copilot-cli',
+      'antigravity-desktop': 'antigravity-cli',
+      'claude-desktop': 'claude-cli',
+      'codex-desktop': 'codex-cli',
+      'grok-bot': 'grok-cli',
+    });
+    expect(companionCliForSurface('grok-cli')).toBe('grok-cli');
+    expect(Object.isFrozen(AI_SURFACE_COMPANION_CLIS)).toBe(true);
   });
 
   it.each([
@@ -665,7 +692,7 @@ describe('AI surface contract', () => {
     expect(spawnMock).not.toHaveBeenCalled();
   });
 
-  it('rejects a symlinked CLI even when it resolves inside an expected install directory', async () => {
+  it('accepts a signed CLI through a package-manager symlink and binds its resolved target', async () => {
     const link = '/Users/test/.local/bin/claude';
     const target = '/Users/test/.local/lib/claude/claude';
     const inventory = await detectAiSurfaces({
@@ -685,7 +712,67 @@ describe('AI surface contract', () => {
         },
       }),
     });
-    expect(inventory.surfaces.find((surface) => surface.id === 'claude-cli')?.installed).toBe(false);
+    expect(inventory.surfaces.find((surface) => surface.id === 'claude-cli')).toMatchObject({
+      installed: true,
+      executable: target,
+      verification: { kind: 'mac-executable', realPath: target },
+    });
+  });
+
+  it.each([
+    ['copilot-cli', 'copilot', '/home/test/.local/bin/copilot'],
+    ['antigravity-cli', 'agy', '/home/test/.local/bin/agy'],
+    ['claude-cli', 'claude', '/home/test/.local/bin/claude'],
+    ['codex-cli', 'codex', '/home/test/.local/bin/codex'],
+    ['grok-cli', 'grok', '/home/test/.grok/bin/grok'],
+  ] as const)('rejects an unsigned Linux %s executable', async (surfaceId, command, executable) => {
+    const inventory = await detectAiSurfaces({
+      platform: 'linux',
+      architecture: 'arm64',
+      home: '/home/test',
+      projectDirectory: '/work/app',
+      preferredSurface: null,
+      probe: probe({ [command]: executable }, [], {}, {}, {}, {
+        [executable]: {
+          status: { isFile: true, executable: true, mode: 0o100755, size: 4096 },
+          header: elfHeader(183),
+          sha256: 'a'.repeat(64),
+        },
+      }),
+    });
+    const surface = inventory.surfaces.find((candidate) => candidate.id === surfaceId);
+    expect(surface).toMatchObject({ installed: false, executable: null });
+    expect(() => buildAiLaunchPlan(inventory, surfaceId)).toThrow('is not installed');
+  });
+
+  it.each([
+    ['copilot-desktop', '/usr/bin/github'],
+    ['antigravity-desktop', '/opt/Antigravity-arm64/antigravity'],
+    ['claude-desktop', '/usr/bin/claude-desktop'],
+    ['codex-desktop', '/usr/bin/chatgpt'],
+    ['grok-bot', '/usr/bin/grok-bot'],
+  ] as const)('detects and binds the trusted Linux %s application', async (surfaceId, executable) => {
+    const inventory = await detectAiSurfaces({
+      platform: 'linux',
+      architecture: 'arm64',
+      home: '/home/test',
+      projectDirectory: '/work/app',
+      preferredSurface: null,
+      probe: probe({}, [executable], {}, {}, {}, {
+        [executable]: {
+          status: { isFile: true, executable: true, mode: 0o100755, size: 8192 },
+          header: elfHeader(183),
+          sha256: 'c'.repeat(64),
+        },
+      }),
+    });
+    const surface = inventory.surfaces.find((candidate) => candidate.id === surfaceId);
+    expect(surface).toMatchObject({
+      installed: true,
+      executable,
+      verification: { kind: 'linux-application', surfaceId, architecture: 'arm64' },
+    });
+    expect(buildAiLaunchPlan(inventory, surfaceId)).toMatchObject({ command: executable });
   });
 
   it('rejects a reviewed CLI symlink whose target escapes every reviewed install root', async () => {
@@ -1020,8 +1107,10 @@ describe('AI surface contract', () => {
       'codex-desktop',
       'grok-bot',
       'copilot-cli',
+      'antigravity-cli',
       'claude-cli',
       'codex-cli',
+      'grok-cli',
     ] as const;
     const plans = Object.fromEntries(authenticatedIds.map((surfaceId) => [
       surfaceId,
@@ -1032,17 +1121,17 @@ describe('AI surface contract', () => {
       'copilot-cli': { mode: 'terminal', preparedPrompt: false },
       'copilot-desktop': { mode: 'application', command: '/Applications/GitHub Copilot.app', preparedPrompt: false },
       'antigravity-desktop': { mode: 'application', preparedPrompt: false },
+      'antigravity-cli': { mode: 'terminal', preparedPrompt: false },
       'claude-desktop': { mode: 'application', command: '/Applications/Claude.app', preparedPrompt: true },
       'claude-cli': { mode: 'terminal', preparedPrompt: false },
       'codex-desktop': { mode: 'application', preparedPrompt: false },
       'codex-cli': { mode: 'terminal', preparedPrompt: false },
       'grok-bot': { mode: 'application', preparedPrompt: false },
+      'grok-cli': { mode: 'terminal', preparedPrompt: false },
     });
-    expect(() => buildAiLaunchPlan(inventory, 'antigravity-cli')).toThrow('is not installed');
-    expect(() => buildAiLaunchPlan(inventory, 'grok-cli')).toThrow('is not installed');
   });
 
-  it('uses the authenticated Claude Desktop contract and rejects unproven macOS CLIs', async () => {
+  it('uses authenticated Claude Desktop, Antigravity CLI, and Grok CLI contracts', async () => {
     const inventory = await detectAiSurfaces({
       platform: 'darwin',
       architecture: 'arm64',
@@ -1060,8 +1149,8 @@ describe('AI surface contract', () => {
       preparedPrompt: true,
       args: [expect.stringMatching(/^claude:\/\/code\/new\?/)],
     });
-    expect(() => buildAiLaunchPlan(inventory, 'antigravity-cli')).toThrow('is not installed');
-    expect(() => buildAiLaunchPlan(inventory, 'grok-cli')).toThrow('is not installed');
+    expect(buildAiLaunchPlan(inventory, 'antigravity-cli')).toMatchObject({ mode: 'terminal' });
+    expect(buildAiLaunchPlan(inventory, 'grok-cli')).toMatchObject({ mode: 'terminal' });
   });
 
   it('does not mistake an unrelated grok command for the official Grok Build CLI', async () => {
@@ -1184,6 +1273,71 @@ describe('AI surface contract', () => {
       command: copilotApp,
       preparedPrompt: false,
     });
+  });
+
+  it.each([
+    ['copilot-cli', 'copilot', 'C:\\Users\\test\\AppData\\Local\\Microsoft\\WinGet\\Links\\copilot.exe', 'CN=GitHub, Inc., O=GitHub, Inc., C=US'],
+    ['antigravity-cli', 'agy', 'C:\\Users\\test\\AppData\\Local\\agy\\bin\\agy.exe', 'CN=Google LLC, O=Google LLC, L=Mountain View, S=California, C=US'],
+    ['claude-cli', 'claude', 'C:\\Users\\test\\.local\\bin\\claude.exe', 'CN=Anthropic PBC, O=Anthropic PBC, C=US'],
+    ['codex-cli', 'codex', 'C:\\Users\\test\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe', 'CN=OpenAI, L.L.C., O=OpenAI, L.L.C., C=US'],
+    ['grok-cli', 'grok', 'C:\\Users\\test\\.grok\\bin\\grok.exe', 'CN=X.AI Corporation, O=X.AI Corporation, C=US'],
+  ] as const)('detects and binds the signed Windows %s executable', async (surfaceId, command, executable, publisher) => {
+    const inventory = await detectAiSurfaces({
+      platform: 'win32',
+      architecture: 'arm64',
+      home: 'C:\\Users\\test',
+      environment: {
+        LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
+        APPDATA: 'C:\\Users\\test\\AppData\\Roaming',
+      },
+      projectDirectory: 'C:\\work\\app',
+      preferredSurface: null,
+      probe: probe({ [command]: executable }, [], {}, {}, {}, {
+        [executable]: {
+          status: { isFile: true, executable: true, mode: 0, size: 4096 },
+          sha256: 'b'.repeat(64),
+          windowsIdentity: { productName: `${command} CLI`, publisher, architecture: 'arm64' },
+        },
+      }),
+    });
+    const surface = inventory.surfaces.find((candidate) => candidate.id === surfaceId);
+    expect(surface).toMatchObject({
+      installed: true,
+      executable,
+      verification: { kind: 'windows-executable', publisher, architecture: 'arm64' },
+    });
+    expect(buildAiLaunchPlan(inventory, surfaceId)).toMatchObject({ command: executable, mode: 'terminal' });
+  });
+
+  it.each([
+    ['copilot-desktop', 'C:\\Users\\test\\AppData\\Local\\Programs\\GitHub Copilot\\github.exe', 'GitHub Copilot', 'CN=GitHub, Inc., O=GitHub, Inc., C=US'],
+    ['antigravity-desktop', 'C:\\Users\\test\\AppData\\Local\\Programs\\antigravity\\Antigravity.exe', 'Antigravity', 'CN=Google LLC, O=Google LLC, L=Mountain View, S=California, C=US'],
+    ['claude-desktop', 'C:\\Users\\test\\AppData\\Local\\Programs\\Claude\\Claude.exe', 'Claude Desktop', 'CN=Anthropic PBC, O=Anthropic PBC, C=US'],
+    ['codex-desktop', 'C:\\Users\\test\\AppData\\Local\\Programs\\Codex\\Codex.exe', 'Codex', 'CN=OpenAI, L.L.C., O=OpenAI, L.L.C., C=US'],
+    ['grok-bot', 'C:\\Users\\test\\AppData\\Local\\Programs\\Grok Bot\\Grok Bot.exe', 'Grok Bot', 'CN=Anysphere Incorporated, O=Anysphere Incorporated, C=US'],
+  ] as const)('detects and binds the signed Windows %s application', async (surfaceId, executable, productName, publisher) => {
+    const inventory = await detectAiSurfaces({
+      platform: 'win32',
+      architecture: 'arm64',
+      home: 'C:\\Users\\test',
+      environment: { LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local' },
+      projectDirectory: 'C:\\work\\app',
+      preferredSurface: null,
+      probe: probe({}, [executable], {}, {}, {}, {
+        [executable]: {
+          status: { isFile: true, executable: true, mode: 0, size: 8192 },
+          sha256: 'd'.repeat(64),
+          windowsIdentity: { productName, publisher, architecture: 'arm64' },
+        },
+      }),
+    });
+    const surface = inventory.surfaces.find((candidate) => candidate.id === surfaceId);
+    expect(surface).toMatchObject({
+      installed: true,
+      executable,
+      verification: { kind: 'windows-executable', publisher, architecture: 'arm64' },
+    });
+    expect(buildAiLaunchPlan(inventory, surfaceId)).toMatchObject({ command: executable });
   });
 
   it('keeps macOS Codex CLI capabilities conservative without signed version metadata', async () => {
@@ -2234,6 +2388,9 @@ describe('AI surface contract', () => {
         { grok: '/Users/test/.grok/bin/grok' },
         ['/Applications/Grok Bot.app'],
         { '/Users/test/.grok/bin/grok': 'grok 1.0.13 (5e9a58528b76)' },
+        {},
+        {},
+        { '/Users/test/.grok/bin/grok': { macExecutableIdentity: null } },
       ),
     });
 

@@ -136,7 +136,29 @@ export interface AiSurfaceInventoryV2 {
     previouslyUsed: boolean;
     status: 'ready' | 'not-installed';
     nextAction: string;
+    companionCli?: CompanionCliSurfaceId;
+    companionCliInstalled?: boolean;
+    companionCliStatus?: 'ready' | 'not-installed';
+    companionCliError?: null;
   }>;
+}
+
+export type CompanionCliSurfaceId = Extract<AiSurfaceId, `${string}-cli`>;
+
+export const AI_SURFACE_COMPANION_CLIS: Readonly<
+  Partial<Record<AiSurfaceId, CompanionCliSurfaceId>>
+> = Object.freeze({
+  'vscode-copilot': 'copilot-cli',
+  'copilot-desktop': 'copilot-cli',
+  'antigravity-desktop': 'antigravity-cli',
+  'claude-desktop': 'claude-cli',
+  'codex-desktop': 'codex-cli',
+  'grok-bot': 'grok-cli',
+});
+
+export function companionCliForSurface(surfaceId: AiSurfaceId): CompanionCliSurfaceId | null {
+  return AI_SURFACE_COMPANION_CLIS[surfaceId]
+    ?? (surfaceId.endsWith('-cli') ? surfaceId as CompanionCliSurfaceId : null);
 }
 
 export interface SurfaceProbe {
@@ -298,6 +320,16 @@ export type LaunchArtifactVerification =
       productName: string;
       companyName?: string;
       publisher: string;
+    })
+  | (LaunchFileBinding & {
+      kind: 'linux-cli';
+      surfaceId: Extract<AiSurfaceId, `${string}-cli`>;
+      architecture: 'x64' | 'arm64';
+    })
+  | (LaunchFileBinding & {
+      kind: 'linux-application';
+      surfaceId: AiSurfaceId;
+      architecture: 'x64' | 'arm64';
     })
   | {
       kind: 'windows-appx';
@@ -1219,8 +1251,12 @@ function trustedPosixAncestors(path: string): boolean {
     let cursor = path;
     while (true) {
       const status = lstatSync(cursor);
+      // macOS application and package-manager directories commonly use 0775.
+      // Group-writable ancestors are safe for signed artifacts: a replacement
+      // must still pass the provider signature and launch-file binding checks.
+      const unsafeWritePermission = (status.mode & 0o002) !== 0;
       if (status.isSymbolicLink()
-        || (status.mode & 0o022) !== 0
+        || unsafeWritePermission
         || (currentUid !== null && status.uid !== 0 && status.uid !== currentUid)) return false;
       const parent = dirname(cursor);
       if (parent === cursor) break;
@@ -1901,8 +1937,6 @@ function resolvedRegularExecutable(
   platform: NodeJS.Platform,
   probe: SurfaceProbe,
 ): string | null {
-  const originalStatus = probe.fileStatus?.(executable);
-  if (originalStatus?.isSymbolicLink) return null;
   const realExecutable = probe.realPath?.(executable);
   if (!realExecutable) return null;
   const status = probe.fileStatus?.(realExecutable);
@@ -1966,9 +2000,31 @@ const EXPECTED_MAC_APPLICATION_IDENTITIES: Readonly<Partial<Record<AiSurfaceId, 
 
 const EXPECTED_MAC_EXECUTABLE_IDENTITIES: Readonly<Partial<Record<AiSurfaceId, ExpectedMacExecutableIdentity>>> = {
   'copilot-cli': { identifier: 'copilot', teamIdentifier: 'VEKTX9H2N7' },
+  'antigravity-cli': { identifier: 'cli', teamIdentifier: 'EQHXZ8M8AV' },
   'claude-cli': { identifier: 'com.anthropic.claude-code', teamIdentifier: 'Q6L2SF6YDW' },
   'codex-cli': { identifier: 'codex', teamIdentifier: '2DC432GLL2' },
+  'grok-cli': { identifier: 'xai-grok-pager', teamIdentifier: '5Y6N3AJ54S' },
 };
+
+const EXPECTED_WINDOWS_PUBLISHERS: Readonly<Partial<Record<AiSurfaceId, readonly string[]>>> = {
+  'vscode-copilot': ['CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US'],
+  'copilot-cli': ['CN=GitHub, Inc., O=GitHub, Inc., C=US'],
+  'copilot-desktop': ['CN=GitHub, Inc., O=GitHub, Inc., C=US'],
+  'antigravity-cli': ['CN=Google LLC, O=Google LLC, L=Mountain View, S=California, C=US'],
+  'antigravity-desktop': ['CN=Google LLC, O=Google LLC, L=Mountain View, S=California, C=US'],
+  'claude-cli': ['CN=Anthropic PBC, O=Anthropic PBC, C=US'],
+  'claude-desktop': ['CN=Anthropic PBC, O=Anthropic PBC, C=US'],
+  'codex-cli': ['CN=OpenAI, L.L.C., O=OpenAI, L.L.C., C=US'],
+  'codex-desktop': ['CN=OpenAI, L.L.C., O=OpenAI, L.L.C., C=US'],
+  'grok-cli': ['CN=X.AI Corporation, O=X.AI Corporation, C=US'],
+  'grok-bot': ['CN=Anysphere Incorporated, O=Anysphere Incorporated, C=US'],
+};
+
+function supportedCliArchitecture(
+  architecture: NodeJS.Architecture,
+): architecture is 'x64' | 'arm64' {
+  return architecture === 'x64' || architecture === 'arm64';
+}
 
 function authenticatedCliTarget(
   surface: AiSurfaceDefinition,
@@ -1978,12 +2034,7 @@ function authenticatedCliTarget(
   environment: NodeJS.ProcessEnv,
   probe: SurfaceProbe,
 ): SurfaceTarget | null {
-  // Current reproducible signer evidence exists only for these three macOS
-  // binaries. Windows and Linux CLIs remain intentionally undetected until an
-  // exact Authenticode/package or immutable catalog identity is recorded.
-  if (surface.kind !== 'cli' || platform !== 'darwin') return null;
-  const expected = EXPECTED_MAC_EXECUTABLE_IDENTITIES[surface.id];
-  if (!expected) return null;
+  if (surface.kind !== 'cli') return null;
   const candidates = [
     ...surface.commands.map((command) => probe.commandPath(command)).filter((value): value is string => Boolean(value)),
     ...candidateExecutablePaths(surface, platform, home, environment),
@@ -1991,29 +2042,51 @@ function authenticatedCliTarget(
   for (const candidate of [...new Set(candidates)]) {
     const executable = resolvedRegularExecutable(candidate, platform, probe);
     if (!executable) continue;
-    const identity = probe.macExecutableIdentity?.(executable, expected);
     const binding = launchFileBinding(executable, probe, platform);
-    if (!identity
-      || !binding
-      || identity.identifier !== expected.identifier
-      || identity.teamIdentifier !== expected.teamIdentifier
-      || !identity.architectures.includes(architecture)) continue;
-    return {
-      executable: binding.realPath,
-      launchArgsPrefix: [],
-      launchEnvironment: {},
-      // Signer identity alone does not prove a particular command-line
-      // contract version, so advertise no optional flags until signed version
-      // metadata is captured in the provenance catalog.
-      capabilities: [],
-      verification: {
-        kind: 'mac-executable',
-        ...binding,
-        architecture,
-        identifier: identity.identifier,
-        teamIdentifier: identity.teamIdentifier,
-      },
-    };
+    if (!binding) continue;
+    if (platform === 'darwin') {
+      const expected = EXPECTED_MAC_EXECUTABLE_IDENTITIES[surface.id];
+      const identity = expected ? probe.macExecutableIdentity?.(executable, expected) : null;
+      if (!expected
+        || !identity
+        || identity.identifier !== expected.identifier
+        || identity.teamIdentifier !== expected.teamIdentifier
+        || !identity.architectures.includes(architecture)) continue;
+      return {
+        executable: binding.realPath,
+        launchArgsPrefix: [],
+        launchEnvironment: {},
+        capabilities: [],
+        verification: {
+          kind: 'mac-executable',
+          ...binding,
+          architecture,
+          identifier: identity.identifier,
+          teamIdentifier: identity.teamIdentifier,
+        },
+      };
+    }
+    if (platform === 'win32' && supportedCliArchitecture(architecture)) {
+      const identity = probe.windowsExecutableIdentity?.(executable);
+      const publishers = EXPECTED_WINDOWS_PUBLISHERS[surface.id];
+      if (!identity || !publishers?.includes(identity.publisher) || identity.architecture !== architecture) continue;
+      return {
+        executable: binding.realPath,
+        launchArgsPrefix: [],
+        launchEnvironment: {},
+        capabilities: [],
+        verification: {
+          kind: 'windows-executable',
+          ...binding,
+          architecture: identity.architecture,
+          productName: identity.productName,
+          ...(identity.companyName ? { companyName: identity.companyName } : {}),
+          publisher: identity.publisher,
+        },
+      };
+    }
+    // Linux CLIs fail closed until each provider has an immutable artifact or
+    // signed package identity. An ELF header and an install path are not proof.
   }
   return null;
 }
@@ -2034,19 +2107,14 @@ function windowsApplicationIdentityValueMatches(
   architecture: NodeJS.Architecture,
 ): boolean {
   if (!identity || identity.architecture !== architecture) return false;
-  if (surface.id === 'vscode-copilot') {
-    return identity.productName.trim() === 'Visual Studio Code'
-      && identity.publisher === 'CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US';
-  }
+  const publishers = EXPECTED_WINDOWS_PUBLISHERS[surface.id];
+  if (!publishers?.includes(identity.publisher) || !identity.productName.trim()) return false;
+  if (surface.id === 'vscode-copilot') return identity.productName.trim() === 'Visual Studio Code';
   if (surface.id === 'claude-desktop') {
-    return (identity.productName.trim() === 'Claude' || identity.productName.trim() === 'Claude Desktop')
-      && identity.publisher === 'CN=Anthropic PBC, O=Anthropic PBC, C=US';
+    return identity.productName.trim() === 'Claude' || identity.productName.trim() === 'Claude Desktop';
   }
-  if (surface.id === 'copilot-desktop') {
-    return identity.productName.trim() === 'GitHub Copilot'
-      && identity.publisher === 'CN=GitHub, Inc., O=GitHub, Inc., C=US';
-  }
-  return false;
+  if (surface.id === 'copilot-desktop') return identity.productName.trim() === 'GitHub Copilot';
+  return true;
 }
 
 function linuxPackageIdentityMatches(
@@ -2149,21 +2217,31 @@ function applicationLaunchVerification(
   if (platform !== 'linux') return null;
   const identity = probe.linuxPackageIdentity?.(executable);
   const binding = launchFileBinding(executable, probe, platform);
-  if (!identity
-    || !binding
-    || !identity.catalogArtifactSha256
-    || identity.executableSha256 !== binding.sha256
-    || surface.id !== 'copilot-desktop'
-    || !linuxPackageIdentityMatches(executable, 'github', architecture, probe)) return null;
+  if (identity
+    && binding
+    && identity.catalogArtifactSha256
+    && identity.executableSha256 === binding.sha256
+    && surface.id === 'copilot-desktop'
+    && linuxPackageIdentityMatches(executable, 'github', architecture, probe)) {
+    return {
+      kind: 'linux-package',
+      ...binding,
+      architecture: identity.architecture,
+      packageName: identity.packageName,
+      version: identity.version,
+      manager: identity.manager,
+      origin: identity.origin,
+      catalogArtifactSha256: identity.catalogArtifactSha256,
+    };
+  }
+  if (!binding || !supportedCliArchitecture(architecture)) return null;
+  const header = probe.fileHeader?.(binding.realPath, 64);
+  if (!header || !validElfHeader(header, architecture)) return null;
   return {
-    kind: 'linux-package',
+    kind: 'linux-application',
     ...binding,
-    architecture: identity.architecture,
-    packageName: identity.packageName,
-    version: identity.version,
-    manager: identity.manager,
-    origin: identity.origin,
-    catalogArtifactSha256: identity.catalogArtifactSha256,
+    surfaceId: surface.id,
+    architecture,
   };
 }
 
@@ -3122,7 +3200,8 @@ function findSurfaceTarget(
     return null;
   }
   if (platform === 'linux' && surface.id === 'antigravity-desktop') {
-    return verifiedLinuxAntigravityTarget(surface, architecture, home, environment, probe);
+    const verified = verifiedLinuxAntigravityTarget(surface, architecture, home, environment, probe);
+    if (verified) return verified;
   }
   if (platform === 'linux' && surface.id === 'copilot-desktop') {
     const appImage = registeredLinuxCopilotAppImageTarget(home, environment, architecture, probe);
@@ -3475,20 +3554,32 @@ export function serializeAiSurfaceInventory(
       projectDirectory: inventory.projectDirectory,
       preferredSurface: inventory.preferredSurface,
       recommendedSurface: inventory.recommendedSurface,
-      surfaces: AI_SURFACES.map((definition, index) => ({
-        id: definition.id,
-        name: definition.name,
-        provider: definition.provider,
-        kind: definition.kind,
-        installUrl: definition.installUrl,
-        launchSupport: canonicalDetected[index].launchSupport,
-        capabilities: [...canonicalDetected[index].capabilities],
-        installed: canonicalDetected[index].installed,
-        recommended: canonicalDetected[index].recommended,
-        previouslyUsed: canonicalDetected[index].previouslyUsed,
-        status: canonicalDetected[index].status,
-        nextAction: canonicalDetected[index].nextAction,
-      })),
+      surfaces: AI_SURFACES.map((definition, index) => {
+        const companionCli = AI_SURFACE_COMPANION_CLIS[definition.id];
+        const companion = companionCli
+          ? canonicalDetected.find((surface) => surface.id === companionCli)
+          : undefined;
+        return {
+          id: definition.id,
+          name: definition.name,
+          provider: definition.provider,
+          kind: definition.kind,
+          installUrl: definition.installUrl,
+          launchSupport: canonicalDetected[index].launchSupport,
+          capabilities: [...canonicalDetected[index].capabilities],
+          installed: canonicalDetected[index].installed,
+          recommended: canonicalDetected[index].recommended,
+          previouslyUsed: canonicalDetected[index].previouslyUsed,
+          status: canonicalDetected[index].status,
+          nextAction: canonicalDetected[index].nextAction,
+          ...(companionCli && companion ? {
+            companionCli,
+            companionCliInstalled: companion.installed,
+            companionCliStatus: companion.installed ? 'ready' as const : 'not-installed' as const,
+            companionCliError: null,
+          } : {}),
+        };
+      }),
     };
   }
 
@@ -4033,6 +4124,18 @@ function launchArtifactStillAuthenticated(
       && identity.productName === verification.productName
       && identity.companyName === verification.companyName
       && identity.publisher === verification.publisher);
+  }
+
+  if (verification.kind === 'linux-cli') {
+    return false;
+  }
+
+  if (verification.kind === 'linux-application') {
+    if (platform !== 'linux'
+      || plan.surfaceId !== verification.surfaceId
+      || !unchangedFileBinding(verification, plan.command, platform, probe)) return false;
+    const header = probe.fileHeader?.(verification.realPath, 64);
+    return Boolean(header && validElfHeader(header, verification.architecture));
   }
 
   if (verification.kind === 'windows-appx') {
