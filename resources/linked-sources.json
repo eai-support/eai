@@ -7,7 +7,7 @@
   },
   "appTemplate": {
     "repo": "https://github.com/eai-support/eai-app-template.git",
-    "commit": "c7bdd197779d097bc774d42551c41c75ae99556b",
+    "commit": "120d3a3435abc0ddc45d77258930fc7f7d9152c6",
     "packageLockSha256": "53bcca84143b94ade17d39416b699b21defbbedf9f5c7c962c4706bf95b33b3b",
     "enterpriseRegistry": "https://enterpriseaigroup.github.io/enterpriseai-packages/registry",
     "enterprisePackageFingerprint": "3286fdf91d6a25a55a4d84de21bf5c592bcf11abffb96dc2be90e93414eeb646",
