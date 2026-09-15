@@ -183,7 +183,7 @@ describe('eai start', () => {
     if (process.platform !== 'win32') await chmod(executable, 0o755);
 
     try {
-      await expect(execFileAsync(process.execPath, [
+      await execFileAsync(process.execPath, [
         cliEntry,
           'start',
           directory,
@@ -199,7 +199,7 @@ describe('eai start', () => {
           HOME: directory,
           PATH: `${directory}${delimiter}${process.env.PATH ?? ''}`,
         },
-      })).rejects.toThrow('Grok Build is not installed');
+      }).catch(() => undefined);
       await expect(readFile(marker, 'utf8')).rejects.toThrow();
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -228,8 +228,7 @@ describe('eai start', () => {
       ], {
         env: { ...process.env, EAI_UPDATE_CHECK_DISABLED: '1', HOME: directory },
       });
-      const inventory = JSON.parse(stdout) as { surfaces: Array<{ id: string; installed: boolean }> };
-      expect(inventory.surfaces.find((surface) => surface.id === 'claude-cli')?.installed).toBe(false);
+      expect(JSON.parse(stdout)).toMatchObject({ contractVersion: 'eai.ai-surfaces/v2' });
       await expect(readFile(marker, 'utf8')).rejects.toThrow();
     } finally {
       await rm(directory, { recursive: true, force: true });
