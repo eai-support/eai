@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.10 |
-| Released | 2026-09-07 |
-| Last Material Change | Add authenticated current AI workspace surfaces |
-| Source Commit | `e3c41e275780a91990aad136c6d4b58692b60e32` |
+| Version | 3.15.11 |
+| Released | 2026-09-15 |
+| Last Material Change | Pair AI surfaces with verified companion CLIs |
+| Source Commit | `cd62b2c2f0a04faef5e4bd134488f845d37d7130` |
 
 
 ## Install
