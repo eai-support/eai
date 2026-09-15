@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "revision": "replace-with-approved-direction-revision",
+  "objective": "Replace with the current business outcome",
+  "lastInstruction": {
+    "id": "D001",
+    "text": "Replace with the material approved direction recorded in decisions.md"
+  },
+  "criticalPath": ["T001", "T002"],
+  "tasks": {
+    "T001": { "dependsOn": [], "allowedEditScope": ["src/"] },
+    "T002": { "dependsOn": ["T001"], "allowedEditScope": ["tests/"] }
+  },
+  "outcome": {
+    "id": "OUTCOME-001",
+    "statement": "Replace with the observable result required now",
+    "requirements": ["FR-001"],
+    "target": { "environment": "local-mvp", "revision": "replace-with-exact-tested-revision" },
+    "receipt": "evidence/outcome.json"
+  }
+}

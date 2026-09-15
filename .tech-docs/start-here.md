@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.10** (2026-09-07): Add authenticated current AI workspace surfaces.
+The current CLI release is **v3.15.11** (2026-09-15): Pair AI surfaces with verified companion CLIs.
 
 
 ## What The Pieces Do
@@ -130,6 +130,13 @@ launch. Official Antigravity 2.0 and Grok Bot releases include Windows ARM64,
 and their Linux downloads include ARM64. EAI still fails closed unless the
 exact installed build matches its trusted signer, package, or immutable
 artifact catalog; architecture availability alone is not proof of identity.
+
+Each graphical v2 choice includes its companion CLI state. The pairings are
+VS Code or Copilot app to Copilot CLI, Antigravity to `agy`, Claude Desktop to
+Claude Code, ChatGPT desktop to Codex CLI, and Grok Bot to Grok Build.
+`eai start --surface <id> --install` runs the verified installer quietly and
+checks the CLI again. If quiet installation cannot complete, EAI opens or
+returns the official URL for visible password, consent, terms, or sign-in work.
 
 `eai start --check` confirms local software capability only. Provider account,
 subscription, organization policy, and sign-in state are confirmed by the

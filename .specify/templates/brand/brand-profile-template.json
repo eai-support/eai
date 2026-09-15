@@ -1,0 +1,45 @@
+{
+  "organizationName": "",
+  "documentAudience": "mixed",
+  "brandMode": "neutral",
+  "logo": {
+    "primaryPath": "",
+    "secondaryPath": "",
+    "usage": "none",
+    "status": "pending"
+  },
+  "colors": {
+    "primary": "#111827",
+    "secondary": "#f8fafc",
+    "accent": "#0f766e",
+    "background": "#ffffff",
+    "text": "#111827"
+  },
+  "typography": {
+    "headingFont": "Aptos Display",
+    "bodyFont": "Aptos",
+    "monoFont": "Cascadia Code",
+    "baseSize": "11pt",
+    "h1Size": "28pt",
+    "h2Size": "18pt",
+    "lineHeight": "1.35"
+  },
+  "layout": {
+    "pageSize": "A4",
+    "margins": "standard",
+    "headerText": "",
+    "footerText": "",
+    "confidentialityLabel": ""
+  },
+  "visualStyle": {
+    "diagramTheme": "executive",
+    "mermaidTheme": "base",
+    "marpThemePath": ".specify/templates/brand/marp-theme-template.css"
+  },
+  "review": {
+    "owner": "",
+    "approvedBy": "",
+    "approvedAt": "",
+    "sourceEvidence": []
+  }
+}

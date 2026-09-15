@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.15.10.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.15.11.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -388,7 +388,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.10** (2026-09-07): Add authenticated current AI workspace surfaces.
+The current CLI release is **v3.15.11** (2026-09-15): Pair AI surfaces with verified companion CLIs.
 
 
 ## What The Pieces Do
@@ -505,6 +505,13 @@ and their Linux downloads include ARM64. EAI still fails closed unless the
 exact installed build matches its trusted signer, package, or immutable
 artifact catalog; architecture availability alone is not proof of identity.
 
+Each graphical v2 choice includes its companion CLI state. The pairings are
+VS Code or Copilot app to Copilot CLI, Antigravity to `agy`, Claude Desktop to
+Claude Code, ChatGPT desktop to Codex CLI, and Grok Bot to Grok Build.
+`eai start --surface <id> --install` runs the verified installer quietly and
+checks the CLI again. If quiet installation cannot complete, EAI opens or
+returns the official URL for visible password, consent, terms, or sign-in work.
+
 `eai start --check` confirms local software capability only. Provider account,
 subscription, organization policy, and sign-in state are confirmed by the
 provider when the workspace opens.
@@ -576,10 +583,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.10 |
-| Released | 2026-09-07 |
-| Last Material Change | Add authenticated current AI workspace surfaces |
-| Source Commit | `e3c41e275780a91990aad136c6d4b58692b60e32` |
+| Version | 3.15.11 |
+| Released | 2026-09-15 |
+| Last Material Change | Pair AI surfaces with verified companion CLIs |
+| Source Commit | `cd62b2c2f0a04faef5e4bd134488f845d37d7130` |
 
 
 ## Install
@@ -2127,7 +2134,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.15.10. The same catalog powers human stderr output, JSON output for AI
+v3.15.11. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
