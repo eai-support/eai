@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.10** (2026-09-07): Add authenticated current AI workspace surfaces.
+The current CLI release is **v3.15.11** (2026-09-15): Pair AI surfaces with verified companion CLIs.
 
 
 ## What The Pieces Do
