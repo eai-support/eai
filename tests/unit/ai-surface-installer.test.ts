@@ -28,6 +28,18 @@ describe('AI surface companion installer', () => {
     expect(config.args).toContain('codex');
   });
 
+  it('uses the configured Windows system root for PowerShell', () => {
+    const config = buildCompanionInstallerExecConfig(
+      'win32',
+      'D:\\workspace',
+      'copilot-cli',
+      'D:\\resources',
+      { SystemRoot: 'D:\\Windows' },
+    );
+    expect(config.command).toBe('D:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+    expect(config.systemRoot).toBe('D:\\Windows');
+  });
+
   it('returns a safe result without returning child output', async () => {
     const runner = vi.fn().mockResolvedValue({ exitCode: 1, stdout: 'secret', stderr: 'private path' });
     const result = await runCompanionCliInstaller({

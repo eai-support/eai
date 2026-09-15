@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { lstat, realpath } from 'node:fs/promises';
-import { delimiter, dirname, join, resolve, sep } from 'node:path';
+import { delimiter, dirname, join, resolve, sep, win32 } from 'node:path';
 import { resolveGoferResourcesPath } from './gofer-installer.js';
 import type { CompanionCliSurfaceId } from './ai-surfaces.js';
 
@@ -15,6 +15,7 @@ export interface CompanionInstallerExecConfig {
   readonly command: string;
   readonly args: readonly string[];
   readonly timeoutMs: number;
+  readonly systemRoot?: string;
 }
 
 export interface CompanionInstallerRunResult {
@@ -70,13 +71,15 @@ export function buildCompanionInstallerExecConfig(
   workspacePath: string,
   companionCli: CompanionCliSurfaceId,
   resourcesPath = resolveGoferResourcesPath(),
+  environment: NodeJS.ProcessEnv = process.env,
 ): CompanionInstallerExecConfig {
   const workspace = resolve(workspacePath);
   const tool = COMPANION_TO_TOOL[companionCli];
   if (platform === 'win32') {
+    const systemRoot = environment.SystemRoot ?? 'C:\\Windows';
     return {
       platform,
-      command: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      command: win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
       args: [
         '-NoLogo',
         '-NoProfile',
@@ -91,6 +94,7 @@ export function buildCompanionInstallerExecConfig(
         tool,
       ],
       timeoutMs: INSTALL_TIMEOUT_MS,
+      systemRoot,
     };
   }
   if (platform === 'darwin' || platform === 'linux') {
@@ -130,7 +134,7 @@ async function defaultCompanionInstallerRunner(
     };
     const timer = setTimeout(() => {
       if (config.platform === 'win32') {
-        spawn('C:\\Windows\\System32\\taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], {
+        spawn(win32.join(config.systemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'), ['/pid', String(child.pid), '/t', '/f'], {
           shell: false, stdio: 'ignore', windowsHide: true,
           env: buildCompanionInstallerEnvironment('win32'),
         }).once('error', () => child.kill('SIGTERM'));

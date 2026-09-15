@@ -725,7 +725,7 @@ describe('AI surface contract', () => {
     ['claude-cli', 'claude', '/home/test/.local/bin/claude'],
     ['codex-cli', 'codex', '/home/test/.local/bin/codex'],
     ['grok-cli', 'grok', '/home/test/.grok/bin/grok'],
-  ] as const)('detects and binds the trusted Linux %s executable', async (surfaceId, command, executable) => {
+  ] as const)('rejects an unsigned Linux %s executable', async (surfaceId, command, executable) => {
     const inventory = await detectAiSurfaces({
       platform: 'linux',
       architecture: 'arm64',
@@ -741,12 +741,8 @@ describe('AI surface contract', () => {
       }),
     });
     const surface = inventory.surfaces.find((candidate) => candidate.id === surfaceId);
-    expect(surface).toMatchObject({
-      installed: true,
-      executable,
-      verification: { kind: 'linux-cli', surfaceId, architecture: 'arm64' },
-    });
-    expect(buildAiLaunchPlan(inventory, surfaceId)).toMatchObject({ command: executable, mode: 'terminal' });
+    expect(surface).toMatchObject({ installed: false, executable: null });
+    expect(() => buildAiLaunchPlan(inventory, surfaceId)).toThrow('is not installed');
   });
 
   it.each([

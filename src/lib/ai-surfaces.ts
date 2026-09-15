@@ -2026,19 +2026,6 @@ function supportedCliArchitecture(
   return architecture === 'x64' || architecture === 'arm64';
 }
 
-function linuxCliPathAllowed(path: string, home: string): boolean {
-  const allowedRoots = [
-    join(home, '.local'),
-    join(home, '.grok'),
-    join(home, '.claude'),
-    '/usr/bin',
-    '/usr/local/bin',
-    '/opt',
-  ];
-  const resolvedPath = resolve(path);
-  return allowedRoots.some((root) => resolvedPath === root || resolvedPath.startsWith(`${root}/`));
-}
-
 function authenticatedCliTarget(
   surface: AiSurfaceDefinition,
   platform: NodeJS.Platform,
@@ -2098,25 +2085,8 @@ function authenticatedCliTarget(
         },
       };
     }
-    if (platform === 'linux'
-      && supportedCliArchitecture(architecture)
-      && linuxCliPathAllowed(candidate, home)
-      && linuxCliPathAllowed(binding.realPath, home)) {
-      const header = probe.fileHeader?.(binding.realPath, 64);
-      if (!header || !validElfHeader(header, architecture)) continue;
-      return {
-        executable: binding.realPath,
-        launchArgsPrefix: [],
-        launchEnvironment: {},
-        capabilities: [],
-        verification: {
-          kind: 'linux-cli',
-          ...binding,
-          surfaceId: surface.id as Extract<AiSurfaceId, `${string}-cli`>,
-          architecture,
-        },
-      };
-    }
+    // Linux CLIs fail closed until each provider has an immutable artifact or
+    // signed package identity. An ELF header and an install path are not proof.
   }
   return null;
 }
@@ -4157,11 +4127,7 @@ function launchArtifactStillAuthenticated(
   }
 
   if (verification.kind === 'linux-cli') {
-    if (platform !== 'linux'
-      || plan.surfaceId !== verification.surfaceId
-      || !unchangedFileBinding(verification, plan.command, platform, probe)) return false;
-    const header = probe.fileHeader?.(verification.realPath, 64);
-    return Boolean(header && validElfHeader(header, verification.architecture));
+    return false;
   }
 
   if (verification.kind === 'linux-application') {

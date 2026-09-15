@@ -37,7 +37,7 @@ flowchart LR
 ## Current Status
 
 | Area                                 | What it means in plain language                             | Status        | Current work | Issue / fix | Business impact |
-| ------------------------------------ | ----------------------------------------------------------- | ------------- | ------------ | ----------- | --------------- | ---------------- | ----------------- | ---------- |
+| ------------------------------------ | ----------------------------------------------------------- | ------------- | ------------ | ----------- | --------------- |
 | Users and business process           | Who this helps and what process improves                    | {{not-started | working      | ready       | blocked}}       | {{current-work}} | {{issue-or-none}} | {{impact}} |
 | App experience                       | Screens, forms, guidance, and user flow                     | {{not-started | working      | ready       | blocked}}       | {{current-work}} | {{issue-or-none}} | {{impact}} |
 | EAI Platform                         | App template, object types, workflow, and platform services | {{not-started | working      | ready       | blocked}}       | {{current-work}} | {{issue-or-none}} | {{impact}} |
