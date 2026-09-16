@@ -42,6 +42,7 @@ const TOP_LEVEL_COMMANDS = [
   "resources",
   "app",
   "classifier",
+  "connection",
   "chat",
   "workflow",
   "docs",
