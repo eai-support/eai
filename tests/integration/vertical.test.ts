@@ -16,6 +16,7 @@ import {
   buildSourceUnknownDeploymentData,
   buildSourceUnknownRegistrationData,
   buildSourceUnknownWorkflowEvidenceData,
+  buildSourceUnknownWorkflowSetupData,
   isCompleteAppDeletionEnvironmentSet,
   validateNonInteractiveAppDeleteConfirmation,
   verticalCommand,
@@ -911,8 +912,10 @@ describe('eai app', () => {
     );
   });
 
-  test('HP006 issues source-unknown workflow setup under the company tenant', async () => {
+  test.each([false, true])('HP006 issues workflow setup with explicit no-code handover=%s', async handoverFromNoCode => {
     await seedLoggedInTenant();
+    const commitSha = handoverFromNoCode ? 'a'.repeat(40) : 'abcdef1234567890';
+    const configHash = handoverFromNoCode ? `sha256:${'b'.repeat(64)}` : 'sha256:config';
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = requestUrl(input);
       const method = requestMethod(init);
@@ -976,9 +979,10 @@ describe('eai app', () => {
       '--ref',
       'refs/heads/main',
       '--commit',
-      'abcdef1234567890',
+      commitSha,
       '--config-hash',
-      'sha256:config',
+      configHash,
+      ...(handoverFromNoCode ? ['--handover-from-no-code'] : []),
       '--format',
       'json',
     ], { from: 'user' });
@@ -991,11 +995,31 @@ describe('eai app', () => {
           environment: 'preview',
           workflowPath: '.github/workflows/eai-app.yml',
           ref: 'refs/heads/main',
-          commitSha: 'abcdef1234567890',
-          configHash: 'sha256:config',
+          commitSha,
+          configHash,
+          ...(handoverFromNoCode ? { handoverIntent: 'no-code-to-cli' } : {}),
         }),
       }),
     );
+  });
+
+  test.each([
+    { commit: undefined, configHash: `sha256:${'b'.repeat(64)}` },
+    { commit: 'short-sha', configHash: `sha256:${'b'.repeat(64)}` },
+    { commit: 'a'.repeat(40), configHash: undefined },
+    { commit: 'a'.repeat(40), configHash: 'sha256:config' },
+  ])('rejects handover without an exact commit/config binding: %j', options => {
+    expect(() => buildSourceUnknownWorkflowSetupData({
+      ...options,
+      handoverFromNoCode: true,
+    })).toThrow();
+  });
+
+  test('workflow setup stays unbound without explicit handover intent', () => {
+    expect(buildSourceUnknownWorkflowSetupData({})).toEqual({
+      environment: 'preview',
+      workflowPath: '.github/workflows/eai-app.yml',
+    });
   });
 
   test('HP007 submits source-unknown workflow evidence under the company tenant', async () => {

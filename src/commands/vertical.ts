@@ -126,6 +126,7 @@ export interface AppWorkflowSetupOptions {
   ref?: string;
   commit?: string;
   configHash?: string;
+  handoverFromNoCode?: boolean;
   skipValidate?: boolean;
   format?: string;
   json?: boolean;
@@ -465,12 +466,17 @@ export function buildSourceUnknownWorkflowSetupData(
   if (!environment) {
     throw new Error('Workflow setup environment is required.');
   }
+  if (options.handoverFromNoCode) {
+    assertGitCommitSha(options.commit?.trim() || '', '--commit');
+    assertSha256Digest(options.configHash?.trim() || '', '--config-hash');
+  }
   return {
     environment,
     workflowPath: options.workflow?.trim() || '.github/workflows/eai-app.yml',
     ...(options.ref?.trim() ? { ref: options.ref.trim() } : {}),
     ...(options.commit?.trim() ? { commitSha: options.commit.trim() } : {}),
     ...(options.configHash?.trim() ? { configHash: options.configHash.trim() } : {}),
+    ...(options.handoverFromNoCode ? { handoverIntent: 'no-code-to-cli' as const } : {}),
   };
 }
 
@@ -1197,6 +1203,7 @@ verticalCommand
   .option('--ref <ref>', 'Approved git ref')
   .option('--commit <sha>', 'Current commit SHA to bind')
   .option('--config-hash <hash>', 'Validated config hash to bind')
+  .option('--handover-from-no-code', 'Request validated no-code to CLI handover; requires --commit and --config-hash', false)
   .option('--skip-validate', 'Skip app lookup', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
