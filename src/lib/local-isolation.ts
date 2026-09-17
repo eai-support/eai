@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { AiSurfaceId } from './ai-surfaces.js';
 
 export const LOCAL_ISOLATION_CONTRACT_VERSION = 'eai.local-isolation/v1' as const;
@@ -42,7 +42,13 @@ function gitWorktreeState(projectDirectory: string): { gitRepository: boolean; d
   if (!topLevel || !gitDirectory || !commonDirectory) return { gitRepository: false, dedicatedWorktree: false };
   const gitRepository = true;
   try {
-    const dedicatedWorktree = realpathSync(topLevel) === realpathSync(projectDirectory)
+    const worktreeRoot = realpathSync(topLevel);
+    const projectPath = realpathSync(projectDirectory);
+    const relativeProjectPath = relative(worktreeRoot, projectPath);
+    const projectWithinWorktree = relativeProjectPath !== '..'
+      && !relativeProjectPath.startsWith(`..${sep}`)
+      && !isAbsolute(relativeProjectPath);
+    const dedicatedWorktree = projectWithinWorktree
       && realpathSync(resolve(projectDirectory, gitDirectory)) !== realpathSync(resolve(projectDirectory, commonDirectory));
     return { gitRepository, dedicatedWorktree };
   } catch {
@@ -50,7 +56,7 @@ function gitWorktreeState(projectDirectory: string): { gitRepository: boolean; d
   }
 }
 
-function assessmentFor(surfaceId: AiSurfaceId, platform: NodeJS.Platform, gitRepository: boolean, dedicatedWorktree: boolean): LocalIsolationAssessment {
+function assessmentFor(surfaceId: AiSurfaceId, platform: NodeJS.Platform, gitRepository: boolean, dedicatedWorktree: boolean, missingLinuxRuntime: readonly string[]): LocalIsolationAssessment {
   const common = {
     surfaceId, localOnly: true as const, requiresGitWorktree: true as const, requiresOsSandbox: true as const,
   };
@@ -60,9 +66,11 @@ function assessmentFor(surfaceId: AiSurfaceId, platform: NodeJS.Platform, gitRep
   if (!dedicatedWorktree) {
     return { ...common, status: 'missing-prerequisite', hostArguments: [], prerequisites: ['Dedicated Git worktree'], missing: ['Dedicated Git worktree'], reason: 'Create a dedicated Git worktree for this project before local execution can start.' };
   }
-  if (platform === 'linux' && (!commandAvailable('bwrap') || !commandAvailable('socat'))) {
-    const missing = [!commandAvailable('bwrap') ? 'bubblewrap (bwrap)' : null, !commandAvailable('socat') ? 'socat' : null].filter((value): value is string => value !== null);
-    return { ...common, status: 'missing-prerequisite', hostArguments: [], prerequisites: ['bubblewrap (bwrap)', 'socat'], missing, reason: 'The Linux local sandbox runtime is incomplete.' };
+  if (platform !== 'linux' && platform !== 'darwin' && platform !== 'win32') {
+    return { ...common, status: 'unsupported', hostArguments: [], prerequisites: [], missing: ['Supported OS sandbox contract'], reason: `No local sandbox contract is available for ${platform}.` };
+  }
+  if (missingLinuxRuntime.length > 0) {
+    return { ...common, status: 'missing-prerequisite', hostArguments: [], prerequisites: ['bubblewrap (bwrap)', 'socat'], missing: missingLinuxRuntime, reason: 'The Linux local sandbox runtime is incomplete.' };
   }
   switch (surfaceId) {
     case 'codex-cli':
@@ -90,12 +98,16 @@ export function assessLocalIsolation(options: {
   const { gitRepository, dedicatedWorktree } = existsSync(projectDirectory)
     ? gitWorktreeState(projectDirectory)
     : { gitRepository: false, dedicatedWorktree: false };
+  const missingLinuxRuntime = platform === 'linux'
+    ? [!commandAvailable('bwrap') ? 'bubblewrap (bwrap)' : null, !commandAvailable('socat') ? 'socat' : null]
+      .filter((value): value is string => value !== null)
+    : [];
   return {
     contractVersion: LOCAL_ISOLATION_CONTRACT_VERSION,
     projectDirectory,
     platform,
     gitRepository,
     cloudExecution: 'prohibited',
-    assessments: options.surfaceIds.map((surfaceId) => assessmentFor(surfaceId, platform, gitRepository, dedicatedWorktree)),
+    assessments: options.surfaceIds.map((surfaceId) => assessmentFor(surfaceId, platform, gitRepository, dedicatedWorktree, missingLinuxRuntime)),
   };
 }

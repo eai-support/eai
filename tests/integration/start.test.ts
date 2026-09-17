@@ -43,6 +43,20 @@ describe('eai start', () => {
     }
   });
 
+  it('limits the default isolation report to local CLI surfaces with a ready path', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'eai-start-isolation-default-'));
+    try {
+      const error = await execFileAsync(process.execPath, [
+        cliEntry, 'start', directory, '--isolation-check', '--format', 'json',
+      ], { env: { ...process.env, EAI_UPDATE_CHECK_DISABLED: '1' } }).catch((result: unknown) => result);
+      expect(error).toMatchObject({ code: 1 });
+      const report = JSON.parse((error as { stdout: string }).stdout) as { assessments: Array<{ surfaceId: string }> };
+      expect(report.assessments.map((assessment) => assessment.surfaceId)).toEqual(['codex-cli', 'grok-cli']);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('returns the stable read-only detection contract', { timeout: 30_000 }, async () => {
     const { stdout } = await execFileAsync(process.execPath, [cliEntry, 'start', '--check', '--format', 'json'], {
       env: { ...process.env, EAI_UPDATE_CHECK_DISABLED: '1' },

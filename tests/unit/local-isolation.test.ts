@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -59,6 +59,24 @@ describe('local isolation contract', () => {
       requiresGitWorktree: true, requiresOsSandbox: true,
       hostArguments: ['--sandbox', 'workspace-write', '--ask-for-approval', 'never'],
     })]);
+  });
+
+  it('accepts a project directory below a dedicated worktree root', async () => {
+    const worktree = await dedicatedWorktree();
+    const projectDirectory = join(worktree, 'src');
+    await mkdir(projectDirectory);
+    const report = assessLocalIsolation({ projectDirectory, platform: 'darwin', surfaceIds: ['codex-cli'] });
+    expect(report.assessments[0]).toMatchObject({ status: 'ready', missing: [] });
+  });
+
+  it('does not report ready on an unsupported Node platform', async () => {
+    const report = assessLocalIsolation({
+      projectDirectory: await dedicatedWorktree(), platform: 'freebsd', surfaceIds: ['codex-cli', 'grok-cli'],
+    });
+    expect(report.assessments).toEqual([
+      expect.objectContaining({ status: 'unsupported', missing: ['Supported OS sandbox contract'] }),
+      expect.objectContaining({ status: 'unsupported', missing: ['Supported OS sandbox contract'] }),
+    ]);
   });
 
   it.skipIf(process.platform === 'win32')('rejects a Linux sandbox command that exits nonzero', async () => {

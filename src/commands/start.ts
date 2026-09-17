@@ -180,7 +180,9 @@ Privacy:
     if (options.isolationCheck) {
       const surfaceIds = options.surface
         ? [isSurfaceId(options.surface) ? options.surface : (() => { throw new Error(`Unknown AI surface: ${options.surface}`); })()]
-        : inventory.surfaces.map((surface) => surface.id);
+        : inventory.surfaces
+          .filter((surface) => surface.id === 'codex-cli' || surface.id === 'grok-cli')
+          .map((surface) => surface.id);
       const report = assessLocalIsolation({ projectDirectory, platform: inventory.platform, surfaceIds });
       if (options.format === 'json') out.json(report);
       else {
