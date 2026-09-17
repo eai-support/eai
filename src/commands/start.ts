@@ -146,7 +146,7 @@ export const startCommand = new Command('start')
   .description('Detect or start a supported AI workspace for an EAI project')
   .argument('[directory]', 'Project folder to open', '.')
   .option('--check', 'Detect supported AI workspaces without opening or changing anything', false)
-  .option('--isolation-check', 'Report local-only worktree and sandbox readiness without opening a provider', false)
+  .option('--isolation-check', 'Probe local-only worktree and sandbox readiness without a model call', false)
   .option('--surface <id>', `Use a specific surface (${AI_SURFACES.map((surface) => surface.id).join('|')})`)
   .option('--install', 'Install or update the required companion CLI and verify it')
   .option('--dry-run', 'Show the launch plan without starting the provider', false)
@@ -164,8 +164,9 @@ Examples:
   $ eai start --surface copilot-desktop --install
 
 Privacy:
-  Detection checks filesystem, package, signature, and application metadata;
-  it never runs provider binaries or reads provider accounts or project files.
+  Detection checks filesystem, package, signature, and application metadata.
+  Isolation checks may run a signed local provider sandbox without a model call;
+  they create and remove temporary probe files near the project worktree.
   Starting a surface is your confirmation
   that the provider may read this project and use your provider account.
   `)

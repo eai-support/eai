@@ -11,6 +11,7 @@ import { performAiSurfaceInstall } from '../../src/commands/start.js';
 
 const execFileAsync = promisify(execFile);
 const cliEntry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
+const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
 
 function installInventory(installedIds: readonly AiSurfaceId[]): AiSurfaceInventory {
   return {
@@ -26,6 +27,18 @@ function installInventory(installedIds: readonly AiSurfaceId[]): AiSurfaceInvent
 }
 
 describe('eai start', () => {
+  it.skipIf(process.platform !== 'darwin' || process.env.EAI_TEST_LIVE_CODEX_SANDBOX !== '1')(
+    'proves the signed local Codex sandbox blocks a sibling write without a model call',
+    async () => {
+      const { stdout } = await execFileAsync(process.execPath, [
+        cliEntry, 'start', repositoryRoot, '--isolation-check', '--surface', 'codex-cli', '--format', 'json',
+      ], { env: { ...process.env, EAI_UPDATE_CHECK_DISABLED: '1' } });
+      expect(JSON.parse(stdout)).toMatchObject({
+        platform: 'darwin',
+        assessments: [{ status: 'ready', missing: [] }],
+      });
+    },
+  );
   it('returns a failing exit status and a parseable report when isolation is not ready', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'eai-start-isolation-'));
     try {
@@ -43,7 +56,7 @@ describe('eai start', () => {
     }
   });
 
-  it('limits the default isolation report to local CLI surfaces with a ready path', async () => {
+  it('limits the default missing-prerequisite report to local CLI surfaces', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'eai-start-isolation-default-'));
     try {
       const error = await execFileAsync(process.execPath, [

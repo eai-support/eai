@@ -50,14 +50,15 @@ describe('local isolation contract', () => {
     });
   });
 
-  it('qualifies local Codex only with a dedicated worktree and sandbox arguments', async () => {
+  it('does not qualify Codex from worktree and sandbox arguments alone', async () => {
     const report = assessLocalIsolation({
-      projectDirectory: await dedicatedWorktree(), platform: 'darwin', surfaceIds: ['codex-cli'],
+      projectDirectory: await dedicatedWorktree(), platform: 'linux', surfaceIds: ['codex-cli'],
     });
     expect(report.assessments).toEqual([expect.objectContaining({
-      surfaceId: 'codex-cli', status: 'ready', localOnly: true,
+      surfaceId: 'codex-cli', status: 'manual-host-setup', localOnly: true,
       requiresGitWorktree: true, requiresOsSandbox: true,
       hostArguments: ['--sandbox', 'workspace-write', '--ask-for-approval', 'never'],
+      missing: ['Verified native Codex sandbox enforcement'],
     })]);
   });
 
@@ -65,8 +66,10 @@ describe('local isolation contract', () => {
     const worktree = await dedicatedWorktree();
     const projectDirectory = join(worktree, 'src');
     await mkdir(projectDirectory);
-    const report = assessLocalIsolation({ projectDirectory, platform: 'darwin', surfaceIds: ['codex-cli'] });
-    expect(report.assessments[0]).toMatchObject({ status: 'ready', missing: [] });
+    const report = assessLocalIsolation({ projectDirectory, platform: 'linux', surfaceIds: ['codex-cli'] });
+    expect(report.assessments[0]).toMatchObject({
+      status: 'manual-host-setup', missing: ['Verified native Codex sandbox enforcement'],
+    });
   });
 
   it('does not report ready on an unsupported Node platform', async () => {
@@ -79,7 +82,7 @@ describe('local isolation contract', () => {
     ]);
   });
 
-  it.skipIf(process.platform === 'win32')('rejects a Linux sandbox command that exits nonzero', async () => {
+  it.skipIf(process.platform === 'win32')('does not trust helper version probes on Linux', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'eai-local-sandbox-'));
     directories.push(directory);
     const bwrap = join(directory, 'bwrap');
@@ -90,11 +93,11 @@ describe('local isolation contract', () => {
       projectDirectory: await dedicatedWorktree(), platform: 'linux', surfaceIds: ['codex-cli'],
     });
     expect(report.assessments[0]).toMatchObject({
-      status: 'missing-prerequisite', missing: expect.arrayContaining(['bubblewrap (bwrap)']),
+      status: 'manual-host-setup', missing: ['Verified native Codex sandbox enforcement'],
     });
   });
 
-  it.skipIf(process.platform === 'win32')('uses socat -V and accepts working Linux sandbox helpers', async () => {
+  it.skipIf(process.platform === 'win32')('does not trust PATH-supplied helper lookalikes as isolation proof', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'eai-local-sandbox-'));
     directories.push(directory);
     const bwrap = join(directory, 'bwrap');
@@ -107,7 +110,33 @@ describe('local isolation contract', () => {
     const report = assessLocalIsolation({
       projectDirectory: await dedicatedWorktree(), platform: 'linux', surfaceIds: ['codex-cli'],
     });
-    expect(report.assessments[0]).toMatchObject({ status: 'ready', missing: [] });
+    expect(report.assessments[0]).toMatchObject({
+      status: 'manual-host-setup', missing: ['Verified native Codex sandbox enforcement'],
+    });
+  });
+
+  it.skipIf(process.platform !== 'darwin')('rejects an unsigned Codex lookalike before the native probe', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'eai-codex-lookalike-'));
+    directories.push(directory);
+    const codex = join(directory, 'codex');
+    await writeFile(codex, '#!/bin/sh\nexit 0\n');
+    await chmod(codex, 0o755);
+    vi.stubEnv('PATH', `${directory}${delimiter}${process.env.PATH ?? ''}`);
+    const report = assessLocalIsolation({
+      projectDirectory: await dedicatedWorktree(), platform: 'darwin', surfaceIds: ['codex-cli'],
+    });
+    expect(report.assessments[0]).toMatchObject({
+      status: 'manual-host-setup', missing: ['Verified native Codex sandbox enforcement'],
+    });
+  });
+
+  it('keeps native Windows and Grok fail closed without an enforcement probe', async () => {
+    const report = assessLocalIsolation({
+      projectDirectory: await dedicatedWorktree(), platform: 'win32', surfaceIds: ['codex-cli', 'grok-cli'],
+    });
+    expect(report.assessments.map((assessment) => assessment.status)).toEqual([
+      'manual-host-setup', 'manual-host-setup',
+    ]);
   });
 
   it('does not treat Antigravity sandbox flags as proof without a project binding', async () => {
