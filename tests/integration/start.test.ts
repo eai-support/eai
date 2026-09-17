@@ -44,10 +44,14 @@ describe('eai start', () => {
           cliEntry, 'start', linked, '--isolation-check', '--surface', 'codex-cli', '--format', 'json',
         ], { env: { ...process.env, EAI_UPDATE_CHECK_DISABLED: '1' } });
         expect(JSON.parse(stdout)).toMatchObject({
+          contractVersion: 'eai.local-isolation/v2',
           projectDirectory: linked,
           platform: 'darwin',
           assessments: [{ status: 'ready', missing: [] }],
         });
+        const report = JSON.parse(stdout) as { assessments: Array<{ hostArguments: string[] }> };
+        expect(report.assessments[0].hostArguments).toContain('default_permissions="gofer-isolated"');
+        expect(report.assessments[0].hostArguments).not.toContain('--sandbox');
       } finally {
         try { execFileSync('git', ['-C', primary, 'worktree', 'remove', '--force', linked]); }
         catch { await rm(linked, { recursive: true, force: true }); }
@@ -65,7 +69,7 @@ describe('eai start', () => {
       expect(error).toMatchObject({ code: 1 });
       const report = JSON.parse((error as { stdout: string }).stdout);
       expect(report).toMatchObject({
-        contractVersion: 'eai.local-isolation/v1',
+        contractVersion: 'eai.local-isolation/v2',
         assessments: [{ status: 'missing-prerequisite', missing: ['Git repository'] }],
       });
     } finally {
