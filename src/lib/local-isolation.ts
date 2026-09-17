@@ -6,6 +6,14 @@ import type { AiSurfaceId } from './ai-surfaces.js';
 
 export const LOCAL_ISOLATION_CONTRACT_VERSION = 'eai.local-isolation/v1' as const;
 
+// Observed with `codesign -dv --verbose=2` on the local Codex CLI 0.154.0
+// artifact signed by Developer ID Application: OpenAI OpCo, LLC. The sandbox
+// docs (https://learn.chatgpt.com/docs/sandboxing) describe Seatbelt but do
+// not publish a stable signing Team ID.
+// A future signing change must fail closed until the new identity is reviewed.
+const CODEX_MACOS_SIGNATURE_REQUIREMENT =
+  '=anchor apple generic and certificate leaf[subject.OU] = "2DC432GLL2"';
+
 export type LocalIsolationStatus = 'ready' | 'missing-prerequisite' | 'manual-host-setup' | 'unsupported';
 
 export interface LocalIsolationAssessment {
@@ -62,7 +70,7 @@ function signedCodexExecutable(): string | null {
       if (!statSync(executable).isFile()) return null;
       const verification = spawnSync('/usr/bin/codesign', [
         '--verify', '--strict', '--requirement',
-        '=anchor apple generic and certificate leaf[subject.OU] = "2DC432GLL2"', executable,
+        CODEX_MACOS_SIGNATURE_REQUIREMENT, executable,
       ], { stdio: 'ignore', timeout: 10_000 });
       if (verification.status !== 0 || verification.error) return null;
       const identity = spawnSync('/usr/bin/codesign', ['-dv', '--verbose=2', executable], {
