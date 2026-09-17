@@ -189,6 +189,9 @@ Privacy:
           console.log(`- ${assessment.surfaceId}: ${assessment.status} — ${assessment.reason}`);
         }
       }
+      if (report.assessments.length === 0 || report.assessments.some((assessment) => assessment.status !== 'ready')) {
+        process.exitCode = 1;
+      }
       return;
     }
 

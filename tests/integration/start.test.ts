@@ -26,6 +26,23 @@ function installInventory(installedIds: readonly AiSurfaceId[]): AiSurfaceInvent
 }
 
 describe('eai start', () => {
+  it('returns a failing exit status and a parseable report when isolation is not ready', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'eai-start-isolation-'));
+    try {
+      const error = await execFileAsync(process.execPath, [
+        cliEntry, 'start', directory, '--isolation-check', '--surface', 'codex-cli', '--format', 'json',
+      ], { env: { ...process.env, EAI_UPDATE_CHECK_DISABLED: '1' } }).catch((result: unknown) => result);
+      expect(error).toMatchObject({ code: 1 });
+      const report = JSON.parse((error as { stdout: string }).stdout);
+      expect(report).toMatchObject({
+        contractVersion: 'eai.local-isolation/v1',
+        assessments: [{ status: 'missing-prerequisite', missing: ['Git repository'] }],
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('returns the stable read-only detection contract', { timeout: 30_000 }, async () => {
     const { stdout } = await execFileAsync(process.execPath, [cliEntry, 'start', '--check', '--format', 'json'], {
       env: { ...process.env, EAI_UPDATE_CHECK_DISABLED: '1' },

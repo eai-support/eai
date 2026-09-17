@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AiSurfaceId } from './ai-surfaces.js';
 
@@ -30,22 +30,35 @@ export interface LocalIsolationReport {
 
 function commandAvailable(command: string): boolean {
   const result = spawnSync(command, ['--version'], { stdio: 'ignore' });
-  return !result.error;
+  return !result.error && result.status === 0;
 }
 
-function gitWorktreeAvailable(projectDirectory: string): boolean {
-  const result = spawnSync('git', ['-C', projectDirectory, 'rev-parse', '--is-inside-work-tree'], {
+function gitWorktreeState(projectDirectory: string): { gitRepository: boolean; dedicatedWorktree: boolean } {
+  const result = spawnSync('git', ['-C', projectDirectory, 'rev-parse', '--show-toplevel', '--git-dir', '--git-common-dir'], {
     encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
   });
-  return result.status === 0 && result.stdout.trim() === 'true';
+  if (result.status !== 0) return { gitRepository: false, dedicatedWorktree: false };
+  const [topLevel, gitDirectory, commonDirectory] = result.stdout.trim().split('\n').map((value) => value.trim());
+  if (!topLevel || !gitDirectory || !commonDirectory) return { gitRepository: false, dedicatedWorktree: false };
+  const gitRepository = true;
+  try {
+    const dedicatedWorktree = realpathSync(topLevel) === realpathSync(projectDirectory)
+      && realpathSync(resolve(projectDirectory, gitDirectory)) !== realpathSync(resolve(projectDirectory, commonDirectory));
+    return { gitRepository, dedicatedWorktree };
+  } catch {
+    return { gitRepository, dedicatedWorktree: false };
+  }
 }
 
-function assessmentFor(surfaceId: AiSurfaceId, platform: NodeJS.Platform, gitRepository: boolean): LocalIsolationAssessment {
+function assessmentFor(surfaceId: AiSurfaceId, platform: NodeJS.Platform, gitRepository: boolean, dedicatedWorktree: boolean): LocalIsolationAssessment {
   const common = {
     surfaceId, localOnly: true as const, requiresGitWorktree: true as const, requiresOsSandbox: true as const,
   };
   if (!gitRepository) {
     return { ...common, status: 'missing-prerequisite', hostArguments: [], prerequisites: ['Git repository'], missing: ['Git repository'], reason: 'A dedicated Git worktree is required before local execution can start.' };
+  }
+  if (!dedicatedWorktree) {
+    return { ...common, status: 'missing-prerequisite', hostArguments: [], prerequisites: ['Dedicated Git worktree'], missing: ['Dedicated Git worktree'], reason: 'Create a dedicated Git worktree for this project before local execution can start.' };
   }
   if (platform === 'linux' && (!commandAvailable('bwrap') || !commandAvailable('socat'))) {
     const missing = [!commandAvailable('bwrap') ? 'bubblewrap (bwrap)' : null, !commandAvailable('socat') ? 'socat' : null].filter((value): value is string => value !== null);
@@ -74,13 +87,15 @@ export function assessLocalIsolation(options: {
 }): LocalIsolationReport {
   const projectDirectory = resolve(options.projectDirectory);
   const platform = options.platform ?? process.platform;
-  const gitRepository = existsSync(projectDirectory) && gitWorktreeAvailable(projectDirectory);
+  const { gitRepository, dedicatedWorktree } = existsSync(projectDirectory)
+    ? gitWorktreeState(projectDirectory)
+    : { gitRepository: false, dedicatedWorktree: false };
   return {
     contractVersion: LOCAL_ISOLATION_CONTRACT_VERSION,
     projectDirectory,
     platform,
     gitRepository,
     cloudExecution: 'prohibited',
-    assessments: options.surfaceIds.map((surfaceId) => assessmentFor(surfaceId, platform, gitRepository)),
+    assessments: options.surfaceIds.map((surfaceId) => assessmentFor(surfaceId, platform, gitRepository, dedicatedWorktree)),
   };
 }
