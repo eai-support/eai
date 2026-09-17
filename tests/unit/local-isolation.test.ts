@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { assessLocalIsolation, buildMacCodexSandboxProbeArgs } from '../../src/lib/local-isolation.js';
 
@@ -31,8 +32,12 @@ afterEach(async () => {
 
 describe('local isolation contract', () => {
   it('uses the installed Codex CLI sandbox argv without a model call', () => {
-    expect(buildMacCodexSandboxProbeArgs('/work/task', '/work/outside')).toEqual([
-      'sandbox', '-P', ':workspace', '-C', '/work/task', '--', '/usr/bin/touch', '/work/outside',
+    expect(buildMacCodexSandboxProbeArgs('/work/task', '/work/source/.git', '/work/outside')).toEqual([
+      'sandbox', '-P', 'gofer-isolated',
+      '-c', 'permissions.gofer-isolated.extends=":workspace"',
+      '-c', 'permissions.gofer-isolated.filesystem={ ":tmpdir" = "read", ":slash_tmp" = "read", "/work/source/.git" = "read" }',
+      '-c', 'default_permissions="gofer-isolated"',
+      '-C', '/work/task', '--', '/usr/bin/touch', '/work/outside',
     ]);
   });
   it('requires a Git worktree boundary before a host is ready', () => {
@@ -40,7 +45,7 @@ describe('local isolation contract', () => {
       projectDirectory: tmpdir(), platform: 'darwin', surfaceIds: ['codex-cli'],
     });
     expect(report).toMatchObject({
-      contractVersion: 'eai.local-isolation/v1', gitRepository: false, cloudExecution: 'prohibited',
+      contractVersion: 'eai.local-isolation/v2', gitRepository: false, cloudExecution: 'prohibited',
       assessments: [{ surfaceId: 'codex-cli', status: 'missing-prerequisite', missing: ['Git repository'] }],
     });
   });
@@ -56,13 +61,18 @@ describe('local isolation contract', () => {
   });
 
   it('does not qualify Codex from worktree and sandbox arguments alone', async () => {
+    const worktree = await dedicatedWorktree();
+    const commonDirectory = realpathSync(join(dirname(worktree), '.git'));
     const report = assessLocalIsolation({
-      projectDirectory: await dedicatedWorktree(), platform: 'linux', surfaceIds: ['codex-cli'],
+      projectDirectory: worktree, platform: 'linux', surfaceIds: ['codex-cli'],
     });
     expect(report.assessments).toEqual([expect.objectContaining({
       surfaceId: 'codex-cli', status: 'manual-host-setup', localOnly: true,
       requiresGitWorktree: true, requiresOsSandbox: true,
-      hostArguments: ['--sandbox', 'workspace-write', '--ask-for-approval', 'never'],
+      hostArguments: ['--ask-for-approval', 'never', 'exec', '--ignore-user-config',
+        '-c', 'permissions.gofer-isolated.extends=":workspace"',
+        '-c', `permissions.gofer-isolated.filesystem={ ":tmpdir" = "read", ":slash_tmp" = "read", ${JSON.stringify(commonDirectory)} = "read" }`,
+        '-c', 'default_permissions="gofer-isolated"'],
       missing: ['Verified native Codex sandbox enforcement'],
     })]);
   });

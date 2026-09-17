@@ -4,7 +4,7 @@ import { accessSync, constants, existsSync, mkdtempSync, realpathSync, rmSync, r
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { AiSurfaceId } from './ai-surfaces.js';
 
-export const LOCAL_ISOLATION_CONTRACT_VERSION = 'eai.local-isolation/v1' as const;
+export const LOCAL_ISOLATION_CONTRACT_VERSION = 'eai.local-isolation/v2' as const;
 
 // Observed with `codesign -dv --verbose=2` on the local Codex CLI 0.154.0
 // artifact signed by Developer ID Application: OpenAI OpCo, LLC. The sandbox
@@ -37,13 +37,13 @@ export interface LocalIsolationReport {
   readonly assessments: readonly LocalIsolationAssessment[];
 }
 
-function gitWorktreeState(projectDirectory: string): { gitRepository: boolean; dedicatedWorktree: boolean; worktreeRoot: string | null } {
+function gitWorktreeState(projectDirectory: string): { gitRepository: boolean; dedicatedWorktree: boolean; worktreeRoot: string | null; commonDirectory: string | null } {
   const result = spawnSync('git', ['-C', projectDirectory, 'rev-parse', '--show-toplevel', '--git-dir', '--git-common-dir'], {
     encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
   });
-  if (result.status !== 0) return { gitRepository: false, dedicatedWorktree: false, worktreeRoot: null };
+  if (result.status !== 0) return { gitRepository: false, dedicatedWorktree: false, worktreeRoot: null, commonDirectory: null };
   const [topLevel, gitDirectory, commonDirectory] = result.stdout.trim().split('\n').map((value) => value.trim());
-  if (!topLevel || !gitDirectory || !commonDirectory) return { gitRepository: false, dedicatedWorktree: false, worktreeRoot: null };
+  if (!topLevel || !gitDirectory || !commonDirectory) return { gitRepository: false, dedicatedWorktree: false, worktreeRoot: null, commonDirectory: null };
   const gitRepository = true;
   try {
     const worktreeRoot = realpathSync(topLevel);
@@ -52,11 +52,13 @@ function gitWorktreeState(projectDirectory: string): { gitRepository: boolean; d
     const projectWithinWorktree = relativeProjectPath !== '..'
       && !relativeProjectPath.startsWith(`..${sep}`)
       && !isAbsolute(relativeProjectPath);
+    const commonPath = realpathSync(resolve(projectDirectory, commonDirectory));
     const dedicatedWorktree = projectWithinWorktree
-      && realpathSync(resolve(projectDirectory, gitDirectory)) !== realpathSync(resolve(projectDirectory, commonDirectory));
-    return { gitRepository, dedicatedWorktree, worktreeRoot: dedicatedWorktree ? worktreeRoot : null };
+      && realpathSync(resolve(projectDirectory, gitDirectory)) !== commonPath;
+    return { gitRepository, dedicatedWorktree, worktreeRoot: dedicatedWorktree ? worktreeRoot : null,
+      commonDirectory: dedicatedWorktree ? commonPath : null };
   } catch {
-    return { gitRepository, dedicatedWorktree: false, worktreeRoot: null };
+    return { gitRepository, dedicatedWorktree: false, worktreeRoot: null, commonDirectory: null };
   }
 }
 
@@ -85,12 +87,22 @@ function signedCodexExecutable(): string | null {
   return null;
 }
 
-/** @internal Installed Codex CLI 0.154.0 accepts this no-model sandbox form. */
-export function buildMacCodexSandboxProbeArgs(worktreeRoot: string, target: string): readonly string[] {
-  return ['sandbox', '-P', ':workspace', '-C', worktreeRoot, '--', '/usr/bin/touch', target];
+function codexPermissionConfig(commonDirectory: string): readonly string[] {
+  const profile = 'gofer-isolated';
+  return [
+    `permissions.${profile}.extends=":workspace"`,
+    `permissions.${profile}.filesystem={ ":tmpdir" = "read", ":slash_tmp" = "read", ${JSON.stringify(commonDirectory)} = "read" }`,
+    `default_permissions="${profile}"`,
+  ];
 }
 
-function macCodexSandboxEnforced(worktreeRoot: string): boolean {
+/** @internal The no-model probe uses the same permission profile as Gofer's native task. */
+export function buildMacCodexSandboxProbeArgs(worktreeRoot: string, commonDirectory: string, target: string): readonly string[] {
+  return ['sandbox', '-P', 'gofer-isolated', ...codexPermissionConfig(commonDirectory).flatMap(value => ['-c', value]),
+    '-C', worktreeRoot, '--', '/usr/bin/touch', target];
+}
+
+function macCodexSandboxEnforced(worktreeRoot: string, commonDirectory: string): boolean {
   const codex = signedCodexExecutable();
   if (!codex || !existsSync('/usr/bin/touch')) return false;
   let sibling: string;
@@ -98,29 +110,35 @@ function macCodexSandboxEnforced(worktreeRoot: string): boolean {
   catch { return false; }
   const inside = join(worktreeRoot, `.eai-isolation-probe-${randomUUID()}`);
   const outside = join(sibling, 'outside');
-  const probe = (target: string) => spawnSync(codex, buildMacCodexSandboxProbeArgs(worktreeRoot, target), {
+  const sharedGit = join(commonDirectory, `.eai-isolation-probe-${randomUUID()}`);
+  const probe = (target: string) => spawnSync(codex, buildMacCodexSandboxProbeArgs(worktreeRoot, commonDirectory, target), {
     encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 15_000, maxBuffer: 16_384,
   });
   try {
-    // Prove the sibling is writable without the sandbox before testing denial.
-    const baseline = spawnSync('/usr/bin/touch', [outside], { stdio: 'ignore', timeout: 5_000 });
-    if (baseline.status !== 0 || !existsSync(outside)) return false;
-    rmSync(outside);
+    for (const target of [outside, sharedGit]) {
+      const baseline = spawnSync('/usr/bin/touch', [target], { stdio: 'ignore', timeout: 5_000 });
+      if (baseline.status !== 0 || !existsSync(target)) return false;
+      rmSync(target);
+    }
     const allowed = probe(inside);
     if (allowed.status !== 0 || !existsSync(inside)) return false;
-    const denied = probe(outside);
-    return denied.status !== 0 && !denied.error && !existsSync(outside)
-      && /Operation not permitted|Permission denied/i.test(`${denied.stderr}\n${denied.stdout}`);
+    for (const target of [outside, sharedGit]) {
+      const denied = probe(target);
+      if (denied.status === 0 || denied.error || existsSync(target) ||
+        !/Operation not permitted|Permission denied/i.test(`${denied.stderr}\n${denied.stdout}`)) return false;
+    }
+    return true;
   } catch {
     return false;
   } finally {
     rmSync(inside, { force: true });
     rmSync(outside, { force: true });
+    rmSync(sharedGit, { force: true });
     try { rmdirSync(sibling); } catch { /* Retain unexpected contents rather than delete them. */ }
   }
 }
 
-function assessmentFor(surfaceId: AiSurfaceId, platform: NodeJS.Platform, gitRepository: boolean, dedicatedWorktree: boolean, macCodexEnforced: boolean): LocalIsolationAssessment {
+function assessmentFor(surfaceId: AiSurfaceId, platform: NodeJS.Platform, gitRepository: boolean, dedicatedWorktree: boolean, macCodexEnforced: boolean, commonDirectory: string | null): LocalIsolationAssessment {
   const common = {
     surfaceId, localOnly: true as const, requiresGitWorktree: true as const, requiresOsSandbox: true as const,
   };
@@ -135,7 +153,11 @@ function assessmentFor(surfaceId: AiSurfaceId, platform: NodeJS.Platform, gitRep
   }
   switch (surfaceId) {
     case 'codex-cli':
-      return { ...common, status: macCodexEnforced ? 'ready' : 'manual-host-setup', hostArguments: ['--sandbox', 'workspace-write', '--ask-for-approval', 'never'], prerequisites: ['Native sandbox enforcement'], missing: macCodexEnforced ? [] : ['Verified native Codex sandbox enforcement'], reason: macCodexEnforced ? 'A signed local Codex sandbox allowed a worktree write and denied a writable sibling write.' : 'A native Codex sandbox boundary was not proven on this host.' };
+      return { ...common, status: macCodexEnforced ? 'ready' : 'manual-host-setup',
+        hostArguments: commonDirectory ? ['--ask-for-approval', 'never', 'exec', '--ignore-user-config',
+          ...codexPermissionConfig(commonDirectory).flatMap(value => ['-c', value])] : [],
+        prerequisites: ['Native sandbox enforcement'], missing: macCodexEnforced ? [] : ['Verified native Codex sandbox enforcement'],
+        reason: macCodexEnforced ? 'A signed local Codex sandbox allowed a worktree write and denied writable sibling and shared Git store writes.' : 'A native Codex sandbox boundary was not proven on this host.' };
     case 'grok-cli':
       return { ...common, status: 'manual-host-setup', hostArguments: ['--worktree', '--sandbox', 'strict', '--permission-mode', 'dontAsk'], prerequisites: ['Native Grok sandbox enforcement'], missing: ['Verified native Grok sandbox enforcement'], reason: 'Grok Build sandbox enforcement has not been proven by a native boundary check.' };
     case 'claude-cli':
@@ -156,18 +178,18 @@ export function assessLocalIsolation(options: {
 }): LocalIsolationReport {
   const projectDirectory = resolve(options.projectDirectory);
   const platform = options.platform ?? process.platform;
-  const { gitRepository, dedicatedWorktree, worktreeRoot } = existsSync(projectDirectory)
+  const { gitRepository, dedicatedWorktree, worktreeRoot, commonDirectory } = existsSync(projectDirectory)
     ? gitWorktreeState(projectDirectory)
-    : { gitRepository: false, dedicatedWorktree: false, worktreeRoot: null };
+    : { gitRepository: false, dedicatedWorktree: false, worktreeRoot: null, commonDirectory: null };
   const macCodexEnforced = platform === 'darwin' && process.platform === 'darwin'
-    && worktreeRoot !== null && options.surfaceIds.includes('codex-cli')
-    && macCodexSandboxEnforced(worktreeRoot);
+    && worktreeRoot !== null && commonDirectory !== null && options.surfaceIds.includes('codex-cli')
+    && macCodexSandboxEnforced(worktreeRoot, commonDirectory);
   return {
     contractVersion: LOCAL_ISOLATION_CONTRACT_VERSION,
     projectDirectory,
     platform,
     gitRepository,
     cloudExecution: 'prohibited',
-    assessments: options.surfaceIds.map((surfaceId) => assessmentFor(surfaceId, platform, gitRepository, dedicatedWorktree, macCodexEnforced)),
+    assessments: options.surfaceIds.map((surfaceId) => assessmentFor(surfaceId, platform, gitRepository, dedicatedWorktree, macCodexEnforced, commonDirectory)),
   };
 }
