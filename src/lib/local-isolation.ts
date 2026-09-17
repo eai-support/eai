@@ -28,8 +28,8 @@ export interface LocalIsolationReport {
   readonly assessments: readonly LocalIsolationAssessment[];
 }
 
-function commandAvailable(command: string): boolean {
-  const result = spawnSync(command, ['--version'], { stdio: 'ignore' });
+function commandAvailable(command: string, versionArgument: string): boolean {
+  const result = spawnSync(command, [versionArgument], { stdio: 'ignore' });
   return !result.error && result.status === 0;
 }
 
@@ -99,7 +99,7 @@ export function assessLocalIsolation(options: {
     ? gitWorktreeState(projectDirectory)
     : { gitRepository: false, dedicatedWorktree: false };
   const missingLinuxRuntime = platform === 'linux'
-    ? [!commandAvailable('bwrap') ? 'bubblewrap (bwrap)' : null, !commandAvailable('socat') ? 'socat' : null]
+    ? [!commandAvailable('bwrap', '--version') ? 'bubblewrap (bwrap)' : null, !commandAvailable('socat', '-V') ? 'socat' : null]
       .filter((value): value is string => value !== null)
     : [];
   return {

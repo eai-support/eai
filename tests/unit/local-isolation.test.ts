@@ -94,6 +94,22 @@ describe('local isolation contract', () => {
     });
   });
 
+  it.skipIf(process.platform === 'win32')('uses socat -V and accepts working Linux sandbox helpers', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'eai-local-sandbox-'));
+    directories.push(directory);
+    const bwrap = join(directory, 'bwrap');
+    const socat = join(directory, 'socat');
+    await writeFile(bwrap, '#!/bin/sh\n[ "$1" = "--version" ]\n');
+    await writeFile(socat, '#!/bin/sh\n[ "$1" = "-V" ]\n');
+    await chmod(bwrap, 0o755);
+    await chmod(socat, 0o755);
+    vi.stubEnv('PATH', `${directory}${delimiter}${process.env.PATH ?? ''}`);
+    const report = assessLocalIsolation({
+      projectDirectory: await dedicatedWorktree(), platform: 'linux', surfaceIds: ['codex-cli'],
+    });
+    expect(report.assessments[0]).toMatchObject({ status: 'ready', missing: [] });
+  });
+
   it('does not treat Antigravity sandbox flags as proof without a project binding', async () => {
     const report = assessLocalIsolation({
       projectDirectory: await dedicatedWorktree(), platform: 'darwin', surfaceIds: ['antigravity-cli'],
