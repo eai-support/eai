@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { assessLocalIsolation } from '../../src/lib/local-isolation.js';
+import { assessLocalIsolation, buildMacCodexSandboxProbeArgs } from '../../src/lib/local-isolation.js';
 
 const directories: string[] = [];
 
@@ -30,6 +30,11 @@ afterEach(async () => {
 });
 
 describe('local isolation contract', () => {
+  it('uses the installed Codex CLI sandbox argv without a model call', () => {
+    expect(buildMacCodexSandboxProbeArgs('/work/task', '/work/outside')).toEqual([
+      'sandbox', '-P', ':workspace', '-C', '/work/task', '--', '/usr/bin/touch', '/work/outside',
+    ]);
+  });
   it('requires a Git worktree boundary before a host is ready', () => {
     const report = assessLocalIsolation({
       projectDirectory: tmpdir(), platform: 'darwin', surfaceIds: ['codex-cli'],

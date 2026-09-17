@@ -1,7 +1,8 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
@@ -28,16 +29,32 @@ function installInventory(installedIds: readonly AiSurfaceId[]): AiSurfaceInvent
 
 describe('eai start', () => {
   it.skipIf(process.platform !== 'darwin' || process.env.EAI_TEST_LIVE_CODEX_SANDBOX !== '1')(
-    'proves the signed local Codex sandbox blocks a sibling write without a model call',
+    'proves a signed local Codex sandbox in a dedicated Git worktree without a model call',
     async () => {
-      const { stdout } = await execFileAsync(process.execPath, [
-        cliEntry, 'start', repositoryRoot, '--isolation-check', '--surface', 'codex-cli', '--format', 'json',
-      ], { env: { ...process.env, EAI_UPDATE_CHECK_DISABLED: '1' } });
-      expect(JSON.parse(stdout)).toMatchObject({
-        platform: 'darwin',
-        assessments: [{ status: 'ready', missing: [] }],
-      });
+      const parent = dirname(repositoryRoot);
+      const primary = await mkdtemp(join(parent, '.eai-isolation-primary-'));
+      const linked = join(parent, `.eai-isolation-linked-${randomUUID()}`);
+      try {
+        await writeFile(join(primary, 'README.md'), 'sandbox probe fixture\n');
+        execFileSync('git', ['init', '--quiet', primary]);
+        execFileSync('git', ['-C', primary, 'add', 'README.md']);
+        execFileSync('git', ['-C', primary, '-c', 'user.name=Isolation Test', '-c', 'user.email=isolation@example.invalid', 'commit', '--quiet', '-m', 'test']);
+        execFileSync('git', ['-C', primary, 'worktree', 'add', '--quiet', '--detach', linked]);
+        const { stdout } = await execFileAsync(process.execPath, [
+          cliEntry, 'start', linked, '--isolation-check', '--surface', 'codex-cli', '--format', 'json',
+        ], { env: { ...process.env, EAI_UPDATE_CHECK_DISABLED: '1' } });
+        expect(JSON.parse(stdout)).toMatchObject({
+          projectDirectory: linked,
+          platform: 'darwin',
+          assessments: [{ status: 'ready', missing: [] }],
+        });
+      } finally {
+        try { execFileSync('git', ['-C', primary, 'worktree', 'remove', '--force', linked]); }
+        catch { await rm(linked, { recursive: true, force: true }); }
+        await rm(primary, { recursive: true, force: true });
+      }
     },
+    30_000,
   );
   it('returns a failing exit status and a parseable report when isolation is not ready', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'eai-start-isolation-'));

@@ -85,6 +85,11 @@ function signedCodexExecutable(): string | null {
   return null;
 }
 
+/** @internal Installed Codex CLI 0.154.0 accepts this no-model sandbox form. */
+export function buildMacCodexSandboxProbeArgs(worktreeRoot: string, target: string): readonly string[] {
+  return ['sandbox', '-P', ':workspace', '-C', worktreeRoot, '--', '/usr/bin/touch', target];
+}
+
 function macCodexSandboxEnforced(worktreeRoot: string): boolean {
   const codex = signedCodexExecutable();
   if (!codex || !existsSync('/usr/bin/touch')) return false;
@@ -93,9 +98,9 @@ function macCodexSandboxEnforced(worktreeRoot: string): boolean {
   catch { return false; }
   const inside = join(worktreeRoot, `.eai-isolation-probe-${randomUUID()}`);
   const outside = join(sibling, 'outside');
-  const probe = (target: string) => spawnSync(codex, [
-    'sandbox', '-P', ':workspace', '-C', worktreeRoot, '--', '/usr/bin/touch', target,
-  ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 15_000, maxBuffer: 16_384 });
+  const probe = (target: string) => spawnSync(codex, buildMacCodexSandboxProbeArgs(worktreeRoot, target), {
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 15_000, maxBuffer: 16_384,
+  });
   try {
     // Prove the sibling is writable without the sandbox before testing denial.
     const baseline = spawnSync('/usr/bin/touch', [outside], { stdio: 'ignore', timeout: 5_000 });
