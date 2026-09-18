@@ -105,6 +105,60 @@ function resolveDescribe(workdir) {
   return run("git", ["-C", workdir, "describe", "--tags", "--always"]);
 }
 
+const RELEASE_TAG_REF = /^refs\/tags\/(v\d+\.\d+\.\d+)$/;
+
+function compareReleaseTagsDesc(left, right) {
+  const leftParts = left.slice(1).split(".").map(Number);
+  const rightParts = right.slice(1).split(".").map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    if (leftParts[index] !== rightParts[index]) {
+      return rightParts[index] - leftParts[index];
+    }
+  }
+  return 0;
+}
+
+/**
+ * Pick the highest `vX.Y.Z` release from `git ls-remote --tags` output.
+ *
+ * Segments are compared numerically, so v1.10.0 outranks v1.9.0. Peeled
+ * annotated-tag refs (`refs/tags/v1.0.0^{}`) and any non-release tag are
+ * ignored rather than treated as a candidate release.
+ */
+export function selectLatestReleaseTag(lsRemoteOutput) {
+  const releases = [];
+  for (const line of String(lsRemoteOutput ?? "").split(/\r?\n/)) {
+    const ref = line.trim().split(/\s+/)[1];
+    const match = ref ? RELEASE_TAG_REF.exec(ref) : null;
+    if (match) {
+      releases.push(match[1]);
+    }
+  }
+  return releases.sort(compareReleaseTagsDesc)[0] ?? null;
+}
+
+/**
+ * Check out the newest published template release.
+ *
+ * The template used to be pinned at whatever main happened to hold, which gave
+ * a scaffolded app no release identity and let each consumer drift to its own
+ * SHA. A missing release is a hard failure: silently falling back to main would
+ * restore exactly the drift this pin exists to stop.
+ */
+function cloneLatestRelease(repo, workdir) {
+  const tag = selectLatestReleaseTag(run("git", ["ls-remote", "--tags", repo]));
+  if (!tag) {
+    throw new Error(
+      `${repo} has no vX.Y.Z release tag. Cut a template release before syncing linked sources.`,
+    );
+  }
+  execFileSync("git", ["clone", "--depth", "1", "--branch", tag, repo, workdir], {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
+  return tag;
+}
+
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf-8"));
 }
@@ -146,7 +200,7 @@ function readGoferResourceCommit() {
   }
 }
 
-function buildTemplateMetadata(workdir) {
+function buildTemplateMetadata(workdir, version) {
   const packageJson = readJson(path.join(workdir, "package.json"));
   assertCrossPlatformTemplateLifecycleScripts(packageJson);
   const packageLockPath = path.join(workdir, "package-lock.json");
@@ -157,6 +211,7 @@ function buildTemplateMetadata(workdir) {
 
   return {
     repo: TEMPLATE_REPO,
+    version,
     commit: resolveSha(workdir),
     packageLockSha256: crypto
       .createHash("sha256")
@@ -230,8 +285,9 @@ function main() {
   try {
     console.log(`▸ Cloning ${GOFER_REPO}`);
     cloneDefaultBranch(GOFER_REPO, goferDir);
-    console.log(`▸ Cloning ${TEMPLATE_REPO}`);
-    cloneDefaultBranch(TEMPLATE_REPO, templateDir);
+    console.log(`▸ Cloning latest ${TEMPLATE_REPO} release`);
+    const templateVersion = cloneLatestRelease(TEMPLATE_REPO, templateDir);
+    console.log(`▸ Template release ${templateVersion}`);
 
     const goferCommit = resolveSha(goferDir);
     const goferDescribe = resolveDescribe(goferDir);
@@ -242,7 +298,7 @@ function main() {
         commit: goferCommit,
         describe: goferDescribe,
       },
-      appTemplate: buildTemplateMetadata(templateDir),
+      appTemplate: buildTemplateMetadata(templateDir, templateVersion),
     };
 
     const currentManifest = fs.existsSync(LINKED_SOURCES_FILE)
