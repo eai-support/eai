@@ -1684,4 +1684,10 @@ describe("resolveTemplateClonePlan", () => {
     expect(plan.pinnedCommit).toBeUndefined();
     expect(plan.displaySource).toBe("/tmp/custom-template");
   });
+
+  test("rejects a release override for custom template sources", () => {
+    expect(() =>
+      resolveTemplateClonePlan("/tmp/custom-template", "v1.4.0"),
+    ).toThrow(/canonical eai-app-template source/);
+  });
 });

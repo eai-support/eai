@@ -327,7 +327,9 @@ export function resolveTemplateClonePlan(
 ): TemplateClonePlan {
   if (!isDefaultTemplateSource(templateSource)) {
     if (versionOverride !== undefined) {
-      parseTemplateVersionOverride(versionOverride);
+      throw new Error(
+        "--template-version can only be used with the canonical eai-app-template source.",
+      );
     }
     return {
       cloneSource: templateSource,
