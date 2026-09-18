@@ -481,6 +481,7 @@ const OPTION_DECISIONS = {
   'eai docs classify': DOCUMENT_CONTEXT_OPTION_DECISIONS,
   'eai start': {
     '--surface': 'Explicit provider selection is covered by command integration tests; release smoke keeps detection read-only.',
+    '--isolation-check': 'Local isolation readiness is covered by focused contract tests; release smoke does not create a task worktree or launch a quota-consuming host.',
     '--install': 'Opening an external provider installation page requires a user click and is not performed by automated release smoke.',
     '--dry-run': 'Provider launch-plan output is covered by integration tests; release smoke uses the stronger read-only detection contract.',
     '--no-remember': 'Preference suppression is covered by the local preference unit contract; release smoke does not launch or persist a provider.',
