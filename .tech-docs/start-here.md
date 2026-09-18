@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.15.11** (2026-09-15): Pair AI surfaces with verified companion CLIs.
+The current CLI release is **v3.16.0** (2026-09-18): Pin app template scaffolding to published releases instead of latest main.
 
 
 ## What The Pieces Do
