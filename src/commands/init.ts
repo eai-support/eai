@@ -326,6 +326,9 @@ export function resolveTemplateClonePlan(
   versionOverride?: string,
 ): TemplateClonePlan {
   if (!isDefaultTemplateSource(templateSource)) {
+    if (versionOverride !== undefined) {
+      parseTemplateVersionOverride(versionOverride);
+    }
     return {
       cloneSource: templateSource,
       displaySource: describeTemplateSource(templateSource),
@@ -335,13 +338,14 @@ export function resolveTemplateClonePlan(
   const linkedSources = loadLinkedSourcesManifest();
   const cloneSource = linkedSources?.appTemplate?.repo || TEMPLATE_REPO;
   const pinnedCommit = linkedSources?.appTemplate?.commit;
-  const pinnedVersion = versionOverride
+  const pinnedVersion = versionOverride !== undefined
     ? parseTemplateVersionOverride(versionOverride)
     : linkedSources?.appTemplate?.version;
 
   // An explicit release override has no recorded SHA, so the tag itself becomes
   // the fetch ref; the default path keeps fetching the immutable commit.
-  const resolvedCommit = versionOverride ? undefined : pinnedCommit;
+  const resolvedCommit =
+    versionOverride !== undefined ? undefined : pinnedCommit;
 
   // The release tag names the revision; the commit is what is actually fetched,
   // so a moved or deleted tag can never change what an existing pin resolves to.
@@ -390,6 +394,15 @@ async function cloneTemplate(
       fetchRef,
     ]);
     await exec("git", ["-C", targetDir, "checkout", "FETCH_HEAD"]);
+    if (plan.pinnedVersion && !plan.pinnedCommit) {
+      const { stdout } = await exec("git", [
+        "-C",
+        targetDir,
+        "rev-parse",
+        "HEAD",
+      ]);
+      return { ...plan, pinnedCommit: stdout.trim() };
+    }
     return plan;
   } catch (error) {
     if (options.allowTargetRemoval === false) {
@@ -517,9 +530,9 @@ Gofer AI CLI assets are installed by default:
   .system/skills as a legacy Codex mirror
   .github/prompts, .github/instructions, and .github/skills for GitHub Copilot
 
-The default public template is pinned to the latest eai-app-template main
-commit captured when this CLI release was cut. Use --from to override it with
-another repo or local path.
+The default public template is pinned to a published eai-app-template release.
+Use --template-version to select a different release, or --from to use another
+repo or local path.
 
 Use --no-gofer only when you need a bare app scaffold.
 `,
@@ -682,19 +695,20 @@ Use --no-gofer only when you need a bare app scaffold.
 
     // Step 1: Clone template
     const cloneSpinner = startEaiStep("Cloning template...");
-    const templatePlan = resolveTemplateClonePlan(
-      options.from,
-      options.templateVersion,
-    );
+    let templatePlan: TemplateClonePlan;
     try {
+      templatePlan = resolveTemplateClonePlan(
+        options.from,
+        options.templateVersion,
+      );
       if (targetUsesCurrentDir) {
-        await copyTemplateIntoTargetDir(
+        templatePlan = await copyTemplateIntoTargetDir(
           options.from,
           targetDir,
           options.templateVersion,
         );
       } else {
-        await cloneTemplate(options.from, targetDir, {
+        templatePlan = await cloneTemplate(options.from, targetDir, {
           allowTargetRemoval: true,
           version: options.templateVersion,
         });
@@ -1215,7 +1229,7 @@ export function buildForwardedInitArgs(
   const companyTenant = tenantId || options.companyTenant || options.tenant;
   if (companyTenant) args.push("--company-tenant", companyTenant);
   if (options.appKey) args.push("--app-key", options.appKey);
-  if (options.templateVersion)
+  if (options.templateVersion !== undefined)
     args.push("--template-version", options.templateVersion);
   if (options.parentTenant) args.push("--parent-tenant", options.parentTenant);
   if (options.childTenant) args.push("--child-tenant", options.childTenant);
