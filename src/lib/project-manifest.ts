@@ -26,6 +26,7 @@ export interface ProjectManifest {
   };
   readonly template?: {
     readonly repo?: string;
+    readonly version?: string;
     readonly commit?: string;
     readonly displaySource?: string;
     readonly initializedAt?: string;
