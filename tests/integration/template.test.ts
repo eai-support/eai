@@ -163,6 +163,32 @@ describe('eai template check', () => {
     expect(result.manifest?.template?.displaySource).toBe('eai-tools/eai-app-template@abc1234');
   });
 
+  test('normalizes release-tagged template labels from eai init scaffold commits', async () => {
+    await writeFileRecursive(env.dir, 'package.json', JSON.stringify({
+      name: '@eai-tools/template-check-release-label-fixture',
+      version: '0.0.1',
+    }, null, 2) + '\n');
+
+    await git(env.dir, ['init']);
+    await git(env.dir, ['add', '.']);
+    await git(
+      env.dir,
+      [
+        'commit',
+        '-m',
+        'Initial scaffold from template\n\nApp: Release Fixture\nCreated by: eai init\nTemplate: eai-support/eai-app-template@v1.0.0',
+      ],
+    );
+
+    const result = await resolveProjectManifest(env.dir);
+
+    expect(result.source).toBe('inferred-init-commit');
+    expect(result.manifest?.template?.repo).toBe('https://github.com/eai-support/eai-app-template.git');
+    expect(result.manifest?.template?.version).toBe('v1.0.0');
+    expect(result.manifest?.template?.commit).toBeUndefined();
+    expect(result.manifest?.template?.displaySource).toBe('eai-support/eai-app-template@v1.0.0');
+  });
+
   test('warns when App Router route.ts files export unsupported symbols', async () => {
     const templateRepo = join(tmpdir(), `eai-template-source-${Date.now()}-routes`);
     const { initialCommit } = await createTemplateRepo(templateRepo);

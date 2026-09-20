@@ -186,6 +186,8 @@ const CREATE_NESTED_PROMPT_THEME = {
 interface LinkedSourcesManifest {
   readonly appTemplate?: {
     readonly repo?: string;
+    /** Template release tag (`vX.Y.Z`) the pinned commit was cut from. */
+    readonly version?: string;
     readonly commit?: string;
   };
 }
@@ -194,6 +196,7 @@ export interface TemplateClonePlan {
   readonly cloneSource: string;
   readonly displaySource: string;
   readonly pinnedCommit?: string;
+  readonly pinnedVersion?: string;
 }
 
 function buildInitialProjectManifest(
@@ -215,6 +218,7 @@ function buildInitialProjectManifest(
     },
     template: {
       repo: templatePlan.cloneSource,
+      version: templatePlan.pinnedVersion,
       commit: templatePlan.pinnedCommit,
       displaySource: templatePlan.displaySource,
       initializedAt: new Date().toISOString(),
@@ -299,10 +303,34 @@ export function isDefaultTemplateSource(templateSource: string): boolean {
   return templateSource === TEMPLATE_REPO;
 }
 
+const RELEASE_TAG_PATTERN = /^v\d+\.\d+\.\d+$/;
+
+/**
+ * Validate a `--template-version` value before it reaches `git fetch`.
+ *
+ * Restricting the override to a release tag keeps arbitrary refs out of the
+ * fetch and guarantees the result is a revision the template actually published.
+ */
+export function parseTemplateVersionOverride(value: string): string {
+  const trimmed = value.trim();
+  if (!RELEASE_TAG_PATTERN.test(trimmed)) {
+    throw new Error(
+      `Template version "${value}" must be a published release tag such as v1.2.0.`,
+    );
+  }
+  return trimmed;
+}
+
 export function resolveTemplateClonePlan(
   templateSource: string,
+  versionOverride?: string,
 ): TemplateClonePlan {
   if (!isDefaultTemplateSource(templateSource)) {
+    if (versionOverride !== undefined) {
+      throw new Error(
+        "--template-version can only be used with the canonical eai-app-template source.",
+      );
+    }
     return {
       cloneSource: templateSource,
       displaySource: describeTemplateSource(templateSource),
@@ -312,12 +340,25 @@ export function resolveTemplateClonePlan(
   const linkedSources = loadLinkedSourcesManifest();
   const cloneSource = linkedSources?.appTemplate?.repo || TEMPLATE_REPO;
   const pinnedCommit = linkedSources?.appTemplate?.commit;
+  const pinnedVersion = versionOverride !== undefined
+    ? parseTemplateVersionOverride(versionOverride)
+    : linkedSources?.appTemplate?.version;
+
+  // An explicit release override has no recorded SHA, so the tag itself becomes
+  // the fetch ref; the default path keeps fetching the immutable commit.
+  const resolvedCommit =
+    versionOverride !== undefined ? undefined : pinnedCommit;
+
+  // The release tag names the revision; the commit is what is actually fetched,
+  // so a moved or deleted tag can never change what an existing pin resolves to.
+  const pinnedRef = pinnedVersion ?? resolvedCommit?.slice(0, 7);
 
   return {
     cloneSource,
-    pinnedCommit,
-    displaySource: pinnedCommit
-      ? `${TEMPLATE_REPO_LABEL}@${pinnedCommit.slice(0, 7)}`
+    pinnedCommit: resolvedCommit,
+    pinnedVersion,
+    displaySource: pinnedRef
+      ? `${TEMPLATE_REPO_LABEL}@${pinnedRef}`
       : TEMPLATE_REPO_LABEL,
   };
 }
@@ -325,11 +366,12 @@ export function resolveTemplateClonePlan(
 async function cloneTemplate(
   templateSource: string,
   targetDir: string,
-  options: { allowTargetRemoval?: boolean } = {},
+  options: { allowTargetRemoval?: boolean; version?: string } = {},
 ): Promise<TemplateClonePlan> {
-  const plan = resolveTemplateClonePlan(templateSource);
+  const plan = resolveTemplateClonePlan(templateSource, options.version);
+  const fetchRef = plan.pinnedCommit ?? plan.pinnedVersion;
 
-  if (!plan.pinnedCommit) {
+  if (!fetchRef) {
     await exec("git", ["clone", "--depth", "1", plan.cloneSource, targetDir]);
     return plan;
   }
@@ -351,9 +393,18 @@ async function cloneTemplate(
       "--depth",
       "1",
       "origin",
-      plan.pinnedCommit,
+      fetchRef,
     ]);
     await exec("git", ["-C", targetDir, "checkout", "FETCH_HEAD"]);
+    if (plan.pinnedVersion && !plan.pinnedCommit) {
+      const { stdout } = await exec("git", [
+        "-C",
+        targetDir,
+        "rev-parse",
+        "HEAD",
+      ]);
+      return { ...plan, pinnedCommit: stdout.trim() };
+    }
     return plan;
   } catch (error) {
     if (options.allowTargetRemoval === false) {
@@ -362,7 +413,7 @@ async function cloneTemplate(
     }
     await rm(targetDir, { recursive: true, force: true });
     await exec("git", ["clone", plan.cloneSource, targetDir]);
-    await exec("git", ["-C", targetDir, "checkout", plan.pinnedCommit]);
+    await exec("git", ["-C", targetDir, "checkout", fetchRef]);
     return plan;
   }
 }
@@ -370,11 +421,12 @@ async function cloneTemplate(
 async function copyTemplateIntoTargetDir(
   templateSource: string,
   targetDir: string,
+  version?: string,
 ): Promise<TemplateClonePlan> {
   const templateDir = await mkdtemp(join(tmpdir(), "eai-template-"));
   try {
     await chmod(templateDir, 0o700);
-    const plan = await cloneTemplate(templateSource, templateDir);
+    const plan = await cloneTemplate(templateSource, templateDir, { version });
     await rm(join(templateDir, ".git"), { recursive: true, force: true });
     // Current-directory init updates matching scaffold-managed files while
     // preserving unrelated files and existing repository metadata.
@@ -465,6 +517,10 @@ export const initCommand = new Command("init")
     "--app-key <key>",
     "Bind the local project to an existing app instead of creating a new app",
   )
+  .option(
+    "--template-version <tag>",
+    "Scaffold from a specific published app-template release (for example v1.2.0)",
+  )
   .option("--no-splash", "Skip the interactive EAI wordmark")
   .addHelpText(
     "after",
@@ -476,9 +532,9 @@ Gofer AI CLI assets are installed by default:
   .system/skills as a legacy Codex mirror
   .github/prompts, .github/instructions, and .github/skills for GitHub Copilot
 
-The default public template is pinned to the latest eai-app-template main
-commit captured when this CLI release was cut. Use --from to override it with
-another repo or local path.
+The default public template is pinned to a published eai-app-template release.
+Use --template-version to select a different release, or --from to use another
+repo or local path.
 
 Use --no-gofer only when you need a bare app scaffold.
 `,
@@ -641,13 +697,22 @@ Use --no-gofer only when you need a bare app scaffold.
 
     // Step 1: Clone template
     const cloneSpinner = startEaiStep("Cloning template...");
-    const templatePlan = resolveTemplateClonePlan(options.from);
+    let templatePlan: TemplateClonePlan;
     try {
+      templatePlan = resolveTemplateClonePlan(
+        options.from,
+        options.templateVersion,
+      );
       if (targetUsesCurrentDir) {
-        await copyTemplateIntoTargetDir(options.from, targetDir);
+        templatePlan = await copyTemplateIntoTargetDir(
+          options.from,
+          targetDir,
+          options.templateVersion,
+        );
       } else {
-        await cloneTemplate(options.from, targetDir, {
+        templatePlan = await cloneTemplate(options.from, targetDir, {
           allowTargetRemoval: true,
+          version: options.templateVersion,
         });
       }
       // Remove .git to start fresh
@@ -945,6 +1010,7 @@ export interface CreateCommandOptions {
   install?: boolean;
   packageProfile: string;
   appKey?: string;
+  templateVersion?: string;
   tool?: string;
   splash?: boolean;
 }
@@ -1015,6 +1081,10 @@ export const createCommand = new Command("create")
   .option(
     "--app-key <key>",
     "Bind the local project to an existing app instead of creating a new app",
+  )
+  .option(
+    "--template-version <tag>",
+    "Scaffold from a specific published app-template release (for example v1.2.0)",
   )
   .option(
     "--tool <tool>",
@@ -1161,6 +1231,8 @@ export function buildForwardedInitArgs(
   const companyTenant = tenantId || options.companyTenant || options.tenant;
   if (companyTenant) args.push("--company-tenant", companyTenant);
   if (options.appKey) args.push("--app-key", options.appKey);
+  if (options.templateVersion !== undefined)
+    args.push("--template-version", options.templateVersion);
   if (options.parentTenant) args.push("--parent-tenant", options.parentTenant);
   if (options.childTenant) args.push("--child-tenant", options.childTenant);
   if (options.createChildTenant) args.push("--create-child-tenant");

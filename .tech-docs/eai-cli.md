@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.11 |
-| Released | 2026-09-15 |
-| Last Material Change | Pair AI surfaces with verified companion CLIs |
-| Source Commit | `cd62b2c2f0a04faef5e4bd134488f845d37d7130` |
+| Version | 3.16.0 |
+| Released | 2026-09-18 |
+| Last Material Change | Pin app template scaffolding to published releases instead of latest main |
+| Source Commit | `4e23b079c20e42e06a42383696e65870ff8350d4` |
 
 
 ## Install
