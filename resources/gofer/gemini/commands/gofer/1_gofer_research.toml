@@ -1,2 +1,0 @@
-description = "Research codebase, CLI integrations, and technology landscape for the target feature."
-prompt = "{{include: ../../../.specify/commands/1_gofer_research.md}}"

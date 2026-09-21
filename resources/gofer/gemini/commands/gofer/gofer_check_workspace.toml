@@ -1,2 +1,0 @@
-description = "Check whether this repo is initialized for Gofer and explain any missing or stale scaffold."
-prompt = "{{include: ../../../.specify/commands/gofer_check_workspace.md}}"

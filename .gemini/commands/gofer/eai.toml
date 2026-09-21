@@ -1,2 +1,0 @@
-description = "Start or continue the EAI delivery pipeline."
-prompt = "{{include: ./eai.md}}"
