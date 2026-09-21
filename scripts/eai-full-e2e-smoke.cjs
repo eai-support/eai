@@ -579,6 +579,7 @@ const OPTION_DECISIONS = {
   },
   'eai app workflow-setup': {
     '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
+    '--handover-from-no-code': 'Explicit no-code handover creates one-time operation state; mocked command coverage verifies exact source bindings and the opt-in payload without changing app ownership.',
   },
   'eai app workflow-evidence': {
     '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',

@@ -115,6 +115,7 @@ const SOURCE_UNKNOWN_APP_FLAGS: Readonly<Record<string, readonly string[]>> = {
     "--ref",
     "--commit",
     "--config-hash",
+    "--handover-from-no-code",
     "--skip-validate",
     "--format",
     "--json",
