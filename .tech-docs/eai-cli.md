@@ -1,8 +1,9 @@
 ---
-generated: false
+generated: true
+generated_at: "2026-09-21T22:03:01.864Z"
+source_commit: "8bc76a23ee69066b54726e8040fa51cadde58e6b"
 title: EAI CLI
 ---
-
 # EAI CLI
 
 `eai` is the supported command-line interface for building and operating apps on

@@ -1,8 +1,9 @@
 ---
-generated: false
+generated: true
+generated_at: "2026-09-21T22:03:01.864Z"
+source_commit: "8bc76a23ee69066b54726e8040fa51cadde58e6b"
 title: Config-Driven UI
 ---
-
 # Config-Driven UI
 
 Use config-driven UI when an app needs tenant-specific layout, copy, feature

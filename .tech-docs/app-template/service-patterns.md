@@ -1,8 +1,9 @@
 ---
-generated: false
+generated: true
+generated_at: "2026-09-21T22:03:01.864Z"
+source_commit: "8bc76a23ee69066b54726e8040fa51cadde58e6b"
 title: Platform Service Patterns
 ---
-
 # Platform Service Patterns
 
 Use these patterns when choosing how an app, eai-gofer, or terminal automation

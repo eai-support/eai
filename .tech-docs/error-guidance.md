@@ -1,8 +1,10 @@
 ---
+generated: true
+generated_at: "2026-09-21T22:03:01.864Z"
+source_commit: "8bc76a23ee69066b54726e8040fa51cadde58e6b"
 title: Error Guidance
 description: Public-safe EAI CLI error explanations and agent recovery commands.
 ---
-
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
@@ -682,4 +684,3 @@ None.
 - the command that failed
 - the request id from the error
 - the reason code from the error response
-

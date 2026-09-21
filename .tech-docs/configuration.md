@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-09-18T23:34:13.250Z"
-source_commit: "4e23b079c20e42e06a42383696e65870ff8350d4"
+generated_at: "2026-09-21T22:03:01.864Z"
+source_commit: "8bc76a23ee69066b54726e8040fa51cadde58e6b"
 ---
 # EAI CLI - Configuration
 
@@ -84,15 +84,32 @@ eai doctor --no-color
 
 ## Environment Variables
 
-Public documentation only describes generic runtime environment variables:
+The CLI reads the following runtime and project variables. Values that identify
+tenants, endpoints, users, or credentials should remain local or in a CI secret
+store.
 
-| Variable | Description |
-|----------|-------------|
-| `NO_COLOR` | Disable colored terminal output |
-| `FORCE_COLOR` | Force colored terminal output |
-| `EAI_NO_SPLASH` | Set to `1` to suppress the startup EAI wordmark |
-| `EAI_NO_ANIMATION` | Set to `1` to print the startup wordmark without line animation |
-| `NODE_ENV` | Standard Node.js runtime mode |
+| Variable | Description | Default |
+|---|---|---|
+| `NO_COLOR` | Disable colored terminal output | unset |
+| `FORCE_COLOR` | Force colored terminal output | unset |
+| `EAI_NO_SPLASH` | Suppress the startup wordmark when `1` | unset |
+| `EAI_NO_ANIMATION` | Disable startup animation when `1` | unset |
+| `EAI_PROFILE` | Select a named local CLI profile | `default` |
+| `EAI_AUTH_TENANT_NAME` | Override default Entra CIAM tenant name | production default |
+| `EAI_AUTH_TENANT_ID` | Override default Entra CIAM tenant ID | production default |
+| `EAI_AUTH_SCOPE` | Full OAuth scope override | production default scope |
+| `EAI_PUBLIC_API_SCOPE` | Delegated PublicAPI scope used to build the default scope | production default scope |
+| `EAI_CLI_CLIENT_ID` / `EAI_AUTH_CLIENT_ID` | OAuth public client ID override | production default client |
+| `EAI_ACCESS_TOKEN` | Inject an access token for automation/diagnostics | unset |
+| `BASE_URL_PUBLIC_API` | Project PublicAPI base URL, typically synchronized from tenant region | unset; regional default is used when applicable |
+| `EAI_TENANT_ID` | Generated app/platform tenant binding | unset |
+| `EAI_PARENT_TENANT_ID` | Generated parent/company tenant binding | unset |
+| `EAI_APP_KEY` / `EAI_VERTICAL_KEY` | Generated app or vertical key | unset |
+| `NEXT_PUBLIC_EAI_APP_KEY` | Browser-visible generated app key | unset |
+| `EAI_INIT_INCLUDE_AI_CHAT` | Scaffold AI-chat capability toggle | command-selected |
+| `EAI_INIT_INCLUDE_DOCUMENTS` | Scaffold document capability toggle | command-selected |
+| `EAI_AUTH_PROVIDER` | Scaffold authentication provider selection | command-selected |
+| `NODE_ENV` | Standard Node.js runtime mode | unset |
 
 `EAI_NO_SPLASH` and `EAI_NO_ANIMATION` are local terminal preferences read from
 the CLI process only. They have no App Configuration or infrastructure mapping.

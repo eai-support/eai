@@ -1,8 +1,9 @@
 ---
-generated: false
+generated: true
+generated_at: "2026-09-21T22:03:01.864Z"
+source_commit: "8bc76a23ee69066b54726e8040fa51cadde58e6b"
 title: Start Here
 ---
-
 # Start Here
 
 The EAI documentation site is the single public entry point for the EAI CLI,

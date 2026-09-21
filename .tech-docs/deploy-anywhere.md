@@ -1,8 +1,9 @@
 ---
-generated: false
+generated: true
+generated_at: "2026-09-21T22:03:01.864Z"
+source_commit: "8bc76a23ee69066b54726e8040fa51cadde58e6b"
 title: Deploy An EAI App Anywhere
 ---
-
 # Deploy An EAI App Anywhere
 
 EAI apps declare a provider-neutral runtime contract in `eai.runtime.json`.

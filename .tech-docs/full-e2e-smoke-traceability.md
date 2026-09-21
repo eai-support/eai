@@ -1,3 +1,8 @@
+---
+generated: true
+generated_at: "2026-09-21T22:03:01.864Z"
+source_commit: "8bc76a23ee69066b54726e8040fa51cadde58e6b"
+---
 # EAI Full E2E Smoke Traceability
 
 Generated from `eai --describe`. This table is the release-test contract for
