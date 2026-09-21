@@ -25,6 +25,20 @@ const baseOptions: CreateCommandOptions = {
 };
 
 describe("eai create onboarding helpers", () => {
+  test("forwards an explicit template release to init", () => {
+    expect(
+      buildForwardedInitArgs(
+        "my-app",
+        {
+          ...baseOptions,
+          templateVersion: "v1.4.0",
+        },
+        undefined,
+        "tenant-123",
+      ),
+    ).toContainEqual("--template-version");
+  });
+
   test("converts plain-language names to CLI-safe project names", () => {
     expect(toKebabCase("Supplier Onboarding Portal")).toBe(
       "supplier-onboarding-portal",

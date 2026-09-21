@@ -63,15 +63,29 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain('Check Git, Node.js, and npm');
     expect(result.stdout).toContain('Check builder readiness');
     expect(result.stdout).toContain('--skip-onboarding');
+    expect(result.stdout).toContain('antigravity');
+    expect(result.stdout).not.toContain('AI tool to prepare for: codex, claude, vscode, or gemini');
   });
 
-  test('docs help includes the simple upload-classify-index workflow', async () => {
+  test('create rejects Gemini as a selectable workspace tool', async () => {
+    const result = await runCommand(ctx, 'eai create test-app --skip-prompts --tool gemini --no-splash');
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('Unknown --tool "gemini"');
+    expect(result.stderr).toContain('antigravity');
+  });
+
+  test('docs help uses one configured submission and separates acceptance from completion', async () => {
     const result = await runCommand(ctx, 'eai docs --help');
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Typical workflow:');
-    expect(result.stdout).toContain('eai docs upload ./reports/contract.pdf');
-    expect(result.stdout).toContain('eai docs index <documentId>');
+    expect(result.stdout).toContain('eai docs classify ./reports/contract.pdf --storage-target resourceapi --vertical-key business-docs --workflow-key review');
+    expect(result.stdout).toContain('eai docs upload ./reports/site-plan.pdf --storage-target resourceapi --planning-application-id <projectId>');
+    expect(result.stdout).toContain('Run classify once');
+    expect(result.stdout).toContain('acceptance is not completion');
+    expect(result.stdout).toContain('Do not invent a planning ID or repeat the upload');
+    expect(result.stdout).not.toContain('eai docs index <documentId>');
   });
 
   test('--describe outputs valid parseable JSON with the agent recovery guide', async () => {

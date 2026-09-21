@@ -19,6 +19,7 @@ import {
   initCommand,
   isDefaultTemplateSource,
   isMissingGitIdentity,
+  parseTemplateVersionOverride,
   resolveTemplateClonePlan,
   selectExistingAppSelection,
 } from "../../src/commands/init.js";
@@ -59,7 +60,7 @@ const require = createRequire(import.meta.url);
 const pkg = require("../../package.json") as { version: string };
 const tscPath = require.resolve("typescript/bin/tsc");
 const linkedSources = require("../../resources/linked-sources.json") as {
-  appTemplate: { commit: string };
+  appTemplate: { commit: string; version?: string };
 };
 const TEST_PUBLIC_API_URL = "https://profile-test.example.test/public";
 
@@ -1647,9 +1648,34 @@ describe("resolveTemplateClonePlan", () => {
       "https://github.com/eai-support/eai-app-template.git",
     );
     expect(plan.pinnedCommit).toBe(linkedSources.appTemplate.commit);
+    expect(plan.pinnedVersion).toBe(linkedSources.appTemplate.version);
+    // The release tag names the pin, but the immutable commit is still fetched.
     expect(plan.displaySource).toBe(
-      `eai-support/eai-app-template@${linkedSources.appTemplate.commit.slice(0, 7)}`,
+      `eai-support/eai-app-template@${
+        linkedSources.appTemplate.version ??
+        linkedSources.appTemplate.commit.slice(0, 7)
+      }`,
     );
+  });
+
+  test("scaffolds from an explicit release when one is requested", () => {
+    const plan = resolveTemplateClonePlan(
+      "https://github.com/eai-support/eai-app-template.git",
+      "v1.4.0",
+    );
+    expect(plan.pinnedVersion).toBe("v1.4.0");
+    // No recorded SHA for an override, so the tag itself is the fetch ref.
+    expect(plan.pinnedCommit).toBeUndefined();
+    expect(plan.displaySource).toBe("eai-support/eai-app-template@v1.4.0");
+  });
+
+  test("rejects a template version that is not a published release tag", () => {
+    for (const value of ["main", "1.4.0", "v1.4", "v1.4.0; rm -rf /"]) {
+      expect(() => parseTemplateVersionOverride(value)).toThrow(
+        /published release tag/,
+      );
+    }
+    expect(parseTemplateVersionOverride("  v1.4.0  ")).toBe("v1.4.0");
   });
 
   test("passes through custom template sources unchanged", () => {
@@ -1657,5 +1683,11 @@ describe("resolveTemplateClonePlan", () => {
     expect(plan.cloneSource).toBe("/tmp/custom-template");
     expect(plan.pinnedCommit).toBeUndefined();
     expect(plan.displaySource).toBe("/tmp/custom-template");
+  });
+
+  test("rejects a release override for custom template sources", () => {
+    expect(() =>
+      resolveTemplateClonePlan("/tmp/custom-template", "v1.4.0"),
+    ).toThrow(/canonical eai-app-template source/);
   });
 });
