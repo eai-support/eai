@@ -13,7 +13,7 @@ These examples show how the CLI, eai-gofer, and EAI App Template work together.
 | ----------------------------------------- | --------------------------------------------------------------------------------------- |
 | [Build a Task Tracker](./task-tracker.md) | Scaffold an app, define Object Types, publish them, and build ResourceAPI-backed pages. |
 | [Add AI Chat](./ai-chat.md)               | Add streaming chat, document upload, and RAG indexing through template hooks.           |
-| [Business Scenarios](/scenarios/)         | Browse industry-specific workflows before deciding what to build.                       |
+| [Business Scenarios](./)                  | Browse industry-specific workflows before deciding what to build.                       |
 
 ## Standard Loop
 
