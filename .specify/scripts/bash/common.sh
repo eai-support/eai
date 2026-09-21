@@ -83,6 +83,43 @@ check_feature_branch() {
 
 get_feature_dir() { echo "$1/.specify/specs/$2"; }
 
+spec_artifact_status() {
+    local spec_file="$1"
+
+    if [[ ! -f "$spec_file" ]]; then
+        echo "missing"
+        return 0
+    fi
+
+    if [[ ! -s "$spec_file" ]]; then
+        echo "empty"
+        return 0
+    fi
+
+    if grep -Eq 'Feature Specification: \[FEATURE NAME\]|\[###-feature-name\]|\[Describe this user journey|\[specific capability|ACTION REQUIRED|NEEDS CLARIFICATION: auth method not specified|\.specify/specs/\[###-feature-name\]/goal-ledger\.json' "$spec_file"; then
+        echo "template"
+        return 0
+    fi
+
+    echo "ready"
+}
+
+require_material_spec() {
+    local spec_file="$1"
+    local feature_dir="${2:-$(dirname "$spec_file")}"
+    local status
+    status="$(spec_artifact_status "$spec_file")"
+
+    if [[ "$status" == "ready" ]]; then
+        return 0
+    fi
+
+    echo "ERROR: spec.md is $status for $feature_dir" >&2
+    echo "Gofer cannot continue to plan/tasks/implement/validate until /2_gofer_specify writes a real feature specification." >&2
+    echo "Run /2_gofer_specify for this feature, then rerun the current stage." >&2
+    return 1
+}
+
 # Find feature directory by numeric prefix instead of exact branch match
 # This allows multiple branches to work on the same spec (e.g., 004-fix-bug, 004-add-feature)
 find_feature_dir_by_prefix() {
@@ -153,4 +190,3 @@ EOF
 
 check_file() { [[ -f "$1" ]] && echo "  ✓ $2" || echo "  ✗ $2"; }
 check_dir() { [[ -d "$1" && -n $(ls -A "$1" 2>/dev/null) ]] && echo "  ✓ $2" || echo "  ✗ $2"; }
-

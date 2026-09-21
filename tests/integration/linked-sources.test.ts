@@ -9,6 +9,7 @@ import {
   extractEnterprisePackageVersions,
   hashJson,
   parseScopedRegistry,
+  selectLatestReleaseTag,
 } from "../../scripts/sync-linked-sources.js";
 import {
   DEFAULT_GOFER_RELEASE_MANIFEST_URL,
@@ -171,5 +172,32 @@ describe("Gofer source ownership", () => {
         .map((url) => ({ path, url })),
     );
     expect(violations).toEqual([]);
+  });
+});
+
+describe("selectLatestReleaseTag", () => {
+  const lsRemote = (...refs: string[]) =>
+    refs.map((ref, index) => `${"0".repeat(39)}${index}\trefs/tags/${ref}`).join("\n");
+
+  test("compares version segments numerically, not as text", () => {
+    expect(selectLatestReleaseTag(lsRemote("v1.9.0", "v1.10.0", "v1.2.0"))).toBe(
+      "v1.10.0",
+    );
+    expect(selectLatestReleaseTag(lsRemote("v2.0.0", "v10.0.0"))).toBe("v10.0.0");
+  });
+
+  test("ignores peeled annotated-tag refs and non-release tags", () => {
+    // An annotated tag emits both refs/tags/v1.0.0 and refs/tags/v1.0.0^{}.
+    expect(
+      selectLatestReleaseTag(
+        lsRemote("v1.0.0", "v1.0.0^{}", "nightly", "v1.0.0-rc1"),
+      ),
+    ).toBe("v1.0.0");
+  });
+
+  test("reports no release rather than guessing one", () => {
+    expect(selectLatestReleaseTag("")).toBeNull();
+    expect(selectLatestReleaseTag(lsRemote("nightly", "latest"))).toBeNull();
+    expect(selectLatestReleaseTag(undefined)).toBeNull();
   });
 });

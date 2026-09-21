@@ -44,6 +44,42 @@ export interface PublicApiRequestOptions {
   params?: Record<string, unknown>;
 }
 
+/**
+ * Caller-selected workflow or existing project. Runtime input stays stringly
+ * typed until validation so unsupported storage targets are rejected clearly.
+ * The server, not the caller, resolves and authorizes storage mappings.
+ */
+export interface DocumentUploadContext {
+  storageTarget?: string;
+  businessRequestId?: string;
+  planningApplicationId?: string;
+  verticalKey?: string;
+  workflowKey?: string;
+}
+
+/** Validate explicit Curate context before reading file bytes; throws on absent or incomplete context. */
+export function validateDocumentUploadContext(context: DocumentUploadContext): boolean {
+  const fields = [context.storageTarget, context.businessRequestId, context.planningApplicationId,
+    context.verticalKey, context.workflowKey];
+  const contextual = fields.some((value) => value !== undefined);
+  if (!contextual) {
+    throw new Error('Legacy document uploads are deprecated. Supply --vertical-key and --workflow-key for a configured document lifecycle, or --business-request-id or --planning-application-id for an existing authorized Curate project.');
+  }
+  if (fields.some((value) => value !== undefined && (typeof value !== 'string' || !value.trim()))) {
+    throw new Error('Document upload context fields must not be empty.');
+  }
+  if (context.storageTarget !== undefined && context.storageTarget !== 'resourceapi') {
+    throw new Error('Contextual uploads support only resourceapi storage.');
+  }
+  if (Boolean(context.verticalKey) !== Boolean(context.workflowKey)) {
+    throw new Error('Supply --vertical-key and --workflow-key together.');
+  }
+  if (!context.businessRequestId && !context.planningApplicationId && !context.verticalKey) {
+    throw new Error('Curate document uploads require a configured app/workflow or an existing authorized project.');
+  }
+  return true;
+}
+
 export interface ChildTenantBootstrapRequest {
   userOid: string;
   userEmail?: string;
@@ -1264,7 +1300,9 @@ export class PlatformAPIClient {
   private async uploadDocumentBatch(
     filePath: string,
     processingMode: 'full' | 'classification',
+    context: DocumentUploadContext = {},
   ): Promise<Response> {
+    const contextual = validateDocumentUploadContext(context);
     const { readFile } = await import('node:fs/promises');
     const { basename } = await import('node:path');
     const content = await readFile(filePath);
@@ -1277,15 +1315,26 @@ export class PlatformAPIClient {
     );
     form.append('tenant_id', this.tenantId);
     form.append('processing_mode', processingMode);
+    if (contextual) {
+      // Use the same queued Curate upload handler as DAISY, never a URL-analysis bypass.
+      form.append('storage_target', 'resourceapi');
+      const contextFields = {
+        business_request_id: context.businessRequestId,
+        planning_application_id: context.planningApplicationId,
+        verticalKey: context.verticalKey,
+        workflowKey: context.workflowKey,
+      };
+      for (const [name, value] of Object.entries(contextFields)) {
+        if (value !== undefined) form.append(name, value.trim());
+      }
+    }
 
     const token = await getAccessToken();
     const h: Record<string, string> = {};
     if (token) h['Authorization'] = `Bearer ${token}`;
     h['X-Tenant-Id'] = this.tenantId;
 
-    const endpoint = processingMode === 'classification'
-      ? `${PUBLIC_DATA_DOCUMENTS_PATH}/classify`
-      : `${PUBLIC_DATA_DOCUMENTS_PATH}/upload`;
+    const endpoint = `${PUBLIC_DATA_DOCUMENTS_PATH}/upload`;
 
     return fetch(`${this.baseUrl}${endpoint}`, {
       method: 'POST',
@@ -1294,12 +1343,12 @@ export class PlatformAPIClient {
     });
   }
 
-  async uploadDocument(filePath: string): Promise<Response> {
-    return this.uploadDocumentBatch(filePath, 'full');
+  async uploadDocument(filePath: string, context: DocumentUploadContext = {}): Promise<Response> {
+    return this.uploadDocumentBatch(filePath, 'full', context);
   }
 
-  async classifyDocument(filePath: string): Promise<Response> {
-    return this.uploadDocumentBatch(filePath, 'classification');
+  async classifyDocument(filePath: string, context: DocumentUploadContext = {}): Promise<Response> {
+    return this.uploadDocumentBatch(filePath, 'classification', context);
   }
 
   async indexDocument(documentId: string): Promise<Response> {

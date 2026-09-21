@@ -97,7 +97,7 @@ export function ChatPanel({
 The hook calls the app BFF and stream route. Browser code should not call model
 providers or PublicAPI directly.
 
-## 3. Upload And Index Documents
+## 3. Submit A Document For Classification
 
 ```tsx
 "use client";
@@ -106,31 +106,33 @@ import { useState } from "react";
 import { useDocuments } from "@/hooks/useDocuments";
 
 export function DocumentUploader({ tenantId }: { tenantId: string }) {
-  const { upload, classify, ragIndex } = useDocuments(tenantId);
+  const { classify } = useDocuments(tenantId);
   const [status, setStatus] = useState("");
 
   async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setStatus("Uploading");
-    const uploaded = await upload(file, {
-      category: "knowledge-source",
-    });
-    const documentId = uploaded.documentId;
-
-    setStatus("Classifying");
-    await classify([file]);
-
-    setStatus("Indexing");
-    await ragIndex(documentId);
-
-    setStatus("Ready");
+    setStatus("Submitting");
+    try {
+      const response = await classify([file], {
+        verticalKey: "business-docs",
+        workflowKey: "document-review",
+      });
+      if (!response.ok) {
+        setStatus(`Submission failed (${response.status})`);
+        return;
+      }
+      const queued = await response.json();
+      setStatus(`Queued: ${queued.jobId}`);
+    } catch {
+      setStatus("Submission failed");
+    }
   }
 
   return (
     <label>
-      Upload knowledge document
+      Classify business document
       <input type="file" onChange={handleUpload} />
       {status && <span>{status}</span>}
     </label>
@@ -142,14 +144,24 @@ Use ResourceAPI file routes when a file is a property on a business resource.
 Use document upload, classification, and RAG routes when the platform should
 process document content.
 
+This example requires a published classifier target for the named app/workflow
+with the `business-document-v1` lifecycle and ready private storage. It submits
+once. Poll the returned job with `getJobStatus`, then read persisted results
+with `getRecord`; a queued job does not prove classification completed. The
+business lifecycle currently supports classification and storage, not RAG
+indexing. Keep DAISY/Assess planning context for their existing indexed flows.
+
 ## 4. Verify From The CLI
 
 ```bash
 eai chat send "What can you help with?" --workflow <workflow-id> --stage chat
-eai docs upload ./sample.pdf
-eai docs classify ./sample.pdf
-eai docs index <document-id>
+eai docs classify ./sample.pdf --vertical-key <app-key> --workflow-key <workflow-key> --format json
+eai publicapi get /v4/data/documents/jobs/<returned-job-id> --format json
 ```
+
+Repeat only the job-status read while processing. Do not submit the file again.
+Read the saved record after successful completion using the returned document ID
+and `storage_target=resourceapi`; queue acceptance alone is not a result.
 
 If a named command does not exist for a route you need, use `eai publicapi` only
 after confirming the route is an authorized PublicAPI V4 surface.

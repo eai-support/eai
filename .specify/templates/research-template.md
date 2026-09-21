@@ -1,6 +1,6 @@
 ---
 date: '[ISO timestamp]'
-researcher: Claude
+researcher: Gofer
 feature: '[Feature Name]'
 status: complete
 codebase_type: '[greenfield | brownfield]'
@@ -8,16 +8,45 @@ codebase_type: '[greenfield | brownfield]'
 
 <!--
   This template is filled in by /1_gofer_research (or legacy /1_research_codebase).
-  Recommended: Use /0_business_scenario to auto-chain the entire pipeline.
+  Recommended: Use /0_gofer_start to auto-chain the entire pipeline.
   Location: .specify/specs/[###-feature-name]/research.md
   Pair this with proposal-review.md before /2_gofer_specify runs.
 -->
 
 # Research: [Feature Name]
 
+## Executive Summary
+
+[Three to five plain-language bullets covering what was researched, why it
+matters, the recommended direction, the biggest risk, and the next decision.]
+
 ## Feature Summary
 
 [Brief description of what we're building]
+
+## Visual Summary
+
+Use simple source-controlled visuals when they make the research easier to
+understand. Prefer Mermaid for Markdown-native diagrams, Marp for stakeholder
+slides, D2 for compact system/process sketches when Mermaid is too cramped, and
+Structurizr/C4 when the architecture needs model-as-code consistency.
+
+| Visual                          | Audience            | Question answered                               | Source / render proof |
+| ------------------------------- | ------------------- | ----------------------------------------------- | --------------------- |
+| `visuals/c4-context.md`         | CTO / delivery      | Who uses the system and what does it depend on? | [path]                |
+| `visuals/capability-heatmap.md` | Business / delivery | Which capabilities matter most?                 | [path]                |
+| `presentation.marp.md`          | Stakeholders        | What is the short story for review?             | [path or N/A]         |
+
+If branded stakeholder output is in scope, record discovered brand sources
+(`.specify/memory/brand-profile.json`, brand guide, logo paths, consulting-firm
+style requirements) and whether `/8_gofer_branding` should run before
+stakeholder communications are generated.
+
+## Application Classification
+
+- **Mode**: [application delivery | non-app work]
+- **Shared numbered stages preserved**: [yes]
+- **Why this classification applies**: [rationale]
 
 ## Business Scenario Analysis
 
@@ -78,6 +107,39 @@ Why relevant: [Explanation]
 ### Decision 2: [Topic]
 
 ...
+
+## UI-First App Delivery Research _(application delivery only)_
+
+### Preview Strategy
+
+- **Smallest useful MVP to show first**: [description]
+- **Profile choice**: [external / internal / hybrid]
+- **Package lane**: [public-package / internal-app / hybrid-adapter / app-local]
+- **Coupling status**: [source-platform-coupled / source-platform-decoupled /
+  hybrid-adapter]
+- **Public-readiness target**: [required / deferred / not applicable]
+- **EAI App Template constraints**: [selected blocks/patterns to reuse first]
+- **Block catalog discovery**: [`eai --describe`, `eai blocks list`, candidate
+  `eai blocks describe <id>` results, and `eai resources schema` evidence]
+- **Selected block IDs**: [stable IDs, required resources, bindings, override
+  points, Storybook story IDs, theme override points, package lane, coupling
+  status, and custom-block exceptions]
+- **Block porting plan**: [reuse as-is, port to package, or custom-block
+  exception with owner and review path]
+- **source-platform decoupling plan**: [adapter/resource-schema boundary or
+  approved restricted-source exception]
+- **Branding inputs**: [logos, colors, voice, or "not in scope"]
+- **Preview validation expectation**: [screenshot, local render proof,
+  Playwright-style checks]
+
+### Service-Fit Discovery Inputs
+
+- **Capability discovery sources**: [`eai --describe`, `eai whoami`, `eai tenant
+  select`, `eai resources schema`, `eai verify calls --format json`, or
+  equivalent]
+- **What must be decided after the first visible UI direction**: [service
+  selection questions]
+- **Non-app note**: [write "Not applicable" when this feature is non-app work]
 
 ## Recommended Architecture Direction
 

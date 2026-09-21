@@ -26,6 +26,7 @@ export interface ProjectManifest {
   };
   readonly template?: {
     readonly repo?: string;
+    readonly version?: string;
     readonly commit?: string;
     readonly displaySource?: string;
     readonly initializedAt?: string;
@@ -79,38 +80,45 @@ async function fileExists(path: string): Promise<boolean> {
 function coerceTemplateRepoFromDisplaySource(displaySource: string): {
   repo: string;
   commit?: string;
+  version?: string;
 } {
   const trimmed = displaySource.trim();
   const defaultMatch = trimmed.match(
     new RegExp(
-      `^(?:eai-support|eai-tools)\\/${DEFAULT_TEMPLATE_REPO_NAME}(?:@([0-9a-f]{7,40}))?$`,
+      `^(?:eai-support|eai-tools)\\/${DEFAULT_TEMPLATE_REPO_NAME}(?:@([0-9a-f]{7,40}|v\\d+\\.\\d+\\.\\d+))?$`,
       "i",
     ),
   );
   if (defaultMatch) {
     return {
       repo: DEFAULT_TEMPLATE_REPO,
-      commit: defaultMatch[1],
+      ...(defaultMatch[1]?.startsWith("v")
+        ? { version: defaultMatch[1] }
+        : { commit: defaultMatch[1] }),
     };
   }
 
   const githubUrlMatch = trimmed.match(
-    /^https?:\/\/github\.com\/([^/\s]+\/[^/\s]+?)(?:\.git)?(?:@([0-9a-f]{7,40}))?$/i,
+    /^https?:\/\/github\.com\/([^/\s]+\/[^/\s]+?)(?:\.git)?(?:@([0-9a-f]{7,40}|v\d+\.\d+\.\d+))?$/i,
   );
   if (githubUrlMatch?.[1]) {
     return {
       repo: `https://github.com/${githubUrlMatch[1].replace(/\/+$/, "")}.git`,
-      commit: githubUrlMatch[2],
+      ...(githubUrlMatch[2]?.startsWith("v")
+        ? { version: githubUrlMatch[2] }
+        : { commit: githubUrlMatch[2] }),
     };
   }
 
   const githubLabelMatch = trimmed.match(
-    /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)(?:@([0-9a-f]{7,40}))?$/,
+    /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)(?:@([0-9a-f]{7,40}|v\d+\.\d+\.\d+))?$/,
   );
   if (githubLabelMatch?.[1]) {
     return {
       repo: `https://github.com/${githubLabelMatch[1]}.git`,
-      commit: githubLabelMatch[2],
+      ...(githubLabelMatch[2]?.startsWith("v")
+        ? { version: githubLabelMatch[2] }
+        : { commit: githubLabelMatch[2] }),
     };
   }
 
