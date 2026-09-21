@@ -179,6 +179,7 @@ export interface SourceUnknownWorkflowSetupRequest {
   ref?: string;
   commitSha?: string;
   configHash?: string;
+  handoverIntent?: 'no-code-to-cli';
 }
 
 export interface SourceUnknownWorkflowEvidenceRequest {
