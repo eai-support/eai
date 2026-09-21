@@ -1,26 +1,2 @@
-/**
- * Custom CSS for EAI Testing Platform Documentation
- */
-
-:root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
-}
-
-[data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
-}
+:root { --ifm-color-primary: #0e7b68; --ifm-color-primary-dark: #0b6858; --ifm-color-primary-darker: #095e50; --ifm-color-primary-darkest: #064b40; --ifm-color-primary-light: #15917b; --ifm-color-primary-lighter: #28a18d; --ifm-color-primary-lightest: #5ec5b3; --ifm-background-color: #fdfdfc; --ifm-background-surface-color: #fff; --ifm-font-family-base: "Avenir Next", "Segoe UI", ui-sans-serif, sans-serif; --ifm-heading-font-family: "Avenir Next", "Segoe UI", ui-sans-serif, sans-serif; --ifm-font-color-base: #243b53; --ifm-heading-color: #102a43; --ifm-code-font-size: 90%; --ifm-navbar-height: 4.4rem; --ifm-navbar-background-color: rgba(253, 253, 252, .92); --ifm-footer-background-color: #102a43; --docusaurus-highlighted-code-line-bg: rgba(14, 123, 104, .12); }
+html { scroll-behavior: smooth; }.navbar { border-bottom: 1px solid rgba(216, 224, 232, .9); box-shadow: none; backdrop-filter: blur(12px); }.navbar__title { color: #102a43; font-size: .95rem; font-weight: 850; letter-spacing: .02em; }.navbar__link { color: #52616f; font-size: .9rem; font-weight: 650; }.navbar__link:hover,.menu__link--active { color: #0e7b68; }.menu__link { border-radius: 7px; font-size: .9rem; }.menu__link--active:not(.menu__link--sublist) { background: #edf8f5; }.theme-doc-sidebar-container { border-right-color: #e4e9ef !important; }.theme-doc-sidebar-menu { padding: 1rem .75rem; }.theme-doc-markdown { max-width: 800px; }.theme-doc-markdown h1 { letter-spacing: -.045em; }.theme-doc-markdown h2 { margin-top: 2.7rem; letter-spacing: -.03em; }.theme-doc-markdown p,.theme-doc-markdown li { color: #40566c; line-height: 1.72; }.theme-doc-markdown table { display: table; width: 100%; }.theme-doc-markdown th { background: #f1f8f6; color: #102a43; }.theme-doc-markdown code { border: 1px solid #e4e9ef; border-radius: 4px; }.theme-doc-markdown pre code { border: 0; }.pagination-nav__link { border-color: #d8e0e8; border-radius: 12px; }.breadcrumbs { margin-top: .35rem; }.footer { padding-bottom: 6.5rem; }.footer__title { color: #fff; }.footer__link-item { color: #c7d4df; }.footer__link-item:hover { color: #7de2d0; }@media (max-width: 996px) { .theme-doc-sidebar-container { border-right: 0 !important; }.theme-doc-markdown table { display: block; overflow-x: auto; } }

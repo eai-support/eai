@@ -1,6 +1,16 @@
 name: Deploy Docs
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".tech-docs/**"
+      - "docs-site/**"
+      - "scripts/generate-release-docs.cjs"
+      - "scripts/generate-registry.cjs"
+      - "scripts/generate-llms-full.cjs"
+      - "scripts/generate-docs-experience-assets.cjs"
+      - "scripts/verify-docs-experience-assets.cjs"
   push:
     branches: [main]
     paths:
@@ -9,6 +19,8 @@ on:
       - "scripts/generate-release-docs.cjs"
       - "scripts/generate-registry.cjs"
       - "scripts/generate-llms-full.cjs"
+      - "scripts/generate-docs-experience-assets.cjs"
+      - "scripts/verify-docs-experience-assets.cjs"
   workflow_dispatch:
 
 env:
@@ -20,8 +32,42 @@ permissions:
   id-token: write
 
 jobs:
+  validate:
+    name: Validate Docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Verify generated documentation experience assets
+        run: |
+          npm run docs:experience-assets:check
+          npm run docs:experience-assets:verify
+
+      - name: Install docs-site dependencies
+        run: cd docs-site && npm ci
+
+      - name: Build Docusaurus docs site
+        run: cd docs-site && npm run build
+
+      - name: Verify required public assets
+        run: |
+          test -f docs-site/build/index.html
+          test -f docs-site/build/docs/start-here.html
+          test -f docs-site/build/docs/api-reference.html
+          test -f docs-site/build/docs-search-index.json
+          test -f docs-site/build/docs-capabilities.json
+
   deploy:
     name: Build & Deploy Docs
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
 
     environment:
@@ -42,6 +88,11 @@ jobs:
       - name: Install docs-site dependencies
         run: cd docs-site && npm ci
 
+      - name: Verify documentation experience assets
+        run: |
+          npm run docs:experience-assets:check
+          npm run docs:experience-assets:verify
+
       - name: Build Docusaurus docs site
         run: cd docs-site && npm run build
 
@@ -54,6 +105,8 @@ jobs:
             "docs-site/build/llms.txt"
             "docs-site/build/llms-full.txt"
             "docs-site/build/cli-help.txt"
+            "docs-site/build/docs-search-index.json"
+            "docs-site/build/docs-capabilities.json"
           )
 
           for file in "${REQUIRED_FILES[@]}"; do

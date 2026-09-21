@@ -1,0 +1,8 @@
+# Decisions
+
+| ID | Decision | Reason | Effect |
+| --- | --- | --- | --- |
+| D001 | Retain Docusaurus | Existing release automation and public AI-readable assets are valuable | No migration or paid platform dependency |
+| D002 | Use a generated local search index | It works on GitHub Pages with no paid provider | Search is fast and private, but not semantic AI search |
+| D003 | Use a static assistant | Public static hosting cannot safely operate a model-backed assistant without a backend | Results are source-linked and safe; generative answers remain future work |
+| D004 | Use Gofer checkbox tasks and traceability evidence | The feature validator requires machine-checkable task state and requirement traceability | Delivery can be checked before the PR is created |

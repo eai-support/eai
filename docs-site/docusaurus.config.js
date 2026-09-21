@@ -59,6 +59,7 @@ const config = {
             "review/**",
           ],
           onInlineTags: "ignore",
+          editUrl: "https://github.com/eai-support/eai/tree/main/.tech-docs/",
         },
         blog: false,
         pages: false,
@@ -88,6 +89,9 @@ const config = {
     ],
   ],
   themeConfig: {
+    customFields: {
+      documentationFeedbackUrl: process.env.EAI_DOCS_FEEDBACK_URL || "",
+    },
     navbar: {
       title: "EAI Docs",
       items: [
@@ -102,6 +106,12 @@ const config = {
           docId: "examples/index",
           position: "left",
           label: "Examples",
+        },
+        {
+          type: "doc",
+          docId: "api-reference",
+          position: "left",
+          label: "Reference",
         },
         {
           type: "doc",

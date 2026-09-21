@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-21T11:21:12.280Z",
+  "artifacts": {
+    "spec.md": "b8f3e54e726f9af8398472446e97173c807bed07e9d5a7a5c298f9ffde4a36d9",
+    "plan.md": "4fefc743404bce508de85a060ad47da73d37cf3a139df261ed86790eb411681b",
+    "tasks.md": "70d0addf792cdaa15d287305c21eaa52550e82af16cd463099c62b9363685622",
+    "traceability.md": "7f5b4898601e6dde987961261f1712fceaddf5a92d3680b47a93b322a4ba9aa9",
+    "goal-ledger.json": null,
+    "research.md": "b1601e7e8ae1dc96b17dea270a3e8a70fac6f09f26ef089579b1fc312f3d3736",
+    "discovery.md": null,
+    "issues.md": null,
+    "validation-report.md": null,
+    "decisions.md": "5ce4d3676f7b8805d1c86e8c55c3165b3913b17913afc9a12994b752d16a1a28",
+    "priority-plan.json": "8fe833e6243ec425894446fc09a2bf3fcd2d809f35552f7f11f9f9c3e8966552"
+  },
+  "completedTasks": {
+    "T001": {
+      "requirements": [
+        "FR-001",
+        "FR-002"
+      ],
+      "evidence": "evidence/T001.json",
+      "evidenceHash": "f99bd494f1332ec0f2eac22af2a81efe5d89cf775026127913c0ef99f8a470e4"
+    },
+    "T002": {
+      "requirements": [
+        "FR-003",
+        "FR-004"
+      ],
+      "evidence": "evidence/T002.json",
+      "evidenceHash": "ae24f6d6a752f6e3dc08e6771b8caf7633070a3cdc1b0711f9b2624600626bd7"
+    },
+    "T003": {
+      "requirements": [
+        "FR-001",
+        "FR-002"
+      ],
+      "evidence": "evidence/T003.json",
+      "evidenceHash": "e0ef2f373067a5a9ffbbcac92566c56131a24bf131e79bacce9b319e27538314"
+    },
+    "T004": {
+      "requirements": [
+        "FR-003",
+        "FR-005",
+        "FR-006"
+      ],
+      "evidence": "evidence/T004.json",
+      "evidenceHash": "b8294caf83ed573b050d4a134dcaf90a3eec528b0a9a2bffb295218fa71e159c"
+    },
+    "T005": {
+      "requirements": [
+        "FR-007"
+      ],
+      "evidence": "evidence/T005.json",
+      "evidenceHash": "10c480ffc46b61d3e30dadd6d272b8317affd1a1da672dc1af24be5f9a976e22"
+    },
+    "T006": {
+      "requirements": [
+        "FR-001",
+        "FR-002",
+        "FR-003",
+        "FR-004",
+        "FR-005",
+        "FR-006",
+        "FR-007"
+      ],
+      "evidence": "evidence/T006.json",
+      "evidenceHash": "46656348fd1dba8553544a23e39568a72d0facc07f6f640c4b3ec5319f17a747"
+    }
+  }
+}

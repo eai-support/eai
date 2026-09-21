@@ -3,77 +3,51 @@ import Layout from "@theme/Layout";
 import Link from "@docusaurus/Link";
 import styles from "./index.module.css";
 
+const journeys = [
+  ["01", "Create an EAI app", "Install the CLI, set your tenant, and scaffold a governed app.", "/docs/start-here", "Start building"],
+  ["02", "Connect an existing app", "Use the App Template patterns for services, documents, and UI.", "/docs/eai-app-template", "View patterns"],
+  ["03", "Solve a technical task", "Find commands, error guidance, and the PublicAPI reference.", "/docs/api-reference", "Open reference"],
+];
+
 export default function Home() {
-  return (
-    <Layout
-      title="EAI Documentation"
-      description="Documentation for the EAI CLI, eai-gofer, the EAI App Template, examples, and business scenarios."
-    >
-      <main>
-        <section className={styles.hero}>
-          <div className={styles.heroInner}>
-            <p className={styles.eyebrow}>EAI Documentation</p>
-            <h1>Build, guide, and validate EAI apps from one docs site.</h1>
-            <p className={styles.lead}>
-              Start with the CLI, add eai-gofer for agent workflows, build with
-              the EAI App Template, and browse business scenarios without
-              leaving this site.
-            </p>
-            <div className={styles.actions}>
-              <Link
-                className="button button--primary button--lg"
-                to="/docs/start-here"
-              >
-                Start Here
-              </Link>
-              <Link
-                className="button button--secondary button--lg"
-                to="/scenarios/"
-              >
-                Browse Scenarios
-              </Link>
-            </div>
+  return <Layout title="EAI Documentation" description="Clear technical guidance for building governed EAI applications.">
+    <main>
+      <section className={styles.hero}>
+        <div className={styles.heroContent}>
+          <p className={styles.eyebrow}>Enterprise AI Documentation</p>
+          <h1>Build governed AI applications with confidence.</h1>
+          <p className={styles.lead}>Choose your goal. Get the shortest trusted path. Keep your build aligned with the EAI platform.</p>
+          <div className={styles.actions}>
+            <Link className={styles.primaryAction} to="/docs/start-here">Start here <span aria-hidden="true">→</span></Link>
+            <Link className={styles.secondaryAction} to="/docs/error-guidance">Fix an issue</Link>
           </div>
-        </section>
-
-        <section className={styles.highlights}>
-          <article className={styles.panel}>
-            <h2>EAI CLI</h2>
-            <p>
-              Install, authenticate, scaffold apps, publish Object Types, verify
-              tenants, and operate platform services.
-            </p>
-            <Link to="/docs/eai-cli">Use the CLI</Link>
-          </article>
-
-          <article className={styles.panel}>
-            <h2>eai-gofer</h2>
-            <p>
-              Refresh agent workflows, plan app delivery, and keep service-fit
-              evidence aligned with the platform.
-            </p>
-            <Link to="/docs/eai-gofer">Open gofer docs</Link>
-          </article>
-
-          <article className={styles.panel}>
-            <h2>App Template</h2>
-            <p>
-              Build Next.js apps with tenant config, Object Types, ResourceAPI,
-              documents, chat, and config-driven UI.
-            </p>
-            <Link to="/docs/eai-app-template">Build an app</Link>
-          </article>
-
-          <article className={styles.panel}>
-            <h2>Scenarios</h2>
-            <p>
-              Explore industry examples and business workflows before choosing
-              what to build.
-            </p>
-            <Link to="/scenarios/">Open the scenario library</Link>
-          </article>
-        </section>
-      </main>
-    </Layout>
-  );
+        </div>
+        <aside className={styles.releaseCard}>
+          <span>Release-aligned</span><strong>CLI, Gofer, and App Template</strong>
+          <p>Source-controlled docs with machine-readable guidance for people and agents.</p>
+          <div><i /> Public docs <i /> No account required</div>
+        </aside>
+      </section>
+      <section className={styles.journeySection} aria-labelledby="choose-a-path">
+        <div className={styles.sectionHeading}><p className={styles.eyebrow}>Choose a path</p><h2 id="choose-a-path">What do you need to do?</h2></div>
+        <div className={styles.journeys}>{journeys.map(([number, title, text, to, action]) => <Link key={number} to={to} className={styles.journey}>
+          <span>{number}</span><h3>{title}</h3><p>{text}</p><strong>{action} <b aria-hidden="true">→</b></strong>
+        </Link>)}</div>
+      </section>
+      <section className={styles.evidence}>
+        <div><strong>Start fast</strong><span>CLI setup and the first app path.</span></div>
+        <div><strong>Work safely</strong><span>Tenant-aware patterns and controlled API guidance.</span></div>
+        <div><strong>Keep moving</strong><span>Examples, support guidance, and agent-readable assets.</span></div>
+      </section>
+      <section className={styles.resources}>
+        <div><p className={styles.eyebrow}>Go deeper</p><h2>Use the right reference for the work.</h2></div>
+        <div className={styles.resourceLinks}>
+          <Link to="/docs/eai-cli">EAI CLI <span>Install, authenticate, and operate platform services.</span></Link>
+          <Link to="/docs/eai-gofer">eai-gofer <span>Plan, implement, and validate with coding agents.</span></Link>
+          <Link to="/docs/examples">Examples <span>Start from practical application patterns.</span></Link>
+          <Link to="/scenarios/">Scenarios <span>Explore business workflows by industry.</span></Link>
+        </div>
+      </section>
+    </main>
+  </Layout>;
 }
