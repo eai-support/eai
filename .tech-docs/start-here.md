@@ -192,4 +192,4 @@ internal implementation details.
 - [eai-gofer](./eai-gofer.md): agent workflow assets and refresh behavior.
 - [EAI App Template](./eai-app-template.md): app structure and extension points.
 - [Examples](./examples/index.md): task tracker, chat, documents, and app patterns.
-- [Scenarios](/scenarios/): business scenario library by industry.
+- [Examples](./examples/): worked examples and business scenarios.
