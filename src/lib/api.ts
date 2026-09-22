@@ -187,6 +187,7 @@ export interface SourceUnknownWorkflowSetupRequest {
   handoverIntent?: 'no-code-to-cli';
 }
 
+/** Collector-produced build proof; GitHub OIDC supplies authority at the server. */
 export interface SourceUnknownWorkflowEvidenceRequest {
   operationId: string;
   nonce: string;
@@ -196,16 +197,15 @@ export interface SourceUnknownWorkflowEvidenceRequest {
   commitSha: string;
   configHash: string;
   artifactDigest: string;
-  imageArtifact?: {
+  imageArtifact: {
     id: string | number;
     name: 'eai-generated-app-image';
     archiveDigest: string;
   };
   imageDigest: string;
   schemaProvenance: SourceUnknownSchemaProvenance;
-  workflowRun?: Record<string, unknown>;
-  oidcClaims: Record<string, unknown>;
-  validationSummary?: Record<string, unknown>;
+  workflowRun: { id: string | number; attempt: string | number; workflow?: string; job?: string };
+  validationSummary: { status: 'passed' };
 }
 
 export interface SourceUnknownDeploymentRequest {
@@ -1535,6 +1535,21 @@ export class PlatformAPIClient {
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/deploy`,
       'POST',
       data,
+    );
+  }
+
+  /** Prepare source-bound runtime identity before the workflow can request handoff. */
+  async bootstrapSourceUnknownRuntime(
+    tenantId: string,
+    appKey: string,
+    environment: string,
+    sourceOperationId: string,
+    targetTenantId: string,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/environments/${encodeURIComponent(environment)}/runtime-bootstrap`,
+      'POST',
+      { sourceOperationId, targetTenantId, sourceMode: 'source-unknown' },
     );
   }
 

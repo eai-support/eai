@@ -685,17 +685,13 @@ describe('PlatformAPIClient', () => {
       environment: 'preview',
       workflowPath: '.github/workflows/eai-app.yml',
       ref: 'refs/heads/main',
-      commitSha: 'abcdef1234567890',
-      configHash: 'sha256:config',
+      commitSha: 'a'.repeat(40),
+      configHash: `sha256:${'e'.repeat(64)}`,
       artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      imageArtifact: { id: '98765', name: 'eai-generated-app-image', archiveDigest: `sha256:${'f'.repeat(64)}` },
+      schemaProvenance: { templateVersion: '1', baseTemplateSha: 'b'.repeat(40), schemaDigest: `sha256:${'c'.repeat(64)}`, validatorDigest: `sha256:${'d'.repeat(64)}` },
       workflowRun: { id: '123456789', attempt: 1 },
-      oidcClaims: {
-        repository: 'enterpriseaigroup/rates-review',
-        ref: 'refs/heads/main',
-        sha: 'abcdef1234567890',
-        run_id: '123456789',
-      },
       validationSummary: { status: 'passed' },
     }, 'github-oidc-token')
 
@@ -713,19 +709,25 @@ describe('PlatformAPIClient', () => {
       environment: 'preview',
       workflowPath: '.github/workflows/eai-app.yml',
       ref: 'refs/heads/main',
-      commitSha: 'abcdef1234567890',
-      configHash: 'sha256:config',
+      commitSha: 'a'.repeat(40),
+      configHash: `sha256:${'e'.repeat(64)}`,
       artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      imageArtifact: { id: '98765', name: 'eai-generated-app-image', archiveDigest: `sha256:${'f'.repeat(64)}` },
+      schemaProvenance: { templateVersion: '1', baseTemplateSha: 'b'.repeat(40), schemaDigest: `sha256:${'c'.repeat(64)}`, validatorDigest: `sha256:${'d'.repeat(64)}` },
       workflowRun: { id: '123456789', attempt: 1 },
-      oidcClaims: {
-        repository: 'enterpriseaigroup/rates-review',
-        ref: 'refs/heads/main',
-        sha: 'abcdef1234567890',
-        run_id: '123456789',
-      },
       validationSummary: { status: 'passed' },
     })
+  })
+
+  test('bootstraps a source-unknown runtime with the exact operation and explicit target', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.bootstrapSourceUnknownRuntime('tenant-parent', 'rates-review', 'preview', 'source-unknown-op', 'tenant-runtime')
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/environments/preview/runtime-bootstrap')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({ sourceOperationId: 'source-unknown-op', targetTenantId: 'tenant-runtime', sourceMode: 'source-unknown' })
   })
 
   test('requests source-unknown deployment handoff through the public platform router', async () => {

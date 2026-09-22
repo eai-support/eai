@@ -73,9 +73,17 @@ jobs:
         run: npm run build:object-types
 
       - name: Validate application
+        shell: bash
         run: |
-          npm run typecheck
-          npm run test:unit:ci
+          set -uo pipefail
+          npm run typecheck &
+          typecheck_pid=$!
+          npm run test:unit:ci &
+          tests_pid=$!
+          validation_status=0
+          wait "$typecheck_pid" || validation_status=1
+          wait "$tests_pid" || validation_status=1
+          exit "$validation_status"
 
       - name: Build generated app
         run: npm run build

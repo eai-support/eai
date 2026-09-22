@@ -188,7 +188,7 @@
         },
         {
           "id": "eai-cli-managed-tenantinfra-deploy",
-          "description": "The CLI installs the canonical EAI app workflow, binds a tenant-authorized repository installation to an immutable commit and config hash, dispatches managed deployment, and resumes or retries only the exact source operation.",
+          "description": "The CLI binds immutable repository evidence, prepares source-bound runtime identity before dispatch, submits canonical collector proof, and retries accepted evidence through the exact deployment handoff without reusing a consumed nonce.",
           "owned_paths": [
             ".eai/test-coverage.json",
             "docs-site/static/cli-help.txt",
@@ -200,6 +200,7 @@
             "scripts/eai-full-e2e-smoke.cjs",
             "src/commands/deploy.ts",
             "src/commands/eai-managed-deploy.ts",
+            "src/commands/vertical.ts",
             "src/lib/api.ts",
             "src/lib/eai-managed-deploy.ts",
             ".tech-docs/full-e2e-smoke-traceability.md"
@@ -208,6 +209,7 @@
             "tests/unit/eai-managed-deploy.test.ts",
             "tests/integration/platform-api-client.test.ts",
             "tests/integration/eai-managed-deploy.test.ts",
+            "tests/integration/vertical.test.ts",
             "tests/integration/help.test.ts",
             "tests/integration/describe-contract.test.ts",
             "tests/integration/full-e2e-smoke.test.ts"

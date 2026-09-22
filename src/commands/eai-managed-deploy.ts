@@ -250,6 +250,21 @@ async function dispatchWorkflow(state: ManagedDeployState, publicApiUrl: string,
   }
 }
 
+async function prepareRuntime(client: PlatformAPIClient, state: ManagedDeployState): Promise<void> {
+  const result = await requireApiSuccess(
+    await client.bootstrapSourceUnknownRuntime(
+      state.tenantId, state.appKey, state.environment, state.operationId, state.targetTenantId,
+    ),
+    'RUNTIME_BOOTSTRAP_FAILED',
+    () => `Repair runtime identity provisioning, then retry the exact operation ${state.operationId}; no workflow has been dispatched.`,
+  );
+  if (result.status !== 'configured' || result.sourceOperationId !== state.operationId
+    || result.tenantId !== state.targetTenantId || result.appKey !== state.appKey
+    || result.environment !== state.environment) {
+    fail('RUNTIME_BOOTSTRAP_BINDING_MISMATCH', 'PublicAPI did not confirm configured runtime identity for the exact operation and target.', 'Stop and inspect the PublicAPI runtime-bootstrap response before dispatching.');
+  }
+}
+
 async function readExactOperation(
   client: PlatformAPIClient,
   tenantId: string,
@@ -403,7 +418,7 @@ export const eaiManagedDeployCommand = new Command('app')
   .option('--environment <environment>', 'Deployment environment', 'preview')
   .option('--commit <sha>', 'Expected exact 40 character commit SHA')
   .option('--resume <operation-id>', 'Read and wait for one exact existing operation')
-  .option('--retry <operation-id>', 'Redispatch one exact operation from protected local state')
+  .option('--retry <operation-id>', 'Retry accepted evidence handoff, or redispatch an unconsumed immutable operation')
   .option('--wait', 'Poll the exact operation until it reaches a terminal status', true)
   .option('--no-wait', 'Return after dispatch instead of polling the exact operation')
   .option('--timeout <seconds>', 'Maximum exact-operation polling time', String(DEFAULT_TIMEOUT_SECONDS))
@@ -466,11 +481,33 @@ Examples:
       }
 
       if (options.retry) {
+        const current = await readExactOperation(client, context.tenantId, targetTenantId, appKey, options.retry);
+        if (classifyManagedOperationStatus(current) === 'succeeded') {
+          spinner?.stop();
+          printOperation(format, current);
+          return;
+        }
+        if (current.evidence?.status === 'accepted' || current.setup.status === 'consumed') {
+          await requireApiSuccess(
+            await client.requestSourceUnknownDeployment(context.tenantId, appKey, {
+              operationId: options.retry,
+              targetTenantId,
+            }),
+            'DEPLOYMENT_HANDOFF_FAILED',
+            () => `Repair the reported runtime or TenantInfra problem, then retry ${options.retry}; accepted build evidence will be reused.`,
+          );
+          const operation = await pollExactOperation(client, {
+            tenantId: context.tenantId, targetTenantId, appKey, operationId: options.retry,
+          }, options.wait, timeoutSeconds);
+          spinner?.stop();
+          printOperation(format, operation);
+          if (classifyManagedOperationStatus(operation) === 'failed') process.exitCode = 1;
+          return;
+        }
         const state = await loadManagedDeployState(options.retry);
         if (state.tenantId !== context.tenantId || state.targetTenantId !== targetTenantId || state.appKey !== appKey) {
           fail('RETRY_BINDING_MISMATCH', 'Retry state does not match the requested tenant, target tenant, and app.', 'Use the exact original tenant and app values.');
         }
-        const current = await readExactOperation(client, state.tenantId, state.targetTenantId, state.appKey, state.operationId);
         try {
           assertManagedDeployStateMatchesOperation(state, current);
         } catch (error) {
@@ -480,15 +517,11 @@ Examples:
             'Do not edit retry state. Resume the exact server operation, or start a new deployment from the intended immutable commit.',
           );
         }
-        if (classifyManagedOperationStatus(current) === 'succeeded') {
-          spinner?.stop();
-          printOperation(format, current, { repo: state.repo, ref: state.ref, commitSha: state.commitSha, configHash: state.configHash });
-          return;
-        }
         const source = await verifyLocalSource(context.root, state.repo, state.branch, state.commitSha);
         if (source.commitSha !== state.commitSha) {
           fail('RETRY_SHA_CHANGED', 'The current commit differs from the stored operation commit.', `Check out ${state.commitSha}, then retry the same operation.`);
         }
+        await prepareRuntime(client, state);
         await dispatchWorkflow(state, context.publicApiUrl, context.root);
         state.dispatchedAt = new Date().toISOString();
         await saveManagedDeployState(state);
@@ -577,6 +610,7 @@ Examples:
         installationId,
       };
       await saveManagedDeployState(state);
+      await prepareRuntime(client, state);
       await dispatchWorkflow(state, context.publicApiUrl, context.root);
       state.dispatchedAt = new Date().toISOString();
       await saveManagedDeployState(state);

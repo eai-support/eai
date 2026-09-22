@@ -187,7 +187,11 @@ async function collectEvidence(options) {
   );
 
   assertExists(imageArchivePath, 'OCI image archive');
-  const artifactDigest = option(options, 'artifactDigest');
+  const uploadedArtifactDigest = option(options, 'artifactDigest');
+  // INVARIANT: upload-artifact returns bare hex; handoff digests are algorithm-qualified.
+  const artifactDigest = /^[a-f0-9]{64}$/.test(uploadedArtifactDigest)
+    ? `sha256:${uploadedArtifactDigest}`
+    : uploadedArtifactDigest;
   const artifactId = option(options, 'artifactId');
   const archiveDigest = await digestFile(imageArchivePath);
   const imageDigest = option(options, 'imageDigest');
@@ -308,9 +312,14 @@ function assertHandoffSubmitted(options) {
   const responsePath = resolve(option(options, 'response'));
   assertExists(responsePath, 'Deployment handoff response');
   const actual = responseStatus(readJson(responsePath));
-  if (actual.status !== 'accepted')
+  const deferredHandoff =
+    actual.status === 'handoff_pending' &&
+    actual.requiresTenantInfra === true &&
+    typeof actual.deploymentRequestId === 'string' &&
+    actual.deploymentRequestId.trim().length > 0;
+  if (actual.status !== 'accepted' && !deferredHandoff)
     throw new Error(
-      `Expected workflow evidence status accepted, got ${actual.status || '<missing>'}.`,
+      `Expected accepted evidence or a persisted pending handoff, got ${actual.status || '<missing>'}.`,
     );
   process.stdout.write(
     `${actual.status} ${actual.deploymentRequestId || ''}\n`,

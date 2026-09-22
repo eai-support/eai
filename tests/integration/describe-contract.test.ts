@@ -121,6 +121,7 @@ const SOURCE_UNKNOWN_APP_FLAGS: Readonly<Record<string, readonly string[]>> = {
     "--json",
   ],
   "workflow-evidence": [
+    "--evidence-file",
     "--repo",
     "--operation-id",
     "--nonce",
