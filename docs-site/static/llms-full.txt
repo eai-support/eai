@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.16.0.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.17.0.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -388,7 +388,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.16.0** (2026-09-18): Pin app template scaffolding to published releases instead of latest main.
+The current CLI release is **v3.17.0** (2026-09-22): Support Configurator Plus no-code handover and app template v1.0.2.
 
 
 ## What The Pieces Do
@@ -566,7 +566,7 @@ internal implementation details.
 - [eai-gofer](./eai-gofer.md): agent workflow assets and refresh behavior.
 - [EAI App Template](./eai-app-template.md): app structure and extension points.
 - [Examples](./examples/index.md): task tracker, chat, documents, and app patterns.
-- [Scenarios](/scenarios/): business scenario library by industry.
+- [Examples](./examples/): worked examples and business scenarios.
 
 ---
 
@@ -583,10 +583,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.16.0 |
-| Released | 2026-09-18 |
-| Last Material Change | Pin app template scaffolding to published releases instead of latest main |
-| Source Commit | `4e23b079c20e42e06a42383696e65870ff8350d4` |
+| Version | 3.17.0 |
+| Released | 2026-09-22 |
+| Last Material Change | Support Configurator Plus no-code handover and app template v1.0.2 |
+| Source Commit | `c403be12b1f5e833d29e21b612b862ce7fa16e01` |
 
 
 ## Install
@@ -783,7 +783,7 @@ For app work, gofer plans should capture:
 - [EAI App Template](./eai-app-template.md)
 - [Platform Service Patterns](./app-template/service-patterns.md)
 - [Config-Driven UI](./app-template/config-driven-ui.md)
-- [Scenario Library](/scenarios/)
+- [Scenario Library](./examples/)
 
 ---
 
@@ -907,7 +907,7 @@ These examples show how the CLI, eai-gofer, and EAI App Template work together.
 | ----------------------------------------- | --------------------------------------------------------------------------------------- |
 | [Build a Task Tracker](./task-tracker.md) | Scaffold an app, define Object Types, publish them, and build ResourceAPI-backed pages. |
 | [Add AI Chat](./ai-chat.md)               | Add streaming chat, document upload, and RAG indexing through template hooks.           |
-| [Business Scenarios](/scenarios/)         | Browse industry-specific workflows before deciding what to build.                       |
+| [Business Scenarios](./)                  | Browse industry-specific workflows before deciding what to build.                       |
 
 ## Standard Loop
 
@@ -2134,7 +2134,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.16.0. The same catalog powers human stderr output, JSON output for AI
+v3.17.0. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they

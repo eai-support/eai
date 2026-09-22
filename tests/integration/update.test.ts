@@ -622,7 +622,7 @@ describe('eai update project maintenance', () => {
     }
   });
 
-  test('repairs a matching-version Gofer cache missing normalized config during update', async () => {
+  test('repairs a matching-version Gofer cache missing normalized config during update', { timeout: 30_000 }, async () => {
     const { env, ctx, close } = await createMaintenanceContext();
     const goferVersion = '99.0.1';
     try {

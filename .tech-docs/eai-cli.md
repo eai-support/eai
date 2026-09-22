@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.16.0 |
-| Released | 2026-09-18 |
-| Last Material Change | Pin app template scaffolding to published releases instead of latest main |
-| Source Commit | `4e23b079c20e42e06a42383696e65870ff8350d4` |
+| Version | 3.17.0 |
+| Released | 2026-09-22 |
+| Last Material Change | Support Configurator Plus no-code handover and app template v1.0.2 |
+| Source Commit | `c403be12b1f5e833d29e21b612b862ce7fa16e01` |
 
 
 ## Install
