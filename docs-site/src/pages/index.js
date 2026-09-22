@@ -4,10 +4,9 @@ import Link from "@docusaurus/Link";
 import styles from "./index.module.css";
 
 const journeys = [
-  ["01", "Set up your computer", "Use EAI Setup to prepare a new Windows, macOS, or Ubuntu/Debian computer.", "/docs/installer-setup", "Download EAI Setup"],
-  ["02", "Create an EAI app", "Use the guided or manual path to create a governed app.", "/docs/start-here", "Start building"],
-  ["03", "Connect an existing app", "Use the App Template patterns for services, documents, and UI.", "/docs/eai-app-template", "View patterns"],
-  ["04", "Solve a technical task", "Find commands, error guidance, and the PublicAPI reference.", "/docs/api-reference", "Open reference"],
+  ["01", "Set up this computer", "Recommended. Use EAI Setup to prepare a Windows, macOS, or Ubuntu/Debian computer and create your first app.", "/docs/installer-setup", "Use EAI Setup"],
+  ["02", "Connect an existing project", "Add EAI patterns to a project you already have.", "/docs/eai-app-template", "Connect a project"],
+  ["03", "Manual or managed setup", "Use the CLI for CI, managed devices, proxies, or a controlled installation.", "/docs/manual-and-managed-setup", "View manual setup"],
 ];
 
 export default function Home() {
@@ -16,17 +15,17 @@ export default function Home() {
       <section className={styles.hero}>
         <div className={styles.heroContent}>
           <p className={styles.eyebrow}>Enterprise AI Documentation</p>
-          <h1>Build governed AI applications with confidence.</h1>
-          <p className={styles.lead}>Choose your goal. Get the shortest trusted path. Keep your build aligned with the EAI platform.</p>
+          <h1>Start an EAI project without the setup maze.</h1>
+          <p className={styles.lead}>Most people should use EAI Setup. Choose a different path only if you already have a project or need a managed installation.</p>
           <div className={styles.actions}>
-            <Link className={styles.primaryAction} to="/docs/start-here">Start here <span aria-hidden="true">→</span></Link>
-            <Link className={styles.secondaryAction} to="/docs/error-guidance">Fix an issue</Link>
+            <Link className={styles.primaryAction} to="/docs/installer-setup">Set up this computer <span aria-hidden="true">→</span></Link>
+            <Link className={styles.secondaryAction} to="/docs/start-here">Choose another path</Link>
           </div>
         </div>
         <aside className={styles.releaseCard}>
-          <span>Release-aligned</span><strong>CLI, Gofer, and App Template</strong>
-          <p>Source-controlled docs with machine-readable guidance for people and agents.</p>
-          <div><i /> Public docs <i /> No account required</div>
+          <span>Recommended route</span><strong>Download, sign in, and name your project.</strong>
+          <p>EAI Setup prepares the supported tools and guides the remaining choices.</p>
+          <div><i /> Windows <i /> macOS <i /> Ubuntu/Debian</div>
         </aside>
       </section>
       <section className={styles.journeySection} aria-labelledby="choose-a-path">
@@ -36,9 +35,9 @@ export default function Home() {
         </Link>)}</div>
       </section>
       <section className={styles.evidence}>
-        <div><strong>Start fast</strong><span>EAI Setup or manual CLI setup for the first app.</span></div>
-        <div><strong>Work safely</strong><span>Tenant-aware patterns and controlled API guidance.</span></div>
-        <div><strong>Keep moving</strong><span>Examples, support guidance, and agent-readable assets.</span></div>
+        <div><strong>About 10 minutes</strong><span>For a standard desktop setup and first project.</span></div>
+        <div><strong>Your approval stays in control</strong><span>You approve system prompts and browser sign-in.</span></div>
+        <div><strong>Detailed guidance remains available</strong><span>Use manual setup only when it fits your environment.</span></div>
       </section>
       <section className={styles.resources}>
         <div><p className={styles.eyebrow}>Go deeper</p><h2>Use the right reference for the work.</h2></div>

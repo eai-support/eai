@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "revision": "D009",
+  "revision": "D011",
   "objective": "Deliver a Mintlify-style EAI documentation experience while preserving Docusaurus and release alignment.",
-  "lastInstruction": {"id": "D009", "text": "Make EAI Setup the default desktop onboarding path and retain manual CLI setup"},
-  "criticalPath": ["T002", "T003", "T004", "T005", "T006", "T007", "T008", "T009", "T010"],
+  "lastInstruction": {"id": "D011", "text": "Implement the simplified onboarding model"},
+  "criticalPath": ["T002", "T003", "T004", "T005", "T006", "T007", "T008", "T009", "T010", "T011"],
   "tasks": {
     "T001": {"dependsOn": [], "allowedEditScope": [".specify/"]},
     "T002": {"dependsOn": [], "allowedEditScope": ["scripts/", "package.json"]},
@@ -14,12 +14,13 @@
     "T007": {"dependsOn": ["T004"], "allowedEditScope": ["docs-site/", "scripts/", ".specify/specs/"]},
     "T008": {"dependsOn": ["T002", "T007"], "allowedEditScope": ["docs-site/", ".specify/specs/"]},
     "T009": {"dependsOn": ["T008"], "allowedEditScope": [".tech-docs/", "docs-site/", ".specify/specs/"]},
-    "T010": {"dependsOn": ["T009"], "allowedEditScope": [".tech-docs/", "docs-site/", "scripts/", ".specify/specs/"]}
+    "T010": {"dependsOn": ["T009"], "allowedEditScope": [".tech-docs/", "docs-site/", "scripts/", ".specify/specs/"]},
+    "T011": {"dependsOn": ["T010"], "allowedEditScope": [".tech-docs/", "docs-site/", "scripts/", ".specify/specs/"]}
   },
   "outcome": {
     "id": "OUTCOME-001",
     "statement": "Public EAI documentation provides a premium task-led, searchable, agent-ready experience without a paid documentation platform.",
-    "requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005", "FR-006", "FR-007", "FR-008"],
+    "requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005", "FR-006", "FR-007", "FR-008", "FR-009"],
     "target": {"environment": "feature branch", "revision": "pending"},
     "receipt": "validation-report.md"
   }

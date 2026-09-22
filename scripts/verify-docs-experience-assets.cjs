@@ -11,7 +11,7 @@ const requestBuilder = fs.readFileSync(path.join(__dirname, "..", "docs-site", "
 if (search.schemaVersion !== 1 || search.items.length < 10) {
   throw new Error("The documentation search index is incomplete.");
 }
-for (const title of ["Start Here", "EAI CLI", "EAI CLI — API Reference"]) {
+for (const title of ["Start Here", "EAI Setup", "Manual and Managed Setup", "EAI CLI", "EAI CLI — API Reference"]) {
   if (!search.items.some((item) => item.title === title)) {
     throw new Error(`The documentation search index is missing ${title}.`);
   }

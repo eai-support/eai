@@ -14,6 +14,7 @@ const sidebars = {
       items: [
         "installer-setup",
         "start-here",
+        "manual-and-managed-setup",
         "eai-cli",
         "eai-gofer",
         "eai-app-template",

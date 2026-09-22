@@ -5,18 +5,11 @@ title: EAI Setup
 
 # EAI Setup
 
-**Recommended for most desktop users.** EAI Setup prepares a Windows, macOS, or
-Ubuntu/Debian computer for the first EAI project. It keeps setup in a guided
-desktop window instead of asking you to assemble tools in a terminal.
+**Recommended for most people.** Use EAI Setup to prepare a supported desktop
+computer and create your first EAI project.
 
-## What It Does
-
-EAI Setup detects or installs Git, Node.js 24, npm, and the EAI CLI. It then
-opens browser sign-in, lets you select a project folder, creates the project,
-installs its dependencies, and helps you open it in a supported AI workspace.
-
-It does not collect EAI passwords, tenant secrets, or AI-provider credentials.
-You approve operating-system permissions and complete browser sign-in yourself.
+You need about 10 minutes. You approve system prompts and complete browser
+sign-in yourself.
 
 ## Download EAI Setup
 
@@ -39,19 +32,29 @@ Ubuntu/Debian, open the downloaded package and follow the operating-system
 installer prompts. Check the [release notes](https://github.com/eai-support/eai-installer/releases/latest)
 for the current support and signing information.
 
-## What Happens Next
+## Complete Setup
 
-1. Open EAI Setup.
-2. Review the detected prerequisites and approve only the required system prompts.
-3. Sign in in your browser, or create an EAI account if you do not have one.
-4. Choose an existing folder or name a new project folder.
-5. Choose an AI workspace, or complete the project and install one later.
+1. Download and open EAI Setup.
+2. Sign in in your browser, or create an EAI account.
+3. Name your project and choose where to save it.
 
-EAI Setup uses the normal EAI CLI contract. It installs the supported Gofer
-assets and app template as part of project creation. When setup finishes, use
-the project folder shown by EAI Setup.
+EAI Setup prepares the required tools, creates the project, installs its
+dependencies, and helps you choose an AI workspace. When it finishes, open the
+project folder it shows you.
+
+## What EAI Setup Installs
+
+<details>
+<summary>Show setup details</summary>
+
+EAI Setup detects or installs Git, Node.js 24, npm, and the EAI CLI. It also
+installs the supported Gofer assets and app template during project creation.
+
+It does not collect EAI passwords, tenant secrets, or AI-provider credentials.
+You approve operating-system permissions and browser sign-in yourself.
+</details>
 
 ## Use Manual CLI Setup Instead
 
 Use the manual route when you work in CI, have a managed developer computer, or
-want to control each terminal command. See [Manual CLI Setup](./eai-cli.md).
+want to control each terminal command. See [Manual and Managed Setup](./manual-and-managed-setup.md).

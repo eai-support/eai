@@ -1,0 +1,1 @@
+{"result":"pass","specHash":"afd7f8ff94ede3606171945713a45e2bf59131068edf902e79d6500ec411015e","requirements":["FR-001","FR-008","FR-009"],"check":"The built documentation and local preview present separate new-computer, existing-project, and manual or managed routes, with EAI Setup as the recommended default."}

@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-09-22T22:09:58.119Z",
+  "capturedAt": "2026-09-22T22:46:27.669Z",
   "artifacts": {
-    "spec.md": "e5494857e1009a745948948248929ee9165212ecfccb874f159ea920ab40d399",
+    "spec.md": "afd7f8ff94ede3606171945713a45e2bf59131068edf902e79d6500ec411015e",
     "plan.md": "5ad5d38ef0d9824aa12fb55f415affadaf14715764a6d0d5802727d20ae4acf9",
-    "tasks.md": "f6400f3a31e00ac9951575927901f9f5e3ac6161653e861eaec0f1dfa4e81ef7",
-    "traceability.md": "67990d242d07c4e0e32896f4574a9d30db7f7161c4cf9c622989657459be32c8",
+    "tasks.md": "6f481f22f96a1cd39427edc15077c1049654810e83a597c97086ec68a8ce5c39",
+    "traceability.md": "bd31cdcf6131c990b2363d522fcfa4dca8d0051ce4e8fd9a2ef556939e9a126b",
     "goal-ledger.json": null,
     "research.md": "b1601e7e8ae1dc96b17dea270a3e8a70fac6f09f26ef089579b1fc312f3d3736",
     "discovery.md": null,
     "issues.md": null,
-    "validation-report.md": "32abd22647beca421dbd9d6245b97d41b58ea8c54c1181f9d6a1693830e40857",
-    "decisions.md": "416499415c172b04b7cc0253634a871c675c55a41c2d7795ccedacd957086d9f",
-    "priority-plan.json": "288f21571a9cd0e9b71c21631abe9d0184b3e2b173b9529a4c95ec0c795e7298"
+    "validation-report.md": "38df92128c520dbdf40c6de208722d3f6616ab9a352285995013b92b1800a187",
+    "decisions.md": "139f3781ed144017bbe25933cceed31b64b61067d4bfec567f72032da103ebd8",
+    "priority-plan.json": "f30dfa878f33fcdc8a2ce5c2f8bdcaa78907435205f2dcfac7aa8a9b9d175026"
   },
   "completedTasks": {
     "T001": {
@@ -21,7 +21,7 @@
         "FR-002"
       ],
       "evidence": "evidence/T001.json",
-      "evidenceHash": "18a7d69a7380b0938b5cccbb87ce40a3abce0271a42cd3e64fa08d4c52a014ae"
+      "evidenceHash": "5597759d3bfbf2a489ba060aec60357b79228d27bfa97c94e721c514f8b4b8b9"
     },
     "T002": {
       "requirements": [
@@ -29,7 +29,7 @@
         "FR-004"
       ],
       "evidence": "evidence/T002.json",
-      "evidenceHash": "7725408985c5ef014314a2ed69215e8f27d64cb39ddb1a60af8ec6f6905f968f"
+      "evidenceHash": "2041616e394b9b0d76f6a9191567d45912fa534cbe9a6d64c763ff764220dd5c"
     },
     "T003": {
       "requirements": [
@@ -37,7 +37,7 @@
         "FR-002"
       ],
       "evidence": "evidence/T003.json",
-      "evidenceHash": "11c931558f3bab2760046012ed99f6f9902bd7e208156e1a9ee9baed2e74c3ee"
+      "evidenceHash": "ad19f361f0e38cbb9f726680b612c4cef37e790a34bc7c9bbc2c44a3e9d5f01b"
     },
     "T004": {
       "requirements": [
@@ -46,14 +46,14 @@
         "FR-006"
       ],
       "evidence": "evidence/T004.json",
-      "evidenceHash": "90496ef0eecbe240b1df9276dd3178f3fcf59c007139b7600b25e0b17479239d"
+      "evidenceHash": "2a1985c82364adf903743079e6ea005d7a31d17907beb7b27c97525edf1cf6f6"
     },
     "T005": {
       "requirements": [
         "FR-007"
       ],
       "evidence": "evidence/T005.json",
-      "evidenceHash": "8bf8b14ade30c4411c033e8dd385c1b0d0a51570d9a29b4b305e73eaada96370"
+      "evidenceHash": "d550639a84f07c7bae6d16f7da5d94c2318ae13431518994d7a0b04a52ef64bc"
     },
     "T006": {
       "requirements": [
@@ -66,14 +66,14 @@
         "FR-007"
       ],
       "evidence": "evidence/T006.json",
-      "evidenceHash": "8a86d97e48b5fd4b4c5645318353c1a298fb060f634d1c9f7af4a28f65e9721e"
+      "evidenceHash": "afe49e434f90511aa65e26cbd229de94b7ed4ac1af4d5dd017df92a27cc48a29"
     },
     "T007": {
       "requirements": [
         "FR-005"
       ],
       "evidence": "evidence/T007.json",
-      "evidenceHash": "979d9d084f505674898b83cde45cedc2a2ac10309327cae4d693ecfbc3905d80"
+      "evidenceHash": "815e1bc0937f321192627778e07495529f7fe30ae30dc54586c489754523b5c2"
     },
     "T008": {
       "requirements": [
@@ -82,7 +82,7 @@
         "FR-007"
       ],
       "evidence": "evidence/T008.json",
-      "evidenceHash": "274611d53606fd9c8b376e989d28c528b128882f4e722c799bc6d7b3f64573c1"
+      "evidenceHash": "da24ed040f4edcd9123c00533b1ff35ed32c33a6474807c8d7c43f712b6c5df3"
     },
     "T009": {
       "requirements": [
@@ -90,14 +90,23 @@
         "FR-007"
       ],
       "evidence": "evidence/T009.json",
-      "evidenceHash": "d6b577442bbcc7ba916d7176babd68d2c744757040121df41c96f4f6750cd555"
+      "evidenceHash": "a61817b890405a95dbbbf63e2ee461f7f99eadd26538ed6c85b5bec7def7c0c7"
     },
     "T010": {
       "requirements": [
         "FR-008"
       ],
       "evidence": "evidence/T010.json",
-      "evidenceHash": "61040b2fbe3f1b63151604635c0769a1410c1a6356e3b4b975bf4f011ac8bc4e"
+      "evidenceHash": "8614737ed19b9c8b3e58fcfa57ef1337c2b6d740cb7995f9d90b89cbbe1dd96f"
+    },
+    "T011": {
+      "requirements": [
+        "FR-001",
+        "FR-008",
+        "FR-009"
+      ],
+      "evidence": "evidence/T011.json",
+      "evidenceHash": "0711d813c6d8ffdccadfe866560a6a8e6425ceb9d15b1063d191b75c082c47eb"
     }
   }
 }

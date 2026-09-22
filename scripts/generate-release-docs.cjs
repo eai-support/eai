@@ -20,6 +20,7 @@ const STATIC_FALLBACK_INSTALL_CMD =
 const DOC_ORDER = [
   "installer-setup.md",
   "start-here.md",
+  "manual-and-managed-setup.md",
   "eai-cli.md",
   "eai-gofer.md",
   "eai-app-template.md",

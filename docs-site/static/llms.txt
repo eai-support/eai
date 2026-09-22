@@ -38,6 +38,7 @@ npm install -g @enterpriseai/cli
 
 - [EAI Setup](/eai/docs/installer-setup)
 - [Start Here](/eai/docs/start-here)
+- [Manual and Managed Setup](/eai/docs/manual-and-managed-setup)
 - [EAI CLI](/eai/docs/eai-cli)
 - [eai-gofer](/eai/docs/eai-gofer)
 - [EAI App Template](/eai/docs/eai-app-template)

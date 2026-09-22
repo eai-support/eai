@@ -9,6 +9,7 @@
 | FR-006 | Configurable page feedback | `evidence/T004.json` | `validation-report.md` |
 | FR-007 | Build and asset validation | `evidence/T009.json` | `validation-report.md` |
 | FR-008 | Installer-first desktop onboarding | `evidence/T010.json` | `validation-report.md` |
+| FR-009 | Three clear onboarding routes | `evidence/T011.json` | `validation-report.md` |
 | T010 | FR-008 | Installer-first desktop setup documentation | `evidence/T010.json` |
 | --- | --- | --- | --- |
 | Task | Requirement | Delivery item | Evidence |
@@ -22,3 +23,4 @@
 | T007 | FR-005 | Valid multi-line redacted curl command and regression check | `evidence/T007.json` |
 | T008 | FR-003, FR-004, FR-007 | Release-aligned generated search and capability assets | `evidence/T008.json` |
 | T009 | FR-004, FR-007 | Release-aligned public machine-readable documentation | `evidence/T009.json` |
+| T011 | FR-001, FR-008, FR-009 | Three-path onboarding with installer-first default | `evidence/T011.json` |
