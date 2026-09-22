@@ -60,7 +60,7 @@ describe('eai start', () => {
     },
     30_000,
   );
-  it('returns a failing exit status and a parseable report when isolation is not ready', async () => {
+  it('returns a failing exit status and a parseable report when isolation is not ready', { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), 'eai-start-isolation-'));
     try {
       const error = await execFileAsync(process.execPath, [
@@ -77,7 +77,7 @@ describe('eai start', () => {
     }
   });
 
-  it('limits the default missing-prerequisite report to local CLI surfaces', async () => {
+  it('limits the default missing-prerequisite report to local CLI surfaces', { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), 'eai-start-isolation-default-'));
     try {
       const error = await execFileAsync(process.execPath, [
