@@ -253,10 +253,10 @@ fi
   });
 
   test.each([
-    ['accepted', 'handoff_pending'], ['consumed', 'handoff_pending'],
-    ['accepted', 'expired'], ['consumed', 'expired'],
-    ['accepted', 'revoked'], ['consumed', 'revoked'],
-  ] as const)('retries server %s evidence handoff in %s without local nonce or Git checkout', async (evidenceState, operationStatus) => {
+    ['accepted', 'handoff_pending', 'preview'], ['consumed', 'handoff_pending', 'dev'],
+    ['accepted', 'expired', 'test'], ['consumed', 'expired', 'prod'],
+    ['accepted', 'revoked', 'test'], ['consumed', 'revoked', 'prod'],
+  ] as const)('retries server %s evidence handoff in %s for %s without local nonce or Git checkout', async (evidenceState, operationStatus, environment) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     let deployed = false;
     const requests: Array<{ url: string; body: unknown }> = [];
@@ -267,7 +267,7 @@ fi
       requests.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
       if (url.includes('/source-unknown/operations/')) return jsonResponse({
         tenantId: TENANT_ID, targetTenantId: 'runtime-child', appKey: 'planning-portal',
-        operationId: 'source-unknown-abc123', status: deployed ? 'queued' : operationStatus,
+        operationId: 'source-unknown-abc123', environment, status: deployed ? 'queued' : operationStatus,
         setup: { targetTenantId: 'runtime-child', status: evidenceState === 'consumed' ? 'consumed' : 'issued' },
         evidence: evidenceState === 'accepted' ? { status: 'accepted' } : undefined,
       });
@@ -282,11 +282,41 @@ fi
     ], { from: 'user' });
     expect(requests.filter(request => request.url.endsWith('/source-unknown/deploy'))).toEqual([{
       url: `${API_BASE}/v4/platform/tenants/${TENANT_ID}/apps/planning-portal/source-unknown/deploy`,
-      body: { operationId: 'source-unknown-abc123', targetTenantId: 'runtime-child' },
+      body: { operationId: 'source-unknown-abc123', targetTenantId: 'runtime-child', environment },
     }]);
     expect(requests.some(request => request.url.endsWith('/workflow-setup') || request.url.endsWith('/runtime-bootstrap'))).toBe(false);
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ status: 'queued' });
     expect(process.exitCode).toBe(0);
+  });
+
+  test.each([undefined, 'staging'] as const)('refuses accepted-evidence retry without a supported server environment (%s)', async (environment) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const requests: string[] = [];
+    const identityFetch = stubManagedOperation();
+    const identityImpl = identityFetch.getMockImplementation()!;
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.includes('/source-unknown/operations/')) return jsonResponse({
+        tenantId: TENANT_ID, targetTenantId: 'runtime-child', appKey: 'planning-portal',
+        operationId: 'source-unknown-abc123', environment, status: 'handoff_pending',
+        setup: { targetTenantId: 'runtime-child', status: 'issued' },
+        evidence: { status: 'accepted' },
+      });
+      return identityImpl(input, init);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', 'runtime-child',
+      '--retry', 'source-unknown-abc123', '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(requests.some(url => url.endsWith('/source-unknown/deploy'))).toBe(false);
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      error: 'SOURCE_OPERATION_ENVIRONMENT_INVALID',
+    });
+    expect(process.exitCode).toBe(1);
   });
 
   test.each([

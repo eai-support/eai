@@ -24,6 +24,7 @@ import * as out from '../lib/output.js';
 const exec = promisify(execFile);
 const DEFAULT_TIMEOUT_SECONDS = 1_200;
 const POLL_INTERVALS_MS = [2_000, 3_000, 5_000, 10_000] as const;
+const MANAGED_DEPLOY_ENVIRONMENTS = new Set(['preview', 'dev', 'test', 'prod']);
 const NEW_SOURCE_OPERATION_ACTION = 'Start a new EAI managed deployment with --repo and --installation-id, without --resume or --retry, to issue a fresh source operation and nonce.';
 
 type ManagedDeployCommandRunner = (command: string, args: string[], cwd?: string) => Promise<string>;
@@ -500,10 +501,19 @@ Examples:
           return;
         }
         if (hasAcceptedWorkflowEvidence(current)) {
+          const environment = typeof current.environment === 'string' ? current.environment : '';
+          if (!MANAGED_DEPLOY_ENVIRONMENTS.has(environment)) {
+            fail(
+              'SOURCE_OPERATION_ENVIRONMENT_INVALID',
+              `Source operation ${options.retry} has no supported environment binding.`,
+              'Do not retry this operation. Start a new EAI managed deployment so the server can issue an environment-bound source operation.',
+            );
+          }
           await requireApiSuccess(
             await client.requestSourceUnknownDeployment(context.tenantId, appKey, {
               operationId: options.retry,
               targetTenantId,
+              environment,
             }),
             'DEPLOYMENT_HANDOFF_FAILED',
             () => `Repair the reported runtime or TenantInfra problem, then retry ${options.retry}; accepted build evidence will be reused.`,

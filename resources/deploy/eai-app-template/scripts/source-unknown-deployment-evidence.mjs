@@ -286,7 +286,16 @@ async function collectEvidence(options) {
     schema_digest: schemaProvenance.schemaDigest,
     validator_digest: schemaProvenance.validatorDigest,
   });
-  process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({
+    operationId: evidence.operationId,
+    evidencePath,
+    configHash,
+    artifactDigest,
+    imageArtifact: evidence.imageArtifact,
+    imageDigest,
+    templateVersion: schemaProvenance.templateVersion,
+    schemaDigest: schemaProvenance.schemaDigest,
+  }, null, 2)}\n`);
 }
 
 function readJson(path) {
