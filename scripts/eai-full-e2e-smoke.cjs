@@ -89,6 +89,7 @@ const TRACEABILITY_BASE = [
   ['eai docs upload', 'create', 'covered-by-cli', 'Controlled command tests only; optional lifecycle submits once through classify.'],
   ['eai docs classify', 'read/create', 'live-optional', 'EAI_E2E_DOCS=1 requires EAI_E2E_DOCS_TENANT_ID, EAI_E2E_DOCS_VERTICAL_KEY, EAI_E2E_DOCS_WORKFLOW_KEY, EAI_E2E_DOCS_FILE and EAI_E2E_DOCS_EXPECTED_TYPE. Requires a published business-document lifecycle, installed storage, and read/delete permission. EAI_E2E_DOCS_WAIT_MS defaults to 180000 (maximum 600000). Polls one job, reads persisted classification and always cleans up.'],
   ['eai docs index', 'create/update', 'covered-by-cli', 'Controlled command tests only; indexing is not executed or claimed by the classification smoke.'],
+  ['eai deploy app', 'create/update/read', 'manual', 'Repo integration tests prove immutable setup, dispatch, and exact-operation polling; live execution is release-controlled because it creates a TenantInfra deployment.'],
   ['eai deploy setup', 'create-local', 'live', 'Generates deployment workflow in the disposable workspace.'],
   ['eai deploy trigger', 'create', 'manual', 'Not run by release smoke because it triggers a host deployment outside the CLI test tenant.'],
   ['eai deploy status', 'read', 'help', 'Validated by help/contract unless a deployment run id is provided.'],
@@ -368,6 +369,11 @@ const SMOKE_CALLS = {
     'EAI_E2E_DOCS=1 eai docs classify <EAI_E2E_DOCS_FILE> --tenant-id <EAI_E2E_DOCS_TENANT_ID> --storage-target resourceapi --vertical-key <EAI_E2E_DOCS_VERTICAL_KEY> --workflow-key <EAI_E2E_DOCS_WORKFLOW_KEY> --format json',
   ],
   'eai docs index': [],
+  'eai deploy app': [
+    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --repo <owner/repo> --installation-id <installation-id> --branch main --workflow .github/workflows/eai-app.yml --environment preview --commit <40-char-sha> --wait --timeout 1200 --format json',
+    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --resume <operation-id> --wait --format json',
+    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --retry <operation-id> --no-wait --format json',
+  ],
   'eai deploy setup': [
     'eai deploy setup --repo <owner/repo>',
   ],
@@ -873,6 +879,11 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'No - cleanup command',
     cleanupMechanism: 'Deletes only documents returned by the optional classify submission, including file and analysis',
     cleanupVerified: 'Requires analysisCleanupComplete receipt and subsequent record GET 404',
+  },
+  'eai deploy app': {
+    createsExternalArtifact: 'Yes - GitHub Actions run and EAI-managed TenantInfra deployment',
+    cleanupMechanism: 'Release-controlled only; use the app/TenantInfra lifecycle controls for the exact deployment operation',
+    cleanupVerified: 'No - disabled in default smoke; repo integration tests use controlled GitHub and PublicAPI fixtures',
   },
   'eai deploy setup': {
     createsExternalArtifact: 'Creates local deployment workflow files',

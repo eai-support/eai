@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.17.0.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.18.0.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install

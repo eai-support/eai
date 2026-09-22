@@ -800,6 +800,28 @@ describe('PlatformAPIClient', () => {
     expect(init?.body).toBeUndefined()
   })
 
+  test('reads one exact source-unknown operation with the authorized target tenant', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.getSourceUnknownOperation(
+      'tenant-parent',
+      'rates-review',
+      'source-unknown-abc123',
+      'tenant-runtime',
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe(
+      'https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/operations/source-unknown-abc123?targetTenantId=tenant-runtime',
+    )
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
   test('creates app provisioning jobs through the public company app route', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

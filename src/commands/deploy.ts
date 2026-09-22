@@ -23,11 +23,14 @@ import {
   validateRuntimeContract,
   type RuntimeSmokeTest,
 } from '../lib/runtime-contract.js';
+import { eaiManagedDeployCommand } from './eai-managed-deploy.js';
 
 const exec = promisify(execFile);
 
 export const deployCommand = new Command('deploy')
   .description('Deployment management');
+
+deployCommand.addCommand(eaiManagedDeployCommand);
 
 // ─── eai deploy setup ─────────────────────────────────────────────────────
 

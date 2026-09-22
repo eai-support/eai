@@ -166,4 +166,18 @@ describe('CLI help output', () => {
     expect(agentResult.stdout).toContain('eai agent guide --format json');
     expect(agentResult.stdout).toContain('eai errors explain <code-or-reason> --format json');
   }, 30_000);
+
+  test('managed deploy help exposes exact EAI target, resume, retry, and JSON controls', async () => {
+    const result = await runCommand(ctx, 'eai deploy app --help');
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Deploy an app to EAI-managed TenantInfra');
+    expect(result.stdout).toContain('--target <target>');
+    expect(result.stdout).toContain('--installation-id <id>');
+    expect(result.stdout).toContain('--resume <operation-id>');
+    expect(result.stdout).toContain('--retry <operation-id>');
+    expect(result.stdout).toContain('--wait');
+    expect(result.stdout).toContain('--no-wait');
+    expect(result.stdout).toContain('--format <format>');
+  });
 });

@@ -1,0 +1,162 @@
+name: EAI App Source-Unknown Handoff
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_key:
+        description: EAI app key to bind.
+        required: true
+      tenant_id:
+        description: Company tenant ID that owns the app enrollment.
+        required: true
+      operation_id:
+        description: Operation ID from eai app workflow-setup.
+        required: true
+      nonce:
+        description: One-time nonce from eai app workflow-setup.
+        required: true
+      config_hash:
+        description: Exact configuration hash approved by workflow setup.
+        required: true
+      env:
+        description: Deployment environment to bind.
+        required: true
+        default: preview
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: eai-app-source-unknown-${{ inputs.app_key }}-${{ inputs.env }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '24'
+  EAI_WORKFLOW_PATH: .github/workflows/eai-app.yml
+
+jobs:
+  build-and-handoff:
+    runs-on: ubuntu-latest
+    env:
+      APP_KEY: ${{ inputs.app_key }}
+      TENANT_ID: ${{ inputs.tenant_id }}
+      OPERATION_ID: ${{ inputs.operation_id }}
+      NONCE: ${{ inputs.nonce }}
+      CONFIG_HASH: ${{ inputs.config_hash }}
+      DEPLOY_ENVIRONMENT: ${{ inputs.env }}
+      EAI_PUBLIC_API_URL: ${{ vars.EAI_PUBLIC_API_URL }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Configure npm for GitHub Packages
+        run: |
+          echo "@enterpriseaigroup:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Linux native CSS bindings
+        run: npm install --no-save lightningcss-linux-x64-gnu@1.30.2 @tailwindcss/oxide-linux-x64-gnu@4.1.18
+
+      - name: Build object types
+        run: npm run build:object-types
+
+      - name: Validate application
+        run: |
+          npm run typecheck
+          npm run test:unit:ci
+
+      - name: Build generated app
+        run: npm run build
+
+      - name: Prepare image context
+        run: node scripts/source-unknown-deployment-evidence.mjs prepare-image-context
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build OCI image archive
+        run: |
+          mkdir -p .eai-build
+          docker buildx build \
+            --platform linux/amd64 \
+            --file .eai-build/image-context/Dockerfile \
+            --metadata-file .eai-build/image-metadata.json \
+            --output type=oci,dest=.eai-build/eai-generated-app-image.tar \
+            .eai-build/image-context
+
+      - name: Upload immutable image artifact
+        id: image-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eai-generated-app-image
+          if-no-files-found: error
+          retention-days: 14
+          path: .eai-build/eai-generated-app-image.tar
+
+      - name: Collect immutable build evidence
+        id: evidence
+        run: |
+          image_digest="$(node -e "const v=require('./.eai-build/image-metadata.json')['containerimage.digest']; if(!v) process.exit(1); process.stdout.write(v)")"
+          node scripts/source-unknown-deployment-evidence.mjs collect \
+            --app-key "$APP_KEY" \
+            --tenant-id "$TENANT_ID" \
+            --operation-id "$OPERATION_ID" \
+            --nonce "$NONCE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow "$EAI_WORKFLOW_PATH" \
+            --ref "$GITHUB_REF" \
+            --branch "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --workflow-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --environment "$DEPLOY_ENVIRONMENT" \
+            --expected-config-hash "$CONFIG_HASH" \
+            --artifact-id "${{ steps.image-artifact.outputs.artifact-id }}" \
+            --artifact-digest "${{ steps.image-artifact.outputs.artifact-digest }}" \
+            --image-digest "$image_digest"
+
+      - name: Request GitHub OIDC token
+        id: github-oidc
+        env:
+          AUDIENCE: api://enterprise-ai-publicapi/source-unknown
+        run: |
+          response="$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUDIENCE}")"
+          token="$(node -e "let s=''; process.stdin.on('data', d => s += d); process.stdin.on('end', () => process.stdout.write(JSON.parse(s).value));" <<< "$response")"
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Submit workflow evidence
+        run: |
+          test -n "$EAI_PUBLIC_API_URL"
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${{ steps.github-oidc.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            --data-binary @.eai-build/evidence/source-unknown-deployment-evidence.json \
+            "${EAI_PUBLIC_API_URL%/}/v4/platform/tenants/${TENANT_ID}/apps/${APP_KEY}/source-unknown/workflow-evidence" \
+            | tee .eai-build/evidence/workflow-evidence-response.json
+
+      - name: Assert evidence accepted
+        run: |
+          node scripts/source-unknown-deployment-evidence.mjs assert-evidence-accepted \
+            --response .eai-build/evidence/workflow-evidence-response.json
+
+      - name: Upload handoff responses
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eai-source-unknown-handoff-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            .eai-build/evidence/workflow-evidence-response.json

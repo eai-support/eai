@@ -159,6 +159,8 @@ export interface SourceUnknownAppRegistrationRequest {
   configPath?: string;
   runtimePath?: string;
   sourceMode?: 'source-unknown';
+  installationId?: number;
+  targetTenantId?: string;
   adoptionMode?: 'connect-existing' | 'adopted-observed';
   schemaProvenance?: SourceUnknownSchemaProvenance;
   observedDeployment?: {
@@ -173,12 +175,15 @@ export interface SourceUnknownAppRegistrationRequest {
   validationSummary?: Record<string, unknown>;
 }
 
+/** Immutable source binding used to issue a server-owned workflow operation. */
 export interface SourceUnknownWorkflowSetupRequest {
   environment?: string;
   workflowPath?: string;
   ref?: string;
   commitSha?: string;
   configHash?: string;
+  targetTenantId?: string;
+  deployOnSuccess?: boolean;
   handoverIntent?: 'no-code-to-cli';
 }
 
@@ -191,6 +196,11 @@ export interface SourceUnknownWorkflowEvidenceRequest {
   commitSha: string;
   configHash: string;
   artifactDigest: string;
+  imageArtifact?: {
+    id: string | number;
+    name: 'eai-generated-app-image';
+    archiveDigest: string;
+  };
   imageDigest: string;
   schemaProvenance: SourceUnknownSchemaProvenance;
   workflowRun?: Record<string, unknown>;
@@ -200,6 +210,7 @@ export interface SourceUnknownWorkflowEvidenceRequest {
 
 export interface SourceUnknownDeploymentRequest {
   operationId: string;
+  targetTenantId?: string;
   environment?: string;
   repoOwner?: string;
   repoName?: string;
@@ -212,6 +223,21 @@ export interface SourceUnknownDeploymentRequest {
   imageDigest?: string;
   deploymentTarget?: Record<string, unknown>;
   validationSummary?: Record<string, unknown>;
+}
+
+/** Exact source operation; callers must not substitute the latest deployment. */
+export interface SourceUnknownOperationResponse {
+  tenantId: string;
+  targetTenantId?: string;
+  appKey: string;
+  operationId: string;
+  environment?: string;
+  configHash?: string;
+  status: string;
+  setup: Record<string, unknown>;
+  evidence?: Record<string, unknown> | null;
+  deploymentRequest?: Record<string, unknown> | null;
+  history?: Array<Record<string, unknown>>;
 }
 
 export interface CapabilityEvaluationRequest {
@@ -1506,6 +1532,22 @@ export class PlatformAPIClient {
   async getLatestSourceUnknownDeployment(tenantId: string, appKey: string): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/deployments/latest`,
+      'GET',
+    );
+  }
+
+  /** Read one tenant/app-bound source operation by its server-issued identifier. */
+  async getSourceUnknownOperation(
+    tenantId: string,
+    appKey: string,
+    operationId: string,
+    targetTenantId?: string,
+  ): Promise<Response> {
+    const query = targetTenantId
+      ? `?targetTenantId=${encodeURIComponent(targetTenantId)}`
+      : '';
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/operations/${encodeURIComponent(operationId)}${query}`,
       'GET',
     );
   }
