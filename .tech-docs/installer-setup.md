@@ -3,8 +3,6 @@ generated: false
 title: EAI Setup
 ---
 
-# EAI Setup
-
 **Recommended for most people.** Use EAI Setup to prepare a supported desktop
 computer and create your first EAI project.
 
@@ -13,24 +11,9 @@ sign-in yourself.
 
 ## Download EAI Setup
 
-Download the package that matches your computer from the official
-[EAI Setup releases](https://github.com/eai-support/eai-installer/releases/latest).
-These links download published release assets, not temporary GitHub Actions
-artifacts.
-
-| Computer | Download |
-| --- | --- |
-| macOS Apple Silicon | [EAI Setup DMG](https://github.com/eai-support/eai-installer/releases/latest/download/eai-setup-macos-arm64.dmg) |
-| macOS Intel | [EAI Setup DMG](https://github.com/eai-support/eai-installer/releases/latest/download/eai-setup-macos-x64.dmg) |
-| Windows x64 | [EAI Setup installer](https://github.com/eai-support/eai-installer/releases/latest/download/eai-setup-windows-x64.exe) |
-| Windows ARM64 | [EAI Setup installer](https://github.com/eai-support/eai-installer/releases/latest/download/eai-setup-windows-arm64.exe) |
-| Ubuntu/Debian x64 | [EAI Setup package](https://github.com/eai-support/eai-installer/releases/latest/download/eai-setup-ubuntu-amd64.deb) |
-| Ubuntu/Debian ARM64 | [EAI Setup package](https://github.com/eai-support/eai-installer/releases/latest/download/eai-setup-ubuntu-arm64.deb) |
-
-On macOS, open the DMG and move **EAI Setup** to Applications. On Windows and
-Ubuntu/Debian, open the downloaded package and follow the operating-system
-installer prompts. Check the [release notes](https://github.com/eai-support/eai-installer/releases/latest)
-for the current support and signing information.
+Each download is a published release asset, not a temporary GitHub Actions
+artifact. Check the [release notes](https://github.com/eai-support/eai-installer/releases/latest)
+for current support and signing information.
 
 ## Complete Setup
 

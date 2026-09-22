@@ -11,3 +11,4 @@
 - [x] T009 Regenerate release documentation assets after rebasing onto main.
 - [x] T010 Make EAI Setup the default desktop onboarding path and retain manual CLI setup.
 - [x] T011 Separate the first-run, existing-project, and manual or managed setup routes.
+- [x] T012 Detect the visitor's platform and present one primary EAI Setup download.

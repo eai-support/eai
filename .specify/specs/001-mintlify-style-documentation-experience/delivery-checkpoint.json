@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-09-22T22:46:27.669Z",
+  "capturedAt": "2026-09-22T23:19:27.985Z",
   "artifacts": {
     "spec.md": "afd7f8ff94ede3606171945713a45e2bf59131068edf902e79d6500ec411015e",
     "plan.md": "5ad5d38ef0d9824aa12fb55f415affadaf14715764a6d0d5802727d20ae4acf9",
-    "tasks.md": "6f481f22f96a1cd39427edc15077c1049654810e83a597c97086ec68a8ce5c39",
-    "traceability.md": "bd31cdcf6131c990b2363d522fcfa4dca8d0051ce4e8fd9a2ef556939e9a126b",
+    "tasks.md": "6a7dbe6f3b7770e8acf92e5c81dea429a6254d2fa380789c22264e31646b4498",
+    "traceability.md": "4ea608c13f4e2c3b232847954e584818a0cc56e5cadaba67957c5922fb5ae077",
     "goal-ledger.json": null,
     "research.md": "b1601e7e8ae1dc96b17dea270a3e8a70fac6f09f26ef089579b1fc312f3d3736",
     "discovery.md": null,
     "issues.md": null,
-    "validation-report.md": "38df92128c520dbdf40c6de208722d3f6616ab9a352285995013b92b1800a187",
-    "decisions.md": "139f3781ed144017bbe25933cceed31b64b61067d4bfec567f72032da103ebd8",
-    "priority-plan.json": "f30dfa878f33fcdc8a2ce5c2f8bdcaa78907435205f2dcfac7aa8a9b9d175026"
+    "validation-report.md": "658472979ce643e5815ab178a69a847c8f9516b74abd676b57bcd0b524d02754",
+    "decisions.md": "f7da89333f4bf7fa172cfffd65063330951597d83b594b0c6f71558d8e95b4a6",
+    "priority-plan.json": "d988a386f2ac0f7fec3144e9a5137ac1076ff1076dfb05f974413642c6154d1f"
   },
   "completedTasks": {
     "T001": {
@@ -107,6 +107,15 @@
       ],
       "evidence": "evidence/T011.json",
       "evidenceHash": "0711d813c6d8ffdccadfe866560a6a8e6425ceb9d15b1063d191b75c082c47eb"
+    },
+    "T012": {
+      "requirements": [
+        "FR-001",
+        "FR-008",
+        "FR-009"
+      ],
+      "evidence": "evidence/T012.json",
+      "evidenceHash": "e3f0c94e6eb439707aa0cbcd7016e609fc4a4b11dcd8df984b6e78cc9b75f69e"
     }
   }
 }

@@ -7,6 +7,7 @@ const staticDirectory = path.join(__dirname, "..", "docs-site", "static");
 const search = JSON.parse(fs.readFileSync(path.join(staticDirectory, "docs-search-index.json"), "utf8"));
 const capabilities = JSON.parse(fs.readFileSync(path.join(staticDirectory, "docs-capabilities.json"), "utf8"));
 const requestBuilder = fs.readFileSync(path.join(__dirname, "..", "docs-site", "src", "components", "RequestBuilder", "index.js"), "utf8");
+const installerDownload = fs.readFileSync(path.join(__dirname, "..", "docs-site", "src", "components", "InstallerDownload", "index.js"), "utf8");
 
 if (search.schemaVersion !== 1 || search.items.length < 10) {
   throw new Error("The documentation search index is incomplete.");
@@ -21,6 +22,9 @@ if (capabilities.schemaVersion !== 1 || !capabilities.capabilities.localSearch) 
 }
 if (requestBuilder.includes("\\n+  -H") || requestBuilder.includes("\\n+  --data")) {
   throw new Error("The request builder must not emit invalid '+' prefixes in generated curl commands.");
+}
+if (!installerDownload.includes("getHighEntropyValues") || !installerDownload.includes("Download now") || !installerDownload.includes("Download a different version")) {
+  throw new Error("The installer guide must detect a supported computer and keep alternate packages secondary.");
 }
 
 console.log(`Verified ${search.items.length} public documentation search records.`);

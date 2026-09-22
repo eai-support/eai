@@ -13,3 +13,4 @@
 | D009 | Make EAI Setup the default desktop onboarding path and retain manual CLI setup | The public installer now prepares Windows, macOS, and Ubuntu/Debian computers end to end | New desktop users start with the installer; automation and advanced users retain direct CLI guidance |
 | D010 | Use progressive disclosure for onboarding | Research found that GitHub Codespaces reaches a working outcome first and Mintlify keeps alternate workflows distinct | The first-run path has three choices; installation detail remains available but is no longer mandatory reading |
 | D011 | Implement the simplified onboarding model | User direction on 2026-09-23 | The documentation now routes people to installer, existing-project, or manual and managed setup guidance |
+| D012 | Select the installer in the browser | User direction on 2026-09-23 | The installer page shows one primary package for the detected computer and keeps other packages secondary |
