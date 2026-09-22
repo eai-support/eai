@@ -26,7 +26,17 @@ The current CLI release is **v3.17.0** (2026-09-22): Support Configurator Plus n
 | EAI App Template | Start a Next.js app with platform auth, tenant config, Object Types, ResourceAPI hooks, document hooks, chat hooks, and config-driven UI patterns. |
 | Scenario library | Browse business examples by industry before deciding what to build.                                                                                |
 
-## Install The CLI
+## Recommended: Set Up A Desktop Computer
+
+For a new Windows, macOS, or Ubuntu/Debian computer, start with
+[EAI Setup](./installer-setup.md). It prepares the computer, opens browser
+sign-in, creates the project, installs dependencies, and helps you open an AI
+workspace. This is the standard first-run path for most users.
+
+Use [Manual CLI Setup](./eai-cli.md) when you work in CI, have a managed
+developer environment, or want to run each command yourself.
+
+## Manual CLI Setup
 
 ```bash
 npm install -g eai-cli
@@ -52,7 +62,7 @@ npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry
 npm install -g @enterpriseai/cli
 ```
 
-## Create A New App
+## Create A New App Manually
 
 ```bash
 eai init task-tracker
@@ -67,6 +77,10 @@ kebab-case app name, and choose the current-folder option. Scripts can use
 `eai init task-tracker --current-dir`. Current-folder init preserves unrelated
 existing files and Git metadata, and updates files that are part of the
 generated scaffold.
+
+For the guided terminal alternative, run `eai create <project-name>` after
+installing the CLI. It checks setup, signs you in, confirms the workspace, and
+creates the project. `eai init` remains the lower-level scaffold command.
 
 ## Start In An AI Workspace
 

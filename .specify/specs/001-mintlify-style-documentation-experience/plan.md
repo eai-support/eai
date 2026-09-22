@@ -28,6 +28,7 @@ GitHub Pages and enterpriseaigroup.com static copy
 5. Add a safe API request builder.
 6. Add optional feedback URL support.
 7. Add build checks for the new assets.
+8. Make the public EAI Setup installer the default desktop onboarding path and retain manual CLI setup as an alternative.
 
 ## Explicit Limits
 

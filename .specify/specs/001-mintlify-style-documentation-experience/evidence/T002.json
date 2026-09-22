@@ -1,1 +1,1 @@
-{"result":"pass","specHash":"b8f3e54e726f9af8398472446e97173c807bed07e9d5a7a5c298f9ffde4a36d9","requirements":["FR-003","FR-004"],"check":"npm run docs:experience-assets:check and npm run docs:experience-assets:verify."}
+{"result":"pass","specHash":"e5494857e1009a745948948248929ee9165212ecfccb874f159ea920ab40d399","requirements":["FR-003","FR-004"],"check":"npm run docs:experience-assets:check and npm run docs:experience-assets:verify."}

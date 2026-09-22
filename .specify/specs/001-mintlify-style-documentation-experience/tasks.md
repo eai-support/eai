@@ -9,3 +9,4 @@
 - [x] T007 Correct the generated request command and add regression verification.
 - [x] T008 Regenerate documentation assets after rebasing onto main.
 - [x] T009 Regenerate release documentation assets after rebasing onto main.
+- [x] T010 Make EAI Setup the default desktop onboarding path and retain manual CLI setup.

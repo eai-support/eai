@@ -10,3 +10,4 @@
 | D006 | Fix all validation findings and make the PR merge-ready | User direction on 2026-09-23 | Correct the request builder, update from main, and rerun all checks |
 | D007 | Regenerate derived documentation assets after the main rebase | The rebase updated source documentation metadata | Keep public search and capability assets release-aligned |
 | D008 | Regenerate release documentation assets after the main rebase | Release validation identified stale public output | Keep release documentation checks green on the merge candidate |
+| D009 | Make EAI Setup the default desktop onboarding path and retain manual CLI setup | The public installer now prepares Windows, macOS, and Ubuntu/Debian computers end to end | New desktop users start with the installer; automation and advanced users retain direct CLI guidance |

@@ -8,6 +8,8 @@
 | FR-005 | Safe request builder | `evidence/T007.json` | `validation-report.md` |
 | FR-006 | Configurable page feedback | `evidence/T004.json` | `validation-report.md` |
 | FR-007 | Build and asset validation | `evidence/T009.json` | `validation-report.md` |
+| FR-008 | Installer-first desktop onboarding | `evidence/T010.json` | `validation-report.md` |
+| T010 | FR-008 | Installer-first desktop setup documentation | `evidence/T010.json` |
 | --- | --- | --- | --- |
 | Task | Requirement | Delivery item | Evidence |
 | --- | --- | --- | --- |

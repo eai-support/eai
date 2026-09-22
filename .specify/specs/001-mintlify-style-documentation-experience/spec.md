@@ -48,6 +48,7 @@ A builder uses the documentation assistant and request builder without exposing 
 - **FR-005**: The site MUST provide a browser-only request builder that never sends credentials or requests.
 - **FR-006**: The site MUST allow optional, privacy-preserving page feedback through a configurable URL only.
 - **FR-007**: CI MUST build and verify all experience assets.
+- **FR-008**: Desktop users MUST see EAI Setup as the recommended first-run path, with manual CLI installation retained for automation and advanced users.
 
 ## Application Classification & Journey
 

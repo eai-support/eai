@@ -22,6 +22,13 @@ and gofer asset refresh.
 
 ## Install
 
+For a new desktop computer, use [EAI Setup](./installer-setup.md) first. It is
+the standard guided path for Windows, macOS, and Ubuntu/Debian users. It
+prepares prerequisites, installs the CLI, opens browser sign-in, creates the
+project, and installs its dependencies.
+
+Use the commands below for CI, managed developer environments, or manual setup.
+
 Recommended install:
 
 ```bash

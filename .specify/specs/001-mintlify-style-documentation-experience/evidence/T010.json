@@ -1,0 +1,1 @@
+{"result":"pass","specHash":"e5494857e1009a745948948248929ee9165212ecfccb874f159ea920ab40d399","requirements":["FR-008"],"check":"The built documentation presents EAI Setup as the first desktop journey and retains manual CLI setup for CI and advanced users."}

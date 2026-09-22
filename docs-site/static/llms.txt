@@ -36,6 +36,7 @@ npm install -g @enterpriseai/cli
 
 ## Documentation
 
+- [EAI Setup](/eai/docs/installer-setup)
 - [Start Here](/eai/docs/start-here)
 - [EAI CLI](/eai/docs/eai-cli)
 - [eai-gofer](/eai/docs/eai-gofer)
