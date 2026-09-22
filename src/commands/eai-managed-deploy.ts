@@ -249,7 +249,19 @@ async function readExactOperation(
   if (payload.operationId !== operationId || payload.appKey !== appKey || payload.tenantId !== tenantId) {
     fail('SOURCE_OPERATION_BINDING_MISMATCH', 'PublicAPI returned an operation with a different tenant, app, or operation ID.', 'Stop and escalate with the PublicAPI request ID.');
   }
-  return payload as unknown as SourceUnknownOperationResponse;
+  const operation = payload as unknown as SourceUnknownOperationResponse;
+  const operationTargetTenantId = operation.targetTenantId
+    ?? (isRecord(operation.setup) && typeof operation.setup.targetTenantId === 'string'
+      ? operation.setup.targetTenantId
+      : undefined);
+  if (operationTargetTenantId !== targetTenantId) {
+    fail(
+      'SOURCE_OPERATION_TARGET_MISMATCH',
+      `PublicAPI returned target tenant ${operationTargetTenantId || '<missing>'} instead of ${targetTenantId}.`,
+      'Use the exact target tenant recorded by the source operation; do not retry against another tenant.',
+    );
+  }
+  return operation;
 }
 
 async function pollExactOperation(
@@ -267,7 +279,7 @@ async function pollExactOperation(
       state.appKey,
       state.operationId,
     );
-    const classification = classifyManagedOperationStatus(operation.status);
+    const classification = classifyManagedOperationStatus(operation);
     if (!wait || classification !== 'pending') return operation;
     if (Date.now() >= deadline) {
       fail(
@@ -285,19 +297,41 @@ function printOperation(
   operation: SourceUnknownOperationResponse,
   extra: Record<string, unknown> = {},
 ): void {
-  const classification = classifyManagedOperationStatus(operation.status);
+  const classification = classifyManagedOperationStatus(operation);
+  const setup = isRecord(operation.setup) ? operation.setup : {};
+  const repository = isRecord(setup.repo) ? setup.repo : {};
+  const targetTenantId = operation.targetTenantId
+    ?? (typeof setup.targetTenantId === 'string' ? setup.targetTenantId : undefined);
+  const sourceBinding = {
+    repository: typeof repository.owner === 'string' && typeof repository.name === 'string'
+      ? `${repository.owner}/${repository.name}`
+      : extra.repo,
+    workflowPath: setup.workflowPath,
+    ref: setup.ref ?? extra.ref,
+    commitSha: setup.commitSha ?? extra.commitSha,
+    configHash: operation.configHash ?? setup.configHash ?? extra.configHash,
+  };
+  const exactCommand = `eai deploy app ${operation.appKey} --target eai --tenant-id ${operation.tenantId}`
+    + ` --target-tenant-id ${targetTenantId || '<target-tenant-id>'}`;
   const nextAction = classification === 'succeeded'
-    ? 'Run `eai deploy doctor --url <deployed-url>` against the deployed app.'
+    ? `Run \`eai deploy doctor --url ${operation.activeUrl}\` against the deployed app.`
     : classification === 'failed'
-      ? `Inspect the exact operation and workflow evidence, then run with --retry ${operation.operationId}.`
-      : `Resume with --resume ${operation.operationId} --wait.`;
+      ? `Inspect the exact operation and workflow evidence, then run \`${exactCommand} --retry ${operation.operationId} --wait --format json\`.`
+      : `Resume with \`${exactCommand} --resume ${operation.operationId} --wait --format json\`; status ${operation.status} is not a complete active TenantInfra projection.`;
   const result = {
     tenantId: operation.tenantId,
-    targetTenantId: operation.targetTenantId,
+    targetTenantId,
     appKey: operation.appKey,
     operationId: operation.operationId,
     status: operation.status,
     classification,
+    requiresTenantInfra: operation.requiresTenantInfra,
+    deploymentId: operation.deploymentId,
+    activeUrl: operation.activeUrl,
+    latestPointerVersion: operation.latestPointerVersion,
+    expectedLatestVersion: operation.expectedLatestVersion,
+    runtimeIdentity: operation.runtimeIdentity,
+    sourceBinding,
     nextAction,
     ...extra,
   };
@@ -305,8 +339,14 @@ function printOperation(
     out.json(result);
     return;
   }
-  out.success(`EAI managed deployment is ${chalk.cyan(operation.status)}.`);
+  const statusMessage = `EAI managed deployment is ${chalk.cyan(operation.status)}.`;
+  if (classification === 'succeeded') out.success(statusMessage);
+  else if (classification === 'failed') out.error(statusMessage);
+  else out.warn(statusMessage);
   out.info(`Operation: ${operation.operationId}`);
+  out.info(`Target tenant: ${targetTenantId || '<missing>'}`);
+  if (typeof sourceBinding.repository === 'string') out.info(`Source: ${sourceBinding.repository}@${String(sourceBinding.commitSha || '<missing>')}`);
+  if (typeof operation.activeUrl === 'string') out.info(`URL: ${operation.activeUrl}`);
   out.info(nextAction);
 }
 
@@ -349,8 +389,8 @@ export const eaiManagedDeployCommand = new Command('app')
   .addHelpText('after', `
 Examples:
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --repo org/planning-portal --installation-id 12345
-  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
-  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --retry source-unknown-abc123 --wait
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
 `)
   .action(async (appKeyValue: string, options: ManagedDeployOptions) => {
     const format = normalizeFormat(options);
@@ -379,6 +419,13 @@ Examples:
       if (context.tenantId !== options.tenantId) {
         fail('TENANT_ACCOUNT_MISMATCH', `Active tenant ${context.tenantId} does not match ${options.tenantId}.`, `Run \`eai tenant select ${options.tenantId}\`, then confirm with \`eai whoami\`.`);
       }
+      if ((options.resume || options.retry) && !options.targetTenantId?.trim()) {
+        fail(
+          'TARGET_TENANT_REQUIRED',
+          '--target-tenant-id is required when resuming or retrying an exact managed deployment.',
+          'Use the target tenant recorded with the operation. For same-tenant deployment, repeat the --tenant-id value.',
+        );
+      }
       const targetTenantId = options.targetTenantId?.trim() || context.tenantId;
       const client = new PlatformAPIClient(context.publicApiUrl, context.tenantId);
 
@@ -391,7 +438,7 @@ Examples:
         }, options.wait, timeoutSeconds);
         spinner?.stop();
         printOperation(format, operation);
-        if (classifyManagedOperationStatus(operation.status) === 'failed') process.exitCode = 1;
+        if (classifyManagedOperationStatus(operation) === 'failed') process.exitCode = 1;
         return;
       }
 
@@ -410,7 +457,7 @@ Examples:
             'Do not edit retry state. Resume the exact server operation, or start a new deployment from the intended immutable commit.',
           );
         }
-        if (classifyManagedOperationStatus(current.status) === 'succeeded') {
+        if (classifyManagedOperationStatus(current) === 'succeeded') {
           spinner?.stop();
           printOperation(format, current, { repo: state.repo, ref: state.ref, commitSha: state.commitSha, configHash: state.configHash });
           return;
@@ -425,7 +472,7 @@ Examples:
         const operation = await pollExactOperation(client, state, options.wait, timeoutSeconds);
         spinner?.stop();
         printOperation(format, operation, { repo: state.repo, ref: state.ref, commitSha: state.commitSha, configHash: state.configHash });
-        if (classifyManagedOperationStatus(operation.status) === 'failed') process.exitCode = 1;
+        if (classifyManagedOperationStatus(operation) === 'failed') process.exitCode = 1;
         return;
       }
 
@@ -519,7 +566,7 @@ Examples:
         commitSha: state.commitSha,
         configHash: state.configHash,
       });
-      if (classifyManagedOperationStatus(operation.status) === 'failed') process.exitCode = 1;
+      if (classifyManagedOperationStatus(operation) === 'failed') process.exitCode = 1;
     } catch (error) {
       spinner?.fail('EAI managed deployment stopped');
       printFailure(format, error);

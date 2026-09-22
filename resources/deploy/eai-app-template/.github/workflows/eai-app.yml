@@ -26,6 +26,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  packages: read
 
 concurrency:
   group: eai-app-source-unknown-${{ inputs.app_key }}-${{ inputs.env }}-${{ github.ref }}

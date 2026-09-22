@@ -30,6 +30,24 @@ describe('eai deploy app --target eai', () => {
   let projectRoot: string;
   let original: NodeJS.ProcessEnv;
 
+  function stubManagedOperation(operation?: Record<string, unknown>): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === `${API_BASE}/v4/identity/tenants`) {
+        return jsonResponse({ tenants: [{ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] }] });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}` || url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}/management`) {
+        return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
+      }
+      if (url.includes('/source-unknown/operations/')) {
+        return operation ? jsonResponse(operation) : jsonResponse({ message: 'operation missing' }, 404);
+      }
+      return jsonResponse({ message: `Unhandled GET ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
   beforeEach(async () => {
     original = { ...process.env };
     env = await createTestEnvironment();
@@ -123,10 +141,22 @@ fi
           targetTenantId: TENANT_ID,
           appKey: 'planning-portal',
           operationId: 'source-unknown-abc123',
-          status: 'deployed',
-          setup: {},
+          status: 'active',
+          requiresTenantInfra: false,
+          deploymentId: 'dep-1',
+          activeUrl: 'https://planning.example.com',
+          latestPointerVersion: 3,
+          expectedLatestVersion: 3,
+          runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
+          setup: {
+            targetTenantId: TENANT_ID,
+            repo: { owner: 'enterprise', name: 'planning-portal' },
+            workflowPath: '.github/workflows/eai-app.yml',
+            ref: 'refs/heads/main',
+            commitSha,
+          },
           evidence: { status: 'accepted' },
-          deploymentRequest: { status: 'deployed' },
+          deploymentRequest: { status: 'active' },
         });
       }
       return jsonResponse({ message: `Unhandled ${method} ${url}` }, 500);
@@ -165,7 +195,119 @@ fi
     expect(ghCalls).toContain('variable set EAI_PUBLIC_API_URL');
     expect(ghCalls).toContain('workflow run .github/workflows/eai-app.yml');
     expect(ghCalls).toContain('operation_id=source-unknown-abc123');
-    expect(output).toHaveBeenCalled();
+    const result = JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')) as Record<string, unknown>;
+    expect(result).toMatchObject({
+      targetTenantId: TENANT_ID,
+      status: 'active',
+      classification: 'succeeded',
+      deploymentId: 'dep-1',
+      activeUrl: 'https://planning.example.com',
+      requiresTenantInfra: false,
+      sourceBinding: {
+        repository: 'enterprise/planning-portal',
+        ref: 'refs/heads/main',
+        commitSha,
+      },
+    });
+    expect(String(result.nextAction)).toContain('eai deploy doctor --url https://planning.example.com');
+    expect(process.exitCode).toBe(0);
+  });
+
+  test('requires the target tenant when resuming an exact operation', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');
+    stubManagedOperation();
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal',
+      '--target', 'eai',
+      '--tenant-id', TENANT_ID,
+      '--resume', 'source-unknown-abc123',
+      '--format', 'json',
+    ], { from: 'user' });
+
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      error: 'TARGET_TENANT_REQUIRED',
+    });
+    expect(process.exitCode).toBe(1);
+  });
+
+  test('rejects a resumed operation bound to a different child tenant', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');
+    stubManagedOperation({
+      tenantId: TENANT_ID,
+      targetTenantId: 'different-child',
+      appKey: 'planning-portal',
+      operationId: 'source-unknown-abc123',
+      status: 'handoff_pending',
+      setup: { targetTenantId: 'different-child' },
+    });
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal',
+      '--target', 'eai',
+      '--tenant-id', TENANT_ID,
+      '--target-tenant-id', 'runtime-child',
+      '--resume', 'source-unknown-abc123',
+      '--no-wait',
+      '--format', 'json',
+    ], { from: 'user' });
+
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      error: 'SOURCE_OPERATION_TARGET_MISMATCH',
+    });
+    expect(process.exitCode).toBe(1);
+  });
+
+  test('prints the exact child target, source binding, and active URL on resume', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');
+    stubManagedOperation({
+      tenantId: TENANT_ID,
+      targetTenantId: 'runtime-child',
+      appKey: 'planning-portal',
+      operationId: 'source-unknown-abc123',
+      status: 'active',
+      requiresTenantInfra: false,
+      deploymentId: 'dep-1',
+      activeUrl: 'https://planning.example.com',
+      latestPointerVersion: 3,
+      expectedLatestVersion: 3,
+      runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
+      setup: {
+        targetTenantId: 'runtime-child',
+        repo: { owner: 'enterprise', name: 'planning-portal' },
+        workflowPath: '.github/workflows/eai-app.yml',
+        ref: 'refs/heads/release',
+        commitSha: 'a'.repeat(40),
+        configHash: `sha256:${'b'.repeat(64)}`,
+      },
+    });
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal',
+      '--target', 'eai',
+      '--tenant-id', TENANT_ID,
+      '--target-tenant-id', 'runtime-child',
+      '--resume', 'source-unknown-abc123',
+      '--wait',
+      '--format', 'json',
+    ], { from: 'user' });
+
+    const result = JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')) as Record<string, unknown>;
+    expect(result).toMatchObject({
+      targetTenantId: 'runtime-child',
+      classification: 'succeeded',
+      activeUrl: 'https://planning.example.com',
+      sourceBinding: {
+        repository: 'enterprise/planning-portal',
+        ref: 'refs/heads/release',
+        commitSha: 'a'.repeat(40),
+        configHash: `sha256:${'b'.repeat(64)}`,
+      },
+    });
+    expect(String(result.nextAction)).toContain('eai deploy doctor --url https://planning.example.com');
     expect(process.exitCode).toBe(0);
   });
 });

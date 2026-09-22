@@ -234,6 +234,15 @@ export interface SourceUnknownOperationResponse {
   environment?: string;
   configHash?: string;
   status: string;
+  requiresTenantInfra?: boolean;
+  deploymentId?: string;
+  activeUrl?: string;
+  latestPointerVersion?: number;
+  expectedLatestVersion?: number;
+  runtimeIdentity?: {
+    clientId?: string;
+    principalId?: string;
+  };
   setup: Record<string, unknown>;
   evidence?: Record<string, unknown> | null;
   deploymentRequest?: Record<string, unknown> | null;

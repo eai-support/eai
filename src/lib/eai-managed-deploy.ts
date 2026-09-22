@@ -49,8 +49,20 @@ export interface CanonicalInstallResult {
 /** Terminal classification used to decide whether exact-operation polling can stop. */
 export type ManagedOperationState = 'pending' | 'succeeded' | 'failed';
 
-interface ExactManagedOperation {
+/** TenantInfra fields that jointly prove an operation reached its active runtime. */
+export interface ManagedOperationProjection {
+  status?: unknown;
+  requiresTenantInfra?: unknown;
+  deploymentId?: unknown;
+  activeUrl?: unknown;
+  latestPointerVersion?: unknown;
+  expectedLatestVersion?: unknown;
+  runtimeIdentity?: unknown;
+}
+
+interface ExactManagedOperation extends ManagedOperationProjection {
   tenantId?: unknown;
+  targetTenantId?: unknown;
   appKey?: unknown;
   operationId?: unknown;
   setup?: unknown;
@@ -205,12 +217,45 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
   return `sha256:${hash.digest('hex')}`;
 }
 
-/** Map TenantInfra and source-operation statuses without treating pending as success. */
+function isValidHttpsUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.trim() !== value || !value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && Boolean(url.hostname) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+function hasCompleteRuntimeIdentity(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const identity = value as Record<string, unknown>;
+  return typeof identity.clientId === 'string' && identity.clientId.length > 0
+    && typeof identity.principalId === 'string' && identity.principalId.length > 0;
+}
+
+/** Require the complete TenantInfra activation projection before reporting success. */
 export function classifyManagedOperationStatus(value: unknown): ManagedOperationState {
-  const status = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  if (['active', 'deployed', 'succeeded', 'success', 'ready', 'completed'].includes(status)) return 'succeeded';
+  const operation = typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as ManagedOperationProjection
+    : undefined;
+  const rawStatus = operation?.status ?? value;
+  const status = typeof rawStatus === 'string' ? rawStatus.trim().toLowerCase() : '';
   if (['failed', 'failed-readiness', 'failure', 'rejected', 'rolled-back', 'disabled', 'cancelled', 'canceled', 'error', 'timed_out'].includes(status)) return 'failed';
-  return 'pending';
+  if (status !== 'active' || !operation) return 'pending';
+  const latestPointerVersion = operation.latestPointerVersion;
+  const expectedLatestVersion = operation.expectedLatestVersion;
+  if (
+    operation.requiresTenantInfra !== false
+    || typeof operation.deploymentId !== 'string'
+    || operation.deploymentId.length === 0
+    || !isValidHttpsUrl(operation.activeUrl)
+    || !hasCompleteRuntimeIdentity(operation.runtimeIdentity)
+    || !Number.isSafeInteger(latestPointerVersion)
+    || !Number.isSafeInteger(expectedLatestVersion)
+    || latestPointerVersion !== expectedLatestVersion
+  ) return 'pending';
+  return 'succeeded';
 }
 
 /** Reject local retry state that differs from the server-signed setup. */

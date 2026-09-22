@@ -37,6 +37,9 @@ describe('EAI managed deployment helpers', () => {
 
     expect(workflow).toContain('name: EAI App Source-Unknown Handoff');
     expect(workflow).toContain('api://enterprise-ai-publicapi/source-unknown');
+    expect(workflow).toMatch(/^on:\n  workflow_dispatch:/m);
+    expect(workflow).not.toMatch(/^  (push|pull_request|workflow_call|schedule):/m);
+    expect(workflow).toMatch(/^  packages: read$/m);
     expect(collector).toContain('prepare-image-context');
   });
 
@@ -130,13 +133,49 @@ describe('EAI managed deployment helpers', () => {
     )).toThrow('commitSha');
   });
 
-  test('rejects abbreviated commits and classifies terminal operation status', () => {
+  test('reports success only for a complete active TenantInfra projection', () => {
     expect(() => requireCommitSha('abc1234')).toThrow('exact 40 character');
     expect(parseGitHubRepository('https://github.com/enterprise/app.git').slug).toBe('enterprise/app');
     expect(parseGitHubRepository('git@github.com:enterprise/app.git').slug).toBe('enterprise/app');
     expect(parseGitHubRepository('ssh://git@github.com/enterprise/app.git').slug).toBe('enterprise/app');
     expect(classifyManagedOperationStatus('handoff_pending')).toBe('pending');
-    expect(classifyManagedOperationStatus('active')).toBe('succeeded');
+    expect(classifyManagedOperationStatus('active')).toBe('pending');
+    expect(classifyManagedOperationStatus({ status: 'deployed' })).toBe('pending');
+    expect(classifyManagedOperationStatus({
+      status: 'active',
+      requiresTenantInfra: false,
+      deploymentId: 'dep-1',
+      runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
+      latestPointerVersion: 3,
+      expectedLatestVersion: 3,
+    })).toBe('pending');
+    expect(classifyManagedOperationStatus({
+      status: 'active',
+      requiresTenantInfra: false,
+      deploymentId: 'dep-1',
+      activeUrl: 'http://rates.example.com',
+      runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
+      latestPointerVersion: 3,
+      expectedLatestVersion: 3,
+    })).toBe('pending');
+    expect(classifyManagedOperationStatus({
+      status: 'active',
+      requiresTenantInfra: false,
+      deploymentId: 'dep-1',
+      activeUrl: 'https://rates.example.com',
+      runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
+      latestPointerVersion: 3,
+      expectedLatestVersion: 2,
+    })).toBe('pending');
+    expect(classifyManagedOperationStatus({
+      status: 'active',
+      requiresTenantInfra: false,
+      deploymentId: 'dep-1',
+      activeUrl: 'https://rates.example.com',
+      runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
+      latestPointerVersion: 3,
+      expectedLatestVersion: 3,
+    })).toBe('succeeded');
     expect(classifyManagedOperationStatus('failed-readiness')).toBe('failed');
   });
 });
