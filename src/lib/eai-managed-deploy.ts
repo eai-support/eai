@@ -241,7 +241,7 @@ export function classifyManagedOperationStatus(value: unknown): ManagedOperation
     : undefined;
   const rawStatus = operation?.status ?? value;
   const status = typeof rawStatus === 'string' ? rawStatus.trim().toLowerCase() : '';
-  if (['failed', 'failed-readiness', 'failure', 'rejected', 'rolled-back', 'disabled', 'cancelled', 'canceled', 'error', 'timed_out'].includes(status)) return 'failed';
+  if (['failed', 'failed-readiness', 'failure', 'rejected', 'rolled-back', 'disabled', 'cancelled', 'canceled', 'error', 'timed_out', 'expired', 'revoked'].includes(status)) return 'failed';
   if (status !== 'active' || !operation) return 'pending';
   const latestPointerVersion = operation.latestPointerVersion;
   const expectedLatestVersion = operation.expectedLatestVersion;

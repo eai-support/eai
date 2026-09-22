@@ -181,6 +181,8 @@ describe('EAI managed deployment helpers', () => {
       expectedLatestVersion: 3,
     })).toBe('succeeded');
     expect(classifyManagedOperationStatus('failed-readiness')).toBe('failed');
+    expect(classifyManagedOperationStatus({ status: 'expired' })).toBe('failed');
+    expect(classifyManagedOperationStatus({ status: 'revoked' })).toBe('failed');
   });
 
   test('bounds faster operation detection to two extra reads before the steady-state interval', () => {

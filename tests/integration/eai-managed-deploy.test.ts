@@ -252,7 +252,11 @@ fi
     expect(process.exitCode).toBe(0);
   });
 
-  test.each(['accepted', 'consumed'] as const)('retries server %s evidence handoff without local nonce or Git checkout', async (evidenceState) => {
+  test.each([
+    ['accepted', 'handoff_pending'], ['consumed', 'handoff_pending'],
+    ['accepted', 'expired'], ['consumed', 'expired'],
+    ['accepted', 'revoked'], ['consumed', 'revoked'],
+  ] as const)('retries server %s evidence handoff in %s without local nonce or Git checkout', async (evidenceState, operationStatus) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     let deployed = false;
     const requests: Array<{ url: string; body: unknown }> = [];
@@ -263,7 +267,7 @@ fi
       requests.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
       if (url.includes('/source-unknown/operations/')) return jsonResponse({
         tenantId: TENANT_ID, targetTenantId: 'runtime-child', appKey: 'planning-portal',
-        operationId: 'source-unknown-abc123', status: deployed ? 'queued' : 'handoff_pending',
+        operationId: 'source-unknown-abc123', status: deployed ? 'queued' : operationStatus,
         setup: { targetTenantId: 'runtime-child', status: evidenceState === 'consumed' ? 'consumed' : 'issued' },
         evidence: evidenceState === 'accepted' ? { status: 'accepted' } : undefined,
       });
@@ -283,6 +287,32 @@ fi
     expect(requests.some(request => request.url.endsWith('/workflow-setup') || request.url.endsWith('/runtime-bootstrap'))).toBe(false);
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ status: 'queued' });
     expect(process.exitCode).toBe(0);
+  });
+
+  test.each([
+    ['expired', '--resume'], ['revoked', '--resume'],
+    ['expired', '--retry'], ['revoked', '--retry'],
+  ] as const)('stops %s %s immediately and requests a new setup without dispatch', async (status, mode) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const fetchMock = stubManagedOperation({
+      tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal',
+      operationId: 'source-unknown-abc123', status, setup: { status, targetTenantId: TENANT_ID },
+    });
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
+      mode, 'source-unknown-abc123', '--wait', '--format', 'json',
+    ], { from: 'user' });
+
+    const result = JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''));
+    expect(result).toMatchObject(mode === '--retry'
+      ? { error: 'SOURCE_OPERATION_INACTIVE' }
+      : { status, classification: 'failed' });
+    expect(result.nextAction).toContain('fresh source operation and nonce');
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes('/source-unknown/operations/'))).toHaveLength(1);
+    expect(fetchMock.mock.calls.every(([input]) => !String(input).endsWith('/deploy')
+      && !String(input).endsWith('/runtime-bootstrap') && !String(input).endsWith('/workflow-setup'))).toBe(true);
+    expect(process.exitCode).toBe(1);
   });
 
   test('refuses pre-evidence retry when protected state differs from server setup', async () => {

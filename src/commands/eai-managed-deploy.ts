@@ -24,6 +24,7 @@ import * as out from '../lib/output.js';
 const exec = promisify(execFile);
 const DEFAULT_TIMEOUT_SECONDS = 1_200;
 const POLL_INTERVALS_MS = [2_000, 3_000, 5_000, 10_000] as const;
+const NEW_SOURCE_OPERATION_ACTION = 'Start a new EAI managed deployment with --repo and --installation-id, without --resume or --retry, to issue a fresh source operation and nonce.';
 
 type ManagedDeployCommandRunner = (command: string, args: string[], cwd?: string) => Promise<string>;
 
@@ -330,6 +331,15 @@ async function pollExactOperation(
   }
 }
 
+function hasAcceptedWorkflowEvidence(operation: SourceUnknownOperationResponse): boolean {
+  return operation.evidence?.status === 'accepted' || operation.setup?.status === 'consumed';
+}
+
+function requiresNewSourceOperation(operation: SourceUnknownOperationResponse): boolean {
+  return ['expired', 'revoked'].includes(operation.status.trim().toLowerCase())
+    && !hasAcceptedWorkflowEvidence(operation);
+}
+
 function printOperation(
   format: string,
   operation: SourceUnknownOperationResponse,
@@ -351,11 +361,13 @@ function printOperation(
   };
   const exactCommand = `eai deploy app ${operation.appKey} --target eai --tenant-id ${operation.tenantId}`
     + ` --target-tenant-id ${targetTenantId || '<target-tenant-id>'}`;
-  const nextAction = classification === 'succeeded'
-    ? `Run \`eai deploy doctor --url ${operation.activeUrl}\` against the deployed app.`
-    : classification === 'failed'
-      ? `Inspect the exact operation and workflow evidence, then run \`${exactCommand} --retry ${operation.operationId} --wait --format json\`.`
-      : `Resume with \`${exactCommand} --resume ${operation.operationId} --wait --format json\`; status ${operation.status} is not a complete active TenantInfra projection.`;
+  const nextAction = requiresNewSourceOperation(operation)
+    ? NEW_SOURCE_OPERATION_ACTION
+    : classification === 'succeeded'
+      ? `Run \`eai deploy doctor --url ${operation.activeUrl}\` against the deployed app.`
+      : classification === 'failed'
+        ? `Inspect the exact operation and workflow evidence, then run \`${exactCommand} --retry ${operation.operationId} --wait --format json\`.`
+        : `Resume with \`${exactCommand} --resume ${operation.operationId} --wait --format json\`; status ${operation.status} is not a complete active TenantInfra projection.`;
   const result = {
     tenantId: operation.tenantId,
     targetTenantId,
@@ -487,7 +499,7 @@ Examples:
           printOperation(format, current);
           return;
         }
-        if (current.evidence?.status === 'accepted' || current.setup.status === 'consumed') {
+        if (hasAcceptedWorkflowEvidence(current)) {
           await requireApiSuccess(
             await client.requestSourceUnknownDeployment(context.tenantId, appKey, {
               operationId: options.retry,
@@ -503,6 +515,9 @@ Examples:
           printOperation(format, operation);
           if (classifyManagedOperationStatus(operation) === 'failed') process.exitCode = 1;
           return;
+        }
+        if (requiresNewSourceOperation(current)) {
+          fail('SOURCE_OPERATION_INACTIVE', `Source operation ${current.operationId} is ${current.status} and cannot dispatch a workflow.`, NEW_SOURCE_OPERATION_ACTION);
         }
         const state = await loadManagedDeployState(options.retry);
         if (state.tenantId !== context.tenantId || state.targetTenantId !== targetTenantId || state.appKey !== appKey) {
