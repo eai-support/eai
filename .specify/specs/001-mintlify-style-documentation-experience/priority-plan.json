@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "revision": "D006",
+  "revision": "D008",
   "objective": "Deliver a Mintlify-style EAI documentation experience while preserving Docusaurus and release alignment.",
-  "lastInstruction": {"id": "D006", "text": "Fix all validation findings and make the PR merge-ready"},
-  "criticalPath": ["T002", "T003", "T004", "T005", "T006", "T007"],
+  "lastInstruction": {"id": "D008", "text": "Regenerate release documentation assets after the main rebase"},
+  "criticalPath": ["T002", "T003", "T004", "T005", "T006", "T007", "T008", "T009"],
   "tasks": {
     "T001": {"dependsOn": [], "allowedEditScope": [".specify/"]},
     "T002": {"dependsOn": [], "allowedEditScope": ["scripts/", "package.json"]},
@@ -11,7 +11,9 @@
     "T004": {"dependsOn": ["T002"], "allowedEditScope": ["docs-site/"]},
     "T005": {"dependsOn": ["T002", "T003", "T004"], "allowedEditScope": [".github/", "docs-site/", "package.json"]},
     "T006": {"dependsOn": ["T005"], "allowedEditScope": [".specify/specs/"]},
-    "T007": {"dependsOn": ["T004"], "allowedEditScope": ["docs-site/", "scripts/", ".specify/specs/"]}
+    "T007": {"dependsOn": ["T004"], "allowedEditScope": ["docs-site/", "scripts/", ".specify/specs/"]},
+    "T008": {"dependsOn": ["T002", "T007"], "allowedEditScope": ["docs-site/", ".specify/specs/"]},
+    "T009": {"dependsOn": ["T008"], "allowedEditScope": [".tech-docs/", "docs-site/", ".specify/specs/"]}
   },
   "outcome": {
     "id": "OUTCOME-001",

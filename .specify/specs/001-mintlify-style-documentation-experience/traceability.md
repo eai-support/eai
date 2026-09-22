@@ -1,6 +1,13 @@
 # Traceability
 
 | Requirement | Delivery item | Evidence | Outcome receipt |
+| FR-001 | Task-led home page | `evidence/T003.json` | `validation-report.md` |
+| FR-002 | Enterprise AI documentation design | `evidence/T003.json` | `validation-report.md` |
+| FR-003 | Public search index | `evidence/T008.json` | `validation-report.md` |
+| FR-004 | Release-aligned agent-readable assets | `evidence/T009.json` | `validation-report.md` |
+| FR-005 | Safe request builder | `evidence/T007.json` | `validation-report.md` |
+| FR-006 | Configurable page feedback | `evidence/T004.json` | `validation-report.md` |
+| FR-007 | Build and asset validation | `evidence/T009.json` | `validation-report.md` |
 | --- | --- | --- | --- |
 | Task | Requirement | Delivery item | Evidence |
 | --- | --- | --- | --- |
@@ -11,3 +18,5 @@
 | T005 | FR-007 | PR validation workflow and local checks | `evidence/T005.json` |
 | T006 | FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007 | Honest capability rubric | `evidence/T006.json` |
 | T007 | FR-005 | Valid multi-line redacted curl command and regression check | `evidence/T007.json` |
+| T008 | FR-003, FR-004, FR-007 | Release-aligned generated search and capability assets | `evidence/T008.json` |
+| T009 | FR-004, FR-007 | Release-aligned public machine-readable documentation | `evidence/T009.json` |

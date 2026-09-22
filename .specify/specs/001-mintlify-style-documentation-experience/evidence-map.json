@@ -5,5 +5,7 @@
   "T004": {"requirements": ["FR-003", "FR-005", "FR-006"], "evidence": "evidence/T004.json"},
   "T005": {"requirements": ["FR-007"], "evidence": "evidence/T005.json"},
   "T006": {"requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005", "FR-006", "FR-007"], "evidence": "evidence/T006.json"},
-  "T007": {"requirements": ["FR-005"], "evidence": "evidence/T007.json"}
+  "T007": {"requirements": ["FR-005"], "evidence": "evidence/T007.json"},
+  "T008": {"requirements": ["FR-003", "FR-004", "FR-007"], "evidence": "evidence/T008.json"},
+  "T009": {"requirements": ["FR-004", "FR-007"], "evidence": "evidence/T009.json"}
 }
