@@ -466,6 +466,35 @@ CI, on a managed device, behind a proxy, or need to control each command.
 - Use [EAI CLI](./eai-cli.md) for commands and daily operations.
 - Use [Error Guidance](./error-guidance.md) when setup does not complete.
 
+When you publish Object Types, use PascalCase for the model name and use the exact published Object Type slug in lowercase kebab-case for storage and transport.
+
+<details>
+<summary>Advanced: AI workspace support</summary>
+
+Run `eai start --check`, then `eai start`, when the project is ready. The check
+only reads local metadata. It does not access provider accounts or project files.
+
+Current handoff support, in catalog order:
+
+| AI workspace | What EAI does | Remaining action |
+|---|---|---|
+| GitHub Copilot in VS Code | Opens the project and EAI prompt. | Sign in if asked. |
+| GitHub Copilot app | Opens the project through the supported capability. | Choose the folder if asked. |
+| Google Antigravity 2.0 | Opens the verified desktop app. | Add the project folder. |
+| Claude Desktop | Opens a Code session when supported. | Confirm the project folder. |
+| ChatGPT desktop (Codex) | Opens the project and EAI prompt where supported. | Choose the folder if asked. |
+| Grok Bot | Opens the verified cloud client. | Use Grok Build for local work. |
+| GitHub Copilot CLI | Starts an interactive project session. | Sign in if asked. |
+| Antigravity CLI (`agy`) | Starts an interactive project session. | Enter the EAI request if needed. |
+| Claude Code | Starts an interactive project session. | Sign in if asked. |
+| Codex CLI | Starts an interactive project session. | Sign in if asked. |
+| Grok Build | Starts an interactive project session. | Sign in if asked. |
+
+On Linux, EAI verifies trusted package identity before launch. Provider account,
+subscription, and organisation policy are confirmed by the provider.
+
+</details>
+
 ---
 
 # Manual and Managed Setup
