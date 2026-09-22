@@ -15,9 +15,9 @@ export default function RequestBuilder() {
   const [copied, setCopied] = useState(false);
   const [method, endpoint] = routes[selected];
   const resolvedEndpoint = endpoint.replace("{object-type}", objectType || "your-object-type");
-  const tenantHeader = tenantId.trim() ? ` \\\n+  -H 'X-Tenant-Id: ${tenantId.trim()}'` : "";
-  const body = method === "POST" ? " \\\n+  -H 'Content-Type: application/json' \\\n+  --data '{\"message\": \"Describe the task here\"}'" : "";
-  const command = `curl -X ${method} \"$BASE_URL_PUBLIC_API${resolvedEndpoint}\" \\\n+  -H 'Authorization: Bearer $EAI_ACCESS_TOKEN'${tenantHeader}${body}`;
+  const tenantHeader = tenantId.trim() ? ` \\\n  -H 'X-Tenant-Id: ${tenantId.trim()}'` : "";
+  const body = method === "POST" ? " \\\n  -H 'Content-Type: application/json' \\\n  --data '{\"message\": \"Describe the task here\"}'" : "";
+  const command = `curl -X ${method} \"$BASE_URL_PUBLIC_API${resolvedEndpoint}\" \\\n  -H 'Authorization: Bearer $EAI_ACCESS_TOKEN'${tenantHeader}${body}`;
   const copy = async () => { await navigator.clipboard.writeText(command); setCopied(true); setTimeout(() => setCopied(false), 1800); };
 
   return <section className={styles.builder} aria-labelledby="request-builder-title">

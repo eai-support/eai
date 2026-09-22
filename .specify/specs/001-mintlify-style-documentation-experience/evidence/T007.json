@@ -1,0 +1,1 @@
+{"result":"pass","specHash":"b8f3e54e726f9af8398472446e97173c807bed07e9d5a7a5c298f9ffde4a36d9","requirements":["FR-005"],"check":"Request builder command continuations contain no literal '+' prefixes; docs:experience-assets:verify enforces this invariant."}
