@@ -16,6 +16,10 @@ import {
   saveManagedDeployState,
   type ManagedDeployState,
 } from '../../src/lib/eai-managed-deploy.js';
+import {
+  managedDeployPollDelayMs,
+  verifyGitHubAccess,
+} from '../../src/commands/eai-managed-deploy.js';
 
 describe('EAI managed deployment helpers', () => {
   const cleanup: string[] = [];
@@ -177,5 +181,41 @@ describe('EAI managed deployment helpers', () => {
       expectedLatestVersion: 3,
     })).toBe('succeeded');
     expect(classifyManagedOperationStatus('failed-readiness')).toBe('failed');
+  });
+
+  test('bounds faster operation detection to two extra reads before the steady-state interval', () => {
+    const delays = Array.from({ length: 6 }, (_, index) => managedDeployPollDelayMs(index + 1, 60_000));
+
+    expect(delays).toEqual([2_000, 3_000, 5_000, 10_000, 10_000, 10_000]);
+    expect(delays.slice(0, 3).reduce((total, delay) => total + delay, 0)).toBe(10_000);
+    expect(managedDeployPollDelayMs(1, 750)).toBe(750);
+  });
+
+  test('runs independent GitHub repository and exact-ref reads concurrently after login', async () => {
+    const calls: string[] = [];
+    let releaseRemoteReads: (() => void) | undefined;
+    const remoteReads = new Promise<void>((resolve) => {
+      releaseRemoteReads = resolve;
+    });
+    const expectedSha = 'a'.repeat(40);
+    const runner = async (_command: string, args: string[]): Promise<string> => {
+      const invocation = args.slice(0, 2).join(' ');
+      calls.push(invocation);
+      if (invocation === 'auth status') return '';
+      await remoteReads;
+      if (invocation === 'repo view') {
+        return JSON.stringify({ viewerPermission: 'WRITE', isArchived: false });
+      }
+      if (args[0] === 'api') return JSON.stringify({ object: { sha: expectedSha } });
+      throw new Error(`unexpected invocation: ${args.join(' ')}`);
+    };
+
+    const verification = verifyGitHubAccess('enterprise/app', 'main', expectedSha, runner);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(calls).toEqual(['auth status', 'repo view', 'api repos/enterprise/app/git/ref/heads/main']);
+    releaseRemoteReads?.();
+    await expect(verification).resolves.toBeUndefined();
   });
 });

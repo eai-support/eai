@@ -23,7 +23,9 @@ import * as out from '../lib/output.js';
 
 const exec = promisify(execFile);
 const DEFAULT_TIMEOUT_SECONDS = 1_200;
-const POLL_INTERVAL_MS = 10_000;
+const POLL_INTERVALS_MS = [2_000, 3_000, 5_000, 10_000] as const;
+
+type ManagedDeployCommandRunner = (command: string, args: string[], cwd?: string) => Promise<string>;
 
 interface ManagedDeployOptions {
   target: string;
@@ -124,36 +126,42 @@ async function requireApiSuccess(
   return payload;
 }
 
-async function verifyGitHubAccess(repo: string, branch: string, expectedSha: string): Promise<void> {
+/** Authenticate first, then overlap the independent repository-policy and immutable-ref reads. */
+export async function verifyGitHubAccess(
+  repo: string,
+  branch: string,
+  expectedSha: string,
+  runCommand: ManagedDeployCommandRunner = run,
+): Promise<void> {
   try {
-    await run('gh', ['auth', 'status']);
+    await runCommand('gh', ['auth', 'status']);
   } catch (error) {
     fail('GITHUB_LOGIN_REQUIRED', String(error), 'Run `gh auth login`, then retry the same deploy command.');
   }
 
-  let repoView: GitHubRepoView;
-  try {
-    repoView = JSON.parse(await run('gh', ['repo', 'view', repo, '--json', 'viewerPermission,isArchived'])) as GitHubRepoView;
-  } catch (error) {
+  const repository = parseGitHubRepository(repo);
+  const repoViewPromise = runCommand(
+    'gh',
+    ['repo', 'view', repo, '--json', 'viewerPermission,isArchived'],
+  ).then((value) => JSON.parse(value) as GitHubRepoView).catch((error: unknown) => {
     fail('GITHUB_REPOSITORY_UNAVAILABLE', String(error), `Confirm the signed-in GitHub account can read ${repo}.`);
-  }
+  });
+  const remoteShaPromise = runCommand('gh', [
+    'api',
+    `repos/${repository.owner}/${repository.name}/git/ref/heads/${encodeURIComponent(branch)}`,
+  ]).then((value) => {
+    const ref = JSON.parse(value) as { object?: { sha?: string } };
+    return requireCommitSha(String(ref.object?.sha || ''), 'Remote branch SHA');
+  }).catch((error: unknown) => {
+    fail('GITHUB_BRANCH_UNAVAILABLE', String(error), `Push branch ${branch} to ${repo}, then retry.`);
+  });
+  const [repoView, remoteSha] = await Promise.all([repoViewPromise, remoteShaPromise]);
+
   if (repoView.isArchived) {
     fail('GITHUB_REPOSITORY_ARCHIVED', `${repo} is archived.`, 'Choose an active repository before deployment.');
   }
   if (!['ADMIN', 'MAINTAIN', 'WRITE'].includes(String(repoView.viewerPermission || '').toUpperCase())) {
     fail('GITHUB_WRITE_REQUIRED', `The GitHub account does not have write access to ${repo}.`, 'Ask a repository administrator for write access, then retry.');
-  }
-
-  const repository = parseGitHubRepository(repo);
-  let remoteSha: string;
-  try {
-    const ref = JSON.parse(await run('gh', [
-      'api',
-      `repos/${repository.owner}/${repository.name}/git/ref/heads/${encodeURIComponent(branch)}`,
-    ])) as { object?: { sha?: string } };
-    remoteSha = requireCommitSha(String(ref.object?.sha || ''), 'Remote branch SHA');
-  } catch (error) {
-    fail('GITHUB_BRANCH_UNAVAILABLE', String(error), `Push branch ${branch} to ${repo}, then retry.`);
   }
   if (remoteSha !== expectedSha) {
     fail(
@@ -162,6 +170,15 @@ async function verifyGitHubAccess(repo: string, branch: string, expectedSha: str
       `Push the exact local commit to ${branch}, or check out the remote commit, then retry.`,
     );
   }
+}
+
+/** Bound early exact-operation checks while retaining the 10-second steady-state ceiling. */
+export function managedDeployPollDelayMs(pendingReadsAtStatus: number, remainingMs: number): number {
+  const intervalIndex = Math.min(
+    Math.max(0, Math.floor(pendingReadsAtStatus) - 1),
+    POLL_INTERVALS_MS.length - 1,
+  );
+  return Math.max(0, Math.min(POLL_INTERVALS_MS[intervalIndex], remainingMs));
 }
 
 async function verifyLocalSource(
@@ -271,6 +288,8 @@ async function pollExactOperation(
   timeoutSeconds: number,
 ): Promise<SourceUnknownOperationResponse> {
   const deadline = Date.now() + timeoutSeconds * 1_000;
+  let lastPendingStatus: string | undefined;
+  let pendingReadsAtStatus = 0;
   for (;;) {
     const operation = await readExactOperation(
       client,
@@ -288,7 +307,11 @@ async function pollExactOperation(
         `Inspect the exact GitHub Actions run for commit ${'commitSha' in state ? String(state.commitSha) : '<stored commit>'}. Check OIDC, evidence callback, and TenantInfra logs, then resume ${state.operationId}.`,
       );
     }
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, POLL_INTERVAL_MS));
+    const pendingStatus = String(operation.status || 'unknown').toLowerCase();
+    pendingReadsAtStatus = pendingStatus === lastPendingStatus ? pendingReadsAtStatus + 1 : 1;
+    lastPendingStatus = pendingStatus;
+    const delayMs = managedDeployPollDelayMs(pendingReadsAtStatus, deadline - Date.now());
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, delayMs));
   }
 }
 
