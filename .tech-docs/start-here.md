@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.16.0** (2026-09-18): Pin app template scaffolding to published releases instead of latest main.
+The current CLI release is **v3.17.0** (2026-09-22): Support Configurator Plus no-code handover and app template v1.0.2.
 
 
 ## What The Pieces Do
