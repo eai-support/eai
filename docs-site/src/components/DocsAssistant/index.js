@@ -28,6 +28,8 @@ export default function DocsAssistant() {
   const [selectedSection, setSelectedSection] = useState("All");
   const messagesEndRef = useRef(null);
   const questionInputRef = useRef(null);
+  const triggerRef = useRef(null);
+  const drawerRef = useRef(null);
 
   useEffect(() => {
     fetch(`${baseUrl}/docs-search-index.json`)
@@ -53,7 +55,28 @@ export default function DocsAssistant() {
   }, []);
 
   useEffect(() => {
-    if (isAskOpen) questionInputRef.current?.focus();
+    if (!isAskOpen) return undefined;
+
+    questionInputRef.current?.focus();
+    const trapFocus = (event) => {
+      if (event.key !== "Tab") return;
+      const focusable = drawerRef.current?.querySelectorAll('a[href], button:not([disabled]), input:not([disabled])');
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", trapFocus);
+    return () => {
+      window.removeEventListener("keydown", trapFocus);
+      triggerRef.current?.focus();
+    };
   }, [isAskOpen]);
 
   const sections = ["All", ...new Set(items.map((item) => item.section).filter(Boolean))];
@@ -111,9 +134,9 @@ export default function DocsAssistant() {
 
   return <>
     <div className={styles.triggers}>
-      <button className={styles.askTrigger} type="button" onClick={openAsk} aria-expanded={isAskOpen} aria-label="Search and Ask EAI Docs">Search and Ask</button>
+      <button ref={triggerRef} className={styles.askTrigger} type="button" onClick={openAsk} aria-expanded={isAskOpen} aria-label="Search and Ask EAI Docs">Search and Ask</button>
     </div>
-    {isAskOpen && <aside className={styles.drawer} role="dialog" aria-label="Search and Ask EAI Docs">
+    {isAskOpen && <aside ref={drawerRef} className={styles.drawer} role="dialog" aria-modal="true" aria-label="Search and Ask EAI Docs">
       <header className={styles.header}>
         <div><strong>Search and Ask</strong><p>Search local guides or ask for a cited answer.</p></div>
         <button type="button" className={styles.close} onClick={() => setIsAskOpen(false)} aria-label="Close Ask EAI Docs">Close</button>
