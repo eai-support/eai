@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "eai.delivery_lineage.v1",
+  "plane": "customer",
+  "featureId": "342-governed-documentation-experience",
+  "generatedAt": "2026-09-23T00:00:00.000Z",
+  "nodes": [
+    { "id": "outcome", "kind": "customer-outcome", "visibility": "customer", "title": "Governed cited documentation assistance" },
+    { "id": "docs", "kind": "delivery-item", "visibility": "customer", "title": "Docusaurus documentation experience" },
+    { "id": "assistant", "kind": "public-api-capability", "visibility": "public-contract", "capabilityId": "eai.publicapi.capability.website-docs-assistant.v4" }
+  ],
+  "edges": [
+    { "from": "outcome", "to": "docs", "kind": "delivered-by" },
+    { "from": "docs", "to": "assistant", "kind": "uses" }
+  ]
+}
