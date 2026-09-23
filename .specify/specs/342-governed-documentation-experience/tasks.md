@@ -18,6 +18,6 @@ source and its stated local/CI validation; live Test evidence remains T009.
 - [x] T004 Add consented feedback and authorised Payload reporting. PR #346 and Website PR #378.
 - [~] T005 Add Docs filters, recovery, and accessibility validation. UX is merged in PR #344; automated accessibility evidence remains T009.
 - [ ] T006 Add Test-only read explorer with scope-negative tests.
-- [ ] T007 Add public read-only Docs MCP with allowlist tests.
+- [x] T007 Add public read-only Docs MCP with allowlist tests. Website PR #380; live Test proof remains T009.
 - [ ] T008 Add disposable previews and a Test evidence gate.
 - [ ] T009 Validate citations, latency, refusal, privacy, and visuals.
