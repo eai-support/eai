@@ -27,6 +27,8 @@
 .userMessage p, .assistantMessage p { margin: 0; white-space: pre-wrap; }
 .sources { margin-top: .75rem; border-top: 1px solid #D7E1ED; padding-top: .6rem; }
 .sources a { display: block; margin-top: .35rem; color: var(--eai-navy); font-size: .82rem; font-weight: 700; }
+.feedback { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; margin-top: .7rem; color: #3A4F60; font-size: .8rem; }
+.feedback button { border: 1px solid var(--eai-gray); border-radius: 999px; background: #fff; color: var(--eai-navy); padding: .2rem .45rem; font: inherit; font-weight: 700; cursor: pointer; }
 .loading { color: #3A4F60; font-size: .85rem; }
 .composer { display: flex; gap: .5rem; border-top: 1px solid #D7E1ED; padding: 1rem; }
 .askInput { min-width: 0; flex: 1; border: 1px solid var(--eai-gray); border-radius: 8px; padding: .7rem; font: inherit; }
