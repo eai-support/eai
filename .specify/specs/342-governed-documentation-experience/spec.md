@@ -60,7 +60,7 @@ Docusaurus stays a public client and never calls an internal service route.
 3. **PR C - Docs experience:** semantic filters, zero-result recovery,
    accessible drawer behaviour, and feedback status.
 4. **PR D - Developer and release experience:** Test-only read-only explorer,
-   public Docs MCP interface, and short-lived PR preview deployments.
+   public Docs MCP interface, and Test evidence validation.
 
 ## Delivered Evidence
 
@@ -72,7 +72,7 @@ Docusaurus stays a public client and never calls an internal service route.
   Website PRs #376 and #379.
 
 The delivered foundation has not yet satisfied the Test-only explorer, machine
-interface, preview, or live Test evidence acceptance criteria below.
+interface or live Test evidence acceptance criteria below.
 
 ## Acceptance Criteria
 
@@ -85,6 +85,6 @@ interface, preview, or live Test evidence acceptance criteria below.
   authorised administrators.
 - The explorer accepts only short-lived Test credentials with read-only scope.
 - The MCP interface exposes only the approved public corpus.
-- Each Docs PR receives a disposable preview and automated accessibility,
-  visual, and live citation checks.
+- Each Docs PR receives CI validation. Accessibility, visual, and live citation
+  checks run as part of the Test evidence gate.
 - Production promotion requires green CI, Test evidence, and release approval.
