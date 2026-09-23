@@ -119,6 +119,7 @@ describe('eai template check', () => {
       'src/app/api/eai/[[...rest]]/handler.ts',
       'export async function handleEaiRequest() { return new Response("ok"); }\n',
     );
+    await writeFileRecursive(templateRepo, 'config/.env.production', 'SECRET_TEMPLATE_VALUE=do-not-emit\n');
     await git(templateRepo, ['add', '.']);
     await git(templateRepo, ['commit', '-m', 'add EAI platform handler']);
 
@@ -165,6 +166,8 @@ describe('eai template check', () => {
     expect(operations.find((item) => item.path === 'src/app/api/eai/[[...rest]]/handler.ts')).toMatchObject({
       decision: 'safe-add',
     });
+    expect(result.stdout).not.toContain('SECRET_TEMPLATE_VALUE');
+    expect(operations.some((item) => item.path.includes('.env'))).toBe(false);
     expect(await readFile(join(env.dir, 'src/components/Hero.tsx'), 'utf-8')).toBe(beforeHero);
   });
 

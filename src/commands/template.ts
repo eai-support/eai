@@ -165,7 +165,7 @@ function shouldIgnoreTemplatePath(
     return true;
   }
 
-  if (/^\.env(?:\.|$)/.test(relativePath)) {
+  if (/(?:^|\/)\.env(?:\.|$)/.test(relativePath)) {
     return true;
   }
 

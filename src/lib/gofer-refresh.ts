@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { access, chmod, copyFile, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, chmod, copyFile, cp, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -598,6 +598,21 @@ async function backupFile(projectRoot: string, backupRoot: string, relativePath:
   await copyFile(sourcePath, backupPath);
 }
 
+async function assertManagedPathIsNotSymlink(projectRoot: string, relativePath: string): Promise<void> {
+  let current = projectRoot;
+  for (const segment of relativePath.split('/')) {
+    current = join(current, segment);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) {
+        throw new Error(`Refusing to refresh Gofer-managed symbolic link: ${relativePath}`);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
+  }
+}
+
 function createManifestFromPlan(
   plan: GoferRefreshPlan,
   appliedItems: readonly GoferRefreshPlanItem[],
@@ -653,6 +668,7 @@ export async function applyGoferRefresh(
 
   for (const item of plan.items) {
     const absolutePath = join(plan.projectRoot, item.relativePath);
+    await assertManagedPathIsNotSymlink(plan.projectRoot, item.relativePath);
 
     if (item.action === 'conflict' || item.action === 'conflict-delete') {
       if (!force) {

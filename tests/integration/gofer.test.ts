@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -288,6 +288,25 @@ describe("eai gofer refresh", () => {
         path.endsWith(join(".github", "copilot-instructions.md")),
       ),
     ).toBe(true);
+  });
+
+  test("refuses to force-refresh a managed path through a symbolic link", async () => {
+    const seedResult = await runCommand(ctx, "eai gofer refresh");
+    expectCommandSucceeded(seedResult);
+
+    const managedFile = join(env.dir, ".github", "copilot-instructions.md");
+    const outsideFile = join(env.dir, "outside-managed-target.md");
+    await writeFile(outsideFile, "KEEP OUTSIDE CONTENT\n", "utf-8");
+    await rm(managedFile);
+    await symlink(outsideFile, managedFile);
+
+    const forceResult = await runCommand(ctx, "eai gofer refresh --force");
+
+    expect(forceResult.exitCode).not.toBe(0);
+    expect(`${forceResult.stdout}\n${forceResult.stderr}`).toContain(
+      "Refusing to refresh Gofer-managed symbolic link",
+    );
+    expect(await readFile(outsideFile, "utf-8")).toBe("KEEP OUTSIDE CONTENT\n");
   });
 
   test("can refresh from a newer Gofer resources source without a new CLI release", async () => {
