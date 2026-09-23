@@ -25,7 +25,11 @@ export default function DocsAssistant() {
   const [items, setItems] = useState([]);
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedSection, setSelectedSection] = useState("All");
   const messagesEndRef = useRef(null);
+  const questionInputRef = useRef(null);
+  const triggerRef = useRef(null);
+  const drawerRef = useRef(null);
 
   useEffect(() => {
     fetch(`${baseUrl}/docs-search-index.json`)
@@ -50,9 +54,37 @@ export default function DocsAssistant() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  useEffect(() => {
+    if (!isAskOpen) return undefined;
+
+    questionInputRef.current?.focus();
+    const trapFocus = (event) => {
+      if (event.key !== "Tab") return;
+      const focusable = drawerRef.current?.querySelectorAll('a[href], button:not([disabled]), input:not([disabled])');
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", trapFocus);
+    return () => {
+      window.removeEventListener("keydown", trapFocus);
+      triggerRef.current?.focus();
+    };
+  }, [isAskOpen]);
+
+  const sections = ["All", ...new Set(items.map((item) => item.section).filter(Boolean))];
+
   const results = query.trim()
     ? items.map((item) => ({ item, score: score(item, query) }))
       .filter((result) => result.score > 0)
+      .filter((result) => selectedSection === "All" || result.item.section === selectedSection)
       .sort((left, right) => right.score - left.score)
       .slice(0, 7)
     : [];
@@ -102,9 +134,9 @@ export default function DocsAssistant() {
 
   return <>
     <div className={styles.triggers}>
-      <button className={styles.askTrigger} type="button" onClick={openAsk} aria-expanded={isAskOpen} aria-label="Search and Ask EAI Docs">Search and Ask</button>
+      <button ref={triggerRef} className={styles.askTrigger} type="button" onClick={openAsk} aria-expanded={isAskOpen} aria-label="Search and Ask EAI Docs">Search and Ask</button>
     </div>
-    {isAskOpen && <aside className={styles.drawer} role="dialog" aria-label="Search and Ask EAI Docs">
+    {isAskOpen && <aside ref={drawerRef} className={styles.drawer} role="dialog" aria-modal="true" aria-label="Search and Ask EAI Docs">
       <header className={styles.header}>
         <div><strong>Search and Ask</strong><p>Search local guides or ask for a cited answer.</p></div>
         <button type="button" className={styles.close} onClick={() => setIsAskOpen(false)} aria-label="Close Ask EAI Docs">Close</button>
@@ -116,17 +148,32 @@ export default function DocsAssistant() {
           {message.sources?.length > 0 && <div className={styles.sources}><span>Sources</span>{message.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title}</a>)}</div>}
         </div>)}
         {isLoading && <p className={styles.loading}>Finding cited sources...</p>}
-        {!messages.length && query && results.length > 0 && <div className={styles.results}>
-          <p className={styles.question}>Matching guides</p>
-          {results.map(({ item }) => <a key={item.route} href={`${baseUrl}${item.route}`} onClick={() => setIsAskOpen(false)}>
+        {!messages.length && query && <div className={styles.results}>
+          <div className={styles.searchHeading}>
+            <p className={styles.question}>Search results</p>
+            {sections.length > 2 && <div className={styles.filters} aria-label="Filter results by section">
+              {sections.map((section) => <button
+                key={section}
+                type="button"
+                className={selectedSection === section ? styles.activeFilter : undefined}
+                aria-pressed={selectedSection === section}
+                onClick={() => setSelectedSection(section)}
+              >{section}</button>)}
+            </div>}
+          </div>
+          {results.length > 0 ? results.map(({ item }) => <a key={item.route} href={`${baseUrl}${item.route}`} onClick={() => setIsAskOpen(false)}>
             <span>{item.section}</span><strong>{item.title}</strong><small>{item.description}</small>
-          </a>)}
+          </a>) : <div className={styles.zeroResult}>
+            <strong>No matching guide found.</strong>
+            <p>Ask the assistant for a cited answer across EAI Docs and the Enterprise AI website.</p>
+            <button type="button" onClick={sendQuestion} disabled={isLoading}>Ask this question</button>
+          </div>}
         </div>}
         <div ref={messagesEndRef} />
       </div>
       <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); sendQuestion(); }}>
         <label className="sr-only" htmlFor="eai-docs-ask">Ask a question</label>
-        <input id="eai-docs-ask" className={styles.askInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ask a question" disabled={isLoading} />
+        <input ref={questionInputRef} id="eai-docs-ask" className={styles.askInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search guides or ask a question" disabled={isLoading} />
         <button type="submit" disabled={!query.trim() || isLoading}>Send</button>
       </form>
     </aside>}
