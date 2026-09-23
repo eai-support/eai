@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "releaseVersion": "3.18.0",
+  "capabilities": {
+    "localSearch": true,
+    "sourceLinkedAssistant": true,
+    "requestBuilder": "generates commands only; does not execute requests",
+    "pageFeedback": "configurable outbound URL only",
+    "agentAssets": [
+      "llms.txt",
+      "llms-full.txt",
+      "cli-help.txt",
+      "error-guidance.json"
+    ]
+  },
+  "limits": [
+    "No third-party search provider is required.",
+    "No model-backed assistant is included in the static site.",
+    "No authenticated API playground is included in the static site."
+  ]
+}
