@@ -20,6 +20,7 @@ export default function DocsAssistant() {
   const { siteConfig } = useDocusaurusContext();
   const baseUrl = siteConfig.baseUrl.replace(/\/$/, "");
   const assistantApiUrl = siteConfig.customFields.docsAssistantApiUrl;
+  const feedbackApiUrl = assistantApiUrl.replace(/\/api\/chat\/?$/, "/api/chat/feedback");
   const [isAskOpen, setIsAskOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [items, setItems] = useState([]);
@@ -132,6 +133,20 @@ export default function DocsAssistant() {
     }
   }
 
+  async function sendFeedback(messageId, rating, category, citationCount) {
+    try {
+      const response = await fetch(feedbackApiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ surface: "docs", rating, category, citationCount }),
+      });
+      if (!response.ok) throw new Error("Feedback was rejected.");
+      setMessages((current) => current.map((message) => message.id === messageId ? { ...message, feedbackSent: true } : message));
+    } catch {
+      setMessages((current) => current.map((message) => message.id === messageId ? { ...message, feedbackError: true } : message));
+    }
+  }
+
   return <>
     <div className={styles.triggers}>
       <button ref={triggerRef} className={styles.askTrigger} type="button" onClick={openAsk} aria-expanded={isAskOpen} aria-label="Search and Ask EAI Docs">Search and Ask</button>
@@ -146,6 +161,14 @@ export default function DocsAssistant() {
         {messages.map((message) => <div key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>
           <p>{message.content}</p>
           {message.sources?.length > 0 && <div className={styles.sources}><span>Sources</span>{message.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title}</a>)}</div>}
+          {message.role === "assistant" && message.sources?.length > 0 && <div className={styles.feedback}>
+            {message.feedbackSent ? <span>Thanks for your feedback.</span> : <>
+              <span>Was this answer useful?</span>
+              <button type="button" onClick={() => sendFeedback(message.id, 5, "helpful", message.sources.length)}>Yes</button>
+              <button type="button" onClick={() => sendFeedback(message.id, 1, "incorrect", message.sources.length)}>No</button>
+            </>}
+            {message.feedbackError && <span>Feedback could not be sent.</span>}
+          </div>}
         </div>)}
         {isLoading && <p className={styles.loading}>Finding cited sources...</p>}
         {!messages.length && query && <div className={styles.results}>
