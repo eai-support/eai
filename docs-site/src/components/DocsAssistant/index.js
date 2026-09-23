@@ -113,7 +113,7 @@ export default function DocsAssistant() {
     <div className={styles.triggers}>
       <button className={styles.askTrigger} type="button" onClick={openAsk} aria-expanded={isAskOpen} aria-label="Search and Ask EAI Docs">Search and Ask</button>
     </div>
-    {isAskOpen && <aside className={styles.drawer} role="dialog" aria-modal="true" aria-label="Search and Ask EAI Docs">
+    {isAskOpen && <aside className={styles.drawer} role="dialog" aria-label="Search and Ask EAI Docs">
       <header className={styles.header}>
         <div><strong>Search and Ask</strong><p>Search local guides or ask for a cited answer.</p></div>
         <button type="button" className={styles.close} onClick={() => setIsAskOpen(false)} aria-label="Close Ask EAI Docs">Close</button>
@@ -133,6 +133,7 @@ export default function DocsAssistant() {
                 key={section}
                 type="button"
                 className={selectedSection === section ? styles.activeFilter : undefined}
+                aria-pressed={selectedSection === section}
                 onClick={() => setSelectedSection(section)}
               >{section}</button>)}
             </div>}
