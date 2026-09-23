@@ -2,7 +2,7 @@
   "schemaVersion": "eai.delivery_lineage.v1",
   "plane": "customer",
   "featureId": "342-governed-documentation-experience",
-  "generatedAt": "2026-09-23T00:00:00.000Z",
+  "generatedAt": "2026-09-24T00:00:00.000Z",
   "nodes": [
     { "id": "outcome", "kind": "outcome", "label": "Governed cited documentation assistance", "stage": "outcome", "status": "current", "visibility": "customer" },
     { "id": "decision", "kind": "decision", "label": "Use the published scoped Docs capability", "stage": "architecture", "status": "current", "visibility": "customer", "decisionOutcome": "selected" },

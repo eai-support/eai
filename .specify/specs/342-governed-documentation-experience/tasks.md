@@ -19,4 +19,4 @@ source and its stated local/CI validation; live Test evidence remains T008.
 - [~] T005 Add Docs filters, recovery, and accessibility validation. UX is merged in PR #344; automated accessibility evidence remains T008.
 - [ ] T006 Add Test-only read explorer with scope-negative tests.
 - [x] T007 Add public read-only Docs MCP with allowlist tests. Website PR #380; live Test proof remains T008.
-- [ ] T008 Validate citations, latency, refusal, privacy, and visuals in Test.
+- [ ] T008 Validate citations, latency, refusal, privacy, accessibility, and visuals in Test.
