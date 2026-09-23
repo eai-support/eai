@@ -1,13 +1,13 @@
-.downloadPanel { margin: 1.5rem 0 2.25rem; padding: 1.5rem; border: 1px solid #bfe2da; border-radius: 16px; background: linear-gradient(135deg, #f2fbf8, #ffffff 72%); box-shadow: 0 12px 30px rgba(15, 43, 67, .06); }
-.eyebrow { margin: 0 0 .5rem; color: #0e7b68; font-size: .72rem; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
-.downloadPanel h2 { margin: 0; color: #102a43; font-size: clamp(1.4rem, 3vw, 1.9rem); letter-spacing: -.03em; }
-.downloadButton { display: inline-block; margin: 1.1rem 0 .9rem; padding: .8rem 1.1rem; border-radius: 8px; background: #102a43; color: #fff; font-weight: 800; text-decoration: none; }
-.downloadButton:hover { background: #0e7b68; color: #fff; text-decoration: none; }
-.status { margin: 0; color: #52616f; line-height: 1.55; }
+.downloadPanel { margin: 1.5rem 0 2.25rem; padding: 1.5rem; border: 1px solid var(--eai-gray); border-radius: 16px; background: var(--eai-light); box-shadow: 0 12px 30px rgba(13, 56, 87, .06); }
+.eyebrow { margin: 0 0 .5rem; color: var(--eai-navy); font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.downloadPanel h2 { margin: 0; color: var(--eai-navy); font-size: clamp(1.4rem, 3vw, 1.9rem); letter-spacing: -.03em; }
+.downloadButton { display: inline-block; margin: 1.1rem 0 .9rem; padding: .8rem 1.1rem; border-radius: 8px; background: var(--eai-navy); color: #fff; font-weight: 700; text-decoration: none; }
+.downloadButton:hover { background: #205A81; color: #fff; text-decoration: none; }
+.status { margin: 0; color: #3A4F60; line-height: 1.55; }
 .choiceButtons { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1rem; }
-.choiceButtons button { padding: .7rem 1rem; border: 1px solid #0e7b68; border-radius: 8px; background: #fff; color: #102a43; font: inherit; font-weight: 750; cursor: pointer; }
-.choiceButtons button:hover { background: #e8f7f2; }
-.alternatives { margin-top: 1.35rem; padding-top: 1rem; border-top: 1px solid #cfe0dc; color: #52616f; }
-.alternatives summary { cursor: pointer; color: #102a43; font-weight: 750; }
+.choiceButtons button { padding: .7rem 1rem; border: 1px solid var(--eai-navy); border-radius: 8px; background: #fff; color: var(--eai-navy); font: inherit; font-weight: 700; cursor: pointer; }
+.choiceButtons button:hover { background: #E6EEF7; }
+.alternatives { margin-top: 1.35rem; padding-top: 1rem; border-top: 1px solid var(--eai-gray); color: #3A4F60; }
+.alternatives summary { cursor: pointer; color: var(--eai-navy); font-weight: 700; }
 .alternatives ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem 1.5rem; margin: .85rem 0 0; padding-left: 1.25rem; }
 @media (max-width: 560px) { .downloadPanel { padding: 1.2rem; }.alternatives ul { grid-template-columns: 1fr; } }
