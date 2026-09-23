@@ -666,9 +666,21 @@ export async function applyGoferRefresh(
   let backupCount = 0;
   const appliedItems: GoferRefreshPlanItem[] = [];
 
+  const generatedPaths = [
+    '.claude/settings.json',
+    '.vscode/settings.json',
+    '.gitignore',
+    '.eai-manifest.json',
+    join('.specify', '_backup', 'gofer-refresh'),
+  ];
+  for (const relativePath of [
+    ...new Set([...plan.items.map((item) => item.relativePath), ...generatedPaths]),
+  ]) {
+    await assertManagedPathIsNotSymlink(plan.projectRoot, relativePath);
+  }
+
   for (const item of plan.items) {
     const absolutePath = join(plan.projectRoot, item.relativePath);
-    await assertManagedPathIsNotSymlink(plan.projectRoot, item.relativePath);
 
     if (item.action === 'conflict' || item.action === 'conflict-delete') {
       if (!force) {

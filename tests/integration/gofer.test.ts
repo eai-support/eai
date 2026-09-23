@@ -309,6 +309,27 @@ describe("eai gofer refresh", () => {
     expect(await readFile(outsideFile, "utf-8")).toBe("KEEP OUTSIDE CONTENT\n");
   });
 
+  test("preflights generated settings paths before changing managed files", async () => {
+    const seedResult = await runCommand(ctx, "eai gofer refresh");
+    expectCommandSucceeded(seedResult);
+
+    const managedFile = join(env.dir, ".github", "copilot-instructions.md");
+    const original = await readFile(managedFile, "utf-8");
+    await writeFile(managedFile, `${original}\nKEEP LOCAL CHANGE\n`, "utf-8");
+    const outsideDirectory = join(env.dir, "outside-vscode");
+    await mkdir(outsideDirectory);
+    await rm(join(env.dir, ".vscode"), { recursive: true, force: true });
+    await symlink(outsideDirectory, join(env.dir, ".vscode"));
+
+    const forceResult = await runCommand(ctx, "eai gofer refresh --force");
+
+    expect(forceResult.exitCode).not.toBe(0);
+    expect(`${forceResult.stdout}\n${forceResult.stderr}`).toContain(
+      "Refusing to refresh Gofer-managed symbolic link",
+    );
+    expect(await readFile(managedFile, "utf-8")).toContain("KEEP LOCAL CHANGE");
+  });
+
   test("can refresh from a newer Gofer resources source without a new CLI release", async () => {
     const latestResources = join(env.dir, "latest-gofer-resources");
     await cp(BUNDLED_GOFER_RESOURCES, latestResources, { recursive: true });

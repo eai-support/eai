@@ -167,6 +167,7 @@ describe('eai template check', () => {
       decision: 'safe-add',
     });
     expect(result.stdout).not.toContain('SECRET_TEMPLATE_VALUE');
+    expect(result.stdout).not.toContain(templateRepo);
     expect(operations.some((item) => item.path.includes('.env'))).toBe(false);
     expect(await readFile(join(env.dir, 'src/components/Hero.tsx'), 'utf-8')).toBe(beforeHero);
   });
@@ -222,6 +223,28 @@ describe('eai template check', () => {
     expect(
       incompatiblePlan.capabilities.flatMap((capability) => capability.operations)[0]?.decision,
     ).toBe('blocked');
+  });
+
+  test('redacts credentials from a custom template source identifier', async () => {
+    const genericRepo = join(tmpdir(), `eai-generic-redaction-${Date.now()}`);
+    const templateRoot = join(tmpdir(), `eai-template-redaction-${Date.now()}`);
+    await writeFileRecursive(genericRepo, 'package.json', '{"name":"generic","dependencies":{"next":"15"}}\n');
+    await writeFileRecursive(templateRoot, 'src/app/api/eai/[[...rest]]/handler.ts', 'export const handler = true;\n');
+    const assessment = await resolveTemplateAssessmentRoot(genericRepo);
+    const plan = await buildTemplateAiPlan({
+      assessment: assessment!,
+      templateRoot,
+      templateRepo: 'https://secret-user:secret-token@example.com/private/template.git?token=hidden',
+      templateRef: 'main',
+      templateCommit: null,
+      provenance: 'unbased-adoption',
+      preserveUi: true,
+      items: [{ relativePath: 'src/app/api/eai/[[...rest]]/handler.ts', state: 'missing' }],
+    });
+
+    expect(plan.template.repo).toBe('https://example.com/private/template.git');
+    expect(JSON.stringify(plan)).not.toContain('secret-token');
+    expect(JSON.stringify(plan)).not.toContain('token=hidden');
   });
 
   test('blocks files reached through a symlinked ancestor without exposing their contents', async () => {

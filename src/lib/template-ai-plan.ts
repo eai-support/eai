@@ -375,6 +375,20 @@ function validationFor(policy: CapabilityPolicy, scripts: readonly string[], pac
   return validations;
 }
 
+function safeTemplateIdentifier(source: string): string {
+  try {
+    const parsed = new URL(source);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return "custom-template-source";
+    parsed.username = "";
+    parsed.password = "";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return "custom-template-source";
+  }
+}
+
 export async function buildTemplateAiPlan(options: {
   readonly assessment: TemplateAssessmentRoot;
   readonly templateRoot: string;
@@ -475,7 +489,7 @@ export async function buildTemplateAiPlan(options: {
       inventory,
     },
     template: {
-      repo: options.templateRepo,
+      repo: safeTemplateIdentifier(options.templateRepo),
       ref: options.templateRef,
       commit: options.templateCommit,
       policySource: "cli-built-in-v1",
