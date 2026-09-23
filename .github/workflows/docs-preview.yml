@@ -131,8 +131,27 @@ jobs:
         env:
           SWA_CLI_DEPLOYMENT_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_EAI_DEV }}
           PREVIEW_ENVIRONMENT: docs${{ github.event.pull_request.number }}
+          INPUT_REPO_TOKEN: ${{ github.token }}
         run: |
+          # The CLI bootstraps the same Azure deployment client used by the official action.
+          # Its dry-run mode does not close named environments, so invoke that client with
+          # the pull-request event context GitHub provides to this closed pull request.
           npx --yes @azure/static-web-apps-cli@2.0.10 deploy preview-close \
             --env "$PREVIEW_ENVIRONMENT" \
             --dry-run \
             --no-use-keychain
+
+          deployment_client="$(find "$HOME/.swa/deploy" -type f -name StaticSitesClient -print -quit)"
+          if [ -z "$deployment_client" ]; then
+            echo "Azure Static Web Apps deployment client was not installed." >&2
+            exit 1
+          fi
+
+          INPUT_ACTION=close \
+          INPUT_AZURE_STATIC_WEB_APPS_API_TOKEN="$SWA_CLI_DEPLOYMENT_TOKEN" \
+          INPUT_APP_LOCATION=preview-close \
+          INPUT_OUTPUT_LOCATION="" \
+          INPUT_SKIP_APP_BUILD=true \
+          INPUT_SKIP_API_BUILD=true \
+          INPUT_DEPLOYMENT_ENVIRONMENT="$PREVIEW_ENVIRONMENT" \
+          "$deployment_client"
