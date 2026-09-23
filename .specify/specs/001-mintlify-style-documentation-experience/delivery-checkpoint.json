@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-22T23:19:27.985Z",
+  "artifacts": {
+    "spec.md": "afd7f8ff94ede3606171945713a45e2bf59131068edf902e79d6500ec411015e",
+    "plan.md": "5ad5d38ef0d9824aa12fb55f415affadaf14715764a6d0d5802727d20ae4acf9",
+    "tasks.md": "6a7dbe6f3b7770e8acf92e5c81dea429a6254d2fa380789c22264e31646b4498",
+    "traceability.md": "4ea608c13f4e2c3b232847954e584818a0cc56e5cadaba67957c5922fb5ae077",
+    "goal-ledger.json": null,
+    "research.md": "b1601e7e8ae1dc96b17dea270a3e8a70fac6f09f26ef089579b1fc312f3d3736",
+    "discovery.md": null,
+    "issues.md": null,
+    "validation-report.md": "658472979ce643e5815ab178a69a847c8f9516b74abd676b57bcd0b524d02754",
+    "decisions.md": "f7da89333f4bf7fa172cfffd65063330951597d83b594b0c6f71558d8e95b4a6",
+    "priority-plan.json": "d988a386f2ac0f7fec3144e9a5137ac1076ff1076dfb05f974413642c6154d1f"
+  },
+  "completedTasks": {
+    "T001": {
+      "requirements": [
+        "FR-001",
+        "FR-002"
+      ],
+      "evidence": "evidence/T001.json",
+      "evidenceHash": "5597759d3bfbf2a489ba060aec60357b79228d27bfa97c94e721c514f8b4b8b9"
+    },
+    "T002": {
+      "requirements": [
+        "FR-003",
+        "FR-004"
+      ],
+      "evidence": "evidence/T002.json",
+      "evidenceHash": "2041616e394b9b0d76f6a9191567d45912fa534cbe9a6d64c763ff764220dd5c"
+    },
+    "T003": {
+      "requirements": [
+        "FR-001",
+        "FR-002"
+      ],
+      "evidence": "evidence/T003.json",
+      "evidenceHash": "ad19f361f0e38cbb9f726680b612c4cef37e790a34bc7c9bbc2c44a3e9d5f01b"
+    },
+    "T004": {
+      "requirements": [
+        "FR-003",
+        "FR-005",
+        "FR-006"
+      ],
+      "evidence": "evidence/T004.json",
+      "evidenceHash": "2a1985c82364adf903743079e6ea005d7a31d17907beb7b27c97525edf1cf6f6"
+    },
+    "T005": {
+      "requirements": [
+        "FR-007"
+      ],
+      "evidence": "evidence/T005.json",
+      "evidenceHash": "d550639a84f07c7bae6d16f7da5d94c2318ae13431518994d7a0b04a52ef64bc"
+    },
+    "T006": {
+      "requirements": [
+        "FR-001",
+        "FR-002",
+        "FR-003",
+        "FR-004",
+        "FR-005",
+        "FR-006",
+        "FR-007"
+      ],
+      "evidence": "evidence/T006.json",
+      "evidenceHash": "afe49e434f90511aa65e26cbd229de94b7ed4ac1af4d5dd017df92a27cc48a29"
+    },
+    "T007": {
+      "requirements": [
+        "FR-005"
+      ],
+      "evidence": "evidence/T007.json",
+      "evidenceHash": "815e1bc0937f321192627778e07495529f7fe30ae30dc54586c489754523b5c2"
+    },
+    "T008": {
+      "requirements": [
+        "FR-003",
+        "FR-004",
+        "FR-007"
+      ],
+      "evidence": "evidence/T008.json",
+      "evidenceHash": "da24ed040f4edcd9123c00533b1ff35ed32c33a6474807c8d7c43f712b6c5df3"
+    },
+    "T009": {
+      "requirements": [
+        "FR-004",
+        "FR-007"
+      ],
+      "evidence": "evidence/T009.json",
+      "evidenceHash": "a61817b890405a95dbbbf63e2ee461f7f99eadd26538ed6c85b5bec7def7c0c7"
+    },
+    "T010": {
+      "requirements": [
+        "FR-008"
+      ],
+      "evidence": "evidence/T010.json",
+      "evidenceHash": "8614737ed19b9c8b3e58fcfa57ef1337c2b6d740cb7995f9d90b89cbbe1dd96f"
+    },
+    "T011": {
+      "requirements": [
+        "FR-001",
+        "FR-008",
+        "FR-009"
+      ],
+      "evidence": "evidence/T011.json",
+      "evidenceHash": "0711d813c6d8ffdccadfe866560a6a8e6425ceb9d15b1063d191b75c082c47eb"
+    },
+    "T012": {
+      "requirements": [
+        "FR-001",
+        "FR-008",
+        "FR-009"
+      ],
+      "evidence": "evidence/T012.json",
+      "evidenceHash": "e3f0c94e6eb439707aa0cbcd7016e609fc4a4b11dcd8df984b6e78cc9b75f69e"
+    }
+  }
+}

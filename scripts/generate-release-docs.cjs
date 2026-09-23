@@ -18,7 +18,9 @@ const CANONICAL_INSTALL_CMD = "npm install -g @enterpriseai/cli";
 const STATIC_FALLBACK_INSTALL_CMD =
   "npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/";
 const DOC_ORDER = [
+  "installer-setup.md",
   "start-here.md",
+  "manual-and-managed-setup.md",
   "eai-cli.md",
   "eai-gofer.md",
   "eai-app-template.md",

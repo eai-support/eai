@@ -12,7 +12,9 @@ const sidebars = {
       label: "Getting Started",
       collapsed: false,
       items: [
+        "installer-setup",
         "start-here",
+        "manual-and-managed-setup",
         "eai-cli",
         "eai-gofer",
         "eai-app-template",

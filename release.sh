@@ -353,6 +353,7 @@ ALIAS_TARBALL="$(npm pack --silent .release/eai-cli-package)"
 node scripts/generate-registry.cjs >/dev/null
 node scripts/generate-error-guidance-docs.cjs >/dev/null
 node scripts/generate-release-docs.cjs >/dev/null
+node scripts/generate-docs-experience-assets.cjs >/dev/null
 echo "  ✓ npm pack -> $TARBALL"
 echo "  ✓ eai-cli alias pack -> $ALIAS_TARBALL"
 echo "  ✓ static registry metadata refreshed"
