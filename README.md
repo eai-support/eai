@@ -661,7 +661,8 @@ Important boundaries:
   components, and interaction patterns by default. Presentation files are
   references and never automatic replacements.
 - AI plans are advisory and read-only. They do not install packages, execute
-  project code, write configuration, copy files, or connect external systems.
+  project code, write configuration, copy files, or call EAI Platform APIs.
+  The command can access Git to fetch the configured template revision.
 - Template or UI component changes are **not** auto-merged into existing repos
   yet. Copy additions first, then diff/review existing files that `eai template
   check` marks for manual review.

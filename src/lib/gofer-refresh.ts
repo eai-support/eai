@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { access, chmod, copyFile, cp, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import {
   GOFER_RESOURCE_MAPPINGS,
@@ -87,6 +87,18 @@ interface ManagedCandidate {
 
 function normalizeRelativePath(path: string): string {
   return path.replace(/\\/g, '/');
+}
+
+function assertSafeManagedRelativePath(projectRoot: string, relativePath: string): void {
+  const normalized = normalizeRelativePath(relativePath);
+  if (
+    !normalized ||
+    isAbsolute(relativePath) ||
+    normalized.split('/').includes('..') ||
+    relative(resolve(projectRoot), resolve(projectRoot, relativePath)).startsWith('..')
+  ) {
+    throw new Error(`Refusing unsafe Gofer-managed path: ${relativePath}`);
+  }
 }
 
 function hashContents(contents: Buffer | string): string {
@@ -491,6 +503,7 @@ export async function planGoferRefresh(
   const firstRefresh = !manifest?.gofer;
 
   for (const candidate of [...desiredFiles.values()].sort((left, right) => left.relativePath.localeCompare(right.relativePath))) {
+    assertSafeManagedRelativePath(projectRoot, candidate.relativePath);
     const absolutePath = join(projectRoot, candidate.relativePath);
     const currentHash = await readCurrentHash(absolutePath);
     const desiredHash = hashContents(candidate.contents);
@@ -558,6 +571,7 @@ export async function planGoferRefresh(
   }
 
   for (const relativePath of Object.keys(trackedFiles).sort()) {
+    assertSafeManagedRelativePath(projectRoot, relativePath);
     if (desiredFiles.has(relativePath)) {
       continue;
     }
@@ -599,6 +613,7 @@ async function backupFile(projectRoot: string, backupRoot: string, relativePath:
 }
 
 async function assertManagedPathIsNotSymlink(projectRoot: string, relativePath: string): Promise<void> {
+  assertSafeManagedRelativePath(projectRoot, relativePath);
   let current = projectRoot;
   for (const segment of relativePath.split('/')) {
     current = join(current, segment);

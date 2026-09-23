@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createTestEnvironment,
@@ -328,6 +328,26 @@ describe("eai gofer refresh", () => {
       "Refusing to refresh Gofer-managed symbolic link",
     );
     expect(await readFile(managedFile, "utf-8")).toContain("KEEP LOCAL CHANGE");
+  });
+
+  test("rejects traversal paths from a crafted managed-file manifest", async () => {
+    const outsideFile = join(env.dir, "..", `outside-gofer-${Date.now()}.md`);
+    await writeFile(outsideFile, "KEEP OUTSIDE\n", "utf-8");
+    await writeFile(
+      join(env.dir, ".eai-manifest.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        gofer: { managedFiles: { [relative(env.dir, outsideFile)]: { sha256: "invalid", source: "generated" } } },
+      }),
+      "utf-8",
+    );
+
+    const result = await runCommand(ctx, "eai gofer refresh --force");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toContain("Refusing unsafe Gofer-managed path");
+    expect(await readFile(outsideFile, "utf-8")).toBe("KEEP OUTSIDE\n");
+    await rm(outsideFile, { force: true });
   });
 
   test("can refresh from a newer Gofer resources source without a new CLI release", async () => {

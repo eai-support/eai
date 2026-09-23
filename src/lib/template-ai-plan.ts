@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, readFile, realpath } from "node:fs/promises";
+import { access, lstat, readFile, realpath } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { findProjectRoot } from "./config.js";
@@ -57,7 +57,7 @@ interface RepositoryInventory {
 }
 
 interface TemplateAiDiff {
-  readonly kind: "unified" | "omitted-binary" | "omitted-size" | "omitted-budget" | "none";
+  readonly kind: "unified" | "omitted-untrusted-source" | "omitted-binary" | "omitted-size" | "omitted-budget" | "none";
   readonly text?: string;
   readonly truncated: boolean;
 }
@@ -288,10 +288,12 @@ async function boundedDiff(
   relativePath: string,
   state: TemplateAiSourceItem["state"],
   remainingBudget: number,
+  allowContent: boolean,
 ): Promise<TemplateAiDiff> {
   if (state === "unchanged") return { kind: "none", truncated: false };
   if (state === "blocked-symlink") return { kind: "none", truncated: false };
   if (remainingBudget <= 0) return { kind: "omitted-budget", truncated: true };
+  if (!allowContent) return { kind: "omitted-untrusted-source", truncated: false };
   const template = await readFile(templatePath);
   const project = state === "missing" ? Buffer.alloc(0) : await readFile(projectPath);
   if (template.includes(0) || project.includes(0)) return { kind: "omitted-binary", truncated: false };
@@ -329,6 +331,7 @@ async function boundedDiff(
 
 async function readPackage(path: string): Promise<PackageDocument | null> {
   try {
+    if ((await lstat(path)).isSymbolicLink()) return null;
     return JSON.parse(await readFile(path, "utf-8")) as PackageDocument;
   } catch {
     return null;
@@ -400,6 +403,9 @@ export async function buildTemplateAiPlan(options: {
   readonly preserveUi: boolean;
 }): Promise<TemplateAiPlan> {
   const inventory = await inventoryRepository(options.assessment.root);
+  const allowTemplateContent = /^https:\/\/github\.com\/eai-support\/eai-app-template(?:\.git)?\/?$/.test(
+    options.templateRepo,
+  );
   const frameworkCompatible =
     options.assessment.kind === "eai-project" || inventory.frameworks.includes("next");
   const grouped = new Map<string, TemplateAiOperation[]>();
@@ -425,6 +431,7 @@ export async function buildTemplateAiPlan(options: {
       item.relativePath,
       item.state,
       remainingDiffBudget,
+      allowTemplateContent,
     );
     remainingDiffBudget -= Buffer.byteLength(diff.text ?? "", "utf-8");
     const operation: TemplateAiOperation = {

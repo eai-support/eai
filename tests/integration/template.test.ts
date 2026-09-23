@@ -161,7 +161,7 @@ describe('eai template check', () => {
     const operations = plan.capabilities.flatMap((capability) => capability.operations);
     expect(operations.find((item) => item.path === 'src/components/Hero.tsx')).toMatchObject({
       decision: 'preserve-existing',
-      diff: { kind: 'unified' },
+      diff: { kind: 'omitted-untrusted-source' },
     });
     expect(operations.find((item) => item.path === 'src/app/api/eai/[[...rest]]/handler.ts')).toMatchObject({
       decision: 'safe-add',
