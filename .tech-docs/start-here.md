@@ -14,7 +14,7 @@ platform, or trying to understand which part of the toolchain to use.
 
 ## Current Release
 
-The current CLI release is **v3.17.0** (2026-09-22): Support Configurator Plus no-code handover and app template v1.0.2.
+The current CLI release is **v3.18.0** (2026-09-23): Add safe template adoption plans and backed-up Gofer update maintenance.
 
 
 ## What The Pieces Do
