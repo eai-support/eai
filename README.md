@@ -608,8 +608,9 @@ app.
 
 `eai update` keeps the local EAI toolchain current. It checks the installed CLI
 against npmjs first, falls back to the public static registry when needed, installs the newer CLI when available, then
-refreshes safe Gofer-managed files in the current EAI project. It does **not**
-blindly rewrite template files or UI components inside an existing app repo.
+force-refreshes Gofer-managed files with backups and runs a read-only template
+check in the current EAI project. It does **not** rewrite template files or UI
+components inside an existing app repo.
 
 Use these commands for the full maintenance loop:
 
@@ -628,12 +629,16 @@ eai gofer refresh
 
 # Preview app-template and UI component drift before copying changes manually
 eai template check
+
+# Give an AI a read-only EAI capability adoption plan for this repository
+eai template check --ai-plan --preserve-ui
 ```
 
 Important boundaries:
 
-- `eai update --check` is read-only. `eai update` may write only
-  Gofer-managed files in an EAI project.
+- `eai update --check` is read-only. `eai update` force-refreshes only
+  Gofer-managed files in an EAI project and backs up conflicting local versions
+  before replacement.
 - `eai gofer refresh` prefers the latest public `eai-gofer` release at runtime,
   so Gofer asset updates do not require a new `eai` CLI release. If the latest
   release cannot be reached or prepared, it falls back to the bundled snapshot.
@@ -641,16 +646,28 @@ Important boundaries:
   such as `.specify/`, `.claude/`, `.agents/skills/`, the legacy `.gemini/`
   compatibility layout, and generated Copilot Gofer files.
 - It writes or updates `.eai-manifest.json` so future refreshes can detect
-  local edits and avoid overwriting them accidentally.
+  local edits. Standalone `eai gofer refresh` leaves conflicts untouched unless
+  `--force` is supplied; `eai update` always uses that backed-up force behavior.
 - If a tracked managed file has local edits, refresh leaves it untouched unless
   you explicitly pass `--force`, and even then it backs the file up first.
-- `eai template check` previews file-level drift against the app-template
-  `main` snapshot pinned in the installed CLI release and highlights which
+- `eai template check` previews file-level drift against the published
+  app-template release pinned in the installed CLI and highlights which
   files are new versus which need manual review, including likely UI paths under
   `src/app` and `src/components`.
+- `eai template check --ai-plan` also works in ordinary Git and JavaScript
+  package repositories. It emits JSON with capability groups, bounded diffs,
+  dependencies, adoption decisions, risks, and validation steps.
+- AI plans preserve existing layout, styles, design tokens, content,
+  components, and interaction patterns by default. Presentation files are
+  references and never automatic replacements.
+- AI plans are advisory and read-only. They do not install packages, execute
+  project code, write configuration, copy files, or connect external systems.
 - Template or UI component changes are **not** auto-merged into existing repos
   yet. Copy additions first, then diff/review existing files that `eai template
   check` marks for manual review.
+- Normal `eai update` runs that template check automatically after Gofer
+  maintenance. A template-check failure does not undo a successful CLI or
+  Gofer update; the CLI reports how to retry it.
 - During normal interactive CLI use, if the CLI has already cached that a newer
   release is available, it can ask whether to run `eai update` immediately.
   That prompt is suppressed for CI, non-TTY, `--describe`, `--format json`, and

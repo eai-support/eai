@@ -1100,8 +1100,8 @@ registry fallback for the update check.
 
 #### `eai update`
 Check for and install CLI updates from npmjs, with the EAI static registry as a
-fallback, then maintain
-safe repo-local project assets when the command is run inside an EAI project.
+fallback, then maintain repo-local project assets when the command is run
+inside an EAI project.
 
 **Options**:
 - `--check` — Only check for CLI, Gofer, and app-template status without installing or writing files
@@ -1138,10 +1138,11 @@ npm install -g @enterpriseai/cli
 No platform API calls.
 
 **Project maintenance**:
-- Normal `eai update` refreshes safe Gofer-managed files with the same backups
-  and conflict detection as `eai gofer refresh`.
-- App-template and UI files are not auto-merged. The CLI reports drift and
-  points to `eai template check` for manual review.
+- Normal `eai update` always force-refreshes Gofer-managed files. Conflicting
+  local versions are backed up before replacement.
+- It then runs `eai template check` automatically. This check is read-only and
+  reports additions and changed files for manual review; app-template and UI
+  files are not auto-merged.
 - Interactive update prompts are suppressed for CI, non-TTY, `--describe`,
   `--format json`, and `--json`.
 
@@ -1165,8 +1166,21 @@ Preview file-level app-template / UI drift without writing to the repo.
 
 **Options**:
 - `--format <format>` — Output format (text|json, default: text)
+- `--ai-plan` — Emit a structured JSON plan for selective EAI capability adoption
+- `--preserve-ui` — Protect existing layout, styles, components, content, and interactions in the AI plan; enabled by default
 
 **No API calls** — local diff against the bundled template snapshot
+
+AI planning also accepts ordinary Git and JavaScript package repositories. It
+uses the immutable template snapshot bundled with the installed CLI. For a
+repository without template provenance, it reports `unbased-adoption` and does
+not claim that the repository came from the EAI template.
+
+The plan groups platform, authentication, runtime, data, deployment, tooling,
+and presentation changes. Each operation includes a decision, risk, purpose,
+hashes, bounded diff evidence, dependencies, instructions, and available
+validation commands. The command does not apply the plan or execute repository
+scripts. Existing presentation files remain protected references.
 
 ---
 

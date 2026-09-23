@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -10,6 +10,10 @@ import { workingDirectoryIs } from '../helpers/setup-dsl.js';
 import { runCommand } from '../helpers/action-dsl.js';
 import { expectCommandSucceeded, expectDisplayedMessage } from '../helpers/assert-dsl.js';
 import { resolveProjectManifest } from '../../src/lib/project-manifest.js';
+import {
+  buildTemplateAiPlan,
+  resolveTemplateAssessmentRoot,
+} from '../../src/lib/template-ai-plan.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -105,6 +109,143 @@ describe('eai template check', () => {
     expectDisplayedMessage(result, 'src/components/Badge.tsx');
     expectDisplayedMessage(result, 'Files needing manual review');
     expectDisplayedMessage(result, 'UI files in review set');
+  });
+
+  test('emits an AI adoption plan that protects existing UI and explains platform additions', async () => {
+    const templateRepo = join(tmpdir(), `eai-template-source-${Date.now()}-ai-plan`);
+    const { initialCommit } = await createTemplateRepo(templateRepo);
+    await writeFileRecursive(
+      templateRepo,
+      'src/app/api/eai/[[...rest]]/handler.ts',
+      'export async function handleEaiRequest() { return new Response("ok"); }\n',
+    );
+    await git(templateRepo, ['add', '.']);
+    await git(templateRepo, ['commit', '-m', 'add EAI platform handler']);
+
+    await writeFileRecursive(env.dir, 'package.json', JSON.stringify({
+      name: '@eai-tools/template-ai-plan-fixture',
+      version: '0.0.1',
+      scripts: { typecheck: 'tsc --noEmit', build: 'next build' },
+      dependencies: { next: '15.0.0', react: '19.0.0', tailwindcss: '4.0.0' },
+    }, null, 2) + '\n');
+    await writeFileRecursive(env.dir, 'src/eai.config/object-types.ts', 'export const objectTypes = {};\n');
+    await writeFileRecursive(env.dir, 'src/components/Hero.tsx', 'export function Hero() { return <div>Our brand</div>; }\n');
+    await writeFileRecursive(env.dir, '.eai-manifest.json', JSON.stringify({
+      schemaVersion: 1,
+      template: {
+        repo: templateRepo,
+        commit: initialCommit,
+        displaySource: `${templateRepo}@${initialCommit.slice(0, 7)}`,
+      },
+    }, null, 2) + '\n');
+    const beforeHero = await readFile(join(env.dir, 'src/components/Hero.tsx'), 'utf-8');
+
+    const result = await runCommand(ctx, 'eai template check --ai-plan --preserve-ui');
+
+    expectCommandSucceeded(result);
+    const plan = JSON.parse(result.stdout) as {
+      schemaVersion: string;
+      readOnly: boolean;
+      policy: { preserveUi: boolean; allowAutomaticWrites: boolean };
+      capabilities: Array<{
+        id: string;
+        operations: Array<{ path: string; decision: string; diff: { kind: string } }>;
+      }>;
+    };
+    expect(plan).toMatchObject({
+      schemaVersion: 'eai.template-ai-plan.v1',
+      readOnly: true,
+      policy: { preserveUi: true, allowAutomaticWrites: false },
+    });
+    const operations = plan.capabilities.flatMap((capability) => capability.operations);
+    expect(operations.find((item) => item.path === 'src/components/Hero.tsx')).toMatchObject({
+      decision: 'preserve-existing',
+      diff: { kind: 'unified' },
+    });
+    expect(operations.find((item) => item.path === 'src/app/api/eai/[[...rest]]/handler.ts')).toMatchObject({
+      decision: 'safe-add',
+    });
+    expect(await readFile(join(env.dir, 'src/components/Hero.tsx'), 'utf-8')).toBe(beforeHero);
+  });
+
+  test('builds an unbased adoption plan for an ordinary Git package repository', async () => {
+    const genericRepo = join(tmpdir(), `eai-generic-repo-${Date.now()}`);
+    const templateRoot = join(tmpdir(), `eai-generic-template-${Date.now()}`);
+    await writeFileRecursive(genericRepo, 'package.json', JSON.stringify({
+      name: 'generic-app',
+      dependencies: { next: '15.0.0', react: '19.0.0' },
+    }, null, 2) + '\n');
+    await writeFileRecursive(genericRepo, 'src/app/page.tsx', 'export default function Page() { return <main>Our UX</main>; }\n');
+    await git(genericRepo, ['init']);
+    await writeFileRecursive(templateRoot, 'src/app/page.tsx', 'export default function Page() { return <main>Template UX</main>; }\n');
+    await writeFileRecursive(templateRoot, 'src/app/api/eai/[[...rest]]/handler.ts', 'export function handler() { return null; }\n');
+
+    const assessment = await resolveTemplateAssessmentRoot(genericRepo);
+    expect(assessment).toMatchObject({ kind: 'git-package' });
+    const plan = await buildTemplateAiPlan({
+      assessment: assessment!,
+      templateRoot,
+      templateRepo: 'https://github.com/eai-support/eai-app-template.git',
+      templateRef: 'v1.0.2',
+      templateCommit: 'template-commit',
+      provenance: 'unbased-adoption',
+      preserveUi: true,
+      items: [
+        { relativePath: 'src/app/page.tsx', state: 'modified' },
+        { relativePath: 'src/app/api/eai/[[...rest]]/handler.ts', state: 'missing' },
+      ],
+    });
+
+    expect(plan.project).toMatchObject({ kind: 'git-package', provenance: 'unbased-adoption' });
+    const operations = plan.capabilities.flatMap((capability) => capability.operations);
+    expect(operations.find((item) => item.path === 'src/app/page.tsx')?.decision).toBe('preserve-existing');
+    expect(operations.find((item) => item.path.includes('api/eai'))?.decision).toBe('safe-add');
+    expect(JSON.stringify(plan)).not.toContain(genericRepo);
+
+    await writeFileRecursive(genericRepo, 'package.json', JSON.stringify({
+      name: 'generic-non-next-app',
+      dependencies: { vue: '3.0.0' },
+    }, null, 2) + '\n');
+    const incompatiblePlan = await buildTemplateAiPlan({
+      assessment: assessment!,
+      templateRoot,
+      templateRepo: 'https://github.com/eai-support/eai-app-template.git',
+      templateRef: 'v1.0.2',
+      templateCommit: 'template-commit',
+      provenance: 'unbased-adoption',
+      preserveUi: true,
+      items: [{ relativePath: 'src/app/api/eai/[[...rest]]/handler.ts', state: 'missing' }],
+    });
+    expect(
+      incompatiblePlan.capabilities.flatMap((capability) => capability.operations)[0]?.decision,
+    ).toBe('blocked');
+  });
+
+  test('blocks files reached through a symlinked ancestor without exposing their contents', async () => {
+    const templateRepo = join(tmpdir(), `eai-template-source-${Date.now()}-symlink`);
+    const outsideRoot = join(tmpdir(), `eai-template-outside-${Date.now()}`);
+    const { initialCommit } = await createTemplateRepo(templateRepo);
+    await writeFileRecursive(env.dir, 'package.json', JSON.stringify({
+      name: '@eai-tools/template-symlink-fixture',
+      dependencies: { next: '15.0.0', react: '19.0.0' },
+    }, null, 2) + '\n');
+    await writeFileRecursive(outsideRoot, 'components/Hero.tsx', 'SECRET_OUTSIDE_REPOSITORY\n');
+    await symlink(outsideRoot, join(env.dir, 'src'));
+    await writeFileRecursive(env.dir, '.eai-manifest.json', JSON.stringify({
+      schemaVersion: 1,
+      template: { repo: templateRepo, commit: initialCommit },
+    }, null, 2) + '\n');
+
+    const result = await runCommand(ctx, 'eai template check --ai-plan --preserve-ui');
+
+    expectCommandSucceeded(result);
+    expect(result.stdout).not.toContain('SECRET_OUTSIDE_REPOSITORY');
+    const plan = JSON.parse(result.stdout) as {
+      capabilities: Array<{ operations: Array<{ path: string; state: string; decision: string }> }>;
+    };
+    expect(plan.capabilities.flatMap((item) => item.operations).find(
+      (item) => item.path === 'src/components/Hero.tsx',
+    )).toMatchObject({ state: 'blocked-symlink', decision: 'blocked' });
   });
 
   test('infers template provenance from a legacy eai init scaffold commit when the manifest is missing', async () => {

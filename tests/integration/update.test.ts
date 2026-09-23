@@ -26,6 +26,13 @@ import type { TestContext } from '../helpers/setup-dsl.js';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json') as { version: string };
+const linkedSources = require('../../resources/linked-sources.json') as {
+  appTemplate: {
+    repo: string;
+    version?: string;
+    commit: string;
+  };
+};
 const execFileAsync = promisify(execFile);
 const BUNDLED_GOFER_RESOURCES = fileURLToPath(
   new URL('../../resources/gofer/', import.meta.url),
@@ -87,6 +94,23 @@ async function createEaiProjectFixture(root: string): Promise<void> {
       type: 'module',
       dependencies: {
         '@eai-tools/core': '1.0.0',
+      },
+    }, null, 2)}\n`,
+    'utf-8',
+  );
+}
+
+async function recordCurrentTemplateSnapshot(root: string): Promise<void> {
+  await writeFile(
+    join(root, '.eai-manifest.json'),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      template: {
+        repo: linkedSources.appTemplate.repo,
+        version: linkedSources.appTemplate.version,
+        commit: linkedSources.appTemplate.commit,
+        displaySource: `eai-support/eai-app-template@${linkedSources.appTemplate.version ?? linkedSources.appTemplate.commit.slice(0, 7)}`,
+        initializedAt: new Date(0).toISOString(),
       },
     }, null, 2)}\n`,
     'utf-8',
@@ -617,6 +641,50 @@ describe('eai update project maintenance', () => {
       expect(result.stdout).toContain('Gofer-managed assets refreshed');
       expect(await pathExists(join(env.dir, '.eai-manifest.json'))).toBe(true);
       expect(await pathExists(join(env.dir, '.specify', 'commands', '0_gofer_start.md'))).toBe(true);
+    } finally {
+      await close();
+    }
+  });
+
+  test('force-refreshes locally edited Gofer files and preserves their backups', async () => {
+    const { env, ctx, close } = await createMaintenanceContext();
+    try {
+      await recordCurrentTemplateSnapshot(env.dir);
+      const seedResult = await runCommand(ctx, 'eai update');
+      expect(seedResult, `${seedResult.stdout}\n${seedResult.stderr}`).toMatchObject({ exitCode: 0 });
+
+      const managedFile = join(env.dir, '.github', 'copilot-instructions.md');
+      const original = await readFile(managedFile, 'utf-8');
+      await writeFile(managedFile, `${original}\nLOCAL CUSTOMIZATION\n`, 'utf-8');
+
+      const result = await runCommand(ctx, 'eai update');
+
+      expect(result, `${result.stdout}\n${result.stderr}`).toMatchObject({ exitCode: 0 });
+      expect(await readFile(managedFile, 'utf-8')).not.toContain('LOCAL CUSTOMIZATION');
+      expect(result.stdout).toContain('Backed up');
+      const backupMatch = result.stdout.match(/Backup directory: (.+)/);
+      expect(backupMatch?.[1]).toBeTruthy();
+      const backup = await readFile(
+        join(backupMatch![1]!.trim(), '.github', 'copilot-instructions.md'),
+        'utf-8',
+      );
+      expect(backup).toContain('LOCAL CUSTOMIZATION');
+    } finally {
+      await close();
+    }
+  });
+
+  test('automatically runs the read-only template check after explicit update', async () => {
+    const { env, ctx, close } = await createMaintenanceContext();
+    try {
+      await recordCurrentTemplateSnapshot(env.dir);
+
+      const result = await runCommand(ctx, 'eai update');
+
+      expect(result, `${result.stdout}\n${result.stderr}`).toMatchObject({ exitCode: 0 });
+      expect(result.stdout).toContain('Running the read-only app-template drift check');
+      expect(result.stdout).toContain('Template Check');
+      expect(result.stdout).toContain('Bundled default template commit matches this project snapshot');
     } finally {
       await close();
     }

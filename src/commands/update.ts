@@ -131,17 +131,18 @@ Notes:
   - Canonical package install: npm install -g @enterpriseai/cli
   - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=${STATIC_REGISTRY_URL}
   - \`eai update --check\` previews CLI, Gofer, and app-template status without writing files.
-  - \`eai update\` upgrades the CLI, refreshes safe Gofer-managed files in the current EAI project, and reports app-template drift.
+  - \`eai update\` upgrades the CLI, force-refreshes Gofer-managed files with backups, and automatically runs a read-only app-template drift check.
   - Use \`eai gofer refresh --check\` to preview Gofer-managed file changes separately.
-  - App-template and UI files are not auto-merged; use \`eai template check\` to review them.
+  - The automatic \`eai template check\` is read-only; app-template and UI files are never auto-merged.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
   `)
   .action(async (options: { check?: boolean; projectRefresh?: boolean; projectMaintenanceOnly?: boolean }) => {
     if (options.projectMaintenanceOnly) {
       await runProjectUpdateMaintenance({
         mode: options.check ? 'check' : 'apply',
-        offerTemplateCheck: !options.check,
-        runTemplateCheck: () => runCurrentCliCommand(['template', 'check']),
+        runTemplateCheck: options.check
+          ? undefined
+          : () => runCurrentCliCommand(['template', 'check']),
       });
       return;
     }
@@ -163,8 +164,9 @@ Notes:
       if (options.projectRefresh !== false) {
         await runProjectUpdateMaintenance({
           mode: options.check ? 'check' : 'apply',
-          offerTemplateCheck: !options.check,
-          runTemplateCheck: () => runCurrentCliCommand(['template', 'check']),
+          runTemplateCheck: options.check
+            ? undefined
+            : () => runCurrentCliCommand(['template', 'check']),
         });
       }
       return;
@@ -213,7 +215,6 @@ Notes:
         out.warn('Could not run project maintenance through the freshly installed CLI; using the current process instead.');
         await runProjectUpdateMaintenance({
           mode: 'apply',
-          offerTemplateCheck: true,
           runTemplateCheck: () => runCurrentCliCommand(['template', 'check']),
         });
       }
