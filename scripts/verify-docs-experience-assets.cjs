@@ -23,7 +23,7 @@ if (capabilities.schemaVersion !== 1 || !capabilities.capabilities.localSearch) 
 if (requestBuilder.includes("\\n+  -H") || requestBuilder.includes("\\n+  --data")) {
   throw new Error("The request builder must not emit invalid '+' prefixes in generated curl commands.");
 }
-if (!installerDownload.includes("getHighEntropyValues") || !installerDownload.includes("Download now") || !installerDownload.includes("Download a different version")) {
+if (!installerDownload.includes("getHighEntropyValues") || !installerDownload.includes("Download now") || !installerDownload.includes("Download a version")) {
   throw new Error("The installer guide must detect a supported computer and keep alternate packages secondary.");
 }
 

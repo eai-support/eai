@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "feature": "001-mintlify-style-documentation-experience",
+  "customerOutcome": "A concise documentation experience with local search and cited platform answers.",
+  "delivery": [
+    { "surface": "Docusaurus", "component": "Search and Ask drawer" },
+    { "surface": "Enterprise AI website", "component": "Platform-backed chat API" },
+    { "surface": "EAI Platform", "component": "Scoped semantic knowledge index" }
+  ]
+}
