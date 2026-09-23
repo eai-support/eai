@@ -147,6 +147,7 @@ jobs:
             exit 1
           fi
 
+          DEPLOYMENT_ACTION=close \
           INPUT_ACTION=close \
           INPUT_AZURE_STATIC_WEB_APPS_API_TOKEN="$SWA_CLI_DEPLOYMENT_TOKEN" \
           INPUT_APP_LOCATION=preview-close \
