@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.17.0 |
-| Released | 2026-09-22 |
-| Last Material Change | Support Configurator Plus no-code handover and app template v1.0.2 |
-| Source Commit | `c403be12b1f5e833d29e21b612b862ce7fa16e01` |
+| Version | 3.18.0 |
+| Released | 2026-09-23 |
+| Last Material Change | Add safe template adoption plans and backed-up Gofer update maintenance |
+| Source Commit | `034d29d464fccf9a02e44bcdbdda69cae65919bf` |
 
 
 ## Install
