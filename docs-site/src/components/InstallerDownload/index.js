@@ -100,15 +100,15 @@ export default function InstallerDownload() {
       <p className={styles.status}>We detected {installer.label}. Open the downloaded file to begin setup.</p>
     </>}
     {recommended === null && !macChoice && <>
-      <h2>Choose your Mac processor</h2>
-      <p className={styles.status}>Your browser identifies macOS but does not share the processor type.</p>
+      <h2>Choose an installer</h2>
+      <p className={styles.status}>We could not identify a supported operating system and processor. Select a package below.</p>
       <div className={styles.choiceButtons}>
-        <button type="button" onClick={() => setMacChoice("macos-arm64")}>Apple Silicon</button>
-        <button type="button" onClick={() => setMacChoice("macos-x64")}>Intel</button>
+        <button type="button" onClick={() => setMacChoice("macos-arm64")}>macOS Apple Silicon</button>
+        <button type="button" onClick={() => setMacChoice("macos-x64")}>macOS Intel</button>
       </div>
     </>}
     <details className={styles.alternatives}>
-      <summary>Download a different version</summary>
+      <summary>Download a version</summary>
       <ul>
         {Object.entries(installers).filter(([key]) => key !== selection).map(([key, item]) =>
           <li key={key}><a href={installerUrl(item)}>{item.label}</a></li>,

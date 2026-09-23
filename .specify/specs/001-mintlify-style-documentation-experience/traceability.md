@@ -12,9 +12,6 @@
 | FR-009 | Three clear onboarding routes | `evidence/T011.json` | `validation-report.md` |
 | FR-009 | Browser-selected installer with secondary alternatives | `evidence/T012.json` | `validation-report.md` |
 | T010 | FR-008 | Installer-first desktop setup documentation | `evidence/T010.json` |
-| --- | --- | --- | --- |
-| Task | Requirement | Delivery item | Evidence |
-| --- | --- | --- | --- |
 | T001 | FR-001, FR-002 | Feature specification and rubric | `evidence/T001.json` |
 | T002 | FR-003, FR-004 | Generated search index | `evidence/T002.json` |
 | T003 | FR-001, FR-002 | Task-led home page and design system | `evidence/T003.json` |

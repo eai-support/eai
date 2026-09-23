@@ -12,9 +12,9 @@ const installerDownload = fs.readFileSync(path.join(__dirname, "..", "docs-site"
 if (search.schemaVersion !== 1 || search.items.length < 10) {
   throw new Error("The documentation search index is incomplete.");
 }
-for (const title of ["Start Here", "EAI Setup", "Manual and Managed Setup", "EAI CLI", "EAI CLI — API Reference"]) {
-  if (!search.items.some((item) => item.title === title)) {
-    throw new Error(`The documentation search index is missing ${title}.`);
+for (const route of ["/docs/start-here", "/docs/installer-setup", "/docs/manual-and-managed-setup", "/docs/eai-cli", "/docs/api-reference"]) {
+  if (!search.items.some((item) => item.route === route)) {
+    throw new Error(`The documentation search index is missing ${route}.`);
   }
 }
 if (capabilities.schemaVersion !== 1 || !capabilities.capabilities.localSearch) {

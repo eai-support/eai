@@ -53,6 +53,17 @@ html { scroll-behavior: smooth; }
 .footer__link-item { color: rgba(255, 255, 255, .72); }
 .footer__link-item:hover { color: var(--eai-cyan); }
 
+[data-theme='dark'] {
+  --ifm-background-color: #071E31;
+  --ifm-background-surface-color: #0D3857;
+  --ifm-font-color-base: #E7F3FA;
+  --ifm-heading-color: #FFFFFF;
+  --eai-light: #153F5E;
+}
+[data-theme='dark'] .theme-doc-markdown p,[data-theme='dark'] .theme-doc-markdown li { color: #D3E3EE; }
+[data-theme='dark'] .theme-doc-sidebar-container,[data-theme='dark'] .theme-doc-markdown code { border-color: #35617D !important; }
+[data-theme='dark'] .menu__link--active:not(.menu__link--sublist),[data-theme='dark'] .theme-doc-markdown th { background: #153F5E; color: #FFFFFF; }
+
 @media (max-width: 996px) {
   .navbar { margin: 0; border-radius: 0; }
   .theme-doc-sidebar-container { border-right: 0 !important; }
