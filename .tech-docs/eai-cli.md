@@ -96,8 +96,8 @@ construction.
 | `eai runtime`                           | Validate the host-neutral `eai.runtime.json` app runtime contract.                        |
 | `eai deploy`                            | Translate provider env/secrets and black-box doctor deployed EAI app runtimes.            |
 | `eai gofer`                             | Install and refresh repo-local agent workflow assets.                                     |
-| `eai template`                          | Check app-template and UI drift without writing files.                                    |
-| `eai update`                            | Update the CLI, refresh safe Gofer-managed assets, and report app-template drift.         |
+| `eai template`                          | Check template drift or create a read-only, UI-preserving AI adoption plan.               |
+| `eai update`                            | Update the CLI, force-refresh backed-up Gofer assets, and run a read-only template check. |
 | `eai verify`, `eai doctor`              | Run connectivity, contract, update, and troubleshooting checks.                           |
 
 ## Output Modes
