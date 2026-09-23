@@ -10,7 +10,7 @@ updated: 2026-09-23
 # Governed Documentation Experience
 
 **Issue:** #342  
-**Status:** Specified for staged delivery
+**Status:** In progress - foundation merged; Test and release gates remain
 
 ## Outcome
 
@@ -61,6 +61,18 @@ Docusaurus stays a public client and never calls an internal service route.
    accessible drawer behaviour, and feedback status.
 4. **PR D - Developer and release experience:** Test-only read-only explorer,
    public Docs MCP interface, and short-lived PR preview deployments.
+
+## Delivered Evidence
+
+- Docs filtering, recovery, keyboard drawer behaviour, and consented feedback:
+  PRs #344 and #346.
+- Versioned cited-answer evaluator: PR #347.
+- Website consented feedback storage and Docs CORS support: Website PR #378.
+- Website public-assistant rate limiting and privacy-safe operational telemetry:
+  Website PRs #376 and #379.
+
+The delivered foundation has not yet satisfied the Test-only explorer, machine
+interface, preview, or live Test evidence acceptance criteria below.
 
 ## Acceptance Criteria
 
