@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "eai.delivery_lineage.v1",
+  "plane": "customer",
+  "featureId": "342-governed-documentation-experience",
+  "generatedAt": "2026-09-23T00:00:00.000Z",
+  "nodes": [
+    { "id": "outcome", "kind": "outcome", "label": "Governed cited documentation assistance", "stage": "outcome", "status": "current", "visibility": "customer" },
+    { "id": "decision", "kind": "decision", "label": "Use the published scoped Docs capability", "stage": "architecture", "status": "current", "visibility": "customer", "decisionOutcome": "selected" },
+    { "id": "docs", "kind": "delivery-item", "label": "Docusaurus Search and Ask experience", "stage": "delivery", "status": "current", "visibility": "customer", "source": { "repository": "eai", "path": "docs-site/src/components/DocsAssistant/index.js" } },
+    { "id": "assistant", "kind": "public-api-capability", "label": "Published public Docs capability", "stage": "delivery", "status": "current", "visibility": "public-contract", "capabilityId": "eai.publicapi.capability.website-docs-assistant.v4", "source": { "repository": "PublicAPI", "path": "src/app/middleware/auth_v4.py" } }
+  ],
+  "edges": [
+    { "id": "outcome-decision", "source": "outcome", "target": "decision", "relation": "guided by", "status": "current", "visibility": "customer" },
+    { "id": "decision-docs", "source": "decision", "target": "docs", "relation": "delivered by", "status": "current", "visibility": "customer" },
+    { "id": "docs-assistant", "source": "docs", "target": "assistant", "relation": "uses", "status": "current", "visibility": "public-contract" }
+  ]
+}
