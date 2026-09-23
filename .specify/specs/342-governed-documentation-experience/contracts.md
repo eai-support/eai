@@ -3,7 +3,8 @@
 ## Assistant
 
 `POST /api/chat` accepts a public question and optional `surface` value. It
-returns an answer, zero or more approved citations, and a public error category.
+returns either a cited answer with one or more approved citations, or a clear
+no-answer response with no citations, plus a public error category.
 It must not return platform identifiers, internal source paths, credentials, or
 tenant data.
 

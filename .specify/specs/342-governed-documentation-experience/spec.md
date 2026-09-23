@@ -1,3 +1,12 @@
+---
+id: 342-governed-documentation-experience
+title: Governed Documentation Experience
+status: ready
+created: 2026-09-23
+author: Enterprise AI
+updated: 2026-09-23
+---
+
 # Governed Documentation Experience
 
 **Issue:** #342  
@@ -9,6 +18,30 @@ Provide public documentation with local and semantic search, cited answers,
 privacy-preserving learning signals, and safe developer guidance. Git remains
 the documentation source of truth. The Website chat API remains the only public
 AI entry point.
+
+## Selected Approach
+
+Use the published, scoped PublicAPI Docs capability through the Website chat API.
+Docusaurus stays a public client and never calls an internal service route.
+
+## User Scenarios
+
+1. A visitor receives matching public guides or a cited answer.
+2. An administrator reviews consented, privacy-safe feedback.
+3. A developer uses Test-only, read-only documentation tooling.
+
+## Requirements
+
+- FR-001: Use only the approved public Docs and Website corpus.
+- FR-002: Return a citation with every answer, or a clear no-answer response.
+- FR-003: Rate limit public use and store only privacy-safe telemetry.
+- FR-004: Keep feedback consented and restricted to authorised administrators.
+- FR-005: Keep explorer and MCP surfaces read-only and allowlisted.
+
+## Success Criteria
+
+- SC-001: Meet the reproducible thresholds in `evaluation.md`.
+- SC-002: Do not return a secret, internal path, tenant ID, or unapproved URL.
 
 ## Architecture Boundaries
 
