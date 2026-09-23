@@ -11,6 +11,10 @@ const OUTPUTS = [
   "docs-search-index.json",
   "docs-capabilities.json",
 ];
+const EXCLUDED_PATHS = new Set([
+  "architecture.md", "changelog.md", "data-model.md", "dependencies.md",
+  "deployment.md", "documentation-surfaces.md", "overview.md", "publicapi-v4-coverage.md",
+]);
 
 function listMarkdownFiles(directory, prefix = "") {
   return fs.readdirSync(directory, { withFileTypes: true })
@@ -72,7 +76,11 @@ function descriptionFor(body, title) {
 }
 
 function buildSearchIndex() {
-  const items = listMarkdownFiles(DOCS_DIR).map((relativePath) => {
+  const items = listMarkdownFiles(DOCS_DIR).filter((relativePath) =>
+    !EXCLUDED_PATHS.has(relativePath)
+    && !relativePath.startsWith("legacy-src/")
+    && !relativePath.startsWith("review/")
+  ).map((relativePath) => {
     const raw = fs.readFileSync(path.join(DOCS_DIR, relativePath), "utf8");
     const { frontmatter, body } = parseFrontmatter(raw);
     const title = frontmatter.title || body.match(/^#\s+(.+)$/m)?.[1] || relativePath;

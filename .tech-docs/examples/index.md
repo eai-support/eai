@@ -3,6 +3,8 @@ generated: false
 title: Examples
 ---
 
+import Link from '@docusaurus/Link';
+
 # Examples
 
 These examples show how the CLI, eai-gofer, and EAI App Template work together.
@@ -13,7 +15,7 @@ These examples show how the CLI, eai-gofer, and EAI App Template work together.
 | ----------------------------------------- | --------------------------------------------------------------------------------------- |
 | [Build a Task Tracker](./task-tracker.md) | Scaffold an app, define Object Types, publish them, and build ResourceAPI-backed pages. |
 | [Add AI Chat](./ai-chat.md)               | Add streaming chat, document upload, and RAG indexing through template hooks.           |
-| [Business Scenarios](/scenarios/)         | Browse industry-specific workflows before deciding what to build.                       |
+| <Link to="/scenarios/">Business Scenarios</Link> | Browse industry-specific workflows before deciding what to build. |
 
 ## Standard Loop
 
