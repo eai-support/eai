@@ -9,7 +9,7 @@ const corpusPath = process.env.EAI_DOCS_EVALUATION_CORPUS || path.join(featureDi
 const endpoint = process.env.EAI_DOCS_ASSISTANT_API_URL;
 const outputPath = process.env.EAI_DOCS_EVALUATION_OUTPUT || path.join(featureDir, 'evidence', 'evaluation-receipt.json');
 
-if (!endpoint) throw new Error('Set EAI_DOCS_ASSISTANT_API_URL to the Website public chat endpoint.')
+if (!endpoint) throw new Error('Set EAI_DOCS_ASSISTANT_API_URL to the Website public chat endpoint.');
 
 const corpusText = await readFile(corpusPath, 'utf8');
 const rows = corpusText.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
