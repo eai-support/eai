@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.17.0.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.18.0.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -208,9 +208,9 @@ Notes:
   - Canonical package install: npm install -g @enterpriseai/cli
   - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
   - `eai update --check` previews CLI, Gofer, and app-template status without writing files.
-  - `eai update` upgrades the CLI, refreshes safe Gofer-managed files in the current EAI project, and reports app-template drift.
+  - `eai update` upgrades the CLI, force-refreshes Gofer-managed files with backups, and automatically runs a read-only app-template drift check.
   - Use `eai gofer refresh --check` to preview Gofer-managed file changes separately.
-  - App-template and UI files are not auto-merged; use `eai template check` to review them.
+  - The automatic `eai template check` is read-only; app-template and UI files are never auto-merged.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
 ```
 
@@ -361,6 +361,10 @@ Preview file-level template/UI drift without writing to the repo
 
 Options:
   --format <format>  Output format (text|json) (default: "text")
+  --ai-plan          Emit a structured, read-only EAI capability adoption plan
+                     for an AI agent (default: false)
+  --preserve-ui      Protect existing layout, styles, components, content, and
+                     interactions in the AI plan (default: true)
   -h, --help         display help for command
 
 Typical workflow:
@@ -370,6 +374,8 @@ Typical workflow:
 Notes:
   - This command never writes files to your repo.
   - Template/UI updates still require manual review and selective copy/diff.
+  - `--ai-plan` works in EAI, Git, and package repositories and emits JSON.
+  - AI plans preserve the existing UI and UX by default.
   - Use `eai gofer refresh --check` separately for Gofer-managed assets.
 ```
 
@@ -431,6 +437,8 @@ Windows, macOS, or Ubuntu/Debian computer.
 
 You download the installer, sign in in your browser, and name your first
 project. EAI Setup prepares the tools and creates the project.
+
+The current CLI release is **v3.18.0** (2026-09-23): Add safe template adoption plans and backed-up Gofer update maintenance.
 
 ## Connect An Existing Project
 
@@ -527,10 +535,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.17.0 |
-| Released | 2026-09-22 |
-| Last Material Change | Support Configurator Plus no-code handover and app template v1.0.2 |
-| Source Commit | `c403be12b1f5e833d29e21b612b862ce7fa16e01` |
+| Version | 3.18.0 |
+| Released | 2026-09-23 |
+| Last Material Change | Add safe template adoption plans and backed-up Gofer update maintenance |
+| Source Commit | `034d29d464fccf9a02e44bcdbdda69cae65919bf` |
 
 
 ## Install
@@ -616,8 +624,8 @@ construction.
 | `eai runtime`                           | Validate the host-neutral `eai.runtime.json` app runtime contract.                        |
 | `eai deploy`                            | Translate provider env/secrets and black-box doctor deployed EAI app runtimes.            |
 | `eai gofer`                             | Install and refresh repo-local agent workflow assets.                                     |
-| `eai template`                          | Check app-template and UI drift without writing files.                                    |
-| `eai update`                            | Update the CLI, refresh safe Gofer-managed assets, and report app-template drift.         |
+| `eai template`                          | Check template drift or create a read-only, UI-preserving AI adoption plan.               |
+| `eai update`                            | Update the CLI, force-refresh backed-up Gofer assets, and run a read-only template check. |
 | `eai verify`, `eai doctor`              | Run connectivity, contract, update, and troubleshooting checks.                           |
 
 ## Output Modes
@@ -2085,7 +2093,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.17.0. The same catalog powers human stderr output, JSON output for AI
+v3.18.0. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -3863,8 +3871,8 @@ registry fallback for the update check.
 
 #### `eai update`
 Check for and install CLI updates from npmjs, with the EAI static registry as a
-fallback, then maintain
-safe repo-local project assets when the command is run inside an EAI project.
+fallback, then maintain repo-local project assets when the command is run
+inside an EAI project.
 
 **Options**:
 - `--check` — Only check for CLI, Gofer, and app-template status without installing or writing files
@@ -3901,10 +3909,11 @@ npm install -g @enterpriseai/cli
 No platform API calls.
 
 **Project maintenance**:
-- Normal `eai update` refreshes safe Gofer-managed files with the same backups
-  and conflict detection as `eai gofer refresh`.
-- App-template and UI files are not auto-merged. The CLI reports drift and
-  points to `eai template check` for manual review.
+- Normal `eai update` always force-refreshes Gofer-managed files. Conflicting
+  local versions are backed up before replacement.
+- It then runs `eai template check` automatically. This check is read-only and
+  reports additions and changed files for manual review; app-template and UI
+  files are not auto-merged.
 - Interactive update prompts are suppressed for CI, non-TTY, `--describe`,
   `--format json`, and `--json`.
 
@@ -3928,8 +3937,24 @@ Preview file-level app-template / UI drift without writing to the repo.
 
 **Options**:
 - `--format <format>` — Output format (text|json, default: text)
+- `--ai-plan` — Emit a structured JSON plan for selective EAI capability adoption
+- `--preserve-ui` — Protect existing layout, styles, components, content, and interactions in the AI plan; enabled by default
 
-**No API calls** — local diff against the bundled template snapshot
+**No API calls** — clones the configured Git template revision, then performs a
+local read-only diff. Git access is required when that revision is not already
+available from the configured source.
+
+AI planning also accepts ordinary Git and JavaScript package repositories. It
+fetches the template revision pinned by the installed CLI, or the current
+revision of a recorded custom template source. For a
+repository without template provenance, it reports `unbased-adoption` and does
+not claim that the repository came from the EAI template.
+
+The plan groups platform, authentication, runtime, data, deployment, tooling,
+and presentation changes. Each operation includes a decision, risk, purpose,
+hashes, bounded diff evidence, dependencies, instructions, and available
+validation commands. The command does not apply the plan or execute repository
+scripts. Existing presentation files remain protected references.
 
 ---
 

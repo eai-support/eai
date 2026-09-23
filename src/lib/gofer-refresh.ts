@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { access, chmod, copyFile, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, chmod, copyFile, cp, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import {
   GOFER_RESOURCE_MAPPINGS,
@@ -87,6 +87,18 @@ interface ManagedCandidate {
 
 function normalizeRelativePath(path: string): string {
   return path.replace(/\\/g, '/');
+}
+
+function assertSafeManagedRelativePath(projectRoot: string, relativePath: string): void {
+  const normalized = normalizeRelativePath(relativePath);
+  if (
+    !normalized ||
+    isAbsolute(relativePath) ||
+    normalized.split('/').includes('..') ||
+    relative(resolve(projectRoot), resolve(projectRoot, relativePath)).startsWith('..')
+  ) {
+    throw new Error(`Refusing unsafe Gofer-managed path: ${relativePath}`);
+  }
 }
 
 function hashContents(contents: Buffer | string): string {
@@ -491,6 +503,7 @@ export async function planGoferRefresh(
   const firstRefresh = !manifest?.gofer;
 
   for (const candidate of [...desiredFiles.values()].sort((left, right) => left.relativePath.localeCompare(right.relativePath))) {
+    assertSafeManagedRelativePath(projectRoot, candidate.relativePath);
     const absolutePath = join(projectRoot, candidate.relativePath);
     const currentHash = await readCurrentHash(absolutePath);
     const desiredHash = hashContents(candidate.contents);
@@ -558,6 +571,7 @@ export async function planGoferRefresh(
   }
 
   for (const relativePath of Object.keys(trackedFiles).sort()) {
+    assertSafeManagedRelativePath(projectRoot, relativePath);
     if (desiredFiles.has(relativePath)) {
       continue;
     }
@@ -596,6 +610,22 @@ async function backupFile(projectRoot: string, backupRoot: string, relativePath:
   const backupPath = join(backupRoot, relativePath);
   await mkdir(dirname(backupPath), { recursive: true });
   await copyFile(sourcePath, backupPath);
+}
+
+async function assertManagedPathIsNotSymlink(projectRoot: string, relativePath: string): Promise<void> {
+  assertSafeManagedRelativePath(projectRoot, relativePath);
+  let current = projectRoot;
+  for (const segment of relativePath.split('/')) {
+    current = join(current, segment);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) {
+        throw new Error(`Refusing to refresh Gofer-managed symbolic link: ${relativePath}`);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
+  }
 }
 
 function createManifestFromPlan(
@@ -650,6 +680,19 @@ export async function applyGoferRefresh(
   const backupRoot = join(plan.projectRoot, '.specify', '_backup', 'gofer-refresh', timestamp);
   let backupCount = 0;
   const appliedItems: GoferRefreshPlanItem[] = [];
+
+  const generatedPaths = [
+    '.claude/settings.json',
+    '.vscode/settings.json',
+    '.gitignore',
+    '.eai-manifest.json',
+    join('.specify', '_backup', 'gofer-refresh'),
+  ];
+  for (const relativePath of [
+    ...new Set([...plan.items.map((item) => item.relativePath), ...generatedPaths]),
+  ]) {
+    await assertManagedPathIsNotSymlink(plan.projectRoot, relativePath);
+  }
 
   for (const item of plan.items) {
     const absolutePath = join(plan.projectRoot, item.relativePath);
