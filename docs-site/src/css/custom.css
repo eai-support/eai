@@ -28,7 +28,7 @@
 }
 
 html { scroll-behavior: smooth; }
-.navbar { max-width: 1160px; margin: .75rem auto 0; border: 0; border-radius: 16px; box-shadow: none; }
+.navbar { max-width: none; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
 .navbar__brand,.navbar__title,.navbar__link,.navbar__toggle { color: #FFFFFF; }
 .navbar__title { font-size: .95rem; font-weight: 700; letter-spacing: .02em; }
 .navbar__link { font-size: .9rem; font-weight: 600; }

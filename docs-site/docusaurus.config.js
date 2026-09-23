@@ -21,6 +21,12 @@ const config = {
   projectName: "eai",
   deploymentBranch: "gh-pages",
   trailingSlash: false,
+  customFields: {
+    documentationFeedbackUrl: process.env.EAI_DOCS_FEEDBACK_URL || "",
+    docsAssistantApiUrl:
+      process.env.EAI_DOCS_ASSISTANT_API_URL ||
+      "https://www.enterpriseaigroup.com/api/chat",
+  },
   onBrokenLinks: "warn",
   markdown: {
     format: "md",
@@ -89,12 +95,14 @@ const config = {
     ],
   ],
   themeConfig: {
-    customFields: {
-      documentationFeedbackUrl: process.env.EAI_DOCS_FEEDBACK_URL || "",
-    },
     navbar: {
       title: "EAI Docs",
       items: [
+        {
+          href: "https://enterpriseaigroup.com",
+          label: "Enterprise AI",
+          position: "left",
+        },
         {
           type: "docSidebar",
           sidebarId: "docsSidebar",
