@@ -1169,10 +1169,13 @@ Preview file-level app-template / UI drift without writing to the repo.
 - `--ai-plan` — Emit a structured JSON plan for selective EAI capability adoption
 - `--preserve-ui` — Protect existing layout, styles, components, content, and interactions in the AI plan; enabled by default
 
-**No API calls** — local diff against the bundled template snapshot
+**No API calls** — clones the configured Git template revision, then performs a
+local read-only diff. Git access is required when that revision is not already
+available from the configured source.
 
 AI planning also accepts ordinary Git and JavaScript package repositories. It
-uses the immutable template snapshot bundled with the installed CLI. For a
+fetches the template revision pinned by the installed CLI, or the current
+revision of a recorded custom template source. For a
 repository without template provenance, it reports `unbased-adoption` and does
 not claim that the repository came from the EAI template.
 

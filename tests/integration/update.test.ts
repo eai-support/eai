@@ -690,6 +690,33 @@ describe('eai update project maintenance', () => {
     }
   });
 
+  test('keeps successful Gofer maintenance when the automatic template check fails', async () => {
+    const { env, ctx, close } = await createMaintenanceContext();
+    try {
+      await writeFile(
+        join(env.dir, '.eai-manifest.json'),
+        `${JSON.stringify({
+          schemaVersion: 1,
+          template: {
+            repo: join(env.dir, 'missing-template-repository'),
+            commit: '0000000000000000000000000000000000000000',
+          },
+        }, null, 2)}\n`,
+        'utf-8',
+      );
+
+      const result = await runCommand(ctx, 'eai update');
+      const output = `${result.stdout}\n${result.stderr}`;
+
+      expect(result, output).toMatchObject({ exitCode: 0 });
+      expect(result.stdout).toContain('Gofer-managed assets refreshed');
+      expect(output).toContain('automatic template check could not complete');
+      expect(output).toContain('eai template check');
+    } finally {
+      await close();
+    }
+  });
+
   test('repairs a matching-version Gofer cache missing normalized config during update', { timeout: 30_000 }, async () => {
     const { env, ctx, close } = await createMaintenanceContext();
     const goferVersion = '99.0.1';
