@@ -28,7 +28,7 @@ telemetry, consent checks, and public response shaping.
 
 1. Define contracts and automated evaluation before behavioural changes.
 2. Deliver Website governance and Test-only telemetry storage.
-3. Deliver Docs search, feedback, accessibility, and preview behaviour.
+3. Deliver Docs search, feedback, and accessibility behaviour.
 4. Deliver Test-only developer explorer and public MCP read interface.
 5. Validate in Test, then promote only with release evidence.
 
@@ -53,12 +53,11 @@ telemetry, consent checks, and public response shaping.
 - Contract tests must prove that an allowlisted public document is returned and
   non-public routes and mutation tool names are rejected.
 
-### Preview and Evidence Gate
+### Test Evidence Gate
 
-- Each Docs pull request must build a unique, disposable preview URL.
-- The preview job must run automated accessibility and visual checks against
-  the Search and Ask drawer.
-- A Test-only evaluator job must produce the versioned receipt defined in
+- A Test-only evaluator job must run automated accessibility and visual checks
+  against the Search and Ask drawer.
+- It must produce the versioned receipt defined in
   `evaluation.md`; the promotion workflow may continue only when the receipt
   meets all thresholds and a release approver accepts the evidence.
 
@@ -66,4 +65,4 @@ telemetry, consent checks, and public response shaping.
 
 - No anonymous write operations.
 - No production credential in browser code.
-- No customer or tenant data in public retrieval, telemetry, MCP, or previews.
+- No customer or tenant data in public retrieval, telemetry, or MCP.
