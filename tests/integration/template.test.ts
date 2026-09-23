@@ -234,7 +234,7 @@ describe('eai template check', () => {
     const plan = await buildTemplateAiPlan({
       assessment: assessment!,
       templateRoot,
-      templateRepo: 'https://secret-user:secret-token@example.com/private/template.git?token=hidden',
+      templateRepo: 'https://fixture-user:fixture-credential@example.com/private/template.git?credential=placeholder',
       templateRef: 'main',
       templateCommit: null,
       provenance: 'unbased-adoption',
@@ -243,8 +243,8 @@ describe('eai template check', () => {
     });
 
     expect(plan.template.repo).toBe('https://example.com/private/template.git');
-    expect(JSON.stringify(plan)).not.toContain('secret-token');
-    expect(JSON.stringify(plan)).not.toContain('token=hidden');
+    expect(JSON.stringify(plan)).not.toContain('fixture-credential');
+    expect(JSON.stringify(plan)).not.toContain('credential=placeholder');
   });
 
   test('blocks files reached through a symlinked ancestor without exposing their contents', async () => {
