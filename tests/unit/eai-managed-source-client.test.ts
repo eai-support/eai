@@ -36,6 +36,25 @@ describe('actor-bound GitHub linking', () => {
     expect(openBrowser).toHaveBeenCalledExactlyOnceWith(session().browserUrl);
   });
 
+  test('backs off a pending browser handoff after 30 seconds without exceeding its deadline', async () => {
+    let now = Date.parse('2026-09-24T00:00:00Z');
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const pending = { ...session('pending'), expiresAt: new Date(now + 1_200_000).toISOString() };
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    vi.spyOn(client, 'createCliManagedGithubLinkSession').mockResolvedValue(response(pending));
+    const read = vi.spyOn(client, 'getCliManagedGithubLinkSession').mockImplementation(async () => response(pending));
+    const delays: number[] = [];
+    await expect(verifyCliGithubIdentity(client, scope, { interactive: true, timeoutMs: 600_000 }, {
+      openBrowser: async () => {},
+      sleep: async ms => { delays.push(ms); now += ms; },
+    })).rejects.toMatchObject({ code: 'GITHUB_LINK_PENDING' });
+    expect(now).toBe(Date.parse('2026-09-24T00:10:00Z'));
+    expect(delays.slice(0, 15)).toEqual(Array(15).fill(2_000));
+    expect(delays.slice(15)).toEqual(Array(114).fill(5_000));
+    expect(read).toHaveBeenCalledTimes(129);
+    expect(read).toHaveBeenCalledWith('company', 'my-app', 'github-link-123', 'runtime', 'preview');
+  });
+
   test('returns an actionable browser handoff for noninteractive callers without mutating source', async () => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
     vi.spyOn(client, 'createCliManagedGithubLinkSession').mockResolvedValue(response(session('pending')));

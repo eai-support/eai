@@ -99,9 +99,11 @@ export async function verifyCliGithubIdentity(
   });
   try { await openBrowser(url.href); } catch { throw new ManagedSourceError('GITHUB_LINK_BROWSER_REQUIRED', nextAction); }
   const sleep = dependencies.sleep || (async (ms: number): Promise<void> => { await new Promise(resolve => setTimeout(resolve, ms)); });
-  const deadline = Date.now() + Math.min(options.timeoutMs, 10 * 60 * 1000);
+  const startedAt = Date.now();
+  const deadline = startedAt + Math.min(options.timeoutMs, 10 * 60 * 1000);
   while (Date.now() < deadline) {
-    await sleep(Math.min(2_000, deadline - Date.now()));
+    const interval = Date.now() - startedAt < 30_000 ? 2_000 : 5_000;
+    await sleep(Math.min(interval, deadline - Date.now()));
     session = validateCliGithubLinkSession(await responseSession(await client.getCliManagedGithubLinkSession(scope.tenantId, scope.appKey, session.sessionId, scope.targetTenantId, scope.environment)), scope, session.sessionId);
     if (session.status === 'verified') return session;
   }
