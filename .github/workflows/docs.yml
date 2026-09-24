@@ -156,9 +156,20 @@ jobs:
       - name: Build website-hosted Docusaurus copy
         if: steps.website-token.outcome == 'success' && steps.website-token.outputs.token != ''
         env:
+          # Hosted Docs must call the website API on the same origin. This avoids
+          # a separate CORS and environment-endpoint deployment dependency.
+          EAI_DOCS_ASSISTANT_API_URL: /api/chat
           EAI_DOCS_SITE_URL: https://www.enterpriseaigroup.com
           EAI_DOCS_BASE_URL: /docs/eai/
         run: cd docs-site && npm run build
+
+      - name: Verify hosted Docs use the same-origin assistant API
+        if: steps.website-token.outcome == 'success' && steps.website-token.outputs.token != ''
+        run: |
+          if ! rg --fixed-strings --quiet '/api/chat' docs-site/build; then
+            echo "Hosted Docs did not include the same-origin assistant endpoint." >&2
+            exit 1
+          fi
 
       - name: Sync generated EAI docs into website repo
         if: steps.website-token.outcome == 'success' && steps.website-token.outputs.token != ''
