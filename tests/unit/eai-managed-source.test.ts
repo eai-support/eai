@@ -168,6 +168,17 @@ describe('managed local source snapshot', () => {
     await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'SOURCE_FILE_COUNT_LIMIT' });
   });
 
+  test('accepts exactly 500 sorted source files with one reproducible digest', async () => {
+    const root = await project();
+    const baselineCount = (await buildCliManagedSourceBundle(root)).bundle.files.length;
+    await Promise.all(Array.from({ length: 500 - baselineCount }, (_, index) => put(root, `public/file-${index}.txt`, 'a')));
+    const first = await buildCliManagedSourceBundle(root);
+    const second = await buildCliManagedSourceBundle(root);
+    expect(first.bundle.files).toHaveLength(500);
+    expect(first).toEqual(second);
+    expect(first.bundle.files.map(file => file.path)).toEqual(first.bundle.files.map(file => file.path).sort());
+  });
+
   test.each(['../src/x.ts', 'src/../x.ts', '/src/x.ts', 'src\\x.ts', 'src/.env', 'src/app/api/auth/route.ts', 'src/lib/platform/client.ts', '.github/workflows/build.yml'])('rejects unsupported wire path %s', path => {
     expect(isManagedAppSourcePath(path)).toBe(false);
   });
