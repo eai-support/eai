@@ -494,6 +494,8 @@ fi
     expect(ghCalls).not.toContain('variable set');
     expect(ghCalls, JSON.stringify(result)).toContain(`commit_sha=${commitSha}`);
     expect(ghCalls).toContain(`public_api_url=${API_BASE}`);
+    expect(ghCalls).toContain(`target_tenant_id=${TENANT_ID}`);
+    expect(ghCalls).toContain('source_mode=source-unknown');
     expect(ghCalls).toContain('workflow run .github/workflows/eai-app.yml');
     expect(ghCalls).toContain('operation_id=source-unknown-abc123');
     if (bootstrap === 'lost-response') {
