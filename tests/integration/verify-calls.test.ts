@@ -94,9 +94,6 @@ describe('runContractAudit', () => {
           ],
         });
       }),
-      http.get('https://test-api.example.com/health', () => {
-        return HttpResponse.json({ status: 'ok' });
-      }),
       http.get('https://test-api.example.com/v4/data/resources/tenant-1/customer', ({ request }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get('cursor');
@@ -184,8 +181,8 @@ describe('runContractAudit', () => {
 
   test('fails auth check and skips protected contracts when not logged in', async () => {
     mockServer.server.use(
-      http.get('https://test-api.example.com/health', () => {
-        return HttpResponse.json({ status: 'ok' });
+      http.get('https://test-api.example.com/v4/data/resources/object-types', () => {
+        return HttpResponse.json({ docs: [] });
       }),
     );
 
@@ -216,7 +213,7 @@ describe('runContractAudit', () => {
           ],
         });
       }),
-      http.get('https://test-api.example.com/health', () => {
+      http.get('https://test-api.example.com/v4/data/resources/object-types', () => {
         return HttpResponse.json({ status: 'ok' });
       }),
       http.get('https://test-api.example.com/v4/data/resources/schema/tenant-override', () => {

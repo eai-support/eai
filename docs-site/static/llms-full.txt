@@ -796,7 +796,7 @@ eai resources schema --tenant-id <tenant-id> --format json
 - Server helpers attach auth, tenant, and correlation headers.
 - The browser never receives raw database, blob, search, PublicAPI, or model
   provider credentials.
-- Prefer PublicAPI V4 routes; older route families are compatibility glue.
+- Use PublicAPI V4 routes for direct platform calls.
 
 ## Data Model
 
@@ -856,6 +856,8 @@ See [Config-Driven UI](./app-template/config-driven-ui.md) for the full pattern.
 
 # Examples
 
+import Link from '@docusaurus/Link';
+
 # Examples
 
 These examples show how the CLI, eai-gofer, and EAI App Template work together.
@@ -866,7 +868,7 @@ These examples show how the CLI, eai-gofer, and EAI App Template work together.
 | ----------------------------------------- | --------------------------------------------------------------------------------------- |
 | [Build a Task Tracker](./task-tracker.md) | Scaffold an app, define Object Types, publish them, and build ResourceAPI-backed pages. |
 | [Add AI Chat](./ai-chat.md)               | Add streaming chat, document upload, and RAG indexing through template hooks.           |
-| [Business Scenarios](/scenarios/)         | Browse industry-specific workflows before deciding what to build.                       |
+| <Link to="/scenarios/">Business Scenarios</Link> | Browse industry-specific workflows before deciding what to build. |
 
 ## Standard Loop
 
@@ -3817,8 +3819,7 @@ Run read-only platform connectivity checks.
 - `--tenant-id <id>` — Run checks against a specific tenant (read-only)
 
 **Platform API Endpoints Used**:
-- `GET /health` — PublicAPI gateway health
-- `GET /v4/data/resources/object-types` — platform reachability
+- `GET /v4/data/resources/object-types` — PublicAPI reachability and Object Type access
 - `GET /v4/data/resources/schema/{tenantId}` — data-service reachability
 
 ---
@@ -3851,7 +3852,7 @@ Audit the platform API contracts used by the CLI. All checks are read-only unles
 - `--chat-message <message>` — Message to send when probing chat
 - `--format <format>` — Output format (text|json, default: text)
 
-**Endpoints probed** (subset, depending on flags): `GET /health`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
+**Endpoints probed** (subset, depending on flags): `GET /v4/data/resources/object-types`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
 
 ---
 
@@ -3964,7 +3965,7 @@ scripts. Existing presentation files remain protected references.
 - `POST /oauth2/v2.0/token` — Entra CIAM token exchange
 
 ### Health
-- `GET /health` — PublicAPI gateway health
+- `GET /v4/data/resources/object-types` — PublicAPI reachability
 
 ### Platform — Tenants
 - `POST /v4/platform/tenants` — Create root tenant

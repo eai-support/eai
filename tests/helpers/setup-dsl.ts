@@ -202,14 +202,14 @@ export async function projectHasMultiTenantConfig(ctx: TestContext, keys: string
  * Mock PublicAPI as reachable
  */
 export function publicAPIReachable(ctx: TestContext): void {
-  ctx.mockAPI.mockHealth(true);
+  ctx.mockAPI.mockReachability(true);
 }
 
 /**
  * Mock PublicAPI as unreachable
  */
 export function publicAPIUnreachable(ctx: TestContext): void {
-  ctx.mockAPI.mockHealth(false);
+  ctx.mockAPI.mockReachability(false);
 }
 
 /**

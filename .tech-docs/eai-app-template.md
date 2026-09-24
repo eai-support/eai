@@ -51,7 +51,7 @@ eai resources schema --tenant-id <tenant-id> --format json
 - Server helpers attach auth, tenant, and correlation headers.
 - The browser never receives raw database, blob, search, PublicAPI, or model
   provider credentials.
-- Prefer PublicAPI V4 routes; older route families are compatibility glue.
+- Use PublicAPI V4 routes for direct platform calls.
 
 ## Data Model
 

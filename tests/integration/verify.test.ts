@@ -30,11 +30,6 @@ async function startLocalPublicApi(): Promise<{ baseUrl: string; calls: string[]
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', 'http://127.0.0.1');
     calls.push(`${req.method || 'GET'} ${url.pathname}`);
-    if (req.method === 'GET' && url.pathname === '/health') {
-      await writeJson(res, 200, { status: 'ok' });
-      return;
-    }
-
     if (req.method === 'GET' && url.pathname === '/v4/platform/tenants/tenant-override/users/test-user-oid/memberships') {
       await writeJson(res, 200, {
         tenants: [

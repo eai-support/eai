@@ -3,9 +3,8 @@
  * Anti-drift guard for the published API reference.
  *
  * The API reference (`.tech-docs/api-reference.md`) and its sibling docs are
- * hand-curated, but their route paths must track `src/lib/api.ts`. When the
- * CLI migrated PublicAPI v3 -> v4 the docs silently kept the dead `/v3/*`
- * routes. This script fails CI/release when a doc references an API version or
+ * hand-curated, but their route paths must track `src/lib/api.ts`. This script
+ * fails CI/release when a doc references an API version or
  * domain prefix that the code no longer uses, so that class of drift cannot
  * ship again.
  *
