@@ -8,6 +8,7 @@ import {
   EAI_MANAGED_WORKFLOW_PATH,
   assertManagedDeployStateMatchesOperation,
   buildManagedDeployConfigHash,
+  claimManagedDeployDispatch,
   classifyManagedOperationStatus,
   installCanonicalManagedDeployFiles,
   loadManagedDeployState,
@@ -15,6 +16,7 @@ import {
   requireBranch,
   requireCommitSha,
   requireInstallationId,
+  requireManagedPublicApiUrl,
   requireWorkflowPath,
   saveManagedDeployState,
   type ManagedDeployState,
@@ -221,16 +223,16 @@ async function verifyLocalSource(
 }
 
 async function dispatchWorkflow(state: ManagedDeployState, publicApiUrl: string, root: string): Promise<void> {
-  await verifyGitHubAccess(state.repo, state.branch, state.commitSha);
-  try {
-    await run('gh', ['variable', 'set', 'EAI_PUBLIC_API_URL', '--repo', state.repo, '--body', publicApiUrl]);
-  } catch (error) {
-    fail(
-      'GITHUB_ACTIONS_VARIABLE_FAILED',
-      String(error),
-      `Ask a repository administrator to set EAI_PUBLIC_API_URL for ${state.repo}; do not store it as a secret.`,
-    );
+  const trustedPublicApiUrl = requireManagedPublicApiUrl(publicApiUrl);
+  if (state.publicApiUrl && state.publicApiUrl !== trustedPublicApiUrl) {
+    fail('RETRY_API_BINDING_MISMATCH', 'Retry profile differs from the original workflow endpoint.', 'Select the original EAI profile, then resume this exact operation.');
   }
+  await verifyGitHubAccess(state.repo, state.branch, state.commitSha);
+  if (state.dispatchedAt || state.dispatchStartedAt || !await claimManagedDeployDispatch(state)) return;
+  // Persist before dispatch: a failed response may still mean GitHub accepted the run.
+  state.dispatchStartedAt = new Date().toISOString();
+  state.publicApiUrl = trustedPublicApiUrl;
+  await saveManagedDeployState(state);
   try {
     await run('gh', [
       'workflow', 'run', state.workflowPath,
@@ -241,15 +243,19 @@ async function dispatchWorkflow(state: ManagedDeployState, publicApiUrl: string,
       '-f', `operation_id=${state.operationId}`,
       '-f', `nonce=${state.nonce}`,
       '-f', `config_hash=${state.configHash}`,
+      '-f', `commit_sha=${state.commitSha}`,
+      '-f', `public_api_url=${trustedPublicApiUrl}`,
       '-f', `env=${state.environment}`,
     ], root);
   } catch (error) {
     fail(
       'GITHUB_WORKFLOW_DISPATCH_FAILED',
       String(error),
-      'Confirm Actions is enabled, the workflow exists at the exact commit, and branch rules permit workflow dispatch.',
+      `Dispatch acceptance is uncertain. Resume ${state.operationId} and inspect GitHub Actions. If no run was accepted, start a fresh source operation; retry will not reuse this nonce.`,
     );
   }
+  state.dispatchedAt = new Date().toISOString();
+  await saveManagedDeployState(state);
 }
 
 async function prepareRuntime(client: PlatformAPIClient, state: ManagedDeployState): Promise<void> {
@@ -315,6 +321,13 @@ async function pollExactOperation(
       state.appKey,
       state.operationId,
     );
+    if ('commitSha' in state) {
+      try {
+        assertManagedDeployStateMatchesOperation(state as ManagedDeployState, operation);
+      } catch (error) {
+        fail('SOURCE_OPERATION_SOURCE_MISMATCH', error instanceof Error ? error.message : String(error), 'Stop and inspect the exact operation source binding; do not accept this runtime as the requested deployment.');
+      }
+    }
     const classification = classifyManagedOperationStatus(operation);
     if (!wait || classification !== 'pending') return operation;
     if (Date.now() >= deadline) {
@@ -431,7 +444,7 @@ export const eaiManagedDeployCommand = new Command('app')
   .option('--environment <environment>', 'Deployment environment', 'preview')
   .option('--commit <sha>', 'Expected exact 40 character commit SHA')
   .option('--resume <operation-id>', 'Read and wait for one exact existing operation')
-  .option('--retry <operation-id>', 'Retry accepted evidence handoff, or redispatch an unconsumed immutable operation')
+  .option('--retry <operation-id>', 'Retry evidence handoff, resume dispatched work, or start an undispatched operation')
   .option('--wait', 'Poll the exact operation until it reaches a terminal status', true)
   .option('--no-wait', 'Return after dispatch instead of polling the exact operation')
   .option('--timeout <seconds>', 'Maximum exact-operation polling time', String(DEFAULT_TIMEOUT_SECONDS))
@@ -452,6 +465,9 @@ Examples:
       }
       if (options.resume && options.retry) {
         fail('DEPLOY_MODE_CONFLICT', '--resume and --retry cannot be used together.', 'Choose one exact operation action.');
+      }
+      if (!options.resume && !options.retry && !MANAGED_DEPLOY_ENVIRONMENTS.has(options.environment)) {
+        fail('DEPLOY_ENVIRONMENT_INVALID', 'Managed deployment supports preview, dev, test, or prod.', 'Choose a supported environment before registering the source operation.');
       }
       const appKey = appKeyValue.trim();
       if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(appKey)) {
@@ -542,14 +558,23 @@ Examples:
             'Do not edit retry state. Resume the exact server operation, or start a new deployment from the intended immutable commit.',
           );
         }
+        if (!MANAGED_DEPLOY_ENVIRONMENTS.has(state.environment)) {
+          fail('SOURCE_OPERATION_ENVIRONMENT_INVALID', 'The stored operation has an unsupported environment.', NEW_SOURCE_OPERATION_ACTION);
+        }
+        if (state.dispatchedAt || state.dispatchStartedAt) {
+          const operation = await pollExactOperation(client, state, options.wait, timeoutSeconds);
+          spinner?.stop();
+          printOperation(format, operation);
+          if (classifyManagedOperationStatus(operation) === 'failed') process.exitCode = 1;
+          return;
+        }
+        requireManagedPublicApiUrl(context.publicApiUrl);
         const source = await verifyLocalSource(context.root, state.repo, state.branch, state.commitSha);
         if (source.commitSha !== state.commitSha) {
           fail('RETRY_SHA_CHANGED', 'The current commit differs from the stored operation commit.', `Check out ${state.commitSha}, then retry the same operation.`);
         }
         await prepareRuntime(client, state);
         await dispatchWorkflow(state, context.publicApiUrl, context.root);
-        state.dispatchedAt = new Date().toISOString();
-        await saveManagedDeployState(state);
         const operation = await pollExactOperation(client, state, options.wait, timeoutSeconds);
         spinner?.stop();
         printOperation(format, operation, { repo: state.repo, ref: state.ref, commitSha: state.commitSha, configHash: state.configHash });
@@ -560,6 +585,7 @@ Examples:
       if (!options.repo || !options.installationId) {
         fail('REPOSITORY_AUTHORITY_REQUIRED', '--repo and --installation-id are required for a new EAI deployment.', 'Connect the repository to the tenant, install the EAI GitHub App, then pass both exact values.');
       }
+      const publicApiUrl = requireManagedPublicApiUrl(context.publicApiUrl);
       const repository = parseGitHubRepository(options.repo);
       const installationId = requireInstallationId(options.installationId);
       const install = await installCanonicalManagedDeployFiles(context.root, workflowPath);
@@ -633,12 +659,11 @@ Examples:
         configHash,
         environment: options.environment,
         installationId,
+        publicApiUrl,
       };
       await saveManagedDeployState(state);
       await prepareRuntime(client, state);
       await dispatchWorkflow(state, context.publicApiUrl, context.root);
-      state.dispatchedAt = new Date().toISOString();
-      await saveManagedDeployState(state);
 
       const operation = await pollExactOperation(client, state, options.wait, timeoutSeconds);
       spinner?.stop();

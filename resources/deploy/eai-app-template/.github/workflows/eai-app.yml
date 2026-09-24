@@ -18,6 +18,12 @@ on:
       config_hash:
         description: Exact configuration hash approved by workflow setup.
         required: true
+      commit_sha:
+        description: Exact source commit approved by workflow setup.
+        required: true
+      public_api_url:
+        description: Trusted EAI regional PublicAPI URL for this operation.
+        required: true
       env:
         description: Deployment environment to bind.
         required: true
@@ -46,17 +52,28 @@ jobs:
       NONCE: ${{ inputs.nonce }}
       CONFIG_HASH: ${{ inputs.config_hash }}
       DEPLOY_ENVIRONMENT: ${{ inputs.env }}
-      EAI_PUBLIC_API_URL: ${{ vars.EAI_PUBLIC_API_URL }}
+      EAI_PUBLIC_API_URL: ${{ inputs.public_api_url }}
+      SOURCE_COMMIT_SHA: ${{ inputs.commit_sha }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+
+      - name: Validate immutable dispatch and trusted endpoint
+        run: |
+          node scripts/source-unknown-deployment-evidence.mjs validate-dispatch \
+            --public-api-url "$EAI_PUBLIC_API_URL" \
+            --commit "$SOURCE_COMMIT_SHA" \
+            --workflow-sha "$GITHUB_SHA"
 
       - name: Configure npm for GitHub Packages
         run: |
@@ -126,7 +143,7 @@ jobs:
             --workflow "$EAI_WORKFLOW_PATH" \
             --ref "$GITHUB_REF" \
             --branch "$GITHUB_REF_NAME" \
-            --commit "$GITHUB_SHA" \
+            --commit "$SOURCE_COMMIT_SHA" \
             --workflow-run-id "$GITHUB_RUN_ID" \
             --workflow-run-attempt "$GITHUB_RUN_ATTEMPT" \
             --environment "$DEPLOY_ENVIRONMENT" \

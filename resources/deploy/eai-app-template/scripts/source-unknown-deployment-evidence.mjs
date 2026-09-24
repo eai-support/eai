@@ -14,6 +14,36 @@ import { execFileSync } from 'node:child_process';
 
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
 
+function validateDispatch(options) {
+  const endpoint = option(options, 'publicApiUrl');
+  if (
+    !/^https:\/\/(?:dev-api\.au|(?:test-api|api)\.(?:au|ca|eu))\.myenterprise\.ai\/public\/?$/.test(
+      endpoint,
+    )
+  ) {
+    throw new Error(
+      'Managed deployment requires a trusted EAI regional PublicAPI HTTPS URL ending in /public.',
+    );
+  }
+  const commit = option(options, 'commit');
+  const workflowSha = option(options, 'workflowSha');
+  const root = resolve(option(options, 'root', process.cwd()));
+  const actual = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: root,
+    encoding: 'utf8',
+  }).trim();
+  // SECURITY: the GitHub OIDC sha and built source must match the server-issued immutable operation.
+  if (
+    !/^[a-f0-9]{40}$/.test(commit) ||
+    commit !== actual ||
+    commit !== workflowSha
+  ) {
+    throw new Error(
+      'Dispatched commit, checked-out source, and workflow identity must match. Start a new operation after a branch update.',
+    );
+  }
+}
+
 function parseArgs(argv) {
   const [command = 'collect', ...rest] = argv;
   const options = {};
@@ -236,6 +266,9 @@ async function collectEvidence(options) {
   const commitSha = option(options, 'commit', process.env.GITHUB_SHA || '');
   const repo = option(options, 'repo', process.env.GITHUB_REPOSITORY || '');
   const environment = option(options, 'environment', 'preview');
+  if (!['preview', 'dev', 'test', 'prod'].includes(environment)) {
+    throw new Error('Unsupported managed deployment environment.');
+  }
   if (!/^[^/\s]+\/[^/\s]+$/.test(repo))
     throw new Error('Repository must be owner/name.');
   if (!/^\.github\/workflows\/[^/]+\.ya?ml$/.test(workflowPath)) {
@@ -286,16 +319,22 @@ async function collectEvidence(options) {
     schema_digest: schemaProvenance.schemaDigest,
     validator_digest: schemaProvenance.validatorDigest,
   });
-  process.stdout.write(`${JSON.stringify({
-    operationId: evidence.operationId,
-    evidencePath,
-    configHash,
-    artifactDigest,
-    imageArtifact: evidence.imageArtifact,
-    imageDigest,
-    templateVersion: schemaProvenance.templateVersion,
-    schemaDigest: schemaProvenance.schemaDigest,
-  }, null, 2)}\n`);
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        operationId: evidence.operationId,
+        evidencePath,
+        configHash,
+        artifactDigest,
+        imageArtifact: evidence.imageArtifact,
+        imageDigest,
+        templateVersion: schemaProvenance.templateVersion,
+        schemaDigest: schemaProvenance.schemaDigest,
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 function readJson(path) {
@@ -337,7 +376,9 @@ function assertHandoffSubmitted(options) {
 
 const { command, options } = parseArgs(process.argv.slice(2));
 
-if (command === 'config-hash') {
+if (command === 'validate-dispatch') {
+  validateDispatch(options);
+} else if (command === 'config-hash') {
   process.stdout.write(
     `${buildConfigHash(resolve(option(options, 'root', process.cwd())))}\n`,
   );

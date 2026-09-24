@@ -1,5 +1,6 @@
-import { createHash } from 'node:crypto';
-import { access, chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
+import { constants } from 'node:fs';
+import { access, chmod, lstat, mkdir, open, readFile, realpath, rename, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +37,8 @@ export interface ManagedDeployState {
   configHash: string;
   environment: string;
   installationId: number;
+  publicApiUrl?: string;
+  dispatchStartedAt?: string;
   dispatchedAt?: string;
 }
 
@@ -138,6 +141,60 @@ export function requireInstallationId(value: string | number): number {
   return normalized;
 }
 
+/** Workflow identity tokens may only be submitted to the platform-owned regional gateways. */
+export function requireManagedPublicApiUrl(value: string): string {
+  if (!/^https:\/\/(?:dev-api\.au|(?:test-api|api)\.(?:au|ca|eu))\.myenterprise\.ai\/public\/?$/.test(value)) {
+    throw new Error('Managed deployment requires a trusted EAI regional PublicAPI HTTPS URL ending in /public.');
+  }
+  return value.replace(/\/$/, '');
+}
+
+async function assertTrustedDirectory(path: string): Promise<void> {
+  const status = await lstat(path);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (!status.isDirectory() || status.isSymbolicLink()
+    || (process.platform !== 'win32' && ((uid !== null && status.uid !== uid) || (status.mode & 0o022) !== 0))) {
+    throw new Error('Managed deployment refused an untrusted directory.');
+  }
+}
+
+async function ensureDirectory(path: string, mode: number): Promise<void> {
+  try {
+    await mkdir(path, { mode });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  await assertTrustedDirectory(path);
+}
+
+async function assertRegularTarget(path: string, privateData = false): Promise<void> {
+  try {
+    const status = await lstat(path);
+    const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+    if (!status.isFile() || status.isSymbolicLink() || (privateData && (status.nlink !== 1
+      || (process.platform !== 'win32' && ((uid !== null && status.uid !== uid) || (status.mode & 0o077) !== 0))))) {
+      throw new Error('Managed deployment refused an untrusted file.');
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+}
+
+async function prepareProjectTarget(root: string, target: string): Promise<void> {
+  await assertTrustedDirectory(root);
+  const canonicalRoot = await realpath(root);
+  const components = relative(root, dirname(target)).split(/[\\/]/).filter(Boolean);
+  let parent = root;
+  for (const component of components) {
+    parent = join(parent, component);
+    await ensureDirectory(parent, 0o755);
+    if (!isContained(canonicalRoot, await realpath(parent))) {
+      throw new Error('Canonical deployment file resolved outside its allowed root.');
+    }
+  }
+  await assertRegularTarget(target);
+}
+
 async function fileMatches(left: string, right: string): Promise<boolean> {
   try {
     const [leftValue, rightValue] = await Promise.all([readFile(left), readFile(right)]);
@@ -147,11 +204,18 @@ async function fileMatches(left: string, right: string): Promise<boolean> {
   }
 }
 
-async function writeAtomically(path: string, content: Buffer): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const temporaryPath = `${path}.eai-${process.pid}.tmp`;
-  await writeFile(temporaryPath, content, { mode: 0o644 });
-  await rename(temporaryPath, path);
+async function writeAtomically(path: string, content: Buffer | string, mode = 0o644): Promise<void> {
+  const temporaryPath = `${path}.eai-${process.pid}-${randomBytes(16).toString('hex')}.tmp`;
+  const handle = await open(temporaryPath, 'wx', mode);
+  try {
+    await handle.writeFile(content);
+    await handle.sync();
+    await handle.close();
+    await rename(temporaryPath, path);
+  } finally {
+    await handle.close().catch(() => undefined);
+    await rm(temporaryPath, { force: true });
+  }
 }
 
 /** Install the reviewed workflow and evidence collector as one versioned pair. */
@@ -172,6 +236,7 @@ export async function installCanonicalManagedDeployFiles(
     if (!isContained(canonicalRoot, source) || !isContained(projectRoot, target)) {
       throw new Error('Canonical deployment file resolved outside its allowed root.');
     }
+    await prepareProjectTarget(resolve(projectRoot), target);
     if (await fileMatches(source, target)) {
       result.unchanged.push(file.target);
       continue;
@@ -184,6 +249,7 @@ export async function installCanonicalManagedDeployFiles(
     }
     if (targetExists) {
       const candidate = `${target}.eai-update`;
+      await assertRegularTarget(candidate);
       await writeAtomically(candidate, await readFile(source));
       result.pendingUpdates.push(`${file.target}.eai-update`);
     } else {
@@ -308,23 +374,63 @@ export async function saveManagedDeployState(state: ManagedDeployState, baseDir?
   requireCommitSha(state.commitSha);
   requireConfigHash(state.configHash);
   const path = managedDeployStatePath(state.operationId, baseDir);
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  await chmod(dirname(path), 0o700);
-  const temporaryPath = `${path}.${process.pid}.tmp`;
-  await writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
-  await chmod(temporaryPath, 0o600);
-  await rename(temporaryPath, path);
+  await prepareStateDirectory(baseDir);
+  await assertRegularTarget(path, true);
+  await writeAtomically(path, `${JSON.stringify(state, null, 2)}\n`, 0o600);
+}
+
+async function prepareStateDirectory(baseDir?: string): Promise<void> {
+  if (!baseDir) {
+    await assertTrustedDirectory(homedir());
+    await ensureDirectory(join(homedir(), '.eai'), 0o700);
+  }
+  const directory = baseDir ?? join(homedir(), '.eai', 'managed-deployments');
+  await ensureDirectory(directory, 0o700);
+  await chmod(directory, 0o700);
+}
+
+/** A durable exclusive claim survives crashes and prevents concurrent reuse of the one-time nonce. */
+export async function claimManagedDeployDispatch(state: ManagedDeployState, baseDir?: string): Promise<boolean> {
+  await prepareStateDirectory(baseDir);
+  const marker = `${managedDeployStatePath(state.operationId, baseDir)}.dispatch`;
+  try {
+    const handle = await open(marker, 'wx', 0o600);
+    try {
+      await handle.writeFile(`${new Date().toISOString()}\n`);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    return false;
+  }
 }
 
 /** Load only a state file whose immutable digest and operation identity remain valid. */
 export async function loadManagedDeployState(operationId: string, baseDir?: string): Promise<ManagedDeployState> {
   const path = managedDeployStatePath(operationId, baseDir);
+  await prepareStateDirectory(baseDir);
   try {
     await access(path);
   } catch {
     throw new Error(`No local retry state exists for ${operationId}. Resume can still read status, but retry needs the original nonce.`);
   }
-  const parsed = JSON.parse(await readFile(path, 'utf8')) as ManagedDeployState;
+  await assertRegularTarget(path, true);
+  const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+  let parsed: ManagedDeployState;
+  try {
+    const status = await handle.stat();
+    const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+    if (!status.isFile() || status.nlink !== 1 || (process.platform !== 'win32'
+      && ((uid !== null && status.uid !== uid) || (status.mode & 0o077) !== 0))) {
+      throw new Error('Managed deployment refused untrusted retry authority.');
+    }
+    parsed = JSON.parse(await handle.readFile('utf8')) as ManagedDeployState;
+  } finally {
+    await handle.close();
+  }
   if (parsed.schema !== 'eai.managed-deploy-state.v1' || parsed.operationId !== operationId) {
     throw new Error(`Local retry state for ${operationId} is invalid.`);
   }

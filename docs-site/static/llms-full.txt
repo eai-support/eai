@@ -261,8 +261,8 @@ Options:
   --environment <environment>  Deployment environment (default: "preview")
   --commit <sha>               Expected exact 40 character commit SHA
   --resume <operation-id>      Read and wait for one exact existing operation
-  --retry <operation-id>       Retry accepted evidence handoff, or redispatch an
-                               unconsumed immutable operation
+  --retry <operation-id>       Retry evidence handoff, resume dispatched work,
+                               or start an undispatched operation
   --wait                       Poll the exact operation until it reaches a
                                terminal status (default: true)
   --no-wait                    Return after dispatch instead of polling the

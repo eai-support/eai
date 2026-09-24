@@ -12,10 +12,10 @@ import {
   setActiveProfile,
 } from '../../src/lib/profile.js';
 import { eaiManagedDeployCommand } from '../../src/commands/eai-managed-deploy.js';
-import { installCanonicalManagedDeployFiles, buildManagedDeployConfigHash, saveManagedDeployState, type ManagedDeployState } from '../../src/lib/eai-managed-deploy.js';
+import { installCanonicalManagedDeployFiles, buildManagedDeployConfigHash, managedDeployStatePath, saveManagedDeployState, type ManagedDeployState } from '../../src/lib/eai-managed-deploy.js';
 
 const exec = promisify(execFile);
-const API_BASE = 'https://test-api.example.com';
+const API_BASE = 'https://test-api.au.myenterprise.ai/public';
 const TENANT_ID = 'company-tenant';
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -57,6 +57,7 @@ describe('eai deploy app --target eai', () => {
     process.chdir(projectRoot);
     process.env.HOME = env.dir;
     process.env.USERPROFILE = env.dir;
+    expect(managedDeployStatePath('source-unknown-fixture')).toContain(env.dir);
     process.env.BASE_URL_PUBLIC_API = API_BASE;
     process.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
     process.exitCode = 0;
@@ -82,13 +83,28 @@ describe('eai deploy app --target eai', () => {
     vi.unstubAllGlobals();
     await clearTokens();
     setActiveProfile('default');
-    process.env = original;
+    for (const key of Object.keys(process.env)) {
+      if (!(key in original)) delete process.env[key];
+    }
+    Object.assign(process.env, original);
     process.exitCode = 0;
     process.chdir('/');
     await env.cleanup();
   });
 
-  test.each(['configured', 'failed', 'wrong-target', 'retry'] as const)('bootstraps runtime before immutable dispatch: %s', async (bootstrap) => {
+  test('rejects an unsupported new deployment environment before any API or repository work', async () => {
+    const fetchMock = stubManagedOperation();
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+      '--environment', 'staging', '--format', 'json',
+    ], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ error: 'DEPLOY_ENVIRONMENT_INVALID' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  test.each(['configured', 'failed', 'wrong-target', 'retry', 'source-mismatch', 'already-dispatched', 'uncertain-dispatch', 'lost-response'] as const)('bootstraps runtime before immutable dispatch: %s', async (bootstrap) => {
     await mkdir(join(projectRoot, 'src', 'eai.config'), { recursive: true });
     await writeFile(join(projectRoot, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');
@@ -112,6 +128,9 @@ if [ "$1 $2" = "repo view" ]; then
   printf '{"viewerPermission":"WRITE","isArchived":false}\\n'
 elif [ "$1" = "api" ]; then
   printf '{"object":{"sha":"%s"}}\\n' "$FAKE_GIT_SHA"
+elif [ "$1 $2" = "workflow run" ]; then
+  test -f "$HOME/.eai/managed-deployments/source-unknown-abc123.json.dispatch" || exit 90
+  ${bootstrap === 'lost-response' ? 'exit 1' : ':'}
 fi
 `);
     await chmod(ghPath, 0o755);
@@ -126,7 +145,10 @@ fi
       repo: 'enterprise/planning-portal', branch: 'main', ref: 'refs/heads/main', commitSha,
       workflowPath: '.github/workflows/eai-app.yml', configHash, environment: 'preview', installationId: 12345,
     };
-    if (bootstrap === 'retry') await saveManagedDeployState(retryState);
+    const retryMode = ['retry', 'already-dispatched', 'uncertain-dispatch'].includes(bootstrap);
+    if (bootstrap === 'already-dispatched') retryState.dispatchedAt = new Date().toISOString();
+    if (bootstrap === 'uncertain-dispatch') retryState.dispatchStartedAt = new Date().toISOString();
+    if (retryMode) await saveManagedDeployState(retryState);
     let operationReads = 0;
     const requests: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
@@ -151,7 +173,7 @@ fi
         });
       }
       if (url.endsWith('/source-unknown/operations/source-unknown-abc123?targetTenantId=company-tenant')) {
-        if (bootstrap === 'retry' && operationReads++ === 0) return jsonResponse({
+        if ((retryMode || bootstrap === 'lost-response') && operationReads++ === 0) return jsonResponse({
           tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: retryState.appKey, operationId: retryState.operationId,
           status: 'issued', setup: { ...retryState, repo: { owner: 'enterprise', name: 'planning-portal' }, deployOnSuccess: true },
         });
@@ -173,7 +195,10 @@ fi
             repo: { owner: 'enterprise', name: 'planning-portal' },
             workflowPath: '.github/workflows/eai-app.yml',
             ref: 'refs/heads/main',
-            commitSha,
+            commitSha: bootstrap === 'source-mismatch' ? 'f'.repeat(40) : commitSha,
+            configHash,
+            environment: 'preview',
+            deployOnSuccess: true,
           },
           evidence: { status: 'accepted' },
           deploymentRequest: { status: 'active' },
@@ -190,14 +215,14 @@ fi
       '--tenant-id', TENANT_ID,
       '--repo', 'enterprise/planning-portal',
       '--installation-id', '12345',
-      ...(bootstrap === 'retry' ? ['--target-tenant-id', TENANT_ID, '--retry', retryState.operationId] : []),
+      ...(retryMode ? ['--target-tenant-id', TENANT_ID, '--retry', retryState.operationId] : []),
       '--wait',
       '--format', 'json',
     ], { from: 'user' });
 
     const registration = requests.find((request) => request.url.endsWith('/source-unknown/register'));
     const setup = requests.find((request) => request.url.endsWith('/source-unknown/workflow-setup'));
-    if (bootstrap === 'retry') {
+    if (retryMode) {
       expect(registration).toBeUndefined();
       expect(setup).toBeUndefined();
     } else {
@@ -215,6 +240,12 @@ fi
         targetTenantId: TENANT_ID,
       });
     }
+    if (bootstrap === 'already-dispatched' || bootstrap === 'uncertain-dispatch') {
+      expect(requests.some(request => request.url.endsWith('/runtime-bootstrap'))).toBe(false);
+      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ classification: 'succeeded' });
+      await expect(readFile(ghLog, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+      return;
+    }
     const bootstrapIndex = requests.findIndex(request => request.url.endsWith('/runtime-bootstrap'));
     expect(bootstrapIndex).toBeGreaterThan(requests.findIndex(request => request.url.endsWith('/workflow-setup')));
     expect(requests[bootstrapIndex]?.body).toEqual({
@@ -229,12 +260,37 @@ fi
       return;
     }
     expect(requests.some((request) => request.url.includes('/deployments/latest'))).toBe(false);
-    expect(requests.some((request) => request.url.includes('/operations/source-unknown-abc123'))).toBe(true);
+    expect(requests.some((request) => request.url.includes('/operations/source-unknown-abc123'))).toBe(bootstrap !== 'lost-response');
+    const result = JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')) as Record<string, unknown>;
     const ghCalls = await readFile(ghLog, 'utf8');
-    expect(ghCalls).toContain('variable set EAI_PUBLIC_API_URL');
+    expect(ghCalls).not.toContain('variable set');
+    expect(ghCalls, JSON.stringify(result)).toContain(`commit_sha=${commitSha}`);
+    expect(ghCalls).toContain(`public_api_url=${API_BASE}`);
     expect(ghCalls).toContain('workflow run .github/workflows/eai-app.yml');
     expect(ghCalls).toContain('operation_id=source-unknown-abc123');
-    const result = JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')) as Record<string, unknown>;
+    if (bootstrap === 'lost-response') {
+      expect(result).toMatchObject({ error: 'GITHUB_WORKFLOW_DISPATCH_FAILED' });
+      expect(result.nextAction).toContain('retry will not reuse this nonce');
+      const saved = JSON.parse(await readFile(managedDeployStatePath(retryState.operationId), 'utf8'));
+      expect(saved.dispatchStartedAt).toBeTruthy();
+      expect(saved.dispatchedAt).toBeUndefined();
+      output.mockClear();
+      process.exitCode = 0;
+      await eaiManagedDeployCommand.parseAsync([
+        'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
+        '--retry', retryState.operationId, '--no-wait', '--format', 'json',
+      ], { from: 'user' });
+      expect((await readFile(ghLog, 'utf8')).match(/workflow run/g)).toHaveLength(1);
+      expect(requests.filter(request => request.url.endsWith('/runtime-bootstrap'))).toHaveLength(1);
+      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ classification: 'succeeded' });
+      expect(process.exitCode).toBe(0);
+      return;
+    }
+    if (bootstrap === 'source-mismatch') {
+      expect(result).toMatchObject({ error: 'SOURCE_OPERATION_SOURCE_MISMATCH' });
+      expect(process.exitCode).toBe(1);
+      return;
+    }
     expect(result).toMatchObject({
       targetTenantId: TENANT_ID,
       status: 'active',
