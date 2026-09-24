@@ -219,6 +219,49 @@ Notes:
 
 ---
 
+eai deploy app --help
+=====================
+
+Usage: eai deploy app [options] <app-key>
+
+Deploy an app to EAI-managed TenantInfra from an immutable GitHub commit
+
+Arguments:
+  app-key                      Existing EAI app key
+
+Options:
+  --target <target>            Hosting target (eai)
+  --tenant-id <id>             Company tenant that owns the app enrollment
+  --target-tenant-id <id>      Tenant that receives the deployed runtime
+  --repo <owner/name>          Exact GitHub repository
+  --installation-id <id>       Exact EAI GitHub App installation ID
+  --branch <branch>            Exact branch to bind and dispatch (default:
+                               "main")
+  --workflow <path>            Canonical EAI workflow path (default:
+                               ".github/workflows/eai-app.yml")
+  --environment <environment>  Deployment environment (default: "preview")
+  --commit <sha>               Expected exact 40 character commit SHA
+  --resume <operation-id>      Read and wait for one exact existing operation
+  --retry <operation-id>       Retry accepted evidence handoff, or redispatch an
+                               unconsumed immutable operation
+  --wait                       Poll the exact operation until it reaches a
+                               terminal status (default: true)
+  --no-wait                    Return after dispatch instead of polling the
+                               exact operation
+  --timeout <seconds>          Maximum exact-operation polling time (default:
+                               "1200")
+  --format <format>            Output format (text|json) (default: "text")
+  --json                       Output raw JSON (deprecated, use --format json)
+                               (default: false)
+  -h, --help                   display help for command
+
+Examples:
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --repo org/planning-portal --installation-id 12345
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
+
+---
+
 eai errors --help
 =================
 

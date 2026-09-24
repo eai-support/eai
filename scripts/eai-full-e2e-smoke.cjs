@@ -371,8 +371,8 @@ const SMOKE_CALLS = {
   'eai docs index': [],
   'eai deploy app': [
     'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --repo <owner/repo> --installation-id <installation-id> --branch main --workflow .github/workflows/eai-app.yml --environment preview --commit <40-char-sha> --wait --timeout 1200 --format json',
-    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --resume <operation-id> --wait --format json',
-    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --retry <operation-id> --no-wait --format json',
+    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <target-tenant-id> --resume <operation-id> --wait --format json',
+    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <target-tenant-id> --retry <operation-id> --no-wait --format json',
   ],
   'eai deploy setup': [
     'eai deploy setup --repo <owner/repo>',

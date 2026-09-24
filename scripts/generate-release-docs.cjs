@@ -38,6 +38,7 @@ const HELP_COMMANDS = [
   { label: "eai --help", args: ["dist/index.js", "--help"] },
   { label: "eai update --help", args: ["dist/index.js", "update", "--help"] },
   { label: "eai doctor --help", args: ["dist/index.js", "doctor", "--help"] },
+  { label: "eai deploy app --help", args: ["dist/index.js", "deploy", "app", "--help"] },
   { label: "eai errors --help", args: ["dist/index.js", "errors", "--help"] },
   {
     label: "eai errors explain --help",
@@ -102,7 +103,9 @@ function readDoc(filename) {
     filename,
     slug: filename.replace(/\.md$/, ""),
     title: frontmatter.title || heading || filename.replace(/\.md$/, ""),
-    body,
+    body: body
+      .replace(/^import Link from ['"]@docusaurus\/Link['"];?\r?\n/gm, "")
+      .replace(/<Link to="([^"]+)">([^<]+)<\/Link>/g, "[$2]($1)"),
   };
 }
 

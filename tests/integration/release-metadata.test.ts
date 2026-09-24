@@ -57,3 +57,18 @@ describe('release metadata updater', () => {
     }
   });
 });
+
+describe('managed-deployment release documentation', () => {
+  test('ships the managed deployment help and portable documentation', () => {
+    const help = readFileSync(path.join(repoRoot, 'docs-site/static/cli-help.txt'), 'utf-8');
+    const full = readFileSync(path.join(repoRoot, 'docs-site/static/llms-full.txt'), 'utf-8');
+    for (const asset of [help, full]) {
+      expect(asset).toContain('eai deploy app --help');
+      expect(asset).toContain('--target-tenant-id <id>');
+      expect(asset).toContain('--resume <operation-id>');
+    }
+    expect(full).not.toContain("import Link from '@docusaurus/Link'");
+    expect(full).not.toContain('<Link to=');
+    expect(full).toContain('[Business Scenarios](/scenarios/)');
+  });
+});

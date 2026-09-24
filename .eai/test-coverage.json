@@ -203,7 +203,9 @@
             "src/commands/vertical.ts",
             "src/lib/api.ts",
             "src/lib/eai-managed-deploy.ts",
-            ".tech-docs/full-e2e-smoke-traceability.md"
+            ".tech-docs/full-e2e-smoke-traceability.md",
+            "scripts/generate-release-docs.cjs",
+            "tests/integration/release-metadata.test.ts"
           ],
           "required_repo_tests": [
             "tests/unit/eai-managed-deploy.test.ts",
@@ -212,7 +214,8 @@
             "tests/integration/vertical.test.ts",
             "tests/integration/help.test.ts",
             "tests/integration/describe-contract.test.ts",
-            "tests/integration/full-e2e-smoke.test.ts"
+            "tests/integration/full-e2e-smoke.test.ts",
+            "tests/integration/release-metadata.test.ts"
           ],
           "required_ci_checks": [
             "ci/eai-cli-tests"
