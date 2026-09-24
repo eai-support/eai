@@ -28,7 +28,7 @@ Docusaurus stays a public client and never calls an internal service route.
 
 1. A visitor receives matching public guides or a cited answer.
 2. An administrator reviews consented, privacy-safe feedback.
-3. A developer uses Test-only, read-only documentation tooling.
+3. A developer uses the public, read-only Docs machine interface.
 
 ## Requirements
 
@@ -36,7 +36,7 @@ Docusaurus stays a public client and never calls an internal service route.
 - FR-002: Return a citation with every answer, or a clear no-answer response.
 - FR-003: Rate limit public use and store only privacy-safe telemetry.
 - FR-004: Keep feedback consented and restricted to authorised administrators.
-- FR-005: Keep explorer and MCP surfaces read-only and allowlisted.
+- FR-005: Keep the Docs MCP interface read-only and allowlisted.
 
 ## Success Criteria
 
@@ -59,8 +59,8 @@ Docusaurus stays a public client and never calls an internal service route.
    consented feedback intake, and retrieval quality metrics.
 3. **PR C - Docs experience:** semantic filters, zero-result recovery,
    accessible drawer behaviour, and feedback status.
-4. **PR D - Developer and release experience:** Test-only read-only explorer,
-   public Docs MCP interface, and Test evidence validation.
+4. **PR D - Developer and release experience:** public Docs MCP interface and
+   Test evidence validation.
 
 ## Delivered Evidence
 
@@ -71,8 +71,8 @@ Docusaurus stays a public client and never calls an internal service route.
 - Website public-assistant rate limiting and privacy-safe operational telemetry:
   Website PRs #376 and #379.
 
-The delivered foundation has not yet satisfied the Test-only explorer, machine
-interface or live Test evidence acceptance criteria below.
+The delivered foundation has not yet satisfied the machine interface or live
+Test evidence acceptance criteria below.
 
 ## Acceptance Criteria
 
@@ -83,7 +83,6 @@ interface or live Test evidence acceptance criteria below.
 - Search supports local results and semantic Docs/Website filtering.
 - Feedback stores only consented, privacy-preserving fields and is visible to
   authorised administrators.
-- The explorer accepts only short-lived Test credentials with read-only scope.
 - The MCP interface exposes only the approved public corpus.
 - Each Docs PR receives CI validation. Accessibility, visual, and live citation
   checks run as part of the Test evidence gate.

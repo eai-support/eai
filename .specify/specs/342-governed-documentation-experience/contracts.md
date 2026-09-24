@@ -14,8 +14,8 @@ Store only: timestamp, hashed session ID, surface, latency bucket, result count,
 citation count, public failure category, and explicit feedback rating. Do not
 store IP addresses, raw conversation history, email, or access tokens.
 
-## Explorer and MCP
+## Docs MCP
 
-Both surfaces are Test-only or public-read-only. Their allowlist contains only
-published documentation and read operations. Deny-by-default applies to every
-unlisted tool, route, document, and object type.
+The public interface allowlist contains only published documentation and read
+operations. Deny-by-default applies to every unlisted tool, route, document,
+and object type.
