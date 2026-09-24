@@ -164,12 +164,18 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
   if (paths.length < 1 || paths.length > CLI_MANAGED_SOURCE_LIMITS.maxFiles) throw new ManagedSourceError('SOURCE_FILE_COUNT_LIMIT', 'EAI-maintained source requires 1 to 500 app-owned files.');
   const files: CliManagedSourceFile[] = [];
   let totalBytes = 0;
-  for (const path of paths) {
-    if (isCredentialPath(path)) throw new ManagedSourceError('SOURCE_CREDENTIAL_DETECTED', `Remove the credential file ${path} from app source before publishing.`);
-    const bytes = await readBoundedSourceFile(root, path);
-    totalBytes += bytes.length;
-    if (totalBytes > CLI_MANAGED_SOURCE_LIMITS.maxTotalBytes) throw new ManagedSourceError('SOURCE_TOTAL_LIMIT', 'App source exceeds the 20 MiB managed publication limit.');
-    files.push({ path, type: 'file', size: bytes.length, sha256: digest(bytes), contentBase64: bytes.toString('base64') });
+  for (let offset = 0; offset < paths.length; offset += 8) {
+    const batch = paths.slice(offset, offset + 8);
+    const loaded = await Promise.all(batch.map(async path => {
+      if (isCredentialPath(path)) throw new ManagedSourceError('SOURCE_CREDENTIAL_DETECTED', `Remove the credential file ${path} from app source before publishing.`);
+      const bytes = await readBoundedSourceFile(root, path);
+      return { path, type: 'file' as const, size: bytes.length, sha256: digest(bytes), contentBase64: bytes.toString('base64') };
+    }));
+    for (const file of loaded) {
+      totalBytes += file.size;
+      if (totalBytes > CLI_MANAGED_SOURCE_LIMITS.maxTotalBytes) throw new ManagedSourceError('SOURCE_TOTAL_LIMIT', 'App source exceeds the 20 MiB managed publication limit.');
+      files.push(file);
+    }
   }
   const bundleSha256 = digest(JSON.stringify([templateCommitSha, files.map(file => [file.path, file.size, file.sha256])]));
   return { bundle: { schemaVersion: CLI_MANAGED_SOURCE_SCHEMA, templateCommitSha, bundleSha256, files }, totalBytes };
