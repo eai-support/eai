@@ -21,7 +21,8 @@ export interface CliManagedSourceOperation extends CliManagedSourceScope {
   schemaVersion: 'eai.cli_managed_source_operation.v1';
   sourceMode: 'eai-cli-generated';
   operationId: string;
-  status: 'accepted' | 'publishing' | 'pending_review' | 'deploying' | 'completed' | 'failed';
+  status: 'accepted' | 'publishing' | 'pending_review' | 'deploying' | 'handoff_pending' | 'completed' | 'failed';
+  githubLinkSessionId?: string;
   templateCommitSha: string;
   bundleSha256: string;
   verifiedGithubUser: NonNullable<CliManagedGithubLinkSession['verifiedGithubUser']>;
@@ -39,7 +40,7 @@ export interface CliManagedSourceOperation extends CliManagedSourceScope {
 }
 
 /** Compare server proof to the actual EAI token identity, never caller-supplied email text. */
-export function validateCliGithubLinkSession(value: CliManagedGithubLinkSession, scope: CliManagedSourceScope, expectedSessionId?: string): CliManagedGithubLinkSession {
+export function validateCliGithubLinkSession(value: CliManagedGithubLinkSession, scope: CliManagedSourceScope, expectedSessionId?: string, allowExpiredVerifiedForUploadRetry = false): CliManagedGithubLinkSession {
   if (!value || value.schemaVersion !== 'eai.cli_managed_github_link_session.v1' || !/^[A-Za-z0-9_-]{1,128}$/.test(value.sessionId)
     || (expectedSessionId && value.sessionId !== expectedSessionId)
     || !scope.actorId || value.actorId !== scope.actorId || value.tenantId !== scope.tenantId
@@ -47,7 +48,7 @@ export function validateCliGithubLinkSession(value: CliManagedGithubLinkSession,
     || !['pending', 'verified', 'expired', 'failed'].includes(value.status)) {
     throw new ManagedSourceError('GITHUB_LINK_BINDING_MISMATCH', 'GitHub linking response does not match the signed-in EAI actor, tenant, app and deployment scope.');
   }
-  if (!Number.isFinite(Date.parse(value.expiresAt)) || Date.parse(value.expiresAt) <= Date.now() || value.status === 'expired') {
+  if (!Number.isFinite(Date.parse(value.expiresAt)) || (Date.parse(value.expiresAt) <= Date.now() && !(allowExpiredVerifiedForUploadRetry && value.status === 'verified')) || value.status === 'expired') {
     throw new ManagedSourceError('GITHUB_LINK_EXPIRED', 'The GitHub linking operation expired. Start the deployment again to obtain a new browser handoff.');
   }
   if (value.status === 'failed') throw new ManagedSourceError('GITHUB_LINK_FAILED', 'GitHub account linking failed. Start the deployment again and complete the verified browser handoff.');
@@ -128,7 +129,7 @@ export function validateCliManagedSourceOperation(value: CliManagedSourceOperati
     || !/^[a-f0-9]{40}$/.test(value.templateCommitSha) || !/^sha256:[a-f0-9]{64}$/.test(value.bundleSha256)
     || (expected?.templateCommitSha && value.templateCommitSha !== expected.templateCommitSha)
     || (expected?.bundleSha256 && value.bundleSha256 !== expected.bundleSha256)
-    || !['accepted', 'publishing', 'pending_review', 'deploying', 'completed', 'failed'].includes(value.status)
+    || !['accepted', 'publishing', 'pending_review', 'deploying', 'handoff_pending', 'completed', 'failed'].includes(value.status)
     || value.repository?.owner !== 'eai-generated-apps' || !/^[A-Za-z0-9_.-]+$/.test(value.repository?.name || '')
     || value.verifiedGithubUser?.actorId !== scope.actorId || !Number.isSafeInteger(value.verifiedGithubUser?.id) || value.verifiedGithubUser.id < 1
     || typeof value.verifiedGithubUser.proofId !== 'string' || !value.verifiedGithubUser.proofId) {
@@ -168,25 +169,142 @@ export async function submitCliManagedSource(client: PlatformAPIClient, scope: C
     targetTenantId: scope.targetTenantId, environment: scope.environment,
   })), scope, expected);
   if (prepared.verifiedGithubUser.id !== link.verifiedGithubUser!.id) throw new ManagedSourceError('MANAGED_SOURCE_BINDING_MISMATCH', 'Publication is bound to a different verified GitHub account. No local source was uploaded.');
-  if (prepared.status !== 'accepted') return prepared;
+  if (prepared.status !== 'accepted' && prepared.status !== 'publishing') return prepared;
+  return uploadCliManagedSource(client, scope, link, bundle, prepared);
+}
+
+/** Retry only the original actor-bound upload while its ticket remains valid. */
+export async function resumeCliManagedSourceUpload(
+  client: PlatformAPIClient,
+  scope: CliManagedSourceScope,
+  operation: CliManagedSourceOperation,
+  bundle: CliManagedSourceBundle,
+): Promise<CliManagedSourceOperation> {
+  const prepared = validateCliManagedSourceOperation(operation, scope, {
+    templateCommitSha: bundle.templateCommitSha,
+    bundleSha256: bundle.bundleSha256,
+  });
+  if (!["accepted", "publishing"].includes(prepared.status) || !prepared.upload)
+    return prepared;
+  if (!prepared.githubLinkSessionId)
+    throw new ManagedSourceError(
+      "MANAGED_SOURCE_BINDING_MISMATCH",
+      "The original verified GitHub link is missing from this operation. EAI must recover this upload.",
+    );
+  const link = validateCliGithubLinkSession(
+    await responseSession(
+      await client.getCliManagedGithubLinkSession(
+        scope.tenantId,
+        scope.appKey,
+        prepared.githubLinkSessionId,
+        scope.targetTenantId,
+        scope.environment,
+      ),
+    ),
+    scope,
+    prepared.githubLinkSessionId,
+    true,
+  );
+  if (
+    link.status !== "verified" ||
+    link.verifiedGithubUser?.id !== prepared.verifiedGithubUser.id
+  )
+    throw new ManagedSourceError(
+      "MANAGED_SOURCE_BINDING_MISMATCH",
+      "The original GitHub identity no longer matches this publication. No source was uploaded.",
+    );
+  return uploadCliManagedSource(client, scope, link, bundle, prepared);
+}
+
+async function uploadCliManagedSource(
+  client: PlatformAPIClient,
+  scope: CliManagedSourceScope,
+  link: CliManagedGithubLinkSession,
+  bundle: CliManagedSourceBundle,
+  prepared: CliManagedSourceOperation,
+): Promise<CliManagedSourceOperation> {
   const upload = prepared.upload;
   let url: URL;
-  try { url = new URL(upload?.url || ''); } catch { throw new ManagedSourceError('MANAGED_SOURCE_UPLOAD_INVALID', 'The source operation has no valid upload authority. Resume or retry the same operation.'); }
-  if (!upload || url.origin !== cliManagedPortalOrigin(link) || url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
-    || url.pathname !== `/api/platform/generated-apps/cli-managed-source/uploads/${prepared.operationId}`
-    || !upload.ticket || upload.sha256 !== bundle.bundleSha256 || !Number.isFinite(Date.parse(upload.expiresAt)) || Date.parse(upload.expiresAt) <= Date.now()) {
-    throw new ManagedSourceError('MANAGED_SOURCE_UPLOAD_INVALID', 'The upload URL, expiry or digest is not bound to the verified platform operation. No source or token was sent.');
+  try {
+    url = new URL(upload?.url || "");
+  } catch {
+    throw new ManagedSourceError(
+      "MANAGED_SOURCE_UPLOAD_INVALID",
+      "The source operation has no valid upload authority. Resume or retry the same operation.",
+    );
+  }
+  if (
+    !upload ||
+    url.origin !== cliManagedPortalOrigin(link) ||
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    url.pathname !==
+      `/api/platform/generated-apps/cli-managed-source/uploads/${prepared.operationId}` ||
+    !upload.ticket ||
+    upload.sha256 !== bundle.bundleSha256 ||
+    !Number.isFinite(Date.parse(upload.expiresAt)) ||
+    Date.parse(upload.expiresAt) <= Date.now()
+  ) {
+    throw new ManagedSourceError(
+      "MANAGED_SOURCE_UPLOAD_INVALID",
+      "The upload URL, expiry or digest is not bound to the verified platform operation. No source or token was sent.",
+    );
   }
   const token = await getAccessToken();
-  if (!token) throw new ManagedSourceError('EAI_LOGIN_REQUIRED', 'Sign in with eai login before submitting source.');
+  if (!token)
+    throw new ManagedSourceError(
+      "EAI_LOGIN_REQUIRED",
+      "Sign in with eai login before submitting source.",
+    );
   let response: Response;
   try {
-    response = await fetch(url.href, { method: 'POST', redirect: 'error', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-EAI-Upload-Ticket': upload.ticket }, body: JSON.stringify({ tenantId: scope.tenantId, appKey: scope.appKey, targetTenantId: scope.targetTenantId, environment: scope.environment, bundle }) });
+    response = await fetch(url.href, {
+      method: "POST",
+      redirect: "error",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "X-EAI-Upload-Ticket": upload.ticket,
+      },
+      body: JSON.stringify({
+        tenantId: scope.tenantId,
+        appKey: scope.appKey,
+        targetTenantId: scope.targetTenantId,
+        environment: scope.environment,
+        bundle,
+      }),
+    });
   } catch {
-    throw new ManagedSourceError('MANAGED_SOURCE_UPLOAD_UNCERTAIN', `Source upload response was lost. Resume ${prepared.operationId}; do not create a second publication or use a customer GitHub token.`);
+    throw new ManagedSourceError(
+      "MANAGED_SOURCE_UPLOAD_UNCERTAIN",
+      `Source upload response was lost. Resume ${prepared.operationId}; do not create a second publication or use a customer GitHub token.`,
+    );
   }
-  if (!response.ok) throw new ManagedSourceError('MANAGED_SOURCE_UPLOAD_FAILED', `Source upload returned ${response.status}. Resume ${prepared.operationId} to inspect its authoritative status before retrying.`);
-  return validateCliManagedSourceOperation(await responseOperation(await client.getCliManagedSourceOperation(scope.tenantId, scope.appKey, prepared.operationId, scope.targetTenantId, scope.environment)), scope, { ...expected, operationId: prepared.operationId });
+  if (!response.ok)
+    throw new ManagedSourceError(
+      "MANAGED_SOURCE_UPLOAD_FAILED",
+      `Source upload returned ${response.status}. Resume ${prepared.operationId} to inspect its authoritative status before retrying.`,
+    );
+  return validateCliManagedSourceOperation(
+    await responseOperation(
+      await client.getCliManagedSourceOperation(
+        scope.tenantId,
+        scope.appKey,
+        prepared.operationId,
+        scope.targetTenantId,
+        scope.environment,
+      ),
+    ),
+    scope,
+    {
+      templateCommitSha: bundle.templateCommitSha,
+      bundleSha256: bundle.bundleSha256,
+      operationId: prepared.operationId,
+    },
+  );
 }
 
 /** Poll one publication and return pending review distinctly from deployed readiness. */

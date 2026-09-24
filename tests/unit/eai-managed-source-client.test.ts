@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PlatformAPIClient, type CliManagedGithubLinkSession } from '../../src/lib/api.js';
 import * as auth from '../../src/lib/auth.js';
-import { classifyCliManagedSourceOperation, cliManagedPortalOrigin, cliManagedSourceIdempotencyKey, pollCliManagedSource, submitCliManagedSource, validateCliGithubLinkSession, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../../src/lib/eai-managed-source-client.js';
+import { classifyCliManagedSourceOperation, cliManagedPortalOrigin, cliManagedSourceIdempotencyKey, pollCliManagedSource, resumeCliManagedSourceUpload, submitCliManagedSource, validateCliGithubLinkSession, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../../src/lib/eai-managed-source-client.js';
 
 const scope: CliManagedSourceScope = { tenantId: 'company', appKey: 'my-app', targetTenantId: 'runtime', environment: 'preview', actorId: 'eai-user-oid' };
 function session(status: CliManagedGithubLinkSession['status'] = 'verified'): CliManagedGithubLinkSession {
@@ -103,7 +103,7 @@ describe('managed publication authority and readiness', () => {
   function operation(status: CliManagedSourceOperation['status'] = 'accepted'): CliManagedSourceOperation {
     return {
       schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated', ...scope,
-      operationId: 'cli-managed-source-123', status, templateCommitSha: bundle.templateCommitSha, bundleSha256: bundle.bundleSha256,
+      operationId: 'cli-managed-source-123', status, githubLinkSessionId: 'github-link-123', templateCommitSha: bundle.templateCommitSha, bundleSha256: bundle.bundleSha256,
       verifiedGithubUser: session().verifiedGithubUser!, repository: { owner: 'eai-generated-apps', name: 'platform-derived-app', private: true },
       expiresAt: new Date(Date.now() + 600_000).toISOString(),
       upload: { url: 'https://portal.example.test/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123', ticket: 'one-use-upload-proof', sha256: bundle.bundleSha256, expiresAt: new Date(Date.now() + 300_000).toISOString() },
@@ -149,11 +149,134 @@ describe('managed publication authority and readiness', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  test('reuses an in-progress publication without uploading or dispatching again', async () => {
-    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
-    vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation('publishing')));
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
-    expect((await submitCliManagedSource(client, scope, session(), bundle)).status).toBe('publishing');
+  test("replays an in-progress publication with the original ticket and exact bundle", async () => {
+    const client = new PlatformAPIClient(
+      "https://api.example.test/public",
+      scope.tenantId,
+    );
+    vi.spyOn(client, "prepareCliManagedSource").mockResolvedValue(
+      response(operation("publishing")),
+    );
+    vi.spyOn(client, "getCliManagedSourceOperation").mockResolvedValue(
+      response(operation("pending_review")),
+    );
+    vi.spyOn(auth, "getAccessToken").mockResolvedValue("fixture-eai-token");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(response({ status: "pending_review" }));
+    expect(
+      (await submitCliManagedSource(client, scope, session(), bundle)).status,
+    ).toBe("pending_review");
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+      operation().upload!.url,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-EAI-Upload-Ticket": operation().upload!.ticket,
+        }),
+      }),
+    );
+  });
+
+  test("resumes a publishing upload through the original verified link without another preparation", async () => {
+    const client = new PlatformAPIClient(
+      "https://api.example.test/public",
+      scope.tenantId,
+    );
+    const create = vi.spyOn(client, "createCliManagedGithubLinkSession");
+    const prepare = vi.spyOn(client, "prepareCliManagedSource");
+    const linkRead = vi
+      .spyOn(client, "getCliManagedGithubLinkSession")
+      .mockResolvedValue(response(session()));
+    vi.spyOn(client, "getCliManagedSourceOperation").mockResolvedValue(
+      response(operation("pending_review")),
+    );
+    vi.spyOn(auth, "getAccessToken").mockResolvedValue("fixture-eai-token");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(response({ status: "pending_review" }));
+    expect(
+      (
+        await resumeCliManagedSourceUpload(
+          client,
+          scope,
+          operation("publishing"),
+          bundle,
+        )
+      ).status,
+    ).toBe("pending_review");
+    expect(linkRead).toHaveBeenCalledExactlyOnceWith(
+      "company",
+      "my-app",
+      "github-link-123",
+      "runtime",
+      "preview",
+    );
+    expect(create).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("allows exact upload retry after verified link expiry while its original ticket remains valid", async () => {
+    const client = new PlatformAPIClient(
+      "https://api.example.test/public",
+      scope.tenantId,
+    );
+    const expiredVerified = {
+      ...session(),
+      expiresAt: "2000-01-01T00:00:00Z",
+    };
+    vi.spyOn(client, "getCliManagedGithubLinkSession").mockResolvedValue(
+      response(expiredVerified),
+    );
+    vi.spyOn(client, "getCliManagedSourceOperation").mockResolvedValue(
+      response(operation("pending_review")),
+    );
+    vi.spyOn(auth, "getAccessToken").mockResolvedValue("fixture-eai-token");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(response({ status: "pending_review" }));
+    expect(
+      (
+        await resumeCliManagedSourceUpload(
+          client,
+          scope,
+          operation("publishing"),
+          bundle,
+        )
+      ).status,
+    ).toBe("pending_review");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(() => validateCliGithubLinkSession(expiredVerified, scope)).toThrow(
+      "expired",
+    );
+  });
+
+  test("refuses a changed local bundle or upload origin before sending bytes on resume", async () => {
+    const client = new PlatformAPIClient(
+      "https://api.example.test/public",
+      scope.tenantId,
+    );
+    const linkRead = vi
+      .spyOn(client, "getCliManagedGithubLinkSession")
+      .mockResolvedValue(response(session()));
+    const token = vi.spyOn(auth, "getAccessToken");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    await expect(
+      resumeCliManagedSourceUpload(client, scope, operation("publishing"), {
+        ...bundle,
+        bundleSha256: `sha256:${"d".repeat(64)}`,
+      }),
+    ).rejects.toMatchObject({ code: "MANAGED_SOURCE_BINDING_MISMATCH" });
+    expect(linkRead).not.toHaveBeenCalled();
+    const wrongOrigin = operation("publishing");
+    wrongOrigin.upload!.url = wrongOrigin.upload!.url.replace(
+      "portal.example.test",
+      "attacker.example.test",
+    );
+    await expect(
+      resumeCliManagedSourceUpload(client, scope, wrongOrigin, bundle),
+    ).rejects.toMatchObject({ code: "MANAGED_SOURCE_UPLOAD_INVALID" });
+    expect(token).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

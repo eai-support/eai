@@ -23,7 +23,7 @@ import {
 } from '../lib/eai-managed-deploy.js';
 import * as out from '../lib/output.js';
 import { buildCliManagedSourceBundle, chooseManagedDeploySource, ManagedSourceError, writeCliManagedSourceReceipt } from '../lib/eai-managed-source.js';
-import { classifyCliManagedSourceOperation, pollCliManagedSource, submitCliManagedSource, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../lib/eai-managed-source-client.js';
+import { classifyCliManagedSourceOperation, pollCliManagedSource, resumeCliManagedSourceUpload, submitCliManagedSource, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../lib/eai-managed-source-client.js';
 
 const exec = promisify(execFile);
 const DEFAULT_TIMEOUT_SECONDS = 1_200;
@@ -546,7 +546,13 @@ Examples:
 
       if (options.source === 'eai-managed' && (options.resume || options.retry)) {
         requireManagedPublicApiUrl(context.publicApiUrl);
-        const operation = await pollCliManagedSource(client, managedScope, (options.resume || options.retry)!, { wait: options.wait, timeoutMs: timeoutSeconds * 1000 });
+        const operationId = (options.resume || options.retry)!;
+        let current = await pollCliManagedSource(client, managedScope, operationId, { wait: false, timeoutMs: timeoutSeconds * 1000 });
+        if ((current.status === 'accepted' || current.status === 'publishing') && current.upload) {
+          const { bundle } = await buildCliManagedSourceBundle(context.root);
+          current = await resumeCliManagedSourceUpload(client, managedScope, current, bundle);
+        }
+        const operation = await pollCliManagedSource(client, managedScope, operationId, { wait: options.wait, timeoutMs: timeoutSeconds * 1000 }, current);
         spinner?.stop();
         printManagedSourceOperation(format, operation);
         return;

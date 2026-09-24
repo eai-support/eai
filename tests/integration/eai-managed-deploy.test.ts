@@ -12,6 +12,7 @@ import {
   setActiveProfile,
 } from '../../src/lib/profile.js';
 import { eaiManagedDeployCommand } from '../../src/commands/eai-managed-deploy.js';
+import { buildCliManagedSourceBundle } from '../../src/lib/eai-managed-source.js';
 import { installCanonicalManagedDeployFiles, buildManagedDeployConfigHash, managedDeployStatePath, saveManagedDeployState, type ManagedDeployState } from '../../src/lib/eai-managed-deploy.js';
 
 const exec = promisify(execFile);
@@ -165,6 +166,127 @@ describe('eai deploy app --target eai', () => {
     await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--source', 'eai-managed', '--format', 'json'], { from: 'user' });
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ error: 'GITHUB_LINK_REQUIRED', message: expect.stringContaining('--github-link-session github-link-123') });
     expect(requests.some(url => url.endsWith('/preparations') || url.includes('/source-unknown/'))).toBe(false);
+  });
+
+  test("resumes a publishing upload using unchanged local bytes and the original linked Portal origin", async () => {
+    await mkdir(join(projectRoot, "src/app"), { recursive: true });
+    await writeFile(join(projectRoot, "eai.runtime.json"), "{}");
+    await writeFile(
+      join(projectRoot, "src/app/page.tsx"),
+      'export default function Page() { return "retry"; }',
+    );
+    await writeFile(
+      join(projectRoot, ".eai-manifest.json"),
+      JSON.stringify({ template: { commit: "a".repeat(40) } }),
+    );
+    await exec("git", ["init", "-b", "main"], { cwd: projectRoot });
+    await exec("git", ["add", "."], { cwd: projectRoot });
+    await exec(
+      "git",
+      [
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "Initial scaffold from template\n\nCreated by: eai init",
+      ],
+      { cwd: projectRoot },
+    );
+    const { bundle } = await buildCliManagedSourceBundle(projectRoot);
+    const identity = stubManagedOperation().getMockImplementation()!;
+    let operationReads = 0;
+    const requests: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (
+          input: Parameters<typeof fetch>[0],
+          init?: Parameters<typeof fetch>[1],
+        ) => {
+          const url = String(input);
+          requests.push(url);
+          if (
+            url.includes(
+              "/cli-managed-source/github-link-sessions/github-link-123",
+            )
+          )
+            return jsonResponse(linkedGitHubSession());
+          if (url.startsWith("https://portal.example.test/")) {
+            expect(init?.headers).toMatchObject({
+              "X-EAI-Upload-Ticket": "original-upload-ticket",
+            });
+            expect(JSON.parse(String(init?.body)).bundle.bundleSha256).toBe(
+              bundle.bundleSha256,
+            );
+            return jsonResponse({ status: "pending_review" }, 202);
+          }
+          if (url.includes("/cli-managed-source/operations/"))
+            return jsonResponse({
+              schemaVersion: "eai.cli_managed_source_operation.v1",
+              sourceMode: "eai-cli-generated",
+              operationId: "cli-managed-source-123",
+              status: operationReads++ === 0 ? "publishing" : "pending_review",
+              tenantId: TENANT_ID,
+              targetTenantId: TENANT_ID,
+              appKey: "planning-portal",
+              environment: "preview",
+              actorId: "test-user-oid",
+              templateCommitSha: bundle.templateCommitSha,
+              bundleSha256: bundle.bundleSha256,
+              githubLinkSessionId: "github-link-123",
+              verifiedGithubUser: linkedGitHubSession().verifiedGithubUser,
+              repository: {
+                owner: "eai-generated-apps",
+                name: "server-derived-app",
+              },
+              expiresAt: new Date(Date.now() + 600_000).toISOString(),
+              upload: {
+                url: "https://portal.example.test/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123",
+                ticket: "original-upload-ticket",
+                expiresAt: new Date(Date.now() + 300_000).toISOString(),
+                sha256: bundle.bundleSha256,
+              },
+            });
+          return identity(input);
+        },
+      ),
+    );
+    const output = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(
+      [
+        "planning-portal",
+        "--target",
+        "eai",
+        "--tenant-id",
+        TENANT_ID,
+        "--target-tenant-id",
+        TENANT_ID,
+        "--source",
+        "eai-managed",
+        "--resume",
+        "cli-managed-source-123",
+        "--no-wait",
+        "--format",
+        "json",
+      ],
+      { from: "user" },
+    );
+    expect(
+      JSON.parse(output.mock.calls.map(([value]) => String(value)).join("")),
+    ).toMatchObject({
+      classification: "pending",
+      publicationStatus: "pending_review",
+    });
+    expect(
+      requests.filter((url) => url.startsWith("https://portal.example.test/")),
+    ).toHaveLength(1);
+    expect(
+      requests.some((url) => url.endsWith("/cli-managed-source/preparations")),
+    ).toBe(false);
   });
 
   test('does not silently choose customer-owned source from repository flags', async () => {
