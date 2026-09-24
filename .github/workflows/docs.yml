@@ -166,7 +166,7 @@ jobs:
       - name: Verify hosted Docs use the same-origin assistant API
         if: steps.website-token.outcome == 'success' && steps.website-token.outputs.token != ''
         run: |
-          if ! rg --fixed-strings --quiet '/api/chat' docs-site/build; then
+          if ! grep --recursive --fixed-strings --quiet '/api/chat' docs-site/build; then
             echo "Hosted Docs did not include the same-origin assistant endpoint." >&2
             exit 1
           fi
