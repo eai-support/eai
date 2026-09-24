@@ -16,6 +16,35 @@ function score(item, query) {
     + (content.includes(token) ? 1 : 0), 0);
 }
 
+function isGreeting(message) {
+  return /^(hi|hello|hey)(?:\s+(?:there|eai|team))?[!.?]*$/i.test(message.trim());
+}
+
+const CANONICAL_SITE_ORIGIN = "https://www.enterpriseaigroup.com";
+
+function normaliseText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function sourceHref(source, docsItems) {
+  // The semantic index supplies canonicalPath for new content. Never expose storage URLs.
+  const canonicalPath = source.canonicalPath || source.path || source.route;
+  if (typeof canonicalPath === "string" && canonicalPath.startsWith("/")) {
+    return `${CANONICAL_SITE_ORIGIN}${canonicalPath}`;
+  }
+
+  // Existing Docs records predate canonical paths. Match only a known local Docs page.
+  const title = normaliseText(source.title);
+  const matchingDoc = docsItems.find((item) => {
+    const itemTitle = normaliseText(item.title);
+    return itemTitle && (title === itemTitle || title.includes(itemTitle));
+  });
+  return matchingDoc ? `${CANONICAL_SITE_ORIGIN}/docs/eai${matchingDoc.route}` : null;
+}
+
 export default function DocsAssistant() {
   const { siteConfig } = useDocusaurusContext();
   const baseUrl = siteConfig.baseUrl.replace(/\/$/, "");
@@ -101,6 +130,17 @@ export default function DocsAssistant() {
     const userMessage = { id: `${Date.now()}-user`, role: "user", content: message };
     setMessages((current) => [...current, userMessage]);
     setQuery("");
+
+    if (isGreeting(message)) {
+      setMessages((current) => [...current, {
+        id: `${Date.now()}-assistant`,
+        role: "assistant",
+        content: "Hello. Ask a question about EAI Docs or the Enterprise AI website and I will provide a cited answer.",
+        sources: [],
+      }]);
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -160,7 +200,10 @@ export default function DocsAssistant() {
         {!messages.length && <p>Ask a question about EAI Docs or the Enterprise AI website. Every answer includes its sources.</p>}
         {messages.map((message) => <div key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>
           <p>{message.content}</p>
-          {message.sources?.length > 0 && <div className={styles.sources}><span>Sources</span>{message.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title}</a>)}</div>}
+          {message.sources?.length > 0 && <div className={styles.sources}><span>Sources</span>{message.sources.map((source, index) => {
+            const href = sourceHref(source, items);
+            return href ? <a key={`${source.title}-${index}`} href={href} target="_blank" rel="noreferrer">{source.title}</a> : <span key={`${source.title}-${index}`}>{source.title}</span>;
+          })}</div>}
           {message.role === "assistant" && message.sources?.length > 0 && <div className={styles.feedback}>
             {message.feedbackSent ? <span>Thanks for your feedback.</span> : <>
               <span>Was this answer useful?</span>

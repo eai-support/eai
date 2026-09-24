@@ -1,17 +1,17 @@
 ---
 feature: 342-governed-documentation-experience
 spec: spec.md
-status: ready
+status: in-progress
 created: 2026-09-23
 author: Enterprise AI
-updated: 2026-09-23
+updated: 2026-09-24
 ---
 
 # Delivery Plan
 
 ## Architecture
 
-`Docusaurus Docs -> Website /api/chat -> PublicAPI scoped docs route -> EAI Platform public knowledge index`.
+`Docusaurus Docs -> same-origin Website /api/chat -> PublicAPI scoped docs route -> EAI Platform public knowledge index`.
 
 Git is the content source. The public index is a derived projection. The Docs
 site never receives a platform credential. The Website owns rate limits,
@@ -23,6 +23,7 @@ telemetry, consent checks, and public response shaping.
 - The Website `POST /api/chat` endpoint is the only public AI boundary.
 - PublicAPI supplies the published scoped documentation capability.
 - Payload CMS stores authorised feedback records only.
+- The semantic index stores a title and canonical public path for each source.
 
 ## Implementation Phases
 
@@ -31,6 +32,8 @@ telemetry, consent checks, and public response shaping.
 3. Deliver Docs search, feedback, and accessibility behaviour.
 4. Deliver the public MCP read interface.
 5. Validate in Test, then promote only with release evidence.
+6. Block each environment release until the deployed Docs assistant journey
+   passes in a browser.
 
 ## Remaining Implementation Contracts
 
@@ -50,6 +53,19 @@ telemetry, consent checks, and public response shaping.
 - It must produce the versioned receipt defined in
   `evaluation.md`; the promotion workflow may continue only when the receipt
   meets all thresholds and a release approver accepts the evidence.
+
+### Deterministic Release Gate
+
+- The Docs website build sets the assistant endpoint to `/api/chat`.
+- The generated Docs copy is merged into the Website repository before the
+  Website deployment tag is created.
+- Dev, Test, and Prod run the same deployed browser scenario: open
+  `/docs/eai/docs/installer-setup`, submit `what is gofer`, receive a response,
+  and display at least one `enterpriseaigroup.com` citation.
+- Local validation builds Docs with its explicit development assistant endpoint
+  and verifies the same question before a pull request is opened.
+- The promotion workflow runs this check unconditionally. A health response or
+  static build alone is not release evidence.
 
 ## Non-Goals
 
