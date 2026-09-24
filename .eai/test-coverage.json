@@ -203,12 +203,14 @@
             "src/commands/vertical.ts",
             "src/lib/api.ts",
             "src/lib/eai-managed-deploy.ts",
+            "src/lib/eai-managed-source.ts",
             ".tech-docs/full-e2e-smoke-traceability.md",
             "scripts/generate-release-docs.cjs",
             "tests/integration/release-metadata.test.ts"
           ],
           "required_repo_tests": [
             "tests/unit/eai-managed-deploy.test.ts",
+            "tests/unit/eai-managed-source.test.ts",
             "tests/integration/platform-api-client.test.ts",
             "tests/integration/eai-managed-deploy.test.ts",
             "tests/integration/vertical.test.ts",
