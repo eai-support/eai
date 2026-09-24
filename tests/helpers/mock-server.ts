@@ -141,7 +141,7 @@ export class PublicAPIMock {
    * Mock the PublicAPI V4 reachability endpoint.
    */
   mockReachability(healthy = true) {
-    this.mockServer.mockGET(`${this.baseURL}/v4/data/resources/object-types`, {
+    this.mockServer.mockGET(`${this.baseURL}/v4/data/resources/health`, {
       status: healthy ? 200 : 503,
       body: { status: healthy ? 'ok' : 'unhealthy' },
     });

@@ -1046,7 +1046,8 @@ Run read-only platform connectivity checks.
 - `--tenant-id <id>` — Run checks against a specific tenant (read-only)
 
 **Platform API Endpoints Used**:
-- `GET /v4/data/resources/object-types` — PublicAPI reachability and Object Type access
+- `GET /v4/data/resources/health` — PublicAPI and ResourceAPI health
+- `GET /v4/data/resources/object-types` — Object Type access
 - `GET /v4/data/resources/schema/{tenantId}` — data-service reachability
 
 ---
@@ -1079,7 +1080,7 @@ Audit the platform API contracts used by the CLI. All checks are read-only unles
 - `--chat-message <message>` — Message to send when probing chat
 - `--format <format>` — Output format (text|json, default: text)
 
-**Endpoints probed** (subset, depending on flags): `GET /v4/data/resources/object-types`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
+**Endpoints probed** (subset, depending on flags): `GET /v4/data/resources/health`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
 
 ---
 
@@ -1192,7 +1193,7 @@ scripts. Existing presentation files remain protected references.
 - `POST /oauth2/v2.0/token` — Entra CIAM token exchange
 
 ### Health
-- `GET /v4/data/resources/object-types` — PublicAPI reachability
+- `GET /v4/data/resources/health` — PublicAPI and ResourceAPI health
 
 ### Platform — Tenants
 - `POST /v4/platform/tenants` — Create root tenant

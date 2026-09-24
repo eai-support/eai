@@ -23,7 +23,7 @@ const PUBLIC_REALTIME_PATH = '/v4/realtime';
 const PUBLIC_VERTICALS_DAISY_PATH = '/v4/verticals/daisy';
 const PUBLIC_WEBHOOKS_PATH = '/v4/webhooks';
 const PUBLIC_WORKFLOWS_PATH = '/v4/workflows';
-export const PUBLIC_API_REACHABILITY_PATH = `${PUBLIC_DATA_RESOURCES_PATH}/object-types`;
+export const PUBLIC_API_REACHABILITY_PATH = `${PUBLIC_DATA_RESOURCES_PATH}/health`;
 
 export function probePublicApiReachability(baseUrl: string, timeoutMs: number): Promise<Response> {
   return fetch(`${baseUrl}${PUBLIC_API_REACHABILITY_PATH}`, {
