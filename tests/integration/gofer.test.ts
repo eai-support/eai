@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createTestEnvironment,
@@ -288,6 +288,66 @@ describe("eai gofer refresh", () => {
         path.endsWith(join(".github", "copilot-instructions.md")),
       ),
     ).toBe(true);
+  });
+
+  test("refuses to force-refresh a managed path through a symbolic link", async () => {
+    const seedResult = await runCommand(ctx, "eai gofer refresh");
+    expectCommandSucceeded(seedResult);
+
+    const managedFile = join(env.dir, ".github", "copilot-instructions.md");
+    const outsideFile = join(env.dir, "outside-managed-target.md");
+    await writeFile(outsideFile, "KEEP OUTSIDE CONTENT\n", "utf-8");
+    await rm(managedFile);
+    await symlink(outsideFile, managedFile);
+
+    const forceResult = await runCommand(ctx, "eai gofer refresh --force");
+
+    expect(forceResult.exitCode).not.toBe(0);
+    expect(`${forceResult.stdout}\n${forceResult.stderr}`).toContain(
+      "Refusing to refresh Gofer-managed symbolic link",
+    );
+    expect(await readFile(outsideFile, "utf-8")).toBe("KEEP OUTSIDE CONTENT\n");
+  });
+
+  test("preflights generated settings paths before changing managed files", async () => {
+    const seedResult = await runCommand(ctx, "eai gofer refresh");
+    expectCommandSucceeded(seedResult);
+
+    const managedFile = join(env.dir, ".github", "copilot-instructions.md");
+    const original = await readFile(managedFile, "utf-8");
+    await writeFile(managedFile, `${original}\nKEEP LOCAL CHANGE\n`, "utf-8");
+    const outsideDirectory = join(env.dir, "outside-vscode");
+    await mkdir(outsideDirectory);
+    await rm(join(env.dir, ".vscode"), { recursive: true, force: true });
+    await symlink(outsideDirectory, join(env.dir, ".vscode"));
+
+    const forceResult = await runCommand(ctx, "eai gofer refresh --force");
+
+    expect(forceResult.exitCode).not.toBe(0);
+    expect(`${forceResult.stdout}\n${forceResult.stderr}`).toContain(
+      "Refusing to refresh Gofer-managed symbolic link",
+    );
+    expect(await readFile(managedFile, "utf-8")).toContain("KEEP LOCAL CHANGE");
+  });
+
+  test("rejects traversal paths from a crafted managed-file manifest", async () => {
+    const outsideFile = join(env.dir, "..", `outside-gofer-${Date.now()}.md`);
+    await writeFile(outsideFile, "KEEP OUTSIDE\n", "utf-8");
+    await writeFile(
+      join(env.dir, ".eai-manifest.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        gofer: { managedFiles: { [relative(env.dir, outsideFile)]: { sha256: "invalid", source: "generated" } } },
+      }),
+      "utf-8",
+    );
+
+    const result = await runCommand(ctx, "eai gofer refresh --force");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toContain("Refusing unsafe Gofer-managed path");
+    expect(await readFile(outsideFile, "utf-8")).toBe("KEEP OUTSIDE\n");
+    await rm(outsideFile, { force: true });
   });
 
   test("can refresh from a newer Gofer resources source without a new CLI release", async () => {

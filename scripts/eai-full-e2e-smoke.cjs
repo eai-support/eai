@@ -483,6 +483,10 @@ const DOCUMENT_CONTEXT_OPTION_DECISIONS = {
 };
 
 const OPTION_DECISIONS = {
+  'eai template check': {
+    '--ai-plan': 'Read-only AI adoption-plan output is covered by template integration tests; release smoke avoids cloning the public template.',
+    '--preserve-ui': 'Presentation preservation is asserted by template integration tests and remains enabled for AI plans.',
+  },
   'eai docs upload': DOCUMENT_CONTEXT_OPTION_DECISIONS,
   'eai docs classify': DOCUMENT_CONTEXT_OPTION_DECISIONS,
   'eai start': {

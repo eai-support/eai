@@ -14,13 +14,20 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.17.0 |
-| Released | 2026-09-22 |
-| Last Material Change | Support Configurator Plus no-code handover and app template v1.0.2 |
-| Source Commit | `c403be12b1f5e833d29e21b612b862ce7fa16e01` |
+| Version | 3.18.0 |
+| Released | 2026-09-23 |
+| Last Material Change | Add safe template adoption plans and backed-up Gofer update maintenance |
+| Source Commit | `034d29d464fccf9a02e44bcdbdda69cae65919bf` |
 
 
 ## Install
+
+For a new desktop computer, use [EAI Setup](./installer-setup.md) first. It is
+the standard guided path for Windows, macOS, and Ubuntu/Debian users. It
+prepares prerequisites, installs the CLI, opens browser sign-in, creates the
+project, and installs its dependencies.
+
+Use the commands below for CI, managed developer environments, or manual setup.
 
 Recommended install:
 
@@ -96,8 +103,8 @@ construction.
 | `eai runtime`                           | Validate the host-neutral `eai.runtime.json` app runtime contract.                        |
 | `eai deploy`                            | Translate provider env/secrets and black-box doctor deployed EAI app runtimes.            |
 | `eai gofer`                             | Install and refresh repo-local agent workflow assets.                                     |
-| `eai template`                          | Check app-template and UI drift without writing files.                                    |
-| `eai update`                            | Update the CLI, refresh safe Gofer-managed assets, and report app-template drift.         |
+| `eai template`                          | Check template drift or create a read-only, UI-preserving AI adoption plan.               |
+| `eai update`                            | Update the CLI, force-refresh backed-up Gofer assets, and run a read-only template check. |
 | `eai verify`, `eai doctor`              | Run connectivity, contract, update, and troubleshooting checks.                           |
 
 ## Output Modes

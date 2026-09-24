@@ -1,0 +1,1 @@
+{"result":"pass","specHash":"afd7f8ff94ede3606171945713a45e2bf59131068edf902e79d6500ec411015e","requirements":["FR-003","FR-005","FR-006"],"check":"Built HTML contains search controls, request builder, and feedback controls."}

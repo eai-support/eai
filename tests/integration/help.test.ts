@@ -120,6 +120,7 @@ describe('CLI help output', () => {
     const doctorResult = await runCommand(ctx, 'eai doctor --help');
     const goferResult = await runCommand(ctx, 'eai gofer --help');
     const templateResult = await runCommand(ctx, 'eai template --help');
+    const templateCheckResult = await runCommand(ctx, 'eai template check --help');
     const publicApiResult = await runCommand(ctx, 'eai publicapi --help');
     const updateResult = await runCommand(ctx, 'eai update --help');
     const errorsResult = await runCommand(ctx, 'eai errors --help');
@@ -144,6 +145,10 @@ describe('CLI help output', () => {
 
     expect(templateResult.exitCode).toBe(0);
     expect(templateResult.stdout).toContain('check');
+    expect(templateCheckResult.exitCode).toBe(0);
+    expect(templateCheckResult.stdout).toContain('--ai-plan');
+    expect(templateCheckResult.stdout).toContain('--preserve-ui');
+    expect(templateCheckResult.stdout).toContain('works in EAI, Git, and package repositories');
 
     expect(publicApiResult.exitCode).toBe(0);
     expect(publicApiResult.stdout).toContain('eai publicapi get /v4/identity/me');
