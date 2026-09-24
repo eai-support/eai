@@ -308,8 +308,10 @@ async function uploadCliManagedSource(
 }
 
 /** Poll one publication and return pending review distinctly from deployed readiness. */
-export async function pollCliManagedSource(client: PlatformAPIClient, scope: CliManagedSourceScope, operationId: string, options: { wait: boolean; timeoutMs: number }, initial?: CliManagedSourceOperation): Promise<CliManagedSourceOperation> {
-  const deadline = Date.now() + options.timeoutMs;
+export async function pollCliManagedSource(client: PlatformAPIClient, scope: CliManagedSourceScope, operationId: string, options: { wait: boolean; timeoutMs: number }, initial?: CliManagedSourceOperation, dependencies: { sleep?: (ms: number) => Promise<void> } = {}): Promise<CliManagedSourceOperation> {
+  const startedAt = Date.now();
+  const deadline = startedAt + options.timeoutMs;
+  const sleep = dependencies.sleep || (async (ms: number): Promise<void> => { await new Promise(resolve => setTimeout(resolve, ms)); });
   let operation = initial && validateCliManagedSourceOperation(initial, scope, { operationId });
   const expected = { operationId, templateCommitSha: initial?.templateCommitSha, bundleSha256: initial?.bundleSha256 };
   while (true) {
@@ -317,7 +319,8 @@ export async function pollCliManagedSource(client: PlatformAPIClient, scope: Cli
     expected.templateCommitSha = operation.templateCommitSha;
     expected.bundleSha256 = operation.bundleSha256;
     if (!options.wait || classifyCliManagedSourceOperation(operation) !== 'pending' || operation.status === 'pending_review' || Date.now() >= deadline) return operation;
-    await new Promise(resolve => setTimeout(resolve, Math.min(3_000, deadline - Date.now())));
+    const interval = Date.now() - startedAt < 30_000 ? 2_000 : 5_000;
+    await sleep(Math.max(0, Math.min(interval, deadline - Date.now())));
     operation = undefined;
   }
 }

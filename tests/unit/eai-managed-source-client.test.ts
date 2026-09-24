@@ -311,6 +311,28 @@ describe('managed publication authority and readiness', () => {
     expect(read).toHaveBeenCalledTimes(1);
   });
 
+  test('backs off a long publication wait without changing its exact operation or deadline', async () => {
+    let now = Date.parse('2026-09-24T00:00:00Z');
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    const read = vi.spyOn(client, 'getCliManagedSourceOperation').mockImplementation(async () => response(operation('publishing')));
+    const delays: number[] = [];
+    const result = await pollCliManagedSource(
+      client,
+      scope,
+      'cli-managed-source-123',
+      { wait: true, timeoutMs: 600_000 },
+      undefined,
+      { sleep: async ms => { delays.push(ms); now += ms; } },
+    );
+    expect(result.status).toBe('publishing');
+    expect(now).toBe(Date.parse('2026-09-24T00:10:00Z'));
+    expect(delays.slice(0, 15)).toEqual(Array(15).fill(2_000));
+    expect(delays.slice(15)).toEqual(Array(114).fill(5_000));
+    expect(read).toHaveBeenCalledTimes(130);
+    expect(read).toHaveBeenCalledWith('company', 'my-app', 'cli-managed-source-123', 'runtime', 'preview');
+  });
+
   test('requires the full observed readiness evidence even when server status says completed', () => {
     const value = operation('completed');
     value.deployment = { status: 'ready', liveUrl: 'https://live.example.test' };
