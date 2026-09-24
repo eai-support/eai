@@ -25,6 +25,15 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function linkedGitHubSession(status: 'verified' | 'pending' = 'verified'): Record<string, unknown> {
+  return {
+    schemaVersion: 'eai.cli_managed_github_link_session.v1', sessionId: 'github-link-123', status,
+    tenantId: TENANT_ID, appKey: 'planning-portal', targetTenantId: TENANT_ID, environment: 'preview', actorId: 'test-user-oid',
+    expiresAt: new Date(Date.now() + 600_000).toISOString(), browserUrl: 'https://portal.example.test/github/link',
+    ...(status === 'verified' ? { verifiedGithubUser: { id: 123, login: 'linked-user', proofId: 'proof-123', actorId: 'test-user-oid' } } : {}),
+  };
+}
+
 describe('eai deploy app --target eai', () => {
   let env: TestEnvironment;
   let projectRoot: string;
@@ -42,6 +51,7 @@ describe('eai deploy app --target eai', () => {
       if (url.includes('/source-unknown/operations/')) {
         return operation ? jsonResponse(operation) : jsonResponse({ message: 'operation missing' }, 404);
       }
+      if (url.endsWith('/cli-managed-source/github-link-sessions')) return jsonResponse(linkedGitHubSession());
       return jsonResponse({ message: `Unhandled GET ${url}` }, 500);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -90,6 +100,101 @@ describe('eai deploy app --target eai', () => {
     process.exitCode = 0;
     process.chdir('/');
     await env.cleanup();
+  });
+
+  test('publishes exact local source with no customer origin or GitHub write access and reports pending bot review', async () => {
+    await mkdir(join(projectRoot, 'src/app'), { recursive: true });
+    await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "local source"; }');
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    await writeFile(join(projectRoot, '.eai-manifest.json'), JSON.stringify({ template: { commit: 'a'.repeat(40) } }));
+    await exec('git', ['init', '-b', 'main'], { cwd: projectRoot });
+    await exec('git', ['add', '.'], { cwd: projectRoot });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'Initial scaffold from template\n\nCreated by: eai init'], { cwd: projectRoot });
+    expect((await exec('git', ['remote'], { cwd: projectRoot })).stdout).toBe('');
+    const identity = stubManagedOperation().getMockImplementation()!;
+    let prepared: Record<string, unknown> = {};
+    let uploaded: Record<string, unknown> = {};
+    const envelope = (status: string): Record<string, unknown> => ({
+      schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated', operationId: 'cli-managed-source-123', status,
+      tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', environment: 'preview', actorId: 'test-user-oid',
+      templateCommitSha: prepared.templateCommitSha, bundleSha256: prepared.bundleSha256,
+      verifiedGithubUser: (linkedGitHubSession().verifiedGithubUser), repository: { owner: 'eai-generated-apps', name: 'server-derived-app' },
+      expiresAt: new Date(Date.now() + 600_000).toISOString(),
+      upload: { url: 'https://portal.example.test/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123', ticket: 'one-use-ticket', expiresAt: new Date(Date.now() + 300_000).toISOString(), sha256: prepared.bundleSha256 },
+    });
+    const requests: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.endsWith('/cli-managed-source/preparations')) {
+        prepared = JSON.parse(String(init?.body));
+        return jsonResponse(envelope('accepted'));
+      }
+      if (url.startsWith('https://portal.example.test/')) {
+        uploaded = JSON.parse(String(init?.body)).bundle;
+        expect(init?.redirect).toBe('error');
+        expect(init?.headers).toMatchObject({ 'X-EAI-Upload-Ticket': 'one-use-ticket' });
+        return jsonResponse({ status: 'pending_review' }, 202);
+      }
+      if (url.includes('/cli-managed-source/operations/')) return jsonResponse(envelope('pending_review'));
+      return identity(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--source', 'eai-managed', '--format', 'json'], { from: 'user' });
+    expect(process.exitCode).toBe(0);
+    const result = JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''));
+    expect(result).toMatchObject({ source: 'eai-managed', sourceMode: 'eai-cli-generated', classification: 'pending', status: 'pending_review', operationId: 'cli-managed-source-123' });
+    expect(JSON.stringify(result)).not.toContain('one-use-ticket');
+    expect(prepared).not.toHaveProperty('repo');
+    expect(requests.some(url => url.includes('/source-unknown/'))).toBe(false);
+    const receipt = JSON.parse(await readFile(join(projectRoot, '.eai/cli-managed-source-receipt.json'), 'utf8'));
+    expect(receipt.bundleSha256).toBe(uploaded.bundleSha256);
+    expect(receipt.bundleSha256).toBe(result.bundleSha256);
+  });
+
+  test('requires browser verification before accepting the source choice', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const identity = stubManagedOperation().getMockImplementation()!;
+    const requests: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      requests.push(url);
+      return url.endsWith('/github-link-sessions') ? jsonResponse(linkedGitHubSession('pending')) : identity(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--source', 'eai-managed', '--format', 'json'], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ error: 'GITHUB_LINK_REQUIRED', message: expect.stringContaining('--github-link-session github-link-123') });
+    expect(requests.some(url => url.endsWith('/preparations') || url.includes('/source-unknown/'))).toBe(false);
+  });
+
+  test('does not silently choose customer-owned source from repository flags', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    stubManagedOperation();
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--repo', 'customer/app', '--installation-id', '123', '--format', 'json'], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ error: 'SOURCE_CHOICE_REQUIRED' });
+  });
+
+  test('keeps managed resume on its exact publication route and refuses incomplete runtime proof', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const identity = stubManagedOperation().getMockImplementation()!;
+    const requests: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.includes('/cli-managed-source/operations/')) return jsonResponse({
+        schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated', operationId: 'cli-managed-source-123', status: 'completed',
+        tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', environment: 'preview', actorId: 'test-user-oid',
+        templateCommitSha: 'a'.repeat(40), bundleSha256: `sha256:${'b'.repeat(64)}`, verifiedGithubUser: linkedGitHubSession().verifiedGithubUser,
+        repository: { owner: 'eai-generated-apps', name: 'app' }, deployment: { status: 'ready', liveUrl: 'https://live.example.test' },
+      });
+      return identity(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--source', 'eai-managed', '--resume', 'cli-managed-source-123', '--format', 'json'], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ classification: 'incomplete', publicationStatus: 'completed' });
+    expect(requests.some(url => url.includes('/source-unknown/') || url.endsWith('/github-link-sessions'))).toBe(false);
+    expect(process.exitCode).toBe(1);
   });
 
   test('rejects an unsupported new deployment environment before any API or repository work', async () => {
@@ -163,6 +268,7 @@ fi
         return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
       }
       if (url.endsWith('/source-unknown/register')) return jsonResponse({ status: 'registered' });
+      if (url.endsWith('/cli-managed-source/github-link-sessions')) return jsonResponse(linkedGitHubSession());
       if (url.endsWith('/source-unknown/workflow-setup')) {
         return jsonResponse({ status: 'issued', operationId: 'source-unknown-abc123', nonce: 'one-time-nonce' });
       }
@@ -213,7 +319,7 @@ fi
       'planning-portal',
       '--target', 'eai',
       '--tenant-id', TENANT_ID,
-      '--repo', 'enterprise/planning-portal',
+      '--source', 'customer-owned', '--repo', 'enterprise/planning-portal',
       '--installation-id', '12345',
       ...(retryMode ? ['--target-tenant-id', TENANT_ID, '--retry', retryState.operationId] : []),
       '--wait',

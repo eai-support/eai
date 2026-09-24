@@ -22,7 +22,9 @@ const RESERVED_PREFIXES = [
   'src/components/generated-workflow/', 'src/lib/generated-workflow/', 'src/lib/platform/',
 ];
 const RESERVED_FILES = new Set(['src/auth.ts', 'src/middleware.ts', 'src/lib/api-helpers.ts', 'src/eai.config/register.ts', 'src/eai.config/deployment-contract.ts']);
-const NON_SOURCE_ROOTS = new Set(['.git', '.next', 'node_modules', '.specify', '.claude', '.agents', '.gemini', '.grok', '.system', '.eai', 'coverage', 'test-results', 'playwright-report']);
+const NON_SOURCE_ROOTS = new Set(['.git', '.next', 'node_modules', '.specify', '.claude', '.agents', '.gemini', '.grok', '.system', '.eai', '.vscode', '.cursor', '.codex', 'coverage', 'test-results', 'playwright-report']);
+const NON_SOURCE_FILES = new Set(['.eai-manifest.json', '.DS_Store', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'GROK.md', 'codex-config.toml', 'next-env.d.ts', 'tsconfig.tsbuildinfo', '.github/copilot-instructions.md']);
+const NON_SOURCE_PREFIXES = ['.github/prompts/', '.github/skills/', '.github/instructions/', '.github/agents/'];
 
 /** Checksums and size describe the decoded bytes, not the base64 text. */
 export interface CliManagedSourceFile {
@@ -68,7 +70,7 @@ function isCredentialPath(path: string): boolean {
 }
 
 function isNonSourcePath(path: string): boolean {
-  return NON_SOURCE_ROOTS.has(path.split('/')[0]) || path === '.eai-manifest.json'
+  return NON_SOURCE_ROOTS.has(path.split('/')[0]) || NON_SOURCE_FILES.has(path) || NON_SOURCE_PREFIXES.some(prefix => path.startsWith(prefix))
     || (!path.startsWith('src/') && !path.startsWith('public/') && isCredentialPath(path));
 }
 
@@ -210,7 +212,6 @@ export async function chooseManagedDeploySource(options: { source?: string; repo
   if (options.source && !['eai-managed', 'customer-owned'].includes(options.source)) throw new ManagedSourceError('SOURCE_CHOICE_INVALID', 'Choose --source eai-managed or --source customer-owned.');
   if (options.source === 'eai-managed' && options.repo) throw new ManagedSourceError('SOURCE_CHOICE_CONFLICT', 'EAI selects the maintained repository; omit --repo when choosing --source eai-managed.');
   if (options.source) return options.source as ManagedDeploySource;
-  if (options.repo) return 'customer-owned';
   if (!interactive || options.format === 'json') throw new ManagedSourceError('SOURCE_CHOICE_REQUIRED', 'Choose --source eai-managed for EAI to maintain the repository, or --source customer-owned for your GitHub repository.');
   const answer = await inquirer.prompt<{ source: ManagedDeploySource }>([{
     type: 'list', name: 'source', message: 'Who should maintain the app source?',

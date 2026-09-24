@@ -175,6 +175,8 @@ const SOURCE_UNKNOWN_APP_FLAGS: Readonly<Record<string, readonly string[]>> = {
 };
 
 const EAI_MANAGED_DEPLOY_FLAGS = [
+  '--source',
+  '--github-link-session',
   '--target',
   '--tenant-id',
   '--target-tenant-id',

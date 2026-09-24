@@ -76,6 +76,13 @@ describe('managed local source snapshot', () => {
     expect((await buildCliManagedSourceBundle(root)).bundle.files.map(file => file.path)).not.toContain('public/scaffold.svg');
   });
 
+  test('excludes generated editor, Gofer and build metadata while preserving runtime source', async () => {
+    const root = await project();
+    const before = await buildCliManagedSourceBundle(root);
+    for (const path of ['.vscode/settings.json', '.github/skills/eai/SKILL.md', 'AGENTS.md', 'next-env.d.ts', 'tsconfig.tsbuildinfo']) await put(root, path, 'local tooling output');
+    expect(await buildCliManagedSourceBundle(root)).toEqual(before);
+  });
+
   test('writes recomputable local evidence without embedding source bytes', async () => {
     const root = await project();
     const { bundle, totalBytes } = await buildCliManagedSourceBundle(root);
@@ -131,7 +138,7 @@ describe('managed local source snapshot', () => {
     await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'SOURCE_BASELINE_REQUIRED' });
   });
 
-  test.each(['-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----', `ghp_${'a'.repeat(36)}`])('rejects embedded credentials before source leaves the folder', async secret => {
+  test.each([`${['-----BEGIN', 'PRIVATE', 'KEY-----'].join(' ')}\n<fixture-not-a-real-key>`, `ghp_${'a'.repeat(36)}`])('rejects embedded credentials before source leaves the folder', async secret => {
     const root = await project();
     await put(root, 'src/lib/settings.ts', secret);
     await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'SOURCE_CREDENTIAL_DETECTED' });
@@ -170,8 +177,8 @@ describe('explicit source choice', () => {
   test.each(['eai-managed', 'customer-owned'] as const)('preserves an explicit %s source', async source => {
     expect(await chooseManagedDeploySource({ source, format: 'json' }, false)).toBe(source);
   });
-  test('keeps an explicit existing customer repository on the customer path', async () => {
-    expect(await chooseManagedDeploySource({ repo: 'customer/app', format: 'json' }, false)).toBe('customer-owned');
+  test('requires an explicit source choice even with a repository flag', async () => {
+    await expect(chooseManagedDeploySource({ repo: 'customer/app', format: 'json' }, false)).rejects.toMatchObject({ code: 'SOURCE_CHOICE_REQUIRED' });
   });
   test('requires source selection in noninteractive and JSON runs', async () => {
     await expect(chooseManagedDeploySource({ format: 'text' }, false)).rejects.toMatchObject({ code: 'SOURCE_CHOICE_REQUIRED' });

@@ -225,6 +225,42 @@ export interface SourceUnknownDeploymentRequest {
   validationSummary?: Record<string, unknown>;
 }
 
+/** Browser OAuth proof is scoped to the authenticated EAI actor, app and runtime intent. */
+export interface CliManagedGithubLinkRequest {
+  schemaVersion: 'eai.cli_managed_github_link.v1';
+  targetTenantId: string;
+  environment: 'preview' | 'dev' | 'test' | 'prod';
+  idempotencyKey: string;
+}
+
+/** A GitHub login or matching email alone is not a verified actor association. */
+export interface CliManagedGithubLinkSession {
+  schemaVersion: 'eai.cli_managed_github_link_session.v1';
+  sessionId: string;
+  status: 'pending' | 'verified' | 'expired' | 'failed';
+  tenantId: string;
+  appKey: string;
+  targetTenantId: string;
+  environment: string;
+  actorId: string;
+  expiresAt: string;
+  browserUrl: string;
+  verifiedGithubUser?: { id: number; login: string; proofId: string; actorId: string };
+}
+
+/** The server selects the managed repository; no client GitHub credential or destination is accepted. */
+export interface CliManagedSourcePreparationRequest {
+  schemaVersion: 'eai.cli_managed_source_preparation.v1';
+  templateCommitSha: string;
+  bundleSha256: string;
+  fileCount: number;
+  totalBytes: number;
+  idempotencyKey: string;
+  githubLinkSessionId: string;
+  targetTenantId: string;
+  environment: 'preview' | 'dev' | 'test' | 'prod';
+}
+
 /** Exact source operation; callers must not substitute the latest deployment. */
 export interface SourceUnknownOperationResponse {
   tenantId: string;
@@ -1494,6 +1530,45 @@ export class PlatformAPIClient {
       'POST',
       data,
     );
+  }
+
+  /** Start a one-time browser proof or reuse an existing verified actor connection. */
+  async createCliManagedGithubLinkSession(tenantId: string, appKey: string, data: CliManagedGithubLinkRequest): Promise<Response> {
+    return this.publicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey)}/github-link-sessions`,
+      'POST', data,
+    );
+  }
+
+  /** Read only the exact actor-bound browser operation, never a latest-session pointer. */
+  async getCliManagedGithubLinkSession(tenantId: string, appKey: string, sessionId: string, targetTenantId: string, environment: string): Promise<Response> {
+    return this.publicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey, sessionId)}/github-link-sessions/${encodeURIComponent(sessionId)}?targetTenantId=${encodeURIComponent(targetTenantId)}&environment=${encodeURIComponent(environment)}`,
+      'GET',
+    );
+  }
+
+  /** Prepare bounded local source; successful preparation does not mean it has been deployed. */
+  async prepareCliManagedSource(tenantId: string, appKey: string, data: CliManagedSourcePreparationRequest): Promise<Response> {
+    return this.publicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey)}/preparations`,
+      'POST', data,
+    );
+  }
+
+  /** Read the exact managed publication, including its bot review and deployment progress. */
+  async getCliManagedSourceOperation(tenantId: string, appKey: string, operationId: string, targetTenantId: string, environment: string): Promise<Response> {
+    return this.publicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey, operationId)}/operations/${encodeURIComponent(operationId)}?targetTenantId=${encodeURIComponent(targetTenantId)}&environment=${encodeURIComponent(environment)}`,
+      'GET',
+    );
+  }
+
+  private cliManagedSourcePath(tenantId: string, appKey: string, operationId?: string): string {
+    if ([tenantId, appKey, ...(operationId !== undefined ? [operationId] : [])].some(value => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value))) {
+      throw new Error('Managed source tenant, app and operation identifiers must be safe opaque path segments.');
+    }
+    return `${PUBLIC_PLATFORM_PATH}/tenants/${tenantId}/apps/${appKey}/cli-managed-source`;
   }
 
   async setupSourceUnknownWorkflow(

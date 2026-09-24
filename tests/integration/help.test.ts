@@ -176,7 +176,9 @@ describe('CLI help output', () => {
     const result = await runCommand(ctx, 'eai deploy app --help');
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('Deploy an app to EAI-managed TenantInfra');
+    expect(result.stdout).toContain('Deploy local app source through EAI-maintained or customer-owned GitHub');
+    expect(result.stdout).toContain('--source <source>');
+    expect(result.stdout).toContain('--github-link-session <session-id>');
     expect(result.stdout).toContain('--target <target>');
     expect(result.stdout).toContain('--installation-id <id>');
     expect(result.stdout).toContain('--resume <operation-id>');

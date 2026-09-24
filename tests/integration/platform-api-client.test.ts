@@ -11,6 +11,37 @@ describe('PlatformAPIClient', () => {
     vi.restoreAllMocks()
   })
 
+  test('keeps managed source preparation and actor linking on tenant/app-scoped v4 routes', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    const client = new PlatformAPIClient('https://api.example.test/public', 'tenant-one')
+    const link = { schemaVersion: 'eai.cli_managed_github_link.v1' as const, targetTenantId: 'runtime-tenant', environment: 'preview' as const, idempotencyKey: '12345678-1234-1234-1234-123456789abc' }
+    await client.createCliManagedGithubLinkSession('tenant-one', 'my-app', link)
+    await client.getCliManagedGithubLinkSession('tenant-one', 'my-app', 'link-one', 'runtime-tenant', 'preview')
+    const prep = {
+      schemaVersion: 'eai.cli_managed_source_preparation.v1' as const, templateCommitSha: 'a'.repeat(40),
+      bundleSha256: `sha256:${'b'.repeat(64)}`, fileCount: 2, totalBytes: 120, githubLinkSessionId: 'link-one',
+      targetTenantId: link.targetTenantId, environment: link.environment, idempotencyKey: link.idempotencyKey,
+    }
+    await client.prepareCliManagedSource('tenant-one', 'my-app', prep)
+    await client.getCliManagedSourceOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', 'preview')
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+      ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/github-link-sessions', 'POST'],
+      ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/github-link-sessions/link-one?targetTenantId=runtime-tenant&environment=preview', 'GET'],
+      ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/preparations', 'POST'],
+      ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/operations/operation-one?targetTenantId=runtime-tenant&environment=preview', 'GET'],
+    ])
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(link)
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual(prep)
+    expect(fetchMock.mock.calls[2][1]?.headers).toMatchObject({ Authorization: 'Bearer <fixture-access-token>' })
+  })
+
+  test.each(['operation/other', '../operation', '', 'operation?query=value'])('rejects a non-opaque managed operation ID %s before an HTTP request', async operationId => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const client = new PlatformAPIClient('https://api.example.test/public', 'tenant-one')
+    await expect(client.getCliManagedSourceOperation('tenant-one', 'my-app', operationId, 'runtime-tenant', 'preview')).rejects.toThrow('safe opaque path segments')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   test('formats FastAPI field validation details with a stable reason code', async () => {
     const parsed = await parseApiError(new Response(JSON.stringify({
       detail: [

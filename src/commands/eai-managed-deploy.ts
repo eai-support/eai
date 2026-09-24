@@ -22,6 +22,8 @@ import {
   type ManagedDeployState,
 } from '../lib/eai-managed-deploy.js';
 import * as out from '../lib/output.js';
+import { buildCliManagedSourceBundle, chooseManagedDeploySource, ManagedSourceError, writeCliManagedSourceReceipt } from '../lib/eai-managed-source.js';
+import { classifyCliManagedSourceOperation, pollCliManagedSource, submitCliManagedSource, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../lib/eai-managed-source-client.js';
 
 const exec = promisify(execFile);
 const DEFAULT_TIMEOUT_SECONDS = 1_200;
@@ -36,6 +38,8 @@ interface ManagedDeployOptions {
   tenantId: string;
   targetTenantId?: string;
   repo?: string;
+  source?: string;
+  githubLinkSession?: string;
   installationId?: string;
   branch: string;
   workflow: string;
@@ -418,9 +422,9 @@ function printFailure(format: string, error: unknown): void {
   const failure = error instanceof ManagedDeployFailure
     ? error
     : new ManagedDeployFailure(
-      'EAI_MANAGED_DEPLOY_FAILED',
+      error instanceof ManagedSourceError ? error.code : 'EAI_MANAGED_DEPLOY_FAILED',
       error instanceof Error ? error.message : String(error),
-      'Fix the reported problem, then retry the same exact command.',
+      error instanceof ManagedSourceError ? error.message : 'Fix the reported problem, then retry the same exact command.',
     );
   if (format === 'json') {
     out.json({ error: failure.code, message: failure.message, nextAction: failure.nextAction });
@@ -431,13 +435,45 @@ function printFailure(format: string, error: unknown): void {
   process.exitCode = 1;
 }
 
+function printManagedSourceOperation(format: string, operation: CliManagedSourceOperation): void {
+  const classification = classifyCliManagedSourceOperation(operation);
+  const command = `eai deploy app ${operation.appKey} --target eai --tenant-id ${operation.tenantId} --target-tenant-id ${operation.targetTenantId} --environment ${operation.environment} --source eai-managed --resume ${operation.operationId} --format json`;
+  const nextAction = classification === 'succeeded'
+    ? `Run eai deploy doctor --url ${operation.deployment?.liveUrl} --format json and verify the readiness evidence.`
+    : operation.status === 'pending_review'
+      ? `EAI must complete the bot PR checks and merge before deployment. Resume the exact operation with: ${command}`
+      : classification === 'failed' || classification === 'incomplete'
+        ? `Ask EAI to repair the reported publication or missing deployment evidence. Read its exact status with: ${command}`
+        : `Continue observing the exact platform operation with: ${command}`;
+  const result = {
+    tenantId: operation.tenantId, targetTenantId: operation.targetTenantId, appKey: operation.appKey,
+    operationId: operation.operationId, source: 'eai-managed', sourceMode: operation.sourceMode,
+    status: classification === 'succeeded' ? 'active' : operation.status, publicationStatus: operation.status, classification,
+    templateCommitSha: operation.templateCommitSha, bundleSha256: operation.bundleSha256,
+    sourceBinding: { repository: `${operation.repository.owner}/${operation.repository.name}`, commitSha: operation.review?.mergedSha },
+    review: operation.review, deploymentId: operation.deployment?.requestId, activeUrl: operation.deployment?.liveUrl,
+    runtimeIdentity: operation.deployment?.runtimeIdentity, requiresTenantInfra: operation.deployment?.requiresTenantInfra,
+    latestPointerVersion: operation.deployment?.latestPointerVersion, expectedLatestVersion: operation.deployment?.expectedLatestVersion,
+    nextAction,
+  };
+  if (format === 'json') out.json(result);
+  else {
+    out.info(`EAI-maintained publication ${operation.operationId}: ${result.status}`);
+    if (result.activeUrl) out.info(`URL: ${result.activeUrl}`);
+    out.info(nextAction);
+  }
+  if (classification === 'failed' || classification === 'incomplete') process.exitCode = 1;
+}
+
 export const eaiManagedDeployCommand = new Command('app')
-  .description('Deploy an app to EAI-managed TenantInfra from an immutable GitHub commit')
+  .description('Deploy local app source through EAI-maintained or customer-owned GitHub to TenantInfra')
   .argument('<app-key>', 'Existing EAI app key')
   .requiredOption('--target <target>', 'Hosting target (eai)')
   .requiredOption('--tenant-id <id>', 'Company tenant that owns the app enrollment')
   .option('--target-tenant-id <id>', 'Tenant that receives the deployed runtime')
   .option('--repo <owner/name>', 'Exact GitHub repository')
+  .option('--source <source>', 'Source ownership (eai-managed|customer-owned); required without an interactive prompt')
+  .option('--github-link-session <session-id>', 'Resume the exact EAI-account GitHub browser verification')
   .option('--installation-id <id>', 'Exact EAI GitHub App installation ID')
   .option('--branch <branch>', 'Exact branch to bind and dispatch', 'main')
   .option('--workflow <path>', 'Canonical EAI workflow path', EAI_MANAGED_WORKFLOW_PATH)
@@ -452,7 +488,9 @@ export const eaiManagedDeployCommand = new Command('app')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', `
 Examples:
-  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --repo org/planning-portal --installation-id 12345
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --source eai-managed
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --source customer-owned --repo org/planning-portal --installation-id 12345
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --environment preview --source eai-managed --resume cli-managed-source-abc123 --format json
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
 `)
@@ -466,7 +504,13 @@ Examples:
       if (options.resume && options.retry) {
         fail('DEPLOY_MODE_CONFLICT', '--resume and --retry cannot be used together.', 'Choose one exact operation action.');
       }
-      if (!options.resume && !options.retry && !MANAGED_DEPLOY_ENVIRONMENTS.has(options.environment)) {
+      if (options.source && !['eai-managed', 'customer-owned'].includes(options.source)) {
+        fail('SOURCE_CHOICE_INVALID', 'Choose --source eai-managed or --source customer-owned.', 'Use the source mode recorded by the exact operation.');
+      }
+      if (options.source === 'eai-managed' && (options.repo || options.installationId || options.commit || options.branch !== 'main')) {
+        fail('SOURCE_CHOICE_CONFLICT', 'EAI derives the maintained repository, branch and merged commit.', 'Omit --repo, --installation-id, --branch and --commit for EAI-maintained local source.');
+      }
+      if ((!options.resume && !options.retry || options.source === 'eai-managed') && !MANAGED_DEPLOY_ENVIRONMENTS.has(options.environment)) {
         fail('DEPLOY_ENVIRONMENT_INVALID', 'Managed deployment supports preview, dev, test, or prod.', 'Choose a supported environment before registering the source operation.');
       }
       const appKey = appKeyValue.trim();
@@ -495,6 +539,18 @@ Examples:
       }
       const targetTenantId = options.targetTenantId?.trim() || context.tenantId;
       const client = new PlatformAPIClient(context.publicApiUrl, context.tenantId);
+      const managedScope: CliManagedSourceScope = {
+        tenantId: context.tenantId, targetTenantId, appKey,
+        environment: options.environment as CliManagedSourceScope['environment'], actorId: context.tokens.oid || '',
+      };
+
+      if (options.source === 'eai-managed' && (options.resume || options.retry)) {
+        requireManagedPublicApiUrl(context.publicApiUrl);
+        const operation = await pollCliManagedSource(client, managedScope, (options.resume || options.retry)!, { wait: options.wait, timeoutMs: timeoutSeconds * 1000 });
+        spinner?.stop();
+        printManagedSourceOperation(format, operation);
+        return;
+      }
 
       if (options.resume) {
         const operation = await pollExactOperation(client, {
@@ -582,10 +638,28 @@ Examples:
         return;
       }
 
+      const publicApiUrl = requireManagedPublicApiUrl(context.publicApiUrl);
+      spinner?.stop();
+      const link = await verifyCliGithubIdentity(client, managedScope, {
+        sessionId: options.githubLinkSession, interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY && format !== 'json'), timeoutMs: timeoutSeconds * 1000,
+      });
+      const sourceChoice = await chooseManagedDeploySource({ source: options.source, repo: options.repo, format });
+      spinner?.start();
+      if (sourceChoice === 'eai-managed') {
+        if (options.repo || options.installationId || options.commit || options.branch !== 'main') {
+          fail('SOURCE_CHOICE_CONFLICT', 'EAI derives the maintained repository, branch and merged commit.', 'Omit --repo, --installation-id, --branch and --commit for EAI-maintained local source.');
+        }
+        const { bundle } = await buildCliManagedSourceBundle(context.root);
+        await writeCliManagedSourceReceipt(context.root, bundle);
+        const submitted = await submitCliManagedSource(client, managedScope, link, bundle);
+        const operation = await pollCliManagedSource(client, managedScope, submitted.operationId, { wait: options.wait, timeoutMs: timeoutSeconds * 1000 }, submitted);
+        spinner?.stop();
+        printManagedSourceOperation(format, operation);
+        return;
+      }
       if (!options.repo || !options.installationId) {
         fail('REPOSITORY_AUTHORITY_REQUIRED', '--repo and --installation-id are required for a new EAI deployment.', 'Connect the repository to the tenant, install the EAI GitHub App, then pass both exact values.');
       }
-      const publicApiUrl = requireManagedPublicApiUrl(context.publicApiUrl);
       const repository = parseGitHubRepository(options.repo);
       const installationId = requireInstallationId(options.installationId);
       const install = await installCanonicalManagedDeployFiles(context.root, workflowPath);
