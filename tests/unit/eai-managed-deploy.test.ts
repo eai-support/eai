@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'vitest';
-import { chmod, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile, mkdir } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -21,6 +21,7 @@ import {
   requireManagedPublicApiUrl,
   managedDeployNonceSha256,
   saveManagedDeployState,
+  writeManagedDeployEvidence,
   type ManagedDeployState,
 } from '../../src/lib/eai-managed-deploy.js';
 import {
@@ -196,7 +197,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'fd588e83244d49fd7ed071ba5c163b298a825fb5' },
+      candidate: { commit: '1d44646e9fddaaf39c9b8c975b1dbf8557e543d5' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
@@ -313,6 +314,32 @@ describe('EAI managed deployment helpers', () => {
     await writeFile(outside, 'secret');
     await symlink(outside, join(project, 'src', 'eai.config', 'linked.ts'));
     await expect(buildManagedDeployConfigHash(project)).rejects.toThrow('cannot be a symlink');
+  });
+
+  test.skipIf(process.platform === 'win32')('rejects nonregular governed configuration entries', async () => {
+    const project = await temporaryDirectory('eai-managed-hash-special-');
+    await writeFile(join(project, 'eai.runtime.json'), '{}');
+    await mkdir(join(project, 'src', 'eai.config'), { recursive: true });
+    const fifo = join(project, 'src', 'eai.config', 'runtime-input');
+    await promisify(execFile)('mkfifo', [fifo]);
+    await expect(buildManagedDeployConfigHash(project)).rejects.toThrow('regular file or directory');
+  });
+
+  test('writes nested doctor evidence only through regular directory ancestors', async () => {
+    const project = await realpath(await temporaryDirectory('eai-managed-doctor-evidence-'));
+    const target = join(project, '.eai', 'reports', 'deploy-doctor.json');
+    await writeManagedDeployEvidence(target, { status: 'pass' });
+    expect(JSON.parse(await readFile(target, 'utf8'))).toEqual({ status: 'pass' });
+    expect((await stat(target)).mode & 0o777).toBe(0o600);
+
+    const linkedRoot = await realpath(await temporaryDirectory('eai-managed-doctor-linked-'));
+    const outside = await realpath(await temporaryDirectory('eai-managed-doctor-outside-'));
+    await symlink(outside, join(linkedRoot, '.eai'), 'dir');
+    await expect(writeManagedDeployEvidence(
+      join(linkedRoot, '.eai', 'reports', 'deploy-doctor.json'),
+      { status: 'pass' },
+    )).rejects.toThrow('linked evidence directory');
+    expect(await readdir(outside)).toEqual([]);
   });
 
   test('persists retry authority outside the project with owner-only file permissions', async () => {

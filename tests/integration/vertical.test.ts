@@ -22,7 +22,7 @@ import {
   verticalCommand,
 } from '../../src/commands/vertical.js';
 
-const API_BASE = 'https://test-api.example.com';
+const API_BASE = 'https://test-api.au.myenterprise.ai/public';
 const COMPANY_TENANT_ID = 'company-tenant';
 const PLATFORM_PARENT_ID = 'eai-developers';
 

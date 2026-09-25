@@ -372,8 +372,11 @@ function listGovernedConfigFiles(root) {
       }
       if (metadata.isDirectory()) {
         visit(relativePath);
+      } else if (!metadata.isFile()) {
+        throw new Error(
+          `Governed configuration entry must be a regular file or directory: ${relativePath}`,
+        );
       } else if (
-        metadata.isFile() &&
         !NON_RUNTIME_CONFIG_FILE.test(entry.name) &&
         !GENERATED_CONFIG_FILES.has(relativePath)
       ) {

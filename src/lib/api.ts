@@ -7,6 +7,7 @@
  */
 
 import { getAccessToken } from './auth.js';
+import { requireManagedPublicApiUrl } from './managed-public-api.js';
 import { toObjectTypeSlug } from './utils.js';
 
 export type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
@@ -829,7 +830,8 @@ export class PlatformAPIClient {
     method: PlatformMethod = 'GET',
     body?: unknown,
   ): Promise<Response> {
-    return fetch(`${this.baseUrl}${path}`, {
+    const baseUrl = requireManagedPublicApiUrl(this.baseUrl);
+    return fetch(`${baseUrl}${path}`, {
       method,
       headers: await this.headers(),
       redirect: 'error',
@@ -1637,10 +1639,11 @@ export class PlatformAPIClient {
     data: SourceUnknownWorkflowEvidenceRequest,
     githubOidcToken: string,
   ): Promise<Response> {
+    const baseUrl = requireManagedPublicApiUrl(this.baseUrl);
     const headers = await this.headers();
     headers.Authorization = `Bearer ${githubOidcToken}`;
     return fetch(
-      `${this.baseUrl}${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
+      `${baseUrl}${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
       {
         method: 'POST',
         headers,

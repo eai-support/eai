@@ -2,8 +2,11 @@ import { createHash, randomBytes } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, chmod, lstat, mkdir, open, readFile, readdir, realpath, rename, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { requireManagedPublicApiUrl } from './managed-public-api.js';
+
+export { requireManagedPublicApiUrl } from './managed-public-api.js';
 
 export const EAI_MANAGED_WORKFLOW_PATH = '.github/workflows/eai-app.yml';
 export const EAI_MANAGED_EVIDENCE_SCRIPT_PATH = 'scripts/source-unknown-deployment-evidence.mjs';
@@ -157,14 +160,6 @@ export function requireInstallationId(value: string | number): number {
   return normalized;
 }
 
-/** Workflow identity tokens may only be submitted to the platform-owned regional gateways. */
-export function requireManagedPublicApiUrl(value: string): string {
-  if (!/^https:\/\/(?:dev-api\.au|(?:test-api|api)\.(?:au|ca|eu))\.myenterprise\.ai\/public\/?$/.test(value)) {
-    throw new Error('Managed deployment requires a trusted EAI regional PublicAPI HTTPS URL ending in /public.');
-  }
-  return value.replace(/\/$/, '');
-}
-
 async function assertTrustedDirectory(path: string): Promise<void> {
   const status = await lstat(path);
   const uid = typeof process.getuid === 'function' ? process.getuid() : null;
@@ -181,6 +176,34 @@ async function ensureDirectory(path: string, mode: number): Promise<void> {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
   }
   await assertTrustedDirectory(path);
+}
+
+async function ensureNoLinkDirectoryPath(path: string, mode: number): Promise<void> {
+  const target = resolve(path);
+  const filesystemRoot = parse(target).root;
+  const components = relative(filesystemRoot, target)
+    .split(/[\\/]/)
+    .filter(Boolean);
+  let current = filesystemRoot;
+  for (const component of components) {
+    current = join(current, component);
+    let status;
+    try {
+      status = await lstat(current);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      try {
+        await mkdir(current, { mode });
+      } catch (mkdirError) {
+        if ((mkdirError as NodeJS.ErrnoException).code !== 'EEXIST') throw mkdirError;
+      }
+      status = await lstat(current);
+    }
+    if (!status.isDirectory() || status.isSymbolicLink()) {
+      throw new Error('Managed deployment refused a linked evidence directory.');
+    }
+  }
+  await assertTrustedDirectory(target);
 }
 
 async function assertRegularTarget(path: string, privateData = false): Promise<void> {
@@ -237,7 +260,7 @@ async function writeAtomically(path: string, content: Buffer | string, mode = 0o
 /** Persist owner-only operation evidence without following links or leaking it through broad permissions. */
 export async function writeManagedDeployEvidence(path: string, value: unknown): Promise<void> {
   const target = resolve(path);
-  await ensureDirectory(dirname(target), 0o700);
+  await ensureNoLinkDirectoryPath(dirname(target), 0o700);
   await assertRegularTarget(target, true);
   await writeAtomically(target, `${JSON.stringify(value, null, 2)}\n`, 0o600);
   await chmod(target, 0o600);
@@ -321,8 +344,9 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
         throw new Error(`Governed configuration cannot be a symlink: ${relativePath}`);
       }
       if (entryStatus.isDirectory()) await visit(relativePath);
-      else if (entryStatus.isFile()
-        && !NON_RUNTIME_CONFIG_FILE.test(entry.name)
+      else if (!entryStatus.isFile()) {
+        throw new Error(`Governed configuration entry must be a regular file or directory: ${relativePath}`);
+      } else if (!NON_RUNTIME_CONFIG_FILE.test(entry.name)
         && !GENERATED_CONFIG_FILES.has(relativePath)) paths.push(relativePath);
     }
   }

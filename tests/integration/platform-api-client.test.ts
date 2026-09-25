@@ -5,6 +5,7 @@ vi.mock('../../src/lib/auth.js', () => ({
 }))
 
 import { PlatformAPIClient, parseApiError } from '../../src/lib/api.js'
+import { getAccessToken } from '../../src/lib/auth.js'
 
 describe('PlatformAPIClient', () => {
   afterEach(() => {
@@ -13,7 +14,7 @@ describe('PlatformAPIClient', () => {
 
   test('keeps managed source preparation and actor linking on tenant/app-scoped v4 routes', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
-    const client = new PlatformAPIClient('https://api.example.test/public', 'tenant-one')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
     const link = { schemaVersion: 'eai.cli_managed_github_link.v1' as const, targetTenantId: 'runtime-tenant', environment: 'preview' as const, idempotencyKey: '12345678-1234-1234-1234-123456789abc' }
     await client.createCliManagedGithubLinkSession('tenant-one', 'my-app', link)
     await client.getCliManagedGithubLinkSession('tenant-one', 'my-app', 'link-one', 'runtime-tenant', 'preview')
@@ -26,11 +27,11 @@ describe('PlatformAPIClient', () => {
     await client.getCliManagedSourceOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', 'preview')
     await client.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant')
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
-      ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/github-link-sessions', 'POST'],
-      ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/github-link-sessions/link-one?targetTenantId=runtime-tenant&environment=preview', 'GET'],
-      ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/preparations', 'POST'],
-      ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/operations/operation-one?targetTenantId=runtime-tenant&environment=preview', 'GET'],
-      ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/managed-deployments/operations/operation-one?targetTenantId=runtime-tenant', 'GET'],
+      ['https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/github-link-sessions', 'POST'],
+      ['https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/github-link-sessions/link-one?targetTenantId=runtime-tenant&environment=preview', 'GET'],
+      ['https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/preparations', 'POST'],
+      ['https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/operations/operation-one?targetTenantId=runtime-tenant&environment=preview', 'GET'],
+      ['https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/managed-deployments/operations/operation-one?targetTenantId=runtime-tenant', 'GET'],
     ])
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(link)
     expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual(prep)
@@ -40,8 +41,21 @@ describe('PlatformAPIClient', () => {
 
   test.each(['operation/other', '../operation', '', 'operation?query=value'])('rejects a non-opaque managed operation ID %s before an HTTP request', async operationId => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
-    const client = new PlatformAPIClient('https://api.example.test/public', 'tenant-one')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
     await expect(client.getCliManagedSourceOperation('tenant-one', 'my-app', operationId, 'runtime-tenant', 'preview')).rejects.toThrow('safe opaque path segments')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('rejects an untrusted managed PublicAPI origin before acquiring or sending a bearer token', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const tokenMock = vi.mocked(getAccessToken)
+    tokenMock.mockClear()
+    const client = new PlatformAPIClient('https://attacker.example/public', 'tenant-parent')
+
+    await expect(
+      client.getLatestSourceUnknownDeployment('tenant-parent', 'rates-review'),
+    ).rejects.toThrow('trusted EAI regional PublicAPI')
+    expect(tokenMock).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -570,7 +584,7 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.registerSourceUnknownApp('tenant-parent', 'rates-review', {
       repoOwner: 'enterpriseaigroup',
       repoName: 'rates-review',
@@ -594,7 +608,7 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({
       repoOwner: 'enterpriseaigroup',
@@ -622,7 +636,7 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.registerSourceUnknownApp('tenant-parent', 'rates-review', {
       repoOwner: 'enterpriseaigroup',
       repoName: 'rates-review',
@@ -651,7 +665,7 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({
       repoOwner: 'enterpriseaigroup',
@@ -684,7 +698,7 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.setupSourceUnknownWorkflow('tenant-parent', 'rates-review', {
       environment: 'preview',
       workflowPath: '.github/workflows/eai-app.yml',
@@ -696,7 +710,7 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-setup')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-setup')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({
       environment: 'preview',
@@ -712,7 +726,7 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.submitSourceUnknownWorkflowEvidence('tenant-parent', 'rates-review', {
       operationId: 'source-unknown-op',
       nonce: 'nonce-token',
@@ -732,7 +746,7 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-evidence')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-evidence')
     expect(init?.method).toBe('POST')
     expect(init?.headers).toEqual(expect.objectContaining({
       Authorization: 'Bearer github-oidc-token',
@@ -756,10 +770,10 @@ describe('PlatformAPIClient', () => {
 
   test('bootstraps a source-unknown runtime with the exact operation and explicit target', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.bootstrapSourceUnknownRuntime('tenant-parent', 'rates-review', 'preview', 'source-unknown-op', 'tenant-runtime')
     const [url, init] = fetchMock.mock.calls[0]
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/environments/preview/runtime-bootstrap')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/environments/preview/runtime-bootstrap')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({ sourceOperationId: 'source-unknown-op', targetTenantId: 'tenant-runtime', sourceMode: 'source-unknown' })
   })
@@ -769,7 +783,7 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 202 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.requestSourceUnknownDeployment('tenant-parent', 'rates-review', {
       operationId: 'source-unknown-op',
       environment: 'preview',
@@ -795,7 +809,7 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deploy')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deploy')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({
       operationId: 'source-unknown-op',
@@ -825,13 +839,13 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.getLatestSourceUnknownDeployment('tenant-parent', 'rates-review')
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deployments/latest')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deployments/latest')
     expect(init?.method).toBe('GET')
     expect(init?.body).toBeUndefined()
   })
@@ -841,7 +855,7 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.getSourceUnknownOperation(
       'tenant-parent',
       'rates-review',
@@ -852,7 +866,7 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
     expect(String(url)).toBe(
-      'https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/operations/source-unknown-abc123?targetTenantId=tenant-runtime',
+      'https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/operations/source-unknown-abc123?targetTenantId=tenant-runtime',
     )
     expect(init?.method).toBe('GET')
     expect(init?.body).toBeUndefined()
