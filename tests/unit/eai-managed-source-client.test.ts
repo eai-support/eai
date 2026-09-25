@@ -316,6 +316,18 @@ describe('managed publication authority and readiness', () => {
     await expect(submitCliManagedSource(client, scope, session(), bundle)).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
   });
 
+  test.each([undefined, 'github-link-other'])('does not upload if preparation omits or changes the exact GitHub link session: %s', async githubLinkSessionId => {
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    const prepared = operation();
+    prepared.githubLinkSessionId = githubLinkSessionId;
+    vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(prepared));
+    const token = vi.spyOn(auth, 'getAccessToken');
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    await expect(submitCliManagedSource(client, scope, session(), bundle)).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
+    expect(token).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test('does not reupload after an uncertain network response', async () => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
     vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));

@@ -127,6 +127,7 @@ describe('eai deploy app --target eai', () => {
       schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated', operationId: 'cli-managed-source-123', status,
       tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', environment: 'preview', actorId: 'test-user-oid',
       templateCommitSha: prepared.templateCommitSha, bundleSha256: prepared.bundleSha256, configHash: prepared.configHash,
+      githubLinkSessionId: prepared.githubLinkSessionId,
       verifiedGithubUser: (linkedGitHubSession().verifiedGithubUser), repository: { owner: 'eai-generated-apps', name: 'server-derived-app' },
       expiresAt: new Date(Date.now() + 600_000).toISOString(),
       upload: { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123', ticket: 'one-use-ticket', expiresAt: new Date(Date.now() + 300_000).toISOString(), sha256: prepared.bundleSha256 },

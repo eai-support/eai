@@ -341,6 +341,46 @@ describe('runtime contract validation and deploy doctor', () => {
     }
   });
 
+  test.each([
+    { name: 'other-authenticated-probe', path: '/api/eai/readiness' },
+    { name: 'readiness', path: '/api/eai/other-authenticated-probe' },
+  ])('does not substitute another authenticated probe for canonical readiness: $name $path', async probe => {
+    const root = await createRuntimeProject();
+    const contract = JSON.parse(await readFile(join(root, 'eai.runtime.json'), 'utf8')) as {
+      endpoints: { smokeTests: unknown[] };
+    };
+    contract.endpoints.smokeTests.push({
+      ...probe,
+      method: 'GET',
+      expectedStatus: 200,
+      headers: { authorization: 'Bearer ${OTHER_PROBE_TOKEN}' },
+      requiresSecret: 'OTHER_PROBE_TOKEN',
+    });
+    await writeFile(join(root, 'eai.runtime.json'), JSON.stringify(contract, null, 2));
+    const originalCwd = process.cwd();
+    process.chdir(root);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/api/auth/providers')) return new Response(JSON.stringify({ entra: { id: 'entra' } }), { status: 200 });
+      if (url.endsWith('/api/eai/config')) {
+        return new Response(JSON.stringify({ tenants: { boardapp: { tenantId: 'tenant-id', workflowId: 'workflow-id' } } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }));
+
+    try {
+      const result = await runDeployDoctor('https://app.example.com', {
+        environment: { OTHER_PROBE_TOKEN: 'other-probe-secret' },
+      });
+      expect(result.checks).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: probe.name, path: probe.path, status: 'pass', authenticated: true }),
+      ]));
+      expect(result.authenticatedReadiness).toBe(false);
+    } finally {
+      process.chdir(originalCwd);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('does not send a protected readiness request when the required secret is missing', async () => {
     const root = await createRuntimeProject();
     await addProtectedReadinessSmoke(root);

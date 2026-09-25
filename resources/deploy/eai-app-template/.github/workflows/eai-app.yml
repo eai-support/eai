@@ -319,6 +319,7 @@ jobs:
           TENANT_ID: ${{ inputs.tenant_id }}
           TARGET_TENANT_ID: ${{ inputs.target_tenant_id }}
           OPERATION_ID: ${{ inputs.operation_id }}
+          NONCE: ${{ inputs.nonce }}
           CONFIG_HASH: ${{ inputs.config_hash }}
           DEPLOY_ENVIRONMENT: ${{ inputs.env || inputs.environment || 'preview' }}
           EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
@@ -339,6 +340,7 @@ jobs:
           const evidence = JSON.parse(fs.readFileSync('.eai-build/evidence/source-unknown-deployment-evidence.json', 'utf8'));
           const expected = {
             operationId: process.env.OPERATION_ID,
+            nonce: process.env.NONCE,
             environment: process.env.DEPLOY_ENVIRONMENT,
             commitSha: process.env.SOURCE_COMMIT_SHA,
             configHash: process.env.CONFIG_HASH,

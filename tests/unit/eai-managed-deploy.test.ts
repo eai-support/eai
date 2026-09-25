@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { promisify } from 'node:util';
 import {
   EAI_MANAGED_EVIDENCE_SCRIPT_PATH,
@@ -26,6 +27,17 @@ import {
   managedDeployPollDelayMs,
   verifyGitHubAccess,
 } from '../../src/commands/eai-managed-deploy.js';
+
+const requireFromTest = createRequire(import.meta.url);
+const producerPinVerifier = requireFromTest(
+  '../../scripts/verify-managed-deploy-producer-pin.cjs',
+) as {
+  assertProducerRelease: (
+    pin: Record<string, unknown>,
+    runGit?: () => string,
+  ) => void;
+  resolveProducerReleaseCommit: (tag: string, runGit?: () => string) => string;
+};
 
 describe('EAI managed deployment helpers', () => {
   const cleanup: string[] = [];
@@ -184,7 +196,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'c22a2f63300fa658ac555ef0ad82999aa1a8d08c' },
+      candidate: { commit: 'fd588e83244d49fd7ed071ba5c163b298a825fb5' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
@@ -192,6 +204,46 @@ describe('EAI managed deployment helpers', () => {
     for (const input of ['source_mode', 'app_key', 'tenant_id', 'target_tenant_id', 'operation_id', 'nonce', 'config_hash', 'commit_sha', 'public_api_url', 'env']) {
       expect(workflow).toMatch(new RegExp(`^      ${input}:`, 'm'));
     }
+  });
+
+  test('requires the real producer release tag to resolve to the exact candidate commit', () => {
+    const commit = 'c'.repeat(40);
+    const tagObject = 'd'.repeat(40);
+    const pin = {
+      candidate: { commit },
+      releaseGate: { status: 'released', tag: 'v9.9.9', commit },
+    };
+    const annotatedTag = () => [
+      `${tagObject}\trefs/tags/v9.9.9`,
+      `${commit}\trefs/tags/v9.9.9^{}`,
+      '',
+    ].join('\n');
+
+    expect(
+      producerPinVerifier.resolveProducerReleaseCommit('v9.9.9', annotatedTag),
+    ).toBe(commit);
+    expect(() =>
+      producerPinVerifier.assertProducerRelease(pin, annotatedTag),
+    ).not.toThrow();
+    expect(() =>
+      producerPinVerifier.assertProducerRelease(pin, () => ''),
+    ).toThrow(/does not exist/);
+    expect(() =>
+      producerPinVerifier.assertProducerRelease(
+        pin,
+        () => `${'e'.repeat(40)}\trefs/tags/v9.9.9\n`,
+      ),
+    ).toThrow(/does not resolve to the reviewed candidate/);
+    expect(() =>
+      producerPinVerifier.assertProducerRelease({
+        ...pin,
+        releaseGate: {
+          status: 'awaiting-producer-release',
+          tag: null,
+          commit: null,
+        },
+      }),
+    ).toThrow(/release is blocked/);
   });
 
   test('installs the canonical pair once and reports stable files on the next pass', async () => {

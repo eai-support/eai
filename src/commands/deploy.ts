@@ -521,6 +521,11 @@ interface ResolvedSmokeHeaders {
 }
 
 const ENV_REFERENCE_PATTERN = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+const MANAGED_READINESS_PROBE = {
+  name: 'readiness',
+  method: 'GET',
+  path: '/api/eai/readiness',
+} as const;
 
 function resolveSmokeHeaders(
   test: RuntimeSmokeTest,
@@ -779,7 +784,12 @@ export async function runDeployDoctor(
     warning: checks.filter((check) => check.status === 'warning').length,
     skip: checks.filter((check) => check.status === 'skip').length,
   };
-  const authenticatedReadiness = checks.some(check => check.authenticated && check.status === 'pass');
+  const authenticatedReadiness = checks.some(check =>
+    check.name === MANAGED_READINESS_PROBE.name
+    && check.method === MANAGED_READINESS_PROBE.method
+    && check.path === MANAGED_READINESS_PROBE.path
+    && check.authenticated
+    && check.status === 'pass');
 
   return {
     url: baseUrl,
