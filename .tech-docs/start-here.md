@@ -62,3 +62,8 @@ On Linux, EAI verifies trusted package identity before launch. Provider account,
 subscription, and organisation policy are confirmed by the provider.
 
 </details>
+
+## Current Release
+
+The current CLI release is **v3.18.1** (2026-09-25): Enforce PublicAPI V4 usage and preserve V4 health diagnostics.
+

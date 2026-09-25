@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.18.0 |
-| Released | 2026-09-23 |
-| Last Material Change | Add safe template adoption plans and backed-up Gofer update maintenance |
-| Source Commit | `034d29d464fccf9a02e44bcdbdda69cae65919bf` |
+| Version | 3.18.1 |
+| Released | 2026-09-25 |
+| Last Material Change | Enforce PublicAPI V4 usage and preserve V4 health diagnostics |
+| Source Commit | `674ffa0bdeb59772592c29dd1c623f6b3639f237` |
 
 
 ## Install
