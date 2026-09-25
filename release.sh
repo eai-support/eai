@@ -364,7 +364,7 @@ git checkout -b "$RELEASE_BRANCH"
 echo "  ✓ branch created: $RELEASE_BRANCH"
 
 section "Committing release prep"
-git add package.json package-lock.json .tech-docs/ docs-site/static/registry/ docs-site/static/llms.txt docs-site/static/llms-full.txt docs-site/static/cli-help.txt docs-site/static/error-guidance.json
+git add package.json package-lock.json .tech-docs/ docs-site/static/registry/ docs-site/static/llms.txt docs-site/static/llms-full.txt docs-site/static/cli-help.txt docs-site/static/error-guidance.json docs-site/static/docs-search-index.json docs-site/static/docs-capabilities.json
 git commit -m "chore: release v$NEW_VERSION — $MESSAGE"
 git push -u origin "$RELEASE_BRANCH"
 PR_URL="$(create_release_pr "$RELEASE_BRANCH" "$NEW_VERSION" "$MESSAGE")"

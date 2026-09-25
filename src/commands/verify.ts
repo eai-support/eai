@@ -16,7 +16,11 @@ import {
   loadObjectTypes,
 } from "../lib/config.js";
 import { isAuthenticated, loadTokens } from "../lib/auth.js";
-import { PlatformAPIClient } from "../lib/api.js";
+import {
+  PlatformAPIClient,
+  PUBLIC_API_REACHABILITY_PATH,
+  probePublicApiReachability,
+} from "../lib/api.js";
 import {
   normalizeTenantEntries,
   resolveActiveTenantContext,
@@ -318,28 +322,26 @@ export async function runContractAudit(
     : null;
   const systemClient = new PlatformAPIClient(context.publicApiUrl, "system");
 
-  // Public API health
+  // PublicAPI V4 reachability
   try {
     const start = Date.now();
-    const res = await fetch(`${context.publicApiUrl}/health`, {
-      signal: AbortSignal.timeout(10_000),
-    });
+    const res = await probePublicApiReachability(context.publicApiUrl, 10_000);
     const latency = Date.now() - start;
-    if (res.ok || res.status === 404) {
+    if (res.status < 500) {
       addCheck(checks, {
         id: "health",
-        label: "PublicAPI health",
+        label: "PublicAPI reachability",
         method: "GET",
-        endpoint: "/health",
+        endpoint: PUBLIC_API_REACHABILITY_PATH,
         status: "passed",
         details: `Reachable in ${latency}ms (status ${res.status})`,
       });
     } else {
       addCheck(checks, {
         id: "health",
-        label: "PublicAPI health",
+        label: "PublicAPI reachability",
         method: "GET",
-        endpoint: "/health",
+        endpoint: PUBLIC_API_REACHABILITY_PATH,
         status: "failed",
         details: `Unexpected status ${res.status}`,
       });
@@ -347,9 +349,9 @@ export async function runContractAudit(
   } catch (err) {
     addCheck(checks, {
       id: "health",
-      label: "PublicAPI health",
+      label: "PublicAPI reachability",
       method: "GET",
-      endpoint: "/health",
+      endpoint: PUBLIC_API_REACHABILITY_PATH,
       status: "failed",
       details: err instanceof Error ? err.message : String(err),
     });
@@ -1101,12 +1103,9 @@ Use 'eai verify calls' when you need to inspect the exact API contracts the CLI 
     const apiSpinner = ora("PublicAPI gateway").start();
     try {
       const start = Date.now();
-      const res = await fetch(`${publicApiUrl}/health`, {
-        signal: AbortSignal.timeout(10_000),
-      });
+      const res = await probePublicApiReachability(publicApiUrl, 10_000);
       const latency = Date.now() - start;
-      if (res.ok || res.status === 404) {
-        // 404 is fine — means server is up, just no /health endpoint
+      if (res.status < 500) {
         apiSpinner.succeed(`PublicAPI reachable (${latency}ms)`);
         passed++;
       } else {

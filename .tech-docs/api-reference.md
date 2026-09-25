@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-09-23T05:39:15.923Z"
-source_commit: "034d29d464fccf9a02e44bcdbdda69cae65919bf"
+generated_at: "2026-09-25T00:04:50.759Z"
+source_commit: "674ffa0bdeb59772592c29dd1c623f6b3639f237"
 ---
 # EAI CLI — API Reference
 
@@ -1046,8 +1046,8 @@ Run read-only platform connectivity checks.
 - `--tenant-id <id>` — Run checks against a specific tenant (read-only)
 
 **Platform API Endpoints Used**:
-- `GET /health` — PublicAPI gateway health
-- `GET /v4/data/resources/object-types` — platform reachability
+- `GET /v4/data/resources/health` — PublicAPI and ResourceAPI health
+- `GET /v4/data/resources/object-types` — Object Type access
 - `GET /v4/data/resources/schema/{tenantId}` — data-service reachability
 
 ---
@@ -1080,7 +1080,7 @@ Audit the platform API contracts used by the CLI. All checks are read-only unles
 - `--chat-message <message>` — Message to send when probing chat
 - `--format <format>` — Output format (text|json, default: text)
 
-**Endpoints probed** (subset, depending on flags): `GET /health`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
+**Endpoints probed** (subset, depending on flags): `GET /v4/data/resources/health`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
 
 ---
 
@@ -1193,7 +1193,7 @@ scripts. Existing presentation files remain protected references.
 - `POST /oauth2/v2.0/token` — Entra CIAM token exchange
 
 ### Health
-- `GET /health` — PublicAPI gateway health
+- `GET /v4/data/resources/health` — PublicAPI and ResourceAPI health
 
 ### Platform — Tenants
 - `POST /v4/platform/tenants` — Create root tenant

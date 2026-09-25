@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.18.0.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.18.1.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -540,6 +540,10 @@ subscription, and organisation policy are confirmed by the provider.
 
 </details>
 
+## Current Release
+
+The current CLI release is **v3.18.1** (2026-09-25): Enforce PublicAPI V4 usage and preserve V4 health diagnostics.
+
 ---
 
 # Manual and Managed Setup
@@ -589,10 +593,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.18.0 |
-| Released | 2026-09-23 |
-| Last Material Change | Add safe template adoption plans and backed-up Gofer update maintenance |
-| Source Commit | `034d29d464fccf9a02e44bcdbdda69cae65919bf` |
+| Version | 3.18.1 |
+| Released | 2026-09-25 |
+| Last Material Change | Enforce PublicAPI V4 usage and preserve V4 health diagnostics |
+| Source Commit | `674ffa0bdeb59772592c29dd1c623f6b3639f237` |
 
 
 ## Install
@@ -850,7 +854,7 @@ eai resources schema --tenant-id <tenant-id> --format json
 - Server helpers attach auth, tenant, and correlation headers.
 - The browser never receives raw database, blob, search, PublicAPI, or model
   provider credentials.
-- Prefer PublicAPI V4 routes; older route families are compatibility glue.
+- Use PublicAPI V4 routes for direct platform calls.
 
 ## Data Model
 
@@ -910,6 +914,8 @@ See [Config-Driven UI](./app-template/config-driven-ui.md) for the full pattern.
 
 # Examples
 
+import Link from '@docusaurus/Link';
+
 # Examples
 
 These examples show how the CLI, eai-gofer, and EAI App Template work together.
@@ -920,7 +926,7 @@ These examples show how the CLI, eai-gofer, and EAI App Template work together.
 | ----------------------------------------- | --------------------------------------------------------------------------------------- |
 | [Build a Task Tracker](./task-tracker.md) | Scaffold an app, define Object Types, publish them, and build ResourceAPI-backed pages. |
 | [Add AI Chat](./ai-chat.md)               | Add streaming chat, document upload, and RAG indexing through template hooks.           |
-| [Business Scenarios](/scenarios/) | Browse industry-specific workflows before deciding what to build. |
+| <Link to="/scenarios/">Business Scenarios</Link> | Browse industry-specific workflows before deciding what to build. |
 
 ## Standard Loop
 
@@ -2147,7 +2153,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.18.0. The same catalog powers human stderr output, JSON output for AI
+v3.18.1. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -3871,8 +3877,8 @@ Run read-only platform connectivity checks.
 - `--tenant-id <id>` — Run checks against a specific tenant (read-only)
 
 **Platform API Endpoints Used**:
-- `GET /health` — PublicAPI gateway health
-- `GET /v4/data/resources/object-types` — platform reachability
+- `GET /v4/data/resources/health` — PublicAPI and ResourceAPI health
+- `GET /v4/data/resources/object-types` — Object Type access
 - `GET /v4/data/resources/schema/{tenantId}` — data-service reachability
 
 ---
@@ -3905,7 +3911,7 @@ Audit the platform API contracts used by the CLI. All checks are read-only unles
 - `--chat-message <message>` — Message to send when probing chat
 - `--format <format>` — Output format (text|json, default: text)
 
-**Endpoints probed** (subset, depending on flags): `GET /health`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
+**Endpoints probed** (subset, depending on flags): `GET /v4/data/resources/health`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
 
 ---
 
@@ -4018,7 +4024,7 @@ scripts. Existing presentation files remain protected references.
 - `POST /oauth2/v2.0/token` — Entra CIAM token exchange
 
 ### Health
-- `GET /health` — PublicAPI gateway health
+- `GET /v4/data/resources/health` — PublicAPI and ResourceAPI health
 
 ### Platform — Tenants
 - `POST /v4/platform/tenants` — Create root tenant

@@ -1048,7 +1048,7 @@ describe('PlatformAPIClient', () => {
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
     const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
-    await expect(client.requestPublicApi('/v3/orchestrate', { method: 'POST' }))
+    await expect(client.requestPublicApi('/orchestrate', { method: 'POST' }))
       .rejects
       .toThrow('Only PublicAPI V4 paths are supported')
     expect(fetchMock).not.toHaveBeenCalled()

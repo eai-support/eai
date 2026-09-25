@@ -154,7 +154,7 @@ function normalizeCommand(command) {
 function isAllowedCommand(command) {
   const normalized = normalizeCommand(command);
   if (!normalized.startsWith('eai ')) return false;
-  if (normalized.includes('/v1/') || normalized.includes('/v3/')) return false;
+  if (/\/v\d+\//.test(normalized) && !normalized.includes('/v4/')) return false;
   if (normalized.includes('cat .env') || normalized.includes('printenv') || normalized.includes('env |')) return false;
   if (normalized.includes('rm ') || normalized.includes('reset --hard')) return false;
   return true;
