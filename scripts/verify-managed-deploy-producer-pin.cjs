@@ -6,6 +6,18 @@ const { join, resolve } = require('node:path');
 
 const PRODUCER_REPOSITORY = 'eai-support/eai-app-template';
 const PRODUCER_REMOTE = `https://github.com/${PRODUCER_REPOSITORY}.git`;
+const PRODUCER_FILES = Object.freeze({
+  workflow: '.github/workflows/eai-app.yml',
+  collector: 'scripts/source-unknown-deployment-evidence.mjs',
+});
+
+function assertCanonicalProducerPaths(pin) {
+  for (const [key, path] of Object.entries(PRODUCER_FILES)) {
+    if (pin.candidate?.[key]?.path !== path) {
+      throw new Error(`${key} path must be the canonical ${path}.`);
+    }
+  }
+}
 
 function resolveProducerReleaseCommit(tag, runGit = execFileSync) {
   let output;
@@ -90,6 +102,12 @@ function verifyProducerPin({ release = false, runGit = execFileSync } = {}) {
     fail('invalid manifest identity.');
   if (!/^[a-f0-9]{40}$/.test(pin.candidate?.commit || ''))
     fail('candidate commit must be exact.');
+  try {
+    assertCanonicalProducerPaths(pin);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+    return;
+  }
   for (const key of ['workflow', 'collector']) {
     const file = pin.candidate?.[key];
     if (
@@ -136,7 +154,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+  PRODUCER_FILES,
   PRODUCER_REMOTE,
+  assertCanonicalProducerPaths,
   assertProducerRelease,
   resolveProducerReleaseCommit,
   verifyProducerPin,

@@ -27,6 +27,7 @@ import { eaiManagedDeployCommand } from './eai-managed-deploy.js';
 import { resolveCommandContext } from '../lib/context.js';
 import {
   classifyManagedOperationStatus,
+  requireCommitSha,
   requireConfigHash,
   requireManagedPublicApiUrl,
   writeManagedDeployEvidence,
@@ -828,12 +829,6 @@ function requiredManagedDoctorSegment(value: string, label: string): string {
   return normalized;
 }
 
-function record(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-}
-
 /** Read one exact active operation, run its declared probes, and seal portable evidence. */
 async function runManagedDeployDoctor(options: ManagedDoctorOptions): Promise<ManagedDeployDoctorEvidence> {
   const operationId = requiredManagedDoctorSegment(options.operationId, 'Operation ID');
@@ -850,23 +845,18 @@ async function runManagedDeployDoctor(options: ManagedDoctorOptions): Promise<Ma
   const response = await context.client.getManagedDeploymentOperation(tenantId, appKey, operationId, targetTenantId);
   if (!response.ok) throw new Error(`Managed deployment operation read failed (${response.status}).`);
   const operation = await response.json() as ManagedDeploymentOperationResponse;
-  if (operation.operationId !== operationId || operation.appKey !== appKey || operation.tenantId !== tenantId
+  if (operation.operationId !== operationId || operation.appKey !== appKey
+    || operation.appScopeTenantId !== tenantId
     || operation.targetTenantId !== targetTenantId
     || !['source-unknown', 'eai-cli-generated'].includes(operation.sourceMode)) {
     throw new Error('Managed deployment operation response does not match the requested exact scope.');
   }
   if (classifyManagedOperationStatus(operation) !== 'succeeded') {
-    throw new Error(`Managed deployment operation ${operationId} is not an active complete TenantInfra projection.`);
+    throw new Error(`Managed deployment operation ${operationId} does not contain complete exact source, deployment, and doctor evidence.`);
   }
-  const configHash = requireConfigHash(String(operation.configHash || record(operation.setup).configHash || ''));
-  const setup = record(operation.setup);
-  const source = record(operation.source);
-  const repository = record(setup.repo ?? source.repository);
-  const commitSha = String(setup.commitSha ?? source.commitSha ?? source.mergedSha ?? '');
-  const bundleSha256 = String(source.bundleSha256 ?? setup.bundleSha256 ?? '');
-  if (!/^[a-f0-9]{40}$/.test(commitSha) && !/^sha256:[a-f0-9]{64}$/.test(bundleSha256)) {
-    throw new Error('Managed deployment operation has no exact source digest or commit binding.');
-  }
+  const configHash = requireConfigHash(operation.configHash);
+  const revision = operation.sourceRevision;
+  const commitSha = requireCommitSha(revision.commitSha);
   const doctor = await runDeployDoctor(String(operation.activeUrl));
   const status = doctor.status === 'pass' && doctor.authenticatedReadiness ? 'pass' : 'fail';
   const evidence: ManagedDeployDoctorEvidence = {
@@ -883,13 +873,19 @@ async function runManagedDeployDoctor(options: ManagedDoctorOptions): Promise<Ma
       configHash,
     },
     sourceBinding: {
-      repository: typeof repository.owner === 'string' && typeof repository.name === 'string'
-        ? `${repository.owner}/${repository.name}`
-        : undefined,
-      commitSha: /^[a-f0-9]{40}$/.test(commitSha) ? commitSha : undefined,
-      bundleSha256: /^sha256:[a-f0-9]{64}$/.test(bundleSha256) ? bundleSha256 : undefined,
-      workflowPath: setup.workflowPath,
-      ref: setup.ref,
+      repository: `${revision.repoOwner}/${revision.repoName}`,
+      repositoryId: revision.repositoryId,
+      installationId: revision.installationId,
+      sourceCommitSha: revision.sourceCommitSha,
+      reviewHeadSha: revision.reviewHeadSha,
+      commitSha,
+      workflowPath: revision.workflowPath,
+      ref: revision.branchRef,
+      workflowHeadBranch: revision.workflowHeadBranch,
+      workflowRunId: revision.workflowRunId,
+      artifactDigest: revision.artifactDigest,
+      imageArtifact: revision.imageArtifact,
+      imageDigest: revision.imageDigest,
     },
     deployment: {
       deploymentId: operation.deploymentId,

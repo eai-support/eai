@@ -296,13 +296,60 @@ export interface SourceUnknownOperationResponse {
   history?: Array<Record<string, unknown>>;
 }
 
-/** Unified exact-operation projection used by status and operation-bound deploy doctor. */
-export interface ManagedDeploymentOperationResponse extends SourceUnknownOperationResponse {
+export interface ManagedDeploymentSourceRevision {
+  operationId: string;
+  sourceOperationId?: string;
   sourceMode: 'source-unknown' | 'eai-cli-generated';
+  appScopeTenantId: string;
+  targetTenantId: string;
+  repoOwner: string;
+  repoName: string;
+  repositoryId: string | number;
+  installationId: string | number;
+  branchRef: string;
+  workflowPath: string;
+  workflowHeadBranch: string;
+  sourceCommitSha: string;
+  reviewHeadSha?: string;
+  commitSha: string;
+  workflowRunId: string | number;
+  configHash: string;
+  artifactDigest: string;
+  imageArtifact: {
+    id: string | number;
+    name: string;
+    archiveDigest: string;
+  };
+  imageDigest: string;
+}
+
+/** Unified exact-operation projection used by status and operation-bound deploy doctor. */
+export type ManagedDeploymentOperationResponse = Omit<SourceUnknownOperationResponse, 'tenantId'> & {
+  sourceMode: 'source-unknown' | 'eai-cli-generated';
+  sourceStatus: string;
+  appScopeTenantId: string;
+  environment: string;
+  configHash: string;
   actorId?: string;
   source?: Record<string, unknown>;
-  deployment?: Record<string, unknown>;
-}
+  sourceRevision: ManagedDeploymentSourceRevision;
+  deployment: {
+    deploymentId: string;
+    status: string;
+    [key: string]: unknown;
+  };
+  doctor: {
+    deploymentId: string;
+    status: string;
+    ready: boolean;
+    scope: {
+      tenantId: string;
+      appKey: string;
+      environment: string;
+    };
+    [key: string]: unknown;
+  };
+};
 
 export interface CapabilityEvaluationRequest {
   tenantId: string;

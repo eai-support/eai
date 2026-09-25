@@ -8,7 +8,7 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import {
@@ -34,6 +34,7 @@ import {
   toObjectTypeSlug,
 } from '../lib/utils.js';
 import * as out from '../lib/output.js';
+import { readSourceUnknownEvidenceFile } from '../lib/source-unknown-evidence-file.js';
 
 const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
 const DEFAULT_VERTICAL_SOURCE = ['eai', 'cli'].join('-');
@@ -1334,7 +1335,9 @@ verticalCommand
       if (legacy.some(key => (options as unknown as Record<string, unknown>)[key] !== undefined)) {
         throw new Error('Legacy evidence flags cannot be combined with --evidence-file; use the unchanged canonical collector JSON.');
       }
-      evidenceRequest = buildSourceUnknownWorkflowEvidenceData(JSON.parse(await readFile(options.evidenceFile, 'utf8')));
+      evidenceRequest = buildSourceUnknownWorkflowEvidenceData(
+        JSON.parse(await readSourceUnknownEvidenceFile(options.evidenceFile)),
+      );
     } catch (err) {
       fail(errMsg(err));
     }

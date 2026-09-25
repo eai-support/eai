@@ -43,6 +43,71 @@ function linkedGitHubSession(
   };
 }
 
+function completeUnifiedOperation(options: {
+  targetTenantId?: string;
+  branch?: string;
+  commitSha?: string;
+  configHash?: string;
+  environment?: string;
+  operationId?: string;
+  sourceMode?: 'source-unknown' | 'eai-cli-generated';
+  repoOwner?: string;
+  repoName?: string;
+} = {}): Record<string, unknown> {
+  const targetTenantId = options.targetTenantId ?? TENANT_ID;
+  const branch = options.branch ?? 'main';
+  const commitSha = options.commitSha ?? 'a'.repeat(40);
+  const configHash = options.configHash ?? `sha256:${'b'.repeat(64)}`;
+  const environment = options.environment ?? 'preview';
+  const operationId = options.operationId ?? 'source-unknown-abc123';
+  const sourceMode = options.sourceMode ?? 'source-unknown';
+  const repoOwner = options.repoOwner ?? 'enterprise';
+  const repoName = options.repoName ?? 'planning-portal';
+  return {
+    tenantId: TENANT_ID, appScopeTenantId: TENANT_ID, targetTenantId,
+    appKey: 'planning-portal', operationId, environment,
+    sourceMode, sourceStatus: 'completed', configHash, status: 'active',
+    requiresTenantInfra: false, deploymentId: 'dep-1', activeUrl: 'https://planning.example.com',
+    latestPointerVersion: 3, expectedLatestVersion: 3,
+    runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
+    deployment: { deploymentId: 'dep-1', status: 'active' },
+    doctor: {
+      deploymentId: 'dep-1', status: 'active', ready: true,
+      scope: { tenantId: targetTenantId, appKey: 'planning-portal', environment },
+    },
+    sourceRevision: {
+      operationId, sourceMode,
+      appScopeTenantId: TENANT_ID, targetTenantId,
+      repoOwner, repoName, repositoryId: 123, installationId: 12345,
+      branchRef: `refs/heads/${branch}`, workflowPath: '.github/workflows/eai-app.yml',
+      workflowHeadBranch: branch, sourceCommitSha: commitSha, commitSha, workflowRunId: '789', configHash,
+      ...(sourceMode === 'eai-cli-generated' ? { reviewHeadSha: commitSha } : {}),
+      artifactDigest: `sha256:${'c'.repeat(64)}`,
+      imageArtifact: { id: '987', name: 'eai-generated-app-image', archiveDigest: `sha256:${'d'.repeat(64)}` },
+      imageDigest: `sha256:${'e'.repeat(64)}`,
+    },
+    setup: {
+      targetTenantId, environment, repo: { owner: repoOwner, name: repoName },
+      workflowPath: '.github/workflows/eai-app.yml', ref: `refs/heads/${branch}`, commitSha, configHash,
+    },
+  };
+}
+
+function completedManagedPublication(): Record<string, unknown> {
+  return {
+    schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated',
+    operationId: 'cli-managed-source-123', status: 'completed',
+    tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', environment: 'preview',
+    actorId: 'test-user-oid', templateCommitSha: 'a'.repeat(40),
+    bundleSha256: `sha256:${'b'.repeat(64)}`, configHash: `sha256:${'c'.repeat(64)}`,
+    verifiedGithubUser: linkedGitHubSession().verifiedGithubUser,
+    repository: { owner: 'eai-generated-apps', name: 'app' },
+    review: { mergedSha: 'a'.repeat(40) },
+    deployment: { status: 'ready', liveUrl: 'https://live.example.test' },
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+  };
+}
+
 describe('eai deploy app --target eai', () => {
   let env: TestEnvironment;
   let projectRoot: string;
@@ -57,7 +122,7 @@ describe('eai deploy app --target eai', () => {
       if (url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}` || url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}/management`) {
         return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
       }
-      if (url.includes('/source-unknown/operations/')) {
+      if (url.includes('/managed-deployments/operations/')) {
         return operation ? jsonResponse(operation) : jsonResponse({ message: 'operation missing' }, 404);
       }
       if (url.endsWith('/cli-managed-source/github-link-sessions')) return jsonResponse(linkedGitHubSession());
@@ -328,25 +393,89 @@ describe('eai deploy app --target eai', () => {
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/github-link-sessions'))).toBe(false);
   });
 
-  test('keeps managed resume on its exact publication route and refuses incomplete runtime proof', async () => {
+  test('keeps managed completion pending until the unified operation has exact doctor proof', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const identity = stubManagedOperation().getMockImplementation()!;
     const requests: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
       const url = String(input);
       requests.push(url);
-      if (url.includes('/cli-managed-source/operations/')) return jsonResponse({
-        schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated', operationId: 'cli-managed-source-123', status: 'completed',
-        tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', environment: 'preview', actorId: 'test-user-oid',
-        templateCommitSha: 'a'.repeat(40), bundleSha256: `sha256:${'b'.repeat(64)}`, configHash: `sha256:${'c'.repeat(64)}`, verifiedGithubUser: linkedGitHubSession().verifiedGithubUser,
-        repository: { owner: 'eai-generated-apps', name: 'app' }, deployment: { status: 'ready', liveUrl: 'https://live.example.test' },
-      });
+      if (url.includes('/cli-managed-source/operations/')) return jsonResponse(completedManagedPublication());
+      if (url.includes('/managed-deployments/operations/')) {
+        const operation = completeUnifiedOperation({
+          operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated',
+          repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
+        });
+        (operation.doctor as Record<string, unknown>).ready = false;
+        return jsonResponse(operation);
+      }
       return identity(input);
     }));
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--source', 'eai-managed', '--resume', 'cli-managed-source-123', '--format', 'json'], { from: 'user' });
-    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ classification: 'incomplete', publicationStatus: 'completed' });
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--source', 'eai-managed', '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json'], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      source: 'eai-managed', sourceMode: 'eai-cli-generated', classification: 'pending', publicationStatus: 'completed',
+    });
+    expect(requests.some(url => url.includes('/managed-deployments/operations/cli-managed-source-123'))).toBe(true);
     expect(requests.some(url => url.includes('/source-unknown/') || url.endsWith('/github-link-sessions'))).toBe(false);
+    expect(process.exitCode).toBe(0);
+  });
+
+  test('reports EAI-maintained success only from exact unified source and doctor evidence', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const identity = stubManagedOperation().getMockImplementation()!;
+    const requests: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.includes('/cli-managed-source/operations/')) return jsonResponse(completedManagedPublication());
+      if (url.includes('/managed-deployments/operations/')) return jsonResponse(completeUnifiedOperation({
+        operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated',
+        repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
+      }));
+      return identity(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
+      '--source', 'eai-managed', '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      source: 'eai-managed', sourceMode: 'eai-cli-generated', status: 'active',
+      classification: 'succeeded', publicationStatus: 'completed',
+      sourceBinding: {
+        repository: 'eai-generated-apps/app', workflowPath: '.github/workflows/eai-app.yml',
+        artifactDigest: expect.stringMatching(/^sha256:/), imageDigest: expect.stringMatching(/^sha256:/),
+      },
+    });
+    expect(requests.some(url => url.includes('/managed-deployments/operations/cli-managed-source-123'))).toBe(true);
+    expect(process.exitCode).toBe(0);
+  });
+
+  test.each([
+    ['configuration', { configHash: `sha256:${'d'.repeat(64)}` }],
+    ['repository', { repoName: 'other-app' }],
+  ])('rejects a unified EAI-maintained %s substitution', async (_label, replacement) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const identity = stubManagedOperation().getMockImplementation()!;
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      if (url.includes('/cli-managed-source/operations/')) return jsonResponse(completedManagedPublication());
+      if (url.includes('/managed-deployments/operations/')) return jsonResponse(completeUnifiedOperation({
+        operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated',
+        repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
+        ...replacement,
+      }));
+      return identity(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
+      '--source', 'eai-managed', '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      error: 'MANAGED_SOURCE_BINDING_MISMATCH',
+    });
     expect(process.exitCode).toBe(1);
   });
 
@@ -457,24 +586,15 @@ fi
           tenantId: TENANT_ID, targetTenantId: bootstrap === 'wrong-target' ? 'different-child' : targetTenantId, environment: 'preview',
         });
       }
-      if (url.endsWith(`/source-unknown/operations/source-unknown-abc123?targetTenantId=${targetTenantId}`)) {
+      if (url.endsWith(`/managed-deployments/operations/source-unknown-abc123?targetTenantId=${targetTenantId}`)) {
         if ((retryMode || bootstrap === 'lost-response') && operationReads++ === 0) return jsonResponse({
-          tenantId: TENANT_ID, targetTenantId, appKey: retryState.appKey, operationId: retryState.operationId,
-          status: 'issued', setup: { ...retryState, nonceSha256: managedDeployNonceSha256(retryState.nonce), repo: { owner: 'enterprise', name: 'planning-portal' }, deployOnSuccess: true },
+          appScopeTenantId: TENANT_ID, targetTenantId, appKey: retryState.appKey, operationId: retryState.operationId,
+          sourceMode: 'source-unknown', sourceStatus: 'issued', status: 'issued',
+          setup: { ...retryState, nonceSha256: managedDeployNonceSha256(retryState.nonce), repo: { owner: 'enterprise', name: 'planning-portal' }, deployOnSuccess: true },
         });
 
         return jsonResponse({
-          tenantId: TENANT_ID,
-          targetTenantId,
-          appKey: 'planning-portal',
-          operationId: 'source-unknown-abc123',
-          status: 'active',
-          requiresTenantInfra: false,
-          deploymentId: 'dep-1',
-          activeUrl: 'https://planning.example.com',
-          latestPointerVersion: 3,
-          expectedLatestVersion: 3,
-          runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
+          ...completeUnifiedOperation({ targetTenantId, commitSha, configHash }),
           setup: {
             targetTenantId,
             repo: { owner: 'enterprise', name: 'planning-portal' },
@@ -567,7 +687,8 @@ fi
       return;
     }
     expect(requests.some((request) => request.url.includes('/deployments/latest'))).toBe(false);
-    expect(requests.some((request) => request.url.includes('/operations/source-unknown-abc123'))).toBe(true);
+    expect(requests.some((request) => request.url.includes('/managed-deployments/operations/source-unknown-abc123'))).toBe(true);
+    expect(requests.some((request) => request.url.includes('/source-unknown/operations/'))).toBe(false);
     const result = JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')) as Record<string, unknown>;
     const ghCalls = await readFile(ghLog, 'utf8');
     expect(ghCalls).not.toContain('variable set');
@@ -618,9 +739,10 @@ fi
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = String(input);
       requests.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-      if (url.includes('/source-unknown/operations/')) return jsonResponse({
-        tenantId: TENANT_ID, targetTenantId: 'runtime-child', appKey: 'planning-portal',
-        operationId: 'source-unknown-abc123', environment, status: deployed ? 'queued' : operationStatus,
+      if (url.includes('/managed-deployments/operations/')) return jsonResponse({
+        appScopeTenantId: TENANT_ID, targetTenantId: 'runtime-child', appKey: 'planning-portal',
+        operationId: 'source-unknown-abc123', environment, sourceMode: 'source-unknown',
+        sourceStatus: deployed ? 'queued' : operationStatus, status: deployed ? 'queued' : operationStatus,
         setup: { targetTenantId: 'runtime-child', status: evidenceState === 'consumed' ? 'consumed' : 'issued' },
         evidence: evidenceState === 'accepted' ? { status: 'accepted' } : undefined,
       });
@@ -650,9 +772,10 @@ fi
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = String(input);
       requests.push(url);
-      if (url.includes('/source-unknown/operations/')) return jsonResponse({
-        tenantId: TENANT_ID, targetTenantId: 'runtime-child', appKey: 'planning-portal',
-        operationId: 'source-unknown-abc123', environment, status: 'handoff_pending',
+      if (url.includes('/managed-deployments/operations/')) return jsonResponse({
+        appScopeTenantId: TENANT_ID, targetTenantId: 'runtime-child', appKey: 'planning-portal',
+        operationId: 'source-unknown-abc123', environment, sourceMode: 'source-unknown',
+        sourceStatus: 'handoff_pending', status: 'handoff_pending',
         setup: { targetTenantId: 'runtime-child', status: 'issued' },
         evidence: { status: 'accepted' },
       });
@@ -678,8 +801,9 @@ fi
   ] as const)('stops %s %s immediately and requests a new setup without dispatch', async (status, mode) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const fetchMock = stubManagedOperation({
-      tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal',
-      operationId: 'source-unknown-abc123', status, setup: { status, targetTenantId: TENANT_ID },
+      appScopeTenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal',
+      operationId: 'source-unknown-abc123', sourceMode: 'source-unknown', sourceStatus: status,
+      status, setup: { status, targetTenantId: TENANT_ID },
     });
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await eaiManagedDeployCommand.parseAsync([
@@ -692,7 +816,7 @@ fi
       ? { error: 'SOURCE_OPERATION_INACTIVE' }
       : { status, classification: 'failed' });
     expect(result.nextAction).toContain('fresh source operation and nonce');
-    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes('/source-unknown/operations/'))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes('/managed-deployments/operations/'))).toHaveLength(1);
     expect(fetchMock.mock.calls.every(([input]) => !String(input).endsWith('/deploy')
       && !String(input).endsWith('/runtime-bootstrap') && !String(input).endsWith('/workflow-setup'))).toBe(true);
     expect(process.exitCode).toBe(1);
@@ -710,8 +834,9 @@ fi
     };
     await saveManagedDeployState(state);
     const fetchMock = stubManagedOperation({
-      tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: state.appKey, operationId: state.operationId,
-      status: 'issued', setup: { ...state, nonceSha256: managedDeployNonceSha256(state.nonce), repo: { owner: 'enterprise', name: 'planning-portal' }, commitSha: 'c'.repeat(40), deployOnSuccess: true },
+      appScopeTenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: state.appKey, operationId: state.operationId,
+      sourceMode: 'source-unknown', sourceStatus: 'issued', status: 'issued',
+      setup: { ...state, nonceSha256: managedDeployNonceSha256(state.nonce), repo: { owner: 'enterprise', name: 'planning-portal' }, commitSha: 'c'.repeat(40), deployOnSuccess: true },
     });
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await eaiManagedDeployCommand.parseAsync([
@@ -745,10 +870,12 @@ fi
   test('rejects a resumed operation bound to a different child tenant', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');
     stubManagedOperation({
-      tenantId: TENANT_ID,
+      appScopeTenantId: TENANT_ID,
       targetTenantId: 'different-child',
       appKey: 'planning-portal',
       operationId: 'source-unknown-abc123',
+      sourceMode: 'source-unknown',
+      sourceStatus: 'handoff_pending',
       status: 'handoff_pending',
       setup: { targetTenantId: 'different-child' },
     });
@@ -770,20 +897,35 @@ fi
     expect(process.exitCode).toBe(1);
   });
 
+  test.each([
+    ['source mode', { sourceMode: 'eai-cli-generated' }],
+    ['app-scope tenant', { appScopeTenantId: 'other-tenant' }],
+    ['app key', { appKey: 'other-app' }],
+    ['operation ID', { operationId: 'source-unknown-other' }],
+  ])('rejects a unified operation with a substituted %s', async (_label, replacement) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');
+    stubManagedOperation({
+      ...completeUnifiedOperation({ targetTenantId: 'runtime-child' }),
+      ...replacement,
+    });
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+      '--target-tenant-id', 'runtime-child', '--resume', 'source-unknown-abc123',
+      '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      error: 'SOURCE_OPERATION_BINDING_MISMATCH',
+    });
+    expect(process.exitCode).toBe(1);
+  });
+
   test('prints the exact child target, source binding, and active URL on resume', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');
     stubManagedOperation({
-      tenantId: TENANT_ID,
-      targetTenantId: 'runtime-child',
-      appKey: 'planning-portal',
-      operationId: 'source-unknown-abc123',
-      status: 'active',
-      requiresTenantInfra: false,
-      deploymentId: 'dep-1',
-      activeUrl: 'https://planning.example.com',
-      latestPointerVersion: 3,
-      expectedLatestVersion: 3,
-      runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
+      ...completeUnifiedOperation({ targetTenantId: 'runtime-child', branch: 'release' }),
       setup: {
         targetTenantId: 'runtime-child',
         repo: { owner: 'enterprise', name: 'planning-portal' },
@@ -849,9 +991,7 @@ fi
       if (url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}` || url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}/management`) return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
       if (url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}/apps/planning-portal/managed-deployments/operations/source-unknown-abc123?targetTenantId=runtime-child`) {
         return jsonResponse({
-          tenantId: TENANT_ID, targetTenantId: 'runtime-child', appKey: 'planning-portal', operationId: 'source-unknown-abc123', sourceMode: 'source-unknown',
-          status: 'active', configHash: `sha256:${'b'.repeat(64)}`, requiresTenantInfra: false, deploymentId: 'dep-1', activeUrl: 'https://planning.example.com',
-          latestPointerVersion: 3, expectedLatestVersion: 3, runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
+          ...completeUnifiedOperation({ targetTenantId: 'runtime-child' }),
           setup: { repo: { owner: 'enterprise', name: 'planning-portal' }, workflowPath: '.github/workflows/eai-app.yml', ref: 'refs/heads/main', commitSha: 'a'.repeat(40), configHash: `sha256:${'b'.repeat(64)}` },
         });
       }

@@ -9,6 +9,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  realpathSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -294,25 +295,50 @@ async function digestFile(path) {
 function digestFiles(root, paths) {
   const hash = createHash('sha256');
   for (const relativePath of paths.sort()) {
+    if (!assertGovernedAncestors(root, relativePath)) {
+      throw new Error(
+        `Governed configuration ancestor does not exist: ${relativePath}`,
+      );
+    }
     hash.update(relativePath);
     hash.update('\0');
-    hash.update(
-      readRegularFileNoFollow(join(root, relativePath), relativePath),
-    );
+    hash.update(readRegularFileNoFollow(root, relativePath));
     hash.update('\0');
   }
   return `sha256:${hash.digest('hex')}`;
 }
 
-function readRegularFileNoFollow(path, label = path) {
+function readRegularFileNoFollow(root, relativePath) {
+  if (!assertGovernedAncestors(root, relativePath)) {
+    throw new Error(
+      `Governed configuration ancestor does not exist: ${relativePath}`,
+    );
+  }
+  const path = join(root, relativePath);
+  const before = lstatSync(path);
+  if (before.isSymbolicLink() || !before.isFile()) {
+    throw new Error(
+      `Governed configuration must be a regular file: ${relativePath}`,
+    );
+  }
+  containedRelativePath(
+    realpathSync(root),
+    realpathSync(path),
+    'Governed configuration file',
+  );
   const descriptor = openSync(
     path,
     constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
   );
   try {
-    if (!fstatSync(descriptor).isFile()) {
+    const opened = fstatSync(descriptor);
+    if (
+      !opened.isFile() ||
+      opened.dev !== before.dev ||
+      opened.ino !== before.ino
+    ) {
       throw new Error(
-        `Governed configuration must be a regular file: ${label}`,
+        `Governed configuration changed before its no-follow read: ${relativePath}`,
       );
     }
     return readFileSync(descriptor);
@@ -330,9 +356,31 @@ function optionalLstat(path) {
   }
 }
 
+function assertGovernedAncestors(root, relativePath) {
+  const resolvedRoot = resolve(root);
+  const rootMetadata = lstatSync(resolvedRoot);
+  if (rootMetadata.isSymbolicLink() || !rootMetadata.isDirectory()) {
+    throw new Error('Application root must be a no-follow directory.');
+  }
+  const components = relativePath.split(/[\\/]/).filter(Boolean);
+  let current = resolvedRoot;
+  for (const component of components.slice(0, -1)) {
+    current = join(current, component);
+    const metadata = optionalLstat(current);
+    if (!metadata) return false;
+    if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+      throw new Error(
+        `Governed configuration ancestor must be a regular directory: ${relative(root, current).replaceAll('\\', '/')}`,
+      );
+    }
+  }
+  return true;
+}
+
 function listGovernedConfigFiles(root) {
   const paths = [];
   for (const relativePath of GOVERNED_ROOT_FILES) {
+    assertGovernedAncestors(root, relativePath);
     const absolutePath = join(root, relativePath);
     const metadata = optionalLstat(absolutePath);
     if (!metadata) continue;
@@ -345,6 +393,7 @@ function listGovernedConfigFiles(root) {
   }
 
   const visit = (relativeDirectory) => {
+    if (!assertGovernedAncestors(root, relativeDirectory)) return;
     const absoluteDirectory = join(root, relativeDirectory);
     const directoryMetadata = optionalLstat(absoluteDirectory);
     if (!directoryMetadata) return;
@@ -393,7 +442,7 @@ function readSchemaProvenance(root) {
   const runtimePath = join(root, 'eai.runtime.json');
   assertExists(runtimePath, 'eai.runtime.json');
   const runtime = JSON.parse(
-    readRegularFileNoFollow(runtimePath, 'eai.runtime.json').toString('utf8'),
+    readRegularFileNoFollow(root, 'eai.runtime.json').toString('utf8'),
   );
   const provenance = runtime.schemaProvenance;
   if (!provenance || typeof provenance !== 'object') {

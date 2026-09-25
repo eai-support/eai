@@ -28,11 +28,16 @@ import {
   managedDeployPollDelayMs,
   verifyGitHubAccess,
 } from '../../src/commands/eai-managed-deploy.js';
+import {
+  MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES,
+  readSourceUnknownEvidenceFile,
+} from '../../src/lib/source-unknown-evidence-file.js';
 
 const requireFromTest = createRequire(import.meta.url);
 const producerPinVerifier = requireFromTest(
   '../../scripts/verify-managed-deploy-producer-pin.cjs',
 ) as {
+  assertCanonicalProducerPaths: (pin: Record<string, unknown>) => void;
   assertProducerRelease: (
     pin: Record<string, unknown>,
     runGit?: () => string,
@@ -65,12 +70,56 @@ describe('EAI managed deployment helpers', () => {
     };
   }
 
+  function fixtureUnifiedOperation(): Record<string, unknown> {
+    const configHash = `sha256:${'b'.repeat(64)}`;
+    return {
+      tenantId: 'tenant-1', appScopeTenantId: 'tenant-1', targetTenantId: 'tenant-1',
+      appKey: 'planning-portal', operationId: 'source-unknown-abc123', environment: 'preview',
+      sourceMode: 'source-unknown', sourceStatus: 'completed', configHash, status: 'active',
+      requiresTenantInfra: false, deploymentId: 'dep-1', activeUrl: 'https://rates.example.com',
+      runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
+      latestPointerVersion: 3, expectedLatestVersion: 3,
+      deployment: { deploymentId: 'dep-1', status: 'active' },
+      doctor: {
+        deploymentId: 'dep-1', status: 'active', ready: true,
+        scope: { tenantId: 'tenant-1', appKey: 'planning-portal', environment: 'preview' },
+      },
+      sourceRevision: {
+        operationId: 'source-unknown-abc123', sourceMode: 'source-unknown',
+        appScopeTenantId: 'tenant-1', targetTenantId: 'tenant-1',
+        repoOwner: 'enterprise', repoName: 'planning-portal', repositoryId: 123, installationId: 456,
+        branchRef: 'refs/heads/main', workflowPath: EAI_MANAGED_WORKFLOW_PATH, workflowHeadBranch: 'main',
+        sourceCommitSha: 'a'.repeat(40), commitSha: 'a'.repeat(40), workflowRunId: '789', configHash,
+        artifactDigest: `sha256:${'c'.repeat(64)}`,
+        imageArtifact: { id: '987', name: 'eai-generated-app-image', archiveDigest: `sha256:${'d'.repeat(64)}` },
+        imageDigest: `sha256:${'e'.repeat(64)}`,
+      },
+    };
+  }
+
   test.each(['.github', 'scripts'])('refuses a symlinked canonical-file parent: %s', async (directory) => {
     const project = await temporaryDirectory('eai-managed-symlink-');
     const outside = await temporaryDirectory('eai-managed-outside-');
     await symlink(outside, join(project, directory), 'dir');
     await expect(installCanonicalManagedDeployFiles(project)).rejects.toThrow('untrusted directory');
     expect(await readdir(outside)).toEqual([]);
+  });
+
+  test('reads workflow evidence through a bounded no-follow regular-file handle', async () => {
+    const directory = await temporaryDirectory('eai-workflow-evidence-');
+    const evidence = join(directory, 'evidence.json');
+    const target = join(directory, 'target.json');
+    await writeFile(evidence, '{"status":"passed"}\n');
+    expect(await readSourceUnknownEvidenceFile(evidence)).toBe('{"status":"passed"}\n');
+
+    await writeFile(target, '{"status":"swapped"}\n');
+    await rm(evidence);
+    await symlink(target, evidence);
+    await expect(readSourceUnknownEvidenceFile(evidence)).rejects.toThrow('no-follow regular file');
+
+    await rm(evidence);
+    await writeFile(evidence, Buffer.alloc(MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES + 1, 0x20));
+    await expect(readSourceUnknownEvidenceFile(evidence)).rejects.toThrow('must contain 1 to');
   });
 
   test.each(['workflow', 'candidate'])('refuses a symlinked %s file without touching its target', async (kind) => {
@@ -178,6 +227,21 @@ describe('EAI managed deployment helpers', () => {
     expect(new Set([evidence.artifactDigest, evidence.imageDigest, evidence.imageArtifact.archiveDigest]).size).toBe(3);
   });
 
+  test.each(['link', 'file'])('rejects a %s in a governed configuration ancestor', async (scenario) => {
+    if (process.platform === 'win32' && scenario === 'link') return;
+    const project = await temporaryDirectory('eai-managed-config-ancestor-');
+    const outside = await temporaryDirectory('eai-managed-config-outside-');
+    await writeFile(join(project, 'eai.runtime.json'), '{}\n');
+    await mkdir(join(outside, 'eai.config'), { recursive: true });
+    await writeFile(join(outside, 'eai.config', 'runtime.ts'), 'export const escaped = true;\n');
+    if (scenario === 'link') await symlink(outside, join(project, 'src'), 'dir');
+    else await writeFile(join(project, 'src'), 'not a directory\n');
+
+    await expect(buildManagedDeployConfigHash(project)).rejects.toThrow(
+      'Governed configuration ancestor must be a regular directory',
+    );
+  });
+
   test('discovers the packaged canonical workflow and evidence collector', async () => {
     const root = canonicalManagedDeployResourceRoot();
     const workflow = await readFile(join(root, EAI_MANAGED_WORKFLOW_PATH), 'utf8');
@@ -197,7 +261,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '1d44646e9fddaaf39c9b8c975b1dbf8557e543d5' },
+      candidate: { commit: '2dcaf9664d7f861aa1c8937b33818100a401d4ab' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
@@ -245,6 +309,22 @@ describe('EAI managed deployment helpers', () => {
         },
       }),
     ).toThrow(/release is blocked/);
+  });
+
+  test('requires producer pin entries to name only the canonical packaged paths', () => {
+    const pin = {
+      candidate: {
+        workflow: { path: EAI_MANAGED_WORKFLOW_PATH },
+        collector: { path: EAI_MANAGED_EVIDENCE_SCRIPT_PATH },
+      },
+    };
+    expect(() => producerPinVerifier.assertCanonicalProducerPaths(pin)).not.toThrow();
+    expect(() => producerPinVerifier.assertCanonicalProducerPaths({
+      candidate: { ...pin.candidate, workflow: { path: 'approved-copy.yml' } },
+    })).toThrow('workflow path must be the canonical');
+    expect(() => producerPinVerifier.assertCanonicalProducerPaths({
+      candidate: { ...pin.candidate, collector: { path: '../approved-copy.mjs' } },
+    })).toThrow('collector path must be the canonical');
   });
 
   test('installs the canonical pair once and reports stable files on the next pass', async () => {
@@ -370,7 +450,7 @@ describe('EAI managed deployment helpers', () => {
     expect(await loadManagedDeployState(state.operationId, stateDir)).toEqual(state);
     expect((await stat(join(stateDir, `${state.operationId}.json`))).mode & 0o777).toBe(0o600);
     const operation = {
-      tenantId: state.tenantId,
+      appScopeTenantId: state.tenantId,
       appKey: state.appKey,
       operationId: state.operationId,
       setup: {
@@ -406,7 +486,7 @@ describe('EAI managed deployment helpers', () => {
     )).toThrow('githubLinkSessionId');
   });
 
-  test('reports success only for a complete active TenantInfra projection', () => {
+  test('reports success only for complete unified source, deployment, and doctor evidence', () => {
     expect(() => requireCommitSha('abc1234')).toThrow('exact 40 character');
     expect(parseGitHubRepository('https://github.com/enterprise/app.git').slug).toBe('enterprise/app');
     expect(parseGitHubRepository('git@github.com:enterprise/app.git').slug).toBe('enterprise/app');
@@ -414,33 +494,7 @@ describe('EAI managed deployment helpers', () => {
     expect(classifyManagedOperationStatus('handoff_pending')).toBe('pending');
     expect(classifyManagedOperationStatus('active')).toBe('pending');
     expect(classifyManagedOperationStatus({ status: 'deployed' })).toBe('pending');
-    expect(classifyManagedOperationStatus({
-      status: 'active',
-      requiresTenantInfra: false,
-      deploymentId: 'dep-1',
-      runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
-      latestPointerVersion: 3,
-      expectedLatestVersion: 3,
-    })).toBe('pending');
-    expect(classifyManagedOperationStatus({
-      status: 'active',
-      requiresTenantInfra: false,
-      deploymentId: 'dep-1',
-      activeUrl: 'http://rates.example.com',
-      runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
-      latestPointerVersion: 3,
-      expectedLatestVersion: 3,
-    })).toBe('pending');
-    expect(classifyManagedOperationStatus({
-      status: 'active',
-      requiresTenantInfra: false,
-      deploymentId: 'dep-1',
-      activeUrl: 'https://rates.example.com',
-      runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
-      latestPointerVersion: 3,
-      expectedLatestVersion: 2,
-    })).toBe('pending');
-    expect(classifyManagedOperationStatus({
+    const legacyProjection = {
       status: 'active',
       requiresTenantInfra: false,
       deploymentId: 'dep-1',
@@ -448,7 +502,48 @@ describe('EAI managed deployment helpers', () => {
       runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
       latestPointerVersion: 3,
       expectedLatestVersion: 3,
-    })).toBe('succeeded');
+    };
+    expect(classifyManagedOperationStatus(legacyProjection)).toBe('pending');
+    expect(classifyManagedOperationStatus(fixtureUnifiedOperation())).toBe('succeeded');
+
+    const mismatches: Array<(operation: Record<string, unknown>) => void> = [
+      operation => { operation.sourceStatus = 'queued'; },
+      operation => { operation.configHash = `sha256:${'f'.repeat(64)}`; },
+      operation => { (operation.sourceRevision as Record<string, unknown>).operationId = 'source-unknown-other'; },
+      operation => { (operation.sourceRevision as Record<string, unknown>).sourceMode = 'eai-cli-generated'; },
+      operation => { (operation.sourceRevision as Record<string, unknown>).workflowPath = '.github/workflows/other.yml'; },
+      operation => {
+        const revision = operation.sourceRevision as Record<string, unknown>;
+        revision.workflowHeadBranch = '../other';
+        revision.branchRef = 'refs/heads/../other';
+      },
+      operation => { (operation.sourceRevision as Record<string, unknown>).commitSha = 'f'.repeat(39); },
+      operation => { (operation.sourceRevision as Record<string, unknown>).artifactDigest = 'missing-sha256-prefix'; },
+      operation => { (operation.sourceRevision as Record<string, unknown>).imageDigest = `sha256:${'c'.repeat(64)}`; },
+      operation => { (operation.sourceRevision as Record<string, unknown>).workflowRunId = '0'; },
+      operation => { (operation.deployment as Record<string, unknown>).status = 'queued'; },
+      operation => { (operation.doctor as Record<string, unknown>).ready = false; },
+      operation => { (operation.doctor as Record<string, unknown>).deploymentId = 'dep-other'; },
+      operation => {
+        ((operation.doctor as Record<string, unknown>).scope as Record<string, unknown>).tenantId = 'other-tenant';
+      },
+      operation => {
+        ((operation.doctor as Record<string, unknown>).scope as Record<string, unknown>).appKey = 'other-app';
+      },
+    ];
+    for (const mutate of mismatches) {
+      const operation = structuredClone(fixtureUnifiedOperation());
+      mutate(operation);
+      expect(classifyManagedOperationStatus(operation)).toBe('pending');
+    }
+
+    const managedSource = structuredClone(fixtureUnifiedOperation());
+    managedSource.sourceMode = 'eai-cli-generated';
+    (managedSource.sourceRevision as Record<string, unknown>).sourceMode = 'eai-cli-generated';
+    expect(classifyManagedOperationStatus(managedSource)).toBe('pending');
+    (managedSource.sourceRevision as Record<string, unknown>).reviewHeadSha = 'f'.repeat(40);
+    expect(classifyManagedOperationStatus(managedSource)).toBe('succeeded');
+    expect(classifyManagedOperationStatus({ ...fixtureUnifiedOperation(), sourceStatus: 'rejected' })).toBe('failed');
     expect(classifyManagedOperationStatus('failed-readiness')).toBe('failed');
     expect(classifyManagedOperationStatus({ status: 'expired' })).toBe('failed');
     expect(classifyManagedOperationStatus({ status: 'revoked' })).toBe('failed');

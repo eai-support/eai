@@ -367,13 +367,13 @@ describe('managed publication authority and readiness', () => {
     expect(read).toHaveBeenCalledWith('company', 'my-app', 'cli-managed-source-123', 'runtime', 'preview');
   });
 
-  test('requires the full observed readiness evidence even when server status says completed', () => {
+  test('never treats publication-route deployment fields as terminal readiness evidence', () => {
     const value = operation('completed');
     value.deployment = { status: 'ready', liveUrl: 'https://live.example.test' };
     expect(classifyCliManagedSourceOperation(value)).toBe('incomplete');
     value.review = { mergedSha: 'd'.repeat(40) };
     Object.assign(value.deployment, { requestId: 'deployment-123', workflowRunId: '12345', artifactDigest: `sha256:${'e'.repeat(64)}`, imageDigest: `sha256:${'f'.repeat(64)}`, runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' }, requiresTenantInfra: false, latestPointerVersion: 3, expectedLatestVersion: 3 });
-    expect(classifyCliManagedSourceOperation(value)).toBe('succeeded');
+    expect(classifyCliManagedSourceOperation(value)).toBe('incomplete');
     value.deployment.expectedLatestVersion = 4;
     expect(classifyCliManagedSourceOperation(value)).toBe('incomplete');
   });

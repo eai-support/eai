@@ -150,18 +150,11 @@ export function validateCliManagedSourceOperation(value: CliManagedSourceOperati
   return value;
 }
 
-/** A source bundle or bot PR alone never satisfies the existing TenantInfra readiness gate. */
-export function classifyCliManagedSourceOperation(operation: CliManagedSourceOperation): 'pending' | 'succeeded' | 'failed' | 'incomplete' {
+/** Publication status cannot prove deployment readiness; the unified operation route owns success. */
+export function classifyCliManagedSourceOperation(operation: CliManagedSourceOperation): 'pending' | 'failed' | 'incomplete' {
   if (operation.status === 'failed') return 'failed';
   if (operation.status !== 'completed') return 'pending';
-  const deployment = operation.deployment;
-  let https = false;
-  try { const url = new URL(deployment?.liveUrl || ''); https = url.protocol === 'https:' && !url.username && !url.password; } catch { /* Missing runtime URL is incomplete evidence. */ }
-  return operation.review?.mergedSha?.match(/^[a-f0-9]{40}$/) && deployment?.status === 'ready' && https
-    && deployment.requestId && deployment.workflowRunId && /^sha256:[a-f0-9]{64}$/.test(deployment.artifactDigest || '') && /^sha256:[a-f0-9]{64}$/.test(deployment.imageDigest || '')
-    && deployment.runtimeIdentity?.clientId && deployment.runtimeIdentity.principalId && deployment.requiresTenantInfra === false
-    && Number.isSafeInteger(deployment.latestPointerVersion) && deployment.latestPointerVersion! >= 0 && deployment.latestPointerVersion === deployment.expectedLatestVersion
-    ? 'succeeded' : 'incomplete';
+  return 'incomplete';
 }
 
 async function responseOperation(response: Response): Promise<CliManagedSourceOperation> {

@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import chalk from 'chalk';
-import { PlatformAPIClient, type SourceUnknownOperationResponse } from '../lib/api.js';
+import { PlatformAPIClient, type ManagedDeploymentOperationResponse } from '../lib/api.js';
 import { makeSpinner, normalizeFormat, resolveCommandContext } from '../lib/context.js';
 import {
   EAI_MANAGED_WORKFLOW_PATH,
@@ -407,29 +407,26 @@ async function readExactOperation(
   targetTenantId: string,
   appKey: string,
   operationId: string,
-): Promise<SourceUnknownOperationResponse> {
-  const response = await client.getSourceUnknownOperation(tenantId, appKey, operationId, targetTenantId);
+  expectedSourceMode: ManagedDeploymentOperationResponse['sourceMode'] = 'source-unknown',
+): Promise<ManagedDeploymentOperationResponse> {
+  const response = await client.getManagedDeploymentOperation(tenantId, appKey, operationId, targetTenantId);
   const payload = await requireApiSuccess(
     response,
     'SOURCE_OPERATION_READ_FAILED',
     () => `Confirm ${operationId} belongs to tenant ${tenantId} and app ${appKey}, then retry with --resume.`,
   );
-  if (payload.operationId !== operationId || payload.appKey !== appKey || payload.tenantId !== tenantId) {
-    fail('SOURCE_OPERATION_BINDING_MISMATCH', 'PublicAPI returned an operation with a different tenant, app, or operation ID.', 'Stop and escalate with the PublicAPI request ID.');
+  if (payload.operationId !== operationId || payload.appKey !== appKey
+    || payload.appScopeTenantId !== tenantId || payload.sourceMode !== expectedSourceMode) {
+    fail('SOURCE_OPERATION_BINDING_MISMATCH', 'PublicAPI returned an operation with a different source, tenant, app, or operation ID.', 'Stop and escalate with the PublicAPI request ID.');
   }
-  const operation = payload as unknown as SourceUnknownOperationResponse;
-  const operationTargetTenantId = operation.targetTenantId
-    ?? (isRecord(operation.setup) && typeof operation.setup.targetTenantId === 'string'
-      ? operation.setup.targetTenantId
-      : undefined);
-  if (operationTargetTenantId !== targetTenantId) {
+  if (payload.targetTenantId !== targetTenantId) {
     fail(
       'SOURCE_OPERATION_TARGET_MISMATCH',
-      `PublicAPI returned target tenant ${operationTargetTenantId || '<missing>'} instead of ${targetTenantId}.`,
+      `PublicAPI returned target tenant ${String(payload.targetTenantId || '<missing>')} instead of ${targetTenantId}.`,
       'Use the exact target tenant recorded by the source operation; do not retry against another tenant.',
     );
   }
-  return operation;
+  return payload as unknown as ManagedDeploymentOperationResponse;
 }
 
 async function pollExactOperation(
@@ -437,7 +434,8 @@ async function pollExactOperation(
   state: Pick<ManagedDeployState, 'tenantId' | 'targetTenantId' | 'appKey' | 'operationId'>,
   wait: boolean,
   timeoutSeconds: number,
-): Promise<SourceUnknownOperationResponse> {
+  expectedSourceMode: ManagedDeploymentOperationResponse['sourceMode'] = 'source-unknown',
+): Promise<ManagedDeploymentOperationResponse> {
   const deadline = Date.now() + timeoutSeconds * 1_000;
   let lastPendingStatus: string | undefined;
   let pendingReadsAtStatus = 0;
@@ -448,6 +446,7 @@ async function pollExactOperation(
       state.targetTenantId,
       state.appKey,
       state.operationId,
+      expectedSourceMode,
     );
     if ('commitSha' in state) {
       try {
@@ -473,49 +472,65 @@ async function pollExactOperation(
   }
 }
 
-function hasAcceptedWorkflowEvidence(operation: SourceUnknownOperationResponse): boolean {
-  return operation.evidence?.status === 'accepted' || operation.setup?.status === 'consumed';
+function hasAcceptedWorkflowEvidence(operation: ManagedDeploymentOperationResponse): boolean {
+  return ['handoff_pending', 'completed'].includes(operation.sourceStatus)
+    || operation.evidence?.status === 'accepted' || operation.setup?.status === 'consumed';
 }
 
-function requiresNewSourceOperation(operation: SourceUnknownOperationResponse): boolean {
-  return ['expired', 'revoked'].includes(operation.status.trim().toLowerCase())
+function requiresNewSourceOperation(operation: ManagedDeploymentOperationResponse): boolean {
+  const sourceStatus = typeof operation.sourceStatus === 'string'
+    ? operation.sourceStatus.trim().toLowerCase()
+    : '';
+  return ['expired', 'revoked'].includes(sourceStatus)
     && !hasAcceptedWorkflowEvidence(operation);
 }
 
 function printOperation(
   format: string,
-  operation: SourceUnknownOperationResponse,
+  operation: ManagedDeploymentOperationResponse,
   extra: Record<string, unknown> = {},
 ): void {
   const classification = classifyManagedOperationStatus(operation);
   const setup = isRecord(operation.setup) ? operation.setup : {};
   const repository = isRecord(setup.repo) ? setup.repo : {};
-  const targetTenantId = operation.targetTenantId
-    ?? (typeof setup.targetTenantId === 'string' ? setup.targetTenantId : undefined);
+  const revision: Record<string, unknown> = isRecord(operation.sourceRevision)
+    ? operation.sourceRevision as unknown as Record<string, unknown>
+    : {};
+  const targetTenantId = operation.targetTenantId;
+  const revisionRepository = typeof revision.repoOwner === 'string' && typeof revision.repoName === 'string'
+    ? `${revision.repoOwner}/${revision.repoName}`
+    : undefined;
   const sourceBinding = {
-    repository: typeof repository.owner === 'string' && typeof repository.name === 'string'
+    repository: revisionRepository ?? (typeof repository.owner === 'string' && typeof repository.name === 'string'
       ? `${repository.owner}/${repository.name}`
-      : extra.repo,
-    workflowPath: setup.workflowPath,
-    ref: setup.ref ?? extra.ref,
-    commitSha: setup.commitSha ?? extra.commitSha,
-    configHash: operation.configHash ?? setup.configHash ?? extra.configHash,
+      : extra.repo),
+    workflowPath: revision.workflowPath ?? setup.workflowPath,
+    ref: revision.branchRef ?? setup.ref ?? extra.ref,
+    commitSha: revision.commitSha ?? setup.commitSha ?? extra.commitSha,
+    configHash: revision.configHash ?? operation.configHash ?? setup.configHash ?? extra.configHash,
+    workflowRunId: revision.workflowRunId,
+    artifactDigest: revision.artifactDigest,
+    imageDigest: revision.imageDigest,
   };
-  const exactCommand = `eai deploy app ${operation.appKey} --target eai --tenant-id ${operation.tenantId}`
-    + ` --target-tenant-id ${targetTenantId || '<target-tenant-id>'}`;
+  const sourceOption = operation.sourceMode === 'eai-cli-generated' ? ' --source eai-managed' : '';
+  const exactCommand = `eai deploy app ${operation.appKey} --target eai --tenant-id ${operation.appScopeTenantId}`
+    + ` --target-tenant-id ${targetTenantId || '<target-tenant-id>'}${sourceOption}`;
   const nextAction = requiresNewSourceOperation(operation)
     ? NEW_SOURCE_OPERATION_ACTION
     : classification === 'succeeded'
-      ? `Run \`eai deploy doctor --operation-id ${operation.operationId} --app-key ${operation.appKey} --tenant-id ${operation.tenantId} --target-tenant-id ${targetTenantId} --evidence-out .eai/deploy-doctor.json --format json\`.`
+      ? `Run \`eai deploy doctor --operation-id ${operation.operationId} --app-key ${operation.appKey} --tenant-id ${operation.appScopeTenantId} --target-tenant-id ${targetTenantId} --evidence-out .eai/deploy-doctor.json --format json\`.`
       : classification === 'failed'
         ? `Inspect the exact operation and workflow evidence, then run \`${exactCommand} --retry ${operation.operationId} --wait --format json\`.`
-        : `Resume with \`${exactCommand} --resume ${operation.operationId} --wait --format json\`; status ${operation.status} is not a complete active TenantInfra projection.`;
+        : `Resume with \`${exactCommand} --resume ${operation.operationId} --wait --format json\`; source ${operation.sourceStatus} and deployment ${operation.status} do not yet have complete exact evidence.`;
   const result = {
-    tenantId: operation.tenantId,
+    tenantId: operation.appScopeTenantId,
     targetTenantId,
     appKey: operation.appKey,
     operationId: operation.operationId,
+    source: operation.sourceMode === 'eai-cli-generated' ? 'eai-managed' : 'customer-owned',
+    sourceMode: operation.sourceMode,
     status: operation.status,
+    sourceStatus: operation.sourceStatus,
     classification,
     requiresTenantInfra: operation.requiresTenantInfra,
     deploymentId: operation.deploymentId,
@@ -562,17 +577,15 @@ function printFailure(format: string, error: unknown): void {
 function printManagedSourceOperation(format: string, operation: CliManagedSourceOperation): void {
   const classification = classifyCliManagedSourceOperation(operation);
   const command = `eai deploy app ${operation.appKey} --target eai --tenant-id ${operation.tenantId} --target-tenant-id ${operation.targetTenantId} --environment ${operation.environment} --source eai-managed --resume ${operation.operationId} --format json`;
-  const nextAction = classification === 'succeeded'
-    ? `Run eai deploy doctor --operation-id ${operation.operationId} --app-key ${operation.appKey} --tenant-id ${operation.tenantId} --target-tenant-id ${operation.targetTenantId} --evidence-out .eai/deploy-doctor.json --format json.`
-    : operation.status === 'pending_review'
-      ? `EAI must complete the bot PR checks and merge before deployment. Resume the exact operation with: ${command}`
-      : classification === 'failed' || classification === 'incomplete'
-        ? `Ask EAI to repair the reported publication or missing deployment evidence. Read its exact status with: ${command}`
-        : `Continue observing the exact platform operation with: ${command}`;
+  const nextAction = operation.status === 'pending_review'
+    ? `EAI must complete the bot PR checks and merge before deployment. Resume the exact operation with: ${command}`
+    : classification === 'failed' || classification === 'incomplete'
+      ? `Ask EAI to repair the reported publication or missing deployment evidence. Read its exact status with: ${command}`
+      : `Continue observing the exact platform operation with: ${command}`;
   const result = {
     tenantId: operation.tenantId, targetTenantId: operation.targetTenantId, appKey: operation.appKey,
     operationId: operation.operationId, source: 'eai-managed', sourceMode: operation.sourceMode,
-    status: classification === 'succeeded' ? 'active' : operation.status, publicationStatus: operation.status, classification,
+    status: operation.status, publicationStatus: operation.status, classification,
     templateCommitSha: operation.templateCommitSha, bundleSha256: operation.bundleSha256, configHash: operation.configHash,
     sourceBinding: { repository: `${operation.repository.owner}/${operation.repository.name}`, commitSha: operation.review?.mergedSha },
     review: operation.review, deploymentId: operation.deployment?.requestId, activeUrl: operation.deployment?.liveUrl,
@@ -587,6 +600,46 @@ function printManagedSourceOperation(format: string, operation: CliManagedSource
     out.info(nextAction);
   }
   if (classification === 'failed' || classification === 'incomplete') process.exitCode = 1;
+}
+
+async function printManagedSourceCompletion(
+  client: PlatformAPIClient,
+  scope: CliManagedSourceScope,
+  publication: CliManagedSourceOperation,
+  wait: boolean,
+  timeoutSeconds: number,
+  format: string,
+): Promise<void> {
+  if (publication.status !== 'completed') {
+    printManagedSourceOperation(format, publication);
+    return;
+  }
+  const operation = await pollExactOperation(client, {
+    tenantId: scope.tenantId,
+    targetTenantId: scope.targetTenantId,
+    appKey: scope.appKey,
+    operationId: publication.operationId,
+  }, wait, timeoutSeconds, 'eai-cli-generated');
+  const revision = isRecord(operation.sourceRevision) ? operation.sourceRevision : undefined;
+  const mergedSha = publication.review?.mergedSha;
+  if (operation.environment !== publication.environment
+    || operation.configHash !== publication.configHash
+    || (revision && (revision.repoOwner !== publication.repository.owner
+      || revision.repoName !== publication.repository.name
+      || (typeof mergedSha === 'string' && revision.commitSha !== mergedSha)))) {
+    fail(
+      'MANAGED_SOURCE_BINDING_MISMATCH',
+      'Unified deployment evidence does not match the exact EAI-maintained publication.',
+      `Stop and inspect publication ${publication.operationId}; do not accept another source, environment, repository, commit, or configuration.`,
+    );
+  }
+  printOperation(format, operation, {
+    source: 'eai-managed',
+    publicationStatus: publication.status,
+    templateCommitSha: publication.templateCommitSha,
+    bundleSha256: publication.bundleSha256,
+  });
+  if (classifyManagedOperationStatus(operation) === 'failed') process.exitCode = 1;
 }
 
 export const eaiManagedDeployCommand = new Command('app')
@@ -682,7 +735,7 @@ Examples:
         }
         const operation = await pollCliManagedSource(client, managedScope, operationId, { wait: options.wait, timeoutMs: timeoutSeconds * 1000 }, current);
         spinner?.stop();
-        printManagedSourceOperation(format, operation);
+        await printManagedSourceCompletion(client, managedScope, operation, options.wait, timeoutSeconds, format);
         return;
       }
 
@@ -733,7 +786,7 @@ Examples:
           return;
         }
         if (requiresNewSourceOperation(current)) {
-          fail('SOURCE_OPERATION_INACTIVE', `Source operation ${current.operationId} is ${current.status} and cannot dispatch a workflow.`, NEW_SOURCE_OPERATION_ACTION);
+          fail('SOURCE_OPERATION_INACTIVE', `Source operation ${current.operationId} is ${current.sourceStatus} and cannot dispatch a workflow.`, NEW_SOURCE_OPERATION_ACTION);
         }
         const state = await loadManagedDeployState(options.retry);
         if (state.tenantId !== context.tenantId || state.targetTenantId !== targetTenantId || state.appKey !== appKey) {
@@ -796,7 +849,7 @@ Examples:
         const submitted = await submitCliManagedSource(client, managedScope, link, bundle);
         const operation = await pollCliManagedSource(client, managedScope, submitted.operationId, { wait: options.wait, timeoutMs: timeoutSeconds * 1000 }, submitted);
         spinner?.stop();
-        printManagedSourceOperation(format, operation);
+        await printManagedSourceCompletion(client, managedScope, operation, options.wait, timeoutSeconds, format);
         return;
       }
       // Reassert the customer-owned branch invariant for type-safe downstream use.
