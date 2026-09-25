@@ -17,7 +17,6 @@ import {
   writeSync,
   writeFileSync,
 } from 'node:fs';
-import { appendFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
@@ -826,7 +825,7 @@ function prepareImageContext(options) {
   process.stdout.write(`${contextDir}\n`);
 }
 
-async function appendOutputs(path, outputs) {
+function appendOutputs(path, outputs) {
   if (!path) return;
   const lines = Object.entries(outputs)
     .map(([key, value]) => {
@@ -840,7 +839,24 @@ async function appendOutputs(path, outputs) {
       return `${key}=${serialized}\n`;
     })
     .join('');
-  await appendFile(path, lines, 'utf8');
+  const descriptor = openSync(
+    path,
+    constants.O_WRONLY |
+      constants.O_APPEND |
+      constants.O_CREAT |
+      constants.O_NONBLOCK |
+      (constants.O_NOFOLLOW || 0),
+    0o600,
+  );
+  try {
+    const status = fstatSync(descriptor);
+    if (!status.isFile() || status.nlink !== 1) {
+      throw new Error('GitHub output command file must be a regular file.');
+    }
+    writeSync(descriptor, lines, null, 'utf8');
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 async function collectEvidence(options) {
@@ -989,7 +1005,7 @@ async function collectEvidence(options) {
     evidencePath,
     `${JSON.stringify(evidence, null, 2)}\n`,
   );
-  await appendOutputs(githubOutputPath, {
+  appendOutputs(githubOutputPath, {
     config_hash: configHash,
     artifact_digest: artifactDigest,
     archive_digest: archiveDigest,

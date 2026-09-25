@@ -67,6 +67,7 @@ describe('EAI managed deployment helpers', () => {
       environment: 'preview', installationId: 123,
       actorId: 'eai-user-oid', githubLinkSessionId: 'github-link-123',
       githubUserId: 456, githubLogin: 'linked-user', githubProofId: 'proof-123',
+      publicApiUrl: 'https://test-api.au.myenterprise.ai/public',
     };
   }
 
@@ -273,7 +274,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'd22f1ed75d23ba0b9ea60b904c44f1725c1c3f16' },
+      candidate: { commit: '8a23ae44c5f8308e9a65e8251f8d9c89d0ab7794' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
@@ -465,11 +466,19 @@ describe('EAI managed deployment helpers', () => {
       githubUserId: 456,
       githubLogin: 'linked-user',
       githubProofId: 'proof-123',
+      publicApiUrl: 'https://test-api.au.myenterprise.ai/public',
     };
 
     await saveManagedDeployState(state, stateDir);
     expect(await loadManagedDeployState(state.operationId, stateDir)).toEqual(state);
     expect((await stat(join(stateDir, `${state.operationId}.json`))).mode & 0o777).toBe(0o600);
+
+    const missingEndpoint = { ...state } as Partial<ManagedDeployState>;
+    delete missingEndpoint.publicApiUrl;
+    await expect(saveManagedDeployState(
+      missingEndpoint as ManagedDeployState,
+      stateDir,
+    )).rejects.toThrow('missing its original PublicAPI URL');
     const operation = {
       appScopeTenantId: state.tenantId,
       appKey: state.appKey,
@@ -505,6 +514,14 @@ describe('EAI managed deployment helpers', () => {
       { ...state, githubLinkSessionId: 'different-link-session' },
       operation,
     )).toThrow('githubLinkSessionId');
+
+    await writeFile(
+      join(stateDir, `${state.operationId}.json`),
+      `${JSON.stringify(missingEndpoint)}\n`,
+      { mode: 0o600 },
+    );
+    await expect(loadManagedDeployState(state.operationId, stateDir))
+      .rejects.toThrow('missing its original PublicAPI URL');
   });
 
   test('reports success only for complete unified source, deployment, and doctor evidence', () => {

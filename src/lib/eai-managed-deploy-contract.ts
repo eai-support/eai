@@ -28,7 +28,7 @@ export interface ManagedDeployState {
   githubUserId?: number;
   githubLogin?: string;
   githubProofId?: string;
-  publicApiUrl?: string;
+  publicApiUrl: string;
   dispatchStartedAt?: string;
   dispatchedAt?: string;
   githubRunId?: number;

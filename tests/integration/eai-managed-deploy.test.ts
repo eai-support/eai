@@ -555,6 +555,7 @@ fi
       appKey: 'planning-portal', operationId: 'source-unknown-abc123', nonce: 'one-time-nonce',
       repo: 'enterprise/planning-portal', branch: 'main', ref: 'refs/heads/main', commitSha,
       workflowPath: '.github/workflows/eai-app.yml', configHash, environment: 'preview', installationId: 12345,
+      publicApiUrl: API_BASE,
       ...ACTOR_BINDING,
     };
     const retryMode = ['retry', 'crash-before-claim', 'already-dispatched', 'uncertain-dispatch'].includes(bootstrap);
@@ -831,6 +832,7 @@ fi
       repo: 'enterprise/planning-portal', branch: 'main', ref: 'refs/heads/main', commitSha: 'a'.repeat(40),
       workflowPath: '.github/workflows/eai-app.yml', configHash: `sha256:${'b'.repeat(64)}`,
       environment: 'preview', installationId: 12345,
+      publicApiUrl: API_BASE,
       ...ACTOR_BINDING,
     };
     await saveManagedDeployState(state);

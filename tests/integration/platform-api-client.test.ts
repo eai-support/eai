@@ -46,6 +46,24 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  test.each([
+    ['operation/other', 'runtime-tenant'],
+    ['../operation', 'runtime-tenant'],
+    ['', 'runtime-tenant'],
+    ['operation?query=value', 'runtime-tenant'],
+    ['source-unknown-abc123', '../runtime-tenant'],
+  ])('rejects unsafe legacy operation binding %s / %s before an HTTP request', async (operationId, targetTenantId) => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await expect(client.getSourceUnknownOperation(
+      'tenant-one',
+      'my-app',
+      operationId,
+      targetTenantId,
+    )).rejects.toThrow('safe opaque path segments')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   test('rejects an untrusted managed PublicAPI origin before acquiring or sending a bearer token', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
     const tokenMock = vi.mocked(getAccessToken)

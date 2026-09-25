@@ -48,7 +48,10 @@ function validateManagedDeployState(state: ManagedDeployState): void {
     || !state.githubProofId || !/^[A-Za-z0-9._:-]{1,256}$/.test(state.githubProofId)) {
     throw new Error('Managed deployment state is missing its exact EAI and GitHub actor binding.');
   }
-  if (state.publicApiUrl) requireManagedPublicApiUrl(state.publicApiUrl);
+  if (!state.publicApiUrl) {
+    throw new Error('Managed deployment retry state is missing its original PublicAPI URL; start a new deployment.');
+  }
+  requireManagedPublicApiUrl(state.publicApiUrl);
 }
 
 async function prepareStateDirectory(baseDir?: string): Promise<void> {

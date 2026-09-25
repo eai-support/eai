@@ -1741,6 +1741,10 @@ export class PlatformAPIClient {
     operationId: string,
     targetTenantId?: string,
   ): Promise<Response> {
+    if ([tenantId, appKey, operationId, ...(targetTenantId !== undefined ? [targetTenantId] : [])]
+      .some(value => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value))) {
+      throw new Error('Source-unknown operation identifiers must be safe opaque path segments.');
+    }
     const query = targetTenantId
       ? `?targetTenantId=${encodeURIComponent(targetTenantId)}`
       : '';

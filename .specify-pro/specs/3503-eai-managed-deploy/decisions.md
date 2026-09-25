@@ -26,4 +26,6 @@ Treat caller-selected evidence as untrusted local input: open it without followi
 
 The governed configuration digest includes every regular file beneath `src/eai.config`, including test and specification files. Only `object-types.json` and `object-types.provisioning.json` are deterministic generated outputs and may be excluded. The CLI and packaged collector must produce the same digest from the same checkout.
 
+Legacy exact-operation reads use the same safe opaque-segment validation as the unified managed route. Retry state is authoritative only when it carries the exact allowlisted `publicApiUrl` selected for the original operation; missing endpoint authority requires a fresh deployment rather than inheriting a current profile value.
+
 Keep `src/commands/eai-managed-deploy.ts` and `src/lib/eai-managed-source-client.ts` as compatible public entrypoints while moving focused implementation into modules below 300 lines. JSON failures retain the CLI-wide nested error envelope.
