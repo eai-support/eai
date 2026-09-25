@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { appendFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
@@ -173,7 +173,7 @@ function parseArgs(argv) {
       .slice(2)
       .replace(/-([a-z])/g, (_, char) => char.toUpperCase());
     const next = rest[index + 1];
-    if (!next || next.startsWith('--')) {
+    if (next === undefined || next.startsWith('--')) {
       options[key] = 'true';
       continue;
     }
@@ -191,6 +191,76 @@ function option(options, key, fallback = '') {
 
 function ensureDir(path) {
   mkdirSync(path, { recursive: true });
+}
+
+function containedRelativePath(parent, candidate, label, allowParent = false) {
+  const relativePath = relative(resolve(parent), resolve(candidate));
+  if (
+    isAbsolute(relativePath) ||
+    relativePath === '..' ||
+    relativePath.startsWith('../') ||
+    relativePath.startsWith('..\\') ||
+    (!allowParent && relativePath === '')
+  ) {
+    throw new Error(`${label} must remain within its approved directory.`);
+  }
+  return relativePath;
+}
+
+function ensureDirectoryTreeNoFollow(root, directory) {
+  const resolvedRoot = resolve(root);
+  const resolvedDirectory = resolve(directory);
+  const relativeDirectory = containedRelativePath(
+    resolvedRoot,
+    resolvedDirectory,
+    'Evidence output directory',
+    true,
+  );
+  const rootMetadata = lstatSync(resolvedRoot);
+  if (rootMetadata.isSymbolicLink() || !rootMetadata.isDirectory()) {
+    throw new Error('Application root must be a no-follow directory.');
+  }
+
+  let current = resolvedRoot;
+  const components = relativeDirectory
+    ? relativeDirectory.split(/[\\/]/).filter(Boolean)
+    : [];
+  for (const component of components) {
+    current = join(current, component);
+    let metadata = optionalLstat(current);
+    if (!metadata) {
+      mkdirSync(current, { mode: 0o700 });
+      metadata = lstatSync(current);
+    }
+    if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+      throw new Error(
+        `Evidence output directory must not contain links: ${current}`,
+      );
+    }
+  }
+}
+
+function writeEvidenceFileNoFollow(root, outputDir, evidencePath, content) {
+  containedRelativePath(root, outputDir, 'Evidence output directory', true);
+  containedRelativePath(outputDir, evidencePath, 'Evidence output file');
+  ensureDirectoryTreeNoFollow(root, dirname(evidencePath));
+
+  const descriptor = openSync(
+    evidencePath,
+    constants.O_WRONLY |
+      constants.O_CREAT |
+      constants.O_EXCL |
+      (constants.O_NOFOLLOW || 0),
+    0o600,
+  );
+  try {
+    if (!fstatSync(descriptor).isFile()) {
+      throw new Error('Evidence output must be a regular file.');
+    }
+    writeFileSync(descriptor, content, 'utf8');
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 function assertExists(path, label) {
@@ -345,7 +415,8 @@ function readSchemaProvenance(root) {
   if (
     typeof provenance.templateVersion !== 'string' ||
     !provenance.templateVersion.trim() ||
-    provenance.templateVersion.trim() !== provenance.templateVersion
+    provenance.templateVersion.trim() !== provenance.templateVersion ||
+    /[\r\n]/.test(provenance.templateVersion)
   ) {
     throw new Error('Schema provenance templateVersion is required.');
   }
@@ -364,6 +435,7 @@ function readSchemaProvenance(root) {
       value !== undefined &&
       (typeof value !== 'string' ||
         value.trim() !== value ||
+        /[\r\n]/.test(value) ||
         !pattern.test(value))
     ) {
       throw new Error(`Schema provenance ${key} is invalid.`);
@@ -423,7 +495,16 @@ function prepareImageContext(options) {
 async function appendOutputs(path, outputs) {
   if (!path) return;
   const lines = Object.entries(outputs)
-    .map(([key, value]) => `${key}=${value}\n`)
+    .map(([key, value]) => {
+      const serialized = String(value);
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+        throw new Error('GitHub output key is invalid.');
+      }
+      if (/[\r\n\0]/.test(serialized)) {
+        throw new Error(`GitHub output ${key} must be a single safe line.`);
+      }
+      return `${key}=${serialized}\n`;
+    })
     .join('');
   await appendFile(path, lines, 'utf8');
 }
@@ -562,8 +643,12 @@ async function collectEvidence(options) {
     validationSummary: { status: 'passed' },
   };
 
-  ensureDir(outputDir);
-  writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
+  writeEvidenceFileNoFollow(
+    root,
+    outputDir,
+    evidencePath,
+    `${JSON.stringify(evidence, null, 2)}\n`,
+  );
   await appendOutputs(githubOutputPath, {
     config_hash: configHash,
     artifact_digest: artifactDigest,
