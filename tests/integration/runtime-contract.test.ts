@@ -290,11 +290,51 @@ describe('runtime contract validation and deploy doctor', () => {
 
       expect(result.checks).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ name: 'readiness', status: 'pass', httpStatus: 200 }),
+          expect.objectContaining({ name: 'readiness', status: 'pass', httpStatus: 200, authenticated: true }),
         ]),
       );
+      expect(result.authenticatedReadiness).toBe(true);
       expect(JSON.stringify(result)).not.toContain('probe-secret-value');
       await expect(access(join(root, '.eai', 'deploy-doctor.json'))).rejects.toThrow();
+    } finally {
+      process.chdir(originalCwd);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('does not treat a literal authorization header as authenticated readiness', async () => {
+    const root = await createRuntimeProject();
+    await addProtectedReadinessSmoke(root);
+    const contract = JSON.parse(await readFile(join(root, 'eai.runtime.json'), 'utf8')) as {
+      endpoints: { smokeTests: Array<{ name: string; headers?: Record<string, string> }> };
+    };
+    const readiness = contract.endpoints.smokeTests.find(testCase => testCase.name === 'readiness');
+    if (!readiness?.headers) throw new Error('Readiness fixture is missing headers.');
+    readiness.headers.authorization = 'Bearer literal-value';
+    await writeFile(join(root, 'eai.runtime.json'), JSON.stringify(contract, null, 2));
+    const originalCwd = process.cwd();
+    process.chdir(root);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/api/auth/providers')) return new Response(JSON.stringify({ entra: { id: 'entra' } }), { status: 200 });
+      if (url.endsWith('/api/eai/config')) {
+        return new Response(JSON.stringify({ tenants: { boardapp: { tenantId: 'tenant-id', workflowId: 'workflow-id' } } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }));
+
+    try {
+      const result = await runDeployDoctor('https://app.example.com', {
+        environment: {
+          EAI_READINESS_PROBE_TOKEN: 'present-but-unused',
+          EAI_TENANT_ID: 'tenant-id',
+          EAI_ENVIRONMENT: 'production',
+          EAI_CONFIG_HASH: 'config-hash',
+        },
+      });
+      expect(result.authenticatedReadiness).toBe(false);
+      expect(result.checks).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: 'readiness', status: 'pass', authenticated: false }),
+      ]));
     } finally {
       process.chdir(originalCwd);
       await rm(root, { recursive: true, force: true });

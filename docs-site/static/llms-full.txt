@@ -253,7 +253,8 @@ Options:
   --target <target>                   Hosting target (eai)
   --tenant-id <id>                    Company tenant that owns the app
                                       enrollment
-  --target-tenant-id <id>             Tenant that receives the deployed runtime
+  --target-tenant-id <id>             Required exact tenant that receives the
+                                      deployed runtime
   --repo <owner/name>                 Exact GitHub repository
   --source <source>                   Source ownership
                                       (eai-managed|customer-owned); required
@@ -285,8 +286,8 @@ Options:
   -h, --help                          display help for command
 
 Examples:
-  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --source eai-managed
-  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --source customer-owned --repo org/planning-portal --installation-id 12345
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source eai-managed
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source customer-owned --repo org/planning-portal --installation-id 12345
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --environment preview --source eai-managed --resume cli-managed-source-abc123 --format json
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
@@ -914,8 +915,6 @@ See [Config-Driven UI](./app-template/config-driven-ui.md) for the full pattern.
 
 # Examples
 
-import Link from '@docusaurus/Link';
-
 # Examples
 
 These examples show how the CLI, eai-gofer, and EAI App Template work together.
@@ -926,7 +925,7 @@ These examples show how the CLI, eai-gofer, and EAI App Template work together.
 | ----------------------------------------- | --------------------------------------------------------------------------------------- |
 | [Build a Task Tracker](./task-tracker.md) | Scaffold an app, define Object Types, publish them, and build ResourceAPI-backed pages. |
 | [Add AI Chat](./ai-chat.md)               | Add streaming chat, document upload, and RAG indexing through template hooks.           |
-| <Link to="/scenarios/">Business Scenarios</Link> | Browse industry-specific workflows before deciding what to build. |
+| [Business Scenarios](/scenarios/) | Browse industry-specific workflows before deciding what to build. |
 
 ## Standard Loop
 

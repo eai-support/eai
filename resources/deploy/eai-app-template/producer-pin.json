@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "eai.managed-deploy-producer-pin.v1",
+  "repository": "eai-support/eai-app-template",
+  "candidate": {
+    "commit": "97277cb5278a5e30c59a57beea070e954e6864af",
+    "workflow": {
+      "path": ".github/workflows/eai-app.yml",
+      "sha256": "sha256:3415eefb1dc1a645d73824c9c3e03dac220c87807e7e8778818533a1cc7018ae"
+    },
+    "collector": {
+      "path": "scripts/source-unknown-deployment-evidence.mjs",
+      "sha256": "sha256:cb02c082b792a7ca5b77afbaaf455a7d1008475c6292b448192d16f46d7deb7c"
+    }
+  },
+  "releaseGate": {
+    "status": "awaiting-producer-release",
+    "tag": null,
+    "commit": null,
+    "reason": "Publish the reviewed app-template candidate, then replace this gate with its new immutable tag and the same exact commit before releasing the CLI."
+  }
+}

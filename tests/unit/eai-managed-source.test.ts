@@ -35,6 +35,8 @@ async function project(): Promise<string> {
     '.eai-manifest.json': JSON.stringify({ template: { commit: templateCommit } }),
     '.gitignore': 'node_modules/\n.env*\npublic/ignored.png\ncustom-ignored.ts\n',
     'package.json': '{"name":"local-app","private":true}',
+    'eai.config.ts': 'export default { appKey: "local-app" };',
+    'eai.runtime.json': '{"schemaVersion":1}',
     'src/app/page.tsx': 'export default function Page() { return "scaffold"; }',
     'src/auth.ts': 'export const platformAuth = true;',
     'src/eai.config/default.ts': 'export default { appKey: "local-app" };',
@@ -63,11 +65,12 @@ describe('managed local source snapshot', () => {
     expect(first.bundle.templateCommitSha).toBe(templateCommit);
     const paths = first.bundle.files.map(file => file.path);
     expect(paths).toEqual([...paths].sort());
-    expect(paths).toEqual(['package.json', 'public/ignored.png', 'public/scaffold.svg', 'src/app/page.tsx', 'src/eai.config/default.ts', 'src/types/order.ts']);
+    expect(paths).toEqual(['eai.config.ts', 'eai.runtime.json', 'package.json', 'public/ignored.png', 'public/scaffold.svg', 'src/app/page.tsx', 'src/eai.config/default.ts', 'src/types/order.ts']);
     const image = first.bundle.files.find(file => file.path === 'public/ignored.png')!;
     expect(image).toEqual({ path: 'public/ignored.png', type: 'file', size: binary.length, sha256: hash(binary), contentBase64: binary.toString('base64') });
     expect(first.totalBytes).toBe(first.bundle.files.reduce((total, file) => total + file.size, 0));
-    expect(first.bundle.bundleSha256).toBe(hash(JSON.stringify([templateCommit, first.bundle.files.map(file => [file.path, file.size, file.sha256])])));
+    expect(first.bundle.configHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(first.bundle.bundleSha256).toBe(hash(JSON.stringify([templateCommit, first.bundle.configHash, first.bundle.files.map(file => [file.path, file.size, file.sha256])])));
   });
 
   test('expresses deleted app files by absence from the complete snapshot', async () => {
@@ -89,7 +92,7 @@ describe('managed local source snapshot', () => {
     const receipt = JSON.parse(await readFile(await writeCliManagedSourceReceipt(root, bundle), 'utf8'));
     expect(receipt).toEqual({
       schemaVersion: 'eai.cli_managed_source_local_receipt.v1', sourceMode: 'eai-cli-generated',
-      templateCommitSha: templateCommit, bundleSha256: bundle.bundleSha256, totalBytes,
+      templateCommitSha: templateCommit, bundleSha256: bundle.bundleSha256, configHash: bundle.configHash, totalBytes,
       files: bundle.files.map(({ path, size, sha256 }) => ({ path, size, sha256 })),
     });
     expect((await buildCliManagedSourceBundle(root)).bundle).toEqual(bundle);
@@ -111,9 +114,9 @@ describe('managed local source snapshot', () => {
     await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'SOURCE_SCOPE_UNSUPPORTED' });
   });
 
-  test('refuses a removed root config because the publisher would retain its template default', async () => {
+  test.each(['package.json', 'eai.config.ts', 'eai.runtime.json'])('refuses removed root config %s because the publisher would retain its template default', async path => {
     const root = await project();
-    await rm(join(root, 'package.json'));
+    await rm(join(root, path));
     await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'SOURCE_SCOPE_UNSUPPORTED' });
   });
 
@@ -132,6 +135,12 @@ describe('managed local source snapshot', () => {
     await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'TEMPLATE_PIN_REQUIRED' });
   });
 
+  test('does not trust an edited template pin after the original scaffold commit', async () => {
+    const root = await project();
+    await put(root, '.eai-manifest.json', JSON.stringify({ template: { commit: 'b'.repeat(40) } }));
+    await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'TEMPLATE_PIN_CHANGED' });
+  });
+
   test('requires a scaffold baseline before deciding platform files are unchanged', async () => {
     const root = await project();
     await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--amend', '--quiet', '-m', 'imported source'], { cwd: root });
@@ -144,9 +153,9 @@ describe('managed local source snapshot', () => {
     await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'SOURCE_CREDENTIAL_DETECTED' });
   });
 
-  test('rejects credential files within app source instead of silently omitting them', async () => {
+  test.each(['public/client.key', 'public/.npmrc', 'src/.env.local'])('rejects credential file %s within app source instead of silently omitting it', async path => {
     const root = await project();
-    await put(root, 'public/client.key', 'sensitive content');
+    await put(root, path, 'sensitive content');
     await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'SOURCE_CREDENTIAL_DETECTED' });
   });
 
@@ -181,6 +190,10 @@ describe('managed local source snapshot', () => {
 
   test.each(['../src/x.ts', 'src/../x.ts', '/src/x.ts', 'src\\x.ts', 'src/.env', 'src/app/api/auth/route.ts', 'src/lib/platform/client.ts', '.github/workflows/build.yml'])('rejects unsupported wire path %s', path => {
     expect(isManagedAppSourcePath(path)).toBe(false);
+  });
+
+  test.each(['eai.config.ts', 'eai.runtime.json', 'package.json', 'src/app/page.tsx', 'public/logo.svg'])('accepts governed app path %s', path => {
+    expect(isManagedAppSourcePath(path)).toBe(true);
   });
 });
 

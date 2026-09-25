@@ -390,6 +390,7 @@ const SMOKE_CALLS = {
   ],
   'eai deploy doctor': [
     'EAI_E2E_DEPLOYED_URL=<url> eai deploy doctor --url <url> --format json',
+    'eai deploy doctor --operation-id <operation-id> --app-key <app-key> --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --evidence-out .eai/deploy-doctor.json --format json',
   ],
   'eai runtime validate': [
     'eai runtime validate --format json',

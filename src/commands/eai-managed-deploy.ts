@@ -13,6 +13,8 @@ import {
   installCanonicalManagedDeployFiles,
   loadManagedDeployState,
   parseGitHubRepository,
+  readManagedDeployDispatchClaim,
+  recordManagedDeployDispatch,
   requireBranch,
   requireCommitSha,
   requireInstallationId,
@@ -56,6 +58,19 @@ interface ManagedDeployOptions {
 interface GitHubRepoView {
   viewerPermission?: string;
   isArchived?: boolean;
+}
+
+interface GitHubWorkflowRun {
+  databaseId: number;
+  displayTitle: string;
+  createdAt: string;
+  headSha: string;
+  event: string;
+}
+
+export interface VerifiedGitHubActor {
+  id: number;
+  login: string;
 }
 
 class ManagedDeployFailure extends Error {
@@ -140,6 +155,7 @@ export async function verifyGitHubAccess(
   branch: string,
   expectedSha: string,
   runCommand: ManagedDeployCommandRunner = run,
+  expectedActor?: VerifiedGitHubActor,
 ): Promise<void> {
   try {
     await runCommand('gh', ['auth', 'status']);
@@ -163,7 +179,14 @@ export async function verifyGitHubAccess(
   }).catch((error: unknown) => {
     fail('GITHUB_BRANCH_UNAVAILABLE', String(error), `Push branch ${branch} to ${repo}, then retry.`);
   });
-  const [repoView, remoteSha] = await Promise.all([repoViewPromise, remoteShaPromise]);
+  const actorPromise = expectedActor
+    ? runCommand('gh', ['api', 'user', '--jq', '{id: .id, login: .login}'])
+      .then((value) => JSON.parse(value) as { id?: unknown; login?: unknown })
+      .catch((error: unknown) => {
+        fail('GITHUB_ACTOR_UNAVAILABLE', String(error), 'Run `gh auth login`, then verify the same GitHub account linked in the EAI browser handoff.');
+      })
+    : Promise.resolve(undefined);
+  const [repoView, remoteSha, actor] = await Promise.all([repoViewPromise, remoteShaPromise, actorPromise]);
 
   if (repoView.isArchived) {
     fail('GITHUB_REPOSITORY_ARCHIVED', `${repo} is archived.`, 'Choose an active repository before deployment.');
@@ -176,6 +199,14 @@ export async function verifyGitHubAccess(
       'GITHUB_SHA_MISMATCH',
       `Local HEAD ${expectedSha} does not match ${repo}@${branch} (${remoteSha}).`,
       `Push the exact local commit to ${branch}, or check out the remote commit, then retry.`,
+    );
+  }
+  if (expectedActor && (actor?.id !== expectedActor.id
+    || String(actor?.login || '').toLowerCase() !== expectedActor.login.toLowerCase())) {
+    fail(
+      'GITHUB_ACTOR_MISMATCH',
+      `The local gh actor ${String(actor?.login || '<unknown>')} (${String(actor?.id || '<unknown>')}) does not match the browser-linked GitHub actor ${expectedActor.login} (${expectedActor.id}).`,
+      `Run \`gh auth switch --user ${expectedActor.login}\`, confirm with \`gh api user\`, then retry the exact operation.`,
     );
   }
 }
@@ -226,17 +257,99 @@ async function verifyLocalSource(
   return { branch, commitSha };
 }
 
+function managedWorkflowRunName(state: ManagedDeployState): string {
+  return `EAI deploy ${state.appKey} (${state.operationId})`;
+}
+
+async function findManagedWorkflowRun(
+  state: ManagedDeployState,
+  claimedAt: string,
+  runCommand: ManagedDeployCommandRunner = run,
+): Promise<GitHubWorkflowRun | undefined> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await runCommand('gh', [
+      'run', 'list',
+      '--repo', state.repo,
+      '--workflow', state.workflowPath,
+      '--branch', state.branch,
+      '--commit', state.commitSha,
+      '--event', 'workflow_dispatch',
+      '--limit', '100',
+      '--json', 'databaseId,displayTitle,createdAt,headSha,event',
+    ]));
+  } catch (error) {
+    fail('GITHUB_DISPATCH_RECONCILIATION_FAILED', String(error), `Inspect GitHub Actions for ${state.operationId}, then retry the exact operation.`);
+  }
+  if (!Array.isArray(parsed)) {
+    fail('GITHUB_DISPATCH_RECONCILIATION_FAILED', 'GitHub returned an invalid workflow-run list.', `Inspect GitHub Actions for ${state.operationId}, then retry the exact operation.`);
+  }
+  const claimTime = Date.parse(claimedAt);
+  return parsed.find((candidate): candidate is GitHubWorkflowRun => isRecord(candidate)
+    && Number.isSafeInteger(candidate.databaseId) && Number(candidate.databaseId) > 0
+    && candidate.displayTitle === managedWorkflowRunName(state)
+    && candidate.headSha === state.commitSha && candidate.event === 'workflow_dispatch'
+    && typeof candidate.createdAt === 'string' && Date.parse(candidate.createdAt) >= claimTime - 5_000) as GitHubWorkflowRun | undefined;
+}
+
+async function reconcileManagedWorkflowRun(
+  state: ManagedDeployState,
+  attempts = 1,
+): Promise<GitHubWorkflowRun | undefined> {
+  const claim = await readManagedDeployDispatchClaim(state);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const found = await findManagedWorkflowRun(state, claim.claimedAt);
+    if (found) return found;
+    if (attempt + 1 < attempts) await new Promise(resolvePromise => setTimeout(resolvePromise, 2_000));
+  }
+  return undefined;
+}
+
 async function dispatchWorkflow(state: ManagedDeployState, publicApiUrl: string, root: string): Promise<void> {
   const trustedPublicApiUrl = requireManagedPublicApiUrl(publicApiUrl);
   if (state.publicApiUrl && state.publicApiUrl !== trustedPublicApiUrl) {
     fail('RETRY_API_BINDING_MISMATCH', 'Retry profile differs from the original workflow endpoint.', 'Select the original EAI profile, then resume this exact operation.');
   }
-  await verifyGitHubAccess(state.repo, state.branch, state.commitSha);
-  if (state.dispatchedAt || state.dispatchStartedAt || !await claimManagedDeployDispatch(state)) return;
-  // Persist before dispatch: a failed response may still mean GitHub accepted the run.
-  state.dispatchStartedAt = new Date().toISOString();
+  if (!state.githubUserId || !state.githubLogin) {
+    fail('GITHUB_ACTOR_BINDING_MISSING', 'Retry state does not contain the verified GitHub actor.', NEW_SOURCE_OPERATION_ACTION);
+  }
+  await verifyGitHubAccess(state.repo, state.branch, state.commitSha, undefined, {
+    id: state.githubUserId,
+    login: state.githubLogin,
+  });
+  // Persist the recovery boundary before the exclusive provider-mutation claim.
+  // A crash before the claim is retryable; a claim without a visible run is
+  // deliberately treated as uncertain so the one-time nonce is never replayed.
+  state.dispatchStartedAt ||= new Date().toISOString();
   state.publicApiUrl = trustedPublicApiUrl;
   await saveManagedDeployState(state);
+  const acquired = await claimManagedDeployDispatch(state);
+  const existingClaim = await readManagedDeployDispatchClaim(state);
+  if (state.dispatchedAt || existingClaim.status === 'accepted') {
+    if (!state.dispatchedAt) {
+      state.dispatchedAt = existingClaim.updatedAt;
+      state.githubRunId = existingClaim.githubRunId;
+      await saveManagedDeployState(state);
+    }
+    return;
+  }
+  if (!acquired) {
+    const recovered = await reconcileManagedWorkflowRun(state, 3);
+    if (recovered) {
+      await recordManagedDeployDispatch(state, 'accepted', recovered.databaseId);
+      state.dispatchStartedAt ||= existingClaim.claimedAt;
+      state.dispatchedAt = recovered.createdAt;
+      state.githubRunId = recovered.databaseId;
+      await saveManagedDeployState(state);
+      return;
+    }
+    fail(
+      'GITHUB_WORKFLOW_DISPATCH_UNCERTAIN',
+      `The prior provider request for ${state.operationId} is still unconfirmed.`,
+      `Inspect the exact GitHub Actions run named "${managedWorkflowRunName(state)}". Resume the operation if it exists; otherwise start a fresh source operation so the nonce is never replayed.`,
+    );
+  }
+  // The exclusive claim already records `dispatching` before provider mutation.
   try {
     await run('gh', [
       'workflow', 'run', state.workflowPath,
@@ -254,12 +367,21 @@ async function dispatchWorkflow(state: ManagedDeployState, publicApiUrl: string,
       '-f', `env=${state.environment}`,
     ], root);
   } catch (error) {
+    const recovered = await reconcileManagedWorkflowRun(state, 6);
+    if (recovered) {
+      await recordManagedDeployDispatch(state, 'accepted', recovered.databaseId);
+      state.dispatchedAt = recovered.createdAt;
+      state.githubRunId = recovered.databaseId;
+      await saveManagedDeployState(state);
+      return;
+    }
     fail(
       'GITHUB_WORKFLOW_DISPATCH_FAILED',
       String(error),
-      `Dispatch acceptance is uncertain. Resume ${state.operationId} and inspect GitHub Actions. If no run was accepted, start a fresh source operation; retry will not reuse this nonce.`,
+      `Dispatch acceptance is uncertain. Retry ${state.operationId} to reconcile only the exact workflow run named "${managedWorkflowRunName(state)}"; the nonce will not be blindly replayed.`,
     );
   }
+  await recordManagedDeployDispatch(state, 'accepted');
   state.dispatchedAt = new Date().toISOString();
   await saveManagedDeployState(state);
 }
@@ -273,7 +395,7 @@ async function prepareRuntime(client: PlatformAPIClient, state: ManagedDeploySta
     () => `Repair runtime identity provisioning, then retry the exact operation ${state.operationId}; no workflow has been dispatched.`,
   );
   if (result.status !== 'configured' || result.sourceOperationId !== state.operationId
-    || result.tenantId !== state.targetTenantId || result.appKey !== state.appKey
+    || result.tenantId !== state.tenantId || result.targetTenantId !== state.targetTenantId || result.appKey !== state.appKey
     || result.environment !== state.environment) {
     fail('RUNTIME_BOOTSTRAP_BINDING_MISMATCH', 'PublicAPI did not confirm configured runtime identity for the exact operation and target.', 'Stop and inspect the PublicAPI runtime-bootstrap response before dispatching.');
   }
@@ -384,7 +506,7 @@ function printOperation(
   const nextAction = requiresNewSourceOperation(operation)
     ? NEW_SOURCE_OPERATION_ACTION
     : classification === 'succeeded'
-      ? `Run \`eai deploy doctor --url ${operation.activeUrl}\` against the deployed app.`
+      ? `Run \`eai deploy doctor --operation-id ${operation.operationId} --app-key ${operation.appKey} --tenant-id ${operation.tenantId} --target-tenant-id ${targetTenantId} --evidence-out .eai/deploy-doctor.json --format json\`.`
       : classification === 'failed'
         ? `Inspect the exact operation and workflow evidence, then run \`${exactCommand} --retry ${operation.operationId} --wait --format json\`.`
         : `Resume with \`${exactCommand} --resume ${operation.operationId} --wait --format json\`; status ${operation.status} is not a complete active TenantInfra projection.`;
@@ -441,7 +563,7 @@ function printManagedSourceOperation(format: string, operation: CliManagedSource
   const classification = classifyCliManagedSourceOperation(operation);
   const command = `eai deploy app ${operation.appKey} --target eai --tenant-id ${operation.tenantId} --target-tenant-id ${operation.targetTenantId} --environment ${operation.environment} --source eai-managed --resume ${operation.operationId} --format json`;
   const nextAction = classification === 'succeeded'
-    ? `Run eai deploy doctor --url ${operation.deployment?.liveUrl} --format json and verify the readiness evidence.`
+    ? `Run eai deploy doctor --operation-id ${operation.operationId} --app-key ${operation.appKey} --tenant-id ${operation.tenantId} --target-tenant-id ${operation.targetTenantId} --evidence-out .eai/deploy-doctor.json --format json.`
     : operation.status === 'pending_review'
       ? `EAI must complete the bot PR checks and merge before deployment. Resume the exact operation with: ${command}`
       : classification === 'failed' || classification === 'incomplete'
@@ -451,7 +573,7 @@ function printManagedSourceOperation(format: string, operation: CliManagedSource
     tenantId: operation.tenantId, targetTenantId: operation.targetTenantId, appKey: operation.appKey,
     operationId: operation.operationId, source: 'eai-managed', sourceMode: operation.sourceMode,
     status: classification === 'succeeded' ? 'active' : operation.status, publicationStatus: operation.status, classification,
-    templateCommitSha: operation.templateCommitSha, bundleSha256: operation.bundleSha256,
+    templateCommitSha: operation.templateCommitSha, bundleSha256: operation.bundleSha256, configHash: operation.configHash,
     sourceBinding: { repository: `${operation.repository.owner}/${operation.repository.name}`, commitSha: operation.review?.mergedSha },
     review: operation.review, deploymentId: operation.deployment?.requestId, activeUrl: operation.deployment?.liveUrl,
     runtimeIdentity: operation.deployment?.runtimeIdentity, requiresTenantInfra: operation.deployment?.requiresTenantInfra,
@@ -472,7 +594,7 @@ export const eaiManagedDeployCommand = new Command('app')
   .argument('<app-key>', 'Existing EAI app key')
   .requiredOption('--target <target>', 'Hosting target (eai)')
   .requiredOption('--tenant-id <id>', 'Company tenant that owns the app enrollment')
-  .option('--target-tenant-id <id>', 'Tenant that receives the deployed runtime')
+  .option('--target-tenant-id <id>', 'Required exact tenant that receives the deployed runtime')
   .option('--repo <owner/name>', 'Exact GitHub repository')
   .option('--source <source>', 'Source ownership (eai-managed|customer-owned); required without an interactive prompt')
   .option('--github-link-session <session-id>', 'Resume the exact EAI-account GitHub browser verification')
@@ -490,8 +612,8 @@ export const eaiManagedDeployCommand = new Command('app')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', `
 Examples:
-  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --source eai-managed
-  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --source customer-owned --repo org/planning-portal --installation-id 12345
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source eai-managed
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source customer-owned --repo org/planning-portal --installation-id 12345
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --environment preview --source eai-managed --resume cli-managed-source-abc123 --format json
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
@@ -527,19 +649,24 @@ Examples:
       if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 1 || timeoutSeconds > 7_200) {
         fail('DEPLOY_TIMEOUT_INVALID', '--timeout must be between 1 and 7200 seconds.', 'Choose a bounded wait time and retry.');
       }
+      if (!options.targetTenantId?.trim()) {
+        fail(
+          'TARGET_TENANT_REQUIRED',
+          '--target-tenant-id is required for every managed deployment, including same-tenant deployment.',
+          'Pass the exact runtime tenant. For same-tenant deployment, repeat the --tenant-id value.',
+        );
+      }
 
-      const context = await resolveCommandContext({ tenantId: options.tenantId, interactive: false, forceRefresh: true });
+      const context = await resolveCommandContext({
+        tenantId: options.tenantId,
+        interactive: false,
+        forceRefresh: true,
+        validatePublicApiUrl: requireManagedPublicApiUrl,
+      });
       if (context.tenantId !== options.tenantId) {
         fail('TENANT_ACCOUNT_MISMATCH', `Active tenant ${context.tenantId} does not match ${options.tenantId}.`, `Run \`eai tenant select ${options.tenantId}\`, then confirm with \`eai whoami\`.`);
       }
-      if ((options.resume || options.retry) && !options.targetTenantId?.trim()) {
-        fail(
-          'TARGET_TENANT_REQUIRED',
-          '--target-tenant-id is required when resuming or retrying an exact managed deployment.',
-          'Use the target tenant recorded with the operation. For same-tenant deployment, repeat the --tenant-id value.',
-        );
-      }
-      const targetTenantId = options.targetTenantId?.trim() || context.tenantId;
+      const targetTenantId = options.targetTenantId.trim();
       const client = new PlatformAPIClient(context.publicApiUrl, context.tenantId);
       const managedScope: CliManagedSourceScope = {
         tenantId: context.tenantId, targetTenantId, appKey,
@@ -547,7 +674,6 @@ Examples:
       };
 
       if (options.source === 'eai-managed' && (options.resume || options.retry)) {
-        requireManagedPublicApiUrl(context.publicApiUrl);
         const operationId = (options.resume || options.retry)!;
         let current = await pollCliManagedSource(client, managedScope, operationId, { wait: false, timeoutMs: timeoutSeconds * 1000 });
         if ((current.status === 'accepted' || current.status === 'publishing') && current.upload) {
@@ -613,6 +739,12 @@ Examples:
         if (state.tenantId !== context.tenantId || state.targetTenantId !== targetTenantId || state.appKey !== appKey) {
           fail('RETRY_BINDING_MISMATCH', 'Retry state does not match the requested tenant, target tenant, and app.', 'Use the exact original tenant and app values.');
         }
+        if (!state.actorId || !state.githubLinkSessionId || !state.githubUserId || !state.githubLogin || !state.githubProofId) {
+          fail('RETRY_ACTOR_BINDING_MISSING', 'Retry state predates the required EAI and GitHub actor proof.', NEW_SOURCE_OPERATION_ACTION);
+        }
+        if (state.actorId !== context.tokens.oid) {
+          fail('RETRY_ACTOR_MISMATCH', 'The signed-in EAI actor does not own this retry authority.', 'Sign in as the original EAI actor, then retry the exact operation.');
+        }
         try {
           assertManagedDeployStateMatchesOperation(state, current);
         } catch (error) {
@@ -625,14 +757,13 @@ Examples:
         if (!MANAGED_DEPLOY_ENVIRONMENTS.has(state.environment)) {
           fail('SOURCE_OPERATION_ENVIRONMENT_INVALID', 'The stored operation has an unsupported environment.', NEW_SOURCE_OPERATION_ACTION);
         }
-        if (state.dispatchedAt || state.dispatchStartedAt) {
+        if (state.dispatchedAt) {
           const operation = await pollExactOperation(client, state, options.wait, timeoutSeconds);
           spinner?.stop();
           printOperation(format, operation);
           if (classifyManagedOperationStatus(operation) === 'failed') process.exitCode = 1;
           return;
         }
-        requireManagedPublicApiUrl(context.publicApiUrl);
         const source = await verifyLocalSource(context.root, state.repo, state.branch, state.commitSha);
         if (source.commitSha !== state.commitSha) {
           fail('RETRY_SHA_CHANGED', 'The current commit differs from the stored operation commit.', `Check out ${state.commitSha}, then retry the same operation.`);
@@ -646,17 +777,20 @@ Examples:
         return;
       }
 
-      const publicApiUrl = requireManagedPublicApiUrl(context.publicApiUrl);
+      const publicApiUrl = context.publicApiUrl;
       spinner?.stop();
+      const sourceChoice = await chooseManagedDeploySource({ source: options.source, repo: options.repo, format });
+      if (sourceChoice === 'eai-managed' && (options.repo || options.installationId || options.commit || options.branch !== 'main')) {
+        fail('SOURCE_CHOICE_CONFLICT', 'EAI derives the maintained repository, branch and merged commit.', 'Omit --repo, --installation-id, --branch and --commit for EAI-maintained local source.');
+      }
+      if (sourceChoice === 'customer-owned' && (!options.repo || !options.installationId)) {
+        fail('REPOSITORY_AUTHORITY_REQUIRED', '--repo and --installation-id are required for a new EAI deployment.', 'Connect the repository to the tenant, install the EAI GitHub App, then pass both exact values.');
+      }
       const link = await verifyCliGithubIdentity(client, managedScope, {
         sessionId: options.githubLinkSession, interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY && format !== 'json'), timeoutMs: timeoutSeconds * 1000,
       });
-      const sourceChoice = await chooseManagedDeploySource({ source: options.source, repo: options.repo, format });
       spinner?.start();
       if (sourceChoice === 'eai-managed') {
-        if (options.repo || options.installationId || options.commit || options.branch !== 'main') {
-          fail('SOURCE_CHOICE_CONFLICT', 'EAI derives the maintained repository, branch and merged commit.', 'Omit --repo, --installation-id, --branch and --commit for EAI-maintained local source.');
-        }
         const { bundle } = await buildCliManagedSourceBundle(context.root);
         await writeCliManagedSourceReceipt(context.root, bundle);
         const submitted = await submitCliManagedSource(client, managedScope, link, bundle);
@@ -665,6 +799,7 @@ Examples:
         printManagedSourceOperation(format, operation);
         return;
       }
+      // Reassert the customer-owned branch invariant for type-safe downstream use.
       if (!options.repo || !options.installationId) {
         fail('REPOSITORY_AUTHORITY_REQUIRED', '--repo and --installation-id are required for a new EAI deployment.', 'Connect the repository to the tenant, install the EAI GitHub App, then pass both exact values.');
       }
@@ -683,7 +818,11 @@ Examples:
         );
       }
       const source = await verifyLocalSource(context.root, repository.slug, options.branch, options.commit);
-      await verifyGitHubAccess(repository.slug, source.branch, source.commitSha);
+      const verifiedGithubUser = link.verifiedGithubUser;
+      if (!verifiedGithubUser) {
+        fail('GITHUB_LINK_PROOF_INVALID', 'The verified browser handoff did not include a GitHub actor.', 'Start the deployment again and complete GitHub browser linking.');
+      }
+      await verifyGitHubAccess(repository.slug, source.branch, source.commitSha, undefined, verifiedGithubUser);
       const configHash = await buildManagedDeployConfigHash(context.root);
       const ref = `refs/heads/${source.branch}`;
 
@@ -701,6 +840,7 @@ Examples:
           sourceMode: 'source-unknown',
           adoptionMode: 'connect-existing',
           installationId,
+          githubLinkSessionId: link.sessionId,
           targetTenantId,
         }),
         'REPOSITORY_REGISTRATION_FAILED',
@@ -717,6 +857,7 @@ Examples:
           configHash,
           targetTenantId,
           deployOnSuccess: true,
+          githubLinkSessionId: link.sessionId,
         }),
         'WORKFLOW_SETUP_FAILED',
         () => 'Confirm the app enrollment, repository authority, exact commit, and target tenant binding, then retry.',
@@ -741,9 +882,30 @@ Examples:
         configHash,
         environment: options.environment,
         installationId,
+        actorId: context.tokens.oid,
+        githubLinkSessionId: link.sessionId,
+        githubUserId: verifiedGithubUser.id,
+        githubLogin: verifiedGithubUser.login,
+        githubProofId: verifiedGithubUser.proofId,
         publicApiUrl,
       };
       await saveManagedDeployState(state);
+      const issuedOperation = await readExactOperation(
+        client,
+        state.tenantId,
+        state.targetTenantId,
+        state.appKey,
+        state.operationId,
+      );
+      try {
+        assertManagedDeployStateMatchesOperation(state, issuedOperation);
+      } catch (error) {
+        fail(
+          'WORKFLOW_SETUP_BINDING_MISMATCH',
+          error instanceof Error ? error.message : String(error),
+          'Do not dispatch this operation. Start a fresh deployment only after PublicAPI returns the exact actor, tenant, repository, commit, configuration and nonce binding.',
+        );
+      }
       await prepareRuntime(client, state);
       await dispatchWorkflow(state, context.publicApiUrl, context.root);
 

@@ -5,6 +5,7 @@ import { lstat, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/prom
 import { dirname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import inquirer from 'inquirer';
+import { buildManagedDeployConfigHash } from './eai-managed-deploy.js';
 
 const exec = promisify(execFile);
 export const CLI_MANAGED_SOURCE_SCHEMA = 'eai.cli_managed_source_bundle.v1';
@@ -14,7 +15,7 @@ export const CLI_MANAGED_SOURCE_LIMITS = { maxFiles: 500, maxFileBytes: 2 * 1024
 export type ManagedDeploySource = 'eai-managed' | 'customer-owned';
 
 const ROOT_FILES = new Set([
-  'package.json', 'package-lock.json', 'next.config.js', 'next.config.mjs', 'next.config.ts',
+  'package.json', 'package-lock.json', 'eai.config.ts', 'eai.runtime.json', 'next.config.js', 'next.config.mjs', 'next.config.ts',
   'postcss.config.js', 'postcss.config.mjs', 'postcss.config.ts', 'tailwind.config.js', 'tailwind.config.ts', 'tsconfig.json',
 ]);
 const RESERVED_PREFIXES = [
@@ -40,6 +41,7 @@ export interface CliManagedSourceBundle {
   schemaVersion: typeof CLI_MANAGED_SOURCE_SCHEMA;
   templateCommitSha: string;
   bundleSha256: string;
+  configHash: string;
   files: CliManagedSourceFile[];
 }
 
@@ -120,6 +122,9 @@ async function sourceInventory(root: string): Promise<string[]> {
   async function visit(directory: string): Promise<void> {
     for (const entry of await readdir(join(root, directory), { withFileTypes: true })) {
       const path = directory ? `${directory}/${entry.name}` : entry.name;
+      if ((path.startsWith('src/') || path.startsWith('public/')) && isCredentialPath(path)) {
+        throw new ManagedSourceError('SOURCE_CREDENTIAL_DETECTED', `Remove the credential path ${path} from app source before publishing.`);
+      }
       if (isNonSourcePath(path)) continue;
       if (++entriesSeen > 10_000) throw new ManagedSourceError('SOURCE_INVENTORY_LIMIT', 'The local source inventory exceeds 10,000 entries. Remove generated artifacts from the app source.');
       if (entry.isSymbolicLink()) throw new ManagedSourceError('SOURCE_SYMLINK_UNSUPPORTED', `Only regular source files can be published: ${path}`);
@@ -148,6 +153,19 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
   const initialCommit = initialCommits[0];
   const message = await git(['show', '-s', '--format=%B', initialCommit]);
   if (!/Initial scaffold from template/.test(message) || !/Created by:\s*eai init/.test(message)) throw new ManagedSourceError('SOURCE_BASELINE_REQUIRED', 'EAI-maintained source requires the original eai init scaffold baseline; use an approved source enrollment for imported projects.');
+  let initialTemplateCommitSha: unknown;
+  try {
+    const initialManifest = JSON.parse(await git(['show', `${initialCommit}:.eai-manifest.json`])) as { template?: { commit?: unknown } };
+    initialTemplateCommitSha = initialManifest.template?.commit;
+  } catch {
+    throw new ManagedSourceError('SOURCE_BASELINE_REQUIRED', 'The original eai init scaffold must contain its reviewed template manifest.');
+  }
+  if (typeof initialTemplateCommitSha !== 'string' || !/^[a-f0-9]{40}$/.test(initialTemplateCommitSha)) {
+    throw new ManagedSourceError('SOURCE_BASELINE_REQUIRED', 'The original eai init scaffold must contain an exact reviewed template pin.');
+  }
+  if (templateCommitSha !== initialTemplateCommitSha) {
+    throw new ManagedSourceError('TEMPLATE_PIN_CHANGED', 'The template pin differs from the original eai init scaffold. Restore .eai-manifest.json or enroll the new template before publishing.');
+  }
   const [inventory, changed, baselineFiles] = await Promise.all([
     sourceInventory(root),
     git(['diff', '--name-only', '-z', initialCommit, '--']),
@@ -177,8 +195,9 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
       files.push(file);
     }
   }
-  const bundleSha256 = digest(JSON.stringify([templateCommitSha, files.map(file => [file.path, file.size, file.sha256])]));
-  return { bundle: { schemaVersion: CLI_MANAGED_SOURCE_SCHEMA, templateCommitSha, bundleSha256, files }, totalBytes };
+  const configHash = await buildManagedDeployConfigHash(root);
+  const bundleSha256 = digest(JSON.stringify([templateCommitSha, configHash, files.map(file => [file.path, file.size, file.sha256])]));
+  return { bundle: { schemaVersion: CLI_MANAGED_SOURCE_SCHEMA, templateCommitSha, bundleSha256, configHash, files }, totalBytes };
 }
 
 /** Local evidence is recomputable from source bytes; it grants no GitHub or deployment authority. */
@@ -203,6 +222,7 @@ export async function writeCliManagedSourceReceipt(projectRoot: string, bundle: 
       sourceMode: 'eai-cli-generated',
       templateCommitSha: bundle.templateCommitSha,
       bundleSha256: bundle.bundleSha256,
+      configHash: bundle.configHash,
       totalBytes: bundle.files.reduce((total, file) => total + file.size, 0),
       files: bundle.files.map(({ path, size, sha256 }) => ({ path, size, sha256 })),
     }, null, 2)}\n`, { flag: 'wx', mode: 0o600 });

@@ -11,3 +11,7 @@ The template feature is not released. Record its exact candidate commit and cont
 ## Doctor compatibility
 
 Keep URL-only black-box doctor behavior. Add optional deployment-operation bindings and a portable evidence-output option; managed deployment completion uses the stronger receipt.
+
+## Explicit runtime tenant
+
+The owner confirmed on 2026-09-25 that `--target-tenant-id` is mandatory on the initial command for both source modes as well as resume and retry. This prevents tenant inference and preserves same-tenant deployment by repeating the app-scope tenant value explicitly.

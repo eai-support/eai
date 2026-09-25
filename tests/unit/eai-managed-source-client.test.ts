@@ -8,7 +8,7 @@ function session(status: CliManagedGithubLinkSession['status'] = 'verified'): Cl
   return {
     schemaVersion: 'eai.cli_managed_github_link_session.v1', sessionId: 'github-link-123', ...scope, status,
     expiresAt: new Date(Date.now() + 600_000).toISOString(),
-    browserUrl: 'https://portal.example.test/api/platform/generated-apps/github-user?ticket=fixture',
+    browserUrl: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/github-user?ticket=fixture',
     ...(status === 'verified' ? { verifiedGithubUser: { id: 123, login: 'linked-user', proofId: 'proof-123', actorId: scope.actorId } } : {}),
   };
 }
@@ -89,24 +89,46 @@ describe('actor-bound GitHub linking', () => {
     expect(() => validateCliGithubLinkSession({ ...session(), expiresAt: '2000-01-01T00:00:00Z' }, scope)).toThrow('expired');
   });
 
-  test.each(['http://portal.example.test/link', 'https://user:secret@portal.example.test/link', 'file:///tmp/link', 'https://portal.example.test/link#fragment'])('refuses an unsafe browser URL %s', browserUrl => {
-    expect(() => validateCliGithubLinkSession({ ...session(), browserUrl }, scope)).toThrow('secure platform browser URL');
+  test.each(['http://dev-admin-portal.myenterprise.ai/link', 'https://user:secret@dev-admin-portal.myenterprise.ai/link', 'file:///tmp/link', 'https://dev-admin-portal.myenterprise.ai/link#fragment'])('refuses an unsafe browser URL %s', browserUrl => {
+    expect(() => validateCliGithubLinkSession({ ...session(), browserUrl }, scope)).toThrow('approved EAI Portal origin');
+  });
+
+  test.each([
+    'https://attacker.example/api/platform/generated-apps/github-user?ticket=fixture',
+    'https://admin-portal.myenterprise.ai.evil.example/api/platform/generated-apps/github-user?ticket=fixture',
+    'https://admin-portal.au.myenterprise.ai/api/platform/generated-apps/github-user?ticket=fixture',
+    'https://admin.ca.myenterprise.ai/api/platform/generated-apps/github-user?ticket=fixture',
+    'https://admin-portal.myenterprise.ai/api/platform/generated-apps/github-user?ticket=one&ticket=two',
+    'https://admin-portal.myenterprise.ai/api/platform/generated-apps/github-user?ticket=fixture&redirect=evil',
+    'https://admin-portal.myenterprise.ai/api/platform/generated-apps/other?ticket=fixture',
+  ])('rejects an unapproved or malformed returned Portal handoff %s', browserUrl => {
+    expect(() => validateCliGithubLinkSession({ ...session(), browserUrl }, scope)).toThrow('approved EAI Portal origin');
   });
 
   test('pins the authenticated handoff origin even for already verified sessions', () => {
-    expect(cliManagedPortalOrigin(validateCliGithubLinkSession(session(), scope))).toBe('https://portal.example.test');
+    expect(cliManagedPortalOrigin(validateCliGithubLinkSession(session(), scope))).toBe('https://dev-admin-portal.myenterprise.ai');
+  });
+
+  test.each([
+    'https://test-admin-portal.myenterprise.ai',
+    'https://admin-portal.myenterprise.ai',
+    'https://admin-portal.ca.myenterprise.ai',
+    'https://admin-portal.eu.myenterprise.ai',
+  ])('accepts the exact staged Portal origin %s', (origin) => {
+    const value = { ...session(), browserUrl: `${origin}/api/platform/generated-apps/github-user?ticket=fixture` };
+    expect(cliManagedPortalOrigin(validateCliGithubLinkSession(value, scope))).toBe(origin);
   });
 });
 
 describe('managed publication authority and readiness', () => {
-  const bundle = { schemaVersion: 'eai.cli_managed_source_bundle.v1' as const, templateCommitSha: 'a'.repeat(40), bundleSha256: `sha256:${'b'.repeat(64)}`, files: [{ path: 'src/app/page.tsx', type: 'file' as const, size: 3, sha256: `sha256:${'c'.repeat(64)}`, contentBase64: 'YXBw' }] };
+  const bundle = { schemaVersion: 'eai.cli_managed_source_bundle.v1' as const, templateCommitSha: 'a'.repeat(40), bundleSha256: `sha256:${'b'.repeat(64)}`, configHash: `sha256:${'d'.repeat(64)}`, files: [{ path: 'src/app/page.tsx', type: 'file' as const, size: 3, sha256: `sha256:${'c'.repeat(64)}`, contentBase64: 'YXBw' }] };
   function operation(status: CliManagedSourceOperation['status'] = 'accepted'): CliManagedSourceOperation {
     return {
       schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated', ...scope,
-      operationId: 'cli-managed-source-123', status, githubLinkSessionId: 'github-link-123', templateCommitSha: bundle.templateCommitSha, bundleSha256: bundle.bundleSha256,
+      operationId: 'cli-managed-source-123', status, githubLinkSessionId: 'github-link-123', templateCommitSha: bundle.templateCommitSha, bundleSha256: bundle.bundleSha256, configHash: bundle.configHash,
       verifiedGithubUser: session().verifiedGithubUser!, repository: { owner: 'eai-generated-apps', name: 'platform-derived-app', private: true },
       expiresAt: new Date(Date.now() + 600_000).toISOString(),
-      upload: { url: 'https://portal.example.test/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123', ticket: 'one-use-upload-proof', sha256: bundle.bundleSha256, expiresAt: new Date(Date.now() + 300_000).toISOString() },
+      upload: { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123', ticket: 'one-use-upload-proof', sha256: bundle.bundleSha256, expiresAt: new Date(Date.now() + 300_000).toISOString() },
     };
   }
 
@@ -133,9 +155,9 @@ describe('managed publication authority and readiness', () => {
 
   test.each([
     { url: 'https://attacker.example/upload' },
-    { url: 'http://portal.example.test/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123' },
-    { url: 'https://portal.example.test/api/platform/generated-apps/cli-managed-source/uploads/other-operation' },
-    { url: 'https://portal.example.test/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123?redirect=elsewhere' },
+    { url: 'http://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123' },
+    { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/other-operation' },
+    { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123?redirect=elsewhere' },
     { sha256: `sha256:${'f'.repeat(64)}` }, { expiresAt: '2000-01-01T00:00:00Z' }, { ticket: '' },
   ])('refuses mismatched upload authority before reading a token or sending bytes: %j', async changed => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
@@ -270,7 +292,7 @@ describe('managed publication authority and readiness', () => {
     expect(linkRead).not.toHaveBeenCalled();
     const wrongOrigin = operation("publishing");
     wrongOrigin.upload!.url = wrongOrigin.upload!.url.replace(
-      "portal.example.test",
+      "dev-admin-portal.myenterprise.ai",
       "attacker.example.test",
     );
     await expect(

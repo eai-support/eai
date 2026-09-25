@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, chmod, lstat, mkdir, open, readFile, realpath, rename, rm } from 'node:fs/promises';
+import { access, chmod, lstat, mkdir, open, readFile, readdir, realpath, rename, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,15 +11,13 @@ export const EAI_MANAGED_EVIDENCE_SCRIPT_PATH = 'scripts/source-unknown-deployme
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const REPOSITORY_PATTERN = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/;
-const CONFIG_PATHS = [
-  'eai.runtime.json',
-  'src/eai.config/default.ts',
-  'src/eai.config/index.ts',
+const GOVERNED_ROOT_FILES = ['eai.config.ts', 'eai.runtime.json'] as const;
+const GOVERNED_CONFIG_ROOT = 'src/eai.config';
+const NON_RUNTIME_CONFIG_FILE = /(?:^|\.)(?:test|spec)\.[^.]+$/;
+const GENERATED_CONFIG_FILES = new Set([
   'src/eai.config/object-types.json',
   'src/eai.config/object-types.provisioning.json',
-  'src/eai.config/object-types.ts',
-  'src/eai.config/register.ts',
-] as const;
+]);
 
 /** Owner-only retry material bound to one server-issued source operation. */
 export interface ManagedDeployState {
@@ -37,9 +35,27 @@ export interface ManagedDeployState {
   configHash: string;
   environment: string;
   installationId: number;
+  actorId?: string;
+  githubLinkSessionId?: string;
+  githubUserId?: number;
+  githubLogin?: string;
+  githubProofId?: string;
   publicApiUrl?: string;
   dispatchStartedAt?: string;
   dispatchedAt?: string;
+  githubRunId?: number;
+}
+
+/** Durable provider-dispatch reservation, bound to the complete one-time operation authority. */
+export interface ManagedDispatchClaim {
+  schema: 'eai.managed-dispatch-claim.v1';
+  operationId: string;
+  bindingSha256: string;
+  nonceSha256: string;
+  status: 'claimed' | 'dispatching' | 'accepted';
+  claimedAt: string;
+  updatedAt: string;
+  githubRunId?: number;
 }
 
 /** Canonical files installed directly, already current, or staged beside local edits. */
@@ -218,6 +234,15 @@ async function writeAtomically(path: string, content: Buffer | string, mode = 0o
   }
 }
 
+/** Persist owner-only operation evidence without following links or leaking it through broad permissions. */
+export async function writeManagedDeployEvidence(path: string, value: unknown): Promise<void> {
+  const target = resolve(path);
+  await ensureDirectory(dirname(target), 0o700);
+  await assertRegularTarget(target, true);
+  await writeAtomically(target, `${JSON.stringify(value, null, 2)}\n`, 0o600);
+  await chmod(target, 0o600);
+}
+
 /** Install the reviewed workflow and evidence collector as one versioned pair. */
 export async function installCanonicalManagedDeployFiles(
   projectRoot: string,
@@ -262,23 +287,65 @@ export async function installCanonicalManagedDeployFiles(
 
 /** Match the canonical workflow's ordered config hashing algorithm. */
 export async function buildManagedDeployConfigHash(projectRoot: string): Promise<string> {
-  const hash = createHash('sha256');
-  let foundRuntime = false;
-  for (const relativePath of [...CONFIG_PATHS].sort()) {
-    const path = join(projectRoot, relativePath);
+  const root = resolve(projectRoot);
+  const paths: string[] = [];
+  for (const relativePath of GOVERNED_ROOT_FILES) {
+    const path = join(root, relativePath);
     try {
-      const value = await readFile(path);
-      hash.update(relativePath);
-      hash.update('\0');
-      hash.update(value);
-      hash.update('\0');
-      if (relativePath === 'eai.runtime.json') foundRuntime = true;
+      const status = await lstat(path);
+      if (!status.isFile() || status.isSymbolicLink()) {
+        throw new Error(`Governed configuration must be a regular file: ${relativePath}`);
+      }
+      paths.push(relativePath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
   }
-  if (!foundRuntime) {
+
+  async function visit(relativeDirectory: string): Promise<void> {
+    const directory = join(root, relativeDirectory);
+    let status;
+    try {
+      status = await lstat(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
+    if (!status.isDirectory() || status.isSymbolicLink()) {
+      throw new Error(`Governed configuration root must be a regular directory: ${relativeDirectory}`);
+    }
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const relativePath = `${relativeDirectory}/${entry.name}`;
+      const entryStatus = await lstat(join(root, relativePath));
+      if (entryStatus.isSymbolicLink()) {
+        throw new Error(`Governed configuration cannot be a symlink: ${relativePath}`);
+      }
+      if (entryStatus.isDirectory()) await visit(relativePath);
+      else if (entryStatus.isFile()
+        && !NON_RUNTIME_CONFIG_FILE.test(entry.name)
+        && !GENERATED_CONFIG_FILES.has(relativePath)) paths.push(relativePath);
+    }
+  }
+  await visit(GOVERNED_CONFIG_ROOT);
+  if (!paths.includes('eai.runtime.json')) {
     throw new Error('eai.runtime.json is required for EAI managed deployment.');
+  }
+
+  const hash = createHash('sha256');
+  for (const relativePath of [...new Set(paths)].sort()) {
+    hash.update(relativePath);
+    hash.update('\0');
+    const handle = await open(join(root, relativePath), constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+    try {
+      const status = await handle.stat();
+      if (!status.isFile()) {
+        throw new Error(`Governed configuration must be a regular file: ${relativePath}`);
+      }
+      hash.update(await handle.readFile());
+    } finally {
+      await handle.close();
+    }
+    hash.update('\0');
   }
   return `sha256:${hash.digest('hex')}`;
 }
@@ -319,6 +386,8 @@ export function classifyManagedOperationStatus(value: unknown): ManagedOperation
     || !hasCompleteRuntimeIdentity(operation.runtimeIdentity)
     || !Number.isSafeInteger(latestPointerVersion)
     || !Number.isSafeInteger(expectedLatestVersion)
+    || Number(latestPointerVersion) < 0
+    || Number(expectedLatestVersion) < 0
     || latestPointerVersion !== expectedLatestVersion
   ) return 'pending';
   return 'succeeded';
@@ -348,6 +417,9 @@ export function assertManagedDeployStateMatchesOperation(
     ['ref', binding.ref, state.ref],
     ['commitSha', binding.commitSha, state.commitSha],
     ['configHash', binding.configHash, state.configHash],
+    ['nonceSha256', binding.nonceSha256, managedDeployNonceSha256(state.nonce)],
+    ['actorId', binding.actorId, state.actorId],
+    ['githubLinkSessionId', binding.githubLinkSessionId, state.githubLinkSessionId],
     ['repoOwner', repository.owner, parseGitHubRepository(state.repo).owner],
     ['repoName', repository.name, parseGitHubRepository(state.repo).name],
     ['deployOnSuccess', binding.deployOnSuccess, true],
@@ -356,6 +428,14 @@ export function assertManagedDeployStateMatchesOperation(
   if (mismatch) {
     throw new Error(`Retry state does not match the server setup field ${mismatch[0]}.`);
   }
+}
+
+/** Never expose the one-time nonce in status; bind retries to this algorithm-qualified digest. */
+export function managedDeployNonceSha256(nonce: string): string {
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9._~:-]{0,254}[A-Za-z0-9])?$/.test(nonce)) {
+    throw new Error('Managed deployment nonce is malformed.');
+  }
+  return `sha256:${createHash('sha256').update(nonce).digest('hex')}`;
 }
 
 /** Keep the one-time nonce outside the application repository. */
@@ -371,12 +451,29 @@ export function managedDeployStatePath(
 
 /** Persist retry authority with owner-only directory and file permissions. */
 export async function saveManagedDeployState(state: ManagedDeployState, baseDir?: string): Promise<void> {
-  requireCommitSha(state.commitSha);
-  requireConfigHash(state.configHash);
+  validateManagedDeployState(state);
   const path = managedDeployStatePath(state.operationId, baseDir);
   await prepareStateDirectory(baseDir);
   await assertRegularTarget(path, true);
   await writeAtomically(path, `${JSON.stringify(state, null, 2)}\n`, 0o600);
+}
+
+function validateManagedDeployState(state: ManagedDeployState): void {
+  requireCommitSha(state.commitSha);
+  requireConfigHash(state.configHash);
+  requireBranch(state.branch);
+  requireWorkflowPath(state.workflowPath);
+  requireInstallationId(state.installationId);
+  parseGitHubRepository(state.repo);
+  managedDeployNonceSha256(state.nonce);
+  if (!state.actorId || !/^[A-Za-z0-9._:@-]{1,256}$/.test(state.actorId)
+    || !state.githubLinkSessionId || !/^[A-Za-z0-9_-]{1,128}$/.test(state.githubLinkSessionId)
+    || !Number.isSafeInteger(state.githubUserId) || Number(state.githubUserId) < 1
+    || !state.githubLogin || !/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(state.githubLogin)
+    || !state.githubProofId || !/^[A-Za-z0-9._:-]{1,256}$/.test(state.githubProofId)) {
+    throw new Error('Managed deployment state is missing its exact EAI and GitHub actor binding.');
+  }
+  if (state.publicApiUrl) requireManagedPublicApiUrl(state.publicApiUrl);
 }
 
 async function prepareStateDirectory(baseDir?: string): Promise<void> {
@@ -391,12 +488,23 @@ async function prepareStateDirectory(baseDir?: string): Promise<void> {
 
 /** A durable exclusive claim survives crashes and prevents concurrent reuse of the one-time nonce. */
 export async function claimManagedDeployDispatch(state: ManagedDeployState, baseDir?: string): Promise<boolean> {
+  validateManagedDeployState(state);
   await prepareStateDirectory(baseDir);
   const marker = `${managedDeployStatePath(state.operationId, baseDir)}.dispatch`;
+  const now = new Date().toISOString();
+  const claim: ManagedDispatchClaim = {
+    schema: 'eai.managed-dispatch-claim.v1',
+    operationId: state.operationId,
+    bindingSha256: managedDispatchBindingSha256(state),
+    nonceSha256: managedDeployNonceSha256(state.nonce),
+    status: 'dispatching',
+    claimedAt: now,
+    updatedAt: now,
+  };
   try {
     const handle = await open(marker, 'wx', 0o600);
     try {
-      await handle.writeFile(`${new Date().toISOString()}\n`);
+      await handle.writeFile(`${JSON.stringify(claim, null, 2)}\n`);
       await handle.sync();
     } finally {
       await handle.close();
@@ -404,8 +512,72 @@ export async function claimManagedDeployDispatch(state: ManagedDeployState, base
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    await readManagedDeployDispatchClaim(state, baseDir);
     return false;
   }
+}
+
+function managedDispatchBindingSha256(state: ManagedDeployState): string {
+  return `sha256:${createHash('sha256').update(JSON.stringify([
+    state.tenantId, state.targetTenantId, state.appKey, state.operationId,
+    state.repo, state.ref, state.commitSha, state.workflowPath, state.configHash,
+    state.environment, state.installationId, state.actorId, state.githubLinkSessionId,
+    state.githubUserId, state.githubLogin, state.githubProofId,
+  ])).digest('hex')}`;
+}
+
+/** Read and authenticate a prior claim before using it for crash recovery. */
+export async function readManagedDeployDispatchClaim(state: ManagedDeployState, baseDir?: string): Promise<ManagedDispatchClaim> {
+  validateManagedDeployState(state);
+  const marker = `${managedDeployStatePath(state.operationId, baseDir)}.dispatch`;
+  await assertRegularTarget(marker, true);
+  const handle = await open(marker, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+  let claim: ManagedDispatchClaim;
+  try {
+    const status = await handle.stat();
+    const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+    if (!status.isFile() || status.nlink !== 1 || (process.platform !== 'win32'
+      && ((uid !== null && status.uid !== uid) || (status.mode & 0o077) !== 0))) {
+      throw new Error('Managed deployment refused an untrusted dispatch claim.');
+    }
+    claim = JSON.parse(await handle.readFile('utf8')) as ManagedDispatchClaim;
+  } finally {
+    await handle.close();
+  }
+  if (claim.schema !== 'eai.managed-dispatch-claim.v1' || claim.operationId !== state.operationId
+    || claim.bindingSha256 !== managedDispatchBindingSha256(state)
+    || claim.nonceSha256 !== managedDeployNonceSha256(state.nonce)
+    || !['claimed', 'dispatching', 'accepted'].includes(claim.status)
+    || !Number.isFinite(Date.parse(claim.claimedAt)) || !Number.isFinite(Date.parse(claim.updatedAt))) {
+    throw new Error('Managed deployment dispatch claim does not match the exact operation binding.');
+  }
+  return claim;
+}
+
+/** Atomically advance the crash-recovery claim after validating its complete binding. */
+export async function recordManagedDeployDispatch(
+  state: ManagedDeployState,
+  status: ManagedDispatchClaim['status'],
+  githubRunId?: number,
+  baseDir?: string,
+): Promise<ManagedDispatchClaim> {
+  const marker = `${managedDeployStatePath(state.operationId, baseDir)}.dispatch`;
+  const current = await readManagedDeployDispatchClaim(state, baseDir);
+  if (status === 'claimed' || (current.status === 'accepted' && status !== 'accepted')) {
+    throw new Error('Managed deployment dispatch claim cannot move backwards.');
+  }
+  if (githubRunId !== undefined && (!Number.isSafeInteger(githubRunId) || githubRunId < 1)) {
+    throw new Error('GitHub workflow run ID must be a positive integer.');
+  }
+  const next: ManagedDispatchClaim = {
+    ...current,
+    status,
+    updatedAt: new Date().toISOString(),
+    ...(githubRunId !== undefined ? { githubRunId } : {}),
+  };
+  await assertRegularTarget(marker, true);
+  await writeAtomically(marker, `${JSON.stringify(next, null, 2)}\n`, 0o600);
+  return next;
 }
 
 /** Load only a state file whose immutable digest and operation identity remain valid. */
@@ -434,7 +606,6 @@ export async function loadManagedDeployState(operationId: string, baseDir?: stri
   if (parsed.schema !== 'eai.managed-deploy-state.v1' || parsed.operationId !== operationId) {
     throw new Error(`Local retry state for ${operationId} is invalid.`);
   }
-  requireCommitSha(parsed.commitSha);
-  requireConfigHash(parsed.configHash);
+  validateManagedDeployState(parsed);
   return parsed;
 }

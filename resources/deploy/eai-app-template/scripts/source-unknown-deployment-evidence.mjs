@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
 import {
+  closeSync,
+  constants,
   createReadStream,
   existsSync,
+  fstatSync,
+  lstatSync,
   mkdirSync,
+  openSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -13,9 +19,114 @@ import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
+const SOURCE_MODES = new Set(['source-unknown', 'eai-cli-generated']);
+const SAFE_PATH_SEGMENT = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,254}[A-Za-z0-9])?$/;
+const SAFE_OPAQUE_VALUE =
+  /^[A-Za-z0-9](?:[A-Za-z0-9._~:-]{0,254}[A-Za-z0-9])?$/;
+const SAFE_REPOSITORY =
+  /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
+const MANAGED_ENVIRONMENTS = new Set(['preview', 'dev', 'test', 'prod']);
+const GOVERNED_ROOT_FILES = ['eai.config.ts', 'eai.runtime.json'];
+const GOVERNED_CONFIG_ROOTS = ['src/eai.config'];
+const NON_RUNTIME_CONFIG_FILE = /(?:^|\.)(?:test|spec)\.[^.]+$/;
+const GENERATED_CONFIG_FILES = new Set([
+  'src/eai.config/object-types.json',
+  'src/eai.config/object-types.provisioning.json',
+]);
+
+function sourceMode(options) {
+  const mode = option(options, 'sourceMode', 'source-unknown');
+  if (!SOURCE_MODES.has(mode)) {
+    throw new Error('Unsupported managed deployment source mode.');
+  }
+  return mode;
+}
+
+function requiredSafePathSegment(options, key, label = key) {
+  const value = option(options, key);
+  if (!SAFE_PATH_SEGMENT.test(value)) {
+    throw new Error(
+      `Managed deployment requires a safe ${label} path segment.`,
+    );
+  }
+  return value;
+}
+
+function targetTenantId(options, mode) {
+  const targetTenant = option(options, 'targetTenantId');
+  if (mode === 'eai-cli-generated' && !targetTenant) {
+    throw new Error(
+      'CLI generated source requires its exact signed target tenant ID.',
+    );
+  }
+  if (targetTenant && !SAFE_PATH_SEGMENT.test(targetTenant)) {
+    throw new Error(
+      'Managed deployment requires a safe targetTenantId path segment.',
+    );
+  }
+  return targetTenant;
+}
+
+function validateDeploymentBinding(options, mode) {
+  const targetTenant = targetTenantId(options, mode);
+  for (const key of ['appKey', 'tenantId', 'operationId']) {
+    requiredSafePathSegment(options, key);
+  }
+  const nonce = option(options, 'nonce');
+  if (mode === 'eai-cli-generated' && !/^[a-f0-9]{64}$/.test(nonce)) {
+    throw new Error('CLI generated source requires its exact signed nonce.');
+  }
+  if (mode === 'source-unknown' && !SAFE_OPAQUE_VALUE.test(nonce)) {
+    throw new Error('Source-unknown deployment requires a safe signed nonce.');
+  }
+  const expectedConfigHash = option(options, 'expectedConfigHash');
+  if (!SHA256_DIGEST.test(expectedConfigHash)) {
+    throw new Error(
+      'Managed deployment requires its exact approved sha256 config hash.',
+    );
+  }
+  const environment = option(options, 'environment', 'preview');
+  const preferredEnvironment = option(options, 'preferredEnvironment');
+  const legacyEnvironment = option(options, 'legacyEnvironment');
+  if (
+    preferredEnvironment &&
+    legacyEnvironment &&
+    preferredEnvironment !== legacyEnvironment
+  ) {
+    throw new Error('env and environment inputs must not conflict.');
+  }
+  const requestedEnvironment =
+    preferredEnvironment || legacyEnvironment || environment || 'preview';
+  if (environment !== requestedEnvironment) {
+    throw new Error(
+      'Resolved deployment environment does not match its inputs.',
+    );
+  }
+  if (!MANAGED_ENVIRONMENTS.has(environment)) {
+    throw new Error(
+      'Managed deployment requires an approved deployment environment.',
+    );
+  }
+  return targetTenant;
+}
 
 function validateDispatch(options) {
+  validateDeploymentBinding(options, sourceMode(options));
   const endpoint = option(options, 'publicApiUrl');
+  const preferredEndpoint = option(options, 'preferredPublicApiUrl');
+  const legacyEndpoint = option(options, 'legacyPublicApiUrl');
+  if (
+    preferredEndpoint &&
+    legacyEndpoint &&
+    preferredEndpoint !== legacyEndpoint
+  ) {
+    throw new Error(
+      'public_api_url and publicapi_base_url inputs must not conflict.',
+    );
+  }
+  if (endpoint !== (preferredEndpoint || legacyEndpoint || endpoint)) {
+    throw new Error('Resolved PublicAPI URL does not match its inputs.');
+  }
   if (
     !/^https:\/\/(?:dev-api\.au|(?:test-api|api)\.(?:au|ca|eu))\.myenterprise\.ai\/public\/?$/.test(
       endpoint,
@@ -28,6 +139,12 @@ function validateDispatch(options) {
   const commit = option(options, 'commit');
   const workflowSha = option(options, 'workflowSha');
   const root = resolve(option(options, 'root', process.cwd()));
+  const configHash = buildConfigHash(root);
+  if (option(options, 'expectedConfigHash') !== configHash) {
+    throw new Error(
+      'Dispatched config hash does not match the exact checked-out runtime configuration.',
+    );
+  }
   const actual = execFileSync('git', ['rev-parse', 'HEAD'], {
     cwd: root,
     encoding: 'utf8',
@@ -84,65 +201,180 @@ function assertExists(path, label) {
 
 async function digestFile(path) {
   const hash = createHash('sha256');
-  await new Promise((resolvePromise, reject) => {
-    createReadStream(path)
-      .on('data', (chunk) => hash.update(chunk))
-      .on('error', reject)
-      .on('end', resolvePromise);
-  });
+  const descriptor = openSync(
+    path,
+    constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
+  );
+  try {
+    if (!fstatSync(descriptor).isFile()) {
+      throw new Error(`Artifact must be a regular file: ${path}`);
+    }
+    await new Promise((resolvePromise, reject) => {
+      createReadStream(path, { fd: descriptor, autoClose: false })
+        .on('data', (chunk) => hash.update(chunk))
+        .on('error', reject)
+        .on('end', resolvePromise);
+    });
+  } finally {
+    closeSync(descriptor);
+  }
   return `sha256:${hash.digest('hex')}`;
 }
 
 function digestFiles(root, paths) {
   const hash = createHash('sha256');
-  for (const relativePath of paths
-    .filter((path) => existsSync(join(root, path)))
-    .sort()) {
+  for (const relativePath of paths.sort()) {
     hash.update(relativePath);
     hash.update('\0');
-    hash.update(readFileSync(join(root, relativePath)));
+    hash.update(
+      readRegularFileNoFollow(join(root, relativePath), relativePath),
+    );
     hash.update('\0');
   }
   return `sha256:${hash.digest('hex')}`;
 }
 
+function readRegularFileNoFollow(path, label = path) {
+  const descriptor = openSync(
+    path,
+    constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
+  );
+  try {
+    if (!fstatSync(descriptor).isFile()) {
+      throw new Error(
+        `Governed configuration must be a regular file: ${label}`,
+      );
+    }
+    return readFileSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function optionalLstat(path) {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
+function listGovernedConfigFiles(root) {
+  const paths = [];
+  for (const relativePath of GOVERNED_ROOT_FILES) {
+    const absolutePath = join(root, relativePath);
+    const metadata = optionalLstat(absolutePath);
+    if (!metadata) continue;
+    if (metadata.isSymbolicLink() || !metadata.isFile()) {
+      throw new Error(
+        `Governed configuration must be a regular file: ${relativePath}`,
+      );
+    }
+    paths.push(relativePath);
+  }
+
+  const visit = (relativeDirectory) => {
+    const absoluteDirectory = join(root, relativeDirectory);
+    const directoryMetadata = optionalLstat(absoluteDirectory);
+    if (!directoryMetadata) return;
+    if (
+      directoryMetadata.isSymbolicLink() ||
+      !directoryMetadata.isDirectory()
+    ) {
+      throw new Error(
+        `Governed configuration root must be a regular directory: ${relativeDirectory}`,
+      );
+    }
+    for (const entry of readdirSync(absoluteDirectory, {
+      withFileTypes: true,
+    })) {
+      const relativePath = join(relativeDirectory, entry.name).replaceAll(
+        '\\',
+        '/',
+      );
+      const absolutePath = join(root, relativePath);
+      const metadata = lstatSync(absolutePath);
+      if (metadata.isSymbolicLink()) {
+        throw new Error(
+          `Governed configuration cannot be a symlink: ${relativePath}`,
+        );
+      }
+      if (metadata.isDirectory()) {
+        visit(relativePath);
+      } else if (
+        metadata.isFile() &&
+        !NON_RUNTIME_CONFIG_FILE.test(entry.name) &&
+        !GENERATED_CONFIG_FILES.has(relativePath)
+      ) {
+        paths.push(relativePath);
+      }
+    }
+  };
+  for (const relativeDirectory of GOVERNED_CONFIG_ROOTS)
+    visit(relativeDirectory);
+  return [...new Set(paths)].sort();
+}
+
 function readSchemaProvenance(root) {
   const runtimePath = join(root, 'eai.runtime.json');
   assertExists(runtimePath, 'eai.runtime.json');
-  const runtime = JSON.parse(readFileSync(runtimePath, 'utf8'));
-  let provenance = runtime.schemaProvenance;
-  if (!provenance) {
-    const fixture = join(root, 'tests/fixtures/schema-provenance/valid.json');
-    assertExists(fixture, 'Runtime schema provenance or compatibility fixture');
-    provenance = JSON.parse(readFileSync(fixture, 'utf8'));
+  const runtime = JSON.parse(
+    readRegularFileNoFollow(runtimePath, 'eai.runtime.json').toString('utf8'),
+  );
+  const provenance = runtime.schemaProvenance;
+  if (!provenance || typeof provenance !== 'object') {
+    throw new Error('eai.runtime.json schemaProvenance is required.');
+  }
+  const canonicalFields = new Set([
+    'templateVersion',
+    'baseTemplateSha',
+    'approvedSourceSha',
+    'approvedReleaseId',
+    'schemaDigest',
+    'validatorDigest',
+  ]);
+  if (Object.keys(provenance).some((key) => !canonicalFields.has(key))) {
+    throw new Error('Schema provenance contains a noncanonical field.');
   }
   for (const key of ['schemaDigest', 'validatorDigest']) {
     if (!SHA256_DIGEST.test(provenance[key] || '')) {
       throw new Error(`Schema provenance ${key} must be a sha256 digest.`);
     }
   }
-  if (!/^[a-f0-9]{40}$/.test(provenance.baseTemplateSha || '')) {
+  if (
+    typeof provenance.templateVersion !== 'string' ||
+    !provenance.templateVersion.trim() ||
+    provenance.templateVersion.trim() !== provenance.templateVersion
+  ) {
+    throw new Error('Schema provenance templateVersion is required.');
+  }
+  const anchors = [
+    ['baseTemplateSha', provenance.baseTemplateSha, /^[a-f0-9]{40}$/],
+    ['approvedSourceSha', provenance.approvedSourceSha, /^[a-f0-9]{40}$/],
+    ['approvedReleaseId', provenance.approvedReleaseId, /\S/],
+  ];
+  if (!anchors.some(([, value]) => value !== undefined)) {
     throw new Error(
-      'Schema provenance baseTemplateSha must be a 40 character lowercase git SHA.',
+      'Schema provenance requires baseTemplateSha, approvedSourceSha, or approvedReleaseId.',
     );
   }
-  if (!provenance.templateVersion) {
-    throw new Error('Schema provenance templateVersion is required.');
+  for (const [key, value, pattern] of anchors) {
+    if (
+      value !== undefined &&
+      (typeof value !== 'string' ||
+        value.trim() !== value ||
+        !pattern.test(value))
+    ) {
+      throw new Error(`Schema provenance ${key} is invalid.`);
+    }
   }
   return provenance;
 }
 
 function buildConfigHash(root) {
   assertExists(join(root, 'eai.runtime.json'), 'eai.runtime.json');
-  return digestFiles(root, [
-    'eai.runtime.json',
-    'src/eai.config/default.ts',
-    'src/eai.config/index.ts',
-    'src/eai.config/object-types.json',
-    'src/eai.config/object-types.provisioning.json',
-    'src/eai.config/object-types.ts',
-    'src/eai.config/register.ts',
-  ]);
+  return digestFiles(root, listGovernedConfigFiles(root));
 }
 
 function prepareImageContext(options) {
@@ -174,7 +406,7 @@ function prepareImageContext(options) {
   writeFileSync(
     join(contextDir, 'Dockerfile'),
     [
-      'FROM node:24-alpine',
+      'FROM node:24-alpine@sha256:83f1c388c31fb2e51f7cbd4dea949b96260798c98f206e8e4696bc93bd964e3a',
       'WORKDIR /app',
       'ENV NODE_ENV=production',
       'ENV PORT=3000',
@@ -197,6 +429,8 @@ async function appendOutputs(path, outputs) {
 }
 
 async function collectEvidence(options) {
+  const mode = sourceMode(options);
+  const targetTenant = validateDeploymentBinding(options, mode);
   const root = resolve(option(options, 'root', process.cwd()));
   const outputDir = resolve(
     root,
@@ -216,7 +450,15 @@ async function collectEvidence(options) {
     process.env.GITHUB_OUTPUT || '',
   );
 
-  assertExists(imageArchivePath, 'OCI image archive');
+  const archiveMetadata = optionalLstat(imageArchivePath);
+  if (
+    !archiveMetadata ||
+    archiveMetadata.isSymbolicLink() ||
+    !archiveMetadata.isFile() ||
+    archiveMetadata.size <= 0
+  ) {
+    throw new Error('OCI image archive must be a nonempty regular file.');
+  }
   const uploadedArtifactDigest = option(options, 'artifactDigest');
   // INVARIANT: upload-artifact returns bare hex; handoff digests are algorithm-qualified.
   const artifactDigest = /^[a-f0-9]{64}$/.test(uploadedArtifactDigest)
@@ -242,7 +484,7 @@ async function collectEvidence(options) {
   if (new Set([artifactDigest, archiveDigest, imageDigest]).size !== 3) {
     throw new Error('Artifact, archive, and image digests must be distinct.');
   }
-  if (!expectedConfigHash || configHash !== expectedConfigHash) {
+  if (expectedConfigHash !== configHash) {
     throw new Error(
       'Dispatched config hash does not match the exact checked-out runtime configuration.',
     );
@@ -269,7 +511,7 @@ async function collectEvidence(options) {
   if (!['preview', 'dev', 'test', 'prod'].includes(environment)) {
     throw new Error('Unsupported managed deployment environment.');
   }
-  if (!/^[^/\s]+\/[^/\s]+$/.test(repo))
+  if (!SAFE_REPOSITORY.test(repo))
     throw new Error('Repository must be owner/name.');
   if (!/^\.github\/workflows\/[^/]+\.ya?ml$/.test(workflowPath)) {
     throw new Error('Workflow path must be a file under .github/workflows.');
@@ -278,19 +520,33 @@ async function collectEvidence(options) {
     throw new Error('Workflow ref and branch do not match.');
   if (!/^[a-f0-9]{40}$/.test(commitSha))
     throw new Error('Commit must be an exact 40 character git SHA.');
+  const workflowRunId = option(
+    options,
+    'workflowRunId',
+    process.env.GITHUB_RUN_ID || '',
+  );
+  const workflowRunAttempt = option(
+    options,
+    'workflowRunAttempt',
+    process.env.GITHUB_RUN_ATTEMPT || '',
+  );
+  if (!/^[1-9][0-9]*$/.test(workflowRunId)) {
+    throw new Error('Workflow run id must be a positive integer.');
+  }
+  if (!/^[1-9][0-9]*$/.test(workflowRunAttempt)) {
+    throw new Error('Workflow run attempt must be a positive integer.');
+  }
 
   const evidence = {
+    ...(mode === 'eai-cli-generated' ? { sourceMode: mode } : {}),
+    ...(mode === 'eai-cli-generated' ? { targetTenantId: targetTenant } : {}),
     environment,
     workflowPath,
     ref,
     commitSha,
     workflowRun: {
-      id: option(options, 'workflowRunId', process.env.GITHUB_RUN_ID || ''),
-      attempt: option(
-        options,
-        'workflowRunAttempt',
-        process.env.GITHUB_RUN_ATTEMPT || '',
-      ),
+      id: workflowRunId,
+      attempt: workflowRunAttempt,
     },
     configHash,
     artifactDigest,
@@ -315,7 +571,15 @@ async function collectEvidence(options) {
     image_digest: imageDigest,
     evidence_path: evidencePath,
     template_version: schemaProvenance.templateVersion,
-    base_template_sha: schemaProvenance.baseTemplateSha,
+    ...(schemaProvenance.baseTemplateSha
+      ? { base_template_sha: schemaProvenance.baseTemplateSha }
+      : {}),
+    ...(schemaProvenance.approvedSourceSha
+      ? { approved_source_sha: schemaProvenance.approvedSourceSha }
+      : {}),
+    ...(schemaProvenance.approvedReleaseId
+      ? { approved_release_id: schemaProvenance.approvedReleaseId }
+      : {}),
     schema_digest: schemaProvenance.schemaDigest,
     validator_digest: schemaProvenance.validatorDigest,
   });

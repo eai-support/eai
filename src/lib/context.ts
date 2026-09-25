@@ -38,13 +38,17 @@ export async function resolveCommandContext(options?: {
   tenantId?: string;
   interactive?: boolean;
   forceRefresh?: boolean;
+  validatePublicApiUrl?: (url: string) => string;
 }): Promise<CommandContext> {
   const root = await findProjectRoot();
   if (!root) {
     exitWithError(ErrorCode.E001);
   }
 
-  const publicApiUrl = await resolvePublicApiUrl(root);
+  const resolvedPublicApiUrl = await resolvePublicApiUrl(root);
+  const publicApiUrl = options?.validatePublicApiUrl
+    ? options.validatePublicApiUrl(resolvedPublicApiUrl)
+    : resolvedPublicApiUrl;
   let context: ActiveTenantContext;
   try {
     context = await resolveActiveTenantContext({

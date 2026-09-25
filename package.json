@@ -37,8 +37,10 @@
     "eval:agent-discovery": "node scripts/eval-agent-discovery.cjs",
     "docs:verify-api": "node scripts/verify-api-reference.cjs --check",
     "security:public-hygiene": "node scripts/verify-public-hygiene.cjs",
-    "release:check": "bash scripts/release-preflight.sh",
-    "prepublishOnly": "npm run lint:no-placeholder && npm run security:public-hygiene && npm run typecheck && npm run lint && npm run build && npm run test"
+    "release:check": "npm run verify:managed-deploy-producer:release && bash scripts/release-preflight.sh",
+    "prepublishOnly": "npm run verify:managed-deploy-producer:release && npm run lint:no-placeholder && npm run security:public-hygiene && npm run typecheck && npm run lint && npm run build && npm run test",
+    "verify:managed-deploy-producer": "node scripts/verify-managed-deploy-producer-pin.cjs",
+    "verify:managed-deploy-producer:release": "node scripts/verify-managed-deploy-producer-pin.cjs --release"
   },
   "files": [
     "dist",

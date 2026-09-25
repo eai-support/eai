@@ -19,20 +19,23 @@ describe('PlatformAPIClient', () => {
     await client.getCliManagedGithubLinkSession('tenant-one', 'my-app', 'link-one', 'runtime-tenant', 'preview')
     const prep = {
       schemaVersion: 'eai.cli_managed_source_preparation.v1' as const, templateCommitSha: 'a'.repeat(40),
-      bundleSha256: `sha256:${'b'.repeat(64)}`, fileCount: 2, totalBytes: 120, githubLinkSessionId: 'link-one',
+      bundleSha256: `sha256:${'b'.repeat(64)}`, configHash: `sha256:${'c'.repeat(64)}`, fileCount: 2, totalBytes: 120, githubLinkSessionId: 'link-one',
       targetTenantId: link.targetTenantId, environment: link.environment, idempotencyKey: link.idempotencyKey,
     }
     await client.prepareCliManagedSource('tenant-one', 'my-app', prep)
     await client.getCliManagedSourceOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', 'preview')
+    await client.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant')
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
       ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/github-link-sessions', 'POST'],
       ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/github-link-sessions/link-one?targetTenantId=runtime-tenant&environment=preview', 'GET'],
       ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/preparations', 'POST'],
       ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/operations/operation-one?targetTenantId=runtime-tenant&environment=preview', 'GET'],
+      ['https://api.example.test/public/v4/platform/tenants/tenant-one/apps/my-app/managed-deployments/operations/operation-one?targetTenantId=runtime-tenant', 'GET'],
     ])
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(link)
     expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual(prep)
     expect(fetchMock.mock.calls[2][1]?.headers).toMatchObject({ Authorization: 'Bearer <fixture-access-token>' })
+    expect(fetchMock.mock.calls.every(([, init]) => init?.redirect === 'error')).toBe(true)
   })
 
   test.each(['operation/other', '../operation', '', 'operation?query=value'])('rejects a non-opaque managed operation ID %s before an HTTP request', async operationId => {

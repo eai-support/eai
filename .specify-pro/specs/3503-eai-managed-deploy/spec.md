@@ -4,9 +4,12 @@
 
 The owner approved this hardening scope on 2026-09-25. The approval covers the reviewed security, identity, provenance, recovery, and evidence fixes while preserving the successful deployment journey. It does not authorize merge, release, deployment, activation, billing, or destructive live tests.
 
+Canonical amendment: https://github.com/enterpriseaigroup/Issues2025/issues/3503#issuecomment-5826177803
+
 ## Preserved user contract
 
 - `eai deploy app <app-key> --target eai` remains canonical.
+- Every initial, resume, and retry command supplies the exact `--target-tenant-id`; same-tenant deployments repeat `--tenant-id` explicitly.
 - `eai-managed` and `customer-owned` remain explicit source choices.
 - EAI-maintained publication remains bot-owned; customers do not push to or merge in an EAI repository.
 - Customer-owned source remains governed in the customer's repository.
@@ -15,9 +18,9 @@ The owner approved this hardening scope on 2026-09-25. The approval covers the r
 
 ## Requirements
 
-- **DTE-009, DTE-014:** bind the browser-linked numeric GitHub identity to the local `gh` actor that performs customer-owned repository actions.
+- **DTE-009 through DTE-011, DTE-014:** require an explicit runtime tenant and bind the browser-linked numeric GitHub identity to the local `gh` actor that performs customer-owned repository actions.
 - **DTE-016:** retain bounded, no-follow local publication and complete source digests.
-- **DTE-018:** hash every governed configuration and runtime-provenance input, including nested files and the deployment contract.
+- **DTE-018, DTE-095:** compute and submit one exact `configHash` through no-follow file handles over every governed configuration source and runtime-provenance input, including nested files and the deployment contract, for both source modes. Exclude only the two deterministic generated Object Type outputs so the CLI and collector hash the same checked-out source manifest before and after generation.
 - **DTE-019, DTE-020, DTE-021, DTE-088:** consume exact template candidate bytes now, validate workflow inputs and collector parity, and keep the immutable released tag/commit as a deferred release gate without predicting a version.
 - **DTE-023, DTE-025:** consume the template's immutable supply-chain pins and credential isolation.
 - **DTE-031 through DTE-035:** bind dispatch, resume, and retry to the exact operation, nonce, actor, tenant, source, workflow, artifact, and target; make dispatch recovery safe after a lost response or crash; never select a latest operation.
@@ -31,5 +34,7 @@ The owner approved this hardening scope on 2026-09-25. The approval covers the r
 2. A wrong local GitHub actor, nonce, tenant, source, workflow, or target fails before mutation.
 3. A crash or lost dispatch response resumes the same operation without duplicate dispatch or an endless poll-only state.
 4. Managed PublicAPI and browser upload/status origins are allowlisted before credentials are sent, and redirects are rejected.
-5. Doctor JSON can be written portably and binds readiness to the exact completed deployment operation.
+5. Doctor JSON can be written portably and binds readiness to the exact completed deployment operation; authenticated readiness passes only when a successful probe actually uses its declared secret in a request header.
 6. Owned CLI tests and release metadata checks exercise these contracts.
+7. Help and consumer contracts expose the required initial `--source`, browser continuation `--github-link-session`, and exact `--target-tenant-id` controls.
+8. Missing `--target-tenant-id` fails before identity, status, linking, upload, or repository requests in both source modes.

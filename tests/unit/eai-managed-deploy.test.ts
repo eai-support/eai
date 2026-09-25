@@ -3,6 +3,7 @@ import { chmod, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile, mkdir 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import {
   EAI_MANAGED_EVIDENCE_SCRIPT_PATH,
@@ -17,6 +18,7 @@ import {
   parseGitHubRepository,
   requireCommitSha,
   requireManagedPublicApiUrl,
+  managedDeployNonceSha256,
   saveManagedDeployState,
   type ManagedDeployState,
 } from '../../src/lib/eai-managed-deploy.js';
@@ -45,6 +47,8 @@ describe('EAI managed deployment helpers', () => {
       repo: 'enterprise/planning-portal', branch: 'main', ref: 'refs/heads/main', commitSha: 'a'.repeat(40),
       workflowPath: EAI_MANAGED_WORKFLOW_PATH, configHash: `sha256:${'b'.repeat(64)}`,
       environment: 'preview', installationId: 123,
+      actorId: 'eai-user-oid', githubLinkSessionId: 'github-link-123',
+      githubUserId: 456, githubLogin: 'linked-user', githubProofId: 'proof-123',
     };
   }
 
@@ -103,6 +107,16 @@ describe('EAI managed deployment helpers', () => {
     expect((await readdir(directory)).filter(name => name.endsWith('.tmp'))).toEqual([]);
   });
 
+  test('refuses a dispatch claim that is readable by another local user', async () => {
+    const directory = await temporaryDirectory('eai-managed-dispatch-permissions-');
+    const state = fixtureState();
+    await saveManagedDeployState(state, directory);
+    expect(await claimManagedDeployDispatch(state, directory)).toBe(true);
+    const marker = join(directory, `${state.operationId}.json.dispatch`);
+    await chmod(marker, 0o644);
+    await expect(claimManagedDeployDispatch(state, directory)).rejects.toThrow('untrusted file');
+  });
+
   test.each([
     'http://api.au.myenterprise.ai/public', 'https://api.au.myenterprise.ai.attacker.example/public',
     'https://attacker.example/public', 'https://api.au.myenterprise.ai:8443/public',
@@ -132,12 +146,15 @@ describe('EAI managed deployment helpers', () => {
       join(canonicalManagedDeployResourceRoot(), EAI_MANAGED_EVIDENCE_SCRIPT_PATH),
       'collect', '--root', project, '--repo', 'enterprise/planning-portal', '--branch', 'main',
       '--ref', 'refs/heads/main', '--commit', 'c'.repeat(40), '--artifact-id', '123',
+      '--app-key', 'planning-portal', '--tenant-id', 'tenant-1', '--target-tenant-id', 'tenant-1',
+      '--operation-id', 'source-unknown-fixture', '--nonce', 'one-time-nonce', '--environment', 'preview',
+      '--workflow-run-id', '456', '--workflow-run-attempt', '1',
       '--artifact-digest', 'd'.repeat(64), '--image-digest', `sha256:${(scenario === 'duplicate-digest' ? 'd' : 'e').repeat(64)}`,
       '--expected-config-hash', scenario === 'hash-mismatch' ? `sha256:${'f'.repeat(64)}` : configHash,
     ]);
     if (scenario !== 'valid') {
       await expect(invocation).rejects.toThrow(scenario === 'hash-mismatch' ? 'config hash does not match'
-        : scenario === 'duplicate-digest' ? 'digests must be distinct' : 'Runtime schema provenance');
+        : scenario === 'duplicate-digest' ? 'digests must be distinct' : 'schemaProvenance is required');
       await expect(readFile(join(project, '.eai-build/evidence/source-unknown-deployment-evidence.json'))).rejects.toMatchObject({ code: 'ENOENT' });
       return;
     }
@@ -153,12 +170,28 @@ describe('EAI managed deployment helpers', () => {
     const workflow = await readFile(join(root, EAI_MANAGED_WORKFLOW_PATH), 'utf8');
     const collector = await readFile(join(root, EAI_MANAGED_EVIDENCE_SCRIPT_PATH), 'utf8');
 
-    expect(workflow).toContain('name: EAI App Source-Unknown Handoff');
-    expect(workflow).toContain('api://enterprise-ai-publicapi/source-unknown');
+    expect(workflow).toContain('name: EAI App Deployment Handoff');
+    expect(workflow).toContain('run-name: EAI deploy ${{ inputs.app_key }} (${{ inputs.operation_id }})');
+    expect(workflow).toContain('api://enterprise-ai-publicapi/eai-cli-generated');
     expect(workflow).toMatch(/^on:\n  workflow_dispatch:/m);
-    expect(workflow).not.toMatch(/^  (push|pull_request|workflow_call|schedule):/m);
+    expect(workflow).toMatch(/^  workflow_call:/m);
+    expect(workflow).not.toMatch(/^  (push|pull_request|schedule):/m);
+    expect(workflow).toMatch(/^      attestations: write$/m);
     expect(workflow).toMatch(/^  packages: read$/m);
+    expect(workflow.slice(workflow.indexOf('  build:'), workflow.indexOf('  handoff:'))).not.toContain('id-token: write');
     expect(collector).toContain('prepare-image-context');
+
+    const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
+    expect(pin).toMatchObject({
+      schemaVersion: 'eai.managed-deploy-producer-pin.v1',
+      candidate: { commit: '97277cb5278a5e30c59a57beea070e954e6864af' },
+      releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
+    });
+    expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
+    expect(`sha256:${createHash('sha256').update(collector).digest('hex')}`).toBe(pin.candidate.collector.sha256);
+    for (const input of ['source_mode', 'app_key', 'tenant_id', 'target_tenant_id', 'operation_id', 'nonce', 'config_hash', 'commit_sha', 'public_api_url', 'env']) {
+      expect(workflow).toMatch(new RegExp(`^      ${input}:`, 'm'));
+    }
   });
 
   test('installs the canonical pair once and reports stable files on the next pass', async () => {
@@ -179,7 +212,7 @@ describe('EAI managed deployment helpers', () => {
     const result = await installCanonicalManagedDeployFiles(project);
 
     expect(await readFile(workflowPath, 'utf8')).toBe('name: Local workflow\n');
-    expect(await readFile(`${workflowPath}.eai-update`, 'utf8')).toContain('EAI App Source-Unknown Handoff');
+    expect(await readFile(`${workflowPath}.eai-update`, 'utf8')).toContain('EAI App Deployment Handoff');
     expect(result.pendingUpdates).toContain(`${EAI_MANAGED_WORKFLOW_PATH}.eai-update`);
   });
 
@@ -199,12 +232,35 @@ describe('EAI managed deployment helpers', () => {
     const project = await temporaryDirectory('eai-managed-hash-');
     await mkdir(join(project, 'src', 'eai.config'), { recursive: true });
     await writeFile(join(project, 'eai.runtime.json'), '{"runtime":1}\n');
+    await writeFile(join(project, 'eai.config.ts'), 'export default { appKey: "fixture" };\n');
     await writeFile(join(project, 'src', 'eai.config', 'object-types.ts'), 'export const types = [];\n');
+    await writeFile(join(project, 'src', 'eai.config', 'object-types.json'), '{"generated":1}\n');
+    await writeFile(join(project, 'src', 'eai.config', 'object-types.provisioning.json'), '{"generated":1}\n');
+    await mkdir(join(project, 'src', 'eai.config', 'nested'));
+    await writeFile(join(project, 'src', 'eai.config', 'nested', 'deployment-contract.ts'), 'export const contract = 1;\n');
+    await writeFile(join(project, 'src', 'eai.config', 'nested', 'contract.test.ts'), 'not governed\n');
 
     const first = await buildManagedDeployConfigHash(project);
     const second = await buildManagedDeployConfigHash(project);
     expect(first).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(second).toBe(first);
+    await writeFile(join(project, 'src', 'eai.config', 'nested', 'contract.test.ts'), 'still not governed\n');
+    expect(await buildManagedDeployConfigHash(project)).toBe(first);
+    await writeFile(join(project, 'src', 'eai.config', 'object-types.json'), '{"generated":2}\n');
+    await writeFile(join(project, 'src', 'eai.config', 'object-types.provisioning.json'), '{"generated":2}\n');
+    expect(await buildManagedDeployConfigHash(project)).toBe(first);
+    await writeFile(join(project, 'src', 'eai.config', 'nested', 'deployment-contract.ts'), 'export const contract = 2;\n');
+    expect(await buildManagedDeployConfigHash(project)).not.toBe(first);
+  });
+
+  test('rejects links anywhere in governed configuration', async () => {
+    const project = await temporaryDirectory('eai-managed-hash-link-');
+    const outside = join(await temporaryDirectory('eai-managed-hash-outside-'), 'config.ts');
+    await writeFile(join(project, 'eai.runtime.json'), '{}');
+    await mkdir(join(project, 'src', 'eai.config'), { recursive: true });
+    await writeFile(outside, 'secret');
+    await symlink(outside, join(project, 'src', 'eai.config', 'linked.ts'));
+    await expect(buildManagedDeployConfigHash(project)).rejects.toThrow('cannot be a symlink');
   });
 
   test('persists retry authority outside the project with owner-only file permissions', async () => {
@@ -224,6 +280,11 @@ describe('EAI managed deployment helpers', () => {
       configHash: `sha256:${'b'.repeat(64)}`,
       environment: 'preview',
       installationId: 123,
+      actorId: 'eai-user-oid',
+      githubLinkSessionId: 'github-link-123',
+      githubUserId: 456,
+      githubLogin: 'linked-user',
+      githubProofId: 'proof-123',
     };
 
     await saveManagedDeployState(state, stateDir);
@@ -240,6 +301,9 @@ describe('EAI managed deployment helpers', () => {
         ref: state.ref,
         commitSha: state.commitSha,
         configHash: state.configHash,
+        nonceSha256: managedDeployNonceSha256(state.nonce),
+        actorId: state.actorId,
+        githubLinkSessionId: state.githubLinkSessionId,
         repo: { owner: 'enterprise', name: 'planning-portal' },
         deployOnSuccess: true,
       },
@@ -249,6 +313,18 @@ describe('EAI managed deployment helpers', () => {
       { ...state, commitSha: 'c'.repeat(40) },
       operation,
     )).toThrow('commitSha');
+    expect(() => assertManagedDeployStateMatchesOperation(
+      { ...state, nonce: 'different-one-time-nonce' },
+      operation,
+    )).toThrow('nonceSha256');
+    expect(() => assertManagedDeployStateMatchesOperation(
+      { ...state, actorId: 'different-eai-actor' },
+      operation,
+    )).toThrow('actorId');
+    expect(() => assertManagedDeployStateMatchesOperation(
+      { ...state, githubLinkSessionId: 'different-link-session' },
+      operation,
+    )).toThrow('githubLinkSessionId');
   });
 
   test('reports success only for a complete active TenantInfra projection', () => {
@@ -333,5 +409,20 @@ describe('EAI managed deployment helpers', () => {
     expect(calls).toEqual(['auth status', 'repo view', 'api repos/enterprise/app/git/ref/heads/main']);
     releaseRemoteReads?.();
     await expect(verification).resolves.toBeUndefined();
+  });
+
+  test('requires the local gh actor to match the browser-linked numeric identity', async () => {
+    const expectedSha = 'a'.repeat(40);
+    const runner = async (_command: string, args: string[]): Promise<string> => {
+      if (args[0] === 'auth') return '';
+      if (args[0] === 'repo') return JSON.stringify({ viewerPermission: 'WRITE', isArchived: false });
+      if (args[0] === 'api' && args[1] === 'user') return JSON.stringify({ id: 999, login: 'different-user' });
+      if (args[0] === 'api') return JSON.stringify({ object: { sha: expectedSha } });
+      throw new Error(`unexpected invocation: ${args.join(' ')}`);
+    };
+    await expect(verifyGitHubAccess('enterprise/app', 'main', expectedSha, runner, {
+      id: 123,
+      login: 'linked-user',
+    })).rejects.toMatchObject({ code: 'GITHUB_ACTOR_MISMATCH' });
   });
 });

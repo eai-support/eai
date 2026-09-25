@@ -6,6 +6,8 @@ import { PlatformAPIClient, type CliManagedGithubLinkSession, type CliManagedGit
 import { ManagedSourceError, type CliManagedSourceBundle } from './eai-managed-source.js';
 
 const exec = promisify(execFile);
+const MANAGED_PORTAL_ORIGIN = /^https:\/\/(?:(?:dev|test)-admin-portal|admin-portal(?:\.(?:ca|eu))?)\.myenterprise\.ai$/;
+const GITHUB_LINK_PATH = '/api/platform/generated-apps/github-user';
 
 /** All browser and source operations must preserve this user-selected deployment scope. */
 export interface CliManagedSourceScope {
@@ -25,6 +27,7 @@ export interface CliManagedSourceOperation extends CliManagedSourceScope {
   githubLinkSessionId?: string;
   templateCommitSha: string;
   bundleSha256: string;
+  configHash: string;
   verifiedGithubUser: NonNullable<CliManagedGithubLinkSession['verifiedGithubUser']>;
   repository: { owner: string; name: string; id?: number; nodeId?: string; defaultBranch?: string; private?: boolean };
   review?: { mergedSha?: string; pullRequestUrl?: string; [key: string]: unknown };
@@ -67,7 +70,13 @@ export function validateCliGithubLinkSession(value: CliManagedGithubLinkSession,
 export function cliManagedPortalOrigin(session: CliManagedGithubLinkSession): string {
   let url: URL;
   try { url = new URL(session.browserUrl || ''); } catch { throw new ManagedSourceError('GITHUB_LINK_URL_INVALID', 'The platform did not return a valid GitHub linking browser URL.'); }
-  if (url.protocol !== 'https:' || url.username || url.password || url.hash) throw new ManagedSourceError('GITHUB_LINK_URL_INVALID', 'GitHub linking requires a secure platform browser URL.');
+  const queryKeys = [...new Set([...url.searchParams.keys()])];
+  if (url.protocol !== 'https:' || url.username || url.password || url.hash
+    || !MANAGED_PORTAL_ORIGIN.test(url.origin) || url.pathname !== GITHUB_LINK_PATH
+    || queryKeys.length !== 1 || queryKeys[0] !== 'ticket'
+    || url.searchParams.getAll('ticket').length !== 1 || !url.searchParams.get('ticket')) {
+    throw new ManagedSourceError('GITHUB_LINK_URL_INVALID', 'GitHub linking requires an approved EAI Portal origin and exact one-use handoff URL.');
+  }
   return url.origin;
 }
 
@@ -121,14 +130,16 @@ export function cliManagedSourceIdempotencyKey(scope: CliManagedSourceScope, bun
 }
 
 /** Every readback must retain the original actor, runtime scope and immutable source digest. */
-export function validateCliManagedSourceOperation(value: CliManagedSourceOperation, scope: CliManagedSourceScope, expected?: { operationId?: string; templateCommitSha?: string; bundleSha256?: string }): CliManagedSourceOperation {
+export function validateCliManagedSourceOperation(value: CliManagedSourceOperation, scope: CliManagedSourceScope, expected?: { operationId?: string; templateCommitSha?: string; bundleSha256?: string; configHash?: string }): CliManagedSourceOperation {
   if (!value || value.schemaVersion !== 'eai.cli_managed_source_operation.v1' || value.sourceMode !== 'eai-cli-generated'
     || !/^[A-Za-z0-9_-]{1,128}$/.test(value.operationId) || (expected?.operationId && value.operationId !== expected.operationId)
     || value.actorId !== scope.actorId || !scope.actorId || value.tenantId !== scope.tenantId || value.appKey !== scope.appKey
     || value.targetTenantId !== scope.targetTenantId || value.environment !== scope.environment
     || !/^[a-f0-9]{40}$/.test(value.templateCommitSha) || !/^sha256:[a-f0-9]{64}$/.test(value.bundleSha256)
+    || !/^sha256:[a-f0-9]{64}$/.test(value.configHash)
     || (expected?.templateCommitSha && value.templateCommitSha !== expected.templateCommitSha)
     || (expected?.bundleSha256 && value.bundleSha256 !== expected.bundleSha256)
+    || (expected?.configHash && value.configHash !== expected.configHash)
     || !['accepted', 'publishing', 'pending_review', 'deploying', 'handoff_pending', 'completed', 'failed'].includes(value.status)
     || value.repository?.owner !== 'eai-generated-apps' || !/^[A-Za-z0-9_.-]+$/.test(value.repository?.name || '')
     || value.verifiedGithubUser?.actorId !== scope.actorId || !Number.isSafeInteger(value.verifiedGithubUser?.id) || value.verifiedGithubUser.id < 1
@@ -161,7 +172,7 @@ async function responseOperation(response: Response): Promise<CliManagedSourceOp
 export async function submitCliManagedSource(client: PlatformAPIClient, scope: CliManagedSourceScope, link: CliManagedGithubLinkSession, bundle: CliManagedSourceBundle): Promise<CliManagedSourceOperation> {
   validateCliGithubLinkSession(link, scope);
   if (link.status !== 'verified') throw new ManagedSourceError('GITHUB_LINK_REQUIRED', 'Complete verified GitHub linking before source publication.');
-  const expected = { templateCommitSha: bundle.templateCommitSha, bundleSha256: bundle.bundleSha256 };
+  const expected = { templateCommitSha: bundle.templateCommitSha, bundleSha256: bundle.bundleSha256, configHash: bundle.configHash };
   const prepared = validateCliManagedSourceOperation(await responseOperation(await client.prepareCliManagedSource(scope.tenantId, scope.appKey, {
     schemaVersion: 'eai.cli_managed_source_preparation.v1', ...expected, fileCount: bundle.files.length,
     totalBytes: bundle.files.reduce((total, file) => total + file.size, 0),
@@ -183,6 +194,7 @@ export async function resumeCliManagedSourceUpload(
   const prepared = validateCliManagedSourceOperation(operation, scope, {
     templateCommitSha: bundle.templateCommitSha,
     bundleSha256: bundle.bundleSha256,
+    configHash: bundle.configHash,
   });
   if (!["accepted", "publishing"].includes(prepared.status) || !prepared.upload)
     return prepared;
@@ -302,6 +314,7 @@ async function uploadCliManagedSource(
     {
       templateCommitSha: bundle.templateCommitSha,
       bundleSha256: bundle.bundleSha256,
+      configHash: bundle.configHash,
       operationId: prepared.operationId,
     },
   );
@@ -313,11 +326,12 @@ export async function pollCliManagedSource(client: PlatformAPIClient, scope: Cli
   const deadline = startedAt + options.timeoutMs;
   const sleep = dependencies.sleep || (async (ms: number): Promise<void> => { await new Promise(resolve => setTimeout(resolve, ms)); });
   let operation = initial && validateCliManagedSourceOperation(initial, scope, { operationId });
-  const expected = { operationId, templateCommitSha: initial?.templateCommitSha, bundleSha256: initial?.bundleSha256 };
+  const expected = { operationId, templateCommitSha: initial?.templateCommitSha, bundleSha256: initial?.bundleSha256, configHash: initial?.configHash };
   while (true) {
     operation = operation || validateCliManagedSourceOperation(await responseOperation(await client.getCliManagedSourceOperation(scope.tenantId, scope.appKey, operationId, scope.targetTenantId, scope.environment)), scope, expected);
     expected.templateCommitSha = operation.templateCommitSha;
     expected.bundleSha256 = operation.bundleSha256;
+    expected.configHash = operation.configHash;
     if (!options.wait || classifyCliManagedSourceOperation(operation) !== 'pending' || operation.status === 'pending_review' || Date.now() >= deadline) return operation;
     const interval = Date.now() - startedAt < 30_000 ? 2_000 : 5_000;
     await sleep(Math.max(0, Math.min(interval, deadline - Date.now())));
