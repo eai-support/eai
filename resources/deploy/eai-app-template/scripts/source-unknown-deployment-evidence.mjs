@@ -9,10 +9,12 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readSync,
   realpathSync,
   readdirSync,
   readFileSync,
   rmSync,
+  writeSync,
   writeFileSync,
 } from 'node:fs';
 import { appendFile } from 'node:fs/promises';
@@ -36,7 +38,6 @@ const MANAGED_ENVIRONMENTS = new Set([
 ]);
 const GOVERNED_ROOT_FILES = ['eai.config.ts', 'eai.runtime.json'];
 const GOVERNED_CONFIG_ROOTS = ['src/eai.config'];
-const NON_RUNTIME_CONFIG_FILE = /(?:^|\.)(?:test|spec)\.[^.]+$/;
 const GENERATED_CONFIG_FILES = new Set([
   'src/eai.config/object-types.json',
   'src/eai.config/object-types.provisioning.json',
@@ -296,6 +297,122 @@ function clearDirectoryOutputNoFollow(root, path, label) {
     }
     rmSync(path, { recursive: true });
   }
+}
+
+function copyRegularTreeNoFollow(
+  root,
+  sourceDirectory,
+  destinationDirectory,
+  label,
+) {
+  containedRelativePath(root, sourceDirectory, label);
+  containedRelativePath(root, destinationDirectory, `${label} destination`);
+  assertDirectoryTreeNoFollow(root, sourceDirectory, label);
+  ensureDirectoryTreeNoFollow(root, destinationDirectory);
+
+  const copyDirectory = (source, destination) => {
+    assertDirectoryTreeNoFollow(root, source, label);
+    ensureDirectoryTreeNoFollow(root, destination);
+    const entries = readdirSync(source, { withFileTypes: true }).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+    for (const entry of entries) {
+      const sourcePath = join(source, entry.name);
+      const destinationPath = join(destination, entry.name);
+      const before = lstatSync(sourcePath);
+      if (before.isSymbolicLink()) {
+        throw new Error(`${label} cannot contain a symlink: ${sourcePath}`);
+      }
+      if (before.isDirectory()) {
+        copyDirectory(sourcePath, destinationPath);
+        continue;
+      }
+      if (!before.isFile()) {
+        throw new Error(
+          `${label} entries must be regular files or directories: ${sourcePath}`,
+        );
+      }
+
+      const sourceDescriptor = openSync(
+        sourcePath,
+        constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
+      );
+      let destinationDescriptor;
+      let destinationCreated = false;
+      try {
+        const opened = fstatSync(sourceDescriptor);
+        if (
+          !opened.isFile() ||
+          opened.dev !== before.dev ||
+          opened.ino !== before.ino ||
+          opened.size !== before.size
+        ) {
+          throw new Error(`${label} changed before its no-follow copy.`);
+        }
+        destinationDescriptor = openSync(
+          destinationPath,
+          constants.O_WRONLY |
+            constants.O_CREAT |
+            constants.O_EXCL |
+            (constants.O_NOFOLLOW || 0),
+          before.mode & 0o777,
+        );
+        destinationCreated = true;
+        if (!fstatSync(destinationDescriptor).isFile()) {
+          throw new Error(`${label} destination must be a regular file.`);
+        }
+        const buffer = Buffer.allocUnsafe(64 * 1024);
+        let copied = 0;
+        while (copied < opened.size) {
+          const bytesRead = readSync(
+            sourceDescriptor,
+            buffer,
+            0,
+            Math.min(buffer.length, opened.size - copied),
+            null,
+          );
+          if (bytesRead === 0) break;
+          let written = 0;
+          while (written < bytesRead) {
+            const bytesWritten = writeSync(
+              destinationDescriptor,
+              buffer,
+              written,
+              bytesRead - written,
+            );
+            if (bytesWritten === 0) {
+              throw new Error(`${label} destination stopped accepting data.`);
+            }
+            written += bytesWritten;
+          }
+          copied += bytesRead;
+        }
+        const after = fstatSync(sourceDescriptor);
+        if (
+          copied !== opened.size ||
+          after.dev !== opened.dev ||
+          after.ino !== opened.ino ||
+          after.size !== opened.size
+        ) {
+          throw new Error(`${label} changed during its no-follow copy.`);
+        }
+      } catch (error) {
+        if (destinationDescriptor !== undefined) {
+          closeSync(destinationDescriptor);
+          destinationDescriptor = undefined;
+        }
+        if (destinationCreated) rmSync(destinationPath, { force: true });
+        throw error;
+      } finally {
+        if (destinationDescriptor !== undefined) {
+          closeSync(destinationDescriptor);
+        }
+        closeSync(sourceDescriptor);
+      }
+    }
+  };
+
+  copyDirectory(sourceDirectory, destinationDirectory);
 }
 
 function writeRegularFileNoFollow(root, path, content) {
@@ -561,10 +678,7 @@ function listGovernedConfigFiles(root) {
         throw new Error(
           `Governed configuration entry must be a regular file or directory: ${relativePath}`,
         );
-      } else if (
-        !NON_RUNTIME_CONFIG_FILE.test(entry.name) &&
-        !GENERATED_CONFIG_FILES.has(relativePath)
-      ) {
+      } else if (!GENERATED_CONFIG_FILES.has(relativePath)) {
         paths.push(relativePath);
       }
     }
@@ -661,18 +775,33 @@ function prepareImageContext(options) {
   assertDirectoryTreeNoFollow(root, staticDir, 'Next static build');
   clearDirectoryOutputNoFollow(root, contextDir, 'Image context');
   ensureDirectoryTreeNoFollow(root, contextDir);
-  execFileSync('cp', ['-R', `${standaloneDir}/.`, contextDir]);
+  copyRegularTreeNoFollow(
+    root,
+    standaloneDir,
+    contextDir,
+    'Next standalone build',
+  );
   ensureDirectoryTreeNoFollow(root, join(contextDir, '.next'));
   const contextStaticDir = join(contextDir, '.next/static');
   clearDirectoryOutputNoFollow(root, contextStaticDir, 'Image static output');
-  execFileSync('cp', ['-R', staticDir, contextStaticDir]);
+  copyRegularTreeNoFollow(
+    root,
+    staticDir,
+    contextStaticDir,
+    'Next static build',
+  );
   const publicPath = join(root, 'public');
   const contextPublicDir = join(contextDir, 'public');
   const publicMetadata = optionalLstat(publicPath);
   if (publicMetadata) {
     assertDirectoryTreeNoFollow(root, publicPath, 'Public asset directory');
     clearDirectoryOutputNoFollow(root, contextPublicDir, 'Image public output');
-    execFileSync('cp', ['-R', publicPath, contextPublicDir]);
+    copyRegularTreeNoFollow(
+      root,
+      publicPath,
+      contextPublicDir,
+      'Public asset directory',
+    );
   } else {
     clearDirectoryOutputNoFollow(root, contextPublicDir, 'Image public output');
     ensureDirectoryTreeNoFollow(root, contextPublicDir);

@@ -98,7 +98,10 @@ async function readBoundedSourceFile(root: string, path: string): Promise<Buffer
   const handle = await open(target, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
   try {
     const actual = await handle.stat();
-    if (!actual.isFile() || actual.size > CLI_MANAGED_SOURCE_LIMITS.maxFileBytes) throw new ManagedSourceError('SOURCE_FILE_LIMIT', `Source file exceeds the 2 MiB limit: ${path}`);
+    if (!actual.isFile() || actual.dev !== status.dev || actual.ino !== status.ino) {
+      throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source changed before packaging: ${path}. Retry after editing has stopped.`);
+    }
+    if (actual.size > CLI_MANAGED_SOURCE_LIMITS.maxFileBytes) throw new ManagedSourceError('SOURCE_FILE_LIMIT', `Source file exceeds the 2 MiB limit: ${path}`);
     const buffer = Buffer.alloc(actual.size + 1);
     let count = 0;
     while (count < buffer.length) {
@@ -106,7 +109,10 @@ async function readBoundedSourceFile(root: string, path: string): Promise<Buffer
       if (!bytesRead) break;
       count += bytesRead;
     }
-    if (count !== actual.size) throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source changed while packaging: ${path}. Retry after editing has stopped.`);
+    const after = await handle.stat();
+    if (count !== actual.size || after.dev !== actual.dev || after.ino !== actual.ino || after.size !== actual.size) {
+      throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source changed while packaging: ${path}. Retry after editing has stopped.`);
+    }
     const bytes = buffer.subarray(0, count);
     assertNoEmbeddedCredential(bytes, path);
     return bytes;

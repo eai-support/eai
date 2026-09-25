@@ -238,7 +238,7 @@ describe('eai deploy app --target eai', () => {
     }));
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--source', 'eai-managed', '--format', 'json'], { from: 'user' });
-    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ error: 'GITHUB_LINK_REQUIRED', message: expect.stringContaining('--github-link-session github-link-123') });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ ok: false, error: { code: 'GITHUB_LINK_REQUIRED', message: expect.stringContaining('--github-link-session github-link-123') } });
     expect(requests.some(url => url.endsWith('/preparations') || url.includes('/source-unknown/'))).toBe(false);
   });
 
@@ -256,8 +256,8 @@ describe('eai deploy app --target eai', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
-      error: 'EAI_MANAGED_DEPLOY_FAILED',
-      message: expect.stringContaining('trusted EAI regional PublicAPI'),
+      ok: false,
+      error: { code: 'EAI_MANAGED_DEPLOY_FAILED', message: expect.stringContaining('trusted EAI regional PublicAPI') },
     });
     expect(process.exitCode).toBe(1);
   });
@@ -389,7 +389,7 @@ describe('eai deploy app --target eai', () => {
     const fetchMock = stubManagedOperation();
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--repo', 'customer/app', '--installation-id', '123', '--format', 'json'], { from: 'user' });
-    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ error: 'SOURCE_CHOICE_REQUIRED' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ ok: false, error: { code: 'SOURCE_CHOICE_REQUIRED' } });
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/github-link-sessions'))).toBe(false);
   });
 
@@ -474,7 +474,7 @@ describe('eai deploy app --target eai', () => {
       '--source', 'eai-managed', '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json',
     ], { from: 'user' });
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
-      error: 'MANAGED_SOURCE_BINDING_MISMATCH',
+      ok: false, error: { code: 'MANAGED_SOURCE_BINDING_MISMATCH' },
     });
     expect(process.exitCode).toBe(1);
   });
@@ -486,7 +486,7 @@ describe('eai deploy app --target eai', () => {
       'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
       '--environment', 'staging', '--format', 'json',
     ], { from: 'user' });
-    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ error: 'DEPLOY_ENVIRONMENT_INVALID' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ ok: false, error: { code: 'DEPLOY_ENVIRONMENT_INVALID' } });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -500,7 +500,7 @@ describe('eai deploy app --target eai', () => {
       ...(source === 'customer-owned' ? ['--repo', 'enterprise/planning-portal', '--installation-id', '12345'] : []),
       '--format', 'json',
     ], { from: 'user' });
-    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ error: 'TARGET_TENANT_REQUIRED' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ ok: false, error: { code: 'TARGET_TENANT_REQUIRED' } });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -659,7 +659,7 @@ fi
     }
     if (bootstrap === 'uncertain-dispatch') {
       const result = JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''));
-      expect(result).toMatchObject({ error: 'GITHUB_WORKFLOW_DISPATCH_UNCERTAIN' });
+      expect(result).toMatchObject({ ok: false, error: { code: 'GITHUB_WORKFLOW_DISPATCH_UNCERTAIN' } });
       expect(await readFile(ghLog, 'utf8')).not.toContain('workflow run');
       expect(process.exitCode).toBe(1);
       return;
@@ -667,7 +667,7 @@ fi
     if (bootstrap === 'source-mismatch') {
       expect(await readFile(ghLog, 'utf8')).not.toContain('workflow run');
       expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
-        error: 'WORKFLOW_SETUP_BINDING_MISMATCH',
+        ok: false, error: { code: 'WORKFLOW_SETUP_BINDING_MISMATCH' },
       });
       expect(requests.some(request => request.url.endsWith('/runtime-bootstrap'))).toBe(false);
       expect(process.exitCode).toBe(1);
@@ -681,7 +681,7 @@ fi
     if (bootstrap === 'failed' || bootstrap === 'wrong-target') {
       expect(await readFile(ghLog, 'utf8')).not.toContain('workflow run');
       expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
-        error: bootstrap === 'failed' ? 'RUNTIME_BOOTSTRAP_FAILED' : 'RUNTIME_BOOTSTRAP_BINDING_MISMATCH',
+        ok: false, error: { code: bootstrap === 'failed' ? 'RUNTIME_BOOTSTRAP_FAILED' : 'RUNTIME_BOOTSTRAP_BINDING_MISMATCH' },
       });
       expect(process.exitCode).toBe(1);
       return;
@@ -790,7 +790,7 @@ fi
 
     expect(requests.some(url => url.endsWith('/source-unknown/deploy'))).toBe(false);
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
-      error: 'SOURCE_OPERATION_ENVIRONMENT_INVALID',
+      ok: false, error: { code: 'SOURCE_OPERATION_ENVIRONMENT_INVALID' },
     });
     expect(process.exitCode).toBe(1);
   });
@@ -813,9 +813,10 @@ fi
 
     const result = JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''));
     expect(result).toMatchObject(mode === '--retry'
-      ? { error: 'SOURCE_OPERATION_INACTIVE' }
+      ? { ok: false, error: { code: 'SOURCE_OPERATION_INACTIVE' } }
       : { status, classification: 'failed' });
-    expect(result.nextAction).toContain('fresh source operation and nonce');
+    if (mode === '--retry') expect(result.error.nextAction).toContain('fresh source operation and nonce');
+    else expect(result.nextAction).toContain('fresh source operation and nonce');
     expect(fetchMock.mock.calls.filter(([input]) => String(input).includes('/managed-deployments/operations/'))).toHaveLength(1);
     expect(fetchMock.mock.calls.every(([input]) => !String(input).endsWith('/deploy')
       && !String(input).endsWith('/runtime-bootstrap') && !String(input).endsWith('/workflow-setup'))).toBe(true);
@@ -843,7 +844,7 @@ fi
       state.appKey, '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
       '--retry', state.operationId, '--no-wait', '--format', 'json',
     ], { from: 'user' });
-    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ error: 'RETRY_SERVER_BINDING_MISMATCH' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ ok: false, error: { code: 'RETRY_SERVER_BINDING_MISMATCH' } });
     expect(fetchMock.mock.calls.every(([input]) => !String(input).endsWith('/deploy') && !String(input).endsWith('/runtime-bootstrap'))).toBe(true);
     expect(process.exitCode).toBe(1);
   });
@@ -862,7 +863,7 @@ fi
     ], { from: 'user' });
 
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
-      error: 'TARGET_TENANT_REQUIRED',
+      ok: false, error: { code: 'TARGET_TENANT_REQUIRED' },
     });
     expect(process.exitCode).toBe(1);
   });
@@ -892,7 +893,7 @@ fi
     ], { from: 'user' });
 
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
-      error: 'SOURCE_OPERATION_TARGET_MISMATCH',
+      ok: false, error: { code: 'SOURCE_OPERATION_TARGET_MISMATCH' },
     });
     expect(process.exitCode).toBe(1);
   });
@@ -917,7 +918,7 @@ fi
     ], { from: 'user' });
 
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
-      error: 'SOURCE_OPERATION_BINDING_MISMATCH',
+      ok: false, error: { code: 'SOURCE_OPERATION_BINDING_MISMATCH' },
     });
     expect(process.exitCode).toBe(1);
   });

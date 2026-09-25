@@ -97,6 +97,18 @@ describe('EAI managed deployment helpers', () => {
     };
   }
 
+  test('keeps managed command and source-client implementation modules focused', async () => {
+    const groups = [['src/commands', 'eai-managed-deploy'], ['src/lib', 'eai-managed-source-client']] as const;
+    for (const [directory, prefix] of groups) {
+      const names = (await readdir(join(process.cwd(), directory))).filter(name => name.startsWith(prefix) && name.endsWith('.ts'));
+      expect(names.length).toBeGreaterThan(1);
+      for (const name of names) {
+        const content = await readFile(join(process.cwd(), directory, name), 'utf8');
+        expect(content.split('\n').length, `${directory}/${name}`).toBeLessThanOrEqual(300);
+      }
+    }
+  });
+
   test.each(['.github', 'scripts'])('refuses a symlinked canonical-file parent: %s', async (directory) => {
     const project = await temporaryDirectory('eai-managed-symlink-');
     const outside = await temporaryDirectory('eai-managed-outside-');
@@ -261,7 +273,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'f9b80a54cf0889b02514e958875e7343877e25e4' },
+      candidate: { commit: 'd22f1ed75d23ba0b9ea60b904c44f1725c1c3f16' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
@@ -371,19 +383,28 @@ describe('EAI managed deployment helpers', () => {
     await writeFile(join(project, 'src', 'eai.config', 'object-types.provisioning.json'), '{"generated":1}\n');
     await mkdir(join(project, 'src', 'eai.config', 'nested'));
     await writeFile(join(project, 'src', 'eai.config', 'nested', 'deployment-contract.ts'), 'export const contract = 1;\n');
-    await writeFile(join(project, 'src', 'eai.config', 'nested', 'contract.test.ts'), 'not governed\n');
+    const testPath = join(project, 'src', 'eai.config', 'nested', 'contract.test.ts');
+    const specPath = join(project, 'src', 'eai.config', 'nested', 'contract.spec.json');
+    await writeFile(testPath, 'export const fixture = 1;\n');
 
     const first = await buildManagedDeployConfigHash(project);
     const second = await buildManagedDeployConfigHash(project);
     expect(first).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(second).toBe(first);
-    await writeFile(join(project, 'src', 'eai.config', 'nested', 'contract.test.ts'), 'still not governed\n');
-    expect(await buildManagedDeployConfigHash(project)).toBe(first);
+    const collector = join(canonicalManagedDeployResourceRoot(), EAI_MANAGED_EVIDENCE_SCRIPT_PATH);
+    expect((await promisify(execFile)(process.execPath, [collector, 'config-hash', '--root', project])).stdout.trim()).toBe(first);
+    await writeFile(testPath, 'export const fixture = 2;\n');
+    const testChanged = await buildManagedDeployConfigHash(project);
+    expect(testChanged).not.toBe(first);
+    await writeFile(specPath, '{"fixture":1}\n');
+    const specAdded = await buildManagedDeployConfigHash(project);
+    expect(specAdded).not.toBe(testChanged);
+    expect((await promisify(execFile)(process.execPath, [collector, 'config-hash', '--root', project])).stdout.trim()).toBe(specAdded);
     await writeFile(join(project, 'src', 'eai.config', 'object-types.json'), '{"generated":2}\n');
     await writeFile(join(project, 'src', 'eai.config', 'object-types.provisioning.json'), '{"generated":2}\n');
-    expect(await buildManagedDeployConfigHash(project)).toBe(first);
+    expect(await buildManagedDeployConfigHash(project)).toBe(specAdded);
     await writeFile(join(project, 'src', 'eai.config', 'nested', 'deployment-contract.ts'), 'export const contract = 2;\n');
-    expect(await buildManagedDeployConfigHash(project)).not.toBe(first);
+    expect(await buildManagedDeployConfigHash(project)).not.toBe(specAdded);
   });
 
   test('rejects links anywhere in governed configuration', async () => {

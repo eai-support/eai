@@ -20,14 +20,18 @@
 - [x] Require complete unified-operation source, revision, deployment, and doctor bindings before terminal success (DTE-032, DTE-035, DTE-036, DTE-080).
 - [x] Read canonical workflow evidence through a bounded no-follow regular-file handle before authenticated submission (DTE-016, DTE-025).
 - [x] Reject linked or non-directory ancestors in CLI and collector configuration hashing (DTE-018, DTE-020, DTE-095).
+- [x] Include `.test.*` and `.spec.*` governed files in both CLI and collector configuration hashing while excluding only the two generated outputs (DTE-018, DTE-095).
+- [x] Bind every local publication file's no-follow descriptor to the inode that passed its initial metadata check (DTE-016).
+- [x] Preserve the standard nested JSON error envelope and split command/source-client implementations below 300 lines behind existing public paths (DTE-086, DTE-087).
+- [x] Sync app-template candidate `d22f1ed75d23ba0b9ea60b904c44f1725c1c3f16` and its exact workflow/collector bytes (DTE-019–DTE-021, DTE-088).
 - [x] Update owned tests and traceability.
 - [x] Rerun prescribed checks and record exact-head results after these changes.
 
 ## Exact-head evidence
 
-- `npm run verify:managed-deploy-producer` passed for app-template candidate `f9b80a54cf0889b02514e958875e7343877e25e4` with exact workflow (`sha256:9a971ff5ba4d6fa1d73c6664d781b40f0b4b20bb809d62d1f808b0a0363e62e8`) and collector (`sha256:915ffbb98ba9c8aed2eaa823ae0b02701b859d805ec2157820bf7cb2085a4bec`) byte parity.
+- `npm run verify:managed-deploy-producer` passed for app-template candidate `d22f1ed75d23ba0b9ea60b904c44f1725c1c3f16` with exact workflow (`sha256:9a971ff5ba4d6fa1d73c6664d781b40f0b4b20bb809d62d1f808b0a0363e62e8`) and collector (`sha256:7af1d3bfd39af98d623e9c8ba0fcde4a9f1eab3ee31af811c4828e9f5794febc`) byte parity.
 - `npm run build`, `npm run lint`, and `npm run typecheck` passed.
-- Focused managed-deployment/API tests passed: 295 tests across eight files.
-- `npm run test:eai-cli:ci` passed: 913 passed and one documented skip (914 total).
-- `npm test` and `bash scripts/release-preflight.sh` passed: 1,028 passed and one documented skip (1,029 total), plus packed CLI, alias, and generated documentation checks.
-- `npm run release:check` stopped at the intentional immutable producer-release gate because no template tag yet resolves to candidate `f9b80a54cf0889b02514e958875e7343877e25e4` (DTE-088).
+- Focused managed-deployment tests passed: 190 tests across five files, including deterministic file-swap rejection.
+- `npm run test:eai-cli:ci` passed: 915 passed and one documented skip (916 total).
+- `npm test` and `bash scripts/release-preflight.sh` passed: 1,030 passed and one documented skip (1,031 total), plus packed CLI, alias, and generated documentation checks.
+- `npm run release:check` stopped at the intentional immutable producer-release gate because no template tag yet resolves to candidate `d22f1ed75d23ba0b9ea60b904c44f1725c1c3f16` (DTE-088).

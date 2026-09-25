@@ -18,7 +18,6 @@ import {
 
 const GOVERNED_ROOT_FILES = ['eai.config.ts', 'eai.runtime.json'] as const;
 const GOVERNED_CONFIG_ROOT = 'src/eai.config';
-const NON_RUNTIME_CONFIG_FILE = /(?:^|\.)(?:test|spec)\.[^.]+$/;
 const GENERATED_CONFIG_FILES = new Set([
   'src/eai.config/object-types.json',
   'src/eai.config/object-types.provisioning.json',
@@ -134,8 +133,7 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
       if (entryStatus.isDirectory()) await visit(relativePath);
       else if (!entryStatus.isFile()) {
         throw new Error(`Governed configuration entry must be a regular file or directory: ${relativePath}`);
-      } else if (!NON_RUNTIME_CONFIG_FILE.test(entry.name)
-        && !GENERATED_CONFIG_FILES.has(relativePath)) paths.push(relativePath);
+      } else if (!GENERATED_CONFIG_FILES.has(relativePath)) paths.push(relativePath);
     }
   }
   await visit(GOVERNED_CONFIG_ROOT);

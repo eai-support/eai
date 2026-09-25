@@ -23,3 +23,7 @@ Use the additive unified operation response defined for Issue #3503. Terminal su
 ## Local evidence and configuration paths
 
 Treat caller-selected evidence as untrusted local input: open it without following the final link, prove the opened object is the same bounded regular file, and only then parse its canonical schema. For configuration hashing, reject a linked or non-directory component beneath the application root and recheck ancestors immediately before every no-follow file read; a lexical in-root path does not authorize a linked ancestor.
+
+The governed configuration digest includes every regular file beneath `src/eai.config`, including test and specification files. Only `object-types.json` and `object-types.provisioning.json` are deterministic generated outputs and may be excluded. The CLI and packaged collector must produce the same digest from the same checkout.
+
+Keep `src/commands/eai-managed-deploy.ts` and `src/lib/eai-managed-source-client.ts` as compatible public entrypoints while moving focused implementation into modules below 300 lines. JSON failures retain the CLI-wide nested error envelope.
