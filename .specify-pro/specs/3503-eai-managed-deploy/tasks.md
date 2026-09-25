@@ -17,7 +17,7 @@
 - `npm run verify:managed-deploy-producer` passed for app-template candidate `97277cb5278a5e30c59a57beea070e954e6864af`.
 - `npm run build`, `npm run lint`, and `npm run typecheck` passed.
 - Focused managed-deployment tests passed: 236 tests with one documented skip across six files.
-- `npm run test:eai-cli:ci` passed: 893 tests, one documented skip.
-- `npm test` passed: 1,008 tests, one documented skip.
+- `npm run test:eai-cli:ci` passed: 894 tests, one documented skip.
+- `npm test` passed: 1,009 tests, one documented skip.
 - `bash scripts/release-preflight.sh` passed, including packed CLI and alias smoke checks.
 - `npm run release:check` stops at the intentional immutable producer-release gate until app-template publishes a new tag for the exact candidate commit (DTE-088).
