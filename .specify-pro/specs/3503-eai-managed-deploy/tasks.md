@@ -25,9 +25,9 @@
 
 ## Exact-head evidence
 
-- `npm run verify:managed-deploy-producer` passed for app-template candidate `2dcaf9664d7f861aa1c8937b33818100a401d4ab` with exact workflow (`sha256:a61e943ab997ae3353054d3800f332f783869b7fadddbeeddf17c91d145536b8`) and collector (`sha256:71264d852714149e9a34b4eba4c4801e77141b3c0aaa2583b5aaf0c55ca2c2d0`) byte parity.
+- `npm run verify:managed-deploy-producer` passed for app-template candidate `f9b80a54cf0889b02514e958875e7343877e25e4` with exact workflow (`sha256:9a971ff5ba4d6fa1d73c6664d781b40f0b4b20bb809d62d1f808b0a0363e62e8`) and collector (`sha256:915ffbb98ba9c8aed2eaa823ae0b02701b859d805ec2157820bf7cb2085a4bec`) byte parity.
 - `npm run build`, `npm run lint`, and `npm run typecheck` passed.
 - Focused managed-deployment/API tests passed: 295 tests across eight files.
 - `npm run test:eai-cli:ci` passed: 913 passed and one documented skip (914 total).
 - `npm test` and `bash scripts/release-preflight.sh` passed: 1,028 passed and one documented skip (1,029 total), plus packed CLI, alias, and generated documentation checks.
-- `npm run release:check` stopped at the intentional immutable producer-release gate because no template tag yet resolves to candidate `2dcaf9664d7f861aa1c8937b33818100a401d4ab` (DTE-088).
+- `npm run release:check` stopped at the intentional immutable producer-release gate because no template tag yet resolves to candidate `f9b80a54cf0889b02514e958875e7343877e25e4` (DTE-088).

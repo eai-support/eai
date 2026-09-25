@@ -21,12 +21,19 @@ import { execFileSync } from 'node:child_process';
 
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
 const SOURCE_MODES = new Set(['source-unknown', 'eai-cli-generated']);
+const APP_KEY = /^[a-z][a-z0-9-]{1,62}$/;
 const SAFE_PATH_SEGMENT = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,254}[A-Za-z0-9])?$/;
 const SAFE_OPAQUE_VALUE =
   /^[A-Za-z0-9](?:[A-Za-z0-9._~:-]{0,254}[A-Za-z0-9])?$/;
 const SAFE_REPOSITORY =
   /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
-const MANAGED_ENVIRONMENTS = new Set(['preview', 'dev', 'test', 'prod']);
+const MANAGED_ENVIRONMENTS = new Set([
+  'preview',
+  'dev',
+  'test',
+  'prod',
+  'demo',
+]);
 const GOVERNED_ROOT_FILES = ['eai.config.ts', 'eai.runtime.json'];
 const GOVERNED_CONFIG_ROOTS = ['src/eai.config'];
 const NON_RUNTIME_CONFIG_FILE = /(?:^|\.)(?:test|spec)\.[^.]+$/;
@@ -70,7 +77,11 @@ function targetTenantId(options, mode) {
 
 function validateDeploymentBinding(options, mode) {
   const targetTenant = targetTenantId(options, mode);
-  for (const key of ['appKey', 'tenantId', 'operationId']) {
+  const appKey = option(options, 'appKey');
+  if (!APP_KEY.test(appKey)) {
+    throw new Error('Managed deployment requires a canonical app key.');
+  }
+  for (const key of ['tenantId', 'operationId']) {
     requiredSafePathSegment(options, key);
   }
   const nonce = option(options, 'nonce');
@@ -190,10 +201,6 @@ function option(options, key, fallback = '') {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function ensureDir(path) {
-  mkdirSync(path, { recursive: true });
-}
-
 function containedRelativePath(parent, candidate, label, allowParent = false) {
   const relativePath = relative(resolve(parent), resolve(candidate));
   if (
@@ -241,6 +248,77 @@ function ensureDirectoryTreeNoFollow(root, directory) {
   }
 }
 
+function assertDirectoryTreeNoFollow(root, directory, label) {
+  const resolvedRoot = resolve(root);
+  const resolvedDirectory = resolve(directory);
+  const relativeDirectory = containedRelativePath(
+    resolvedRoot,
+    resolvedDirectory,
+    label,
+    true,
+  );
+  const rootMetadata = lstatSync(resolvedRoot);
+  if (rootMetadata.isSymbolicLink() || !rootMetadata.isDirectory()) {
+    throw new Error('Application root must be a no-follow directory.');
+  }
+
+  let current = resolvedRoot;
+  const components = relativeDirectory
+    ? relativeDirectory.split(/[\\/]/).filter(Boolean)
+    : [];
+  for (const component of components) {
+    current = join(current, component);
+    const metadata = optionalLstat(current);
+    if (!metadata || metadata.isSymbolicLink() || !metadata.isDirectory()) {
+      throw new Error(`${label} must be an existing no-follow directory tree.`);
+    }
+  }
+}
+
+function removeRegularOutputNoFollow(root, path, label) {
+  containedRelativePath(root, path, label);
+  ensureDirectoryTreeNoFollow(root, dirname(path));
+  const metadata = optionalLstat(path);
+  if (!metadata) return;
+  if (metadata.isSymbolicLink() || !metadata.isFile()) {
+    throw new Error(`${label} must be a no-follow regular file when present.`);
+  }
+  rmSync(path);
+}
+
+function clearDirectoryOutputNoFollow(root, path, label) {
+  containedRelativePath(root, path, label);
+  ensureDirectoryTreeNoFollow(root, dirname(path));
+  const metadata = optionalLstat(path);
+  if (metadata) {
+    if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+      throw new Error(`${label} must be a no-follow directory when present.`);
+    }
+    rmSync(path, { recursive: true });
+  }
+}
+
+function writeRegularFileNoFollow(root, path, content) {
+  containedRelativePath(root, path, 'Image context file');
+  assertDirectoryTreeNoFollow(root, dirname(path), 'Image context directory');
+  const descriptor = openSync(
+    path,
+    constants.O_WRONLY |
+      constants.O_CREAT |
+      constants.O_TRUNC |
+      (constants.O_NOFOLLOW || 0),
+    0o600,
+  );
+  try {
+    if (!fstatSync(descriptor).isFile()) {
+      throw new Error('Image context output must be a regular file.');
+    }
+    writeFileSync(descriptor, content, 'utf8');
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 function writeEvidenceFileNoFollow(root, outputDir, evidencePath, content) {
   containedRelativePath(root, outputDir, 'Evidence output directory', true);
   containedRelativePath(outputDir, evidencePath, 'Evidence output file');
@@ -268,6 +346,64 @@ function assertExists(path, label) {
   if (!existsSync(path)) {
     throw new Error(`${label} does not exist: ${path}`);
   }
+}
+
+function readBoundedRegularFileNoFollow(
+  root,
+  path,
+  label,
+  maxBytes = 1024 * 1024,
+) {
+  containedRelativePath(root, path, label);
+  assertDirectoryTreeNoFollow(root, dirname(path), `${label} directory`);
+  const before = lstatSync(path);
+  if (
+    before.isSymbolicLink() ||
+    !before.isFile() ||
+    before.size < 1 ||
+    before.size > maxBytes
+  ) {
+    throw new Error(`${label} must be a bounded no-follow regular file.`);
+  }
+  const descriptor = openSync(
+    path,
+    constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
+  );
+  try {
+    const opened = fstatSync(descriptor);
+    if (
+      !opened.isFile() ||
+      opened.dev !== before.dev ||
+      opened.ino !== before.ino ||
+      opened.size < 1 ||
+      opened.size > maxBytes
+    ) {
+      throw new Error(`${label} changed before its no-follow read.`);
+    }
+    return readFileSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function readImageDigest(options) {
+  const root = resolve(option(options, 'root', process.cwd()));
+  const metadataPath = resolve(
+    root,
+    option(options, 'imageMetadata', '.eai-build/image-metadata.json'),
+  );
+  const metadata = JSON.parse(
+    readBoundedRegularFileNoFollow(
+      root,
+      metadataPath,
+      'OCI image metadata',
+    ).toString('utf8'),
+  );
+  const digest = metadata['containerimage.digest'];
+  if (!SHA256_DIGEST.test(digest || '')) {
+    throw new Error('OCI image metadata must contain a sha256 image digest.');
+  }
+  process.stdout.write(`${digest}\n`);
 }
 
 async function digestFile(path) {
@@ -510,24 +646,39 @@ function prepareImageContext(options) {
   );
   const standaloneDir = join(buildDir, 'standalone');
   const staticDir = join(buildDir, 'static');
+  const imageArchivePath = resolve(
+    root,
+    option(options, 'imageArchive', '.eai-build/eai-generated-app-image.tar'),
+  );
+  const imageMetadataPath = resolve(
+    root,
+    option(options, 'imageMetadata', '.eai-build/image-metadata.json'),
+  );
 
-  assertExists(standaloneDir, 'Next standalone build');
-  assertExists(staticDir, 'Next static build');
-  rmSync(contextDir, { recursive: true, force: true });
-  ensureDir(contextDir);
+  containedRelativePath(root, buildDir, 'Next build directory');
+  containedRelativePath(root, contextDir, 'Image context directory');
+  assertDirectoryTreeNoFollow(root, standaloneDir, 'Next standalone build');
+  assertDirectoryTreeNoFollow(root, staticDir, 'Next static build');
+  clearDirectoryOutputNoFollow(root, contextDir, 'Image context');
+  ensureDirectoryTreeNoFollow(root, contextDir);
   execFileSync('cp', ['-R', `${standaloneDir}/.`, contextDir]);
-  ensureDir(join(contextDir, '.next'));
-  execFileSync('cp', ['-R', staticDir, join(contextDir, '.next/static')]);
-  if (existsSync(join(root, 'public'))) {
-    execFileSync('cp', [
-      '-R',
-      join(root, 'public'),
-      join(contextDir, 'public'),
-    ]);
+  ensureDirectoryTreeNoFollow(root, join(contextDir, '.next'));
+  const contextStaticDir = join(contextDir, '.next/static');
+  clearDirectoryOutputNoFollow(root, contextStaticDir, 'Image static output');
+  execFileSync('cp', ['-R', staticDir, contextStaticDir]);
+  const publicPath = join(root, 'public');
+  const contextPublicDir = join(contextDir, 'public');
+  const publicMetadata = optionalLstat(publicPath);
+  if (publicMetadata) {
+    assertDirectoryTreeNoFollow(root, publicPath, 'Public asset directory');
+    clearDirectoryOutputNoFollow(root, contextPublicDir, 'Image public output');
+    execFileSync('cp', ['-R', publicPath, contextPublicDir]);
   } else {
-    ensureDir(join(contextDir, 'public'));
+    clearDirectoryOutputNoFollow(root, contextPublicDir, 'Image public output');
+    ensureDirectoryTreeNoFollow(root, contextPublicDir);
   }
-  writeFileSync(
+  writeRegularFileNoFollow(
+    root,
     join(contextDir, 'Dockerfile'),
     [
       'FROM node:24-alpine@sha256:83f1c388c31fb2e51f7cbd4dea949b96260798c98f206e8e4696bc93bd964e3a',
@@ -541,6 +692,8 @@ function prepareImageContext(options) {
       '',
     ].join('\n'),
   );
+  removeRegularOutputNoFollow(root, imageArchivePath, 'OCI image archive');
+  removeRegularOutputNoFollow(root, imageMetadataPath, 'OCI image metadata');
   process.stdout.write(`${contextDir}\n`);
 }
 
@@ -583,6 +736,12 @@ async function collectEvidence(options) {
     process.env.GITHUB_OUTPUT || '',
   );
 
+  containedRelativePath(root, imageArchivePath, 'OCI image archive');
+  assertDirectoryTreeNoFollow(
+    root,
+    dirname(imageArchivePath),
+    'OCI image archive directory',
+  );
   const archiveMetadata = optionalLstat(imageArchivePath);
   if (
     !archiveMetadata ||
@@ -641,7 +800,7 @@ async function collectEvidence(options) {
   const commitSha = option(options, 'commit', process.env.GITHUB_SHA || '');
   const repo = option(options, 'repo', process.env.GITHUB_REPOSITORY || '');
   const environment = option(options, 'environment', 'preview');
-  if (!['preview', 'dev', 'test', 'prod'].includes(environment)) {
+  if (!MANAGED_ENVIRONMENTS.has(environment)) {
     throw new Error('Unsupported managed deployment environment.');
   }
   if (!SAFE_REPOSITORY.test(repo))
@@ -785,6 +944,8 @@ if (command === 'validate-dispatch') {
   );
 } else if (command === 'prepare-image-context') {
   prepareImageContext(options);
+} else if (command === 'read-image-digest') {
+  readImageDigest(options);
 } else if (command === 'collect') {
   await collectEvidence(options);
 } else if (

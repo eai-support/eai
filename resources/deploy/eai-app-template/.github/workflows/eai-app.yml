@@ -211,8 +211,6 @@ jobs:
 
       - name: Build OCI image archive
         run: |
-          rm -f .eai-build/eai-generated-app-image.tar
-          mkdir -p .eai-build
           docker buildx build \
             --platform linux/amd64 \
             --file .eai-build/image-context/Dockerfile \
@@ -260,7 +258,7 @@ jobs:
           SOURCE_COMMIT_SHA: ${{ inputs.commit_sha || github.sha }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
         run: |
-          image_digest="$(node -e "const v=require('./.eai-build/image-metadata.json')['containerimage.digest']; if(!v) process.exit(1); process.stdout.write(v)")"
+          image_digest="$(node scripts/source-unknown-deployment-evidence.mjs read-image-digest)"
           node scripts/source-unknown-deployment-evidence.mjs collect \
             --source-mode "$SOURCE_MODE" \
             --target-tenant-id "$TARGET_TENANT_ID" \
@@ -328,7 +326,7 @@ jobs:
         shell: bash
         run: |
           [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://(dev-api\.au|(test-api|api)\.(au|ca|eu))\.myenterprise\.ai/public/?$ ]]
-          [[ "$APP_KEY" =~ ^[a-z0-9][a-z0-9-]{1,62}$ ]]
+          [[ "$APP_KEY" =~ ^[a-z][a-z0-9-]{1,62}$ ]]
           [[ "$TENANT_ID" =~ ^[A-Za-z0-9]([A-Za-z0-9._:-]{0,254}[A-Za-z0-9])?$ ]]
           if [[ "$SOURCE_MODE" == "eai-cli-generated" || -n "$TARGET_TENANT_ID" ]]; then
             [[ "$TARGET_TENANT_ID" =~ ^[A-Za-z0-9]([A-Za-z0-9._:-]{0,254}[A-Za-z0-9])?$ ]]
