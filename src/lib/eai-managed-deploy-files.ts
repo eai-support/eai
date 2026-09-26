@@ -122,9 +122,7 @@ export async function installCanonicalManagedDeployFiles(
   return result;
 }
 
-/** Match the canonical workflow's ordered config hashing algorithm. */
-export async function buildManagedDeployConfigHash(projectRoot: string): Promise<string> {
-  const root = resolve(projectRoot);
+async function listGovernedConfigPaths(root: string): Promise<string[]> {
   const paths: string[] = [];
   for (const relativePath of GOVERNED_ROOT_FILES) {
     await assertGovernedAncestors(root, relativePath);
@@ -169,9 +167,16 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
   if (!paths.includes('eai.runtime.json')) {
     throw new Error('eai.runtime.json is required for EAI managed deployment.');
   }
+  return [...new Set(paths)].sort();
+}
+
+/** Match the canonical workflow's ordered config hashing algorithm. */
+export async function buildManagedDeployConfigHash(projectRoot: string): Promise<string> {
+  const root = resolve(projectRoot);
+  const paths = await listGovernedConfigPaths(root);
 
   const hash = createHash('sha256');
-  for (const relativePath of [...new Set(paths)].sort()) {
+  for (const relativePath of paths) {
     const ancestors = await governedAncestorIdentities(root, relativePath);
     if (!ancestors.length) {
       throw new Error(`Governed configuration ancestor does not exist: ${relativePath}`);
@@ -203,11 +208,30 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
         || !isContained(reboundRoot, reboundPath)) {
         throw new Error(`Governed configuration path changed before its no-follow read: ${relativePath}`);
       }
-      hash.update(await handle.readFile());
+      const bytes = await handle.readFile();
+      const after = await handle.stat();
+      await assertGovernedAncestorIdentities(ancestors, relativePath);
+      const [finalPath, finalRoot, finalCanonicalPath] = await Promise.all([
+        lstat(path),
+        realpath(root),
+        realpath(path),
+      ]);
+      if (!after.isFile() || after.dev !== status.dev || after.ino !== status.ino
+        || after.size !== status.size || after.mtimeMs !== status.mtimeMs || after.ctimeMs !== status.ctimeMs
+        || bytes.length !== status.size || finalPath.isSymbolicLink() || !finalPath.isFile()
+        || finalPath.dev !== status.dev || finalPath.ino !== status.ino || finalPath.size !== status.size
+        || !isContained(finalRoot, finalCanonicalPath)) {
+        throw new Error(`Governed configuration changed during its bounded no-follow read: ${relativePath}`);
+      }
+      hash.update(bytes);
     } finally {
       await handle.close();
     }
     hash.update('\0');
+  }
+  const finalPaths = await listGovernedConfigPaths(root);
+  if (paths.length !== finalPaths.length || paths.some((path, index) => path !== finalPaths[index])) {
+    throw new Error('Governed configuration inventory changed during hashing. Retry after editing has stopped.');
   }
   return `sha256:${hash.digest('hex')}`;
 }

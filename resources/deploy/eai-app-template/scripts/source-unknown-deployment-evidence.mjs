@@ -277,26 +277,14 @@ function assertDirectoryTreeNoFollow(root, directory, label) {
   }
 }
 
-function removeRegularOutputNoFollow(root, path, label) {
-  containedRelativePath(root, path, label);
-  ensureDirectoryTreeNoFollow(root, dirname(path));
-  const metadata = optionalLstat(path);
-  if (!metadata) return;
-  if (metadata.isSymbolicLink() || !metadata.isFile()) {
-    throw new Error(`${label} must be a no-follow regular file when present.`);
-  }
-  rmSync(path);
-}
-
-function clearDirectoryOutputNoFollow(root, path, label) {
+function assertOutputAbsentNoFollow(root, path, label) {
   containedRelativePath(root, path, label);
   ensureDirectoryTreeNoFollow(root, dirname(path));
   const metadata = optionalLstat(path);
   if (metadata) {
-    if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
-      throw new Error(`${label} must be a no-follow directory when present.`);
-    }
-    rmSync(path, { recursive: true });
+    throw new Error(
+      `${label} must not exist before isolated image preparation. Use a clean checkout.`,
+    );
   }
 }
 
@@ -343,7 +331,6 @@ function copyRegularTreeNoFollow(
         `${label} destination`,
       );
       let destinationDescriptor;
-      let destinationCreated = false;
       try {
         const opened = fstatSync(sourceDescriptor);
         if (
@@ -362,7 +349,6 @@ function copyRegularTreeNoFollow(
             (constants.O_NOFOLLOW || 0),
           before.mode & 0o777,
         );
-        destinationCreated = true;
         const destinationOpened = fstatSync(destinationDescriptor);
         assertAbsoluteDirectorySnapshot(destinationAncestors, `${label} destination`);
         const destinationRebound = lstatSync(destinationPath);
@@ -428,7 +414,6 @@ function copyRegularTreeNoFollow(
           closeSync(destinationDescriptor);
           destinationDescriptor = undefined;
         }
-        if (destinationCreated) rmSync(destinationPath, { force: true });
         throw error;
       } finally {
         if (destinationDescriptor !== undefined) {
@@ -727,10 +712,24 @@ function readRegularFileNoFollow(root, relativePath) {
     const bytes = readFileSync(descriptor);
     const after = fstatSync(descriptor);
     assertRelativeDirectorySnapshot(ancestors, relativePath);
+    const finalPath = lstatSync(path);
+    containedRelativePath(
+      realpathSync(root),
+      realpathSync(path),
+      'Governed configuration file',
+    );
     if (
+      bytes.length !== opened.size ||
       after.dev !== opened.dev ||
       after.ino !== opened.ino ||
-      after.size !== opened.size
+      after.size !== opened.size ||
+      after.mtimeMs !== opened.mtimeMs ||
+      after.ctimeMs !== opened.ctimeMs ||
+      finalPath.isSymbolicLink() ||
+      !finalPath.isFile() ||
+      finalPath.dev !== opened.dev ||
+      finalPath.ino !== opened.ino ||
+      finalPath.size !== opened.size
     ) {
       throw new Error(
         `Governed configuration changed during its no-follow read: ${relativePath}`,
@@ -953,7 +952,18 @@ function readSchemaProvenance(root) {
 
 function buildConfigHash(root) {
   assertExists(join(root, 'eai.runtime.json'), 'eai.runtime.json');
-  return digestFiles(root, listGovernedConfigFiles(root));
+  const paths = listGovernedConfigFiles(root).sort();
+  const digest = digestFiles(root, paths);
+  const finalPaths = listGovernedConfigFiles(root).sort();
+  if (
+    paths.length !== finalPaths.length ||
+    paths.some((path, index) => path !== finalPaths[index])
+  ) {
+    throw new Error(
+      'Governed configuration inventory changed during hashing.',
+    );
+  }
+  return digest;
 }
 
 function prepareImageContext(options) {
@@ -978,7 +988,7 @@ function prepareImageContext(options) {
   containedRelativePath(root, contextDir, 'Image context directory');
   assertDirectoryTreeNoFollow(root, standaloneDir, 'Next standalone build');
   assertDirectoryTreeNoFollow(root, staticDir, 'Next static build');
-  clearDirectoryOutputNoFollow(root, contextDir, 'Image context');
+  assertOutputAbsentNoFollow(root, contextDir, 'Image context');
   ensureDirectoryTreeNoFollow(root, contextDir);
   copyRegularTreeNoFollow(
     root,
@@ -988,7 +998,7 @@ function prepareImageContext(options) {
   );
   ensureDirectoryTreeNoFollow(root, join(contextDir, '.next'));
   const contextStaticDir = join(contextDir, '.next/static');
-  clearDirectoryOutputNoFollow(root, contextStaticDir, 'Image static output');
+  assertOutputAbsentNoFollow(root, contextStaticDir, 'Image static output');
   copyRegularTreeNoFollow(
     root,
     staticDir,
@@ -1000,7 +1010,7 @@ function prepareImageContext(options) {
   const publicMetadata = optionalLstat(publicPath);
   if (publicMetadata) {
     assertDirectoryTreeNoFollow(root, publicPath, 'Public asset directory');
-    clearDirectoryOutputNoFollow(root, contextPublicDir, 'Image public output');
+    assertOutputAbsentNoFollow(root, contextPublicDir, 'Image public output');
     copyRegularTreeNoFollow(
       root,
       publicPath,
@@ -1008,7 +1018,7 @@ function prepareImageContext(options) {
       'Public asset directory',
     );
   } else {
-    clearDirectoryOutputNoFollow(root, contextPublicDir, 'Image public output');
+    assertOutputAbsentNoFollow(root, contextPublicDir, 'Image public output');
     ensureDirectoryTreeNoFollow(root, contextPublicDir);
   }
   writeRegularFileNoFollow(
@@ -1026,8 +1036,8 @@ function prepareImageContext(options) {
       '',
     ].join('\n'),
   );
-  removeRegularOutputNoFollow(root, imageArchivePath, 'OCI image archive');
-  removeRegularOutputNoFollow(root, imageMetadataPath, 'OCI image metadata');
+  assertOutputAbsentNoFollow(root, imageArchivePath, 'OCI image archive');
+  assertOutputAbsentNoFollow(root, imageMetadataPath, 'OCI image metadata');
   process.stdout.write(`${contextDir}\n`);
 }
 

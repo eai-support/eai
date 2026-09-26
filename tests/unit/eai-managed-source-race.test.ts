@@ -9,6 +9,11 @@ import { afterEach, expect, test, vi } from "vitest";
 const race = vi.hoisted(() => ({
   trigger: "",
   triggerPrefix: "",
+  readTrigger: "",
+  addTrigger: "",
+  addPath: "",
+  addContent: "",
+  added: false,
   target: "",
   replacement: "",
   displaced: "",
@@ -20,13 +25,38 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return {
     ...actual,
     open: async (path: PathLike, flags: string | number, mode?: number) => {
+      if (!race.added && String(path) === race.addTrigger) {
+        race.added = true;
+        await actual.writeFile(race.addPath, race.addContent);
+      }
       if (!race.swapped && (String(path) === race.trigger
         || (race.triggerPrefix && String(path).startsWith(race.triggerPrefix)))) {
         race.swapped = true;
         await actual.rename(race.target, race.displaced);
         await actual.rename(race.replacement, race.target);
       }
-      return actual.open(path, flags, mode);
+      const handle = await actual.open(path, flags, mode);
+      if (String(path) === race.readTrigger) {
+        const originalRead = handle.read.bind(handle);
+        const originalReadFile = handle.readFile.bind(handle);
+        const swapAfterRead = async (): Promise<void> => {
+          if (race.swapped) return;
+          race.swapped = true;
+          await actual.rename(race.target, race.displaced);
+          await actual.rename(race.replacement, race.target);
+        };
+        handle.read = (async (...args: Parameters<typeof handle.read>) => {
+          const result = await originalRead(...args);
+          await swapAfterRead();
+          return result;
+        }) as typeof handle.read;
+        handle.readFile = (async (...args: Parameters<typeof handle.readFile>) => {
+          const result = await originalReadFile(...args);
+          await swapAfterRead();
+          return result;
+        }) as typeof handle.readFile;
+      }
+      return handle;
     },
   };
 });
@@ -51,6 +81,11 @@ afterEach(async () => {
   race.target = "";
   race.trigger = "";
   race.triggerPrefix = "";
+  race.readTrigger = "";
+  race.addTrigger = "";
+  race.addPath = "";
+  race.addContent = "";
+  race.added = false;
   race.replacement = "";
   race.displaced = "";
   race.swapped = false;
@@ -176,6 +211,65 @@ test("rejects a governed configuration parent replaced before the no-follow open
   await expect(buildManagedDeployConfigHash(root)).rejects.toThrow(
     /Governed configuration (?:path )?changed before its no-follow read/,
   );
+  expect(race.swapped).toBe(true);
+});
+
+test("rejects a governed configuration parent replaced after the bounded read", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-config-postread-race-")));
+  const outside = await realpath(await mkdtemp(join(tmpdir(), "managed-config-postread-replacement-")));
+  cleanup.push(root, outside);
+  await put(root, "eai.runtime.json", '{"schemaVersion":1}\n');
+  await put(root, "src/eai.config/deployment-contract.ts", "export const contract = 1;\n");
+  await put(outside, "eai.config/deployment-contract.ts", "export const contract = 2;\n");
+
+  race.readTrigger = join(root, "src/eai.config/deployment-contract.ts");
+  race.target = join(root, "src/eai.config");
+  race.displaced = join(root, "src/eai.config-original");
+  race.replacement = join(outside, "eai.config");
+
+  await expect(buildManagedDeployConfigHash(root)).rejects.toThrow(
+    /Governed configuration (?:path )?changed/,
+  );
+  expect(race.swapped).toBe(true);
+});
+
+test("rejects a governed file added after the initial inventory", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-config-inventory-race-")));
+  cleanup.push(root);
+  await put(root, "eai.runtime.json", '{"schemaVersion":1}\n');
+  await put(root, "src/eai.config/deployment-contract.ts", "export const contract = 1;\n");
+  race.addTrigger = join(root, "eai.runtime.json");
+  race.addPath = join(root, "src/eai.config/late.spec.ts");
+  race.addContent = "export const late = true;\n";
+
+  await expect(buildManagedDeployConfigHash(root)).rejects.toThrow(
+    "Governed configuration inventory changed during hashing",
+  );
+  expect(race.added).toBe(true);
+});
+
+test("rejects a source parent replaced after the bounded read", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "cli-managed-source-postread-race-")));
+  const outside = await realpath(await mkdtemp(join(tmpdir(), "cli-managed-source-postread-replacement-")));
+  cleanup.push(root, outside);
+  await put(root, ".eai-manifest.json", JSON.stringify({ template: { commit: "a".repeat(40) } }));
+  await put(root, "package.json", '{"name":"fixture","private":true}\n');
+  await put(root, "eai.config.ts", "export default {};\n");
+  await put(root, "eai.runtime.json", '{"schemaVersion":1}\n');
+  await put(root, "src/app/page.tsx", "export default function Page() {}\n");
+  await exec("git", ["init", "--quiet"], { cwd: root });
+  await exec("git", ["add", "."], { cwd: root });
+  await exec("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "Initial scaffold from template\n\nCreated by: eai init"], { cwd: root });
+  await put(outside, "app/page.tsx", "export default function Replaced() {}\n");
+
+  race.readTrigger = join(root, "src/app/page.tsx");
+  race.target = join(root, "src/app");
+  race.displaced = join(root, "src/app-original");
+  race.replacement = join(outside, "app");
+
+  await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({
+    code: "SOURCE_CHANGED_DURING_READ",
+  });
   expect(race.swapped).toBe(true);
 });
 

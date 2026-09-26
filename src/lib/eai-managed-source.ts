@@ -132,7 +132,23 @@ async function readBoundedSourceFile(root: string, path: string): Promise<Buffer
       count += bytesRead;
     }
     const after = await handle.stat();
-    if (count !== actual.size || after.dev !== actual.dev || after.ino !== actual.ino || after.size !== actual.size) {
+    for (const identity of directoryIdentities) {
+      const current = await lstat(identity.path);
+      if (!current.isDirectory() || current.isSymbolicLink()
+        || current.dev !== identity.dev || current.ino !== identity.ino) {
+        throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source path changed while packaging: ${path}. Retry after editing has stopped.`);
+      }
+    }
+    const [finalRoot, finalTarget, finalPath] = await Promise.all([
+      realpath(root),
+      realpath(target),
+      lstat(target),
+    ]);
+    if (count !== actual.size || after.dev !== actual.dev || after.ino !== actual.ino
+      || after.size !== actual.size || after.mtimeMs !== actual.mtimeMs || after.ctimeMs !== actual.ctimeMs
+      || finalPath.isSymbolicLink() || !finalPath.isFile()
+      || finalPath.dev !== actual.dev || finalPath.ino !== actual.ino || finalPath.size !== actual.size
+      || !isContained(finalRoot, finalTarget)) {
       throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source changed while packaging: ${path}. Retry after editing has stopped.`);
     }
     const bytes = buffer.subarray(0, count);
