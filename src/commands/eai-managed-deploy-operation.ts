@@ -204,6 +204,8 @@ export function printOperation(
       setup.configHash ??
       extra.configHash,
     workflowRunId: revision.workflowRunId,
+    workflowBlobSha: revision.workflowBlobSha,
+    collectorDigest: revision.collectorDigest,
     artifactDigest: revision.artifactDigest,
     imageDigest: revision.imageDigest,
   };

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 const { execFileSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
-const { readFileSync } = require('node:fs');
+const { mkdtempSync, readFileSync, rmSync } = require('node:fs');
+const { tmpdir } = require('node:os');
 const { join, resolve } = require('node:path');
 
 const PRODUCER_REPOSITORY = 'eai-support/eai-app-template';
@@ -59,6 +60,45 @@ function resolveProducerReleaseCommit(tag, runGit = execFileSync) {
   return commit;
 }
 
+function readProducerFilesAtCommit(commit, runGit = execFileSync) {
+  const directory = mkdtempSync(join(tmpdir(), 'eai-producer-pin-'));
+  try {
+    runGit('git', ['init', '--bare', directory], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    runGit(
+      'git',
+      [
+        '--git-dir',
+        directory,
+        'fetch',
+        '--depth=1',
+        '--no-tags',
+        PRODUCER_REMOTE,
+        commit,
+      ],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    return Object.fromEntries(
+      Object.entries(PRODUCER_FILES).map(([key, path]) => [
+        key,
+        runGit(
+          'git',
+          ['--git-dir', directory, 'show', `${commit}:${path}`],
+          { encoding: null, stdio: ['ignore', 'pipe', 'pipe'] },
+        ),
+      ]),
+    );
+  } catch {
+    throw new Error(
+      `canonical producer bytes could not be read at ${commit}.`,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 function assertProducerRelease(pin, runGit = execFileSync) {
   if (
     pin.releaseGate?.status !== 'released' ||
@@ -77,6 +117,17 @@ function assertProducerRelease(pin, runGit = execFileSync) {
     throw new Error(
       `release tag ${pin.releaseGate.tag} does not resolve to the reviewed candidate commit.`,
     );
+  }
+  assertCanonicalProducerPaths(pin);
+  const remoteFiles = readProducerFilesAtCommit(remoteCommit, runGit);
+  for (const key of Object.keys(PRODUCER_FILES)) {
+    const expected = pin.candidate?.[key]?.sha256;
+    const actual = `sha256:${createHash('sha256').update(remoteFiles[key]).digest('hex')}`;
+    if (!/^sha256:[a-f0-9]{64}$/.test(expected || '') || actual !== expected) {
+      throw new Error(
+        `${key} bytes at release tag ${pin.releaseGate.tag} do not match the reviewed candidate digest.`,
+      );
+    }
   }
 }
 
@@ -159,5 +210,6 @@ module.exports = {
   assertCanonicalProducerPaths,
   assertProducerRelease,
   resolveProducerReleaseCommit,
+  readProducerFilesAtCommit,
   verifyProducerPin,
 };

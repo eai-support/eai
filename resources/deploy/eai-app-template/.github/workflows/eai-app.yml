@@ -294,6 +294,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       attestations: write
       contents: read
       id-token: write
@@ -323,6 +324,12 @@ jobs:
           EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
           SOURCE_COMMIT_SHA: ${{ inputs.commit_sha || github.sha }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         shell: bash
         run: |
           [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://(dev-api\.au|(test-api|api)\.(au|ca|eu))\.myenterprise\.ai/public/?$ ]]
@@ -332,9 +339,13 @@ jobs:
             [[ "$TARGET_TENANT_ID" =~ ^[A-Za-z0-9]([A-Za-z0-9._:-]{0,254}[A-Za-z0-9])?$ ]]
           fi
           [[ "$OPERATION_ID" =~ ^[A-Za-z0-9]([A-Za-z0-9._~:-]{0,254}[A-Za-z0-9])?$ ]]
+          [[ "$SOURCE_COMMIT_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$CONFIG_HASH" =~ ^sha256:[a-f0-9]{64}$ ]]
           node - <<'NODE'
           const { createHash } = require('node:crypto');
+          const { execFileSync } = require('node:child_process');
           const fs = require('node:fs');
+          const { isDeepStrictEqual } = require('node:util');
           const evidence = JSON.parse(fs.readFileSync('.eai-build/evidence/source-unknown-deployment-evidence.json', 'utf8'));
           const expected = {
             operationId: process.env.OPERATION_ID,
@@ -342,16 +353,61 @@ jobs:
             environment: process.env.DEPLOY_ENVIRONMENT,
             commitSha: process.env.SOURCE_COMMIT_SHA,
             configHash: process.env.CONFIG_HASH,
+            workflowPath: process.env.EAI_WORKFLOW_PATH,
+            ref: process.env.GITHUB_REF,
           };
           for (const [key, value] of Object.entries(expected)) {
             if (evidence[key] !== value) throw new Error(`Build evidence ${key} does not match the exact dispatch.`);
           }
           if ((evidence.sourceMode || 'source-unknown') !== process.env.SOURCE_MODE) throw new Error('Build evidence source mode does not match.');
-          if (process.env.SOURCE_MODE === 'eai-cli-generated' && evidence.targetTenantId !== process.env.TARGET_TENANT_ID) throw new Error('Build evidence target tenant does not match.');
+          if (process.env.TARGET_TENANT_ID && evidence.targetTenantId !== process.env.TARGET_TENANT_ID) throw new Error('Build evidence target tenant does not match.');
+          if (String(evidence.workflowRun?.id) !== process.env.GITHUB_RUN_ID || String(evidence.workflowRun?.attempt) !== process.env.GITHUB_RUN_ATTEMPT) throw new Error('Build evidence workflow run does not match.');
           if (evidence.validationSummary?.status !== 'passed') throw new Error('Build evidence validation did not pass.');
           const archive = fs.readFileSync('.eai-build/eai-generated-app-image.tar');
           const archiveDigest = `sha256:${createHash('sha256').update(archive).digest('hex')}`;
           if (evidence.imageArtifact?.archiveDigest !== archiveDigest) throw new Error('Downloaded image archive does not match build evidence.');
+          if (evidence.imageArtifact?.name !== 'eai-generated-app-image' || !/^[1-9][0-9]*$/.test(String(evidence.imageArtifact?.id || ''))) throw new Error('Build evidence image artifact identity is invalid.');
+          if (new Set([evidence.artifactDigest, evidence.imageArtifact.archiveDigest, evidence.imageDigest]).size !== 3) throw new Error('Build evidence digests must be independently bound.');
+          const index = JSON.parse(execFileSync('tar', ['-xOf', '.eai-build/eai-generated-app-image.tar', 'index.json'], { encoding: 'utf8', maxBuffer: 1024 * 1024 }));
+          const imageManifests = Array.isArray(index.manifests) ? index.manifests.filter((entry) => entry?.platform?.os === 'linux' && entry?.platform?.architecture === 'amd64') : [];
+          if (imageManifests.length !== 1 || imageManifests[0].digest !== evidence.imageDigest) throw new Error('Downloaded OCI image digest does not match build evidence.');
+
+          const repositoryParts = process.env.GITHUB_REPOSITORY.split('/');
+          if (repositoryParts.length !== 2) throw new Error('GitHub repository identity is invalid.');
+          const apiBase = `https://api.github.com/repos/${repositoryParts.map(encodeURIComponent).join('/')}`;
+          const headers = {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+            'X-GitHub-Api-Version': '2022-11-28',
+          };
+          async function github(path, accept = headers.Accept) {
+            const response = await fetch(`${apiBase}${path}`, { headers: { ...headers, Accept: accept }, redirect: 'error' });
+            if (!response.ok) throw new Error(`GitHub provenance read failed (${response.status}).`);
+            return response;
+          }
+          async function sourceBytes(path) {
+            const encoded = path.split('/').map(encodeURIComponent).join('/');
+            const response = await github(`/contents/${encoded}?ref=${encodeURIComponent(process.env.SOURCE_COMMIT_SHA)}`, 'application/vnd.github.raw+json');
+            return Buffer.from(await response.arrayBuffer());
+          }
+          (async () => {
+            const [workflowBytes, collectorBytes, runtimeBytes, artifactResponse] = await Promise.all([
+              sourceBytes(process.env.EAI_WORKFLOW_PATH),
+              sourceBytes('scripts/source-unknown-deployment-evidence.mjs'),
+              sourceBytes('eai.runtime.json'),
+              github(`/actions/artifacts/${evidence.imageArtifact.id}`),
+            ]);
+            const workflowBlobSha = createHash('sha1').update(`blob ${workflowBytes.length}\0`).update(workflowBytes).digest('hex');
+            const collectorDigest = `sha256:${createHash('sha256').update(collectorBytes).digest('hex')}`;
+            if (evidence.workflowBlobSha !== workflowBlobSha || evidence.collectorDigest !== collectorDigest) throw new Error('Canonical workflow or collector bytes do not match build evidence.');
+            const runtime = JSON.parse(runtimeBytes.toString('utf8'));
+            if (!isDeepStrictEqual(evidence.schemaProvenance, runtime.schemaProvenance)) throw new Error('Source runtime provenance does not match build evidence.');
+            const artifact = await artifactResponse.json();
+            if (String(artifact.id) !== String(evidence.imageArtifact.id) || artifact.name !== evidence.imageArtifact.name || artifact.digest !== evidence.artifactDigest || String(artifact.workflow_run?.id) !== process.env.GITHUB_RUN_ID) throw new Error('GitHub artifact metadata does not match build evidence.');
+          })().catch((error) => {
+            console.error(error instanceof Error ? error.message : String(error));
+            process.exitCode = 1;
+          });
           NODE
 
       - name: Attest immutable image archive provenance

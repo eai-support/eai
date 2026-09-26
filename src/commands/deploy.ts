@@ -883,6 +883,8 @@ async function runManagedDeployDoctor(options: ManagedDoctorOptions): Promise<Ma
       ref: revision.branchRef,
       workflowHeadBranch: revision.workflowHeadBranch,
       workflowRunId: revision.workflowRunId,
+      workflowBlobSha: revision.workflowBlobSha,
+      collectorDigest: revision.collectorDigest,
       artifactDigest: revision.artifactDigest,
       imageArtifact: revision.imageArtifact,
       imageDigest: revision.imageDigest,

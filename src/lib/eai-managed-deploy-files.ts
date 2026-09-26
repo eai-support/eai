@@ -46,6 +46,35 @@ async function assertGovernedAncestors(root: string, relativePath: string): Prom
   return true;
 }
 
+async function governedAncestorIdentities(
+  root: string,
+  relativePath: string,
+): Promise<Array<{ path: string; dev: number; ino: number }>> {
+  if (!await assertGovernedAncestors(root, relativePath)) return [];
+  const identities: Array<{ path: string; dev: number; ino: number }> = [];
+  const components = relativePath.split('/').filter(Boolean);
+  let current = root;
+  for (const component of ['', ...components.slice(0, -1)]) {
+    if (component) current = join(current, component);
+    const status = await lstat(current);
+    identities.push({ path: current, dev: status.dev, ino: status.ino });
+  }
+  return identities;
+}
+
+async function assertGovernedAncestorIdentities(
+  identities: ReadonlyArray<{ path: string; dev: number; ino: number }>,
+  relativePath: string,
+): Promise<void> {
+  for (const identity of identities) {
+    const status = await lstat(identity.path);
+    if (!status.isDirectory() || status.isSymbolicLink()
+      || status.dev !== identity.dev || status.ino !== identity.ino) {
+      throw new Error(`Governed configuration path changed before its no-follow read: ${relativePath}`);
+    }
+  }
+}
+
 /** Resolve packaged resources from both source and compiled CLI module locations. */
 export function canonicalManagedDeployResourceRoot(): string {
   return fileURLToPath(new URL('../../resources/deploy/eai-app-template/', import.meta.url));
@@ -143,7 +172,8 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
 
   const hash = createHash('sha256');
   for (const relativePath of [...new Set(paths)].sort()) {
-    if (!await assertGovernedAncestors(root, relativePath)) {
+    const ancestors = await governedAncestorIdentities(root, relativePath);
+    if (!ancestors.length) {
       throw new Error(`Governed configuration ancestor does not exist: ${relativePath}`);
     }
     hash.update(relativePath);
@@ -162,6 +192,16 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
       const status = await handle.stat();
       if (!status.isFile() || status.dev !== before.dev || status.ino !== before.ino) {
         throw new Error(`Governed configuration changed before its no-follow read: ${relativePath}`);
+      }
+      await assertGovernedAncestorIdentities(ancestors, relativePath);
+      const [rebound, reboundRoot, reboundPath] = await Promise.all([
+        lstat(path),
+        realpath(root),
+        realpath(path),
+      ]);
+      if (rebound.isSymbolicLink() || rebound.dev !== status.dev || rebound.ino !== status.ino
+        || !isContained(reboundRoot, reboundPath)) {
+        throw new Error(`Governed configuration path changed before its no-follow read: ${relativePath}`);
       }
       hash.update(await handle.readFile());
     } finally {

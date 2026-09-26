@@ -40,9 +40,12 @@ const producerPinVerifier = requireFromTest(
   assertCanonicalProducerPaths: (pin: Record<string, unknown>) => void;
   assertProducerRelease: (
     pin: Record<string, unknown>,
-    runGit?: () => string,
+    runGit?: (command: string, args: string[], options?: unknown) => string | Buffer,
   ) => void;
-  resolveProducerReleaseCommit: (tag: string, runGit?: () => string) => string;
+  resolveProducerReleaseCommit: (
+    tag: string,
+    runGit?: (command: string, args: string[], options?: unknown) => string | Buffer,
+  ) => string;
 };
 
 describe('EAI managed deployment helpers', () => {
@@ -90,7 +93,8 @@ describe('EAI managed deployment helpers', () => {
         appScopeTenantId: 'tenant-1', targetTenantId: 'tenant-1',
         repoOwner: 'enterprise', repoName: 'planning-portal', repositoryId: 123, installationId: 456,
         branchRef: 'refs/heads/main', workflowPath: EAI_MANAGED_WORKFLOW_PATH, workflowHeadBranch: 'main',
-        sourceCommitSha: 'a'.repeat(40), commitSha: 'a'.repeat(40), workflowRunId: '789', configHash,
+        sourceCommitSha: 'a'.repeat(40), commitSha: 'a'.repeat(40), workflowRunId: '789',
+        workflowBlobSha: 'f'.repeat(40), collectorDigest: `sha256:${'1'.repeat(64)}`, configHash,
         artifactDigest: `sha256:${'c'.repeat(64)}`,
         imageArtifact: { id: '987', name: 'eai-generated-app-image', archiveDigest: `sha256:${'d'.repeat(64)}` },
         imageDigest: `sha256:${'e'.repeat(64)}`,
@@ -216,6 +220,7 @@ describe('EAI managed deployment helpers', () => {
         baseTemplateSha: 'c'.repeat(40), templateVersion: 'fixture',
       } }),
     }));
+    await installCanonicalManagedDeployFiles(project);
     const configHash = await buildManagedDeployConfigHash(project);
     const invocation = promisify(execFile)(process.execPath, [
       join(canonicalManagedDeployResourceRoot(), EAI_MANAGED_EVIDENCE_SCRIPT_PATH),
@@ -237,6 +242,8 @@ describe('EAI managed deployment helpers', () => {
     const evidence = JSON.parse(await readFile(join(project, '.eai-build/evidence/source-unknown-deployment-evidence.json'), 'utf8'));
     expect(evidence.configHash).toBe(configHash);
     expect(evidence.artifactDigest).toBe(`sha256:${'d'.repeat(64)}`);
+    expect(evidence.workflowBlobSha).toMatch(/^[a-f0-9]{40}$/);
+    expect(evidence.collectorDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(new Set([evidence.artifactDigest, evidence.imageDigest, evidence.imageArtifact.archiveDigest]).size).toBe(3);
   });
 
@@ -274,7 +281,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '8a23ae44c5f8308e9a65e8251f8d9c89d0ab7794' },
+      candidate: { commit: 'e401ac1003b5143c8a1f33cc084138f1301340bb' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
@@ -287,22 +294,49 @@ describe('EAI managed deployment helpers', () => {
   test('requires the real producer release tag to resolve to the exact candidate commit', () => {
     const commit = 'c'.repeat(40);
     const tagObject = 'd'.repeat(40);
+    const workflow = Buffer.from('name: reviewed workflow\n');
+    const collector = Buffer.from('#!/usr/bin/env node\n');
     const pin = {
-      candidate: { commit },
+      candidate: {
+        commit,
+        workflow: {
+          path: EAI_MANAGED_WORKFLOW_PATH,
+          sha256: `sha256:${createHash('sha256').update(workflow).digest('hex')}`,
+        },
+        collector: {
+          path: EAI_MANAGED_EVIDENCE_SCRIPT_PATH,
+          sha256: `sha256:${createHash('sha256').update(collector).digest('hex')}`,
+        },
+      },
       releaseGate: { status: 'released', tag: 'v9.9.9', commit },
     };
-    const annotatedTag = () => [
+    const annotatedTag = (): string => [
       `${tagObject}\trefs/tags/v9.9.9`,
       `${commit}\trefs/tags/v9.9.9^{}`,
       '',
     ].join('\n');
+    const reviewedRemote = (_command: string, args: string[]): string | Buffer => {
+      if (args[0] === 'ls-remote') return annotatedTag();
+      const object = args.at(-1);
+      if (object === `${commit}:${EAI_MANAGED_WORKFLOW_PATH}`) return workflow;
+      if (object === `${commit}:${EAI_MANAGED_EVIDENCE_SCRIPT_PATH}`) return collector;
+      return '';
+    };
 
     expect(
       producerPinVerifier.resolveProducerReleaseCommit('v9.9.9', annotatedTag),
     ).toBe(commit);
     expect(() =>
-      producerPinVerifier.assertProducerRelease(pin, annotatedTag),
+      producerPinVerifier.assertProducerRelease(pin, reviewedRemote),
     ).not.toThrow();
+    expect(() =>
+      producerPinVerifier.assertProducerRelease(pin, (command, args, options) => {
+        const value = reviewedRemote(command, args, options);
+        return args.at(-1) === `${commit}:${EAI_MANAGED_WORKFLOW_PATH}`
+          ? Buffer.from('changed workflow\n')
+          : value;
+      }),
+    ).toThrow(/workflow bytes .* do not match/);
     expect(() =>
       producerPinVerifier.assertProducerRelease(pin, () => ''),
     ).toThrow(/does not exist/);
@@ -556,6 +590,10 @@ describe('EAI managed deployment helpers', () => {
         revision.branchRef = 'refs/heads/../other';
       },
       operation => { (operation.sourceRevision as Record<string, unknown>).commitSha = 'f'.repeat(39); },
+      operation => { (operation.sourceRevision as Record<string, unknown>).workflowBlobSha = 'f'.repeat(39); },
+      operation => { (operation.sourceRevision as Record<string, unknown>).collectorDigest = 'missing-sha256-prefix'; },
+      operation => { delete (operation.sourceRevision as Record<string, unknown>).workflowBlobSha; },
+      operation => { delete (operation.sourceRevision as Record<string, unknown>).collectorDigest; },
       operation => { (operation.sourceRevision as Record<string, unknown>).artifactDigest = 'missing-sha256-prefix'; },
       operation => { (operation.sourceRevision as Record<string, unknown>).imageDigest = `sha256:${'c'.repeat(64)}`; },
       operation => { (operation.sourceRevision as Record<string, unknown>).workflowRunId = '0'; },

@@ -95,6 +95,10 @@ function hasCompleteSourceRevision(operation: ManagedOperationProjection): boole
     || !SHA_PATTERN.test(revision.sourceCommitSha)
     || typeof revision.commitSha !== 'string'
     || !SHA_PATTERN.test(revision.commitSha)
+    || typeof revision.workflowBlobSha !== 'string'
+    || !SHA_PATTERN.test(revision.workflowBlobSha)
+    || typeof revision.collectorDigest !== 'string'
+    || !SHA256_PATTERN.test(revision.collectorDigest)
     || !positiveId(revision.workflowRunId)) return false;
 
   if (operation.sourceMode === 'eai-cli-generated') {

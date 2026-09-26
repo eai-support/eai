@@ -17,7 +17,7 @@ import {
   writeSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
@@ -41,6 +41,8 @@ const GENERATED_CONFIG_FILES = new Set([
   'src/eai.config/object-types.json',
   'src/eai.config/object-types.provisioning.json',
 ]);
+const CANONICAL_WORKFLOW_PATH = '.github/workflows/eai-app.yml';
+const CANONICAL_COLLECTOR_PATH = 'scripts/source-unknown-deployment-evidence.mjs';
 
 function sourceMode(options) {
   const mode = option(options, 'sourceMode', 'source-unknown');
@@ -560,6 +562,13 @@ function digestFiles(root, paths) {
   return `sha256:${hash.digest('hex')}`;
 }
 
+function gitBlobSha(bytes) {
+  return createHash('sha1')
+    .update(`blob ${bytes.length}\0`)
+    .update(bytes)
+    .digest('hex');
+}
+
 function readRegularFileNoFollow(root, relativePath) {
   if (!assertGovernedAncestors(root, relativePath)) {
     throw new Error(
@@ -567,6 +576,7 @@ function readRegularFileNoFollow(root, relativePath) {
     );
   }
   const path = join(root, relativePath);
+  const ancestors = snapshotRelativeDirectoryPath(root, relativePath);
   const before = lstatSync(path);
   if (before.isSymbolicLink() || !before.isFile()) {
     throw new Error(
@@ -593,7 +603,35 @@ function readRegularFileNoFollow(root, relativePath) {
         `Governed configuration changed before its no-follow read: ${relativePath}`,
       );
     }
-    return readFileSync(descriptor);
+    assertRelativeDirectorySnapshot(ancestors, relativePath);
+    const rebound = lstatSync(path);
+    containedRelativePath(
+      realpathSync(root),
+      realpathSync(path),
+      'Governed configuration file',
+    );
+    if (
+      rebound.isSymbolicLink() ||
+      rebound.dev !== opened.dev ||
+      rebound.ino !== opened.ino
+    ) {
+      throw new Error(
+        `Governed configuration path changed before its no-follow read: ${relativePath}`,
+      );
+    }
+    const bytes = readFileSync(descriptor);
+    const after = fstatSync(descriptor);
+    assertRelativeDirectorySnapshot(ancestors, relativePath);
+    if (
+      after.dev !== opened.dev ||
+      after.ino !== opened.ino ||
+      after.size !== opened.size
+    ) {
+      throw new Error(
+        `Governed configuration changed during its no-follow read: ${relativePath}`,
+      );
+    }
+    return bytes;
   } finally {
     closeSync(descriptor);
   }
@@ -627,6 +665,66 @@ function assertGovernedAncestors(root, relativePath) {
     }
   }
   return true;
+}
+
+function snapshotRelativeDirectoryPath(root, relativePath) {
+  const resolvedRoot = resolve(root);
+  const components = relativePath.split(/[\\/]/).filter(Boolean);
+  const identities = [];
+  let current = resolvedRoot;
+  for (const component of ['', ...components.slice(0, -1)]) {
+    if (component) current = join(current, component);
+    const status = lstatSync(current);
+    if (status.isSymbolicLink() || !status.isDirectory()) {
+      throw new Error(
+        `Governed configuration ancestor must be a regular directory: ${relativePath}`,
+      );
+    }
+    identities.push({ path: current, dev: status.dev, ino: status.ino });
+  }
+  return identities;
+}
+
+function assertRelativeDirectorySnapshot(identities, relativePath) {
+  for (const identity of identities) {
+    const status = lstatSync(identity.path);
+    if (
+      status.isSymbolicLink() ||
+      !status.isDirectory() ||
+      status.dev !== identity.dev ||
+      status.ino !== identity.ino
+    ) {
+      throw new Error(
+        `Governed configuration path changed before its no-follow read: ${relativePath}`,
+      );
+    }
+  }
+}
+
+function snapshotAbsoluteDirectoryPath(path, label) {
+  const target = resolve(path);
+  const filesystemRoot = parse(target).root;
+  const identities = [];
+  let current = filesystemRoot;
+  for (const component of ['', ...relative(filesystemRoot, target).split(/[\\/]/).filter(Boolean)]) {
+    if (component) current = join(current, component);
+    const status = lstatSync(current);
+    if (status.isSymbolicLink() || !status.isDirectory()) {
+      throw new Error(`${label} ancestors must be no-follow directories.`);
+    }
+    identities.push({ path: current, dev: status.dev, ino: status.ino });
+  }
+  return identities;
+}
+
+function assertAbsoluteDirectorySnapshot(identities, label) {
+  for (const identity of identities) {
+    const status = lstatSync(identity.path);
+    if (status.isSymbolicLink() || !status.isDirectory()
+      || status.dev !== identity.dev || status.ino !== identity.ino) {
+      throw new Error(`${label} ancestors changed before the bound write.`);
+    }
+  }
 }
 
 function listGovernedConfigFiles(root) {
@@ -839,8 +937,13 @@ function appendOutputs(path, outputs) {
       return `${key}=${serialized}\n`;
     })
     .join('');
+  const boundPath = resolve(path);
+  const ancestors = snapshotAbsoluteDirectoryPath(
+    dirname(boundPath),
+    'GitHub output command file',
+  );
   const descriptor = openSync(
-    path,
+    boundPath,
     constants.O_WRONLY |
       constants.O_APPEND |
       constants.O_CREAT |
@@ -853,7 +956,18 @@ function appendOutputs(path, outputs) {
     if (!status.isFile() || status.nlink !== 1) {
       throw new Error('GitHub output command file must be a regular file.');
     }
+    assertAbsoluteDirectorySnapshot(ancestors, 'GitHub output command file');
+    const rebound = lstatSync(boundPath);
+    if (
+      rebound.isSymbolicLink() ||
+      !rebound.isFile() ||
+      rebound.dev !== status.dev ||
+      rebound.ino !== status.ino
+    ) {
+      throw new Error('GitHub output command file path changed before append.');
+    }
     writeSync(descriptor, lines, null, 'utf8');
+    assertAbsoluteDirectorySnapshot(ancestors, 'GitHub output command file');
   } finally {
     closeSync(descriptor);
   }
@@ -950,8 +1064,8 @@ async function collectEvidence(options) {
   }
   if (!SAFE_REPOSITORY.test(repo))
     throw new Error('Repository must be owner/name.');
-  if (!/^\.github\/workflows\/[^/]+\.ya?ml$/.test(workflowPath)) {
-    throw new Error('Workflow path must be a file under .github/workflows.');
+  if (workflowPath !== CANONICAL_WORKFLOW_PATH) {
+    throw new Error(`Workflow path must be ${CANONICAL_WORKFLOW_PATH}.`);
   }
   if (ref !== `refs/heads/${branch}`)
     throw new Error('Workflow ref and branch do not match.');
@@ -973,12 +1087,26 @@ async function collectEvidence(options) {
   if (!/^[1-9][0-9]*$/.test(workflowRunAttempt)) {
     throw new Error('Workflow run attempt must be a positive integer.');
   }
+  const workflowBytes = readBoundedRegularFileNoFollow(
+    root,
+    join(root, CANONICAL_WORKFLOW_PATH),
+    'Canonical deployment workflow',
+  );
+  const collectorBytes = readBoundedRegularFileNoFollow(
+    root,
+    join(root, CANONICAL_COLLECTOR_PATH),
+    'Canonical deployment evidence collector',
+  );
+  const workflowBlobSha = gitBlobSha(workflowBytes);
+  const collectorDigest = `sha256:${createHash('sha256').update(collectorBytes).digest('hex')}`;
 
   const evidence = {
     ...(mode === 'eai-cli-generated' ? { sourceMode: mode } : {}),
-    ...(mode === 'eai-cli-generated' ? { targetTenantId: targetTenant } : {}),
+    ...(targetTenant ? { targetTenantId: targetTenant } : {}),
     environment,
     workflowPath,
+    workflowBlobSha,
+    collectorDigest,
     ref,
     commitSha,
     workflowRun: {
@@ -1010,6 +1138,8 @@ async function collectEvidence(options) {
     artifact_digest: artifactDigest,
     archive_digest: archiveDigest,
     image_digest: imageDigest,
+    workflow_blob_sha: workflowBlobSha,
+    collector_digest: collectorDigest,
     evidence_path: evidencePath,
     template_version: schemaProvenance.templateVersion,
     ...(schemaProvenance.baseTemplateSha
@@ -1033,6 +1163,8 @@ async function collectEvidence(options) {
         artifactDigest,
         imageArtifact: evidence.imageArtifact,
         imageDigest,
+        workflowBlobSha,
+        collectorDigest,
         templateVersion: schemaProvenance.templateVersion,
         schemaDigest: schemaProvenance.schemaDigest,
       },

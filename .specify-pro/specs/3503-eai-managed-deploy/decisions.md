@@ -28,4 +28,12 @@ The governed configuration digest includes every regular file beneath `src/eai.c
 
 Legacy exact-operation reads use the same safe opaque-segment validation as the unified managed route. Retry state is authoritative only when it carries the exact allowlisted `publicApiUrl` selected for the original operation; missing endpoint authority requires a fresh deployment rather than inheriting a current profile value.
 
+## Producer and filesystem race closure
+
+The deferred release gate resolves the immutable canonical producer tag and independently reads both canonical files from that exact commit before comparing pinned digests. Local byte parity alone is insufficient.
+
+Source revision evidence carries `workflowBlobSha` as a lowercase 40-hex Git blob SHA and `collectorDigest` as a lowercase algorithm-qualified SHA-256 digest. The platform derives, verifies, and seals them from server-side linked-installation reads. The CLI does not establish producer trust from caller values; it requires the platform-sealed fields in terminal proof.
+
+After a no-follow open, governed configuration and local publication re-resolve the path, compare its inode with the opened descriptor, and reject any escaped or changed ancestor before reading. Doctor evidence and local recovery receipts write through that already validated final descriptor so a later path replacement cannot redirect the bytes.
+
 Keep `src/commands/eai-managed-deploy.ts` and `src/lib/eai-managed-source-client.ts` as compatible public entrypoints while moving focused implementation into modules below 300 lines. JSON failures retain the CLI-wide nested error envelope.

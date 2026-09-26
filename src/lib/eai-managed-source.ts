@@ -1,11 +1,12 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
-import { lstat, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, open, readdir, realpath } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import inquirer from 'inquirer';
 import { buildManagedDeployConfigHash } from './eai-managed-deploy.js';
+import { isContained, writePrivateFileNoFollow } from './eai-managed-deploy-filesystem.js';
 
 const exec = promisify(execFile);
 export const CLI_MANAGED_SOURCE_SCHEMA = 'eai.cli_managed_source_bundle.v1';
@@ -84,14 +85,19 @@ function assertNoEmbeddedCredential(bytes: Buffer, path: string): void {
 }
 
 async function readBoundedSourceFile(root: string, path: string): Promise<Buffer> {
+  const directoryIdentities: Array<{ path: string; dev: number; ino: number }> = [];
   let parent = dirname(join(root, path));
   while (parent !== root) {
     const status = await lstat(parent);
     if (!status.isDirectory() || status.isSymbolicLink()) throw new ManagedSourceError('SOURCE_SYMLINK_UNSUPPORTED', `Source cannot pass through a symlink: ${path}`);
+    directoryIdentities.push({ path: parent, dev: status.dev, ino: status.ino });
     const next = dirname(parent);
     if (next === parent || relative(root, next).startsWith('..')) throw new ManagedSourceError('SOURCE_PATH_INVALID', `Source escaped the project: ${path}`);
     parent = next;
   }
+  const rootStatus = await lstat(root);
+  if (!rootStatus.isDirectory() || rootStatus.isSymbolicLink()) throw new ManagedSourceError('SOURCE_PATH_INVALID', 'Use the real generated-app directory, not a symlink.');
+  directoryIdentities.push({ path: root, dev: rootStatus.dev, ino: rootStatus.ino });
   const target = join(root, path);
   const status = await lstat(target);
   if (!status.isFile() || status.isSymbolicLink()) throw new ManagedSourceError('SOURCE_SYMLINK_UNSUPPORTED', `Only regular source files can be published: ${path}`);
@@ -100,6 +106,22 @@ async function readBoundedSourceFile(root: string, path: string): Promise<Buffer
     const actual = await handle.stat();
     if (!actual.isFile() || actual.dev !== status.dev || actual.ino !== status.ino) {
       throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source changed before packaging: ${path}. Retry after editing has stopped.`);
+    }
+    for (const identity of directoryIdentities) {
+      const current = await lstat(identity.path);
+      if (!current.isDirectory() || current.isSymbolicLink()
+        || current.dev !== identity.dev || current.ino !== identity.ino) {
+        throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source path changed before packaging: ${path}. Retry after editing has stopped.`);
+      }
+    }
+    const [canonicalRoot, canonicalTarget, rebound] = await Promise.all([
+      realpath(root),
+      realpath(target),
+      lstat(target),
+    ]);
+    if (!isContained(canonicalRoot, canonicalTarget) || rebound.isSymbolicLink()
+      || rebound.dev !== actual.dev || rebound.ino !== actual.ino) {
+      throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source path changed before packaging: ${path}. Retry after editing has stopped.`);
     }
     if (actual.size > CLI_MANAGED_SOURCE_LIMITS.maxFileBytes) throw new ManagedSourceError('SOURCE_FILE_LIMIT', `Source file exceeds the 2 MiB limit: ${path}`);
     const buffer = Buffer.alloc(actual.size + 1);
@@ -144,9 +166,10 @@ async function sourceInventory(root: string): Promise<string[]> {
 
 /** Local scaffold history detects unsupported edits; the server independently authorizes the reviewed template. */
 export async function buildCliManagedSourceBundle(projectRoot: string): Promise<{ bundle: CliManagedSourceBundle; totalBytes: number }> {
-  const root = resolve(projectRoot);
-  const rootStatus = await lstat(root);
+  const requestedRoot = resolve(projectRoot);
+  const rootStatus = await lstat(requestedRoot);
   if (!rootStatus.isDirectory() || rootStatus.isSymbolicLink()) throw new ManagedSourceError('SOURCE_PATH_INVALID', 'Use the real generated-app directory, not a symlink.');
+  const root = await realpath(requestedRoot);
   const manifestPath = join(root, '.eai-manifest.json');
   const manifestStatus = await lstat(manifestPath);
   if (!manifestStatus.isFile() || manifestStatus.isSymbolicLink() || manifestStatus.size > 1024 * 1024) throw new ManagedSourceError('TEMPLATE_PIN_REQUIRED', 'The project needs a valid eai init template manifest.');
@@ -208,9 +231,10 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
 
 /** Local evidence is recomputable from source bytes; it grants no GitHub or deployment authority. */
 export async function writeCliManagedSourceReceipt(projectRoot: string, bundle: CliManagedSourceBundle): Promise<string> {
-  const root = resolve(projectRoot);
-  const rootStatus = await lstat(root);
+  const requestedRoot = resolve(projectRoot);
+  const rootStatus = await lstat(requestedRoot);
   if (!rootStatus.isDirectory() || rootStatus.isSymbolicLink()) throw new ManagedSourceError('SOURCE_PATH_INVALID', 'Use the real generated-app directory, not a symlink.');
+  const root = await realpath(requestedRoot);
   const directory = join(root, '.eai');
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const directoryStatus = await lstat(directory);
@@ -221,9 +245,8 @@ export async function writeCliManagedSourceReceipt(projectRoot: string, bundle: 
     throw error;
   });
   if (existing && (!existing.isFile() || existing.isSymbolicLink())) throw new ManagedSourceError('SOURCE_RECEIPT_PATH_INVALID', 'The local source receipt must be a regular file.');
-  const temporary = join(directory, `.cli-managed-source-${randomUUID()}.tmp`);
   try {
-    await writeFile(temporary, `${JSON.stringify({
+    await writePrivateFileNoFollow(target, `${JSON.stringify({
       schemaVersion: 'eai.cli_managed_source_local_receipt.v1',
       sourceMode: 'eai-cli-generated',
       templateCommitSha: bundle.templateCommitSha,
@@ -231,10 +254,10 @@ export async function writeCliManagedSourceReceipt(projectRoot: string, bundle: 
       configHash: bundle.configHash,
       totalBytes: bundle.files.reduce((total, file) => total + file.size, 0),
       files: bundle.files.map(({ path, size, sha256 }) => ({ path, size, sha256 })),
-    }, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
-    await rename(temporary, target);
-  } finally {
-    await rm(temporary, { force: true });
+    }, null, 2)}\n`);
+  } catch (error) {
+    if (error instanceof ManagedSourceError) throw error;
+    throw new ManagedSourceError('SOURCE_RECEIPT_PATH_INVALID', `The local source receipt path changed before it could be written: ${error instanceof Error ? error.message : String(error)}`);
   }
   return target;
 }

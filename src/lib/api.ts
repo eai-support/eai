@@ -313,6 +313,8 @@ export interface ManagedDeploymentSourceRevision {
   reviewHeadSha?: string;
   commitSha: string;
   workflowRunId: string | number;
+  workflowBlobSha: string;
+  collectorDigest: string;
   configHash: string;
   artifactDigest: string;
   imageArtifact: {

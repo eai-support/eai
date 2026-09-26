@@ -12,3 +12,4 @@
 10. Bind local publication and workflow-evidence ingestion to stable bounded no-follow file handles, include every governed test/spec file, and reject links in every governed configuration ancestor.
 11. Preserve the repository-standard JSON failure envelope across the command split.
 12. Run focused CLI evidence, build, lint, and release preflight; push without merging or releasing.
+13. Verify producer release bytes remotely, bind source revisions to workflow/collector identities, and close ancestor replacement windows on governed reads and local evidence writes.

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { chmod, lstat, mkdir, open, readFile, realpath, rename, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, mkdir, open, readFile, realpath, rename, rm, type FileHandle } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 
 export function isContained(root: string, target: string): boolean {
@@ -26,11 +27,23 @@ export async function ensureDirectory(path: string, mode: number): Promise<void>
   await assertTrustedDirectory(path);
 }
 
-async function ensureNoLinkDirectoryPath(path: string, mode: number): Promise<void> {
+interface DirectoryIdentity {
+  path: string;
+  dev: number;
+  ino: number;
+}
+
+async function ensureNoLinkDirectoryPath(path: string, mode: number): Promise<DirectoryIdentity[]> {
   const target = resolve(path);
   const filesystemRoot = parse(target).root;
   const components = relative(filesystemRoot, target).split(/[\\/]/).filter(Boolean);
   let current = filesystemRoot;
+  const identities: DirectoryIdentity[] = [];
+  const rootStatus = await lstat(filesystemRoot);
+  if (!rootStatus.isDirectory() || rootStatus.isSymbolicLink()) {
+    throw new Error('Managed deployment refused a linked evidence directory.');
+  }
+  identities.push({ path: filesystemRoot, dev: rootStatus.dev, ino: rootStatus.ino });
   for (const component of components) {
     current = join(current, component);
     let status;
@@ -48,8 +61,30 @@ async function ensureNoLinkDirectoryPath(path: string, mode: number): Promise<vo
     if (!status.isDirectory() || status.isSymbolicLink()) {
       throw new Error('Managed deployment refused a linked evidence directory.');
     }
+    identities.push({ path: current, dev: status.dev, ino: status.ino });
   }
   await assertTrustedDirectory(target);
+  return identities;
+}
+
+async function assertDirectoryIdentities(identities: readonly DirectoryIdentity[]): Promise<void> {
+  for (const identity of identities) {
+    const status = await lstat(identity.path);
+    if (!status.isDirectory() || status.isSymbolicLink()
+      || status.dev !== identity.dev || status.ino !== identity.ino) {
+      throw new Error('Managed deployment evidence directory changed before the bound write.');
+    }
+  }
+}
+
+async function assertOpenedPrivateTarget(path: string, handle: FileHandle): Promise<void> {
+  const [opened, bound] = await Promise.all([handle.stat(), lstat(path)]);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (!opened.isFile() || !bound.isFile() || bound.isSymbolicLink()
+    || opened.dev !== bound.dev || opened.ino !== bound.ino || opened.nlink !== 1
+    || (process.platform !== 'win32' && ((uid !== null && opened.uid !== uid) || (opened.mode & 0o077) !== 0))) {
+    throw new Error('Managed deployment refused an untrusted file.');
+  }
 }
 
 export async function assertRegularTarget(path: string, privateData = false): Promise<void> {
@@ -103,11 +138,31 @@ export async function writeAtomically(path: string, content: Buffer | string, mo
   }
 }
 
+/** Write private local evidence only through an inode bound after its full parent path is revalidated. */
+export async function writePrivateFileNoFollow(path: string, content: Buffer | string): Promise<void> {
+  const target = resolve(path);
+  const identities = await ensureNoLinkDirectoryPath(dirname(target), 0o700);
+  await assertRegularTarget(target, true);
+  const handle = await open(
+    target,
+    constants.O_WRONLY | constants.O_CREAT | (constants.O_NOFOLLOW || 0),
+    0o600,
+  );
+  try {
+    await assertDirectoryIdentities(identities);
+    await assertOpenedPrivateTarget(target, handle);
+    await handle.truncate(0);
+    await handle.writeFile(content);
+    await handle.sync();
+    await handle.chmod(0o600);
+    await assertDirectoryIdentities(identities);
+    await assertOpenedPrivateTarget(target, handle);
+  } finally {
+    await handle.close();
+  }
+}
+
 /** Persist owner-only operation evidence without following links or broadening permissions. */
 export async function writeManagedDeployEvidence(path: string, value: unknown): Promise<void> {
-  const target = resolve(path);
-  await ensureNoLinkDirectoryPath(dirname(target), 0o700);
-  await assertRegularTarget(target, true);
-  await writeAtomically(target, `${JSON.stringify(value, null, 2)}\n`, 0o600);
-  await chmod(target, 0o600);
+  await writePrivateFileNoFollow(path, `${JSON.stringify(value, null, 2)}\n`);
 }
