@@ -1,4 +1,4 @@
-import { constants } from 'node:fs';
+import { constants, type Stats } from 'node:fs';
 import { lstat, mkdir, open, readFile, realpath, type FileHandle } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 
@@ -145,16 +145,31 @@ export async function fileMatches(left: string, right: string): Promise<boolean>
 export async function writeBoundRegularFile(path: string, content: Buffer | string, mode = 0o644): Promise<void> {
   const target = resolve(path);
   const identities = await snapshotNoLinkDirectoryPath(dirname(target));
-  await assertRegularTarget(target);
+  let before: Stats | undefined;
+  try {
+    before = await lstat(target);
+    if (!before.isFile() || before.isSymbolicLink()) {
+      throw new Error('Managed deployment refused an untrusted file.');
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
   const handle = await open(
     target,
-    constants.O_WRONLY | constants.O_CREAT | (constants.O_NOFOLLOW || 0),
+    constants.O_WRONLY
+      | (before ? 0 : constants.O_CREAT | constants.O_EXCL)
+      | (constants.O_NOFOLLOW || 0),
     mode,
   );
   try {
     const opened = await handle.stat();
     await assertDirectoryIdentities(identities);
     await assertOpenedRegularTarget(target, handle);
+    if (before && (opened.dev !== before.dev || opened.ino !== before.ino
+      || opened.size !== before.size || opened.mtimeMs !== before.mtimeMs
+      || opened.ctimeMs !== before.ctimeMs)) {
+      throw new Error('Managed deployment generated file changed before its bound write.');
+    }
     await handle.truncate(0);
     await handle.writeFile(content);
     await handle.sync();
@@ -234,6 +249,12 @@ export async function readPrivateFileNoFollow(path: string, maxBytes = 1024 * 10
     await assertDirectoryIdentities(identities);
     await assertOpenedPrivateTarget(target, handle);
     const opened = await handle.stat();
+    if (opened.size < 1 || opened.size > maxBytes
+      || opened.dev !== before.dev || opened.ino !== before.ino
+      || opened.size !== before.size || opened.mtimeMs !== before.mtimeMs
+      || opened.ctimeMs !== before.ctimeMs) {
+      throw new Error('Managed deployment recovery file changed or exceeded its size bound before reading.');
+    }
     const bytes = Buffer.allocUnsafe(opened.size);
     let offset = 0;
     while (offset < bytes.length) {

@@ -233,6 +233,14 @@ jobs:
             ':(exclude)src/eai.config/object-types.provisioning.json')"
           test -z "$untracked" || { printf '%s\n' "$untracked"; exit 1; }
 
+      - name: Stage verified image artifact
+        id: staged-image
+        run: |
+          node scripts/source-unknown-deployment-evidence.mjs stage-image-artifact \
+            --root "$GITHUB_WORKSPACE" \
+            --staging-root "$RUNNER_TEMP" \
+            --github-output "$GITHUB_OUTPUT"
+
       - name: Upload immutable image artifact
         id: image-artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -241,7 +249,7 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 14
-          path: .eai-build/eai-generated-app-image.tar
+          path: ${{ steps.staged-image.outputs.image_archive_path }}
 
       - name: Collect immutable build evidence
         id: evidence
@@ -257,6 +265,9 @@ jobs:
           PREFERRED_DEPLOY_ENVIRONMENT: ${{ inputs.env }}
           SOURCE_COMMIT_SHA: ${{ inputs.commit_sha || github.sha }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
+          STAGED_IMAGE_ARCHIVE: ${{ steps.staged-image.outputs.image_archive_path }}
+          STAGED_ARCHIVE_DIGEST: ${{ steps.staged-image.outputs.archive_digest }}
+          IMAGE_STAGING_ROOT: ${{ runner.temp }}
         run: |
           image_digest="$(node scripts/source-unknown-deployment-evidence.mjs read-image-digest)"
           node scripts/source-unknown-deployment-evidence.mjs collect \
@@ -277,6 +288,9 @@ jobs:
             --preferred-environment "$PREFERRED_DEPLOY_ENVIRONMENT" \
             --legacy-environment "$LEGACY_DEPLOY_ENVIRONMENT" \
             --expected-config-hash "$CONFIG_HASH" \
+            --image-archive "$STAGED_IMAGE_ARCHIVE" \
+            --image-staging-root "$IMAGE_STAGING_ROOT" \
+            --expected-archive-digest "$STAGED_ARCHIVE_DIGEST" \
             --artifact-id "${{ steps.image-artifact.outputs.artifact-id }}" \
             --artifact-digest "${{ steps.image-artifact.outputs.artifact-digest }}" \
             --image-digest "$image_digest"

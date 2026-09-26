@@ -7,13 +7,13 @@ import {
   existsSync,
   fstatSync,
   lstatSync,
+  mkdtempSync,
   mkdirSync,
   openSync,
   readSync,
   realpathSync,
   readdirSync,
   readFileSync,
-  rmSync,
   writeSync,
   writeFileSync,
 } from 'node:fs';
@@ -43,6 +43,7 @@ const GENERATED_CONFIG_FILES = new Set([
 ]);
 const CANONICAL_WORKFLOW_PATH = '.github/workflows/eai-app.yml';
 const CANONICAL_COLLECTOR_PATH = 'scripts/source-unknown-deployment-evidence.mjs';
+const MAX_IMAGE_ARCHIVE_BYTES = 10 * 1024 * 1024 * 1024;
 
 function sourceMode(options) {
   const mode = option(options, 'sourceMode', 'source-unknown');
@@ -644,26 +645,276 @@ function readImageDigest(options) {
   process.stdout.write(`${digest}\n`);
 }
 
-async function digestFile(path) {
+async function digestFile(
+  path,
+  label = 'Artifact',
+  maxBytes = MAX_IMAGE_ARCHIVE_BYTES,
+) {
   const hash = createHash('sha256');
+  const ancestors = snapshotAbsoluteDirectoryPath(dirname(path), label);
+  const before = lstatSync(path);
+  if (
+    before.isSymbolicLink() ||
+    !before.isFile() ||
+    before.size < 1 ||
+    before.size > maxBytes
+  ) {
+    throw new Error(`${label} must be a bounded no-follow regular file.`);
+  }
   const descriptor = openSync(
     path,
     constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
   );
   try {
-    if (!fstatSync(descriptor).isFile()) {
-      throw new Error(`Artifact must be a regular file: ${path}`);
+    const opened = fstatSync(descriptor);
+    assertAbsoluteDirectorySnapshot(ancestors, label);
+    const rebound = lstatSync(path);
+    if (
+      !opened.isFile() ||
+      opened.nlink !== 1 ||
+      opened.dev !== before.dev ||
+      opened.ino !== before.ino ||
+      opened.size !== before.size ||
+      opened.size < 1 ||
+      opened.size > maxBytes ||
+      rebound.isSymbolicLink() ||
+      !rebound.isFile() ||
+      rebound.dev !== opened.dev ||
+      rebound.ino !== opened.ino
+    ) {
+      throw new Error(`${label} changed before its bounded digest.`);
     }
+    let digested = 0;
     await new Promise((resolvePromise, reject) => {
       createReadStream(path, { fd: descriptor, autoClose: false })
-        .on('data', (chunk) => hash.update(chunk))
+        .on('data', (chunk) => {
+          digested += chunk.length;
+          hash.update(chunk);
+        })
         .on('error', reject)
         .on('end', resolvePromise);
     });
+    const after = fstatSync(descriptor);
+    assertAbsoluteDirectorySnapshot(ancestors, label);
+    const finalPath = lstatSync(path);
+    if (
+      digested !== opened.size ||
+      after.dev !== opened.dev ||
+      after.ino !== opened.ino ||
+      after.size !== opened.size ||
+      after.mtimeMs !== opened.mtimeMs ||
+      after.ctimeMs !== opened.ctimeMs ||
+      finalPath.isSymbolicLink() ||
+      !finalPath.isFile() ||
+      finalPath.dev !== opened.dev ||
+      finalPath.ino !== opened.ino ||
+      finalPath.size !== opened.size
+    ) {
+      throw new Error(`${label} changed during its bounded digest.`);
+    }
   } finally {
     closeSync(descriptor);
   }
   return `sha256:${hash.digest('hex')}`;
+}
+
+function stageImageArtifact(options) {
+  const root = resolve(option(options, 'root', process.cwd()));
+  const sourcePath = resolve(
+    root,
+    option(options, 'imageArchive', '.eai-build/eai-generated-app-image.tar'),
+  );
+  const stagingRootValue = option(
+    options,
+    'stagingRoot',
+    process.env.RUNNER_TEMP || '',
+  );
+  if (!stagingRootValue) {
+    throw new Error(
+      'Image artifact staging requires RUNNER_TEMP or --staging-root.',
+    );
+  }
+  const stagingRoot = resolve(stagingRootValue);
+  containedRelativePath(root, sourcePath, 'OCI image archive');
+  assertDirectoryTreeNoFollow(
+    root,
+    dirname(sourcePath),
+    'OCI image archive directory',
+  );
+  assertDirectoryTreeNoFollow(
+    stagingRoot,
+    stagingRoot,
+    'Image artifact staging root',
+  );
+  const stagingRootAncestors = snapshotAbsoluteDirectoryPath(
+    stagingRoot,
+    'Image artifact staging root',
+  );
+
+  const sourceAncestors = snapshotAbsoluteDirectoryPath(
+    dirname(sourcePath),
+    'OCI image archive',
+  );
+  const before = lstatSync(sourcePath);
+  if (
+    before.isSymbolicLink() ||
+    !before.isFile() ||
+    before.size < 1 ||
+    before.size > MAX_IMAGE_ARCHIVE_BYTES
+  ) {
+    throw new Error(
+      'OCI image archive must be a bounded no-follow regular file.',
+    );
+  }
+  const sourceDescriptor = openSync(
+    sourcePath,
+    constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
+  );
+  let destinationDescriptor;
+  try {
+    const stagingDirectory = mkdtempSync(
+      join(stagingRoot, 'eai-managed-image-'),
+    );
+    assertAbsoluteDirectorySnapshot(
+      stagingRootAncestors,
+      'Image artifact staging root',
+    );
+    containedRelativePath(
+      realpathSync(stagingRoot),
+      realpathSync(stagingDirectory),
+      'Image artifact staging directory',
+    );
+    const stagedPath = join(stagingDirectory, 'eai-generated-app-image.tar');
+    const destinationAncestors = snapshotAbsoluteDirectoryPath(
+      stagingDirectory,
+      'Staged OCI image archive',
+    );
+    destinationDescriptor = openSync(
+      stagedPath,
+      constants.O_WRONLY |
+        constants.O_CREAT |
+        constants.O_EXCL |
+        (constants.O_NOFOLLOW || 0),
+      0o600,
+    );
+    const opened = fstatSync(sourceDescriptor);
+    assertAbsoluteDirectorySnapshot(sourceAncestors, 'OCI image archive');
+    const sourceRebound = lstatSync(sourcePath);
+    containedRelativePath(
+      realpathSync(root),
+      realpathSync(sourcePath),
+      'OCI image archive',
+    );
+    if (
+      !opened.isFile() ||
+      opened.nlink !== 1 ||
+      opened.dev !== before.dev ||
+      opened.ino !== before.ino ||
+      opened.size !== before.size ||
+      sourceRebound.isSymbolicLink() ||
+      !sourceRebound.isFile() ||
+      sourceRebound.dev !== opened.dev ||
+      sourceRebound.ino !== opened.ino
+    ) {
+      throw new Error('OCI image archive changed before staging.');
+    }
+    const destinationOpened = fstatSync(destinationDescriptor);
+    assertAbsoluteDirectorySnapshot(
+      destinationAncestors,
+      'Staged OCI image archive',
+    );
+    const destinationRebound = lstatSync(stagedPath);
+    if (
+      !destinationOpened.isFile() ||
+      destinationOpened.nlink !== 1 ||
+      destinationRebound.isSymbolicLink() ||
+      !destinationRebound.isFile() ||
+      destinationRebound.dev !== destinationOpened.dev ||
+      destinationRebound.ino !== destinationOpened.ino
+    ) {
+      throw new Error('Staged OCI image archive must be a regular file.');
+    }
+
+    const hash = createHash('sha256');
+    const buffer = Buffer.allocUnsafe(64 * 1024);
+    let copied = 0;
+    while (copied < opened.size) {
+      const bytesRead = readSync(
+        sourceDescriptor,
+        buffer,
+        0,
+        Math.min(buffer.length, opened.size - copied),
+        null,
+      );
+      if (bytesRead === 0) break;
+      hash.update(buffer.subarray(0, bytesRead));
+      let written = 0;
+      while (written < bytesRead) {
+        const bytesWritten = writeSync(
+          destinationDescriptor,
+          buffer,
+          written,
+          bytesRead - written,
+        );
+        if (bytesWritten === 0) {
+          throw new Error('Staged OCI image archive stopped accepting data.');
+        }
+        written += bytesWritten;
+      }
+      copied += bytesRead;
+    }
+
+    const sourceAfter = fstatSync(sourceDescriptor);
+    const destinationAfter = fstatSync(destinationDescriptor);
+    assertAbsoluteDirectorySnapshot(sourceAncestors, 'OCI image archive');
+    assertAbsoluteDirectorySnapshot(
+      destinationAncestors,
+      'Staged OCI image archive',
+    );
+    const sourcePathAfter = lstatSync(sourcePath);
+    const destinationPathAfter = lstatSync(stagedPath);
+    if (
+      copied !== opened.size ||
+      sourceAfter.dev !== opened.dev ||
+      sourceAfter.ino !== opened.ino ||
+      sourceAfter.size !== opened.size ||
+      sourceAfter.mtimeMs !== opened.mtimeMs ||
+      sourceAfter.ctimeMs !== opened.ctimeMs ||
+      sourcePathAfter.isSymbolicLink() ||
+      !sourcePathAfter.isFile() ||
+      sourcePathAfter.dev !== opened.dev ||
+      sourcePathAfter.ino !== opened.ino ||
+      destinationAfter.dev !== destinationOpened.dev ||
+      destinationAfter.ino !== destinationOpened.ino ||
+      destinationAfter.size !== copied ||
+      destinationPathAfter.isSymbolicLink() ||
+      !destinationPathAfter.isFile() ||
+      destinationPathAfter.dev !== destinationOpened.dev ||
+      destinationPathAfter.ino !== destinationOpened.ino ||
+      destinationPathAfter.size !== copied
+    ) {
+      throw new Error(
+        'OCI image archive changed during its bound staging copy.',
+      );
+    }
+    const archiveDigest = `sha256:${hash.digest('hex')}`;
+    appendOutputs(
+      option(options, 'githubOutput', process.env.GITHUB_OUTPUT || ''),
+      {
+        image_archive_path: stagedPath,
+        archive_digest: archiveDigest,
+        archive_size: copied,
+      },
+    );
+    process.stdout.write(
+      `${JSON.stringify({ imageArchivePath: stagedPath, archiveDigest, size: copied })}\n`,
+    );
+  } finally {
+    if (destinationDescriptor !== undefined) {
+      closeSync(destinationDescriptor);
+    }
+    closeSync(sourceDescriptor);
+  }
 }
 
 function digestFiles(root, paths) {
@@ -1133,6 +1384,10 @@ async function collectEvidence(options) {
     root,
     option(options, 'imageArchive', '.eai-build/eai-generated-app-image.tar'),
   );
+  const imageStagingRootValue = option(options, 'imageStagingRoot');
+  const imageAuthorityRoot = imageStagingRootValue
+    ? resolve(imageStagingRootValue)
+    : root;
   const evidencePath = resolve(
     outputDir,
     option(options, 'evidenceFile', 'source-unknown-deployment-evidence.json'),
@@ -1143,9 +1398,13 @@ async function collectEvidence(options) {
     process.env.GITHUB_OUTPUT || '',
   );
 
-  containedRelativePath(root, imageArchivePath, 'OCI image archive');
+  containedRelativePath(
+    imageAuthorityRoot,
+    imageArchivePath,
+    'OCI image archive',
+  );
   assertDirectoryTreeNoFollow(
-    root,
+    imageAuthorityRoot,
     dirname(imageArchivePath),
     'OCI image archive directory',
   );
@@ -1164,7 +1423,18 @@ async function collectEvidence(options) {
     ? `sha256:${uploadedArtifactDigest}`
     : uploadedArtifactDigest;
   const artifactId = option(options, 'artifactId');
-  const archiveDigest = await digestFile(imageArchivePath);
+  const archiveDigest = await digestFile(imageArchivePath, 'OCI image archive');
+  const expectedArchiveDigest = option(options, 'expectedArchiveDigest');
+  if (imageStagingRootValue && !SHA256_DIGEST.test(expectedArchiveDigest)) {
+    throw new Error(
+      'Staged OCI image archive requires its exact expected digest.',
+    );
+  }
+  if (expectedArchiveDigest && expectedArchiveDigest !== archiveDigest) {
+    throw new Error(
+      'Staged OCI image archive digest does not match its bound copy.',
+    );
+  }
   const imageDigest = option(options, 'imageDigest');
   const configHash = buildConfigHash(root);
   const expectedConfigHash = option(options, 'expectedConfigHash');
@@ -1369,6 +1639,8 @@ if (command === 'validate-dispatch') {
   );
 } else if (command === 'prepare-image-context') {
   prepareImageContext(options);
+} else if (command === 'stage-image-artifact') {
+  stageImageArtifact(options);
 } else if (command === 'read-image-digest') {
   readImageDigest(options);
 } else if (command === 'collect') {

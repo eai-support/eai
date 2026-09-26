@@ -60,7 +60,11 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 });
 
 import { buildManagedDeployConfigHash, installCanonicalManagedDeployFiles } from "../../src/lib/eai-managed-deploy-files.js";
-import { writeManagedDeployEvidence } from "../../src/lib/eai-managed-deploy-filesystem.js";
+import {
+  readPrivateFileNoFollow,
+  writeBoundRegularFile,
+  writeManagedDeployEvidence,
+} from "../../src/lib/eai-managed-deploy-filesystem.js";
 import {
   claimManagedDeployDispatch,
   saveManagedDeployState,
@@ -330,6 +334,55 @@ test("does not write canonical file bytes through a replaced parent", async () =
   );
   expect(race.swapped).toBe(true);
   await expect(readFile(workflow, "utf8")).resolves.toBe("");
+});
+
+test("does not clobber a canonical target that appears before exclusive creation", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-install-create-race-")));
+  cleanup.push(root);
+  await mkdir(join(root, ".github/workflows"), { recursive: true });
+  const workflow = join(root, ".github/workflows/eai-app.yml");
+  race.addTrigger = workflow;
+  race.addPath = workflow;
+  race.addContent = "concurrent local edit\n";
+
+  await expect(installCanonicalManagedDeployFiles(root)).rejects.toMatchObject({
+    code: "EEXIST",
+  });
+  expect(race.added).toBe(true);
+  await expect(readFile(workflow, "utf8")).resolves.toBe("concurrent local edit\n");
+});
+
+test("does not clobber an existing canonical target changed before open", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-install-existing-race-")));
+  cleanup.push(root);
+  const target = join(root, "eai-app.yml");
+  await writeFile(target, "inspected local edit\n");
+  race.addTrigger = target;
+  race.addPath = target;
+  race.addContent = "concurrent local edit with a different size\n";
+
+  await expect(writeBoundRegularFile(target, "canonical replacement\n")).rejects.toThrow(
+    "generated file changed before its bound write",
+  );
+  expect(race.added).toBe(true);
+  await expect(readFile(target, "utf8")).resolves.toBe(
+    "concurrent local edit with a different size\n",
+  );
+});
+
+test("rejects a private file that grows after inspection before allocation", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-private-read-size-race-")));
+  cleanup.push(root);
+  const target = join(root, "state.json");
+  await writeFile(target, "{}\n", { mode: 0o600 });
+  race.addTrigger = target;
+  race.addPath = target;
+  race.addContent = "x".repeat(1024);
+
+  await expect(readPrivateFileNoFollow(target, 64)).rejects.toThrow(
+    /changed or exceeded its size bound before reading/,
+  );
+  expect(race.added).toBe(true);
 });
 
 test.each(["state", "dispatch"])(
