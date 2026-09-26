@@ -49,13 +49,13 @@ export async function prepareRuntime(
   }
 }
 
-export async function readExactOperation(
+async function readBoundExactOperation(
   client: PlatformAPIClient,
   tenantId: string,
   targetTenantId: string,
   appKey: string,
   operationId: string,
-  expectedSourceMode: ManagedDeploymentOperationResponse["sourceMode"] = "source-unknown",
+  expectedSourceMode?: ManagedDeploymentOperationResponse["sourceMode"],
 ): Promise<ManagedDeploymentOperationResponse> {
   const response = await client.getManagedDeploymentOperation(
     tenantId,
@@ -73,7 +73,8 @@ export async function readExactOperation(
     payload.operationId !== operationId ||
     payload.appKey !== appKey ||
     payload.appScopeTenantId !== tenantId ||
-    payload.sourceMode !== expectedSourceMode
+    !["source-unknown", "eai-cli-generated"].includes(String(payload.sourceMode)) ||
+    (expectedSourceMode !== undefined && payload.sourceMode !== expectedSourceMode)
   ) {
     fail(
       "SOURCE_OPERATION_BINDING_MISMATCH",
@@ -89,6 +90,35 @@ export async function readExactOperation(
     );
   }
   return payload as unknown as ManagedDeploymentOperationResponse;
+}
+
+/** Read one exact operation while allowing its sealed source mode to select recovery routing. */
+export async function readUnifiedExactOperation(
+  client: PlatformAPIClient,
+  tenantId: string,
+  targetTenantId: string,
+  appKey: string,
+  operationId: string,
+): Promise<ManagedDeploymentOperationResponse> {
+  return readBoundExactOperation(client, tenantId, targetTenantId, appKey, operationId);
+}
+
+export async function readExactOperation(
+  client: PlatformAPIClient,
+  tenantId: string,
+  targetTenantId: string,
+  appKey: string,
+  operationId: string,
+  expectedSourceMode: ManagedDeploymentOperationResponse["sourceMode"] = "source-unknown",
+): Promise<ManagedDeploymentOperationResponse> {
+  return readBoundExactOperation(
+    client,
+    tenantId,
+    targetTenantId,
+    appKey,
+    operationId,
+    expectedSourceMode,
+  );
 }
 
 export async function pollExactOperation(

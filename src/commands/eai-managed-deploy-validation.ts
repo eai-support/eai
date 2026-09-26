@@ -102,5 +102,12 @@ export function validateManagedDeployInput(
       "Pass the exact runtime tenant. For same-tenant deployment, repeat the --tenant-id value.",
     );
   }
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(targetTenantId)) {
+    fail(
+      "TARGET_TENANT_INVALID",
+      "--target-tenant-id must be a safe exact managed-deployment identifier.",
+      "Use the exact runtime tenant ID without paths, query text, or delimiters.",
+    );
+  }
   return { appKey, targetTenantId, workflowPath, timeoutSeconds };
 }

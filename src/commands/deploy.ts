@@ -10,7 +10,7 @@ import { Command } from 'commander';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { access, writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import ora from 'ora';
 import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
@@ -30,6 +30,7 @@ import {
   requireCommitSha,
   requireConfigHash,
   requireManagedPublicApiUrl,
+  isContained,
   writeManagedDeployEvidence,
 } from '../lib/eai-managed-deploy.js';
 import type { ManagedDeploymentOperationResponse } from '../lib/api.js';
@@ -900,7 +901,11 @@ async function runManagedDeployDoctor(options: ManagedDoctorOptions): Promise<Ma
     authenticatedReadiness: doctor.authenticatedReadiness,
     doctor,
   };
-  await writeManagedDeployEvidence(options.evidenceOut, evidence);
+  const evidencePath = resolve(context.root, options.evidenceOut);
+  if (evidencePath === resolve(context.root) || !isContained(context.root, evidencePath)) {
+    throw new Error('Managed deployment doctor evidence must remain inside the application root.');
+  }
+  await writeManagedDeployEvidence(evidencePath, evidence);
   return evidence;
 }
 

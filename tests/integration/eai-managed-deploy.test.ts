@@ -90,6 +90,8 @@ function completeUnifiedOperation(options: {
     setup: {
       targetTenantId, environment, repo: { owner: repoOwner, name: repoName },
       workflowPath: '.github/workflows/eai-app.yml', ref: `refs/heads/${branch}`, commitSha, configHash,
+      nonceSha256: managedDeployNonceSha256('one-time-nonce'), deployOnSuccess: true,
+      ...ACTOR_BINDING,
     },
   };
 }
@@ -123,6 +125,26 @@ function customerRetryState(options: {
     configHash: `sha256:${'b'.repeat(64)}`, environment: options.environment ?? 'preview',
     installationId: 12345, publicApiUrl: options.publicApiUrl ?? API_BASE,
     ...ACTOR_BINDING,
+  };
+}
+
+function customerOperationSetup(
+  state: ManagedDeployState,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    targetTenantId: state.targetTenantId,
+    environment: state.environment,
+    workflowPath: state.workflowPath,
+    ref: state.ref,
+    commitSha: state.commitSha,
+    configHash: state.configHash,
+    nonceSha256: managedDeployNonceSha256(state.nonce),
+    actorId: state.actorId,
+    githubLinkSessionId: state.githubLinkSessionId,
+    repo: { owner: 'enterprise', name: 'planning-portal' },
+    deployOnSuccess: true,
+    ...extra,
   };
 }
 
@@ -456,7 +478,7 @@ describe('eai deploy app --target eai', () => {
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await eaiManagedDeployCommand.parseAsync([
       'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
-      '--source', 'eai-managed', '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json',
+      '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json',
     ], { from: 'user' });
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
       source: 'eai-managed', sourceMode: 'eai-cli-generated', status: 'active',
@@ -781,10 +803,11 @@ fi
     ['accepted', 'revoked', 'test'], ['consumed', 'revoked', 'prod'],
   ] as const)('retries server %s evidence handoff in %s for %s without redispatch or Git checkout', async (evidenceState, operationStatus, environment) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
-    await saveManagedDeployState(customerRetryState({
+    const state = customerRetryState({
       targetTenantId: 'runtime-child',
       environment,
-    }));
+    });
+    await saveManagedDeployState(state);
     let deployed = false;
     const requests: Array<{ url: string; body: unknown }> = [];
     const identityFetch = stubManagedOperation();
@@ -796,7 +819,9 @@ fi
         appScopeTenantId: TENANT_ID, targetTenantId: 'runtime-child', appKey: 'planning-portal',
         operationId: 'source-unknown-abc123', environment, sourceMode: 'source-unknown',
         sourceStatus: deployed ? 'queued' : operationStatus, status: deployed ? 'queued' : operationStatus,
-        setup: { targetTenantId: 'runtime-child', status: evidenceState === 'consumed' ? 'consumed' : 'issued' },
+        setup: customerOperationSetup(state, {
+          status: evidenceState === 'consumed' ? 'consumed' : 'issued',
+        }),
         evidence: evidenceState === 'accepted' ? { status: 'accepted' } : undefined,
       });
       if (url.endsWith('/source-unknown/deploy')) { deployed = true; return jsonResponse({ status: 'queued' }, 202); }
@@ -819,7 +844,8 @@ fi
 
   test.each([undefined, 'staging'] as const)('refuses accepted-evidence retry without a supported server environment (%s)', async (environment) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
-    await saveManagedDeployState(customerRetryState({ targetTenantId: 'runtime-child' }));
+    const state = customerRetryState({ targetTenantId: 'runtime-child' });
+    await saveManagedDeployState(state);
     const requests: string[] = [];
     const identityFetch = stubManagedOperation();
     const identityImpl = identityFetch.getMockImplementation()!;
@@ -830,7 +856,7 @@ fi
         appScopeTenantId: TENANT_ID, targetTenantId: 'runtime-child', appKey: 'planning-portal',
         operationId: 'source-unknown-abc123', environment, sourceMode: 'source-unknown',
         sourceStatus: 'handoff_pending', status: 'handoff_pending',
-        setup: { targetTenantId: 'runtime-child', status: 'issued' },
+        setup: customerOperationSetup(state, { status: 'issued' }),
         evidence: { status: 'accepted' },
       });
       return identityImpl(input, init);
@@ -894,6 +920,7 @@ fi
     await saveManagedDeployState(state);
     const fetchMock = stubManagedOperation({
       appScopeTenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: state.appKey, operationId: state.operationId,
+      environment: state.environment, configHash: state.configHash,
       sourceMode: 'source-unknown', sourceStatus: 'issued', status: 'issued',
       setup: { ...state, nonceSha256: managedDeployNonceSha256(state.nonce), repo: { owner: 'enterprise', name: 'planning-portal' }, commitSha: 'c'.repeat(40), deployOnSuccess: true },
     });
@@ -906,6 +933,36 @@ fi
     expect(fetchMock.mock.calls.every(([input]) => !String(input).endsWith('/deploy') && !String(input).endsWith('/runtime-bootstrap'))).toBe(true);
     expect(process.exitCode).toBe(1);
   });
+
+  test.each(['terminal success', 'accepted evidence'] as const)(
+    'binds protected retry state before accepting %s',
+    async (phase) => {
+      await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+      const state = customerRetryState();
+      await saveManagedDeployState(state);
+      const operation = completeUnifiedOperation();
+      (operation.setup as Record<string, unknown>).commitSha = 'c'.repeat(40);
+      if (phase === 'accepted evidence') {
+        operation.sourceStatus = 'handoff_pending';
+        operation.status = 'handoff_pending';
+        operation.evidence = { status: 'accepted' };
+      }
+      const fetchMock = stubManagedOperation(operation);
+      const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      await eaiManagedDeployCommand.parseAsync([
+        state.appKey, '--target', 'eai', '--tenant-id', TENANT_ID,
+        '--target-tenant-id', TENANT_ID, '--retry', state.operationId,
+        '--no-wait', '--format', 'json',
+      ], { from: 'user' });
+
+      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+        ok: false, error: { code: 'RETRY_SERVER_BINDING_MISMATCH' },
+      });
+      expect(fetchMock.mock.calls.every(([input]) => !String(input).endsWith('/deploy'))).toBe(true);
+      expect(process.exitCode).toBe(1);
+    },
+  );
 
   test('requires the target tenant when resuming an exact operation', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');
@@ -922,6 +979,25 @@ fi
 
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
       ok: false, error: { code: 'TARGET_TENANT_REQUIRED' },
+    });
+    expect(process.exitCode).toBe(1);
+  });
+
+  test('rejects an unsafe target tenant before context resolution or network access', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+      '--target-tenant-id', '../runtime?tenant=other', '--source', 'customer-owned',
+      '--repo', 'enterprise/planning-portal', '--installation-id', '12345', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      ok: false, error: { code: 'TARGET_TENANT_INVALID' },
     });
     expect(process.exitCode).toBe(1);
   });
@@ -990,7 +1066,8 @@ fi
 
     await eaiManagedDeployCommand.parseAsync([
       'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
-      '--target-tenant-id', 'runtime-child', '--resume', 'source-unknown-abc123',
+      '--target-tenant-id', 'runtime-child', '--source', 'customer-owned',
+      '--resume', 'source-unknown-abc123',
       '--no-wait', '--format', 'json',
     ], { from: 'user' });
 
@@ -1135,5 +1212,22 @@ fi
     expect(JSON.parse(await readFile(evidencePath, 'utf8'))).toEqual(result);
     expect((await stat(evidencePath)).mode & 0o777).toBe(0o600);
     expect(process.exitCode).toBe(0);
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      process.exitCode = Number(code);
+      return undefined as never;
+    }) as typeof process.exit);
+    output.mockClear();
+    const outsideEvidence = join(env.dir, 'outside-doctor.json');
+    await deployCommand.parseAsync([
+      'doctor', '--operation-id', 'source-unknown-abc123', '--app-key', 'planning-portal',
+      '--tenant-id', TENANT_ID, '--target-tenant-id', 'runtime-child',
+      '--evidence-out', outsideEvidence, '--format', 'json',
+    ], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      status: 'fail', error: expect.stringContaining('inside the application root'),
+    });
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    await expect(readFile(outsideEvidence, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

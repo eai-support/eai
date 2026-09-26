@@ -322,6 +322,10 @@ function copyRegularTreeNoFollow(
         );
       }
 
+      const sourceAncestors = snapshotAbsoluteDirectoryPath(
+        dirname(sourcePath),
+        label,
+      );
       const sourceDescriptor = openSync(
         sourcePath,
         constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
@@ -333,11 +337,23 @@ function copyRegularTreeNoFollow(
       let destinationDescriptor;
       try {
         const opened = fstatSync(sourceDescriptor);
+        assertAbsoluteDirectorySnapshot(sourceAncestors, label);
+        const sourceRebound = lstatSync(sourcePath);
+        containedRelativePath(
+          realpathSync(root),
+          realpathSync(sourcePath),
+          label,
+        );
         if (
           !opened.isFile() ||
           opened.dev !== before.dev ||
           opened.ino !== before.ino ||
-          opened.size !== before.size
+          opened.size !== before.size ||
+          sourceRebound.isSymbolicLink() ||
+          !sourceRebound.isFile() ||
+          sourceRebound.dev !== opened.dev ||
+          sourceRebound.ino !== opened.ino ||
+          sourceRebound.size !== opened.size
         ) {
           throw new Error(`${label} changed before its no-follow copy.`);
         }
@@ -401,11 +417,25 @@ function copyRegularTreeNoFollow(
           throw new Error(`${label} destination changed during its bound write.`);
         }
         const after = fstatSync(sourceDescriptor);
+        assertAbsoluteDirectorySnapshot(sourceAncestors, label);
+        const sourcePathAfter = lstatSync(sourcePath);
+        containedRelativePath(
+          realpathSync(root),
+          realpathSync(sourcePath),
+          label,
+        );
         if (
           copied !== opened.size ||
           after.dev !== opened.dev ||
           after.ino !== opened.ino ||
-          after.size !== opened.size
+          after.size !== opened.size ||
+          after.mtimeMs !== opened.mtimeMs ||
+          after.ctimeMs !== opened.ctimeMs ||
+          sourcePathAfter.isSymbolicLink() ||
+          !sourcePathAfter.isFile() ||
+          sourcePathAfter.dev !== opened.dev ||
+          sourcePathAfter.ino !== opened.ino ||
+          sourcePathAfter.size !== opened.size
         ) {
           throw new Error(`${label} changed during its no-follow copy.`);
         }

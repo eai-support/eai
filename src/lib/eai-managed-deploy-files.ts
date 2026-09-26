@@ -13,7 +13,7 @@ import {
   fileMatches,
   isContained,
   prepareProjectTarget,
-  writeAtomically,
+  writeBoundRegularFile,
 } from './eai-managed-deploy-filesystem.js';
 
 const GOVERNED_ROOT_FILES = ['eai.config.ts', 'eai.runtime.json'] as const;
@@ -112,10 +112,10 @@ export async function installCanonicalManagedDeployFiles(
     if (targetExists) {
       const candidate = `${target}.eai-update`;
       await assertRegularTarget(candidate);
-      await writeAtomically(candidate, await readFile(source));
+      await writeBoundRegularFile(candidate, await readFile(source));
       result.pendingUpdates.push(`${file.target}.eai-update`);
     } else {
-      await writeAtomically(target, await readFile(source));
+      await writeBoundRegularFile(target, await readFile(source));
       result.changed.push(file.target);
     }
   }

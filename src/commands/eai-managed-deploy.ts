@@ -25,6 +25,7 @@ import {
   resumeManagedSource,
 } from "./eai-managed-deploy-managed-source.js";
 import { printFailure } from "./eai-managed-deploy-output.js";
+import { readUnifiedExactOperation } from "./eai-managed-deploy-operation.js";
 import {
   loadCustomerRetryAuthority,
   resumeCustomerSource,
@@ -111,7 +112,10 @@ Examples:
     try {
       const { appKey, targetTenantId, workflowPath, timeoutSeconds } =
         validateManagedDeployInput(appKeyValue, options);
-      const retryState = options.retry && options.source !== "eai-managed"
+      const retryState = options.retry && (
+        options.source === "customer-owned" ||
+        (!options.source && options.retry.startsWith("source-unknown-"))
+      )
         ? await loadCustomerRetryAuthority(
             options.retry,
             options.tenantId,
@@ -155,8 +159,23 @@ Examples:
         retryState,
       };
 
+      let recoverySource = options.source;
+      if (!recoverySource && (options.resume || options.retry)) {
+        const exactOperation = await readUnifiedExactOperation(
+          context.client,
+          context.tenantId,
+          targetTenantId,
+          appKey,
+          (options.resume || options.retry)!,
+        );
+        recoverySource = exactOperation.sourceMode === "eai-cli-generated"
+          ? "eai-managed"
+          : "customer-owned";
+        execution.recoveryOperation = exactOperation;
+      }
+
       if (
-        options.source === "eai-managed" &&
+        recoverySource === "eai-managed" &&
         (options.resume || options.retry)
       ) {
         await resumeManagedSource(

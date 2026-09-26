@@ -8,7 +8,6 @@ import { afterEach, expect, test, vi } from "vitest";
 
 const race = vi.hoisted(() => ({
   trigger: "",
-  triggerPrefix: "",
   readTrigger: "",
   addTrigger: "",
   addPath: "",
@@ -29,8 +28,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         race.added = true;
         await actual.writeFile(race.addPath, race.addContent);
       }
-      if (!race.swapped && (String(path) === race.trigger
-        || (race.triggerPrefix && String(path).startsWith(race.triggerPrefix)))) {
+      if (!race.swapped && String(path) === race.trigger) {
         race.swapped = true;
         await actual.rename(race.target, race.displaced);
         await actual.rename(race.replacement, race.target);
@@ -80,7 +78,6 @@ const cleanup: string[] = [];
 afterEach(async () => {
   race.target = "";
   race.trigger = "";
-  race.triggerPrefix = "";
   race.readTrigger = "";
   race.addTrigger = "";
   race.addPath = "";
@@ -316,14 +313,14 @@ test("does not write a local source receipt through a replaced parent", async ()
   await expect(readFile(join(root, ".eai/cli-managed-source-receipt.json"), "utf8")).resolves.toBe("");
 });
 
-test("does not atomically install canonical files through a replaced parent", async () => {
+test("does not write canonical file bytes through a replaced parent", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "managed-install-parent-race-")));
   const outside = await realpath(await mkdtemp(join(tmpdir(), "managed-install-parent-replacement-")));
   cleanup.push(root, outside);
   await mkdir(join(root, ".github/workflows"), { recursive: true });
   await mkdir(join(outside, "workflows"));
   const workflow = join(root, ".github/workflows/eai-app.yml");
-  race.triggerPrefix = `${workflow}.eai-`;
+  race.trigger = workflow;
   race.target = join(root, ".github/workflows");
   race.displaced = join(root, ".github/workflows-original");
   race.replacement = join(outside, "workflows");
@@ -332,7 +329,7 @@ test("does not atomically install canonical files through a replaced parent", as
     "evidence directory changed",
   );
   expect(race.swapped).toBe(true);
-  await expect(readFile(workflow, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(readFile(workflow, "utf8")).resolves.toBe("");
 });
 
 test.each(["state", "dispatch"])(

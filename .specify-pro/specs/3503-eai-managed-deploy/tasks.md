@@ -23,7 +23,7 @@
 - [x] Include `.test.*` and `.spec.*` governed files in both CLI and collector configuration hashing while excluding only the two generated outputs (DTE-018, DTE-095).
 - [x] Bind every local publication file's no-follow descriptor to the inode that passed its initial metadata check (DTE-016).
 - [x] Preserve the standard nested JSON error envelope and split command/source-client implementations below 300 lines behind existing public paths (DTE-086, DTE-087).
-- [x] Sync app-template candidate `f9f10aebc12d528c1c6ad85d3cf0b12c1edbf8ab` and its exact workflow/collector bytes (DTE-019–DTE-021, DTE-088).
+- [x] Sync app-template candidate `9eb3cc9824ec0ad5fd867e040128637709198c53` and its exact workflow/collector bytes (DTE-019–DTE-021, DTE-088).
 - [x] Reject unsafe legacy exact-operation path segments before URL construction (DTE-031–DTE-035).
 - [x] Require the original regional PublicAPI URL in every loaded retry state (DTE-031, DTE-032, DTE-091).
 - [x] Update owned tests and traceability for the final review findings.
@@ -42,12 +42,17 @@
 - [x] Remove the release-verifier test's superfluous callback argument and rerun exact-head checks.
 - [x] Detect governed configuration additions or removals after initial enumeration (DTE-018, DTE-095).
 - [x] Revalidate governed configuration and local source parent/path/leaf identity after every read (DTE-016, DTE-018).
+- [x] Bind retry state before terminal or accepted-evidence reuse (DTE-031–DTE-035).
+- [x] Route source-unspecified recovery from the unified exact operation (DTE-031–DTE-035).
+- [x] Reject an unsafe target tenant before context or network access (DTE-010, DTE-011).
+- [x] Confine doctor output beneath the application root (DTE-036, DTE-061, DTE-080).
+- [x] Remove the generated-file post-write path rename (DTE-016).
 
 ## Exact-head evidence
 
-- `npm run verify:managed-deploy-producer` passed for app-template candidate `f9f10aebc12d528c1c6ad85d3cf0b12c1edbf8ab` with exact workflow (`sha256:1494d7efb8f23f2a19722f94d9748cd356e5330fe7f83839113b04f6e8a35f3a`) and collector (`sha256:70113ad3d00db5784c6fe55813121b7ae6edbaf2e928b69d4980793172d14a12`) byte parity.
+- `npm run verify:managed-deploy-producer` passed for app-template candidate `9eb3cc9824ec0ad5fd867e040128637709198c53` with exact workflow (`sha256:1494d7efb8f23f2a19722f94d9748cd356e5330fe7f83839113b04f6e8a35f3a`) and collector (`sha256:c37000de84b9869519c88d36c972bbdc0379fe2e8419580bd8b3a3b7a5a7fd74`) byte parity.
 - `npm run build`, `npm run lint`, and `npm run typecheck` passed.
-- Focused managed-deployment and API tests passed: 264 tests across six files, including stable governed inventory, post-read configuration/source path binding, terminal nonce reuse, exact retry endpoint authority, merged-SHA binding, evidence parent/file replacement, unsafe legacy operation paths, and producer identity rejection.
-- `npm run test:eai-cli:ci` passed: 945 passed and one documented skip (946 total).
-- `npm test` and `bash scripts/release-preflight.sh` passed: 1,060 passed and one documented skip (1,061 total), plus packed CLI, alias, and generated documentation checks.
-- `npm run release:check` stopped at the intentional immutable producer-release gate because no template tag yet resolves to candidate `f9f10aebc12d528c1c6ad85d3cf0b12c1edbf8ab` (DTE-088).
+- Focused managed-deployment and API tests passed: 269 tests across six files, including authoritative recovery routing, pre-network target validation, terminal/reusable-evidence retry binding, doctor-output confinement, descriptor-bound generated writes, stable governed inventory, post-read source binding, and producer identity rejection.
+- `npm run test:eai-cli:ci` passed: 948 passed and one documented skip (949 total).
+- `npm test` and `bash scripts/release-preflight.sh` passed: 1,063 passed and one documented skip (1,064 total), plus packed CLI, alias, and generated documentation checks.
+- `npm run release:check` stopped at the intentional immutable producer-release gate because no template tag yet resolves to candidate `9eb3cc9824ec0ad5fd867e040128637709198c53` (DTE-088).

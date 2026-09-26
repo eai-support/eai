@@ -19,7 +19,7 @@ export {
   canonicalManagedDeployResourceRoot,
   installCanonicalManagedDeployFiles,
 } from './eai-managed-deploy-files.js';
-export { writeManagedDeployEvidence } from './eai-managed-deploy-filesystem.js';
+export { isContained, writeManagedDeployEvidence } from './eai-managed-deploy-filesystem.js';
 export {
   assertManagedDeployStateMatchesOperation,
   classifyManagedOperationStatus,

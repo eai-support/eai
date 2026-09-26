@@ -25,6 +25,21 @@ import {
   requiresNewSourceOperation,
 } from "./eai-managed-deploy-operation.js";
 
+function requireRetryServerBinding(
+  state: ManagedDeployState,
+  operation: Parameters<typeof assertManagedDeployStateMatchesOperation>[1],
+): void {
+  try {
+    assertManagedDeployStateMatchesOperation(state, operation);
+  } catch (error) {
+    fail(
+      "RETRY_SERVER_BINDING_MISMATCH",
+      error instanceof Error ? error.message : String(error),
+      "Do not edit retry state. Resume the exact server operation, or start a new deployment from the intended immutable commit.",
+    );
+  }
+}
+
 export async function loadCustomerRetryAuthority(
   operationId: string,
   tenantId: string,
@@ -69,17 +84,22 @@ export async function resumeCustomerSource(
     spinner,
     format,
   } = execution;
-  const operation = await pollExactOperation(
-    client,
-    {
-      tenantId: context.tenantId,
-      targetTenantId,
-      appKey,
-      operationId,
-    },
-    options.wait,
-    timeoutSeconds,
-  );
+  const routedOperation = execution.recoveryOperation;
+  const operation = routedOperation && (
+    !options.wait || classifyManagedOperationStatus(routedOperation) !== "pending"
+  )
+    ? routedOperation
+    : await pollExactOperation(
+        client,
+        {
+          tenantId: context.tenantId,
+          targetTenantId,
+          appKey,
+          operationId,
+        },
+        options.wait,
+        timeoutSeconds,
+      );
   spinner?.stop();
   printOperation(format, operation);
   if (classifyManagedOperationStatus(operation) === "failed")
@@ -126,19 +146,24 @@ export async function retryCustomerSource(
     );
   }
   const retryClient = new PlatformAPIClient(state.publicApiUrl, state.tenantId);
-  const current = await readExactOperation(
+  const current = execution.recoveryOperation ?? await readExactOperation(
     retryClient,
     context.tenantId,
     targetTenantId,
     appKey,
     operationId,
   );
-  if (classifyManagedOperationStatus(current) === "succeeded") {
+  const classification = classifyManagedOperationStatus(current);
+  const acceptedEvidence = hasAcceptedWorkflowEvidence(current);
+  if (classification === "succeeded" || acceptedEvidence) {
+    requireRetryServerBinding(state, current);
+  }
+  if (classification === "succeeded") {
     spinner?.stop();
     printOperation(format, current);
     return;
   }
-  if (hasAcceptedWorkflowEvidence(current)) {
+  if (acceptedEvidence) {
     const environment =
       typeof current.environment === "string" ? current.environment : "";
     if (!MANAGED_DEPLOY_ENVIRONMENTS.has(environment)) {
@@ -177,15 +202,7 @@ export async function retryCustomerSource(
       NEW_SOURCE_OPERATION_ACTION,
     );
   }
-  try {
-    assertManagedDeployStateMatchesOperation(state, current);
-  } catch (error) {
-    fail(
-      "RETRY_SERVER_BINDING_MISMATCH",
-      error instanceof Error ? error.message : String(error),
-      "Do not edit retry state. Resume the exact server operation, or start a new deployment from the intended immutable commit.",
-    );
-  }
+  requireRetryServerBinding(state, current);
   if (!MANAGED_DEPLOY_ENVIRONMENTS.has(state.environment)) {
     fail(
       "SOURCE_OPERATION_ENVIRONMENT_INVALID",
