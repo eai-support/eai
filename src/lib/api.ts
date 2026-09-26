@@ -7,6 +7,7 @@
  */
 
 import { getAccessToken } from './auth.js';
+import { requireManagedPublicApiUrl } from './managed-public-api.js';
 import { toObjectTypeSlug } from './utils.js';
 
 export type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
@@ -166,6 +167,9 @@ export interface SourceUnknownAppRegistrationRequest {
   configPath?: string;
   runtimePath?: string;
   sourceMode?: 'source-unknown';
+  installationId?: number;
+  githubLinkSessionId?: string;
+  targetTenantId?: string;
   adoptionMode?: 'connect-existing' | 'adopted-observed';
   schemaProvenance?: SourceUnknownSchemaProvenance;
   observedDeployment?: {
@@ -180,15 +184,20 @@ export interface SourceUnknownAppRegistrationRequest {
   validationSummary?: Record<string, unknown>;
 }
 
+/** Immutable source binding used to issue a server-owned workflow operation. */
 export interface SourceUnknownWorkflowSetupRequest {
   environment?: string;
   workflowPath?: string;
   ref?: string;
   commitSha?: string;
   configHash?: string;
+  targetTenantId?: string;
+  deployOnSuccess?: boolean;
+  githubLinkSessionId?: string;
   handoverIntent?: 'no-code-to-cli';
 }
 
+/** Collector-produced build proof; GitHub OIDC supplies authority at the server. */
 export interface SourceUnknownWorkflowEvidenceRequest {
   operationId: string;
   nonce: string;
@@ -198,15 +207,20 @@ export interface SourceUnknownWorkflowEvidenceRequest {
   commitSha: string;
   configHash: string;
   artifactDigest: string;
+  imageArtifact: {
+    id: string | number;
+    name: 'eai-generated-app-image';
+    archiveDigest: string;
+  };
   imageDigest: string;
   schemaProvenance: SourceUnknownSchemaProvenance;
-  workflowRun?: Record<string, unknown>;
-  oidcClaims: Record<string, unknown>;
-  validationSummary?: Record<string, unknown>;
+  workflowRun: { id: string | number; attempt: string | number; workflow?: string; job?: string };
+  validationSummary: { status: 'passed' };
 }
 
 export interface SourceUnknownDeploymentRequest {
   operationId: string;
+  targetTenantId?: string;
   environment?: string;
   repoOwner?: string;
   repoName?: string;
@@ -220,6 +234,124 @@ export interface SourceUnknownDeploymentRequest {
   deploymentTarget?: Record<string, unknown>;
   validationSummary?: Record<string, unknown>;
 }
+
+/** Browser OAuth proof is scoped to the authenticated EAI actor, app and runtime intent. */
+export interface CliManagedGithubLinkRequest {
+  schemaVersion: 'eai.cli_managed_github_link.v1';
+  targetTenantId: string;
+  environment: 'preview' | 'dev' | 'test' | 'prod';
+  idempotencyKey: string;
+}
+
+/** A GitHub login or matching email alone is not a verified actor association. */
+export interface CliManagedGithubLinkSession {
+  schemaVersion: 'eai.cli_managed_github_link_session.v1';
+  sessionId: string;
+  status: 'pending' | 'verified' | 'expired' | 'failed';
+  tenantId: string;
+  appKey: string;
+  targetTenantId: string;
+  environment: string;
+  actorId: string;
+  expiresAt: string;
+  browserUrl: string;
+  verifiedGithubUser?: { id: number; login: string; proofId: string; actorId: string };
+}
+
+/** The server selects the managed repository; no client GitHub credential or destination is accepted. */
+export interface CliManagedSourcePreparationRequest {
+  schemaVersion: 'eai.cli_managed_source_preparation.v1';
+  templateCommitSha: string;
+  bundleSha256: string;
+  configHash: string;
+  fileCount: number;
+  totalBytes: number;
+  idempotencyKey: string;
+  githubLinkSessionId: string;
+  targetTenantId: string;
+  environment: 'preview' | 'dev' | 'test' | 'prod';
+}
+
+/** Exact source operation; callers must not substitute the latest deployment. */
+export interface SourceUnknownOperationResponse {
+  tenantId: string;
+  targetTenantId?: string;
+  appKey: string;
+  operationId: string;
+  environment?: string;
+  configHash?: string;
+  status: string;
+  requiresTenantInfra?: boolean;
+  deploymentId?: string;
+  activeUrl?: string;
+  latestPointerVersion?: number;
+  expectedLatestVersion?: number;
+  runtimeIdentity?: {
+    clientId?: string;
+    principalId?: string;
+  };
+  setup: Record<string, unknown>;
+  evidence?: Record<string, unknown> | null;
+  deploymentRequest?: Record<string, unknown> | null;
+  history?: Array<Record<string, unknown>>;
+}
+
+export interface ManagedDeploymentSourceRevision {
+  operationId: string;
+  sourceOperationId?: string;
+  sourceMode: 'source-unknown' | 'eai-cli-generated';
+  appScopeTenantId: string;
+  targetTenantId: string;
+  repoOwner: string;
+  repoName: string;
+  repositoryId: string | number;
+  installationId: string | number;
+  branchRef: string;
+  workflowPath: string;
+  workflowHeadBranch: string;
+  sourceCommitSha: string;
+  reviewHeadSha?: string;
+  commitSha: string;
+  workflowRunId: string | number;
+  workflowBlobSha: string;
+  collectorDigest: string;
+  configHash: string;
+  artifactDigest: string;
+  imageArtifact: {
+    id: string | number;
+    name: string;
+    archiveDigest: string;
+  };
+  imageDigest: string;
+}
+
+/** Unified exact-operation projection used by status and operation-bound deploy doctor. */
+export type ManagedDeploymentOperationResponse = Omit<SourceUnknownOperationResponse, 'tenantId'> & {
+  sourceMode: 'source-unknown' | 'eai-cli-generated';
+  sourceStatus: string;
+  appScopeTenantId: string;
+  environment: string;
+  configHash: string;
+  actorId?: string;
+  source?: Record<string, unknown>;
+  sourceRevision: ManagedDeploymentSourceRevision;
+  deployment: {
+    deploymentId: string;
+    status: string;
+    [key: string]: unknown;
+  };
+  doctor: {
+    deploymentId: string;
+    status: string;
+    ready: boolean;
+    scope: {
+      tenantId: string;
+      appKey: string;
+      environment: string;
+    };
+    [key: string]: unknown;
+  };
+};
 
 export interface CapabilityEvaluationRequest {
   tenantId: string;
@@ -737,6 +869,21 @@ export class PlatformAPIClient {
     return fetch(`${this.baseUrl}${appendParams(path, params)}`, {
       method,
       headers: await this.headers(),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  }
+
+  /** Managed deployment authority is never forwarded through an HTTP redirect. */
+  private async managedPublicRequest(
+    path: string,
+    method: PlatformMethod = 'GET',
+    body?: unknown,
+  ): Promise<Response> {
+    const baseUrl = requireManagedPublicApiUrl(this.baseUrl);
+    return fetch(`${baseUrl}${path}`, {
+      method,
+      headers: await this.headers(),
+      redirect: 'error',
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   }
@@ -1461,11 +1608,66 @@ export class PlatformAPIClient {
     appKey: string,
     data: SourceUnknownAppRegistrationRequest,
   ): Promise<Response> {
-    return this.publicRequest(
+    return this.managedPublicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/register`,
       'POST',
       data,
     );
+  }
+
+  /** Start a one-time browser proof or reuse an existing verified actor connection. */
+  async createCliManagedGithubLinkSession(tenantId: string, appKey: string, data: CliManagedGithubLinkRequest): Promise<Response> {
+    return this.managedPublicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey)}/github-link-sessions`,
+      'POST', data,
+    );
+  }
+
+  /** Read only the exact actor-bound browser operation, never a latest-session pointer. */
+  async getCliManagedGithubLinkSession(tenantId: string, appKey: string, sessionId: string, targetTenantId: string, environment: string): Promise<Response> {
+    return this.managedPublicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey, sessionId)}/github-link-sessions/${encodeURIComponent(sessionId)}?targetTenantId=${encodeURIComponent(targetTenantId)}&environment=${encodeURIComponent(environment)}`,
+      'GET',
+    );
+  }
+
+  /** Prepare bounded local source; successful preparation does not mean it has been deployed. */
+  async prepareCliManagedSource(tenantId: string, appKey: string, data: CliManagedSourcePreparationRequest): Promise<Response> {
+    return this.managedPublicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey)}/preparations`,
+      'POST', data,
+    );
+  }
+
+  /** Read the exact managed publication, including its bot review and deployment progress. */
+  async getCliManagedSourceOperation(tenantId: string, appKey: string, operationId: string, targetTenantId: string, environment: string): Promise<Response> {
+    return this.managedPublicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey, operationId)}/operations/${encodeURIComponent(operationId)}?targetTenantId=${encodeURIComponent(targetTenantId)}&environment=${encodeURIComponent(environment)}`,
+      'GET',
+    );
+  }
+
+  /** Read one sealed managed deployment operation; the server derives source mode and environment. */
+  async getManagedDeploymentOperation(
+    tenantId: string,
+    appKey: string,
+    operationId: string,
+    targetTenantId: string,
+  ): Promise<Response> {
+    if ([tenantId, appKey, operationId, targetTenantId].some(value => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value))) {
+      throw new Error('Managed deployment identifiers must be safe opaque path segments.');
+    }
+    return this.managedPublicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/managed-deployments/operations/${encodeURIComponent(operationId)}?targetTenantId=${encodeURIComponent(targetTenantId)}`,
+      'GET',
+    );
+  }
+
+  private cliManagedSourcePath(tenantId: string, appKey: string, operationId?: string): string {
+    if ([tenantId, appKey, ...(operationId !== undefined ? [operationId] : [])].some(value => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value))) {
+      throw new Error('Managed source tenant, app and operation identifiers must be safe opaque path segments.');
+    }
+    return `${PUBLIC_PLATFORM_PATH}/tenants/${tenantId}/apps/${appKey}/cli-managed-source`;
   }
 
   async setupSourceUnknownWorkflow(
@@ -1473,7 +1675,7 @@ export class PlatformAPIClient {
     appKey: string,
     data: SourceUnknownWorkflowSetupRequest,
   ): Promise<Response> {
-    return this.publicRequest(
+    return this.managedPublicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-setup`,
       'POST',
       data,
@@ -1486,13 +1688,15 @@ export class PlatformAPIClient {
     data: SourceUnknownWorkflowEvidenceRequest,
     githubOidcToken: string,
   ): Promise<Response> {
+    const baseUrl = requireManagedPublicApiUrl(this.baseUrl);
     const headers = await this.headers();
     headers.Authorization = `Bearer ${githubOidcToken}`;
     return fetch(
-      `${this.baseUrl}${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
+      `${baseUrl}${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
       {
         method: 'POST',
         headers,
+        redirect: 'error',
         body: JSON.stringify(data),
       },
     );
@@ -1503,16 +1707,51 @@ export class PlatformAPIClient {
     appKey: string,
     data: SourceUnknownDeploymentRequest,
   ): Promise<Response> {
-    return this.publicRequest(
+    return this.managedPublicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/deploy`,
       'POST',
       data,
     );
   }
 
+  /** Prepare source-bound runtime identity before the workflow can request handoff. */
+  async bootstrapSourceUnknownRuntime(
+    tenantId: string,
+    appKey: string,
+    environment: string,
+    sourceOperationId: string,
+    targetTenantId: string,
+  ): Promise<Response> {
+    return this.managedPublicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/environments/${encodeURIComponent(environment)}/runtime-bootstrap`,
+      'POST',
+      { sourceOperationId, targetTenantId, sourceMode: 'source-unknown' },
+    );
+  }
+
   async getLatestSourceUnknownDeployment(tenantId: string, appKey: string): Promise<Response> {
-    return this.publicRequest(
+    return this.managedPublicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/deployments/latest`,
+      'GET',
+    );
+  }
+
+  /** Read one tenant/app-bound source operation by its server-issued identifier. */
+  async getSourceUnknownOperation(
+    tenantId: string,
+    appKey: string,
+    operationId: string,
+    targetTenantId?: string,
+  ): Promise<Response> {
+    if ([tenantId, appKey, operationId, ...(targetTenantId !== undefined ? [targetTenantId] : [])]
+      .some(value => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value))) {
+      throw new Error('Source-unknown operation identifiers must be safe opaque path segments.');
+    }
+    const query = targetTenantId
+      ? `?targetTenantId=${encodeURIComponent(targetTenantId)}`
+      : '';
+    return this.managedPublicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/operations/${encodeURIComponent(operationId)}${query}`,
       'GET',
     );
   }

@@ -185,6 +185,55 @@
               "path": "tests/cross-service/contracts/platform-lifecycle/publicapi-v4-platform-lifecycle.spec.ts"
             }
           ]
+        },
+        {
+          "id": "eai-cli-managed-tenantinfra-deploy",
+          "description": "The CLI binds immutable repository evidence, prepares source-bound runtime identity before dispatch, submits canonical collector proof, and retries accepted evidence through the exact deployment handoff without reusing a consumed nonce.",
+          "owned_paths": [
+            ".eai/test-coverage.json",
+            "docs-site/static/cli-help.txt",
+            "docs-site/static/llms.txt",
+            "docs-site/static/llms-full.txt",
+            "package.json",
+            "package-lock.json",
+            "resources/deploy/eai-app-template/**",
+            "scripts/eai-full-e2e-smoke.cjs",
+            "src/commands/deploy.ts",
+            "src/commands/eai-managed-deploy.ts",
+            "src/commands/vertical.ts",
+            "src/lib/api.ts",
+            "src/lib/eai-managed-deploy.ts",
+            "src/lib/eai-managed-source.ts",
+            "src/lib/eai-managed-source-client.ts",
+            ".tech-docs/full-e2e-smoke-traceability.md",
+            "scripts/generate-release-docs.cjs",
+            "tests/integration/release-metadata.test.ts"
+          ],
+          "required_repo_tests": [
+            "tests/unit/eai-managed-deploy.test.ts",
+            "tests/unit/eai-managed-source.test.ts",
+            "tests/unit/eai-managed-source-client.test.ts",
+            "tests/integration/platform-api-client.test.ts",
+            "tests/integration/eai-managed-deploy.test.ts",
+            "tests/integration/vertical.test.ts",
+            "tests/integration/help.test.ts",
+            "tests/integration/describe-contract.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts",
+            "tests/integration/release-metadata.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "backend"
+          ],
+          "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/eai-cli/eai-managed-deploy.spec.ts"
+            }
+          ]
         }
       ]
     }

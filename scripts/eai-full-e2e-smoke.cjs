@@ -89,6 +89,7 @@ const TRACEABILITY_BASE = [
   ['eai docs upload', 'create', 'covered-by-cli', 'Controlled command tests only; optional lifecycle submits once through classify.'],
   ['eai docs classify', 'read/create', 'live-optional', 'EAI_E2E_DOCS=1 requires EAI_E2E_DOCS_TENANT_ID, EAI_E2E_DOCS_VERTICAL_KEY, EAI_E2E_DOCS_WORKFLOW_KEY, EAI_E2E_DOCS_FILE and EAI_E2E_DOCS_EXPECTED_TYPE. Requires a published business-document lifecycle, installed storage, and read/delete permission. EAI_E2E_DOCS_WAIT_MS defaults to 180000 (maximum 600000). Polls one job, reads persisted classification and always cleans up.'],
   ['eai docs index', 'create/update', 'covered-by-cli', 'Controlled command tests only; indexing is not executed or claimed by the classification smoke.'],
+  ['eai deploy app', 'create/update/read', 'manual', 'Repo integration tests prove immutable setup, dispatch, and exact-operation polling; live execution is release-controlled because it creates a TenantInfra deployment.'],
   ['eai deploy setup', 'create-local', 'live', 'Generates deployment workflow in the disposable workspace.'],
   ['eai deploy trigger', 'create', 'manual', 'Not run by release smoke because it triggers a host deployment outside the CLI test tenant.'],
   ['eai deploy status', 'read', 'help', 'Validated by help/contract unless a deployment run id is provided.'],
@@ -309,7 +310,7 @@ const SMOKE_CALLS = {
     'eai app workflow-setup <app-key> --tenant-id <tenant-id> --environment preview --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --format json',
   ],
   'eai app workflow-evidence': [
-    'eai app workflow-evidence <app-key> --tenant-id <tenant-id> --repo <owner/repo> --operation-id <operation-id> --nonce <nonce> --environment preview --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --artifact-digest sha256:<artifact> --image-digest sha256:<image> --workflow-run-id <run-id> --github-oidc-token <token> --github-oidc-audience api://enterprise-ai-publicapi/source-unknown --format json',
+    'eai app workflow-evidence <app-key> --tenant-id <tenant-id> --evidence-file <canonical-workflow-evidence.json> --github-oidc-token <token> --github-oidc-audience api://enterprise-ai-publicapi/source-unknown --format json',
   ],
   'eai app deploy-source-unknown': [
     'eai app deploy-source-unknown <app-key> --tenant-id <tenant-id> --operation-id <operation-id> --environment preview --repo <owner/repo> --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --workflow-run-id <run-id> --config-hash sha256:config --artifact-digest sha256:<artifact> --image-digest sha256:<image> --target-kind tenantinfra --release-channel preview --format json',
@@ -368,6 +369,13 @@ const SMOKE_CALLS = {
     'EAI_E2E_DOCS=1 eai docs classify <EAI_E2E_DOCS_FILE> --tenant-id <EAI_E2E_DOCS_TENANT_ID> --storage-target resourceapi --vertical-key <EAI_E2E_DOCS_VERTICAL_KEY> --workflow-key <EAI_E2E_DOCS_WORKFLOW_KEY> --format json',
   ],
   'eai docs index': [],
+  'eai deploy app': [
+    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --source customer-owned --repo <owner/repo> --installation-id <installation-id> --branch main --workflow .github/workflows/eai-app.yml --environment preview --commit <40-char-sha> --wait --timeout 1200 --format json',
+    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --source eai-managed --github-link-session <verified-session-id> --environment preview --wait --format json',
+    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --source eai-managed --environment preview --resume <managed-operation-id> --wait --format json',
+    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <target-tenant-id> --resume <operation-id> --wait --format json',
+    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <target-tenant-id> --retry <operation-id> --no-wait --format json',
+  ],
   'eai deploy setup': [
     'eai deploy setup --repo <owner/repo>',
   ],
@@ -382,6 +390,7 @@ const SMOKE_CALLS = {
   ],
   'eai deploy doctor': [
     'EAI_E2E_DEPLOYED_URL=<url> eai deploy doctor --url <url> --format json',
+    'eai deploy doctor --operation-id <operation-id> --app-key <app-key> --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --evidence-out .eai/deploy-doctor.json --format json',
   ],
   'eai runtime validate': [
     'eai runtime validate --format json',
@@ -586,11 +595,26 @@ const OPTION_DECISIONS = {
     '--handover-from-no-code': 'Explicit no-code handover creates one-time operation state; mocked command coverage verifies exact source bindings and the opt-in payload without changing app ownership.',
   },
   'eai app workflow-evidence': {
-    '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
-    '--branch': 'Default branch is main in the smoke example; branch/ref alternatives are covered by command integration tests.',
-    '--workflow': 'Default workflow path is used in the smoke example; path forwarding is covered by command integration tests.',
-    '--ref': 'Ref defaults from branch in the smoke example; explicit ref forwarding is covered by command integration tests.',
-    '--workflow-run-attempt': 'Workflow run attempt is optional and platform-run specific; command integration tests cover forwarding.',
+    '--skip-validate': 'Only skips app lookup; canonical workflow validation proof remains required and is covered by command integration tests.',
+    '--repo': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--operation-id': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--nonce': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--commit': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--config-hash': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--artifact-digest': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--image-digest': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--environment': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--branch': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--workflow': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--ref': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--template-version': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--base-template-sha': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--approved-source-sha': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--approved-release': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--schema-digest': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--validator-digest': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--workflow-run-id': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
+    '--workflow-run-attempt': 'Deprecated construction flag; migrate to unchanged canonical collector JSON via --evidence-file.',
   },
   'eai app deploy-source-unknown': {
     '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
@@ -877,6 +901,11 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'No - cleanup command',
     cleanupMechanism: 'Deletes only documents returned by the optional classify submission, including file and analysis',
     cleanupVerified: 'Requires analysisCleanupComplete receipt and subsequent record GET 404',
+  },
+  'eai deploy app': {
+    createsExternalArtifact: 'Yes - GitHub Actions run and EAI-managed TenantInfra deployment',
+    cleanupMechanism: 'Release-controlled only; use the app/TenantInfra lifecycle controls for the exact deployment operation',
+    cleanupVerified: 'No - disabled in default smoke; repo integration tests use controlled GitHub and PublicAPI fixtures',
   },
   'eai deploy setup': {
     createsExternalArtifact: 'Creates local deployment workflow files',

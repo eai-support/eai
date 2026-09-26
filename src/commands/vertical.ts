@@ -34,6 +34,7 @@ import {
   toObjectTypeSlug,
 } from '../lib/utils.js';
 import * as out from '../lib/output.js';
+import { readSourceUnknownEvidenceFile } from '../lib/source-unknown-evidence-file.js';
 
 const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
 const DEFAULT_VERTICAL_SOURCE = ['eai', 'cli'].join('-');
@@ -132,13 +133,15 @@ export interface AppWorkflowSetupOptions {
   json?: boolean;
 }
 
-export interface AppWorkflowEvidenceOptions extends AppConnectExistingOptions {
-  operationId: string;
-  nonce: string;
+/** Submit collector JSON with OIDC; legacy proof-construction options are rejected. */
+export interface AppWorkflowEvidenceOptions extends Partial<AppConnectExistingOptions> {
+  evidenceFile: string;
+  operationId?: string;
+  nonce?: string;
   environment?: string;
-  configHash: string;
-  artifactDigest: string;
-  imageDigest: string;
+  configHash?: string;
+  artifactDigest?: string;
+  imageDigest?: string;
   workflowRunId?: string;
   workflowRunAttempt?: string;
   githubOidcToken?: string;
@@ -480,65 +483,73 @@ export function buildSourceUnknownWorkflowSetupData(
   };
 }
 
+/** Validate the collector envelope without inventing build checks or caller OIDC claims. */
 export function buildSourceUnknownWorkflowEvidenceData(
-  options: AppWorkflowEvidenceOptions,
+  value: unknown,
 ): SourceUnknownWorkflowEvidenceRequest {
-  const repo = parseRepositorySlug(options.repo);
-  const operationId = options.operationId?.trim();
-  const nonce = options.nonce?.trim();
-  const environment = (options.environment || 'preview').trim();
-  const defaultBranch = (options.branch || 'main').trim();
-  const workflowPath = options.workflow?.trim() || '.github/workflows/eai-app.yml';
-  const ref = options.ref?.trim() || `refs/heads/${defaultBranch}`;
-  const commitSha = options.commit?.trim();
-  const configHash = options.configHash?.trim();
-  const artifactDigest = options.artifactDigest?.trim();
-  const imageDigest = options.imageDigest?.trim();
-  if (!operationId) throw new Error('Workflow evidence operation ID is required.');
-  if (!nonce) throw new Error('Workflow evidence nonce is required.');
-  if (!environment) throw new Error('Workflow evidence environment is required.');
-  if (!defaultBranch) throw new Error('Default branch is required.');
-  if (!commitSha) throw new Error('Workflow evidence commit SHA is required.');
-  if (!configHash) throw new Error('Workflow evidence config hash is required.');
-  if (!artifactDigest) throw new Error('Workflow evidence artifact digest is required.');
-  if (!imageDigest) throw new Error('Workflow evidence image digest is required.');
-  assertSha256Digest(artifactDigest, '--artifact-digest');
-  assertSha256Digest(imageDigest, '--image-digest');
-  const schemaProvenance = buildSchemaProvenance(options);
-  if (!schemaProvenance) {
-    throw new Error('Workflow evidence requires schema provenance: provide --template-version, --schema-digest, --validator-digest, and an approved source anchor.');
+  function record(input: unknown, fields: string[], label: string): Record<string, unknown> {
+    if (!isRecord(input) || Object.keys(input).some(key => !fields.includes(key))) {
+      throw new Error(`${label} must contain only canonical collector fields.`);
+    }
+    return input;
   }
-  const workflowRun: Record<string, unknown> = {};
-  if (options.workflowRunId?.trim()) workflowRun.id = options.workflowRunId.trim();
-  if (options.workflowRunAttempt?.trim()) {
-    const attempt = Number(options.workflowRunAttempt.trim());
-    workflowRun.attempt = Number.isFinite(attempt) ? attempt : options.workflowRunAttempt.trim();
+  function text(input: unknown, label: string, pattern?: RegExp): string {
+    if (typeof input !== 'string' || !input || input.trim() !== input || (pattern && !pattern.test(input))) {
+      throw new Error(`${label} is missing or invalid in workflow evidence.`);
+    }
+    return input;
   }
-
+  function positiveId(input: unknown, label: string): string | number {
+    if ((typeof input !== 'string' && typeof input !== 'number')
+      || !/^[1-9][0-9]*$/.test(String(input))
+      || (typeof input === 'number' && !Number.isSafeInteger(input))) {
+      throw new Error(`${label} must be a positive integer.`);
+    }
+    return input;
+  }
+  const body = record(value, ['operationId', 'nonce', 'environment', 'workflowPath', 'ref', 'commitSha',
+    'configHash', 'artifactDigest', 'imageArtifact', 'imageDigest', 'schemaProvenance', 'workflowRun',
+    'validationSummary'], 'Workflow evidence');
+  const sha = /^[a-f0-9]{40}$/;
+  const digest = /^sha256:[a-f0-9]{64}$/;
+  const artifact = record(body.imageArtifact, ['id', 'name', 'archiveDigest'], 'imageArtifact');
+  if (artifact.name !== 'eai-generated-app-image') throw new Error('imageArtifact.name must be eai-generated-app-image.');
+  const run = record(body.workflowRun, ['id', 'attempt', 'workflow', 'job'], 'workflowRun');
+  const provenance = record(body.schemaProvenance, ['templateVersion', 'baseTemplateSha', 'approvedSourceSha',
+    'approvedReleaseId', 'schemaDigest', 'validatorDigest'], 'schemaProvenance');
+  const validation = record(body.validationSummary, ['status'], 'validationSummary');
+  if (validation.status !== 'passed') throw new Error('validationSummary.status must be passed from the successful canonical workflow.');
+  if (!provenance.baseTemplateSha && !provenance.approvedSourceSha && !provenance.approvedReleaseId) {
+    throw new Error('Workflow evidence requires schema provenance with an approved source anchor.');
+  }
   return {
-    operationId,
-    nonce,
-    environment,
-    workflowPath,
-    ref,
-    commitSha,
-    configHash,
-    artifactDigest,
-    imageDigest,
-    schemaProvenance,
-    ...(Object.keys(workflowRun).length > 0 ? { workflowRun } : {}),
-    oidcClaims: {
-      repository: `${repo.owner}/${repo.name}`,
-      ref,
-      sha: commitSha,
-      workflow_ref: `${repo.owner}/${repo.name}/${workflowPath}@${ref}`,
-      ...(workflowRun.id ? { run_id: String(workflowRun.id) } : {}),
-      ...(workflowRun.attempt ? { run_attempt: String(workflowRun.attempt) } : {}),
+    operationId: text(body.operationId, 'operationId', /^source-unknown-[A-Za-z0-9_-]+$/),
+    nonce: text(body.nonce, 'nonce'),
+    environment: text(body.environment, 'environment', /^(preview|dev|test|prod)$/),
+    workflowPath: text(body.workflowPath, 'workflowPath', /^\.github\/workflows\/[^/]+\.ya?ml$/),
+    ref: text(body.ref, 'ref', /^refs\/heads\/[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,253}[A-Za-z0-9])?$/),
+    commitSha: text(body.commitSha, 'commitSha', sha),
+    configHash: text(body.configHash, 'configHash', digest),
+    artifactDigest: text(body.artifactDigest, 'artifactDigest', digest),
+    imageDigest: text(body.imageDigest, 'imageDigest', digest),
+    imageArtifact: {
+      id: positiveId(artifact.id, 'imageArtifact.id'), name: 'eai-generated-app-image',
+      archiveDigest: text(artifact.archiveDigest, 'imageArtifact.archiveDigest', digest),
     },
-    validationSummary: {
-      status: 'passed_by_cli',
-      appValidated: !options.skipValidate,
+    workflowRun: {
+      id: positiveId(run.id, 'workflowRun.id'), attempt: positiveId(run.attempt, 'workflowRun.attempt'),
+      ...(run.workflow !== undefined ? { workflow: text(run.workflow, 'workflowRun.workflow') } : {}),
+      ...(run.job !== undefined ? { job: text(run.job, 'workflowRun.job') } : {}),
     },
+    schemaProvenance: {
+      templateVersion: text(provenance.templateVersion, 'schemaProvenance.templateVersion'),
+      schemaDigest: text(provenance.schemaDigest, 'schemaProvenance.schemaDigest', digest),
+      validatorDigest: text(provenance.validatorDigest, 'schemaProvenance.validatorDigest', digest),
+      ...(provenance.baseTemplateSha !== undefined ? { baseTemplateSha: text(provenance.baseTemplateSha, 'schemaProvenance.baseTemplateSha', sha) } : {}),
+      ...(provenance.approvedSourceSha !== undefined ? { approvedSourceSha: text(provenance.approvedSourceSha, 'schemaProvenance.approvedSourceSha', sha) } : {}),
+      ...(provenance.approvedReleaseId !== undefined ? { approvedReleaseId: text(provenance.approvedReleaseId, 'schemaProvenance.approvedReleaseId') } : {}),
+    },
+    validationSummary: { status: validation.status },
   };
 }
 
@@ -1271,27 +1282,28 @@ verticalCommand
 
 verticalCommand
   .command('workflow-evidence <key>')
-  .description('Submit source-unknown workflow evidence for a setup operation')
-  .requiredOption('--repo <owner/repo>', 'GitHub repository submitting evidence')
-  .requiredOption('--operation-id <id>', 'Source-unknown workflow setup operation ID')
-  .requiredOption('--nonce <nonce>', 'One-time setup nonce')
-  .requiredOption('--commit <sha>', 'Workflow commit SHA')
-  .requiredOption('--config-hash <hash>', 'Validated config hash')
-  .requiredOption('--artifact-digest <digest>', 'Workflow artifact digest in sha256:<hex> form')
-  .requiredOption('--image-digest <digest>', 'Immutable image digest in sha256:<hex> form')
+  .description('Submit canonical collector evidence with GitHub Actions OIDC')
+  .requiredOption('--evidence-file <path>', 'JSON evidence produced by the canonical successful workflow collector')
+  .option('--repo <owner/repo>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--operation-id <id>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--nonce <nonce>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--commit <sha>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--config-hash <hash>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--artifact-digest <digest>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--image-digest <digest>', 'Deprecated: supply the canonical --evidence-file instead')
   .option('--tenant-id <id>', 'Run against a specific company tenant')
-  .option('--environment <environment>', 'Deployment environment to bind', 'preview')
-  .option('--branch <branch>', 'Default branch', 'main')
-  .option('--workflow <path>', 'GitHub Actions workflow path', '.github/workflows/eai-app.yml')
-  .option('--ref <ref>', 'Approved git ref (defaults to refs/heads/<branch>)')
-  .option('--template-version <version>', 'Approved schema/template version')
-  .option('--base-template-sha <sha>', 'Base eai-app-template commit SHA when known')
-  .option('--approved-source-sha <sha>', 'Approved source commit SHA for non-template apps')
-  .option('--approved-release <id>', 'Approved schema/validator release identifier')
-  .option('--schema-digest <digest>', 'Approved schema digest in sha256:<hex> form')
-  .option('--validator-digest <digest>', 'Approved validator digest in sha256:<hex> form')
-  .option('--workflow-run-id <id>', 'GitHub Actions run ID')
-  .option('--workflow-run-attempt <n>', 'GitHub Actions run attempt')
+  .option('--environment <environment>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--branch <branch>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--workflow <path>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--ref <ref>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--template-version <version>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--base-template-sha <sha>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--approved-source-sha <sha>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--approved-release <id>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--schema-digest <digest>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--validator-digest <digest>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--workflow-run-id <id>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--workflow-run-attempt <n>', 'Deprecated: supply the canonical --evidence-file instead')
   .option('--github-oidc-token <token>', 'GitHub Actions OIDC token for workflow evidence submission')
   .option(
     '--github-oidc-audience <audience>',
@@ -1301,6 +1313,7 @@ verticalCommand
   .option('--skip-validate', 'Skip app lookup', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', '\nUse --evidence-file from scripts/source-unknown-deployment-evidence.mjs collect after workflow checks succeed. Legacy evidence flags cannot construct accepted proof. PublicAPI verifies the GitHub OIDC token against the exact operation.\n')
   .action(async (key: string, options: AppWorkflowEvidenceOptions) => {
     const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     const companyTenantId = options.tenantId
@@ -1316,7 +1329,15 @@ verticalCommand
 
     let evidenceRequest: SourceUnknownWorkflowEvidenceRequest;
     try {
-      evidenceRequest = buildSourceUnknownWorkflowEvidenceData(options);
+      const legacy = ['repo', 'operationId', 'nonce', 'commit', 'configHash', 'artifactDigest', 'imageDigest',
+        'environment', 'branch', 'workflow', 'ref', 'templateVersion', 'baseTemplateSha', 'approvedSourceSha',
+        'approvedRelease', 'schemaDigest', 'validatorDigest', 'workflowRunId', 'workflowRunAttempt'];
+      if (legacy.some(key => (options as unknown as Record<string, unknown>)[key] !== undefined)) {
+        throw new Error('Legacy evidence flags cannot be combined with --evidence-file; use the unchanged canonical collector JSON.');
+      }
+      evidenceRequest = buildSourceUnknownWorkflowEvidenceData(
+        JSON.parse(await readSourceUnknownEvidenceFile(options.evidenceFile)),
+      );
     } catch (err) {
       fail(errMsg(err));
     }

@@ -23,11 +23,23 @@ import {
   validateRuntimeContract,
   type RuntimeSmokeTest,
 } from '../lib/runtime-contract.js';
+import { eaiManagedDeployCommand } from './eai-managed-deploy.js';
+import { resolveCommandContext } from '../lib/context.js';
+import {
+  classifyManagedOperationStatus,
+  requireCommitSha,
+  requireConfigHash,
+  requireManagedPublicApiUrl,
+  writeManagedDeployEvidence,
+} from '../lib/eai-managed-deploy.js';
+import type { ManagedDeploymentOperationResponse } from '../lib/api.js';
 
 const exec = promisify(execFile);
 
 export const deployCommand = new Command('deploy')
   .description('Deployment management');
+
+deployCommand.addCommand(eaiManagedDeployCommand);
 
 // ─── eai deploy setup ─────────────────────────────────────────────────────
 
@@ -388,6 +400,7 @@ interface DeployDoctorCheck {
   httpStatus?: number;
   message: string;
   fix?: string;
+  authenticated?: boolean;
 }
 
 interface DeployDoctorResult {
@@ -401,6 +414,7 @@ interface DeployDoctorResult {
     warning: number;
     skip: number;
   };
+  authenticatedReadiness: boolean;
 }
 
 function normalizeBaseUrl(url: string): string {
@@ -508,6 +522,11 @@ interface ResolvedSmokeHeaders {
 }
 
 const ENV_REFERENCE_PATTERN = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+const MANAGED_READINESS_PROBE = {
+  name: 'readiness',
+  method: 'GET',
+  path: '/api/eai/readiness',
+} as const;
 
 function resolveSmokeHeaders(
   test: RuntimeSmokeTest,
@@ -538,6 +557,12 @@ function resolveSmokeHeaders(
   };
 }
 
+function usesDeclaredSecret(test: RuntimeSmokeTest): boolean {
+  if (!test.requiresSecret) return false;
+  const reference = `\${${test.requiresSecret}}`;
+  return Object.values(test.headers ?? {}).some(template => template.includes(reference));
+}
+
 async function runDoctorCheck(
   baseUrl: string,
   test: RuntimeSmokeTest,
@@ -548,6 +573,7 @@ async function runDoctorCheck(
   const expected = expectedStatuses(test);
   const category = coerceDoctorCategory(test.category, fallbackCategory);
   const resolved = resolveSmokeHeaders(test, environment);
+  const authenticated = usesDeclaredSecret(test);
   if (resolved.missing.length > 0) {
     const missingNames = resolved.missing.join(', ');
     return {
@@ -561,11 +587,13 @@ async function runDoctorCheck(
       status: test.optional ? 'warning' : 'fail',
       message: `Probe was not sent because required environment configuration is unavailable: ${missingNames}.`,
       fix: `Set ${missingNames} in the deploy-doctor process environment, then run the command again.`,
+      authenticated,
     };
   }
   try {
     const response = await fetch(url, {
       method: test.method,
+      redirect: 'error',
       ...(resolved.headers ? { headers: resolved.headers } : {}),
       signal: AbortSignal.timeout(10_000),
     });
@@ -584,6 +612,7 @@ async function runDoctorCheck(
         httpStatus: response.status,
         message: `Expected HTTP ${expected.join(' or ')}, received ${response.status}.`,
         fix: 'Check the deployed app logs and the runtime contract for this endpoint.',
+        authenticated,
       };
     }
 
@@ -600,6 +629,7 @@ async function runDoctorCheck(
           httpStatus: response.status,
           message: problem,
           fix: 'Set TENANT_KEYS plus TENANT_{KEY}_ID and WORKFLOW_{KEY}_ID for the deployed app.',
+          authenticated,
         };
       }
     }
@@ -617,6 +647,7 @@ async function runDoctorCheck(
           httpStatus: response.status,
           message: problem,
           fix: 'Check AUTH_SECRET, AUTH_URL, Entra client settings, and callback URL registration.',
+          authenticated,
         };
       }
     }
@@ -630,6 +661,7 @@ async function runDoctorCheck(
       status: 'pass',
       httpStatus: response.status,
       message: `HTTP ${response.status}`,
+      authenticated,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -642,6 +674,7 @@ async function runDoctorCheck(
       status: test.optional ? 'warning' : 'fail',
       message,
       fix: 'Confirm the deployed URL is reachable from this machine and the app process is running.',
+      authenticated,
     };
   }
 }
@@ -752,6 +785,12 @@ export async function runDeployDoctor(
     warning: checks.filter((check) => check.status === 'warning').length,
     skip: checks.filter((check) => check.status === 'skip').length,
   };
+  const authenticatedReadiness = checks.some(check =>
+    check.name === MANAGED_READINESS_PROBE.name
+    && check.method === MANAGED_READINESS_PROBE.method
+    && check.path === MANAGED_READINESS_PROBE.path
+    && check.authenticated
+    && check.status === 'pass');
 
   return {
     url: baseUrl,
@@ -759,19 +798,128 @@ export async function runDeployDoctor(
     status: summary.fail > 0 ? 'fail' : 'pass',
     checks,
     summary,
+    authenticatedReadiness,
   };
+}
+
+interface ManagedDoctorOptions {
+  operationId: string;
+  appKey: string;
+  tenantId: string;
+  targetTenantId: string;
+  evidenceOut: string;
+}
+
+interface ManagedDeployDoctorEvidence {
+  schemaVersion: 'eai.managed-deploy-doctor-evidence.v1';
+  status: 'pass' | 'fail';
+  observedAt: string;
+  operation: Record<string, unknown>;
+  sourceBinding: Record<string, unknown>;
+  deployment: Record<string, unknown>;
+  authenticatedReadiness: boolean;
+  doctor: DeployDoctorResult;
+}
+
+function requiredManagedDoctorSegment(value: string, label: string): string {
+  const normalized = value?.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(normalized)) {
+    throw new Error(`${label} must be a safe exact managed-deployment identifier.`);
+  }
+  return normalized;
+}
+
+/** Read one exact active operation, run its declared probes, and seal portable evidence. */
+async function runManagedDeployDoctor(options: ManagedDoctorOptions): Promise<ManagedDeployDoctorEvidence> {
+  const operationId = requiredManagedDoctorSegment(options.operationId, 'Operation ID');
+  const appKey = requiredManagedDoctorSegment(options.appKey, 'App key');
+  const tenantId = requiredManagedDoctorSegment(options.tenantId, 'Tenant ID');
+  const targetTenantId = requiredManagedDoctorSegment(options.targetTenantId, 'Target tenant ID');
+  const context = await resolveCommandContext({
+    tenantId,
+    interactive: false,
+    forceRefresh: true,
+    validatePublicApiUrl: requireManagedPublicApiUrl,
+  });
+  if (context.tenantId !== tenantId) throw new Error(`Active tenant ${context.tenantId} does not match ${tenantId}.`);
+  const response = await context.client.getManagedDeploymentOperation(tenantId, appKey, operationId, targetTenantId);
+  if (!response.ok) throw new Error(`Managed deployment operation read failed (${response.status}).`);
+  const operation = await response.json() as ManagedDeploymentOperationResponse;
+  if (operation.operationId !== operationId || operation.appKey !== appKey
+    || operation.appScopeTenantId !== tenantId
+    || operation.targetTenantId !== targetTenantId
+    || !['source-unknown', 'eai-cli-generated'].includes(operation.sourceMode)) {
+    throw new Error('Managed deployment operation response does not match the requested exact scope.');
+  }
+  if (classifyManagedOperationStatus(operation) !== 'succeeded') {
+    throw new Error(`Managed deployment operation ${operationId} does not contain complete exact source, deployment, and doctor evidence.`);
+  }
+  const configHash = requireConfigHash(operation.configHash);
+  const revision = operation.sourceRevision;
+  const commitSha = requireCommitSha(revision.commitSha);
+  const doctor = await runDeployDoctor(String(operation.activeUrl));
+  const status = doctor.status === 'pass' && doctor.authenticatedReadiness ? 'pass' : 'fail';
+  const evidence: ManagedDeployDoctorEvidence = {
+    schemaVersion: 'eai.managed-deploy-doctor-evidence.v1',
+    status,
+    observedAt: new Date().toISOString(),
+    operation: {
+      operationId,
+      sourceMode: operation.sourceMode,
+      tenantId,
+      targetTenantId,
+      appKey,
+      status: operation.status,
+      configHash,
+    },
+    sourceBinding: {
+      repository: `${revision.repoOwner}/${revision.repoName}`,
+      repositoryId: revision.repositoryId,
+      installationId: revision.installationId,
+      sourceCommitSha: revision.sourceCommitSha,
+      reviewHeadSha: revision.reviewHeadSha,
+      commitSha,
+      workflowPath: revision.workflowPath,
+      ref: revision.branchRef,
+      workflowHeadBranch: revision.workflowHeadBranch,
+      workflowRunId: revision.workflowRunId,
+      workflowBlobSha: revision.workflowBlobSha,
+      collectorDigest: revision.collectorDigest,
+      artifactDigest: revision.artifactDigest,
+      imageArtifact: revision.imageArtifact,
+      imageDigest: revision.imageDigest,
+    },
+    deployment: {
+      deploymentId: operation.deploymentId,
+      activeUrl: operation.activeUrl,
+      runtimeIdentity: operation.runtimeIdentity,
+      latestPointerVersion: operation.latestPointerVersion,
+      expectedLatestVersion: operation.expectedLatestVersion,
+      requiresTenantInfra: operation.requiresTenantInfra,
+    },
+    authenticatedReadiness: doctor.authenticatedReadiness,
+    doctor,
+  };
+  await writeManagedDeployEvidence(options.evidenceOut, evidence);
+  return evidence;
 }
 
 deployCommand
   .command('doctor')
   .description('Black-box check a deployed EAI app runtime')
-  .requiredOption('--url <url>', 'Deployed app base URL')
+  .option('--url <url>', 'Deployed app base URL')
+  .option('--operation-id <id>', 'Exact managed deployment operation')
+  .option('--app-key <key>', 'Exact managed app key')
+  .option('--tenant-id <id>', 'App-scope tenant for the managed operation')
+  .option('--target-tenant-id <id>', 'Runtime tenant for the managed operation')
+  .option('--evidence-out <path>', 'Owner-only operation-bound evidence output')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', `
 Examples:
   $ eai deploy doctor --url https://my-app.example.com
   $ eai deploy doctor --url https://my-app.example.com --format json
+  $ eai deploy doctor --operation-id source-unknown-abc123 --app-key my-app --tenant-id company --target-tenant-id runtime --evidence-out .eai/deploy-doctor.json --format json
 
 Authenticated probes resolve declared \${ENV_NAME} header values from this
 process environment. Secret values are sent only to the declared endpoint and
@@ -780,9 +928,19 @@ are never included in doctor output.
   .action(async (options) => {
     if (options.json) options.format = 'json';
 
-    let result: DeployDoctorResult;
+    let result: DeployDoctorResult | ManagedDeployDoctorEvidence;
     try {
-      result = await runDeployDoctor(options.url);
+      const operationFields = [options.operationId, options.appKey, options.tenantId, options.targetTenantId, options.evidenceOut];
+      const usesOperation = operationFields.some(Boolean);
+      if (Boolean(options.url) === usesOperation) {
+        throw new Error('Choose either --url, or all operation-bound doctor options.');
+      }
+      if (usesOperation && operationFields.some(value => !value)) {
+        throw new Error('--operation-id, --app-key, --tenant-id, --target-tenant-id and --evidence-out are all required together.');
+      }
+      result = usesOperation
+        ? await runManagedDeployDoctor(options as ManagedDoctorOptions)
+        : await runDeployDoctor(options.url);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (options.format === 'json') {
@@ -797,6 +955,18 @@ are never included in doctor output.
     if (options.format === 'json') {
       out.json(result);
       if (result.status === 'fail') process.exit(1);
+      return;
+    }
+
+    if ('schemaVersion' in result) {
+      out.heading('EAI Managed Deploy Doctor');
+      out.table([
+        ['Operation', String(result.operation.operationId || '')],
+        ['Status', result.status === 'pass' ? 'PASS' : 'FAIL'],
+        ['Evidence', options.evidenceOut],
+      ]);
+      if (result.status === 'pass') out.success('Operation-bound deployment evidence passed.');
+      else { out.error('Operation-bound deployment evidence failed.'); process.exit(1); }
       return;
     }
 

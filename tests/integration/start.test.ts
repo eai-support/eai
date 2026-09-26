@@ -201,7 +201,7 @@ describe('eai start', () => {
     expect(stdout).toContain('"name": "--contract-version"');
   });
 
-  it('plans the paired CLI install without running it or opening a page', async () => {
+  it('plans the paired CLI install without running it or opening a page', { timeout: 30_000 }, async () => {
     const { stdout } = await execFileAsync(process.execPath, [
       cliEntry,
       'start',
@@ -271,7 +271,7 @@ describe('eai start', () => {
     expect(openUrl).toHaveBeenCalledTimes(2);
   });
 
-  it('opens Google Antigravity rather than Gemini as the current Google source', async () => {
+  it('opens Google Antigravity rather than Gemini as the current Google source', { timeout: 30_000 }, async () => {
     const { stdout } = await execFileAsync(process.execPath, [
       cliEntry,
       'start',

@@ -22,9 +22,24 @@ import {
   verticalCommand,
 } from '../../src/commands/vertical.js';
 
-const API_BASE = 'https://test-api.example.com';
+const API_BASE = 'https://test-api.au.myenterprise.ai/public';
 const COMPANY_TENANT_ID = 'company-tenant';
 const PLATFORM_PARENT_ID = 'eai-developers';
+
+function workflowEvidenceFixture(): Record<string, unknown> {
+  return {
+    operationId: 'source-unknown-op', nonce: 'nonce-token', environment: 'preview',
+    workflowPath: '.github/workflows/eai-app.yml', ref: 'refs/heads/main', commitSha: 'a'.repeat(40),
+    configHash: `sha256:${'e'.repeat(64)}`, artifactDigest: `sha256:${'a'.repeat(64)}`,
+    imageArtifact: { id: '987654321', name: 'eai-generated-app-image', archiveDigest: `sha256:${'f'.repeat(64)}` },
+    imageDigest: `sha256:${'b'.repeat(64)}`,
+    schemaProvenance: {
+      templateVersion: 'eai.generated_app_config.v1', baseTemplateSha: '483c609cd974fa732c8ccb5ce37855911f881d76',
+      schemaDigest: `sha256:${'c'.repeat(64)}`, validatorDigest: `sha256:${'d'.repeat(64)}`,
+    },
+    workflowRun: { id: '123456789', attempt: '1' }, validationSummary: { status: 'passed' },
+  };
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -1072,85 +1087,20 @@ describe('eai app', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
+    const evidence = workflowEvidenceFixture();
+    const evidencePath = join(env.dir, 'workflow-evidence.json');
+    await writeFile(evidencePath, JSON.stringify(evidence));
     await appCommand.parseAsync([
-      'workflow-evidence',
-      'planning-portal',
-      '--tenant-id',
-      COMPANY_TENANT_ID,
-      '--repo',
-      'enterpriseaigroup/planning-portal',
-      '--operation-id',
-      'source-unknown-op',
-      '--nonce',
-      'nonce-token',
-      '--commit',
-      'abcdef1234567890',
-      '--config-hash',
-      'sha256:config',
-      '--artifact-digest',
-      'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-      '--image-digest',
-      'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-      '--workflow-run-id',
-      '123456789',
-      '--workflow-run-attempt',
-      '1',
-      '--github-oidc-token',
-      'github-oidc-token',
-      '--template-version',
-      'eai.generated_app_config.v1',
-      '--base-template-sha',
-      '483c609cd974fa732c8ccb5ce37855911f881d76',
-      '--schema-digest',
-      'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-      '--validator-digest',
-      'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
-      '--format',
-      'json',
+      'workflow-evidence', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+      '--evidence-file', evidencePath, '--github-oidc-token', 'github-oidc-token', '--format', 'json',
     ], { from: 'user' });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/workflow-evidence`,
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          Authorization: 'Bearer github-oidc-token',
-        }),
-        body: JSON.stringify({
-          operationId: 'source-unknown-op',
-          nonce: 'nonce-token',
-          environment: 'preview',
-          workflowPath: '.github/workflows/eai-app.yml',
-          ref: 'refs/heads/main',
-          commitSha: 'abcdef1234567890',
-          configHash: 'sha256:config',
-          artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-          imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-          schemaProvenance: {
-            templateVersion: 'eai.generated_app_config.v1',
-            baseTemplateSha: '483c609cd974fa732c8ccb5ce37855911f881d76',
-            schemaDigest: 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-            validatorDigest: 'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
-          },
-          workflowRun: {
-            id: '123456789',
-            attempt: 1,
-          },
-          oidcClaims: {
-            repository: 'enterpriseaigroup/planning-portal',
-            ref: 'refs/heads/main',
-            sha: 'abcdef1234567890',
-            workflow_ref: 'enterpriseaigroup/planning-portal/.github/workflows/eai-app.yml@refs/heads/main',
-            run_id: '123456789',
-            run_attempt: '1',
-          },
-          validationSummary: {
-            status: 'passed_by_cli',
-            appValidated: true,
-          },
-        }),
-      }),
-    );
+    const evidenceCall = fetchMock.mock.calls.find(([input]) => requestUrl(input).endsWith('/workflow-evidence'));
+    expect(evidenceCall).toBeDefined();
+    expect(evidenceCall?.[1]?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer github-oidc-token' }));
+    expect(JSON.parse(String(evidenceCall?.[1]?.body))).toEqual(evidence);
+    expect(String(evidenceCall?.[1]?.body)).not.toContain('passed_by_cli');
+    expect(String(evidenceCall?.[1]?.body)).not.toContain('oidcClaims');
   });
 
   test('HP008 requests source-unknown deployment handoff under the company tenant', async () => {
@@ -1347,18 +1297,25 @@ describe('eai app', () => {
     ).toThrow('Schema provenance requires --base-template-sha, --approved-source-sha, or --approved-release.');
   });
 
-  test('BC004 rejects workflow evidence without schema provenance before request', () => {
-    expect(() =>
-      buildSourceUnknownWorkflowEvidenceData({
-        repo: 'enterpriseaigroup/planning-portal',
-        operationId: 'source-unknown-op',
-        nonce: 'nonce-token',
-        commit: 'abcdef1234567890',
-        configHash: 'sha256:config',
-        artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-      }),
-    ).toThrow('Workflow evidence requires schema provenance');
+  test.each([
+    ['missing image archive', { imageArtifact: undefined }],
+    ['missing run identity', { workflowRun: undefined }],
+    ['invalid run attempt', { workflowRun: { id: '123', attempt: '0' } }],
+    ['invalid artifact ID', { imageArtifact: { id: '-1', name: 'eai-generated-app-image', archiveDigest: `sha256:${'f'.repeat(64)}` } }],
+    ['short commit', { commitSha: 'short' }],
+    ['invalid config digest', { configHash: 'sha256:config' }],
+    ['invalid environment', { environment: 'production' }],
+    ['missing provenance', { schemaProvenance: undefined }],
+    ['invented CLI pass', { validationSummary: { status: 'passed_by_cli' } }],
+    ['lookup is not validation', { validationSummary: { status: 'passed', appValidated: true } }],
+    ['untrusted OIDC claims', { oidcClaims: { repository: 'attacker/repo' } }],
+  ])('BC004 rejects noncanonical evidence: %s', (_label, mutation) => {
+    expect(() => buildSourceUnknownWorkflowEvidenceData({ ...workflowEvidenceFixture(), ...mutation })).toThrow();
+  });
+
+  test('preserves distinct canonical artifact, archive, and image digests without synthesizing proof', () => {
+    const fixture = workflowEvidenceFixture();
+    expect(buildSourceUnknownWorkflowEvidenceData(fixture)).toEqual(fixture);
   });
 
   test('BC005 rejects invalid deployment handoff artifact digest before request', () => {

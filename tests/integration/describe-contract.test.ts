@@ -121,6 +121,7 @@ const SOURCE_UNKNOWN_APP_FLAGS: Readonly<Record<string, readonly string[]>> = {
     "--json",
   ],
   "workflow-evidence": [
+    "--evidence-file",
     "--repo",
     "--operation-id",
     "--nonce",
@@ -172,6 +173,27 @@ const SOURCE_UNKNOWN_APP_FLAGS: Readonly<Record<string, readonly string[]>> = {
     "--json",
   ],
 };
+
+const EAI_MANAGED_DEPLOY_FLAGS = [
+  '--source',
+  '--github-link-session',
+  '--target',
+  '--tenant-id',
+  '--target-tenant-id',
+  '--repo',
+  '--installation-id',
+  '--branch',
+  '--workflow',
+  '--environment',
+  '--commit',
+  '--resume',
+  '--retry',
+  '--wait',
+  '--no-wait',
+  '--timeout',
+  '--format',
+  '--json',
+] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -347,6 +369,17 @@ describe("built CLI discovery and error contracts", () => {
         [...expectedFlags].sort(),
       );
     }
+  });
+
+  test("--describe preserves the EAI managed deploy contract", async () => {
+    const result = await runCli(["--describe"], testEnvironment.dir);
+    const schema = JSON.parse(result.stdout) as DescribeCommand;
+    const command = findCommand(schema, ["deploy", "app"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(command).toBeDefined();
+    expect(optionNames(command ?? {}).sort()).toEqual([...EAI_MANAGED_DEPLOY_FLAGS].sort());
   });
 
   test.each([

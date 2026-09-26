@@ -1,0 +1,45 @@
+# Decisions
+
+## 2026-09-25 owner approval
+
+Implement all reviewed client hardening while preserving successful commands, source modes, status vocabulary, and ownership boundaries. Do not merge, release, deploy, activate, bill, or run destructive live tests.
+
+## Producer pin before release
+
+The template feature is not released. Record its exact candidate commit and content digests and enforce byte/schema parity now. Keep the final immutable release tag/commit explicitly unresolved until the producer is merged and released. Do not predict or reuse a version.
+
+## Doctor compatibility
+
+Keep URL-only black-box doctor behavior. Add optional deployment-operation bindings and a portable evidence-output option; managed deployment completion uses the stronger receipt.
+
+## Explicit runtime tenant
+
+The owner confirmed on 2026-09-25 that `--target-tenant-id` is mandatory on the initial command for both source modes as well as resume and retry. This prevents tenant inference and preserves same-tenant deployment by repeating the app-scope tenant value explicitly.
+
+## Unified operation success
+
+Use the additive unified operation response defined for Issue #3503. Terminal success requires root `sourceStatus` in `handoff_pending` or `completed`, active root and deployment status, `doctor.ready: true`, matching deployment and doctor identities, and a complete `sourceRevision` whose operation, source, tenant, application, environment, configuration, workflow, commit, artifact, image, repository, installation, and run fields match the root operation. Do not infer success from the TenantInfra projection alone.
+
+## Local evidence and configuration paths
+
+Treat caller-selected evidence as untrusted local input: open it without following the final link, prove the opened object is the same bounded regular file, and only then parse its canonical schema. For configuration hashing, reject a linked or non-directory component beneath the application root and recheck ancestors immediately before every no-follow file read; a lexical in-root path does not authorize a linked ancestor.
+
+The governed configuration digest includes every regular file beneath `src/eai.config`, including test and specification files. Only `object-types.json` and `object-types.provisioning.json` are deterministic generated outputs and may be excluded. The CLI and packaged collector must produce the same digest from the same checkout.
+
+Legacy exact-operation reads use the same safe opaque-segment validation as the unified managed route. Retry state is authoritative only when it carries the exact allowlisted `publicApiUrl` selected for the original operation; missing endpoint authority requires a fresh deployment rather than inheriting a current profile value.
+
+## Producer and filesystem race closure
+
+The deferred release gate resolves the immutable canonical producer tag and independently reads both canonical files from that exact commit before comparing pinned digests. Local byte parity alone is insufficient.
+
+Source revision evidence carries `workflowBlobSha` as a lowercase 40-hex Git blob SHA and `collectorDigest` as a lowercase algorithm-qualified SHA-256 digest. The platform derives, verifies, and seals them from server-side linked-installation reads. The CLI does not establish producer trust from caller values; it requires the platform-sealed fields in terminal proof.
+
+After a no-follow open, governed configuration and local publication re-resolve the path, compare its inode with the opened descriptor, and reject any escaped or changed ancestor before reading. Doctor evidence and local recovery receipts write through that already validated final descriptor so a later path replacement cannot redirect the bytes.
+
+Keep `src/commands/eai-managed-deploy.ts` and `src/lib/eai-managed-source-client.ts` as compatible public entrypoints while moving focused implementation into modules below 300 lines. JSON failures retain the CLI-wide nested error envelope.
+
+## Exact retry and completion authority
+
+Load protected customer-owned retry state before the first network request. Build every retry read and mutation client from the state's original allowlisted `publicApiUrl`; unavailable local authority fails closed and leaves server state unchanged. A terminal failed source operation without accepted evidence always requires a fresh operation and nonce.
+
+An EAI-maintained publication marked `completed` is valid only when it supplies a canonical lowercase 40-hex merged commit. The unified source revision must name that exact commit. Caller-selected evidence also binds every parent directory and the opened file identity through the complete bounded read.
