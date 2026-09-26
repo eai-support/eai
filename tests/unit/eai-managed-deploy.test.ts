@@ -126,6 +126,7 @@ describe('EAI managed deployment helpers', () => {
     const directory = await temporaryDirectory('eai-workflow-evidence-');
     const evidence = join(directory, 'evidence.json');
     const target = join(directory, 'target.json');
+    const outside = await temporaryDirectory('eai-workflow-evidence-outside-');
     await writeFile(evidence, '{"status":"passed"}\n');
     expect(await readSourceUnknownEvidenceFile(evidence)).toBe('{"status":"passed"}\n');
 
@@ -137,6 +138,13 @@ describe('EAI managed deployment helpers', () => {
     await rm(evidence);
     await writeFile(evidence, Buffer.alloc(MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES + 1, 0x20));
     await expect(readSourceUnknownEvidenceFile(evidence)).rejects.toThrow('must contain 1 to');
+
+    const linkedParent = join(directory, 'linked-parent');
+    await writeFile(join(outside, 'evidence.json'), '{"status":"outside"}\n');
+    await symlink(outside, linkedParent, 'dir');
+    await expect(
+      readSourceUnknownEvidenceFile(join(linkedParent, 'evidence.json')),
+    ).rejects.toThrow('parents must be no-follow directories');
   });
 
   test.each(['workflow', 'candidate'])('refuses a symlinked %s file without touching its target', async (kind) => {
@@ -281,7 +289,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'e401ac1003b5143c8a1f33cc084138f1301340bb' },
+      candidate: { commit: '7fc7611c98c965e99e55b9dc4d93ae5825e8c462' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);

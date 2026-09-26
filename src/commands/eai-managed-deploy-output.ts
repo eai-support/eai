@@ -124,13 +124,16 @@ export async function printManagedSourceCompletion(
     ? operation.sourceRevision
     : undefined;
   const mergedSha = publication.review?.mergedSha;
+  const hasExactMergedSha =
+    typeof mergedSha === "string" && /^[a-f0-9]{40}$/.test(mergedSha);
   if (
+    !hasExactMergedSha ||
     operation.environment !== publication.environment ||
     operation.configHash !== publication.configHash ||
-    (revision &&
-      (revision.repoOwner !== publication.repository.owner ||
-        revision.repoName !== publication.repository.name ||
-        (typeof mergedSha === "string" && revision.commitSha !== mergedSha)))
+    !revision ||
+    revision.repoOwner !== publication.repository.owner ||
+    revision.repoName !== publication.repository.name ||
+    revision.commitSha !== mergedSha
   ) {
     fail(
       "MANAGED_SOURCE_BINDING_MISMATCH",

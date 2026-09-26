@@ -4,6 +4,7 @@ import type { Ora } from "ora";
 import type { PlatformAPIClient } from "../lib/api.js";
 import type { CommandContext } from "../lib/context.js";
 import type { CliManagedSourceScope } from "../lib/eai-managed-source-client.js";
+import type { ManagedDeployState } from "../lib/eai-managed-deploy.js";
 
 const exec = promisify(execFile);
 export const DEFAULT_TIMEOUT_SECONDS = 1_200;
@@ -54,6 +55,7 @@ export interface ManagedDeployExecutionContext {
   timeoutSeconds: number;
   format: string;
   spinner: Ora | null;
+  retryState?: ManagedDeployState;
 }
 
 export interface VerifiedGitHubActor {

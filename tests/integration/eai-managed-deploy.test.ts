@@ -109,6 +109,23 @@ function completedManagedPublication(): Record<string, unknown> {
   };
 }
 
+function customerRetryState(options: {
+  targetTenantId?: string;
+  environment?: string;
+  publicApiUrl?: string;
+} = {}): ManagedDeployState {
+  return {
+    schema: 'eai.managed-deploy-state.v1', tenantId: TENANT_ID,
+    targetTenantId: options.targetTenantId ?? TENANT_ID,
+    appKey: 'planning-portal', operationId: 'source-unknown-abc123', nonce: 'one-time-nonce',
+    repo: 'enterprise/planning-portal', branch: 'main', ref: 'refs/heads/main',
+    commitSha: 'a'.repeat(40), workflowPath: '.github/workflows/eai-app.yml',
+    configHash: `sha256:${'b'.repeat(64)}`, environment: options.environment ?? 'preview',
+    installationId: 12345, publicApiUrl: options.publicApiUrl ?? API_BASE,
+    ...ACTOR_BINDING,
+  };
+}
+
 describe('eai deploy app --target eai', () => {
   let env: TestEnvironment;
   let projectRoot: string;
@@ -454,6 +471,36 @@ describe('eai deploy app --target eai', () => {
   });
 
   test.each([
+    ['missing', undefined],
+    ['malformed', 'not-a-commit'],
+    ['mismatched', 'd'.repeat(40)],
+  ] as const)('rejects %s EAI-maintained merged commit evidence', async (_label, mergedSha) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const identity = stubManagedOperation().getMockImplementation()!;
+    const publication = completedManagedPublication();
+    publication.review = mergedSha === undefined ? {} : { mergedSha };
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      if (url.includes('/cli-managed-source/operations/')) return jsonResponse(publication);
+      if (url.includes('/managed-deployments/operations/')) return jsonResponse(completeUnifiedOperation({
+        operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated',
+        repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
+      }));
+      return identity(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+      '--target-tenant-id', TENANT_ID, '--source', 'eai-managed',
+      '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      ok: false, error: { code: 'MANAGED_SOURCE_BINDING_MISMATCH' },
+    });
+    expect(process.exitCode).toBe(1);
+  });
+
+  test.each([
     ['configuration', { configHash: `sha256:${'d'.repeat(64)}` }],
     ['repository', { repoName: 'other-app' }],
   ])('rejects a unified EAI-maintained %s substitution', async (_label, replacement) => {
@@ -732,8 +779,12 @@ fi
     ['accepted', 'handoff_pending', 'preview'], ['consumed', 'handoff_pending', 'dev'],
     ['accepted', 'expired', 'test'], ['consumed', 'expired', 'prod'],
     ['accepted', 'revoked', 'test'], ['consumed', 'revoked', 'prod'],
-  ] as const)('retries server %s evidence handoff in %s for %s without local nonce or Git checkout', async (evidenceState, operationStatus, environment) => {
+  ] as const)('retries server %s evidence handoff in %s for %s without redispatch or Git checkout', async (evidenceState, operationStatus, environment) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    await saveManagedDeployState(customerRetryState({
+      targetTenantId: 'runtime-child',
+      environment,
+    }));
     let deployed = false;
     const requests: Array<{ url: string; body: unknown }> = [];
     const identityFetch = stubManagedOperation();
@@ -768,6 +819,7 @@ fi
 
   test.each([undefined, 'staging'] as const)('refuses accepted-evidence retry without a supported server environment (%s)', async (environment) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    await saveManagedDeployState(customerRetryState({ targetTenantId: 'runtime-child' }));
     const requests: string[] = [];
     const identityFetch = stubManagedOperation();
     const identityImpl = identityFetch.getMockImplementation()!;
@@ -799,9 +851,12 @@ fi
 
   test.each([
     ['expired', '--resume'], ['revoked', '--resume'],
+    ['failed', '--resume'], ['rejected', '--resume'],
     ['expired', '--retry'], ['revoked', '--retry'],
+    ['failed', '--retry'], ['rejected', '--retry'],
   ] as const)('stops %s %s immediately and requests a new setup without dispatch', async (status, mode) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    if (mode === '--retry') await saveManagedDeployState(customerRetryState());
     const fetchMock = stubManagedOperation({
       appScopeTenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal',
       operationId: 'source-unknown-abc123', sourceMode: 'source-unknown', sourceStatus: status,
@@ -868,6 +923,25 @@ fi
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
       ok: false, error: { code: 'TARGET_TENANT_REQUIRED' },
     });
+    expect(process.exitCode).toBe(1);
+  });
+
+  test('rejects retry without original endpoint authority before any request', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+      '--target-tenant-id', TENANT_ID, '--retry', 'source-unknown-missing',
+      '--format', 'json',
+    ], { from: 'user' });
+
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      ok: false, error: { code: 'RETRY_AUTHORITY_UNAVAILABLE' },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 
@@ -964,6 +1038,43 @@ fi
       },
     });
     expect(String(result.nextAction)).toContain('eai deploy doctor --operation-id source-unknown-abc123');
+    expect(process.exitCode).toBe(0);
+  });
+
+  test('binds every retry request to the protected original PublicAPI endpoint', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const originalApi = 'https://test-api.ca.myenterprise.ai/public';
+    await saveManagedDeployState(customerRetryState({ publicApiUrl: originalApi }));
+    const requests: string[] = [];
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      requests.push(url);
+      if (url === `${originalApi}/v4/identity/tenants`) {
+        return jsonResponse({ tenants: [{ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] }] });
+      }
+      if (url === `${originalApi}/v4/platform/tenants/${TENANT_ID}`
+        || url === `${originalApi}/v4/platform/tenants/${TENANT_ID}/management`) {
+        return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
+      }
+      if (url.includes('/managed-deployments/operations/source-unknown-abc123')) {
+        return jsonResponse(completeUnifiedOperation());
+      }
+      return jsonResponse({ message: `Unexpected ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+      '--target-tenant-id', TENANT_ID, '--retry', 'source-unknown-abc123',
+      '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every(url => url.startsWith(`${originalApi}/`))).toBe(true);
+    expect(requests.every(url => !url.startsWith(`${API_BASE}/`))).toBe(true);
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      operationId: 'source-unknown-abc123', classification: 'succeeded',
+    });
     expect(process.exitCode).toBe(0);
   });
 

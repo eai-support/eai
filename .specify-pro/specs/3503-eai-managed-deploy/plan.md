@@ -13,3 +13,4 @@
 11. Preserve the repository-standard JSON failure envelope across the command split.
 12. Run focused CLI evidence, build, lint, and release preflight; push without merging or releasing.
 13. Verify producer release bytes remotely, bind source revisions to workflow/collector identities, and close ancestor replacement windows on governed reads and local evidence writes.
+14. Fail closed before retry network access without original endpoint authority, classify every pre-evidence terminal source failure as a fresh-operation case, require exact merged publication identity, and bind workflow-evidence parents through the complete read.

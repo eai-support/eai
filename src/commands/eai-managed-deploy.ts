@@ -26,6 +26,7 @@ import {
 } from "./eai-managed-deploy-managed-source.js";
 import { printFailure } from "./eai-managed-deploy-output.js";
 import {
+  loadCustomerRetryAuthority,
   resumeCustomerSource,
   retryCustomerSource,
 } from "./eai-managed-deploy-retry.js";
@@ -110,11 +111,20 @@ Examples:
     try {
       const { appKey, targetTenantId, workflowPath, timeoutSeconds } =
         validateManagedDeployInput(appKeyValue, options);
+      const retryState = options.retry && options.source !== "eai-managed"
+        ? await loadCustomerRetryAuthority(
+            options.retry,
+            options.tenantId,
+            targetTenantId,
+            appKey,
+          )
+        : undefined;
       const context = await resolveCommandContext({
         tenantId: options.tenantId,
         interactive: false,
         forceRefresh: true,
         validatePublicApiUrl: requireManagedPublicApiUrl,
+        publicApiUrl: retryState?.publicApiUrl,
       });
       if (context.tenantId !== options.tenantId) {
         fail(
@@ -142,6 +152,7 @@ Examples:
         timeoutSeconds,
         format,
         spinner,
+        retryState,
       };
 
       if (

@@ -2,7 +2,9 @@ import {
   assertManagedDeployStateMatchesOperation,
   classifyManagedOperationStatus,
   loadManagedDeployState,
+  type ManagedDeployState,
 } from "../lib/eai-managed-deploy.js";
+import { PlatformAPIClient } from "../lib/api.js";
 import {
   MANAGED_DEPLOY_ENVIRONMENTS,
   NEW_SOURCE_OPERATION_ACTION,
@@ -22,6 +24,36 @@ import {
   readExactOperation,
   requiresNewSourceOperation,
 } from "./eai-managed-deploy-operation.js";
+
+export async function loadCustomerRetryAuthority(
+  operationId: string,
+  tenantId: string,
+  targetTenantId: string,
+  appKey: string,
+): Promise<ManagedDeployState> {
+  let state: ManagedDeployState;
+  try {
+    state = await loadManagedDeployState(operationId);
+  } catch {
+    fail(
+      "RETRY_AUTHORITY_UNAVAILABLE",
+      "Protected retry state with the original PublicAPI authority is unavailable.",
+      NEW_SOURCE_OPERATION_ACTION,
+    );
+  }
+  if (
+    state.tenantId !== tenantId ||
+    state.targetTenantId !== targetTenantId ||
+    state.appKey !== appKey
+  ) {
+    fail(
+      "RETRY_BINDING_MISMATCH",
+      "Retry state does not match the requested tenant, target tenant, and app.",
+      "Use the exact original tenant and app values.",
+    );
+  }
+  return state;
+}
 
 export async function resumeCustomerSource(
   execution: ManagedDeployExecutionContext,
@@ -59,7 +91,6 @@ export async function retryCustomerSource(
   operationId: string,
 ): Promise<void> {
   const {
-    client,
     context,
     targetTenantId,
     appKey,
@@ -68,8 +99,35 @@ export async function retryCustomerSource(
     spinner,
     format,
   } = execution;
+  const state = execution.retryState ?? await loadCustomerRetryAuthority(
+    operationId,
+    context.tenantId,
+    targetTenantId,
+    appKey,
+  );
+  if (
+    !state.actorId ||
+    !state.githubLinkSessionId ||
+    !state.githubUserId ||
+    !state.githubLogin ||
+    !state.githubProofId
+  ) {
+    fail(
+      "RETRY_ACTOR_BINDING_MISSING",
+      "Retry state predates the required EAI and GitHub actor proof.",
+      NEW_SOURCE_OPERATION_ACTION,
+    );
+  }
+  if (state.actorId !== context.tokens.oid) {
+    fail(
+      "RETRY_ACTOR_MISMATCH",
+      "The signed-in EAI actor does not own this retry authority.",
+      "Sign in as the original EAI actor, then retry the exact operation.",
+    );
+  }
+  const retryClient = new PlatformAPIClient(state.publicApiUrl, state.tenantId);
   const current = await readExactOperation(
-    client,
+    retryClient,
     context.tenantId,
     targetTenantId,
     appKey,
@@ -91,7 +149,7 @@ export async function retryCustomerSource(
       );
     }
     await requireApiSuccess(
-      await client.requestSourceUnknownDeployment(context.tenantId, appKey, {
+      await retryClient.requestSourceUnknownDeployment(context.tenantId, appKey, {
         operationId,
         targetTenantId,
         environment,
@@ -101,7 +159,7 @@ export async function retryCustomerSource(
         `Repair the reported runtime or TenantInfra problem, then retry ${operationId}; accepted build evidence will be reused.`,
     );
     const operation = await pollExactOperation(
-      client,
+      retryClient,
       { tenantId: context.tenantId, targetTenantId, appKey, operationId },
       options.wait,
       timeoutSeconds,
@@ -117,38 +175,6 @@ export async function retryCustomerSource(
       "SOURCE_OPERATION_INACTIVE",
       `Source operation ${current.operationId} is ${current.sourceStatus} and cannot dispatch a workflow.`,
       NEW_SOURCE_OPERATION_ACTION,
-    );
-  }
-  const state = await loadManagedDeployState(operationId);
-  if (
-    state.tenantId !== context.tenantId ||
-    state.targetTenantId !== targetTenantId ||
-    state.appKey !== appKey
-  ) {
-    fail(
-      "RETRY_BINDING_MISMATCH",
-      "Retry state does not match the requested tenant, target tenant, and app.",
-      "Use the exact original tenant and app values.",
-    );
-  }
-  if (
-    !state.actorId ||
-    !state.githubLinkSessionId ||
-    !state.githubUserId ||
-    !state.githubLogin ||
-    !state.githubProofId
-  ) {
-    fail(
-      "RETRY_ACTOR_BINDING_MISSING",
-      "Retry state predates the required EAI and GitHub actor proof.",
-      NEW_SOURCE_OPERATION_ACTION,
-    );
-  }
-  if (state.actorId !== context.tokens.oid) {
-    fail(
-      "RETRY_ACTOR_MISMATCH",
-      "The signed-in EAI actor does not own this retry authority.",
-      "Sign in as the original EAI actor, then retry the exact operation.",
     );
   }
   try {
@@ -182,11 +208,11 @@ export async function retryCustomerSource(
         `Check out ${state.commitSha}, then retry the same operation.`,
       );
     }
-    await prepareRuntime(client, state);
-    await dispatchWorkflow(state, context.publicApiUrl, context.root);
+    await prepareRuntime(retryClient, state);
+    await dispatchWorkflow(state, state.publicApiUrl, context.root);
   }
   const operation = await pollExactOperation(
-    client,
+    retryClient,
     state,
     options.wait,
     timeoutSeconds,

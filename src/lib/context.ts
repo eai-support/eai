@@ -39,13 +39,14 @@ export async function resolveCommandContext(options?: {
   interactive?: boolean;
   forceRefresh?: boolean;
   validatePublicApiUrl?: (url: string) => string;
+  publicApiUrl?: string;
 }): Promise<CommandContext> {
   const root = await findProjectRoot();
   if (!root) {
     exitWithError(ErrorCode.E001);
   }
 
-  const resolvedPublicApiUrl = await resolvePublicApiUrl(root);
+  const resolvedPublicApiUrl = options?.publicApiUrl ?? await resolvePublicApiUrl(root);
   const publicApiUrl = options?.validatePublicApiUrl
     ? options.validatePublicApiUrl(resolvedPublicApiUrl)
     : resolvedPublicApiUrl;

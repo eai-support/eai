@@ -338,6 +338,10 @@ function copyRegularTreeNoFollow(
         sourcePath,
         constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
       );
+      const destinationAncestors = snapshotAbsoluteDirectoryPath(
+        dirname(destinationPath),
+        `${label} destination`,
+      );
       let destinationDescriptor;
       let destinationCreated = false;
       try {
@@ -359,7 +363,17 @@ function copyRegularTreeNoFollow(
           before.mode & 0o777,
         );
         destinationCreated = true;
-        if (!fstatSync(destinationDescriptor).isFile()) {
+        const destinationOpened = fstatSync(destinationDescriptor);
+        assertAbsoluteDirectorySnapshot(destinationAncestors, `${label} destination`);
+        const destinationRebound = lstatSync(destinationPath);
+        if (
+          !destinationOpened.isFile() ||
+          destinationOpened.nlink !== 1 ||
+          destinationRebound.isSymbolicLink() ||
+          !destinationRebound.isFile() ||
+          destinationRebound.dev !== destinationOpened.dev ||
+          destinationRebound.ino !== destinationOpened.ino
+        ) {
           throw new Error(`${label} destination must be a regular file.`);
         }
         const buffer = Buffer.allocUnsafe(64 * 1024);
@@ -387,6 +401,18 @@ function copyRegularTreeNoFollow(
             written += bytesWritten;
           }
           copied += bytesRead;
+        }
+        assertAbsoluteDirectorySnapshot(destinationAncestors, `${label} destination`);
+        const destinationAfter = fstatSync(destinationDescriptor);
+        const destinationPathAfter = lstatSync(destinationPath);
+        if (
+          destinationAfter.dev !== destinationOpened.dev ||
+          destinationAfter.ino !== destinationOpened.ino ||
+          destinationPathAfter.isSymbolicLink() ||
+          destinationPathAfter.dev !== destinationOpened.dev ||
+          destinationPathAfter.ino !== destinationOpened.ino
+        ) {
+          throw new Error(`${label} destination changed during its bound write.`);
         }
         const after = fstatSync(sourceDescriptor);
         if (
@@ -419,6 +445,10 @@ function copyRegularTreeNoFollow(
 function writeRegularFileNoFollow(root, path, content) {
   containedRelativePath(root, path, 'Image context file');
   assertDirectoryTreeNoFollow(root, dirname(path), 'Image context directory');
+  const ancestors = snapshotAbsoluteDirectoryPath(
+    dirname(path),
+    'Image context output',
+  );
   const descriptor = openSync(
     path,
     constants.O_WRONLY |
@@ -428,10 +458,32 @@ function writeRegularFileNoFollow(root, path, content) {
     0o600,
   );
   try {
-    if (!fstatSync(descriptor).isFile()) {
+    const opened = fstatSync(descriptor);
+    assertAbsoluteDirectorySnapshot(ancestors, 'Image context output');
+    const rebound = lstatSync(path);
+    if (
+      !opened.isFile() ||
+      opened.nlink !== 1 ||
+      rebound.isSymbolicLink() ||
+      !rebound.isFile() ||
+      rebound.dev !== opened.dev ||
+      rebound.ino !== opened.ino
+    ) {
       throw new Error('Image context output must be a regular file.');
     }
     writeFileSync(descriptor, content, 'utf8');
+    assertAbsoluteDirectorySnapshot(ancestors, 'Image context output');
+    const after = fstatSync(descriptor);
+    const finalPath = lstatSync(path);
+    if (
+      after.dev !== opened.dev ||
+      after.ino !== opened.ino ||
+      finalPath.isSymbolicLink() ||
+      finalPath.dev !== opened.dev ||
+      finalPath.ino !== opened.ino
+    ) {
+      throw new Error('Image context output changed during its bound write.');
+    }
   } finally {
     closeSync(descriptor);
   }
@@ -441,6 +493,10 @@ function writeEvidenceFileNoFollow(root, outputDir, evidencePath, content) {
   containedRelativePath(root, outputDir, 'Evidence output directory', true);
   containedRelativePath(outputDir, evidencePath, 'Evidence output file');
   ensureDirectoryTreeNoFollow(root, dirname(evidencePath));
+  const ancestors = snapshotAbsoluteDirectoryPath(
+    dirname(evidencePath),
+    'Evidence output',
+  );
 
   const descriptor = openSync(
     evidencePath,
@@ -451,10 +507,32 @@ function writeEvidenceFileNoFollow(root, outputDir, evidencePath, content) {
     0o600,
   );
   try {
-    if (!fstatSync(descriptor).isFile()) {
+    const opened = fstatSync(descriptor);
+    assertAbsoluteDirectorySnapshot(ancestors, 'Evidence output');
+    const rebound = lstatSync(evidencePath);
+    if (
+      !opened.isFile() ||
+      opened.nlink !== 1 ||
+      rebound.isSymbolicLink() ||
+      !rebound.isFile() ||
+      rebound.dev !== opened.dev ||
+      rebound.ino !== opened.ino
+    ) {
       throw new Error('Evidence output must be a regular file.');
     }
     writeFileSync(descriptor, content, 'utf8');
+    assertAbsoluteDirectorySnapshot(ancestors, 'Evidence output');
+    const after = fstatSync(descriptor);
+    const finalPath = lstatSync(evidencePath);
+    if (
+      after.dev !== opened.dev ||
+      after.ino !== opened.ino ||
+      finalPath.isSymbolicLink() ||
+      finalPath.dev !== opened.dev ||
+      finalPath.ino !== opened.ino
+    ) {
+      throw new Error('Evidence output changed during its bound write.');
+    }
   } finally {
     closeSync(descriptor);
   }
@@ -709,6 +787,9 @@ function snapshotAbsoluteDirectoryPath(path, label) {
   for (const component of ['', ...relative(filesystemRoot, target).split(/[\\/]/).filter(Boolean)]) {
     if (component) current = join(current, component);
     const status = lstatSync(current);
+    // macOS exposes trusted system roots such as /var and /tmp as top-level links.
+    // Bind every application-controlled descendant beneath that stable root alias.
+    if (status.isSymbolicLink() && dirname(current) === filesystemRoot) continue;
     if (status.isSymbolicLink() || !status.isDirectory()) {
       throw new Error(`${label} ancestors must be no-follow directories.`);
     }

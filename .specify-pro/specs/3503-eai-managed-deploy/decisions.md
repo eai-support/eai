@@ -37,3 +37,9 @@ Source revision evidence carries `workflowBlobSha` as a lowercase 40-hex Git blo
 After a no-follow open, governed configuration and local publication re-resolve the path, compare its inode with the opened descriptor, and reject any escaped or changed ancestor before reading. Doctor evidence and local recovery receipts write through that already validated final descriptor so a later path replacement cannot redirect the bytes.
 
 Keep `src/commands/eai-managed-deploy.ts` and `src/lib/eai-managed-source-client.ts` as compatible public entrypoints while moving focused implementation into modules below 300 lines. JSON failures retain the CLI-wide nested error envelope.
+
+## Exact retry and completion authority
+
+Load protected customer-owned retry state before the first network request. Build every retry read and mutation client from the state's original allowlisted `publicApiUrl`; unavailable local authority fails closed and leaves server state unchanged. A terminal failed source operation without accepted evidence always requires a fresh operation and nonce.
+
+An EAI-maintained publication marked `completed` is valid only when it supplies a canonical lowercase 40-hex merged commit. The unified source revision must name that exact commit. Caller-selected evidence also binds every parent directory and the opened file identity through the complete bounded read.

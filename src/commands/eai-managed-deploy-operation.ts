@@ -161,12 +161,8 @@ export function hasAcceptedWorkflowEvidence(
 export function requiresNewSourceOperation(
   operation: ManagedDeploymentOperationResponse,
 ): boolean {
-  const sourceStatus =
-    typeof operation.sourceStatus === "string"
-      ? operation.sourceStatus.trim().toLowerCase()
-      : "";
   return (
-    ["expired", "revoked"].includes(sourceStatus) &&
+    classifyManagedOperationStatus(operation) === "failed" &&
     !hasAcceptedWorkflowEvidence(operation)
   );
 }
