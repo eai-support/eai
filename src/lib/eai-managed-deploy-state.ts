@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
-import { access, chmod, open } from 'node:fs/promises';
+import { chmod } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import {
   managedDeployNonceSha256,
   parseGitHubRepository,
@@ -15,10 +15,11 @@ import {
   type ManagedDispatchClaim,
 } from './eai-managed-deploy-contract.js';
 import {
-  assertRegularTarget,
   assertTrustedDirectory,
+  createPrivateFileNoFollow,
   ensureDirectory,
-  writeAtomically,
+  readPrivateFileNoFollow,
+  writePrivateFileNoFollow,
 } from './eai-managed-deploy-filesystem.js';
 import { requireManagedPublicApiUrl } from './managed-public-api.js';
 
@@ -69,8 +70,7 @@ export async function saveManagedDeployState(state: ManagedDeployState, baseDir?
   validateManagedDeployState(state);
   const path = managedDeployStatePath(state.operationId, baseDir);
   await prepareStateDirectory(baseDir);
-  await assertRegularTarget(path, true);
-  await writeAtomically(path, `${JSON.stringify(state, null, 2)}\n`, 0o600);
+  await writePrivateFileNoFollow(path, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 function managedDispatchBindingSha256(state: ManagedDeployState): string {
@@ -98,18 +98,21 @@ export async function claimManagedDeployDispatch(state: ManagedDeployState, base
     updatedAt: now,
   };
   try {
-    const handle = await open(marker, 'wx', 0o600);
-    try {
-      await handle.writeFile(`${JSON.stringify(claim, null, 2)}\n`);
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
+    await createPrivateFileNoFollow(marker, `${JSON.stringify(claim, null, 2)}\n`);
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    await readManagedDeployDispatchClaim(state, baseDir);
-    return false;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      try {
+        await readManagedDeployDispatchClaim(state, baseDir);
+        return false;
+      } catch (readError) {
+        lastError = readError;
+        await delay(10);
+      }
+    }
+    throw lastError;
   }
 }
 
@@ -120,19 +123,14 @@ export async function readManagedDeployDispatchClaim(
 ): Promise<ManagedDispatchClaim> {
   validateManagedDeployState(state);
   const marker = `${managedDeployStatePath(state.operationId, baseDir)}.dispatch`;
-  await assertRegularTarget(marker, true);
-  const handle = await open(marker, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
   let claim: ManagedDispatchClaim;
   try {
-    const status = await handle.stat();
-    const uid = typeof process.getuid === 'function' ? process.getuid() : null;
-    if (!status.isFile() || status.nlink !== 1 || (process.platform !== 'win32'
-      && ((uid !== null && status.uid !== uid) || (status.mode & 0o077) !== 0))) {
-      throw new Error('Managed deployment refused an untrusted dispatch claim.');
+    claim = JSON.parse(await readPrivateFileNoFollow(marker)) as ManagedDispatchClaim;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error('Managed deployment dispatch claim is not valid JSON.', { cause: error });
     }
-    claim = JSON.parse(await handle.readFile('utf8')) as ManagedDispatchClaim;
-  } finally {
-    await handle.close();
+    throw error;
   }
   if (claim.schema !== 'eai.managed-dispatch-claim.v1' || claim.operationId !== state.operationId
     || claim.bindingSha256 !== managedDispatchBindingSha256(state)
@@ -165,8 +163,7 @@ export async function recordManagedDeployDispatch(
     updatedAt: new Date().toISOString(),
     ...(githubRunId !== undefined ? { githubRunId } : {}),
   };
-  await assertRegularTarget(marker, true);
-  await writeAtomically(marker, `${JSON.stringify(next, null, 2)}\n`, 0o600);
+  await writePrivateFileNoFollow(marker, `${JSON.stringify(next, null, 2)}\n`);
   return next;
 }
 
@@ -174,24 +171,17 @@ export async function recordManagedDeployDispatch(
 export async function loadManagedDeployState(operationId: string, baseDir?: string): Promise<ManagedDeployState> {
   const path = managedDeployStatePath(operationId, baseDir);
   await prepareStateDirectory(baseDir);
-  try {
-    await access(path);
-  } catch {
-    throw new Error(`No local retry state exists for ${operationId}. Resume can still read status, but retry needs the original nonce.`);
-  }
-  await assertRegularTarget(path, true);
-  const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
   let parsed: ManagedDeployState;
   try {
-    const status = await handle.stat();
-    const uid = typeof process.getuid === 'function' ? process.getuid() : null;
-    if (!status.isFile() || status.nlink !== 1 || (process.platform !== 'win32'
-      && ((uid !== null && status.uid !== uid) || (status.mode & 0o077) !== 0))) {
-      throw new Error('Managed deployment refused untrusted retry authority.');
+    parsed = JSON.parse(await readPrivateFileNoFollow(path)) as ManagedDeployState;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`No local retry state exists for ${operationId}. Resume can still read status, but retry needs the original nonce.`, { cause: error });
     }
-    parsed = JSON.parse(await handle.readFile('utf8')) as ManagedDeployState;
-  } finally {
-    await handle.close();
+    if (error instanceof SyntaxError) {
+      throw new Error(`Local retry state for ${operationId} is not valid JSON.`, { cause: error });
+    }
+    throw error;
   }
   if (parsed.schema !== 'eai.managed-deploy-state.v1' || parsed.operationId !== operationId) {
     throw new Error(`Local retry state for ${operationId} is invalid.`);

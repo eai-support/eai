@@ -8,6 +8,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 const race = vi.hoisted(() => ({
   trigger: "",
+  triggerPrefix: "",
   target: "",
   replacement: "",
   displaced: "",
@@ -19,7 +20,8 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return {
     ...actual,
     open: async (path: PathLike, flags: string | number, mode?: number) => {
-      if (!race.swapped && String(path) === race.trigger) {
+      if (!race.swapped && (String(path) === race.trigger
+        || (race.triggerPrefix && String(path).startsWith(race.triggerPrefix)))) {
         race.swapped = true;
         await actual.rename(race.target, race.displaced);
         await actual.rename(race.replacement, race.target);
@@ -29,8 +31,13 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   };
 });
 
-import { buildManagedDeployConfigHash } from "../../src/lib/eai-managed-deploy-files.js";
+import { buildManagedDeployConfigHash, installCanonicalManagedDeployFiles } from "../../src/lib/eai-managed-deploy-files.js";
 import { writeManagedDeployEvidence } from "../../src/lib/eai-managed-deploy-filesystem.js";
+import {
+  claimManagedDeployDispatch,
+  saveManagedDeployState,
+} from "../../src/lib/eai-managed-deploy-state.js";
+import type { ManagedDeployState } from "../../src/lib/eai-managed-deploy-contract.js";
 import {
   buildCliManagedSourceBundle,
   writeCliManagedSourceReceipt,
@@ -43,6 +50,7 @@ const cleanup: string[] = [];
 afterEach(async () => {
   race.target = "";
   race.trigger = "";
+  race.triggerPrefix = "";
   race.replacement = "";
   race.displaced = "";
   race.swapped = false;
@@ -54,6 +62,31 @@ afterEach(async () => {
 async function put(root: string, path: string, content: string): Promise<void> {
   await mkdir(dirname(join(root, path)), { recursive: true });
   await writeFile(join(root, path), content);
+}
+
+function retryState(): ManagedDeployState {
+  return {
+    schema: "eai.managed-deploy-state.v1",
+    tenantId: "tenant-1",
+    targetTenantId: "tenant-1",
+    appKey: "planning-portal",
+    operationId: "source-unknown-parent-race",
+    nonce: "one-time-nonce",
+    repo: "enterprise/planning-portal",
+    branch: "main",
+    ref: "refs/heads/main",
+    commitSha: "a".repeat(40),
+    workflowPath: ".github/workflows/eai-app.yml",
+    configHash: `sha256:${"b".repeat(64)}`,
+    environment: "preview",
+    installationId: 123,
+    actorId: "eai-user-oid",
+    githubLinkSessionId: "github-link-123",
+    githubUserId: 456,
+    githubLogin: "linked-user",
+    githubProofId: "proof-123",
+    publicApiUrl: "https://test-api.au.myenterprise.ai/public",
+  };
 }
 
 test("rejects a source file replaced between metadata check and no-follow open", async () => {
@@ -188,3 +221,48 @@ test("does not write a local source receipt through a replaced parent", async ()
   expect(race.swapped).toBe(true);
   await expect(readFile(join(root, ".eai/cli-managed-source-receipt.json"), "utf8")).resolves.toBe("");
 });
+
+test("does not atomically install canonical files through a replaced parent", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-install-parent-race-")));
+  const outside = await realpath(await mkdtemp(join(tmpdir(), "managed-install-parent-replacement-")));
+  cleanup.push(root, outside);
+  await mkdir(join(root, ".github/workflows"), { recursive: true });
+  await mkdir(join(outside, "workflows"));
+  const workflow = join(root, ".github/workflows/eai-app.yml");
+  race.triggerPrefix = `${workflow}.eai-`;
+  race.target = join(root, ".github/workflows");
+  race.displaced = join(root, ".github/workflows-original");
+  race.replacement = join(outside, "workflows");
+
+  await expect(installCanonicalManagedDeployFiles(root)).rejects.toThrow(
+    "evidence directory changed",
+  );
+  expect(race.swapped).toBe(true);
+  await expect(readFile(workflow, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+test.each(["state", "dispatch"])(
+  "does not write private %s authority through a replaced parent",
+  async (kind) => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), `managed-${kind}-parent-race-`)));
+    const outside = await realpath(await mkdtemp(join(tmpdir(), `managed-${kind}-parent-replacement-`)));
+    cleanup.push(root, outside);
+    const directory = join(root, "managed-deployments");
+    await mkdir(directory);
+    await mkdir(join(outside, "managed-deployments"));
+    const state = retryState();
+    const suffix = kind === "state" ? ".json" : ".json.dispatch";
+    race.trigger = join(directory, `${state.operationId}${suffix}`);
+    race.target = directory;
+    race.displaced = join(root, "managed-deployments-original");
+    race.replacement = join(outside, "managed-deployments");
+
+    await expect(kind === "state"
+      ? saveManagedDeployState(state, directory)
+      : claimManagedDeployDispatch(state, directory)).rejects.toThrow(
+      "evidence directory changed",
+    );
+    expect(race.swapped).toBe(true);
+    await expect(readFile(race.trigger, "utf8")).resolves.toBe("");
+  },
+);

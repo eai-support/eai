@@ -201,8 +201,12 @@ export interface SourceUnknownWorkflowSetupRequest {
 export interface SourceUnknownWorkflowEvidenceRequest {
   operationId: string;
   nonce: string;
+  sourceMode?: 'source-unknown' | 'eai-cli-generated';
+  targetTenantId?: string;
   environment?: string;
   workflowPath: string;
+  workflowBlobSha: string;
+  collectorDigest: string;
   ref: string;
   commitSha: string;
   configHash: string;

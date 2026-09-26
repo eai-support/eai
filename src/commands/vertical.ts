@@ -507,11 +507,21 @@ export function buildSourceUnknownWorkflowEvidenceData(
     }
     return input;
   }
-  const body = record(value, ['operationId', 'nonce', 'environment', 'workflowPath', 'ref', 'commitSha',
-    'configHash', 'artifactDigest', 'imageArtifact', 'imageDigest', 'schemaProvenance', 'workflowRun',
+  const body = record(value, ['operationId', 'nonce', 'sourceMode', 'targetTenantId', 'environment',
+    'workflowPath', 'workflowBlobSha', 'collectorDigest', 'ref', 'commitSha', 'configHash',
+    'artifactDigest', 'imageArtifact', 'imageDigest', 'schemaProvenance', 'workflowRun',
     'validationSummary'], 'Workflow evidence');
   const sha = /^[a-f0-9]{40}$/;
   const digest = /^sha256:[a-f0-9]{64}$/;
+  const sourceMode = body.sourceMode === undefined
+    ? undefined
+    : text(body.sourceMode, 'sourceMode', /^(source-unknown|eai-cli-generated)$/);
+  const targetTenantId = body.targetTenantId === undefined
+    ? undefined
+    : text(body.targetTenantId, 'targetTenantId', /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,254}[A-Za-z0-9])?$/);
+  if (sourceMode === 'eai-cli-generated' && !targetTenantId) {
+    throw new Error('eai-cli-generated workflow evidence requires targetTenantId.');
+  }
   const artifact = record(body.imageArtifact, ['id', 'name', 'archiveDigest'], 'imageArtifact');
   if (artifact.name !== 'eai-generated-app-image') throw new Error('imageArtifact.name must be eai-generated-app-image.');
   const run = record(body.workflowRun, ['id', 'attempt', 'workflow', 'job'], 'workflowRun');
@@ -525,8 +535,12 @@ export function buildSourceUnknownWorkflowEvidenceData(
   return {
     operationId: text(body.operationId, 'operationId', /^source-unknown-[A-Za-z0-9_-]+$/),
     nonce: text(body.nonce, 'nonce'),
-    environment: text(body.environment, 'environment', /^(preview|dev|test|prod)$/),
+    ...(sourceMode ? { sourceMode: sourceMode as 'source-unknown' | 'eai-cli-generated' } : {}),
+    ...(targetTenantId ? { targetTenantId } : {}),
+    environment: text(body.environment, 'environment', /^(preview|dev|test|prod|demo)$/),
     workflowPath: text(body.workflowPath, 'workflowPath', /^\.github\/workflows\/[^/]+\.ya?ml$/),
+    workflowBlobSha: text(body.workflowBlobSha, 'workflowBlobSha', sha),
+    collectorDigest: text(body.collectorDigest, 'collectorDigest', digest),
     ref: text(body.ref, 'ref', /^refs\/heads\/[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,253}[A-Za-z0-9])?$/),
     commitSha: text(body.commitSha, 'commitSha', sha),
     configHash: text(body.configHash, 'configHash', digest),

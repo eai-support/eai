@@ -424,15 +424,24 @@ jobs:
               entries.push(entry);
             }
             if (!entries.some((entry) => entry.path === 'eai.runtime.json')) throw new Error('eai.runtime.json is required in the exact source commit.');
-            const blobs = await Promise.all(entries.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0).map(async (entry) => {
-              const response = await github(`/git/blobs/${entry.sha}`);
-              const blob = await response.json();
-              if (blob.encoding !== 'base64' || blob.sha !== entry.sha || blob.size !== entry.size || typeof blob.content !== 'string') throw new Error(`Governed configuration blob metadata changed: ${entry.path}`);
-              const bytes = Buffer.from(blob.content.replace(/\s/g, ''), 'base64');
-              const blobSha = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
-              if (bytes.length !== entry.size || blobSha !== entry.sha) throw new Error(`Governed configuration blob bytes changed: ${entry.path}`);
-              return { path: entry.path, bytes };
-            }));
+            const sortedEntries = entries.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+            const blobs = new Array(sortedEntries.length);
+            let nextEntry = 0;
+            async function fetchGovernedBlob() {
+              while (nextEntry < sortedEntries.length) {
+                const index = nextEntry;
+                nextEntry += 1;
+                const entry = sortedEntries[index];
+                const response = await github(`/git/blobs/${entry.sha}`);
+                const blob = await response.json();
+                if (blob.encoding !== 'base64' || blob.sha !== entry.sha || blob.size !== entry.size || typeof blob.content !== 'string') throw new Error(`Governed configuration blob metadata changed: ${entry.path}`);
+                const bytes = Buffer.from(blob.content.replace(/\s/g, ''), 'base64');
+                const blobSha = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+                if (bytes.length !== entry.size || blobSha !== entry.sha) throw new Error(`Governed configuration blob bytes changed: ${entry.path}`);
+                blobs[index] = { path: entry.path, bytes };
+              }
+            }
+            await Promise.all(Array.from({ length: Math.min(8, sortedEntries.length) }, () => fetchGovernedBlob()));
             const hash = createHash('sha256');
             for (const blob of blobs) hash.update(blob.path).update('\0').update(blob.bytes).update('\0');
             return `sha256:${hash.digest('hex')}`;

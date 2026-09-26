@@ -289,7 +289,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '7fc7611c98c965e99e55b9dc4d93ae5825e8c462' },
+      candidate: { commit: 'e3111f34aab700a52cf5fe21af1d53d592f2abaf' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
@@ -338,8 +338,8 @@ describe('EAI managed deployment helpers', () => {
       producerPinVerifier.assertProducerRelease(pin, reviewedRemote),
     ).not.toThrow();
     expect(() =>
-      producerPinVerifier.assertProducerRelease(pin, (command, args, options) => {
-        const value = reviewedRemote(command, args, options);
+      producerPinVerifier.assertProducerRelease(pin, (command, args, _options) => {
+        const value = reviewedRemote(command, args);
         return args.at(-1) === `${commit}:${EAI_MANAGED_WORKFLOW_PATH}`
           ? Buffer.from('changed workflow\n')
           : value;

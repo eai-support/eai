@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { constants } from 'node:fs';
+import { constants, type Stats } from 'node:fs';
 import { lstat, mkdir, open, readFile, realpath, rename, rm, type FileHandle } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 
@@ -33,7 +33,7 @@ interface DirectoryIdentity {
   ino: number;
 }
 
-async function ensureNoLinkDirectoryPath(path: string, mode: number): Promise<DirectoryIdentity[]> {
+async function bindNoLinkDirectoryPath(path: string, mode?: number): Promise<DirectoryIdentity[]> {
   const target = resolve(path);
   const filesystemRoot = parse(target).root;
   const components = relative(filesystemRoot, target).split(/[\\/]/).filter(Boolean);
@@ -50,7 +50,7 @@ async function ensureNoLinkDirectoryPath(path: string, mode: number): Promise<Di
     try {
       status = await lstat(current);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || mode === undefined) throw error;
       try {
         await mkdir(current, { mode });
       } catch (mkdirError) {
@@ -58,13 +58,23 @@ async function ensureNoLinkDirectoryPath(path: string, mode: number): Promise<Di
       }
       status = await lstat(current);
     }
+    // macOS exposes stable system roots such as /var and /tmp as top-level links.
+    if (status.isSymbolicLink() && dirname(current) === filesystemRoot) continue;
     if (!status.isDirectory() || status.isSymbolicLink()) {
       throw new Error('Managed deployment refused a linked evidence directory.');
     }
     identities.push({ path: current, dev: status.dev, ino: status.ino });
   }
-  await assertTrustedDirectory(target);
+  if (mode !== undefined) await assertTrustedDirectory(target);
   return identities;
+}
+
+async function ensureNoLinkDirectoryPath(path: string, mode: number): Promise<DirectoryIdentity[]> {
+  return bindNoLinkDirectoryPath(path, mode);
+}
+
+async function snapshotNoLinkDirectoryPath(path: string): Promise<DirectoryIdentity[]> {
+  return bindNoLinkDirectoryPath(path);
 }
 
 async function assertDirectoryIdentities(identities: readonly DirectoryIdentity[]): Promise<void> {
@@ -83,6 +93,14 @@ async function assertOpenedPrivateTarget(path: string, handle: FileHandle): Prom
   if (!opened.isFile() || !bound.isFile() || bound.isSymbolicLink()
     || opened.dev !== bound.dev || opened.ino !== bound.ino || opened.nlink !== 1
     || (process.platform !== 'win32' && ((uid !== null && opened.uid !== uid) || (opened.mode & 0o077) !== 0))) {
+    throw new Error('Managed deployment refused an untrusted file.');
+  }
+}
+
+async function assertOpenedRegularTarget(path: string, handle: FileHandle): Promise<void> {
+  const [opened, bound] = await Promise.all([handle.stat(), lstat(path)]);
+  if (!opened.isFile() || !bound.isFile() || bound.isSymbolicLink()
+    || opened.dev !== bound.dev || opened.ino !== bound.ino || opened.nlink !== 1) {
     throw new Error('Managed deployment refused an untrusted file.');
   }
 }
@@ -125,13 +143,35 @@ export async function fileMatches(left: string, right: string): Promise<boolean>
 }
 
 export async function writeAtomically(path: string, content: Buffer | string, mode = 0o644): Promise<void> {
-  const temporaryPath = `${path}.eai-${process.pid}-${randomBytes(16).toString('hex')}.tmp`;
-  const handle = await open(temporaryPath, 'wx', mode);
+  const target = resolve(path);
+  const identities = await snapshotNoLinkDirectoryPath(dirname(target));
+  await assertRegularTarget(target);
+  const temporaryPath = `${target}.eai-${process.pid}-${randomBytes(16).toString('hex')}.tmp`;
+  const handle = await open(
+    temporaryPath,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0),
+    mode,
+  );
+  let opened: Stats;
   try {
+    opened = await handle.stat();
+    await assertDirectoryIdentities(identities);
+    await assertOpenedRegularTarget(temporaryPath, handle);
     await handle.writeFile(content);
     await handle.sync();
+    const written = await handle.stat();
+    if (written.dev !== opened.dev || written.ino !== opened.ino || !written.isFile()) {
+      throw new Error('Managed deployment temporary file changed during its bound write.');
+    }
     await handle.close();
-    await rename(temporaryPath, path);
+    await assertDirectoryIdentities(identities);
+    await rename(temporaryPath, target);
+    await assertDirectoryIdentities(identities);
+    const installed = await lstat(target);
+    if (installed.isSymbolicLink() || !installed.isFile()
+      || installed.dev !== opened.dev || installed.ino !== opened.ino) {
+      throw new Error('Managed deployment target changed during its bound replacement.');
+    }
   } finally {
     await handle.close().catch(() => undefined);
     await rm(temporaryPath, { force: true });
@@ -157,6 +197,66 @@ export async function writePrivateFileNoFollow(path: string, content: Buffer | s
     await handle.chmod(0o600);
     await assertDirectoryIdentities(identities);
     await assertOpenedPrivateTarget(target, handle);
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Create one owner-only recovery file while its complete parent identity remains bound. */
+export async function createPrivateFileNoFollow(path: string, content: Buffer | string): Promise<void> {
+  const target = resolve(path);
+  const identities = await ensureNoLinkDirectoryPath(dirname(target), 0o700);
+  const handle = await open(
+    target,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0),
+    0o600,
+  );
+  try {
+    await assertDirectoryIdentities(identities);
+    await assertOpenedPrivateTarget(target, handle);
+    await handle.writeFile(content);
+    await handle.sync();
+    await handle.chmod(0o600);
+    await assertDirectoryIdentities(identities);
+    await assertOpenedPrivateTarget(target, handle);
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Read owner-only recovery authority through a stable parent and opened inode. */
+export async function readPrivateFileNoFollow(path: string, maxBytes = 1024 * 1024): Promise<string> {
+  const target = resolve(path);
+  const identities = await snapshotNoLinkDirectoryPath(dirname(target));
+  const before = await lstat(target);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1
+    || (process.platform !== 'win32' && ((uid !== null && before.uid !== uid) || (before.mode & 0o077) !== 0))) {
+    throw new Error('Managed deployment refused an untrusted file.');
+  }
+  if (before.size < 1 || before.size > maxBytes) {
+    throw new Error('Managed deployment recovery file is outside its size bound.');
+  }
+  const handle = await open(target, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+  try {
+    await assertDirectoryIdentities(identities);
+    await assertOpenedPrivateTarget(target, handle);
+    const opened = await handle.stat();
+    const bytes = Buffer.allocUnsafe(opened.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const result = await handle.read(bytes, offset, bytes.length - offset, null);
+      if (result.bytesRead === 0) break;
+      offset += result.bytesRead;
+    }
+    const after = await handle.stat();
+    await assertDirectoryIdentities(identities);
+    await assertOpenedPrivateTarget(target, handle);
+    if (offset !== opened.size || after.dev !== opened.dev || after.ino !== opened.ino
+      || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) {
+      throw new Error('Managed deployment recovery file changed during its bounded read.');
+    }
+    return bytes.toString('utf8');
   } finally {
     await handle.close();
   }

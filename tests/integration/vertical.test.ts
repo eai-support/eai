@@ -29,7 +29,8 @@ const PLATFORM_PARENT_ID = 'eai-developers';
 function workflowEvidenceFixture(): Record<string, unknown> {
   return {
     operationId: 'source-unknown-op', nonce: 'nonce-token', environment: 'preview',
-    workflowPath: '.github/workflows/eai-app.yml', ref: 'refs/heads/main', commitSha: 'a'.repeat(40),
+    workflowPath: '.github/workflows/eai-app.yml', workflowBlobSha: 'f'.repeat(40),
+    collectorDigest: `sha256:${'9'.repeat(64)}`, ref: 'refs/heads/main', commitSha: 'a'.repeat(40),
     configHash: `sha256:${'e'.repeat(64)}`, artifactDigest: `sha256:${'a'.repeat(64)}`,
     imageArtifact: { id: '987654321', name: 'eai-generated-app-image', archiveDigest: `sha256:${'f'.repeat(64)}` },
     imageDigest: `sha256:${'b'.repeat(64)}`,
@@ -1309,12 +1310,26 @@ describe('eai app', () => {
     ['invented CLI pass', { validationSummary: { status: 'passed_by_cli' } }],
     ['lookup is not validation', { validationSummary: { status: 'passed', appValidated: true } }],
     ['untrusted OIDC claims', { oidcClaims: { repository: 'attacker/repo' } }],
+    ['invalid workflow blob', { workflowBlobSha: 'not-a-git-blob' }],
+    ['invalid collector digest', { collectorDigest: 'sha256:short' }],
+    ['invalid source mode', { sourceMode: 'customer' }],
+    ['invalid target tenant', { targetTenantId: '../other' }],
+    ['managed evidence without target tenant', { sourceMode: 'eai-cli-generated' }],
   ])('BC004 rejects noncanonical evidence: %s', (_label, mutation) => {
     expect(() => buildSourceUnknownWorkflowEvidenceData({ ...workflowEvidenceFixture(), ...mutation })).toThrow();
   });
 
   test('preserves distinct canonical artifact, archive, and image digests without synthesizing proof', () => {
     const fixture = workflowEvidenceFixture();
+    expect(buildSourceUnknownWorkflowEvidenceData(fixture)).toEqual(fixture);
+  });
+
+  test('forwards canonical collector source and producer observations without deriving authority', () => {
+    const fixture = {
+      ...workflowEvidenceFixture(),
+      sourceMode: 'eai-cli-generated',
+      targetTenantId: 'runtime-child',
+    };
     expect(buildSourceUnknownWorkflowEvidenceData(fixture)).toEqual(fixture);
   });
 

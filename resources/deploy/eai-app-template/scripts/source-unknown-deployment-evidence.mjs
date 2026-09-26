@@ -552,6 +552,7 @@ function readBoundedRegularFileNoFollow(
 ) {
   containedRelativePath(root, path, label);
   assertDirectoryTreeNoFollow(root, dirname(path), `${label} directory`);
+  const ancestors = snapshotAbsoluteDirectoryPath(dirname(path), label);
   const before = lstatSync(path);
   if (
     before.isSymbolicLink() ||
@@ -567,16 +568,42 @@ function readBoundedRegularFileNoFollow(
   );
   try {
     const opened = fstatSync(descriptor);
+    assertAbsoluteDirectorySnapshot(ancestors, label);
+    const rebound = lstatSync(path);
     if (
       !opened.isFile() ||
+      opened.nlink !== 1 ||
       opened.dev !== before.dev ||
       opened.ino !== before.ino ||
+      rebound.isSymbolicLink() ||
+      !rebound.isFile() ||
+      rebound.dev !== opened.dev ||
+      rebound.ino !== opened.ino ||
       opened.size < 1 ||
       opened.size > maxBytes
     ) {
       throw new Error(`${label} changed before its no-follow read.`);
     }
-    return readFileSync(descriptor);
+    const bytes = readFileSync(descriptor);
+    const after = fstatSync(descriptor);
+    assertAbsoluteDirectorySnapshot(ancestors, label);
+    const finalPath = lstatSync(path);
+    if (
+      bytes.length !== opened.size ||
+      after.dev !== opened.dev ||
+      after.ino !== opened.ino ||
+      after.size !== opened.size ||
+      after.mtimeMs !== opened.mtimeMs ||
+      after.ctimeMs !== opened.ctimeMs ||
+      finalPath.isSymbolicLink() ||
+      !finalPath.isFile() ||
+      finalPath.dev !== opened.dev ||
+      finalPath.ino !== opened.ino ||
+      finalPath.size !== opened.size
+    ) {
+      throw new Error(`${label} changed during its bounded no-follow read.`);
+    }
+    return bytes;
   } finally {
     closeSync(descriptor);
   }
