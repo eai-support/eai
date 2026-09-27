@@ -8,6 +8,8 @@ Implement all reviewed client hardening while preserving successful commands, so
 
 The template feature is not released. Record its exact candidate commit and content digests and enforce byte/schema parity now. Keep the final immutable release tag/commit explicitly unresolved until the producer is merged and released. Do not predict or reuse a version.
 
+The final reviewed candidate is app-template commit `3fb8e1a81def421a42cccbae938656b306ab0497`. Its isolated handoff validates canonical schema provenance before OIDC, generated files use exclusive no-follow creation, governed reads bind pre-open size and timestamps, and GitHub command-file appends revalidate the exact leaf after writing. The CLI embeds both canonical files byte-for-byte. This candidate pin does not satisfy the deferred immutable release gate.
+
 ## Doctor compatibility
 
 Keep URL-only black-box doctor behavior. Add optional deployment-operation bindings and a portable evidence-output option; managed deployment completion uses the stronger receipt.
