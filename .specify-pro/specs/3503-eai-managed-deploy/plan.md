@@ -20,5 +20,6 @@
 18. Centralize pre-network managed operation-ID validation and replace wildcard root-link exceptions with an explicit, identity-bound macOS system-alias policy across recovery, evidence, root binding, and private filesystem access.
 19. Mirror the final template candidate after its bounded collector and isolated-handoff race closure, update both exact byte digests, and retain the unresolved immutable release gate.
 20. Mirror the template collector's capped fixed-buffer descriptor reads, prove growth and oversized-file rejection in the producer-owned suite, and update the exact candidate/digest pin without treating it as a release.
-20. Mirror the producer's same-repository reusable OIDC compatibility contract and pre-checkout caller-event gate without changing direct CLI dispatch or restoring a long-lived token.
-21. Mirror the producer's bounded no-follow fixed-buffer handoff archive hashing and update the exact candidate identity again without satisfying the release gate.
+21. Mirror the producer's same-repository reusable OIDC compatibility contract and pre-checkout caller-event gate without changing direct CLI dispatch or restoring a long-lived token.
+22. Mirror the producer's bounded no-follow fixed-buffer handoff archive hashing and update the exact candidate identity again without satisfying the release gate.
+23. Mirror source-copy timestamp binding and the aligned 10 MiB/32 MiB/4,096-file governed-manifest budget from the final producer, with exact byte parity and no release claim.
