@@ -74,6 +74,7 @@
 - [x] Mirror app-template candidate `32c1b529c2fa2bb58caaa1ef8272d070b89fa780`, including capped fixed-buffer collector reads and growth rejection, then update exact byte/digest evidence while retaining the deferred release gate (DTE-018–DTE-025, DTE-088, DTE-095).
 - [x] Mirror app-template candidate `32c1b529c2fa2bb58caaa1ef8272d070b89fa780`, including source-copy timestamp binding and aligned governed-manifest limits, then update exact byte/digest evidence while retaining the deferred release gate (DTE-018–DTE-025, DTE-088, DTE-095).
 - [x] Mirror app-template candidate `7876200a21714ec6cef9cef49d18fc32d59ec336`, including its final bounded archive/evidence/response/fetch sweep and clean no-checkout handoff, then update exact byte/digest evidence while retaining the deferred release gate (DTE-019–DTE-026, DTE-088).
+- [ ] Mirror app-template candidate `49768100b75da2910eef590a6848c9fcba75ab7b`, including optional reusable-call configuration derivation and actual-byte-capped OIDC/PublicAPI response streams, then update exact byte/digest evidence while retaining the deferred release gate (DTE-019–DTE-026, DTE-088).
 
 ## Exact-head evidence
 
