@@ -1,12 +1,11 @@
 import type { Stats } from 'node:fs';
 import { lstat, realpath } from 'node:fs/promises';
 import { dirname, join, parse, relative, resolve } from 'node:path';
-
-interface DirectoryIdentity {
-  path: string;
-  dev: number;
-  ino: number;
-}
+import {
+  assertManagedDirectoryIdentity,
+  bindManagedDirectoryIdentity,
+  type ManagedDirectoryIdentity,
+} from './eai-managed-directory-identity.js';
 
 export interface ManagedProjectRootBinding {
   path: string;
@@ -22,32 +21,31 @@ function assertTrustedRoot(status: Stats): void {
   }
 }
 
-async function snapshotDirectoryPath(path: string): Promise<DirectoryIdentity[]> {
+async function snapshotDirectoryPath(path: string): Promise<ManagedDirectoryIdentity[]> {
   const target = resolve(path);
   const filesystemRoot = parse(target).root;
   const components = relative(filesystemRoot, target).split(/[\\/]/).filter(Boolean);
-  const identities: DirectoryIdentity[] = [];
+  const identities: ManagedDirectoryIdentity[] = [];
   let current = filesystemRoot;
   for (const component of ['', ...components]) {
     if (component) current = join(current, component);
     const status = await lstat(current);
-    // macOS exposes stable system aliases such as /tmp and /var at this level.
-    if (status.isSymbolicLink() && dirname(current) === filesystemRoot) continue;
-    if (!status.isDirectory() || status.isSymbolicLink()) {
-      throw new Error('Managed deployment project root cannot pass through a linked directory.');
-    }
-    identities.push({ path: current, dev: status.dev, ino: status.ino });
+    identities.push(await bindManagedDirectoryIdentity(
+      current,
+      filesystemRoot,
+      status,
+      'Managed deployment project root cannot pass through a linked directory.',
+    ));
   }
   return identities;
 }
 
-async function assertDirectoryPath(identities: readonly DirectoryIdentity[]): Promise<void> {
+async function assertDirectoryPath(identities: readonly ManagedDirectoryIdentity[]): Promise<void> {
   for (const identity of identities) {
-    const status = await lstat(identity.path);
-    if (!status.isDirectory() || status.isSymbolicLink()
-      || status.dev !== identity.dev || status.ino !== identity.ino) {
-      throw new Error('Managed deployment project root changed during canonical resolution.');
-    }
+    await assertManagedDirectoryIdentity(
+      identity,
+      'Managed deployment project root changed during canonical resolution.',
+    );
   }
 }
 

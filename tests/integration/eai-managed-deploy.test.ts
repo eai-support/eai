@@ -1083,6 +1083,34 @@ fi
     expect(process.exitCode).toBe(1);
   });
 
+  test.each([
+    ['--resume', '../other?operation=1'],
+    ['--retry', '../other?operation=1'],
+    ['--resume', ' source-unknown-abc123 '],
+    ['--retry', ' source-unknown-abc123 '],
+  ] as const)(
+    'rejects an unsafe %s operation ID %s before context, state lookup, or network access',
+    async (recoveryFlag, operationId) => {
+      await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      await eaiManagedDeployCommand.parseAsync([
+        'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+        '--target-tenant-id', TENANT_ID, recoveryFlag, operationId,
+        '--format', 'json',
+      ], { from: 'user' });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+        ok: false,
+        error: { code: 'SOURCE_OPERATION_ID_INVALID' },
+      });
+      expect(process.exitCode).toBe(1);
+    },
+  );
+
   test('rejects retry without original endpoint authority before any request', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const fetchMock = vi.fn();

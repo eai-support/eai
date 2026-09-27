@@ -73,3 +73,11 @@ Operation-bound doctor output uses the same original-root authority. Bind the ap
 Legacy source-unknown commands use one managed request policy from regional endpoint discovery through membership, tenant management, app validation, and the final source operation. A validated base URL does not permit an authenticated redirect.
 
 Configuration inventory includes directory identity, not only sorted names. Preserve the root/configuration directory inodes seen during initial traversal and reject a replacement even when it exposes the same filenames and valid replacement bytes.
+
+## Recovery selector and system-alias closure
+
+Validate every caller-controlled operation selector before tenant context, retry-state lookup, or network access. This includes `deploy app --resume`, `deploy app --retry`, operation-bound doctor, legacy source-unknown handoff, and the operation binding inside canonical workflow evidence. Use one bounded opaque-segment grammar at command and API boundaries; source-specific prefixes remain an additional schema check.
+
+Operation IDs and deployment scope identifiers have distinct grammars. Operation IDs remain strict alphanumeric, hyphen, and underscore tokens. App keys and tenant scopes retain safe dots used by existing enrollments. Never reuse the stricter operation grammar to reject a valid dotted scope.
+
+Do not treat every symbolic link directly below the filesystem root as trusted. The only supported exceptions are the fixed macOS `/tmp` to `/private/tmp` and `/var` to `/private/var` system aliases. Verify each alias resolves to its exact expected target, bind the alias and target identities, and revalidate both through the read or write. Reject every other linked ancestor.

@@ -64,6 +64,10 @@
 - [x] Run focused and repository checks at the new exact review-fix head and record evidence.
 - [x] Require exact `requiresTenantInfra: true` for managed terminal success and keep false, missing, or non-boolean markers pending (DTE-031–DTE-036, DTE-080).
 - [x] Run focused and repository checks at the TenantInfra-marker review-fix head and record evidence.
+- [x] Validate every caller-controlled recovery, handoff, and evidence operation ID before context, state lookup, or network access (DTE-031–DTE-035).
+- [x] Replace arbitrary root-level symlink exceptions with exact, identity-bound macOS `/tmp` and `/var` aliases across every managed filesystem helper (DTE-016).
+- [x] Keep operation IDs strict without narrowing valid dotted app and tenant scopes at command or API boundaries (DTE-031–DTE-035).
+- [x] Add sibling-path regression tests and rerun exact-head repository checks.
 
 ## Exact-head evidence
 
@@ -77,4 +81,5 @@
 - The final review-fix focused suite passed 219 tests across managed deploy integration, managed source race, legacy app-management, and tenant-context files. It covers original-root doctor writes, same-name governed-directory replacement, and no-redirect authenticated setup, app validation, evidence, and operation requests.
 - The final review-fix `npm run test:eai-cli:ci` passed 967 tests with one documented skip (968 total). `bash scripts/release-preflight.sh` passed 1,082 tests with one documented skip (1,083 total), plus typecheck, lint, build, documentation, packed CLI/alias smoke, traceability, and release metadata checks.
 - The TenantInfra-marker regression suite passed 105 focused tests. `npm run test:eai-cli:ci` passed 967 tests with one documented skip, and `bash scripts/release-preflight.sh` passed 1,082 tests with one documented skip plus typecheck, lint, build, docs, packed CLI/alias smoke, traceability, and release metadata checks.
+- The recovery-selector and root-alias focused suite passed 225 tests across managed deploy, vertical handoff/evidence, and API client coverage, including strict whitespace/traversal rejection, zero-request assertions, dotted app/tenant scopes, arbitrary root-link rejection, and live macOS `/var` alias binding. `npm run test:eai-cli:ci` passed 978 tests with one documented skip. `bash scripts/release-preflight.sh` passed 1,093 tests with one documented skip plus typecheck, lint, build, docs, packed CLI/alias smoke, traceability, and release metadata checks.
 - Current `main` (`adca55acdd1068024af67db903c2f571d65e6d32`) is an ancestor of the review-fix branch. The latest published Template `v1.0.4` (`ceddb562`), Gofer `v3.13.2` (`265700931`), and npm CLI `3.18.1` do not contain this coordinated feature, so immutable producer verification remains an explicit CLI publication and DEV-promotion gate.

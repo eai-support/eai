@@ -35,6 +35,10 @@ import {
 } from '../lib/eai-managed-deploy.js';
 import type { ManagedDeploymentOperationResponse } from '../lib/api.js';
 import { bindManagedProjectRoot } from '../lib/eai-managed-root-binding.js';
+import {
+  requireManagedDeploymentIdentifier,
+  requireManagedScopeIdentifier,
+} from '../lib/eai-managed-identifiers.js';
 
 const exec = promisify(execFile);
 
@@ -823,20 +827,12 @@ interface ManagedDeployDoctorEvidence {
   doctor: DeployDoctorResult;
 }
 
-function requiredManagedDoctorSegment(value: string, label: string): string {
-  const normalized = value?.trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(normalized)) {
-    throw new Error(`${label} must be a safe exact managed-deployment identifier.`);
-  }
-  return normalized;
-}
-
 /** Read one exact active operation, run its declared probes, and seal portable evidence. */
 async function runManagedDeployDoctor(options: ManagedDoctorOptions): Promise<ManagedDeployDoctorEvidence> {
-  const operationId = requiredManagedDoctorSegment(options.operationId, 'Operation ID');
-  const appKey = requiredManagedDoctorSegment(options.appKey, 'App key');
-  const tenantId = requiredManagedDoctorSegment(options.tenantId, 'Tenant ID');
-  const targetTenantId = requiredManagedDoctorSegment(options.targetTenantId, 'Target tenant ID');
+  const operationId = requireManagedDeploymentIdentifier(options.operationId, 'Operation ID');
+  const appKey = requireManagedScopeIdentifier(options.appKey, 'App key');
+  const tenantId = requireManagedScopeIdentifier(options.tenantId, 'Tenant ID');
+  const targetTenantId = requireManagedScopeIdentifier(options.targetTenantId, 'Target tenant ID');
   const context = await resolveCommandContext({
     tenantId,
     interactive: false,

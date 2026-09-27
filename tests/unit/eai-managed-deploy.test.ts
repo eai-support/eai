@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'vitest';
-import { chmod, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile, mkdir } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -28,10 +28,16 @@ import {
   managedDeployPollDelayMs,
   verifyGitHubAccess,
 } from '../../src/commands/eai-managed-deploy.js';
+import { validateManagedDeployInput } from '../../src/commands/eai-managed-deploy-validation.js';
 import {
   MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES,
   readSourceUnknownEvidenceFile,
 } from '../../src/lib/source-unknown-evidence-file.js';
+import {
+  assertManagedDirectoryIdentity,
+  bindManagedDirectoryIdentity,
+  managedSystemAliasTarget,
+} from '../../src/lib/eai-managed-directory-identity.js';
 
 const requireFromTest = createRequire(import.meta.url);
 const producerPinVerifier = requireFromTest(
@@ -120,6 +126,61 @@ describe('EAI managed deployment helpers', () => {
     await symlink(outside, join(project, directory), 'dir');
     await expect(installCanonicalManagedDeployFiles(project)).rejects.toThrow('untrusted directory');
     expect(await readdir(outside)).toEqual([]);
+  });
+
+  test('allows only the two exact macOS system root aliases', () => {
+    expect(managedSystemAliasTarget('/tmp', 'darwin')).toBe('/private/tmp');
+    expect(managedSystemAliasTarget('/var', 'darwin')).toBe('/private/var');
+    expect(managedSystemAliasTarget('/etc', 'darwin')).toBeUndefined();
+    expect(managedSystemAliasTarget('/attacker', 'darwin')).toBeUndefined();
+    expect(managedSystemAliasTarget('/tmp', 'linux')).toBeUndefined();
+  });
+
+  test.skipIf(process.platform !== 'darwin')('binds and revalidates the exact macOS temporary-directory alias', async () => {
+    const identity = await bindManagedDirectoryIdentity(
+      '/var',
+      '/',
+      await lstat('/var'),
+      'macOS /var alias refused',
+    );
+    expect(identity.systemAliasTarget?.path).toBe('/private/var');
+    await expect(assertManagedDirectoryIdentity(
+      identity,
+      'macOS /var alias changed',
+    )).resolves.toBeUndefined();
+  });
+
+  test('preserves dotted app and tenant scope while keeping operation IDs exact', () => {
+    expect(validateManagedDeployInput('planning.portal', {
+      target: 'eai',
+      tenantId: 'tenant.parent',
+      targetTenantId: 'runtime.child',
+      source: 'customer-owned',
+      repo: 'enterprise/planning-portal',
+      installationId: '12345',
+      branch: 'main',
+      workflow: EAI_MANAGED_WORKFLOW_PATH,
+      environment: 'preview',
+      wait: true,
+      timeout: '1200',
+      format: 'json',
+    })).toMatchObject({
+      appKey: 'planning.portal',
+      targetTenantId: 'runtime.child',
+    });
+  });
+
+  test.skipIf(process.platform === 'win32')('rejects an arbitrary link directly below a traversal root', async () => {
+    const root = await realpath(await temporaryDirectory('eai-managed-alias-root-'));
+    const outside = await realpath(await temporaryDirectory('eai-managed-alias-outside-'));
+    const linked = join(root, 'attacker');
+    await symlink(outside, linked, 'dir');
+    await expect(bindManagedDirectoryIdentity(
+      linked,
+      root,
+      await lstat(linked),
+      'arbitrary root alias refused',
+    )).rejects.toThrow('arbitrary root alias refused');
   });
 
   test('reads workflow evidence through a bounded no-follow regular-file handle', async () => {

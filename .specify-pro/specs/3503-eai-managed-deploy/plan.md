@@ -17,3 +17,4 @@
 15. Close the final review races: reject terminal EAI-maintained failure before reuse, carry no-redirect policy through authenticated tenant-context setup, compare canonical files through bound no-follow descriptors, and keep the project-root binding live through configuration hashing.
 16. Bind operation-bound doctor evidence to the original application root, carry the managed redirect policy through legacy source commands, and retain initial governed-directory identities through the complete configuration digest.
 17. Require the exact positive TenantInfra handoff marker together with the existing source-revision, deployment, and doctor bindings before terminal success.
+18. Centralize pre-network managed operation-ID validation and replace wildcard root-link exceptions with an explicit, identity-bound macOS system-alias policy across recovery, evidence, root binding, and private filesystem access.

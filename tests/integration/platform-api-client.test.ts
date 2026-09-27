@@ -43,7 +43,25 @@ describe('PlatformAPIClient', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
     const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
     await expect(client.getCliManagedSourceOperation('tenant-one', 'my-app', operationId, 'runtime-tenant', 'preview')).rejects.toThrow('safe opaque path segments')
+    await expect(client.getManagedDeploymentOperation('tenant-one', 'my-app', operationId, 'runtime-tenant')).rejects.toThrow('safe opaque path segments')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('preserves dotted app and tenant scope segments on managed operation routes', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant.parent')
+
+    await client.getManagedDeploymentOperation(
+      'tenant.parent',
+      'planning.portal',
+      'source-unknown-abc123',
+      'runtime.child',
+    )
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant.parent/apps/planning.portal/managed-deployments/operations/source-unknown-abc123?targetTenantId=runtime.child',
+      expect.objectContaining({ method: 'GET', redirect: 'error' }),
+    )
   })
 
   test.each([

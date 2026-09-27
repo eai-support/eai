@@ -3,6 +3,10 @@ import {
   requireWorkflowPath,
 } from "../lib/eai-managed-deploy.js";
 import {
+  isManagedScopeIdentifier,
+  requireManagedDeploymentIdentifier,
+} from "../lib/eai-managed-identifiers.js";
+import {
   MANAGED_DEPLOY_ENVIRONMENTS,
   fail,
   type ManagedDeployOptions,
@@ -13,6 +17,8 @@ export interface ValidatedManagedDeployInput {
   targetTenantId: string;
   workflowPath: string;
   timeoutSeconds: number;
+  resumeOperationId?: string;
+  retryOperationId?: string;
 }
 
 export function validateManagedDeployInput(
@@ -26,11 +32,34 @@ export function validateManagedDeployInput(
       "Use the existing deploy commands for customer-owned hosting.",
     );
   }
+  if (!isManagedScopeIdentifier(options.tenantId)) {
+    fail(
+      "TENANT_ID_INVALID",
+      "--tenant-id must be a safe exact managed-deployment scope.",
+      "Use the exact app-scope tenant shown by `eai tenant list --format json`.",
+    );
+  }
   if (options.resume && options.retry) {
     fail(
       "DEPLOY_MODE_CONFLICT",
       "--resume and --retry cannot be used together.",
       "Choose one exact operation action.",
+    );
+  }
+  let resumeOperationId: string | undefined;
+  let retryOperationId: string | undefined;
+  try {
+    resumeOperationId = options.resume === undefined
+      ? undefined
+      : requireManagedDeploymentIdentifier(options.resume, "--resume operation ID");
+    retryOperationId = options.retry === undefined
+      ? undefined
+      : requireManagedDeploymentIdentifier(options.retry, "--retry operation ID");
+  } catch (error) {
+    fail(
+      "SOURCE_OPERATION_ID_INVALID",
+      error instanceof Error ? error.message : String(error),
+      "Use the exact operation ID returned by the managed deployment command.",
     );
   }
   if (
@@ -67,10 +96,10 @@ export function validateManagedDeployInput(
     );
   }
   const appKey = appKeyValue.trim();
-  if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(appKey)) {
+  if (!/^[a-z0-9][a-z0-9.-]{1,62}$/.test(appKey)) {
     fail(
       "APP_KEY_INVALID",
-      "App key must use lowercase letters, numbers, and hyphens.",
+      "App key must use lowercase letters, numbers, dots, and hyphens.",
       "Use the exact app key shown by `eai app list --format json`.",
     );
   }
@@ -102,12 +131,19 @@ export function validateManagedDeployInput(
       "Pass the exact runtime tenant. For same-tenant deployment, repeat the --tenant-id value.",
     );
   }
-  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(targetTenantId)) {
+  if (!isManagedScopeIdentifier(targetTenantId)) {
     fail(
       "TARGET_TENANT_INVALID",
       "--target-tenant-id must be a safe exact managed-deployment identifier.",
       "Use the exact runtime tenant ID without paths, query text, or delimiters.",
     );
   }
-  return { appKey, targetTenantId, workflowPath, timeoutSeconds };
+  return {
+    appKey,
+    targetTenantId,
+    workflowPath,
+    timeoutSeconds,
+    resumeOperationId,
+    retryOperationId,
+  };
 }

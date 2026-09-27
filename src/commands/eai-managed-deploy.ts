@@ -111,14 +111,21 @@ Examples:
     const format = normalizeFormat(options);
     const spinner = makeSpinner(format, "Preparing EAI managed deployment...");
     try {
-      const { appKey, targetTenantId, workflowPath, timeoutSeconds } =
-        validateManagedDeployInput(appKeyValue, options);
-      const retryState = options.retry && (
+      const {
+        appKey,
+        targetTenantId,
+        workflowPath,
+        timeoutSeconds,
+        resumeOperationId,
+        retryOperationId,
+      } = validateManagedDeployInput(appKeyValue, options);
+      const recoveryOperationId = resumeOperationId || retryOperationId;
+      const retryState = retryOperationId && (
         options.source === "customer-owned" ||
-        (!options.source && options.retry.startsWith("source-unknown-"))
+        (!options.source && retryOperationId.startsWith("source-unknown-"))
       )
         ? await loadCustomerRetryAuthority(
-            options.retry,
+            retryOperationId,
             options.tenantId,
             targetTenantId,
             appKey,
@@ -161,7 +168,7 @@ Examples:
       };
 
       let recoverySource = options.source;
-      if (!recoverySource && (options.resume || options.retry)) {
+      if (!recoverySource && recoveryOperationId) {
         const recoveryClient = retryState
           ? new PlatformAPIClient(
               requireManagedPublicApiUrl(retryState.publicApiUrl),
@@ -173,7 +180,7 @@ Examples:
           context.tenantId,
           targetTenantId,
           appKey,
-          (options.resume || options.retry)!,
+          recoveryOperationId,
         );
         recoverySource = exactOperation.sourceMode === "eai-cli-generated"
           ? "eai-managed"
@@ -183,20 +190,17 @@ Examples:
 
       if (
         recoverySource === "eai-managed" &&
-        (options.resume || options.retry)
+        recoveryOperationId
       ) {
-        await resumeManagedSource(
-          execution,
-          (options.resume || options.retry)!,
-        );
+        await resumeManagedSource(execution, recoveryOperationId);
         return;
       }
-      if (options.resume) {
-        await resumeCustomerSource(execution, options.resume);
+      if (resumeOperationId) {
+        await resumeCustomerSource(execution, resumeOperationId);
         return;
       }
-      if (options.retry) {
-        await retryCustomerSource(execution, options.retry);
+      if (retryOperationId) {
+        await retryCustomerSource(execution, retryOperationId);
         return;
       }
 

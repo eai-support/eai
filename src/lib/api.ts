@@ -7,6 +7,10 @@
  */
 
 import { getAccessToken } from './auth.js';
+import {
+  isManagedDeploymentIdentifier,
+  isManagedScopeIdentifier,
+} from './eai-managed-identifiers.js';
 import { requireManagedPublicApiUrl } from './managed-public-api.js';
 import { toObjectTypeSlug } from './utils.js';
 
@@ -1669,7 +1673,10 @@ export class PlatformAPIClient {
     operationId: string,
     targetTenantId: string,
   ): Promise<Response> {
-    if ([tenantId, appKey, operationId, targetTenantId].some(value => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value))) {
+    if (!isManagedScopeIdentifier(tenantId)
+      || !isManagedScopeIdentifier(appKey)
+      || !isManagedDeploymentIdentifier(operationId)
+      || !isManagedScopeIdentifier(targetTenantId)) {
       throw new Error('Managed deployment identifiers must be safe opaque path segments.');
     }
     return this.managedPublicRequest(
@@ -1679,7 +1686,9 @@ export class PlatformAPIClient {
   }
 
   private cliManagedSourcePath(tenantId: string, appKey: string, operationId?: string): string {
-    if ([tenantId, appKey, ...(operationId !== undefined ? [operationId] : [])].some(value => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value))) {
+    if (!isManagedScopeIdentifier(tenantId)
+      || !isManagedScopeIdentifier(appKey)
+      || (operationId !== undefined && !isManagedDeploymentIdentifier(operationId))) {
       throw new Error('Managed source tenant, app and operation identifiers must be safe opaque path segments.');
     }
     return `${PUBLIC_PLATFORM_PATH}/tenants/${tenantId}/apps/${appKey}/cli-managed-source`;
@@ -1758,8 +1767,10 @@ export class PlatformAPIClient {
     operationId: string,
     targetTenantId?: string,
   ): Promise<Response> {
-    if ([tenantId, appKey, operationId, ...(targetTenantId !== undefined ? [targetTenantId] : [])]
-      .some(value => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value))) {
+    if (!isManagedScopeIdentifier(tenantId)
+      || !isManagedScopeIdentifier(appKey)
+      || !isManagedDeploymentIdentifier(operationId)
+      || (targetTenantId !== undefined && !isManagedScopeIdentifier(targetTenantId))) {
       throw new Error('Source-unknown operation identifiers must be safe opaque path segments.');
     }
     const query = targetTenantId

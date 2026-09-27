@@ -21,6 +21,7 @@ import {
   readPrivateFileNoFollow,
   writePrivateFileNoFollow,
 } from './eai-managed-deploy-filesystem.js';
+import { isManagedDeploymentIdentifier } from './eai-managed-identifiers.js';
 import { requireManagedPublicApiUrl } from './managed-public-api.js';
 
 /** Keep the one-time nonce outside the application repository. */
@@ -28,7 +29,7 @@ export function managedDeployStatePath(
   operationId: string,
   baseDir = join(homedir(), '.eai', 'managed-deployments'),
 ): string {
-  if (!/^source-unknown-[A-Za-z0-9_-]+$/.test(operationId)) {
+  if (!isManagedDeploymentIdentifier(operationId) || !operationId.startsWith('source-unknown-')) {
     throw new Error('Operation ID is not a valid source-unknown operation ID.');
   }
   return join(baseDir, `${operationId}.json`);

@@ -37,6 +37,11 @@ import {
 import * as out from '../lib/output.js';
 import { readSourceUnknownEvidenceFile } from '../lib/source-unknown-evidence-file.js';
 import { requireManagedPublicApiUrl } from '../lib/managed-public-api.js';
+import {
+  MANAGED_DEPLOYMENT_IDENTIFIER_PATTERN,
+  requireManagedDeploymentIdentifier,
+  requireManagedScopeIdentifier,
+} from '../lib/eai-managed-identifiers.js';
 
 const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
 const DEFAULT_VERTICAL_SOURCE = ['eai', 'cli'].join('-');
@@ -534,12 +539,16 @@ export function buildSourceUnknownWorkflowEvidenceData(
   if (!provenance.baseTemplateSha && !provenance.approvedSourceSha && !provenance.approvedReleaseId) {
     throw new Error('Workflow evidence requires schema provenance with an approved source anchor.');
   }
+  const operationId = text(
+    body.operationId,
+    'operationId',
+    MANAGED_DEPLOYMENT_IDENTIFIER_PATTERN,
+  );
+  if (!/^(?:source-unknown|cli-managed-source)-/.test(operationId)) {
+    throw new Error('operationId has an unsupported managed source namespace.');
+  }
   return {
-    operationId: text(
-      body.operationId,
-      'operationId',
-      /^(?:source-unknown|cli-managed-source)-[A-Za-z0-9_-]+$/,
-    ),
+    operationId,
     nonce: text(body.nonce, 'nonce'),
     ...(sourceMode ? { sourceMode: sourceMode as 'source-unknown' | 'eai-cli-generated' } : {}),
     ...(targetTenantId ? { targetTenantId } : {}),
@@ -576,14 +585,22 @@ export function buildSourceUnknownWorkflowEvidenceData(
 export function buildSourceUnknownDeploymentData(
   options: AppDeploySourceUnknownOptions,
 ): SourceUnknownDeploymentRequest {
-  const operationId = options.operationId?.trim();
+  if (!options.operationId?.trim()) {
+    throw new Error('Deployment handoff operation ID is required.');
+  }
+  const operationId = requireManagedDeploymentIdentifier(
+    options.operationId,
+    'Deployment handoff operation ID',
+  );
+  if (!operationId.startsWith('source-unknown-')) {
+    throw new Error('Deployment handoff requires an exact source-unknown operation ID.');
+  }
   const environment = (options.environment || 'preview').trim();
   const repo = options.repo?.trim() ? parseRepositorySlug(options.repo) : undefined;
   const workflowRunId = normaliseOptionalString(options.workflowRunId);
   const artifactDigest = options.artifactDigest?.trim();
   const imageDigest = options.imageDigest?.trim();
 
-  if (!operationId) throw new Error('Deployment handoff operation ID is required.');
   if (!environment) throw new Error('Deployment handoff environment is required.');
   if (artifactDigest) assertSha256Digest(artifactDigest, '--artifact-digest');
   if (imageDigest) assertSha256Digest(imageDigest, '--image-digest');
@@ -674,6 +691,9 @@ async function resolveAppManagementContext(options?: {
   interactive?: boolean;
   managed?: boolean;
 }) {
+  if (options?.managed && options.tenantId !== undefined) {
+    requireManagedScopeIdentifier(options.tenantId, 'Tenant ID');
+  }
   const root = await findProjectRoot();
   const requestPolicy: PublicApiRequestPolicy | undefined = options?.managed
     ? { validateUrl: requireManagedPublicApiUrl, redirect: 'error' }
@@ -1366,13 +1386,6 @@ verticalCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', '\nUse --evidence-file from scripts/source-unknown-deployment-evidence.mjs collect after workflow checks succeed. Legacy evidence flags cannot construct accepted proof. PublicAPI verifies the GitHub OIDC token against the exact operation.\n')
   .action(async (key: string, options: AppWorkflowEvidenceOptions) => {
-    const ctx = await resolveAppManagementContext({
-      tenantId: options.tenantId,
-      interactive: !options.tenantId,
-      managed: true,
-    });
-    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
-    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1394,6 +1407,14 @@ verticalCommand
     } catch (err) {
       fail(errMsg(err));
     }
+
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
 
     if (!options.skipValidate) {
       await validateVerticalEnrollment(appKey, client);
@@ -1452,13 +1473,6 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppDeploySourceUnknownOptions) => {
-    const ctx = await resolveAppManagementContext({
-      tenantId: options.tenantId,
-      interactive: !options.tenantId,
-      managed: true,
-    });
-    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
-    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1472,6 +1486,14 @@ verticalCommand
     } catch (err) {
       fail(errMsg(err));
     }
+
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
 
     if (!options.skipValidate) {
       await validateVerticalEnrollment(appKey, client);

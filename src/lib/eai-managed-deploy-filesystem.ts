@@ -1,6 +1,11 @@
 import { constants, type Stats } from 'node:fs';
 import { lstat, mkdir, open, realpath, type FileHandle } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
+import {
+  assertManagedDirectoryIdentity,
+  bindManagedDirectoryIdentity,
+  type ManagedDirectoryIdentity,
+} from './eai-managed-directory-identity.js';
 import { bindManagedProjectRoot, type ManagedProjectRootBinding } from './eai-managed-root-binding.js';
 
 export function isContained(root: string, target: string): boolean {
@@ -27,23 +32,19 @@ export async function ensureDirectory(path: string, mode: number): Promise<void>
   await assertTrustedDirectory(path);
 }
 
-interface DirectoryIdentity {
-  path: string;
-  dev: number;
-  ino: number;
-}
-
-async function bindNoLinkDirectoryPath(path: string, mode?: number): Promise<DirectoryIdentity[]> {
+async function bindNoLinkDirectoryPath(path: string, mode?: number): Promise<ManagedDirectoryIdentity[]> {
   const target = resolve(path);
   const filesystemRoot = parse(target).root;
   const components = relative(filesystemRoot, target).split(/[\\/]/).filter(Boolean);
   let current = filesystemRoot;
-  const identities: DirectoryIdentity[] = [];
+  const identities: ManagedDirectoryIdentity[] = [];
   const rootStatus = await lstat(filesystemRoot);
-  if (!rootStatus.isDirectory() || rootStatus.isSymbolicLink()) {
-    throw new Error('Managed deployment refused a linked evidence directory.');
-  }
-  identities.push({ path: filesystemRoot, dev: rootStatus.dev, ino: rootStatus.ino });
+  identities.push(await bindManagedDirectoryIdentity(
+    filesystemRoot,
+    filesystemRoot,
+    rootStatus,
+    'Managed deployment refused a linked evidence directory.',
+  ));
   for (const component of components) {
     current = join(current, component);
     let status;
@@ -58,32 +59,31 @@ async function bindNoLinkDirectoryPath(path: string, mode?: number): Promise<Dir
       }
       status = await lstat(current);
     }
-    // macOS exposes stable system roots such as /var and /tmp as top-level links.
-    if (status.isSymbolicLink() && dirname(current) === filesystemRoot) continue;
-    if (!status.isDirectory() || status.isSymbolicLink()) {
-      throw new Error('Managed deployment refused a linked evidence directory.');
-    }
-    identities.push({ path: current, dev: status.dev, ino: status.ino });
+    identities.push(await bindManagedDirectoryIdentity(
+      current,
+      filesystemRoot,
+      status,
+      'Managed deployment refused a linked evidence directory.',
+    ));
   }
   if (mode !== undefined) await assertTrustedDirectory(target);
   return identities;
 }
 
-async function ensureNoLinkDirectoryPath(path: string, mode: number): Promise<DirectoryIdentity[]> {
+async function ensureNoLinkDirectoryPath(path: string, mode: number): Promise<ManagedDirectoryIdentity[]> {
   return bindNoLinkDirectoryPath(path, mode);
 }
 
-export async function snapshotNoLinkDirectoryPath(path: string): Promise<DirectoryIdentity[]> {
+export async function snapshotNoLinkDirectoryPath(path: string): Promise<ManagedDirectoryIdentity[]> {
   return bindNoLinkDirectoryPath(path);
 }
 
-export async function assertDirectoryIdentities(identities: readonly DirectoryIdentity[]): Promise<void> {
+export async function assertDirectoryIdentities(identities: readonly ManagedDirectoryIdentity[]): Promise<void> {
   for (const identity of identities) {
-    const status = await lstat(identity.path);
-    if (!status.isDirectory() || status.isSymbolicLink()
-      || status.dev !== identity.dev || status.ino !== identity.ino) {
-      throw new Error('Managed deployment evidence directory changed before the bound write.');
-    }
+    await assertManagedDirectoryIdentity(
+      identity,
+      'Managed deployment evidence directory changed before the bound write.',
+    );
   }
 }
 

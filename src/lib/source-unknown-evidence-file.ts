@@ -1,6 +1,11 @@
 import { constants, type Stats } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { dirname, parse, relative, resolve } from 'node:path';
+import {
+  assertManagedDirectoryIdentity,
+  bindManagedDirectoryIdentity,
+  type ManagedDirectoryIdentity,
+} from './eai-managed-directory-identity.js';
 
 export const MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES = 1024 * 1024;
 
@@ -8,41 +13,33 @@ function sameOpenedFile(before: Stats, opened: Stats): boolean {
   return before.dev === opened.dev && before.ino === opened.ino;
 }
 
-interface DirectoryIdentity {
-  readonly path: string;
-  readonly dev: number;
-  readonly ino: number;
-}
-
-async function snapshotEvidenceParents(path: string): Promise<DirectoryIdentity[]> {
+async function snapshotEvidenceParents(path: string): Promise<ManagedDirectoryIdentity[]> {
   const target = resolve(path);
   const filesystemRoot = parse(target).root;
   const components = relative(filesystemRoot, dirname(target))
     .split(/[\\/]/)
     .filter(Boolean);
-  const identities: DirectoryIdentity[] = [];
+  const identities: ManagedDirectoryIdentity[] = [];
   let current = filesystemRoot;
   for (const component of ['', ...components]) {
     if (component) current = resolve(current, component);
     const status = await lstat(current);
-    // macOS exposes trusted system roots such as /var and /tmp as top-level links.
-    // Bind every caller-controlled descendant while leaving that root alias intact.
-    if (status.isSymbolicLink() && dirname(current) === filesystemRoot) continue;
-    if (status.isSymbolicLink() || !status.isDirectory()) {
-      throw new Error('Workflow evidence parents must be no-follow directories.');
-    }
-    identities.push({ path: current, dev: status.dev, ino: status.ino });
+    identities.push(await bindManagedDirectoryIdentity(
+      current,
+      filesystemRoot,
+      status,
+      'Workflow evidence parents must be no-follow directories.',
+    ));
   }
   return identities;
 }
 
-async function assertEvidenceParents(identities: readonly DirectoryIdentity[]): Promise<void> {
+async function assertEvidenceParents(identities: readonly ManagedDirectoryIdentity[]): Promise<void> {
   for (const identity of identities) {
-    const status = await lstat(identity.path);
-    if (status.isSymbolicLink() || !status.isDirectory()
-      || status.dev !== identity.dev || status.ino !== identity.ino) {
-      throw new Error('Workflow evidence parents changed during the bounded read.');
-    }
+    await assertManagedDirectoryIdentity(
+      identity,
+      'Workflow evidence parents changed during the bounded read.',
+    );
   }
 }
 

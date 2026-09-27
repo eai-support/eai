@@ -1342,6 +1342,38 @@ describe('eai app', () => {
     expect(buildSourceUnknownWorkflowEvidenceData(fixture)).toEqual(fixture);
   });
 
+  test('rejects an unsafe workflow-evidence operation ID before tenant context or network access', async () => {
+    await seedLoggedInTenant();
+    const evidencePath = join(env.dir, 'unsafe-workflow-evidence.json');
+    await writeFile(evidencePath, JSON.stringify({
+      ...workflowEvidenceFixture(),
+      operationId: '../other?operation=1',
+    }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(appCommand.parseAsync([
+      'workflow-evidence', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+      '--evidence-file', evidencePath, '--github-oidc-token', 'github-oidc-token',
+      '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit unexpectedly called');
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('operationId is missing or invalid'));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('rejects an unsafe deployment handoff operation ID before tenant context or network access', async () => {
+    await seedLoggedInTenant();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(appCommand.parseAsync([
+      'deploy-source-unknown', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+      '--operation-id', '../other?operation=1', '--skip-validate', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit unexpectedly called');
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('safe exact managed-deployment identifier'));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test.each([
     ['connect-existing', ['--repo', 'enterprise/planning-portal']],
     ['adopt-observed', ['--repo', 'enterprise/planning-portal', '--url', 'https://planning.example.com']],
@@ -1351,6 +1383,9 @@ describe('eai app', () => {
     ['deploy-source-unknown-status', []],
   ])('rejects an untrusted managed origin before tenant traffic for %s', async (command, args) => {
     await seedLoggedInTenant();
+    if (command === 'workflow-evidence') {
+      await writeFile(join(env.dir, 'unused-evidence.json'), JSON.stringify(workflowEvidenceFixture()));
+    }
     process.env.BASE_URL_PUBLIC_API = 'https://attacker.example.invalid/public';
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

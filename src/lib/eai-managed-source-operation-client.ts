@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { PlatformAPIClient } from "./api.js";
+import { isManagedDeploymentIdentifier } from "./eai-managed-identifiers.js";
 import { ManagedSourceError } from "./eai-managed-source.js";
 import type {
   CliManagedSourceOperation,
@@ -48,7 +49,7 @@ export function validateCliManagedSourceOperation(
     !value ||
     value.schemaVersion !== "eai.cli_managed_source_operation.v1" ||
     value.sourceMode !== "eai-cli-generated" ||
-    !/^[A-Za-z0-9_-]{1,128}$/.test(value.operationId) ||
+    !isManagedDeploymentIdentifier(value.operationId) ||
     (expected?.operationId && value.operationId !== expected.operationId) ||
     value.actorId !== scope.actorId ||
     !scope.actorId ||
