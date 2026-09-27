@@ -48,6 +48,11 @@ on:
       release_channel:
         description: Deprecated compatibility input; deployment environment is authoritative.
         required: false
+  # Reusable compatibility is limited to a workflow_dispatch caller in this
+  # repository at the same ref. PublicAPI verifies the signed caller
+  # workflow_ref and canonical callee job_workflow_ref/job_workflow_sha.
+  # The caller must grant contents/packages/actions read plus attestations and
+  # id-token write; this workflow cannot elevate caller permissions.
   workflow_call:
     inputs:
       source_mode:
@@ -120,6 +125,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate workflow invocation
+        env:
+          EAI_CALLER_EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          if [[ "$EAI_CALLER_EVENT_NAME" != "workflow_dispatch" ]]; then
+            echo "Managed deployment requires a manually dispatched caller." >&2
+            exit 1
+          fi
+
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

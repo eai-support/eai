@@ -342,6 +342,14 @@ describe('EAI managed deployment helpers', () => {
     expect(workflow).toMatch(/^on:\n  workflow_dispatch:/m);
     expect(workflow).toMatch(/^  workflow_call:/m);
     expect(workflow).not.toMatch(/^  (push|pull_request|schedule):/m);
+    expect(workflow).toContain('name: Validate workflow invocation');
+    expect(workflow).toContain('EAI_CALLER_EVENT_NAME: ${{ github.event_name }}');
+    expect(workflow).toContain('if [[ "$EAI_CALLER_EVENT_NAME" != "workflow_dispatch" ]]; then');
+    expect(workflow.indexOf('name: Validate workflow invocation')).toBeLessThan(
+      workflow.indexOf('name: Check out repository'),
+    );
+    expect(workflow).toContain('workflow_ref and canonical callee job_workflow_ref/job_workflow_sha');
+    expect(workflow).not.toMatch(/secrets\.EAI_ACCESS_TOKEN|\$EAI_ACCESS_TOKEN/);
     expect(workflow).toMatch(/^      attestations: write$/m);
     expect(workflow).toMatch(/^  packages: read$/m);
     expect(workflow.slice(workflow.indexOf('  build:'), workflow.indexOf('  handoff:'))).not.toContain('id-token: write');
@@ -372,7 +380,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '3fb8e1a81def421a42cccbae938656b306ab0497' },
+      candidate: { commit: 'd5e728505bf4fb6eb2493553bd504e073a58d3ea' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
