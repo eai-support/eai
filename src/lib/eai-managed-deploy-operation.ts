@@ -136,7 +136,7 @@ function hasCompleteDeploymentDoctor(operation: ManagedOperationProjection): boo
 
   const latestPointerVersion = operation.latestPointerVersion;
   const expectedLatestVersion = operation.expectedLatestVersion;
-  return operation.requiresTenantInfra === false
+  return operation.requiresTenantInfra === true
     && operation.deploymentId === deployment.deploymentId
     && isValidHttpsUrl(operation.activeUrl)
     && hasCompleteRuntimeIdentity(operation.runtimeIdentity)

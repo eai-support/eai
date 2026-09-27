@@ -62,6 +62,8 @@
 - [x] Carry the managed no-redirect policy through every legacy source-unknown context and client request (DTE-091).
 - [x] Preserve and revalidate initial governed-directory identities through configuration hashing (DTE-016, DTE-018, DTE-095).
 - [x] Run focused and repository checks at the new exact review-fix head and record evidence.
+- [x] Require exact `requiresTenantInfra: true` for managed terminal success and keep false, missing, or non-boolean markers pending (DTE-031–DTE-036, DTE-080).
+- [x] Run focused and repository checks at the TenantInfra-marker review-fix head and record evidence.
 
 ## Exact-head evidence
 
@@ -74,4 +76,5 @@
 - `npm run release:check` stopped at the intentional immutable producer-release gate because no template tag yet resolves to candidate `1d8c08a4c9f079349dade44a3e8673cbd6e6b38b` (DTE-088).
 - The final review-fix focused suite passed 219 tests across managed deploy integration, managed source race, legacy app-management, and tenant-context files. It covers original-root doctor writes, same-name governed-directory replacement, and no-redirect authenticated setup, app validation, evidence, and operation requests.
 - The final review-fix `npm run test:eai-cli:ci` passed 967 tests with one documented skip (968 total). `bash scripts/release-preflight.sh` passed 1,082 tests with one documented skip (1,083 total), plus typecheck, lint, build, documentation, packed CLI/alias smoke, traceability, and release metadata checks.
+- The TenantInfra-marker regression suite passed 105 focused tests. `npm run test:eai-cli:ci` passed 967 tests with one documented skip, and `bash scripts/release-preflight.sh` passed 1,082 tests with one documented skip plus typecheck, lint, build, docs, packed CLI/alias smoke, traceability, and release metadata checks.
 - Current `main` (`adca55acdd1068024af67db903c2f571d65e6d32`) is an ancestor of the review-fix branch. The latest published Template `v1.0.4` (`ceddb562`), Gofer `v3.13.2` (`265700931`), and npm CLI `3.18.1` do not contain this coordinated feature, so immutable producer verification remains an explicit CLI publication and DEV-promotion gate.

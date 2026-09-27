@@ -16,3 +16,4 @@
 14. Fail closed before retry network access without original endpoint authority, classify every pre-evidence terminal source failure as a fresh-operation case, require exact merged publication identity, and bind workflow-evidence parents through the complete read.
 15. Close the final review races: reject terminal EAI-maintained failure before reuse, carry no-redirect policy through authenticated tenant-context setup, compare canonical files through bound no-follow descriptors, and keep the project-root binding live through configuration hashing.
 16. Bind operation-bound doctor evidence to the original application root, carry the managed redirect policy through legacy source commands, and retain initial governed-directory identities through the complete configuration digest.
+17. Require the exact positive TenantInfra handoff marker together with the existing source-revision, deployment, and doctor bindings before terminal success.

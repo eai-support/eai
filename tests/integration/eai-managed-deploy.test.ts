@@ -67,7 +67,7 @@ function completeUnifiedOperation(options: {
     tenantId: TENANT_ID, appScopeTenantId: TENANT_ID, targetTenantId,
     appKey: 'planning-portal', operationId, environment,
     sourceMode, sourceStatus: 'completed', configHash, status: 'active',
-    requiresTenantInfra: false, deploymentId: 'dep-1', activeUrl: 'https://planning.example.com',
+    requiresTenantInfra: true, deploymentId: 'dep-1', activeUrl: 'https://planning.example.com',
     latestPointerVersion: 3, expectedLatestVersion: 3,
     runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
     deployment: { deploymentId: 'dep-1', status: 'active' },
@@ -867,7 +867,7 @@ fi
       classification: 'succeeded',
       deploymentId: 'dep-1',
       activeUrl: 'https://planning.example.com',
-      requiresTenantInfra: false,
+      requiresTenantInfra: true,
       sourceBinding: {
         repository: 'enterprise/planning-portal',
         ref: 'refs/heads/main',

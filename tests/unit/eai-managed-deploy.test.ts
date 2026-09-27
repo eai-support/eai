@@ -80,7 +80,7 @@ describe('EAI managed deployment helpers', () => {
       tenantId: 'tenant-1', appScopeTenantId: 'tenant-1', targetTenantId: 'tenant-1',
       appKey: 'planning-portal', operationId: 'source-unknown-abc123', environment: 'preview',
       sourceMode: 'source-unknown', sourceStatus: 'completed', configHash, status: 'active',
-      requiresTenantInfra: false, deploymentId: 'dep-1', activeUrl: 'https://rates.example.com',
+      requiresTenantInfra: true, deploymentId: 'dep-1', activeUrl: 'https://rates.example.com',
       runtimeIdentity: { clientId: 'runtime-client', principalId: 'runtime-principal' },
       latestPointerVersion: 3, expectedLatestVersion: 3,
       deployment: { deploymentId: 'dep-1', status: 'active' },
@@ -587,6 +587,9 @@ describe('EAI managed deployment helpers', () => {
     expect(classifyManagedOperationStatus(fixtureUnifiedOperation())).toBe('succeeded');
 
     const mismatches: Array<(operation: Record<string, unknown>) => void> = [
+      operation => { operation.requiresTenantInfra = false; },
+      operation => { operation.requiresTenantInfra = 'true'; },
+      operation => { delete operation.requiresTenantInfra; },
       operation => { operation.sourceStatus = 'queued'; },
       operation => { operation.configHash = `sha256:${'f'.repeat(64)}`; },
       operation => { (operation.sourceRevision as Record<string, unknown>).operationId = 'source-unknown-other'; },
