@@ -25,3 +25,4 @@
 23. Mirror source-copy timestamp binding and the aligned 10 MiB/32 MiB/4,096-file governed-manifest budget from the final producer, with exact byte parity and no release claim.
 24. Mirror the producer's final bounded-read sweep: opened-size archive hashing with a growth probe, clean checkout-free inline handoff response validation, bounded downloaded evidence, and byte-counted exact-source/GitHub response bodies, while retaining direct and same-repository reusable behavior plus the deferred release gate.
 25. Mirror the producer's optional reusable-call configuration derivation and actual-byte-capped OIDC/PublicAPI response streams, update the exact candidate and byte digests, and keep the immutable release gate unresolved.
+26. Mirror the producer's exact bounded OCI manifest-content verification and shared fail-closed no-follow/nonblocking collector-open guard, then update candidate identity and byte digests without claiming a release.
