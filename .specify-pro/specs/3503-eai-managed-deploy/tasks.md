@@ -71,6 +71,7 @@
 - [x] Mirror the final producer's canonical handoff-provenance, exclusive-output, pre-open metadata, and post-append leaf-binding fixes byte-for-byte (DTE-018–DTE-022, DTE-025).
 - [x] Mirror app-template candidate `7c60ba7e4ad7d74c79104799f7bcf3cf6e82d0fd`, including its manual-caller gate and same-repository reusable OIDC contract, while retaining the deferred release gate (DTE-019–DTE-026, DTE-088).
 - [x] Mirror app-template candidate `7c60ba7e4ad7d74c79104799f7bcf3cf6e82d0fd`, including bounded no-follow handoff archive hashing, while retaining the deferred release gate (DTE-019–DTE-025, DTE-088).
+- [ ] Mirror app-template candidate `c55b4c3bd4459a4453f3da09cd155f83815a00b4`, including capped fixed-buffer collector reads and growth rejection, then update exact byte/digest evidence while retaining the deferred release gate (DTE-018–DTE-025, DTE-088, DTE-095).
 
 ## Exact-head evidence
 
