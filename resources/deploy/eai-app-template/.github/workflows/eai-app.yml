@@ -487,9 +487,12 @@ jobs:
         with:
           subject-path: .eai-build/eai-generated-app-image.tar
 
-      - name: Request GitHub OIDC token
-        id: github-oidc
+      - name: Request GitHub OIDC token and submit workflow evidence
         env:
+          APP_KEY: ${{ inputs.app_key }}
+          TENANT_ID: ${{ inputs.tenant_id }}
+          OPERATION_ID: ${{ inputs.operation_id }}
+          EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
         run: |
           case "$SOURCE_MODE" in
@@ -500,22 +503,6 @@ jobs:
           response="$(curl --fail --silent --show-error --proto '=https' --tlsv1.2 --max-redirs 0 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${audience}")"
           token="$(node -e "let s=''; process.stdin.on('data', d => s += d); process.stdin.on('end', () => process.stdout.write(JSON.parse(s).value));" <<< "$response")"
           echo "::add-mask::$token"
-          echo "token=$token" >> "$GITHUB_OUTPUT"
-
-      - name: Revalidate exact binding and submit workflow evidence
-        env:
-          APP_KEY: ${{ inputs.app_key }}
-          TENANT_ID: ${{ inputs.tenant_id }}
-          TARGET_TENANT_ID: ${{ inputs.target_tenant_id }}
-          OPERATION_ID: ${{ inputs.operation_id }}
-          CONFIG_HASH: ${{ inputs.config_hash }}
-          DEPLOY_ENVIRONMENT: ${{ inputs.env || inputs.environment || 'preview' }}
-          EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
-          OIDC_TOKEN: ${{ steps.github-oidc.outputs.token }}
-          SOURCE_COMMIT_SHA: ${{ inputs.commit_sha || github.sha }}
-          SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
-        shell: bash
-        run: |
           [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://(dev-api\.au|(test-api|api)\.(au|ca|eu))\.myenterprise\.ai/public/?$ ]]
           case "$SOURCE_MODE" in
             source-unknown) evidence_path="source-unknown/workflow-evidence" ;;
@@ -524,7 +511,7 @@ jobs:
           esac
           curl --fail-with-body --silent --show-error \
             --proto '=https' --tlsv1.2 --max-redirs 0 \
-            -H "Authorization: Bearer $OIDC_TOKEN" \
+            -H "Authorization: Bearer $token" \
             -H "Content-Type: application/json" \
             --data-binary @.eai-build/evidence/source-unknown-deployment-evidence.json \
             "${EAI_BOUND_PUBLIC_API_URL%/}/v4/platform/tenants/${TENANT_ID}/apps/${APP_KEY}/${evidence_path}" \

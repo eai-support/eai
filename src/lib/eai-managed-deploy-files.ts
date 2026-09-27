@@ -15,6 +15,7 @@ import {
   prepareProjectTarget,
   writeBoundRegularFile,
 } from './eai-managed-deploy-filesystem.js';
+import { bindManagedProjectRoot } from './eai-managed-root-binding.js';
 
 const GOVERNED_ROOT_FILES = ['eai.config.ts', 'eai.runtime.json'] as const;
 const GOVERNED_CONFIG_ROOT = 'src/eai.config';
@@ -85,6 +86,8 @@ export async function installCanonicalManagedDeployFiles(
   projectRoot: string,
   workflowPath = EAI_MANAGED_WORKFLOW_PATH,
 ): Promise<CanonicalInstallResult> {
+  const projectBinding = await bindManagedProjectRoot(projectRoot);
+  const boundProjectRoot = projectBinding.path;
   const canonicalRoot = canonicalManagedDeployResourceRoot();
   const files = [
     { source: join(canonicalRoot, EAI_MANAGED_WORKFLOW_PATH), target: workflowPath },
@@ -94,12 +97,14 @@ export async function installCanonicalManagedDeployFiles(
 
   for (const file of files) {
     const source = resolve(canonicalRoot, file.source);
-    const target = resolve(projectRoot, file.target);
-    if (!isContained(canonicalRoot, source) || !isContained(projectRoot, target)) {
+    const target = resolve(boundProjectRoot, file.target);
+    if (!isContained(canonicalRoot, source) || !isContained(boundProjectRoot, target)) {
       throw new Error('Canonical deployment file resolved outside its allowed root.');
     }
-    await prepareProjectTarget(resolve(projectRoot), target);
+    await prepareProjectTarget(boundProjectRoot, target, projectBinding);
+    await projectBinding.assert();
     if (await fileMatches(source, target)) {
+      await projectBinding.assert();
       result.unchanged.push(file.target);
       continue;
     }
@@ -112,10 +117,10 @@ export async function installCanonicalManagedDeployFiles(
     if (targetExists) {
       const candidate = `${target}.eai-update`;
       await assertRegularTarget(candidate);
-      await writeBoundRegularFile(candidate, await readFile(source));
+      await writeBoundRegularFile(candidate, await readFile(source), 0o644, projectBinding);
       result.pendingUpdates.push(`${file.target}.eai-update`);
     } else {
-      await writeBoundRegularFile(target, await readFile(source));
+      await writeBoundRegularFile(target, await readFile(source), 0o644, projectBinding);
       result.changed.push(file.target);
     }
   }

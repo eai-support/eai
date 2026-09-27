@@ -23,7 +23,7 @@
 - [x] Include `.test.*` and `.spec.*` governed files in both CLI and collector configuration hashing while excluding only the two generated outputs (DTE-018, DTE-095).
 - [x] Bind every local publication file's no-follow descriptor to the inode that passed its initial metadata check (DTE-016).
 - [x] Preserve the standard nested JSON error envelope and split command/source-client implementations below 300 lines behind existing public paths (DTE-086, DTE-087).
-- [x] Sync app-template candidate `061775734f0e60965453cbcb216e3534e5bcc17b` and its exact workflow/collector bytes (DTE-019–DTE-021, DTE-022, DTE-025, DTE-088).
+- [x] Sync app-template candidate `1d8c08a4c9f079349dade44a3e8673cbd6e6b38b` and its exact workflow/collector bytes (DTE-019–DTE-021, DTE-022, DTE-025, DTE-088).
 - [x] Reject unsafe legacy exact-operation path segments before URL construction (DTE-031–DTE-035).
 - [x] Require the original regional PublicAPI URL in every loaded retry state (DTE-031, DTE-032, DTE-091).
 - [x] Update owned tests and traceability for the final review findings.
@@ -49,12 +49,16 @@
 - [x] Remove the generated-file post-write path rename (DTE-016).
 - [x] Reject an oversized or substituted private descriptor before allocation (DTE-016).
 - [x] Abort canonical generation when a target appears or changes before open (DTE-016).
+- [x] Validate legacy managed PublicAPI authority before tenant-context traffic (DTE-091).
+- [x] Use protected endpoint authority for source-unspecified customer retry lookup (DTE-031, DTE-032, DTE-091).
+- [x] Bind the application root across canonical resolution and local publication (DTE-016).
+- [x] Accept the canonical CLI-managed operation namespace in workflow evidence (DTE-020, DTE-021).
 
 ## Exact-head evidence
 
-- `npm run verify:managed-deploy-producer` passed for app-template candidate `061775734f0e60965453cbcb216e3534e5bcc17b` with exact workflow (`sha256:e2c293704fafa1466c74455ab226bf67d6bfd23df7fb8279d7a1d33dcc4a4914`) and collector (`sha256:d17c4d5e460dee967adb9a9b25c0b9aed73cc09ebd76c771e22ee796aff1d275`) byte parity.
+- `npm run verify:managed-deploy-producer` passed for app-template candidate `1d8c08a4c9f079349dade44a3e8673cbd6e6b38b` with exact workflow (`sha256:d7f14c0af056d836db2d50c70cf1205b0dc06a15c8c7144d360320ebcbfcbb64`) and collector (`sha256:d17c4d5e460dee967adb9a9b25c0b9aed73cc09ebd76c771e22ee796aff1d275`) byte parity.
 - `npm run build`, `npm run lint`, and `npm run typecheck` passed.
-- Focused managed-deployment and API tests passed: 272 tests across six files, including authoritative recovery routing, pre-network target validation, terminal/reusable-evidence retry binding, doctor-output confinement, descriptor-bound generated writes, no-clobber creation and bounded private reads, stable governed inventory, post-read source binding, and producer identity rejection.
-- `npm run test:eai-cli:ci` passed: 951 passed and one documented skip (952 total).
-- `npm test` through `bash scripts/release-preflight.sh` passed: 1,066 passed and one documented skip (1,067 total), plus packed CLI, alias, and generated documentation checks.
-- `npm run release:check` stopped at the intentional immutable producer-release gate because no template tag yet resolves to candidate `061775734f0e60965453cbcb216e3534e5bcc17b` (DTE-088).
+- Focused managed-deployment and API tests passed: 327 tests across seven files, including pre-context authority rejection, authoritative recovery routing after regional refresh, canonical operation namespaces, application-root replacement, terminal/reusable-evidence retry binding, doctor-output confinement, descriptor-bound generated writes, bounded private reads, stable governed inventory, post-read source binding, and producer identity rejection.
+- `npm run test:eai-cli:ci` passed: 960 passed and one documented skip (961 total).
+- `npm test` through `bash scripts/release-preflight.sh` passed: 1,075 passed and one documented skip (1,076 total), plus packed CLI, alias, and generated documentation checks.
+- `npm run release:check` stopped at the intentional immutable producer-release gate because no template tag yet resolves to candidate `1d8c08a4c9f079349dade44a3e8673cbd6e6b38b` (DTE-088).

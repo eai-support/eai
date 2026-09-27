@@ -8,6 +8,7 @@ import {
   EAI_MANAGED_WORKFLOW_PATH,
   requireManagedPublicApiUrl,
 } from "../lib/eai-managed-deploy.js";
+import { PlatformAPIClient } from "../lib/api.js";
 import { chooseManagedDeploySource } from "../lib/eai-managed-source.js";
 import {
   verifyCliGithubIdentity,
@@ -161,8 +162,14 @@ Examples:
 
       let recoverySource = options.source;
       if (!recoverySource && (options.resume || options.retry)) {
+        const recoveryClient = retryState
+          ? new PlatformAPIClient(
+              requireManagedPublicApiUrl(retryState.publicApiUrl),
+              retryState.tenantId,
+            )
+          : context.client;
         const exactOperation = await readUnifiedExactOperation(
-          context.client,
+          recoveryClient,
           context.tenantId,
           targetTenantId,
           appKey,

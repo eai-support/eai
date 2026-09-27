@@ -1127,11 +1127,11 @@ fi
       const url = String(input);
       requests.push(url);
       if (url === `${originalApi}/v4/identity/tenants`) {
-        return jsonResponse({ tenants: [{ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] }] });
+        return jsonResponse({ tenants: [{ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'], homeRegion: 'au' }] });
       }
       if (url === `${originalApi}/v4/platform/tenants/${TENANT_ID}`
         || url === `${originalApi}/v4/platform/tenants/${TENANT_ID}/management`) {
-        return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
+        return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'], homeRegion: 'au' });
       }
       if (url.includes('/managed-deployments/operations/source-unknown-abc123')) {
         return jsonResponse(completeUnifiedOperation());
@@ -1149,6 +1149,9 @@ fi
     expect(requests.length).toBeGreaterThan(0);
     expect(requests.every(url => url.startsWith(`${originalApi}/`))).toBe(true);
     expect(requests.every(url => !url.startsWith(`${API_BASE}/`))).toBe(true);
+    await expect(readFile(join(projectRoot, '.env.local'), 'utf8')).resolves.toContain(
+      'BASE_URL_PUBLIC_API=https://api.au.myenterprise.ai/public',
+    );
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
       operationId: 'source-unknown-abc123', classification: 'succeeded',
     });

@@ -7,6 +7,10 @@ import { promisify } from 'node:util';
 import inquirer from 'inquirer';
 import { buildManagedDeployConfigHash } from './eai-managed-deploy.js';
 import { isContained, writePrivateFileNoFollow } from './eai-managed-deploy-filesystem.js';
+import {
+  bindManagedProjectRoot,
+  type ManagedProjectRootBinding,
+} from './eai-managed-root-binding.js';
 
 const exec = promisify(execFile);
 export const CLI_MANAGED_SOURCE_SCHEMA = 'eai.cli_managed_source_bundle.v1';
@@ -53,6 +57,34 @@ export class ManagedSourceError extends Error {
   }
 }
 
+async function bindSourceProjectRoot(
+  projectRoot: string,
+  code: 'SOURCE_PATH_INVALID' | 'SOURCE_RECEIPT_PATH_INVALID',
+): Promise<ManagedProjectRootBinding> {
+  try {
+    return await bindManagedProjectRoot(projectRoot);
+  } catch (error) {
+    throw new ManagedSourceError(
+      code,
+      `The application root changed or is untrusted: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+async function assertSourceProjectRoot(
+  binding: ManagedProjectRootBinding,
+  code: 'SOURCE_CHANGED_DURING_READ' | 'SOURCE_RECEIPT_PATH_INVALID' = 'SOURCE_CHANGED_DURING_READ',
+): Promise<void> {
+  try {
+    await binding.assert();
+  } catch (error) {
+    throw new ManagedSourceError(
+      code,
+      `The application root changed during the operation: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 function digest(value: Buffer | string): string {
   return `sha256:${createHash('sha256').update(value).digest('hex')}`;
 }
@@ -84,7 +116,12 @@ function assertNoEmbeddedCredential(bytes: Buffer, path: string): void {
   }
 }
 
-async function readBoundedSourceFile(root: string, path: string): Promise<Buffer> {
+async function readBoundedSourceFile(
+  root: string,
+  path: string,
+  rootBinding: ManagedProjectRootBinding,
+): Promise<Buffer> {
+  await assertSourceProjectRoot(rootBinding);
   const directoryIdentities: Array<{ path: string; dev: number; ino: number }> = [];
   let parent = dirname(join(root, path));
   while (parent !== root) {
@@ -119,6 +156,7 @@ async function readBoundedSourceFile(root: string, path: string): Promise<Buffer
       realpath(target),
       lstat(target),
     ]);
+    await assertSourceProjectRoot(rootBinding);
     if (!isContained(canonicalRoot, canonicalTarget) || rebound.isSymbolicLink()
       || rebound.dev !== actual.dev || rebound.ino !== actual.ino) {
       throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source path changed before packaging: ${path}. Retry after editing has stopped.`);
@@ -144,6 +182,7 @@ async function readBoundedSourceFile(root: string, path: string): Promise<Buffer
       realpath(target),
       lstat(target),
     ]);
+    await assertSourceProjectRoot(rootBinding);
     if (count !== actual.size || after.dev !== actual.dev || after.ino !== actual.ino
       || after.size !== actual.size || after.mtimeMs !== actual.mtimeMs || after.ctimeMs !== actual.ctimeMs
       || finalPath.isSymbolicLink() || !finalPath.isFile()
@@ -160,11 +199,17 @@ async function readBoundedSourceFile(root: string, path: string): Promise<Buffer
 }
 
 /** Enumerate the current snapshot, including ignored app files, without following local links. */
-async function sourceInventory(root: string): Promise<string[]> {
+async function sourceInventory(
+  root: string,
+  rootBinding: ManagedProjectRootBinding,
+): Promise<string[]> {
   const files: string[] = [];
   let entriesSeen = 0;
   async function visit(directory: string): Promise<void> {
-    for (const entry of await readdir(join(root, directory), { withFileTypes: true })) {
+    await assertSourceProjectRoot(rootBinding);
+    const entries = await readdir(join(root, directory), { withFileTypes: true });
+    await assertSourceProjectRoot(rootBinding);
+    for (const entry of entries) {
       const path = directory ? `${directory}/${entry.name}` : entry.name;
       if ((path.startsWith('src/') || path.startsWith('public/')) && isCredentialPath(path)) {
         throw new ManagedSourceError('SOURCE_CREDENTIAL_DETECTED', `Remove the credential path ${path} from app source before publishing.`);
@@ -182,17 +227,20 @@ async function sourceInventory(root: string): Promise<string[]> {
 
 /** Local scaffold history detects unsupported edits; the server independently authorizes the reviewed template. */
 export async function buildCliManagedSourceBundle(projectRoot: string): Promise<{ bundle: CliManagedSourceBundle; totalBytes: number }> {
-  const requestedRoot = resolve(projectRoot);
-  const rootStatus = await lstat(requestedRoot);
-  if (!rootStatus.isDirectory() || rootStatus.isSymbolicLink()) throw new ManagedSourceError('SOURCE_PATH_INVALID', 'Use the real generated-app directory, not a symlink.');
-  const root = await realpath(requestedRoot);
+  const rootBinding = await bindSourceProjectRoot(resolve(projectRoot), 'SOURCE_PATH_INVALID');
+  const root = rootBinding.path;
   const manifestPath = join(root, '.eai-manifest.json');
   const manifestStatus = await lstat(manifestPath);
   if (!manifestStatus.isFile() || manifestStatus.isSymbolicLink() || manifestStatus.size > 1024 * 1024) throw new ManagedSourceError('TEMPLATE_PIN_REQUIRED', 'The project needs a valid eai init template manifest.');
-  const manifest = JSON.parse((await readBoundedSourceFile(root, '.eai-manifest.json')).toString('utf8')) as { template?: { commit?: unknown } };
+  const manifest = JSON.parse((await readBoundedSourceFile(root, '.eai-manifest.json', rootBinding)).toString('utf8')) as { template?: { commit?: unknown } };
   const templateCommitSha = manifest.template?.commit;
   if (typeof templateCommitSha !== 'string' || !/^[a-f0-9]{40}$/.test(templateCommitSha)) throw new ManagedSourceError('TEMPLATE_PIN_REQUIRED', 'EAI-maintained source requires an exact reviewed template pin from eai init; enroll a custom template before using this source option.');
-  const git = async (args: string[]): Promise<string> => (await exec('git', args, { cwd: root, maxBuffer: 4 * 1024 * 1024 })).stdout;
+  const git = async (args: string[]): Promise<string> => {
+    await assertSourceProjectRoot(rootBinding);
+    const output = (await exec('git', args, { cwd: root, maxBuffer: 4 * 1024 * 1024 })).stdout;
+    await assertSourceProjectRoot(rootBinding);
+    return output;
+  };
   const initialCommits = (await git(['rev-list', '--max-parents=0', 'HEAD'])).trim().split('\n');
   if (initialCommits.length !== 1 || !/^[a-f0-9]{40}$/.test(initialCommits[0])) throw new ManagedSourceError('SOURCE_BASELINE_REQUIRED', 'Restore the original eai init scaffold history before publishing EAI-maintained source.');
   const initialCommit = initialCommits[0];
@@ -212,7 +260,7 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
     throw new ManagedSourceError('TEMPLATE_PIN_CHANGED', 'The template pin differs from the original eai init scaffold. Restore .eai-manifest.json or enroll the new template before publishing.');
   }
   const [inventory, changed, baselineFiles] = await Promise.all([
-    sourceInventory(root),
+    sourceInventory(root, rootBinding),
     git(['diff', '--name-only', '-z', initialCommit, '--']),
     git(['ls-tree', '-r', '--name-only', '-z', initialCommit]),
   ]);
@@ -231,7 +279,7 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
     const batch = paths.slice(offset, offset + 8);
     const loaded = await Promise.all(batch.map(async path => {
       if (isCredentialPath(path)) throw new ManagedSourceError('SOURCE_CREDENTIAL_DETECTED', `Remove the credential file ${path} from app source before publishing.`);
-      const bytes = await readBoundedSourceFile(root, path);
+      const bytes = await readBoundedSourceFile(root, path, rootBinding);
       return { path, type: 'file' as const, size: bytes.length, sha256: digest(bytes), contentBase64: bytes.toString('base64') };
     }));
     for (const file of loaded) {
@@ -240,19 +288,21 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
       files.push(file);
     }
   }
+  await assertSourceProjectRoot(rootBinding);
   const configHash = await buildManagedDeployConfigHash(root);
+  await assertSourceProjectRoot(rootBinding);
   const bundleSha256 = digest(JSON.stringify([templateCommitSha, configHash, files.map(file => [file.path, file.size, file.sha256])]));
   return { bundle: { schemaVersion: CLI_MANAGED_SOURCE_SCHEMA, templateCommitSha, bundleSha256, configHash, files }, totalBytes };
 }
 
 /** Local evidence is recomputable from source bytes; it grants no GitHub or deployment authority. */
 export async function writeCliManagedSourceReceipt(projectRoot: string, bundle: CliManagedSourceBundle): Promise<string> {
-  const requestedRoot = resolve(projectRoot);
-  const rootStatus = await lstat(requestedRoot);
-  if (!rootStatus.isDirectory() || rootStatus.isSymbolicLink()) throw new ManagedSourceError('SOURCE_PATH_INVALID', 'Use the real generated-app directory, not a symlink.');
-  const root = await realpath(requestedRoot);
+  const rootBinding = await bindSourceProjectRoot(resolve(projectRoot), 'SOURCE_RECEIPT_PATH_INVALID');
+  const root = rootBinding.path;
   const directory = join(root, '.eai');
+  await assertSourceProjectRoot(rootBinding, 'SOURCE_RECEIPT_PATH_INVALID');
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  await assertSourceProjectRoot(rootBinding, 'SOURCE_RECEIPT_PATH_INVALID');
   const directoryStatus = await lstat(directory);
   if (!directoryStatus.isDirectory() || directoryStatus.isSymbolicLink()) throw new ManagedSourceError('SOURCE_RECEIPT_PATH_INVALID', 'The local source receipt directory cannot be a symlink.');
   const target = join(root, CLI_MANAGED_SOURCE_RECEIPT_PATH);
@@ -262,6 +312,7 @@ export async function writeCliManagedSourceReceipt(projectRoot: string, bundle: 
   });
   if (existing && (!existing.isFile() || existing.isSymbolicLink())) throw new ManagedSourceError('SOURCE_RECEIPT_PATH_INVALID', 'The local source receipt must be a regular file.');
   try {
+    await assertSourceProjectRoot(rootBinding, 'SOURCE_RECEIPT_PATH_INVALID');
     await writePrivateFileNoFollow(target, `${JSON.stringify({
       schemaVersion: 'eai.cli_managed_source_local_receipt.v1',
       sourceMode: 'eai-cli-generated',
@@ -270,7 +321,8 @@ export async function writeCliManagedSourceReceipt(projectRoot: string, bundle: 
       configHash: bundle.configHash,
       totalBytes: bundle.files.reduce((total, file) => total + file.size, 0),
       files: bundle.files.map(({ path, size, sha256 }) => ({ path, size, sha256 })),
-    }, null, 2)}\n`);
+    }, null, 2)}\n`, rootBinding);
+    await assertSourceProjectRoot(rootBinding, 'SOURCE_RECEIPT_PATH_INVALID');
   } catch (error) {
     if (error instanceof ManagedSourceError) throw error;
     throw new ManagedSourceError('SOURCE_RECEIPT_PATH_INVALID', `The local source receipt path changed before it could be written: ${error instanceof Error ? error.message : String(error)}`);

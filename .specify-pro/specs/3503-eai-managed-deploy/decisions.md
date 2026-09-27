@@ -51,3 +51,7 @@ Configuration hashing treats the governed path set as part of the snapshot. It r
 Recovery without an explicit source choice reads the unified exact operation and routes only from its sealed `sourceMode`. A customer retry still loads its protected original endpoint authority before that read. The target tenant uses the managed opaque-segment grammar before context resolution, retry state binds before any terminal/reuse branch, and doctor output resolves only beneath the application root.
 
 Private recovery input remains bounded after open and before allocation. Canonical generated-file creation uses `O_EXCL` when the inspected target was absent; an existing target must still be the exact inspected inode and unchanged size/time before truncation.
+
+Bind the requested application-root inode and ancestor identities across `realpath`, then recheck the same binding before and after source inventory, Git reads, configuration hashing, canonical installation, and receipt writes. A replaced root invalidates the operation instead of becoming a new authority.
+
+Legacy source commands validate the configured regional PublicAPI URL before resolving tenant context. Source-unspecified customer retry constructs its first unified-operation client from protected retry state, so a regional context refresh cannot change the operation authority. Collector evidence accepts both server-issued legacy and CLI-managed operation namespaces; the server still exact-binds the operation, nonce, source, tenant, and application.

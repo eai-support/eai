@@ -35,6 +35,7 @@ import {
 } from '../lib/utils.js';
 import * as out from '../lib/output.js';
 import { readSourceUnknownEvidenceFile } from '../lib/source-unknown-evidence-file.js';
+import { requireManagedPublicApiUrl } from '../lib/managed-public-api.js';
 
 const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
 const DEFAULT_VERTICAL_SOURCE = ['eai', 'cli'].join('-');
@@ -533,7 +534,11 @@ export function buildSourceUnknownWorkflowEvidenceData(
     throw new Error('Workflow evidence requires schema provenance with an approved source anchor.');
   }
   return {
-    operationId: text(body.operationId, 'operationId', /^source-unknown-[A-Za-z0-9_-]+$/),
+    operationId: text(
+      body.operationId,
+      'operationId',
+      /^(?:source-unknown|cli-managed-source)-[A-Za-z0-9_-]+$/,
+    ),
     nonce: text(body.nonce, 'nonce'),
     ...(sourceMode ? { sourceMode: sourceMode as 'source-unknown' | 'eai-cli-generated' } : {}),
     ...(targetTenantId ? { targetTenantId } : {}),
@@ -666,9 +671,13 @@ function fail(message: string): never {
 async function resolveAppManagementContext(options?: {
   tenantId?: string;
   interactive?: boolean;
+  managed?: boolean;
 }) {
   const root = await findProjectRoot();
-  const publicApiUrl = await resolvePublicApiUrl(root ?? undefined);
+  const resolvedPublicApiUrl = await resolvePublicApiUrl(root ?? undefined);
+  const publicApiUrl = options?.managed
+    ? requireManagedPublicApiUrl(resolvedPublicApiUrl)
+    : resolvedPublicApiUrl;
   const context = await resolveActiveTenantContext({
     projectRoot: root ?? undefined,
     publicApiUrl,
@@ -677,7 +686,9 @@ async function resolveAppManagementContext(options?: {
   });
 
   return {
-    publicApiUrl: context.publicApiUrl,
+    publicApiUrl: options?.managed
+      ? requireManagedPublicApiUrl(context.publicApiUrl)
+      : context.publicApiUrl,
     tenantId: context.activeTenant.id,
   };
 }
@@ -1081,7 +1092,11 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppConnectExistingOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
     const companyTenantId = options.tenantId
       ? ctx.tenantId
       : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
@@ -1163,7 +1178,11 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppAdoptObservedOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
     const companyTenantId = options.tenantId
       ? ctx.tenantId
       : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
@@ -1233,7 +1252,11 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppWorkflowSetupOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
     const companyTenantId = options.tenantId
       ? ctx.tenantId
       : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
@@ -1329,7 +1352,11 @@ verticalCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', '\nUse --evidence-file from scripts/source-unknown-deployment-evidence.mjs collect after workflow checks succeed. Legacy evidence flags cannot construct accepted proof. PublicAPI verifies the GitHub OIDC token against the exact operation.\n')
   .action(async (key: string, options: AppWorkflowEvidenceOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
     const companyTenantId = options.tenantId
       ? ctx.tenantId
       : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
@@ -1413,7 +1440,11 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppDeploySourceUnknownOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
     const companyTenantId = options.tenantId
       ? ctx.tenantId
       : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
@@ -1475,7 +1506,11 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppDeploySourceUnknownStatusOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
     const companyTenantId = options.tenantId
       ? ctx.tenantId
       : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);

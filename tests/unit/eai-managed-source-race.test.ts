@@ -8,6 +8,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 const race = vi.hoisted(() => ({
   trigger: "",
+  realpathTrigger: "",
   readTrigger: "",
   addTrigger: "",
   addPath: "",
@@ -23,6 +24,14 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return {
     ...actual,
+    realpath: async (path: PathLike) => {
+      if (!race.swapped && String(path) === race.realpathTrigger) {
+        race.swapped = true;
+        await actual.rename(race.target, race.displaced);
+        await actual.rename(race.replacement, race.target);
+      }
+      return actual.realpath(path);
+    },
     open: async (path: PathLike, flags: string | number, mode?: number) => {
       if (!race.added && String(path) === race.addTrigger) {
         race.added = true;
@@ -82,6 +91,7 @@ const cleanup: string[] = [];
 afterEach(async () => {
   race.target = "";
   race.trigger = "";
+  race.realpathTrigger = "";
   race.readTrigger = "";
   race.addTrigger = "";
   race.addPath = "";
@@ -166,6 +176,23 @@ test("rejects a source file replaced between metadata check and no-follow open",
 
   await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({
     code: "SOURCE_CHANGED_DURING_READ",
+  });
+  expect(race.swapped).toBe(true);
+});
+
+test("rejects a managed source root replaced during canonical resolution", async () => {
+  const work = await mkdtemp(join(tmpdir(), "cli-managed-source-root-race-"));
+  cleanup.push(work);
+  const root = join(work, "app");
+  race.replacement = join(work, "replacement");
+  race.displaced = join(work, "app-original");
+  await mkdir(root);
+  await mkdir(race.replacement);
+  race.target = root;
+  race.realpathTrigger = root;
+
+  await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({
+    code: "SOURCE_PATH_INVALID",
   });
   expect(race.swapped).toBe(true);
 });
@@ -317,6 +344,32 @@ test("does not write a local source receipt through a replaced parent", async ()
   await expect(readFile(join(root, ".eai/cli-managed-source-receipt.json"), "utf8")).resolves.toBe("");
 });
 
+test("does not write a local source receipt through a replaced project root", async () => {
+  const work = await mkdtemp(join(tmpdir(), "managed-receipt-root-race-"));
+  cleanup.push(work);
+  const root = join(work, "app");
+  race.replacement = join(work, "replacement");
+  race.displaced = join(work, "app-original");
+  await mkdir(root);
+  await mkdir(race.replacement);
+  race.target = root;
+  race.realpathTrigger = root;
+  const bundle: CliManagedSourceBundle = {
+    schemaVersion: "eai.cli_managed_source_bundle.v1",
+    templateCommitSha: "a".repeat(40),
+    bundleSha256: `sha256:${"b".repeat(64)}`,
+    configHash: `sha256:${"c".repeat(64)}`,
+    files: [],
+  };
+
+  await expect(writeCliManagedSourceReceipt(root, bundle)).rejects.toMatchObject({
+    code: "SOURCE_RECEIPT_PATH_INVALID",
+  });
+  expect(race.swapped).toBe(true);
+  await expect(readFile(join(root, ".eai/cli-managed-source-receipt.json"), "utf8"))
+    .rejects.toMatchObject({ code: "ENOENT" });
+});
+
 test("does not write canonical file bytes through a replaced parent", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "managed-install-parent-race-")));
   const outside = await realpath(await mkdtemp(join(tmpdir(), "managed-install-parent-replacement-")));
@@ -334,6 +387,25 @@ test("does not write canonical file bytes through a replaced parent", async () =
   );
   expect(race.swapped).toBe(true);
   await expect(readFile(workflow, "utf8")).resolves.toBe("");
+});
+
+test("does not install canonical files through a replaced project root", async () => {
+  const work = await mkdtemp(join(tmpdir(), "managed-install-root-race-"));
+  cleanup.push(work);
+  const root = join(work, "app");
+  race.replacement = join(work, "replacement");
+  race.displaced = join(work, "app-original");
+  await mkdir(root);
+  await mkdir(race.replacement);
+  race.target = root;
+  race.realpathTrigger = root;
+
+  await expect(installCanonicalManagedDeployFiles(root)).rejects.toThrow(
+    "project root changed during canonical resolution",
+  );
+  expect(race.swapped).toBe(true);
+  await expect(readFile(join(root, ".github/workflows/eai-app.yml"), "utf8"))
+    .rejects.toMatchObject({ code: "ENOENT" });
 });
 
 test("does not clobber a canonical target that appears before exclusive creation", async () => {

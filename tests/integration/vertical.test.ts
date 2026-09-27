@@ -1327,10 +1327,37 @@ describe('eai app', () => {
   test('forwards canonical collector source and producer observations without deriving authority', () => {
     const fixture = {
       ...workflowEvidenceFixture(),
+      operationId: 'cli-managed-source-op',
       sourceMode: 'eai-cli-generated',
       targetTenantId: 'runtime-child',
     };
     expect(buildSourceUnknownWorkflowEvidenceData(fixture)).toEqual(fixture);
+  });
+
+  test.each([
+    ['connect-existing', ['--repo', 'enterprise/planning-portal']],
+    ['adopt-observed', ['--repo', 'enterprise/planning-portal', '--url', 'https://planning.example.com']],
+    ['workflow-setup', []],
+    ['workflow-evidence', ['--evidence-file', 'unused-evidence.json']],
+    ['deploy-source-unknown', ['--operation-id', 'source-unknown-op']],
+    ['deploy-source-unknown-status', []],
+  ])('rejects an untrusted managed origin before tenant traffic for %s', async (command, args) => {
+    await seedLoggedInTenant();
+    process.env.BASE_URL_PUBLIC_API = 'https://attacker.example.invalid/public';
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(appCommand.parseAsync([
+      command,
+      'planning-portal',
+      ...args,
+      '--tenant-id',
+      COMPANY_TENANT_ID,
+      '--skip-validate',
+      '--format',
+      'json',
+    ], { from: 'user' })).rejects.toThrow('trusted EAI regional PublicAPI');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test('BC005 rejects invalid deployment handoff artifact digest before request', () => {

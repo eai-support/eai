@@ -66,11 +66,14 @@ export async function resolveCommandContext(options?: {
     throw error;
   }
 
-  const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
+  const contextPublicApiUrl = options?.validatePublicApiUrl
+    ? options.validatePublicApiUrl(context.publicApiUrl)
+    : context.publicApiUrl;
+  const client = new PlatformAPIClient(contextPublicApiUrl, context.activeTenant.id);
 
   return {
     root,
-    publicApiUrl: context.publicApiUrl,
+    publicApiUrl: contextPublicApiUrl,
     client,
     tenantId: context.activeTenant.id,
     tenantSlug: context.activeTenant.slug,
