@@ -2,14 +2,14 @@
   "schemaVersion": "eai.managed-deploy-producer-pin.v1",
   "repository": "eai-support/eai-app-template",
   "candidate": {
-    "commit": "32c1b529c2fa2bb58caaa1ef8272d070b89fa780",
+    "commit": "7876200a21714ec6cef9cef49d18fc32d59ec336",
     "workflow": {
       "path": ".github/workflows/eai-app.yml",
-      "sha256": "sha256:5f27736e3ca76712cf5960eb533445fa7320dcb36e5af38910bd470af67ae841"
+      "sha256": "sha256:e42b8e2c4e3b5a2cee07abc50a666f35c52b0cb2296a3659b986e09108fc1097"
     },
     "collector": {
       "path": "scripts/source-unknown-deployment-evidence.mjs",
-      "sha256": "sha256:66f069e800bc3da29ad81d842268261fb19376550a941645ea3e711a0a7a5396"
+      "sha256": "sha256:ab4df11eb91cf7e53f241e93ca0f650b7f5036cdc886050ccf192b738ea41ef7"
     }
   },
   "releaseGate": {

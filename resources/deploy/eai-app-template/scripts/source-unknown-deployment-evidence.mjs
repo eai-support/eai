@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import {
   closeSync,
   constants,
-  createReadStream,
   existsSync,
   fstatSync,
   lstatSync,
@@ -13,7 +12,6 @@ import {
   readSync,
   realpathSync,
   readdirSync,
-  readFileSync,
   writeSync,
   writeFileSync,
 } from 'node:fs';
@@ -47,6 +45,7 @@ const MAX_IMAGE_ARCHIVE_BYTES = 10 * 1024 * 1024 * 1024;
 const MAX_GOVERNED_CONFIG_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_GOVERNED_CONFIG_TOTAL_BYTES = 32 * 1024 * 1024;
 const MAX_GOVERNED_CONFIG_FILES = 4096;
+const MAX_HANDOFF_RESPONSE_BYTES = 1024 * 1024;
 const BOUNDED_READ_BUFFER_BYTES = 64 * 1024;
 
 function sourceMode(options) {
@@ -754,16 +753,26 @@ async function digestFile(
     ) {
       throw new Error(`${label} changed before its bounded digest.`);
     }
+    const buffer = Buffer.allocUnsafe(BOUNDED_READ_BUFFER_BYTES);
     let digested = 0;
-    await new Promise((resolvePromise, reject) => {
-      createReadStream(path, { fd: descriptor, autoClose: false })
-        .on('data', (chunk) => {
-          digested += chunk.length;
-          hash.update(chunk);
-        })
-        .on('error', reject)
-        .on('end', resolvePromise);
-    });
+    while (digested < opened.size) {
+      const bytesRead = readSync(
+        descriptor,
+        buffer,
+        0,
+        Math.min(buffer.length, opened.size - digested),
+        digested,
+      );
+      if (bytesRead === 0) {
+        throw new Error(`${label} shrank during its bounded digest.`);
+      }
+      hash.update(buffer.subarray(0, bytesRead));
+      digested += bytesRead;
+    }
+    const growthProbe = Buffer.allocUnsafe(1);
+    if (readSync(descriptor, growthProbe, 0, 1, digested) !== 0) {
+      throw new Error(`${label} grew during its bounded digest.`);
+    }
     const after = fstatSync(descriptor);
     assertAbsoluteDirectorySnapshot(ancestors, label);
     const finalPath = lstatSync(path);
@@ -1730,7 +1739,15 @@ async function collectEvidence(options) {
 }
 
 function readJson(path) {
-  return JSON.parse(readFileSync(path, 'utf8'));
+  const responsePath = resolve(path);
+  return JSON.parse(
+    readBoundedRegularFileNoFollow(
+      dirname(responsePath),
+      responsePath,
+      'Deployment handoff response',
+      MAX_HANDOFF_RESPONSE_BYTES,
+    ).toString('utf8'),
+  );
 }
 
 function responseStatus(payload) {

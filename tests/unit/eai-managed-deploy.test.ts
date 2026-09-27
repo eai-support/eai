@@ -356,6 +356,32 @@ describe('EAI managed deployment helpers', () => {
     expect(workflow).toContain('fs.readSync(descriptor, buffer');
     expect(workflow).toContain('fs.constants.O_NOFOLLOW');
     expect(workflow).not.toContain("fs.readFileSync('.eai-build/eai-generated-app-image.tar'");
+    const handoffJob = workflow.slice(workflow.indexOf('  handoff:'));
+    expect(handoffJob).toContain('MAX_BUILD_EVIDENCE_BYTES = 1024 * 1024');
+    expect(handoffJob).toContain('MAX_PRODUCER_SOURCE_BYTES = 1024 * 1024');
+    expect(handoffJob).toContain('MAX_GITHUB_TREE_RESPONSE_BYTES = 16 * 1024 * 1024');
+    expect(handoffJob).toContain('MAX_GITHUB_BLOB_RESPONSE_BYTES = 16 * 1024 * 1024');
+    expect(handoffJob).toContain('function readBoundedRegularFile(');
+    expect(handoffJob).toContain('async function readBoundedResponseBytes(');
+    expect(handoffJob).toContain('response.body.getReader()');
+    expect(handoffJob).toContain('value.byteLength > maxBytes - totalBytes');
+    expect(handoffJob).toContain('reader.cancel().catch');
+    expect(handoffJob).toContain("'.eai-build/evidence/source-unknown-deployment-evidence.json'");
+    expect(handoffJob).toContain(
+      "const responsePath = '.eai-build/evidence/workflow-evidence-response.json'",
+    );
+    expect(handoffJob).toContain('Deployment handoff response grew during verification');
+    expect(handoffJob.match(/--max-filesize 1048576/g)).toHaveLength(2);
+    expect(handoffJob).toContain(
+      '--output .eai-build/evidence/workflow-evidence-response.json',
+    );
+    expect(handoffJob).not.toContain('actions/checkout@');
+    expect(handoffJob).not.toContain(
+      'node scripts/source-unknown-deployment-evidence.mjs assert-evidence-accepted',
+    );
+    expect(handoffJob).not.toContain('fs.readFileSync(');
+    expect(handoffJob).not.toMatch(/response\.(?:arrayBuffer|json)\(/);
+    expect(handoffJob).not.toMatch(/\|\s*tee /);
     expect(workflow).toContain('MAX_GOVERNED_CONFIG_FILE_BYTES = 10 * 1024 * 1024');
     expect(workflow).toContain('MAX_GOVERNED_CONFIG_TOTAL_BYTES = 32 * 1024 * 1024');
     expect(workflow).toContain('MAX_GOVERNED_CONFIG_FILES = 4096');
@@ -419,6 +445,16 @@ describe('EAI managed deployment helpers', () => {
     expect(archiveReaders).toContain('sourceRebound.mtimeMs !== opened.mtimeMs');
     expect(archiveReaders).toContain('finalPath.mtimeMs !== opened.mtimeMs');
     expect(archiveReaders).toContain('sourcePathAfter.mtimeMs !== opened.mtimeMs');
+    expect(archiveReaders).toContain('Buffer.allocUnsafe(BOUNDED_READ_BUFFER_BYTES)');
+    expect(archiveReaders).toContain('while (digested < opened.size)');
+    expect(archiveReaders).toContain(
+      'readSync(descriptor, growthProbe, 0, 1, digested)',
+    );
+    expect(collector).not.toContain('createReadStream');
+    expect(collector).toContain('MAX_HANDOFF_RESPONSE_BYTES = 1024 * 1024');
+    expect(collector).toContain(
+      "'Deployment handoff response',\n      MAX_HANDOFF_RESPONSE_BYTES",
+    );
     const outputAppender = collector.slice(
       collector.indexOf('function appendOutputs('),
       collector.indexOf('\nasync function collectEvidence('),
@@ -428,7 +464,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '32c1b529c2fa2bb58caaa1ef8272d070b89fa780' },
+      candidate: { commit: '7876200a21714ec6cef9cef49d18fc32d59ec336' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);

@@ -374,16 +374,74 @@ jobs:
           const { createHash } = require('node:crypto');
           const { execFileSync } = require('node:child_process');
           const fs = require('node:fs');
+          const path = require('node:path');
           const { isDeepStrictEqual } = require('node:util');
-          const evidence = JSON.parse(fs.readFileSync('.eai-build/evidence/source-unknown-deployment-evidence.json', 'utf8'));
           const MAX_IMAGE_ARCHIVE_BYTES = 10 * 1024 * 1024 * 1024;
           const MAX_GOVERNED_CONFIG_FILE_BYTES = 10 * 1024 * 1024;
           const MAX_GOVERNED_CONFIG_TOTAL_BYTES = 32 * 1024 * 1024;
           const MAX_GOVERNED_CONFIG_FILES = 4096;
+          const MAX_BUILD_EVIDENCE_BYTES = 1024 * 1024;
+          const MAX_PRODUCER_SOURCE_BYTES = 1024 * 1024;
+          const MAX_GITHUB_METADATA_RESPONSE_BYTES = 1024 * 1024;
+          const MAX_GITHUB_TREE_RESPONSE_BYTES = 16 * 1024 * 1024;
+          const MAX_GITHUB_BLOB_RESPONSE_BYTES = 16 * 1024 * 1024;
           function sameFileIdentity(left, right) {
             return left.dev === right.dev && left.ino === right.ino;
           }
+          function snapshotDirectoryPath(filePath, label) {
+            const target = path.resolve(path.dirname(filePath));
+            const filesystemRoot = path.parse(target).root;
+            const identities = [];
+            let current = filesystemRoot;
+            for (const component of ['', ...path.relative(filesystemRoot, target).split(/[\\/]/).filter(Boolean)]) {
+              if (component) current = path.join(current, component);
+              const status = fs.lstatSync(current);
+              if (status.isSymbolicLink() || !status.isDirectory()) throw new Error(`${label} ancestors must be no-follow directories.`);
+              identities.push({ path: current, dev: status.dev, ino: status.ino });
+            }
+            return identities;
+          }
+          function assertDirectorySnapshot(identities, label) {
+            for (const identity of identities) {
+              const status = fs.lstatSync(identity.path);
+              if (status.isSymbolicLink() || !status.isDirectory() || !sameFileIdentity(identity, status)) throw new Error(`${label} ancestors changed during verification.`);
+            }
+          }
+          function readBoundedRegularFile(filePath, maxBytes, label) {
+            const ancestors = snapshotDirectoryPath(filePath, label);
+            const before = fs.lstatSync(filePath);
+            if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1) throw new Error(`${label} must be a no-follow regular file.`);
+            if (!Number.isSafeInteger(before.size) || before.size < 1 || before.size > maxBytes) throw new Error(`${label} is empty or exceeds its byte limit.`);
+            if (typeof fs.constants.O_NOFOLLOW !== 'number') throw new Error(`No-follow ${label} verification is unavailable.`);
+            const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+            try {
+              const opened = fs.fstatSync(descriptor);
+              assertDirectorySnapshot(ancestors, label);
+              if (!opened.isFile() || opened.nlink !== 1 || !sameFileIdentity(before, opened) || opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) throw new Error(`${label} changed before verification.`);
+              const chunks = [];
+              const buffer = Buffer.allocUnsafe(64 * 1024);
+              let offset = 0;
+              while (offset < opened.size) {
+                const bytesRead = fs.readSync(descriptor, buffer, 0, Math.min(buffer.length, opened.size - offset), offset);
+                if (bytesRead < 1) throw new Error(`${label} was truncated during verification.`);
+                chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+                offset += bytesRead;
+              }
+              const growthProbe = Buffer.allocUnsafe(1);
+              if (fs.readSync(descriptor, growthProbe, 0, 1, offset) !== 0) throw new Error(`${label} grew during verification.`);
+              const afterDescriptor = fs.fstatSync(descriptor);
+              assertDirectorySnapshot(ancestors, label);
+              const afterPath = fs.lstatSync(filePath);
+              for (const current of [afterDescriptor, afterPath]) {
+                if (!current.isFile() || current.nlink !== 1 || !sameFileIdentity(opened, current) || current.size !== opened.size || current.mtimeMs !== opened.mtimeMs || current.ctimeMs !== opened.ctimeMs) throw new Error(`${label} changed during verification.`);
+              }
+              return Buffer.concat(chunks, offset);
+            } finally {
+              fs.closeSync(descriptor);
+            }
+          }
           function hashBoundedRegularFile(filePath, maxBytes) {
+            const ancestors = snapshotDirectoryPath(filePath, 'Downloaded image archive');
             const before = fs.lstatSync(filePath);
             if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1) throw new Error('Downloaded image archive must be a no-follow regular file.');
             if (!Number.isSafeInteger(before.size) || before.size < 1 || before.size > maxBytes) throw new Error('Downloaded image archive is empty or exceeds the handoff byte limit.');
@@ -391,6 +449,7 @@ jobs:
             const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
             try {
               const opened = fs.fstatSync(descriptor);
+              assertDirectorySnapshot(ancestors, 'Downloaded image archive');
               if (!opened.isFile() || opened.nlink !== 1 || !sameFileIdentity(before, opened) || opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) throw new Error('Downloaded image archive changed before verification.');
               const hash = createHash('sha256');
               const buffer = Buffer.allocUnsafe(1024 * 1024);
@@ -401,7 +460,10 @@ jobs:
                 hash.update(buffer.subarray(0, bytesRead));
                 offset += bytesRead;
               }
+              const growthProbe = Buffer.allocUnsafe(1);
+              if (fs.readSync(descriptor, growthProbe, 0, 1, offset) !== 0) throw new Error('Downloaded image archive grew during verification.');
               const afterDescriptor = fs.fstatSync(descriptor);
+              assertDirectorySnapshot(ancestors, 'Downloaded image archive');
               const afterPath = fs.lstatSync(filePath);
               for (const current of [afterDescriptor, afterPath]) {
                 if (!current.isFile() || current.nlink !== 1 || !sameFileIdentity(opened, current) || current.size !== opened.size || current.mtimeMs !== opened.mtimeMs || current.ctimeMs !== opened.ctimeMs) throw new Error('Downloaded image archive changed during verification.');
@@ -411,6 +473,11 @@ jobs:
               fs.closeSync(descriptor);
             }
           }
+          const evidence = JSON.parse(readBoundedRegularFile(
+            '.eai-build/evidence/source-unknown-deployment-evidence.json',
+            MAX_BUILD_EVIDENCE_BYTES,
+            'Downloaded build evidence',
+          ).toString('utf8'));
           const expected = {
             operationId: process.env.OPERATION_ID,
             nonce: process.env.NONCE,
@@ -448,10 +515,43 @@ jobs:
             if (!response.ok) throw new Error(`GitHub provenance read failed (${response.status}).`);
             return response;
           }
-          async function sourceBytes(path) {
+          async function readBoundedResponseBytes(response, maxBytes, label) {
+            const contentLength = response.headers.get('content-length');
+            if (contentLength !== null) {
+              if (!/^(?:0|[1-9][0-9]*)$/.test(contentLength)) throw new Error(`${label} returned an invalid content length.`);
+              const declaredBytes = Number(contentLength);
+              if (!Number.isSafeInteger(declaredBytes) || declaredBytes > maxBytes) throw new Error(`${label} exceeds its byte limit.`);
+            }
+            if (!response.body) throw new Error(`${label} did not return a response body.`);
+            const reader = response.body.getReader();
+            const chunks = [];
+            let totalBytes = 0;
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (!(value instanceof Uint8Array) || value.byteLength > maxBytes - totalBytes) {
+                  await reader.cancel().catch(() => {});
+                  throw new Error(`${label} exceeds its byte limit.`);
+                }
+                chunks.push(Buffer.from(value));
+                totalBytes += value.byteLength;
+              }
+            } finally {
+              reader.releaseLock();
+            }
+            return Buffer.concat(chunks, totalBytes);
+          }
+          async function readBoundedResponseJson(response, maxBytes, label) {
+            return JSON.parse((await readBoundedResponseBytes(response, maxBytes, label)).toString('utf8'));
+          }
+          async function githubJson(path, maxBytes, label) {
+            return readBoundedResponseJson(await github(path), maxBytes, label);
+          }
+          async function sourceBytes(path, maxBytes, label) {
             const encoded = path.split('/').map(encodeURIComponent).join('/');
             const response = await github(`/contents/${encoded}?ref=${encodeURIComponent(process.env.SOURCE_COMMIT_SHA)}`, 'application/vnd.github.raw+json');
-            return Buffer.from(await response.arrayBuffer());
+            return readBoundedResponseBytes(response, maxBytes, label);
           }
           function validateSchemaProvenance(provenance) {
             if (!provenance || typeof provenance !== 'object' || Array.isArray(provenance)) throw new Error('Source runtime schema provenance is required.');
@@ -485,11 +585,17 @@ jobs:
               'src/eai.config/object-types.json',
               'src/eai.config/object-types.provisioning.json',
             ]);
-            const commitResponse = await github(`/git/commits/${encodeURIComponent(process.env.SOURCE_COMMIT_SHA)}`);
-            const commit = await commitResponse.json();
+            const commit = await githubJson(
+              `/git/commits/${encodeURIComponent(process.env.SOURCE_COMMIT_SHA)}`,
+              MAX_GITHUB_METADATA_RESPONSE_BYTES,
+              'GitHub commit response',
+            );
             if (commit.sha !== process.env.SOURCE_COMMIT_SHA || !/^[a-f0-9]{40}$/.test(commit.tree?.sha || '')) throw new Error('Exact source commit tree is invalid.');
-            const treeResponse = await github(`/git/trees/${commit.tree.sha}?recursive=1`);
-            const tree = await treeResponse.json();
+            const tree = await githubJson(
+              `/git/trees/${commit.tree.sha}?recursive=1`,
+              MAX_GITHUB_TREE_RESPONSE_BYTES,
+              'GitHub source tree response',
+            );
             if (tree.truncated || !Array.isArray(tree.tree)) throw new Error('Exact source tree is incomplete.');
             const entries = [];
             const seen = new Set();
@@ -521,8 +627,11 @@ jobs:
                 const index = nextEntry;
                 nextEntry += 1;
                 const entry = sortedEntries[index];
-                const response = await github(`/git/blobs/${entry.sha}`);
-                const blob = await response.json();
+                const blob = await githubJson(
+                  `/git/blobs/${entry.sha}`,
+                  MAX_GITHUB_BLOB_RESPONSE_BYTES,
+                  `GitHub governed blob response for ${entry.path}`,
+                );
                 if (blob.encoding !== 'base64' || blob.sha !== entry.sha || blob.size !== entry.size || typeof blob.content !== 'string') throw new Error(`Governed configuration blob metadata changed: ${entry.path}`);
                 const bytes = Buffer.from(blob.content.replace(/\s/g, ''), 'base64');
                 const blobSha = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
@@ -537,9 +646,9 @@ jobs:
           }
           (async () => {
             const [workflowBytes, collectorBytes, runtimeBytes, canonicalConfigHash, artifactResponse] = await Promise.all([
-              sourceBytes(process.env.EAI_WORKFLOW_PATH),
-              sourceBytes('scripts/source-unknown-deployment-evidence.mjs'),
-              sourceBytes('eai.runtime.json'),
+              sourceBytes(process.env.EAI_WORKFLOW_PATH, MAX_PRODUCER_SOURCE_BYTES, 'Canonical workflow source'),
+              sourceBytes('scripts/source-unknown-deployment-evidence.mjs', MAX_PRODUCER_SOURCE_BYTES, 'Canonical collector source'),
+              sourceBytes('eai.runtime.json', MAX_GOVERNED_CONFIG_FILE_BYTES, 'Governed runtime source'),
               sourceConfigHash(),
               github(`/actions/artifacts/${evidence.imageArtifact.id}`),
             ]);
@@ -550,7 +659,11 @@ jobs:
             const runtime = JSON.parse(runtimeBytes.toString('utf8'));
             const sourceProvenance = validateSchemaProvenance(runtime.schemaProvenance);
             if (!isDeepStrictEqual(evidence.schemaProvenance, sourceProvenance)) throw new Error('Source runtime provenance does not match build evidence.');
-            const artifact = await artifactResponse.json();
+            const artifact = await readBoundedResponseJson(
+              artifactResponse,
+              MAX_GITHUB_METADATA_RESPONSE_BYTES,
+              'GitHub artifact response',
+            );
             if (String(artifact.id) !== String(evidence.imageArtifact.id) || artifact.name !== evidence.imageArtifact.name || artifact.digest !== evidence.artifactDigest || String(artifact.workflow_run?.id) !== process.env.GITHUB_RUN_ID) throw new Error('GitHub artifact metadata does not match build evidence.');
           })().catch((error) => {
             console.error(error instanceof Error ? error.message : String(error));
@@ -576,7 +689,7 @@ jobs:
             eai-cli-generated) audience=api://enterprise-ai-publicapi/eai-cli-generated ;;
             *) exit 1 ;;
           esac
-          response="$(curl --fail --silent --show-error --proto '=https' --tlsv1.2 --max-redirs 0 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${audience}")"
+          response="$(curl --fail --silent --show-error --proto '=https' --tlsv1.2 --max-redirs 0 --max-filesize 1048576 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${audience}")"
           token="$(node -e "let s=''; process.stdin.on('data', d => s += d); process.stdin.on('end', () => process.stdout.write(JSON.parse(s).value));" <<< "$response")"
           echo "::add-mask::$token"
           [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://(dev-api\.au|(test-api|api)\.(au|ca|eu))\.myenterprise\.ai/public/?$ ]]
@@ -587,18 +700,69 @@ jobs:
           esac
           curl --fail-with-body --silent --show-error \
             --proto '=https' --tlsv1.2 --max-redirs 0 \
+            --max-filesize 1048576 \
             -H "Authorization: Bearer $token" \
             -H "Content-Type: application/json" \
             --data-binary @.eai-build/evidence/source-unknown-deployment-evidence.json \
-            "${EAI_BOUND_PUBLIC_API_URL%/}/v4/platform/tenants/${TENANT_ID}/apps/${APP_KEY}/${evidence_path}" \
-            | tee .eai-build/evidence/workflow-evidence-response.json
+            --output .eai-build/evidence/workflow-evidence-response.json \
+            "${EAI_BOUND_PUBLIC_API_URL%/}/v4/platform/tenants/${TENANT_ID}/apps/${APP_KEY}/${evidence_path}"
 
       - name: Assert evidence accepted
         run: |
           node - <<'NODE'
           const fs = require('node:fs');
-          const body = JSON.parse(fs.readFileSync('.eai-build/evidence/workflow-evidence-response.json', 'utf8'));
-          const response = body && typeof body.response === 'object' ? body.response : body;
+          const path = require('node:path');
+          const responsePath = '.eai-build/evidence/workflow-evidence-response.json';
+          const maxBytes = 1024 * 1024;
+          const sameFileIdentity = (left, right) => left.dev === right.dev && left.ino === right.ino;
+          const targetDirectory = path.resolve(path.dirname(responsePath));
+          const filesystemRoot = path.parse(targetDirectory).root;
+          const ancestors = [];
+          let current = filesystemRoot;
+          for (const component of ['', ...path.relative(filesystemRoot, targetDirectory).split(/[\\/]/).filter(Boolean)]) {
+            if (component) current = path.join(current, component);
+            const status = fs.lstatSync(current);
+            if (status.isSymbolicLink() || !status.isDirectory()) throw new Error('Deployment handoff response ancestors must be no-follow directories.');
+            ancestors.push({ path: current, dev: status.dev, ino: status.ino });
+          }
+          const assertAncestors = () => {
+            for (const identity of ancestors) {
+              const status = fs.lstatSync(identity.path);
+              if (status.isSymbolicLink() || !status.isDirectory() || !sameFileIdentity(identity, status)) throw new Error('Deployment handoff response ancestors changed during verification.');
+            }
+          };
+          const before = fs.lstatSync(responsePath);
+          if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1 || !Number.isSafeInteger(before.size) || before.size < 1 || before.size > maxBytes) throw new Error('Deployment handoff response must be a bounded no-follow regular file.');
+          if (typeof fs.constants.O_NOFOLLOW !== 'number') throw new Error('No-follow response verification is unavailable.');
+          const descriptor = fs.openSync(responsePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+          let bytes;
+          try {
+            const opened = fs.fstatSync(descriptor);
+            assertAncestors();
+            if (!opened.isFile() || opened.nlink !== 1 || !sameFileIdentity(before, opened) || opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) throw new Error('Deployment handoff response changed before verification.');
+            const chunks = [];
+            const buffer = Buffer.allocUnsafe(64 * 1024);
+            let offset = 0;
+            while (offset < opened.size) {
+              const bytesRead = fs.readSync(descriptor, buffer, 0, Math.min(buffer.length, opened.size - offset), offset);
+              if (bytesRead < 1) throw new Error('Deployment handoff response was truncated during verification.');
+              chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+              offset += bytesRead;
+            }
+            const growthProbe = Buffer.allocUnsafe(1);
+            if (fs.readSync(descriptor, growthProbe, 0, 1, offset) !== 0) throw new Error('Deployment handoff response grew during verification.');
+            const afterDescriptor = fs.fstatSync(descriptor);
+            assertAncestors();
+            const afterPath = fs.lstatSync(responsePath);
+            for (const status of [afterDescriptor, afterPath]) {
+              if (!status.isFile() || status.nlink !== 1 || !sameFileIdentity(opened, status) || status.size !== opened.size || status.mtimeMs !== opened.mtimeMs || status.ctimeMs !== opened.ctimeMs) throw new Error('Deployment handoff response changed during verification.');
+            }
+            bytes = Buffer.concat(chunks, offset);
+          } finally {
+            fs.closeSync(descriptor);
+          }
+          const body = JSON.parse(bytes.toString('utf8'));
+          const response = body && typeof body.response === 'object' && !Array.isArray(body.response) ? body.response : body;
           const accepted = response.status === 'accepted';
           const deferred = response.status === 'handoff_pending' && response.requiresTenantInfra === true && typeof response.deploymentRequestId === 'string' && response.deploymentRequestId.trim();
           if (!accepted && !deferred) throw new Error(`Expected accepted evidence or persisted handoff, got ${response.status || '<missing>'}.`);
