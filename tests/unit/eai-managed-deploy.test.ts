@@ -356,6 +356,13 @@ describe('EAI managed deployment helpers', () => {
     expect(workflow).toContain('fs.readSync(descriptor, buffer');
     expect(workflow).toContain('fs.constants.O_NOFOLLOW');
     expect(workflow).not.toContain("fs.readFileSync('.eai-build/eai-generated-app-image.tar'");
+    expect(workflow).toContain('MAX_GOVERNED_CONFIG_FILE_BYTES = 10 * 1024 * 1024');
+    expect(workflow).toContain('MAX_GOVERNED_CONFIG_TOTAL_BYTES = 32 * 1024 * 1024');
+    expect(workflow).toContain('MAX_GOVERNED_CONFIG_FILES = 4096');
+    expect(workflow).toContain('entry.size > MAX_GOVERNED_CONFIG_FILE_BYTES');
+    expect(workflow).toContain('entries.length >= MAX_GOVERNED_CONFIG_FILES');
+    expect(workflow).toContain('totalBytes > MAX_GOVERNED_CONFIG_TOTAL_BYTES');
+    expect(workflow).not.toContain('entry.size > 4 * 1024 * 1024');
     expect(workflow).toMatch(/^      attestations: write$/m);
     expect(workflow).toMatch(/^  packages: read$/m);
     expect(workflow.slice(workflow.indexOf('  build:'), workflow.indexOf('  handoff:'))).not.toContain('id-token: write');
@@ -387,6 +394,31 @@ describe('EAI managed deployment helpers', () => {
     expect(boundedReader).toContain('readSync(descriptor, growthProbe, 0, 1, offset)');
     expect(boundedReader).toContain('grew during its bounded read');
     expect(collector).not.toContain('readFileSync(descriptor)');
+    expect(collector).toContain('paths.length > MAX_GOVERNED_CONFIG_FILES');
+    expect(collector).toContain('totalBytes > MAX_GOVERNED_CONFIG_TOTAL_BYTES');
+    const treeCopy = collector.slice(
+      collector.indexOf('function copyRegularTreeNoFollow('),
+      collector.indexOf('\nfunction writeRegularFileNoFollow('),
+    );
+    for (const binding of [
+      'opened.mtimeMs !== before.mtimeMs',
+      'opened.ctimeMs !== before.ctimeMs',
+      'sourceRebound.mtimeMs !== opened.mtimeMs',
+      'sourceRebound.ctimeMs !== opened.ctimeMs',
+      'sourcePathAfter.mtimeMs !== opened.mtimeMs',
+      'sourcePathAfter.ctimeMs !== opened.ctimeMs',
+    ]) {
+      expect(treeCopy).toContain(binding);
+    }
+    const archiveReaders = collector.slice(
+      collector.indexOf('async function digestFile('),
+      collector.indexOf('\nfunction digestFiles('),
+    );
+    expect(archiveReaders.match(/opened\.mtimeMs !== before\.mtimeMs/g)).toHaveLength(2);
+    expect(archiveReaders.match(/opened\.ctimeMs !== before\.ctimeMs/g)).toHaveLength(2);
+    expect(archiveReaders).toContain('sourceRebound.mtimeMs !== opened.mtimeMs');
+    expect(archiveReaders).toContain('finalPath.mtimeMs !== opened.mtimeMs');
+    expect(archiveReaders).toContain('sourcePathAfter.mtimeMs !== opened.mtimeMs');
     const outputAppender = collector.slice(
       collector.indexOf('function appendOutputs('),
       collector.indexOf('\nasync function collectEvidence('),
@@ -396,7 +428,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'c55b4c3bd4459a4453f3da09cd155f83815a00b4' },
+      candidate: { commit: '32c1b529c2fa2bb58caaa1ef8272d070b89fa780' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);

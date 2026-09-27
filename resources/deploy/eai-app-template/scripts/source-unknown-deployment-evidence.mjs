@@ -45,6 +45,8 @@ const CANONICAL_WORKFLOW_PATH = '.github/workflows/eai-app.yml';
 const CANONICAL_COLLECTOR_PATH = 'scripts/source-unknown-deployment-evidence.mjs';
 const MAX_IMAGE_ARCHIVE_BYTES = 10 * 1024 * 1024 * 1024;
 const MAX_GOVERNED_CONFIG_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_GOVERNED_CONFIG_TOTAL_BYTES = 32 * 1024 * 1024;
+const MAX_GOVERNED_CONFIG_FILES = 4096;
 const BOUNDED_READ_BUFFER_BYTES = 64 * 1024;
 
 function sourceMode(options) {
@@ -352,11 +354,15 @@ function copyRegularTreeNoFollow(
           opened.dev !== before.dev ||
           opened.ino !== before.ino ||
           opened.size !== before.size ||
+          opened.mtimeMs !== before.mtimeMs ||
+          opened.ctimeMs !== before.ctimeMs ||
           sourceRebound.isSymbolicLink() ||
           !sourceRebound.isFile() ||
           sourceRebound.dev !== opened.dev ||
           sourceRebound.ino !== opened.ino ||
-          sourceRebound.size !== opened.size
+          sourceRebound.size !== opened.size ||
+          sourceRebound.mtimeMs !== opened.mtimeMs ||
+          sourceRebound.ctimeMs !== opened.ctimeMs
         ) {
           throw new Error(`${label} changed before its no-follow copy.`);
         }
@@ -438,7 +444,9 @@ function copyRegularTreeNoFollow(
           !sourcePathAfter.isFile() ||
           sourcePathAfter.dev !== opened.dev ||
           sourcePathAfter.ino !== opened.ino ||
-          sourcePathAfter.size !== opened.size
+          sourcePathAfter.size !== opened.size ||
+          sourcePathAfter.mtimeMs !== opened.mtimeMs ||
+          sourcePathAfter.ctimeMs !== opened.ctimeMs
         ) {
           throw new Error(`${label} changed during its no-follow copy.`);
         }
@@ -732,12 +740,17 @@ async function digestFile(
       opened.dev !== before.dev ||
       opened.ino !== before.ino ||
       opened.size !== before.size ||
+      opened.mtimeMs !== before.mtimeMs ||
+      opened.ctimeMs !== before.ctimeMs ||
       opened.size < 1 ||
       opened.size > maxBytes ||
       rebound.isSymbolicLink() ||
       !rebound.isFile() ||
       rebound.dev !== opened.dev ||
-      rebound.ino !== opened.ino
+      rebound.ino !== opened.ino ||
+      rebound.size !== opened.size ||
+      rebound.mtimeMs !== opened.mtimeMs ||
+      rebound.ctimeMs !== opened.ctimeMs
     ) {
       throw new Error(`${label} changed before its bounded digest.`);
     }
@@ -765,7 +778,9 @@ async function digestFile(
       !finalPath.isFile() ||
       finalPath.dev !== opened.dev ||
       finalPath.ino !== opened.ino ||
-      finalPath.size !== opened.size
+      finalPath.size !== opened.size ||
+      finalPath.mtimeMs !== opened.mtimeMs ||
+      finalPath.ctimeMs !== opened.ctimeMs
     ) {
       throw new Error(`${label} changed during its bounded digest.`);
     }
@@ -868,10 +883,15 @@ function stageImageArtifact(options) {
       opened.dev !== before.dev ||
       opened.ino !== before.ino ||
       opened.size !== before.size ||
+      opened.mtimeMs !== before.mtimeMs ||
+      opened.ctimeMs !== before.ctimeMs ||
       sourceRebound.isSymbolicLink() ||
       !sourceRebound.isFile() ||
       sourceRebound.dev !== opened.dev ||
-      sourceRebound.ino !== opened.ino
+      sourceRebound.ino !== opened.ino ||
+      sourceRebound.size !== opened.size ||
+      sourceRebound.mtimeMs !== opened.mtimeMs ||
+      sourceRebound.ctimeMs !== opened.ctimeMs
     ) {
       throw new Error('OCI image archive changed before staging.');
     }
@@ -941,6 +961,9 @@ function stageImageArtifact(options) {
       !sourcePathAfter.isFile() ||
       sourcePathAfter.dev !== opened.dev ||
       sourcePathAfter.ino !== opened.ino ||
+      sourcePathAfter.size !== opened.size ||
+      sourcePathAfter.mtimeMs !== opened.mtimeMs ||
+      sourcePathAfter.ctimeMs !== opened.ctimeMs ||
       destinationAfter.dev !== destinationOpened.dev ||
       destinationAfter.ino !== destinationOpened.ino ||
       destinationAfter.size !== copied ||
@@ -975,16 +998,25 @@ function stageImageArtifact(options) {
 }
 
 function digestFiles(root, paths) {
+  if (paths.length > MAX_GOVERNED_CONFIG_FILES) {
+    throw new Error('Governed configuration manifest exceeds its file limit.');
+  }
   const hash = createHash('sha256');
+  let totalBytes = 0;
   for (const relativePath of paths.sort()) {
     if (!assertGovernedAncestors(root, relativePath)) {
       throw new Error(
         `Governed configuration ancestor does not exist: ${relativePath}`,
       );
     }
+    const bytes = readRegularFileNoFollow(root, relativePath);
+    totalBytes += bytes.length;
+    if (totalBytes > MAX_GOVERNED_CONFIG_TOTAL_BYTES) {
+      throw new Error('Governed configuration manifest exceeds its byte limit.');
+    }
     hash.update(relativePath);
     hash.update('\0');
-    hash.update(readRegularFileNoFollow(root, relativePath));
+    hash.update(bytes);
     hash.update('\0');
   }
   return `sha256:${hash.digest('hex')}`;
