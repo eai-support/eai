@@ -193,6 +193,7 @@ export async function writePrivateFileNoFollow(
   path: string, content: Buffer | string, rootBinding?: ManagedProjectRootBinding,
 ): Promise<void> {
   const target = resolve(path);
+  await rootBinding?.assert();
   const identities = await ensureNoLinkDirectoryPath(dirname(target), 0o700);
   await rootBinding?.assert();
   await assertRegularTarget(target, true);
@@ -284,6 +285,10 @@ export async function readPrivateFileNoFollow(path: string, maxBytes = 1024 * 10
 }
 
 /** Persist owner-only operation evidence without following links or broadening permissions. */
-export async function writeManagedDeployEvidence(path: string, value: unknown): Promise<void> {
-  await writePrivateFileNoFollow(path, `${JSON.stringify(value, null, 2)}\n`);
+export async function writeManagedDeployEvidence(
+  path: string,
+  value: unknown,
+  rootBinding?: ManagedProjectRootBinding,
+): Promise<void> {
+  await writePrivateFileNoFollow(path, `${JSON.stringify(value, null, 2)}\n`, rootBinding);
 }

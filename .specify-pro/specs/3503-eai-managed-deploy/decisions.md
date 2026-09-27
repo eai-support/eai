@@ -65,3 +65,9 @@ The managed no-redirect rule covers authenticated tenant-context setup as well a
 Canonical byte comparison is an authority decision. Read an existing target only through a no-follow descriptor while its parent identities, project-root binding, leaf inode, size, and timestamps remain stable. A matching symlink target is never `unchanged`.
 
 Configuration hashing owns its project-root binding. The helper binds the requested and canonical root once and revalidates it before and after inventory and each governed file read. Callers do not supply or discard that authority.
+
+Operation-bound doctor output uses the same original-root authority. Bind the application root immediately after command-context resolution, revalidate it after operation and runtime reads, and pass it into the owner-only descriptor write before any evidence directory can be created.
+
+Legacy source-unknown commands use one managed request policy from regional endpoint discovery through membership, tenant management, app validation, and the final source operation. A validated base URL does not permit an authenticated redirect.
+
+Configuration inventory includes directory identity, not only sorted names. Preserve the root/configuration directory inodes seen during initial traversal and reject a replacement even when it exposes the same filenames and valid replacement bytes.

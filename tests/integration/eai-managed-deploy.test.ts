@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { chmod, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
@@ -1261,11 +1261,19 @@ fi
     }, null, 2));
     await writeFile(join(projectRoot, '.env.example'), 'TENANT_KEYS=template\nTENANT_TEMPLATE_ID=<tenant-id>\nWORKFLOW_TEMPLATE_ID=<workflow-id>\n');
     process.env.EAI_READINESS_PROBE_TOKEN = 'doctor-secret-value';
+    let replacementRoot = '';
+    let displacedRoot = '';
+    let replaceRootOnOperationRead = false;
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = String(input);
       if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] }] });
       if (url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}` || url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}/management`) return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
       if (url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}/apps/planning-portal/managed-deployments/operations/source-unknown-abc123?targetTenantId=runtime-child`) {
+        if (replaceRootOnOperationRead) {
+          replaceRootOnOperationRead = false;
+          await rename(projectRoot, displacedRoot);
+          await rename(replacementRoot, projectRoot);
+        }
         return jsonResponse({
           ...completeUnifiedOperation({ targetTenantId: 'runtime-child' }),
           setup: { repo: { owner: 'enterprise', name: 'planning-portal' }, workflowPath: '.github/workflows/eai-app.yml', ref: 'refs/heads/main', commitSha: 'a'.repeat(40), configHash: `sha256:${'b'.repeat(64)}` },
@@ -1313,5 +1321,21 @@ fi
     });
     expect(exitSpy).toHaveBeenCalledWith(1);
     await expect(readFile(outsideEvidence, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+
+    replacementRoot = join(env.dir, 'replacement-project');
+    displacedRoot = join(env.dir, 'project-original');
+    await mkdir(replacementRoot);
+    replaceRootOnOperationRead = true;
+    output.mockClear();
+    await deployCommand.parseAsync([
+      'doctor', '--operation-id', 'source-unknown-abc123', '--app-key', 'planning-portal',
+      '--tenant-id', TENANT_ID, '--target-tenant-id', 'runtime-child',
+      '--evidence-out', '.eai/replaced-root-doctor.json', '--format', 'json',
+    ], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      status: 'fail', error: expect.stringContaining('project root changed'),
+    });
+    await expect(readFile(join(projectRoot, '.eai', 'replaced-root-doctor.json'), 'utf8'))
+      .rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

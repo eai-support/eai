@@ -928,7 +928,12 @@ export class PlatformAPIClient {
     if (options?.cursor) params.set('cursor', options.cursor);
     const qs = params.toString();
     const url = `${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}${qs ? `?${qs}` : ''}`;
-    return fetch(url, { headers: await this.headers() });
+    return fetch(url, {
+      headers: await this.headers(),
+      ...(this.requestOptions.publicRequestRedirect
+        ? { redirect: this.requestOptions.publicRequestRedirect }
+        : {}),
+    });
   }
 
   async streamResources(

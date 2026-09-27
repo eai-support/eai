@@ -1017,6 +1017,10 @@ describe('eai app', () => {
         }),
       }),
     );
+    const authenticatedCalls = fetchMock.mock.calls.filter(([input]) => requestUrl(input).startsWith(API_BASE));
+    expect(authenticatedCalls.length).toBeGreaterThan(0);
+    expect(authenticatedCalls.filter(([, init]) => init?.redirect !== 'error')
+      .map(([input]) => requestUrl(input))).toEqual([]);
   });
 
   test.each([
@@ -1102,6 +1106,10 @@ describe('eai app', () => {
     expect(JSON.parse(String(evidenceCall?.[1]?.body))).toEqual(evidence);
     expect(String(evidenceCall?.[1]?.body)).not.toContain('passed_by_cli');
     expect(String(evidenceCall?.[1]?.body)).not.toContain('oidcClaims');
+    const authenticatedCalls = fetchMock.mock.calls.filter(([input]) => requestUrl(input).startsWith(API_BASE));
+    expect(authenticatedCalls.length).toBeGreaterThan(0);
+    expect(authenticatedCalls.filter(([, init]) => init?.redirect !== 'error')
+      .map(([input]) => requestUrl(input))).toEqual([]);
   });
 
   test('HP008 requests source-unknown deployment handoff under the company tenant', async () => {

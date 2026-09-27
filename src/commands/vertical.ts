@@ -23,6 +23,7 @@ import {
   resolveActiveTenantContext,
   resolveMainCompanyTenantId,
   resolvePublicApiUrl,
+  type PublicApiRequestPolicy,
 } from '../lib/tenant-context.js';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { loadRuntimeContract } from '../lib/runtime-contract.js';
@@ -674,23 +675,48 @@ async function resolveAppManagementContext(options?: {
   managed?: boolean;
 }) {
   const root = await findProjectRoot();
-  const resolvedPublicApiUrl = await resolvePublicApiUrl(root ?? undefined);
-  const publicApiUrl = options?.managed
-    ? requireManagedPublicApiUrl(resolvedPublicApiUrl)
+  const requestPolicy: PublicApiRequestPolicy | undefined = options?.managed
+    ? { validateUrl: requireManagedPublicApiUrl, redirect: 'error' }
+    : undefined;
+  const resolvedPublicApiUrl = await resolvePublicApiUrl(root ?? undefined, requestPolicy);
+  const publicApiUrl = requestPolicy?.validateUrl
+    ? requestPolicy.validateUrl(resolvedPublicApiUrl)
     : resolvedPublicApiUrl;
   const context = await resolveActiveTenantContext({
     projectRoot: root ?? undefined,
     publicApiUrl,
     tenantId: options?.tenantId,
     interactive: options?.interactive,
+    requestPolicy,
   });
 
   return {
-    publicApiUrl: options?.managed
-      ? requireManagedPublicApiUrl(context.publicApiUrl)
+    publicApiUrl: requestPolicy?.validateUrl
+      ? requestPolicy.validateUrl(context.publicApiUrl)
       : context.publicApiUrl,
     tenantId: context.activeTenant.id,
+    requestPolicy,
   };
+}
+
+type AppManagementContext = Awaited<ReturnType<typeof resolveAppManagementContext>>;
+
+async function resolveAppManagementCompanyTenantId(
+  context: AppManagementContext,
+  requestedTenantId?: string,
+): Promise<string> {
+  return requestedTenantId
+    ? context.tenantId
+    : resolveMainCompanyTenantId(context.publicApiUrl, context.tenantId, context.requestPolicy);
+}
+
+function createAppManagementClient(
+  context: AppManagementContext,
+  tenantId: string,
+): PlatformAPIClient {
+  return new PlatformAPIClient(context.publicApiUrl, tenantId, {
+    publicRequestRedirect: context.requestPolicy?.redirect,
+  });
 }
 
 async function validateVerticalEnrollment(
@@ -725,10 +751,8 @@ verticalCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const spinner = makeSpinner(format, 'Listing apps...');
 
@@ -777,10 +801,8 @@ verticalCommand
       tenantId: options.tenantId,
       interactive: !options.tenantId && !options.nonInteractive,
     });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
 
     const planResponse = await client.getAppDeletionPlan(companyTenantId, appKey);
     const plan = await readResponsePayload(planResponse);
@@ -1018,9 +1040,7 @@ verticalCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (name: string, options: VerticalCreateOptions & { tenantId?: string }) => {
     const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
     const immediateParentTenantId =
       options.parentTenant?.trim() || (options.tenantId ? companyTenantId : ctx.tenantId);
     const format = normalizeFormat(options);
@@ -1035,7 +1055,7 @@ verticalCommand
     }
     const spinner = makeSpinner(format, `Creating ${data.verticalKey}...`);
 
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const res = await client.createTenantApp(companyTenantId, {
       appDisplayName: String(data.displayName),
       verticalKey: String(data.verticalKey),
@@ -1097,10 +1117,8 @@ verticalCommand
       interactive: !options.tenantId,
       managed: true,
     });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1183,10 +1201,8 @@ verticalCommand
       interactive: !options.tenantId,
       managed: true,
     });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1257,10 +1273,8 @@ verticalCommand
       interactive: !options.tenantId,
       managed: true,
     });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1357,10 +1371,8 @@ verticalCommand
       interactive: !options.tenantId,
       managed: true,
     });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1445,10 +1457,8 @@ verticalCommand
       interactive: !options.tenantId,
       managed: true,
     });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1511,10 +1521,8 @@ verticalCommand
       interactive: !options.tenantId,
       managed: true,
     });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 

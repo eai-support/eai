@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import type { PathLike } from "node:fs";
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -88,6 +88,7 @@ import {
   saveManagedDeployState,
 } from "../../src/lib/eai-managed-deploy-state.js";
 import type { ManagedDeployState } from "../../src/lib/eai-managed-deploy-contract.js";
+import { bindManagedProjectRoot } from "../../src/lib/eai-managed-root-binding.js";
 import {
   buildCliManagedSourceBundle,
   writeCliManagedSourceReceipt,
@@ -294,6 +295,24 @@ test("rejects a governed configuration parent replaced before the no-follow open
   expect(race.swapped).toBe(true);
 });
 
+test("rejects a same-name governed directory replacement after initial inventory", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-config-inventory-race-")));
+  const outside = await realpath(await mkdtemp(join(tmpdir(), "managed-config-inventory-replacement-")));
+  cleanup.push(root, outside);
+  await put(root, "eai.runtime.json", '{"schemaVersion":1}\n');
+  await put(root, "src/eai.config/runtime.ts", "export const source = 'original';\n");
+  await put(outside, "eai.config/runtime.ts", "export const source = 'replacement';\n");
+  race.readTrigger = join(root, "eai.runtime.json");
+  race.target = join(root, "src/eai.config");
+  race.displaced = join(root, "src/eai.config-original");
+  race.replacement = join(outside, "eai.config");
+
+  await expect(buildManagedDeployConfigHash(root)).rejects.toThrow(
+    "Governed configuration path changed",
+  );
+  expect(race.swapped).toBe(true);
+});
+
 test("rejects a governed configuration parent replaced after the bounded read", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "managed-config-postread-race-")));
   const outside = await realpath(await mkdtemp(join(tmpdir(), "managed-config-postread-replacement-")));
@@ -369,6 +388,26 @@ test("does not write doctor evidence through a replaced parent", async () => {
   );
   expect(race.swapped).toBe(true);
   await expect(readFile(join(root, ".eai/reports/deploy-doctor.json"), "utf8")).resolves.toBe("");
+});
+
+test("does not create doctor evidence directories after the bound project root is replaced", async () => {
+  const work = await realpath(await mkdtemp(join(tmpdir(), "managed-doctor-root-race-")));
+  cleanup.push(work);
+  const root = join(work, "app");
+  const displaced = join(work, "app-original");
+  const replacement = join(work, "replacement");
+  await mkdir(root);
+  await mkdir(replacement);
+  const binding = await bindManagedProjectRoot(root);
+  await rename(root, displaced);
+  await rename(replacement, root);
+
+  await expect(writeManagedDeployEvidence(
+    join(root, ".eai/reports/deploy-doctor.json"),
+    { status: "pass" },
+    binding,
+  )).rejects.toThrow("project root changed");
+  expect(await readdir(root)).toEqual([]);
 });
 
 test("does not write a local source receipt through a replaced parent", async () => {

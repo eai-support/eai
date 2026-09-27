@@ -24,6 +24,17 @@ const GENERATED_CONFIG_FILES = new Set([
   'src/eai.config/object-types.provisioning.json',
 ]);
 
+interface GovernedDirectoryIdentity {
+  path: string;
+  dev: number;
+  ino: number;
+}
+
+interface GovernedConfigInventory {
+  paths: string[];
+  directories: GovernedDirectoryIdentity[];
+}
+
 async function assertGovernedAncestors(root: string, relativePath: string): Promise<boolean> {
   const rootStatus = await lstat(root);
   if (rootStatus.isSymbolicLink() || !rootStatus.isDirectory()) {
@@ -50,9 +61,9 @@ async function assertGovernedAncestors(root: string, relativePath: string): Prom
 async function governedAncestorIdentities(
   root: string,
   relativePath: string,
-): Promise<Array<{ path: string; dev: number; ino: number }>> {
+): Promise<GovernedDirectoryIdentity[]> {
   if (!await assertGovernedAncestors(root, relativePath)) return [];
-  const identities: Array<{ path: string; dev: number; ino: number }> = [];
+  const identities: GovernedDirectoryIdentity[] = [];
   const components = relativePath.split('/').filter(Boolean);
   let current = root;
   for (const component of ['', ...components.slice(0, -1)]) {
@@ -64,7 +75,7 @@ async function governedAncestorIdentities(
 }
 
 async function assertGovernedAncestorIdentities(
-  identities: ReadonlyArray<{ path: string; dev: number; ino: number }>,
+  identities: readonly GovernedDirectoryIdentity[],
   relativePath: string,
 ): Promise<void> {
   for (const identity of identities) {
@@ -127,8 +138,9 @@ export async function installCanonicalManagedDeployFiles(
   return result;
 }
 
-async function listGovernedConfigPaths(root: string): Promise<string[]> {
+async function listGovernedConfigPaths(root: string): Promise<GovernedConfigInventory> {
   const paths: string[] = [];
+  const directories = new Map<string, GovernedDirectoryIdentity>();
   for (const relativePath of GOVERNED_ROOT_FILES) {
     await assertGovernedAncestors(root, relativePath);
     const path = join(root, relativePath);
@@ -156,6 +168,17 @@ async function listGovernedConfigPaths(root: string): Promise<string[]> {
     if (!status.isDirectory() || status.isSymbolicLink()) {
       throw new Error(`Governed configuration root must be a regular directory: ${relativeDirectory}`);
     }
+    const observedDirectories = await governedAncestorIdentities(
+      root,
+      `${relativeDirectory}/.eai-inventory-entry`,
+    );
+    for (const identity of observedDirectories) {
+      const existing = directories.get(identity.path);
+      if (existing && (existing.dev !== identity.dev || existing.ino !== identity.ino)) {
+        throw new Error('Governed configuration directory changed during inventory.');
+      }
+      directories.set(identity.path, identity);
+    }
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const relativePath = `${relativeDirectory}/${entry.name}`;
       const entryStatus = await lstat(join(root, relativePath));
@@ -167,12 +190,15 @@ async function listGovernedConfigPaths(root: string): Promise<string[]> {
         throw new Error(`Governed configuration entry must be a regular file or directory: ${relativePath}`);
       } else if (!GENERATED_CONFIG_FILES.has(relativePath)) paths.push(relativePath);
     }
+    await assertGovernedAncestorIdentities(observedDirectories, relativeDirectory);
   }
   await visit(GOVERNED_CONFIG_ROOT);
   if (!paths.includes('eai.runtime.json')) {
     throw new Error('eai.runtime.json is required for EAI managed deployment.');
   }
-  return [...new Set(paths)].sort();
+  const observedDirectories = [...directories.values()];
+  await assertGovernedAncestorIdentities(observedDirectories, 'governed configuration inventory');
+  return { paths: [...new Set(paths)].sort(), directories: observedDirectories };
 }
 
 /** Match the canonical workflow's ordered config hashing algorithm. */
@@ -180,12 +206,15 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
   const rootBinding = await bindManagedProjectRoot(projectRoot);
   const root = rootBinding.path;
   await rootBinding.assert();
-  const paths = await listGovernedConfigPaths(root);
+  const inventory = await listGovernedConfigPaths(root);
+  const { paths } = inventory;
+  await assertGovernedAncestorIdentities(inventory.directories, 'governed configuration inventory');
   await rootBinding.assert();
 
   const hash = createHash('sha256');
   for (const relativePath of paths) {
     await rootBinding.assert();
+    await assertGovernedAncestorIdentities(inventory.directories, 'governed configuration inventory');
     const ancestors = await governedAncestorIdentities(root, relativePath);
     if (!ancestors.length) {
       throw new Error(`Governed configuration ancestor does not exist: ${relativePath}`);
@@ -208,6 +237,7 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
         throw new Error(`Governed configuration changed before its no-follow read: ${relativePath}`);
       }
       await assertGovernedAncestorIdentities(ancestors, relativePath);
+      await assertGovernedAncestorIdentities(inventory.directories, 'governed configuration inventory');
       await rootBinding.assert();
       const [rebound, reboundRoot, reboundPath] = await Promise.all([
         lstat(path),
@@ -221,6 +251,7 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
       const bytes = await handle.readFile();
       const after = await handle.stat();
       await assertGovernedAncestorIdentities(ancestors, relativePath);
+      await assertGovernedAncestorIdentities(inventory.directories, 'governed configuration inventory');
       await rootBinding.assert();
       const [finalPath, finalRoot, finalCanonicalPath] = await Promise.all([
         lstat(path),
@@ -241,9 +272,12 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
     hash.update('\0');
   }
   await rootBinding.assert();
-  const finalPaths = await listGovernedConfigPaths(root);
+  await assertGovernedAncestorIdentities(inventory.directories, 'governed configuration inventory');
+  const finalInventory = await listGovernedConfigPaths(root);
+  await assertGovernedAncestorIdentities(inventory.directories, 'governed configuration inventory');
   await rootBinding.assert();
-  if (paths.length !== finalPaths.length || paths.some((path, index) => path !== finalPaths[index])) {
+  if (paths.length !== finalInventory.paths.length
+    || paths.some((path, index) => path !== finalInventory.paths[index])) {
     throw new Error('Governed configuration inventory changed during hashing. Retry after editing has stopped.');
   }
   return `sha256:${hash.digest('hex')}`;

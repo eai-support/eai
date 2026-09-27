@@ -34,6 +34,7 @@ import {
   writeManagedDeployEvidence,
 } from '../lib/eai-managed-deploy.js';
 import type { ManagedDeploymentOperationResponse } from '../lib/api.js';
+import { bindManagedProjectRoot } from '../lib/eai-managed-root-binding.js';
 
 const exec = promisify(execFile);
 
@@ -842,10 +843,13 @@ async function runManagedDeployDoctor(options: ManagedDoctorOptions): Promise<Ma
     forceRefresh: true,
     validatePublicApiUrl: requireManagedPublicApiUrl,
   });
+  const rootBinding = await bindManagedProjectRoot(context.root);
+  await rootBinding.assert();
   if (context.tenantId !== tenantId) throw new Error(`Active tenant ${context.tenantId} does not match ${tenantId}.`);
   const response = await context.client.getManagedDeploymentOperation(tenantId, appKey, operationId, targetTenantId);
   if (!response.ok) throw new Error(`Managed deployment operation read failed (${response.status}).`);
   const operation = await response.json() as ManagedDeploymentOperationResponse;
+  await rootBinding.assert();
   if (operation.operationId !== operationId || operation.appKey !== appKey
     || operation.appScopeTenantId !== tenantId
     || operation.targetTenantId !== targetTenantId
@@ -859,6 +863,7 @@ async function runManagedDeployDoctor(options: ManagedDoctorOptions): Promise<Ma
   const revision = operation.sourceRevision;
   const commitSha = requireCommitSha(revision.commitSha);
   const doctor = await runDeployDoctor(String(operation.activeUrl));
+  await rootBinding.assert();
   const status = doctor.status === 'pass' && doctor.authenticatedReadiness ? 'pass' : 'fail';
   const evidence: ManagedDeployDoctorEvidence = {
     schemaVersion: 'eai.managed-deploy-doctor-evidence.v1',
@@ -901,11 +906,13 @@ async function runManagedDeployDoctor(options: ManagedDoctorOptions): Promise<Ma
     authenticatedReadiness: doctor.authenticatedReadiness,
     doctor,
   };
-  const evidencePath = resolve(context.root, options.evidenceOut);
-  if (evidencePath === resolve(context.root) || !isContained(context.root, evidencePath)) {
+  const evidencePath = resolve(rootBinding.path, options.evidenceOut);
+  if (evidencePath === rootBinding.path || !isContained(rootBinding.path, evidencePath)) {
     throw new Error('Managed deployment doctor evidence must remain inside the application root.');
   }
-  await writeManagedDeployEvidence(evidencePath, evidence);
+  await rootBinding.assert();
+  await writeManagedDeployEvidence(evidencePath, evidence, rootBinding);
+  await rootBinding.assert();
   return evidence;
 }
 

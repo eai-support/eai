@@ -418,8 +418,13 @@ async function readTenantManagementRecord(
 export async function resolveMainCompanyTenantId(
   publicApiUrl: string,
   tenantId: string,
+  requestPolicy?: PublicApiRequestPolicy,
 ): Promise<string> {
-  const client = new PlatformAPIClient(publicApiUrl, tenantId);
+  const client = new PlatformAPIClient(
+    applyPublicApiRequestPolicy(publicApiUrl, requestPolicy),
+    tenantId,
+    { publicRequestRedirect: requestPolicy?.redirect },
+  );
   await readTenantManagementRecord(client, tenantId);
   return tenantId;
 }
