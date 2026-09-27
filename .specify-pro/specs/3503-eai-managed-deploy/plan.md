@@ -19,3 +19,4 @@
 17. Require the exact positive TenantInfra handoff marker together with the existing source-revision, deployment, and doctor bindings before terminal success.
 18. Centralize pre-network managed operation-ID validation and replace wildcard root-link exceptions with an explicit, identity-bound macOS system-alias policy across recovery, evidence, root binding, and private filesystem access.
 19. Mirror the final template candidate after its bounded collector and isolated-handoff race closure, update both exact byte digests, and retain the unresolved immutable release gate.
+20. Mirror the producer's same-repository reusable OIDC compatibility contract and pre-checkout caller-event gate without changing direct CLI dispatch or restoring a long-lived token.
