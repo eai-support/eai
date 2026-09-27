@@ -70,6 +70,7 @@
 - [x] Add sibling-path regression tests and rerun exact-head repository checks.
 - [x] Mirror the final producer's canonical handoff-provenance, exclusive-output, pre-open metadata, and post-append leaf-binding fixes byte-for-byte (DTE-018–DTE-022, DTE-025).
 - [x] Mirror app-template candidate `d5e728505bf4fb6eb2493553bd504e073a58d3ea`, including its manual-caller gate and same-repository reusable OIDC contract, while retaining the deferred release gate (DTE-019–DTE-026, DTE-088).
+- [ ] Mirror app-template candidate `7c60ba7e4ad7d74c79104799f7bcf3cf6e82d0fd`, including bounded no-follow handoff archive hashing, while retaining the deferred release gate (DTE-019–DTE-025, DTE-088).
 
 ## Exact-head evidence
 
