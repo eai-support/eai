@@ -44,6 +44,8 @@ const GENERATED_CONFIG_FILES = new Set([
 const CANONICAL_WORKFLOW_PATH = '.github/workflows/eai-app.yml';
 const CANONICAL_COLLECTOR_PATH = 'scripts/source-unknown-deployment-evidence.mjs';
 const MAX_IMAGE_ARCHIVE_BYTES = 10 * 1024 * 1024 * 1024;
+const MAX_GOVERNED_CONFIG_FILE_BYTES = 10 * 1024 * 1024;
+const BOUNDED_READ_BUFFER_BYTES = 64 * 1024;
 
 function sourceMode(options) {
   const mode = option(options, 'sourceMode', 'source-unknown');
@@ -563,6 +565,45 @@ function assertExists(path, label) {
   }
 }
 
+function readExactBoundedDescriptor(
+  descriptor,
+  expectedBytes,
+  maxBytes,
+  label,
+) {
+  if (
+    !Number.isSafeInteger(expectedBytes) ||
+    expectedBytes < 0 ||
+    !Number.isSafeInteger(maxBytes) ||
+    maxBytes < 1 ||
+    expectedBytes > maxBytes
+  ) {
+    throw new Error(`${label} exceeds its bounded read limit.`);
+  }
+  const buffer = Buffer.allocUnsafe(BOUNDED_READ_BUFFER_BYTES);
+  const chunks = [];
+  let offset = 0;
+  while (offset < expectedBytes) {
+    const bytesRead = readSync(
+      descriptor,
+      buffer,
+      0,
+      Math.min(buffer.length, expectedBytes - offset),
+      offset,
+    );
+    if (bytesRead === 0) {
+      throw new Error(`${label} shrank during its bounded read.`);
+    }
+    chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    offset += bytesRead;
+  }
+  const growthProbe = Buffer.allocUnsafe(1);
+  if (readSync(descriptor, growthProbe, 0, 1, offset) !== 0) {
+    throw new Error(`${label} grew during its bounded read.`);
+  }
+  return Buffer.concat(chunks, offset);
+}
+
 function readBoundedRegularFileNoFollow(
   root,
   path,
@@ -594,16 +635,27 @@ function readBoundedRegularFileNoFollow(
       opened.nlink !== 1 ||
       opened.dev !== before.dev ||
       opened.ino !== before.ino ||
+      opened.size !== before.size ||
+      opened.mtimeMs !== before.mtimeMs ||
+      opened.ctimeMs !== before.ctimeMs ||
       rebound.isSymbolicLink() ||
       !rebound.isFile() ||
       rebound.dev !== opened.dev ||
       rebound.ino !== opened.ino ||
+      rebound.size !== opened.size ||
+      rebound.mtimeMs !== opened.mtimeMs ||
+      rebound.ctimeMs !== opened.ctimeMs ||
       opened.size < 1 ||
       opened.size > maxBytes
     ) {
       throw new Error(`${label} changed before its no-follow read.`);
     }
-    const bytes = readFileSync(descriptor);
+    const bytes = readExactBoundedDescriptor(
+      descriptor,
+      opened.size,
+      maxBytes,
+      label,
+    );
     const after = fstatSync(descriptor);
     assertAbsoluteDirectorySnapshot(ancestors, label);
     const finalPath = lstatSync(path);
@@ -618,7 +670,9 @@ function readBoundedRegularFileNoFollow(
       !finalPath.isFile() ||
       finalPath.dev !== opened.dev ||
       finalPath.ino !== opened.ino ||
-      finalPath.size !== opened.size
+      finalPath.size !== opened.size ||
+      finalPath.mtimeMs !== opened.mtimeMs ||
+      finalPath.ctimeMs !== opened.ctimeMs
     ) {
       throw new Error(`${label} changed during its bounded no-follow read.`);
     }
@@ -952,9 +1006,13 @@ function readRegularFileNoFollow(root, relativePath) {
   const path = join(root, relativePath);
   const ancestors = snapshotRelativeDirectoryPath(root, relativePath);
   const before = lstatSync(path);
-  if (before.isSymbolicLink() || !before.isFile()) {
+  if (
+    before.isSymbolicLink() ||
+    !before.isFile() ||
+    before.size > MAX_GOVERNED_CONFIG_FILE_BYTES
+  ) {
     throw new Error(
-      `Governed configuration must be a regular file: ${relativePath}`,
+      `Governed configuration must be a bounded regular file: ${relativePath}`,
     );
   }
   containedRelativePath(
@@ -974,7 +1032,8 @@ function readRegularFileNoFollow(root, relativePath) {
       opened.ino !== before.ino ||
       opened.size !== before.size ||
       opened.mtimeMs !== before.mtimeMs ||
-      opened.ctimeMs !== before.ctimeMs
+      opened.ctimeMs !== before.ctimeMs ||
+      opened.size > MAX_GOVERNED_CONFIG_FILE_BYTES
     ) {
       throw new Error(
         `Governed configuration changed before its no-follow read: ${relativePath}`,
@@ -999,7 +1058,12 @@ function readRegularFileNoFollow(root, relativePath) {
         `Governed configuration path changed before its no-follow read: ${relativePath}`,
       );
     }
-    const bytes = readFileSync(descriptor);
+    const bytes = readExactBoundedDescriptor(
+      descriptor,
+      opened.size,
+      MAX_GOVERNED_CONFIG_FILE_BYTES,
+      `Governed configuration ${relativePath}`,
+    );
     const after = fstatSync(descriptor);
     assertRelativeDirectorySnapshot(ancestors, relativePath);
     const finalPath = lstatSync(path);

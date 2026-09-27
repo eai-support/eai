@@ -377,6 +377,16 @@ describe('EAI managed deployment helpers', () => {
     expect(governedReader).toContain('opened.size !== before.size');
     expect(governedReader).toContain('opened.mtimeMs !== before.mtimeMs');
     expect(governedReader).toContain('opened.ctimeMs !== before.ctimeMs');
+    expect(governedReader).toContain('MAX_GOVERNED_CONFIG_FILE_BYTES');
+    expect(governedReader).toContain('readExactBoundedDescriptor(');
+    const boundedReader = collector.slice(
+      collector.indexOf('function readExactBoundedDescriptor('),
+      collector.indexOf('\nfunction readBoundedRegularFileNoFollow('),
+    );
+    expect(boundedReader).toContain('Buffer.allocUnsafe(BOUNDED_READ_BUFFER_BYTES)');
+    expect(boundedReader).toContain('readSync(descriptor, growthProbe, 0, 1, offset)');
+    expect(boundedReader).toContain('grew during its bounded read');
+    expect(collector).not.toContain('readFileSync(descriptor)');
     const outputAppender = collector.slice(
       collector.indexOf('function appendOutputs('),
       collector.indexOf('\nasync function collectEvidence('),
@@ -386,7 +396,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '7c60ba7e4ad7d74c79104799f7bcf3cf6e82d0fd' },
+      candidate: { commit: 'c55b4c3bd4459a4453f3da09cd155f83815a00b4' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
