@@ -23,7 +23,7 @@
 - [x] Include `.test.*` and `.spec.*` governed files in both CLI and collector configuration hashing while excluding only the two generated outputs (DTE-018, DTE-095).
 - [x] Bind every local publication file's no-follow descriptor to the inode that passed its initial metadata check (DTE-016).
 - [x] Preserve the standard nested JSON error envelope and split command/source-client implementations below 300 lines behind existing public paths (DTE-086, DTE-087).
-- [x] Sync app-template candidate `d5e728505bf4fb6eb2493553bd504e073a58d3ea` and its exact workflow/collector bytes (DTE-019–DTE-021, DTE-022, DTE-025, DTE-088).
+- [x] Sync app-template candidate `7c60ba7e4ad7d74c79104799f7bcf3cf6e82d0fd` and its exact workflow/collector bytes (DTE-019–DTE-021, DTE-022, DTE-025, DTE-088).
 - [x] Reject unsafe legacy exact-operation path segments before URL construction (DTE-031–DTE-035).
 - [x] Require the original regional PublicAPI URL in every loaded retry state (DTE-031, DTE-032, DTE-091).
 - [x] Update owned tests and traceability for the final review findings.
@@ -69,18 +69,18 @@
 - [x] Keep operation IDs strict without narrowing valid dotted app and tenant scopes at command or API boundaries (DTE-031–DTE-035).
 - [x] Add sibling-path regression tests and rerun exact-head repository checks.
 - [x] Mirror the final producer's canonical handoff-provenance, exclusive-output, pre-open metadata, and post-append leaf-binding fixes byte-for-byte (DTE-018–DTE-022, DTE-025).
-- [x] Mirror app-template candidate `d5e728505bf4fb6eb2493553bd504e073a58d3ea`, including its manual-caller gate and same-repository reusable OIDC contract, while retaining the deferred release gate (DTE-019–DTE-026, DTE-088).
-- [ ] Mirror app-template candidate `7c60ba7e4ad7d74c79104799f7bcf3cf6e82d0fd`, including bounded no-follow handoff archive hashing, while retaining the deferred release gate (DTE-019–DTE-025, DTE-088).
+- [x] Mirror app-template candidate `7c60ba7e4ad7d74c79104799f7bcf3cf6e82d0fd`, including its manual-caller gate and same-repository reusable OIDC contract, while retaining the deferred release gate (DTE-019–DTE-026, DTE-088).
+- [x] Mirror app-template candidate `7c60ba7e4ad7d74c79104799f7bcf3cf6e82d0fd`, including bounded no-follow handoff archive hashing, while retaining the deferred release gate (DTE-019–DTE-025, DTE-088).
 
 ## Exact-head evidence
 
-- `npm run verify:managed-deploy-producer` passed for app-template candidate `d5e728505bf4fb6eb2493553bd504e073a58d3ea` with exact workflow (`sha256:c8855acb63dcf67526dfe075280c3898c57b16d353f5c83421b0f70c088332ab`) and collector (`sha256:b4bf40bd5a5ae4daa46a321fc1533190df231a87e6cb6ff6f2f3d25de58e5613`) byte parity, including the pre-checkout caller-event gate and reusable permission/credential contract.
+- `npm run verify:managed-deploy-producer` passed for app-template candidate `7c60ba7e4ad7d74c79104799f7bcf3cf6e82d0fd` with exact workflow (`sha256:1d6381e7ce9647592bdf6bbb6033ebce28332cfc1e7c784496eb3d5698ce4234`) and collector (`sha256:b4bf40bd5a5ae4daa46a321fc1533190df231a87e6cb6ff6f2f3d25de58e5613`) byte parity, including the pre-checkout caller-event gate, reusable permission/credential contract, and fixed-buffer no-follow handoff archive hashing.
 - `npm run build`, `npm run lint`, and `npm run typecheck` passed.
 - Focused managed-deployment and API tests passed: 327 tests across seven files, including pre-context authority rejection, authoritative recovery routing after regional refresh, canonical operation namespaces, application-root replacement, terminal/reusable-evidence retry binding, doctor-output confinement, descriptor-bound generated writes, bounded private reads, stable governed inventory, post-read source binding, and producer identity rejection.
 - Final focused review-fix evidence passed: 181 tests across managed deploy integration, managed source race, tenant context, and PublicAPI URL policy tests.
 - `npm run test:eai-cli:ci` passed: 965 passed and one documented skip (966 total).
 - `npm test` through `bash scripts/release-preflight.sh` passed: 1,080 passed and one documented skip (1,081 total), plus typecheck, lint, build, packed CLI, alias, generated documentation, traceability, and release metadata checks.
-- `npm run release:check` stops at the intentional immutable producer-release gate because no template tag yet resolves to candidate `d5e728505bf4fb6eb2493553bd504e073a58d3ea` (DTE-088).
+- `npm run release:check` stops at the intentional immutable producer-release gate because no template tag yet resolves to candidate `7c60ba7e4ad7d74c79104799f7bcf3cf6e82d0fd` (DTE-088).
 - The final review-fix focused suite passed 219 tests across managed deploy integration, managed source race, legacy app-management, and tenant-context files. It covers original-root doctor writes, same-name governed-directory replacement, and no-redirect authenticated setup, app validation, evidence, and operation requests.
 - The final review-fix `npm run test:eai-cli:ci` passed 967 tests with one documented skip (968 total). `bash scripts/release-preflight.sh` passed 1,082 tests with one documented skip (1,083 total), plus typecheck, lint, build, documentation, packed CLI/alias smoke, traceability, and release metadata checks.
 - The TenantInfra-marker regression suite passed 105 focused tests. `npm run test:eai-cli:ci` passed 967 tests with one documented skip, and `bash scripts/release-preflight.sh` passed 1,082 tests with one documented skip plus typecheck, lint, build, docs, packed CLI/alias smoke, traceability, and release metadata checks.

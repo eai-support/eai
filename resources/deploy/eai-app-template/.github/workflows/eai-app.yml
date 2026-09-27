@@ -376,6 +376,38 @@ jobs:
           const fs = require('node:fs');
           const { isDeepStrictEqual } = require('node:util');
           const evidence = JSON.parse(fs.readFileSync('.eai-build/evidence/source-unknown-deployment-evidence.json', 'utf8'));
+          const MAX_IMAGE_ARCHIVE_BYTES = 10 * 1024 * 1024 * 1024;
+          function sameFileIdentity(left, right) {
+            return left.dev === right.dev && left.ino === right.ino;
+          }
+          function hashBoundedRegularFile(filePath, maxBytes) {
+            const before = fs.lstatSync(filePath);
+            if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1) throw new Error('Downloaded image archive must be a no-follow regular file.');
+            if (!Number.isSafeInteger(before.size) || before.size < 1 || before.size > maxBytes) throw new Error('Downloaded image archive is empty or exceeds the handoff byte limit.');
+            if (typeof fs.constants.O_NOFOLLOW !== 'number') throw new Error('No-follow archive verification is unavailable.');
+            const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+            try {
+              const opened = fs.fstatSync(descriptor);
+              if (!opened.isFile() || opened.nlink !== 1 || !sameFileIdentity(before, opened) || opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) throw new Error('Downloaded image archive changed before verification.');
+              const hash = createHash('sha256');
+              const buffer = Buffer.allocUnsafe(1024 * 1024);
+              let offset = 0;
+              while (offset < opened.size) {
+                const bytesRead = fs.readSync(descriptor, buffer, 0, Math.min(buffer.length, opened.size - offset), offset);
+                if (bytesRead < 1) throw new Error('Downloaded image archive was truncated during verification.');
+                hash.update(buffer.subarray(0, bytesRead));
+                offset += bytesRead;
+              }
+              const afterDescriptor = fs.fstatSync(descriptor);
+              const afterPath = fs.lstatSync(filePath);
+              for (const current of [afterDescriptor, afterPath]) {
+                if (!current.isFile() || current.nlink !== 1 || !sameFileIdentity(opened, current) || current.size !== opened.size || current.mtimeMs !== opened.mtimeMs || current.ctimeMs !== opened.ctimeMs) throw new Error('Downloaded image archive changed during verification.');
+              }
+              return `sha256:${hash.digest('hex')}`;
+            } finally {
+              fs.closeSync(descriptor);
+            }
+          }
           const expected = {
             operationId: process.env.OPERATION_ID,
             nonce: process.env.NONCE,
@@ -392,8 +424,7 @@ jobs:
           if (process.env.TARGET_TENANT_ID && evidence.targetTenantId !== process.env.TARGET_TENANT_ID) throw new Error('Build evidence target tenant does not match.');
           if (String(evidence.workflowRun?.id) !== process.env.GITHUB_RUN_ID || String(evidence.workflowRun?.attempt) !== process.env.GITHUB_RUN_ATTEMPT) throw new Error('Build evidence workflow run does not match.');
           if (evidence.validationSummary?.status !== 'passed') throw new Error('Build evidence validation did not pass.');
-          const archive = fs.readFileSync('.eai-build/eai-generated-app-image.tar');
-          const archiveDigest = `sha256:${createHash('sha256').update(archive).digest('hex')}`;
+          const archiveDigest = hashBoundedRegularFile('.eai-build/eai-generated-app-image.tar', MAX_IMAGE_ARCHIVE_BYTES);
           if (evidence.imageArtifact?.archiveDigest !== archiveDigest) throw new Error('Downloaded image archive does not match build evidence.');
           if (evidence.imageArtifact?.name !== 'eai-generated-app-image' || !/^[1-9][0-9]*$/.test(String(evidence.imageArtifact?.id || ''))) throw new Error('Build evidence image artifact identity is invalid.');
           if (new Set([evidence.artifactDigest, evidence.imageArtifact.archiveDigest, evidence.imageDigest]).size !== 3) throw new Error('Build evidence digests must be independently bound.');

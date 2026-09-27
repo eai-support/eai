@@ -350,6 +350,12 @@ describe('EAI managed deployment helpers', () => {
     );
     expect(workflow).toContain('workflow_ref and canonical callee job_workflow_ref/job_workflow_sha');
     expect(workflow).not.toMatch(/secrets\.EAI_ACCESS_TOKEN|\$EAI_ACCESS_TOKEN/);
+    expect(workflow).toContain('MAX_IMAGE_ARCHIVE_BYTES = 10 * 1024 * 1024 * 1024');
+    expect(workflow).toContain('function hashBoundedRegularFile(filePath, maxBytes)');
+    expect(workflow).toContain('Buffer.allocUnsafe(1024 * 1024)');
+    expect(workflow).toContain('fs.readSync(descriptor, buffer');
+    expect(workflow).toContain('fs.constants.O_NOFOLLOW');
+    expect(workflow).not.toContain("fs.readFileSync('.eai-build/eai-generated-app-image.tar'");
     expect(workflow).toMatch(/^      attestations: write$/m);
     expect(workflow).toMatch(/^  packages: read$/m);
     expect(workflow.slice(workflow.indexOf('  build:'), workflow.indexOf('  handoff:'))).not.toContain('id-token: write');
@@ -380,7 +386,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'd5e728505bf4fb6eb2493553bd504e073a58d3ea' },
+      candidate: { commit: '7c60ba7e4ad7d74c79104799f7bcf3cf6e82d0fd' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
