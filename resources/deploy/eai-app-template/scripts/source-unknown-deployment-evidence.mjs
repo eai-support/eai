@@ -469,7 +469,7 @@ function writeRegularFileNoFollow(root, path, content) {
     path,
     constants.O_WRONLY |
       constants.O_CREAT |
-      constants.O_TRUNC |
+      constants.O_EXCL |
       (constants.O_NOFOLLOW || 0),
     0o600,
   );
@@ -494,9 +494,12 @@ function writeRegularFileNoFollow(root, path, content) {
     if (
       after.dev !== opened.dev ||
       after.ino !== opened.ino ||
+      after.nlink !== 1 ||
       finalPath.isSymbolicLink() ||
+      !finalPath.isFile() ||
       finalPath.dev !== opened.dev ||
-      finalPath.ino !== opened.ino
+      finalPath.ino !== opened.ino ||
+      finalPath.nlink !== 1
     ) {
       throw new Error('Image context output changed during its bound write.');
     }
@@ -968,7 +971,10 @@ function readRegularFileNoFollow(root, relativePath) {
     if (
       !opened.isFile() ||
       opened.dev !== before.dev ||
-      opened.ino !== before.ino
+      opened.ino !== before.ino ||
+      opened.size !== before.size ||
+      opened.mtimeMs !== before.mtimeMs ||
+      opened.ctimeMs !== before.ctimeMs
     ) {
       throw new Error(
         `Governed configuration changed before its no-follow read: ${relativePath}`,
@@ -984,7 +990,10 @@ function readRegularFileNoFollow(root, relativePath) {
     if (
       rebound.isSymbolicLink() ||
       rebound.dev !== opened.dev ||
-      rebound.ino !== opened.ino
+      rebound.ino !== opened.ino ||
+      rebound.size !== opened.size ||
+      rebound.mtimeMs !== opened.mtimeMs ||
+      rebound.ctimeMs !== opened.ctimeMs
     ) {
       throw new Error(
         `Governed configuration path changed before its no-follow read: ${relativePath}`,
@@ -1010,7 +1019,9 @@ function readRegularFileNoFollow(root, relativePath) {
       !finalPath.isFile() ||
       finalPath.dev !== opened.dev ||
       finalPath.ino !== opened.ino ||
-      finalPath.size !== opened.size
+      finalPath.size !== opened.size ||
+      finalPath.mtimeMs !== opened.mtimeMs ||
+      finalPath.ctimeMs !== opened.ctimeMs
     ) {
       throw new Error(
         `Governed configuration changed during its no-follow read: ${relativePath}`,
@@ -1322,6 +1333,29 @@ function prepareImageContext(options) {
   process.stdout.write(`${contextDir}\n`);
 }
 
+function assertCommandFileBinding(path, descriptor, openedStatus, phase) {
+  let descriptorStatus;
+  let pathStatus;
+  try {
+    descriptorStatus = fstatSync(descriptor);
+    pathStatus = lstatSync(path);
+  } catch {
+    throw new Error(`GitHub output command file path changed ${phase}.`);
+  }
+  if (
+    !descriptorStatus.isFile() ||
+    descriptorStatus.nlink !== 1 ||
+    descriptorStatus.dev !== openedStatus.dev ||
+    descriptorStatus.ino !== openedStatus.ino ||
+    pathStatus.isSymbolicLink() ||
+    !pathStatus.isFile() ||
+    pathStatus.dev !== openedStatus.dev ||
+    pathStatus.ino !== openedStatus.ino
+  ) {
+    throw new Error(`GitHub output command file path changed ${phase}.`);
+  }
+}
+
 function appendOutputs(path, outputs) {
   if (!path) return;
   const lines = Object.entries(outputs)
@@ -1356,16 +1390,23 @@ function appendOutputs(path, outputs) {
       throw new Error('GitHub output command file must be a regular file.');
     }
     assertAbsoluteDirectorySnapshot(ancestors, 'GitHub output command file');
-    const rebound = lstatSync(boundPath);
-    if (
-      rebound.isSymbolicLink() ||
-      !rebound.isFile() ||
-      rebound.dev !== status.dev ||
-      rebound.ino !== status.ino
-    ) {
-      throw new Error('GitHub output command file path changed before append.');
+    assertCommandFileBinding(boundPath, descriptor, status, 'before append');
+    const bytes = Buffer.from(lines, 'utf8');
+    let offset = 0;
+    while (offset < bytes.length) {
+      const written = writeSync(
+        descriptor,
+        bytes,
+        offset,
+        bytes.length - offset,
+      );
+      if (written <= 0) {
+        throw new Error('GitHub output command file append was incomplete.');
+      }
+      offset += written;
     }
-    writeSync(descriptor, lines, null, 'utf8');
+    assertAbsoluteDirectorySnapshot(ancestors, 'GitHub output command file');
+    assertCommandFileBinding(boundPath, descriptor, status, 'during append');
     assertAbsoluteDirectorySnapshot(ancestors, 'GitHub output command file');
   } finally {
     closeSync(descriptor);

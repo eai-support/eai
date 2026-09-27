@@ -345,12 +345,34 @@ describe('EAI managed deployment helpers', () => {
     expect(workflow).toMatch(/^      attestations: write$/m);
     expect(workflow).toMatch(/^  packages: read$/m);
     expect(workflow.slice(workflow.indexOf('  build:'), workflow.indexOf('  handoff:'))).not.toContain('id-token: write');
+    expect(workflow).toContain('function validateSchemaProvenance(provenance)');
+    expect(workflow).toContain(
+      'const sourceProvenance = validateSchemaProvenance(runtime.schemaProvenance);',
+    );
     expect(collector).toContain('prepare-image-context');
+    const generatedWriter = collector.slice(
+      collector.indexOf('function writeRegularFileNoFollow('),
+      collector.indexOf('\nfunction writeEvidenceFileNoFollow('),
+    );
+    expect(generatedWriter).toContain('constants.O_EXCL');
+    expect(generatedWriter).not.toContain('constants.O_TRUNC');
+    const governedReader = collector.slice(
+      collector.indexOf('function readRegularFileNoFollow('),
+      collector.indexOf('\nfunction optionalLstat('),
+    );
+    expect(governedReader).toContain('opened.size !== before.size');
+    expect(governedReader).toContain('opened.mtimeMs !== before.mtimeMs');
+    expect(governedReader).toContain('opened.ctimeMs !== before.ctimeMs');
+    const outputAppender = collector.slice(
+      collector.indexOf('function appendOutputs('),
+      collector.indexOf('\nasync function collectEvidence('),
+    );
+    expect(outputAppender.match(/assertCommandFileBinding\(/g)).toHaveLength(2);
 
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '1d8c08a4c9f079349dade44a3e8673cbd6e6b38b' },
+      candidate: { commit: '3fb8e1a81def421a42cccbae938656b306ab0497' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);

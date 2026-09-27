@@ -404,6 +404,32 @@ jobs:
             const response = await github(`/contents/${encoded}?ref=${encodeURIComponent(process.env.SOURCE_COMMIT_SHA)}`, 'application/vnd.github.raw+json');
             return Buffer.from(await response.arrayBuffer());
           }
+          function validateSchemaProvenance(provenance) {
+            if (!provenance || typeof provenance !== 'object' || Array.isArray(provenance)) throw new Error('Source runtime schema provenance is required.');
+            const canonicalFields = new Set([
+              'templateVersion',
+              'baseTemplateSha',
+              'approvedSourceSha',
+              'approvedReleaseId',
+              'schemaDigest',
+              'validatorDigest',
+            ]);
+            if (Object.keys(provenance).some((key) => !canonicalFields.has(key))) throw new Error('Source runtime schema provenance contains a noncanonical field.');
+            for (const key of ['schemaDigest', 'validatorDigest']) {
+              if (!/^sha256:[a-f0-9]{64}$/.test(provenance[key] || '')) throw new Error(`Source runtime schema provenance ${key} must be a sha256 digest.`);
+            }
+            if (typeof provenance.templateVersion !== 'string' || !provenance.templateVersion.trim() || provenance.templateVersion.trim() !== provenance.templateVersion || /[\r\n]/.test(provenance.templateVersion)) throw new Error('Source runtime schema provenance templateVersion is invalid.');
+            const anchors = [
+              ['baseTemplateSha', provenance.baseTemplateSha, /^[a-f0-9]{40}$/],
+              ['approvedSourceSha', provenance.approvedSourceSha, /^[a-f0-9]{40}$/],
+              ['approvedReleaseId', provenance.approvedReleaseId, /\S/],
+            ];
+            if (!anchors.some(([, value]) => value !== undefined)) throw new Error('Source runtime schema provenance requires an approved anchor.');
+            for (const [key, value, pattern] of anchors) {
+              if (value !== undefined && (typeof value !== 'string' || value.trim() !== value || /[\r\n]/.test(value) || !pattern.test(value))) throw new Error(`Source runtime schema provenance ${key} is invalid.`);
+            }
+            return provenance;
+          }
           async function sourceConfigHash() {
             const rootFiles = new Set(['eai.config.ts', 'eai.runtime.json']);
             const generatedFiles = new Set([
@@ -473,7 +499,8 @@ jobs:
             const collectorDigest = `sha256:${createHash('sha256').update(collectorBytes).digest('hex')}`;
             if (evidence.workflowBlobSha !== workflowBlobSha || evidence.collectorDigest !== collectorDigest) throw new Error('Canonical workflow or collector bytes do not match build evidence.');
             const runtime = JSON.parse(runtimeBytes.toString('utf8'));
-            if (!isDeepStrictEqual(evidence.schemaProvenance, runtime.schemaProvenance)) throw new Error('Source runtime provenance does not match build evidence.');
+            const sourceProvenance = validateSchemaProvenance(runtime.schemaProvenance);
+            if (!isDeepStrictEqual(evidence.schemaProvenance, sourceProvenance)) throw new Error('Source runtime provenance does not match build evidence.');
             const artifact = await artifactResponse.json();
             if (String(artifact.id) !== String(evidence.imageArtifact.id) || artifact.name !== evidence.imageArtifact.name || artifact.digest !== evidence.artifactDigest || String(artifact.workflow_run?.id) !== process.env.GITHUB_RUN_ID) throw new Error('GitHub artifact metadata does not match build evidence.');
           })().catch((error) => {
