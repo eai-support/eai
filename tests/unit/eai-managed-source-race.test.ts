@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import type { PathLike } from "node:fs";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -10,6 +10,7 @@ const race = vi.hoisted(() => ({
   trigger: "",
   realpathTrigger: "",
   readTrigger: "",
+  pathReadTrigger: "",
   addTrigger: "",
   addPath: "",
   addContent: "",
@@ -31,6 +32,14 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         await actual.rename(race.replacement, race.target);
       }
       return actual.realpath(path);
+    },
+    readFile: async (...args: Parameters<typeof actual.readFile>) => {
+      if (!race.swapped && String(args[0]) === race.pathReadTrigger) {
+        race.swapped = true;
+        await actual.rename(race.target, race.displaced);
+        await actual.rename(race.replacement, race.target);
+      }
+      return actual.readFile(...args);
     },
     open: async (path: PathLike, flags: string | number, mode?: number) => {
       if (!race.added && String(path) === race.addTrigger) {
@@ -93,6 +102,7 @@ afterEach(async () => {
   race.trigger = "";
   race.realpathTrigger = "";
   race.readTrigger = "";
+  race.pathReadTrigger = "";
   race.addTrigger = "";
   race.addPath = "";
   race.addContent = "";
@@ -180,6 +190,29 @@ test("rejects a source file replaced between metadata check and no-follow open",
   expect(race.swapped).toBe(true);
 });
 
+test("does not report a replaced canonical target symlink as unchanged", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-install-match-race-")));
+  const outside = await realpath(await mkdtemp(join(tmpdir(), "managed-install-match-outside-")));
+  cleanup.push(root, outside);
+  await installCanonicalManagedDeployFiles(root);
+  const target = join(root, ".github/workflows/eai-app.yml");
+  const identical = join(outside, "canonical-workflow.yml");
+  const replacement = join(outside, "replacement-link");
+  await writeFile(identical, await readFile(target));
+  await symlink(identical, replacement);
+  race.target = target;
+  race.displaced = `${target}.original`;
+  race.replacement = replacement;
+  race.trigger = target;
+  race.pathReadTrigger = target;
+
+  await expect(installCanonicalManagedDeployFiles(root)).rejects.toThrow(
+    "Managed deployment refused an untrusted file",
+  );
+  expect(race.swapped).toBe(true);
+  expect(await readFile(identical)).toEqual(await readFile(race.displaced));
+});
+
 test("rejects a managed source root replaced during canonical resolution", async () => {
   const work = await mkdtemp(join(tmpdir(), "cli-managed-source-root-race-"));
   cleanup.push(work);
@@ -194,6 +227,25 @@ test("rejects a managed source root replaced during canonical resolution", async
   await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({
     code: "SOURCE_PATH_INVALID",
   });
+  expect(race.swapped).toBe(true);
+});
+
+test("rejects a configuration root replaced during canonical resolution", async () => {
+  const work = await mkdtemp(join(tmpdir(), "managed-config-root-race-"));
+  cleanup.push(work);
+  const root = join(work, "app");
+  race.replacement = join(work, "replacement");
+  race.displaced = join(work, "app-original");
+  await mkdir(root);
+  await mkdir(race.replacement);
+  await put(root, "eai.runtime.json", '{"schemaVersion":1}\n');
+  await put(race.replacement, "eai.runtime.json", '{"schemaVersion":2}\n');
+  race.target = root;
+  race.realpathTrigger = root;
+
+  await expect(buildManagedDeployConfigHash(root)).rejects.toThrow(
+    "project root changed during canonical resolution",
+  );
   expect(race.swapped).toBe(true);
 });
 
@@ -224,7 +276,7 @@ test("rejects a source parent replaced before the no-follow open", async () => {
 });
 
 test("rejects a governed configuration parent replaced before the no-follow open", async () => {
-  const root = await mkdtemp(join(tmpdir(), "managed-config-parent-race-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-config-parent-race-")));
   const outside = await mkdtemp(join(tmpdir(), "managed-config-parent-replacement-"));
   cleanup.push(root, outside);
   await put(root, "eai.runtime.json", '{"schemaVersion":1}\n');

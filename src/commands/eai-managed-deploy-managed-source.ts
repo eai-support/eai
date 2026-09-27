@@ -8,7 +8,11 @@ import {
   resumeCliManagedSourceUpload,
   submitCliManagedSource,
 } from "../lib/eai-managed-source-client.js";
-import type { ManagedDeployExecutionContext } from "./eai-managed-deploy-contract.js";
+import {
+  NEW_SOURCE_OPERATION_ACTION,
+  fail,
+  type ManagedDeployExecutionContext,
+} from "./eai-managed-deploy-contract.js";
 import { printManagedSourceCompletion } from "./eai-managed-deploy-output.js";
 
 export async function resumeManagedSource(
@@ -28,6 +32,13 @@ export async function resumeManagedSource(
     wait: false,
     timeoutMs: timeoutSeconds * 1_000,
   });
+  if (current.status === "failed") {
+    fail(
+      "SOURCE_OPERATION_INACTIVE",
+      `EAI-maintained source operation ${operationId} failed and cannot reuse its publication authority.`,
+      NEW_SOURCE_OPERATION_ACTION,
+    );
+  }
   if (
     (current.status === "accepted" || current.status === "publishing") &&
     current.upload

@@ -10,11 +10,11 @@ import {
 } from './eai-managed-deploy-contract.js';
 import {
   assertRegularTarget,
-  fileMatches,
   isContained,
   prepareProjectTarget,
   writeBoundRegularFile,
 } from './eai-managed-deploy-filesystem.js';
+import { fileMatches } from './eai-managed-deploy-file-match.js';
 import { bindManagedProjectRoot } from './eai-managed-root-binding.js';
 
 const GOVERNED_ROOT_FILES = ['eai.config.ts', 'eai.runtime.json'] as const;
@@ -103,7 +103,7 @@ export async function installCanonicalManagedDeployFiles(
     }
     await prepareProjectTarget(boundProjectRoot, target, projectBinding);
     await projectBinding.assert();
-    if (await fileMatches(source, target)) {
+    if (await fileMatches(source, target, projectBinding)) {
       await projectBinding.assert();
       result.unchanged.push(file.target);
       continue;
@@ -177,11 +177,15 @@ async function listGovernedConfigPaths(root: string): Promise<string[]> {
 
 /** Match the canonical workflow's ordered config hashing algorithm. */
 export async function buildManagedDeployConfigHash(projectRoot: string): Promise<string> {
-  const root = resolve(projectRoot);
+  const rootBinding = await bindManagedProjectRoot(projectRoot);
+  const root = rootBinding.path;
+  await rootBinding.assert();
   const paths = await listGovernedConfigPaths(root);
+  await rootBinding.assert();
 
   const hash = createHash('sha256');
   for (const relativePath of paths) {
+    await rootBinding.assert();
     const ancestors = await governedAncestorIdentities(root, relativePath);
     if (!ancestors.length) {
       throw new Error(`Governed configuration ancestor does not exist: ${relativePath}`);
@@ -204,6 +208,7 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
         throw new Error(`Governed configuration changed before its no-follow read: ${relativePath}`);
       }
       await assertGovernedAncestorIdentities(ancestors, relativePath);
+      await rootBinding.assert();
       const [rebound, reboundRoot, reboundPath] = await Promise.all([
         lstat(path),
         realpath(root),
@@ -216,6 +221,7 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
       const bytes = await handle.readFile();
       const after = await handle.stat();
       await assertGovernedAncestorIdentities(ancestors, relativePath);
+      await rootBinding.assert();
       const [finalPath, finalRoot, finalCanonicalPath] = await Promise.all([
         lstat(path),
         realpath(root),
@@ -234,7 +240,9 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
     }
     hash.update('\0');
   }
+  await rootBinding.assert();
   const finalPaths = await listGovernedConfigPaths(root);
+  await rootBinding.assert();
   if (paths.length !== finalPaths.length || paths.some((path, index) => path !== finalPaths[index])) {
     throw new Error('Governed configuration inventory changed during hashing. Retry after editing has stopped.');
   }

@@ -13,6 +13,7 @@ import {
   TenantMembershipAuthError,
   type TenantMembership,
   type ActiveTenantContext,
+  type PublicApiRequestPolicy,
 } from './tenant-context.js';
 import type { StoredTokens } from './auth.js';
 import { ErrorCode, exitWithError } from './error-codes.js';
@@ -46,7 +47,11 @@ export async function resolveCommandContext(options?: {
     exitWithError(ErrorCode.E001);
   }
 
-  const resolvedPublicApiUrl = options?.publicApiUrl ?? await resolvePublicApiUrl(root);
+  const requestPolicy: PublicApiRequestPolicy | undefined = options?.validatePublicApiUrl
+    ? { validateUrl: options.validatePublicApiUrl, redirect: 'error' }
+    : undefined;
+  const resolvedPublicApiUrl = options?.publicApiUrl
+    ?? await resolvePublicApiUrl(root, requestPolicy);
   const publicApiUrl = options?.validatePublicApiUrl
     ? options.validatePublicApiUrl(resolvedPublicApiUrl)
     : resolvedPublicApiUrl;
@@ -58,6 +63,7 @@ export async function resolveCommandContext(options?: {
       interactive: options?.interactive ?? true,
       tenantId: options?.tenantId,
       forceRefresh: options?.forceRefresh,
+      requestPolicy,
     });
   } catch (error) {
     if (error instanceof TenantMembershipAuthError) {
@@ -69,7 +75,9 @@ export async function resolveCommandContext(options?: {
   const contextPublicApiUrl = options?.validatePublicApiUrl
     ? options.validatePublicApiUrl(context.publicApiUrl)
     : context.publicApiUrl;
-  const client = new PlatformAPIClient(contextPublicApiUrl, context.activeTenant.id);
+  const client = new PlatformAPIClient(contextPublicApiUrl, context.activeTenant.id, {
+    publicRequestRedirect: requestPolicy?.redirect,
+  });
 
   return {
     root,

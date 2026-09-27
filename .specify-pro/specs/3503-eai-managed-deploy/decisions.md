@@ -55,3 +55,13 @@ Private recovery input remains bounded after open and before allocation. Canonic
 Bind the requested application-root inode and ancestor identities across `realpath`, then recheck the same binding before and after source inventory, Git reads, configuration hashing, canonical installation, and receipt writes. A replaced root invalidates the operation instead of becoming a new authority.
 
 Legacy source commands validate the configured regional PublicAPI URL before resolving tenant context. Source-unspecified customer retry constructs its first unified-operation client from protected retry state, so a regional context refresh cannot change the operation authority. Collector evidence accepts both server-issued legacy and CLI-managed operation namespaces; the server still exact-binds the operation, nonce, source, tenant, and application.
+
+## Final review closure
+
+Treat terminal failure consistently across both source modes. An EAI-maintained publication that is already `failed` cannot reuse its operation or nonce. Resume and retry return a stable fresh-operation action before any additional poll.
+
+The managed no-redirect rule covers authenticated tenant-context setup as well as deployment routes. The selected regional URL is allowlisted before setup traffic, and the setup client uses `redirect: error` for membership and tenant-management reads.
+
+Canonical byte comparison is an authority decision. Read an existing target only through a no-follow descriptor while its parent identities, project-root binding, leaf inode, size, and timestamps remain stable. A matching symlink target is never `unchanged`.
+
+Configuration hashing owns its project-root binding. The helper binds the requested and canonical root once and revalidates it before and after inventory and each governed file read. Callers do not supply or discard that authority.

@@ -846,6 +846,9 @@ export class PlatformAPIClient {
   constructor(
     private readonly baseUrl: string,
     private readonly tenantId: string,
+    private readonly requestOptions: {
+      publicRequestRedirect?: RequestRedirect;
+    } = {},
   ) {}
 
   private async headers(): Promise<Record<string, string>> {
@@ -873,6 +876,9 @@ export class PlatformAPIClient {
     return fetch(`${this.baseUrl}${appendParams(path, params)}`, {
       method,
       headers: await this.headers(),
+      ...(this.requestOptions.publicRequestRedirect
+        ? { redirect: this.requestOptions.publicRequestRedirect }
+        : {}),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   }
@@ -1885,6 +1891,9 @@ export class PlatformAPIClient {
     return fetch(`${this.baseUrl}${PUBLIC_IDENTITY_PATH}/tenants`, {
       method: 'GET',
       headers: await this.headers(),
+      ...(this.requestOptions.publicRequestRedirect
+        ? { redirect: this.requestOptions.publicRequestRedirect }
+        : {}),
     });
   }
 

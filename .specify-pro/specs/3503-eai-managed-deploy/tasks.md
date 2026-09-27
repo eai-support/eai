@@ -53,12 +53,18 @@
 - [x] Use protected endpoint authority for source-unspecified customer retry lookup (DTE-031, DTE-032, DTE-091).
 - [x] Bind the application root across canonical resolution and local publication (DTE-016).
 - [x] Accept the canonical CLI-managed operation namespace in workflow evidence (DTE-020, DTE-021).
+- [x] Reject terminal failed EAI-maintained resume/retry before polling or nonce reuse (DTE-031–DTE-035).
+- [x] Reject redirects during authenticated tenant membership and management context setup (DTE-091).
+- [x] Compare canonical generated targets through a parent-bound no-follow descriptor (DTE-016).
+- [x] Hold the application-root binding through the complete configuration digest (DTE-016, DTE-018, DTE-095).
+- [x] Run focused and repository checks at the final review-fix head and record exact evidence.
 
 ## Exact-head evidence
 
 - `npm run verify:managed-deploy-producer` passed for app-template candidate `1d8c08a4c9f079349dade44a3e8673cbd6e6b38b` with exact workflow (`sha256:d7f14c0af056d836db2d50c70cf1205b0dc06a15c8c7144d360320ebcbfcbb64`) and collector (`sha256:d17c4d5e460dee967adb9a9b25c0b9aed73cc09ebd76c771e22ee796aff1d275`) byte parity.
 - `npm run build`, `npm run lint`, and `npm run typecheck` passed.
 - Focused managed-deployment and API tests passed: 327 tests across seven files, including pre-context authority rejection, authoritative recovery routing after regional refresh, canonical operation namespaces, application-root replacement, terminal/reusable-evidence retry binding, doctor-output confinement, descriptor-bound generated writes, bounded private reads, stable governed inventory, post-read source binding, and producer identity rejection.
-- `npm run test:eai-cli:ci` passed: 960 passed and one documented skip (961 total).
-- `npm test` through `bash scripts/release-preflight.sh` passed: 1,075 passed and one documented skip (1,076 total), plus packed CLI, alias, and generated documentation checks.
+- Final focused review-fix evidence passed: 181 tests across managed deploy integration, managed source race, tenant context, and PublicAPI URL policy tests.
+- `npm run test:eai-cli:ci` passed: 965 passed and one documented skip (966 total).
+- `npm test` through `bash scripts/release-preflight.sh` passed: 1,080 passed and one documented skip (1,081 total), plus typecheck, lint, build, packed CLI, alias, generated documentation, traceability, and release metadata checks.
 - `npm run release:check` stopped at the intentional immutable producer-release gate because no template tag yet resolves to candidate `1d8c08a4c9f079349dade44a3e8673cbd6e6b38b` (DTE-088).

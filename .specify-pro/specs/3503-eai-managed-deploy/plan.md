@@ -14,3 +14,4 @@
 12. Run focused CLI evidence, build, lint, and release preflight; push without merging or releasing.
 13. Verify producer release bytes remotely, bind source revisions to workflow/collector identities, and close ancestor replacement windows on governed reads and local evidence writes.
 14. Fail closed before retry network access without original endpoint authority, classify every pre-evidence terminal source failure as a fresh-operation case, require exact merged publication identity, and bind workflow-evidence parents through the complete read.
+15. Close the final review races: reject terminal EAI-maintained failure before reuse, carry no-redirect policy through authenticated tenant-context setup, compare canonical files through bound no-follow descriptors, and keep the project-root binding live through configuration hashing.

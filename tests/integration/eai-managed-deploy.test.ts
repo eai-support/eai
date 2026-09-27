@@ -111,6 +111,16 @@ function completedManagedPublication(): Record<string, unknown> {
   };
 }
 
+function failedManagedPublication(): Record<string, unknown> {
+  return {
+    ...completedManagedPublication(),
+    status: 'failed',
+    review: undefined,
+    deployment: undefined,
+    error: { code: 'PUBLICATION_FAILED' },
+  };
+}
+
 function customerRetryState(options: {
   targetTenantId?: string;
   environment?: string;
@@ -302,6 +312,42 @@ describe('eai deploy app --target eai', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  test('rejects redirects for authenticated tenant-context setup traffic', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const requests: Array<{ url: string; redirect?: RequestRedirect }> = [];
+    const fetchMock = vi.fn(async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url = String(input);
+      requests.push({ url, redirect: init?.redirect });
+      if (url === `${API_BASE}/v4/identity/tenants`) {
+        return jsonResponse({ tenants: [{ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] }] });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}` || url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}/management`) {
+        return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
+      }
+      if (url.endsWith('/cli-managed-source/github-link-sessions')) {
+        return jsonResponse(linkedGitHubSession('pending'));
+      }
+      return jsonResponse({ message: `Unhandled request ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+      '--target-tenant-id', TENANT_ID, '--source', 'eai-managed', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      ok: false,
+      error: { code: 'GITHUB_LINK_REQUIRED' },
+    });
+    expect(requests.filter(({ url }) => url.startsWith(API_BASE))).not.toHaveLength(0);
+    expect(requests.filter(({ url, redirect }) => url.startsWith(API_BASE) && redirect !== 'error')).toEqual([]);
+  });
+
   test("resumes a publishing upload using unchanged local bytes and the original linked Portal origin", async () => {
     await mkdir(join(projectRoot, "src/app"), { recursive: true });
     await writeFile(join(projectRoot, "eai.runtime.json"), "{}");
@@ -423,6 +469,41 @@ describe('eai deploy app --target eai', () => {
       requests.some((url) => url.endsWith("/cli-managed-source/preparations")),
     ).toBe(false);
   });
+
+  test.each(['--resume', '--retry'] as const)(
+    'requires a fresh EAI-maintained operation after terminal publication failure for %s',
+    async recoveryFlag => {
+      await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+      const identity = stubManagedOperation().getMockImplementation()!;
+      const requests: string[] = [];
+      vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+        const url = String(input);
+        requests.push(url);
+        if (url.includes('/cli-managed-source/operations/')) {
+          return jsonResponse(failedManagedPublication());
+        }
+        return identity(input);
+      }));
+      const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      await eaiManagedDeployCommand.parseAsync([
+        'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+        '--target-tenant-id', TENANT_ID, '--source', 'eai-managed',
+        recoveryFlag, 'cli-managed-source-123', '--no-wait', '--format', 'json',
+      ], { from: 'user' });
+
+      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+        ok: false,
+        error: {
+          code: 'SOURCE_OPERATION_INACTIVE',
+          nextAction: expect.stringContaining('fresh source operation and nonce'),
+        },
+      });
+      expect(requests.filter(url => url.includes('/cli-managed-source/operations/'))).toHaveLength(1);
+      expect(requests.some(url => url.includes('/managed-deployments/operations/'))).toBe(false);
+      expect(process.exitCode).toBe(1);
+    },
+  );
 
   test('does not silently choose customer-owned source from repository flags', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
