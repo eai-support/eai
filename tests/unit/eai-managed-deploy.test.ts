@@ -348,6 +348,36 @@ describe('EAI managed deployment helpers', () => {
     expect(workflow.indexOf('name: Validate workflow invocation')).toBeLessThan(
       workflow.indexOf('name: Check out repository'),
     );
+    const dispatchInputs = workflow.slice(
+      workflow.indexOf('  workflow_dispatch:'),
+      workflow.indexOf('  workflow_call:'),
+    );
+    const reusableInputs = workflow.slice(
+      workflow.indexOf('  workflow_call:'),
+      workflow.indexOf('\npermissions:'),
+    );
+    expect(dispatchInputs).toMatch(
+      /config_hash:\n\s+description:[^\n]+\n\s+required: true/,
+    );
+    expect(reusableInputs).toMatch(
+      /config_hash:\n\s+description:[^\n]+\n\s+required: false/,
+    );
+    expect(workflow).toContain('name: Resolve immutable configuration hash');
+    expect(workflow).toContain(
+      'config_hash="$(node scripts/source-unknown-deployment-evidence.mjs config-hash)"',
+    );
+    expect(workflow).toContain(
+      '-n "$REQUESTED_CONFIG_HASH" && "$REQUESTED_CONFIG_HASH" != "$config_hash"',
+    );
+    expect(workflow).toContain(
+      'config_hash: ${{ steps.deployment-binding.outputs.config_hash }}',
+    );
+    expect(workflow).toContain(
+      'CONFIG_HASH: ${{ steps.deployment-binding.outputs.config_hash }}',
+    );
+    expect(workflow).toContain(
+      'CONFIG_HASH: ${{ needs.build.outputs.config_hash }}',
+    );
     expect(workflow).toContain('workflow_ref and canonical callee job_workflow_ref/job_workflow_sha');
     expect(workflow).not.toMatch(/secrets\.EAI_ACCESS_TOKEN|\$EAI_ACCESS_TOKEN/);
     expect(workflow).toContain('MAX_IMAGE_ARCHIVE_BYTES = 10 * 1024 * 1024 * 1024');
@@ -372,9 +402,17 @@ describe('EAI managed deployment helpers', () => {
     );
     expect(handoffJob).toContain('Deployment handoff response grew during verification');
     expect(handoffJob.match(/--max-filesize 1048576/g)).toHaveLength(2);
+    expect(handoffJob).toContain('process.stdin.on("data"');
+    expect(handoffJob).toContain('chunk.byteLength > maxBytes - totalBytes');
     expect(handoffJob).toContain(
-      '--output .eai-build/evidence/workflow-evidence-response.json',
+      'fs.constants.O_EXCL | fs.constants.O_NOFOLLOW',
     );
+    expect(handoffJob).toContain(
+      'EAI_RESPONSE_PATH=.eai-build/evidence/workflow-evidence-response.json',
+    );
+    expect(handoffJob).not.toContain('response="$(curl');
+    expect(handoffJob).not.toContain('let s=\'\'; process.stdin');
+    expect(handoffJob).not.toContain('--output .eai-build/evidence');
     expect(handoffJob).not.toContain('actions/checkout@');
     expect(handoffJob).not.toContain(
       'node scripts/source-unknown-deployment-evidence.mjs assert-evidence-accepted',
@@ -464,7 +502,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '7876200a21714ec6cef9cef49d18fc32d59ec336' },
+      candidate: { commit: '49768100b75da2910eef590a6848c9fcba75ab7b' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);

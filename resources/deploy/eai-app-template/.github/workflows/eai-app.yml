@@ -77,7 +77,7 @@ on:
         type: string
       config_hash:
         description: Exact configuration hash approved by workflow setup.
-        required: true
+        required: false
         type: string
       commit_sha:
         description: Exact source commit; defaults to the reusable workflow caller SHA.
@@ -123,6 +123,8 @@ env:
 
 jobs:
   build:
+    outputs:
+      config_hash: ${{ steps.deployment-binding.outputs.config_hash }}
     runs-on: ubuntu-latest
     steps:
       - name: Validate workflow invocation
@@ -147,6 +149,21 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      - name: Resolve immutable configuration hash
+        id: deployment-binding
+        env:
+          REQUESTED_CONFIG_HASH: ${{ inputs.config_hash }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          config_hash="$(node scripts/source-unknown-deployment-evidence.mjs config-hash)"
+          [[ "$config_hash" =~ ^sha256:[a-f0-9]{64}$ ]]
+          if [[ -n "$REQUESTED_CONFIG_HASH" && "$REQUESTED_CONFIG_HASH" != "$config_hash" ]]; then
+            echo "Supplied config_hash does not match the exact checked-out runtime configuration." >&2
+            exit 1
+          fi
+          printf 'config_hash=%s\n' "$config_hash" >> "$GITHUB_OUTPUT"
+
       - name: Validate immutable dispatch and trusted endpoint
         env:
           APP_KEY: ${{ inputs.app_key }}
@@ -154,7 +171,7 @@ jobs:
           TARGET_TENANT_ID: ${{ inputs.target_tenant_id }}
           OPERATION_ID: ${{ inputs.operation_id }}
           NONCE: ${{ inputs.nonce }}
-          CONFIG_HASH: ${{ inputs.config_hash }}
+          CONFIG_HASH: ${{ steps.deployment-binding.outputs.config_hash }}
           DEPLOY_ENVIRONMENT: ${{ inputs.env || inputs.environment || 'preview' }}
           LEGACY_DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
           PREFERRED_DEPLOY_ENVIRONMENT: ${{ inputs.env }}
@@ -274,7 +291,7 @@ jobs:
           TARGET_TENANT_ID: ${{ inputs.target_tenant_id }}
           OPERATION_ID: ${{ inputs.operation_id }}
           NONCE: ${{ inputs.nonce }}
-          CONFIG_HASH: ${{ inputs.config_hash }}
+          CONFIG_HASH: ${{ steps.deployment-binding.outputs.config_hash }}
           DEPLOY_ENVIRONMENT: ${{ inputs.env || inputs.environment || 'preview' }}
           LEGACY_DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
           PREFERRED_DEPLOY_ENVIRONMENT: ${{ inputs.env }}
@@ -348,7 +365,7 @@ jobs:
           TARGET_TENANT_ID: ${{ inputs.target_tenant_id }}
           OPERATION_ID: ${{ inputs.operation_id }}
           NONCE: ${{ inputs.nonce }}
-          CONFIG_HASH: ${{ inputs.config_hash }}
+          CONFIG_HASH: ${{ needs.build.outputs.config_hash }}
           DEPLOY_ENVIRONMENT: ${{ inputs.env || inputs.environment || 'preview' }}
           EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
           SOURCE_COMMIT_SHA: ${{ inputs.commit_sha || github.sha }}
@@ -684,13 +701,148 @@ jobs:
           EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
         run: |
+          set -euo pipefail
+          bounded_response_reader='
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const maxBytes = 1024 * 1024;
+            const mode = process.argv[1];
+            const chunks = [];
+            let totalBytes = 0;
+            let failed = false;
+            let descriptor;
+            let fileBinding;
+            const sameIdentity = (left, right) => left.dev === right.dev && left.ino === right.ino;
+            const snapshotAncestors = (filePath) => {
+              const target = path.resolve(filePath);
+              const targetDirectory = path.dirname(target);
+              const filesystemRoot = path.parse(targetDirectory).root;
+              const ancestors = [];
+              let current = filesystemRoot;
+              for (const component of ["", ...path.relative(filesystemRoot, targetDirectory).split(/[\\/]/).filter(Boolean)]) {
+                if (component) current = path.join(current, component);
+                const status = fs.lstatSync(current);
+                if (status.isSymbolicLink() || !status.isDirectory()) {
+                  throw new Error("Deployment handoff response ancestors must be no-follow directories.");
+                }
+                ancestors.push({ path: current, dev: status.dev, ino: status.ino });
+              }
+              return { target, ancestors };
+            };
+            const assertAncestors = (ancestors) => {
+              for (const identity of ancestors) {
+                const status = fs.lstatSync(identity.path);
+                if (status.isSymbolicLink() || !status.isDirectory() || !sameIdentity(identity, status)) {
+                  throw new Error("Deployment handoff response ancestors changed during transfer.");
+                }
+              }
+            };
+            const closeDescriptor = () => {
+              if (descriptor === undefined) return;
+              try {
+                fs.closeSync(descriptor);
+              } finally {
+                descriptor = undefined;
+              }
+            };
+            const fail = (message) => {
+              if (failed) return;
+              failed = true;
+              console.error(message);
+              process.exitCode = 1;
+              try {
+                closeDescriptor();
+              } catch {}
+              process.stdin.destroy();
+            };
+            try {
+              if (mode === "file") {
+                const binding = snapshotAncestors(process.env.EAI_RESPONSE_PATH || "");
+                assertAncestors(binding.ancestors);
+                descriptor = fs.openSync(
+                  binding.target,
+                  fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW,
+                  0o600,
+                );
+                const opened = fs.fstatSync(descriptor);
+                if (!opened.isFile() || opened.nlink !== 1 || opened.size !== 0) {
+                  throw new Error("Deployment handoff response must be a new single-link regular file.");
+                }
+                assertAncestors(binding.ancestors);
+                fileBinding = { ...binding, dev: opened.dev, ino: opened.ino };
+              } else if (mode !== "token") {
+                throw new Error("Unknown bounded response reader mode.");
+              }
+            } catch (error) {
+              fail(error instanceof Error ? error.message : String(error));
+            }
+            process.stdin.on("data", (chunk) => {
+              if (failed) return;
+              if (chunk.byteLength > maxBytes - totalBytes) {
+                fail((mode === "token" ? "GitHub OIDC token" : "Deployment handoff") + " response exceeds its 1 MiB limit.");
+                return;
+              }
+              totalBytes += chunk.byteLength;
+              if (mode === "token") {
+                chunks.push(chunk);
+                return;
+              }
+              try {
+                let offset = 0;
+                while (offset < chunk.byteLength) {
+                  offset += fs.writeSync(descriptor, chunk, offset, chunk.byteLength - offset);
+                }
+              } catch (error) {
+                fail(error instanceof Error ? error.message : String(error));
+              }
+            });
+            process.stdin.on("end", () => {
+              if (failed) return;
+              try {
+                if (mode === "token") {
+                  const response = JSON.parse(Buffer.concat(chunks, totalBytes).toString("utf8"));
+                  if (
+                    typeof response.value !== "string" ||
+                    !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(response.value)
+                  ) {
+                    throw new Error("GitHub OIDC response does not contain a canonical JWT.");
+                  }
+                  process.stdout.write(response.value);
+                  return;
+                }
+                fs.fsyncSync(descriptor);
+                const afterDescriptor = fs.fstatSync(descriptor);
+                assertAncestors(fileBinding.ancestors);
+                const afterPath = fs.lstatSync(fileBinding.target);
+                if (
+                  !afterDescriptor.isFile() ||
+                  afterDescriptor.nlink !== 1 ||
+                  afterDescriptor.size !== totalBytes ||
+                  afterPath.isSymbolicLink() ||
+                  !afterPath.isFile() ||
+                  afterPath.nlink !== 1 ||
+                  afterPath.size !== totalBytes ||
+                  !sameIdentity(fileBinding, afterDescriptor) ||
+                  !sameIdentity(fileBinding, afterPath)
+                ) {
+                  throw new Error("Deployment handoff response changed during its bounded transfer.");
+                }
+                closeDescriptor();
+              } catch (error) {
+                fail(error instanceof Error ? error.message : String(error));
+              }
+            });
+            process.stdin.on("error", (error) => fail(error.message));
+          '
           case "$SOURCE_MODE" in
             source-unknown) audience=api://enterprise-ai-publicapi/source-unknown ;;
             eai-cli-generated) audience=api://enterprise-ai-publicapi/eai-cli-generated ;;
             *) exit 1 ;;
           esac
-          response="$(curl --fail --silent --show-error --proto '=https' --tlsv1.2 --max-redirs 0 --max-filesize 1048576 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${audience}")"
-          token="$(node -e "let s=''; process.stdin.on('data', d => s += d); process.stdin.on('end', () => process.stdout.write(JSON.parse(s).value));" <<< "$response")"
+          token="$(
+            curl --fail --silent --show-error --proto '=https' --tlsv1.2 --max-redirs 0 --max-filesize 1048576 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${audience}" |
+            node -e "$bounded_response_reader" token
+          )"
           echo "::add-mask::$token"
           [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://(dev-api\.au|(test-api|api)\.(au|ca|eu))\.myenterprise\.ai/public/?$ ]]
           case "$SOURCE_MODE" in
@@ -704,8 +856,9 @@ jobs:
             -H "Authorization: Bearer $token" \
             -H "Content-Type: application/json" \
             --data-binary @.eai-build/evidence/source-unknown-deployment-evidence.json \
-            --output .eai-build/evidence/workflow-evidence-response.json \
-            "${EAI_BOUND_PUBLIC_API_URL%/}/v4/platform/tenants/${TENANT_ID}/apps/${APP_KEY}/${evidence_path}"
+            "${EAI_BOUND_PUBLIC_API_URL%/}/v4/platform/tenants/${TENANT_ID}/apps/${APP_KEY}/${evidence_path}" |
+            EAI_RESPONSE_PATH=.eai-build/evidence/workflow-evidence-response.json \
+              node -e "$bounded_response_reader" file
 
       - name: Assert evidence accepted
         run: |
