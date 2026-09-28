@@ -1332,14 +1332,37 @@ describe('eai app', () => {
     expect(buildSourceUnknownWorkflowEvidenceData(fixture)).toEqual(fixture);
   });
 
-  test('forwards canonical collector source and producer observations without deriving authority', () => {
+  test('preserves the explicit source-unknown collector mode without deriving authority', () => {
     const fixture = {
       ...workflowEvidenceFixture(),
-      operationId: 'cli-managed-source-op',
-      sourceMode: 'eai-cli-generated',
+      sourceMode: 'source-unknown',
       targetTenantId: 'runtime-child',
     };
     expect(buildSourceUnknownWorkflowEvidenceData(fixture)).toEqual(fixture);
+  });
+
+  test.each([
+    { operationId: 'cli-managed-source-op', sourceMode: 'eai-cli-generated' },
+    { operationId: 'source-unknown-op', sourceMode: 'eai-cli-generated' },
+    { operationId: 'cli-managed-source-op', sourceMode: 'source-unknown' },
+    { operationId: 'cli-managed-source-op' },
+  ])('rejects managed CLI evidence on the legacy command before tenant context or network: %j', async binding => {
+    const evidencePath = join(env.dir, 'managed-cli-workflow-evidence.json');
+    await writeFile(evidencePath, JSON.stringify({
+      ...workflowEvidenceFixture(),
+      ...binding,
+      targetTenantId: 'runtime-child',
+    }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(appCommand.parseAsync([
+      'workflow-evidence', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+      '--evidence-file', evidencePath, '--github-oidc-token', 'github-oidc-token',
+      '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit unexpectedly called');
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('source-unknown evidence only'));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test('rejects an unsafe workflow-evidence operation ID before tenant context or network access', async () => {

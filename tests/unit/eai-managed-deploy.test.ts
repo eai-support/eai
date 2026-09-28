@@ -863,6 +863,7 @@ describe('EAI managed deployment helpers', () => {
         nonceSha256: managedDeployNonceSha256(state.nonce),
         actorId: state.actorId,
         githubLinkSessionId: state.githubLinkSessionId,
+        installationId: state.installationId,
         repo: { owner: 'enterprise', name: 'planning-portal' },
         deployOnSuccess: true,
       },
@@ -884,6 +885,20 @@ describe('EAI managed deployment helpers', () => {
       { ...state, githubLinkSessionId: 'different-link-session' },
       operation,
     )).toThrow('githubLinkSessionId');
+    expect(() => assertManagedDeployStateMatchesOperation(
+      { ...state, installationId: 456 },
+      operation,
+    )).toThrow('installationId');
+    expect(() => assertManagedDeployStateMatchesOperation(
+      state,
+      { ...operation, setup: { ...operation.setup, installationId: String(state.installationId) } },
+    )).not.toThrow();
+    for (const installationId of [undefined, true, '0123', '123.0', -1]) {
+      expect(() => assertManagedDeployStateMatchesOperation(
+        state,
+        { ...operation, setup: { ...operation.setup, installationId } },
+      )).toThrow('installationId');
+    }
 
     await writeFile(
       join(stateDir, `${state.operationId}.json`),

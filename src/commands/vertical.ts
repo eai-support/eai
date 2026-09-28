@@ -490,7 +490,7 @@ export function buildSourceUnknownWorkflowSetupData(
   };
 }
 
-/** Validate the collector envelope without inventing build checks or caller OIDC claims. */
+/** Accept only legacy source-unknown evidence; CLI-managed evidence uses its operation-specific workflow route. */
 export function buildSourceUnknownWorkflowEvidenceData(
   value: unknown,
 ): SourceUnknownWorkflowEvidenceRequest {
@@ -520,15 +520,16 @@ export function buildSourceUnknownWorkflowEvidenceData(
     'validationSummary'], 'Workflow evidence');
   const sha = /^[a-f0-9]{40}$/;
   const digest = /^sha256:[a-f0-9]{64}$/;
+  if (body.sourceMode === 'eai-cli-generated'
+    || (typeof body.operationId === 'string' && body.operationId.startsWith('cli-managed-source-'))) {
+    throw new Error('This workflow-evidence command accepts source-unknown evidence only. Use the canonical EAI managed deployment workflow for CLI-managed evidence.');
+  }
   const sourceMode = body.sourceMode === undefined
     ? undefined
-    : text(body.sourceMode, 'sourceMode', /^(source-unknown|eai-cli-generated)$/);
+    : text(body.sourceMode, 'sourceMode', /^source-unknown$/);
   const targetTenantId = body.targetTenantId === undefined
     ? undefined
     : text(body.targetTenantId, 'targetTenantId', /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,254}[A-Za-z0-9])?$/);
-  if (sourceMode === 'eai-cli-generated' && !targetTenantId) {
-    throw new Error('eai-cli-generated workflow evidence requires targetTenantId.');
-  }
   const artifact = record(body.imageArtifact, ['id', 'name', 'archiveDigest'], 'imageArtifact');
   if (artifact.name !== 'eai-generated-app-image') throw new Error('imageArtifact.name must be eai-generated-app-image.');
   const run = record(body.workflowRun, ['id', 'attempt', 'workflow', 'job'], 'workflowRun');
@@ -544,13 +545,13 @@ export function buildSourceUnknownWorkflowEvidenceData(
     'operationId',
     MANAGED_DEPLOYMENT_IDENTIFIER_PATTERN,
   );
-  if (!/^(?:source-unknown|cli-managed-source)-/.test(operationId)) {
-    throw new Error('operationId has an unsupported managed source namespace.');
+  if (!operationId.startsWith('source-unknown-')) {
+    throw new Error('operationId must use the source-unknown namespace.');
   }
   return {
     operationId,
     nonce: text(body.nonce, 'nonce'),
-    ...(sourceMode ? { sourceMode: sourceMode as 'source-unknown' | 'eai-cli-generated' } : {}),
+    ...(sourceMode ? { sourceMode: 'source-unknown' as const } : {}),
     ...(targetTenantId ? { targetTenantId } : {}),
     environment: text(body.environment, 'environment', /^(preview|dev|test|prod|demo)$/),
     workflowPath: text(body.workflowPath, 'workflowPath', /^\.github\/workflows\/[^/]+\.ya?ml$/),

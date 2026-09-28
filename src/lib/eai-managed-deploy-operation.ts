@@ -194,6 +194,9 @@ export function assertManagedDeployStateMatchesOperation(
 ): void {
   const binding = record(operation.setup);
   if (!binding) throw new Error('Exact operation does not contain a valid setup binding.');
+  if (!positiveId(binding.installationId) || !positiveId(state.installationId)) {
+    throw new Error('Retry state does not match the server setup field installationId.');
+  }
   const repository = record(binding.repo) ?? {};
   const expected: Array<[string, unknown, unknown]> = [
     ['appScopeTenantId', operation.appScopeTenantId, state.tenantId],
@@ -201,6 +204,7 @@ export function assertManagedDeployStateMatchesOperation(
     ['operationId', operation.operationId, state.operationId],
     ['targetTenantId', binding.targetTenantId, state.targetTenantId],
     ['environment', binding.environment, state.environment],
+    ['installationId', String(binding.installationId), String(state.installationId)],
     ['workflowPath', binding.workflowPath, state.workflowPath],
     ['ref', binding.ref, state.ref],
     ['commitSha', binding.commitSha, state.commitSha],

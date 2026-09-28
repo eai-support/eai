@@ -52,7 +52,7 @@
 - [x] Validate legacy managed PublicAPI authority before tenant-context traffic (DTE-091).
 - [x] Use protected endpoint authority for source-unspecified customer retry lookup (DTE-031, DTE-032, DTE-091).
 - [x] Bind the application root across canonical resolution and local publication (DTE-016).
-- [x] Accept the canonical CLI-managed operation namespace in workflow evidence (DTE-020, DTE-021).
+- [x] Keep canonical CLI-managed evidence on its operation-specific workflow route; reject CLI-mode or CLI-namespace evidence through the legacy source-unknown command before context or network access (DTE-020, DTE-021).
 - [x] Reject terminal failed EAI-maintained resume/retry before polling or nonce reuse (DTE-031–DTE-035).
 - [x] Reject redirects during authenticated tenant membership and management context setup (DTE-091).
 - [x] Compare canonical generated targets through a parent-bound no-follow descriptor (DTE-016).
@@ -86,8 +86,19 @@
 - [x] Reject missing no-follow/nonblocking capabilities without a zero fallback, and require source/workflow commit equality even when setup repeats the differing pair (DTE-016, DTE-032).
 
 - [x] Advance the exact producer pairing to its authenticated runtime-owned readiness binding candidate without changing workflow/collector bytes or clearing publication gates (DTE-080, DTE-088).
+- [x] Bind the persisted GitHub installation ID to independent server setup before retry dispatch, accepted-evidence reuse, or terminal success; accept canonical numeric/string transport equivalence and reject malformed IDs (DTE-031–DTE-035).
 
-## Exact-head evidence
+- [x] Stage generated-file replacement and private evidence/authority updates before publication; reject parent/root/target races without truncating existing bytes, retain no-clobber absent publication and exact staging cleanup, and map dedicated writer regressions into owned CI (DTE-016).
+
+## Latest combined review-fix evidence
+
+- New semantic regressions reproduced both review gaps before repair; the full managed-deploy helper/command and legacy-command corpus passed 202 cases.
+- The dedicated copy-on-write writer and adapted source-race corpus passed 48 cases, including 20 new writer regressions. Both suites are selected by owned CLI CI and the managed-deploy coverage map.
+- Final combined build, lint, producer byte/hash parity, public hygiene, release-doc freshness, and full CLI smoke traceability checks pass.
+- The full serialized repository execution (`npm test -- --maxWorkers=1 --no-file-parallelism`) recorded 1,152 passes, three timeout failures, and two existing skips across 54 files in 426.94 seconds. The timeouts were the unchanged Gofer traversal/refresh fixtures and unchanged recursive PublicAPI V4 route scan; all changed deployment/writer suites passed. This failed run remains evidence and is not reclassified by a focused diagnostic. No timer was widened.
+- Immutable producer publication, renewed required reviews/checks, and live Installer-first qualification remain separate gates.
+
+## Earlier exact-head evidence
 
 Validation below applies to the 2026-09-28 readiness changes; earlier validation remains in Git history.
 

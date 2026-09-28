@@ -1109,6 +1109,40 @@ fi
     },
   );
 
+  test.each(['before dispatch', 'already dispatched', 'accepted evidence', 'terminal success'] as const)(
+    'rejects a changed persisted installation before retry %s without mutation',
+    async phase => {
+      await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+      const state = { ...customerRetryState(), installationId: 67890 };
+      if (phase === 'already dispatched') state.dispatchedAt = new Date().toISOString();
+      await saveManagedDeployState(state);
+      const operation = completeUnifiedOperation();
+      if (phase === 'before dispatch' || phase === 'already dispatched') {
+        operation.sourceStatus = 'issued';
+        operation.status = 'issued';
+      } else if (phase === 'accepted evidence') {
+        operation.sourceStatus = 'handoff_pending';
+        operation.status = 'handoff_pending';
+        operation.evidence = { status: 'accepted' };
+      }
+      const fetchMock = stubManagedOperation(operation);
+      const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      await eaiManagedDeployCommand.parseAsync([
+        state.appKey, '--target', 'eai', '--tenant-id', TENANT_ID,
+        '--target-tenant-id', TENANT_ID, '--retry', state.operationId,
+        '--no-wait', '--format', 'json',
+      ], { from: 'user' });
+
+      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+        ok: false, error: { code: 'RETRY_SERVER_BINDING_MISMATCH', message: expect.stringContaining('installationId') },
+      });
+      expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
+      expect(fetchMock.mock.calls.every(([input]) => !String(input).startsWith('https://api.github.com/'))).toBe(true);
+      expect(process.exitCode).toBe(1);
+    },
+  );
+
   test('requires the target tenant when resuming an exact operation', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');
     stubManagedOperation();

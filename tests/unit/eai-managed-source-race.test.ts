@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { constants, type PathLike } from "node:fs";
 import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -60,11 +60,14 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         await actual.rm(path);
         await new Promise<void>((resolve, reject) => execFile("mkfifo", [String(path)], error => error ? reject(error) : resolve()));
       }
-      if (!race.added && String(path) === race.addTrigger) {
+      const stagedFor = (target: string): boolean => !!target
+        && dirname(String(path)) === dirname(target)
+        && basename(String(path)).startsWith(".eai-write-");
+      if (!race.added && (String(path) === race.addTrigger || stagedFor(race.addTrigger))) {
         race.added = true;
         await actual.writeFile(race.addPath, race.addContent);
       }
-      if (!race.swapped && String(path) === race.trigger) {
+      if (!race.swapped && (String(path) === race.trigger || stagedFor(race.trigger))) {
         race.swapped = true;
         await actual.rename(race.target, race.displaced);
         await actual.rename(race.replacement, race.target);
@@ -418,7 +421,7 @@ test("does not write doctor evidence through a replaced parent", async () => {
     "evidence directory changed",
   );
   expect(race.swapped).toBe(true);
-  await expect(readFile(join(root, ".eai/reports/deploy-doctor.json"), "utf8")).resolves.toBe("");
+  await expect(readFile(join(root, ".eai/reports/deploy-doctor.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
 });
 
 test("does not create doctor evidence directories after the bound project root is replaced", async () => {
@@ -463,7 +466,7 @@ test("does not write a local source receipt through a replaced parent", async ()
     code: "SOURCE_RECEIPT_PATH_INVALID",
   });
   expect(race.swapped).toBe(true);
-  await expect(readFile(join(root, ".eai/cli-managed-source-receipt.json"), "utf8")).resolves.toBe("");
+  await expect(readFile(join(root, ".eai/cli-managed-source-receipt.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
 });
 
 test("does not write a local source receipt through a replaced project root", async () => {
@@ -508,7 +511,7 @@ test("does not write canonical file bytes through a replaced parent", async () =
     "evidence directory changed",
   );
   expect(race.swapped).toBe(true);
-  await expect(readFile(workflow, "utf8")).resolves.toBe("");
+  await expect(readFile(workflow, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
 });
 
 test("does not install canonical files through a replaced project root", async () => {
@@ -601,7 +604,11 @@ test.each(["state", "dispatch"])(
       "evidence directory changed",
     );
     expect(race.swapped).toBe(true);
-    await expect(readFile(race.trigger, "utf8")).resolves.toBe("");
+    if (kind === "dispatch") {
+      await expect(readFile(race.trigger, "utf8")).resolves.toBe("");
+    } else {
+      await expect(readFile(race.trigger, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    }
   },
 );
 
