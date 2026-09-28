@@ -2,7 +2,7 @@
 
 Requirements are defined by the [Issue #3503 hardening amendment](https://github.com/enterpriseaigroup/Issues2025/issues/3503#issuecomment-5826177803).
 
-Exact app-template candidate: `1976cdb03cecdf19c95cd8a98226ec4cbaac3ba8`. Its authenticated runtime-owned readiness binding supports the separate deployed qualification; embedded workflow/collector bytes are unchanged. The producer publication gate remains closed until a real immutable release is recorded.
+Exact app-template candidate: `03b95d986ccc6f6adfc29b2bcae96efa78ef5742`. Its authenticated runtime-owned readiness binding supports the separate deployed qualification; The collector now independently enforces a single hard link at every archive and bounded-file read snapshot; the CLI embeds those exact bytes. The workflow bytes are unchanged. The producer publication gate remains closed until a real immutable release is recorded.
 
 | Requirement               | Planned implementation                                                                                                                                                                                                                         | Owned evidence                                                                       |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |

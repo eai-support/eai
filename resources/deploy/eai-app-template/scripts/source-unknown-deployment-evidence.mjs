@@ -710,6 +710,7 @@ function readBoundedRegularFileNoFollow(
       opened.ctimeMs !== before.ctimeMs ||
       rebound.isSymbolicLink() ||
       !rebound.isFile() ||
+      rebound.nlink !== 1 ||
       rebound.dev !== opened.dev ||
       rebound.ino !== opened.ino ||
       rebound.size !== opened.size ||
@@ -731,6 +732,7 @@ function readBoundedRegularFileNoFollow(
     const finalPath = lstatSync(path);
     if (
       bytes.length !== opened.size ||
+      after.nlink !== 1 ||
       after.dev !== opened.dev ||
       after.ino !== opened.ino ||
       after.size !== opened.size ||
@@ -738,6 +740,7 @@ function readBoundedRegularFileNoFollow(
       after.ctimeMs !== opened.ctimeMs ||
       finalPath.isSymbolicLink() ||
       !finalPath.isFile() ||
+      finalPath.nlink !== 1 ||
       finalPath.dev !== opened.dev ||
       finalPath.ino !== opened.ino ||
       finalPath.size !== opened.size ||
@@ -938,6 +941,7 @@ async function digestFile(
       opened.size > maxBytes ||
       rebound.isSymbolicLink() ||
       !rebound.isFile() ||
+      rebound.nlink !== 1 ||
       rebound.dev !== opened.dev ||
       rebound.ino !== opened.ino ||
       rebound.size !== opened.size ||
@@ -971,6 +975,7 @@ async function digestFile(
     const finalPath = lstatSync(path);
     if (
       digested !== opened.size ||
+      after.nlink !== 1 ||
       after.dev !== opened.dev ||
       after.ino !== opened.ino ||
       after.size !== opened.size ||
@@ -978,6 +983,7 @@ async function digestFile(
       after.ctimeMs !== opened.ctimeMs ||
       finalPath.isSymbolicLink() ||
       !finalPath.isFile() ||
+      finalPath.nlink !== 1 ||
       finalPath.dev !== opened.dev ||
       finalPath.ino !== opened.ino ||
       finalPath.size !== opened.size ||
@@ -1088,6 +1094,7 @@ function stageImageArtifact(options) {
       opened.ctimeMs !== before.ctimeMs ||
       sourceRebound.isSymbolicLink() ||
       !sourceRebound.isFile() ||
+      sourceRebound.nlink !== 1 ||
       sourceRebound.dev !== opened.dev ||
       sourceRebound.ino !== opened.ino ||
       sourceRebound.size !== opened.size ||
@@ -1153,6 +1160,7 @@ function stageImageArtifact(options) {
     const destinationPathAfter = lstatSync(stagedPath);
     if (
       copied !== opened.size ||
+      sourceAfter.nlink !== 1 ||
       sourceAfter.dev !== opened.dev ||
       sourceAfter.ino !== opened.ino ||
       sourceAfter.size !== opened.size ||
@@ -1160,6 +1168,7 @@ function stageImageArtifact(options) {
       sourceAfter.ctimeMs !== opened.ctimeMs ||
       sourcePathAfter.isSymbolicLink() ||
       !sourcePathAfter.isFile() ||
+      sourcePathAfter.nlink !== 1 ||
       sourcePathAfter.dev !== opened.dev ||
       sourcePathAfter.ino !== opened.ino ||
       sourcePathAfter.size !== opened.size ||
