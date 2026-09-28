@@ -41,7 +41,7 @@ describe('resource type diagnostics', () => {
   test('describes empty published schema clearly', () => {
     const message = buildMissingPublishedTypeMessage(matchPublishedType('ConversationMessage', []));
 
-    expect(message).toContain('No published object types were found for the active tenant');
+    expect(message).toContain('No published object types were found for the active workspace');
     expect(message).toContain('ConversationMessage');
   });
 
