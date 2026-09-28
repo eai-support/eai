@@ -83,6 +83,11 @@ on:
         description: Exact source commit; defaults to the reusable workflow caller SHA.
         required: false
         type: string
+      eai_reusable_call:
+        description: Internal compatibility marker; keep the default value.
+        required: false
+        type: boolean
+        default: true
       public_api_url:
         required: false
         type: string
@@ -125,37 +130,62 @@ jobs:
   build:
     outputs:
       config_hash: ${{ steps.deployment-binding.outputs.config_hash }}
+      source_commit_sha: ${{ steps.invocation.outputs.source_commit_sha }}
+      image_artifact_id: ${{ steps.image-artifact.outputs.artifact-id }}
+      image_artifact_digest: ${{ steps.image-artifact.outputs.artifact-digest }}
     runs-on: ubuntu-latest
     steps:
       - name: Validate workflow invocation
+        id: invocation
         env:
           EAI_CALLER_EVENT_NAME: ${{ github.event_name }}
+          EAI_REQUESTED_COMMIT_SHA: ${{ inputs.commit_sha }}
+          EAI_REUSABLE_CALL: ${{ inputs.eai_reusable_call }}
+          EAI_CALLER_COMMIT_SHA: ${{ github.sha }}
         shell: bash
         run: |
+          set -euo pipefail
           if [[ "$EAI_CALLER_EVENT_NAME" != "workflow_dispatch" ]]; then
             echo "Managed deployment requires a manually dispatched caller." >&2
             exit 1
           fi
+          source_commit_sha="$EAI_REQUESTED_COMMIT_SHA"
+          if [[ -z "$source_commit_sha" && "$EAI_REUSABLE_CALL" == "true" ]]; then
+            source_commit_sha="$EAI_CALLER_COMMIT_SHA"
+          fi
+          if [[ ! "$source_commit_sha" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "Managed deployment requires an exact lowercase source commit SHA before checkout." >&2
+            exit 1
+          fi
+          if [[ "$source_commit_sha" != "$EAI_CALLER_COMMIT_SHA" ]]; then
+            echo "Managed deployment source commit must match the signed workflow event SHA." >&2
+            exit 1
+          fi
+          printf 'source_commit_sha=%s\n' "$source_commit_sha" >> "$GITHUB_OUTPUT"
 
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.commit_sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
 
       - name: Resolve immutable configuration hash
         id: deployment-binding
         env:
           REQUESTED_CONFIG_HASH: ${{ inputs.config_hash }}
+          EAI_REUSABLE_CALL: ${{ inputs.eai_reusable_call }}
         shell: bash
         run: |
           set -euo pipefail
+          if [[ -z "$REQUESTED_CONFIG_HASH" && "$EAI_REUSABLE_CALL" != "true" ]]; then
+            echo "Direct managed deployment requires its server-approved config_hash." >&2
+            exit 1
+          fi
           config_hash="$(node scripts/source-unknown-deployment-evidence.mjs config-hash)"
           [[ "$config_hash" =~ ^sha256:[a-f0-9]{64}$ ]]
           if [[ -n "$REQUESTED_CONFIG_HASH" && "$REQUESTED_CONFIG_HASH" != "$config_hash" ]]; then
@@ -178,7 +208,7 @@ jobs:
           EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
           LEGACY_PUBLIC_API_URL: ${{ inputs.publicapi_base_url }}
           PREFERRED_PUBLIC_API_URL: ${{ inputs.public_api_url }}
-          SOURCE_COMMIT_SHA: ${{ inputs.commit_sha || github.sha }}
+          SOURCE_COMMIT_SHA: ${{ steps.invocation.outputs.source_commit_sha }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
         run: |
           node scripts/source-unknown-deployment-evidence.mjs validate-dispatch \
@@ -242,17 +272,24 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build OCI image archive
+        id: built-image
+        env:
+          IMAGE_STAGING_ROOT: ${{ runner.temp }}
+        shell: bash
         run: |
+          set -euo pipefail
           docker buildx build \
             --platform linux/amd64 \
             --file .eai-build/image-context/Dockerfile \
-            --metadata-file .eai-build/image-metadata.json \
-            --output type=oci,dest=.eai-build/eai-generated-app-image.tar \
-            .eai-build/image-context
+            --output type=oci,dest=- \
+            .eai-build/image-context \
+            | node scripts/source-unknown-deployment-evidence.mjs write-image-archive \
+                --staging-root "$IMAGE_STAGING_ROOT" \
+                --github-output "$GITHUB_OUTPUT"
 
       - name: Verify post-build source integrity
         env:
-          SOURCE_COMMIT_SHA: ${{ inputs.commit_sha || github.sha }}
+          SOURCE_COMMIT_SHA: ${{ steps.invocation.outputs.source_commit_sha }}
         shell: bash
         run: |
           test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT_SHA"
@@ -265,14 +302,6 @@ jobs:
             ':(exclude)src/eai.config/object-types.provisioning.json')"
           test -z "$untracked" || { printf '%s\n' "$untracked"; exit 1; }
 
-      - name: Stage verified image artifact
-        id: staged-image
-        run: |
-          node scripts/source-unknown-deployment-evidence.mjs stage-image-artifact \
-            --root "$GITHUB_WORKSPACE" \
-            --staging-root "$RUNNER_TEMP" \
-            --github-output "$GITHUB_OUTPUT"
-
       - name: Upload immutable image artifact
         id: image-artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -281,7 +310,7 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 14
-          path: ${{ steps.staged-image.outputs.image_archive_path }}
+          path: ${{ steps.built-image.outputs.image_archive_path }}
 
       - name: Collect immutable build evidence
         id: evidence
@@ -295,13 +324,13 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ inputs.env || inputs.environment || 'preview' }}
           LEGACY_DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
           PREFERRED_DEPLOY_ENVIRONMENT: ${{ inputs.env }}
-          SOURCE_COMMIT_SHA: ${{ inputs.commit_sha || github.sha }}
+          SOURCE_COMMIT_SHA: ${{ steps.invocation.outputs.source_commit_sha }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
-          STAGED_IMAGE_ARCHIVE: ${{ steps.staged-image.outputs.image_archive_path }}
-          STAGED_ARCHIVE_DIGEST: ${{ steps.staged-image.outputs.archive_digest }}
+          STAGED_IMAGE_ARCHIVE: ${{ steps.built-image.outputs.image_archive_path }}
+          STAGED_ARCHIVE_DIGEST: ${{ steps.built-image.outputs.archive_digest }}
+          IMAGE_DIGEST: ${{ steps.built-image.outputs.image_digest }}
           IMAGE_STAGING_ROOT: ${{ runner.temp }}
         run: |
-          image_digest="$(node scripts/source-unknown-deployment-evidence.mjs read-image-digest)"
           node scripts/source-unknown-deployment-evidence.mjs collect \
             --source-mode "$SOURCE_MODE" \
             --target-tenant-id "$TARGET_TENANT_ID" \
@@ -325,7 +354,7 @@ jobs:
             --expected-archive-digest "$STAGED_ARCHIVE_DIGEST" \
             --artifact-id "${{ steps.image-artifact.outputs.artifact-id }}" \
             --artifact-digest "${{ steps.image-artifact.outputs.artifact-digest }}" \
-            --image-digest "$image_digest"
+            --image-digest "$IMAGE_DIGEST"
 
       - name: Upload immutable build evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -368,7 +397,7 @@ jobs:
           CONFIG_HASH: ${{ needs.build.outputs.config_hash }}
           DEPLOY_ENVIRONMENT: ${{ inputs.env || inputs.environment || 'preview' }}
           EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
-          SOURCE_COMMIT_SHA: ${{ inputs.commit_sha || github.sha }}
+          SOURCE_COMMIT_SHA: ${{ needs.build.outputs.source_commit_sha }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -376,6 +405,9 @@ jobs:
           GITHUB_REF_NAME: ${{ github.ref_name }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_REPOSITORY_ID: ${{ github.repository_id }}
+          BUILD_IMAGE_ARTIFACT_ID: ${{ needs.build.outputs.image_artifact_id }}
+          BUILD_IMAGE_ARTIFACT_DIGEST: ${{ needs.build.outputs.image_artifact_digest }}
         shell: bash
         run: |
           [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://(dev-api\.au|(test-api|api)\.(au|ca|eu))\.myenterprise\.ai/public/?$ ]]
@@ -402,8 +434,78 @@ jobs:
           const MAX_GITHUB_METADATA_RESPONSE_BYTES = 1024 * 1024;
           const MAX_GITHUB_TREE_RESPONSE_BYTES = 16 * 1024 * 1024;
           const MAX_GITHUB_BLOB_RESPONSE_BYTES = 16 * 1024 * 1024;
+          const MAX_OCI_LAYOUT_BYTES = 1024;
+          const MAX_OCI_INDEX_BYTES = 1024 * 1024;
+          const MAX_OCI_MANIFEST_BYTES = 4 * 1024 * 1024;
+          const MAX_OCI_CONFIG_BYTES = 4 * 1024 * 1024;
+          const MAX_OCI_LAYER_COUNT = 1024;
+          const MAX_TAR_LISTING_BYTES = 64 * 1024;
+          const MAX_OCI_BLOB_PATH_BYTES = Buffer.byteLength('blobs/sha256/') + 64;
+          const MAX_OCI_BLOB_MEMBER_RECORD_BYTES = MAX_OCI_BLOB_PATH_BYTES + 1;
+          const MAX_OCI_BLOB_VERIFIED_RECORD_BYTES = Buffer.byteLength('verified:') + MAX_OCI_BLOB_PATH_BYTES + 1;
+          const MAX_OCI_BLOB_VALIDATION_OUTPUT_BYTES = (MAX_OCI_LAYER_COUNT + 1) * (MAX_OCI_BLOB_MEMBER_RECORD_BYTES + MAX_OCI_BLOB_VERIFIED_RECORD_BYTES);
+          const MAX_OCI_EXPECTED_BLOB_TABLE_BYTES = 112 * 1024;
+          const TAR_TIMEOUT_MS = 10 * 60 * 1000;
+          const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
+          const OCI_MANIFEST_MEDIA_TYPES = new Set([
+            'application/vnd.oci.image.manifest.v1+json',
+            'application/vnd.docker.distribution.manifest.v2+json',
+          ]);
+          const OCI_CONFIG_MEDIA_TYPES = new Set([
+            'application/vnd.oci.image.config.v1+json',
+          ]);
+          const DOCKER_CONFIG_MEDIA_TYPES = new Set([
+            'application/vnd.docker.container.image.v1+json',
+          ]);
+          const OCI_LAYER_MEDIA_TYPES = new Set([
+            'application/vnd.oci.image.layer.v1.tar',
+            'application/vnd.oci.image.layer.v1.tar+gzip',
+            'application/vnd.oci.image.layer.v1.tar+zstd',
+            'application/vnd.oci.image.layer.nondistributable.v1.tar',
+            'application/vnd.oci.image.layer.nondistributable.v1.tar+gzip',
+            'application/vnd.oci.image.layer.nondistributable.v1.tar+zstd',
+          ]);
+          const DOCKER_LAYER_MEDIA_TYPES = new Set([
+            'application/vnd.docker.image.rootfs.diff.tar',
+            'application/vnd.docker.image.rootfs.diff.tar.gzip',
+            'application/vnd.docker.image.rootfs.foreign.diff.tar',
+            'application/vnd.docker.image.rootfs.foreign.diff.tar.gzip',
+          ]);
           function sameFileIdentity(left, right) {
             return left.dev === right.dev && left.ino === right.ino;
+          }
+          function assertTargetTenantBinding(evidence, targetTenantId) {
+            const present = Object.prototype.hasOwnProperty.call(evidence, 'targetTenantId');
+            if (targetTenantId ? (!present || evidence.targetTenantId !== targetTenantId) : present) {
+              throw new Error('Build evidence target tenant does not match.');
+            }
+          }
+          function assertSourceModeBinding(evidence, sourceMode) {
+            const present = Object.prototype.hasOwnProperty.call(evidence, 'sourceMode');
+            if (present ? evidence.sourceMode !== sourceMode : sourceMode !== 'source-unknown') {
+              throw new Error('Build evidence source mode does not match.');
+            }
+          }
+          function canonicalUploadArtifactDigest(value) {
+            if (typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)) return `sha256:${value}`;
+            if (typeof value === 'string' && SHA256_DIGEST.test(value)) return value;
+            throw new Error('Current upload artifact digest is invalid.');
+          }
+          function assertCurrentUploadBinding(evidence, artifactId) {
+            if (artifactId !== process.env.BUILD_IMAGE_ARTIFACT_ID || evidence.artifactDigest !== canonicalUploadArtifactDigest(process.env.BUILD_IMAGE_ARTIFACT_DIGEST)) {
+              throw new Error('Build evidence artifact does not match the current upload step.');
+            }
+          }
+          function assertGitHubArtifactBinding(evidence, artifact, runAttempt, artifactId) {
+            const repositoryIdText = process.env.GITHUB_REPOSITORY_ID || '';
+            const runIdText = process.env.GITHUB_RUN_ID || '';
+            const runAttemptText = process.env.GITHUB_RUN_ATTEMPT || '';
+            const repositoryId = Number(repositoryIdText);
+            const runId = Number(runIdText);
+            const attempt = Number(runAttemptText);
+            if (!/^[1-9][0-9]*$/.test(repositoryIdText) || !Number.isSafeInteger(repositoryId) || String(repositoryId) !== repositoryIdText || !/^[1-9][0-9]*$/.test(runIdText) || !Number.isSafeInteger(runId) || String(runId) !== runIdText || !/^[1-9][0-9]*$/.test(runAttemptText) || !Number.isSafeInteger(attempt) || String(attempt) !== runAttemptText) throw new Error('GitHub run identity is invalid.');
+            if (artifact.id !== Number(artifactId) || artifact.name !== evidence.imageArtifact.name || artifact.digest !== evidence.artifactDigest || artifact.workflow_run?.id !== runId || artifact.workflow_run.repository_id !== repositoryId || artifact.workflow_run.head_repository_id !== repositoryId || artifact.workflow_run.head_sha !== process.env.SOURCE_COMMIT_SHA) throw new Error('GitHub artifact metadata does not match build evidence.');
+            if (runAttempt.id !== runId || runAttempt.run_attempt !== attempt || runAttempt.head_sha !== process.env.SOURCE_COMMIT_SHA || runAttempt.event !== 'workflow_dispatch' || runAttempt.repository?.id !== repositoryId) throw new Error('GitHub workflow run attempt does not match build evidence.');
           }
           function snapshotDirectoryPath(filePath, label) {
             const target = path.resolve(path.dirname(filePath));
@@ -429,8 +531,9 @@ jobs:
             const before = fs.lstatSync(filePath);
             if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1) throw new Error(`${label} must be a no-follow regular file.`);
             if (!Number.isSafeInteger(before.size) || before.size < 1 || before.size > maxBytes) throw new Error(`${label} is empty or exceeds its byte limit.`);
-            if (typeof fs.constants.O_NOFOLLOW !== 'number') throw new Error(`No-follow ${label} verification is unavailable.`);
-            const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+            if (!Number.isSafeInteger(fs.constants.O_NOFOLLOW) || fs.constants.O_NOFOLLOW <= 0) throw new Error(`No-follow ${label} verification is unavailable.`);
+            if (!Number.isSafeInteger(fs.constants.O_NONBLOCK) || fs.constants.O_NONBLOCK <= 0) throw new Error(`Nonblocking ${label} verification is unavailable.`);
+            const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
             try {
               const opened = fs.fstatSync(descriptor);
               assertDirectorySnapshot(ancestors, label);
@@ -457,17 +560,123 @@ jobs:
               fs.closeSync(descriptor);
             }
           }
-          function hashBoundedRegularFile(filePath, maxBytes) {
+          function inspectOciArchive(filePath, maxBytes, expectedImageDigest) {
             const ancestors = snapshotDirectoryPath(filePath, 'Downloaded image archive');
             const before = fs.lstatSync(filePath);
             if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1) throw new Error('Downloaded image archive must be a no-follow regular file.');
             if (!Number.isSafeInteger(before.size) || before.size < 1 || before.size > maxBytes) throw new Error('Downloaded image archive is empty or exceeds the handoff byte limit.');
-            if (typeof fs.constants.O_NOFOLLOW !== 'number') throw new Error('No-follow archive verification is unavailable.');
-            const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+            if (!Number.isSafeInteger(fs.constants.O_NOFOLLOW) || fs.constants.O_NOFOLLOW <= 0) throw new Error('No-follow archive verification is unavailable.');
+            if (!Number.isSafeInteger(fs.constants.O_NONBLOCK) || fs.constants.O_NONBLOCK <= 0) throw new Error('Nonblocking archive verification is unavailable.');
+            if (!SHA256_DIGEST.test(expectedImageDigest || '')) throw new Error('Build evidence image digest is invalid.');
+            const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
             try {
               const opened = fs.fstatSync(descriptor);
               assertDirectorySnapshot(ancestors, 'Downloaded image archive');
               if (!opened.isFile() || opened.nlink !== 1 || !sameFileIdentity(before, opened) || opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) throw new Error('Downloaded image archive changed before verification.');
+              function assertArchiveBinding() {
+                const afterDescriptor = fs.fstatSync(descriptor);
+                assertDirectorySnapshot(ancestors, 'Downloaded image archive');
+                const afterPath = fs.lstatSync(filePath);
+                for (const current of [afterDescriptor, afterPath]) {
+                  if (!current.isFile() || current.nlink !== 1 || !sameFileIdentity(opened, current) || current.size !== opened.size || current.mtimeMs !== opened.mtimeMs || current.ctimeMs !== opened.ctimeMs) throw new Error('Downloaded image archive changed during verification.');
+                }
+              }
+              function runBoundedTar(arguments_, outputLimit, label, additionalEnvironment = {}) {
+                let output;
+                try {
+                  output = execFileSync('tar', arguments_, {
+                    cwd: '/',
+                    encoding: null,
+                    env: { PATH: process.env.PATH, LC_ALL: 'C', ...additionalEnvironment },
+                    maxBuffer: outputLimit + 1,
+                    timeout: TAR_TIMEOUT_MS,
+                    stdio: ['ignore', 'pipe', 'pipe', descriptor],
+                  });
+                } finally {
+                  assertArchiveBinding();
+                }
+                if (!Buffer.isBuffer(output) || output.length < 1 || output.length > outputLimit) throw new Error(`${label} is empty or exceeds its byte limit.`);
+                return output;
+              }
+              function extractBoundedRegularEntry(memberPath, outputLimit, label) {
+                const archivePath = '/proc/self/fd/3';
+                const listing = runBoundedTar(
+                  ['--list', '--verbose', '--file', archivePath, '--', memberPath],
+                  MAX_TAR_LISTING_BYTES,
+                  `${label} listing`,
+                ).toString('utf8');
+                const entries = listing.split(/\r?\n/).filter(Boolean);
+                if (entries.length !== 1 || !entries[0].startsWith('-') || !entries[0].endsWith(` ${memberPath}`)) throw new Error(`${label} must be one regular archive entry.`);
+                return runBoundedTar(
+                  ['--extract', '--to-stdout', '--occurrence=1', '--file', archivePath, '--', memberPath],
+                  outputLimit,
+                  label,
+                );
+              }
+              function assertOciDescriptor(value, mediaTypes, maxDescriptorBytes, label) {
+                if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} descriptor is invalid.`);
+                if (!mediaTypes.has(value.mediaType)) throw new Error(`${label} media type is invalid.`);
+                if (!SHA256_DIGEST.test(value.digest || '')) throw new Error(`${label} digest is invalid.`);
+                if (!Number.isSafeInteger(value.size) || value.size < 0 || value.size > maxDescriptorBytes) throw new Error(`${label} size is invalid.`);
+                return value;
+              }
+              function verifyReferencedOciBlobs(descriptors) {
+                const expectedEntries = new Map();
+                for (const descriptor of descriptors) {
+                  const memberPath = `blobs/sha256/${descriptor.digest.slice('sha256:'.length)}`;
+                  const existing = expectedEntries.get(memberPath);
+                  if (existing && (existing.digest !== descriptor.digest || existing.size !== descriptor.size)) throw new Error('OCI image blob descriptors conflict.');
+                  expectedEntries.set(memberPath, { digest: descriptor.digest, size: descriptor.size });
+                }
+                const memberPaths = [...expectedEntries.keys()].sort();
+                if (memberPaths.length < 1 || memberPaths.length > MAX_OCI_LAYER_COUNT + 1) throw new Error('OCI image blob count is invalid.');
+                const expectedTable = memberPaths.map((memberPath) => {
+                  const descriptor = expectedEntries.get(memberPath);
+                  return `${descriptor.digest.slice('sha256:'.length)}:${descriptor.size}`;
+                }).join('\n');
+                const encodedExpectedTable = Buffer.from(expectedTable).toString('base64');
+                if (Buffer.byteLength(encodedExpectedTable) > MAX_OCI_EXPECTED_BLOB_TABLE_BYTES) throw new Error('OCI image blob authority table exceeds its execution bound.');
+                const validatorSource = `
+                  const { createHash } = require('node:crypto');
+                  const expected = new Map();
+                  for (const row of Buffer.from(process.env.EAI_OCI_EXPECTED_BLOB_TABLE || '', 'base64').toString('utf8').split('\\n')) {
+                    const match = /^([a-f0-9]{64}):(0|[1-9][0-9]*)$/.exec(row);
+                    if (!match) throw new Error('OCI image blob authority table is invalid.');
+                    const size = Number(match[2]);
+                    const filename = 'blobs/sha256/' + match[1];
+                    if (!Number.isSafeInteger(size) || expected.has(filename)) throw new Error('OCI image blob authority row is invalid.');
+                    expected.set(filename, { digest: 'sha256:' + match[1], size });
+                  }
+                  const filename = process.env.TAR_FILENAME || '';
+                  const descriptor = expected.get(filename);
+                  const sizeText = process.env.TAR_SIZE || '';
+                  if (process.env.TAR_FILETYPE !== 'f' || !descriptor || !/^(?:0|[1-9][0-9]*)$/.test(sizeText)) throw new Error('OCI image blob member identity is invalid.');
+                  const declaredSize = Number(sizeText);
+                  if (!Number.isSafeInteger(declaredSize) || declaredSize !== descriptor.size) throw new Error('OCI image blob member size is invalid.');
+                  const hash = createHash('sha256');
+                  let bytesRead = 0;
+                  process.stdin.on('data', (chunk) => {
+                    bytesRead += chunk.byteLength;
+                    if (bytesRead > descriptor.size) throw new Error('OCI image blob exceeds its descriptor size.');
+                    hash.update(chunk);
+                  });
+                  process.stdin.on('end', () => {
+                    if (bytesRead !== descriptor.size || ('sha256:' + hash.digest('hex')) !== descriptor.digest) throw new Error('OCI image blob bytes do not match their descriptor.');
+                    process.stdout.write('verified:' + filename + '\\n');
+                  });
+                `;
+                const validatorCommand = `node -e 'eval(Buffer.from(process.env.EAI_OCI_BLOB_VALIDATOR, "base64").toString("utf8"))'`;
+                const validationRecords = runBoundedTar(
+                  ['--extract', '--verbose', '--quoting-style=escape', '--to-command', validatorCommand, '--file', '/proc/self/fd/3', '--', ...memberPaths],
+                  MAX_OCI_BLOB_VALIDATION_OUTPUT_BYTES,
+                  'OCI referenced blob validation',
+                  {
+                    EAI_OCI_BLOB_VALIDATOR: Buffer.from(validatorSource).toString('base64'),
+                    EAI_OCI_EXPECTED_BLOB_TABLE: encodedExpectedTable,
+                  },
+                ).toString('utf8').split(/\r?\n/).filter(Boolean);
+                if (validationRecords.length !== memberPaths.length * 2 || memberPaths.some((memberPath) => validationRecords.filter((record) => record === memberPath).length !== 1 || validationRecords.filter((record) => record === `verified:${memberPath}`).length !== 1)) throw new Error('OCI image referenced blobs are missing, nonregular, or duplicated.');
+              }
               const hash = createHash('sha256');
               const buffer = Buffer.allocUnsafe(1024 * 1024);
               let offset = 0;
@@ -479,13 +688,36 @@ jobs:
               }
               const growthProbe = Buffer.allocUnsafe(1);
               if (fs.readSync(descriptor, growthProbe, 0, 1, offset) !== 0) throw new Error('Downloaded image archive grew during verification.');
-              const afterDescriptor = fs.fstatSync(descriptor);
-              assertDirectorySnapshot(ancestors, 'Downloaded image archive');
-              const afterPath = fs.lstatSync(filePath);
-              for (const current of [afterDescriptor, afterPath]) {
-                if (!current.isFile() || current.nlink !== 1 || !sameFileIdentity(opened, current) || current.size !== opened.size || current.mtimeMs !== opened.mtimeMs || current.ctimeMs !== opened.ctimeMs) throw new Error('Downloaded image archive changed during verification.');
-              }
-              return `sha256:${hash.digest('hex')}`;
+              assertArchiveBinding();
+              const archiveDigest = `sha256:${hash.digest('hex')}`;
+              const layoutBytes = extractBoundedRegularEntry('oci-layout', MAX_OCI_LAYOUT_BYTES, 'OCI image layout');
+              const layout = JSON.parse(layoutBytes.toString('utf8'));
+              if (!layout || typeof layout !== 'object' || Array.isArray(layout) || layout.imageLayoutVersion !== '1.0.0') throw new Error('OCI image layout is invalid.');
+              const indexBytes = extractBoundedRegularEntry('index.json', MAX_OCI_INDEX_BYTES, 'OCI image index');
+              const index = JSON.parse(indexBytes.toString('utf8'));
+              if (!index || typeof index !== 'object' || Array.isArray(index) || index.schemaVersion !== 2) throw new Error('OCI image index is invalid.');
+              const imageManifests = Array.isArray(index.manifests) ? index.manifests.filter((entry) => entry && typeof entry === 'object' && !Array.isArray(entry) && entry.platform?.os === 'linux' && entry.platform?.architecture === 'amd64') : [];
+              if (imageManifests.length !== 1) throw new Error('OCI image index must contain one Linux/amd64 manifest.');
+              const imageManifest = imageManifests[0];
+              if (!SHA256_DIGEST.test(imageManifest.digest || '') || imageManifest.digest !== expectedImageDigest) throw new Error('Downloaded OCI image descriptor does not match build evidence.');
+              if (!Number.isSafeInteger(imageManifest.size) || imageManifest.size < 1 || imageManifest.size > MAX_OCI_MANIFEST_BYTES) throw new Error('OCI image manifest size is invalid.');
+              if (!OCI_MANIFEST_MEDIA_TYPES.has(imageManifest.mediaType)) throw new Error('OCI image manifest media type is invalid.');
+              const manifestPath = `blobs/sha256/${imageManifest.digest.slice('sha256:'.length)}`;
+              const manifestBytes = extractBoundedRegularEntry(manifestPath, MAX_OCI_MANIFEST_BYTES, 'OCI image manifest');
+              if (manifestBytes.length !== imageManifest.size) throw new Error('OCI image manifest size does not match its descriptor.');
+              const manifestDigest = `sha256:${createHash('sha256').update(manifestBytes).digest('hex')}`;
+              if (manifestDigest !== imageManifest.digest || manifestDigest !== expectedImageDigest) throw new Error('OCI image manifest bytes do not match build evidence.');
+              const manifest = JSON.parse(manifestBytes.toString('utf8'));
+              if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest) || manifest.schemaVersion !== 2 || manifest.mediaType !== imageManifest.mediaType) throw new Error('OCI image manifest payload is invalid.');
+              const isOciManifest = manifest.mediaType === 'application/vnd.oci.image.manifest.v1+json';
+              const configMediaTypes = isOciManifest ? OCI_CONFIG_MEDIA_TYPES : DOCKER_CONFIG_MEDIA_TYPES;
+              const layerMediaTypes = isOciManifest ? OCI_LAYER_MEDIA_TYPES : DOCKER_LAYER_MEDIA_TYPES;
+              const configDescriptor = assertOciDescriptor(manifest.config, configMediaTypes, MAX_OCI_CONFIG_BYTES, 'OCI image configuration');
+              if (!Array.isArray(manifest.layers) || manifest.layers.length > MAX_OCI_LAYER_COUNT) throw new Error('OCI image layers are invalid or exceed their count limit.');
+              const layerDescriptors = manifest.layers.map((layer, index) => assertOciDescriptor(layer, layerMediaTypes, maxBytes, `OCI image layer ${index}`));
+              verifyReferencedOciBlobs([configDescriptor, ...layerDescriptors]);
+              assertArchiveBinding();
+              return { archiveDigest, imageDigest: manifestDigest };
             } finally {
               fs.closeSync(descriptor);
             }
@@ -507,17 +739,19 @@ jobs:
           for (const [key, value] of Object.entries(expected)) {
             if (evidence[key] !== value) throw new Error(`Build evidence ${key} does not match the exact dispatch.`);
           }
-          if ((evidence.sourceMode || 'source-unknown') !== process.env.SOURCE_MODE) throw new Error('Build evidence source mode does not match.');
-          if (process.env.TARGET_TENANT_ID && evidence.targetTenantId !== process.env.TARGET_TENANT_ID) throw new Error('Build evidence target tenant does not match.');
+          assertSourceModeBinding(evidence, process.env.SOURCE_MODE);
+          assertTargetTenantBinding(evidence, process.env.TARGET_TENANT_ID);
           if (String(evidence.workflowRun?.id) !== process.env.GITHUB_RUN_ID || String(evidence.workflowRun?.attempt) !== process.env.GITHUB_RUN_ATTEMPT) throw new Error('Build evidence workflow run does not match.');
           if (evidence.validationSummary?.status !== 'passed') throw new Error('Build evidence validation did not pass.');
-          const archiveDigest = hashBoundedRegularFile('.eai-build/eai-generated-app-image.tar', MAX_IMAGE_ARCHIVE_BYTES);
-          if (evidence.imageArtifact?.archiveDigest !== archiveDigest) throw new Error('Downloaded image archive does not match build evidence.');
-          if (evidence.imageArtifact?.name !== 'eai-generated-app-image' || !/^[1-9][0-9]*$/.test(String(evidence.imageArtifact?.id || ''))) throw new Error('Build evidence image artifact identity is invalid.');
+          const artifactId = evidence.imageArtifact?.id;
+          const artifactIdNumber = typeof artifactId === 'string' ? Number(artifactId) : NaN;
+          if (typeof artifactId !== 'string' || !/^[1-9][0-9]*$/.test(artifactId) || !Number.isSafeInteger(artifactIdNumber) || String(artifactIdNumber) !== artifactId) throw new Error('Build evidence image artifact ID is invalid.');
+          if (evidence.imageArtifact?.name !== 'eai-generated-app-image') throw new Error('Build evidence image artifact name is invalid.');
+          assertCurrentUploadBinding(evidence, artifactId);
+          const archive = inspectOciArchive('.eai-build/eai-generated-app-image.tar', MAX_IMAGE_ARCHIVE_BYTES, evidence.imageDigest);
+          if (evidence.imageArtifact?.archiveDigest !== archive.archiveDigest) throw new Error('Downloaded image archive does not match build evidence.');
           if (new Set([evidence.artifactDigest, evidence.imageArtifact.archiveDigest, evidence.imageDigest]).size !== 3) throw new Error('Build evidence digests must be independently bound.');
-          const index = JSON.parse(execFileSync('tar', ['-xOf', '.eai-build/eai-generated-app-image.tar', 'index.json'], { encoding: 'utf8', maxBuffer: 1024 * 1024 }));
-          const imageManifests = Array.isArray(index.manifests) ? index.manifests.filter((entry) => entry?.platform?.os === 'linux' && entry?.platform?.architecture === 'amd64') : [];
-          if (imageManifests.length !== 1 || imageManifests[0].digest !== evidence.imageDigest) throw new Error('Downloaded OCI image digest does not match build evidence.');
+          if (archive.imageDigest !== evidence.imageDigest) throw new Error('Downloaded OCI image digest does not match build evidence.');
 
           const repositoryParts = process.env.GITHUB_REPOSITORY.split('/');
           if (repositoryParts.length !== 2) throw new Error('GitHub repository identity is invalid.');
@@ -662,12 +896,13 @@ jobs:
             return `sha256:${hash.digest('hex')}`;
           }
           (async () => {
-            const [workflowBytes, collectorBytes, runtimeBytes, canonicalConfigHash, artifactResponse] = await Promise.all([
+            const [workflowBytes, collectorBytes, runtimeBytes, canonicalConfigHash, artifactResponse, runAttemptResponse] = await Promise.all([
               sourceBytes(process.env.EAI_WORKFLOW_PATH, MAX_PRODUCER_SOURCE_BYTES, 'Canonical workflow source'),
               sourceBytes('scripts/source-unknown-deployment-evidence.mjs', MAX_PRODUCER_SOURCE_BYTES, 'Canonical collector source'),
               sourceBytes('eai.runtime.json', MAX_GOVERNED_CONFIG_FILE_BYTES, 'Governed runtime source'),
               sourceConfigHash(),
-              github(`/actions/artifacts/${evidence.imageArtifact.id}`),
+              github(`/actions/artifacts/${encodeURIComponent(artifactId)}`),
+              github(`/actions/runs/${encodeURIComponent(process.env.GITHUB_RUN_ID)}/attempts/${encodeURIComponent(process.env.GITHUB_RUN_ATTEMPT)}`),
             ]);
             if (canonicalConfigHash !== process.env.CONFIG_HASH || canonicalConfigHash !== evidence.configHash) throw new Error('Exact source configuration does not match dispatch and build evidence.');
             const workflowBlobSha = createHash('sha1').update(`blob ${workflowBytes.length}\0`).update(workflowBytes).digest('hex');
@@ -676,12 +911,19 @@ jobs:
             const runtime = JSON.parse(runtimeBytes.toString('utf8'));
             const sourceProvenance = validateSchemaProvenance(runtime.schemaProvenance);
             if (!isDeepStrictEqual(evidence.schemaProvenance, sourceProvenance)) throw new Error('Source runtime provenance does not match build evidence.');
-            const artifact = await readBoundedResponseJson(
-              artifactResponse,
-              MAX_GITHUB_METADATA_RESPONSE_BYTES,
-              'GitHub artifact response',
-            );
-            if (String(artifact.id) !== String(evidence.imageArtifact.id) || artifact.name !== evidence.imageArtifact.name || artifact.digest !== evidence.artifactDigest || String(artifact.workflow_run?.id) !== process.env.GITHUB_RUN_ID) throw new Error('GitHub artifact metadata does not match build evidence.');
+            const [artifact, runAttempt] = await Promise.all([
+              readBoundedResponseJson(
+                artifactResponse,
+                MAX_GITHUB_METADATA_RESPONSE_BYTES,
+                'GitHub artifact response',
+              ),
+              readBoundedResponseJson(
+                runAttemptResponse,
+                MAX_GITHUB_METADATA_RESPONSE_BYTES,
+                'GitHub workflow run-attempt response',
+              ),
+            ]);
+            assertGitHubArtifactBinding(evidence, artifact, runAttempt, artifactId);
           })().catch((error) => {
             console.error(error instanceof Error ? error.message : String(error));
             process.exitCode = 1;
@@ -759,6 +1001,9 @@ jobs:
               if (mode === "file") {
                 const binding = snapshotAncestors(process.env.EAI_RESPONSE_PATH || "");
                 assertAncestors(binding.ancestors);
+                if (!Number.isSafeInteger(fs.constants.O_NOFOLLOW) || fs.constants.O_NOFOLLOW <= 0) {
+                  throw new Error("No-follow deployment handoff response creation is unavailable.");
+                }
                 descriptor = fs.openSync(
                   binding.target,
                   fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW,
@@ -886,8 +1131,9 @@ jobs:
           };
           const before = fs.lstatSync(responsePath);
           if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1 || !Number.isSafeInteger(before.size) || before.size < 1 || before.size > maxBytes) throw new Error('Deployment handoff response must be a bounded no-follow regular file.');
-          if (typeof fs.constants.O_NOFOLLOW !== 'number') throw new Error('No-follow response verification is unavailable.');
-          const descriptor = fs.openSync(responsePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+          if (!Number.isSafeInteger(fs.constants.O_NOFOLLOW) || fs.constants.O_NOFOLLOW <= 0) throw new Error('No-follow response verification is unavailable.');
+          if (!Number.isSafeInteger(fs.constants.O_NONBLOCK) || fs.constants.O_NONBLOCK <= 0) throw new Error('Nonblocking response verification is unavailable.');
+          const descriptor = fs.openSync(responsePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
           let bytes;
           try {
             const opened = fs.fstatSync(descriptor);

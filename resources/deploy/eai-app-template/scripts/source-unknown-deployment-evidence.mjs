@@ -45,8 +45,47 @@ const MAX_IMAGE_ARCHIVE_BYTES = 10 * 1024 * 1024 * 1024;
 const MAX_GOVERNED_CONFIG_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_GOVERNED_CONFIG_TOTAL_BYTES = 32 * 1024 * 1024;
 const MAX_GOVERNED_CONFIG_FILES = 4096;
+const MAX_BUILD_EVIDENCE_BYTES = 1024 * 1024;
 const MAX_HANDOFF_RESPONSE_BYTES = 1024 * 1024;
+const MAX_GITHUB_OUTPUT_VALUE_BYTES = 4 * 1024;
+const MAX_GITHUB_OUTPUT_TOTAL_BYTES = 64 * 1024;
+const MAX_OCI_INDEX_BYTES = 1024 * 1024;
+const MAX_OCI_MANIFEST_BYTES = 4 * 1024 * 1024;
+const MAX_TAR_LISTING_BYTES = 64 * 1024;
+const TAR_TIMEOUT_MS = 10 * 60 * 1000;
 const BOUNDED_READ_BUFFER_BYTES = 64 * 1024;
+const OCI_MANIFEST_MEDIA_TYPES = new Set([
+  'application/vnd.oci.image.manifest.v1+json',
+  'application/vnd.docker.distribution.manifest.v2+json',
+]);
+
+function requiredOpenFlag(name) {
+  const flag = constants[name];
+  if (!Number.isSafeInteger(flag) || flag <= 0) {
+    throw new Error(`Secure file opens require ${name} support.`);
+  }
+  return flag;
+}
+
+function noFollowOpenFlags(flags, { nonblocking = false } = {}) {
+  const noFollow = requiredOpenFlag('O_NOFOLLOW');
+  const nonblockingFlag = nonblocking
+    ? requiredOpenFlag('O_NONBLOCK')
+    : 0;
+  return flags | noFollow | nonblockingFlag;
+}
+
+function governedConfigReadOpenFlags({
+  allowWindowsValidatedFallback = false,
+} = {}) {
+  if (allowWindowsValidatedFallback && process.platform === 'win32') {
+    if (!Number.isSafeInteger(constants.O_RDONLY) || constants.O_RDONLY < 0) {
+      throw new Error('Secure file opens require O_RDONLY support.');
+    }
+    return constants.O_RDONLY;
+  }
+  return noFollowOpenFlags(constants.O_RDONLY, { nonblocking: true });
+}
 
 function sourceMode(options) {
   const mode = option(options, 'sourceMode', 'source-unknown');
@@ -332,7 +371,7 @@ function copyRegularTreeNoFollow(
       );
       const sourceDescriptor = openSync(
         sourcePath,
-        constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
+        noFollowOpenFlags(constants.O_RDONLY, { nonblocking: true }),
       );
       const destinationAncestors = snapshotAbsoluteDirectoryPath(
         dirname(destinationPath),
@@ -367,10 +406,9 @@ function copyRegularTreeNoFollow(
         }
         destinationDescriptor = openSync(
           destinationPath,
-          constants.O_WRONLY |
-            constants.O_CREAT |
-            constants.O_EXCL |
-            (constants.O_NOFOLLOW || 0),
+          noFollowOpenFlags(
+            constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+          ),
           before.mode & 0o777,
         );
         const destinationOpened = fstatSync(destinationDescriptor);
@@ -416,11 +454,17 @@ function copyRegularTreeNoFollow(
         const destinationAfter = fstatSync(destinationDescriptor);
         const destinationPathAfter = lstatSync(destinationPath);
         if (
+          !destinationAfter.isFile() ||
           destinationAfter.dev !== destinationOpened.dev ||
           destinationAfter.ino !== destinationOpened.ino ||
+          destinationAfter.nlink !== 1 ||
+          destinationAfter.size !== copied ||
           destinationPathAfter.isSymbolicLink() ||
+          !destinationPathAfter.isFile() ||
           destinationPathAfter.dev !== destinationOpened.dev ||
-          destinationPathAfter.ino !== destinationOpened.ino
+          destinationPathAfter.ino !== destinationOpened.ino ||
+          destinationPathAfter.nlink !== 1 ||
+          destinationPathAfter.size !== copied
         ) {
           throw new Error(`${label} destination changed during its bound write.`);
         }
@@ -474,14 +518,15 @@ function writeRegularFileNoFollow(root, path, content) {
     dirname(path),
     'Image context output',
   );
+  const bytes = Buffer.from(content, 'utf8');
   const descriptor = openSync(
     path,
-    constants.O_WRONLY |
-      constants.O_CREAT |
-      constants.O_EXCL |
-      (constants.O_NOFOLLOW || 0),
+    noFollowOpenFlags(
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+    ),
     0o600,
   );
+  const expectedBytes = bytes.length;
   try {
     const opened = fstatSync(descriptor);
     assertAbsoluteDirectorySnapshot(ancestors, 'Image context output');
@@ -496,19 +541,22 @@ function writeRegularFileNoFollow(root, path, content) {
     ) {
       throw new Error('Image context output must be a regular file.');
     }
-    writeFileSync(descriptor, content, 'utf8');
+    writeFileSync(descriptor, bytes);
     assertAbsoluteDirectorySnapshot(ancestors, 'Image context output');
     const after = fstatSync(descriptor);
     const finalPath = lstatSync(path);
     if (
+      !after.isFile() ||
       after.dev !== opened.dev ||
       after.ino !== opened.ino ||
       after.nlink !== 1 ||
+      after.size !== expectedBytes ||
       finalPath.isSymbolicLink() ||
       !finalPath.isFile() ||
       finalPath.dev !== opened.dev ||
       finalPath.ino !== opened.ino ||
-      finalPath.nlink !== 1
+      finalPath.nlink !== 1 ||
+      finalPath.size !== expectedBytes
     ) {
       throw new Error('Image context output changed during its bound write.');
     }
@@ -526,14 +574,18 @@ function writeEvidenceFileNoFollow(root, outputDir, evidencePath, content) {
     'Evidence output',
   );
 
+  const bytes = Buffer.from(content, 'utf8');
+  if (bytes.length > MAX_BUILD_EVIDENCE_BYTES) {
+    throw new Error('Build evidence exceeds its byte limit.');
+  }
   const descriptor = openSync(
     evidencePath,
-    constants.O_WRONLY |
-      constants.O_CREAT |
-      constants.O_EXCL |
-      (constants.O_NOFOLLOW || 0),
+    noFollowOpenFlags(
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+    ),
     0o600,
   );
+  const expectedBytes = bytes.length;
   try {
     const opened = fstatSync(descriptor);
     assertAbsoluteDirectorySnapshot(ancestors, 'Evidence output');
@@ -548,16 +600,22 @@ function writeEvidenceFileNoFollow(root, outputDir, evidencePath, content) {
     ) {
       throw new Error('Evidence output must be a regular file.');
     }
-    writeFileSync(descriptor, content, 'utf8');
+    writeFileSync(descriptor, bytes);
     assertAbsoluteDirectorySnapshot(ancestors, 'Evidence output');
     const after = fstatSync(descriptor);
     const finalPath = lstatSync(evidencePath);
     if (
+      !after.isFile() ||
       after.dev !== opened.dev ||
       after.ino !== opened.ino ||
+      after.nlink !== 1 ||
+      after.size !== expectedBytes ||
       finalPath.isSymbolicLink() ||
+      !finalPath.isFile() ||
       finalPath.dev !== opened.dev ||
-      finalPath.ino !== opened.ino
+      finalPath.ino !== opened.ino ||
+      finalPath.nlink !== 1 ||
+      finalPath.size !== expectedBytes
     ) {
       throw new Error('Evidence output changed during its bound write.');
     }
@@ -631,7 +689,7 @@ function readBoundedRegularFileNoFollow(
   }
   const descriptor = openSync(
     path,
-    constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
+    noFollowOpenFlags(constants.O_RDONLY, { nonblocking: true }),
   );
   try {
     const opened = fstatSync(descriptor);
@@ -691,22 +749,152 @@ function readBoundedRegularFileNoFollow(
 
 function readImageDigest(options) {
   const root = resolve(option(options, 'root', process.cwd()));
-  const metadataPath = resolve(
+  const archivePath = resolve(
     root,
-    option(options, 'imageMetadata', '.eai-build/image-metadata.json'),
+    option(options, 'imageArchive', '.eai-build/eai-generated-app-image.tar'),
   );
-  const metadata = JSON.parse(
-    readBoundedRegularFileNoFollow(
-      root,
-      metadataPath,
-      'OCI image metadata',
-    ).toString('utf8'),
-  );
-  const digest = metadata['containerimage.digest'];
-  if (!SHA256_DIGEST.test(digest || '')) {
-    throw new Error('OCI image metadata must contain a sha256 image digest.');
-  }
+  const digest = readOciImageDigestFromArchive(root, archivePath);
   process.stdout.write(`${digest}\n`);
+}
+
+function readOciImageDigestFromArchive(root, archivePath) {
+  containedRelativePath(root, archivePath, 'OCI image archive');
+  assertDirectoryTreeNoFollow(
+    root,
+    dirname(archivePath),
+    'OCI image archive directory',
+  );
+  const ancestors = snapshotAbsoluteDirectoryPath(
+    dirname(archivePath),
+    'OCI image archive',
+  );
+  const before = lstatSync(archivePath);
+  if (
+    before.isSymbolicLink() ||
+    !before.isFile() ||
+    before.nlink !== 1 ||
+    before.size < 1 ||
+    before.size > MAX_IMAGE_ARCHIVE_BYTES
+  ) {
+    throw new Error('OCI image archive must be a bounded no-follow regular file.');
+  }
+  const descriptor = openSync(
+    archivePath,
+    noFollowOpenFlags(constants.O_RDONLY, { nonblocking: true }),
+  );
+  try {
+    const opened = fstatSync(descriptor);
+    const assertArchiveBinding = () => {
+      const after = fstatSync(descriptor);
+      assertAbsoluteDirectorySnapshot(ancestors, 'OCI image archive');
+      const finalPath = lstatSync(archivePath);
+      for (const current of [after, finalPath]) {
+        if (
+          current.isSymbolicLink() ||
+          !current.isFile() ||
+          current.nlink !== 1 ||
+          current.dev !== opened.dev ||
+          current.ino !== opened.ino ||
+          current.size !== opened.size ||
+          current.mtimeMs !== opened.mtimeMs ||
+          current.ctimeMs !== opened.ctimeMs
+        ) {
+          throw new Error('OCI image archive changed while deriving its image digest.');
+        }
+      }
+    };
+    if (
+      !opened.isFile() ||
+      opened.nlink !== 1 ||
+      opened.dev !== before.dev ||
+      opened.ino !== before.ino ||
+      opened.size !== before.size ||
+      opened.mtimeMs !== before.mtimeMs ||
+      opened.ctimeMs !== before.ctimeMs
+    ) {
+      throw new Error('OCI image archive changed before digest derivation.');
+    }
+    const runTar = (arguments_, maxBytes, label) => {
+      let output;
+      try {
+        output = execFileSync('tar', arguments_, {
+          cwd: '/',
+          encoding: null,
+          env: { PATH: process.env.PATH, LC_ALL: 'C' },
+          maxBuffer: maxBytes + 1,
+          timeout: TAR_TIMEOUT_MS,
+          stdio: ['ignore', 'pipe', 'pipe', descriptor],
+        });
+      } finally {
+        assertArchiveBinding();
+      }
+      if (!Buffer.isBuffer(output) || output.length < 1 || output.length > maxBytes) {
+        throw new Error(`${label} is empty or exceeds its byte limit.`);
+      }
+      return output;
+    };
+    const archivePathByDescriptor =
+      process.platform === 'linux' ? '/proc/self/fd/3' : '/dev/fd/3';
+    const listing = runTar(
+      ['--list', '--verbose', '--file', archivePathByDescriptor, '--', 'index.json'],
+      MAX_TAR_LISTING_BYTES,
+      'OCI image index listing',
+    ).toString('utf8');
+    const entries = listing.split(/\r?\n/).filter(Boolean);
+    if (
+      entries.length !== 1 ||
+      !entries[0].startsWith('-') ||
+      !entries[0].endsWith(' index.json')
+    ) {
+      throw new Error('OCI image index must be one regular archive entry.');
+    }
+    const index = JSON.parse(
+      runTar(
+        [
+          '--extract',
+          '--to-stdout',
+          '--occurrence=1',
+          '--file',
+          archivePathByDescriptor,
+          '--',
+          'index.json',
+        ],
+        MAX_OCI_INDEX_BYTES,
+        'OCI image index',
+      ).toString('utf8'),
+    );
+    if (
+      !index ||
+      typeof index !== 'object' ||
+      Array.isArray(index) ||
+      index.schemaVersion !== 2 ||
+      !Array.isArray(index.manifests)
+    ) {
+      throw new Error('OCI image index is invalid.');
+    }
+    const candidates = index.manifests.filter(
+      (manifest) =>
+        manifest?.platform?.os === 'linux' &&
+        manifest?.platform?.architecture === 'amd64',
+    );
+    if (candidates.length !== 1) {
+      throw new Error('OCI image index must bind exactly one linux/amd64 manifest.');
+    }
+    const candidate = candidates[0];
+    if (
+      !OCI_MANIFEST_MEDIA_TYPES.has(candidate.mediaType) ||
+      !SHA256_DIGEST.test(candidate.digest || '') ||
+      !Number.isSafeInteger(candidate.size) ||
+      candidate.size < 1 ||
+      candidate.size > MAX_OCI_MANIFEST_BYTES
+    ) {
+      throw new Error('OCI image manifest descriptor is invalid.');
+    }
+    assertArchiveBinding();
+    return candidate.digest;
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 async function digestFile(
@@ -727,7 +915,7 @@ async function digestFile(
   }
   const descriptor = openSync(
     path,
-    constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
+    noFollowOpenFlags(constants.O_RDONLY, { nonblocking: true }),
   );
   try {
     const opened = fstatSync(descriptor);
@@ -849,7 +1037,7 @@ function stageImageArtifact(options) {
   }
   const sourceDescriptor = openSync(
     sourcePath,
-    constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
+    noFollowOpenFlags(constants.O_RDONLY, { nonblocking: true }),
   );
   let destinationDescriptor;
   try {
@@ -872,10 +1060,9 @@ function stageImageArtifact(options) {
     );
     destinationDescriptor = openSync(
       stagedPath,
-      constants.O_WRONLY |
-        constants.O_CREAT |
-        constants.O_EXCL |
-        (constants.O_NOFOLLOW || 0),
+      noFollowOpenFlags(
+        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+      ),
       0o600,
     );
     const opened = fstatSync(sourceDescriptor);
@@ -975,11 +1162,13 @@ function stageImageArtifact(options) {
       sourcePathAfter.ctimeMs !== opened.ctimeMs ||
       destinationAfter.dev !== destinationOpened.dev ||
       destinationAfter.ino !== destinationOpened.ino ||
+      destinationAfter.nlink !== 1 ||
       destinationAfter.size !== copied ||
       destinationPathAfter.isSymbolicLink() ||
       !destinationPathAfter.isFile() ||
       destinationPathAfter.dev !== destinationOpened.dev ||
       destinationPathAfter.ino !== destinationOpened.ino ||
+      destinationPathAfter.nlink !== 1 ||
       destinationPathAfter.size !== copied
     ) {
       throw new Error(
@@ -1006,7 +1195,7 @@ function stageImageArtifact(options) {
   }
 }
 
-function digestFiles(root, paths) {
+function digestFiles(root, paths, options = {}) {
   if (paths.length > MAX_GOVERNED_CONFIG_FILES) {
     throw new Error('Governed configuration manifest exceeds its file limit.');
   }
@@ -1018,7 +1207,7 @@ function digestFiles(root, paths) {
         `Governed configuration ancestor does not exist: ${relativePath}`,
       );
     }
-    const bytes = readRegularFileNoFollow(root, relativePath);
+    const bytes = readRegularFileNoFollow(root, relativePath, options);
     totalBytes += bytes.length;
     if (totalBytes > MAX_GOVERNED_CONFIG_TOTAL_BYTES) {
       throw new Error('Governed configuration manifest exceeds its byte limit.');
@@ -1038,7 +1227,11 @@ function gitBlobSha(bytes) {
     .digest('hex');
 }
 
-function readRegularFileNoFollow(root, relativePath) {
+function readRegularFileNoFollow(
+  root,
+  relativePath,
+  { allowWindowsValidatedFallback = false } = {},
+) {
   if (!assertGovernedAncestors(root, relativePath)) {
     throw new Error(
       `Governed configuration ancestor does not exist: ${relativePath}`,
@@ -1063,7 +1256,7 @@ function readRegularFileNoFollow(root, relativePath) {
   );
   const descriptor = openSync(
     path,
-    constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
+    governedConfigReadOpenFlags({ allowWindowsValidatedFallback }),
   );
   try {
     const opened = fstatSync(descriptor);
@@ -1347,10 +1540,10 @@ function readSchemaProvenance(root) {
   return provenance;
 }
 
-function buildConfigHash(root) {
+function buildConfigHash(root, options = {}) {
   assertExists(join(root, 'eai.runtime.json'), 'eai.runtime.json');
   const paths = listGovernedConfigFiles(root).sort();
-  const digest = digestFiles(root, paths);
+  const digest = digestFiles(root, paths, options);
   const finalPaths = listGovernedConfigFiles(root).sort();
   if (
     paths.length !== finalPaths.length ||
@@ -1372,14 +1565,6 @@ function prepareImageContext(options) {
   );
   const standaloneDir = join(buildDir, 'standalone');
   const staticDir = join(buildDir, 'static');
-  const imageArchivePath = resolve(
-    root,
-    option(options, 'imageArchive', '.eai-build/eai-generated-app-image.tar'),
-  );
-  const imageMetadataPath = resolve(
-    root,
-    option(options, 'imageMetadata', '.eai-build/image-metadata.json'),
-  );
 
   containedRelativePath(root, buildDir, 'Next build directory');
   containedRelativePath(root, contextDir, 'Image context directory');
@@ -1433,9 +1618,140 @@ function prepareImageContext(options) {
       '',
     ].join('\n'),
   );
-  assertOutputAbsentNoFollow(root, imageArchivePath, 'OCI image archive');
-  assertOutputAbsentNoFollow(root, imageMetadataPath, 'OCI image metadata');
   process.stdout.write(`${contextDir}\n`);
+}
+
+async function writeImageArchive(options) {
+  const stagingRootValue = option(
+    options,
+    'stagingRoot',
+    process.env.RUNNER_TEMP || '',
+  );
+  if (!stagingRootValue) {
+    throw new Error(
+      'Image archive writing requires RUNNER_TEMP or --staging-root.',
+    );
+  }
+  const stagingRoot = resolve(stagingRootValue);
+  assertDirectoryTreeNoFollow(
+    stagingRoot,
+    stagingRoot,
+    'Image archive staging root',
+  );
+  const stagingRootAncestors = snapshotAbsoluteDirectoryPath(
+    stagingRoot,
+    'Image archive staging root',
+  );
+  const stagingDirectory = mkdtempSync(
+    join(stagingRoot, 'eai-managed-image-'),
+  );
+  assertAbsoluteDirectorySnapshot(
+    stagingRootAncestors,
+    'Image archive staging root',
+  );
+  containedRelativePath(
+    realpathSync(stagingRoot),
+    realpathSync(stagingDirectory),
+    'Image archive staging directory',
+  );
+  const imageArchivePath = join(
+    stagingDirectory,
+    'eai-generated-app-image.tar',
+  );
+  const archiveAncestors = snapshotAbsoluteDirectoryPath(
+    stagingDirectory,
+    'OCI image archive output',
+  );
+  const archiveDescriptor = openSync(
+    imageArchivePath,
+    noFollowOpenFlags(
+      constants.O_RDWR | constants.O_CREAT | constants.O_EXCL,
+    ),
+    0o600,
+  );
+  const hash = createHash('sha256');
+  let written = 0;
+  try {
+    const opened = fstatSync(archiveDescriptor);
+    assertAbsoluteDirectorySnapshot(
+      archiveAncestors,
+      'OCI image archive output',
+    );
+    const rebound = lstatSync(imageArchivePath);
+    if (
+      !opened.isFile() ||
+      opened.nlink !== 1 ||
+      opened.size !== 0 ||
+      rebound.isSymbolicLink() ||
+      !rebound.isFile() ||
+      rebound.dev !== opened.dev ||
+      rebound.ino !== opened.ino ||
+      rebound.nlink !== 1 ||
+      rebound.size !== 0
+    ) {
+      throw new Error('OCI image archive output must be a new regular file.');
+    }
+    for await (const input of process.stdin) {
+      const chunk = Buffer.isBuffer(input) ? input : Buffer.from(input);
+      if (written + chunk.length > MAX_IMAGE_ARCHIVE_BYTES) {
+        throw new Error('OCI image archive exceeds its streaming byte limit.');
+      }
+      let offset = 0;
+      while (offset < chunk.length) {
+        const bytesWritten = writeSync(
+          archiveDescriptor,
+          chunk,
+          offset,
+          chunk.length - offset,
+        );
+        if (bytesWritten < 1) {
+          throw new Error('OCI image archive output stopped accepting data.');
+        }
+        offset += bytesWritten;
+      }
+      hash.update(chunk);
+      written += chunk.length;
+    }
+    assertAbsoluteDirectorySnapshot(
+      archiveAncestors,
+      'OCI image archive output',
+    );
+    const after = fstatSync(archiveDescriptor);
+    const finalPath = lstatSync(imageArchivePath);
+    for (const current of [after, finalPath]) {
+      if (
+        current.isSymbolicLink() ||
+        !current.isFile() ||
+        current.nlink !== 1 ||
+        current.dev !== opened.dev ||
+        current.ino !== opened.ino ||
+        current.size !== written ||
+        current.size < 1 ||
+        current.size > MAX_IMAGE_ARCHIVE_BYTES
+      ) {
+        throw new Error('OCI image archive output changed during its bound write.');
+      }
+    }
+  } finally {
+    closeSync(archiveDescriptor);
+  }
+  const archiveDigest = `sha256:${hash.digest('hex')}`;
+  const imageDigest = readOciImageDigestFromArchive(
+    stagingRoot,
+    imageArchivePath,
+  );
+  appendOutputs(
+    option(options, 'githubOutput', process.env.GITHUB_OUTPUT || ''),
+    {
+      image_archive_path: imageArchivePath,
+      archive_digest: archiveDigest,
+      archive_size: written,
+      image_digest: imageDigest,
+    },
+  );
+  process.stdout.write(
+    `${JSON.stringify({ imageArchivePath, archiveDigest, size: written, imageDigest })}\n`,
+  );
 }
 
 function assertCommandFileBinding(path, descriptor, openedStatus, phase) {
@@ -1472,9 +1788,19 @@ function appendOutputs(path, outputs) {
       if (/[\r\n\0]/.test(serialized)) {
         throw new Error(`GitHub output ${key} must be a single safe line.`);
       }
+      if (
+        Buffer.byteLength(serialized, 'utf8') >
+        MAX_GITHUB_OUTPUT_VALUE_BYTES
+      ) {
+        throw new Error(`GitHub output ${key} exceeds its byte limit.`);
+      }
       return `${key}=${serialized}\n`;
     })
     .join('');
+  const bytes = Buffer.from(lines, 'utf8');
+  if (bytes.length > MAX_GITHUB_OUTPUT_TOTAL_BYTES) {
+    throw new Error('GitHub outputs exceed their aggregate byte limit.');
+  }
   const boundPath = resolve(path);
   const ancestors = snapshotAbsoluteDirectoryPath(
     dirname(boundPath),
@@ -1482,11 +1808,10 @@ function appendOutputs(path, outputs) {
   );
   const descriptor = openSync(
     boundPath,
-    constants.O_WRONLY |
-      constants.O_APPEND |
-      constants.O_CREAT |
-      constants.O_NONBLOCK |
-      (constants.O_NOFOLLOW || 0),
+    noFollowOpenFlags(
+      constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT,
+      { nonblocking: true },
+    ),
     0o600,
   );
   try {
@@ -1496,7 +1821,6 @@ function appendOutputs(path, outputs) {
     }
     assertAbsoluteDirectorySnapshot(ancestors, 'GitHub output command file');
     assertCommandFileBinding(boundPath, descriptor, status, 'before append');
-    const bytes = Buffer.from(lines, 'utf8');
     let offset = 0;
     while (offset < bytes.length) {
       const written = writeSync(
@@ -1789,10 +2113,14 @@ if (command === 'validate-dispatch') {
   validateDispatch(options);
 } else if (command === 'config-hash') {
   process.stdout.write(
-    `${buildConfigHash(resolve(option(options, 'root', process.cwd())))}\n`,
+    `${buildConfigHash(resolve(option(options, 'root', process.cwd())), {
+      allowWindowsValidatedFallback: true,
+    })}\n`,
   );
 } else if (command === 'prepare-image-context') {
   prepareImageContext(options);
+} else if (command === 'write-image-archive') {
+  await writeImageArchive(options);
 } else if (command === 'stage-image-artifact') {
   stageImageArtifact(options);
 } else if (command === 'read-image-digest') {

@@ -345,6 +345,16 @@ describe('EAI managed deployment helpers', () => {
     expect(workflow).toContain('name: Validate workflow invocation');
     expect(workflow).toContain('EAI_CALLER_EVENT_NAME: ${{ github.event_name }}');
     expect(workflow).toContain('if [[ "$EAI_CALLER_EVENT_NAME" != "workflow_dispatch" ]]; then');
+    expect(workflow).toContain(
+      'if [[ "$source_commit_sha" != "$EAI_CALLER_COMMIT_SHA" ]]; then',
+    );
+    expect(workflow).toContain(
+      'Managed deployment source commit must match the signed workflow event SHA.',
+    );
+    expect(workflow).toContain('ref: ${{ github.sha }}');
+    expect(workflow).not.toContain(
+      'ref: ${{ steps.invocation.outputs.source_commit_sha }}',
+    );
     expect(workflow.indexOf('name: Validate workflow invocation')).toBeLessThan(
       workflow.indexOf('name: Check out repository'),
     );
@@ -364,6 +374,12 @@ describe('EAI managed deployment helpers', () => {
     );
     expect(workflow).toContain('name: Resolve immutable configuration hash');
     expect(workflow).toContain(
+      '-z "$REQUESTED_CONFIG_HASH" && "$EAI_REUSABLE_CALL" != "true"',
+    );
+    expect(workflow).toContain(
+      'Direct managed deployment requires its server-approved config_hash.',
+    );
+    expect(workflow).toContain(
       'config_hash="$(node scripts/source-unknown-deployment-evidence.mjs config-hash)"',
     );
     expect(workflow).toContain(
@@ -381,7 +397,9 @@ describe('EAI managed deployment helpers', () => {
     expect(workflow).toContain('workflow_ref and canonical callee job_workflow_ref/job_workflow_sha');
     expect(workflow).not.toMatch(/secrets\.EAI_ACCESS_TOKEN|\$EAI_ACCESS_TOKEN/);
     expect(workflow).toContain('MAX_IMAGE_ARCHIVE_BYTES = 10 * 1024 * 1024 * 1024');
-    expect(workflow).toContain('function hashBoundedRegularFile(filePath, maxBytes)');
+    expect(workflow).toContain(
+      'function inspectOciArchive(filePath, maxBytes, expectedImageDigest)',
+    );
     expect(workflow).toContain('Buffer.allocUnsafe(1024 * 1024)');
     expect(workflow).toContain('fs.readSync(descriptor, buffer');
     expect(workflow).toContain('fs.constants.O_NOFOLLOW');
@@ -410,6 +428,21 @@ describe('EAI managed deployment helpers', () => {
     expect(handoffJob).toContain(
       'EAI_RESPONSE_PATH=.eai-build/evidence/workflow-evidence-response.json',
     );
+    expect(handoffJob).toContain(
+      'assertSourceModeBinding(evidence, process.env.SOURCE_MODE)',
+    );
+    expect(handoffJob).toContain(
+      'assertTargetTenantBinding(evidence, process.env.TARGET_TENANT_ID)',
+    );
+    expect(handoffJob).toContain(
+      'assertCurrentUploadBinding(evidence, artifactId)',
+    );
+    expect(handoffJob).toContain(
+      'assertGitHubArtifactBinding(evidence, artifact, runAttempt, artifactId)',
+    );
+    expect(handoffJob).toContain(
+      '/actions/runs/${encodeURIComponent(process.env.GITHUB_RUN_ID)}/attempts/${encodeURIComponent(process.env.GITHUB_RUN_ATTEMPT)}',
+    );
     expect(handoffJob).not.toContain('response="$(curl');
     expect(handoffJob).not.toContain('let s=\'\'; process.stdin');
     expect(handoffJob).not.toContain('--output .eai-build/evidence');
@@ -420,6 +453,10 @@ describe('EAI managed deployment helpers', () => {
     expect(handoffJob).not.toContain('fs.readFileSync(');
     expect(handoffJob).not.toMatch(/response\.(?:arrayBuffer|json)\(/);
     expect(handoffJob).not.toMatch(/\|\s*tee /);
+    expect(workflow).not.toContain('--fast-read');
+    expect(handoffJob).toContain(
+      "['--extract', '--to-stdout', '--occurrence=1', '--file'",
+    );
     expect(workflow).toContain('MAX_GOVERNED_CONFIG_FILE_BYTES = 10 * 1024 * 1024');
     expect(workflow).toContain('MAX_GOVERNED_CONFIG_TOTAL_BYTES = 32 * 1024 * 1024');
     expect(workflow).toContain('MAX_GOVERNED_CONFIG_FILES = 4096');
@@ -497,12 +534,21 @@ describe('EAI managed deployment helpers', () => {
       collector.indexOf('function appendOutputs('),
       collector.indexOf('\nasync function collectEvidence('),
     );
+    expect(outputAppender).toContain(
+      "Buffer.byteLength(serialized, 'utf8') >\n        MAX_GITHUB_OUTPUT_VALUE_BYTES",
+    );
+    expect(outputAppender).toContain(
+      'bytes.length > MAX_GITHUB_OUTPUT_TOTAL_BYTES',
+    );
+    expect(outputAppender.indexOf('bytes.length > MAX_GITHUB_OUTPUT_TOTAL_BYTES')).toBeLessThan(
+      outputAppender.indexOf('openSync('),
+    );
     expect(outputAppender.match(/assertCommandFileBinding\(/g)).toHaveLength(2);
 
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '49768100b75da2910eef590a6848c9fcba75ab7b' },
+      candidate: { commit: '404090b974de938b368a2aea994ed296b470dd1f' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
