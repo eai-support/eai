@@ -573,6 +573,10 @@ describe('EAI managed deployment helpers', () => {
       collector.indexOf('function appendOutputs('),
       collector.indexOf('\nasync function collectEvidence('),
     );
+    const commandFileBinding = collector.slice(
+      collector.indexOf('function assertCommandFileBinding('),
+      collector.indexOf('\nfunction appendOutputs('),
+    );
     expect(outputAppender).toContain(
       "Buffer.byteLength(serialized, 'utf8') >\n        MAX_GITHUB_OUTPUT_VALUE_BYTES",
     );
@@ -582,6 +586,7 @@ describe('EAI managed deployment helpers', () => {
     expect(outputAppender.indexOf('bytes.length > MAX_GITHUB_OUTPUT_TOTAL_BYTES')).toBeLessThan(
       outputAppender.indexOf('openSync('),
     );
+    expect(commandFileBinding).toContain('pathStatus.nlink !== 1');
     expect(outputAppender.match(/assertCommandFileBinding\(/g)).toHaveLength(2);
 
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));

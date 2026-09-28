@@ -89,3 +89,4 @@ Recovery loads the protected original PublicAPI receipt before authentication fo
 53. The embedded workflow rejects an approved source commit that differs from signed `github.sha` before checkout, passes the signed event SHA directly to checkout, restores no persistent build cache, and uses bounded tar flags accepted by both GNU tar and BSD tar.
 54. Direct dispatch rejects an empty configuration hash at runtime; legacy evidence exact-binds source-mode and optional target-tenant presence; handoff provenance binds the current upload artifact and exact workflow attempt before OIDC.
 55. The packaged collector rejects a serialized GitHub output above 4 KiB or an aggregate append above 64 KiB before it opens the command file.
+56. GitHub output publication independently requires one link on both the opened descriptor and current leaf during each post-append snapshot, so adding a hard link between those snapshots fails closed.

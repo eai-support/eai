@@ -28,3 +28,4 @@
 26. Mirror the producer's exact bounded OCI manifest-content verification and shared fail-closed no-follow/nonblocking collector-open guard, then update candidate identity and byte digests without claiming a release.
 27. Mirror the producer's pre-checkout equality to signed `github.sha`, direct signed checkout selection, cache isolation, and GNU/BSD-compatible bounded tar invocation, then validate exact byte parity while retaining the release gate.
 28. Mirror the producer's runtime direct-config guard, two-way legacy source/target presence rules, current upload and exact run-attempt binding, and pre-open GitHub output byte limits; update the candidate and both digests without satisfying the release gate.
+29. Mirror the producer's independent post-append one-link checks for both the command-file descriptor and leaf so a hard link added between snapshots fails closed.
