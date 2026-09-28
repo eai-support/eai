@@ -185,6 +185,67 @@ Accessibility:
   eai --no-color <command>
 ```
 
+## eai init --help
+
+```text
+Usage: eai init [options] [name]
+
+Scaffold a new application
+
+Arguments:
+  name                            Name for the app (kebab-case)
+
+Options:
+  --from <repo>                   GitHub repo URL or local path for template
+                                  (default:
+                                  "https://github.com/eai-support/eai-app-template.git")
+  --trust-template-scripts        Allow a custom template to run its Object Type
+                                  generator (default: false)
+  --skip-prompts                  Use defaults without interactive prompts
+                                  (default: false)
+  --current-dir                   Scaffold into the current directory instead of
+                                  creating ./<name> (default: false)
+  --tenant <id>                   Main company tenant ID (deprecated alias for
+                                  --company-tenant)
+  --company-tenant <id>           Main company tenant ID that owns this app
+  --parent-tenant <id>            Immediate parent company tenant ID for the new
+                                  child company
+  --child-tenant <name>           Create or reuse a child company tenant display
+                                  name for the app runtime boundary
+  --create-child-tenant           Prompt for a child company tenant instead of
+                                  using the selected company tenant
+  --no-gofer                      Skip installing Gofer AI CLI assets
+  --no-install                    Skip installing the generated app dependencies
+  --package-profile <profile>     Package profile to record for block catalog
+                                  discovery: external, internal, or hybrid
+                                  (default: "external")
+  --display-name <name>           Display name for the app
+  --description <description>     One-sentence description for the app
+  --binding-receipt <path>        Write private init acknowledgement outside the
+                                  project (explicit noninteractive use)
+  --binding-receipt-nonce <uuid>  Fresh UUID binding this invocation to its
+                                  private receipt
+  --app-key <key>                 Bind the local project to an existing app
+                                  instead of creating a new app
+  --template-version <tag>        Scaffold from a specific published
+                                  app-template release (for example v1.2.0)
+  --no-splash                     Skip the interactive EAI wordmark
+  -h, --help                      display help for command
+
+Gofer AI CLI assets are installed by default:
+  .specify/ commands, scripts, templates, hooks, and memory folders
+  .claude/ commands and agents for Claude CLI
+  AGENTS.md and .agents/skills for Google Antigravity and Codex CLI
+  .system/skills as a legacy Codex mirror
+  .github/prompts, .github/instructions, and .github/skills for GitHub Copilot
+
+The default public template is pinned to a published eai-app-template release.
+Use --template-version to select a different release, or --from to use another
+repo or local path.
+
+Use --no-gofer only when you need a bare app scaffold.
+```
+
 ## eai update --help
 
 ```text
@@ -715,6 +776,19 @@ Prefer product-shaped commands before `eai publicapi`:
 | Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
+
+For protected POSIX qualification, named `eai init <name> --skip-prompts` can
+optionally pair `--binding-receipt <absolute-path>` with
+`--binding-receipt-nonce <canonical-UUIDv4>`. The destination must be fresh, in
+an owner-only directory outside the project and Git trees. A pending reservation
+grants no creation ownership. An acknowledged `eai.init_app_binding.v1` record
+retains the original request gateway/actor, actual immutable enrollment and
+parent/runtime tenant IDs, and actual creation flags, including after later
+scaffold failure. Selected or concurrently reused apps keep false flags.
+Preserve an existing receipt and choose a fresh private path/nonce for a new
+invocation; an existing destination rejects before provider work. Keep this
+private evidence out of Git and source bundles. Normal init produces no extra
+binding receipt; Windows delivery requires separate evidence.
 
 ## Related Reference
 

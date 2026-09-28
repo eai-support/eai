@@ -120,6 +120,7 @@
             "tests/integration/whoami.test.ts",
             "tests/integration/tenant.test.ts",
             "tests/integration/init.test.ts",
+            "tests/unit/init-app-binding.test.ts",
             "tests/integration/create.test.ts",
             "tests/integration/splash.test.ts",
             "tests/integration/help.test.ts",

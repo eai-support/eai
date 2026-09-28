@@ -290,6 +290,80 @@ describe('eai app', () => {
     });
   });
 
+  test.each([
+    ['current-parent-child', 'success', 1],
+    ['plan-missing-targets', 'plan', 0],
+    ['plan-duplicate-targets', 'plan', 0],
+    ['plan-missing-parent', 'plan', 0],
+    ['plan-unknown-contract', 'plan', 0],
+    ['receipt-foreign-target', 'receipt', 1],
+    ['receipt-missing-target', 'receipt', 1],
+    ['receipt-duplicate-target', 'receipt', 1],
+    ['receipt-reordered-targets', 'receipt', 1],
+    ['legacy-unexpected-targets', 'receipt', 1],
+  ])('binds deletion to original scoped plan without another request: %s', async (scenario, phase, expectedDeletes) => {
+    await seedLoggedInTenant();
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
+    const hash = 'a'.repeat(64);
+    const targets = ['child-tenant', COMPANY_TENANT_ID];
+    const plan: Record<string, unknown> = {
+      tenantId: COMPANY_TENANT_ID, appKey: 'post-pilot', confirmationRequired: 'post-pilot',
+      ownershipManifestHash: hash, environments: ['preview', 'dev', 'test', 'prod'],
+      cleanupContract: 'eai.app-scoped-cleanup.v2', runtimeTenantIds: targets,
+    };
+    const receipt: Record<string, unknown> = {
+      schemaVersion: 'eai.app-deletion-receipt.v1', operationId: 'appdel-operation-1',
+      planHash: hash, ownershipManifestHash: hash, tenantId: COMPANY_TENANT_ID,
+      appKey: 'post-pilot', status: 'deleted', verified: true, runtimeTenantIds: [...targets],
+    };
+    if (scenario === 'plan-missing-targets') delete plan.runtimeTenantIds;
+    if (scenario === 'plan-duplicate-targets') plan.runtimeTenantIds = [...targets, COMPANY_TENANT_ID];
+    if (scenario === 'plan-missing-parent') plan.runtimeTenantIds = ['child-tenant'];
+    if (scenario === 'plan-unknown-contract') plan.cleanupContract = 'unknown-contract';
+    if (scenario === 'receipt-foreign-target') receipt.runtimeTenantIds = ['foreign-child', COMPANY_TENANT_ID];
+    if (scenario === 'receipt-missing-target') receipt.runtimeTenantIds = [COMPANY_TENANT_ID];
+    if (scenario === 'receipt-duplicate-target') receipt.runtimeTenantIds = [...targets, COMPANY_TENANT_ID];
+    if (scenario === 'receipt-reordered-targets') receipt.runtimeTenantIds = [...targets].reverse();
+    if (scenario === 'legacy-unexpected-targets') { delete plan.runtimeTenantIds; delete plan.cleanupContract; }
+    let identities = 0; let contexts = 0; let plans = 0; let deletes = 0;
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input); const method = requestMethod(init);
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        identities += 1;
+        return jsonResponse({ tenants: [{ id: COMPANY_TENANT_ID, displayName: 'Builder Workspace',
+          slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] }] });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/management` && method === 'GET') {
+        contexts += 1; return jsonResponse({ id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', region: 'au' });
+      }
+      if (url.endsWith('/apps/post-pilot/deletion-plan') && method === 'GET') {
+        plans += 1; return jsonResponse(plan);
+      }
+      if (url.endsWith('/apps/post-pilot') && method === 'DELETE') {
+        deletes += 1; return jsonResponse(receipt);
+      }
+      throw new Error(`unexpected provider request: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const invocation = appCommand.parseAsync(['delete', 'post-pilot', '--tenant-id', COMPANY_TENANT_ID,
+      '--confirm', 'post-pilot', '--non-interactive', '--format', 'json'], { from: 'user' });
+    if (phase === 'success') {
+      await invocation;
+      expect(JSON.parse(outputSpy.mock.calls.map(call => String(call[0])).join(''))).toMatchObject({ runtimeTenantIds: targets });
+    } else {
+      await expect(invocation).rejects.toThrow('fixture-process-exit');
+      expect(outputSpy).not.toHaveBeenCalled();
+      expect(errorSpy.mock.calls.map(call => String(call[0])).join('')).toContain(
+        phase === 'plan' ? 'invalid app deletion ownership plan' : 'verified app deletion receipt',
+      );
+    }
+    expect({ identities, contexts, plans, deletes }).toEqual({ identities: 1, contexts: 1, plans: 1, deletes: expectedDeletes });
+    expect(fetchMock).toHaveBeenCalledTimes(3 + expectedDeletes);
+    exitSpy.mockRestore();
+  });
+
   test('requires an exact app-key confirmation for non-interactive deletion', () => {
     expect(() => validateNonInteractiveAppDeleteConfirmation('post-pilot', 'PostPilot')).toThrow(
       'Non-interactive deletion requires --confirm post-pilot.',

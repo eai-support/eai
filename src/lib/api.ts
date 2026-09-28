@@ -15,6 +15,13 @@ import { requireManagedPublicApiUrl } from './managed-public-api.js';
 import { toObjectTypeSlug } from './utils.js';
 
 export type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+/** Sanitized authority from the exact bearer and gateway used by an opted-in init request. */
+export interface InitRequestAuthority {
+  publicApiUrl: string;
+  actorId: string;
+}
+/** Captures sanitized exact-request identity once; the bearer secret never enters receipt evidence. */
+export type InitRequestAuthorityObserver = (authority: InitRequestAuthority) => void;
 type ResourceWhere = Record<string, unknown>;
 
 const PUBLIC_AI_PATH = '/v4/ai';
@@ -50,10 +57,10 @@ export async function awaitManagedRequestDeadline<T>(signal: AbortSignal, result
 
 /** Native body reads may expose AbortError; retain the actual managed timeout reason. */
 export async function readManagedPublicResponseText(response: Response): Promise<string> {
+  const signal = managedResponseSignals.get(response);
   try {
-    return await response.text();
+    return signal ? await awaitManagedRequestDeadline(signal, response.text()) : await response.text();
   } catch (error) {
-    const signal = managedResponseSignals.get(response);
     if (signal?.aborted && isManagedPublicRequestTimeout(signal.reason)) throw signal.reason;
     throw error;
   }
@@ -707,7 +714,7 @@ function normalizePublicApiV4Path(path: string): string {
  * without returning rejected values or server-provided validation messages.
  */
 export async function parseApiError(response: Response): Promise<ParsedApiError> {
-  const bodyText = await response.text();
+  const bodyText = await readManagedPublicResponseText(response);
   const validationCode = response.status === 422 ? 'VALIDATION_ERROR' : undefined;
   const safeBodyText = validationCode ? {} : { bodyText };
 
@@ -899,6 +906,34 @@ export class PlatformAPIClient {
     return h;
   }
 
+  private async initReceiptHeaders(observer?: InitRequestAuthorityObserver, signal?: AbortSignal): Promise<Record<string, string>> {
+    if (!observer) return this.headers();
+    if (this.baseUrl.length > 4096) throw new Error('Init receipt gateway exceeds its size bound.');
+    const gateway = new URL(this.baseUrl);
+    if (gateway.username || gateway.password || gateway.search || gateway.hash
+      || (gateway.protocol !== 'https:' && !(gateway.protocol === 'http:'
+        && ['localhost', '127.0.0.1', '[::1]'].includes(gateway.hostname)))) {
+      throw new Error('Init receipt requires an original HTTPS or private localhost gateway.');
+    }
+    const headers = await this.headers();
+    signal?.throwIfAborted();
+    const token = headers.Authorization?.replace(/^Bearer /, '');
+    if (!token || token.length > 32 * 1024 || token.split('.').length !== 3) {
+      throw new Error('Init receipt requires a bounded original bearer actor oid.');
+    }
+    let claims: unknown;
+    try { claims = JSON.parse(Buffer.from(token?.split('.')[1] || '', 'base64url').toString('utf8')); }
+    catch { throw new Error('Init receipt requires the original bearer actor oid.'); }
+    if (!claims || typeof claims !== 'object' || Array.isArray(claims)
+      || !Object.hasOwn(claims, 'oid')) throw new Error('Init receipt requires the original bearer actor oid.');
+    const actorId = (claims as Record<string, unknown>).oid;
+    if (typeof actorId !== 'string' || !/^[A-Za-z0-9._:@-]{1,256}$/.test(actorId)) {
+      throw new Error('Init receipt requires the original bearer actor oid.');
+    }
+    observer({ publicApiUrl: this.baseUrl, actorId });
+    return headers;
+  }
+
   // --------------- V4 PublicAPI routing ---------------
 
   private async publicRequest(
@@ -906,15 +941,25 @@ export class PlatformAPIClient {
     method: PlatformMethod = 'GET',
     body?: unknown,
     params?: Record<string, unknown>,
+    initAuthority?: InitRequestAuthorityObserver,
   ): Promise<Response> {
-    return fetch(`${this.baseUrl}${appendParams(path, params)}`, {
+    const signal = initAuthority ? this.managedRequestSignal() : undefined;
+    const headers = signal ? await awaitManagedRequestDeadline(signal, this.initReceiptHeaders(initAuthority, signal))
+      : await this.headers();
+    signal?.throwIfAborted();
+    const request = fetch(`${this.baseUrl}${appendParams(path, params)}`, {
       method,
-      headers: await this.headers(),
+      headers,
+      ...(signal ? { signal, redirect: 'error' as const } : {}),
       ...(this.requestOptions.publicRequestRedirect
+        && !signal
         ? { redirect: this.requestOptions.publicRequestRedirect }
         : {}),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+    const response = signal ? await awaitManagedRequestDeadline(signal, request) : await request;
+    if (signal) managedResponseSignals.set(response, signal);
+    return response;
   }
 
   /** Portal uploads use the same internal ceiling and existing command budget as PublicAPI. */
@@ -975,6 +1020,7 @@ export class PlatformAPIClient {
       where?: ResourceWhere;
       cursor?: string;
     },
+    initAuthority?: InitRequestAuthorityObserver,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
     const params = new URLSearchParams();
@@ -984,13 +1030,8 @@ export class PlatformAPIClient {
     if (options?.where) params.set('where', JSON.stringify(options.where));
     if (options?.cursor) params.set('cursor', options.cursor);
     const qs = params.toString();
-    const url = `${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}${qs ? `?${qs}` : ''}`;
-    return fetch(url, {
-      headers: await this.headers(),
-      ...(this.requestOptions.publicRequestRedirect
-        ? { redirect: this.requestOptions.publicRequestRedirect }
-        : {}),
-    });
+    return this.publicRequest(`${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}${qs ? `?${qs}` : ''}`,
+      'GET', undefined, undefined, initAuthority);
   }
 
   async streamResources(
@@ -1629,11 +1670,13 @@ export class PlatformAPIClient {
     );
   }
 
-  async createTenantApp(parentTenantId: string, data: TenantAppCreateRequest): Promise<Response> {
+  async createTenantApp(parentTenantId: string, data: TenantAppCreateRequest, initAuthority?: InitRequestAuthorityObserver): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(parentTenantId)}/apps`,
       'POST',
       data,
+      undefined,
+      initAuthority,
     );
   }
 

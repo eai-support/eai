@@ -351,9 +351,11 @@ export async function readPrivateFileNoFollow(path: string, maxBytes = 1024 * 10
 /** Serialize bound updates; a held guard never expires and only its original inode/version is released. */
 export async function updatePrivateFileNoFollow(
   path: string, update: (current: string) => string, maxBytes = 16 * 1024,
+  retainedParents?: readonly ManagedDirectoryIdentity[],
 ): Promise<string> {
   const target = resolve(path);
-  const identities = await snapshotNoLinkDirectoryPath(dirname(target));
+  const identities = retainedParents ?? await snapshotNoLinkDirectoryPath(dirname(target));
+  if (retainedParents) await assertDirectoryIdentities(identities);
   const guard = `${target}.update-lock`;
   let handle: FileHandle;
   try {

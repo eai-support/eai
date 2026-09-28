@@ -175,6 +175,8 @@ describe('full e2e smoke traceability', () => {
 
     expect(output).toContain('Smoke calls / options');
     expect(output).toContain('Deferred options');
+    expect(output).toContain('--binding-receipt: Optional protected POSIX acknowledgement');
+    expect(output).toContain('--binding-receipt-nonce: Paired canonical UUIDv4');
     expect(output).toContain('`eai vertical list`');
     expect(output).toContain('EAI_E2E_DOCS_EXPECTED_TYPE');
     expect(output).toContain('storage_target=resourceapi');

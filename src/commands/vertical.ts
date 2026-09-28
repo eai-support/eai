@@ -55,6 +55,14 @@ const GENERIC_APP_IDENTITY_MESSAGE = 'Not applicable: this generic app uses user
 const APP_DELETE_WARNING = 'This cannot be undone. All application data and metadata will be deleted.';
 const APP_DELETION_ENVIRONMENTS = ['preview', 'dev', 'test', 'prod'] as const;
 
+/** Scoped cleanup must retain the exact plan targets; legacy plans carry no target authority. */
+function isAppDeletionRuntimeTargetSet(value: unknown, companyTenantId: string): value is string[] {
+  return Array.isArray(value) && value.length > 0 && value.every(target =>
+    typeof target === 'string' && target.length > 0 && target.length <= 256 && target.trim() === target,
+  ) && new Set(value).size === value.length && value.includes(companyTenantId);
+}
+
+
 /** Require the immutable deletion plan to cover every deployment environment exactly once. */
 export function isCompleteAppDeletionEnvironmentSet(value: unknown): value is string[] {
   return (
@@ -838,14 +846,21 @@ verticalCommand
     }
     const manifestHash = typeof plan.ownershipManifestHash === 'string' ? plan.ownershipManifestHash : '';
     const environments = plan.environments;
+    const scopedCleanup = plan.cleanupContract === 'eai.app-scoped-cleanup.v2';
+    const runtimeTargets = plan.runtimeTenantIds;
     if (
       plan.appKey !== appKey ||
       plan.confirmationRequired !== appKey ||
       !/^[a-f0-9]{64}$/.test(manifestHash) ||
-      !isCompleteAppDeletionEnvironmentSet(environments)
+      !isCompleteAppDeletionEnvironmentSet(environments) ||
+      (scopedCleanup
+        ? !isAppDeletionRuntimeTargetSet(runtimeTargets, companyTenantId)
+        : Object.hasOwn(plan, 'cleanupContract') || Object.hasOwn(plan, 'runtimeTenantIds'))
     ) {
       fail('The platform returned an invalid app deletion ownership plan. No data was deleted.');
     }
+
+    const capturedRuntimeTargets = scopedCleanup ? [...runtimeTargets as string[]] : undefined;
 
     if (options.nonInteractive) {
       try {
@@ -886,6 +901,7 @@ verticalCommand
           : `${response.status} ${response.statusText}`,
       );
     }
+    const returnedRuntimeTargets = receipt.runtimeTenantIds;
     if (
       receipt.schemaVersion !== 'eai.app-deletion-receipt.v1' ||
       typeof receipt.operationId !== 'string' ||
@@ -894,7 +910,11 @@ verticalCommand
       receipt.status !== 'deleted' ||
       receipt.verified !== true ||
       receipt.appKey !== appKey ||
-      receipt.tenantId !== companyTenantId
+      receipt.tenantId !== companyTenantId ||
+      (capturedRuntimeTargets
+        ? !Array.isArray(returnedRuntimeTargets) || returnedRuntimeTargets.length !== capturedRuntimeTargets.length ||
+          !capturedRuntimeTargets.every((target, index) => returnedRuntimeTargets[index] === target)
+        : Object.hasOwn(receipt, 'runtimeTenantIds'))
     ) {
       spinner?.fail('App deletion could not be verified');
       fail('The platform did not return a verified app deletion receipt.');

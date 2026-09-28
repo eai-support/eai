@@ -254,3 +254,37 @@ contract documented (baseline had ten). Existing feature mapping owns the
 changed paths/tests. This changes no cross-service contract. The intentional
 release preflight still rejects missing immutable native producer publication;
 no release, provider run, live qualification or cohort composition is claimed.
+
+The optional init successor exposes `eai.init_app_binding.v1` through paired
+`--binding-receipt`/`--binding-receipt-nonce` flags (DTE-077, DTE-087, DTE-091).
+Normal init adds no receipt work. Exact request-bearer actor/original gateway,
+actual create/select enrollment and separate parent/runtime IDs bind the private
+acknowledgement; pending or false creation flags never imply cleanup ownership.
+The mapped CLI command/unit/API tests and native Installer tests own this new
+CLI-to-Installer contract. Fresh whole-suite proof follows; the dde4
+execution above is preserved as historical source evidence.
+
+The coordinated generic cleanup successor binds v2 receipt runtime targets to
+the CLI's already-read original plan. Missing/duplicate/foreign/reordered targets
+fail before receipt publication; invalid plans issue no delete request. Legacy
+plans retain their original unscoped authority and cannot adopt receipt-only
+runtime targets. Installer owns explicit actual producer-shaped receipt parsing
+and complete parent/runtime logical-scope validation. No provider call is added.
+
+Final optional-init/scoped-cleanup validation passes all 55 CLI files: 1,348
+tests plus two existing documented skips in 142.56 seconds (143.54 orchestrated),
+with all 1,138 input hashes (193 owned inputs) unchanged through execution.
+Before the runtime-target repair, the exact baseline reproduced nine rejected
+plan/receipt negatives as failures and one positive as passing; source bytes
+were restored exactly. The repaired complete app-command suite passes 71 cases
+with no extra reads, and malformed plans issue zero delete requests. Earlier
+failed full/focused/hygiene attempts remain failed evidence.
+
+Build, source and changed-test ESLint, template3432 byte pairing, release/experience
+asset checks, smoke traceability, guidance/error-doc freshness, public hygiene,
+placeholder and diff checks pass. Optional init request headers/body stay within
+the existing managed 30-second budget; this does not guarantee cancellation of
+underlying token refresh. Protected receipt guards require a trusted same-UID
+namespace and pinned producer; POSIX proof does not certify native Windows.
+The coordinated Installer/private scripted qualification consumes the new
+contract; immutable publication and live qualification are still unexecuted.

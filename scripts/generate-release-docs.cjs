@@ -36,6 +36,7 @@ const DOC_ORDER = [
 ];
 const HELP_COMMANDS = [
   { label: "eai --help", args: ["dist/index.js", "--help"] },
+  { label: "eai init --help", args: ["dist/index.js", "init", "--help"] },
   { label: "eai update --help", args: ["dist/index.js", "update", "--help"] },
   { label: "eai doctor --help", args: ["dist/index.js", "doctor", "--help"] },
   { label: "eai deploy app --help", args: ["dist/index.js", "deploy", "app", "--help"] },

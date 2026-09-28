@@ -150,3 +150,14 @@ an unchanged cleanup hook timeout; no timer or skip was changed.
   updates, retaining accepted run IDs and failing closed on held/replaced guards.
 - [x] Run the complete CLI corpus and required checks; record the new source
   proof while retaining the b920 results and intentional publication hold.
+
+- [x] Add explicitly paired private init receipt flags; reserve before provider
+  work and retain exact-bearer actor/original gateway plus actual returned
+  enrollment, parent/runtime tuple and creation flags without extra requests.
+- [x] Keep pending/select/reused evidence nonowning and receipts outside project
+  and Git trees; preserve acknowledged creation after scaffold failure.
+- [x] Freeze the successor and record fresh complete CLI/native producer checks
+  with mapped Installer qualification; historical dde4 proof stays historical.
+
+- [x] Compare v2 app-deletion runtime targets with the captured original plan,
+  preserving genuine legacy plans and rejecting target drift without extra I/O.

@@ -136,6 +136,19 @@ Prefer product-shaped commands before `eai publicapi`:
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
 
+For protected POSIX qualification, named `eai init <name> --skip-prompts` can
+optionally pair `--binding-receipt <absolute-path>` with
+`--binding-receipt-nonce <canonical-UUIDv4>`. The destination must be fresh, in
+an owner-only directory outside the project and Git trees. A pending reservation
+grants no creation ownership. An acknowledged `eai.init_app_binding.v1` record
+retains the original request gateway/actor, actual immutable enrollment and
+parent/runtime tenant IDs, and actual creation flags, including after later
+scaffold failure. Selected or concurrently reused apps keep false flags.
+Preserve an existing receipt and choose a fresh private path/nonce for a new
+invocation; an existing destination rejects before provider work. Keep this
+private evidence out of Git and source bundles. Normal init produces no extra
+binding receipt; Windows delivery requires separate evidence.
+
 ## Related Reference
 
 - [Configuration](./configuration.md)

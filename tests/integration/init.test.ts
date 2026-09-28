@@ -5,7 +5,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -182,6 +182,78 @@ describe("eai init", () => {
     expect(getNpmExecutable("win32")).toBe("npm.cmd");
     expect(getNpmExecutable("darwin")).toBe("npm");
     expect(getNpmExecutable("linux")).toBe("npm");
+  });
+
+  test.each([
+    { failScaffold: false, select: false, createdApp: true },
+    { failScaffold: true, select: false, createdApp: true },
+    { failScaffold: false, select: true, createdApp: false },
+    { failScaffold: false, select: false, createdApp: false },
+  ])("private acknowledgement retains actual enrollment/ownership %j outside Git", async ({ failScaffold, select, createdApp }) => {
+    workingDirectoryIs(ctx, env.dir);
+    const savedOptions = { ...initCommand.opts() };
+    const evidenceDirectory = join(env.dir, "private-evidence");
+    await mkdir(evidenceDirectory, { mode: 0o700 });
+    const receiptPath = join(evidenceDirectory, "init.json");
+    if (failScaffold) await rm(join(templateRepo, ".git"), { recursive: true, force: true });
+    const tenantSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext").mockResolvedValue({
+      publicApiUrl: TEST_PUBLIC_API_URL,
+      tokens: { accessToken: "<fixture-access-token-cache-not-used>", oid: "stale-cache-actor", expiresAt: Date.now() + 60_000,
+        tenantId: "ciam-guid", tenantName: "profile-test", clientId: "client-id" },
+      activeTenant: { id: "parent", displayName: "Parent", slug: "parent", domain: "parent.test", isActive: true, roles: ["tenant-admin"] },
+      memberships: [],
+    });
+    const getTenantSpy = vi.spyOn(PlatformAPIClient.prototype, "getTenant").mockImplementation(async () => new Response(JSON.stringify({ id: "parent", ultimateParentId: "parent" })));
+    const capabilitySpy = vi.spyOn(PlatformAPIClient.prototype, "evaluateCapability").mockResolvedValue(allowedCapability());
+    const createSpy = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp").mockImplementation(async (_parent, request, capture) => {
+      capture?.({ publicApiUrl: TEST_PUBLIC_API_URL, actorId: "actual-request-actor" });
+      return new Response(JSON.stringify({ tenantId: "parent", appKey: request.verticalKey, verticalKey: request.verticalKey,
+        app: { id: "original-enrollment", tenantId: "parent", parentTenantId: "parent", verticalKey: request.verticalKey },
+        childTenant: null, created: { app: createdApp, childTenant: false } }), { status: 201 });
+    });
+    const listSpy = vi.spyOn(PlatformAPIClient.prototype, "listResources").mockImplementation(async (_kind, _options, capture) => {
+      capture?.({ publicApiUrl: TEST_PUBLIC_API_URL, actorId: "actual-request-actor" });
+      return new Response(JSON.stringify({ docs: [{ id: "original-enrollment", tenantId: "parent", data: {
+        tenantId: "parent", parentTenantId: "parent", verticalKey: "receipt-app",
+      } }], totalDocs: 1, totalPages: 1, page: 1, hasNextPage: false }));
+    });
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("controlled-init-exit"); });
+    const output = captureConsole();
+    try {
+      const run = initCommand.parseAsync(["receipt-app", "--skip-prompts", "--company-tenant", "parent", "--from", templateRepo,
+        ...(select ? ["--app-key", "receipt-app"] : []),
+        "--trust-template-scripts", "--no-gofer", "--no-install", "--no-splash", "--binding-receipt", receiptPath,
+        "--binding-receipt-nonce", "12345678-1234-4234-8234-123456789abc"], { from: "user" });
+      if (failScaffold) await expect(run).rejects.toThrow("controlled-init-exit"); else await run;
+      expect(createSpy).toHaveBeenCalledTimes(select ? 0 : 1);
+      expect(listSpy).toHaveBeenCalledTimes(select ? 1 : 0);
+      const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+      expect(receipt).toMatchObject({ status: "acknowledged", actorId: "actual-request-actor", parentTenantId: "parent",
+        runtimeTenantId: "parent", enrollmentId: "original-enrollment", createdApp, createdChildTenant: false,
+        requestKind: select ? "select" : "create" });
+      expect(JSON.stringify(receipt)).not.toContain("<fixture-access-token-cache-not-used>");
+      if (!failScaffold) expect((await exec("git", ["-C", join(env.dir, "receipt-app"), "ls-files"])).stdout).not.toContain("init.json");
+    } finally {
+      for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
+      output.restore(); tenantSpy.mockRestore(); getTenantSpy.mockRestore(); capabilitySpy.mockRestore(); createSpy.mockRestore(); listSpy.mockRestore(); exitSpy.mockRestore();
+    }
+  });
+
+  test("a stale receipt rejects before tenant/auth/provider lookup", async () => {
+    workingDirectoryIs(ctx, env.dir);
+    const savedOptions = { ...initCommand.opts() };
+    const evidence = join(env.dir, "private-evidence"); await mkdir(evidence, { mode: 0o700 });
+    const path = join(evidence, "stale.json"); await writeFile(path, "original", { mode: 0o600 });
+    const tenantSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext");
+    const createSpy = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp");
+    try {
+      await expect(initCommand.parseAsync(["receipt-app", "--skip-prompts", "--binding-receipt", path, "--binding-receipt-nonce",
+        "12345678-1234-4234-8234-123456789abc"], { from: "user" })).rejects.toMatchObject({ code: "EEXIST" });
+      expect(tenantSpy).not.toHaveBeenCalled(); expect(createSpy).not.toHaveBeenCalled(); expect(await readFile(path, "utf8")).toBe("original");
+    } finally {
+      for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
+      tenantSpy.mockRestore(); createSpy.mockRestore();
+    }
   });
 
   test("uses cmd.exe for the Windows npm launcher", () => {

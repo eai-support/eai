@@ -745,6 +745,94 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('init acknowledgement captures the exact refreshed bearer actor once, without an identity read', async () => {
+    const token = `header.${Buffer.from(JSON.stringify({ oid: 'actual-request-actor' })).toString('base64url')}.signature`
+    const acquire = vi.mocked(getAccessToken)
+    acquire.mockClear(); acquire.mockResolvedValueOnce(token)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 201 }))
+    const capture = vi.fn()
+    await new PlatformAPIClient('http://localhost:18000', 'parent', { publicRequestRedirect: 'follow' })
+      .createTenantApp('parent', { appDisplayName: 'App', verticalKey: 'app' }, capture)
+    expect(acquire).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(capture).toHaveBeenCalledExactlyOnceWith({ publicApiUrl: 'http://localhost:18000', actorId: 'actual-request-actor' })
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ redirect: 'error', signal: expect.any(AbortSignal), headers: { Authorization: `Bearer ${token}` } })
+    expect(JSON.stringify(capture.mock.calls)).not.toContain(token)
+  })
+
+  test('ordinary listResources keeps its query, redirect option and single token acquisition without a receipt deadline', async () => {
+    const acquire = vi.mocked(getAccessToken)
+    acquire.mockClear()
+    const deadline = vi.spyOn(AbortSignal, 'timeout')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"docs":[]}'))
+    await new PlatformAPIClient('https://example.test/public', 'parent', { publicRequestRedirect: 'manual' })
+      .listResources('tenant_vertical_enrollment', { page: 2, limit: 17, sort: '-createdAt', where: { verticalKey: 'a+b' } })
+    expect(acquire).toHaveBeenCalledTimes(1); expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [input, init] = fetchMock.mock.calls[0]
+    const url = new URL(String(input))
+    expect(url.pathname).toBe('/public/v4/data/resources/parent/tenant-vertical-enrollment')
+    expect(Object.fromEntries(url.searchParams)).toEqual({ page: '2', limit: '17', sort: '-createdAt', where: JSON.stringify({ verticalKey: 'a+b' }) })
+    expect(init).toMatchObject({ method: 'GET', redirect: 'manual', headers: { Authorization: 'Bearer <fixture-access-token>', 'X-Tenant-Id': 'parent' } })
+    expect(init?.signal).toBeUndefined(); expect(deadline).not.toHaveBeenCalled()
+  })
+
+  test('opted-in init stops slow headers before fetch or authority capture, including late token completion', async () => {
+    let finish!: (token: string) => void
+    vi.mocked(getAccessToken).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const capture = vi.fn()
+    const alive = setInterval(() => {}, 1000)
+    try {
+      await expect(new PlatformAPIClient('http://localhost:18000', 'parent', { managedRequestTimeoutMs: 25 })
+        .createTenantApp('parent', { appDisplayName: 'App' }, capture)).rejects.toMatchObject({ name: 'TimeoutError' })
+      finish(`header.${Buffer.from(JSON.stringify({ oid: 'late-actor' })).toString('base64url')}.signature`)
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(fetchMock).not.toHaveBeenCalled(); expect(capture).not.toHaveBeenCalled()
+    } finally { clearInterval(alive) }
+  })
+
+  test('opted-in init body remains within the original request deadline even if its body never settles', async () => {
+    vi.mocked(getAccessToken).mockResolvedValueOnce(`header.${Buffer.from(JSON.stringify({ oid: 'actual-actor' })).toString('base64url')}.signature`)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      const response = new Response('{}')
+      vi.spyOn(response, 'text').mockImplementation(() => new Promise(() => {}))
+      return response
+    })
+    const capture = vi.fn()
+    const alive = setInterval(() => {}, 1000)
+    try {
+      const response = await new PlatformAPIClient('http://localhost:18000', 'parent', { managedRequestTimeoutMs: 25 })
+        .createTenantApp('parent', { appDisplayName: 'App' }, capture)
+      await expect(readManagedPublicResponseText(response)).rejects.toMatchObject({ name: 'TimeoutError' })
+      expect(fetchMock).toHaveBeenCalledTimes(1); expect(capture).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true)
+    } finally { clearInterval(alive) }
+  })
+
+  test('opted-in selection captures its exact bearer with one enrollment GET and no create', async () => {
+    const token = `header.${Buffer.from(JSON.stringify({ oid: 'selected-actor' })).toString('base64url')}.signature`
+    const acquire = vi.mocked(getAccessToken)
+    acquire.mockClear(); acquire.mockResolvedValueOnce(token)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"docs":[]}'))
+    const capture = vi.fn()
+    await new PlatformAPIClient('http://localhost:18000', 'parent').listResources('tenant-vertical-enrollment', { where: { verticalKey: 'app' } }, capture)
+    expect(acquire).toHaveBeenCalledTimes(1); expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET')
+    expect(capture).toHaveBeenCalledExactlyOnceWith({ publicApiUrl: 'http://localhost:18000', actorId: 'selected-actor' })
+  })
+
+  test('missing actor and unsafe init gateway fail before the next provider call, without fallback', async () => {
+    const acquire = vi.mocked(getAccessToken)
+    acquire.mockClear()
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    const capture = vi.fn()
+    await expect(new PlatformAPIClient('https://user:secret@example.test', 'parent').createTenantApp('parent', { appDisplayName: 'App' }, capture)).rejects.toThrow(/gateway/)
+    expect(acquire).not.toHaveBeenCalled()
+    acquire.mockResolvedValueOnce(`header.${Buffer.from(JSON.stringify({ sub: 'not-an-oid' })).toString('base64url')}.signature`)
+    await expect(new PlatformAPIClient('http://localhost:18000', 'parent').createTenantApp('parent', { appDisplayName: 'App' }, capture)).rejects.toThrow(/oid/)
+    expect(acquire).toHaveBeenCalledTimes(1); expect(fetchMock).not.toHaveBeenCalled(); expect(capture).not.toHaveBeenCalled()
+  })
+
   test('registers source-unknown app repositories through the public platform router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

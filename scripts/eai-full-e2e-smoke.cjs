@@ -501,6 +501,8 @@ const OPTION_DECISIONS = {
     '--contract-version': 'Compatibility negotiation is covered by start integration tests: released Setup 0.3.19 receives default v1, while current Setup explicitly requests v2.',
   },
   'eai init': {
+    '--binding-receipt': 'Optional protected POSIX acknowledgement is covered by init-app-binding unit tests, init/API integration tests and native Installer receipt tests; default live smoke does not opt into private creation-ownership evidence.',
+    '--binding-receipt-nonce': 'Paired canonical UUIDv4, fresh no-overwrite reservation, exact request actor/gateway and stale/race rejection are owned by init-app-binding and native Installer tests; mapped Installer qualification remains a separate authorized journey.',
     '--from': 'Template source override is exercised by existing init tests; release live smoke uses the default public template.',
     '--trust-template-scripts': 'Security opt-in for reviewed custom templates; integration tests prove custom scripts are blocked by default and allowed only after explicit trust.',
     '--tenant': 'Deprecated alias for --company-tenant; kept as backward-compatible vocabulary and not used in new smoke calls.',
