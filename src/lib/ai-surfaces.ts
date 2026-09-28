@@ -1112,6 +1112,10 @@ const POSIX_METADATA_HELPERS = new Set([
   '/usr/bin/xdg-mime',
 ]);
 
+export function posixMetadataHelperTimeoutMs(command: string): number {
+  return command === '/usr/bin/codesign' ? 15_000 : 5_000;
+}
+
 function runPosixMetadataHelper(command: string, args: readonly string[]): MetadataHelperResult | null {
   if (!POSIX_METADATA_HELPERS.has(command)) return null;
   try {
@@ -1123,7 +1127,7 @@ function runPosixMetadataHelper(command: string, args: readonly string[]): Metad
   const result = spawnSync(command, [...args], {
     encoding: 'utf8',
     windowsHide: true,
-    timeout: 5000,
+    timeout: posixMetadataHelperTimeoutMs(command),
     env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', LANG: 'C', LC_ALL: 'C' },
   });
   if (result.status !== 0) return null;
