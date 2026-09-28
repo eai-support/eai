@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { PlatformAPIClient } from "./api.js";
+import { PlatformAPIClient, readManagedPublicResponseText } from "./api.js";
 import { isManagedDeploymentIdentifier } from "./eai-managed-identifiers.js";
 import { ManagedSourceError } from "./eai-managed-source.js";
 import type {
@@ -100,6 +100,7 @@ export function classifyCliManagedSourceOperation(
   return "incomplete";
 }
 
+/** Publication parsing retains the request deadline through response-body consumption. */
 export async function responseOperation(
   response: Response,
 ): Promise<CliManagedSourceOperation> {
@@ -109,7 +110,7 @@ export async function responseOperation(
       `Managed source operation is unavailable (${response.status}). Repair the platform operation or app-source access, then retry the exact operation.`,
     );
   }
-  return (await response.json()) as CliManagedSourceOperation;
+  return JSON.parse(await readManagedPublicResponseText(response)) as CliManagedSourceOperation;
 }
 
 /** Poll one publication and return pending review distinctly from deployed readiness. */
@@ -149,6 +150,7 @@ export async function pollCliManagedSource(
             operationId,
             scope.targetTenantId,
             scope.environment,
+            Math.max(1, deadline - Date.now()),
           ),
         ),
         scope,
@@ -168,6 +170,7 @@ export async function pollCliManagedSource(
     }
     const interval = Date.now() - startedAt < 30_000 ? 2_000 : 5_000;
     await sleep(Math.max(0, Math.min(interval, deadline - Date.now())));
+    if (Date.now() >= deadline) return operation;
     operation = undefined;
   }
 }

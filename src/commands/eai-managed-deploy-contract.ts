@@ -6,6 +6,7 @@ import type {
   PlatformAPIClient,
 } from "../lib/api.js";
 import type { CommandContext } from "../lib/context.js";
+import { readManagedPublicResponseText } from "../lib/api.js";
 import type { CliManagedSourceScope } from "../lib/eai-managed-source-client.js";
 import type { ManagedDeployState } from "../lib/eai-managed-deploy.js";
 
@@ -81,6 +82,14 @@ export function fail(code: string, message: string, nextAction: string): never {
   throw new ManagedDeployFailure(code, message, nextAction);
 }
 
+/** A timed-out read cannot justify redispatch or replacement of the original authority. */
+export function failOperationReadTimeout(operationId: string, message: string): never {
+  fail(
+    "SOURCE_OPERATION_TIMEOUT", message,
+    `Keep the original recovery receipt and use --retry ${operationId} against its saved gateway; do not dispatch a duplicate workflow.`,
+  );
+}
+
 export async function run(
   command: string,
   args: string[],
@@ -105,10 +114,11 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** A managed body deadline propagates before parsing or accepting any partial operation. */
 export async function responsePayload(
   response: Response,
 ): Promise<Record<string, unknown>> {
-  const raw = await response.text();
+  const raw = await readManagedPublicResponseText(response);
   if (!raw) return {};
   try {
     const value = JSON.parse(raw) as unknown;

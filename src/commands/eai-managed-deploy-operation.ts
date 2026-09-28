@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import {
   PlatformAPIClient,
+  isManagedPublicRequestTimeout,
   type ManagedDeploymentOperationResponse,
 } from "../lib/api.js";
 import {
@@ -12,6 +13,7 @@ import * as out from "../lib/output.js";
 import {
   NEW_SOURCE_OPERATION_ACTION,
   fail,
+  failOperationReadTimeout,
   isRecord,
   requireApiSuccess,
 } from "./eai-managed-deploy-contract.js";
@@ -56,19 +58,25 @@ async function readBoundExactOperation(
   appKey: string,
   operationId: string,
   expectedSourceMode?: ManagedDeploymentOperationResponse["sourceMode"],
+  timeoutMs?: number,
 ): Promise<ManagedDeploymentOperationResponse> {
-  const response = await client.getManagedDeploymentOperation(
-    tenantId,
-    appKey,
-    operationId,
-    targetTenantId,
-  );
-  const payload = await requireApiSuccess(
-    response,
-    "SOURCE_OPERATION_READ_FAILED",
-    () =>
-      `Confirm ${operationId} belongs to tenant ${tenantId} and app ${appKey}, then retry with --resume.`,
-  );
+  let payload: Record<string, unknown>;
+  try {
+    const response = await client.getManagedDeploymentOperation(
+      tenantId, appKey, operationId, targetTenantId, timeoutMs,
+    );
+    payload = await requireApiSuccess(
+      response,
+      "SOURCE_OPERATION_READ_FAILED",
+      () =>
+        `Confirm ${operationId} belongs to tenant ${tenantId} and app ${appKey}, then retry with --resume.`,
+    );
+  } catch (error) {
+    if (isManagedPublicRequestTimeout(error)) {
+      failOperationReadTimeout(operationId, `The exact operation ${operationId} did not complete its bounded HTTP read.`);
+    }
+    throw error;
+  }
   if (
     payload.operationId !== operationId ||
     payload.appKey !== appKey ||
@@ -103,6 +111,7 @@ export async function readUnifiedExactOperation(
   return readBoundExactOperation(client, tenantId, targetTenantId, appKey, operationId);
 }
 
+/** Exact scope reads retain the optional remaining budget and distinguish issued deadline errors. */
 export async function readExactOperation(
   client: PlatformAPIClient,
   tenantId: string,
@@ -110,17 +119,16 @@ export async function readExactOperation(
   appKey: string,
   operationId: string,
   expectedSourceMode: ManagedDeploymentOperationResponse["sourceMode"] = "source-unknown",
+  timeoutMs?: number,
 ): Promise<ManagedDeploymentOperationResponse> {
   return readBoundExactOperation(
-    client,
-    tenantId,
-    targetTenantId,
-    appKey,
-    operationId,
+    client, tenantId, targetTenantId, appKey, operationId,
     expectedSourceMode,
+    timeoutMs,
   );
 }
 
+/** Every read uses the remaining deadline; expiration preserves authority without redispatch. */
 export async function pollExactOperation(
   client: PlatformAPIClient,
   state: Pick<
@@ -135,6 +143,10 @@ export async function pollExactOperation(
   let lastPendingStatus: string | undefined;
   let pendingReadsAtStatus = 0;
   for (;;) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      failOperationReadTimeout(state.operationId, `Operation ${state.operationId} did not finish within the polling deadline.`);
+    }
     const operation = await readExactOperation(
       client,
       state.tenantId,
@@ -142,6 +154,7 @@ export async function pollExactOperation(
       state.appKey,
       state.operationId,
       expectedSourceMode,
+      remainingMs,
     );
     if ("commitSha" in state) {
       try {
@@ -160,11 +173,7 @@ export async function pollExactOperation(
     const classification = classifyManagedOperationStatus(operation);
     if (!wait || classification !== "pending") return operation;
     if (Date.now() >= deadline) {
-      fail(
-        "SOURCE_OPERATION_TIMEOUT",
-        `Operation ${state.operationId} is still ${operation.status}.`,
-        `Inspect the exact GitHub Actions run for commit ${"commitSha" in state ? String(state.commitSha) : "<stored commit>"}. Check OIDC, evidence callback, and TenantInfra logs, then resume ${state.operationId}.`,
-      );
+      failOperationReadTimeout(state.operationId, `Operation ${state.operationId} is still ${operation.status}.`);
     }
     const pendingStatus = String(operation.status || "unknown").toLowerCase();
     pendingReadsAtStatus =

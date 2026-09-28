@@ -29,6 +29,25 @@ const PUBLIC_VERTICALS_DAISY_PATH = '/v4/verticals/daisy';
 const PUBLIC_WEBHOOKS_PATH = '/v4/webhooks';
 const PUBLIC_WORKFLOWS_PATH = '/v4/workflows';
 export const PUBLIC_API_REACHABILITY_PATH = `${PUBLIC_DATA_RESOURCES_PATH}/health`;
+export const MANAGED_PUBLIC_REQUEST_TIMEOUT_MS = 30_000;
+const managedResponseSignals = new WeakMap<Response, AbortSignal>();
+const managedTimeoutReasons = new WeakSet<object>();
+
+/** Distinguish this client's issued deadline from unrelated provider/caller aborts. */
+export function isManagedPublicRequestTimeout(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && managedTimeoutReasons.has(error);
+}
+
+/** Native body reads may expose AbortError; retain the actual managed timeout reason. */
+export async function readManagedPublicResponseText(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch (error) {
+    const signal = managedResponseSignals.get(response);
+    if (signal?.aborted && isManagedPublicRequestTimeout(signal.reason)) throw signal.reason;
+    throw error;
+  }
+}
 
 export function probePublicApiReachability(baseUrl: string, timeoutMs: number): Promise<Response> {
   return fetch(`${baseUrl}${PUBLIC_API_REACHABILITY_PATH}`, {
@@ -852,6 +871,7 @@ export class PlatformAPIClient {
     private readonly tenantId: string,
     private readonly requestOptions: {
       publicRequestRedirect?: RequestRedirect;
+      managedRequestTimeoutMs?: number;
     } = {},
   ) {}
 
@@ -887,19 +907,40 @@ export class PlatformAPIClient {
     });
   }
 
-  /** Managed deployment authority is never forwarded through an HTTP redirect. */
+  /** Keep the managed deadline active through response consumption and reject redirects. */
   private async managedPublicRequest(
     path: string,
     method: PlatformMethod = 'GET',
     body?: unknown,
+    options?: { timeoutMs?: number; bearerToken?: string },
   ): Promise<Response> {
     const baseUrl = requireManagedPublicApiUrl(this.baseUrl);
-    return fetch(`${baseUrl}${path}`, {
-      method,
-      headers: await this.headers(),
-      redirect: 'error',
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    const budgets = [MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
+      this.requestOptions.managedRequestTimeoutMs, options?.timeoutMs]
+      .filter((value): value is number => value !== undefined);
+    if (budgets.some((value) => !Number.isSafeInteger(value) || value < 1)) {
+      throw new RangeError('Managed HTTP timeout must be a positive bounded integer.');
+    }
+    const signal = AbortSignal.timeout(Math.min(...budgets));
+    signal.addEventListener('abort', () => managedTimeoutReasons.add(signal.reason), { once: true });
+    const headers = await new Promise<Record<string, string>>((resolve, reject) => {
+      const abort = (): void => reject(signal.reason);
+      signal.addEventListener('abort', abort, { once: true });
+      this.headers().then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
     });
+    signal.throwIfAborted();
+    if (options?.bearerToken !== undefined) headers.Authorization = `Bearer ${options.bearerToken}`;
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method, headers, redirect: 'error', signal,
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      managedResponseSignals.set(response, signal);
+      return response;
+    } catch (error) {
+      if (signal.aborted && isManagedPublicRequestTimeout(signal.reason)) throw signal.reason;
+      throw error;
+    }
   }
 
   async requestPublicApi(path: string, options?: PublicApiRequestOptions): Promise<Response> {
@@ -1635,18 +1676,19 @@ export class PlatformAPIClient {
   }
 
   /** Start a one-time browser proof or reuse an existing verified actor connection. */
-  async createCliManagedGithubLinkSession(tenantId: string, appKey: string, data: CliManagedGithubLinkRequest): Promise<Response> {
+  async createCliManagedGithubLinkSession(tenantId: string, appKey: string, data: CliManagedGithubLinkRequest, timeoutMs?: number): Promise<Response> {
     return this.managedPublicRequest(
       `${this.cliManagedSourcePath(tenantId, appKey)}/github-link-sessions`,
-      'POST', data,
+      'POST', data, { timeoutMs },
     );
   }
 
   /** Read only the exact actor-bound browser operation, never a latest-session pointer. */
-  async getCliManagedGithubLinkSession(tenantId: string, appKey: string, sessionId: string, targetTenantId: string, environment: string): Promise<Response> {
+  async getCliManagedGithubLinkSession(tenantId: string, appKey: string, sessionId: string, targetTenantId: string, environment: string, timeoutMs?: number): Promise<Response> {
     return this.managedPublicRequest(
       `${this.cliManagedSourcePath(tenantId, appKey, sessionId)}/github-link-sessions/${encodeURIComponent(sessionId)}?targetTenantId=${encodeURIComponent(targetTenantId)}&environment=${encodeURIComponent(environment)}`,
       'GET',
+      undefined, { timeoutMs },
     );
   }
 
@@ -1659,10 +1701,11 @@ export class PlatformAPIClient {
   }
 
   /** Read the exact managed publication, including its bot review and deployment progress. */
-  async getCliManagedSourceOperation(tenantId: string, appKey: string, operationId: string, targetTenantId: string, environment: string): Promise<Response> {
+  async getCliManagedSourceOperation(tenantId: string, appKey: string, operationId: string, targetTenantId: string, environment: string, timeoutMs?: number): Promise<Response> {
     return this.managedPublicRequest(
       `${this.cliManagedSourcePath(tenantId, appKey, operationId)}/operations/${encodeURIComponent(operationId)}?targetTenantId=${encodeURIComponent(targetTenantId)}&environment=${encodeURIComponent(environment)}`,
       'GET',
+      undefined, { timeoutMs },
     );
   }
 
@@ -1672,6 +1715,7 @@ export class PlatformAPIClient {
     appKey: string,
     operationId: string,
     targetTenantId: string,
+    timeoutMs?: number,
   ): Promise<Response> {
     if (!isManagedScopeIdentifier(tenantId)
       || !isManagedScopeIdentifier(appKey)
@@ -1682,6 +1726,7 @@ export class PlatformAPIClient {
     return this.managedPublicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/managed-deployments/operations/${encodeURIComponent(operationId)}?targetTenantId=${encodeURIComponent(targetTenantId)}`,
       'GET',
+      undefined, { timeoutMs },
     );
   }
 
@@ -1712,17 +1757,9 @@ export class PlatformAPIClient {
     data: SourceUnknownWorkflowEvidenceRequest,
     githubOidcToken: string,
   ): Promise<Response> {
-    const baseUrl = requireManagedPublicApiUrl(this.baseUrl);
-    const headers = await this.headers();
-    headers.Authorization = `Bearer ${githubOidcToken}`;
-    return fetch(
-      `${baseUrl}${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
-      {
-        method: 'POST',
-        headers,
-        redirect: 'error',
-        body: JSON.stringify(data),
-      },
+    return this.managedPublicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
+      'POST', data, { bearerToken: githubOidcToken },
     );
   }
 

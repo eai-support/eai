@@ -177,7 +177,9 @@ export async function retryCustomerSource(
       "Sign in as the original EAI actor, then retry the exact operation.",
     );
   }
-  const retryClient = new PlatformAPIClient(state.publicApiUrl, state.tenantId);
+  const retryClient = new PlatformAPIClient(state.publicApiUrl, state.tenantId, {
+    managedRequestTimeoutMs: timeoutSeconds * 1_000,
+  });
   const current = execution.recoveryOperation ?? await readExactOperation(
     retryClient,
     context.tenantId,

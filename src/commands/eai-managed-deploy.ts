@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { PlatformAPIClient } from "../lib/api.js";
 import {
   makeSpinner,
   normalizeFormat,
@@ -155,9 +156,12 @@ Examples:
           options.environment as CliManagedSourceScope["environment"],
         actorId: context.tokens.oid || "",
       };
+      const managedClient = new PlatformAPIClient(context.publicApiUrl, context.tenantId, {
+        managedRequestTimeoutMs: timeoutSeconds * 1_000,
+      });
       const execution: ManagedDeployExecutionContext = {
         context,
-        client: context.client,
+        client: managedClient,
         managedScope,
         options,
         appKey,
@@ -172,7 +176,7 @@ Examples:
       let recoverySource = options.source;
       if (recoveryOperationId) {
         const exactOperation = await readUnifiedExactOperation(
-          context.client, context.tenantId, targetTenantId, appKey, recoveryOperationId,
+          managedClient, context.tenantId, targetTenantId, appKey, recoveryOperationId,
         );
         recoverySource = exactOperation.sourceMode === "eai-cli-generated" ? "eai-managed" : "customer-owned";
         if (options.source && options.source !== recoverySource) {
@@ -241,7 +245,7 @@ Examples:
           "Connect the repository to the tenant, install the EAI GitHub App, then pass both exact values.",
         );
       }
-      const link = await verifyCliGithubIdentity(context.client, managedScope, {
+      const link = await verifyCliGithubIdentity(managedClient, managedScope, {
         sessionId: options.githubLinkSession,
         interactive: Boolean(
           process.stdin.isTTY && process.stdout.isTTY && format !== "json",

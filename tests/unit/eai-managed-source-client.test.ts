@@ -22,7 +22,7 @@ describe('actor-bound GitHub linking', () => {
     const openBrowser = vi.fn();
     expect((await verifyCliGithubIdentity(client, scope, { interactive: false, timeoutMs: 1000 }, { openBrowser })).verifiedGithubUser?.id).toBe(123);
     expect(openBrowser).not.toHaveBeenCalled();
-    expect(create).toHaveBeenCalledWith('company', 'my-app', expect.objectContaining({ targetTenantId: 'runtime', environment: 'preview', schemaVersion: 'eai.cli_managed_github_link.v1', idempotencyKey: expect.stringMatching(/^[a-f0-9-]{36}$/) }));
+    expect(create).toHaveBeenCalledWith('company', 'my-app', expect.objectContaining({ targetTenantId: 'runtime', environment: 'preview', schemaVersion: 'eai.cli_managed_github_link.v1', idempotencyKey: expect.stringMatching(/^[a-f0-9-]{36}$/) }), 1000);
   });
 
   test('opens the platform handoff and polls only its exact actor-bound session', async () => {
@@ -32,7 +32,7 @@ describe('actor-bound GitHub linking', () => {
     const openBrowser = vi.fn(async () => {});
     const result = await verifyCliGithubIdentity(client, scope, { interactive: true, timeoutMs: 1000 }, { openBrowser, sleep: async () => {} });
     expect(result.status).toBe('verified');
-    expect(read).toHaveBeenCalledExactlyOnceWith('company', 'my-app', 'github-link-123', 'runtime', 'preview');
+    expect(read).toHaveBeenCalledExactlyOnceWith('company', 'my-app', 'github-link-123', 'runtime', 'preview', expect.any(Number));
     expect(openBrowser).toHaveBeenCalledExactlyOnceWith(session().browserUrl);
   });
 
@@ -51,8 +51,10 @@ describe('actor-bound GitHub linking', () => {
     expect(now).toBe(Date.parse('2026-09-24T00:10:00Z'));
     expect(delays.slice(0, 15)).toEqual(Array(15).fill(2_000));
     expect(delays.slice(15)).toEqual(Array(114).fill(5_000));
-    expect(read).toHaveBeenCalledTimes(129);
-    expect(read).toHaveBeenCalledWith('company', 'my-app', 'github-link-123', 'runtime', 'preview');
+    expect(read).toHaveBeenCalledTimes(128);
+    expect(read).toHaveBeenCalledWith('company', 'my-app', 'github-link-123', 'runtime', 'preview', expect.any(Number));
+    expect(read.mock.calls[0][5]).toBe(598_000);
+    expect(read.mock.calls.at(-1)?.[5]).toBe(5000);
   });
 
   test('returns an actionable browser handoff for noninteractive callers without mutating source', async () => {
@@ -398,8 +400,10 @@ describe('managed publication authority and readiness', () => {
     expect(now).toBe(Date.parse('2026-09-24T00:10:00Z'));
     expect(delays.slice(0, 15)).toEqual(Array(15).fill(2_000));
     expect(delays.slice(15)).toEqual(Array(114).fill(5_000));
-    expect(read).toHaveBeenCalledTimes(130);
-    expect(read).toHaveBeenCalledWith('company', 'my-app', 'cli-managed-source-123', 'runtime', 'preview');
+    expect(read).toHaveBeenCalledTimes(129);
+    expect(read).toHaveBeenCalledWith('company', 'my-app', 'cli-managed-source-123', 'runtime', 'preview', expect.any(Number));
+    expect(read.mock.calls[0][5]).toBe(600_000);
+    expect(read.mock.calls.at(-1)?.[5]).toBe(5000);
   });
 
   test('never treats publication-route deployment fields as terminal readiness evidence', () => {

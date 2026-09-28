@@ -91,3 +91,20 @@ test snapshot. The final test-only expansion independently passed all 103
 managed-deploy integration cases in 12.79 seconds. These are separate execution
 records; no 1,192-test full result is claimed. Build, lint and exact template3432
 producer pairing pass. The publication gate remains awaiting-producer-release.
+
+The enforced performance repair caps managed PublicAPI requests at 30 seconds
+or the smaller existing command/remaining poll budget. Its native signal remains
+active across credential lookup, headers and body consumption, including legacy
+OIDC evidence submission. Exact operation reads distinguish their issued timeout
+from an unrelated provider abort and direct recovery through the original
+receipt's `--retry` gateway without redispatch. Polling makes no extra read after
+the deadline. This changes no cross-service contract; existing owned API-client,
+source-client and managed-command tests and feature mapping cover the behavior.
+
+The focused transport/recovery corpus passed 230 cases. The complete serialized
+suite then passed 1,208 tests across all 54 files with two existing documented
+skips in 160.33 seconds, including the final retry-guidance assertions. Build,
+full source lint, changed-test lint and exact template3432 pairing pass. Earlier
+failed runs retain their separate provenance; no test timeout, skip, release pin
+or activation gate was widened. Changed public deadline/body interfaces document
+their critical contract; untouched missing-doc advisories remain pre-existing.

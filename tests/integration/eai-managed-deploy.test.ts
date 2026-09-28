@@ -1147,6 +1147,63 @@ fi
     expect(process.exitCode).toBe(0);
   });
 
+  test.each(['github-link', 'handoff', 'operation-poll'] as const)('bounds a stalled %s retry while preserving original receipt and dispatch authority', async (boundary) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const state = customerRetryState({ targetTenantId: 'runtime-child' });
+    await saveManagedDeployState(state);
+    const originalReceipt = await readFile(managedDeployStatePath(state.operationId), 'utf8');
+    process.env.BASE_URL_PUBLIC_API = 'https://dev-api.au.myenterprise.ai/public';
+    let handedOff = false;
+    const requests: Array<{ url: string; method: string; signal?: AbortSignal | null }> = [];
+    const identityImpl = stubManagedOperation().getMockImplementation()!;
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method || 'GET', signal: init?.signal });
+      const stalled = (boundary === 'github-link' && url.includes('/cli-managed-source/github-link-sessions/'))
+        || (boundary === 'handoff' && url.endsWith('/source-unknown/deploy'))
+        || (boundary === 'operation-poll' && handedOff && url.includes('/managed-deployments/operations/'));
+      if (stalled) {
+        const signal = init?.signal;
+        if (!signal) throw new Error('The managed request must supply its bounded deadline');
+        // Hold the mock request open like native HTTP I/O until the real deadline fires.
+        const alive = setInterval(() => {}, 1000);
+        try {
+          return await new Promise<Response>((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+          });
+        } finally { clearInterval(alive); }
+      }
+      if (url.includes('/managed-deployments/operations/')) return jsonResponse({
+        appScopeTenantId: TENANT_ID, targetTenantId: state.targetTenantId, appKey: state.appKey,
+        operationId: state.operationId, environment: state.environment, sourceMode: 'source-unknown',
+        sourceStatus: 'handoff_pending', status: 'handoff_pending',
+        setup: customerOperationSetup(state), evidence: { status: 'accepted' },
+      });
+      if (url.includes('/cli-managed-source/github-link-sessions/')) return jsonResponse(linkedGitHubSession('verified', state.targetTenantId));
+      if (url.endsWith('/source-unknown/deploy')) { handedOff = true; return jsonResponse({ status: 'queued' }, 202); }
+      return identityImpl(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      state.appKey, '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', state.targetTenantId,
+      '--retry', state.operationId, '--timeout', '1', '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    const result = JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''));
+    expect(result).toMatchObject({
+      ok: false, error: { code: boundary === 'operation-poll' ? 'SOURCE_OPERATION_TIMEOUT' : 'EAI_MANAGED_DEPLOY_FAILED' },
+    });
+    if (boundary === 'operation-poll') {
+      expect(result.error.nextAction).toContain(`--retry ${state.operationId} against its saved gateway`);
+      expect(result.error.nextAction).not.toContain('--resume');
+    }
+    expect(await readFile(managedDeployStatePath(state.operationId), 'utf8')).toBe(originalReceipt);
+    expect(requests.every(({ url }) => url.startsWith(API_BASE))).toBe(true);
+    expect(requests.filter(({ url }) => url.endsWith('/source-unknown/deploy'))).toHaveLength(boundary === 'github-link' ? 0 : 1);
+    expect(requests.some(({ url }) => url.endsWith('/runtime-bootstrap') || url.endsWith('/workflow-setup'))).toBe(false);
+    expect(requests.some(({ signal }) => signal?.aborted)).toBe(true);
+    expect(process.exitCode).toBe(1);
+  });
+
   test.each([undefined, 'staging'] as const)('refuses accepted-evidence retry without a supported server environment (%s)', async (environment) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const state = customerRetryState({ targetTenantId: 'runtime-child' });

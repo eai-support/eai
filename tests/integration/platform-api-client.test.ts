@@ -4,12 +4,142 @@ vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => '<fixture-access-token>'),
 }))
 
-import { PlatformAPIClient, parseApiError } from '../../src/lib/api.js'
+import { MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, PlatformAPIClient, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText } from '../../src/lib/api.js'
 import { getAccessToken } from '../../src/lib/auth.js'
+import { pollExactOperation, readExactOperation } from '../../src/commands/eai-managed-deploy-operation.js'
 
 describe('PlatformAPIClient', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  test('caps managed requests and preserves a tighter client or per-read budget', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}'))
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await client.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant')
+    await client.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', 50)
+    const tight = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one', { managedRequestTimeoutMs: 75 })
+    await tight.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', 5000)
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, 50, 75])
+    expect(fetchMock.mock.calls.every(([, init]) => init?.signal instanceof AbortSignal && init.redirect === 'error')).toBe(true)
+  })
+
+  test.each([0, -1, Infinity, NaN, 0.5])('rejects invalid managed HTTP budget %s before credentials or fetch', async timeoutMs => {
+    const token = vi.mocked(getAccessToken)
+    token.mockClear()
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await expect(client.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', timeoutMs)).rejects.toThrow('positive bounded integer')
+    expect(token).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('aborts an actual hung fetch lifetime without retrying or dropping the original authority', async () => {
+    let requestSignal: AbortSignal | undefined
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      requestSignal = init?.signal ?? undefined
+      if (!requestSignal) throw new Error('A managed deadline signal is required')
+      // A real in-flight fetch owns a live socket; this mock retains that lifetime until abort.
+      const alive = setInterval(() => {}, 1000)
+      try {
+        return await new Promise<Response>((_resolve, reject) => {
+          requestSignal!.addEventListener('abort', () => reject(requestSignal!.reason), { once: true })
+        })
+      } finally { clearInterval(alive) }
+    })
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    let error: unknown
+    try { await client.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', 25) }
+    catch (caught) { error = caught }
+    expect(requestSignal?.aborted).toBe(true)
+    expect(isManagedPublicRequestTimeout(error)).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]).toEqual([
+      'https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/managed-deployments/operations/operation-one?targetTenantId=runtime-tenant',
+      expect.objectContaining({ method: 'GET', redirect: 'error', headers: expect.objectContaining({ Authorization: 'Bearer <fixture-access-token>' }) }),
+    ])
+  })
+
+  test('keeps the deadline active after headers and classifies a hung exact-operation body', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const signal = init?.signal
+      if (!signal) throw new Error('A managed deadline signal is required')
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const alive = setInterval(() => {}, 1000)
+          signal.addEventListener('abort', () => {
+            clearInterval(alive)
+            controller.error(new DOMException('Native body read aborted', 'AbortError'))
+          }, { once: true })
+          controller.enqueue(new TextEncoder().encode('{'))
+        },
+      })
+      return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await expect(readExactOperation(client, 'tenant-one', 'runtime-tenant', 'my-app', 'operation-one', 'source-unknown', 25)).rejects.toMatchObject({
+      code: 'SOURCE_OPERATION_TIMEOUT',
+      nextAction: 'Keep the original recovery receipt and use --retry operation-one against its saved gateway; do not dispatch a duplicate workflow.',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true)
+  })
+
+  test('times out slow credential acquisition before any managed authority is sent', async () => {
+    let finishToken!: (value: string) => void
+    vi.mocked(getAccessToken).mockImplementationOnce(() => new Promise(resolve => { finishToken = resolve }))
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const alive = setInterval(() => {}, 1000)
+    try {
+      const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one', { managedRequestTimeoutMs: 25 })
+      await expect(client.getCliManagedGithubLinkSession('tenant-one', 'my-app', 'link-one', 'runtime-tenant', 'preview')).rejects.toMatchObject({ name: 'TimeoutError' })
+      finishToken('<fixture-access-token>')
+      await Promise.resolve()
+      expect(fetchMock).not.toHaveBeenCalled()
+    } finally { clearInterval(alive) }
+  })
+
+  test.each(['AbortError', 'TimeoutError'])('does not misclassify an unrelated provider %s as its own deadline', async name => {
+    const error = new DOMException('Provider aborted independently', name)
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(error)
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await expect(readExactOperation(client, 'tenant-one', 'runtime-tenant', 'my-app', 'operation-one')).rejects.toBe(error)
+    expect(isManagedPublicRequestTimeout(error)).toBe(false)
+  })
+
+  test('passes only the remaining polling budget into the next exact HTTP read', async () => {
+    let now = 10_000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      now += 990
+      return new Response(JSON.stringify({ operationId: 'operation-one', appKey: 'my-app', appScopeTenantId: 'tenant-one', targetTenantId: 'runtime-tenant', sourceMode: 'source-unknown', environment: 'preview', status: 'pending', sourceStatus: 'issued', setup: {} }))
+    })
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await expect(pollExactOperation(client, { tenantId: 'tenant-one', targetTenantId: 'runtime-tenant', appKey: 'my-app', operationId: 'operation-one' }, true, 1)).rejects.toMatchObject({ code: 'SOURCE_OPERATION_TIMEOUT' })
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([1000, 10])
+  })
+
+  test('applies the same body-active deadline to legacy OIDC evidence without replacing its credential', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    const digest = `sha256:${'b'.repeat(64)}`
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    const response = await client.submitSourceUnknownWorkflowEvidence('tenant-one', 'my-app', {
+      operationId: 'source-unknown-abc123', nonce: 'one-time-nonce', sourceMode: 'source-unknown',
+      workflowPath: '.github/workflows/eai-app.yml', workflowBlobSha: 'a'.repeat(40), collectorDigest: digest,
+      ref: 'refs/heads/main', commitSha: 'a'.repeat(40), configHash: digest, artifactDigest: digest,
+      imageArtifact: { id: '123', name: 'eai-generated-app-image', archiveDigest: digest }, imageDigest: digest,
+      schemaProvenance: { templateVersion: '3.12.0', schemaDigest: digest, validatorDigest: digest },
+      workflowRun: { id: '456', attempt: '1' }, validationSummary: { status: 'passed' },
+    }, '<fixture-github-oidc>')
+    expect(await readManagedPublicResponseText(response)).toBe('{}')
+    expect(timeout).toHaveBeenCalledExactlyOnceWith(MANAGED_PUBLIC_REQUEST_TIMEOUT_MS)
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+      'https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/source-unknown/workflow-evidence',
+      expect.objectContaining({ method: 'POST', redirect: 'error', signal: expect.any(AbortSignal), headers: expect.objectContaining({ Authorization: 'Bearer <fixture-github-oidc>' }) }),
+    )
   })
 
   test('keeps managed source preparation and actor linking on tenant/app-scoped v4 routes', async () => {

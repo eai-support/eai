@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
-import { PlatformAPIClient, type CliManagedGithubLinkSession } from "./api.js";
+import { PlatformAPIClient, readManagedPublicResponseText, type CliManagedGithubLinkSession } from "./api.js";
 import { getBrowserOpenCommand } from "./auth.js";
 import { ManagedSourceError } from "./eai-managed-source.js";
 import type { CliManagedSourceScope } from "./eai-managed-source-client-types.js";
@@ -109,6 +109,7 @@ export function cliManagedPortalOrigin(
   return url.origin;
 }
 
+/** Do not validate a partial identity response after its managed HTTP deadline. */
 export async function responseSession(
   response: Response,
 ): Promise<CliManagedGithubLinkSession> {
@@ -118,7 +119,7 @@ export async function responseSession(
       `GitHub identity verification is unavailable (${response.status}). Repair EAI sign-in, app access or the platform linking service before publishing.`,
     );
   }
-  return (await response.json()) as CliManagedGithubLinkSession;
+  return JSON.parse(await readManagedPublicResponseText(response)) as CliManagedGithubLinkSession;
 }
 
 /** Browser linking carries no platform GitHub credential and never authorizes a client repository mutation. */
@@ -146,6 +147,7 @@ export async function verifyCliGithubIdentity(
             options.sessionId,
             scope.targetTenantId,
             scope.environment,
+            options.timeoutMs,
           )
         : await client.createCliManagedGithubLinkSession(
             scope.tenantId,
@@ -156,6 +158,7 @@ export async function verifyCliGithubIdentity(
               environment: scope.environment,
               idempotencyKey: randomUUID(),
             },
+            options.timeoutMs,
           ),
     ),
     scope,
@@ -187,6 +190,7 @@ export async function verifyCliGithubIdentity(
   while (Date.now() < deadline) {
     const interval = Date.now() - startedAt < 30_000 ? 2_000 : 5_000;
     await sleep(Math.min(interval, deadline - Date.now()));
+    if (Date.now() >= deadline) break;
     session = validateCliGithubLinkSession(
       await responseSession(
         await client.getCliManagedGithubLinkSession(
@@ -195,6 +199,7 @@ export async function verifyCliGithubIdentity(
           session.sessionId,
           scope.targetTenantId,
           scope.environment,
+          Math.max(1, deadline - Date.now()),
         ),
       ),
       scope,
