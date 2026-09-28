@@ -1,5 +1,5 @@
 import { loadManagedDeployState, managedDeployStatePath, type ManagedDeployState } from "../lib/eai-managed-deploy.js";
-import { readPrivateFileNoFollow, writePrivateFileNoFollow } from "../lib/eai-managed-deploy-filesystem.js";
+import { createPrivateFileNoFollow, readPrivateFileNoFollow } from "../lib/eai-managed-deploy-filesystem.js";
 import { prepareManagedDeployStateDirectory } from "../lib/eai-managed-deploy-state.js";
 import { requireManagedPublicApiUrl } from "../lib/managed-public-api.js";
 import { fail, NEW_SOURCE_OPERATION_ACTION } from "./eai-managed-deploy-contract.js";
@@ -14,11 +14,28 @@ export interface ManagedRecoveryAuthority {
   actorId: string;
 }
 
-/** Owner-only original gateway receipt; it does not replace server-sealed operation authority. */
+/** The first owner-only gateway/actor binding is immutable, including across repeated preparation. */
 export async function saveManagedRecoveryAuthority(authority: ManagedRecoveryAuthority): Promise<void> {
+  const fields = ["schema", "operationId", "tenantId", "targetTenantId", "appKey", "publicApiUrl", "actorId"] as const;
+  if (authority.schema !== "eai.managed-recovery-authority.v1" || fields.some(field =>
+    !Object.hasOwn(authority, field) || typeof authority[field] !== "string"
+    || !authority[field].trim() || authority[field].length > 256)) {
+    throw new Error("Managed deployment original recovery authority is incomplete or invalid.");
+  }
+  requireManagedPublicApiUrl(authority.publicApiUrl);
   const path = managedDeployStatePath(authority.operationId);
   await prepareManagedDeployStateDirectory();
-  await writePrivateFileNoFollow(path, `${JSON.stringify(authority)}\n`);
+  const retained = Object.fromEntries(fields.map(field => [field, authority[field]]));
+  try {
+    await createPrivateFileNoFollow(path, `${JSON.stringify(retained)}\n`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    const original: unknown = JSON.parse(await readPrivateFileNoFollow(path, 16 * 1024));
+    if (!original || typeof original !== "object" || fields.some(field =>
+      !Object.hasOwn(original, field) || (original as Record<string, unknown>)[field] !== authority[field])) {
+      throw new Error("Managed deployment original recovery authority differs; it cannot be replaced.", { cause: error });
+    }
+  }
 }
 
 /** The original endpoint is read before authentication or source routing; an ID prefix is not authority. */

@@ -19,6 +19,8 @@ import {
   installCanonicalManagedDeployFiles,
   loadManagedDeployState,
   parseGitHubRepository,
+  readManagedDeployDispatchClaim,
+  recordManagedDeployDispatch,
   requireCommitSha,
   requireManagedPublicApiUrl,
   managedDeployNonceSha256,
@@ -372,6 +374,69 @@ describe('EAI managed deployment helpers', () => {
     const marker = join(directory, `${state.operationId}.json.dispatch`);
     await chmod(marker, 0o644);
     await expect(claimManagedDeployDispatch(state, directory)).rejects.toThrow('untrusted file');
+  });
+
+  test('retains the accepted run ID and skips identical claim rewrites', async () => {
+    const directory = await temporaryDirectory('eai-managed-claim-repeat-');
+    const state = fixtureState();
+    await claimManagedDeployDispatch(state, directory);
+    await recordManagedDeployDispatch(state, 'accepted', 123, directory);
+    const marker = join(directory, `${state.operationId}.json.dispatch`);
+    const before = await stat(marker);
+    const bytes = await readFile(marker, 'utf8');
+    expect(await recordManagedDeployDispatch(state, 'accepted', undefined, directory)).toMatchObject({ status: 'accepted', githubRunId: 123 });
+    expect(await recordManagedDeployDispatch(state, 'accepted', 123, directory)).toMatchObject({ status: 'accepted', githubRunId: 123 });
+    expect(await readFile(marker, 'utf8')).toBe(bytes);
+    expect((await stat(marker)).ino).toBe(before.ino);
+    await expect(recordManagedDeployDispatch(state, 'accepted', 456, directory)).rejects.toThrow('run ID');
+    await expect(recordManagedDeployDispatch(state, 'dispatching', undefined, directory)).rejects.toThrow('backwards');
+    expect(await readManagedDeployDispatchClaim(state, directory)).toMatchObject({ status: 'accepted', githubRunId: 123 });
+    expect(await readdir(directory)).toEqual([`${state.operationId}.json.dispatch`]);
+  });
+
+  test('enriches an accepted claim with its first observed run ID without losing later authority', async () => {
+    const directory = await temporaryDirectory('eai-managed-claim-enrich-');
+    const state = fixtureState();
+    await claimManagedDeployDispatch(state, directory);
+    await recordManagedDeployDispatch(state, 'accepted', undefined, directory);
+    expect(await recordManagedDeployDispatch(state, 'accepted', 123, directory)).toMatchObject({ status: 'accepted', githubRunId: 123 });
+    expect(await readdir(directory)).toEqual([`${state.operationId}.json.dispatch`]);
+  });
+
+  test.each([
+    ['tenantId', 'other-tenant'], ['targetTenantId', 'other-target'], ['appKey', 'other-app'],
+    ['nonce', 'other-one-time-nonce'], ['repo', 'enterprise/other-repo'], ['branch', 'release'],
+    ['ref', 'refs/heads/release'], ['commitSha', 'c'.repeat(40)], ['configHash', `sha256:${'c'.repeat(64)}`],
+    ['environment', 'test'], ['installationId', 789], ['actorId', 'other-actor'],
+    ['githubLinkSessionId', 'other-link'], ['githubUserId', 789], ['githubLogin', 'other-user'],
+    ['githubProofId', 'other-proof'], ['publicApiUrl', 'https://test-api.ca.myenterprise.ai/public'],
+  ] as const)('refuses to replace original retry-state authority %s', async (field, value) => {
+    const directory = await temporaryDirectory('eai-managed-state-original-');
+    const state = fixtureState();
+    await saveManagedDeployState(state, directory);
+    const path = join(directory, `${state.operationId}.json`);
+    const bytes = await readFile(path, 'utf8');
+    const before = await stat(path);
+    await expect(saveManagedDeployState({ ...state, [field]: value }, directory)).rejects.toThrow('original operation authority');
+    expect(await readFile(path, 'utf8')).toBe(bytes);
+    expect((await stat(path)).ino).toBe(before.ino);
+    expect(await readdir(directory)).toEqual([`${state.operationId}.json`]);
+  });
+
+  test('keeps first known state progress and skips identical or stale state rewrites', async () => {
+    const directory = await temporaryDirectory('eai-managed-state-progress-');
+    const stale = fixtureState();
+    const state = { ...stale, dispatchStartedAt: '2026-09-28T01:00:00.000Z', dispatchedAt: '2026-09-28T01:01:00.000Z', githubRunId: 123 };
+    await saveManagedDeployState(state, directory);
+    const path = join(directory, `${state.operationId}.json`);
+    const bytes = await readFile(path, 'utf8');
+    const before = await stat(path);
+    await saveManagedDeployState(stale, directory);
+    expect(stale).toEqual(state);
+    expect(await readFile(path, 'utf8')).toBe(bytes);
+    expect((await stat(path)).ino).toBe(before.ino);
+    await expect(saveManagedDeployState({ ...state, githubRunId: 456 }, directory)).rejects.toThrow('run ID');
+    expect(await loadManagedDeployState(state.operationId, directory)).toEqual(state);
   });
 
   test.each([

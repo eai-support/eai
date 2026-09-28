@@ -193,3 +193,64 @@ cross-service contract. Same-UID namespace trust, the 30-second managed request
 ceiling and underlying token-refresh cancellation limits remain explicit;
 native producer publication/assembly, live qualification and commercial gates
 are unchanged.
+
+
+The recovery/dispatch review successor of `b920fecd` preserves the first receipt
+with exclusive creation and, on existing receipt reuse, one bounded 16 KiB
+comparison of its own schema, operation, tenant, target tenant, app, original
+PublicAPI URL and actor fields. Equality preserves the existing bytes/inode;
+a mismatch rejects before upload. Values are compared exactly, without
+inheriting or normalizing new authority.
+
+Claim advancement holds an exclusive owner-only `.dispatch.update-lock` across
+its bounded read, expected-inode/version atomic publication and conditional
+release. Accepted status and a known GitHub run ID cannot regress; conflicting
+run IDs reject and accepted-without-ID can gain its first observed ID. Private
+state saves preserve the supported schema's 20 immutable fields, including its nonce,
+then merge only its three progress fields under `.json.update-lock`. Delayed
+senders recover the retained accepted claim/state run ID, including before
+claim acquisition and after provider acceptance. Unknown serialized metadata
+is not part of this supported authority contract.
+
+Guards have no timeout or automatic takeover. A crash-held/malformed guard
+requires all local holders to be quiesced and explicitly authorized conditional
+recovery of the inspected unchanged original guard. A substituted guard is
+left untouched and the update fails closed. Parent identities are reused
+through each guarded read/write/release; existing-state creation and update
+use two native capture phases. No provider or subprocess call is added.
+Counter tests observe two target opens for changed claim publication, one for
+idempotent accepted reuse with no stage/publication, and zero target opens
+when the guard is held or content exceeds 16 KiB.
+
+The first full attempt remains failed: 54 files, 1,298 passes, one existing
+parent-race fixture expectation failure and two documented skips, 179.14
+seconds. The source/test input manifest stayed unchanged throughout that run.
+Exclusive first state creation now shares the existing claim creation contract:
+a same-UID parent replacement immediately before open can leave a zero-byte
+leaf, then the retained parent check rejects before writing any nonce/authority
+bytes. The corrected fixture proves that rejection, original state and unrelated
+replacement bytes surviving, and zero fetch/provider dispatch. It does not
+claim zero filesystem effects or immunity to an owner-controlled namespace.
+Only that fixture changed after the failed run; production source stayed frozen.
+Its complete 28-case diagnostic passed in 1.59 seconds at unchanged limits.
+
+Before source repair, selected receipt/claim regressions recorded 15 failures
+and four passes (231 unrelated cases filtered). Additional exact-b920
+state/caller regressions recorded 20 failures (128 filtered); the source files
+were restored with verified byte equality. The final changed helper/command
+corpus passed 273 cases in 20.96 seconds. These passing diagnostics do not
+reclassify the failed executions. The complete repeat passed all 54 files: 1,299 tests and two existing documented
+skips in 150.76 seconds (151.74 seconds orchestrated), at unchanged limits.
+All 651 tracked input hashes, including 164 source/test files, stayed unchanged
+through execution and final checks. Only the corrected parent-race fixture
+changed from the failed full attempt; its production source is byte-identical.
+
+Fresh build, full source ESLint, changed writer/race/command test ESLint, exact
+template3432 producer byte pairing, generated release/experience/error-doc
+freshness, guidance verification, public hygiene, placeholder and diff checks
+pass. Five unit-file regex lint findings equal the exact b920 baseline; nine
+untouched inline-doc advisories remain, with the changed public dispatch
+contract documented (baseline had ten). Existing feature mapping owns the
+changed paths/tests. This changes no cross-service contract. The intentional
+release preflight still rejects missing immutable native producer publication;
+no release, provider run, live qualification or cohort composition is claimed.

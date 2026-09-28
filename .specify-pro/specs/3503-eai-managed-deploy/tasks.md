@@ -143,3 +143,10 @@ an unchanged cleanup hook timeout; no timer or skip was changed.
   owner/name API path segments while preserving valid repository names.
 - [x] Run focused counter regressions, owned full checks and record the exact
   pushed successor separately from historical validation.
+
+- [x] Reproduce repeated-preparation recovery-authority replacement and stale
+  dispatch-claim advancement without new provider calls.
+- [x] Preserve the first exact recovery binding and serialize monotonic claim
+  updates, retaining accepted run IDs and failing closed on held/replaced guards.
+- [x] Run the complete CLI corpus and required checks; record the new source
+  proof while retaining the b920 results and intentional publication hold.

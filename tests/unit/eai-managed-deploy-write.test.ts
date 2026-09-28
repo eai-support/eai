@@ -20,6 +20,8 @@ import { afterEach, expect, test, vi } from "vitest";
 const race = vi.hoisted(() => ({
   recoveryPath: "",
   onRecoveryOpen: undefined as (() => Promise<void>) | undefined,
+  onRecoveryClose: undefined as (() => Promise<void>) | undefined,
+  recoveryOpens: 0,
   onStageOpen: undefined as (() => Promise<void>) | undefined,
   onStageWrite: undefined as (() => Promise<void>) | undefined,
   onPublishLink: undefined as (() => Promise<void>) | undefined,
@@ -36,9 +38,17 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     open: async (path: PathLike, flags: string | number, mode?: number) => {
       const handle = await actual.open(path, flags, mode);
       if (String(path) === race.recoveryPath) {
+        race.recoveryOpens += 1;
         const onOpen = race.onRecoveryOpen;
         race.onRecoveryOpen = undefined;
         await onOpen?.();
+        const close = handle.close.bind(handle);
+        handle.close = async () => {
+          await close();
+          const onClose = race.onRecoveryClose;
+          race.onRecoveryClose = undefined;
+          await onClose?.();
+        };
       }
       if (basename(String(path)).startsWith(".eai-write-")) {
         race.stagePath = String(path);
@@ -80,8 +90,12 @@ import {
   writeBoundRegularFile,
   writePrivateFileNoFollow,
 } from "../../src/lib/eai-managed-deploy-filesystem.js";
-import { prepareManagedDeployStateDirectory } from "../../src/lib/eai-managed-deploy-state.js";
+import { claimManagedDeployDispatch, loadManagedDeployState, prepareManagedDeployStateDirectory, readManagedDeployDispatchClaim, recordManagedDeployDispatch, saveManagedDeployState } from "../../src/lib/eai-managed-deploy-state.js";
+import { EAI_MANAGED_WORKFLOW_PATH, type ManagedDeployState } from "../../src/lib/eai-managed-deploy-contract.js";
 import { bindManagedProjectRoot } from "../../src/lib/eai-managed-root-binding.js";
+import { dispatchWorkflow } from "../../src/commands/eai-managed-deploy-github-dispatch.js";
+import * as githubAccess from "../../src/commands/eai-managed-deploy-github-access.js";
+import * as commandContract from "../../src/commands/eai-managed-deploy-contract.js";
 
 const cleanup: string[] = [];
 const original = "original authorized bytes\n";
@@ -98,8 +112,12 @@ const writers = [
 ];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   race.recoveryPath = "";
   race.onRecoveryOpen = undefined;
+  race.onRecoveryClose = undefined;
+  race.recoveryOpens = 0;
   race.onStageOpen = undefined;
   race.onStageWrite = undefined;
   race.onPublishLink = undefined;
@@ -136,6 +154,117 @@ async function fixture(mode: number): Promise<{ work: string; root: string; pare
   await writeFile(target, original, { mode });
   return { work, root, parent, target };
 }
+
+async function dispatchFixture(): Promise<{ directory: string; marker: string; state: ManagedDeployState }> {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "managed-claim-advance-")));
+  cleanup.push(directory);
+  const state: ManagedDeployState = {
+    schema: "eai.managed-deploy-state.v1", tenantId: "tenant-1", targetTenantId: "tenant-1",
+    appKey: "planning-portal", operationId: "source-unknown-abc123", nonce: "one-time-nonce",
+    repo: "enterprise/planning-portal", branch: "main", ref: "refs/heads/main", commitSha: "a".repeat(40),
+    workflowPath: EAI_MANAGED_WORKFLOW_PATH, configHash: `sha256:${"b".repeat(64)}`,
+    environment: "preview", installationId: 123, actorId: "eai-user-oid",
+    githubLinkSessionId: "github-link-123", githubUserId: 456, githubLogin: "linked-user", githubProofId: "proof-123",
+    publicApiUrl: "https://test-api.au.myenterprise.ai/public",
+  };
+  await claimManagedDeployDispatch(state, directory);
+  return { directory, marker: join(directory, `${state.operationId}.json.dispatch`), state };
+}
+
+test.each(["dispatching", "accepted"] as const)("serializes a competing accepted update after a stale %s claim read", async status => {
+  const { directory, marker, state } = await dispatchFixture();
+  race.recoveryPath = marker;
+  let competingError: unknown;
+  let competingReads = -1;
+  race.onRecoveryClose = async () => {
+    const before = race.recoveryOpens;
+    try { await recordManagedDeployDispatch(state, "accepted", 456, directory); }
+    catch (error) { competingError = error; }
+    competingReads = race.recoveryOpens - before;
+  };
+  await recordManagedDeployDispatch(state, status, status === "accepted" ? 123 : undefined, directory);
+  expect(competingError).toMatchObject({ code: "EEXIST" });
+  expect(competingReads).toBe(0);
+  expect(await readManagedDeployDispatchClaim(state, directory)).toMatchObject({ status, ...(status === "accepted" ? { githubRunId: 123 } : {}) });
+  if (status === "dispatching") await recordManagedDeployDispatch(state, "accepted", 456, directory);
+  await expect(recordManagedDeployDispatch(state, "dispatching", undefined, directory)).rejects.toThrow("backwards");
+  expect(await readdir(directory)).toEqual([`${state.operationId}.json.dispatch`]);
+});
+
+test("never takes over a crash-held or malformed claim-update guard", async () => {
+  const { directory, marker, state } = await dispatchFixture();
+  const guard = `${marker}.update-lock`;
+  const guardBytes = "crash-held malformed guard\n";
+  await writeFile(guard, guardBytes, { mode: 0o600 });
+  const bytes = await readFile(marker, "utf8");
+  race.recoveryPath = marker;
+  await expect(recordManagedDeployDispatch(state, "accepted", 123, directory)).rejects.toMatchObject({ code: "EEXIST" });
+  expect(race.recoveryOpens).toBe(0);
+  expect(await readFile(marker, "utf8")).toBe(bytes);
+  expect(await readFile(guard, "utf8")).toBe(guardBytes);
+});
+
+test("bounds claim content before opening it and skips idempotent publication I/O", async () => {
+  const { directory, marker, state } = await dispatchFixture();
+  race.recoveryPath = marker;
+  await recordManagedDeployDispatch(state, "accepted", 123, directory);
+  expect(race.recoveryOpens).toBe(2);
+  race.recoveryOpens = 0;
+  race.stagePath = "";
+  await recordManagedDeployDispatch(state, "accepted", undefined, directory);
+  expect(race.recoveryOpens).toBe(1);
+  expect(race.stagePath).toBe("");
+  const oversized = `${await readFile(marker, "utf8")}${" ".repeat(16 * 1024)}`;
+  await writeFile(marker, oversized, { mode: 0o600 });
+  race.recoveryOpens = 0;
+  await expect(recordManagedDeployDispatch(state, "accepted", 123, directory)).rejects.toThrow("size bound");
+  expect(race.recoveryOpens).toBe(0);
+  expect(await readFile(marker, "utf8")).toBe(oversized);
+  expect(await readdir(directory)).toEqual([`${state.operationId}.json.dispatch`]);
+});
+
+test("does not remove a replaced claim-update guard or modify the protected claim", async () => {
+  const { directory, marker, state } = await dispatchFixture();
+  const guard = `${marker}.update-lock`;
+  const bytes = await readFile(marker, "utf8");
+  race.recoveryPath = marker;
+  race.onRecoveryClose = async () => {
+    await rename(guard, join(directory, "original-guard"));
+    await writeFile(guard, replacement, { mode: 0o600 });
+  };
+  await expect(recordManagedDeployDispatch(state, "accepted", 123, directory)).rejects.toThrow(/untrusted|changed/);
+  expect(await readFile(marker, "utf8")).toBe(bytes);
+  expect(await readFile(guard, "utf8")).toBe(replacement);
+  expect((await readdir(directory)).filter(name => name.startsWith(".eai-write-"))).toEqual([]);
+});
+
+test.each(["before-claim", "after-provider"] as const)("preserves a concurrent reconciler run ID against a delayed sender %s", async phase => {
+  const { directory, state } = await dispatchFixture();
+  vi.stubEnv("HOME", directory);
+  await saveManagedDeployState(state);
+  const dispatchedAt = "2026-09-28T01:00:00.000Z";
+  const reconcile = async (): Promise<void> => {
+    await claimManagedDeployDispatch(state);
+    await recordManagedDeployDispatch(state, "accepted", 789);
+    await saveManagedDeployState({ ...state, dispatchedAt, githubRunId: 789 });
+  };
+  vi.spyOn(githubAccess, "verifyGitHubAccess").mockImplementation(async () => {
+    if (phase === "before-claim") await reconcile();
+  });
+  const run = vi.spyOn(commandContract, "run").mockImplementation(async (command, args) => {
+    expect(command).toBe("gh");
+    expect(args.slice(0, 2)).toEqual(["workflow", "run"]);
+    await reconcile();
+    return "";
+  });
+  await dispatchWorkflow(state, state.publicApiUrl, directory);
+  expect(run).toHaveBeenCalledTimes(phase === "before-claim" ? 0 : 1);
+  expect(state).toMatchObject({ dispatchedAt, githubRunId: 789, nonce: "one-time-nonce" });
+  expect(await loadManagedDeployState(state.operationId)).toMatchObject({ dispatchedAt, githubRunId: 789, nonce: "one-time-nonce" });
+  expect(await readManagedDeployDispatchClaim(state)).toMatchObject({ status: "accepted", githubRunId: 789 });
+  await expect(saveManagedDeployState({ ...state, githubRunId: 456 })).rejects.toThrow("run ID");
+  expect(await loadManagedDeployState(state.operationId)).toMatchObject({ dispatchedAt, githubRunId: 789 });
+});
 
 test.each(writers)("$name publishes a new inode without modifying an existing opened file", async writer => {
   const { root, parent, target } = await fixture(writer.mode);

@@ -23,7 +23,7 @@ import {
   managedFileOpenFlags,
   snapshotNoLinkDirectoryPath,
   readPrivateFileNoFollow,
-  writePrivateFileNoFollow,
+  updatePrivateFileNoFollow,
 } from './eai-managed-deploy-filesystem.js';
 import { isManagedDeploymentIdentifier } from './eai-managed-identifiers.js';
 import { requireManagedPublicApiUrl } from './managed-public-api.js';
@@ -101,12 +101,44 @@ export async function prepareManagedDeployStateDirectory(baseDir?: string): Prom
   }
 }
 
-/** Persist retry authority with owner-only directory and file permissions. */
+/** Preserve the original authority and monotonically merge progress under an exclusive local guard. */
 export async function saveManagedDeployState(state: ManagedDeployState, baseDir?: string): Promise<void> {
   validateManagedDeployState(state);
+  const fields = ['schema', 'tenantId', 'targetTenantId', 'appKey', 'operationId', 'nonce', 'repo', 'branch',
+    'ref', 'commitSha', 'workflowPath', 'configHash', 'environment', 'installationId', 'actorId',
+    'githubLinkSessionId', 'githubUserId', 'githubLogin', 'githubProofId', 'publicApiUrl'] as const;
+  if (state.schema !== 'eai.managed-deploy-state.v1' || fields.some(field => !Object.hasOwn(state, field))) {
+    throw new Error('Managed deployment state is missing its original operation authority.');
+  }
+  if (state.githubRunId !== undefined && (!Number.isSafeInteger(state.githubRunId) || state.githubRunId < 1)) {
+    throw new Error('GitHub workflow run ID must be a positive integer.');
+  }
   const path = managedDeployStatePath(state.operationId, baseDir);
   await prepareManagedDeployStateDirectory(baseDir);
-  await writePrivateFileNoFollow(path, `${JSON.stringify(state, null, 2)}\n`);
+  try {
+    await createPrivateFileNoFollow(path, `${JSON.stringify(state, null, 2)}\n`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    const result = await updatePrivateFileNoFollow(path, content => {
+      const current = JSON.parse(content) as ManagedDeployState;
+      validateManagedDeployState(current);
+      if (fields.some(field => !Object.hasOwn(current, field) || current[field] !== state[field])) {
+        throw new Error('Managed deployment state differs from its original operation authority.');
+      }
+      if (current.githubRunId !== undefined && (!Number.isSafeInteger(current.githubRunId) || current.githubRunId < 1
+        || (state.githubRunId !== undefined && current.githubRunId !== state.githubRunId))) {
+        throw new Error('Managed deployment state already binds a different or invalid GitHub workflow run ID.');
+      }
+      const progress = {
+        dispatchStartedAt: current.dispatchStartedAt ?? state.dispatchStartedAt,
+        dispatchedAt: current.dispatchedAt ?? state.dispatchedAt,
+        githubRunId: current.githubRunId ?? state.githubRunId,
+      };
+      if (Object.entries(progress).every(([field, value]) => current[field as keyof ManagedDeployState] === value)) return content;
+      return `${JSON.stringify({ ...current, ...progress }, null, 2)}\n`;
+    });
+    Object.assign(state, JSON.parse(result) as ManagedDeployState);
+  }
 }
 
 function managedDispatchBindingSha256(state: ManagedDeployState): string {
@@ -160,9 +192,13 @@ export async function readManagedDeployDispatchClaim(
 ): Promise<ManagedDispatchClaim> {
   validateManagedDeployState(state);
   const marker = `${managedDeployStatePath(state.operationId, baseDir)}.dispatch`;
+  return parseManagedDeployDispatchClaim(state, await readPrivateFileNoFollow(marker));
+}
+
+function parseManagedDeployDispatchClaim(state: ManagedDeployState, content: string): ManagedDispatchClaim {
   let claim: ManagedDispatchClaim;
   try {
-    claim = JSON.parse(await readPrivateFileNoFollow(marker)) as ManagedDispatchClaim;
+    claim = JSON.parse(content) as ManagedDispatchClaim;
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error('Managed deployment dispatch claim is not valid JSON.', { cause: error });
@@ -173,35 +209,40 @@ export async function readManagedDeployDispatchClaim(
     || claim.bindingSha256 !== managedDispatchBindingSha256(state)
     || claim.nonceSha256 !== managedDeployNonceSha256(state.nonce)
     || !['claimed', 'dispatching', 'accepted'].includes(claim.status)
+    || (claim.githubRunId !== undefined && (!Number.isSafeInteger(claim.githubRunId) || claim.githubRunId < 1))
     || !Number.isFinite(Date.parse(claim.claimedAt)) || !Number.isFinite(Date.parse(claim.updatedAt))) {
     throw new Error('Managed deployment dispatch claim does not match the exact operation binding.');
   }
   return claim;
 }
 
-/** Atomically advance the crash-recovery claim after validating its complete binding. */
+/** Hold the exact local guard across read/write; accepted status and an observed run ID cannot regress. */
 export async function recordManagedDeployDispatch(
   state: ManagedDeployState,
   status: ManagedDispatchClaim['status'],
   githubRunId?: number,
   baseDir?: string,
 ): Promise<ManagedDispatchClaim> {
+  validateManagedDeployState(state);
   const marker = `${managedDeployStatePath(state.operationId, baseDir)}.dispatch`;
-  const current = await readManagedDeployDispatchClaim(state, baseDir);
-  if (status === 'claimed' || (current.status === 'accepted' && status !== 'accepted')) {
-    throw new Error('Managed deployment dispatch claim cannot move backwards.');
-  }
   if (githubRunId !== undefined && (!Number.isSafeInteger(githubRunId) || githubRunId < 1)) {
     throw new Error('GitHub workflow run ID must be a positive integer.');
   }
-  const next: ManagedDispatchClaim = {
-    ...current,
-    status,
-    updatedAt: new Date().toISOString(),
-    ...(githubRunId !== undefined ? { githubRunId } : {}),
-  };
-  await writePrivateFileNoFollow(marker, `${JSON.stringify(next, null, 2)}\n`);
-  return next;
+  const result = await updatePrivateFileNoFollow(marker, content => {
+    const current = parseManagedDeployDispatchClaim(state, content);
+    if (!['dispatching', 'accepted'].includes(status) || (current.status === 'accepted' && status !== 'accepted')) {
+      throw new Error('Managed deployment dispatch claim cannot move backwards.');
+    }
+    if (current.githubRunId !== undefined && githubRunId !== undefined && current.githubRunId !== githubRunId) {
+      throw new Error('Managed deployment dispatch claim already binds a different GitHub workflow run ID.');
+    }
+    if (current.status === status && (githubRunId === undefined || current.githubRunId === githubRunId)) return content;
+    return `${JSON.stringify({
+      ...current, status, updatedAt: new Date().toISOString(),
+      ...(githubRunId !== undefined ? { githubRunId } : {}),
+    }, null, 2)}\n`;
+  });
+  return JSON.parse(result) as ManagedDispatchClaim;
 }
 
 /** Load only a state file whose immutable digest and operation identity remain valid. */

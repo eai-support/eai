@@ -177,7 +177,7 @@ async function assertExpectedWriteTarget(
 async function publishBoundFile(
   target: string, content: Buffer | string, mode: number, privateData: boolean,
   identities: readonly ManagedDirectoryIdentity[], before: Stats | undefined,
-  rootBinding?: ManagedProjectRootBinding,
+  rootBinding?: Pick<ManagedProjectRootBinding, 'assert'>,
 ): Promise<void> {
   const bytes = typeof content === 'string' ? Buffer.from(content) : Buffer.from(content);
   const stage = join(dirname(target), `.eai-write-${randomUUID()}.tmp`);
@@ -298,10 +298,11 @@ export async function createPrivateFileNoFollow(path: string, content: Buffer | 
   }
 }
 
-/** Read owner-only recovery authority through a stable parent and opened inode. */
-export async function readPrivateFileNoFollow(path: string, maxBytes = 1024 * 1024): Promise<string> {
+async function readPrivateFileSnapshot(
+  path: string, maxBytes: number, parents?: readonly ManagedDirectoryIdentity[],
+): Promise<{ content: string; status: Stats }> {
   const target = resolve(path);
-  const identities = await snapshotNoLinkDirectoryPath(dirname(target));
+  const identities = parents ?? await snapshotNoLinkDirectoryPath(dirname(target));
   const before = await lstat(target);
   const uid = typeof process.getuid === 'function' ? process.getuid() : null;
   if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1
@@ -336,9 +337,62 @@ export async function readPrivateFileNoFollow(path: string, maxBytes = 1024 * 10
       || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) {
       throw new Error('Managed deployment recovery file changed during its bounded read.');
     }
-    return bytes.toString('utf8');
+    return { content: bytes.toString('utf8'), status: after };
   } finally {
     await handle.close();
+  }
+}
+
+/** Read owner-only recovery authority through a stable parent and opened inode. */
+export async function readPrivateFileNoFollow(path: string, maxBytes = 1024 * 1024): Promise<string> {
+  return (await readPrivateFileSnapshot(path, maxBytes)).content;
+}
+
+/** Serialize bound updates; a held guard never expires and only its original inode/version is released. */
+export async function updatePrivateFileNoFollow(
+  path: string, update: (current: string) => string, maxBytes = 16 * 1024,
+): Promise<string> {
+  const target = resolve(path);
+  const identities = await snapshotNoLinkDirectoryPath(dirname(target));
+  const guard = `${target}.update-lock`;
+  let handle: FileHandle;
+  try {
+    handle = await open(guard, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | managedFileOpenFlags(), 0o600);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    throw Object.assign(new Error('Managed deployment update guard is held; quiesce its holder and use explicitly authorized conditional recovery. No automatic takeover is permitted.', { cause: error }), { code: 'EEXIST' });
+  }
+  let held: Stats | undefined;
+  const assertGuard = async (): Promise<void> => {
+    await assertDirectoryIdentities(identities);
+    await assertOpenedPrivateTarget(guard, handle);
+    if (!held || !sameFileSnapshot(await handle.stat(), held)) {
+      throw new Error('Managed deployment update guard changed before its bound update or release.');
+    }
+  };
+  try {
+    held = await handle.stat();
+    await assertGuard();
+    await handle.writeFile(`${JSON.stringify({ schema: 'eai.private-file-update-guard.v1', ownerId: randomUUID() })}\n`);
+    held = await handle.stat();
+    await handle.sync();
+    await assertGuard();
+    const current = await readPrivateFileSnapshot(target, maxBytes, identities);
+    const next = update(current.content);
+    await assertGuard();
+    if (next !== current.content) {
+      await publishBoundFile(target, next, 0o600, true, identities, current.status, { assert: assertGuard });
+    }
+    return next;
+  } finally {
+    try {
+      if (held) {
+        await assertGuard();
+        await unlink(guard);
+      }
+    } finally {
+      await handle.close();
+    }
   }
 }
 

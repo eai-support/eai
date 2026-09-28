@@ -96,6 +96,7 @@ async function reconcileManagedWorkflowRun(
   return undefined;
 }
 
+/** Reserve the original nonce once; reconciled accepted progress remains authoritative for delayed senders. */
 export async function dispatchWorkflow(
   state: ManagedDeployState,
   publicApiUrl: string,
@@ -135,9 +136,9 @@ export async function dispatchWorkflow(
   const acquired = await claimManagedDeployDispatch(state);
   const existingClaim = await readManagedDeployDispatchClaim(state);
   if (state.dispatchedAt || existingClaim.status === "accepted") {
-    if (!state.dispatchedAt) {
-      state.dispatchedAt = existingClaim.updatedAt;
-      state.githubRunId = existingClaim.githubRunId;
+    if (existingClaim.status === "accepted") {
+      state.dispatchedAt ||= existingClaim.updatedAt;
+      if (existingClaim.githubRunId !== undefined) state.githubRunId = existingClaim.githubRunId;
       await saveManagedDeployState(state);
     }
     return;
@@ -216,7 +217,8 @@ export async function dispatchWorkflow(
       `Dispatch acceptance is uncertain. Retry ${state.operationId} to reconcile only the exact workflow run named "${managedWorkflowRunName(state)}"; the nonce will not be blindly replayed.`,
     );
   }
-  await recordManagedDeployDispatch(state, "accepted");
-  state.dispatchedAt = new Date().toISOString();
+  const accepted = await recordManagedDeployDispatch(state, "accepted", state.githubRunId);
+  state.dispatchedAt ||= accepted.updatedAt;
+  if (accepted.githubRunId !== undefined) state.githubRunId = accepted.githubRunId;
   await saveManagedDeployState(state);
 }

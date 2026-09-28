@@ -118,6 +118,7 @@ import {
   saveManagedDeployState,
 } from "../../src/lib/eai-managed-deploy-state.js";
 import type { ManagedDeployState } from "../../src/lib/eai-managed-deploy-contract.js";
+import * as commandContract from "../../src/commands/eai-managed-deploy-contract.js";
 import { readSourceUnknownEvidenceFile } from "../../src/lib/source-unknown-evidence-file.js";
 import { bindManagedProjectRoot } from "../../src/lib/eai-managed-root-binding.js";
 import {
@@ -130,6 +131,8 @@ const exec = promisify(execFile);
 const cleanup: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   race.target = "";
   race.fifoTrigger = "";
   race.inventoryTrigger = "";
@@ -592,6 +595,14 @@ test.each(["state", "dispatch"])(
     await mkdir(directory);
     await mkdir(join(outside, "managed-deployments"));
     const state = retryState();
+    const statePath = join(directory, `${state.operationId}.json`);
+    const originalState = `${JSON.stringify(state)}\n`;
+    await writeFile(statePath, originalState, { mode: 0o600 });
+    const victimSentinel = join(outside, "managed-deployments", "unrelated.txt");
+    await writeFile(victimSentinel, "unrelated existing replacement bytes\n", { mode: 0o600 });
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const providerDispatch = vi.spyOn(commandContract, "run").mockRejectedValue(new Error("Unexpected provider command."));
     const suffix = kind === "state" ? ".json" : ".json.dispatch";
     race.trigger = join(directory, `${state.operationId}${suffix}`);
     race.target = directory;
@@ -604,11 +615,13 @@ test.each(["state", "dispatch"])(
       "evidence directory changed",
     );
     expect(race.swapped).toBe(true);
-    if (kind === "dispatch") {
-      await expect(readFile(race.trigger, "utf8")).resolves.toBe("");
-    } else {
-      await expect(readFile(race.trigger, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-    }
+    // Exclusive creation can leave an empty leaf after an owner-controlled parent swap;
+    // the retained parent check rejects before writing any nonce or authority bytes.
+    await expect(readFile(race.trigger, "utf8")).resolves.toBe("");
+    expect(await readFile(join(race.displaced, `${state.operationId}.json`), "utf8")).toBe(originalState);
+    expect(await readFile(join(directory, "unrelated.txt"), "utf8")).toBe("unrelated existing replacement bytes\n");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(providerDispatch).not.toHaveBeenCalled();
   },
 );
 

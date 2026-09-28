@@ -234,8 +234,17 @@ describe('eai deploy app --target eai', () => {
     await env.cleanup();
   });
 
-  test.each(['accepted', 'lost-response', 'unsafe-directory'] as const)('saves original recovery authority before exact managed source upload: %s', async (uploadOutcome) => {
-    await rm(managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'));
+  test.each(['accepted', 'lost-response', 'unsafe-directory', 'existing-authority'] as const)('saves original recovery authority before exact managed source upload: %s', async (uploadOutcome) => {
+    const authorityPath = managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    let retainedAuthority: string | undefined;
+    if (uploadOutcome === 'existing-authority') {
+      const retained = JSON.parse(await readFile(authorityPath, 'utf8'));
+      retained.publicApiUrl = 'https://test-api.ca.myenterprise.ai/public';
+      retainedAuthority = `${JSON.stringify(retained)}\n`;
+      await writeFile(authorityPath, retainedAuthority, { mode: 0o600 });
+    } else {
+      await rm(authorityPath);
+    }
     await mkdir(join(projectRoot, 'src/app'), { recursive: true });
     await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "local source"; }');
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
@@ -283,10 +292,11 @@ describe('eai deploy app --target eai', () => {
     if (uploadOutcome !== 'accepted') {
       expect(process.exitCode).toBe(1);
       expect(result).toMatchObject({ ok: false, error: { code: uploadOutcome === 'lost-response' ? 'MANAGED_SOURCE_UPLOAD_UNCERTAIN' : 'MANAGED_SOURCE_RECOVERY_UNAVAILABLE' } });
+      if (retainedAuthority) expect(await readFile(authorityPath, 'utf8')).toBe(retainedAuthority);
       expect(result.error.message).toContain('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
       expect(requests.filter(url => url.startsWith('https://dev-admin-portal.myenterprise.ai/'))).toHaveLength(uploadOutcome === 'lost-response' ? 1 : 0);
       if (uploadOutcome === 'lost-response') await expect(loadManagedRetryAuthority('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', TENANT_ID, TENANT_ID, 'planning-portal')).resolves.toMatchObject({ publicApiUrl: API_BASE, actorId: 'test-user-oid' });
-      else await expect(readFile(managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'))).rejects.toMatchObject({ code: 'ENOENT' });
+      else if (uploadOutcome === 'unsafe-directory') await expect(readFile(managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'))).rejects.toMatchObject({ code: 'ENOENT' });
       return;
     }
     expect(process.exitCode).toBe(0);
@@ -1369,6 +1379,51 @@ fi
     await expect(loadManagedRetryAuthority(authority.operationId, TENANT_ID, TENANT_ID, authority.appKey))
       .resolves.toMatchObject({ publicApiUrl: API_BASE, actorId: authority.actorId });
     expect((await stat(directory)).mode & 0o777).toBe(0o700);
+  });
+
+  test.each(['schema', 'operationId', 'tenantId', 'targetTenantId', 'appKey', 'publicApiUrl', 'actorId'] as const)('never replaces an existing protected recovery binding with changed %s', async field => {
+    const path = managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    const authority = JSON.parse(await readFile(path, 'utf8'));
+    const retained = { ...authority, [field]: field === 'publicApiUrl' ? 'https://test-api.ca.myenterprise.ai/public' : 'different-authority' };
+    const bytes = `${JSON.stringify(retained)}\n`;
+    await writeFile(path, bytes, { mode: 0o600 });
+    const before = await stat(path);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(saveManagedRecoveryAuthority(authority)).rejects.toThrow('original recovery authority');
+    expect(await readFile(path, 'utf8')).toBe(bytes);
+    expect((await stat(path)).ino).toBe(before.ino);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('reuses identical recovery authority without replacing its bytes or inode', async () => {
+    const path = managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    const bytes = await readFile(path, 'utf8');
+    const before = await stat(path);
+    await saveManagedRecoveryAuthority(JSON.parse(bytes));
+    expect(await readFile(path, 'utf8')).toBe(bytes);
+    expect((await stat(path)).ino).toBe(before.ino);
+  });
+
+  test('does not normalize a different saved gateway into original recovery authority', async () => {
+    const path = managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    const bytes = await readFile(path, 'utf8');
+    const authority = JSON.parse(bytes);
+    await expect(saveManagedRecoveryAuthority({ ...authority, publicApiUrl: `${API_BASE}/` })).rejects.toThrow('original recovery authority');
+    expect(await readFile(path, 'utf8')).toBe(bytes);
+  });
+
+  test.each(['inherited', 'oversized'] as const)('rejects %s original receipt authority without provider I/O', async kind => {
+    const path = managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    const bytes = await readFile(path, 'utf8');
+    const authority = JSON.parse(bytes);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    if (kind === 'oversized') await writeFile(path, `${bytes}${' '.repeat(16 * 1024)}`, { mode: 0o600 });
+    const retained = await readFile(path, 'utf8');
+    await expect(saveManagedRecoveryAuthority(kind === 'inherited' ? Object.create(authority) : authority)).rejects.toThrow(kind === 'inherited' ? 'original recovery authority' : 'size bound');
+    expect(await readFile(path, 'utf8')).toBe(retained);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test.each(['.eai', '.eai/managed-deployments'])('rejects a shared writable recovery parent before authority load or save: %s', async unsafe => {
