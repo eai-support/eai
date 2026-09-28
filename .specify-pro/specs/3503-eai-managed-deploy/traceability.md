@@ -2,7 +2,7 @@
 
 Requirements are defined by the [Issue #3503 hardening amendment](https://github.com/enterpriseaigroup/Issues2025/issues/3503#issuecomment-5826177803).
 
-Exact app-template candidate: `03b95d986ccc6f6adfc29b2bcae96efa78ef5742`. Its authenticated runtime-owned readiness binding supports the separate deployed qualification; The collector now independently enforces a single hard link at every archive and bounded-file read snapshot; the CLI embeds those exact bytes. The workflow bytes are unchanged. The producer publication gate remains closed until a real immutable release is recorded.
+Exact app-template candidate: `3432b6e1ee5c66bc517a140a4a55c16c5b17eb66`. Its authenticated runtime-owned readiness binding supports the separate deployed qualification; The collector now independently enforces a single hard link at every archive and bounded-file read snapshot; the CLI embeds those exact bytes. The workflow bytes are unchanged. The producer publication gate remains closed until a real immutable release is recorded.
 
 | Requirement               | Planned implementation                                                                                                                                                                                                                         | Owned evidence                                                                       |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
@@ -23,3 +23,8 @@ dispatch; malformed visibility and a real evidence hard link are rejected.
 Build and lint passed. These checks add no GitHub/provider calls, only one field
 to the existing overlapped repository read and metadata checks on existing
 filesystem snapshots.
+
+The final template candidate additionally omits incomplete authenticated
+deployment bindings while preserving legacy readiness statuses. Its workflow
+and collector bytes remain unchanged; candidate revision3432b6e is mirrored
+exactly and the publication gate remains closed.
