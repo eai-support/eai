@@ -12,6 +12,7 @@ import {
   companionCliForSurface,
   detectAiSurfaces,
   executeAiLaunchPlan,
+  posixMetadataHelperTimeoutMs,
   readAiPreferences,
   rememberAiSurface,
   serializeAiSurfaceInventory,
@@ -378,6 +379,11 @@ function linuxVsCodeCatalogProbe(applicationSha256 = '437e3d7f233868437287680753
 }
 
 describe('AI surface contract', () => {
+  it('allows bounded time for macOS codesign while keeping other metadata checks short', () => {
+    expect(posixMetadataHelperTimeoutMs('/usr/bin/codesign')).toBe(15_000);
+    expect(posixMetadataHelperTimeoutMs('/usr/bin/plutil')).toBe(5_000);
+  });
+
   it('requires an explicit architecture when simulating another operating system', async () => {
     const simulatedPlatform = process.platform === 'win32' ? 'linux' : 'win32';
 
