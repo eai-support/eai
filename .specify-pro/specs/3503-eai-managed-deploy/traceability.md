@@ -48,3 +48,28 @@ fresh server-scoped link-session read only before redispatch; receipt persistenc
 adds local I/O before upload, with no new route, authority scope, producer bytes,
 or deployed response contract. Existing CI owns the changed source-client module
 family and regressions. Publication and live qualification are not inferred.
+
+The retry redirect review is checked against the endpoint-level
+`managedPublicRequest` guard, which validates the original PublicAPI authority
+and sets `redirect: error` independently of generic constructor options. Three
+command integration regressions cover accepted handoff, subsequent operation
+polling and the fresh actor-bound GitHub-link read, rejecting 307 responses and
+confirming no request reaches the redirected host. These tests change no
+transport behavior, auth scope, route or producer bytes; the existing owned
+managed-deploy integration suite and CI selection cover them.
+
+The first full serialized execution with these three regressions recorded
+1,167 passes, one failure and two existing skips across 54 files in 216.51
+seconds. The failure was the unchanged 10-second `afterEach` removal hook for
+the 4,096-file governed-count fixture; the new integration cases passed.
+Concurrent site compilation was slow (119 seconds), so a separately recorded
+full rerun is coordinated after heavy checks drain. This failed execution is
+not reclassified by a diagnostic or subsequent passing run.
+
+After heavy checks drained, the separately recorded complete one-worker repeat
+passed all 54 files: 1,168 tests and two existing documented skips in 228.35
+seconds, with the original timeout limits. The three focused redirect cases,
+lint and exact template3432 producer verification also pass. This successor
+adds tests and evidence only; protected transport behavior and producer bytes
+remain unchanged. Current-head CI, human review, publication and live
+qualification remain independently assessed gates.

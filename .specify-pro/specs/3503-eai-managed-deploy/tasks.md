@@ -124,3 +124,13 @@ across 54 files, with two existing documented skips (214.81 seconds). Build,
 lint and exact template3432 byte pairing pass. This fresh passing execution does
 not erase earlier failed or interrupted runs. Exact-head CI, producer publication
 and live Installer-first qualification remain separate gates.
+
+- [x] Verify customer retry handoff, operation polling and GitHub-link reads
+  reject redirects through the existing endpoint-level managed request guard
+  independently of generic client options (DTE-091); preserve the intentional
+  producer publication gate and run the complete serialized CLI suite.
+
+The focused redirect regressions pass (three cases), and the coordinated full
+one-worker repeat passes all 54 files: 1,168 tests with two existing documented
+skips (228.35 seconds). The first full attempt remains recorded as failed due to
+an unchanged cleanup hook timeout; no timer or skip was changed.

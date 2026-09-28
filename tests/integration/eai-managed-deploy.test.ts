@@ -1001,6 +1001,52 @@ fi
     expect(process.exitCode).toBe(0);
   });
 
+  test.each(['handoff', 'poll', 'github-link'] as const)('rejects redirect responses from the protected retry authority during %s', async (boundary) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const state = customerRetryState({ targetTenantId: 'runtime-child' });
+    await saveManagedDeployState(state);
+    let handedOff = false;
+    const requests: Array<{ url: string; redirect?: RequestRedirect }> = [];
+    const identityImpl = stubManagedOperation().getMockImplementation()!;
+    const redirectedHost = 'https://attacker.example/steal-authority';
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = String(input);
+      requests.push({ url, redirect: init?.redirect });
+      const redirectResponse = () => new Response(null, { status: 307, headers: { Location: redirectedHost } });
+      if (url.includes('/managed-deployments/operations/')) {
+        if (boundary === 'poll' && handedOff) return redirectResponse();
+        return jsonResponse({
+          appScopeTenantId: TENANT_ID, targetTenantId: 'runtime-child', appKey: state.appKey,
+          operationId: state.operationId, environment: state.environment, sourceMode: 'source-unknown',
+          sourceStatus: boundary === 'github-link' ? 'prepared' : 'handoff_pending',
+          status: boundary === 'github-link' ? 'prepared' : 'handoff_pending',
+          setup: customerOperationSetup(state, { status: 'issued' }),
+          ...(boundary === 'github-link' ? {} : { evidence: { status: 'accepted' } }),
+        });
+      }
+      if (url.endsWith('/source-unknown/deploy')) {
+        handedOff = true;
+        return boundary === 'handoff' ? redirectResponse() : jsonResponse({ status: 'queued' }, 202);
+      }
+      if (url.includes('/cli-managed-source/github-link-sessions/')) return redirectResponse();
+      return identityImpl(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      state.appKey, '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', 'runtime-child',
+      '--retry', state.operationId, '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(requests.filter(({ url }) => url.startsWith(API_BASE)).every(({ redirect }) => redirect === 'error')).toBe(true);
+    expect(requests.some(({ url }) => url.startsWith(redirectedHost))).toBe(false);
+    expect(requests.some(({ url }) => url.includes('/cli-managed-source/github-link-sessions/'))).toBe(boundary === 'github-link');
+    expect(handedOff).toBe(boundary !== 'github-link');
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      ok: false, error: { code: boundary === 'handoff' ? 'DEPLOYMENT_HANDOFF_FAILED' : boundary === 'poll' ? 'SOURCE_OPERATION_READ_FAILED' : 'RETRY_GITHUB_AUTHORITY_UNAVAILABLE' },
+    });
+    expect(process.exitCode).toBe(1);
+  });
+
   test.each([undefined, 'staging'] as const)('refuses accepted-evidence retry without a supported server environment (%s)', async (environment) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const state = customerRetryState({ targetTenantId: 'runtime-child' });
