@@ -8,7 +8,7 @@ correction.
 
 ## 2026-08-12: Trace the actual client before assigning ownership
 
-**Incident**: A production tenant-member invitation failed from an EAI CLI
+**Incident**: A production workspace-member invitation failed from an EAI CLI
 command, but the first explanation treated the request as though it originated
 in Admin Portal.
 
@@ -41,7 +41,7 @@ the email-based role-assignment command and retained the existing short form.
 
 **Incident**: Codex CLI logged `Exceeded skills context budget of 2%` and
 dropped descriptions of all installed skills. Investigation revealed 11
-duplicate Gofer skill bundles (one per Anthropic-tenant) plus 5 system skills,
+duplicate Gofer skill bundles (one per Anthropic-workspace) plus 5 system skills,
 totaling ~30KB of skill descriptions across 181 SKILL.md files.
 
 **Root cause**: Codex preloads ~2% of context for skill name+description text.
@@ -56,7 +56,7 @@ copies multiplied the description footprint.
 3. Source-of-truth generator enforces ≤140-char descriptions per stage and ≤2KB
    cumulative budget.
 4. Flat non-tenanted layout: `.agents/skills/gofer/<stage>/SKILL.md` (one bundle
-   per stage, no per-tenant duplication).
+   per stage, no per-workspace duplication).
 
 **Lessons**:
 

@@ -248,7 +248,7 @@ export const errorGuidanceCatalog = [
         messageIncludes: ['Tenant admin role required'],
       },
       {
-        operation: 'tenant app create',
+        operation: 'workspace app create',
         status: 403,
       },
     ],
@@ -865,12 +865,12 @@ export const errorGuidanceCatalog = [
         mutates: false,
       },
       {
-        command: 'eai types validate --workspace-key <key> --tenant-id <tenant-id>',
+        command: 'eai types validate --tenant-key <key> --tenant-id <workspace-id>',
         purpose: 'Validate source names, slugs, relationships, and storage metadata without publishing.',
         mutates: false,
       },
       {
-        command: 'eai types seed --workspace-key <key> --tenant-id <tenant-id> --dry-run --format json',
+        command: 'eai types seed --tenant-key <key> --tenant-id <workspace-id> --dry-run --format json',
         purpose: 'Confirm the CLI can load the intended workspace scope without changing platform state.',
         mutates: false,
       },
@@ -883,7 +883,7 @@ export const errorGuidanceCatalog = [
         when: 'Run when eai update --check reports an older CLI.',
       },
       {
-        command: 'eai types seed --workspace-key <key> --tenant-id <tenant-id> --format json',
+        command: 'eai types seed --tenant-key <key> --tenant-id <workspace-id> --format json',
         purpose: 'Publish once through the maintained compatibility adapter.',
         mutates: true,
         when: 'Run after update and local validation succeed.',

@@ -64,13 +64,13 @@ Before any Gofer stage/helper command does pipeline work:
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
    and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
-   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   workspace is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.
 4. For EAI app delivery, do not continue into research, specification, planning,
    tasks, implementation, or validation until
-   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   `.specify/specs/{feature}/eai-preflight.md` records login, workspace, template,
    app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+5. Do not write tokens, secrets, private workspace IDs, or local `.env` values into
    Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
@@ -157,7 +157,7 @@ Instead, inform the user that validation must pass first.
    - `working-backwards-prfaq.md` — Running product release PR/FAQ and internal FAQ
    - `stakeholder-review-index.md` — Review status and required approvals
    - `business-owner-summary.md` — Business scenario, process, value, assumptions
-   - `cto-architecture-summary.md` — Architecture, EAI Platform/Azure fit, auth/tenant/data/contracts
+   - `cto-architecture-summary.md` — Architecture, EAI Platform/Azure fit, auth/workspace/data/contracts
    - `ciso-security-summary.md` — Security posture, controls, residual risk, validation evidence
    - `problem-brief.md` — Original problem and business case
    - `discovery.md` — Business discovery context
@@ -432,7 +432,7 @@ Generate these additional decks under `{FEATURE_DIR}/presentations/`:
 | `business.marp.md` | Business owner | User journey, operational value, adoption |
 | `internal-delivery.marp.md` | Delivery lead | Dependency plan, red/green loop, delivery risks |
 | `enterprise-architecture.marp.md` | Enterprise architecture | Platform fit, context bundle, contract pack, reuse decisions |
-| `ciso.marp.md` | CISO | Identity, tenant boundary, controls, residual risk |
+| `ciso.marp.md` | CISO | Identity, workspace boundary, controls, residual risk |
 | `data-architecture.marp.md` | Data architecture | Object types, lineage, quality, governance |
 | `cio.marp.md` | CIO | Platform strategy, operating model, reuse roadmap |
 | `cfo.marp.md` | CFO | Investment case, benefit tracking, cost risk |

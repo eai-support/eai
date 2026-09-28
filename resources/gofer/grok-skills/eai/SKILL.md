@@ -56,9 +56,9 @@ Apply these rules before any user-facing output:
 
 1. Run `eai whoami` only for EAI app delivery work or explicit EAI CLI recovery.
 2. Confirm the user is logged in, an active workspace is available, and the repo is ready for the EAI app template.
-3. If EAI CLI, login, tenant, or template readiness is missing for app delivery, run the first-run/setup path from `.specify/commands/gofer_eai_first_run.md` when present.
+3. If EAI CLI, login, workspace, or template readiness is missing for app delivery, run the first-run/setup path from `.specify/commands/gofer_eai_first_run.md` when present.
 4. After any `eai` error, run `eai errors explain <code-or-reason> --format json` when available before guessing remediation.
-5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into artifacts.
+5. Do not write tokens, secrets, private workspace IDs, or local `.env` values into artifacts.
 
 ## First Conversation
 

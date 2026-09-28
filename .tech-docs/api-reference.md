@@ -403,8 +403,8 @@ Push Object Types to the platform and verify convergence.
 
 **Options**:
 - `--env <environment>` — Target environment (default: `dev`)
-- `--tenant-key <key>` — Specific tenant key from `object-types.ts`
-- `--tenant-id <id>` — Override the resolved tenant ID (use with `--tenant-key`)
+- `--tenant-key <key>` — Workspace scope key from `object-types.ts` (current option name)
+- `--tenant-id <id>` — Override the resolved workspace ID (use with `--tenant-key`)
 - `--dry-run` — Show what would be seeded without making changes
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -419,8 +419,8 @@ Push Object Types to the platform and verify convergence.
 Compare local definitions with remote state.
 
 **Options**:
-- `--tenant-key <key>` — Specific tenant key from `object-types.ts`
-- `--tenant-id <id>` — Override the resolved tenant ID (use with `--tenant-key`)
+- `--tenant-key <key>` — Workspace scope key from `object-types.ts` (current option name)
+- `--tenant-id <id>` — Override the resolved workspace ID (use with `--tenant-key`)
 
 **Platform API Endpoints Used**:
 - `GET /v4/data/resources/object-types`
@@ -1300,7 +1300,7 @@ The CLI uses structured error codes for consistent error handling. Each error ca
 | Code | Message | Suggestion |
 |------|---------|------------|
 | `E001` | Not in an EAI project | Run `eai init`, or navigate to an existing EAI project directory |
-| `E002` | `{var}` environment variable not set | Set `{var}` in your environment or project config. Tenant selection comes from `eai login` / `eai workspace select`, not tenant IDs in `.env.local` |
+| `E002` | `{var}` environment variable not set | Set `{var}` in your environment or project config. Workspace selection comes from `eai login` / `eai workspace select`, not workspace IDs in `.env.local` |
 | `E003` | Configuration file not found: `{file}` | Ensure `{file}` exists. Run `eai init` if this is a new project |
 | `E004` | Object Types file not found or invalid | Create `src/eai.config/object-types.ts` |
 | `E005` | Invalid project structure | Run `eai verify` to check your setup |

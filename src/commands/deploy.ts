@@ -482,7 +482,7 @@ function hasTenantWorkflowProblem(body: unknown): string | null {
     }
     const tenant = value as Record<string, unknown>;
     if (typeof tenant.tenantId !== 'string' || tenant.tenantId.trim() === '') {
-      return `Tenant key ${key} is missing tenantId.`;
+      return `Workspace key ${key} is missing a workspace ID (tenantId runtime field).`;
     }
     if (typeof tenant.workflowId !== 'string' || tenant.workflowId.trim() === '') {
       return `Workspace key ${key} is missing workflowId.`;

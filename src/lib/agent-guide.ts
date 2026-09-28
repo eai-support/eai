@@ -57,7 +57,7 @@ const guide: AgentGuide = {
     'Use named eai commands before calling eai publicapi directly.',
     'Before Object Type publication, require app-manifest-name-slug-negotiation-v1. The CLI preserves source slugs and selects a safe deployed request shape. A dry-run preferred shape does not prove that the deployed platform accepts that shape.',
     'When calling eai publicapi directly, only use /v4 paths.',
-    'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing tenant members, Entra, or role definitions.',
+    'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing workspace members, Entra, or role definitions.',
     'For normal workspace user/admin addition, use eai user invite --email <email> --workspace <workspace-id> --role <role>; use workspace bootstrap-admin only for first-admin repair on an immediate child workspace.',
     'If user invite fails with a 5xx or EXTERNAL_SERVICE_ERROR, run eai errors explain user_invite_external_service_existing_member --format json, check for an existing member with eai user list, and only then use eai user role set by member ID when approved.',
     'For files, use eai docs when the file is a document to process, classify, index, or expose to AI context. Use eai resources file only when the file is attached to a typed resource object file property.',
@@ -144,7 +144,7 @@ const guide: AgentGuide = {
     {
       step: 3,
       title: 'Type and resource readiness',
-      instruction: 'Validate local type definitions, compare with the selected tenant, and seed only when needed.',
+      instruction: 'Validate local type definitions, compare with the selected workspace, and seed only when needed.',
       commands: [
         { command: 'eai types validate', mutates: false, purpose: 'Validate local object type files.' },
         { command: 'eai types diff', mutates: false, purpose: 'Compare local and published object types.' },
@@ -155,10 +155,10 @@ const guide: AgentGuide = {
     {
       step: 4,
       title: 'Workspace member management',
-      instruction: 'List available roles, invite or refresh the user by email with the intended role, and verify membership. This is the correct path for "add this person as tenant admin/member" requests. If prerequisite platform user lookups fail with MISSING_TENANT, first confirm tenant-scoped /v4/platform/tenants/<tenant-id>/... routes and deployed API versions.',
+      instruction: 'List available roles, invite or refresh the user by email with the intended role, and verify membership. This is the correct path for "add this person as workspace admin/member" requests. If prerequisite platform user lookups fail with MISSING_TENANT, first confirm workspace-scoped /v4/platform/tenants/<tenant-id>/... routes and deployed API versions.',
       commands: [
         { command: 'eai user roles --workspace <workspace-id> --format json', mutates: false, purpose: 'Discover assignable workspace roles before choosing a role.' },
-        { command: 'eai user invite --email <email> --workspace <workspace-id> --role tenant-admin --format json', mutates: true, purpose: 'Add or refresh a user membership and assign workspace admin access (role ID tenant-admin).' },
+        { command: 'eai user invite --email <email> --workspace <workspace-id> --role tenant-admin --format json', mutates: true, purpose: 'Add or refresh a user membership and assign workspace admin access (platform role ID tenant-admin).' },
         { command: 'eai user list --workspace <workspace-id> --search <email> --format json', mutates: false, purpose: 'Verify the user membership and role after invite.' },
         { command: 'eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json', mutates: true, purpose: 'Repair workspace admin access for an existing direct member after verifying the member ID.' },
       ],

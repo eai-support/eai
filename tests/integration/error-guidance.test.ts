@@ -307,13 +307,13 @@ describe('error guidance catalog', () => {
     expect(guidance?.diagnostics.map((item) => item.command)).toEqual(
       expect.arrayContaining([
         'eai update --check',
-        'eai types validate --workspace-key <key> --tenant-id <tenant-id>',
+        'eai types validate --tenant-key <key> --tenant-id <workspace-id>',
       ]),
     );
     expect(guidance?.fixes.map((item) => item.command)).toEqual(
       expect.arrayContaining([
         'eai update',
-        'eai types seed --workspace-key <key> --tenant-id <tenant-id> --format json',
+        'eai types seed --tenant-key <key> --tenant-id <workspace-id> --format json',
       ]),
     );
     expect(guidance?.retry.maxAttempts).toBe(1);

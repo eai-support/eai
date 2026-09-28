@@ -112,12 +112,12 @@ hide uncertainty or change scope.
 - **Architecture direction**: {{architecture-summary}}
 - **EAI Platform fit**: {{eai-platform-components-and-template-use}}
 - **Azure fit**: {{azure-services-and-why}}
-- **Auth, tenancy, data, integration**: {{auth-tenant-data-contract-summary}}
+- **Auth, tenancy, data, integration**: {{auth-workspace-data-contract-summary}}
 
 ### CISO / Risk
 
 - **Data handled**: {{data-classification-and-sensitive-data}}
-- **Identity and access controls**: {{authn-authz-tenant-controls}}
+- **Identity and access controls**: {{authn-authz-workspace-controls}}
 - **Residual risks**: {{residual-risk-and-open-security-questions}}
 - **Evidence**: {{security-validation-evidence-links}}
 

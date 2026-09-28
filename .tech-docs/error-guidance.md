@@ -486,13 +486,13 @@ None.
 ### Diagnostics
 
 - `eai update --check` (read-only) — Check whether the installed CLI includes app-manifest compatibility support.
-- `eai types validate --workspace-key <key> --tenant-id <tenant-id>` (read-only) — Validate source names, slugs, relationships, and storage metadata without publishing.
-- `eai types seed --workspace-key <key> --tenant-id <tenant-id> --dry-run --format json` (read-only) — Confirm the CLI can load the intended workspace scope without changing platform state.
+- `eai types validate --tenant-key <key> --tenant-id <workspace-id>` (read-only) — Validate source names, slugs, relationships, and storage metadata without publishing.
+- `eai types seed --tenant-key <key> --tenant-id <workspace-id> --dry-run --format json` (read-only) — Confirm the CLI can load the intended workspace scope without changing platform state.
 
 ### Fixes
 
 - `eai update` (changes state) — Install the CLI release that negotiates the deployed app-manifest request shape. Run when eai update --check reports an older CLI.
-- `eai types seed --workspace-key <key> --tenant-id <tenant-id> --format json` (changes state) — Publish once through the maintained compatibility adapter. Run after update and local validation succeed.
+- `eai types seed --tenant-key <key> --tenant-id <workspace-id> --format json` (changes state) — Publish once through the maintained compatibility adapter. Run after update and local validation succeed.
 
 ### Stop Conditions
 
@@ -682,4 +682,3 @@ None.
 - the command that failed
 - the request id from the error
 - the reason code from the error response
-

@@ -8,7 +8,7 @@ source_commit: "c5ef50d332aeff08170fc8db1d580ccd9e5776e0"
 ## Overview
 
 For normal public use, the EAI CLI should need very little configuration.
-After `eai login`, the CLI uses your signed-in account and selected tenant to
+After `eai login`, the CLI uses your signed-in account and selected workspace to
 route requests automatically. Public documentation must not describe private
 environment names, endpoint hostnames, internal routing, cloud resources, or
 platform infrastructure behind the public API.
@@ -34,7 +34,7 @@ Configuration is loaded with this public-facing precedence:
 | `.env.local` | Optional developer-local app values |
 | CLI defaults | Built-in public behavior |
 
-The CLI may keep local auth and tenant state on your machine after login. Treat
+The CLI may keep local auth and workspace state on your machine after login. Treat
 that state as private and manage it through CLI commands such as `eai login`,
 `eai logout`, `eai whoami`, and `eai workspace select`.
 
@@ -50,7 +50,7 @@ eai workspace select
 eai whoami
 ```
 
-`eai whoami` is the safest way to confirm which account and tenant the CLI is
+`eai whoami` is the safest way to confirm which account and workspace the CLI is
 using. If you need to change workspace, run `eai workspace select`. If you need to
 clear local sign-in state, run `eai logout`.
 
@@ -97,7 +97,7 @@ Public documentation only describes generic runtime environment variables:
 `EAI_NO_SPLASH` and `EAI_NO_ANIMATION` are local terminal preferences read from
 the CLI process only. They have no App Configuration or infrastructure mapping.
 
-Do not put credentials, tokens, endpoint URLs, or tenant-specific values into
+Do not put credentials, tokens, endpoint URLs, or workspace-specific values into
 committed files. Automation credentials should be stored in your CI provider's
 secret store and supplied according to your organization's onboarding guide.
 
@@ -122,7 +122,7 @@ NODE_ENV=development
 Rules:
 
 1. Keep `.env.local` in `.gitignore`.
-2. Do not commit tokens, API keys, client secrets, tenant-specific values, or
+2. Do not commit tokens, API keys, client secrets, workspace-specific values, or
    endpoint URLs.
 3. Use your deployment provider's secret management for deployed applications.
 
@@ -165,7 +165,7 @@ Never commit secrets. That includes:
 2. API keys
 3. Client secrets
 4. Private endpoint URLs
-5. Tenant-specific identifiers
+5. Workspace-specific identifiers
 6. Generated credentials
 
 For local development, keep private values in ignored local files. For CI/CD and
@@ -197,7 +197,7 @@ flowchart TB
 
 ## Troubleshooting
 
-**Not sure which account or tenant is active?**
+**Not sure which account or workspace is active?**
 
 Run:
 
@@ -205,7 +205,7 @@ Run:
 eai whoami
 ```
 
-**Need to switch tenant?**
+**Need to switch workspace?**
 
 Run:
 
@@ -246,6 +246,6 @@ Before committing a project that uses the EAI CLI:
 1. `.env.local` is ignored.
 2. No secrets or tokens are committed.
 3. No private endpoint URLs are committed.
-4. No tenant-specific identifiers are committed.
+4. No workspace-specific identifiers are committed.
 5. `eai.config.ts` contains only public-safe project metadata.
 6. `eai doctor` runs successfully for your local setup.

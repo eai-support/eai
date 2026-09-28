@@ -149,7 +149,7 @@ async function upsertWorkflowResource(
 function printWorkflowStatus(result: RuntimeWorkflowStatusResult): void {
   out.heading(`Workflow: ${result.workflowKey}`);
   out.table([
-    ['Tenant', chalk.dim(result.tenantId || 'unknown')],
+    ['Workspace', chalk.dim(result.tenantId || 'unknown')],
     ['Status', result.status === 'available' ? chalk.green(result.status) : chalk.yellow(result.status)],
     ['Reason', result.reasonCode],
   ]);
@@ -166,7 +166,7 @@ function printWorkflowRequest(result: RuntimeWorkflowRequestResult): void {
   out.heading(`Workflow request: ${result.workflowKey}`);
   out.table([
     ['Request ID', chalk.dim(result.requestId)],
-    ['Tenant', chalk.dim(result.tenantId)],
+    ['Workspace', chalk.dim(result.tenantId)],
     ['Status', result.status === 'available' ? chalk.green(result.status) : chalk.yellow(result.status)],
     ['Reason', result.reasonCode],
   ]);
@@ -180,7 +180,7 @@ function printWorkflowRequest(result: RuntimeWorkflowRequestResult): void {
 }
 
 function printBuilderReadiness(result: BuilderReadinessResult): void {
-  out.heading(`Builder readiness: ${result.tenantId}`);
+  out.heading(`Workspace readiness: ${result.tenantId}`);
   out.table([
     ['Status', result.status === 'available' ? chalk.green(result.status) : chalk.yellow(result.status)],
     ['Checks', String(result.checks.length)],

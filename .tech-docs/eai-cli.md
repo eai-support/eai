@@ -59,13 +59,13 @@ npm install -g @enterpriseai/cli
 ```bash
 eai login
 eai workspace list --format json
-eai workspace select <tenant-slug>
+eai workspace select <workspace-slug>
 eai whoami
 
 eai types validate
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
-eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
-eai resources schema --tenant-id <tenant-id> --format json
+eai types seed --tenant-key <scope-key> --tenant-id <workspace-id> --format json
+eai types diff --tenant-key <scope-key> --tenant-id <workspace-id>
+eai resources schema --tenant-id <workspace-id> --format json
 
 eai dev
 ```
@@ -94,7 +94,7 @@ construction.
 | `eai init`                              | Scaffold an app from the EAI App Template.                                                |
 | `eai start`                             | Detect or open a supported AI workspace for the current EAI app.                          |
 | `eai login`, `eai logout`, `eai whoami` | Manage local authentication and inspect active context.                                   |
-| `eai workspace`                         | List, select, create, inspect, and administer workspace context. `eai workspace` remains an alias.                             |
+| `eai workspace`                         | List, select, create, inspect, and administer workspace context. `eai tenant` remains available as a compatibility alias.     |
 | `eai types`                             | Validate, seed, diff, and pull Object Type definitions.                                   |
 | `eai resources`                         | List, get, create, update, delete, query, aggregate, search, and manage ResourceAPI data. |
 | `eai docs`                              | Upload, classify, and index documents for platform processing and RAG.                    |
@@ -113,7 +113,7 @@ Use machine-readable output for automation:
 
 ```bash
 eai workspace list --format json
-eai resources schema --tenant-id <tenant-id> --format json
+eai resources schema --tenant-id <workspace-id> --format json
 eai whoami --simple
 eai doctor --no-color
 ```
@@ -128,7 +128,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Start AI workspace   | `eai start --check`, then `eai start`                    |
 | Select workspace        | `eai workspace list`, `eai workspace select <slug>`            |
 | Publish Object Types | `eai types validate`, `eai types seed`, `eai types diff` |
-| Inspect schemas      | `eai resources schema --tenant-id <tenant-id>`           |
+| Inspect schemas      | `eai resources schema --tenant-id <workspace-id>`           |
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
 | Work with documents  | `eai docs upload`, `eai docs classify`, `eai docs index` |

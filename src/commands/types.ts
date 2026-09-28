@@ -945,7 +945,7 @@ function appOwnedStoragePublishGuidance(
 
   return [
     "",
-    "Why this can happen: tenant app Object Types must use app-owned storage bindings. Shared platform aliases and generic table names are rejected by the platform.",
+    "Why this can happen: workspace app Object Types must use app-owned storage bindings. Shared platform aliases and generic table names are rejected by the platform.",
     `Next steps: run eai app provision ${tenantKey} --tenant-id ${tenantId} --select --format json, update src/eai.config/object-types.ts to use tenant-postgres and app-owned table names, then rerun eai types validate --tenant-key ${tenantKey} --tenant-id ${tenantId} and eai types seed --tenant-key ${tenantKey} --tenant-id ${tenantId}.`,
   ].join("\n");
 }
@@ -998,7 +998,7 @@ export async function appObjectTypePublishFallbackReason(
       body = "";
     }
     if (/app was not found|not found for this company/i.test(body)) {
-      return `app object-type manifest ${phase} route unavailable (tenant has no app enrollment)`;
+      return `app object-type manifest ${phase} route unavailable (workspace has no app enrollment)`;
     }
   }
   return null;
@@ -1644,10 +1644,10 @@ typesCommand
   .command("seed")
   .description("Push Object Types to platform")
   .option("--env <label>", "Optional deployment label for compatibility")
-  .option("--tenant-key <key>", "Workspace key from object-types.ts (the --tenant-key flag is kept for compatibility)")
+  .option("--tenant-key <key>", "Workspace scope key from object-types.ts (current option name)")
   .option(
     "--tenant-id <id>",
-    "Override the resolved tenant ID (use with --tenant-key)",
+    "Override the resolved workspace ID (use with --tenant-key)",
   )
   .option(
     "--dry-run",
@@ -2205,7 +2205,7 @@ Examples:
 typesCommand
   .command("validate")
   .description("Validate Object Types against platform schema rules")
-  .option("--tenant-key <key>", "Workspace key from object-types.ts (the --tenant-key flag is kept for compatibility)")
+  .option("--tenant-key <key>", "Workspace scope key from object-types.ts (current option name)")
   .option(
     "--tenant-id <id>",
     "Check app-owned storage naming for this tenant ID",
@@ -2432,10 +2432,10 @@ Examples:
 typesCommand
   .command("diff")
   .description("Compare local Object Types with remote platform")
-  .option("--tenant-key <key>", "Workspace key from object-types.ts (the --tenant-key flag is kept for compatibility)")
+  .option("--tenant-key <key>", "Workspace scope key from object-types.ts (current option name)")
   .option(
     "--tenant-id <id>",
-    "Override the resolved tenant ID (use with --tenant-key)",
+    "Override the resolved workspace ID (use with --tenant-key)",
   )
   .option("--format <format>", "Output format (text|json)", "text")
   .option("--json", "Output raw JSON (deprecated, use --format json)", false)

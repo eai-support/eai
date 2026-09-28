@@ -506,10 +506,10 @@ function buildEaiPlatformSessionPreflightSection() {
 Before any Gofer stage/helper command does pipeline work:
 
 1. Treat durable delivery as EAI Platform delivery by default, with Azure second and every other stack only by explicit exception.
-2. Run \`eai whoami\` and confirm the EAI CLI is installed, the user is logged in, and an active tenant is visible.
-3. If \`eai\` is missing, \`eai whoami\` fails, the token is expired, or no active tenant is available, stop and run \`/gofer:eai-first-run\` or ask the user to approve login/setup before continuing.
-4. For EAI app delivery, do not continue into research, specification, planning, tasks, implementation, or validation until \`.specify/specs/{feature}/eai-preflight.md\` records login, tenant, template, app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private tenant IDs, or local \`.env\` values into Gofer artifacts; record only product-safe readiness status and evidence.
+2. Run \`eai whoami\` and confirm the EAI CLI is installed, the user is logged in, and an active workspace is visible.
+3. If \`eai\` is missing, \`eai whoami\` fails, the token is expired, or no active workspace is available, stop and run \`/gofer:eai-first-run\` or ask the user to approve login/setup before continuing.
+4. For EAI app delivery, do not continue into research, specification, planning, tasks, implementation, or validation until \`.specify/specs/{feature}/eai-preflight.md\` records login, workspace, template, app-readiness, and next-action evidence.
+5. Do not write tokens, secrets, private workspace IDs, or local \`.env\` values into Gofer artifacts; record only product-safe readiness status and evidence.
 `.trim();
 }
 
@@ -1147,7 +1147,7 @@ Generated: ${timestamp}
 - If advertised, run \`eai agent guide --format json\` before planning or fixing EAI workflows.
 - After any \`eai\` error, run \`eai errors explain <code-or-reason> --format json\` before guessing remediation.
 - If \`eai errors explain\` is unavailable, match \`.specify/references/platform/eai-error-catalog.yaml\`, run read-only diagnostics before mutating fixes, and stop at the retry or escalation condition.
-- For \`eai user invite\` 5xx or \`EXTERNAL_SERVICE_ERROR\`, check existing members with \`eai user list --tenant <tenant-id> --search <email> --format json\`; use \`eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json\` only after verification and user approval, then tell the app user to sign out and sign back in.
+- For \`eai user invite\` 5xx or \`EXTERNAL_SERVICE_ERROR\`, check existing members with \`eai user list --workspace <workspace-id> --search <email> --format json\`; use \`eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json\` only after verification and user approval, then tell the app user to sign out and sign back in.
 - Use \`eai publicapi\` only for authorized PublicAPI \`/v4/...\` routes.
 
 ## Commands

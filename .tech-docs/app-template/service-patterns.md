@@ -8,6 +8,9 @@ title: Platform Service Patterns
 Use these patterns when choosing how an app, eai-gofer, or terminal automation
 should call EAI platform capabilities.
 
+The template's `tenantId` field and `--tenant-id` option are stable contract
+names. Their values identify an EAI workspace.
+
 ## Boundary Rules
 
 - Browser code calls the app BFF at `/api/eai/...`.
@@ -26,7 +29,7 @@ should call EAI platform capabilities.
 | -------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | Frontend composition | `src/eai.config` layout slots plus `src/eai.blocks.tsx` registry | `eai gofer refresh` installs guidance                                                       | Keep config data-only; callbacks belong in overrides. |
 | Data model           | Object Types in `src/eai.config/object-types.ts`                 | `eai types validate`, `eai types seed`, `eai types diff`                                    | Object Types define resource contracts.               |
-| Structured resources | `useResources(type)` or `client.resources`                       | `eai resources list/get/create/update/delete/query`                                         | Default for tenant business data.                     |
+| Structured resources | `useResources(type)` or `client.resources`                       | `eai resources list/get/create/update/delete/query`                                         | Default for workspace business data.                     |
 | Resource actions     | `client.resources.executeAction(type, id, action)`               | named resources command if available; otherwise `eai publicapi post /v4/data/resources/...` | Actions enforce Object Type rules.                    |
 | Resource search      | helper around PublicAPI resource search if SDK support is absent | `eai resources search "<query>" --mode hybrid`                                              | Search is a projection over canonical data.           |
 | Resource files       | helper around resource file routes                               | `eai resources file upload/get/delete`                                                      | Use for file fields on typed resource objects.        |

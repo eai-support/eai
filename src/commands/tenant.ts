@@ -378,7 +378,7 @@ tenantCommand
   .option("--parent <id>", "Parent workspace ID")
   .option(
     "--all",
-    "Include workspaces where the user holds other roles (e.g. tenant-viewer)",
+    "Include other workspace roles (for example, the platform role ID tenant-viewer)",
     false,
   )
   .option("--debug", "Show debug diagnostics for workspace lookup", false)
@@ -642,7 +642,7 @@ tenantCommand
   .option("--home-region <region>", "Workspace home region: au|ca|eu")
   .option(
     "--allow-root",
-    "Allow root tenant creation for administrative backfills",
+    "Allow root workspace creation for administrative backfills",
     false,
   )
   .option("--format <format>", "Output format (text|json)", "text")

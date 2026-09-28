@@ -49,13 +49,13 @@ Before any Gofer stage/helper command does pipeline work:
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
    and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
-   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   workspace is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.
 4. For EAI app delivery, do not continue into research, specification, planning,
    tasks, implementation, or validation until
-   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   `.specify/specs/{feature}/eai-preflight.md` records login, workspace, template,
    app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+5. Do not write tokens, secrets, private workspace IDs, or local `.env` values into
    Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
@@ -767,12 +767,12 @@ When `workflowProfile` is explicitly `enterpriseai`, generate
 | Object Types | Reused, extended, and newly proposed EnterpriseAI object types with owners |
 | Workflows and Journeys | External user journeys and internal orchestration flows as separate views; app delivery must include the four-step-or-fewer AI-augmented journey |
 | UI Preview and Approval | For app delivery: preview brief, EAI App Template constraints, branding inputs, preview validation evidence expectations, review-log requirements, approval gate rules; for non-app work: mark not applicable |
-| EAI App Delivery Preflight | For EAI app delivery: CLI version/install state, account/login state, tenant role, template initialization readiness, app enrollment readiness, block catalog readiness, and blocked/deferred decisions |
+| EAI App Delivery Preflight | For EAI app delivery: CLI version/install state, account/login state, workspace role, template initialization readiness, app enrollment readiness, block catalog readiness, and blocked/deferred decisions |
 | EAI Platform/Azure Stack Policy | For app delivery: EAI Platform as primary app substrate, Azure as preferred cloud/supporting substrate, custom code constrained to the EAI template, and non-EAI stacks only as approved exceptions |
 | AI Assistance Contract | Step goal, assistance mode, context used, generated output, user controls, confidence/evidence, audit trail, completion signal, and escalation for each app step |
 | EnterpriseAI Service Fit | For app delivery: desired capabilities, evidence source, accessible now vs purchasable vs unavailable classification, selected direction, and blocked-capability handling |
 | Public Platform Boundary | Public docs/help/CLI/PublicAPI behavior the builder may rely on; private platform details intentionally excluded; upgrade/operator-required paths expressed as product-safe user actions |
-| Permissions and Tenant Boundaries | Identity, authorization, policy, isolation, and tenant assumptions |
+| Permissions and Workspace Boundaries | Identity, authorization, policy, isolation, and workspace assumptions |
 | APIs and Events | ResourceAPI surfaces, events, payload ownership, and contract-test hooks |
 | Deployment and Runtime | Environment, config, observability, rollback, and operating assumptions |
 | Acceptance Tests | Business, security, data, architecture, operational, and regression checks |

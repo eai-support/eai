@@ -132,7 +132,7 @@ selected source bundle as the truth for the update.
 ## Step 5: Continue EAI App First-Run Setup When Needed
 
 If the user is building an EAI Platform app and Git, Node.js, npm, the EAI CLI,
-login, tenant access, or EAI app template readiness is still missing, run
+login, workspace access, or EAI app template readiness is still missing, run
 `/gofer:eai-first-run` next. Do not ask again when the workspace is healthy;
 only ask when an install, browser login, workspace selection, or `eai init` action
 is actually needed.

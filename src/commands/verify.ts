@@ -1066,7 +1066,7 @@ export const verifyCommand = new Command("verify")
   .description("Run platform connectivity checks")
   .option(
     "--tenant-id <id>",
-    "Run read-only connectivity checks against a specific tenant ID",
+    "Run read-only connectivity checks against a specific workspace ID",
   )
   .addHelpText(
     "after",
@@ -1333,7 +1333,7 @@ verifyCommand
   .description("Audit platform-facing API call contracts used by the CLI")
   .option(
     "--tenant-id <id>",
-    "Tenant ID to use for read-only resource and schema checks",
+    "Workspace ID to use for read-only resource and schema checks",
   )
   .option(
     "--resource-type <type>",
@@ -1602,7 +1602,7 @@ Notes:
       out.success(".env.local found for local app runtime");
     } catch {
       out.info(
-        ".env.local not found — CLI auth and workspace selection uses stored login context",
+        ".env.local not found — CLI auth and workspace selection use stored login context",
       );
     }
 

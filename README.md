@@ -16,7 +16,9 @@ steps without exposing private infrastructure details.
 
 Customer-facing CLI language uses **workspace**. The CLI also accepts the
 `tenant` command and `--tenant-*` options for compatibility with existing
-scripts and platform API names.
+scripts and platform API names. Stable fields such as `tenantId`, `--tenant-id`,
+`limits.tenants`, and role IDs such as `tenant-admin` remain unchanged. They
+refer to EAI workspaces or the platform role contract.
 
 ## Package Trust
 
@@ -30,7 +32,7 @@ environments.
 | Source | Public GitHub repository with issues, releases, and CI |
 | Publishing | GitHub Actions trusted publishing with npm provenance |
 | Runtime | Node.js 24 LTS or newer |
-| Secrets | No secrets, tenant credentials, or local environment files are committed or published |
+| Secrets | No secrets, workspace credentials, or local environment files are committed or published |
 | Support | Security issues are handled through [SECURITY.md](SECURITY.md); product issues through GitHub Issues |
 
 ## Public Repository
@@ -51,7 +53,7 @@ and find the maintained documentation.
 | License | [Apache-2.0](LICENSE) | Open source license and patent grant |
 
 Public-readiness rule for maintainers: everything committed here must be safe
-for a public audience. Do not commit secrets, customer data, private tenant
+for a public audience. Do not commit secrets, customer data, private workspace
 details, local `.env` files, unpublished internal architecture notes, private
 environment URLs, or temporary build output.
 
@@ -114,7 +116,8 @@ eai workspace select
 # 3. Create child workspaces only when you need them
 #    `eai workspace create --parent <id>` now creates the workspace record,
 #    attempts first-admin bootstrap for the current login, and only marks
-#    the workspace usable after direct tenant-admin membership is confirmed.
+#    the workspace usable after workspace-admin membership is confirmed
+#    (platform role ID `tenant-admin`).
 #    The child home region defaults to the parent region; pass
 #    `--home-region au|ca|eu` when the child must use another region.
 
@@ -188,7 +191,7 @@ a different repository or a local template path.
 | `eai whoami` | Show auth status and project context |
 | `eai provision entra` | Create or confirm the app's Entra app registration in the CIAM for the active platform environment |
 | `eai provision entra --rotate-secret` | Rotate the existing app registration secret and write the new value to `.env.local` |
-| `eai provision entra --deauthorize --force` | Remove tenant authorization, delete the app registration, and remove local Entra credentials |
+| `eai provision entra --deauthorize --force` | Remove workspace authorization, delete the app registration, and remove local Entra credentials |
 | `eai user invite --email <email> --role <role>` | Invite or provision a user into the active workspace or a specified workspace with a V4 member role |
 | `eai user list` | List workspace members in the active workspace or a specified workspace |
 | `eai user roles` | List workspace role definitions available for user invitation |
@@ -327,14 +330,14 @@ still enforces platform workspace authorization.
 
 The runtime contract lives in `eai.runtime.json`. It declares required
 environment variable names, required secrets, health/runtime endpoints, Auth.js
-callback path, tenant/workflow key patterns, user-delegated BFF access, and
+callback path, workspace/workflow key patterns, user-delegated BFF access, and
 post-deploy smoke tests. It is host-neutral: Vercel, Docker, AWS, Azure,
 Kubernetes, VM-style hosts, and internal demo environments should translate the
 same contract into their provider-specific env and secret setup.
 
 `eai deploy doctor` deliberately does more than `/health`. A deployment can have
 `/health` returning 200 and still fail because Auth.js providers are missing,
-the Entra callback URL is wrong, tenant/workflow config is empty, a route is
+the Entra callback URL is wrong, workspace/workflow config is empty, a route is
 trying to use unsupported app-only data-plane access, PublicAPI rejects
 authorization, or the app runtime is throwing errors.
 
@@ -354,13 +357,13 @@ authorization, or the app runtime is throwing errors.
 
 - `created`: the workspace record exists
 - `bootstrapped`: the CLI successfully called the constrained first-admin bootstrap flow for a child workspace
-- `usable`: a refreshed membership check confirmed the current login now holds direct `tenant-admin` on that workspace
+- `usable`: a refreshed membership check confirmed the current login now holds direct workspace admin access (platform role ID `tenant-admin`) on that workspace
 
 For child workspaces, the CLI only auto-selects the new workspace when `usable` is true. If bootstrap is blocked or downstream membership confirmation has not landed yet, the command leaves the active workspace unchanged and reports that explicitly.
 
 The first-admin bootstrap path is intentionally narrow:
 
-- the caller must already be `tenant-admin` on the direct parent workspace
+- the caller must already hold workspace admin access (platform role ID `tenant-admin`) on the direct parent workspace
 - the target must be an immediate child of that parent
 - the child must not already have a workspace admin
 - parent child allowance is enforced from `limits.tenants`
@@ -368,7 +371,7 @@ The first-admin bootstrap path is intentionally narrow:
 For existing child workspaces that were created before the bootstrap completed, a parent workspace admin can run:
 
 ```bash
-eai workspace bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id>
+eai workspace bootstrap-admin --parent <parent-workspace-id> --child <child-workspace-id>
 ```
 
 By default this bootstraps the current login. To repair another known parent member, pass `--user-oid <entra-user-oid>` and optionally `--user-email <email>`.
@@ -377,7 +380,7 @@ By default this bootstraps the current login. To repair another known parent mem
 
 Use `eai user invite` for normal "add this person to a workspace" and "make this
 person a workspace admin/member" requests. The command calls the V4 workspace member
-invite/add flow and can assign these base roles:
+invite/add flow and can assign these base roles (platform role IDs):
 
 - `tenant-viewer`
 - `tenant-staff`
@@ -414,7 +417,8 @@ session or JWT role data can be cached.
 
 `eai workspace bootstrap-admin` is not a general "make this user an admin" command.
 It is only for repairing first workspace-admin access on an existing immediate
-child workspace when the caller is already tenant-admin on the direct parent.
+child workspace when the caller already has workspace admin access on the direct
+parent (platform role ID `tenant-admin`).
 
 ## Architecture
 
@@ -756,9 +760,9 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 [`.tech-docs/full-e2e-smoke-traceability.md`](.tech-docs/full-e2e-smoke-traceability.md).
 The destructive live suite is opt-in because it creates a disposable app,
 publishes Object Types, provisions storage, and CRUDs PostgreSQL, DocumentDB,
-Blob-backed file, and Search-indexed resources in a dedicated test tenant.
+Blob-backed file, and Search-indexed resources in a dedicated test workspace.
 
-Use a dedicated test user and tenant. Do not paste the password into a chat or
+Use a dedicated test user and workspace. Do not paste the password into a chat or
 commit it to the repo; store it in your shell only for the run, or in GitHub
 Actions secrets.
 
@@ -766,7 +770,7 @@ Actions secrets.
 export EAI_RELEASE_FULL_E2E_SMOKE=1
 export EAI_E2E_TEST_PROFILE=test
 export EAI_E2E_TEST_USERNAME='<dedicated-test-user-email>'
-export EAI_E2E_PARENT_TENANT_ID='<dedicated-test-tenant-id>'
+export EAI_E2E_PARENT_TENANT_ID='<dedicated-test-workspace-id>'
 
 # Authenticate the profile before the run:
 eai --profile "$EAI_E2E_TEST_PROFILE" login

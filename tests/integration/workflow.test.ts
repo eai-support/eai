@@ -116,7 +116,7 @@ describe("eai workflow", () => {
     { timeout: 10000 },
     async () => {
       let requestUrl = "";
-      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const outputSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       mockServer.server.use(
         http.get(
@@ -135,14 +135,16 @@ describe("eai workflow", () => {
       );
 
       await workflowCommand.parseAsync(
-        ["status", "strategy-monitor", "--format", "json"],
+        ["status", "strategy-monitor"],
         { from: "user" },
       );
 
       expect(requestUrl).toContain("tenant_id=test-tenant-id");
       const output = outputSpy.mock.calls.flat().join("\n");
-      expect(output).toContain('"workflowKey": "strategy-monitor"');
-      expect(output).toContain('"status": "operator_required"');
+      expect(output).toContain("Workspace");
+      expect(output).not.toContain("Tenant");
+      expect(output).toContain("strategy-monitor");
+      expect(output).toContain("operator_required");
     },
   );
 
@@ -151,7 +153,7 @@ describe("eai workflow", () => {
     { timeout: 10000 },
     async () => {
       let requestUrl = "";
-      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const outputSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       mockServer.server.use(
         http.get(`${API_BASE}/v4/integrations/builder/readiness`, ({ request }) => {
@@ -172,15 +174,16 @@ describe("eai workflow", () => {
       );
 
       await workflowCommand.parseAsync(
-        ["readiness", "strategy-monitor", "--format", "json"],
+        ["readiness", "strategy-monitor"],
         { from: "user" },
       );
 
       expect(requestUrl).toContain("tenant_id=test-tenant-id");
       expect(requestUrl).toContain("workflow_keys=strategy-monitor");
       const output = outputSpy.mock.calls.flat().join("\n");
-      expect(output).toContain('"tenantId": "test-tenant-id"');
-      expect(output).toContain('"key": "workflow:strategy-monitor"');
+      expect(output).toContain("Workspace readiness: test-tenant-id");
+      expect(output).toContain("workflow:strategy-monitor");
+      expect(output).not.toContain("Tenant");
     },
   );
 

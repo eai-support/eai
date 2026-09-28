@@ -63,13 +63,13 @@ the failure to a recovery path, then use
 Record the blocked gate in `.specify/specs/{feature}/eai-preflight.md`, and
 avoid inventing a new order.
 
-For tenant member or admin changes, use EAI CLI membership commands first. If
+For workspace member or admin changes, use EAI CLI membership commands first. If
 `eai user invite` fails with `EXTERNAL_SERVICE_ERROR`, a 5xx status, or the
 `user_invite_external_service_existing_member` reason, check whether the person
 already exists with
-`eai user list --tenant <tenant-id> --search <email> --format json`. If a direct
+`eai user list --workspace <workspace-id> --search <email> --format json`. If a direct
 member exists and the user approves the role change, use
-`eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json`,
+`eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json`,
 verify the read-back, then tell the affected app user to sign out and sign back
 in because Auth.js session or JWT role data may be cached. Do not use direct
 database edits or cloud portal changes unless EAI guidance reports an
@@ -77,9 +77,9 @@ operator-only block.
 
 If a browser sign-in flow reports `AADSTS50011` or a Microsoft Entra redirect
 URI mismatch, do not start with manual Azure Portal edits. Confirm the EAI login
-and tenant, confirm the callback URI from the failing authorize request in the
+and workspace, confirm the callback URI from the failing authorize request in the
 active session, then run the advertised
 `eai provision entra --force --redirect-uri <confirmed-callback-uri>` path and
 retry sign-in. Record only a redacted callback route in Gofer artifacts. Use
-`--debug` only with explicit user approval, and redact private hostnames, tenant
+`--debug` only with explicit user approval, and redact private hostnames, workspace
 IDs, client IDs, tokens, and raw debug output before writing artifacts.

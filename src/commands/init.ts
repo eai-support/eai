@@ -1690,7 +1690,7 @@ async function promptCompanyTenantForInit(
 
   if (!interactive && !activeTenant) {
     out.error(
-      "A main company workspace is required. Pass `--company-tenant <id>` after completing onboarding.",
+      "A main company workspace is required. Pass `--company-workspace <workspace-id>` after completing onboarding (`--company-tenant` remains a compatibility alias).",
     );
     process.exit(1);
   }

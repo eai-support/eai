@@ -585,13 +585,13 @@ npm install -g @enterpriseai/cli
 ```bash
 eai login
 eai workspace list --format json
-eai workspace select <tenant-slug>
+eai workspace select <workspace-slug>
 eai whoami
 
 eai types validate
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
-eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
-eai resources schema --tenant-id <tenant-id> --format json
+eai types seed --tenant-key <scope-key> --tenant-id <workspace-id> --format json
+eai types diff --tenant-key <scope-key> --tenant-id <workspace-id>
+eai resources schema --tenant-id <workspace-id> --format json
 
 eai dev
 ```
@@ -620,7 +620,7 @@ construction.
 | `eai init`                              | Scaffold an app from the EAI App Template.                                                |
 | `eai start`                             | Detect or open a supported AI workspace for the current EAI app.                          |
 | `eai login`, `eai logout`, `eai whoami` | Manage local authentication and inspect active context.                                   |
-| `eai workspace`                         | List, select, create, inspect, and administer workspace context. `eai workspace` remains an alias.                             |
+| `eai workspace`                         | List, select, create, inspect, and administer workspace context. `eai tenant` remains available as a compatibility alias.     |
 | `eai types`                             | Validate, seed, diff, and pull Object Type definitions.                                   |
 | `eai resources`                         | List, get, create, update, delete, query, aggregate, search, and manage ResourceAPI data. |
 | `eai docs`                              | Upload, classify, and index documents for platform processing and RAG.                    |
@@ -639,7 +639,7 @@ Use machine-readable output for automation:
 
 ```bash
 eai workspace list --format json
-eai resources schema --tenant-id <tenant-id> --format json
+eai resources schema --tenant-id <workspace-id> --format json
 eai whoami --simple
 eai doctor --no-color
 ```
@@ -654,7 +654,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Start AI workspace   | `eai start --check`, then `eai start`                    |
 | Select workspace        | `eai workspace list`, `eai workspace select <slug>`            |
 | Publish Object Types | `eai types validate`, `eai types seed`, `eai types diff` |
-| Inspect schemas      | `eai resources schema --tenant-id <tenant-id>`           |
+| Inspect schemas      | `eai resources schema --tenant-id <workspace-id>`           |
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
 | Work with documents  | `eai docs upload`, `eai docs classify`, `eai docs index` |
@@ -768,17 +768,21 @@ cp .env.example .env.local
 npm run dev
 ```
 
+The template keeps technical code names such as `tenantId`, `tenants`, and
+`tenantConfigs` for compatibility. Their values and configuration represent an
+EAI workspace.
+
 Then connect it to a workspace:
 
 ```bash
 eai login
 eai workspace list --format json
-eai workspace select <tenant-slug>
+eai workspace select <workspace-slug>
 eai whoami
 eai types validate
-eai types diff --tenant-key template --tenant-id <tenant-id>
-eai types seed --tenant-key template --tenant-id <tenant-id> --format json
-eai resources schema --tenant-id <tenant-id> --format json
+eai types diff --tenant-key template --tenant-id <workspace-id>
+eai types seed --tenant-key template --tenant-id <workspace-id> --format json
+eai resources schema --tenant-id <workspace-id> --format json
 ```
 
 ## App Structure
@@ -786,7 +790,7 @@ eai resources schema --tenant-id <tenant-id> --format json
 | Path                             | Purpose                                                                         |
 | -------------------------------- | ------------------------------------------------------------------------------- |
 | `src/eai.config/default.ts`      | Default workspace config, store slices, API paths, storage keys, and layout slots. |
-| `src/eai.config/index.ts`        | Tenant key to config registry.                                                  |
+| `src/eai.config/index.ts`        | Workspace configuration key to config registry.                                                  |
 | `src/eai.config/object-types.ts` | Object Type definitions for ResourceAPI-backed data.                            |
 | `src/eai.blocks.tsx`             | Component registry and app-local block extension point.                         |
 | `src/hooks/useResources.ts`      | ResourceAPI-backed business data.                                               |
@@ -798,7 +802,7 @@ eai resources schema --tenant-id <tenant-id> --format json
 
 - Browser code calls the app BFF at `/api/eai/...`.
 - Browser streaming calls use `/api/eai/stream/...`.
-- Server helpers attach auth, tenant, and correlation headers.
+- Server helpers attach auth, workspace context, and correlation headers.
 - The browser never receives raw database, blob, search, PublicAPI, or model
   provider credentials.
 - Use PublicAPI V4 routes for direct platform calls.
@@ -843,7 +847,7 @@ See [Config-Driven UI](./app-template/config-driven-ui.md) for the full pattern.
 
 | Need                    | App Pattern                    | CLI Verification                                         |
 | ----------------------- | ------------------------------ | -------------------------------------------------------- |
-| Tenant business records | `useResources('<ObjectType>')` | `eai resources list/get/create/update/delete/query`      |
+| Workspace business records | `useResources('<ObjectType>')` | `eai resources list/get/create/update/delete/query`      |
 | Documents and RAG       | `useDocuments()`               | `eai docs upload`, `eai docs classify`, `eai docs index` |
 | Resource file property  | `useResources().uploadFile`    | `eai resources file upload/get/delete`                   |
 | AI chat                 | `useChat(workflowId, stage)`   | `eai chat send`, `eai chat stream`                       |
@@ -885,12 +889,12 @@ cd <app-name>
 npm install
 
 eai login
-eai workspace select <tenant-slug>
+eai workspace select <workspace-slug>
 eai types validate
-eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
-eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type <object-type-slug>
+eai types diff --tenant-key <scope-key> --tenant-id <workspace-id>
+eai types seed --tenant-key <scope-key> --tenant-id <workspace-id> --format json
+eai resources schema --tenant-id <workspace-id> --format json
+eai verify calls --tenant-id <workspace-id> --resource-type <object-type-slug>
 
 eai dev
 ```
@@ -912,6 +916,9 @@ search, and PublicAPI patterns.
 This example creates a small task tracker using the EAI CLI, EAI App Template,
 Object Types, and ResourceAPI hooks.
 
+The template keeps `tenantId`, `tenants`, and `tenantConfigs` as code contract
+names. Their values and configurations represent EAI workspaces.
+
 ## 1. Scaffold
 
 ```bash
@@ -920,16 +927,16 @@ cd task-tracker
 npm install
 ```
 
-## 2. Connect A Tenant
+## 2. Connect A Workspace
 
 ```bash
 eai login
 eai workspace list --format json
-eai workspace select <tenant-slug>
+eai workspace select <workspace-slug>
 eai whoami
 ```
 
-## 3. Configure The Tenant
+## 3. Configure The Workspace
 
 Create `src/eai.config/tenants/tracker.config.ts`:
 
@@ -937,7 +944,7 @@ Create `src/eai.config/tenants/tracker.config.ts`:
 import { defineConfig } from "@enterpriseaigroup/core/config/server";
 
 export const trackerConfig = defineConfig({
-  tenantId: "task-tracker",
+  tenantId: "task-tracker", // Stable field name; this value identifies the EAI workspace.
   workflowId: "task-workflow",
   defaultEmail: "support@example.com",
   meta: {
@@ -1057,10 +1064,10 @@ export const objectTypes = {
 
 ```bash
 eai types validate
-eai types diff --tenant-key task-tracker --tenant-id <tenant-id>
-eai types seed --tenant-key task-tracker --tenant-id <tenant-id> --format json
-eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type task
+eai types diff --tenant-key task-tracker --tenant-id <workspace-id>
+eai types seed --tenant-key task-tracker --tenant-id <workspace-id> --format json
+eai resources schema --tenant-id <workspace-id> --format json
+eai verify calls --tenant-id <workspace-id> --resource-type task
 ```
 
 Do not continue until the diff is clean.
@@ -1127,12 +1134,15 @@ export function TaskList() {
 This example adds streaming chat and document-backed RAG to an EAI App Template
 project.
 
-## 1. Confirm Tenant And Workflow
+The template's `tenantId` code field carries the EAI workspace ID. Keep this
+technical field name unchanged.
+
+## 1. Confirm Workspace And Workflow
 
 ```bash
 eai login
-eai workspace select <tenant-slug>
-eai workflow status <workflow-key> --tenant <tenant-id>
+eai workspace select <workspace-slug>
+eai workflow status <workflow-key> --workspace <workspace-id>
 ```
 
 Use the workflow ID from the platform workspace configuration. Store runtime values
@@ -1294,6 +1304,9 @@ after confirming the route is an authorized PublicAPI V4 surface.
 Use these patterns when choosing how an app, eai-gofer, or terminal automation
 should call EAI platform capabilities.
 
+The template's `tenantId` field and `--tenant-id` option are stable contract
+names. Their values identify an EAI workspace.
+
 ## Boundary Rules
 
 - Browser code calls the app BFF at `/api/eai/...`.
@@ -1312,7 +1325,7 @@ should call EAI platform capabilities.
 | -------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | Frontend composition | `src/eai.config` layout slots plus `src/eai.blocks.tsx` registry | `eai gofer refresh` installs guidance                                                       | Keep config data-only; callbacks belong in overrides. |
 | Data model           | Object Types in `src/eai.config/object-types.ts`                 | `eai types validate`, `eai types seed`, `eai types diff`                                    | Object Types define resource contracts.               |
-| Structured resources | `useResources(type)` or `client.resources`                       | `eai resources list/get/create/update/delete/query`                                         | Default for tenant business data.                     |
+| Structured resources | `useResources(type)` or `client.resources`                       | `eai resources list/get/create/update/delete/query`                                         | Default for workspace business data.                     |
 | Resource actions     | `client.resources.executeAction(type, id, action)`               | named resources command if available; otherwise `eai publicapi post /v4/data/resources/...` | Actions enforce Object Type rules.                    |
 | Resource search      | helper around PublicAPI resource search if SDK support is absent | `eai resources search "<query>" --mode hybrid`                                              | Search is a projection over canonical data.           |
 | Resource files       | helper around resource file routes                               | `eai resources file upload/get/delete`                                                      | Use for file fields on typed resource objects.        |
@@ -1417,6 +1430,9 @@ For workflow steps, AI-agent questions, and prompting guidance, see
 This guide explains how an app should handle uploaded files, documents, and AI
 workflows on the PublicAPI v4 surface.
 
+The template retains code fields such as `tenantId` and request fields such as
+`tenant_id` for compatibility. These carry an EAI workspace ID.
+
 ## Choose The Right Model
 
 | User goal | Use this model | App API | CLI |
@@ -1509,7 +1525,7 @@ an alias for planning scope.
 
 Every upload sends exactly one `tenant_id` from the SDK client, one
 `storage_target=resourceapi` and one `processing_mode`. Metadata cannot
-override the tenant. Conflicting aliases, storage downgrades, blank scope,
+override the workspace. Conflicting aliases, storage downgrades, blank scope,
 incomplete app/workflow pairs, and unsupported metadata are rejected before
 fetch. `classify` rejects a conflicting processing mode. Calling
 `classify(files)` without context gives an actionable error; it never calls
@@ -1612,11 +1628,11 @@ CLI equivalent:
 
 ```bash
 eai resources create ApplicationDocument \
-  --tenant-id <tenant-id> \
+  --tenant-id <workspace-id> \
   --data '{"title":"supporting-document.pdf","applicationId":"app-123"}'
 
 eai resources file upload ApplicationDocument <resource-id> file ./supporting-document.pdf \
-  --tenant-id <tenant-id>
+  --tenant-id <workspace-id>
 ```
 
 The PublicAPI route behind this workflow is:
@@ -1669,7 +1685,7 @@ questions before choosing an API:
 ```text
 1. Is the uploaded file a document to process with AI, or an attachment to a business record?
 2. Should AI answer from the file content, classify it, or just keep it as evidence?
-3. Which tenant, workflow, and workflow stage should use the document?
+3. Which workspace, workflow, and workflow stage should use the document?
 4. If this is an attachment, which Object Type, resource ID, and file property owns it?
 5. What should happen when the user deletes the resource or document?
 ```
@@ -1706,9 +1722,9 @@ Use these checks while developing:
 
 ```bash
 eai whoami
-eai resources schema --tenant-id <tenant-id> --format json
+eai resources schema --tenant-id <workspace-id> --format json
 eai docs --help
-eai resources file upload <ObjectType> <resource-id> <property> ./sample.pdf --tenant-id <tenant-id>
+eai resources file upload <ObjectType> <resource-id> <property> ./sample.pdf --tenant-id <workspace-id>
 ```
 
 Use named commands first. Use `eai publicapi <method> /v4/...` only when an
@@ -1720,15 +1736,18 @@ authorized v4 route has no named SDK or CLI command yet.
 
 # Config-Driven UI
 
-Use config-driven UI when an app needs tenant-specific layout, copy, feature
-flags, store state, or service wiring without forking page code per tenant.
+Use config-driven UI when an app needs workspace-specific layout, copy, feature
+flags, store state, or service wiring without forking page code per workspace.
+
+The template retains `tenants`, `tenantId`, and `tenantConfigs` as technical
+code names. These values represent EAI workspace configuration.
 
 ## Source Files
 
 | File                        | Purpose                                                                         |
 | --------------------------- | ------------------------------------------------------------------------------- |
-| `src/eai.config/default.ts` | Default tenant config, store slices, API paths, storage keys, and layout slots. |
-| `src/eai.config/index.ts`   | Maps tenant keys to config objects.                                             |
+| `src/eai.config/default.ts` | Default workspace config, store slices, API paths, storage keys, and layout slots. |
+| `src/eai.config/index.ts`   | Maps workspace keys to config objects.                                             |
 | `src/eai.blocks.tsx`        | Registers app-local or package components that config can reference by name.    |
 | `src/app/providers.tsx`     | Provides auth/session context and the EAI config runtime.                       |
 | `src/hooks/useResources.ts` | ResourceAPI-backed business data access.                                        |
@@ -1737,7 +1756,7 @@ flags, store state, or service wiring without forking page code per tenant.
 
 ## Construction Pattern
 
-1. Put tenant-specific data in config: branding, feature flags, API endpoints,
+1. Put workspace-specific data in config: branding, feature flags, API endpoints,
    storage keys, initial store state, and layout slots.
 2. Register renderable components in `src/eai.blocks.tsx`.
 3. Reference components from config by their registered string name.
@@ -1768,7 +1787,7 @@ Rules:
 
 - `component` must match a registered component name.
 - Lower `priority` renders first.
-- `props` are static, tenant-configurable values.
+- `props` are static, workspace-configurable values.
 - `storeBindings` map store paths to component prop paths. Dot notation is
   supported on both sides.
 - `showWhen` supports `equals`, `notEquals`, `exists`, and compound `and` or
@@ -1820,7 +1839,7 @@ store: {
 }
 ```
 
-Persist only tenant-safe UI or workflow state. Never place access tokens,
+Persist only workspace-safe UI or workflow state. Never place access tokens,
 platform credentials, database connection details, blob credentials, search
 credentials, or model provider credentials in config or store state.
 
@@ -1851,7 +1870,7 @@ callbacks, render props, React nodes, and any other non-serializable value.
 ## Overview
 
 For normal public use, the EAI CLI should need very little configuration.
-After `eai login`, the CLI uses your signed-in account and selected tenant to
+After `eai login`, the CLI uses your signed-in account and selected workspace to
 route requests automatically. Public documentation must not describe private
 environment names, endpoint hostnames, internal routing, cloud resources, or
 platform infrastructure behind the public API.
@@ -1877,7 +1896,7 @@ Configuration is loaded with this public-facing precedence:
 | `.env.local` | Optional developer-local app values |
 | CLI defaults | Built-in public behavior |
 
-The CLI may keep local auth and tenant state on your machine after login. Treat
+The CLI may keep local auth and workspace state on your machine after login. Treat
 that state as private and manage it through CLI commands such as `eai login`,
 `eai logout`, `eai whoami`, and `eai workspace select`.
 
@@ -1893,7 +1912,7 @@ eai workspace select
 eai whoami
 ```
 
-`eai whoami` is the safest way to confirm which account and tenant the CLI is
+`eai whoami` is the safest way to confirm which account and workspace the CLI is
 using. If you need to change workspace, run `eai workspace select`. If you need to
 clear local sign-in state, run `eai logout`.
 
@@ -1940,7 +1959,7 @@ Public documentation only describes generic runtime environment variables:
 `EAI_NO_SPLASH` and `EAI_NO_ANIMATION` are local terminal preferences read from
 the CLI process only. They have no App Configuration or infrastructure mapping.
 
-Do not put credentials, tokens, endpoint URLs, or tenant-specific values into
+Do not put credentials, tokens, endpoint URLs, or workspace-specific values into
 committed files. Automation credentials should be stored in your CI provider's
 secret store and supplied according to your organization's onboarding guide.
 
@@ -1965,7 +1984,7 @@ NODE_ENV=development
 Rules:
 
 1. Keep `.env.local` in `.gitignore`.
-2. Do not commit tokens, API keys, client secrets, tenant-specific values, or
+2. Do not commit tokens, API keys, client secrets, workspace-specific values, or
    endpoint URLs.
 3. Use your deployment provider's secret management for deployed applications.
 
@@ -2008,7 +2027,7 @@ Never commit secrets. That includes:
 2. API keys
 3. Client secrets
 4. Private endpoint URLs
-5. Tenant-specific identifiers
+5. Workspace-specific identifiers
 6. Generated credentials
 
 For local development, keep private values in ignored local files. For CI/CD and
@@ -2040,7 +2059,7 @@ flowchart TB
 
 ## Troubleshooting
 
-**Not sure which account or tenant is active?**
+**Not sure which account or workspace is active?**
 
 Run:
 
@@ -2048,7 +2067,7 @@ Run:
 eai whoami
 ```
 
-**Need to switch tenant?**
+**Need to switch workspace?**
 
 Run:
 
@@ -2089,7 +2108,7 @@ Before committing a project that uses the EAI CLI:
 1. `.env.local` is ignored.
 2. No secrets or tokens are committed.
 3. No private endpoint URLs are committed.
-4. No tenant-specific identifiers are committed.
+4. No workspace-specific identifiers are committed.
 5. `eai.config.ts` contains only public-safe project metadata.
 6. `eai doctor` runs successfully for your local setup.
 
@@ -2580,13 +2599,13 @@ None.
 ### Diagnostics
 
 - `eai update --check` (read-only) — Check whether the installed CLI includes app-manifest compatibility support.
-- `eai types validate --workspace-key <key> --tenant-id <tenant-id>` (read-only) — Validate source names, slugs, relationships, and storage metadata without publishing.
-- `eai types seed --workspace-key <key> --tenant-id <tenant-id> --dry-run --format json` (read-only) — Confirm the CLI can load the intended workspace scope without changing platform state.
+- `eai types validate --tenant-key <key> --tenant-id <workspace-id>` (read-only) — Validate source names, slugs, relationships, and storage metadata without publishing.
+- `eai types seed --tenant-key <key> --tenant-id <workspace-id> --dry-run --format json` (read-only) — Confirm the CLI can load the intended workspace scope without changing platform state.
 
 ### Fixes
 
 - `eai update` (changes state) — Install the CLI release that negotiates the deployed app-manifest request shape. Run when eai update --check reports an older CLI.
-- `eai types seed --workspace-key <key> --tenant-id <tenant-id> --format json` (changes state) — Publish once through the maintained compatibility adapter. Run after update and local validation succeed.
+- `eai types seed --tenant-key <key> --tenant-id <workspace-id> --format json` (changes state) — Publish once through the maintained compatibility adapter. Run after update and local validation succeed.
 
 ### Stop Conditions
 
@@ -3181,8 +3200,8 @@ Push Object Types to the platform and verify convergence.
 
 **Options**:
 - `--env <environment>` — Target environment (default: `dev`)
-- `--tenant-key <key>` — Specific tenant key from `object-types.ts`
-- `--tenant-id <id>` — Override the resolved tenant ID (use with `--tenant-key`)
+- `--tenant-key <key>` — Workspace scope key from `object-types.ts` (current option name)
+- `--tenant-id <id>` — Override the resolved workspace ID (use with `--tenant-key`)
 - `--dry-run` — Show what would be seeded without making changes
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -3197,8 +3216,8 @@ Push Object Types to the platform and verify convergence.
 Compare local definitions with remote state.
 
 **Options**:
-- `--tenant-key <key>` — Specific tenant key from `object-types.ts`
-- `--tenant-id <id>` — Override the resolved tenant ID (use with `--tenant-key`)
+- `--tenant-key <key>` — Workspace scope key from `object-types.ts` (current option name)
+- `--tenant-id <id>` — Override the resolved workspace ID (use with `--tenant-key`)
 
 **Platform API Endpoints Used**:
 - `GET /v4/data/resources/object-types`
@@ -4078,7 +4097,7 @@ The CLI uses structured error codes for consistent error handling. Each error ca
 | Code | Message | Suggestion |
 |------|---------|------------|
 | `E001` | Not in an EAI project | Run `eai init`, or navigate to an existing EAI project directory |
-| `E002` | `{var}` environment variable not set | Set `{var}` in your environment or project config. Tenant selection comes from `eai login` / `eai workspace select`, not tenant IDs in `.env.local` |
+| `E002` | `{var}` environment variable not set | Set `{var}` in your environment or project config. Workspace selection comes from `eai login` / `eai workspace select`, not workspace IDs in `.env.local` |
 | `E003` | Configuration file not found: `{file}` | Ensure `{file}` exists. Run `eai init` if this is a new project |
 | `E004` | Object Types file not found or invalid | Create `src/eai.config/object-types.ts` |
 | `E005` | Invalid project structure | Run `eai verify` to check your setup |
