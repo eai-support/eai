@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'vitest';
-import { chmod, lstat, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile, mkdir } from 'node:fs/promises';
+import { chmod, lstat, link, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -94,6 +94,13 @@ describe('EAI managed deployment helpers', () => {
         deploymentId: 'dep-1', status: 'active', ready: true,
         scope: { tenantId: 'tenant-1', appKey: 'planning-portal', environment: 'preview' },
       },
+      setup: {
+        repo: { owner: 'enterprise', name: 'planning-portal' },
+        ref: 'refs/heads/main', commitSha: 'a'.repeat(40), sourceCommitSha: 'a'.repeat(40), reviewHeadSha: 'a'.repeat(40),
+        workflowPath: EAI_MANAGED_WORKFLOW_PATH, configHash,
+        environment: 'preview', targetTenantId: 'tenant-1',
+        repositoryId: 123, installationId: 456,
+      },
       sourceRevision: {
         operationId: 'source-unknown-abc123', sourceMode: 'source-unknown',
         appScopeTenantId: 'tenant-1', targetTenantId: 'tenant-1',
@@ -107,6 +114,38 @@ describe('EAI managed deployment helpers', () => {
       },
     };
   }
+
+  test.each(['ref', 'commitSha', 'workflowPath', 'configHash', 'environment', 'targetTenantId', 'installationId', 'repositoryId'])(
+    'does not accept terminal source evidence that disagrees with sealed setup %s', field => {
+      const operation = fixtureUnifiedOperation();
+      (operation.setup as Record<string, unknown>)[field] = 'different';
+      expect(classifyManagedOperationStatus(operation)).toBe('pending');
+    },
+  );
+
+  test('binds dispatch claims to the normalized original endpoint', async () => {
+    const directory = await temporaryDirectory('managed-dispatch-origin-');
+    const state = fixtureState();
+    await claimManagedDeployDispatch(state, directory);
+    const changed = { ...state, publicApiUrl: 'https://test-api.ca.myenterprise.ai/public' };
+    await expect(claimManagedDeployDispatch(changed, directory)).rejects.toThrow('exact operation binding');
+  });
+
+  test.each(['file', 'total', 'count'] as const)('bounds governed configuration %s before hashing', async limit => {
+    const root = await temporaryDirectory('managed-config-limit-');
+    await writeFile(join(root, 'eai.runtime.json'), '{}');
+    await mkdir(join(root, 'src/eai.config'), { recursive: true });
+    if (limit === 'file') await writeFile(join(root, 'src/eai.config/large.ts'), Buffer.alloc(10 * 1024 * 1024 + 1));
+    if (limit === 'total') {
+      for (let i = 0; i < 4; i++) await writeFile(join(root, `src/eai.config/large-${i}.ts`), Buffer.alloc(9 * 1024 * 1024));
+    }
+    if (limit === 'count') {
+      for (let offset = 0; offset < 4096; offset += 64) {
+        await Promise.all(Array.from({ length: 64 }, (_, index) => writeFile(join(root, `src/eai.config/file-${offset + index}.ts`), 'x')));
+      }
+    }
+    await expect(buildManagedDeployConfigHash(root)).rejects.toThrow(/limit/);
+  });
 
   test('keeps managed command and source-client implementation modules focused', async () => {
     const groups = [['src/commands', 'eai-managed-deploy'], ['src/lib', 'eai-managed-source-client']] as const;
@@ -548,7 +587,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '404090b974de938b368a2aea994ed296b470dd1f' },
+      candidate: { commit: '4a76521abda5e6ef06209dd93ab0f0825e6a5d6c' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
@@ -707,6 +746,14 @@ describe('EAI managed deployment helpers', () => {
     expect(await buildManagedDeployConfigHash(project)).toBe(specAdded);
     await writeFile(join(project, 'src', 'eai.config', 'nested', 'deployment-contract.ts'), 'export const contract = 2;\n');
     expect(await buildManagedDeployConfigHash(project)).not.toBe(specAdded);
+  });
+
+  test('rejects governed configuration hard-linked outside the project', async () => {
+    const root = await temporaryDirectory('managed-config-hardlink-');
+    const outside = await temporaryDirectory('managed-config-hardlink-outside-');
+    await writeFile(join(outside, 'runtime.json'), '{}');
+    await link(join(outside, 'runtime.json'), join(root, 'eai.runtime.json'));
+    await expect(buildManagedDeployConfigHash(root)).rejects.toThrow('regular file');
   });
 
   test('rejects links anywhere in governed configuration', async () => {
@@ -888,6 +935,7 @@ describe('EAI managed deployment helpers', () => {
     (managedSource.sourceRevision as Record<string, unknown>).sourceMode = 'eai-cli-generated';
     expect(classifyManagedOperationStatus(managedSource)).toBe('pending');
     (managedSource.sourceRevision as Record<string, unknown>).reviewHeadSha = 'f'.repeat(40);
+    (managedSource.setup as Record<string, unknown>).reviewHeadSha = 'f'.repeat(40);
     expect(classifyManagedOperationStatus(managedSource)).toBe('succeeded');
     expect(classifyManagedOperationStatus({ ...fixtureUnifiedOperation(), sourceStatus: 'rejected' })).toBe('failed');
     expect(classifyManagedOperationStatus('failed-readiness')).toBe('failed');

@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import type { PathLike } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { constants, type PathLike } from "node:fs";
+import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -8,8 +9,11 @@ import { afterEach, expect, test, vi } from "vitest";
 
 const race = vi.hoisted(() => ({
   trigger: "",
+  fifoTrigger: "",
+  inventoryTrigger: "",
   realpathTrigger: "",
   readTrigger: "",
+  boundedReadTrigger: "",
   pathReadTrigger: "",
   addTrigger: "",
   addPath: "",
@@ -41,7 +45,21 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       }
       return actual.readFile(...args);
     },
+    readdir: async (...args: Parameters<typeof actual.readdir>) => {
+      if (!race.swapped && String(args[0]) === race.inventoryTrigger) {
+        race.swapped = true;
+        await actual.rename(race.target, race.displaced);
+        await actual.symlink(race.replacement, race.target, "dir");
+      }
+      return actual.readdir(...args);
+    },
     open: async (path: PathLike, flags: string | number, mode?: number) => {
+      if (String(path) === race.fifoTrigger && !race.swapped) {
+        expect(Number(flags) & constants.O_NONBLOCK).not.toBe(0);
+        race.swapped = true;
+        await actual.rm(path);
+        await new Promise<void>((resolve, reject) => execFile("mkfifo", [String(path)], error => error ? reject(error) : resolve()));
+      }
       if (!race.added && String(path) === race.addTrigger) {
         race.added = true;
         await actual.writeFile(race.addPath, race.addContent);
@@ -52,6 +70,13 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         await actual.rename(race.replacement, race.target);
       }
       const handle = await actual.open(path, flags, mode);
+      if (String(path) === race.boundedReadTrigger) {
+        const originalRead = handle.read.bind(handle);
+        handle.read = (async (...args: Parameters<typeof handle.read>) => {
+          expect((args[0] as Buffer).byteLength).toBeLessThanOrEqual(64 * 1024);
+          return originalRead(...args);
+        }) as typeof handle.read;
+      }
       if (String(path) === race.readTrigger) {
         const originalRead = handle.read.bind(handle);
         const originalReadFile = handle.readFile.bind(handle);
@@ -79,7 +104,9 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 
 import { buildManagedDeployConfigHash, installCanonicalManagedDeployFiles } from "../../src/lib/eai-managed-deploy-files.js";
 import {
+  assertOpenedRegularTarget,
   readPrivateFileNoFollow,
+  writePrivateFileNoFollow,
   writeBoundRegularFile,
   writeManagedDeployEvidence,
 } from "../../src/lib/eai-managed-deploy-filesystem.js";
@@ -88,6 +115,7 @@ import {
   saveManagedDeployState,
 } from "../../src/lib/eai-managed-deploy-state.js";
 import type { ManagedDeployState } from "../../src/lib/eai-managed-deploy-contract.js";
+import { readSourceUnknownEvidenceFile } from "../../src/lib/source-unknown-evidence-file.js";
 import { bindManagedProjectRoot } from "../../src/lib/eai-managed-root-binding.js";
 import {
   buildCliManagedSourceBundle,
@@ -100,9 +128,12 @@ const cleanup: string[] = [];
 
 afterEach(async () => {
   race.target = "";
+  race.fifoTrigger = "";
+  race.inventoryTrigger = "";
   race.trigger = "";
   race.realpathTrigger = "";
   race.readTrigger = "";
+  race.boundedReadTrigger = "";
   race.pathReadTrigger = "";
   race.addTrigger = "";
   race.addPath = "";
@@ -573,3 +604,86 @@ test.each(["state", "dispatch"])(
     await expect(readFile(race.trigger, "utf8")).resolves.toBe("");
   },
 );
+
+
+test("preserves the caller's inspected absence through canonical creation", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-absence-race-")));
+  cleanup.push(root);
+  const target = join(root, "eai-app.yml");
+  await writeFile(target, "created after caller inspection\n");
+  await expect(writeBoundRegularFile(target, "replacement", 0o644, undefined, { status: undefined })).rejects.toMatchObject({ code: "EEXIST" });
+  expect(await readFile(target, "utf8")).toBe("created after caller inspection\n");
+});
+
+test("preserves the inspected private inode before mutation", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-private-inode-race-")));
+  cleanup.push(root);
+  const target = join(root, "state.json");
+  await writeFile(target, "original", { mode: 0o600 });
+  race.addTrigger = target; race.addPath = target; race.addContent = "concurrent replacement";
+  await expect(writePrivateFileNoFollow(target, "new authority")).rejects.toThrow("private file changed before its bound write");
+  expect(await readFile(target, "utf8")).toBe("concurrent replacement");
+});
+
+test("rejects a same-inode config rewrite between inspection and open", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-config-open-race-")));
+  cleanup.push(root);
+  const target = join(root, "eai.runtime.json");
+  await writeFile(target, "original config");
+  race.addTrigger = target; race.addPath = target; race.addContent = "substitute config";
+  await expect(buildManagedDeployConfigHash(root)).rejects.toThrow("changed before its no-follow read");
+});
+
+
+test.skipIf(process.platform === "win32")("rejects a FIFO swapped into an evidence read without blocking", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-evidence-fifo-race-")));
+  cleanup.push(root);
+  const target = join(root, "evidence.json");
+  await writeFile(target, "{}");
+  race.fifoTrigger = target;
+  await expect(readSourceUnknownEvidenceFile(target)).rejects.toThrow("changed before its no-follow read");
+  expect(race.swapped).toBe(true);
+});
+
+test("rejects a source child swapped to a link before inventory readdir", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-source-inventory-link-race-")));
+  const outside = await realpath(await mkdtemp(join(tmpdir(), "managed-source-inventory-outside-")));
+  cleanup.push(root, outside);
+  await put(root, ".eai-manifest.json", JSON.stringify({ template: { commit: "a".repeat(40) } }));
+  await put(root, "package.json", '{}'); await put(root, "eai.runtime.json", '{}');
+  await put(root, "src/app/page.tsx", "original page");
+  await exec("git", ["init", "--quiet"], { cwd: root });
+  await exec("git", ["add", "."], { cwd: root });
+  await exec("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "Initial scaffold from template\n\nCreated by: eai init"], { cwd: root });
+  race.inventoryTrigger = join(root, "src/app"); race.target = race.inventoryTrigger;
+  race.displaced = join(root, "src/app-original"); race.replacement = outside;
+  await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: "SOURCE_CHANGED_DURING_READ" });
+});
+
+
+test("rejects a second link observed after the descriptor's earlier snapshot", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-write-link-snapshot-")));
+  cleanup.push(root);
+  const target = join(root, "output.txt");
+  await writeFile(target, "original");
+  const before = await lstat(target);
+  const handle = await open(target, constants.O_RDONLY);
+  try {
+    await link(target, join(root, "outside-link.txt"));
+    vi.spyOn(handle, "stat").mockResolvedValue(before);
+    await expect(assertOpenedRegularTarget(target, handle)).rejects.toThrow("untrusted file");
+    expect(await readFile(target, "utf8")).toBe("original");
+  } finally {
+    await handle.close();
+  }
+});
+
+test("hashes large governed config with at most 64 KiB retained per read", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "managed-config-fixed-buffer-")));
+  cleanup.push(root);
+  const content = "x".repeat(512 * 1024 + 17);
+  race.boundedReadTrigger = join(root, "eai.runtime.json");
+  await writeFile(race.boundedReadTrigger, content);
+  const expected = createHash("sha256").update("eai.runtime.json\0").update(content).update("\0").digest("hex");
+  await expect(buildManagedDeployConfigHash(root)).resolves.toBe(`sha256:${expected}`);
+});

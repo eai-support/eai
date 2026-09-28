@@ -29,7 +29,7 @@ export async function fileMatches(
   await rootBinding?.assert();
   let handle: FileHandle;
   try {
-    handle = await open(target, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+    handle = await open(target, constants.O_RDONLY | (constants.O_NONBLOCK || 0) | (constants.O_NOFOLLOW || 0));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ELOOP') {
       throw new Error('Managed deployment refused an untrusted file.', { cause: error });

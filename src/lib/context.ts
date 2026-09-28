@@ -41,6 +41,7 @@ export async function resolveCommandContext(options?: {
   forceRefresh?: boolean;
   validatePublicApiUrl?: (url: string) => string;
   publicApiUrl?: string;
+  pinPublicApiUrl?: boolean;
 }): Promise<CommandContext> {
   const root = await findProjectRoot();
   if (!root) {
@@ -64,6 +65,7 @@ export async function resolveCommandContext(options?: {
       tenantId: options?.tenantId,
       forceRefresh: options?.forceRefresh,
       requestPolicy,
+      pinPublicApiUrl: options?.pinPublicApiUrl,
     });
   } catch (error) {
     if (error instanceof TenantMembershipAuthError) {

@@ -13,6 +13,7 @@ import {
   fail,
   type ManagedDeployExecutionContext,
 } from "./eai-managed-deploy-contract.js";
+import { saveManagedRecoveryAuthority } from "./eai-managed-deploy-recovery.js";
 import { printManagedSourceCompletion } from "./eai-managed-deploy-output.js";
 
 export async function resumeManagedSource(
@@ -90,6 +91,12 @@ export async function startManagedSource(
     link,
     bundle,
   );
+  await saveManagedRecoveryAuthority({
+    schema: "eai.managed-recovery-authority.v1", operationId: submitted.operationId,
+    tenantId: managedScope.tenantId, targetTenantId: managedScope.targetTenantId,
+    appKey: managedScope.appKey, actorId: managedScope.actorId,
+    publicApiUrl: context.publicApiUrl,
+  });
   const operation = await pollCliManagedSource(
     client,
     managedScope,

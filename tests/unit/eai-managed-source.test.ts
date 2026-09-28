@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, link, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -118,6 +118,14 @@ describe('managed local source snapshot', () => {
     const root = await project();
     await rm(join(root, path));
     await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'SOURCE_SCOPE_UNSUPPORTED' });
+  });
+
+  test('rejects an authored file hard-linked outside the project', async () => {
+    const root = await project();
+    const outside = await mkdtemp(join(tmpdir(), 'managed-source-hardlink-')); cleanup.push(outside);
+    await writeFile(join(outside, 'outside.ts'), 'external file');
+    await link(join(outside, 'outside.ts'), join(root, 'src/app/linked.ts'));
+    await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'SOURCE_SYMLINK_UNSUPPORTED' });
   });
 
   test.each(['src/app/new.ts', 'public/linked', 'src/custom'])('does not read through a source symlink at %s', async path => {

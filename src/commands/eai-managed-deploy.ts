@@ -8,7 +8,6 @@ import {
   EAI_MANAGED_WORKFLOW_PATH,
   requireManagedPublicApiUrl,
 } from "../lib/eai-managed-deploy.js";
-import { PlatformAPIClient } from "../lib/api.js";
 import { chooseManagedDeploySource } from "../lib/eai-managed-source.js";
 import {
   verifyCliGithubIdentity,
@@ -17,6 +16,8 @@ import {
 import { startCustomerSource } from "./eai-managed-deploy-customer-source.js";
 import {
   DEFAULT_TIMEOUT_SECONDS,
+  MANAGED_DEPLOY_ENVIRONMENTS,
+  NEW_SOURCE_OPERATION_ACTION,
   fail,
   type ManagedDeployExecutionContext,
   type ManagedDeployOptions,
@@ -28,10 +29,10 @@ import {
 import { printFailure } from "./eai-managed-deploy-output.js";
 import { readUnifiedExactOperation } from "./eai-managed-deploy-operation.js";
 import {
-  loadCustomerRetryAuthority,
   resumeCustomerSource,
   retryCustomerSource,
 } from "./eai-managed-deploy-retry.js";
+import { loadManagedRetryAuthority } from "./eai-managed-deploy-recovery.js";
 import { validateManagedDeployInput } from "./eai-managed-deploy-validation.js";
 
 export {
@@ -107,7 +108,7 @@ Examples:
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
 `,
   )
-  .action(async (appKeyValue: string, options: ManagedDeployOptions) => {
+  .action(async (appKeyValue: string, options: ManagedDeployOptions, command: Command) => {
     const format = normalizeFormat(options);
     const spinner = makeSpinner(format, "Preparing EAI managed deployment...");
     try {
@@ -120,23 +121,17 @@ Examples:
         retryOperationId,
       } = validateManagedDeployInput(appKeyValue, options);
       const recoveryOperationId = resumeOperationId || retryOperationId;
-      const retryState = retryOperationId && (
-        options.source === "customer-owned" ||
-        (!options.source && retryOperationId.startsWith("source-unknown-"))
-      )
-        ? await loadCustomerRetryAuthority(
-            retryOperationId,
-            options.tenantId,
-            targetTenantId,
-            appKey,
-          )
+      const retryAuthority = retryOperationId
+        ? await loadManagedRetryAuthority(retryOperationId, options.tenantId, targetTenantId, appKey)
         : undefined;
+      const retryState = retryAuthority?.state;
       const context = await resolveCommandContext({
         tenantId: options.tenantId,
         interactive: false,
         forceRefresh: true,
         validatePublicApiUrl: requireManagedPublicApiUrl,
-        publicApiUrl: retryState?.publicApiUrl,
+        publicApiUrl: retryAuthority?.publicApiUrl,
+        pinPublicApiUrl: Boolean(retryAuthority),
       });
       if (context.tenantId !== options.tenantId) {
         fail(
@@ -144,6 +139,9 @@ Examples:
           `Active tenant ${context.tenantId} does not match ${options.tenantId}.`,
           `Run \`eai tenant select ${options.tenantId}\`, then confirm with \`eai whoami\`.`,
         );
+      }
+      if (retryAuthority?.actorId && retryAuthority.actorId !== context.tokens.oid) {
+        fail("RETRY_ACTOR_MISMATCH", "The signed-in EAI actor does not own this retry authority.", "Sign in as the original EAI actor, then retry the exact operation.");
       }
       const managedScope: CliManagedSourceScope = {
         tenantId: context.tenantId,
@@ -168,23 +166,21 @@ Examples:
       };
 
       let recoverySource = options.source;
-      if (!recoverySource && recoveryOperationId) {
-        const recoveryClient = retryState
-          ? new PlatformAPIClient(
-              requireManagedPublicApiUrl(retryState.publicApiUrl),
-              retryState.tenantId,
-            )
-          : context.client;
+      if (recoveryOperationId) {
         const exactOperation = await readUnifiedExactOperation(
-          recoveryClient,
-          context.tenantId,
-          targetTenantId,
-          appKey,
-          recoveryOperationId,
+          context.client, context.tenantId, targetTenantId, appKey, recoveryOperationId,
         );
-        recoverySource = exactOperation.sourceMode === "eai-cli-generated"
-          ? "eai-managed"
-          : "customer-owned";
+        recoverySource = exactOperation.sourceMode === "eai-cli-generated" ? "eai-managed" : "customer-owned";
+        if (options.source && options.source !== recoverySource) {
+          fail("RECOVERY_SOURCE_MISMATCH", "The requested source conflicts with the sealed operation source mode.", "Omit --source or use the original operation's source choice.");
+        }
+        if (!MANAGED_DEPLOY_ENVIRONMENTS.has(exactOperation.environment)) {
+          fail("SOURCE_OPERATION_ENVIRONMENT_INVALID", "The sealed operation has no supported environment binding.", NEW_SOURCE_OPERATION_ACTION);
+        }
+        if (command.getOptionValueSource("environment") !== "default" && options.environment !== exactOperation.environment) {
+          fail("RECOVERY_ENVIRONMENT_MISMATCH", "The requested environment conflicts with the sealed operation.", "Omit --environment or use the original operation's environment.");
+        }
+        managedScope.environment = exactOperation.environment as CliManagedSourceScope["environment"];
         execution.recoveryOperation = exactOperation;
       }
 

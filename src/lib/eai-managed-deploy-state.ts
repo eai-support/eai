@@ -29,8 +29,8 @@ export function managedDeployStatePath(
   operationId: string,
   baseDir = join(homedir(), '.eai', 'managed-deployments'),
 ): string {
-  if (!isManagedDeploymentIdentifier(operationId) || !operationId.startsWith('source-unknown-')) {
-    throw new Error('Operation ID is not a valid source-unknown operation ID.');
+  if (!isManagedDeploymentIdentifier(operationId)) {
+    throw new Error('Operation ID is not a valid managed operation ID.');
   }
   return join(baseDir, `${operationId}.json`);
 }
@@ -79,6 +79,7 @@ function managedDispatchBindingSha256(state: ManagedDeployState): string {
     state.tenantId, state.targetTenantId, state.appKey, state.operationId,
     state.repo, state.ref, state.commitSha, state.workflowPath, state.configHash,
     state.environment, state.installationId, state.actorId, state.githubLinkSessionId,
+    requireManagedPublicApiUrl(state.publicApiUrl),
     state.githubUserId, state.githubLogin, state.githubProofId,
   ])).digest('hex')}`;
 }

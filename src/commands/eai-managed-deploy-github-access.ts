@@ -1,3 +1,4 @@
+import { bindManagedProjectRoot, type ManagedProjectRootBinding } from "../lib/eai-managed-root-binding.js";
 import {
   parseGitHubRepository,
   requireBranch,
@@ -141,15 +142,23 @@ export async function verifyLocalSource(
   repo: string,
   requestedBranch: string,
   requestedCommit?: string,
+  existingBinding?: ManagedProjectRootBinding,
 ): Promise<{ branch: string; commitSha: string }> {
+  const binding = existingBinding ?? await bindManagedProjectRoot(root);
+  const boundRun = async (args: string[]): Promise<string> => {
+    await binding.assert();
+    const result = await run("git", args, binding.path);
+    await binding.assert();
+    return result;
+  };
   let commitSha: string;
   let branch: string;
   let origin: string;
   try {
     [commitSha, branch, origin] = await Promise.all([
-      run("git", ["rev-parse", "HEAD"], root),
-      run("git", ["branch", "--show-current"], root),
-      run("git", ["remote", "get-url", "origin"], root),
+      boundRun(["rev-parse", "HEAD"]),
+      boundRun(["branch", "--show-current"]),
+      boundRun(["remote", "get-url", "origin"]),
     ]);
   } catch (error) {
     fail(
@@ -185,11 +194,7 @@ export async function verifyLocalSource(
       "Use the repository bound to this project, or correct the origin remote.",
     );
   }
-  const changes = await run(
-    "git",
-    ["status", "--porcelain", "--untracked-files=all"],
-    root,
-  );
+  const changes = await boundRun(["status", "--porcelain", "--untracked-files=all"]);
   if (changes) {
     fail(
       "GIT_WORKTREE_DIRTY",

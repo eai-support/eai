@@ -11,6 +11,7 @@ import {
   DEFAULT_PROD_AUTH_TENANT_NAME,
   setActiveProfile,
 } from '../../src/lib/profile.js';
+import { saveManagedRecoveryAuthority } from '../../src/commands/eai-managed-deploy-recovery.js';
 import { eaiManagedDeployCommand } from '../../src/commands/eai-managed-deploy.js';
 import { deployCommand } from '../../src/commands/deploy.js';
 import { buildCliManagedSourceBundle } from '../../src/lib/eai-managed-source.js';
@@ -89,7 +90,9 @@ function completeUnifiedOperation(options: {
     },
     setup: {
       targetTenantId, environment, repo: { owner: repoOwner, name: repoName },
-      workflowPath: '.github/workflows/eai-app.yml', ref: `refs/heads/${branch}`, commitSha, configHash,
+      repositoryId: 123, installationId: 12345,
+      workflowPath: '.github/workflows/eai-app.yml', ref: `refs/heads/${branch}`, commitSha, sourceCommitSha: commitSha, configHash,
+      ...(sourceMode === 'eai-cli-generated' ? { reviewHeadSha: commitSha } : {}),
       nonceSha256: managedDeployNonceSha256('one-time-nonce'), deployOnSuccess: true,
       ...ACTOR_BINDING,
     },
@@ -147,7 +150,8 @@ function customerOperationSetup(
     environment: state.environment,
     workflowPath: state.workflowPath,
     ref: state.ref,
-    commitSha: state.commitSha,
+    commitSha: state.commitSha, sourceCommitSha: state.commitSha,
+    repositoryId: 123, installationId: state.installationId,
     configHash: state.configHash,
     nonceSha256: managedDeployNonceSha256(state.nonce),
     actorId: state.actorId,
@@ -173,7 +177,9 @@ describe('eai deploy app --target eai', () => {
         return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
       }
       if (url.includes('/managed-deployments/operations/')) {
-        return operation ? jsonResponse(operation) : jsonResponse({ message: 'operation missing' }, 404);
+        if (operation) return jsonResponse({ ...(!Object.hasOwn(operation, 'environment') ? { environment: 'preview' } : {}), ...operation });
+        if (url.includes('/operations/cli-managed-source-123')) return jsonResponse(completeUnifiedOperation({ operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated', repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}` }));
+        return jsonResponse({ message: 'operation missing' }, 404);
       }
       if (url.endsWith('/cli-managed-source/github-link-sessions')) return jsonResponse(linkedGitHubSession());
       return jsonResponse({ message: `Unhandled GET ${url}` }, 500);
@@ -191,6 +197,7 @@ describe('eai deploy app --target eai', () => {
     process.chdir(projectRoot);
     process.env.HOME = env.dir;
     process.env.USERPROFILE = env.dir;
+    await saveManagedRecoveryAuthority({ schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-source-123', tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', actorId: 'test-user-oid', publicApiUrl: API_BASE });
     expect(managedDeployStatePath('source-unknown-fixture')).toContain(env.dir);
     process.env.BASE_URL_PUBLIC_API = API_BASE;
     process.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
@@ -500,10 +507,66 @@ describe('eai deploy app --target eai', () => {
         },
       });
       expect(requests.filter(url => url.includes('/cli-managed-source/operations/'))).toHaveLength(1);
-      expect(requests.some(url => url.includes('/managed-deployments/operations/'))).toBe(false);
+      expect(requests.filter(url => url.includes('/managed-deployments/operations/'))).toHaveLength(1);
       expect(process.exitCode).toBe(1);
     },
   );
+
+  test.each(['--resume', '--retry'] as const)('rejects an explicit source conflict before recovery mutation for %s', async flag => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const state = customerRetryState();
+    if (flag === '--retry') await saveManagedDeployState(state);
+    const fetchMock = stubManagedOperation(completeUnifiedOperation());
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+      '--target-tenant-id', TENANT_ID, '--source', 'eai-managed', flag, state.operationId,
+      '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ ok: false, error: { code: 'RECOVERY_SOURCE_MISMATCH' } });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/cli-managed-source/operations/'))).toBe(false);
+  });
+
+  test.each(['dev', 'test', 'prod'] as const)('uses the sealed managed recovery environment %s without a flag', async environment => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const identity = stubManagedOperation(completeUnifiedOperation({ operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated', environment, repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}` })).getMockImplementation()!;
+    const requests: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async input => {
+      const url = String(input);
+      requests.push(url);
+      if (url.includes('/cli-managed-source/operations/')) return jsonResponse({ ...completedManagedPublication(), environment });
+      return identity(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
+      '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(requests.filter(url => url.includes('/cli-managed-source/operations/')).every(url => url.includes(`environment=${environment}`))).toBe(true);
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ classification: 'succeeded' });
+  });
+
+  test('loads original retry authority independently of the source-operation namespace', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const state = { ...customerRetryState({ publicApiUrl: 'https://test-api.ca.myenterprise.ai/public' }), operationId: 'other-customer-operation' };
+    await saveManagedDeployState(state);
+    const operation = completeUnifiedOperation({ operationId: state.operationId });
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async input => {
+      const url = String(input); calls.push(url);
+      expect(url.startsWith(state.publicApiUrl)).toBe(true);
+      if (url.includes('/managed-deployments/operations/')) return jsonResponse(operation);
+      if (url.endsWith('/identity/tenants')) return jsonResponse({ tenants: [{ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] }] });
+      return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
+      '--retry', state.operationId, '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(calls.some(url => url.includes('/managed-deployments/operations/other-customer-operation'))).toBe(true);
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ classification: 'succeeded' });
+  });
 
   test('does not silently choose customer-owned source from repository flags', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
@@ -740,7 +803,7 @@ fi
       }
       if (url.endsWith(`/managed-deployments/operations/source-unknown-abc123?targetTenantId=${targetTenantId}`)) {
         if ((retryMode || bootstrap === 'lost-response') && operationReads++ === 0) return jsonResponse({
-          appScopeTenantId: TENANT_ID, targetTenantId, appKey: retryState.appKey, operationId: retryState.operationId,
+          appScopeTenantId: TENANT_ID, targetTenantId, appKey: retryState.appKey, operationId: retryState.operationId, environment: retryState.environment,
           sourceMode: 'source-unknown', sourceStatus: 'issued', status: 'issued',
           setup: { ...retryState, nonceSha256: managedDeployNonceSha256(retryState.nonce), repo: { owner: 'enterprise', name: 'planning-portal' }, deployOnSuccess: true },
         });
@@ -753,6 +816,7 @@ fi
             workflowPath: '.github/workflows/eai-app.yml',
             ref: 'refs/heads/main',
             commitSha: bootstrap === 'source-mismatch' ? 'f'.repeat(40) : commitSha,
+            sourceCommitSha: commitSha, repositoryId: 123, installationId: 12345,
             configHash,
             environment: 'preview',
             deployOnSuccess: true,
@@ -1181,7 +1245,7 @@ fi
     ], { from: 'user' });
 
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
-      ok: false, error: { code: 'SOURCE_OPERATION_BINDING_MISMATCH' },
+      ok: false, error: { code: replacement.sourceMode ? 'RECOVERY_SOURCE_MISMATCH' : 'SOURCE_OPERATION_BINDING_MISMATCH' },
     });
     expect(process.exitCode).toBe(1);
   });
@@ -1191,11 +1255,11 @@ fi
     stubManagedOperation({
       ...completeUnifiedOperation({ targetTenantId: 'runtime-child', branch: 'release' }),
       setup: {
-        targetTenantId: 'runtime-child',
+        targetTenantId: 'runtime-child', environment: 'preview', repositoryId: 123, installationId: 12345,
         repo: { owner: 'enterprise', name: 'planning-portal' },
         workflowPath: '.github/workflows/eai-app.yml',
         ref: 'refs/heads/release',
-        commitSha: 'a'.repeat(40),
+        commitSha: 'a'.repeat(40), sourceCommitSha: 'a'.repeat(40),
         configHash: `sha256:${'b'.repeat(64)}`,
       },
     });
@@ -1258,9 +1322,7 @@ fi
     expect(requests.length).toBeGreaterThan(0);
     expect(requests.every(url => url.startsWith(`${originalApi}/`))).toBe(true);
     expect(requests.every(url => !url.startsWith(`${API_BASE}/`))).toBe(true);
-    await expect(readFile(join(projectRoot, '.env.local'), 'utf8')).resolves.toContain(
-      'BASE_URL_PUBLIC_API=https://api.au.myenterprise.ai/public',
-    );
+    await expect(readFile(join(projectRoot, '.env.local'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
       operationId: 'source-unknown-abc123', classification: 'succeeded',
     });
@@ -1292,6 +1354,7 @@ fi
     let replacementRoot = '';
     let displacedRoot = '';
     let replaceRootOnOperationRead = false;
+    let replaceRootOnProbe = false;
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = String(input);
       if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] }] });
@@ -1304,8 +1367,13 @@ fi
         }
         return jsonResponse({
           ...completeUnifiedOperation({ targetTenantId: 'runtime-child' }),
-          setup: { repo: { owner: 'enterprise', name: 'planning-portal' }, workflowPath: '.github/workflows/eai-app.yml', ref: 'refs/heads/main', commitSha: 'a'.repeat(40), configHash: `sha256:${'b'.repeat(64)}` },
+          setup: { targetTenantId: 'runtime-child', environment: 'preview', repositoryId: 123, installationId: 12345, repo: { owner: 'enterprise', name: 'planning-portal' }, workflowPath: '.github/workflows/eai-app.yml', ref: 'refs/heads/main', commitSha: 'a'.repeat(40), sourceCommitSha: 'a'.repeat(40), configHash: `sha256:${'b'.repeat(64)}` },
         });
+      }
+      if (replaceRootOnProbe && url.endsWith('/health')) {
+        replaceRootOnProbe = false;
+        await rename(projectRoot, displacedRoot);
+        await rename(replacementRoot, projectRoot);
       }
       expect(init?.redirect).toBe('error');
       if (url.endsWith('/api/eai/readiness')) expect(new Headers(init?.headers).get('authorization')).toBe('Bearer doctor-secret-value');
@@ -1353,6 +1421,17 @@ fi
     replacementRoot = join(env.dir, 'replacement-project');
     displacedRoot = join(env.dir, 'project-original');
     await mkdir(replacementRoot);
+    replaceRootOnProbe = true;
+    output.mockClear(); fetchMock.mockClear();
+    await deployCommand.parseAsync([
+      'doctor', '--operation-id', 'source-unknown-abc123', '--app-key', 'planning-portal',
+      '--tenant-id', TENANT_ID, '--target-tenant-id', 'runtime-child',
+      '--evidence-out', '.eai/probe-race-doctor.json', '--format', 'json',
+    ], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ status: 'fail', error: expect.stringContaining('project root changed') });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/eai/readiness'))).toBe(false);
+    await rename(projectRoot, replacementRoot);
+    await rename(displacedRoot, projectRoot);
     replaceRootOnOperationRead = true;
     output.mockClear();
     await deployCommand.parseAsync([

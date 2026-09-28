@@ -1,3 +1,4 @@
+import { bindManagedProjectRoot } from "../lib/eai-managed-root-binding.js";
 import type { CliManagedGithubLinkSession } from "../lib/api.js";
 import {
   assertManagedDeployStateMatchesOperation,
@@ -50,11 +51,13 @@ export async function startCustomerSource(
       "Connect the repository to the tenant, install the EAI GitHub App, then pass both exact values.",
     );
   }
+  const rootBinding = await bindManagedProjectRoot(context.root);
   const repository = parseGitHubRepository(options.repo);
   const installationId = requireInstallationId(options.installationId);
   const install = await installCanonicalManagedDeployFiles(
     context.root,
     workflowPath,
+    rootBinding,
   );
   if (install.changed.length > 0 || install.pendingUpdates.length > 0) {
     const installed =
@@ -76,6 +79,7 @@ export async function startCustomerSource(
     repository.slug,
     options.branch,
     options.commit,
+    rootBinding,
   );
   const verifiedGithubUser = link.verifiedGithubUser;
   if (!verifiedGithubUser) {
@@ -92,9 +96,10 @@ export async function startCustomerSource(
     undefined,
     verifiedGithubUser,
   );
-  const configHash = await buildManagedDeployConfigHash(context.root);
+  const configHash = await buildManagedDeployConfigHash(context.root, rootBinding);
   const ref = `refs/heads/${source.branch}`;
 
+  await rootBinding.assert();
   await requireApiSuccess(
     await client.registerSourceUnknownApp(context.tenantId, appKey, {
       repoOwner: repository.owner,
@@ -186,7 +191,9 @@ export async function startCustomerSource(
       "Do not dispatch this operation. Start a fresh deployment only after PublicAPI returns the exact actor, tenant, repository, commit, configuration and nonce binding.",
     );
   }
+  await rootBinding.assert();
   await prepareRuntime(client, state);
+  await rootBinding.assert();
   await dispatchWorkflow(state, context.publicApiUrl, context.root);
 
   const operation = await pollExactOperation(

@@ -866,6 +866,7 @@ export async function resolveActiveTenantContext(options?: {
   forceRefresh?: boolean;
   tenantId?: string;
   requestPolicy?: PublicApiRequestPolicy;
+  pinPublicApiUrl?: boolean;
 }): Promise<ActiveTenantContext> {
   const authMismatch = await getActiveAuthConfigMismatch(
     undefined,
@@ -952,7 +953,7 @@ export async function resolveActiveTenantContext(options?: {
   }
 
   const namedProfilePinsEndpoint = getActiveProfile() !== "default";
-  const publicApiEnvSync = namedProfilePinsEndpoint
+  const publicApiEnvSync = namedProfilePinsEndpoint || options?.pinPublicApiUrl
     ? undefined
     : await syncProjectPublicApiUrlForTenant(selected, options?.projectRoot);
   const selectedPublicApiUrl = applyPublicApiRequestPolicy(

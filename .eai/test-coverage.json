@@ -25,8 +25,13 @@
             "tests/integration/gofer.test.ts",
             "tests/integration/describe-contract.test.ts"
           ],
-          "required_ci_checks": ["ci/eai-cli-tests"],
-          "required_cross_service_surfaces": ["eai-cli", "backend"],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "backend"
+          ],
           "required_deployed_contracts": []
         },
         {
@@ -44,8 +49,13 @@
             "tests/integration/describe-contract.test.ts",
             "tests/integration/full-e2e-smoke.test.ts"
           ],
-          "required_ci_checks": ["ci/eai-cli-tests"],
-          "required_cross_service_surfaces": ["eai-cli", "backend"],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "backend"
+          ],
           "required_deployed_contracts": []
         },
         {
@@ -207,7 +217,14 @@
             "src/lib/eai-managed-source-client.ts",
             ".tech-docs/full-e2e-smoke-traceability.md",
             "scripts/generate-release-docs.cjs",
-            "tests/integration/release-metadata.test.ts"
+            "tests/integration/release-metadata.test.ts",
+            "src/commands/eai-managed-deploy*.ts",
+            "src/lib/eai-managed-deploy*.ts",
+            "src/lib/eai-managed-root-binding.ts",
+            "src/lib/eai-managed-directory-identity.ts",
+            "src/lib/source-unknown-evidence-file.ts",
+            "src/lib/context.ts",
+            "src/lib/tenant-context.ts"
           ],
           "required_repo_tests": [
             "tests/unit/eai-managed-deploy.test.ts",
@@ -219,7 +236,8 @@
             "tests/integration/help.test.ts",
             "tests/integration/describe-contract.test.ts",
             "tests/integration/full-e2e-smoke.test.ts",
-            "tests/integration/release-metadata.test.ts"
+            "tests/integration/release-metadata.test.ts",
+            "tests/unit/eai-managed-source-race.test.ts"
           ],
           "required_ci_checks": [
             "ci/eai-cli-tests"

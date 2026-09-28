@@ -137,11 +137,12 @@ async function readBoundedSourceFile(
   directoryIdentities.push({ path: root, dev: rootStatus.dev, ino: rootStatus.ino });
   const target = join(root, path);
   const status = await lstat(target);
-  if (!status.isFile() || status.isSymbolicLink()) throw new ManagedSourceError('SOURCE_SYMLINK_UNSUPPORTED', `Only regular source files can be published: ${path}`);
-  const handle = await open(target, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+  if (!status.isFile() || status.isSymbolicLink() || status.nlink !== 1) throw new ManagedSourceError('SOURCE_SYMLINK_UNSUPPORTED', `Only regular source files can be published: ${path}`);
+  const handle = await open(target, constants.O_RDONLY | (constants.O_NONBLOCK || 0) | (constants.O_NOFOLLOW || 0));
   try {
     const actual = await handle.stat();
-    if (!actual.isFile() || actual.dev !== status.dev || actual.ino !== status.ino) {
+    if (!actual.isFile() || actual.nlink !== 1 || actual.dev !== status.dev || actual.ino !== status.ino
+      || actual.size !== status.size || actual.mtimeMs !== status.mtimeMs || actual.ctimeMs !== status.ctimeMs) {
       throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source changed before packaging: ${path}. Retry after editing has stopped.`);
     }
     for (const identity of directoryIdentities) {
@@ -157,7 +158,7 @@ async function readBoundedSourceFile(
       lstat(target),
     ]);
     await assertSourceProjectRoot(rootBinding);
-    if (!isContained(canonicalRoot, canonicalTarget) || rebound.isSymbolicLink()
+    if (!isContained(canonicalRoot, canonicalTarget) || rebound.isSymbolicLink() || rebound.nlink !== 1
       || rebound.dev !== actual.dev || rebound.ino !== actual.ino) {
       throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source path changed before packaging: ${path}. Retry after editing has stopped.`);
     }
@@ -183,9 +184,9 @@ async function readBoundedSourceFile(
       lstat(target),
     ]);
     await assertSourceProjectRoot(rootBinding);
-    if (count !== actual.size || after.dev !== actual.dev || after.ino !== actual.ino
+    if (count !== actual.size || after.nlink !== 1 || after.dev !== actual.dev || after.ino !== actual.ino
       || after.size !== actual.size || after.mtimeMs !== actual.mtimeMs || after.ctimeMs !== actual.ctimeMs
-      || finalPath.isSymbolicLink() || !finalPath.isFile()
+      || finalPath.isSymbolicLink() || !finalPath.isFile() || finalPath.nlink !== 1
       || finalPath.dev !== actual.dev || finalPath.ino !== actual.ino || finalPath.size !== actual.size
       || !isContained(finalRoot, finalTarget)) {
       throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source changed while packaging: ${path}. Retry after editing has stopped.`);
@@ -207,8 +208,19 @@ async function sourceInventory(
   let entriesSeen = 0;
   async function visit(directory: string): Promise<void> {
     await assertSourceProjectRoot(rootBinding);
-    const entries = await readdir(join(root, directory), { withFileTypes: true });
-    await assertSourceProjectRoot(rootBinding);
+    const path = join(root, directory);
+    const before = await lstat(path);
+    if (!before.isDirectory() || before.isSymbolicLink()) throw new ManagedSourceError('SOURCE_SYMLINK_UNSUPPORTED', `Source directory is not a regular directory: ${directory}`);
+    const assertDirectory = async (): Promise<void> => {
+      const current = await lstat(path);
+      if (!current.isDirectory() || current.isSymbolicLink()
+        || current.dev !== before.dev || current.ino !== before.ino
+        || current.mtimeMs !== before.mtimeMs || current.ctimeMs !== before.ctimeMs) {
+        throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source directory changed during inventory: ${directory}`);
+      }
+    };
+    const entries = await readdir(path, { withFileTypes: true });
+    await assertDirectory();
     for (const entry of entries) {
       const path = directory ? `${directory}/${entry.name}` : entry.name;
       if ((path.startsWith('src/') || path.startsWith('public/')) && isCredentialPath(path)) {
@@ -217,9 +229,11 @@ async function sourceInventory(
       if (isNonSourcePath(path)) continue;
       if (++entriesSeen > 10_000) throw new ManagedSourceError('SOURCE_INVENTORY_LIMIT', 'The local source inventory exceeds 10,000 entries. Remove generated artifacts from the app source.');
       if (entry.isSymbolicLink()) throw new ManagedSourceError('SOURCE_SYMLINK_UNSUPPORTED', `Only regular source files can be published: ${path}`);
+      await assertDirectory();
       if (entry.isDirectory()) await visit(path);
       else files.push(path);
     }
+    await assertDirectory();
   }
   await visit('');
   return files.sort();
@@ -289,7 +303,11 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
     }
   }
   await assertSourceProjectRoot(rootBinding);
-  const configHash = await buildManagedDeployConfigHash(root);
+  const finalInventory = await sourceInventory(root, rootBinding);
+  if (inventory.length !== finalInventory.length || inventory.some((path, index) => path !== finalInventory[index])) {
+    throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', 'Source inventory changed during packaging. Retry after editing has stopped.');
+  }
+  const configHash = await buildManagedDeployConfigHash(root, rootBinding);
   await assertSourceProjectRoot(rootBinding);
   const bundleSha256 = digest(JSON.stringify([templateCommitSha, configHash, files.map(file => [file.path, file.size, file.sha256])]));
   return { bundle: { schemaVersion: CLI_MANAGED_SOURCE_SCHEMA, templateCommitSha, bundleSha256, configHash, files }, totalBytes };

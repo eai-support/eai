@@ -34,7 +34,7 @@ import {
   writeManagedDeployEvidence,
 } from '../lib/eai-managed-deploy.js';
 import type { ManagedDeploymentOperationResponse } from '../lib/api.js';
-import { bindManagedProjectRoot } from '../lib/eai-managed-root-binding.js';
+import { bindManagedProjectRoot, type ManagedProjectRootBinding } from '../lib/eai-managed-root-binding.js';
 import {
   requireManagedDeploymentIdentifier,
   requireManagedScopeIdentifier,
@@ -698,11 +698,14 @@ function dedupeSmokeTests(tests: RuntimeSmokeTest[]): RuntimeSmokeTest[] {
 /** Execute declared runtime probes without returning resolved header or secret values. */
 export async function runDeployDoctor(
   url: string,
-  options: { environment?: NodeJS.ProcessEnv } = {},
+  options: { environment?: NodeJS.ProcessEnv; rootBinding?: ManagedProjectRootBinding } = {},
 ): Promise<DeployDoctorResult> {
   const baseUrl = normalizeBaseUrl(url);
-  const validation = await validateRuntimeContract();
-  const loaded = await loadRuntimeContract(validation.projectRoot);
+  await options.rootBinding?.assert();
+  const validation = await validateRuntimeContract(options.rootBinding?.path);
+  await options.rootBinding?.assert();
+  const loaded = await loadRuntimeContract(options.rootBinding?.path ?? validation.projectRoot);
+  await options.rootBinding?.assert();
   const checks: DeployDoctorCheck[] = [];
 
   if (validation.status === 'fail') {
@@ -756,6 +759,7 @@ export async function runDeployDoctor(
   ]);
 
   for (const test of tests) {
+    await options.rootBinding?.assert();
     checks.push(
       await runDoctorCheck(
         baseUrl,
@@ -764,6 +768,7 @@ export async function runDeployDoctor(
         options.environment ?? process.env,
       ),
     );
+    await options.rootBinding?.assert();
   }
 
   const hasBffSmoke = tests.some(
@@ -858,7 +863,7 @@ async function runManagedDeployDoctor(options: ManagedDoctorOptions): Promise<Ma
   const configHash = requireConfigHash(operation.configHash);
   const revision = operation.sourceRevision;
   const commitSha = requireCommitSha(revision.commitSha);
-  const doctor = await runDeployDoctor(String(operation.activeUrl));
+  const doctor = await runDeployDoctor(String(operation.activeUrl), { rootBinding });
   await rootBinding.assert();
   const status = doctor.status === 'pass' && doctor.authenticatedReadiness ? 'pass' : 'fail';
   const evidence: ManagedDeployDoctorEvidence = {

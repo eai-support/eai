@@ -359,9 +359,9 @@ function copyRegularTreeNoFollow(
         copyDirectory(sourcePath, destinationPath);
         continue;
       }
-      if (!before.isFile()) {
+      if (!before.isFile() || before.nlink !== 1) {
         throw new Error(
-          `${label} entries must be regular files or directories: ${sourcePath}`,
+          `${label} entries must be single-link regular files or directories: ${sourcePath}`,
         );
       }
 
@@ -389,6 +389,7 @@ function copyRegularTreeNoFollow(
         );
         if (
           !opened.isFile() ||
+          opened.nlink !== 1 ||
           opened.dev !== before.dev ||
           opened.ino !== before.ino ||
           opened.size !== before.size ||
@@ -396,6 +397,7 @@ function copyRegularTreeNoFollow(
           opened.ctimeMs !== before.ctimeMs ||
           sourceRebound.isSymbolicLink() ||
           !sourceRebound.isFile() ||
+          sourceRebound.nlink !== 1 ||
           sourceRebound.dev !== opened.dev ||
           sourceRebound.ino !== opened.ino ||
           sourceRebound.size !== opened.size ||
@@ -478,6 +480,8 @@ function copyRegularTreeNoFollow(
         );
         if (
           copied !== opened.size ||
+          !after.isFile() ||
+          after.nlink !== 1 ||
           after.dev !== opened.dev ||
           after.ino !== opened.ino ||
           after.size !== opened.size ||
@@ -485,6 +489,7 @@ function copyRegularTreeNoFollow(
           after.ctimeMs !== opened.ctimeMs ||
           sourcePathAfter.isSymbolicLink() ||
           !sourcePathAfter.isFile() ||
+          sourcePathAfter.nlink !== 1 ||
           sourcePathAfter.dev !== opened.dev ||
           sourcePathAfter.ino !== opened.ino ||
           sourcePathAfter.size !== opened.size ||
@@ -1243,10 +1248,11 @@ function readRegularFileNoFollow(
   if (
     before.isSymbolicLink() ||
     !before.isFile() ||
+    before.nlink !== 1 ||
     before.size > MAX_GOVERNED_CONFIG_FILE_BYTES
   ) {
     throw new Error(
-      `Governed configuration must be a bounded regular file: ${relativePath}`,
+      `Governed configuration must be a bounded regular file with a single link: ${relativePath}`,
     );
   }
   containedRelativePath(
@@ -1262,6 +1268,7 @@ function readRegularFileNoFollow(
     const opened = fstatSync(descriptor);
     if (
       !opened.isFile() ||
+      opened.nlink !== 1 ||
       opened.dev !== before.dev ||
       opened.ino !== before.ino ||
       opened.size !== before.size ||
@@ -1282,6 +1289,8 @@ function readRegularFileNoFollow(
     );
     if (
       rebound.isSymbolicLink() ||
+      !rebound.isFile() ||
+      rebound.nlink !== 1 ||
       rebound.dev !== opened.dev ||
       rebound.ino !== opened.ino ||
       rebound.size !== opened.size ||
@@ -1308,6 +1317,8 @@ function readRegularFileNoFollow(
     );
     if (
       bytes.length !== opened.size ||
+      !after.isFile() ||
+      after.nlink !== 1 ||
       after.dev !== opened.dev ||
       after.ino !== opened.ino ||
       after.size !== opened.size ||
@@ -1315,6 +1326,7 @@ function readRegularFileNoFollow(
       after.ctimeMs !== opened.ctimeMs ||
       finalPath.isSymbolicLink() ||
       !finalPath.isFile() ||
+      finalPath.nlink !== 1 ||
       finalPath.dev !== opened.dev ||
       finalPath.ino !== opened.ino ||
       finalPath.size !== opened.size ||
@@ -1770,6 +1782,7 @@ function assertCommandFileBinding(path, descriptor, openedStatus, phase) {
     descriptorStatus.ino !== openedStatus.ino ||
     pathStatus.isSymbolicLink() ||
     !pathStatus.isFile() ||
+    pathStatus.nlink !== 1 ||
     pathStatus.dev !== openedStatus.dev ||
     pathStatus.ino !== openedStatus.ino
   ) {

@@ -121,6 +121,27 @@ function hasCompleteSourceRevision(operation: ManagedOperationProjection): boole
   ]).size === 3;
 }
 
+function sourceRevisionMatchesSetup(operation: ManagedOperationProjection): boolean {
+  const setup = record(operation.setup);
+  const revision = record(operation.sourceRevision);
+  const repo = record(setup?.repo);
+  if (!setup || !revision || !repo) return false;
+  const pairs: Array<[unknown, unknown]> = [
+    [repo.owner, revision.repoOwner], [repo.name, revision.repoName],
+    [setup.ref, revision.branchRef], [setup.commitSha, revision.commitSha],
+    [setup.workflowPath, revision.workflowPath], [setup.configHash, revision.configHash],
+    [setup.sourceCommitSha, revision.sourceCommitSha],
+    [setup.environment, operation.environment], [setup.targetTenantId, operation.targetTenantId],
+  ];
+  if (pairs.some(([expected, observed]) => !exactText(expected) || expected !== observed)) return false;
+  for (const field of ['installationId', 'repositoryId'] as const) {
+    if (!positiveId(setup[field]) || String(setup[field]) !== String(revision[field])) return false;
+  }
+  if (operation.sourceMode === 'eai-cli-generated'
+    && (!exactText(setup.reviewHeadSha) || setup.reviewHeadSha !== revision.reviewHeadSha)) return false;
+  return true;
+}
+
 function hasCompleteDeploymentDoctor(operation: ManagedOperationProjection): boolean {
   const deployment = record(operation.deployment);
   const doctor = record(operation.doctor);
@@ -160,6 +181,7 @@ export function classifyManagedOperationStatus(value: unknown): ManagedOperation
   if (!operation || rootStatus !== 'active'
     || !ACCEPTED_SOURCE_STATUSES.has(statusOf(operation.sourceStatus))
     || !hasCompleteSourceRevision(operation)
+    || !sourceRevisionMatchesSetup(operation)
     || !hasCompleteDeploymentDoctor(operation)) return 'pending';
   return 'succeeded';
 }

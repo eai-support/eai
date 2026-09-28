@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, lstat, open, readFile, readdir, realpath } from 'node:fs/promises';
+import { lstat, open, readFile, readdir, realpath } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -15,7 +15,9 @@ import {
   writeBoundRegularFile,
 } from './eai-managed-deploy-filesystem.js';
 import { fileMatches } from './eai-managed-deploy-file-match.js';
-import { bindManagedProjectRoot } from './eai-managed-root-binding.js';
+import { bindManagedProjectRoot, type ManagedProjectRootBinding } from './eai-managed-root-binding.js';
+
+export const MANAGED_CONFIG_LIMITS = { maxFiles: 4096, maxFileBytes: 10 * 1024 * 1024, maxTotalBytes: 32 * 1024 * 1024 } as const;
 
 const GOVERNED_ROOT_FILES = ['eai.config.ts', 'eai.runtime.json'] as const;
 const GOVERNED_CONFIG_ROOT = 'src/eai.config';
@@ -96,8 +98,9 @@ export function canonicalManagedDeployResourceRoot(): string {
 export async function installCanonicalManagedDeployFiles(
   projectRoot: string,
   workflowPath = EAI_MANAGED_WORKFLOW_PATH,
+  existingBinding?: ManagedProjectRootBinding,
 ): Promise<CanonicalInstallResult> {
-  const projectBinding = await bindManagedProjectRoot(projectRoot);
+  const projectBinding = existingBinding ?? await bindManagedProjectRoot(projectRoot);
   const boundProjectRoot = projectBinding.path;
   const canonicalRoot = canonicalManagedDeployResourceRoot();
   const files = [
@@ -119,19 +122,15 @@ export async function installCanonicalManagedDeployFiles(
       result.unchanged.push(file.target);
       continue;
     }
-    let targetExists = true;
-    try {
-      await access(target);
-    } catch {
-      targetExists = false;
-    }
-    if (targetExists) {
+    const targetStatus = await assertRegularTarget(target);
+    const content = await readFile(source);
+    if (targetStatus) {
       const candidate = `${target}.eai-update`;
-      await assertRegularTarget(candidate);
-      await writeBoundRegularFile(candidate, await readFile(source), 0o644, projectBinding);
+      const candidateStatus = await assertRegularTarget(candidate);
+      await writeBoundRegularFile(candidate, content, 0o644, projectBinding, { status: candidateStatus });
       result.pendingUpdates.push(`${file.target}.eai-update`);
     } else {
-      await writeBoundRegularFile(target, await readFile(source), 0o644, projectBinding);
+      await writeBoundRegularFile(target, content, 0o644, projectBinding, { status: undefined });
       result.changed.push(file.target);
     }
   }
@@ -140,6 +139,10 @@ export async function installCanonicalManagedDeployFiles(
 
 async function listGovernedConfigPaths(root: string): Promise<GovernedConfigInventory> {
   const paths: string[] = [];
+  const addPath = (path: string): void => {
+    if (paths.length >= MANAGED_CONFIG_LIMITS.maxFiles) throw new Error('Governed configuration exceeds the 4,096 file limit.');
+    paths.push(path);
+  };
   const directories = new Map<string, GovernedDirectoryIdentity>();
   for (const relativePath of GOVERNED_ROOT_FILES) {
     await assertGovernedAncestors(root, relativePath);
@@ -149,7 +152,7 @@ async function listGovernedConfigPaths(root: string): Promise<GovernedConfigInve
       if (!status.isFile() || status.isSymbolicLink()) {
         throw new Error(`Governed configuration must be a regular file: ${relativePath}`);
       }
-      paths.push(relativePath);
+      addPath(relativePath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
@@ -188,7 +191,7 @@ async function listGovernedConfigPaths(root: string): Promise<GovernedConfigInve
       if (entryStatus.isDirectory()) await visit(relativePath);
       else if (!entryStatus.isFile()) {
         throw new Error(`Governed configuration entry must be a regular file or directory: ${relativePath}`);
-      } else if (!GENERATED_CONFIG_FILES.has(relativePath)) paths.push(relativePath);
+      } else if (!GENERATED_CONFIG_FILES.has(relativePath)) addPath(relativePath);
     }
     await assertGovernedAncestorIdentities(observedDirectories, relativeDirectory);
   }
@@ -202,8 +205,8 @@ async function listGovernedConfigPaths(root: string): Promise<GovernedConfigInve
 }
 
 /** Match the canonical workflow's ordered config hashing algorithm. */
-export async function buildManagedDeployConfigHash(projectRoot: string): Promise<string> {
-  const rootBinding = await bindManagedProjectRoot(projectRoot);
+export async function buildManagedDeployConfigHash(projectRoot: string, existingBinding?: ManagedProjectRootBinding): Promise<string> {
+  const rootBinding = existingBinding ?? await bindManagedProjectRoot(projectRoot);
   const root = rootBinding.path;
   await rootBinding.assert();
   const inventory = await listGovernedConfigPaths(root);
@@ -212,6 +215,7 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
   await rootBinding.assert();
 
   const hash = createHash('sha256');
+  let totalBytes = 0;
   for (const relativePath of paths) {
     await rootBinding.assert();
     await assertGovernedAncestorIdentities(inventory.directories, 'governed configuration inventory');
@@ -223,17 +227,18 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
     hash.update('\0');
     const path = join(root, relativePath);
     const before = await lstat(path);
-    if (before.isSymbolicLink() || !before.isFile()) {
+    if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1) {
       throw new Error(`Governed configuration must be a regular file: ${relativePath}`);
     }
     const [canonicalRoot, canonicalPath] = await Promise.all([realpath(root), realpath(path)]);
     if (!isContained(canonicalRoot, canonicalPath)) {
       throw new Error(`Governed configuration file resolved outside the application root: ${relativePath}`);
     }
-    const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+    const handle = await open(path, constants.O_RDONLY | (constants.O_NONBLOCK || 0) | (constants.O_NOFOLLOW || 0));
     try {
       const status = await handle.stat();
-      if (!status.isFile() || status.dev !== before.dev || status.ino !== before.ino) {
+      if (!status.isFile() || status.nlink !== 1 || status.dev !== before.dev || status.ino !== before.ino
+        || status.size !== before.size || status.mtimeMs !== before.mtimeMs || status.ctimeMs !== before.ctimeMs) {
         throw new Error(`Governed configuration changed before its no-follow read: ${relativePath}`);
       }
       await assertGovernedAncestorIdentities(ancestors, relativePath);
@@ -244,11 +249,21 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
         realpath(root),
         realpath(path),
       ]);
-      if (rebound.isSymbolicLink() || rebound.dev !== status.dev || rebound.ino !== status.ino
+      if (rebound.isSymbolicLink() || rebound.nlink !== 1 || rebound.dev !== status.dev || rebound.ino !== status.ino
         || !isContained(reboundRoot, reboundPath)) {
         throw new Error(`Governed configuration path changed before its no-follow read: ${relativePath}`);
       }
-      const bytes = await handle.readFile();
+      if (status.size > MANAGED_CONFIG_LIMITS.maxFileBytes) throw new Error(`Governed configuration exceeds the 10 MiB file limit: ${relativePath}`);
+      totalBytes += status.size;
+      if (totalBytes > MANAGED_CONFIG_LIMITS.maxTotalBytes) throw new Error('Governed configuration exceeds the 32 MiB total limit.');
+      const bytes = Buffer.allocUnsafe(Math.min(status.size, 64 * 1024));
+      let offset = 0;
+      while (offset < status.size) {
+        const { bytesRead } = await handle.read(bytes, 0, Math.min(bytes.length, status.size - offset), offset);
+        if (!bytesRead) break;
+        hash.update(bytes.subarray(0, bytesRead));
+        offset += bytesRead;
+      }
       const after = await handle.stat();
       await assertGovernedAncestorIdentities(ancestors, relativePath);
       await assertGovernedAncestorIdentities(inventory.directories, 'governed configuration inventory');
@@ -258,14 +273,13 @@ export async function buildManagedDeployConfigHash(projectRoot: string): Promise
         realpath(root),
         realpath(path),
       ]);
-      if (!after.isFile() || after.dev !== status.dev || after.ino !== status.ino
+      if (!after.isFile() || after.nlink !== 1 || after.dev !== status.dev || after.ino !== status.ino
         || after.size !== status.size || after.mtimeMs !== status.mtimeMs || after.ctimeMs !== status.ctimeMs
-        || bytes.length !== status.size || finalPath.isSymbolicLink() || !finalPath.isFile()
+        || offset !== status.size || finalPath.isSymbolicLink() || !finalPath.isFile() || finalPath.nlink !== 1
         || finalPath.dev !== status.dev || finalPath.ino !== status.ino || finalPath.size !== status.size
         || !isContained(finalRoot, finalCanonicalPath)) {
         throw new Error(`Governed configuration changed during its bounded no-follow read: ${relativePath}`);
       }
-      hash.update(bytes);
     } finally {
       await handle.close();
     }

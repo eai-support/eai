@@ -61,7 +61,7 @@ export async function readSourceUnknownEvidenceFile(
     throw new Error(`Workflow evidence must contain 1 to ${maxBytes} bytes.`);
   }
 
-  const handle = await open(resolvedPath, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+  const handle = await open(resolvedPath, constants.O_RDONLY | (constants.O_NONBLOCK || 0) | (constants.O_NOFOLLOW || 0));
   try {
     const opened = await handle.stat();
     if (!opened.isFile() || !sameOpenedFile(before, opened)) {
