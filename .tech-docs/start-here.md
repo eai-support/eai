@@ -65,5 +65,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.18.1** (2026-09-25): Enforce PublicAPI V4 usage and preserve V4 health diagnostics.
+The current CLI release is **v3.18.2** (2026-09-28): Fix macOS codesign metadata timeout.
+
+
 
