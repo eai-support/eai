@@ -75,7 +75,7 @@
 - [x] Mirror app-template candidate `32c1b529c2fa2bb58caaa1ef8272d070b89fa780`, including source-copy timestamp binding and aligned governed-manifest limits, then update exact byte/digest evidence while retaining the deferred release gate (DTE-018–DTE-025, DTE-088, DTE-095).
 - [x] Mirror app-template candidate `7876200a21714ec6cef9cef49d18fc32d59ec336`, including its final bounded archive/evidence/response/fetch sweep and clean no-checkout handoff, then update exact byte/digest evidence while retaining the deferred release gate (DTE-019–DTE-026, DTE-088).
 - [x] Mirror app-template candidate `49768100b75da2910eef590a6848c9fcba75ab7b`, including optional reusable-call configuration derivation and actual-byte-capped OIDC/PublicAPI response streams, then update exact byte/digest evidence while retaining the deferred release gate (DTE-019–DTE-026, DTE-088).
-- [x] Mirror final app-template candidate `4a76521abda5e6ef06209dd93ab0f0825e6a5d6c`, including exact bounded OCI manifest-content verification, fail-closed no-follow/nonblocking collector opens, signed event-SHA checkout binding, cache isolation, GNU/BSD-compatible tar extraction, direct configuration enforcement, strict legacy field presence, current artifact/run-attempt binding, and output byte caps, then update exact byte/digest evidence while retaining the deferred release gate (DTE-019–DTE-026, DTE-088).
+- [x] Mirror final app-template candidate `1976cdb03cecdf19c95cd8a98226ec4cbaac3ba8`, including exact bounded OCI manifest-content verification, fail-closed no-follow/nonblocking collector opens, signed event-SHA checkout binding, cache isolation, GNU/BSD-compatible tar extraction, direct configuration enforcement, strict legacy field presence, current artifact/run-attempt binding, and output byte caps, then update exact byte/digest evidence while retaining the deferred release gate (DTE-019–DTE-026, DTE-088).
 
 - [x] Recover source mode and environment only from the unified sealed operation, rejecting conflicting explicit options (DTE-031–DTE-035).
 - [x] Read protected original gateway authority before authentication for every operation namespace and prevent tenant region refresh from replacing it (DTE-031–DTE-035, DTE-091).
@@ -85,13 +85,16 @@
 
 - [x] Reject missing no-follow/nonblocking capabilities without a zero fallback, and require source/workflow commit equality even when setup repeats the differing pair (DTE-016, DTE-032).
 
+- [x] Advance the exact producer pairing to its authenticated runtime-owned readiness binding candidate without changing workflow/collector bytes or clearing publication gates (DTE-080, DTE-088).
+
 ## Exact-head evidence
 
 Validation below applies to the 2026-09-28 readiness changes; earlier validation remains in Git history.
 
-- `npm run verify:managed-deploy-producer` passes for template candidate `4a76521abda5e6ef06209dd93ab0f0825e6a5d6c`: workflow `sha256:2a2d4d904546d121a5f26b9a191903afb8b5dc9e0d21857242b61701134fffc6`, collector `sha256:7ecd44bb468b9664d21e72431a70a8dbb24af0f13c74887529bd13cd36dbdbe5`.
+- `npm run verify:managed-deploy-producer` passes for template candidate `1976cdb03cecdf19c95cd8a98226ec4cbaac3ba8`: workflow `sha256:2a2d4d904546d121a5f26b9a191903afb8b5dc9e0d21857242b61701134fffc6`, collector `sha256:7ecd44bb468b9664d21e72431a70a8dbb24af0f13c74887529bd13cd36dbdbe5`.
+- Final pairing-only validation: 119 producer/source/managed-deploy/release-metadata tests across three files passed with zero skips; exact workflow/collector byte and digest parity and build pass.
 - Full repository baseline: `npm test -- --maxWorkers=2 --reporter=dot` passed 1,117 tests with two existing documented skips across 53 files. Final additive 64 KiB hash streaming and descriptor/leaf link-count regressions pass in the focused managed-deploy/source/race suite: 213 tests across four files, including the subsequent fail-closed capability and source/workflow SHA equality guards.
 - Build, lint, typecheck, public hygiene, error-guidance validation, release-doc freshness, and full CLI smoke traceability checks pass. The traceability check covers 110 CLI leaf commands (44 live rows).
-- The prior pushed head `4c67f746` passed full Ubuntu/macOS CLI CI, owned tests, docs and CodeQL. Current-head CI is checked separately. A concurrent local full run recorded two init fixture failures after a 30-second timeout; the isolated init diagnostic recorded 27 passes and a different 10-second fixture timeout. Those diagnostics remain visible and are not reclassified as passes.
+- The prior pushed head `4c67f746` passed full Ubuntu/macOS CLI CI, owned tests, docs and CodeQL. CLI head `756b2cc46e54fad1c79f98bf927222c905ce60fa` also passed those full Ubuntu/macOS and owned CI checks; the subsequent pairing-only head runs focused producer/release-metadata verification and is checked separately in CI. A concurrent local full run recorded two init fixture failures after a 30-second timeout; the isolated init diagnostic recorded 27 passes and a different 10-second fixture timeout. Those diagnostics remain visible and are not reclassified as passes.
 - `releaseGate.status` remains `awaiting-producer-release`, with no invented release tag or commit. `npm run release:check` deliberately stops at that publication gate.
 - Live Installer → Gofer → CLI → TEST qualification, release, activation, and customer debits are not claimed by these repository checks.
