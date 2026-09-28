@@ -33,7 +33,11 @@ import {
   retryCustomerSource,
 } from "./eai-managed-deploy-retry.js";
 import { loadManagedRetryAuthority } from "./eai-managed-deploy-recovery.js";
-import { validateManagedDeployInput } from "./eai-managed-deploy-validation.js";
+import {
+  RECOVERY_SOURCE_OPTIONS,
+  requireRecoverySourceOptions,
+  validateManagedDeployInput,
+} from "./eai-managed-deploy-validation.js";
 
 export {
   managedDeployPollDelayMs,
@@ -180,6 +184,14 @@ Examples:
         if (command.getOptionValueSource("environment") !== "default" && options.environment !== exactOperation.environment) {
           fail("RECOVERY_ENVIRONMENT_MISMATCH", "The requested environment conflicts with the sealed operation.", "Omit --environment or use the original operation's environment.");
         }
+        requireRecoverySourceOptions(
+          options,
+          RECOVERY_SOURCE_OPTIONS.filter((option) => {
+            const source = command.getOptionValueSource(option);
+            return source !== undefined && source !== "default";
+          }),
+          exactOperation,
+        );
         managedScope.environment = exactOperation.environment as CliManagedSourceScope["environment"];
         execution.recoveryOperation = exactOperation;
       }

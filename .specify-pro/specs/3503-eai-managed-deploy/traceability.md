@@ -73,3 +73,21 @@ lint and exact template3432 producer verification also pass. This successor
 adds tests and evidence only; protected transport behavior and producer bytes
 remain unchanged. Current-head CI, human review, publication and live
 qualification remain independently assessed gates.
+
+Late recovery review closes the undispatched accepted-evidence branch with the
+same fresh server-bound GitHub proof used before workflow dispatch. Failed,
+expired, pending, crossed-actor, changed-user and changed-proof sessions reject
+before mutation. An expired but still verified original proof retains the
+existing retry allowance; dispatched recovery does not require a new session.
+Explicit repository, installation, ref, workflow, commit and link-session hints
+must match the independently sealed setup; defaults are ignored and missing
+setup fields cannot be inferred from the terminal revision. The real Git
+customer-owned install/commit/retry case succeeds with the new immutable SHA;
+the EAI-maintained source-bundle allowlist remains unchanged.
+
+The complete serialized corpus passed 1,187 tests with two documented skips
+across all 54 files in 157.49 seconds. It used the initial 98-case integration
+test snapshot. The final test-only expansion independently passed all 103
+managed-deploy integration cases in 12.79 seconds. These are separate execution
+records; no 1,192-test full result is claimed. Build, lint and exact template3432
+producer pairing pass. The publication gate remains awaiting-producer-release.

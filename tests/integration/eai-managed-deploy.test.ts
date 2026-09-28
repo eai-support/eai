@@ -168,7 +168,7 @@ describe('eai deploy app --target eai', () => {
   let original: NodeJS.ProcessEnv;
 
   function stubManagedOperation(operation?: Record<string, unknown>): ReturnType<typeof vi.fn> {
-    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url === `${API_BASE}/v4/identity/tenants`) {
         return jsonResponse({ tenants: [{ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] }] });
@@ -733,18 +733,39 @@ describe('eai deploy app --target eai', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  test.each(['configured', 'cross-tenant', 'failed', 'wrong-target', 'retry', 'crash-before-claim', 'source-mismatch', 'already-dispatched', 'uncertain-dispatch', 'lost-response'] as const)('bootstraps runtime before immutable dispatch: %s', async (bootstrap) => {
+  test.each(['configured', 'install-commit-retry', 'cross-tenant', 'failed', 'wrong-target', 'retry', 'crash-before-claim', 'source-mismatch', 'already-dispatched', 'uncertain-dispatch', 'lost-response'] as const)('bootstraps runtime before immutable dispatch: %s', async (bootstrap) => {
     const targetTenantId = bootstrap === 'cross-tenant' ? 'runtime-child' : TENANT_ID;
     await mkdir(join(projectRoot, 'src', 'eai.config'), { recursive: true });
     await writeFile(join(projectRoot, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');
-    await installCanonicalManagedDeployFiles(projectRoot);
+    if (bootstrap !== 'install-commit-retry') await installCanonicalManagedDeployFiles(projectRoot);
     await exec('git', ['init', '-b', 'main'], { cwd: projectRoot });
     await exec('git', ['config', 'user.name', 'EAI Test'], { cwd: projectRoot });
     await exec('git', ['config', 'user.email', 'eai-test@example.com'], { cwd: projectRoot });
     await exec('git', ['remote', 'add', 'origin', 'git@github.com:enterprise/planning-portal.git'], { cwd: projectRoot });
     await exec('git', ['add', '.'], { cwd: projectRoot });
     await exec('git', ['commit', '-m', 'test fixture'], { cwd: projectRoot });
+    if (bootstrap === 'install-commit-retry') {
+      const scaffoldHead = (await exec('git', ['rev-parse', 'HEAD'], { cwd: projectRoot })).stdout.trim();
+      const installFetch = stubManagedOperation();
+      const installOutput = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      await eaiManagedDeployCommand.parseAsync([
+        'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+        '--target-tenant-id', targetTenantId, '--source', 'customer-owned',
+        '--repo', 'enterprise/planning-portal', '--installation-id', '12345', '--format', 'json',
+      ], { from: 'user' });
+      expect(JSON.parse(installOutput.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+        ok: false, error: { code: 'CANONICAL_WORKFLOW_UPDATE_REQUIRED' },
+      });
+      expect(installFetch.mock.calls.some(([input]) => String(input).includes('/source-unknown/'))).toBe(false);
+      expect(await readFile(join(projectRoot, '.github/workflows/eai-app.yml'), 'utf8')).toContain('workflow_dispatch:');
+      expect(await readFile(join(projectRoot, 'scripts/source-unknown-deployment-evidence.mjs'), 'utf8')).toContain('node:crypto');
+      await exec('git', ['add', '.github/workflows/eai-app.yml', 'scripts/source-unknown-deployment-evidence.mjs'], { cwd: projectRoot });
+      await exec('git', ['commit', '-m', 'Review canonical deployment workflow and collector'], { cwd: projectRoot });
+      expect((await exec('git', ['rev-parse', 'HEAD'], { cwd: projectRoot })).stdout.trim()).not.toBe(scaffoldHead);
+      installOutput.mockRestore();
+      process.exitCode = 0;
+    }
     const { stdout: shaOutput } = await exec('git', ['rev-parse', 'HEAD'], { cwd: projectRoot });
     const commitSha = shaOutput.trim();
 
@@ -984,6 +1005,9 @@ fi
         evidence: evidenceState === 'accepted' ? { status: 'accepted' } : undefined,
       });
       if (url.endsWith('/source-unknown/deploy')) { deployed = true; return jsonResponse({ status: 'queued' }, 202); }
+      if (url.includes('/cli-managed-source/github-link-sessions/')) return jsonResponse({
+        ...linkedGitHubSession('verified', 'runtime-child'), environment,
+      });
       return identityImpl(input);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -1001,7 +1025,7 @@ fi
     expect(process.exitCode).toBe(0);
   });
 
-  test.each(['handoff', 'poll', 'github-link'] as const)('rejects redirect responses from the protected retry authority during %s', async (boundary) => {
+  test.each(['handoff', 'poll', 'github-link', 'accepted-github-link'] as const)('rejects redirect responses from the protected retry authority during %s', async (boundary) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const state = customerRetryState({ targetTenantId: 'runtime-child' });
     await saveManagedDeployState(state);
@@ -1028,7 +1052,9 @@ fi
         handedOff = true;
         return boundary === 'handoff' ? redirectResponse() : jsonResponse({ status: 'queued' }, 202);
       }
-      if (url.includes('/cli-managed-source/github-link-sessions/')) return redirectResponse();
+      if (url.includes('/cli-managed-source/github-link-sessions/')) return boundary.endsWith('github-link')
+        ? redirectResponse()
+        : jsonResponse(linkedGitHubSession('verified', 'runtime-child'));
       return identityImpl(input);
     }));
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -1039,12 +1065,86 @@ fi
 
     expect(requests.filter(({ url }) => url.startsWith(API_BASE)).every(({ redirect }) => redirect === 'error')).toBe(true);
     expect(requests.some(({ url }) => url.startsWith(redirectedHost))).toBe(false);
-    expect(requests.some(({ url }) => url.includes('/cli-managed-source/github-link-sessions/'))).toBe(boundary === 'github-link');
-    expect(handedOff).toBe(boundary !== 'github-link');
+    expect(requests.some(({ url }) => url.includes('/cli-managed-source/github-link-sessions/'))).toBe(true);
+    expect(handedOff).toBe(!boundary.endsWith('github-link'));
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
       ok: false, error: { code: boundary === 'handoff' ? 'DEPLOYMENT_HANDOFF_FAILED' : boundary === 'poll' ? 'SOURCE_OPERATION_READ_FAILED' : 'RETRY_GITHUB_AUTHORITY_UNAVAILABLE' },
     });
     expect(process.exitCode).toBe(1);
+  });
+
+  test.each([
+    ['failed', { status: 'failed' }, 'GITHUB_LINK_FAILED'],
+    ['expired', { status: 'expired' }, 'GITHUB_LINK_EXPIRED'],
+    ['pending', { status: 'pending', verifiedGithubUser: undefined }, 'RETRY_GITHUB_BINDING_MISMATCH'],
+    ['other actor', { actorId: 'other-actor' }, 'GITHUB_LINK_BINDING_MISMATCH'],
+    ['other GitHub user', { verifiedGithubUser: { id: 456, login: 'other-user', proofId: 'proof-123', actorId: ACTOR_BINDING.actorId } }, 'RETRY_GITHUB_BINDING_MISMATCH'],
+    ['other proof', { verifiedGithubUser: { id: 123, login: 'linked-user', proofId: 'replacement-proof', actorId: ACTOR_BINDING.actorId } }, 'RETRY_GITHUB_BINDING_MISMATCH'],
+  ])('checks fresh GitHub authority before undispatched accepted-evidence handoff: %s', async (_label, replacement, code) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const state = customerRetryState({ targetTenantId: 'runtime-child' });
+    await saveManagedDeployState(state);
+    const requests: Array<{ url: string; method: string }> = [];
+    const identityImpl = stubManagedOperation().getMockImplementation()!;
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method || 'GET' });
+      if (url.includes('/managed-deployments/operations/')) return jsonResponse({
+        appScopeTenantId: TENANT_ID, targetTenantId: state.targetTenantId, appKey: state.appKey,
+        operationId: state.operationId, environment: state.environment, sourceMode: 'source-unknown',
+        sourceStatus: 'handoff_pending', status: 'handoff_pending',
+        setup: customerOperationSetup(state), evidence: { status: 'accepted' },
+      });
+      if (url.includes('/cli-managed-source/github-link-sessions/')) return jsonResponse({
+        ...linkedGitHubSession('verified', state.targetTenantId), ...replacement,
+      });
+      return identityImpl(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      state.appKey, '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', state.targetTenantId,
+      '--retry', state.operationId, '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(requests.some(({ url }) => url.includes('/cli-managed-source/github-link-sessions/'))).toBe(true);
+    expect(requests.some(({ method }) => method !== 'GET')).toBe(false);
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      ok: false, error: { code },
+    });
+    expect(await readFile(managedDeployStatePath(state.operationId), 'utf8')).not.toContain('dispatchedAt');
+    expect(process.exitCode).toBe(1);
+  });
+
+  test.each(['undispatched-expired-verified', 'already-dispatched'] as const)('preserves bound accepted-evidence recovery for %s', async (mode) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const state = customerRetryState({ targetTenantId: 'runtime-child' });
+    if (mode === 'already-dispatched') state.dispatchedAt = new Date().toISOString();
+    await saveManagedDeployState(state);
+    const requests: string[] = [];
+    const identityImpl = stubManagedOperation().getMockImplementation()!;
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.includes('/managed-deployments/operations/')) return jsonResponse({
+        appScopeTenantId: TENANT_ID, targetTenantId: state.targetTenantId, appKey: state.appKey,
+        operationId: state.operationId, environment: state.environment, sourceMode: 'source-unknown',
+        sourceStatus: 'handoff_pending', status: 'handoff_pending',
+        setup: customerOperationSetup(state), evidence: { status: 'accepted' },
+      });
+      if (url.includes('/cli-managed-source/github-link-sessions/')) return jsonResponse({
+        ...linkedGitHubSession('verified', state.targetTenantId), expiresAt: '2020-01-01T00:00:00.000Z',
+      });
+      if (url.endsWith('/source-unknown/deploy')) return jsonResponse({ status: 'queued' }, 202);
+      return identityImpl(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      state.appKey, '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', state.targetTenantId,
+      '--retry', state.operationId, '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(requests.filter(url => url.endsWith('/source-unknown/deploy'))).toHaveLength(1);
+    expect(requests.some(url => url.includes('/cli-managed-source/github-link-sessions/'))).toBe(mode !== 'already-dispatched');
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ status: 'handoff_pending' });
+    expect(process.exitCode).toBe(0);
   });
 
   test.each([undefined, 'staging'] as const)('refuses accepted-evidence retry without a supported server environment (%s)', async (environment) => {
@@ -1261,6 +1361,76 @@ fi
       expect(process.exitCode).toBe(1);
     },
   );
+
+  test.each(['--resume', '--retry'] as const)('rejects conflicting explicit source hints for %s before recovery mutation', async (mode) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const state = customerRetryState({ targetTenantId: 'runtime-child' });
+    if (mode === '--retry') await saveManagedDeployState(state);
+    const fetchMock = stubManagedOperation(completeUnifiedOperation({ targetTenantId: state.targetTenantId }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    for (const [flag, value, code] of [
+      ['--repo', 'other/repository', 'RECOVERY_OPTION_MISMATCH'],
+      ['--installation-id', '99999', 'RECOVERY_OPTION_MISMATCH'],
+      ['--branch', 'release', 'RECOVERY_OPTION_MISMATCH'],
+      ['--workflow', '.github/workflows/other.yml', 'WORKFLOW_PATH_INVALID'],
+      ['--commit', 'f'.repeat(40), 'RECOVERY_OPTION_MISMATCH'],
+      ['--github-link-session', 'different-session', 'RECOVERY_OPTION_MISMATCH'],
+    ]) {
+      output.mockClear();
+      fetchMock.mockClear();
+      process.exitCode = 0;
+      await eaiManagedDeployCommand.parseAsync([
+        state.appKey, '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', state.targetTenantId,
+        mode, state.operationId, flag, value, '--no-wait', '--format', 'json',
+      ], { from: 'user' });
+      expect(JSON.parse(output.mock.calls.map(([entry]) => String(entry)).join(''))).toMatchObject({
+        ok: false, error: { code },
+      });
+      expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
+      expect(process.exitCode).toBe(1);
+    }
+  });
+
+  test.each(['--resume', '--retry'] as const)('accepts matching explicitly supplied recovery source hints for %s', async (mode) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const state = customerRetryState({ targetTenantId: 'runtime-child' });
+    if (mode === '--retry') await saveManagedDeployState(state);
+    const fetchMock = stubManagedOperation(completeUnifiedOperation({ targetTenantId: state.targetTenantId }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      state.appKey, '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', state.targetTenantId,
+      mode, state.operationId, '--repo', 'Enterprise/Planning-Portal', '--installation-id', '12345',
+      '--branch', 'main', '--workflow', '.github/workflows/eai-app.yml', '--commit', state.commitSha,
+      '--github-link-session', state.githubLinkSessionId!, '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([entry]) => String(entry)).join(''))).toMatchObject({ classification: 'succeeded' });
+    expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
+    expect(process.exitCode).toBe(0);
+  });
+
+  test.each([
+    ['--repo', 'enterprise/planning-portal', 'repo'],
+    ['--installation-id', '12345', 'installationId'],
+    ['--branch', 'main', 'ref'],
+    ['--workflow', '.github/workflows/eai-app.yml', 'workflowPath'],
+    ['--commit', 'a'.repeat(40), 'commitSha'],
+    ['--github-link-session', ACTOR_BINDING.githubLinkSessionId, 'githubLinkSessionId'],
+  ])('rejects explicit recovery hint %s without its independently sealed setup field', async (flag, value, field) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const operation = completeUnifiedOperation();
+    delete (operation.setup as Record<string, unknown>)[field];
+    stubManagedOperation(operation);
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
+      '--resume', 'source-unknown-abc123', flag, value,
+      '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([entry]) => String(entry)).join(''))).toMatchObject({
+      ok: false, error: { code: 'RECOVERY_OPTION_MISMATCH' },
+    });
+    expect(process.exitCode).toBe(1);
+  });
 
   test('requires the target tenant when resuming an exact operation', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');

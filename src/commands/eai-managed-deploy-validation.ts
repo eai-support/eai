@@ -1,7 +1,12 @@
 import {
   EAI_MANAGED_WORKFLOW_PATH,
+  parseGitHubRepository,
+  requireBranch,
+  requireCommitSha,
+  requireInstallationId,
   requireWorkflowPath,
 } from "../lib/eai-managed-deploy.js";
+import type { ManagedDeploymentOperationResponse } from "../lib/api.js";
 import {
   isManagedScopeIdentifier,
   requireManagedDeploymentIdentifier,
@@ -9,8 +14,63 @@ import {
 import {
   MANAGED_DEPLOY_ENVIRONMENTS,
   fail,
+  isRecord,
   type ManagedDeployOptions,
 } from "./eai-managed-deploy-contract.js";
+
+export const RECOVERY_SOURCE_OPTIONS = [
+  "repo", "installationId", "branch", "workflow", "commit", "githubLinkSession",
+] as const;
+
+/** Explicit recovery hints must agree with the server's independently sealed setup. */
+export function requireRecoverySourceOptions(
+  options: ManagedDeployOptions,
+  supplied: ReadonlyArray<(typeof RECOVERY_SOURCE_OPTIONS)[number]>,
+  operation: ManagedDeploymentOperationResponse,
+): void {
+  const setup = operation.setup;
+  const repo = isRecord(setup.repo) ? setup.repo : undefined;
+  const expectedRepo = repo && typeof repo.owner === "string" && typeof repo.name === "string"
+    ? `${repo.owner}/${repo.name}`.toLowerCase()
+    : undefined;
+  for (const option of supplied) {
+    let expected: unknown;
+    let actual: unknown;
+    switch (option) {
+      case "repo":
+        expected = expectedRepo;
+        actual = parseGitHubRepository(options.repo!).slug.toLowerCase();
+        break;
+      case "installationId":
+        expected = setup.installationId === undefined ? undefined : String(setup.installationId);
+        actual = String(requireInstallationId(options.installationId!));
+        break;
+      case "branch":
+        expected = setup.ref;
+        actual = `refs/heads/${requireBranch(options.branch)}`;
+        break;
+      case "workflow":
+        expected = setup.workflowPath;
+        actual = options.workflow;
+        break;
+      case "commit":
+        expected = setup.commitSha;
+        actual = requireCommitSha(options.commit!);
+        break;
+      case "githubLinkSession":
+        expected = setup.githubLinkSessionId;
+        actual = options.githubLinkSession;
+        break;
+    }
+    if (typeof expected !== "string" || !expected || expected !== actual) {
+      fail(
+        "RECOVERY_OPTION_MISMATCH",
+        `Explicit recovery option ${option} does not match the sealed operation setup.`,
+        "Omit new-source options or use the exact values recorded by the original operation; recovery cannot change its source authority.",
+      );
+    }
+  }
+}
 
 export interface ValidatedManagedDeployInput {
   appKey: string;
