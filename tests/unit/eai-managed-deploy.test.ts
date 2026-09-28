@@ -534,6 +534,10 @@ describe('EAI managed deployment helpers', () => {
       collector.indexOf('function appendOutputs('),
       collector.indexOf('\nasync function collectEvidence('),
     );
+    const commandFileBinding = collector.slice(
+      collector.indexOf('function assertCommandFileBinding('),
+      collector.indexOf('\nfunction appendOutputs('),
+    );
     expect(outputAppender).toContain(
       "Buffer.byteLength(serialized, 'utf8') >\n        MAX_GITHUB_OUTPUT_VALUE_BYTES",
     );
@@ -543,12 +547,13 @@ describe('EAI managed deployment helpers', () => {
     expect(outputAppender.indexOf('bytes.length > MAX_GITHUB_OUTPUT_TOTAL_BYTES')).toBeLessThan(
       outputAppender.indexOf('openSync('),
     );
+    expect(commandFileBinding).toContain('pathStatus.nlink !== 1');
     expect(outputAppender.match(/assertCommandFileBinding\(/g)).toHaveLength(2);
 
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '404090b974de938b368a2aea994ed296b470dd1f' },
+      candidate: { commit: 'de5a3b6049930d46d993400e33faff88f7d526f9' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);

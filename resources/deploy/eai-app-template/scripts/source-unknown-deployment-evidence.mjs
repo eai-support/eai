@@ -1770,6 +1770,7 @@ function assertCommandFileBinding(path, descriptor, openedStatus, phase) {
     descriptorStatus.ino !== openedStatus.ino ||
     pathStatus.isSymbolicLink() ||
     !pathStatus.isFile() ||
+    pathStatus.nlink !== 1 ||
     pathStatus.dev !== openedStatus.dev ||
     pathStatus.ino !== openedStatus.ino
   ) {
