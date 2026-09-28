@@ -2,7 +2,7 @@
   "schemaVersion": "eai.managed-deploy-producer-pin.v1",
   "repository": "eai-support/eai-app-template",
   "candidate": {
-    "commit": "3432b6e1ee5c66bc517a140a4a55c16c5b17eb66",
+    "commit": "56aa426b52e445d371061b529300dabe8b1abd99",
     "workflow": {
       "path": ".github/workflows/eai-app.yml",
       "sha256": "sha256:2a2d4d904546d121a5f26b9a191903afb8b5dc9e0d21857242b61701134fffc6"

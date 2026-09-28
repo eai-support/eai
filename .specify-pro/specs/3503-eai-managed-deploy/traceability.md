@@ -2,7 +2,7 @@
 
 Requirements are defined by the [Issue #3503 hardening amendment](https://github.com/enterpriseaigroup/Issues2025/issues/3503#issuecomment-5826177803).
 
-Exact app-template candidate: `3432b6e1ee5c66bc517a140a4a55c16c5b17eb66`. Its authenticated runtime-owned readiness binding supports the separate deployed qualification; The collector now independently enforces a single hard link at every archive and bounded-file read snapshot; the CLI embeds those exact bytes. The workflow bytes are unchanged. The producer publication gate remains closed until a real immutable release is recorded.
+Exact app-template candidate: `56aa426b52e445d371061b529300dabe8b1abd99`. Its authenticated runtime-owned readiness binding supports the separate deployed qualification; The collector now independently enforces a single hard link at every archive and bounded-file read snapshot; the CLI embeds those exact bytes. The workflow bytes are unchanged. The producer publication gate remains closed until a real immutable release is recorded.
 
 | Requirement               | Planned implementation                                                                                                                                                                                                                         | Owned evidence                                                                       |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
@@ -297,4 +297,26 @@ Default regional validation adds no profile-file I/O. Named init/readiness routi
 and explicit complete Gofer resources are covered by owned command/unit tests
 and the paired Installer qualifier (DTE-077, DTE-087, DTE-091). No personal gateway
 or identity defaults are introduced. POSIX snapshot proof does not qualify the
-new Windows managed-profile authority. Fresh full checks remain pending.
+new Windows managed-profile authority. Fresh source checks follow.
+
+
+29 September source qualification corrects the named-profile tenant fixture to
+create its own owner-controlled temporary home and settings. The real protected
+profile reader and API client remain exercised; the test no longer relies on
+existing operator settings. A clean temporary home first reproduced the missing
+settings failure. The final complete serialized CLI corpus passes all 57 files:
+1,389 tests and two existing documented skips in 144.19 seconds. Build, lint,
+typecheck, public hygiene, API reference checks and producer-pin verification
+pass, with all 1,140 tracked input hashes unchanged during execution. The earlier
+full attempt retaining the stale candidate assertion remains failed evidence.
+
+The exact candidate is now template
+`56aa426b52e445d371061b529300dabe8b1abd99`, whose merge from main changes only
+existing documentation relative to the prior producer candidate. Its canonical
+workflow and collector match the embedded CLI bytes and pinned digests exactly.
+The complete producer evidence corpus passes 69 tests with three existing
+Linux-specific OCI tests skipped on macOS; the two mapped runtime-readiness
+suites independently pass all 40 tests. No producer implementation, production
+routing policy, auth scope, or provider call changes in this final alignment.
+`awaiting-producer-release` remains closed, with null release tag and commit;
+source qualification does not establish native publication or the live journey.
