@@ -36,7 +36,8 @@ Commands:
   create [options] [name]      Guide a new builder through EAI setup and create
                                an application
   dev [options]                Start local development server
-  login [options]              Authenticate with Entra CIAM
+  login [options]              Authenticate with Entra CIAM using your
+                               configured sign-in directory
   logout                       Clear stored authentication tokens
   env                          Manage environment variables
   types                        Manage Object Type definitions

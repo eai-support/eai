@@ -58,7 +58,8 @@ Commands:
   create [options] [name]      Guide a new builder through EAI setup and create
                                an application
   dev [options]                Start local development server
-  login [options]              Authenticate with Entra CIAM
+  login [options]              Authenticate with Entra CIAM using your
+                               configured sign-in directory
   logout                       Clear stored authentication tokens
   env                          Manage environment variables
   types                        Manage Object Type definitions
@@ -2137,7 +2138,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E245` | `user_invite_external_service_existing_member` | workspace member invite failed, but an existing member role repair may be available. |
 | `E246` | `app_token_tenant_context_required` | App-token platform user lookup is missing workspace context. |
 | `E247` | `calling_application_not_authorized` | The application making this request is not authorized for the workspace. |
-| `E242` | `tenant_authorization_incomplete` | workspace data-plane authorization incomplete. |
+| `E242` | `tenant_authorization_incomplete` | Workspace data access authorization is incomplete. |
 | `E243` | `tenant_authorization_platform_error` | workspace app authorization could not be completed because the platform returned a server error. |
 | `E250` | `paid_upgrade_required` | workspace plan does not allow this builder operation. |
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
@@ -2262,7 +2263,7 @@ are explicitly listed, and stop when a stop condition matches.
 
 - The signed-in user can authenticate, but does not have the role required for this action.
 - The active workspace may not be the workspace where the user has the needed role.
-- The app or resource may require a tenant-admin or builder-level action.
+- The app or resource may require workspace admin or builder access.
 
 ### Diagnostics
 
@@ -2272,9 +2273,9 @@ are explicitly listed, and stop when a stop condition matches.
 ### Fixes
 
 - `eai workspace select <workspace>` (changes state) — Switch to a workspace where the user has the required role.
-- `eai user invite --email <email> --workspace <workspace-id> --role tenant-admin` (changes state) — Add or refresh a user membership and assign a workspace role when you are already tenant-admin for that workspace. Use for normal "add this person as a workspace member/admin" requests.
+- `eai user invite --email <email> --workspace <workspace-id> --role tenant-admin` (changes state) — Add or refresh a user membership and assign a workspace role when you already have workspace admin access. Use for normal "add this person as a workspace member/admin" requests.
 - `eai user roles --workspace <workspace-id> --format json` (read-only) — List assignable workspace roles before choosing a role for an invite.
-- `eai workspace bootstrap-admin --parent <parent-id> --child <child-id>` (changes state) — Repair first tenant-admin access for an immediate child workspace. Only when the target workspace is an immediate child of the supplied parent and does not already have usable tenant-admin access.
+- `eai workspace bootstrap-admin --parent <parent-id> --child <child-id>` (changes state) — Repair workspace admin access for an immediate child workspace. Only when the target workspace is an immediate child of the supplied parent and does not already have usable workspace admin access.
 
 ### Stop Conditions
 
@@ -2309,7 +2310,7 @@ are explicitly listed, and stop when a stop condition matches.
 
 ### Fixes
 
-- `eai user invite --email <email> --workspace <workspace-id> --role tenant-admin` (changes state) — Add or update a user as tenant-admin on an existing workspace. Use when the goal is to add a person to a workspace or app context.
+- `eai user invite --email <email> --workspace <workspace-id> --role tenant-admin` (changes state) — Add or update a user as a workspace admin. Use when the goal is to add a person to a workspace or app context.
 - `eai workspace bootstrap-admin --parent <direct-parent-id> --child <immediate-child-id>` (changes state) — Retry the child bootstrap repair with the direct parent and immediate child IDs. Use only for first-admin child workspace repair, not normal member management.
 
 ### Stop Conditions
@@ -2346,7 +2347,7 @@ are explicitly listed, and stop when a stop condition matches.
 
 ### Fixes
 
-- `eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json` (changes state) — Update the existing direct member to tenant-admin through the approved EAI workspace-member role endpoint. Use only after eai user list confirms the existing member ID and the user approves the role change.
+- `eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json` (changes state) — Update the direct workspace member role through the approved EAI endpoint. Use only after eai user list confirms the existing member ID and the user approves the role change.
 - `eai user invite --email <email> --workspace <workspace-id> --role <role> --format json` (changes state) — Retry the normal invite/add flow when no existing direct member is found and the failure was transient. Use only within the retry limit and after read-only diagnostics confirm the workspace and role.
 
 ### Stop Conditions
@@ -2443,7 +2444,7 @@ are explicitly listed, and stop when a stop condition matches.
 - callingApplication.clientId
 - reason code
 
-## E242: workspace data-plane authorization incomplete.
+## E242: Workspace data access authorization is incomplete.
 
 | Field | Value |
 | --- | --- |
@@ -2976,7 +2977,7 @@ Create a new workspace and bootstrap admin access.
 2. Bootstraps the current user as `tenant-admin` on the new child workspace
 3. Polls membership to confirm the workspace is usable, then auto-selects it
 4. For child workspaces, sends the parent home region by default or the explicit `--home-region` override
-5. For root workspaces, requires an explicit `--home-region` because there is no parent tenant to inherit from
+5. For root workspaces, requires an explicit `--home-region` because there is no parent workspace to inherit from
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/tenants/{parentId}/children` — create child workspace (when `--parent` is given)
@@ -3649,7 +3650,7 @@ context.
 - `<path>` — PublicAPI path. It must start with `/v4/`.
 
 **Options**:
-- `--tenant-id <tenantId>` — Use a specific tenant instead of the active workspace
+- `--tenant-id <tenant-id>` — Use a specific workspace instead of the active workspace
 - `--data <json>` — JSON request body
 - `--file <path>` — Read JSON request body from a file
 - `--param <key=value>` — Query parameter; repeat for multiple values
