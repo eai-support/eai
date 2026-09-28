@@ -87,6 +87,16 @@ export async function assertDirectoryIdentities(identities: readonly ManagedDire
   }
 }
 
+/** Never replace required no-follow/nonblocking protection with a platform-specific zero flag. */
+export function managedFileOpenFlags(capabilities: { O_NOFOLLOW?: number; O_NONBLOCK?: number } = constants): number {
+  const noFollow = capabilities.O_NOFOLLOW;
+  const nonblocking = capabilities.O_NONBLOCK;
+  if (!Number.isInteger(noFollow) || !noFollow || !Number.isInteger(nonblocking) || !nonblocking) {
+    throw new Error('Managed deployment requires no-follow and nonblocking filesystem support. Use a supported POSIX environment.');
+  }
+  return noFollow | nonblocking;
+}
+
 async function assertOpenedPrivateTarget(path: string, handle: FileHandle): Promise<void> {
   const [opened, bound] = await Promise.all([handle.stat(), lstat(path)]);
   const uid = typeof process.getuid === 'function' ? process.getuid() : null;
@@ -152,9 +162,8 @@ export async function writeBoundRegularFile(
   const before = expectedTarget ? expectedTarget.status : await assertRegularTarget(target);
   const handle = await open(
     target,
-    constants.O_WRONLY | (constants.O_NONBLOCK || 0)
-      | (before ? 0 : constants.O_CREAT | constants.O_EXCL)
-      | (constants.O_NOFOLLOW || 0),
+    constants.O_WRONLY | managedFileOpenFlags()
+      | (before ? 0 : constants.O_CREAT | constants.O_EXCL),
     mode,
   );
   try {
@@ -194,8 +203,8 @@ export async function writePrivateFileNoFollow(
   const before = await assertRegularTarget(target, true);
   const handle = await open(
     target,
-    constants.O_WRONLY | (constants.O_NONBLOCK || 0)
-      | (before ? 0 : constants.O_CREAT | constants.O_EXCL) | (constants.O_NOFOLLOW || 0),
+    constants.O_WRONLY | managedFileOpenFlags()
+      | (before ? 0 : constants.O_CREAT | constants.O_EXCL),
     0o600,
   );
   try {
@@ -226,7 +235,7 @@ export async function createPrivateFileNoFollow(path: string, content: Buffer | 
   const identities = await ensureNoLinkDirectoryPath(dirname(target), 0o700);
   const handle = await open(
     target,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0),
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | managedFileOpenFlags(),
     0o600,
   );
   try {
@@ -255,7 +264,7 @@ export async function readPrivateFileNoFollow(path: string, maxBytes = 1024 * 10
   if (before.size < 1 || before.size > maxBytes) {
     throw new Error('Managed deployment recovery file is outside its size bound.');
   }
-  const handle = await open(target, constants.O_RDONLY | (constants.O_NONBLOCK || 0) | (constants.O_NOFOLLOW || 0));
+  const handle = await open(target, constants.O_RDONLY | managedFileOpenFlags());
   try {
     await assertDirectoryIdentities(identities);
     await assertOpenedPrivateTarget(target, handle);

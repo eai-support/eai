@@ -83,12 +83,15 @@
 - [x] Retain the original project root through customer Git checks and each doctor probe; reject traversal, FIFO, no-clobber, inode, metadata and hardlink substitutions (DTE-016, DTE-036).
 - [x] Enforce the producer's bounded governed-file budgets before allocation (DTE-018, DTE-095).
 
+- [x] Reject missing no-follow/nonblocking capabilities without a zero fallback, and require source/workflow commit equality even when setup repeats the differing pair (DTE-016, DTE-032).
+
 ## Exact-head evidence
 
 Validation below applies to the 2026-09-28 readiness changes; earlier validation remains in Git history.
 
 - `npm run verify:managed-deploy-producer` passes for template candidate `4a76521abda5e6ef06209dd93ab0f0825e6a5d6c`: workflow `sha256:2a2d4d904546d121a5f26b9a191903afb8b5dc9e0d21857242b61701134fffc6`, collector `sha256:7ecd44bb468b9664d21e72431a70a8dbb24af0f13c74887529bd13cd36dbdbe5`.
-- Full repository baseline: `npm test -- --maxWorkers=2 --reporter=dot` passed 1,117 tests with two existing documented skips across 53 files. Final additive 64 KiB hash streaming and descriptor/leaf link-count regressions pass in the focused managed-deploy/source/race suite: 209 tests across four files.
+- Full repository baseline: `npm test -- --maxWorkers=2 --reporter=dot` passed 1,117 tests with two existing documented skips across 53 files. Final additive 64 KiB hash streaming and descriptor/leaf link-count regressions pass in the focused managed-deploy/source/race suite: 213 tests across four files, including the subsequent fail-closed capability and source/workflow SHA equality guards.
 - Build, lint, typecheck, public hygiene, error-guidance validation, release-doc freshness, and full CLI smoke traceability checks pass. The traceability check covers 110 CLI leaf commands (44 live rows).
+- The prior pushed head `4c67f746` passed full Ubuntu/macOS CLI CI, owned tests, docs and CodeQL. Current-head CI is checked separately. A concurrent local full run recorded two init fixture failures after a 30-second timeout; the isolated init diagnostic recorded 27 passes and a different 10-second fixture timeout. Those diagnostics remain visible and are not reclassified as passes.
 - `releaseGate.status` remains `awaiting-producer-release`, with no invented release tag or commit. `npm run release:check` deliberately stops at that publication gate.
 - Live Installer → Gofer → CLI → TEST qualification, release, activation, and customer debits are not claimed by these repository checks.

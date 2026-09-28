@@ -6,7 +6,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import inquirer from 'inquirer';
 import { buildManagedDeployConfigHash } from './eai-managed-deploy.js';
-import { isContained, writePrivateFileNoFollow } from './eai-managed-deploy-filesystem.js';
+import { isContained, managedFileOpenFlags, writePrivateFileNoFollow } from './eai-managed-deploy-filesystem.js';
 import {
   bindManagedProjectRoot,
   type ManagedProjectRootBinding,
@@ -138,7 +138,7 @@ async function readBoundedSourceFile(
   const target = join(root, path);
   const status = await lstat(target);
   if (!status.isFile() || status.isSymbolicLink() || status.nlink !== 1) throw new ManagedSourceError('SOURCE_SYMLINK_UNSUPPORTED', `Only regular source files can be published: ${path}`);
-  const handle = await open(target, constants.O_RDONLY | (constants.O_NONBLOCK || 0) | (constants.O_NOFOLLOW || 0));
+  const handle = await open(target, constants.O_RDONLY | managedFileOpenFlags());
   try {
     const actual = await handle.stat();
     if (!actual.isFile() || actual.nlink !== 1 || actual.dev !== status.dev || actual.ino !== status.ino

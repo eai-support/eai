@@ -1,3 +1,4 @@
+import { managedFileOpenFlags } from './eai-managed-deploy-filesystem.js';
 import { constants, type Stats } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { dirname, parse, relative, resolve } from 'node:path';
@@ -61,7 +62,7 @@ export async function readSourceUnknownEvidenceFile(
     throw new Error(`Workflow evidence must contain 1 to ${maxBytes} bytes.`);
   }
 
-  const handle = await open(resolvedPath, constants.O_RDONLY | (constants.O_NONBLOCK || 0) | (constants.O_NOFOLLOW || 0));
+  const handle = await open(resolvedPath, constants.O_RDONLY | managedFileOpenFlags());
   try {
     const opened = await handle.stat();
     if (!opened.isFile() || !sameOpenedFile(before, opened)) {

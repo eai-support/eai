@@ -95,6 +95,7 @@ function hasCompleteSourceRevision(operation: ManagedOperationProjection): boole
     || !SHA_PATTERN.test(revision.sourceCommitSha)
     || typeof revision.commitSha !== 'string'
     || !SHA_PATTERN.test(revision.commitSha)
+    || revision.sourceCommitSha !== revision.commitSha
     || typeof revision.workflowBlobSha !== 'string'
     || !SHA_PATTERN.test(revision.workflowBlobSha)
     || typeof revision.collectorDigest !== 'string'

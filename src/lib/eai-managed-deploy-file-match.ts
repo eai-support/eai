@@ -2,6 +2,7 @@ import { constants, type Stats } from 'node:fs';
 import { lstat, open, readFile, type FileHandle } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import {
+  managedFileOpenFlags,
   assertDirectoryIdentities,
   assertOpenedRegularTarget,
   snapshotNoLinkDirectoryPath,
@@ -29,7 +30,7 @@ export async function fileMatches(
   await rootBinding?.assert();
   let handle: FileHandle;
   try {
-    handle = await open(target, constants.O_RDONLY | (constants.O_NONBLOCK || 0) | (constants.O_NOFOLLOW || 0));
+    handle = await open(target, constants.O_RDONLY | managedFileOpenFlags());
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ELOOP') {
       throw new Error('Managed deployment refused an untrusted file.', { cause: error });

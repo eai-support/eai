@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'vitest';
+import { managedFileOpenFlags } from '../../src/lib/eai-managed-deploy-filesystem.js';
 import { chmod, lstat, link, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -55,6 +56,17 @@ const producerPinVerifier = requireFromTest(
 };
 
 describe('EAI managed deployment helpers', () => {
+  test.each([{ O_NOFOLLOW: undefined, O_NONBLOCK: 2048 }, { O_NOFOLLOW: 0, O_NONBLOCK: 2048 }, { O_NOFOLLOW: 256, O_NONBLOCK: undefined }])('fails closed when a required filesystem capability is absent: %j', capabilities => {
+    expect(() => managedFileOpenFlags(capabilities)).toThrow('requires no-follow and nonblocking filesystem support');
+  });
+
+  test('never accepts differing source and workflow commits even when setup repeats the pair', () => {
+    const operation = fixtureUnifiedOperation();
+    (operation.sourceRevision as Record<string, unknown>).sourceCommitSha = 'f'.repeat(40);
+    (operation.setup as Record<string, unknown>).sourceCommitSha = 'f'.repeat(40);
+    expect(classifyManagedOperationStatus(operation)).toBe('pending');
+  });
+
   const cleanup: string[] = [];
 
   afterEach(async () => {

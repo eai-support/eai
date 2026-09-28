@@ -9,6 +9,7 @@ import {
   type CanonicalInstallResult,
 } from './eai-managed-deploy-contract.js';
 import {
+  managedFileOpenFlags,
   assertRegularTarget,
   isContained,
   prepareProjectTarget,
@@ -234,7 +235,7 @@ export async function buildManagedDeployConfigHash(projectRoot: string, existing
     if (!isContained(canonicalRoot, canonicalPath)) {
       throw new Error(`Governed configuration file resolved outside the application root: ${relativePath}`);
     }
-    const handle = await open(path, constants.O_RDONLY | (constants.O_NONBLOCK || 0) | (constants.O_NOFOLLOW || 0));
+    const handle = await open(path, constants.O_RDONLY | managedFileOpenFlags());
     try {
       const status = await handle.stat();
       if (!status.isFile() || status.nlink !== 1 || status.dev !== before.dev || status.ino !== before.ino
