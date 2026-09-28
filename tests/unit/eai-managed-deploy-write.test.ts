@@ -18,6 +18,8 @@ import { basename, join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 
 const race = vi.hoisted(() => ({
+  recoveryPath: "",
+  onRecoveryOpen: undefined as (() => Promise<void>) | undefined,
   onStageOpen: undefined as (() => Promise<void>) | undefined,
   onStageWrite: undefined as (() => Promise<void>) | undefined,
   onPublishLink: undefined as (() => Promise<void>) | undefined,
@@ -33,6 +35,11 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     ...actual,
     open: async (path: PathLike, flags: string | number, mode?: number) => {
       const handle = await actual.open(path, flags, mode);
+      if (String(path) === race.recoveryPath) {
+        const onOpen = race.onRecoveryOpen;
+        race.onRecoveryOpen = undefined;
+        await onOpen?.();
+      }
       if (basename(String(path)).startsWith(".eai-write-")) {
         race.stagePath = String(path);
         race.stageFlags = Number(flags);
@@ -73,6 +80,7 @@ import {
   writeBoundRegularFile,
   writePrivateFileNoFollow,
 } from "../../src/lib/eai-managed-deploy-filesystem.js";
+import { prepareManagedDeployStateDirectory } from "../../src/lib/eai-managed-deploy-state.js";
 import { bindManagedProjectRoot } from "../../src/lib/eai-managed-root-binding.js";
 
 const cleanup: string[] = [];
@@ -90,6 +98,8 @@ const writers = [
 ];
 
 afterEach(async () => {
+  race.recoveryPath = "";
+  race.onRecoveryOpen = undefined;
   race.onStageOpen = undefined;
   race.onStageWrite = undefined;
   race.onPublishLink = undefined;
@@ -98,6 +108,22 @@ afterEach(async () => {
   race.stageFlags = 0;
   race.stageMode = 0;
   await Promise.all(cleanup.splice(0).map(path => rm(path, { recursive: true, force: true })));
+});
+
+test("recovery permissions never modify a directory substituted after descriptor opening", async () => {
+  const work = await realpath(await mkdtemp(join(tmpdir(), "managed-recovery-permission-race-")));
+  cleanup.push(work);
+  const recovery = join(work, "recovery");
+  const previous = join(work, "original-recovery");
+  await mkdir(recovery, { mode: 0o750 });
+  race.recoveryPath = recovery;
+  race.onRecoveryOpen = async () => {
+    await rename(recovery, previous);
+    await mkdir(recovery, { mode: 0o750 });
+  };
+  await expect(prepareManagedDeployStateDirectory(recovery)).rejects.toThrow("changed before permission update");
+  expect((await lstat(recovery)).mode & 0o777).toBe(0o750);
+  expect((await lstat(previous)).mode & 0o777).toBe(0o750);
 });
 
 async function fixture(mode: number): Promise<{ work: string; root: string; parent: string; target: string }> {

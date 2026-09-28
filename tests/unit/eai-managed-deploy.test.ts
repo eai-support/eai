@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'vitest';
+import { prepareManagedDeployStateDirectory } from '../../src/lib/eai-managed-deploy-state.js';
 import { managedFileOpenFlags } from '../../src/lib/eai-managed-deploy-filesystem.js';
 import { chmod, lstat, link, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -299,6 +300,27 @@ describe('EAI managed deployment helpers', () => {
     await chmod(directory, 0o777);
     await expect(saveManagedDeployState(fixtureState(), directory)).rejects.toThrow('untrusted directory');
     expect((await stat(directory)).mode & 0o777).toBe(0o777);
+  });
+
+  test.each(['existing', 'missing'])('rejects shared custom recovery ancestors before creation or chmod: %s', async kind => {
+    const root = await temporaryDirectory('eai-managed-state-ancestor-');
+    const shared = join(root, 'shared');
+    const directory = join(shared, 'state');
+    await mkdir(shared, { mode: 0o700 });
+    if (kind === 'existing') await mkdir(directory, { mode: 0o750 });
+    await chmod(shared, 0o770);
+    await expect(prepareManagedDeployStateDirectory(directory)).rejects.toThrow('untrusted directory ancestor');
+    expect((await stat(shared)).mode & 0o777).toBe(0o770);
+    if (kind === 'existing') expect((await stat(directory)).mode & 0o777).toBe(0o750);
+    else await expect(lstat(directory)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  test('rejects a custom recovery root passing through a linked ancestor', async () => {
+    const root = await temporaryDirectory('eai-managed-state-parent-link-');
+    const outside = await temporaryDirectory('eai-managed-state-parent-outside-');
+    await symlink(outside, join(root, 'alias'), 'dir');
+    await expect(prepareManagedDeployStateDirectory(join(root, 'alias', 'state'))).rejects.toThrow('linked evidence directory');
+    expect(await readdir(outside)).toEqual([]);
   });
 
   test('takes one durable dispatch claim across concurrent clients and process restarts', async () => {

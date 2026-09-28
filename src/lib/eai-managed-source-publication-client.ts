@@ -189,13 +189,13 @@ async function uploadCliManagedSource(
   } catch {
     throw new ManagedSourceError(
       "MANAGED_SOURCE_UPLOAD_UNCERTAIN",
-      `Source upload response was lost. Resume ${prepared.operationId}; do not create a second publication or use a customer GitHub token.`,
+      `Source upload response was lost. Use --retry ${prepared.operationId} to load the protected original endpoint and inspect the same publication; do not create a second publication or use a customer GitHub token.`,
     );
   }
   if (!response.ok) {
     throw new ManagedSourceError(
       "MANAGED_SOURCE_UPLOAD_FAILED",
-      `Source upload returned ${response.status}. Resume ${prepared.operationId} to inspect its authoritative status before retrying.`,
+      `Source upload returned ${response.status}. Use --retry ${prepared.operationId} to load the protected original endpoint and inspect its authoritative status.`,
     );
   }
   return validateCliManagedSourceOperation(

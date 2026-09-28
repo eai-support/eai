@@ -368,7 +368,7 @@ describe('managed publication authority and readiness', () => {
     vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
     vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('lost response'));
-    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({ code: 'MANAGED_SOURCE_UPLOAD_UNCERTAIN', message: expect.stringContaining('cli-managed-source-123') });
+    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({ code: 'MANAGED_SOURCE_UPLOAD_UNCERTAIN', message: expect.stringContaining('--retry cli-managed-source-123') });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

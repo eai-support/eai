@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { chmod } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
   managedDeployNonceSha256,
@@ -15,9 +16,12 @@ import {
   type ManagedDispatchClaim,
 } from './eai-managed-deploy-contract.js';
 import {
+  assertDirectoryIdentities,
   assertTrustedDirectory,
   createPrivateFileNoFollow,
   ensureDirectory,
+  managedFileOpenFlags,
+  snapshotNoLinkDirectoryPath,
   readPrivateFileNoFollow,
   writePrivateFileNoFollow,
 } from './eai-managed-deploy-filesystem.js';
@@ -56,15 +60,45 @@ function validateManagedDeployState(state: ManagedDeployState): void {
   requireManagedPublicApiUrl(state.publicApiUrl);
 }
 
-/** Reject shared writable parents before enforcing owner-only recovery-directory permissions. */
+/** Reject shared writable ancestors before creating or securing recovery authority. */
 export async function prepareManagedDeployStateDirectory(baseDir?: string): Promise<void> {
+  const directory = baseDir ?? join(homedir(), '.eai', 'managed-deployments');
+  if (!isAbsolute(directory) || resolve(directory) !== directory) {
+    throw new Error('Managed deployment refused an untrusted directory path.');
+  }
+  const parents = await snapshotNoLinkDirectoryPath(baseDir ? dirname(directory) : homedir());
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  for (const parent of parents) {
+    const status = await lstat(parent.systemAliasTarget?.path ?? parent.path);
+    // A root-owned sticky temporary parent cannot rename another user's private child.
+    const systemTemporaryParent = status.uid === 0 && (status.mode & 0o1000) !== 0;
+    if (process.platform !== 'win32' && (
+      (status.uid !== 0 && uid !== null && status.uid !== uid)
+      || ((status.mode & 0o022) !== 0 && !systemTemporaryParent)
+    )) {
+      throw new Error('Managed deployment refused an untrusted directory ancestor.');
+    }
+  }
+  await assertDirectoryIdentities(parents);
   if (!baseDir) {
     await assertTrustedDirectory(homedir());
     await ensureDirectory(join(homedir(), '.eai'), 0o700);
+    parents.push(...await snapshotNoLinkDirectoryPath(dirname(directory)));
   }
-  const directory = baseDir ?? join(homedir(), '.eai', 'managed-deployments');
   await ensureDirectory(directory, 0o700);
-  await chmod(directory, 0o700);
+  const handle = await open(directory, constants.O_RDONLY | managedFileOpenFlags());
+  try {
+    await assertDirectoryIdentities(parents);
+    await assertTrustedDirectory(directory);
+    const [opened, current] = await Promise.all([handle.stat(), lstat(directory)]);
+    if (!opened.isDirectory() || opened.dev !== current.dev || opened.ino !== current.ino) {
+      throw new Error('Managed deployment recovery directory changed before permission update.');
+    }
+    if ((opened.mode & 0o777) !== 0o700) await handle.chmod(0o700);
+    await assertDirectoryIdentities(parents);
+  } finally {
+    await handle.close();
+  }
 }
 
 /** Persist retry authority with owner-only directory and file permissions. */
