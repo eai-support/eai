@@ -26,7 +26,7 @@ function parseCallbackPort(value: string | undefined): number | undefined {
 }
 
 export const loginCommand = new Command('login')
-  .description('Authenticate with Entra CIAM')
+  .description('Authenticate with Entra CIAM using your configured sign-in directory')
   .option('--tenant-name <name>', 'CIAM tenant name')
   .option('--tenant-id <id>', 'CIAM tenant ID')
   .option('--scope <scope>', 'OAuth scopes')
@@ -70,7 +70,7 @@ What happens next:
     if (profile !== 'default') {
       out.info(`Profile: ${chalk.cyan(profile)}`);
     }
-    out.info(`Identity tenant: ${chalk.cyan(tenantName)}`);
+    out.info(`Sign-in directory: ${chalk.cyan(tenantName)}`);
     out.info('Opening your browser to complete sign-in...');
 
     try {

@@ -89,7 +89,7 @@ catalog:
       - 'eai workspace select <workspace-slug-or-id> when the active workspace is wrong'
       - 'Confirm the callback route from the failing browser log in the active session; record only a redacted pattern such as https://<app-host>/api/auth/callback/...'
       - 'eai provision entra --force --redirect-uri <confirmed-callback-uri>'
-      - 'Use --debug only with explicit user approval, and redact private hostnames, workspace IDs, client IDs, tokens, and raw debug output before writing artifacts'
+      - 'Use --debug only with explicit user approval, and redact private hostnames, workspace IDs, Entra/CIAM authority tenant IDs, client IDs, tokens, and raw debug output before writing artifacts'
       - 'Retry the sign-in flow and confirm the authorize request now uses the registered redirect_uri'
       - 'If mismatch persists, align AUTH_ENTRA_CLIENT_ID or ENTRA_CLIENT_ID with the Entra app registration returned by EAI'
     nextGate: entra_redirect_registered

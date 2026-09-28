@@ -306,7 +306,7 @@ eai provision entra --force --redirect-uri <confirmed-callback-uri>
 ```
 
 Use `--debug` only when the user explicitly approves it, and redact private
-hostnames, workspace IDs, client IDs, tokens, and raw debug output before writing
+hostnames, workspace IDs, Entra/CIAM authority tenant IDs, client IDs, tokens, and raw debug output before writing
 any report.
 
 After the command succeeds, retry the sign-in flow and confirm the authorize

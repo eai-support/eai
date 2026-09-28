@@ -549,7 +549,7 @@ function buildEaiRepoContractSection(projectInfo) {
 - This repo is not confirmed as EAI-initialized yet. Before any Gofer pipeline work, run \`eai whoami\`.
 - If \`eai\` is missing, login fails, the token is expired, or no active workspace is visible, run \`/gofer:eai-first-run\` before building.
 - Build on EAI Platform first and Azure second. Treat non-EAI runtimes as explicit exceptions only.
-- Do not write tokens, secrets, private workspace IDs, or local \`.env\` values into Gofer artifacts.`;
+- Do not write tokens, secrets, private workspace IDs, Entra/CIAM authority tenant IDs, or local \`.env\` values into Gofer artifacts.`;
   }
 
   return `## EAI Repo Contract

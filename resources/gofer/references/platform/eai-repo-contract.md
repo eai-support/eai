@@ -128,10 +128,11 @@ and `eai workspace list --format json`, select the correct workspace if needed, 
 run the advertised equivalent of
 `eai provision entra --force --redirect-uri <confirmed-callback-uri>`. Record
 only a redacted callback route in Gofer artifacts. Use `--debug` only with
-explicit user approval, and redact private hostnames, workspace IDs, client IDs,
-tokens, and raw debug output before writing artifacts. Use Azure Portal edits
-only when the installed EAI CLI does not advertise an Entra provisioning path or
-the CLI reports an operator-only block.
+explicit user approval, and redact private hostnames, private workspace/platform
+tenant IDs, Entra/CIAM authority tenant IDs, client IDs, tokens, and raw debug
+output before writing artifacts. Use Azure Portal edits only when the installed
+EAI CLI does not advertise an Entra provisioning path or the CLI reports an
+operator-only block.
 
 ## Privacy And Safety
 

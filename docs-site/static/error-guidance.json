@@ -242,7 +242,7 @@
       "why": [
         "The signed-in user can authenticate, but does not have the role required for this action.",
         "The active workspace may not be the workspace where the user has the needed role.",
-        "The app or resource may require a tenant-admin or builder-level action."
+        "The app or resource may require workspace admin or builder access."
       ],
       "evidenceToCheck": [
         "Active workspace in eai whoami.",
@@ -269,7 +269,7 @@
         },
         {
           "command": "eai user invite --email <email> --workspace <workspace-id> --role tenant-admin",
-          "purpose": "Add or refresh a user membership and assign a workspace role when you are already tenant-admin for that workspace.",
+          "purpose": "Add or refresh a user membership and assign a workspace role when you already have workspace admin access.",
           "mutates": true,
           "when": "Use for normal \"add this person as a workspace member/admin\" requests."
         },
@@ -280,9 +280,9 @@
         },
         {
           "command": "eai workspace bootstrap-admin --parent <parent-id> --child <child-id>",
-          "purpose": "Repair first tenant-admin access for an immediate child workspace.",
+          "purpose": "Repair workspace admin access for an immediate child workspace.",
           "mutates": true,
-          "when": "Only when the target workspace is an immediate child of the supplied parent and does not already have usable tenant-admin access."
+          "when": "Only when the target workspace is an immediate child of the supplied parent and does not already have usable workspace admin access."
         }
       ],
       "retry": {
@@ -351,7 +351,7 @@
       "fixes": [
         {
           "command": "eai user invite --email <email> --workspace <workspace-id> --role tenant-admin",
-          "purpose": "Add or update a user as tenant-admin on an existing workspace.",
+          "purpose": "Add or update a user as a workspace admin.",
           "mutates": true,
           "when": "Use when the goal is to add a person to a workspace or app context."
         },
@@ -431,7 +431,7 @@
       "fixes": [
         {
           "command": "eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json",
-          "purpose": "Update the existing direct member to tenant-admin through the approved EAI workspace-member role endpoint.",
+          "purpose": "Update the direct workspace member role through the approved EAI endpoint.",
           "mutates": true,
           "when": "Use only after eai user list confirms the existing member ID and the user approves the role change."
         },
@@ -645,7 +645,7 @@
     {
       "code": "E242",
       "reasonCode": "tenant_authorization_incomplete",
-      "title": "workspace data-plane authorization incomplete.",
+      "title": "Workspace data access authorization is incomplete.",
       "category": "app_provisioning",
       "severity": "error",
       "appliesTo": [
@@ -941,12 +941,12 @@
           "mutates": false
         },
         {
-          "command": "eai types validate --workspace-key <key> --tenant-id <tenant-id>",
+          "command": "eai types validate --tenant-key <key> --tenant-id <workspace-id>",
           "purpose": "Validate source names, slugs, relationships, and storage metadata without publishing.",
           "mutates": false
         },
         {
-          "command": "eai types seed --workspace-key <key> --tenant-id <tenant-id> --dry-run --format json",
+          "command": "eai types seed --tenant-key <key> --tenant-id <workspace-id> --dry-run --format json",
           "purpose": "Confirm the CLI can load the intended workspace scope without changing platform state.",
           "mutates": false
         }
@@ -959,7 +959,7 @@
           "when": "Run when eai update --check reports an older CLI."
         },
         {
-          "command": "eai types seed --workspace-key <key> --tenant-id <tenant-id> --format json",
+          "command": "eai types seed --tenant-key <key> --tenant-id <workspace-id> --format json",
           "purpose": "Publish once through the maintained compatibility adapter.",
           "mutates": true,
           "when": "Run after update and local validation succeed."

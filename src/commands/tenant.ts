@@ -390,7 +390,7 @@ tenantCommand
     `
 Examples:
   $ eai workspace list
-  $ eai workspace list --parent <tenant-id> # show the child hierarchy for a parent
+  $ eai workspace list --parent <workspace-id> # show the child hierarchy for a parent workspace
   $ eai workspace list --all              # include tenant-viewer / tenant-builder memberships
   $ eai workspace list --debug
   $ eai workspace list --debug --raw-user

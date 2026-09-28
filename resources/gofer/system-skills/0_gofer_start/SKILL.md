@@ -72,7 +72,7 @@ Before any Gofer stage/helper command does pipeline work:
    tasks, implementation, or validation until
    `.specify/specs/{feature}/eai-preflight.md` records login, workspace, template,
    app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private workspace IDs, or local `.env` values into
+5. Do not write tokens, secrets, private workspace IDs, Entra/CIAM authority tenant IDs, or local `.env` values into
    Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## EAI App Delivery Preflight
@@ -260,7 +260,7 @@ with an unrelated non-EAI stack.
    - Use the EAI scenario library to map the business problem to the common
      four-step pattern: capture demand/context, prepare the decision, execute
      and collaborate, then resolve/explain/improve.
-   - Keep private workspace IDs, tokens, secrets, and `.env.local` contents out of
+   - Keep private workspace IDs, Entra/CIAM authority tenant IDs, tokens, secrets, and `.env.local` contents out of
      Gofer artifacts. Record only product-safe readiness states and evidence.
    - Treat `.specify/references/platform/eai-repo-contract.md` and
      `.specify/references/platform/eai-error-catalog.yaml` as the repo-owned
@@ -275,7 +275,7 @@ with an unrelated non-EAI stack.
      selection, and `eai provision entra --force --redirect-uri
      <confirmed-callback-uri>` before suggesting manual Azure Portal edits. Use
      `--debug` only when the user approves it, and redact private hostnames,
-     workspace IDs, client IDs, and tokens before writing artifacts.
+     workspace IDs, Entra/CIAM authority tenant IDs, client IDs, and tokens before writing artifacts.
 
 ### EAI Preflight Artifact
 
@@ -292,7 +292,7 @@ For EAI app delivery, create or update
 | Template readiness | Already EAI template / needs `eai init` / non-EAI repo decision |
 | Drift readiness | `eai template check` / `eai gofer refresh --check` result or `E001` explanation |
 | App enrollment | Existing app, new app to create, or blocked pending user confirmation |
-| Entra redirect readiness | Redacted callback route pattern, Entra directory/client alignment state, and `AADSTS50011` recovery status. Never write exact private URLs, workspace IDs, client IDs, tokens, or debug output to committed artifacts. |
+| Entra redirect readiness | Redacted callback route pattern, Entra directory/client alignment state, and `AADSTS50011` recovery status. Never write exact private URLs, workspace IDs, Entra/CIAM authority tenant IDs, client IDs, tokens, or debug output to committed artifacts. |
 | Block catalog readiness | Available block commands and package profile compatibility evidence |
 | App stack policy | EAI Platform including app template first, Azure second, or approved exception |
 | Next action | Continue discovery, initialize template, request account/workspace access, or stop |

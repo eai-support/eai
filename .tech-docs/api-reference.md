@@ -179,7 +179,7 @@ Create a new workspace and bootstrap admin access.
 2. Bootstraps the current user as `tenant-admin` on the new child workspace
 3. Polls membership to confirm the workspace is usable, then auto-selects it
 4. For child workspaces, sends the parent home region by default or the explicit `--home-region` override
-5. For root workspaces, requires an explicit `--home-region` because there is no parent tenant to inherit from
+5. For root workspaces, requires an explicit `--home-region` because there is no parent workspace to inherit from
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/tenants/{parentId}/children` — create child workspace (when `--parent` is given)
@@ -852,7 +852,7 @@ context.
 - `<path>` — PublicAPI path. It must start with `/v4/`.
 
 **Options**:
-- `--tenant-id <tenantId>` — Use a specific tenant instead of the active workspace
+- `--tenant-id <tenant-id>` — Use a specific workspace instead of the active workspace
 - `--data <json>` — JSON request body
 - `--file <path>` — Read JSON request body from a file
 - `--param <key=value>` — Query parameter; repeat for multiple values

@@ -116,6 +116,7 @@ describe('eai login', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Authenticate with Entra CIAM');
+    expect(result.stdout).toContain('sign-in directory');
     expect(result.stdout).toContain('--callback-port');
     expect(result.stdout).not.toContain('--client-id');
     expect(result.stdout).not.toContain('--redirect-uri');

@@ -22,8 +22,9 @@ source_inputs:
 ## Branding And Presentation
 
 Apply only approved brand profile values. Do not include private screenshots,
-workspace identifiers, secret names, customer-confidential diagrams, or unapproved
-logos in CISO/Risk materials.
+workspace identifiers, platform tenant identifiers, Entra/CIAM authority tenant
+identifiers, secret names, customer-confidential diagrams, or unapproved logos
+in CISO/Risk materials.
 
 ## Security Posture
 

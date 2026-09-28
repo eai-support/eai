@@ -509,7 +509,7 @@ Before any Gofer stage/helper command does pipeline work:
 2. Run \`eai whoami\` and confirm the EAI CLI is installed, the user is logged in, and an active workspace is visible.
 3. If \`eai\` is missing, \`eai whoami\` fails, the token is expired, or no active workspace is available, stop and run \`/gofer:eai-first-run\` or ask the user to approve login/setup before continuing.
 4. For EAI app delivery, do not continue into research, specification, planning, tasks, implementation, or validation until \`.specify/specs/{feature}/eai-preflight.md\` records login, workspace, template, app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private workspace IDs, or local \`.env\` values into Gofer artifacts; record only product-safe readiness status and evidence.
+5. Do not write tokens, secrets, private workspace IDs, Entra/CIAM authority tenant IDs, or local \`.env\` values into Gofer artifacts; record only product-safe readiness status and evidence.
 `.trim();
 }
 

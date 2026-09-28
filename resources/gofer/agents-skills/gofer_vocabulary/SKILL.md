@@ -57,7 +57,7 @@ Before any Gofer stage/helper command does pipeline work:
    tasks, implementation, or validation until
    `.specify/specs/{feature}/eai-preflight.md` records login, workspace, template,
    app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private workspace IDs, or local `.env` values into
+5. Do not write tokens, secrets, private workspace IDs, Entra/CIAM authority tenant IDs, or local `.env` values into
    Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy

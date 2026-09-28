@@ -81,5 +81,6 @@ and workspace, confirm the callback URI from the failing authorize request in th
 active session, then run the advertised
 `eai provision entra --force --redirect-uri <confirmed-callback-uri>` path and
 retry sign-in. Record only a redacted callback route in Gofer artifacts. Use
-`--debug` only with explicit user approval, and redact private hostnames, workspace
-IDs, client IDs, tokens, and raw debug output before writing artifacts.
+`--debug` only with explicit user approval, and redact private hostnames, private
+workspace/platform tenant IDs, Entra/CIAM authority tenant IDs, client IDs,
+tokens, and raw debug output before writing artifacts.
