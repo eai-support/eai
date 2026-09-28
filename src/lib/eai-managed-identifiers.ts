@@ -2,6 +2,8 @@ export const MANAGED_DEPLOYMENT_IDENTIFIER_PATTERN =
   /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 export const MANAGED_SCOPE_IDENTIFIER_PATTERN =
   /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+/** AdminAPI's CLI publication namespace; the sealed source mode remains routing authority. */
+export const CLI_MANAGED_SOURCE_OPERATION_ID = /^cli-managed-[a-f0-9]{32}$/;
 
 /** Return true only for one bounded opaque managed-deployment path segment. */
 export function isManagedDeploymentIdentifier(value: unknown): value is string {

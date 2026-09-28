@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import { PlatformAPIClient, readManagedPublicResponseText } from "./api.js";
 import { ManagedSourceError } from "./eai-managed-source.js";
+import { CLI_MANAGED_SOURCE_OPERATION_ID } from "./eai-managed-identifiers.js";
 import type {
   CliManagedSourceOperation,
   CliManagedSourceScope,
 } from "./eai-managed-source-client-types.js";
-
-const CLI_MANAGED_SOURCE_OPERATION_ID = /^cli-managed-[a-f0-9]{32}$/;
 
 export interface ExpectedCliManagedSourceOperation {
   operationId?: string;

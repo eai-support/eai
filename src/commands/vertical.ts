@@ -38,6 +38,7 @@ import * as out from '../lib/output.js';
 import { readSourceUnknownEvidenceFile } from '../lib/source-unknown-evidence-file.js';
 import { requireManagedPublicApiUrl } from '../lib/managed-public-api.js';
 import {
+  CLI_MANAGED_SOURCE_OPERATION_ID,
   MANAGED_DEPLOYMENT_IDENTIFIER_PATTERN,
   requireManagedDeploymentIdentifier,
   requireManagedScopeIdentifier,
@@ -521,7 +522,8 @@ export function buildSourceUnknownWorkflowEvidenceData(
   const sha = /^[a-f0-9]{40}$/;
   const digest = /^sha256:[a-f0-9]{64}$/;
   if (body.sourceMode === 'eai-cli-generated'
-    || (typeof body.operationId === 'string' && body.operationId.startsWith('cli-managed-source-'))) {
+    || (typeof body.operationId === 'string' && (CLI_MANAGED_SOURCE_OPERATION_ID.test(body.operationId)
+      || body.operationId.startsWith('cli-managed-source-')))) {
     throw new Error('This workflow-evidence command accepts source-unknown evidence only. Use the canonical EAI managed deployment workflow for CLI-managed evidence.');
   }
   const sourceMode = body.sourceMode === undefined

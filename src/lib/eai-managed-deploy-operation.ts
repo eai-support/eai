@@ -127,6 +127,7 @@ function sourceRevisionMatchesSetup(operation: ManagedOperationProjection): bool
   const revision = record(operation.sourceRevision);
   const repo = record(setup?.repo);
   if (!setup || !revision || !repo) return false;
+  if (setup.sourceMode !== undefined && setup.sourceMode !== operation.sourceMode) return false;
   const pairs: Array<[unknown, unknown]> = [
     [repo.owner, revision.repoOwner], [repo.name, revision.repoName],
     [setup.ref, revision.branchRef], [setup.commitSha, revision.commitSha],

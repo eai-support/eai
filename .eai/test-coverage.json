@@ -222,6 +222,7 @@
             "src/lib/eai-managed-deploy*.ts",
             "src/lib/eai-managed-root-binding.ts",
             "src/lib/eai-managed-directory-identity.ts",
+            "src/lib/eai-managed-identifiers.ts",
             "src/lib/source-unknown-evidence-file.ts",
             "src/lib/context.ts",
             "src/lib/tenant-context.ts"

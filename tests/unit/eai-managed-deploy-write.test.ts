@@ -251,7 +251,7 @@ test.each(writers)("$name cannot overwrite a target appearing at exclusive publi
 });
 
 
-test.each(writers)("$name rejects a same-size staging rewrite during publication", async writer => {
+test.each(writers)("$name detects a same-UID rewrite after the final snapshot without accepting publication", async writer => {
   const { target } = await fixture(writer.mode);
   const previous = await open(target, constants.O_RDONLY);
   try {
@@ -262,6 +262,8 @@ test.each(writers)("$name rejects a same-size staging rewrite during publication
     };
     await expect(writer.write(target, updated, writer.mode)).rejects.toThrow("published file changed");
     expect(await previous.readFile("utf8")).toBe(original);
+    // A same-UID writer can mutate the inode after the last check; rejection is not a safe rollback authority.
+    expect(await readFile(target, "utf8")).toBe("x".repeat(Buffer.byteLength(updated)));
   } finally {
     await previous.close();
   }

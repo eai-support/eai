@@ -136,6 +136,24 @@ describe('EAI managed deployment helpers', () => {
     },
   );
 
+  test.each(['source-unknown', 'eai-cli-generated'])(
+    'binds a defined sealed setup mode to the terminal %s source mode', sourceMode => {
+      const operation = fixtureUnifiedOperation();
+      operation.sourceMode = sourceMode;
+      const revision = operation.sourceRevision as Record<string, unknown>;
+      revision.sourceMode = sourceMode;
+      revision.reviewHeadSha = 'a'.repeat(40);
+      const setup = operation.setup as Record<string, unknown>;
+      expect(classifyManagedOperationStatus(operation)).toBe('succeeded');
+      setup.sourceMode = sourceMode;
+      expect(classifyManagedOperationStatus(operation)).toBe('succeeded');
+      for (const crossedMode of [sourceMode === 'source-unknown' ? 'eai-cli-generated' : 'source-unknown', null, '', 'unknown']) {
+        setup.sourceMode = crossedMode;
+        expect(classifyManagedOperationStatus(operation)).toBe('pending');
+      }
+    },
+  );
+
   test('binds dispatch claims to the normalized original endpoint', async () => {
     const directory = await temporaryDirectory('managed-dispatch-origin-');
     const state = fixtureState();

@@ -137,3 +137,33 @@ against its predecessor HEAD bytes and remain separate baseline diagnostics;
 none arises from the new evidence-limit tests. Earlier failed/incomplete runs
 and the 1,208-test predecessor proof remain historical, with no widened timer,
 skip, release pin, route or authorization scope.
+
+The sealed setup mode review reproduced two terminal-success defects on af8
+(165 companion tests passed); defined mismatching, null, empty or unsupported
+setup modes now keep both source choices pending. An omitted setup mode remains
+compatible with the current producer, and matching modes preserve success. The
+legacy command already rejected a canonical CLI publication ID before tenant
+context or authentication via its source-unknown namespace check. Its early
+message now uses the same canonical pattern as publication readback/polling,
+with three real command/no-network cases for omitted and explicit source modes.
+The shared identifier file is explicitly owned by the existing feature map.
+
+The same-UID publication race test now asserts the actual target bytes as well
+as the untouched displaced original inode. A mutation inside rename after the
+final snapshot is rejected by post-publication verification, but the target
+contains the adversarial bytes; the writer does not report success or fabricate
+a safe rollback. This is the existing final-check host trust boundary, not a
+claim that path-based publication is immune to an owner-controlled namespace.
+Detected substitutions before publication continue to preserve existing target
+bytes. No writer algorithm, new filesystem read or rollback mutation is added.
+
+Current focused validation passed 228 cases across four suites. The complete
+serialized run passed 1,232 tests across all 54 files with two existing
+documented skips in 239.11 seconds, at unchanged timeout limits. Build, full
+source lint, changed legacy-command/writer test lint and exact template3432
+producer-byte verification pass. Coverage-map Prettier and untouched inline-doc
+advisories were reproduced/separated as baseline diagnostics. The previous
+1,227-pass proof and initial two-failure reproduction remain historical rather
+than being reclassified. The new guards are local comparisons with no extra
+network request, larger byte budget or wider source authority. Publication,
+immutable native producer pins and live qualification remain external gates.

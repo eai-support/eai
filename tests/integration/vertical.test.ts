@@ -1365,6 +1365,28 @@ describe('eai app', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  test.each([undefined, 'source-unknown', 'eai-cli-generated'])(
+    'rejects an actual CLI-managed operation on the legacy command before authentication: %s', async sourceMode => {
+      const evidencePath = join(env.dir, 'canonical-managed-workflow-evidence.json');
+      await writeFile(evidencePath, JSON.stringify({
+        ...workflowEvidenceFixture(),
+        operationId: `cli-managed-${'a'.repeat(32)}`,
+        ...(sourceMode ? { sourceMode } : {}),
+        targetTenantId: 'runtime-child',
+      }));
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(appCommand.parseAsync([
+        'workflow-evidence', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+        '--evidence-file', evidencePath, '--github-oidc-token', 'github-oidc-token',
+        '--format', 'json',
+      ], { from: 'user' })).rejects.toThrow('process.exit unexpectedly called');
+      expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/source-unknown (?:evidence only|namespace)/));
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
   test('rejects an unsafe workflow-evidence operation ID before tenant context or network access', async () => {
     await seedLoggedInTenant();
     const evidencePath = join(env.dir, 'unsafe-workflow-evidence.json');
