@@ -741,7 +741,7 @@ describe('eai deploy app --target eai', () => {
     await writeFile(ghPath, `#!/bin/sh
 printf '%s\\n' "$*" >> "$FAKE_GH_LOG"
 if [ "$1 $2" = "repo view" ]; then
-  printf '{"viewerPermission":"WRITE","isArchived":false}\\n'
+  printf '{"viewerPermission":"WRITE","isArchived":false,"isPrivate":true}\\n'
 elif [ "$1 $2" = "api user" ]; then
   printf '{"id":123,"login":"linked-user"}\\n'
 elif [ "$1" = "api" ]; then

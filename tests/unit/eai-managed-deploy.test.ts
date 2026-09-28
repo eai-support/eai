@@ -241,6 +241,11 @@ describe('EAI managed deployment helpers', () => {
     const outside = await temporaryDirectory('eai-workflow-evidence-outside-');
     await writeFile(evidence, '{"status":"passed"}\n');
     expect(await readSourceUnknownEvidenceFile(evidence)).toBe('{"status":"passed"}\n');
+    const evidenceAlias = join(outside, 'evidence-alias.json');
+    await link(evidence, evidenceAlias);
+    await expect(readSourceUnknownEvidenceFile(evidence)).rejects.toThrow('no-follow regular file');
+    await rm(evidenceAlias);
+    expect(await readSourceUnknownEvidenceFile(evidence)).toBe('{"status":"passed"}\n');
 
     await writeFile(target, '{"status":"swapped"}\n');
     await rm(evidence);
@@ -968,6 +973,21 @@ describe('EAI managed deployment helpers', () => {
     expect(managedDeployPollDelayMs(1, 750)).toBe(750);
   });
 
+  test.each([false, undefined, null, 'true'])('rejects unverified private GitHub visibility %s', async (isPrivate) => {
+    const expectedSha = 'a'.repeat(40);
+    const runner = async (_command: string, args: string[]): Promise<string> => {
+      if (args[0] === 'auth') return '';
+      if (args[0] === 'repo') {
+        expect(args).toContain('viewerPermission,isArchived,isPrivate');
+        return JSON.stringify({ viewerPermission: 'WRITE', isArchived: false, isPrivate });
+      }
+      return JSON.stringify({ object: { sha: expectedSha } });
+    };
+    await expect(verifyGitHubAccess('enterprise/app', 'main', expectedSha, runner)).rejects.toMatchObject({
+      code: 'GITHUB_PRIVATE_REPOSITORY_REQUIRED',
+    });
+  });
+
   test('runs independent GitHub repository and exact-ref reads concurrently after login', async () => {
     const calls: string[] = [];
     let releaseRemoteReads: (() => void) | undefined;
@@ -981,7 +1001,7 @@ describe('EAI managed deployment helpers', () => {
       if (invocation === 'auth status') return '';
       await remoteReads;
       if (invocation === 'repo view') {
-        return JSON.stringify({ viewerPermission: 'WRITE', isArchived: false });
+        return JSON.stringify({ viewerPermission: 'WRITE', isArchived: false, isPrivate: true });
       }
       if (args[0] === 'api') return JSON.stringify({ object: { sha: expectedSha } });
       throw new Error(`unexpected invocation: ${args.join(' ')}`);
@@ -1000,7 +1020,7 @@ describe('EAI managed deployment helpers', () => {
     const expectedSha = 'a'.repeat(40);
     const runner = async (_command: string, args: string[]): Promise<string> => {
       if (args[0] === 'auth') return '';
-      if (args[0] === 'repo') return JSON.stringify({ viewerPermission: 'WRITE', isArchived: false });
+      if (args[0] === 'repo') return JSON.stringify({ viewerPermission: 'WRITE', isArchived: false, isPrivate: true });
       if (args[0] === 'api' && args[1] === 'user') return JSON.stringify({ id: 999, login: 'different-user' });
       if (args[0] === 'api') return JSON.stringify({ object: { sha: expectedSha } });
       throw new Error(`unexpected invocation: ${args.join(' ')}`);

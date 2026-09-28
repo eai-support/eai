@@ -15,6 +15,7 @@ import {
 interface GitHubRepoView {
   viewerPermission?: string;
   isArchived?: boolean;
+  isPrivate?: boolean;
 }
 
 /** Authenticate first, then overlap the independent repository-policy and immutable-ref reads. */
@@ -41,7 +42,7 @@ export async function verifyGitHubAccess(
     "view",
     repo,
     "--json",
-    "viewerPermission,isArchived",
+    "viewerPermission,isArchived,isPrivate",
   ])
     .then((value) => JSON.parse(value) as GitHubRepoView)
     .catch((error: unknown) => {
@@ -86,6 +87,13 @@ export async function verifyGitHubAccess(
     actorPromise,
   ]);
 
+  if (repoView.isPrivate !== true) {
+    fail(
+      "GITHUB_PRIVATE_REPOSITORY_REQUIRED",
+      `${repo} is not verified as a private repository.`,
+      "Choose the exact private customer repository before deployment.",
+    );
+  }
   if (repoView.isArchived) {
     fail(
       "GITHUB_REPOSITORY_ARCHIVED",

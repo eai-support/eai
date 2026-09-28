@@ -98,3 +98,7 @@ Validation below applies to the 2026-09-28 readiness changes; earlier validation
 - The prior pushed head `4c67f746` passed full Ubuntu/macOS CLI CI, owned tests, docs and CodeQL. CLI head `756b2cc46e54fad1c79f98bf927222c905ce60fa` also passed those full Ubuntu/macOS and owned CI checks; the subsequent pairing-only head runs focused producer/release-metadata verification and is checked separately in CI. A concurrent local full run recorded two init fixture failures after a 30-second timeout; the isolated init diagnostic recorded 27 passes and a different 10-second fixture timeout. Those diagnostics remain visible and are not reclassified as passes.
 - `releaseGate.status` remains `awaiting-producer-release`, with no invented release tag or commit. `npm run release:check` deliberately stops at that publication gate.
 - Live Installer → Gofer → CLI → TEST qualification, release, activation, and customer debits are not claimed by these repository checks.
+
+- [x] Reject public/unverified customer repositories before registration and
+  independently enforce single-link source-unknown evidence snapshots; private
+  positives, malformed visibility and real hard-link regressions passed.

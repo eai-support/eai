@@ -55,7 +55,7 @@ export async function readSourceUnknownEvidenceFile(
   const resolvedPath = resolve(path);
   const parents = await snapshotEvidenceParents(resolvedPath);
   const before = await lstat(resolvedPath);
-  if (before.isSymbolicLink() || !before.isFile()) {
+  if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1) {
     throw new Error('Workflow evidence must be a no-follow regular file.');
   }
   if (before.size < 1 || before.size > maxBytes) {
@@ -65,7 +65,7 @@ export async function readSourceUnknownEvidenceFile(
   const handle = await open(resolvedPath, constants.O_RDONLY | managedFileOpenFlags());
   try {
     const opened = await handle.stat();
-    if (!opened.isFile() || !sameOpenedFile(before, opened)) {
+    if (!opened.isFile() || opened.nlink !== 1 || !sameOpenedFile(before, opened)) {
       throw new Error('Workflow evidence changed before its no-follow read.');
     }
     if (opened.size < 1 || opened.size > maxBytes) {
@@ -74,7 +74,7 @@ export async function readSourceUnknownEvidenceFile(
 
     await assertEvidenceParents(parents);
     const rebound = await lstat(resolvedPath);
-    if (rebound.isSymbolicLink() || !rebound.isFile() || !sameOpenedFile(opened, rebound)) {
+    if (rebound.isSymbolicLink() || !rebound.isFile() || rebound.nlink !== 1 || !sameOpenedFile(opened, rebound)) {
       throw new Error('Workflow evidence path changed before its no-follow read.');
     }
 
@@ -90,6 +90,8 @@ export async function readSourceUnknownEvidenceFile(
     const finalPath = await lstat(resolvedPath);
     if (
       offset !== opened.size ||
+      after.nlink !== 1 ||
+      finalPath.nlink !== 1 ||
       !sameOpenedFile(opened, after) ||
       after.size !== opened.size ||
       after.mtimeMs !== opened.mtimeMs ||

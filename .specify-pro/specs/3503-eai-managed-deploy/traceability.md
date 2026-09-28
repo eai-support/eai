@@ -16,3 +16,10 @@ Exact app-template candidate: `03b95d986ccc6f6adfc29b2bcae96efa78ef5742`. Its au
 | DTE-091                   | pre-context and client-boundary regional allowlists, no-redirect authenticated membership/management/app-validation setup for modern and legacy managed commands, browser origin allowlists, protected state loaded before retry traffic, unified lookup and all later retry requests bound to its original endpoint, including suppression of regional environment synchronization, plus operation-route redirect rejection | legacy-command pre-network/setup/app-validation redirect, API client, state, source-client, and deploy integration tests |
 | DTE-036, DTE-061, DTE-080 | `eai deploy doctor` operation binding, canonical declared-secret readiness probe, original-root-bound and application-root-confined opened-inode-bound evidence output, exact workflow/collector revision identity, exact positive TenantInfra handoff marker, independent setup/source revision comparison including repository/installation IDs and review head, and unified-operation deployment/doctor success binding | deploy doctor/runtime/help/describe, positive/negative TenantInfra-marker operation classifier, outside-root, root/path-race, and filesystem tests |
 | DTE-086, DTE-087          | current-main merge, focused managed command/library/source-client module boundaries under 300 lines behind compatible public paths, standard JSON failures, and exact-head checks                                                              | module-size, integration envelope, build, lint, `test:eai-cli:ci`, release preflight |
+
+Late GitHub/evidence boundary validation: 140 focused deployment unit/integration
+cases passed. Explicit private visibility is required before registration or
+dispatch; malformed visibility and a real evidence hard link are rejected.
+Build and lint passed. These checks add no GitHub/provider calls, only one field
+to the existing overlapped repository read and metadata checks on existing
+filesystem snapshots.
