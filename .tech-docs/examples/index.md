@@ -27,7 +27,7 @@ cd <app-name>
 npm install
 
 eai login
-eai tenant select <tenant-slug>
+eai workspace select <tenant-slug>
 eai types validate
 eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
 eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json

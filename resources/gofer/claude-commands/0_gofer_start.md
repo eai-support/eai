@@ -59,7 +59,7 @@ Before any Gofer stage/helper command does pipeline work:
 1. Treat durable delivery as EAI Platform delivery by default, with Azure second
    and every other stack only by explicit exception.
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
+   and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
    tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.
@@ -181,23 +181,23 @@ with an unrelated non-EAI stack.
      evidence and user approval, verify the read-back, and tell the affected
      app user to sign out and sign back in because Auth.js session or JWT role
      data may be cached.
-   - Use JSON only where the CLI advertises it. `eai tenant list --format json`
+   - Use JSON only where the CLI advertises it. `eai workspace list --format json`
      is suitable for automation; `eai whoami` may be plain text on current
      versions.
    - Record whether the installed CLI advertises `eai app`, `eai resources
      schema`, `eai workflow readiness`, `eai template check`, `eai gofer
      refresh --check`, `eai provision entra`, `eai blocks`,
      `eai agent guide`, and `eai errors explain`.
-5. **Check account, login, and tenant readiness**
-   - Run `eai whoami` to confirm login, active tenant, profile, token status,
+5. **Check account, login, and workspace readiness**
+   - Run `eai whoami` to confirm login, active workspace, profile, token status,
      and PublicAPI context.
    - If not logged in or the token is expired, run `eai login` and then
-     `eai tenant select`.
-   - Run `eai tenant list --format json` and require at least one usable tenant
+     `eai workspace select`.
+   - Run `eai workspace list --format json` and require at least one usable workspace
      membership for EAI app delivery. Prefer a `tenant-admin` membership because
      app enrollment and provisioning are tenant-admin actions.
    - If no tenant is available, tell the user they need an EAI Platform account
-     and tenant access before Gofer can build an EAI app. Do not fabricate
+     and workspace access before Gofer can build an EAI app. Do not fabricate
      tenant IDs or continue into implementation.
 6. **Check EAI template/project readiness**
    - Detect existing template markers before scaffolding:

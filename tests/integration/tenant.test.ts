@@ -168,9 +168,9 @@ describe('tenant list filtering', () => {
       tenantName: 'profile-dev-tenant',
       tenantId: 'dev-tenant-id',
     })).toEqual({
-      headline: 'No active tenant-admin memberships found for the current login.',
-      tenantContext: 'Authenticated tenant context: profile-dev-tenant (dev-tenant-id)',
-      hint: 'Use `eai whoami` to inspect the authenticated tenant context.',
+      headline: 'No active workspace admin memberships found for the current login.',
+      tenantContext: 'Authenticated workspace: profile-dev-tenant (dev-tenant-id)',
+      hint: 'Use `eai whoami` to inspect the authenticated workspace.',
     });
   });
 
@@ -232,8 +232,8 @@ describe('tenant list filtering', () => {
     ]);
 
     expect(buildTenantHierarchyTreeLines(roots)).toEqual([
-      'parent - Parent Tenant [tenant-admin]',
-      '\tchild - Child Tenant [tenant-admin]',
+      'parent - Parent Tenant [workspace admin]',
+      '\tchild - Child Tenant [workspace admin]',
       '\t\tgrandchild - Grandchild Tenant [visible via parent]',
     ]);
   });
@@ -267,8 +267,8 @@ describe('tenant list filtering', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
-      'tenant-a - Tenant A [tenant-admin]',
-      '\ttenant-b - Tenant B [tenant-admin]',
+      'tenant-a - Tenant A [workspace admin]',
+      '\ttenant-b - Tenant B [workspace admin]',
     ]);
     expect(result.warnings).toEqual([]);
   });
@@ -305,8 +305,8 @@ describe('tenant list filtering', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
-      'eai - EAI [tenant-admin]',
-      '\tcompliance - Compliance [tenant-admin]',
+      'eai - EAI [workspace admin]',
+      '\tcompliance - Compliance [workspace admin]',
     ]);
     expect(result.warnings).toEqual([]);
   });
@@ -320,10 +320,10 @@ describe('tenant list filtering', () => {
 
     const promptSpy = vi.spyOn(inquirer, 'prompt').mockImplementation(async (questions: Array<Record<string, unknown>>) => {
       const [question] = questions;
-      expect(question?.message).toBe('Select the tenant to work with now');
+      expect(question?.message).toBe('Select the workspace to work with now');
       expect(question?.choices).toEqual([
-        { name: 'parent - Parent Tenant [tenant-admin]', value: 'parent-tenant', disabled: undefined },
-        { name: '\tchild - Child Tenant [tenant-admin]', value: 'child-tenant', disabled: undefined },
+        { name: 'parent - Parent Tenant [workspace admin]', value: 'parent-tenant', disabled: undefined },
+        { name: '\tchild - Child Tenant [workspace admin]', value: 'child-tenant', disabled: undefined },
       ]);
       return { tenantId: 'child-tenant' };
     });
@@ -451,7 +451,7 @@ describe('tenant list filtering', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
-      'parent - Parent Tenant [tenant-admin]',
+      'parent - Parent Tenant [workspace admin]',
       '\tchild - Child Tenant [visible via parent]',
     ]);
     expect(result.warnings).toEqual([]);
@@ -818,8 +818,8 @@ describe('tenant list filtering', () => {
     };
 
     expect(buildTenantCreateStatusMessages(outcome)).toEqual([
-      'Bootstrap: first tenant admin was provisioned for the current login.',
-      'Usable: direct tenant-admin confirmed and the new tenant was selected.',
+      'Workspace setup: admin access was added for the current login.',
+      'Ready: workspace admin access confirmed and the new workspace is selected.',
     ]);
   });
 
@@ -843,8 +843,8 @@ describe('tenant list filtering', () => {
     };
 
     expect(buildTenantCreateStatusMessages(outcome)).toEqual([
-      'Bootstrap not confirmed: CHILD_ALREADY_HAS_ADMIN: Tenant tenant-1 already has a tenant admin',
-      'Usable: not yet confirmed. The tenant exists, but direct tenant-admin membership is not visible yet.',
+      'Workspace setup was not confirmed (CHILD_ALREADY_HAS_ADMIN). The CLI will check workspace admin access before reporting readiness.',
+      'Workspace access is not confirmed. The workspace exists, but admin access is not visible yet.',
     ]);
   });
 
@@ -868,8 +868,8 @@ describe('tenant list filtering', () => {
     };
 
     expect(buildTenantCreateStatusMessages(outcome)).toEqual([
-      'Bootstrap not confirmed: TENANT_ACCESS_DENIED: User does not have access to tenant tenant-1',
-      'Usable: direct tenant-admin confirmed and the new tenant was selected.',
+      'Workspace setup was not confirmed (TENANT_ACCESS_DENIED). The CLI will check workspace admin access before reporting readiness.',
+      'Ready: workspace admin access confirmed and the new workspace is selected.',
     ]);
   });
 
@@ -884,10 +884,10 @@ describe('tenant list filtering', () => {
       status: 'bootstrapped',
       reason: null,
     })).toEqual([
-      'Bootstrap: tenant-admin access was provisioned for the target user.',
-      'Membership: child tenant membership was created.',
-      'Role: tenant-admin was assigned on the child tenant.',
-      'Usable: direct tenant-admin confirmed for the child tenant.',
+      'Workspace setup: admin access was added for the target user.',
+      'Membership: child workspace membership was created.',
+      'Role: workspace admin access was assigned on the child workspace.',
+      'Usable: workspace admin access confirmed for the child workspace.',
     ]);
 
     expect(buildTenantBootstrapAdminStatusMessages({
@@ -900,10 +900,10 @@ describe('tenant list filtering', () => {
       status: 'already-usable',
       reason: 'target_user_already_child_tenant_admin',
     })).toEqual([
-      'Bootstrap: the target user already had direct tenant-admin on the child tenant.',
-      'Membership: child tenant membership already existed or did not need creation.',
-      'Role: tenant-admin was already assigned or did not need assignment.',
-      'Usable: direct tenant-admin confirmed for the child tenant.',
+      'Workspace setup: the target user already has admin access to the child workspace.',
+      'Membership: child workspace membership already existed or did not need creation.',
+      'Role: workspace admin access was already present or did not need assignment.',
+      'Usable: workspace admin access confirmed for the child workspace.',
     ]);
   });
 
@@ -1194,7 +1194,7 @@ describe('active tenant PublicAPI env sync', () => {
         level: 'warn',
         message:
           '.env.local BASE_URL_PUBLIC_API=https://api.eu.myenterprise.ai/public ' +
-          `for active tenant homeRegion eu (was ${DEFAULT_PUBLIC_API_URL}).`,
+          `for active workspace region eu (was ${DEFAULT_PUBLIC_API_URL}).`,
       });
       expect(storeTokensSpy).toHaveBeenCalledWith(expect.objectContaining({
         activeTenantId: 'tenant-eu',

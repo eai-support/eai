@@ -1,5 +1,5 @@
 /**
- * eai app — manage tenant app/product instances under the active company tenant.
+ * eai app — manage workspace app/product instances under the active company workspace.
  *
  * The platform data contract still stores app enrollment in legacy
  * tenant-vertical-* object types. Keep the wire/data names stable here while
@@ -676,14 +676,14 @@ async function validateVerticalEnrollment(
 
 export const appCommand = new Command('app')
   .alias('vertical')
-  .description('Manage apps under the active company tenant');
+  .description('Manage apps under the active company workspace');
 
 export const verticalCommand = appCommand;
 
 verticalCommand
   .command('list')
-  .description('List apps for the active company tenant')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .description('List apps for the active company workspace')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--limit <n>', 'Items per page', '50')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -727,7 +727,7 @@ verticalCommand
 verticalCommand
   .command('delete <key>')
   .description('Permanently delete an app and every manifest-owned child')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--confirm <app-key>', 'Confirm the exact app key for automation')
   .option('--non-interactive', 'Disable prompts; requires --confirm with the exact app key', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -828,12 +828,12 @@ verticalCommand
 
 const appAuthCommand = verticalCommand
   .command('auth')
-  .description('Inspect read-only tenant authorization for an app client');
+  .description('Inspect read-only workspace authorization for an app client');
 
 appAuthCommand
   .command('status <key>')
-  .description('Inspect app registration, consent, tenant allowlist, and runtime auth mode')
-  .requiredOption('--tenant-id <id>', 'Company tenant ID to inspect')
+  .description('Inspect app registration, consent, workspace allowlist, and runtime auth mode')
+  .requiredOption('--tenant-id <id>', 'Company workspace ID to inspect')
   .requiredOption('--client-id <id>', 'Entra application client ID to inspect')
   .option('--skip-validate', 'Skip app enrollment lookup', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -868,7 +868,7 @@ client ID matches the requested app; otherwise it is reported as not observable.
     const response = await client.getTenantAuthorizedApps(tenantId);
     const payload = await readResponsePayload(response);
     if (!response.ok) {
-      spinner?.fail('Failed to read tenant authorized apps');
+      spinner?.fail('Failed to read workspace authorized apps');
       fail(isRecord(payload) && typeof payload.message === 'string'
         ? payload.message
         : `${response.status} ${response.statusText}`);
@@ -968,11 +968,11 @@ client ID matches the requested app; otherwise it is reported as not observable.
 
 verticalCommand
   .command('create <name>')
-  .description('Create an app under a company tenant')
-  .option('--tenant-id <id>', 'Main company tenant ID that owns this app')
-  .option('--parent-tenant <id>', 'Immediate parent company tenant ID for the new child company')
-  .option('--child-tenant <name>', 'Create or reuse a child company tenant display name')
-  .option('--child-tenant-slug <slug>', 'Child company tenant key')
+  .description('Create an app under a company workspace')
+  .option('--tenant-id <id>', 'Main company workspace ID that owns this app')
+  .option('--parent-tenant <id>', 'Immediate parent company workspace ID for the new child workspace')
+  .option('--child-tenant <name>', 'Create or reuse a child workspace display name')
+  .option('--child-tenant-slug <slug>', 'Child company workspace key')
   .option('--key <key>', 'Stable app key (defaults to kebab-case name)')
   .option('--template <templateKey>', 'Optional app-catalog template key')
   .option('--source <source>', 'Creation source', DEFAULT_VERTICAL_SOURCE)
@@ -1023,14 +1023,14 @@ verticalCommand
     }
 
     spinner?.succeed(`Created app ${chalk.cyan(String(data.verticalKey))}`);
-    out.info(`Main company tenant: ${chalk.cyan(companyTenantId)}`);
+    out.info(`Main company workspace: ${chalk.cyan(companyTenantId)}`);
     if (immediateParentTenantId !== companyTenantId) {
       out.info(`Immediate parent company: ${chalk.cyan(immediateParentTenantId)}`);
     }
     if (isRecord(payload) && isRecord(payload.childTenant)) {
-      out.info(`Child tenant: ${chalk.cyan(String(payload.childTenant.displayName ?? childTenantDisplayName))} · ${chalk.dim(String(payload.childTenant.id ?? ''))}`);
+      out.info(`Child workspace: ${chalk.cyan(String(payload.childTenant.displayName ?? childTenantDisplayName))} · ${chalk.dim(String(payload.childTenant.id ?? ''))}`);
     } else {
-      out.info(`App tenant: ${chalk.cyan(immediateParentTenantId)}`);
+      out.info(`App workspace: ${chalk.cyan(immediateParentTenantId)}`);
     }
   });
 
@@ -1038,7 +1038,7 @@ verticalCommand
   .command('connect-existing <key>')
   .description('Register an existing app repository for managed deployment')
   .requiredOption('--repo <owner/repo>', 'GitHub repository to connect')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--repo-url <url>', 'Repository URL when it differs from https://github.com/owner/repo')
   .option('--branch <branch>', 'Default branch', 'main')
   .option('--workflow <path>', 'GitHub Actions workflow path', '.github/workflows/eai-app.yml')
@@ -1115,7 +1115,7 @@ verticalCommand
   .description('Import an already-running app as read-only observed infrastructure')
   .requiredOption('--repo <owner/repo>', 'GitHub repository to connect')
   .requiredOption('--url <url>', 'Currently active observed app URL')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--repo-url <url>', 'Repository URL when it differs from https://github.com/owner/repo')
   .option('--environment <environment>', 'Observed deployment environment', 'production')
   .option('--branch <branch>', 'Default branch', 'main')
@@ -1197,7 +1197,7 @@ verticalCommand
 verticalCommand
   .command('workflow-setup <key>')
   .description('Issue source-unknown workflow setup operation and nonce')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--environment <environment>', 'Deployment environment to bind', 'preview')
   .option('--workflow <path>', 'GitHub Actions workflow path', '.github/workflows/eai-app.yml')
   .option('--ref <ref>', 'Approved git ref')
@@ -1279,7 +1279,7 @@ verticalCommand
   .requiredOption('--config-hash <hash>', 'Validated config hash')
   .requiredOption('--artifact-digest <digest>', 'Workflow artifact digest in sha256:<hex> form')
   .requiredOption('--image-digest <digest>', 'Immutable image digest in sha256:<hex> form')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--environment <environment>', 'Deployment environment to bind', 'preview')
   .option('--branch <branch>', 'Default branch', 'main')
   .option('--workflow <path>', 'GitHub Actions workflow path', '.github/workflows/eai-app.yml')
@@ -1362,7 +1362,7 @@ verticalCommand
   .command('deploy-source-unknown <key>')
   .description('Request a TenantInfra deployment handoff for a source-unknown app')
   .requiredOption('--operation-id <id>', 'Accepted source-unknown workflow evidence operation ID')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--environment <environment>', 'Deployment environment to bind', 'preview')
   .option('--repo <owner/name>', 'GitHub repository that produced the deployment evidence')
   .option('--workflow <path>', 'GitHub Actions workflow path')
@@ -1435,7 +1435,7 @@ verticalCommand
 verticalCommand
   .command('deploy-source-unknown-status <key>')
   .description('Read the latest source-unknown deployment handoff status')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--skip-validate', 'Skip app lookup', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -1489,7 +1489,7 @@ verticalCommand
 verticalCommand
   .command('select <key>')
   .description('Set EAI_APP_KEY in the current project .env.local')
-  .option('--tenant-id <id>', 'Validate against a specific company tenant')
+  .option('--tenant-id <id>', 'Validate against a specific company workspace')
   .option('--skip-validate', 'Skip remote lookup before writing .env.local', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -1527,7 +1527,7 @@ verticalCommand
 verticalCommand
   .command('provision <key>')
   .description('Run the platform app provisioning job')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--dry-run', 'Plan actions without applying changes', false)
   .option('--rebuild-search', 'Request search projection rebuild after provisioning', false)
@@ -1617,7 +1617,7 @@ verticalCommand
     }
 
     spinner?.succeed(options.dryRun ? 'App storage readiness plan complete' : 'App provisioning complete');
-    out.info(`App ${chalk.cyan(verticalKey)} is linked under the selected company tenant.`);
+    out.info(`App ${chalk.cyan(verticalKey)} is linked under the selected company workspace.`);
     if (isRecord(payload) && Array.isArray(payload.results)) {
       for (const result of payload.results.filter(isRecord)) {
         const objectType = typeof result.objectType === 'string' ? result.objectType : 'unknown';

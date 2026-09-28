@@ -179,7 +179,7 @@ back in because Auth.js session or JWT role data may be cached.
 Specifically note whether the installed CLI advertises the commands needed for:
 
 - app scaffolding via `eai init`
-- tenant selection via `eai tenant select`
+- workspace selection via `eai workspace select`
 - app enrollment via `eai app`
 - resource schema discovery via `eai resources schema`
 - workflow readiness via `eai workflow readiness`
@@ -196,7 +196,7 @@ Run:
 
 ```bash
 eai whoami
-eai tenant list --format json
+eai workspace list --format json
 ```
 
 If not logged in or the token is expired, ask before running:
@@ -209,13 +209,13 @@ After login, list tenants again. If more than one tenant is available, help the
 user choose the correct one and run the advertised equivalent of:
 
 ```bash
-eai tenant select <tenant-slug-or-id>
+eai workspace select <tenant-slug-or-id>
 ```
 
-Require at least one usable tenant membership before EAI app delivery. Prefer a
+Require at least one usable workspace membership before EAI app delivery. Prefer a
 tenant-admin/operator-capable role because app enrollment and provisioning are
 tenant-scoped actions. If no tenant is available, tell the user they need an EAI
-Platform account and tenant access before Gofer can build an app.
+Platform account and workspace access before Gofer can build an app.
 
 ## Step 6: Confirm Project Folder And Name
 
@@ -278,14 +278,14 @@ Do this sequence:
 
 ```bash
 eai whoami
-eai tenant list --format json
+eai workspace list --format json
 ```
 
-If the active tenant is missing or wrong, help the user choose the right tenant
+If the active workspace is missing or wrong, help the user choose the right tenant
 and run the advertised equivalent of:
 
 ```bash
-eai tenant select <tenant-slug-or-id>
+eai workspace select <tenant-slug-or-id>
 ```
 
 Use the failing browser log to confirm the callback route in the active session,

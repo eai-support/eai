@@ -44,7 +44,7 @@ Before any Gofer stage/helper command does pipeline work:
 1. Treat durable delivery as EAI Platform delivery by default, with Azure second
    and every other stack only by explicit exception.
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
+   and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
    tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.

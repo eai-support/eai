@@ -28,7 +28,7 @@ Before any Gofer stage/helper command does pipeline work:
 1. Treat durable delivery as EAI Platform delivery by default, with Azure second
    and every other stack only by explicit exception.
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
+   and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
    tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.
@@ -562,15 +562,15 @@ deploy-doctor evidence exist before any deploy command runs.
 0. **EAI readiness unblock -> `eai-preflight.md`**
    - If `{FEATURE_DIR}/eai-preflight.md` is missing, stale, or blocked, emit
      only the smallest runnable unblock tasks before normal build tasks:
-     install/update `eai`, run `eai login`, run `eai tenant select`, confirm a
-     tenant-admin membership with `eai tenant list --format json`, initialize
+     install/update `eai`, run `eai login`, run `eai workspace select`, confirm a
+     tenant-admin membership with `eai workspace list --format json`, initialize
      the EAI app template with `eai init <app-name> --skip-prompts
      --company-tenant <tenant-id>` when confirmed, and confirm app enrollment
      with `eai app list/create/select`.
    - Do not emit object-type, UI, implementation, deployment, or service-fit
      tasks until EAI readiness is `ready` or explicitly deferred by the user.
    - Never invent tenant IDs, app keys, app URLs, or platform capabilities.
-     Use `eai --describe`, public EAI docs, and the user's confirmed tenant/app
+     Use `eai --describe`, public EAI docs, and the user's confirmed workspace/app
      selection as evidence.
    - Do not emit tasks that establish a non-EAI primary runtime, database,
      hosting platform, or app framework. Non-EAI technologies can appear only as

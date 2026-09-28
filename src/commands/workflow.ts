@@ -208,10 +208,10 @@ function handleWorkflowError(err: unknown): never {
 
 workflowCommand
   .command('provision <workflow-key>')
-  .description('Provision a usecase-agnostic workflow config and bind it to a tenant app')
-  .option('--app <key>', 'Tenant app key that consumes this workflow')
+  .description('Provision a usecase-agnostic workflow config and bind it to a workspace app')
+  .option('--app <key>', 'Workspace app key that consumes this workflow')
   .option('--vertical <key>', 'Deprecated alias for --app')
-  .option('--tenant <id>', 'Tenant id to provision against (defaults to active tenant)')
+  .option('--workspace, --tenant <id>', 'Workspace ID to provision against (defaults to active workspace)')
   .option('--display-name <name>', 'Workflow display name (defaults to humanized workflow key)')
   .option('--usecase <usecase>', 'Workflow usecase namespace', 'generic')
   .option('--scope-key <scopeKey>', 'Explicit workflow scope key (defaults to <usecase>:<workflow-key>)')
@@ -219,7 +219,7 @@ workflowCommand
   .option('--stage-env <mapping>', 'Env mapping KEY=stage-id. Repeat for stage env vars.', collect, [])
   .option('--workflow-env-key <key>', 'Env key for the workflow id')
   .option('--bind-ai-runtime', 'Also create shared-ai-profile and shared-chatbot-config records for the stages', false)
-  .option('--ai-provider <integrationKey>', 'Tenant integration key for the AI provider')
+  .option('--ai-provider <integrationKey>', 'Workspace integration key for the AI provider')
   .option('--ai-model <model>', 'AI model/deployment name for the workflow runtime')
   .option('--ai-profile-key <key>', 'Reusable shared-ai-profile key (defaults to <workflow>-default-model)')
   .option('--stage-prompt <stage=prompt>', 'Prompt content for a stage. Repeat for multiple stages.', collect, [])
@@ -438,9 +438,9 @@ Examples:
 
 workflowCommand
   .command('readiness')
-  .description('Check tenant, plan, and workflow readiness for building an app')
+  .description('Check workspace, plan, and workflow readiness for building an app')
   .argument('[workflow-keys...]', 'Optional public workflow keys to include in readiness checks')
-  .option('--tenant <id>', 'Tenant id to check (defaults to active tenant)')
+  .option('--workspace, --tenant <id>', 'Workspace ID to check (defaults to active workspace)')
   .option('--format <format>', 'Output format: text or json', 'text')
   .action(async (workflowKeys: string[], options: { tenant?: string; format?: string }) => {
     const context = await resolveCommandContext({ tenantId: options.tenant });
@@ -464,7 +464,7 @@ workflowCommand
   .command('status')
   .description('Check whether a workflow key has an executable runtime binding')
   .argument('<workflow-key>', 'Public workflow key, for example strategy-monitor')
-  .option('--tenant <id>', 'Tenant id to check (defaults to active tenant)')
+  .option('--workspace, --tenant <id>', 'Workspace ID to check (defaults to active workspace)')
   .option('--format <format>', 'Output format: text or json', 'text')
   .action(async (workflowKey: string, options: { tenant?: string; format?: string }) => {
     const context = await resolveCommandContext({ tenantId: options.tenant });
@@ -482,7 +482,7 @@ workflowCommand
   .command('request')
   .description('Request an operator-assisted runtime workflow binding')
   .argument('<workflow-key>', 'Public workflow key, for example strategy-monitor')
-  .option('--tenant <id>', 'Tenant id to request for (defaults to active tenant)')
+  .option('--workspace, --tenant <id>', 'Workspace ID to request for (defaults to active workspace)')
   .option('--display-name <name>', 'Human-readable workflow display name')
   .option('--reason <reason>', 'Short reason to include for the platform operator')
   .option('--format <format>', 'Output format: text or json', 'text')

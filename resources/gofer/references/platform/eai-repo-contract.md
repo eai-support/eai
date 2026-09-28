@@ -38,7 +38,7 @@ Before app-delivery research, planning, implementation, or validation:
    - `eai --describe`
    - `eai agent guide --format json` when advertised
    - `eai whoami`
-   - `eai tenant list --format json`
+   - `eai workspace list --format json`
    - `eai provision entra` when advertised and identity setup is in scope
 5. When the repo is an EAI project, check drift before further build work:
    - `eai template check --format json`
@@ -63,7 +63,7 @@ this gate order:
 
 1. Template init or verify current template ownership
 2. Dependency install
-3. Login and tenant selection
+3. Login and workspace selection
 4. App list/create/select
 5. `eai app provision`
 6. `eai provision entra` when required
@@ -124,7 +124,7 @@ in because Auth.js session or JWT role data may be cached.
 For Entra browser sign-in failures, treat `AADSTS50011`, redirect URI mismatch
 messages, and `/api/auth/callback/microsoft-entra-id` callback errors as EAI
 identity provisioning problems first. Confirm login and tenant with `eai whoami`
-and `eai tenant list --format json`, select the correct tenant if needed, then
+and `eai workspace list --format json`, select the correct tenant if needed, then
 run the advertised equivalent of
 `eai provision entra --force --redirect-uri <confirmed-callback-uri>`. Record
 only a redacted callback route in Gofer artifacts. Use `--debug` only with

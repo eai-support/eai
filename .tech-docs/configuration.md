@@ -36,7 +36,7 @@ Configuration is loaded with this public-facing precedence:
 
 The CLI may keep local auth and tenant state on your machine after login. Treat
 that state as private and manage it through CLI commands such as `eai login`,
-`eai logout`, `eai whoami`, and `eai tenant select`.
+`eai logout`, `eai whoami`, and `eai workspace select`.
 
 ---
 
@@ -46,12 +46,12 @@ Most configuration starts with sign-in:
 
 ```bash
 eai login
-eai tenant select
+eai workspace select
 eai whoami
 ```
 
 `eai whoami` is the safest way to confirm which account and tenant the CLI is
-using. If you need to change tenant, run `eai tenant select`. If you need to
+using. If you need to change workspace, run `eai workspace select`. If you need to
 clear local sign-in state, run `eai logout`.
 
 ---
@@ -75,8 +75,8 @@ plain text today.
 Examples:
 
 ```bash
-eai tenant list --format json
-eai tenant list --simple
+eai workspace list --format json
+eai workspace list --simple
 eai doctor --no-color
 ```
 
@@ -210,7 +210,7 @@ eai whoami
 Run:
 
 ```bash
-eai tenant select
+eai workspace select
 ```
 
 **Need to clear local sign-in state?**
@@ -234,7 +234,7 @@ eai doctor
 Run a data-returning subcommand that advertises JSON output:
 
 ```bash
-eai tenant list --format json
+eai workspace list --format json
 ```
 
 ---

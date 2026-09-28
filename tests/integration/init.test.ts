@@ -658,7 +658,7 @@ describe("eai init", () => {
     expect(consoleCapture.stdout.join("\n")).toContain("Created Existing Work");
   });
 
-  test("HP003: init shows tenant hierarchy when choosing another main company tenant", async () => {
+  test("HP003: init shows workspace hierarchy when choosing another main company workspace", async () => {
     workingDirectoryIs(ctx, env.dir);
 
     const promptSpy = vi
@@ -672,11 +672,11 @@ describe("eai init", () => {
       .mockResolvedValueOnce({ mode: "other" })
       .mockImplementationOnce(async (questions: Array<Record<string, unknown>>) => {
         const [question] = questions;
-        expect(question?.message).toBe("Choose the main company tenant for this app");
+        expect(question?.message).toBe("Choose the EAI workspace for this app");
         expect(question?.choices).toEqual([
-          { name: "parent - Parent Tenant [tenant-admin]", value: "tenant-parent", disabled: undefined },
-          { name: "\tchild - Child Tenant [tenant-admin]", value: "tenant-child", disabled: undefined },
-          { name: "Other main company tenant (enter ID manually)", value: "__manual__" },
+          { name: "parent - Parent Tenant [workspace admin]", value: "tenant-parent", disabled: undefined },
+          { name: "\tchild - Child Tenant [workspace admin]", value: "tenant-child", disabled: undefined },
+          { name: "Other main company workspace (enter ID manually)", value: "__manual__" },
         ]);
         return { tenantId: "tenant-child" };
       })
@@ -1536,7 +1536,7 @@ describe("existing app selection", () => {
         { docs: [{ data: { verticalKey: "customer-portal" } }] },
         "customer-portal",
       ),
-    ).toThrow(/does not identify a runtime tenant/);
+    ).toThrow(/does not identify a runtime workspace/);
   });
 
   test("rejects duplicate exact app enrollments", () => {
@@ -1597,10 +1597,10 @@ describe("describeAppCreationFailure", () => {
       message: "Tenant admin role required for tenant tenant-123",
     });
 
-    expect(message).toContain("You need tenant-admin access to create an EAI app.");
+    expect(message).toContain("Workspace admin access is required to create this app.");
     expect(message).toContain("eai whoami");
-    expect(message).toContain("eai tenant list --all --format json");
-    expect(message).toContain("Ask the workspace tenant-admin");
+    expect(message).toContain("eai workspace list --all --format json");
+    expect(message).toContain("Ask a workspace admin");
     expect(message).toContain("https://www.enterpriseaigroup.com/docs/getting-started");
   });
 

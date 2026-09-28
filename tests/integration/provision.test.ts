@@ -903,7 +903,7 @@ describe('eai provision entra', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     const output = joinedConsoleOutput(errSpy, warnSpy);
-    expect(output).toContain('Tenant data-plane authorization incomplete');
+    expect(output).toContain('Workspace data access authorization is incomplete.');
     expect(output).toContain('tenant_authorize_status_404');
   });
 
@@ -1249,7 +1249,7 @@ describe('eai provision entra', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     const output = joinedConsoleOutput(errSpy, logSpy);
-    expect(output).toContain('Failed to resolve active tenant.');
+    expect(output).toContain('Failed to resolve the active workspace.');
     expectNoProvisionInternals(output);
     expect(output).not.toContain('tenant membership lookup failed');
   });

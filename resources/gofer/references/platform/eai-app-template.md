@@ -38,7 +38,7 @@ template for EnterpriseAI app-delivery work.
   callbacks, auth actions, analytics hooks, render props, and React nodes.
 - Use the CLI for setup and verification:
   - `eai login`
-  - `eai tenant select <tenant-slug>`
+  - `eai workspace select <tenant-slug>`
   - `eai types validate`
   - `eai types diff --tenant-key <key> --tenant-id <tenant-id>`
   - `eai types seed --tenant-key <key> --tenant-id <tenant-id>`

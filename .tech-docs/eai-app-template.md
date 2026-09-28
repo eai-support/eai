@@ -6,7 +6,7 @@ title: EAI App Template
 # EAI App Template
 
 The EAI App Template is the canonical public scaffold used by `eai init`. It is
-a Next.js app template for tenant-scoped applications on the EAI platform.
+a Next.js app template for workspace-scoped applications on the EAI platform.
 
 ## Quick Start
 
@@ -18,12 +18,12 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Then connect it to a tenant:
+Then connect it to a workspace:
 
 ```bash
 eai login
-eai tenant list --format json
-eai tenant select <tenant-slug>
+eai workspace list --format json
+eai workspace select <tenant-slug>
 eai whoami
 eai types validate
 eai types diff --tenant-key template --tenant-id <tenant-id>
@@ -35,7 +35,7 @@ eai resources schema --tenant-id <tenant-id> --format json
 
 | Path                             | Purpose                                                                         |
 | -------------------------------- | ------------------------------------------------------------------------------- |
-| `src/eai.config/default.ts`      | Default tenant config, store slices, API paths, storage keys, and layout slots. |
+| `src/eai.config/default.ts`      | Default workspace config, store slices, API paths, storage keys, and layout slots. |
 | `src/eai.config/index.ts`        | Tenant key to config registry.                                                  |
 | `src/eai.config/object-types.ts` | Object Type definitions for ResourceAPI-backed data.                            |
 | `src/eai.blocks.tsx`             | Component registry and app-local block extension point.                         |
@@ -55,7 +55,7 @@ eai resources schema --tenant-id <tenant-id> --format json
 
 ## Data Model
 
-Object Types are the contract for tenant business data. Use `postgresql` for
+Object Types are the contract for workspace business data. Use `postgresql` for
 most canonical structured resources unless another backend is clearly required.
 
 Each definition keeps a PascalCase source/model `name` and an explicit exact

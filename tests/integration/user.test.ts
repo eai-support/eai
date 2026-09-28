@@ -341,7 +341,7 @@ describe('eai user', () => {
     expect(payload.guidance.diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          command: 'eai user list --tenant <tenant-id> --search <email> --format json',
+          command: 'eai user list --workspace <workspace-id> --search <email> --format json',
           mutates: false,
         }),
       ]),
@@ -349,7 +349,7 @@ describe('eai user', () => {
     expect(payload.guidance.fixes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
+          command: 'eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json',
           mutates: true,
         }),
       ]),

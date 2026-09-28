@@ -42,8 +42,8 @@ What happens next:
   - The CLI opens your browser to sign you in.
   - With --callback-port, the CLI still uses localhost and listens on that exact port.
   - For Codespaces, run 'gh codespace ports forward -c <codespace> 3476:3476' on your local machine and keep it running while you sign in.
-  - If you only have one tenant-admin membership, it becomes active automatically.
-  - If you have more than one, run 'eai tenant select' to choose the tenant to work with.
+  - If you only have one workspace admin membership, it becomes active automatically.
+  - If you have more than one, run 'eai workspace select' to choose the workspace to work with.
   `)
   .action(async (options) => {
     const profile = getActiveProfile();
@@ -70,7 +70,7 @@ What happens next:
     if (profile !== 'default') {
       out.info(`Profile: ${chalk.cyan(profile)}`);
     }
-    out.info(`Tenant: ${chalk.cyan(tenantName)}`);
+    out.info(`Identity tenant: ${chalk.cyan(tenantName)}`);
     out.info('Opening your browser to complete sign-in...');
 
     try {
@@ -103,7 +103,7 @@ What happens next:
           publicApiUrl,
           interactive: true,
         });
-        out.info(`Active tenant: ${chalk.cyan(context.activeTenant.displayName)} ${chalk.dim(`(${context.activeTenant.slug})`)}`);
+        out.info(`Active workspace: ${chalk.cyan(context.activeTenant.displayName)} ${chalk.dim(`(${context.activeTenant.slug})`)}`);
         const notice = buildPublicApiEnvSyncNotice(context.publicApiEnvSync);
         if (notice?.level === 'warn') {
           out.warn(notice.message);
@@ -112,7 +112,7 @@ What happens next:
         }
       } catch (selectionError) {
         out.warn(selectionError instanceof Error ? selectionError.message : String(selectionError));
-        out.info(`Run ${chalk.cyan('eai tenant select')} after login to choose the tenant to work with.`);
+        out.info(`Run ${chalk.cyan('eai workspace select')} after login to choose the workspace to work with.`);
       }
     } catch (err) {
       out.error(`Login failed: ${err instanceof Error ? err.message : String(err)}`);

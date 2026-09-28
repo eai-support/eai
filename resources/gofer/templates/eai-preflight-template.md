@@ -46,7 +46,7 @@ updated: '{{iso_timestamp}}'
 | Release check             | `eai update --check`                                                                                              | {{result}}            |
 | Capability discovery      | `eai --describe`                                                                                                  | {{result}}            |
 | Login check               | `eai whoami`                                                                                                      | {{result}}            |
-| Tenant check              | `eai tenant list --format json`                                                                                   | {{result}}            |
+| Tenant check              | `eai workspace list --format json`                                                                                   | {{result}}            |
 | Project check             | `eai verify`                                                                                                      | {{result_or_not_run}} |
 | Template drift check      | `eai template check --format json`                                                                                | {{result_or_not_run}} |
 | Gofer drift check         | `eai gofer refresh --check --format json`                                                                         | {{result_or_not_run}} |

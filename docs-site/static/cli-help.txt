@@ -40,10 +40,11 @@ Commands:
   logout                       Clear stored authentication tokens
   env                          Manage environment variables
   types                        Manage Object Type definitions
-  tenant                       Manage tenants on the platform
+  workspace|tenant             Manage EAI workspaces (the tenant command remains
+                               available for compatibility)
   user                         Manage users on the platform
   resources                    CRUD operations on platform resources
-  app|vertical                 Manage apps under the active company tenant
+  app|vertical                 Manage apps under the active company workspace
   chat                         Chat with AI workflows
   workflow                     Provision app workflow configs and inspect AI
                                runtime workflow bindings
@@ -53,7 +54,7 @@ Commands:
                                contract
   verify [options]             Run platform connectivity checks
   doctor [options]             Diagnose common issues and suggest fixes
-  whoami                       Show auth status and tenant info
+  whoami                       Show auth status and workspace info
   update [options]             Check for and install CLI updates
   provision                    Provision platform resources for this app
   gofer                        Inspect and refresh Gofer-managed project assets
@@ -67,7 +68,7 @@ Commands:
   start [options] [directory]  Detect or start a supported AI workspace for an
                                EAI project
   classifier                   Create, inspect, publish, target, disable,
-                               enable, and delete tenant document classifiers
+                               enable, and delete workspace document classifiers
   help [command]               display help for command
 
 Getting Started:
@@ -84,7 +85,7 @@ Development Workflows:
   # Define your types, validate them, then publish them
   eai types validate && eai types seed
 
-  # See what is published for the active tenant
+  # See what is published for the active workspace
   eai resources schema
   eai app create "My App" --template eai-app-template
 
@@ -97,7 +98,7 @@ Development Workflows:
   eai workflow status strategy-monitor
   eai workflow request strategy-monitor --reason "CEO strategy cockpit"
 
-  # Check login, tenant, and API connectivity
+  # Check login, workspace, and API connectivity
   eai verify && eai doctor
 
 Deployment:
@@ -115,7 +116,7 @@ Deployment:
 Machine-Readable Output:
   # Get structured JSON output for automation
   eai resources list User --format json
-  eai tenant list --format json | jq
+  eai workspace list --format json | jq
   eai verify calls --format json
   eai errors explain E101 --format json
 

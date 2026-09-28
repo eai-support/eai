@@ -12,11 +12,11 @@ project.
 
 ```bash
 eai login
-eai tenant select <tenant-slug>
+eai workspace select <tenant-slug>
 eai workflow status <workflow-key> --tenant <tenant-id>
 ```
 
-Use the workflow ID from the platform tenant configuration. Store runtime values
+Use the workflow ID from the platform workspace configuration. Store runtime values
 in local or deployment environment configuration, not in committed source.
 
 ## 2. Stream Chat From A Client Component

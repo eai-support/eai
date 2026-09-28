@@ -169,7 +169,7 @@ _Example of marking unclear requirements:_
 
 - **Capability selection must happen**: after UI approval and before plan/tasks
   are considered complete
-- **Evidence sources**: [`eai --describe`, `eai whoami`, `eai tenant select`,
+- **Evidence sources**: [`eai --describe`, `eai whoami`, `eai workspace select`,
   `eai resources schema`, `eai verify calls --format json`, or approved
   equivalent]
 - **Decision states**: [accessible now | purchasable but unavailable now |

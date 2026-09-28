@@ -474,18 +474,18 @@ function hasTenantWorkflowProblem(body: unknown): string | null {
   }
   const tenants = (body as Record<string, unknown>).tenants;
   if (!tenants || typeof tenants !== 'object' || Array.isArray(tenants)) {
-    return 'Runtime config did not include a tenants object.';
+    return 'Runtime config did not include the workspace map in its tenants field.';
   }
   for (const [key, value] of Object.entries(tenants as Record<string, unknown>)) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return `Tenant key ${key} did not return an object.`;
+      return `Workspace key ${key} did not return an object.`;
     }
     const tenant = value as Record<string, unknown>;
     if (typeof tenant.tenantId !== 'string' || tenant.tenantId.trim() === '') {
       return `Tenant key ${key} is missing tenantId.`;
     }
     if (typeof tenant.workflowId !== 'string' || tenant.workflowId.trim() === '') {
-      return `Tenant key ${key} is missing workflowId.`;
+      return `Workspace key ${key} is missing workflowId.`;
     }
   }
   return null;

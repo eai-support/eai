@@ -608,16 +608,16 @@ function describeTenantResolutionSource(
     case "option":
       return "CLI override";
     case "active:tenant":
-      return "active tenant";
+      return "active workspace";
     default:
       return "unresolved";
   }
 }
 
 function explainMissingTenantId(tenantKey: string): void {
-  out.warn(`No active tenant is available for "${tenantKey}"`);
+  out.warn(`No active workspace is available for "${tenantKey}"`);
   out.info(
-    `Run ${chalk.cyan("eai login")} and ${chalk.cyan("eai tenant select")} to choose the tenant to work with, or use ${chalk.cyan(`--tenant-key ${tenantKey} --tenant-id <uuid>`)}`,
+    `Run ${chalk.cyan("eai login")} and ${chalk.cyan("eai workspace select")} to choose the workspace to work with, or use ${chalk.cyan(`--tenant-key ${tenantKey} --tenant-id <uuid>`)}`,
   );
 }
 
@@ -1626,9 +1626,9 @@ export const typesCommand = new Command("types")
 Workflow:
   1. Validate local definitions:
        eai types validate
-  2. Login and select the active tenant:
+  2. Login and select the active workspace:
        eai login
-       eai tenant select
+       eai workspace select
   3. Preview remote differences:
        eai types diff --tenant-key <key>
   4. Publish:
@@ -1644,7 +1644,7 @@ typesCommand
   .command("seed")
   .description("Push Object Types to platform")
   .option("--env <label>", "Optional deployment label for compatibility")
-  .option("--tenant-key <key>", "Specific tenant key from object-types.ts")
+  .option("--tenant-key <key>", "Workspace key from object-types.ts (the --tenant-key flag is kept for compatibility)")
   .option(
     "--tenant-id <id>",
     "Override the resolved tenant ID (use with --tenant-key)",
@@ -1693,7 +1693,7 @@ Examples:
       const tenantKeys = Object.keys(objectTypes);
       if (spinner) {
         spinner.succeed(
-          `Found ${totalTypes} types across ${tenantKeys.length} tenant scope(s): ${tenantKeys.join(", ")}`,
+          `Found ${totalTypes} types across ${tenantKeys.length} workspace scope(s): ${tenantKeys.join(", ")}`,
         );
       }
     } catch (err) {
@@ -1767,7 +1767,7 @@ Examples:
       const types = objectTypes[tenantKey];
       if (!types || types.length === 0) {
         if (options.format !== "json") {
-          out.warn(`No types for tenant key "${tenantKey}"`);
+          out.warn(`No types for workspace key "${tenantKey}"`);
         }
         continue;
       }
@@ -2205,7 +2205,7 @@ Examples:
 typesCommand
   .command("validate")
   .description("Validate Object Types against platform schema rules")
-  .option("--tenant-key <key>", "Specific tenant key from object-types.ts")
+  .option("--tenant-key <key>", "Workspace key from object-types.ts (the --tenant-key flag is kept for compatibility)")
   .option(
     "--tenant-id <id>",
     "Check app-owned storage naming for this tenant ID",
@@ -2268,7 +2268,7 @@ Examples:
     let warnings = 0;
 
     for (const [tenantKey, types] of entries) {
-      out.heading(`Tenant: ${tenantKey}`);
+      out.heading(`Workspace key: ${tenantKey}`);
 
       for (const type of types) {
         const issues: string[] = [];
@@ -2432,7 +2432,7 @@ Examples:
 typesCommand
   .command("diff")
   .description("Compare local Object Types with remote platform")
-  .option("--tenant-key <key>", "Specific tenant key from object-types.ts")
+  .option("--tenant-key <key>", "Workspace key from object-types.ts (the --tenant-key flag is kept for compatibility)")
   .option(
     "--tenant-id <id>",
     "Override the resolved tenant ID (use with --tenant-key)",
@@ -2635,7 +2635,7 @@ Examples:
 typesCommand
   .command("pull")
   .description("Download remote Object Types to local TypeScript")
-  .option("--tenant-id <id>", "platform tenant ID")
+  .option("--tenant-id <id>", "platform workspace ID")
   .option(
     "--output <path>",
     "Output file path",

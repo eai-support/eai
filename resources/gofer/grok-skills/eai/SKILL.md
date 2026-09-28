@@ -48,14 +48,14 @@ Apply these rules before any user-facing output:
 
 1. Classify the request before EAI readiness: EAI app delivery, non-application work, or ambiguous.
 2. If the request is EAI app delivery or ambiguous, continue directly into the EAI app delivery path; do not ask for confirmation just because app delivery is inferred.
-3. If the request is clearly non-app work, confirm once: **"This looks like non-app work, so I will skip EAI tenant/app setup and continue the Gofer research/docs path. Is that right?"**
-4. When the user confirms non-app, do not run `eai whoami`, tenant selection, `eai init`, or first-run setup. Record the decision and continue the appropriate Gofer research, documentation, audit, migration, or planning path.
+3. If the request is clearly non-app work, confirm once: **"This looks like non-app work, so I will skip EAI workspace/app setup and continue the Gofer research/docs path. Is that right?"**
+4. When the user confirms non-app, do not run `eai whoami`, workspace selection, `eai init`, or first-run setup. Record the decision and continue the appropriate Gofer research, documentation, audit, migration, or planning path.
 5. If the user says it is app work, switch to EAI app delivery and run EAI readiness.
 
 ## EAI Platform Readiness
 
 1. Run `eai whoami` only for EAI app delivery work or explicit EAI CLI recovery.
-2. Confirm the user is logged in, an active tenant is available, and the repo is ready for the EAI app template.
+2. Confirm the user is logged in, an active workspace is available, and the repo is ready for the EAI app template.
 3. If EAI CLI, login, tenant, or template readiness is missing for app delivery, run the first-run/setup path from `.specify/commands/gofer_eai_first_run.md` when present.
 4. After any `eai` error, run `eai errors explain <code-or-reason> --format json` when available before guessing remediation.
 5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into artifacts.

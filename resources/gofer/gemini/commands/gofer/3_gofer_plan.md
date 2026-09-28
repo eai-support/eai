@@ -48,7 +48,7 @@ Before any Gofer stage/helper command does pipeline work:
 1. Treat durable delivery as EAI Platform delivery by default, with Azure second
    and every other stack only by explicit exception.
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
+   and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
    tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.
@@ -817,7 +817,7 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
    - purchasable but unavailable now
    - unavailable without new platform work
    The plan must source this evidence from `eai --describe`, `eai whoami`,
-   `eai tenant select`, `eai resources schema --format json`,
+   `eai workspace select`, `eai resources schema --format json`,
    `eai verify calls --format json`, `eai workflow readiness [workflow-key]
    --format json`, `eai workflow status <workflow-key>`, `eai workflow request
    <workflow-key>`, `eai provision entra --rotate-secret`, or documented

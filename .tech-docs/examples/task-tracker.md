@@ -20,8 +20,8 @@ npm install
 
 ```bash
 eai login
-eai tenant list --format json
-eai tenant select <tenant-slug>
+eai workspace list --format json
+eai workspace select <tenant-slug>
 eai whoami
 ```
 

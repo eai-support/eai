@@ -71,12 +71,12 @@ export const errorGuidanceCatalog = [
     title: 'Not logged in.',
     category: 'authentication',
     severity: 'error',
-    appliesTo: ['auth', 'tenant', 'provision', 'resources', 'types', 'workflow', 'publicapi'],
+    appliesTo: ['auth', 'workspace', 'provision', 'resources', 'types', 'workflow', 'publicapi'],
     publicSafe: true,
     why: [
       'The CLI does not have a usable local sign-in token.',
       'The token may have expired or been created for a different local profile.',
-      'The command needs a user session before it can resolve tenant access.',
+      'The command needs a user session before it can resolve workspace access.',
     ],
     evidenceToCheck: [
       'eai whoami status.',
@@ -86,12 +86,12 @@ export const errorGuidanceCatalog = [
     diagnostics: [
       {
         command: 'eai whoami',
-        purpose: 'Show the current login and active tenant status.',
+        purpose: 'Show the current login and active workspace status.',
         mutates: false,
       },
       {
-        command: 'eai tenant list --format json',
-        purpose: 'Confirm tenant memberships after login succeeds.',
+        command: 'eai workspace list --format json',
+        purpose: 'Confirm workspace memberships after login succeeds.',
         mutates: false,
         when: 'After eai login succeeds.',
       },
@@ -116,8 +116,8 @@ export const errorGuidanceCatalog = [
     },
     escalation: {
       audience: 'tenant-admin',
-      neededWhen: ['Login succeeds but no expected tenant membership is visible.'],
-      include: ['signed-in email', 'CLI version', 'active profile', 'tenant list output without secrets'],
+      neededWhen: ['Login succeeds but no expected workspace membership is visible.'],
+      include: ['signed-in email', 'CLI version', 'active profile', 'workspace list output without secrets'],
     },
     safety: {
       mutatesState: true,
@@ -132,12 +132,12 @@ export const errorGuidanceCatalog = [
     title: 'Access token expired.',
     category: 'authentication',
     severity: 'error',
-    appliesTo: ['auth', 'tenant', 'provision', 'resources', 'types', 'workflow', 'publicapi'],
+    appliesTo: ['auth', 'workspace', 'provision', 'resources', 'types', 'workflow', 'publicapi'],
     publicSafe: true,
     why: [
       'The saved user session is older than the identity provider allows.',
       'The CLI cannot refresh the session silently in this environment.',
-      'The command needs a fresh user token before it can call tenant-scoped APIs.',
+      'The command needs a fresh user token before it can call workspace-scoped APIs.',
     ],
     evidenceToCheck: ['eai whoami token status.', 'Whether the active profile changed since the last login.'],
     diagnostics: [
@@ -177,62 +177,62 @@ export const errorGuidanceCatalog = [
     title: 'Permission denied.',
     category: 'authorization',
     severity: 'error',
-    appliesTo: ['tenant', 'user', 'vertical', 'provision', 'types', 'resources', 'workflow'],
+    appliesTo: ['workspace', 'user', 'vertical', 'provision', 'types', 'resources', 'workflow'],
     publicSafe: true,
     why: [
       'The signed-in user can authenticate, but does not have the role required for this action.',
-      'The active tenant may not be the tenant where the user has the needed role.',
-      'The app or resource may require a tenant-admin or builder-level action.',
+      'The active workspace may not be the workspace where the user has the needed role.',
+      'The app or resource may require workspace admin or builder access.',
     ],
     evidenceToCheck: [
-      'Active tenant in eai whoami.',
-      'Roles returned by eai tenant list --all --format json.',
+      'Active workspace in eai whoami.',
+      'Roles returned by eai workspace list --all --format json.',
       'The exact command and request ID, if the server returned one.',
     ],
     diagnostics: [
       {
         command: 'eai whoami',
-        purpose: 'Confirm the signed-in user and active tenant.',
+        purpose: 'Confirm the signed-in user and active workspace.',
         mutates: false,
       },
       {
-        command: 'eai tenant list --all --format json',
-        purpose: 'List visible tenant memberships and roles.',
+        command: 'eai workspace list --all --format json',
+        purpose: 'List visible workspace memberships and roles.',
         mutates: false,
       },
     ],
     fixes: [
       {
-        command: 'eai tenant select <tenant>',
-        purpose: 'Switch to a tenant where the user has the required role.',
+        command: 'eai workspace select <workspace>',
+        purpose: 'Switch to a workspace where the user has the required role.',
         mutates: true,
       },
       {
-        command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin',
-        purpose: 'Add or refresh a user membership and assign a tenant role when you are already tenant-admin for that tenant.',
+        command: 'eai user invite --email <email> --workspace <workspace-id> --role tenant-admin',
+        purpose: 'Add or refresh a user membership and assign a workspace role when you already have workspace admin access.',
         mutates: true,
-        when: 'Use for normal "add this person as a tenant member/admin" requests.',
+        when: 'Use for normal "add this person as a workspace member/admin" requests.',
       },
       {
-        command: 'eai user roles --tenant <tenant-id> --format json',
-        purpose: 'List assignable tenant roles before choosing a role for an invite.',
+        command: 'eai user roles --workspace <workspace-id> --format json',
+        purpose: 'List assignable workspace roles before choosing a role for an invite.',
         mutates: false,
       },
       {
-        command: 'eai tenant bootstrap-admin --parent <parent-id> --child <child-id>',
-        purpose: 'Repair first tenant-admin access for an immediate child tenant.',
+        command: 'eai workspace bootstrap-admin --parent <parent-id> --child <child-id>',
+        purpose: 'Repair workspace admin access for an immediate child workspace.',
         mutates: true,
-        when: 'Only when the target tenant is an immediate child of the supplied parent and does not already have usable tenant-admin access.',
+        when: 'Only when the target workspace is an immediate child of the supplied parent and does not already have usable workspace admin access.',
       },
     ],
     retry: {
       allowed: false,
-      stopWhen: ['The user lacks the required tenant role. Retrying will not change authorization.'],
+      stopWhen: ['The user lacks the required workspace role. Retrying will not change authorization.'],
     },
     escalation: {
       audience: 'tenant-admin',
-      neededWhen: ['No visible tenant membership has the role required by the command.'],
-      include: ['signed-in email', 'active tenant slug', 'requested command', 'request ID if present'],
+      neededWhen: ['No visible workspace membership has the role required by the command.'],
+      include: ['signed-in email', 'active workspace slug', 'requested command', 'request ID if present'],
     },
     safety: {
       mutatesState: true,
@@ -256,50 +256,50 @@ export const errorGuidanceCatalog = [
   {
     code: 'E205',
     reasonCode: 'child_relation_invalid',
-    title: 'The supplied tenant is not an immediate child of the supplied parent.',
+    title: 'The supplied workspace is not an immediate child of the supplied parent.',
     category: 'authorization',
     severity: 'error',
-    appliesTo: ['tenant.bootstrap-admin', 'user.role', 'user.invite'],
+    appliesTo: ['workspace.bootstrap-admin', 'user.role', 'user.invite'],
     publicSafe: true,
     why: [
-      'The child-tenant bootstrap command is intentionally narrow.',
-      'It only works when the parent ID is the direct parent of the child tenant.',
-      'This error often appears when an agent uses bootstrap-admin for normal user addition instead of the tenant member invite flow.',
+      'The child-workspace bootstrap command is intentionally narrow.',
+      'It only works when the parent ID is the direct parent of the child workspace.',
+      'This error often appears when an agent uses bootstrap-admin for normal user addition instead of the workspace member invite flow.',
     ],
     evidenceToCheck: [
-      'Whether the task is normal user addition or first-admin child tenant repair.',
-      'The active tenant shown by eai whoami.',
-      'The target tenant shown by eai tenant info <tenant-id>.',
+      'Whether the task is normal user addition or first-admin child workspace repair.',
+      'The active workspace shown by eai whoami.',
+      'The target workspace shown by eai workspace info <workspace-id>.',
     ],
     diagnostics: [
       {
         command: 'eai whoami',
-        purpose: 'Confirm the signed-in user and active tenant.',
+        purpose: 'Confirm the signed-in user and active workspace.',
         mutates: false,
       },
       {
-        command: 'eai tenant info <tenant-id> --format json',
-        purpose: 'Inspect the target tenant before retrying a tenant relationship command.',
+        command: 'eai workspace info <workspace-id> --format json',
+        purpose: 'Inspect the target workspace before retrying a workspace relationship command.',
         mutates: false,
       },
       {
-        command: 'eai user roles --tenant <tenant-id> --format json',
+        command: 'eai user roles --workspace <workspace-id> --format json',
         purpose: 'List assignable roles when the intended task is adding or updating a user.',
         mutates: false,
       },
     ],
     fixes: [
       {
-        command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin',
-        purpose: 'Add or update a user as tenant-admin on an existing tenant.',
+        command: 'eai user invite --email <email> --workspace <workspace-id> --role tenant-admin',
+        purpose: 'Add or update a user as a workspace admin.',
         mutates: true,
-        when: 'Use when the goal is to add a person to a tenant or app context.',
+        when: 'Use when the goal is to add a person to a workspace or app context.',
       },
       {
-        command: 'eai tenant bootstrap-admin --parent <direct-parent-id> --child <immediate-child-id>',
+        command: 'eai workspace bootstrap-admin --parent <direct-parent-id> --child <immediate-child-id>',
         purpose: 'Retry the child bootstrap repair with the direct parent and immediate child IDs.',
         mutates: true,
-        when: 'Use only for first-admin child tenant repair, not normal member management.',
+        when: 'Use only for first-admin child workspace repair, not normal member management.',
       },
     ],
     retry: {
@@ -308,8 +308,8 @@ export const errorGuidanceCatalog = [
     },
     escalation: {
       audience: 'tenant-admin',
-      neededWhen: ['The direct parent tenant is not visible to the signed-in user.'],
-      include: ['signed-in email', 'active tenant slug', 'target tenant slug', 'requested command'],
+      neededWhen: ['The direct parent workspace is not visible to the signed-in user.'],
+      include: ['signed-in email', 'active workspace slug', 'target workspace slug', 'requested command'],
     },
     safety: {
       mutatesState: true,
@@ -329,53 +329,53 @@ export const errorGuidanceCatalog = [
   {
     code: 'E245',
     reasonCode: 'user_invite_external_service_existing_member',
-    title: 'Tenant member invite failed, but an existing member role repair may be available.',
+    title: 'workspace member invite failed, but an existing member role repair may be available.',
     category: 'external_service',
     severity: 'error',
-    appliesTo: ['user.invite', 'user.role.set', 'tenant.member.management'],
+    appliesTo: ['user.invite', 'user.role.set', 'workspace.member.management'],
     publicSafe: true,
     why: [
       'The invite/add flow reached an external identity or notification dependency that returned a server-side failure.',
-      'The target person may already exist as a direct tenant member with a lower role, so retrying the same invite can fail without changing access.',
+      'The target person may already exist as a direct workspace member with a lower role, so retrying the same invite can fail without changing access.',
       'When a member record already exists, the supported recovery is to update that member through EAI CLI instead of editing data stores or cloud portals directly.',
-      'Applications may cache tenant role claims in their Auth.js session or JWT, so the user may need to sign out and sign back in after a role change.',
+      'Applications may cache workspace role claims in their Auth.js session or JWT, so the user may need to sign out and sign back in after a role change.',
     ],
     evidenceToCheck: [
       'HTTP status, server code, and request ID from the failed invite/add command.',
-      'Active tenant and profile from eai whoami.',
-      'Assignable roles from eai user roles --tenant <tenant-id> --format json.',
-      'Existing member record from eai user list --tenant <tenant-id> --search <email> --format json.',
+      'Active workspace and profile from eai whoami.',
+      'Assignable roles from eai user roles --workspace <workspace-id> --format json.',
+      'Existing member record from eai user list --workspace <workspace-id> --search <email> --format json.',
       'Read-back role after any eai user role set command.',
     ],
     diagnostics: [
       {
         command: 'eai whoami',
-        purpose: 'Confirm the signed-in user, active tenant, and profile before changing membership.',
+        purpose: 'Confirm the signed-in user, active workspace, and profile before changing membership.',
         mutates: false,
       },
       {
-        command: 'eai user roles --tenant <tenant-id> --format json',
-        purpose: 'Confirm the target role is assignable in this tenant.',
+        command: 'eai user roles --workspace <workspace-id> --format json',
+        purpose: 'Confirm the target role is assignable in this workspace.',
         mutates: false,
       },
       {
-        command: 'eai user list --tenant <tenant-id> --search <email> --format json',
-        purpose: 'Check whether the person already exists as a direct tenant member and capture the member ID.',
+        command: 'eai user list --workspace <workspace-id> --search <email> --format json',
+        purpose: 'Check whether the person already exists as a direct workspace member and capture the member ID.',
         mutates: false,
       },
     ],
     fixes: [
       {
-        command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
-        purpose: 'Update the existing direct member to tenant-admin through the approved EAI tenant-member role endpoint.',
+        command: 'eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json',
+        purpose: 'Update the direct workspace member role through the approved EAI endpoint.',
         mutates: true,
         when: 'Use only after eai user list confirms the existing member ID and the user approves the role change.',
       },
       {
-        command: 'eai user invite --email <email> --tenant <tenant-id> --role <role> --format json',
+        command: 'eai user invite --email <email> --workspace <workspace-id> --role <role> --format json',
         purpose: 'Retry the normal invite/add flow when no existing direct member is found and the failure was transient.',
         mutates: true,
-        when: 'Use only within the retry limit and after read-only diagnostics confirm the tenant and role.',
+        when: 'Use only within the retry limit and after read-only diagnostics confirm the workspace and role.',
       },
     ],
     retry: {
@@ -385,7 +385,7 @@ export const errorGuidanceCatalog = [
       stopWhen: [
         'The same external service error repeats after bounded retry.',
         'The existing member is found but role update is not approved by the user.',
-        'The signed-in user is not allowed to change tenant membership.',
+        'The signed-in user is not allowed to change workspace membership.',
       ],
     },
     escalation: {
@@ -398,7 +398,7 @@ export const errorGuidanceCatalog = [
         'HTTP status',
         'server code',
         'CLI version',
-        'active tenant slug',
+        'active workspace slug',
         'redacted command shape',
       ],
     },
@@ -426,71 +426,71 @@ export const errorGuidanceCatalog = [
         messageIncludes: ['user invite', 'EXTERNAL_SERVICE_ERROR'],
       },
     ],
-    learnedFrom: ['Tenant member invite returned a 502 while the user already existed with a lower tenant role.'],
+    learnedFrom: ['workspace member invite returned a 502 while the user already existed with a lower workspace role.'],
   },
   {
     code: 'E246',
     reasonCode: 'app_token_tenant_context_required',
-    title: 'App-token platform user lookup is missing tenant context.',
+    title: 'App-token platform user lookup is missing workspace context.',
     category: 'tenant_context',
     severity: 'error',
-    appliesTo: ['publicapi', 'platform.user.lookup', 'tenant.member.management', 'verify.calls'],
+    appliesTo: ['publicapi', 'platform.user.lookup', 'workspace.member.management', 'verify.calls'],
     publicSafe: true,
     why: [
-      'The platform call authenticated, but the request did not carry the tenant context required for app-token user or membership operations.',
+      'The platform call authenticated, but the request did not carry the workspace context required for app-token user or membership operations.',
       'This is commonly seen as MISSING_TENANT or "Tenant context required for app tokens" on platform user lookup or membership prerequisite calls.',
-      'Do not treat this as the first signal to edit tenant members, role definitions, Entra configuration, databases, or cloud portals.',
-      'For platform automation app-token flows outside tenant app runtime, use the tenant-scoped platform routes instead of root user lookup routes.',
-      'If the same route works in current main but fails in an environment, the deployed PublicAPI/AdminAPI may be behind the release that adds tenant-scoped routing hardening.',
+      'Do not treat this as the first signal to edit workspace members, role definitions, Entra configuration, databases, or cloud portals.',
+      'For platform automation app-token flows outside workspace app runtime, use the workspace-scoped platform routes instead of root user lookup routes.',
+      'If the same route works in current main but fails in an environment, the deployed PublicAPI/AdminAPI may be behind the release that adds workspace-scoped routing hardening.',
     ],
     evidenceToCheck: [
       'The failed path and whether it is a root platform user route such as /v4/platform/users/by-email or /v4/platform/users/{oid}/memberships.',
       'Whether the caller is using an app token rather than an end-user identity route.',
-      'Active tenant from eai whoami and eai tenant list --format json.',
+      'Active workspace from eai whoami and eai workspace list --format json.',
       'PublicAPI/AdminAPI deployed versions when the failure happens in a shared environment.',
-      'Whether a tenant-scoped path succeeds for the same operation.',
+      'Whether a workspace-scoped path succeeds for the same operation.',
     ],
     diagnostics: [
       {
         command: 'eai whoami',
-        purpose: 'Confirm login, active tenant, profile, and PublicAPI context.',
+        purpose: 'Confirm login, active workspace, profile, and PublicAPI context.',
         mutates: false,
       },
       {
-        command: 'eai tenant list --format json',
-        purpose: 'Confirm the target tenant is visible before retrying tenant-scoped calls.',
+        command: 'eai workspace list --format json',
+        purpose: 'Confirm the target workspace is visible before retrying workspace-scoped calls.',
         mutates: false,
       },
       {
         command: 'eai publicapi get /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>',
-        purpose: 'Verify user lookup through the tenant-scoped platform route.',
+        purpose: 'Verify user lookup through the workspace-scoped platform route.',
         mutates: false,
       },
       {
         command: 'eai publicapi get /v4/platform/tenants/<tenant-id>/users/<oid>/memberships',
-        purpose: 'Verify membership lookup through the tenant-scoped platform route.',
+        purpose: 'Verify membership lookup through the workspace-scoped platform route.',
         mutates: false,
       },
     ],
     fixes: [
       {
-        command: 'eai tenant select <tenant>',
-        purpose: 'Select the tenant that should provide app-token context.',
+        command: 'eai workspace select <workspace>',
+        purpose: 'Select the workspace that should provide app-token context.',
         mutates: true,
       },
       {
         command: 'Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>',
-        purpose: 'Replace root platform user lookup with the tenant-scoped V4 route in platform automation app-token flows.',
+        purpose: 'Replace root platform user lookup with the workspace-scoped V4 route in platform automation app-token flows.',
         mutates: false,
       },
       {
         command: 'Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships',
-        purpose: 'Replace root platform membership lookup with the tenant-scoped V4 route in platform automation app-token flows.',
+        purpose: 'Replace root platform membership lookup with the workspace-scoped V4 route in platform automation app-token flows.',
         mutates: false,
       },
       {
         command: 'Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions',
-        purpose: 'Keep tenant member and role-definition reads on the tenant-scoped V4 surface.',
+        purpose: 'Keep workspace member and role-definition reads on the workspace-scoped V4 surface.',
         mutates: false,
       },
     ],
@@ -498,22 +498,22 @@ export const errorGuidanceCatalog = [
       allowed: true,
       maxAttempts: 1,
       stopWhen: [
-        'The tenant-scoped route returns the same MISSING_TENANT result.',
-        'The environment is running older PublicAPI/AdminAPI versions than the release with tenant-scoped platform routing hardening.',
+        'The workspace-scoped route returns the same MISSING_TENANT result.',
+        'The environment is running older PublicAPI/AdminAPI versions than the release with workspace-scoped platform routing hardening.',
       ],
     },
     escalation: {
       audience: 'platform-support',
       neededWhen: [
-        'Tenant-scoped routes still return MISSING_TENANT after confirming the tenant and current deployed versions.',
-        'Production or another shared environment is behind the release that contains tenant-scoped platform routing hardening.',
+        'workspace-scoped routes still return MISSING_TENANT after confirming the workspace and current deployed versions.',
+        'Production or another shared environment is behind the release that contains workspace-scoped platform routing hardening.',
       ],
       include: [
         'CLI version',
         'redacted route shape',
         'HTTP status',
         'server code',
-        'active tenant slug',
+        'active workspace slug',
         'deployed PublicAPI/AdminAPI versions if visible',
       ],
     },
@@ -535,36 +535,36 @@ export const errorGuidanceCatalog = [
       },
     ],
     learnedFrom: [
-      'App-token platform user lookup returned MISSING_TENANT until the caller used tenant-scoped V4 platform routes and the environment ran the matching PublicAPI/AdminAPI release.',
+      'App-token platform user lookup returned MISSING_TENANT until the caller used workspace-scoped V4 platform routes and the environment ran the matching PublicAPI/AdminAPI release.',
     ],
   },
   {
     code: 'E247',
     reasonCode: 'calling_application_not_authorized',
-    title: 'The application making this request is not authorized for the tenant.',
+    title: 'The application making this request is not authorized for the workspace.',
     category: 'app_provisioning',
     severity: 'error',
     appliesTo: ['user.provision-me'],
     publicSafe: true,
     why: [
       'The authorization decision applies to the client ID in the current CLI token.',
-      'It does not evaluate a different tenant app client, even when provision-me was run while diagnosing that app.',
+      'It does not evaluate a different workspace app client, even when provision-me was run while diagnosing that app.',
       'If the current user already has direct membership, provisioning is unnecessary.',
     ],
     evidenceToCheck: [
       'callingApplication.clientId in the structured error.',
-      'eai whoami active tenant and direct membership.',
+      'eai whoami active workspace and direct membership.',
       'The intended app client from eai app auth status when diagnosing another app.',
     ],
     diagnostics: [
       {
         command: 'eai whoami',
-        purpose: 'Confirm the current CLI identity, active tenant, and calling client context.',
+        purpose: 'Confirm the current CLI identity, active workspace, and calling client context.',
         mutates: false,
       },
       {
         command: 'eai app auth status <app-key> --tenant-id <tenant-id> --client-id <app-client-id> --format json',
-        purpose: 'Inspect a different app client without changing tenant authorization.',
+        purpose: 'Inspect a different app client without changing workspace authorization.',
         mutates: false,
       },
     ],
@@ -584,7 +584,7 @@ export const errorGuidanceCatalog = [
     escalation: {
       audience: 'platform-support',
       neededWhen: ['Direct membership is absent and the reported calling CLI client must perform user provisioning.'],
-      include: ['request ID', 'CLI version', 'tenant ID', 'callingApplication.clientId', 'reason code'],
+      include: ['request ID', 'CLI version', 'workspace ID', 'callingApplication.clientId', 'reason code'],
     },
     safety: {
       mutatesState: true,
@@ -605,42 +605,42 @@ export const errorGuidanceCatalog = [
   {
     code: 'E242',
     reasonCode: 'tenant_authorization_incomplete',
-    title: 'Tenant data-plane authorization incomplete.',
+    title: 'Workspace data access authorization is incomplete.',
     category: 'app_provisioning',
     severity: 'error',
     appliesTo: ['provision.entra', 'types.seed', 'vertical.provision'],
     publicSafe: true,
     why: [
-      'The app registration exists, but the selected tenant has not completed app authorization.',
-      'The active tenant may not be the tenant this app was provisioned for.',
+      'The app registration exists, but the selected workspace has not completed app authorization.',
+      'The active workspace may not be the workspace this app was provisioned for.',
       'The authorization retry may need to run again after sign-in wiring is refreshed.',
     ],
     evidenceToCheck: [
-      'eai whoami active tenant.',
-      'eai provision entra --force --debug tenant authorization summary.',
+      'eai whoami active workspace.',
+      'eai provision entra --force --debug workspace authorization summary.',
       'Request ID and platform status if debug output includes one.',
     ],
     diagnostics: [
       {
         command: 'eai whoami',
-        purpose: 'Confirm login, active tenant, profile, and public API context.',
+        purpose: 'Confirm login, active workspace, profile, and public API context.',
         mutates: false,
       },
       {
-        command: 'eai tenant list --format json',
-        purpose: 'Confirm the intended tenant is visible to the user.',
+        command: 'eai workspace list --format json',
+        purpose: 'Confirm the intended workspace is visible to the user.',
         mutates: false,
       },
     ],
     fixes: [
       {
-        command: 'eai tenant select <tenant>',
-        purpose: 'Select the tenant that should own the app.',
+        command: 'eai workspace select <workspace>',
+        purpose: 'Select the workspace that should own the app.',
         mutates: true,
       },
       {
         command: 'eai provision entra --force --debug',
-        purpose: 'Refresh sign-in wiring and retry app authorization for the active tenant.',
+        purpose: 'Refresh sign-in wiring and retry app authorization for the active workspace.',
         mutates: true,
         writesSecrets: true,
       },
@@ -648,7 +648,7 @@ export const errorGuidanceCatalog = [
         command: 'eai user provision-me',
         purpose: 'Create or refresh the current user membership after app authorization succeeds.',
         mutates: true,
-        when: 'Run only after provision entra no longer reports incomplete tenant authorization.',
+        when: 'Run only after provision entra no longer reports incomplete workspace authorization.',
       },
     ],
     retry: {
@@ -660,7 +660,7 @@ export const errorGuidanceCatalog = [
     escalation: {
       audience: 'platform-support',
       neededWhen: ['The platform authorization step continues to fail after bounded retry.'],
-      include: ['request ID', 'CLI version', 'active tenant slug', 'command', 'reason code'],
+      include: ['request ID', 'CLI version', 'active workspace slug', 'command', 'reason code'],
     },
     safety: {
       mutatesState: true,
@@ -677,13 +677,13 @@ export const errorGuidanceCatalog = [
   {
     code: 'E243',
     reasonCode: 'tenant_authorization_platform_error',
-    title: 'Tenant app authorization could not be completed because the platform returned a server error.',
+    title: 'workspace app authorization could not be completed because the platform returned a server error.',
     category: 'platform',
     severity: 'error',
     appliesTo: ['provision.entra'],
     publicSafe: true,
     why: [
-      'The CLI tried to authorize the app for the selected tenant, but the platform returned a server-side failure.',
+      'The CLI tried to authorize the app for the selected workspace, but the platform returned a server-side failure.',
       'This is usually not fixed by changing local files or repeatedly rotating app credentials.',
       'The safest next step is a bounded retry followed by escalation with the request evidence.',
     ],
@@ -701,7 +701,7 @@ export const errorGuidanceCatalog = [
       },
       {
         command: 'eai whoami',
-        purpose: 'Confirm the active tenant and profile are still correct.',
+        purpose: 'Confirm the active workspace and profile are still correct.',
         mutates: false,
       },
     ],
@@ -715,7 +715,7 @@ export const errorGuidanceCatalog = [
     escalation: {
       audience: 'platform-support',
       neededWhen: ['A platform 5xx repeats for the same authorization command.'],
-      include: ['request ID', 'HTTP status', 'CLI version', 'command', 'active tenant slug'],
+      include: ['request ID', 'HTTP status', 'CLI version', 'command', 'active workspace slug'],
     },
     safety: {
       mutatesState: true,
@@ -736,42 +736,42 @@ export const errorGuidanceCatalog = [
   {
     code: 'E250',
     reasonCode: 'paid_upgrade_required',
-    title: 'Tenant plan does not allow this builder operation.',
+    title: 'workspace plan does not allow this builder operation.',
     category: 'capability',
     severity: 'error',
     appliesTo: ['workflow.readiness', 'types.seed', 'vertical.create', 'workflow.request'],
     publicSafe: true,
     why: [
-      'The tenant is reachable, but the requested builder operation is gated by the tenant plan.',
-      'The CLI cannot self-upgrade a tenant plan.',
+      'The workspace is reachable, but the requested builder operation is gated by the workspace plan.',
+      'The CLI cannot self-upgrade a workspace plan.',
       'Read-only checks may still work while write/build actions are blocked.',
     ],
     evidenceToCheck: [
       'Workflow readiness status and reason code.',
-      'Tenant active status from eai whoami.',
+      'workspace active status from eai whoami.',
       'Which command attempted a builder write.',
     ],
     diagnostics: [
       {
         command: 'eai workflow readiness --format json',
-        purpose: 'Confirm whether builder operations are available for the active tenant.',
+        purpose: 'Confirm whether builder operations are available for the active workspace.',
         mutates: false,
       },
       {
         command: 'eai whoami',
-        purpose: 'Confirm the active tenant before asking an admin to change plan state.',
+        purpose: 'Confirm the active workspace before asking an admin to change plan state.',
         mutates: false,
       },
     ],
     fixes: [],
     retry: {
       allowed: false,
-      stopWhen: ['The readiness reason is paid_upgrade_required. Retrying does not activate the tenant plan.'],
+      stopWhen: ['The readiness reason is paid_upgrade_required. Retrying does not activate the workspace plan.'],
     },
     escalation: {
       audience: 'tenant-admin',
       neededWhen: ['A builder operation is required and readiness reports paid_upgrade_required.'],
-      include: ['active tenant slug', 'command', 'readiness reason code'],
+      include: ['active workspace slug', 'command', 'readiness reason code'],
     },
     safety: {
       mutatesState: false,
@@ -811,7 +811,7 @@ export const errorGuidanceCatalog = [
       },
       {
         command: 'eai types diff',
-        purpose: 'Compare local definitions with published tenant state after validation passes.',
+        purpose: 'Compare local definitions with published workspace state after validation passes.',
         mutates: false,
       },
     ],
@@ -865,13 +865,13 @@ export const errorGuidanceCatalog = [
         mutates: false,
       },
       {
-        command: 'eai types validate --tenant-key <key> --tenant-id <tenant-id>',
+        command: 'eai types validate --workspace-key <key> --tenant-id <tenant-id>',
         purpose: 'Validate source names, slugs, relationships, and storage metadata without publishing.',
         mutates: false,
       },
       {
-        command: 'eai types seed --tenant-key <key> --tenant-id <tenant-id> --dry-run --format json',
-        purpose: 'Confirm the CLI can load the intended tenant scope without changing platform state.',
+        command: 'eai types seed --workspace-key <key> --tenant-id <tenant-id> --dry-run --format json',
+        purpose: 'Confirm the CLI can load the intended workspace scope without changing platform state.',
         mutates: false,
       },
     ],
@@ -883,7 +883,7 @@ export const errorGuidanceCatalog = [
         when: 'Run when eai update --check reports an older CLI.',
       },
       {
-        command: 'eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json',
+        command: 'eai types seed --workspace-key <key> --tenant-id <tenant-id> --format json',
         purpose: 'Publish once through the maintained compatibility adapter.',
         mutates: true,
         when: 'Run after update and local validation succeed.',
@@ -906,7 +906,7 @@ export const errorGuidanceCatalog = [
       include: [
         'CLI version',
         'app key',
-        'tenant ID',
+        'workspace ID',
         'Object Type names only',
         'request IDs for both rejected requests',
       ],
@@ -933,25 +933,25 @@ export const errorGuidanceCatalog = [
   {
     code: 'E270',
     reasonCode: 'object_type_not_published',
-    title: 'Object Type is not published for the active tenant.',
+    title: 'Object Type is not published for the active workspace.',
     category: 'resource_data',
     severity: 'error',
     appliesTo: ['resources.list', 'resources.create', 'resources.update', 'resources.search', 'resources.query'],
     publicSafe: true,
     why: [
-      'The resource command is asking for a type that is not available in the active tenant schema.',
+      'The resource command is asking for a type that is not available in the active workspace schema.',
       'The local Object Types may not have been published yet.',
-      'The active tenant may not be the tenant where the Object Type was published.',
+      'The active workspace may not be the workspace where the Object Type was published.',
     ],
     evidenceToCheck: [
       'Published type list from eai resources schema.',
-      'Active tenant from eai whoami.',
+      'Active workspace from eai whoami.',
       'Local Object Type definitions from eai types validate.',
     ],
     diagnostics: [
       {
         command: 'eai resources schema --format json',
-        purpose: 'List published Object Types visible to the active tenant.',
+        purpose: 'List published Object Types visible to the active workspace.',
         mutates: false,
       },
       {
@@ -963,14 +963,14 @@ export const errorGuidanceCatalog = [
     fixes: [
       {
         command: 'eai types seed',
-        purpose: 'Publish local Object Types to the active tenant.',
+        purpose: 'Publish local Object Types to the active workspace.',
         mutates: true,
       },
       {
-        command: 'eai tenant select <tenant>',
-        purpose: 'Switch to the tenant where the Object Type was published.',
+        command: 'eai workspace select <workspace>',
+        purpose: 'Switch to the workspace where the Object Type was published.',
         mutates: true,
-        when: 'Use when the active tenant is wrong.',
+        when: 'Use when the active workspace is wrong.',
       },
     ],
     retry: {
@@ -982,7 +982,7 @@ export const errorGuidanceCatalog = [
     escalation: {
       audience: 'eai-maintainer',
       neededWhen: ['types seed reports convergence but resources schema never shows the Object Type.'],
-      include: ['Object Type name', 'active tenant slug', 'CLI version', 'types seed summary'],
+      include: ['Object Type name', 'active workspace slug', 'CLI version', 'types seed summary'],
     },
     safety: {
       mutatesState: true,
@@ -1002,7 +1002,7 @@ export const errorGuidanceCatalog = [
   {
     code: 'E275',
     reasonCode: 'resource_search_embedding_required',
-    title: 'Semantic resource search is not ready for this tenant.',
+    title: 'Semantic resource search is not ready for this workspace.',
     category: 'resource_data',
     severity: 'warning',
     appliesTo: ['resources.search', 'resources.storage.doctor', 'verify.storage'],
@@ -1021,12 +1021,12 @@ export const errorGuidanceCatalog = [
     diagnostics: [
       {
         command: 'eai resources storage doctor --format json',
-        purpose: 'Check whether fulltext, hybrid, and vector search are ready for the active tenant.',
+        purpose: 'Check whether fulltext, hybrid, and vector search are ready for the active workspace.',
         mutates: false,
       },
       {
         command: 'eai resources schema --format json',
-        purpose: 'Confirm the tenant has published Object Types to search.',
+        purpose: 'Confirm the workspace has published Object Types to search.',
         mutates: false,
       },
     ],
@@ -1049,7 +1049,7 @@ export const errorGuidanceCatalog = [
     escalation: {
       audience: 'platform-support',
       neededWhen: ['The app requires hybrid or vector search and storage doctor keeps reporting those modes unavailable.'],
-      include: ['active tenant slug', 'search mode used', 'storage doctor search capabilities', 'CLI version'],
+      include: ['active workspace slug', 'search mode used', 'storage doctor search capabilities', 'CLI version'],
     },
     safety: {
       mutatesState: false,
@@ -1165,7 +1165,7 @@ export const errorGuidanceCatalog = [
     appliesTo: ['workflow.readiness', 'workflow.status', 'workflow.request', 'chat.send', 'chat.stream'],
     publicSafe: true,
     why: [
-      'The tenant and workflow key are recognized, but an executable runtime binding is not available yet.',
+      'The workspace and workflow key are recognized, but an executable runtime binding is not available yet.',
       'Some workflow bindings require an operator-assisted request before chat or workflow execution can run.',
       'The CLI should request the binding only when readiness reports operator_required.',
     ],
@@ -1177,7 +1177,7 @@ export const errorGuidanceCatalog = [
     diagnostics: [
       {
         command: 'eai workflow readiness <workflow-key> --format json',
-        purpose: 'Check tenant, plan, and workflow readiness.',
+        purpose: 'Check workspace, plan, and workflow readiness.',
         mutates: false,
       },
       {
@@ -1189,7 +1189,7 @@ export const errorGuidanceCatalog = [
     fixes: [
       {
         command: 'eai workflow request <workflow-key> --reason "<reason>"',
-        purpose: 'Request operator-assisted runtime binding for this tenant and workflow.',
+        purpose: 'Request operator-assisted runtime binding for this workspace and workflow.',
         mutates: true,
         when: 'Run only when readiness or status reports operator_required.',
       },
@@ -1203,7 +1203,7 @@ export const errorGuidanceCatalog = [
     escalation: {
       audience: 'platform-support',
       neededWhen: ['The workflow request is queued but does not progress.'],
-      include: ['workflow key', 'request ID', 'active tenant slug', 'CLI version'],
+      include: ['workflow key', 'request ID', 'active workspace slug', 'CLI version'],
     },
     safety: {
       mutatesState: true,
@@ -1220,30 +1220,30 @@ export const errorGuidanceCatalog = [
   {
     code: 'E244',
     reasonCode: 'tenant_data_install_no_match',
-    title: 'Tenant data/schema setup is not fully provisioned.',
+    title: 'workspace data/schema setup is not fully provisioned.',
     category: 'app_provisioning',
     severity: 'error',
     appliesTo: ['types.seed', 'platform.verify', 'workflow.readiness', 'resources.read'],
     publicSafe: true,
     why: [
-      'The platform could not resolve an active data/schema install for this tenant.',
-      'This is a tenant setup issue, not a transient outage: the data/schema capability is reachable but has no active install registered for this tenant.',
-      'Object Type publish (eai types seed) and schema reads cannot complete until the tenant setup is completed. Retrying does not create that setup.',
+      'The platform could not resolve an active data/schema install for this workspace.',
+      'This is a workspace setup issue, not a transient outage: the data/schema capability is reachable but has no active install registered for this workspace.',
+      'Object Type publish (eai types seed) and schema reads cannot complete until the workspace setup is completed. Retrying does not create that setup.',
     ],
     evidenceToCheck: [
       'The reason code in the response body.',
-      'Active tenant from eai whoami — confirm you are on the intended tenant.',
-      'Whether the same tenant also fails the data/schema check in eai verify.',
+      'Active workspace from eai whoami — confirm you are on the intended workspace.',
+      'Whether the same workspace also fails the data/schema check in eai verify.',
     ],
     diagnostics: [
       {
         command: 'eai whoami',
-        purpose: 'Confirm the active tenant that failed to resolve a data/schema install.',
+        purpose: 'Confirm the active workspace that failed to resolve a data/schema install.',
         mutates: false,
       },
       {
         command: 'eai verify',
-        purpose: 'Confirm whether the data/schema service can resolve an install for this tenant.',
+        purpose: 'Confirm whether the data/schema service can resolve an install for this workspace.',
         mutates: false,
       },
     ],
@@ -1251,14 +1251,14 @@ export const errorGuidanceCatalog = [
     retry: {
       allowed: false,
       stopWhen: [
-        'The response indicates no active tenant data/schema install. Retrying does not provision the tenant setup — it must be fixed by platform support.',
+        'The response indicates no active workspace data/schema install. Retrying does not provision the workspace setup — it must be fixed by platform support.',
       ],
     },
     escalation: {
       audience: 'platform-support',
-      neededWhen: ['A tenant cannot resolve an active data/schema install on publish or schema reads.'],
+      neededWhen: ['A workspace cannot resolve an active data/schema install on publish or schema reads.'],
       include: [
-        'active tenant slug and id (eai whoami)',
+        'active workspace slug and id (eai whoami)',
         'the command that failed',
         'the request id from the error',
         'the reason code from the error response',

@@ -62,7 +62,7 @@ Before any Gofer stage/helper command does pipeline work:
 1. Treat durable delivery as EAI Platform delivery by default, with Azure second
    and every other stack only by explicit exception.
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
+   and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
    tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.
@@ -412,7 +412,7 @@ explicitly `enterpriseai`, generate:
      choice, package lane, coupling status, public-readiness target, and block
      porting posture.
    - Relevant existing specs, code paths, platform references, and API surfaces.
-   - EAI preflight summary: CLI version, login/account status, tenant readiness,
+   - EAI preflight summary: CLI version, login/account status, workspace readiness,
      template initialization state, app enrollment readiness, block catalog
      readiness, and next action. Do not include tokens, secrets, tenant-private
      payloads, or `.env.local` values.

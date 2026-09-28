@@ -62,7 +62,7 @@ Before any Gofer stage/helper command does pipeline work:
 1. Treat durable delivery as EAI Platform delivery by default, with Azure second
    and every other stack only by explicit exception.
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
+   and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
    tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.
@@ -847,7 +847,7 @@ separation from `tasks.md`:
   "reply URL specified in the request does not match", or
   `/api/auth/callback/microsoft-entra-id`, match
   `EAI_ENTRA_REDIRECT_URI_MISMATCH` in the error catalog. Confirm `eai whoami`
-  and tenant selection first, then use EAI Entra provisioning to register the
+  and workspace selection first, then use EAI Entra provisioning to register the
   confirmed callback URI before asking the user to edit Azure manually. Record
   only a redacted callback route pattern and recovery status in implementation
   notes or validation artifacts.
