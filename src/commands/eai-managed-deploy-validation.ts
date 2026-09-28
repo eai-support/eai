@@ -81,6 +81,7 @@ export interface ValidatedManagedDeployInput {
   retryOperationId?: string;
 }
 
+/** Reject unsafe caller-controlled scope, recovery and repository identifiers before authentication or I/O. */
 export function validateManagedDeployInput(
   appKeyValue: string,
   options: ManagedDeployOptions,
@@ -155,6 +156,7 @@ export function validateManagedDeployInput(
       "Choose a supported environment before registering the source operation.",
     );
   }
+  if (options.repo) parseGitHubRepository(options.repo);
   const appKey = appKeyValue.trim();
   if (!/^[a-z0-9][a-z0-9.-]{1,62}$/.test(appKey)) {
     fail(

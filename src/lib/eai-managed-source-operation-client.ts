@@ -7,12 +7,14 @@ import type {
   CliManagedSourceScope,
 } from "./eai-managed-source-client-types.js";
 
+/** Readbacks retain the captured source snapshot and verified GitHub proof. */
 export interface ExpectedCliManagedSourceOperation {
   operationId?: string;
   templateCommitSha?: string;
   bundleSha256?: string;
   configHash?: string;
   githubLinkSessionId?: string;
+  verifiedGithubUser?: CliManagedSourceOperation["verifiedGithubUser"];
 }
 
 /** Repeat submission of the same actor-scoped source snapshot cannot create duplicate bot publications. */
@@ -80,8 +82,15 @@ export function validateCliManagedSourceOperation(
     value.verifiedGithubUser?.actorId !== scope.actorId ||
     !Number.isSafeInteger(value.verifiedGithubUser?.id) ||
     value.verifiedGithubUser.id < 1 ||
+    typeof value.verifiedGithubUser.login !== "string" ||
+    !/^[a-z\d][a-z\d-]{0,38}$/i.test(value.verifiedGithubUser.login) ||
     typeof value.verifiedGithubUser.proofId !== "string" ||
-    !value.verifiedGithubUser.proofId
+    !value.verifiedGithubUser.proofId ||
+    (expected?.verifiedGithubUser && (
+      value.verifiedGithubUser.id !== expected.verifiedGithubUser.id ||
+      value.verifiedGithubUser.login.toLowerCase() !== expected.verifiedGithubUser.login.toLowerCase() ||
+      value.verifiedGithubUser.proofId !== expected.verifiedGithubUser.proofId
+    ))
   ) {
     throw new ManagedSourceError(
       "MANAGED_SOURCE_BINDING_MISMATCH",
@@ -141,11 +150,18 @@ export async function pollCliManagedSource(
     bundleSha256: initial?.bundleSha256,
     configHash: initial?.configHash,
     githubLinkSessionId: initial?.githubLinkSessionId,
+    verifiedGithubUser: initial?.verifiedGithubUser,
   };
   while (true) {
-    operation =
-      operation ||
-      validateCliManagedSourceOperation(
+    if (!operation) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        throw new ManagedSourceError(
+          "SOURCE_OPERATION_TIMEOUT",
+          `Operation ${operationId} did not finish within the polling deadline. Keep the original recovery receipt and use --retry ${operationId} against its saved gateway; do not dispatch a duplicate workflow.`,
+        );
+      }
+      operation = validateCliManagedSourceOperation(
         await responseOperation(
           await client.getCliManagedSourceOperation(
             scope.tenantId,
@@ -153,16 +169,18 @@ export async function pollCliManagedSource(
             operationId,
             scope.targetTenantId,
             scope.environment,
-            Math.max(1, deadline - Date.now()),
+            remainingMs,
           ),
         ),
         scope,
         expected,
       );
+    }
     expected.templateCommitSha = operation.templateCommitSha;
     expected.bundleSha256 = operation.bundleSha256;
     expected.configHash = operation.configHash;
     expected.githubLinkSessionId = operation.githubLinkSessionId;
+    expected.verifiedGithubUser = operation.verifiedGithubUser;
     if (
       !options.wait ||
       classifyCliManagedSourceOperation(operation) !== "pending" ||

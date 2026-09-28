@@ -26,6 +26,7 @@ export async function verifyGitHubAccess(
   runCommand: ManagedDeployCommandRunner = run,
   expectedActor?: VerifiedGitHubActor,
 ): Promise<void> {
+  const repository = parseGitHubRepository(repo);
   try {
     await runCommand("gh", ["auth", "status"]);
   } catch (error) {
@@ -36,7 +37,6 @@ export async function verifyGitHubAccess(
     );
   }
 
-  const repository = parseGitHubRepository(repo);
   const repoViewPromise = runCommand("gh", [
     "repo",
     "view",
@@ -54,7 +54,7 @@ export async function verifyGitHubAccess(
     });
   const remoteShaPromise = runCommand("gh", [
     "api",
-    `repos/${repository.owner}/${repository.name}/git/ref/heads/${encodeURIComponent(branch)}`,
+    `repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/git/ref/heads/${encodeURIComponent(branch)}`,
   ])
     .then((value) => {
       const ref = JSON.parse(value) as { object?: { sha?: string } };

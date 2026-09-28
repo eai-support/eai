@@ -408,6 +408,52 @@ describe('managed publication authority and readiness', () => {
     await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
   });
 
+  test.each(['preparation', 'retry', 'readback'] as const)('binds the captured GitHub login and proof during %s without extra I/O', async boundary => {
+    for (const changed of [{ login: 'other-user' }, { proofId: 'other-proof' }]) {
+      const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+      const altered = operation(boundary === 'readback' ? 'pending_review' : 'publishing');
+      Object.assign(altered.verifiedGithubUser, changed);
+      const prepare = vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(boundary === 'preparation' ? altered : operation()));
+      const linkRead = vi.spyOn(client, 'getCliManagedGithubLinkSession').mockResolvedValue(response(session()));
+      const read = vi.spyOn(client, 'getCliManagedSourceOperation').mockResolvedValue(response(altered));
+      const persist = vi.fn(async () => {});
+      const token = vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
+      const upload = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ status: 'pending_review' }));
+
+      await expect(boundary === 'retry'
+        ? resumeCliManagedSourceUpload(client, scope, altered, bundle)
+        : submitCliManagedSource(client, scope, session(), bundle, persist)
+      ).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
+
+      expect(prepare).toHaveBeenCalledTimes(boundary === 'retry' ? 0 : 1);
+      expect(linkRead).toHaveBeenCalledTimes(boundary === 'retry' ? 1 : 0);
+      expect(persist).toHaveBeenCalledTimes(boundary === 'readback' ? 1 : 0);
+      expect(token).toHaveBeenCalledTimes(boundary === 'readback' ? 1 : 0);
+      expect(upload).toHaveBeenCalledTimes(boundary === 'readback' ? 1 : 0);
+      expect(read).toHaveBeenCalledTimes(boundary === 'readback' ? 1 : 0);
+      vi.restoreAllMocks();
+    }
+  });
+
+  test.each(['submission', 'retry'] as const)('preserves case-insensitive GitHub login equality during %s at existing request counts', async boundary => {
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    const prepared = operation('publishing');
+    prepared.verifiedGithubUser.login = 'LINKED-USER';
+    const prepare = vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(prepared));
+    const linkRead = vi.spyOn(client, 'getCliManagedGithubLinkSession').mockResolvedValue(response(session()));
+    const read = vi.spyOn(client, 'getCliManagedSourceOperation').mockResolvedValue(response(operation('pending_review')));
+    vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
+    const upload = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ status: 'pending_review' }));
+    const result = boundary === 'retry'
+      ? await resumeCliManagedSourceUpload(client, scope, prepared, bundle)
+      : await submitCliManagedSource(client, scope, session(), bundle, async () => {});
+    expect(result.status).toBe('pending_review');
+    expect(prepare).toHaveBeenCalledTimes(boundary === 'retry' ? 0 : 1);
+    expect(linkRead).toHaveBeenCalledTimes(boundary === 'retry' ? 1 : 0);
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
   test.each([undefined, 'github-link-other'])('does not upload if preparation omits or changes the exact GitHub link session: %s', async githubLinkSessionId => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
     const prepared = operation();
@@ -459,6 +505,35 @@ describe('managed publication authority and readiness', () => {
     expect(read).toHaveBeenCalledWith('company', 'my-app', 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'runtime', 'preview', expect.any(Number));
     expect(read.mock.calls[0][5]).toBe(600_000);
     expect(read.mock.calls.at(-1)?.[5]).toBe(5000);
+  });
+
+  test.each([0, 1])('performs no publication read when its %s ms budget is already exhausted', async timeoutMs => {
+    const startedAt = Date.parse('2026-09-28T00:00:00Z');
+    vi.spyOn(Date, 'now').mockReturnValueOnce(startedAt).mockReturnValue(startedAt + timeoutMs);
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    const read = vi.spyOn(client, 'getCliManagedSourceOperation');
+    const token = vi.spyOn(auth, 'getAccessToken');
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    await expect(pollCliManagedSource(client, scope, 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', { wait: true, timeoutMs }))
+      .rejects.toMatchObject({ code: 'SOURCE_OPERATION_TIMEOUT' });
+    expect(read).not.toHaveBeenCalled();
+    expect(token).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('rejects changed publication GitHub proof before another poll read', async () => {
+    const initial = operation('publishing');
+    const changed = operation('publishing');
+    changed.verifiedGithubUser.proofId = 'other-proof';
+    let now = Date.parse('2026-09-28T00:00:00Z');
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    const read = vi.spyOn(client, 'getCliManagedSourceOperation').mockResolvedValue(response(changed));
+    const sleep = vi.fn(async () => { now += 1_000; });
+    await expect(pollCliManagedSource(client, scope, initial.operationId, { wait: true, timeoutMs: 2_000 }, initial, { sleep }))
+      .rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(sleep).toHaveBeenCalledTimes(1);
   });
 
   test('never treats publication-route deployment fields as terminal readiness evidence', () => {

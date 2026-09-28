@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { prepareManagedDeployStateDirectory } from '../../src/lib/eai-managed-deploy-state.js';
 import { managedFileOpenFlags } from '../../src/lib/eai-managed-deploy-filesystem.js';
 import { chmod, lstat, link, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile, mkdir } from 'node:fs/promises';
@@ -1031,6 +1031,31 @@ describe('EAI managed deployment helpers', () => {
     expect(classifyManagedOperationStatus('failed-readiness')).toBe('failed');
     expect(classifyManagedOperationStatus({ status: 'expired' })).toBe('failed');
     expect(classifyManagedOperationStatus({ status: 'revoked' })).toBe('failed');
+  });
+
+  test.each(['../app', './app', 'enterprise/..', 'enterprise/.', 'https://github.com/../app.git', 'git@github.com:enterprise/..', 'enterprise/%2e%2e'])('rejects repository traversal segments: %s', repo => {
+    expect(() => parseGitHubRepository(repo)).toThrow('exact owner/name');
+  });
+
+  test.each(['enterprise/.config-repo', 'enterprise/app..name', 'enterprise/app_name-1'])('preserves valid repository names: %s', repo => {
+    expect(parseGitHubRepository(repo).slug).toBe(repo);
+  });
+
+  test.each(['../app', './app', 'enterprise/..', 'enterprise/.'])('rejects repository %s before gh credentials or provider reads', async repo => {
+    const runner = vi.fn(async () => '');
+    await expect(verifyGitHubAccess(repo, 'main', 'a'.repeat(40), runner)).rejects.toThrow('exact owner/name');
+    expect(runner).not.toHaveBeenCalled();
+  });
+
+  test('keeps valid repository API segments and encodes a branch slash at existing request counts', async () => {
+    const sha = 'a'.repeat(40);
+    const runner = vi.fn(async (_command: string, args: string[]) => args[0] === 'auth' ? '' : JSON.stringify(args[0] === 'repo'
+      ? { viewerPermission: 'WRITE', isPrivate: true, isArchived: false }
+      : { object: { sha } }));
+    await verifyGitHubAccess('enterprise/app..name', 'feature/managed', sha, runner);
+    expect(runner).toHaveBeenCalledWith('gh', ['api', 'repos/enterprise/app..name/git/ref/heads/feature%2Fmanaged']);
+    expect(runner.mock.calls.filter(([, args]) => args[0] === 'api')).toHaveLength(1);
+    expect(runner).toHaveBeenCalledTimes(3);
   });
 
   test('bounds faster operation detection to two extra reads before the steady-state interval', () => {

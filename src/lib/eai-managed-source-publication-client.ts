@@ -57,14 +57,8 @@ export async function submitCliManagedSource(
       }),
     ),
     scope,
-    expected,
+    { ...expected, verifiedGithubUser: link.verifiedGithubUser },
   );
-  if (prepared.verifiedGithubUser.id !== link.verifiedGithubUser!.id) {
-    throw new ManagedSourceError(
-      "MANAGED_SOURCE_BINDING_MISMATCH",
-      "Publication is bound to a different verified GitHub account. No local source was uploaded.",
-    );
-  }
   try {
     await onPrepared(prepared);
   } catch {
@@ -112,15 +106,15 @@ export async function resumeCliManagedSourceUpload(
     prepared.githubLinkSessionId,
     true,
   );
-  if (
-    link.status !== "verified" ||
-    link.verifiedGithubUser?.id !== prepared.verifiedGithubUser.id
-  ) {
+  if (link.status !== "verified") {
     throw new ManagedSourceError(
       "MANAGED_SOURCE_BINDING_MISMATCH",
       "The original GitHub identity no longer matches this publication. No source was uploaded.",
     );
   }
+  validateCliManagedSourceOperation(prepared, scope, {
+    verifiedGithubUser: link.verifiedGithubUser,
+  });
   return uploadCliManagedSource(client, scope, link, bundle, prepared);
 }
 
@@ -216,6 +210,7 @@ async function uploadCliManagedSource(
       configHash: bundle.configHash,
       operationId: prepared.operationId,
       githubLinkSessionId: link.sessionId,
+      verifiedGithubUser: link.verifiedGithubUser,
     },
   );
 }

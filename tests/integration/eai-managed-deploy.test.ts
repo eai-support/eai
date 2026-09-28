@@ -5,6 +5,7 @@ import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/pro
 import { join } from 'node:path';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
+import * as commandContext from '../../src/lib/context.js';
 import {
   DEFAULT_PROD_AUTH_CLIENT_ID,
   DEFAULT_PROD_AUTH_TENANT_ID,
@@ -1553,6 +1554,24 @@ fi
     expect(fetchMock).not.toHaveBeenCalled();
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
       ok: false, error: { code: 'TARGET_TENANT_INVALID' },
+    });
+    expect(process.exitCode).toBe(1);
+  });
+
+  test.each(['../app', './app', 'enterprise/..', 'enterprise/.'])('rejects repository %s before resolving credentials or making provider calls', async repo => {
+    const context = vi.spyOn(commandContext, 'resolveCommandContext');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+      '--target-tenant-id', TENANT_ID, '--source', 'customer-owned',
+      '--repo', repo, '--installation-id', '12345', '--format', 'json',
+    ], { from: 'user' });
+    expect(context).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      ok: false, error: { message: expect.stringContaining('exact owner/name') },
     });
     expect(process.exitCode).toBe(1);
   });

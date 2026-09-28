@@ -167,3 +167,29 @@ advisories were reproduced/separated as baseline diagnostics. The previous
 than being reclassified. The new guards are local comparisons with no extra
 network request, larger byte budget or wider source authority. Publication,
 immutable native producer pins and live qualification remain external gates.
+
+The publication review successor of `8043e175` guards the remaining deadline
+before each required status read, including the first read. It binds preparation,
+upload retry, authoritative readback and later polling to the captured GitHub
+numeric ID, case-insensitive login and exact proof ID. Repository `.`/`..`
+components are rejected before command context or `gh` credentials/provider
+calls; valid names retain their grammar and API path pieces are encoded.
+Counter regressions prove exhausted-budget zero I/O, mismatch rejection before
+the next call, unchanged positive request counts and the existing 129-read
+ten-minute publication ceiling. These are local guards without new provider
+requests, wider authority, timeout increases or producer-byte changes.
+
+Before repair, the selected new regressions recorded 20 failures and one pass
+(261 unrelated cases filtered). The complete focused source-client/deployment
+unit/command corpus then passed 282 cases in 23.57 seconds. The full serialized
+repository suite passed all 54 files: 1,260 cases and two existing documented
+skips in 182.69 seconds, at unchanged timers. Build, full source lint, changed
+source-client/command test lint, exact template3432 producer pairing, generated
+release/experience/error-doc freshness and diff checks pass. The unit file's
+five pre-existing `no-regex-spaces` lint findings match the unchanged HEAD
+baseline; two untouched missing-JSDoc advisories remain. Existing feature
+mapping and `ci/eai-cli-tests` own the changed paths/tests. This changes no
+cross-service contract. Same-UID namespace trust, the 30-second managed request
+ceiling and underlying token-refresh cancellation limits remain explicit;
+native producer publication/assembly, live qualification and commercial gates
+are unchanged.

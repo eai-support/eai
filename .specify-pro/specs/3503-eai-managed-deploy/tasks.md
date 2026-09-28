@@ -134,3 +134,12 @@ The focused redirect regressions pass (three cases), and the coordinated full
 one-worker repeat passes all 54 files: 1,168 tests with two existing documented
 skips (228.35 seconds). The first full attempt remains recorded as failed due to
 an unchanged cleanup hook timeout; no timer or skip was changed.
+
+- [x] Reject exhausted publication budgets before the first or next status read,
+  preserving the existing backoff and exact-operation authority.
+- [x] Bind managed preparation, upload retry and readback to the captured GitHub
+  numeric ID, case-insensitive login and exact proof ID without extra I/O.
+- [x] Reject repository dot segments before context/provider I/O and encode
+  owner/name API path segments while preserving valid repository names.
+- [x] Run focused counter regressions, owned full checks and record the exact
+  pushed successor separately from historical validation.

@@ -89,7 +89,9 @@ export function parseGitHubRepository(value: string): { owner: string; name: str
     .replace(/^ssh:\/\/git@github\.com\//, '')
     .replace(/\.git$/, '');
   const match = REPOSITORY_PATTERN.exec(normalized);
-  if (!match) throw new Error('Repository must use the exact owner/name form.');
+  if (!match || ['.', '..'].includes(match[1]) || ['.', '..'].includes(match[2])) {
+    throw new Error('Repository must use the exact owner/name form without dot segments.');
+  }
   return { owner: match[1], name: match[2], slug: `${match[1]}/${match[2]}` };
 }
 
