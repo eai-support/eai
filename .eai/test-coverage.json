@@ -214,7 +214,7 @@
             "src/lib/api.ts",
             "src/lib/eai-managed-deploy.ts",
             "src/lib/eai-managed-source.ts",
-            "src/lib/eai-managed-source-client.ts",
+            "src/lib/eai-managed-source-*.ts",
             ".tech-docs/full-e2e-smoke-traceability.md",
             "scripts/generate-release-docs.cjs",
             "tests/integration/release-metadata.test.ts",

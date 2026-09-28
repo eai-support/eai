@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
@@ -11,7 +11,7 @@ import {
   DEFAULT_PROD_AUTH_TENANT_NAME,
   setActiveProfile,
 } from '../../src/lib/profile.js';
-import { saveManagedRecoveryAuthority } from '../../src/commands/eai-managed-deploy-recovery.js';
+import { loadManagedRetryAuthority, saveManagedRecoveryAuthority } from '../../src/commands/eai-managed-deploy-recovery.js';
 import { eaiManagedDeployCommand } from '../../src/commands/eai-managed-deploy.js';
 import { deployCommand } from '../../src/commands/deploy.js';
 import { buildCliManagedSourceBundle } from '../../src/lib/eai-managed-source.js';
@@ -181,7 +181,7 @@ describe('eai deploy app --target eai', () => {
         if (url.includes('/operations/cli-managed-source-123')) return jsonResponse(completeUnifiedOperation({ operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated', repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}` }));
         return jsonResponse({ message: 'operation missing' }, 404);
       }
-      if (url.endsWith('/cli-managed-source/github-link-sessions')) return jsonResponse(linkedGitHubSession());
+      if (url.endsWith('/cli-managed-source/github-link-sessions') || url.includes('/cli-managed-source/github-link-sessions/github-link-123?')) return jsonResponse(linkedGitHubSession());
       return jsonResponse({ message: `Unhandled GET ${url}` }, 500);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -233,7 +233,8 @@ describe('eai deploy app --target eai', () => {
     await env.cleanup();
   });
 
-  test('publishes exact local source with no customer origin or GitHub write access and reports pending bot review', async () => {
+  test.each(['accepted', 'lost-response', 'unsafe-directory'] as const)('saves original recovery authority before exact managed source upload: %s', async (uploadOutcome) => {
+    await rm(managedDeployStatePath('cli-managed-source-123'));
     await mkdir(join(projectRoot, 'src/app'), { recursive: true });
     await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "local source"; }');
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
@@ -260,9 +261,13 @@ describe('eai deploy app --target eai', () => {
       requests.push(url);
       if (url.endsWith('/cli-managed-source/preparations')) {
         prepared = JSON.parse(String(init?.body));
+        if (uploadOutcome === 'unsafe-directory') await chmod(join(env.dir, '.eai', 'managed-deployments'), 0o770);
         return jsonResponse(envelope('accepted'));
       }
       if (url.startsWith('https://dev-admin-portal.myenterprise.ai/')) {
+        const authority = JSON.parse(await readFile(managedDeployStatePath('cli-managed-source-123'), 'utf8'));
+        expect(authority).toMatchObject({ schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-source-123', publicApiUrl: API_BASE, tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', actorId: 'test-user-oid' });
+        if (uploadOutcome === 'lost-response') throw new Error('provider response lost');
         uploaded = JSON.parse(String(init?.body)).bundle;
         expect(init?.redirect).toBe('error');
         expect(init?.headers).toMatchObject({ 'X-EAI-Upload-Ticket': 'one-use-ticket' });
@@ -273,8 +278,17 @@ describe('eai deploy app --target eai', () => {
     }));
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--source', 'eai-managed', '--format', 'json'], { from: 'user' });
-    expect(process.exitCode).toBe(0);
     const result = JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''));
+    if (uploadOutcome !== 'accepted') {
+      expect(process.exitCode).toBe(1);
+      expect(result).toMatchObject({ ok: false, error: { code: uploadOutcome === 'lost-response' ? 'MANAGED_SOURCE_UPLOAD_UNCERTAIN' : 'MANAGED_SOURCE_RECOVERY_UNAVAILABLE' } });
+      expect(result.error.message).toContain('cli-managed-source-123');
+      expect(requests.filter(url => url.startsWith('https://dev-admin-portal.myenterprise.ai/'))).toHaveLength(uploadOutcome === 'lost-response' ? 1 : 0);
+      if (uploadOutcome === 'lost-response') await expect(loadManagedRetryAuthority('cli-managed-source-123', TENANT_ID, TENANT_ID, 'planning-portal')).resolves.toMatchObject({ publicApiUrl: API_BASE, actorId: 'test-user-oid' });
+      else await expect(readFile(managedDeployStatePath('cli-managed-source-123'))).rejects.toMatchObject({ code: 'ENOENT' });
+      return;
+    }
+    expect(process.exitCode).toBe(0);
     expect(result).toMatchObject({ source: 'eai-managed', sourceMode: 'eai-cli-generated', classification: 'pending', status: 'pending_review', operationId: 'cli-managed-source-123' });
     expect(JSON.stringify(result)).not.toContain('one-use-ticket');
     expect(prepared).not.toHaveProperty('repo');
@@ -791,7 +805,7 @@ fi
         return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
       }
       if (url.endsWith('/source-unknown/register')) return jsonResponse({ status: 'registered' });
-      if (url.endsWith('/cli-managed-source/github-link-sessions')) return jsonResponse(linkedGitHubSession('verified', targetTenantId));
+      if (url.endsWith('/cli-managed-source/github-link-sessions') || url.includes('/cli-managed-source/github-link-sessions/github-link-123?')) return jsonResponse(linkedGitHubSession('verified', targetTenantId));
       if (url.endsWith('/source-unknown/workflow-setup')) {
         return jsonResponse({ status: 'issued', operationId: 'source-unknown-abc123', nonce: 'one-time-nonce' });
       }
@@ -1077,6 +1091,65 @@ fi
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ ok: false, error: { code: 'RETRY_SERVER_BINDING_MISMATCH' } });
     expect(fetchMock.mock.calls.every(([input]) => !String(input).endsWith('/deploy') && !String(input).endsWith('/runtime-bootstrap'))).toBe(true);
     expect(process.exitCode).toBe(1);
+  });
+
+  test.each([
+    { githubUserId: 999 }, { githubLogin: 'different-user' }, { githubProofId: 'different-proof' },
+  ])('rejects changed local GitHub proof before retry provider mutation: %j', async changed => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const originalState = customerRetryState();
+    const state = { ...originalState, ...changed };
+    await saveManagedDeployState(state);
+    const fetchMock = stubManagedOperation({
+      appScopeTenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: state.appKey,
+      operationId: state.operationId, environment: state.environment, configHash: state.configHash,
+      sourceMode: 'source-unknown', sourceStatus: 'issued', status: 'issued',
+      setup: customerOperationSetup(originalState),
+    });
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      state.appKey, '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
+      '--retry', state.operationId, '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      ok: false, error: { code: 'RETRY_GITHUB_BINDING_MISMATCH' },
+    });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/github-link-sessions/github-link-123?'))).toBe(true);
+    expect(fetchMock.mock.calls.every(([input]) => !String(input).endsWith('/runtime-bootstrap')
+      && !String(input).endsWith('/deploy') && !String(input).endsWith('/workflow-setup'))).toBe(true);
+    expect(process.exitCode).toBe(1);
+  });
+
+  test('tightens recovery directory before saving and reading original endpoint authority', async () => {
+    const directory = join(env.dir, '.eai', 'managed-deployments');
+    const authority = {
+      schema: 'eai.managed-recovery-authority.v1' as const, operationId: 'cli-managed-source-123',
+      tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal',
+      actorId: 'test-user-oid', publicApiUrl: API_BASE,
+    };
+    await chmod(directory, 0o755);
+    await saveManagedRecoveryAuthority(authority);
+    expect((await stat(directory)).mode & 0o777).toBe(0o700);
+    expect((await stat(managedDeployStatePath(authority.operationId))).mode & 0o777).toBe(0o600);
+    await chmod(directory, 0o755);
+    await expect(loadManagedRetryAuthority(authority.operationId, TENANT_ID, TENANT_ID, authority.appKey))
+      .resolves.toMatchObject({ publicApiUrl: API_BASE, actorId: authority.actorId });
+    expect((await stat(directory)).mode & 0o777).toBe(0o700);
+  });
+
+  test.each(['.eai', '.eai/managed-deployments'])('rejects a shared writable recovery parent before authority load or save: %s', async unsafe => {
+    const path = managedDeployStatePath('cli-managed-source-123');
+    const before = await readFile(path, 'utf8');
+    await chmod(join(env.dir, unsafe), 0o770);
+    await expect(loadManagedRetryAuthority('cli-managed-source-123', TENANT_ID, TENANT_ID, 'planning-portal'))
+      .rejects.toMatchObject({ code: 'RETRY_AUTHORITY_UNAVAILABLE' });
+    await expect(saveManagedRecoveryAuthority({
+      schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-source-123',
+      tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal',
+      actorId: 'test-user-oid', publicApiUrl: API_BASE,
+    })).rejects.toThrow('untrusted directory');
+    expect(await readFile(path, 'utf8')).toBe(before);
+    expect((await stat(join(env.dir, unsafe))).mode & 0o777).toBe(0o770);
   });
 
   test.each(['terminal success', 'accepted evidence'] as const)(

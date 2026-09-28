@@ -1,5 +1,6 @@
 import { loadManagedDeployState, managedDeployStatePath, type ManagedDeployState } from "../lib/eai-managed-deploy.js";
 import { readPrivateFileNoFollow, writePrivateFileNoFollow } from "../lib/eai-managed-deploy-filesystem.js";
+import { prepareManagedDeployStateDirectory } from "../lib/eai-managed-deploy-state.js";
 import { requireManagedPublicApiUrl } from "../lib/managed-public-api.js";
 import { fail, NEW_SOURCE_OPERATION_ACTION } from "./eai-managed-deploy-contract.js";
 
@@ -15,7 +16,9 @@ export interface ManagedRecoveryAuthority {
 
 /** Owner-only original gateway receipt; it does not replace server-sealed operation authority. */
 export async function saveManagedRecoveryAuthority(authority: ManagedRecoveryAuthority): Promise<void> {
-  await writePrivateFileNoFollow(managedDeployStatePath(authority.operationId), `${JSON.stringify(authority)}\n`);
+  const path = managedDeployStatePath(authority.operationId);
+  await prepareManagedDeployStateDirectory();
+  await writePrivateFileNoFollow(path, `${JSON.stringify(authority)}\n`);
 }
 
 /** The original endpoint is read before authentication or source routing; an ID prefix is not authority. */
@@ -24,6 +27,7 @@ export async function loadManagedRetryAuthority(
 ): Promise<{ publicApiUrl: string; actorId?: string; state?: ManagedDeployState }> {
   let authority: ManagedRecoveryAuthority | ManagedDeployState;
   try {
+    await prepareManagedDeployStateDirectory();
     authority = JSON.parse(await readPrivateFileNoFollow(managedDeployStatePath(operationId))) as ManagedRecoveryAuthority | ManagedDeployState;
   } catch {
     fail("RETRY_AUTHORITY_UNAVAILABLE", "Protected retry state with the original PublicAPI authority is unavailable.", NEW_SOURCE_OPERATION_ACTION);
@@ -46,4 +50,3 @@ export async function loadManagedRetryAuthority(
   }
   fail("RETRY_AUTHORITY_UNAVAILABLE", "Protected retry authority has an invalid schema or actor.", NEW_SOURCE_OPERATION_ACTION);
 }
-

@@ -113,3 +113,14 @@ Validation below applies to the 2026-09-28 readiness changes; earlier validation
 - [x] Reject public/unverified customer repositories before registration and
   independently enforce single-link source-unknown evidence snapshots; private
   positives, malformed visibility and real hard-link regressions passed.
+
+- [x] Compare the original server-bound GitHub numeric ID, login and proof before an undispatched customer retry; modified local identity fails before Git or provider mutations (DTE-031–DTE-035).
+- [x] Reuse trusted owner-only recovery-directory preparation for receipt save and load; reject writable parents without modifying the retained authority (DTE-016, DTE-091).
+- [x] Persist prepared managed-source recovery authority before upload-token retrieval and upload; prove lost responses retain authority and failed persistence performs no upload (DTE-031–DTE-035, DTE-091).
+
+The late recovery changes pass 205 focused source-client, deployment-library and
+command integration cases. The complete one-worker suite passes 1,165 tests
+across 54 files, with two existing documented skips (214.81 seconds). Build,
+lint and exact template3432 byte pairing pass. This fresh passing execution does
+not erase earlier failed or interrupted runs. Exact-head CI, producer publication
+and live Installer-first qualification remain separate gates.

@@ -146,11 +146,46 @@ describe('managed publication authority and readiness', () => {
     const read = vi.spyOn(client, 'getCliManagedSourceOperation').mockResolvedValue(response(operation('pending_review')));
     vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ status: 'pending_review' }));
-    const result = await submitCliManagedSource(client, scope, session(), bundle);
+    const result = await submitCliManagedSource(client, scope, session(), bundle, async () => {});
     expect(result.status).toBe('pending_review');
     expect(prepare).toHaveBeenCalledWith('company', 'my-app', expect.objectContaining({ githubLinkSessionId: 'github-link-123', bundleSha256: bundle.bundleSha256, fileCount: 1, totalBytes: 3, targetTenantId: 'runtime', environment: 'preview' }));
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(operation().upload!.url, expect.objectContaining({ method: 'POST', redirect: 'error', body: JSON.stringify({ tenantId: scope.tenantId, appKey: scope.appKey, targetTenantId: scope.targetTenantId, environment: scope.environment, bundle }), headers: { Authorization: 'Bearer fixture-eai-token', 'Content-Type': 'application/json', 'X-EAI-Upload-Ticket': 'one-use-upload-proof' } }));
     expect(read).toHaveBeenCalledExactlyOnceWith('company', 'my-app', 'cli-managed-source-123', 'runtime', 'preview');
+  });
+
+  test('persists the prepared operation before reading a token or uploading source', async () => {
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    const prepared = operation();
+    vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(prepared));
+    vi.spyOn(client, 'getCliManagedSourceOperation').mockResolvedValue(response(operation('pending_review')));
+    let saved = false;
+    const token = vi.spyOn(auth, 'getAccessToken').mockImplementation(async () => {
+      expect(saved).toBe(true);
+      return 'fixture-eai-token';
+    });
+    const upload = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      expect(saved).toBe(true);
+      return response({ status: 'pending_review' });
+    });
+    await submitCliManagedSource(client, scope, session(), bundle, async value => {
+      expect(value).toEqual(prepared);
+      expect(token).not.toHaveBeenCalled();
+      expect(upload).not.toHaveBeenCalled();
+      saved = true;
+    });
+    expect(upload).toHaveBeenCalledTimes(1);
+  });
+
+  test('refuses source upload when protected operation recovery cannot be persisted', async () => {
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
+    const token = vi.spyOn(auth, 'getAccessToken');
+    const upload = vi.spyOn(globalThis, 'fetch');
+    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {
+      throw new Error('local recovery write failed');
+    })).rejects.toMatchObject({ code: 'MANAGED_SOURCE_RECOVERY_UNAVAILABLE', message: expect.stringContaining('cli-managed-source-123') });
+    expect(token).not.toHaveBeenCalled();
+    expect(upload).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -166,7 +201,7 @@ describe('managed publication authority and readiness', () => {
     vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(prepared));
     const token = vi.spyOn(auth, 'getAccessToken');
     const fetchMock = vi.spyOn(globalThis, 'fetch');
-    await expect(submitCliManagedSource(client, scope, session(), bundle)).rejects.toMatchObject({ code: 'MANAGED_SOURCE_UPLOAD_INVALID' });
+    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({ code: 'MANAGED_SOURCE_UPLOAD_INVALID' });
     expect(token).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -187,7 +222,7 @@ describe('managed publication authority and readiness', () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(response({ status: "pending_review" }));
     expect(
-      (await submitCliManagedSource(client, scope, session(), bundle)).status,
+      (await submitCliManagedSource(client, scope, session(), bundle, async () => {})).status,
     ).toBe("pending_review");
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
       operation().upload!.url,
@@ -305,7 +340,7 @@ describe('managed publication authority and readiness', () => {
   test('rejects a different server-authorized bundle before upload', async () => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
     vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response({ ...operation(), bundleSha256: `sha256:${'e'.repeat(64)}` }));
-    await expect(submitCliManagedSource(client, scope, session(), bundle)).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
+    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
   });
 
   test('does not upload if preparation refers to another linked GitHub account', async () => {
@@ -313,7 +348,7 @@ describe('managed publication authority and readiness', () => {
     const prepared = operation();
     prepared.verifiedGithubUser.id = 999;
     vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(prepared));
-    await expect(submitCliManagedSource(client, scope, session(), bundle)).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
+    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
   });
 
   test.each([undefined, 'github-link-other'])('does not upload if preparation omits or changes the exact GitHub link session: %s', async githubLinkSessionId => {
@@ -323,7 +358,7 @@ describe('managed publication authority and readiness', () => {
     vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(prepared));
     const token = vi.spyOn(auth, 'getAccessToken');
     const fetchMock = vi.spyOn(globalThis, 'fetch');
-    await expect(submitCliManagedSource(client, scope, session(), bundle)).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
+    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
     expect(token).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -333,7 +368,7 @@ describe('managed publication authority and readiness', () => {
     vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
     vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('lost response'));
-    await expect(submitCliManagedSource(client, scope, session(), bundle)).rejects.toMatchObject({ code: 'MANAGED_SOURCE_UPLOAD_UNCERTAIN', message: expect.stringContaining('cli-managed-source-123') });
+    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({ code: 'MANAGED_SOURCE_UPLOAD_UNCERTAIN', message: expect.stringContaining('cli-managed-source-123') });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

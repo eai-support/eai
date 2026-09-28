@@ -4,7 +4,8 @@ import {
   loadManagedDeployState,
   type ManagedDeployState,
 } from "../lib/eai-managed-deploy.js";
-import { PlatformAPIClient } from "../lib/api.js";
+import { PlatformAPIClient, type CliManagedGithubLinkSession } from "../lib/api.js";
+import { validateCliGithubLinkSession, type CliManagedSourceScope } from "../lib/eai-managed-source-client.js";
 import {
   MANAGED_DEPLOY_ENVIRONMENTS,
   NEW_SOURCE_OPERATION_ACTION,
@@ -212,6 +213,31 @@ export async function retryCustomerSource(
   }
   const wasDispatched = Boolean(state.dispatchedAt);
   if (!wasDispatched) {
+    const link = validateCliGithubLinkSession(
+      await requireApiSuccess(
+        await retryClient.getCliManagedGithubLinkSession(
+          state.tenantId, state.appKey, state.githubLinkSessionId!,
+          state.targetTenantId, state.environment,
+        ),
+        "RETRY_GITHUB_AUTHORITY_UNAVAILABLE",
+        () => "Repair the original server-bound GitHub link; do not edit local retry state.",
+      ) as unknown as CliManagedGithubLinkSession,
+      {
+        tenantId: state.tenantId, appKey: state.appKey, targetTenantId: state.targetTenantId,
+        environment: state.environment as CliManagedSourceScope["environment"], actorId: state.actorId!,
+      },
+      state.githubLinkSessionId,
+      true,
+    );
+    if (link.status !== "verified" || link.verifiedGithubUser?.id !== state.githubUserId
+      || link.verifiedGithubUser.login.toLowerCase() !== state.githubLogin!.toLowerCase()
+      || link.verifiedGithubUser.proofId !== state.githubProofId) {
+      fail(
+        "RETRY_GITHUB_BINDING_MISMATCH",
+        "Stored GitHub identity does not match the original server-bound browser proof.",
+        "Restore the original retry authority; do not dispatch under a different GitHub account.",
+      );
+    }
     const source = await verifyLocalSource(
       context.root,
       state.repo,

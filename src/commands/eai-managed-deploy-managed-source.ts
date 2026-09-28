@@ -90,13 +90,13 @@ export async function startManagedSource(
     managedScope,
     link,
     bundle,
+    async (prepared) => saveManagedRecoveryAuthority({
+      schema: "eai.managed-recovery-authority.v1", operationId: prepared.operationId,
+      tenantId: managedScope.tenantId, targetTenantId: managedScope.targetTenantId,
+      appKey: managedScope.appKey, actorId: managedScope.actorId,
+      publicApiUrl: context.publicApiUrl,
+    }),
   );
-  await saveManagedRecoveryAuthority({
-    schema: "eai.managed-recovery-authority.v1", operationId: submitted.operationId,
-    tenantId: managedScope.tenantId, targetTenantId: managedScope.targetTenantId,
-    appKey: managedScope.appKey, actorId: managedScope.actorId,
-    publicApiUrl: context.publicApiUrl,
-  });
   const operation = await pollCliManagedSource(
     client,
     managedScope,

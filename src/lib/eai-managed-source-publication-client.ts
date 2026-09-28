@@ -19,12 +19,13 @@ import {
   validateCliManagedSourceOperation,
 } from "./eai-managed-source-operation-client.js";
 
-/** Prepare and submit only to the Portal origin authenticated during the same browser identity handoff. */
+/** Persist original operation recovery authority before submitting bytes to the verified Portal origin. */
 export async function submitCliManagedSource(
   client: PlatformAPIClient,
   scope: CliManagedSourceScope,
   link: CliManagedGithubLinkSession,
   bundle: CliManagedSourceBundle,
+  onPrepared: (operation: CliManagedSourceOperation) => Promise<void>,
 ): Promise<CliManagedSourceOperation> {
   validateCliGithubLinkSession(link, scope);
   if (link.status !== "verified") {
@@ -62,6 +63,14 @@ export async function submitCliManagedSource(
     throw new ManagedSourceError(
       "MANAGED_SOURCE_BINDING_MISMATCH",
       "Publication is bound to a different verified GitHub account. No local source was uploaded.",
+    );
+  }
+  try {
+    await onPrepared(prepared);
+  } catch {
+    throw new ManagedSourceError(
+      "MANAGED_SOURCE_RECOVERY_UNAVAILABLE",
+      `Protected recovery authority could not be saved for ${prepared.operationId}. No source was uploaded; repair the local recovery directory before resubmitting the same exact source.`,
     );
   }
   if (prepared.status !== "accepted" && prepared.status !== "publishing")

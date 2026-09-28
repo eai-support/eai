@@ -95,3 +95,6 @@ Recovery loads the protected original PublicAPI receipt before authentication fo
     before registration or dispatch; missing, public or mistyped visibility
     fails closed. Source-unknown evidence requires one hard link at pre-open,
     opened, rebound and post-read descriptor/path snapshots.
+58. Customer-owned redispatch freshly reads the original server-bound GitHub link session and compares numeric user ID, case-insensitive login and proof ID with protected retry state before Git, runtime setup or dispatch. Pending, missing or mismatched proof fails closed; a completed verified browser session remains usable for the same sealed operation after its original browser deadline.
+59. Recovery receipt save and load reject group/other-writable parents before enforcing the owner-only recovery directory, and never accept authority read from a shared writable directory.
+60. A validated prepared managed-source operation persists its original gateway recovery receipt before upload-token retrieval or source upload. Receipt failure reports the prepared operation ID without uploading; an uncertain upload response retains that receipt for exact-operation recovery.

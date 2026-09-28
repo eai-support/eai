@@ -56,7 +56,8 @@ function validateManagedDeployState(state: ManagedDeployState): void {
   requireManagedPublicApiUrl(state.publicApiUrl);
 }
 
-async function prepareStateDirectory(baseDir?: string): Promise<void> {
+/** Reject shared writable parents before enforcing owner-only recovery-directory permissions. */
+export async function prepareManagedDeployStateDirectory(baseDir?: string): Promise<void> {
   if (!baseDir) {
     await assertTrustedDirectory(homedir());
     await ensureDirectory(join(homedir(), '.eai'), 0o700);
@@ -70,7 +71,7 @@ async function prepareStateDirectory(baseDir?: string): Promise<void> {
 export async function saveManagedDeployState(state: ManagedDeployState, baseDir?: string): Promise<void> {
   validateManagedDeployState(state);
   const path = managedDeployStatePath(state.operationId, baseDir);
-  await prepareStateDirectory(baseDir);
+  await prepareManagedDeployStateDirectory(baseDir);
   await writePrivateFileNoFollow(path, `${JSON.stringify(state, null, 2)}\n`);
 }
 
@@ -87,7 +88,7 @@ function managedDispatchBindingSha256(state: ManagedDeployState): string {
 /** A durable exclusive claim survives crashes and prevents concurrent reuse of the nonce. */
 export async function claimManagedDeployDispatch(state: ManagedDeployState, baseDir?: string): Promise<boolean> {
   validateManagedDeployState(state);
-  await prepareStateDirectory(baseDir);
+  await prepareManagedDeployStateDirectory(baseDir);
   const marker = `${managedDeployStatePath(state.operationId, baseDir)}.dispatch`;
   const now = new Date().toISOString();
   const claim: ManagedDispatchClaim = {
@@ -172,7 +173,7 @@ export async function recordManagedDeployDispatch(
 /** Load only a state file whose immutable digest and operation identity remain valid. */
 export async function loadManagedDeployState(operationId: string, baseDir?: string): Promise<ManagedDeployState> {
   const path = managedDeployStatePath(operationId, baseDir);
-  await prepareStateDirectory(baseDir);
+  await prepareManagedDeployStateDirectory(baseDir);
   let parsed: ManagedDeployState;
   try {
     parsed = JSON.parse(await readPrivateFileNoFollow(path)) as ManagedDeployState;
