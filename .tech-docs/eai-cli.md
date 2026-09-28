@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.18.1 |
-| Released | 2026-09-25 |
-| Last Material Change | Enforce PublicAPI V4 usage and preserve V4 health diagnostics |
-| Source Commit | `674ffa0bdeb59772592c29dd1c623f6b3639f237` |
+| Version | 3.18.2 |
+| Released | 2026-09-28 |
+| Last Material Change | Fix macOS codesign metadata timeout |
+| Source Commit | `c5ef50d332aeff08170fc8db1d580ccd9e5776e0` |
 
 
 ## Install
