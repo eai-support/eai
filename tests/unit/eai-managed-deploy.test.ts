@@ -235,6 +235,19 @@ describe('EAI managed deployment helpers', () => {
     )).rejects.toThrow('arbitrary root alias refused');
   });
 
+  test.each([MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES + 1, Number.MAX_SAFE_INTEGER, 0, -1, Infinity, NaN, 0.5])('rejects an invalid evidence ceiling %s before filesystem access', async maxBytes => {
+    await expect(readSourceUnknownEvidenceFile('/nonexistent/eai-evidence-limit-fixture.json', maxBytes)).rejects.toThrow('positive integer no greater than 1 MiB');
+  });
+
+  test('allows a smaller evidence bound but never allocates above the fixed ceiling', async () => {
+    const evidence = join(await temporaryDirectory('eai-evidence-hard-ceiling-'), 'evidence.json');
+    await writeFile(evidence, 'x'.repeat(64));
+    expect(await readSourceUnknownEvidenceFile(evidence, 64)).toBe('x'.repeat(64));
+    await expect(readSourceUnknownEvidenceFile(evidence, 63)).rejects.toThrow('must contain 1 to 63 bytes');
+    await writeFile(evidence, Buffer.alloc(MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES, 0x20));
+    expect((await readSourceUnknownEvidenceFile(evidence, MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES)).length).toBe(MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES);
+  });
+
   test('reads workflow evidence through a bounded no-follow regular-file handle', async () => {
     const directory = await temporaryDirectory('eai-workflow-evidence-');
     const evidence = join(directory, 'evidence.json');

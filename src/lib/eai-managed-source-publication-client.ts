@@ -1,4 +1,4 @@
-import { PlatformAPIClient, type CliManagedGithubLinkSession } from "./api.js";
+import { PlatformAPIClient, awaitManagedRequestDeadline, type CliManagedGithubLinkSession } from "./api.js";
 import { getAccessToken } from "./auth.js";
 import {
   ManagedSourceError,
@@ -161,18 +161,18 @@ async function uploadCliManagedSource(
       "The upload URL, expiry or digest is not bound to the verified platform operation. No source or token was sent.",
     );
   }
-  const token = await getAccessToken();
-  if (!token) {
-    throw new ManagedSourceError(
-      "EAI_LOGIN_REQUIRED",
-      "Sign in with eai login before submitting source.",
-    );
-  }
+  const signal = client.managedRequestSignal();
   let response: Response;
   try {
+    const token = await awaitManagedRequestDeadline(signal, getAccessToken());
+    if (!token) {
+      throw new ManagedSourceError("EAI_LOGIN_REQUIRED", "Sign in with eai login before submitting source.");
+    }
+    signal.throwIfAborted();
     response = await fetch(url.href, {
       method: "POST",
       redirect: "error",
+      signal,
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
@@ -186,10 +186,11 @@ async function uploadCliManagedSource(
         bundle,
       }),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof ManagedSourceError && error.code === "EAI_LOGIN_REQUIRED") throw error;
     throw new ManagedSourceError(
       "MANAGED_SOURCE_UPLOAD_UNCERTAIN",
-      `Source upload response was lost. Use --retry ${prepared.operationId} to load the protected original endpoint and inspect the same publication; do not create a second publication or use a customer GitHub token.`,
+      `Source upload did not return a confirmed result. Use --retry ${prepared.operationId} to load the protected original endpoint and inspect the same publication; do not create a second publication or use a customer GitHub token.`,
     );
   }
   if (!response.ok) {

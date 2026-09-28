@@ -127,10 +127,10 @@ describe('managed publication authority and readiness', () => {
   function operation(status: CliManagedSourceOperation['status'] = 'accepted'): CliManagedSourceOperation {
     return {
       schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated', ...scope,
-      operationId: 'cli-managed-source-123', status, githubLinkSessionId: 'github-link-123', templateCommitSha: bundle.templateCommitSha, bundleSha256: bundle.bundleSha256, configHash: bundle.configHash,
+      operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', status, githubLinkSessionId: 'github-link-123', templateCommitSha: bundle.templateCommitSha, bundleSha256: bundle.bundleSha256, configHash: bundle.configHash,
       verifiedGithubUser: session().verifiedGithubUser!, repository: { owner: 'eai-generated-apps', name: 'platform-derived-app', private: true },
       expiresAt: new Date(Date.now() + 600_000).toISOString(),
-      upload: { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123', ticket: 'one-use-upload-proof', sha256: bundle.bundleSha256, expiresAt: new Date(Date.now() + 300_000).toISOString() },
+      upload: { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ticket: 'one-use-upload-proof', sha256: bundle.bundleSha256, expiresAt: new Date(Date.now() + 300_000).toISOString() },
     };
   }
 
@@ -152,7 +152,62 @@ describe('managed publication authority and readiness', () => {
     expect(result.status).toBe('pending_review');
     expect(prepare).toHaveBeenCalledWith('company', 'my-app', expect.objectContaining({ githubLinkSessionId: 'github-link-123', bundleSha256: bundle.bundleSha256, fileCount: 1, totalBytes: 3, targetTenantId: 'runtime', environment: 'preview' }));
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(operation().upload!.url, expect.objectContaining({ method: 'POST', redirect: 'error', body: JSON.stringify({ tenantId: scope.tenantId, appKey: scope.appKey, targetTenantId: scope.targetTenantId, environment: scope.environment, bundle }), headers: { Authorization: 'Bearer fixture-eai-token', 'Content-Type': 'application/json', 'X-EAI-Upload-Ticket': 'one-use-upload-proof' } }));
-    expect(read).toHaveBeenCalledExactlyOnceWith('company', 'my-app', 'cli-managed-source-123', 'runtime', 'preview');
+    expect(read).toHaveBeenCalledExactlyOnceWith('company', 'my-app', 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'runtime', 'preview');
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test.each(['source-unknown-abc123', 'cli-managed-source-123', 'cli-managed-' + 'a'.repeat(31), 'cli-managed-' + 'a'.repeat(33), 'cli-managed-' + 'A'.repeat(32)])('rejects crossed or noncanonical publication ID %s before persistence or upload', async operationId => {
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    const value = { ...operation(), operationId };
+    vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(value));
+    const persist = vi.fn(async () => {});
+    const token = vi.spyOn(auth, 'getAccessToken');
+    const upload = vi.spyOn(globalThis, 'fetch');
+    await expect(submitCliManagedSource(client, scope, session(), bundle, persist)).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
+    const read = vi.spyOn(client, 'getCliManagedSourceOperation');
+    await expect(pollCliManagedSource(client, scope, operationId, { wait: false, timeoutMs: 1000 })).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
+    expect(persist).not.toHaveBeenCalled();
+    expect(token).not.toHaveBeenCalled();
+    expect(upload).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  test.each(['fetch', 'credentials'] as const)('bounds a stalled Portal upload %s without replaying or losing prepared recovery', async boundary => {
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId, { managedRequestTimeoutMs: 25 });
+    const prepare = vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
+    const read = vi.spyOn(client, 'getCliManagedSourceOperation');
+    let finishToken!: (value: string) => void;
+    const token = vi.spyOn(auth, 'getAccessToken').mockImplementation(() => boundary === 'credentials'
+      ? new Promise(resolve => { finishToken = resolve; }) : Promise.resolve('fixture-eai-token'));
+    const upload = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error('Portal upload must have its native deadline');
+      return new Promise<Response>((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    });
+    const alive = setInterval(() => {}, 1000);
+    const persisted: CliManagedSourceOperation[] = [];
+    try {
+      await expect(submitCliManagedSource(client, scope, session(), bundle, async value => { persisted.push(value); })).rejects.toMatchObject({
+        code: 'MANAGED_SOURCE_UPLOAD_UNCERTAIN', message: expect.stringContaining('--retry cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+      });
+      if (boundary === 'credentials') { finishToken('fixture-eai-token'); await Promise.resolve(); }
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0].operationId).toBe(operation().operationId);
+      expect(prepare).toHaveBeenCalledTimes(1);
+      expect(token).toHaveBeenCalledTimes(1);
+      expect(upload).toHaveBeenCalledTimes(boundary === 'fetch' ? 1 : 0);
+      if (boundary === 'fetch') expect(upload.mock.calls[0][1]?.signal?.aborted).toBe(true);
+      expect(read).not.toHaveBeenCalled();
+    } finally { clearInterval(alive); }
+  });
+
+  test('retains missing-login classification and never uploads without an EAI token', async () => {
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
+    vi.spyOn(auth, 'getAccessToken').mockResolvedValue(null);
+    const upload = vi.spyOn(globalThis, 'fetch');
+    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({ code: 'EAI_LOGIN_REQUIRED' });
+    expect(upload).not.toHaveBeenCalled();
   });
 
   test('persists the prepared operation before reading a token or uploading source', async () => {
@@ -185,16 +240,16 @@ describe('managed publication authority and readiness', () => {
     const upload = vi.spyOn(globalThis, 'fetch');
     await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {
       throw new Error('local recovery write failed');
-    })).rejects.toMatchObject({ code: 'MANAGED_SOURCE_RECOVERY_UNAVAILABLE', message: expect.stringContaining('cli-managed-source-123') });
+    })).rejects.toMatchObject({ code: 'MANAGED_SOURCE_RECOVERY_UNAVAILABLE', message: expect.stringContaining('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa') });
     expect(token).not.toHaveBeenCalled();
     expect(upload).not.toHaveBeenCalled();
   });
 
   test.each([
     { url: 'https://attacker.example/upload' },
-    { url: 'http://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123' },
+    { url: 'http://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
     { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/other-operation' },
-    { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123?redirect=elsewhere' },
+    { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?redirect=elsewhere' },
     { sha256: `sha256:${'f'.repeat(64)}` }, { expiresAt: '2000-01-01T00:00:00Z' }, { ticket: '' },
   ])('refuses mismatched upload authority before reading a token or sending bytes: %j', async changed => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
@@ -370,14 +425,14 @@ describe('managed publication authority and readiness', () => {
     vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
     vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('lost response'));
-    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({ code: 'MANAGED_SOURCE_UPLOAD_UNCERTAIN', message: expect.stringContaining('--retry cli-managed-source-123') });
+    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({ code: 'MANAGED_SOURCE_UPLOAD_UNCERTAIN', message: expect.stringContaining('--retry cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa') });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test('returns pending review without falsely waiting for customer repository write access', async () => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
     const read = vi.spyOn(client, 'getCliManagedSourceOperation').mockResolvedValue(response(operation('pending_review')));
-    const result = await pollCliManagedSource(client, scope, 'cli-managed-source-123', { wait: true, timeoutMs: 60_000 });
+    const result = await pollCliManagedSource(client, scope, 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', { wait: true, timeoutMs: 60_000 });
     expect(classifyCliManagedSourceOperation(result)).toBe('pending');
     expect(read).toHaveBeenCalledTimes(1);
   });
@@ -391,7 +446,7 @@ describe('managed publication authority and readiness', () => {
     const result = await pollCliManagedSource(
       client,
       scope,
-      'cli-managed-source-123',
+      'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       { wait: true, timeoutMs: 600_000 },
       undefined,
       { sleep: async ms => { delays.push(ms); now += ms; } },
@@ -401,7 +456,7 @@ describe('managed publication authority and readiness', () => {
     expect(delays.slice(0, 15)).toEqual(Array(15).fill(2_000));
     expect(delays.slice(15)).toEqual(Array(114).fill(5_000));
     expect(read).toHaveBeenCalledTimes(129);
-    expect(read).toHaveBeenCalledWith('company', 'my-app', 'cli-managed-source-123', 'runtime', 'preview', expect.any(Number));
+    expect(read).toHaveBeenCalledWith('company', 'my-app', 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'runtime', 'preview', expect.any(Number));
     expect(read.mock.calls[0][5]).toBe(600_000);
     expect(read.mock.calls.at(-1)?.[5]).toBe(5000);
   });

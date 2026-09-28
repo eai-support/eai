@@ -38,6 +38,16 @@ export function isManagedPublicRequestTimeout(error: unknown): boolean {
   return typeof error === 'object' && error !== null && managedTimeoutReasons.has(error);
 }
 
+/** Bound the managed caller while retaining the issued signal's exact abort reason. */
+export async function awaitManagedRequestDeadline<T>(signal: AbortSignal, result: Promise<T>): Promise<T> {
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const abort = (): void => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    result.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
 /** Native body reads may expose AbortError; retain the actual managed timeout reason. */
 export async function readManagedPublicResponseText(response: Response): Promise<string> {
   try {
@@ -907,6 +917,19 @@ export class PlatformAPIClient {
     });
   }
 
+  /** Portal uploads use the same internal ceiling and existing command budget as PublicAPI. */
+  managedRequestSignal(timeoutMs?: number): AbortSignal {
+    const budgets = [MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
+      this.requestOptions.managedRequestTimeoutMs, timeoutMs]
+      .filter((value): value is number => value !== undefined);
+    if (budgets.some((value) => !Number.isSafeInteger(value) || value < 1)) {
+      throw new RangeError('Managed HTTP timeout must be a positive bounded integer.');
+    }
+    const signal = AbortSignal.timeout(Math.min(...budgets));
+    signal.addEventListener('abort', () => managedTimeoutReasons.add(signal.reason), { once: true });
+    return signal;
+  }
+
   /** Keep the managed deadline active through response consumption and reject redirects. */
   private async managedPublicRequest(
     path: string,
@@ -915,19 +938,8 @@ export class PlatformAPIClient {
     options?: { timeoutMs?: number; bearerToken?: string },
   ): Promise<Response> {
     const baseUrl = requireManagedPublicApiUrl(this.baseUrl);
-    const budgets = [MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
-      this.requestOptions.managedRequestTimeoutMs, options?.timeoutMs]
-      .filter((value): value is number => value !== undefined);
-    if (budgets.some((value) => !Number.isSafeInteger(value) || value < 1)) {
-      throw new RangeError('Managed HTTP timeout must be a positive bounded integer.');
-    }
-    const signal = AbortSignal.timeout(Math.min(...budgets));
-    signal.addEventListener('abort', () => managedTimeoutReasons.add(signal.reason), { once: true });
-    const headers = await new Promise<Record<string, string>>((resolve, reject) => {
-      const abort = (): void => reject(signal.reason);
-      signal.addEventListener('abort', abort, { once: true });
-      this.headers().then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
-    });
+    const signal = this.managedRequestSignal(options?.timeoutMs);
+    const headers = await awaitManagedRequestDeadline(signal, this.headers());
     signal.throwIfAborted();
     if (options?.bearerToken !== undefined) headers.Authorization = `Bearer ${options.bearerToken}`;
     try {

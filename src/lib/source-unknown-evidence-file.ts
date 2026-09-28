@@ -44,13 +44,13 @@ async function assertEvidenceParents(identities: readonly ManagedDirectoryIdenti
   }
 }
 
-/** Read one bounded regular evidence file without following a caller-supplied final link. */
+/** Callers may lower the 1 MiB ceiling, never raise it or follow a final link. */
 export async function readSourceUnknownEvidenceFile(
   path: string,
   maxBytes = MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES,
 ): Promise<string> {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
-    throw new Error('Workflow evidence size limit must be a positive integer.');
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES) {
+    throw new Error('Workflow evidence size limit must be a positive integer no greater than 1 MiB.');
   }
   const resolvedPath = resolve(path);
   const parents = await snapshotEvidenceParents(resolvedPath);

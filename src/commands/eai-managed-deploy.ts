@@ -108,7 +108,7 @@ export const eaiManagedDeployCommand = new Command("app")
 Examples:
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source eai-managed
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source customer-owned --repo org/planning-portal --installation-id 12345
-  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --environment preview --source eai-managed --resume cli-managed-source-abc123 --format json
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --environment preview --source eai-managed --resume cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --format json
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
 `,

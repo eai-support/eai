@@ -108,3 +108,32 @@ full source lint, changed-test lint and exact template3432 pairing pass. Earlier
 failed runs retain their separate provenance; no test timeout, skip, release pin
 or activation gate was widened. Changed public deadline/body interfaces document
 their critical contract; untouched missing-doc advisories remain pre-existing.
+
+Final publication-boundary closure keeps `--resume` observational for accepted
+and publishing operations, including an upload ticket with no local source or
+recovery file. Only `--retry`, after protected original receipt loading, can
+replay the exact bound upload; a changed current profile cannot select its
+gateway. Source-specific preparation/readback and polling reject other
+namespaces and malformed IDs using the actual AdminAPI-produced
+`cli-managed-[a-f0-9]{32}` format. The former synthetic fixture prefix is not a
+production alias; help and its generated release assets now show the real form.
+
+Portal uploads share the existing managed request signal and caller-credential
+deadline. A native upload timeout retains uncertain-result guidance and the
+prepared operation, without another preparation, upload or status read. The
+upload response body is not trusted as publication success: the bounded exact
+operation read remains authoritative. The native signal remains attached to
+the upload stream after headers. Independent credential refresh and pre-client
+context discovery are outside this caller deadline, so no whole-command or
+underlying auth-fetch cancellation SLA is claimed. Evidence callers may reduce
+the fixed 1 MiB ceiling but cannot raise it, even for a small or missing file.
+
+The final focused four-suite corpus passed 324 cases. The complete serialized
+execution passed 1,227 tests across all 54 files with two documented skips in
+151.93 seconds. Build, full source lint, changed integration/source-client lint,
+exact template3432 pairing, generated release-asset freshness and diff checks
+pass. The unit file's five untouched `no-regex-spaces` findings were reproduced
+against its predecessor HEAD bytes and remain separate baseline diagnostics;
+none arises from the new evidence-limit tests. Earlier failed/incomplete runs
+and the 1,208-test predecessor proof remain historical, with no widened timer,
+skip, release pin, route or authorization scope.

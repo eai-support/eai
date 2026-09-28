@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { PlatformAPIClient, readManagedPublicResponseText } from "./api.js";
-import { isManagedDeploymentIdentifier } from "./eai-managed-identifiers.js";
 import { ManagedSourceError } from "./eai-managed-source.js";
 import type {
   CliManagedSourceOperation,
   CliManagedSourceScope,
 } from "./eai-managed-source-client-types.js";
+
+const CLI_MANAGED_SOURCE_OPERATION_ID = /^cli-managed-[a-f0-9]{32}$/;
 
 export interface ExpectedCliManagedSourceOperation {
   operationId?: string;
@@ -49,7 +50,7 @@ export function validateCliManagedSourceOperation(
     !value ||
     value.schemaVersion !== "eai.cli_managed_source_operation.v1" ||
     value.sourceMode !== "eai-cli-generated" ||
-    !isManagedDeploymentIdentifier(value.operationId) ||
+    !CLI_MANAGED_SOURCE_OPERATION_ID.test(value.operationId) ||
     (expected?.operationId && value.operationId !== expected.operationId) ||
     value.actorId !== scope.actorId ||
     !scope.actorId ||
@@ -122,6 +123,9 @@ export async function pollCliManagedSource(
   initial?: CliManagedSourceOperation,
   dependencies: { sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<CliManagedSourceOperation> {
+  if (!CLI_MANAGED_SOURCE_OPERATION_ID.test(operationId)) {
+    throw new ManagedSourceError("MANAGED_SOURCE_BINDING_MISMATCH", "The publication ID does not match the canonical CLI-managed operation namespace.");
+  }
   const startedAt = Date.now();
   const deadline = startedAt + options.timeoutMs;
   const sleep =

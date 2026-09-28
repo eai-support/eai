@@ -16,6 +16,7 @@ import {
 import { saveManagedRecoveryAuthority } from "./eai-managed-deploy-recovery.js";
 import { printManagedSourceCompletion } from "./eai-managed-deploy-output.js";
 
+/** Resume only observes; upload retry requires the orchestrator's protected original receipt. */
 export async function resumeManagedSource(
   execution: ManagedDeployExecutionContext,
   operationId: string,
@@ -41,6 +42,7 @@ export async function resumeManagedSource(
     );
   }
   if (
+    options.retry &&
     (current.status === "accepted" || current.status === "publishing") &&
     current.upload
   ) {

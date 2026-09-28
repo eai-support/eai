@@ -102,7 +102,7 @@ function completeUnifiedOperation(options: {
 function completedManagedPublication(): Record<string, unknown> {
   return {
     schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated',
-    operationId: 'cli-managed-source-123', status: 'completed',
+    operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', status: 'completed',
     tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', environment: 'preview',
     actorId: 'test-user-oid', templateCommitSha: 'a'.repeat(40),
     bundleSha256: `sha256:${'b'.repeat(64)}`, configHash: `sha256:${'c'.repeat(64)}`,
@@ -178,7 +178,7 @@ describe('eai deploy app --target eai', () => {
       }
       if (url.includes('/managed-deployments/operations/')) {
         if (operation) return jsonResponse({ ...(!Object.hasOwn(operation, 'environment') ? { environment: 'preview' } : {}), ...operation });
-        if (url.includes('/operations/cli-managed-source-123')) return jsonResponse(completeUnifiedOperation({ operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated', repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}` }));
+        if (url.includes('/operations/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')) return jsonResponse(completeUnifiedOperation({ operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', sourceMode: 'eai-cli-generated', repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}` }));
         return jsonResponse({ message: 'operation missing' }, 404);
       }
       if (url.endsWith('/cli-managed-source/github-link-sessions') || url.includes('/cli-managed-source/github-link-sessions/github-link-123?')) return jsonResponse(linkedGitHubSession());
@@ -197,7 +197,7 @@ describe('eai deploy app --target eai', () => {
     process.chdir(projectRoot);
     process.env.HOME = env.dir;
     process.env.USERPROFILE = env.dir;
-    await saveManagedRecoveryAuthority({ schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-source-123', tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', actorId: 'test-user-oid', publicApiUrl: API_BASE });
+    await saveManagedRecoveryAuthority({ schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', actorId: 'test-user-oid', publicApiUrl: API_BASE });
     expect(managedDeployStatePath('source-unknown-fixture')).toContain(env.dir);
     process.env.BASE_URL_PUBLIC_API = API_BASE;
     process.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
@@ -234,7 +234,7 @@ describe('eai deploy app --target eai', () => {
   });
 
   test.each(['accepted', 'lost-response', 'unsafe-directory'] as const)('saves original recovery authority before exact managed source upload: %s', async (uploadOutcome) => {
-    await rm(managedDeployStatePath('cli-managed-source-123'));
+    await rm(managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'));
     await mkdir(join(projectRoot, 'src/app'), { recursive: true });
     await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "local source"; }');
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
@@ -247,13 +247,13 @@ describe('eai deploy app --target eai', () => {
     let prepared: Record<string, unknown> = {};
     let uploaded: Record<string, unknown> = {};
     const envelope = (status: string): Record<string, unknown> => ({
-      schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated', operationId: 'cli-managed-source-123', status,
+      schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated', operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', status,
       tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', environment: 'preview', actorId: 'test-user-oid',
       templateCommitSha: prepared.templateCommitSha, bundleSha256: prepared.bundleSha256, configHash: prepared.configHash,
       githubLinkSessionId: prepared.githubLinkSessionId,
       verifiedGithubUser: (linkedGitHubSession().verifiedGithubUser), repository: { owner: 'eai-generated-apps', name: 'server-derived-app' },
       expiresAt: new Date(Date.now() + 600_000).toISOString(),
-      upload: { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123', ticket: 'one-use-ticket', expiresAt: new Date(Date.now() + 300_000).toISOString(), sha256: prepared.bundleSha256 },
+      upload: { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ticket: 'one-use-ticket', expiresAt: new Date(Date.now() + 300_000).toISOString(), sha256: prepared.bundleSha256 },
     });
     const requests: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
@@ -265,8 +265,8 @@ describe('eai deploy app --target eai', () => {
         return jsonResponse(envelope('accepted'));
       }
       if (url.startsWith('https://dev-admin-portal.myenterprise.ai/')) {
-        const authority = JSON.parse(await readFile(managedDeployStatePath('cli-managed-source-123'), 'utf8'));
-        expect(authority).toMatchObject({ schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-source-123', publicApiUrl: API_BASE, tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', actorId: 'test-user-oid' });
+        const authority = JSON.parse(await readFile(managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), 'utf8'));
+        expect(authority).toMatchObject({ schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', publicApiUrl: API_BASE, tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', actorId: 'test-user-oid' });
         if (uploadOutcome === 'lost-response') throw new Error('provider response lost');
         uploaded = JSON.parse(String(init?.body)).bundle;
         expect(init?.redirect).toBe('error');
@@ -282,14 +282,14 @@ describe('eai deploy app --target eai', () => {
     if (uploadOutcome !== 'accepted') {
       expect(process.exitCode).toBe(1);
       expect(result).toMatchObject({ ok: false, error: { code: uploadOutcome === 'lost-response' ? 'MANAGED_SOURCE_UPLOAD_UNCERTAIN' : 'MANAGED_SOURCE_RECOVERY_UNAVAILABLE' } });
-      expect(result.error.message).toContain('cli-managed-source-123');
+      expect(result.error.message).toContain('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
       expect(requests.filter(url => url.startsWith('https://dev-admin-portal.myenterprise.ai/'))).toHaveLength(uploadOutcome === 'lost-response' ? 1 : 0);
-      if (uploadOutcome === 'lost-response') await expect(loadManagedRetryAuthority('cli-managed-source-123', TENANT_ID, TENANT_ID, 'planning-portal')).resolves.toMatchObject({ publicApiUrl: API_BASE, actorId: 'test-user-oid' });
-      else await expect(readFile(managedDeployStatePath('cli-managed-source-123'))).rejects.toMatchObject({ code: 'ENOENT' });
+      if (uploadOutcome === 'lost-response') await expect(loadManagedRetryAuthority('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', TENANT_ID, TENANT_ID, 'planning-portal')).resolves.toMatchObject({ publicApiUrl: API_BASE, actorId: 'test-user-oid' });
+      else await expect(readFile(managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'))).rejects.toMatchObject({ code: 'ENOENT' });
       return;
     }
     expect(process.exitCode).toBe(0);
-    expect(result).toMatchObject({ source: 'eai-managed', sourceMode: 'eai-cli-generated', classification: 'pending', status: 'pending_review', operationId: 'cli-managed-source-123' });
+    expect(result).toMatchObject({ source: 'eai-managed', sourceMode: 'eai-cli-generated', classification: 'pending', status: 'pending_review', operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
     expect(JSON.stringify(result)).not.toContain('one-use-ticket');
     expect(prepared).not.toHaveProperty('repo');
     expect(requests.some(url => url.includes('/source-unknown/'))).toBe(false);
@@ -369,7 +369,7 @@ describe('eai deploy app --target eai', () => {
     expect(requests.filter(({ url, redirect }) => url.startsWith(API_BASE) && redirect !== 'error')).toEqual([]);
   });
 
-  test("resumes a publishing upload using unchanged local bytes and the original linked Portal origin", async () => {
+  test.each(['--resume', '--retry'] as const)("%s observes or retries publication using the original upload authority", async (recoveryFlag) => {
     await mkdir(join(projectRoot, "src/app"), { recursive: true });
     await writeFile(join(projectRoot, "eai.runtime.json"), "{}");
     await writeFile(
@@ -396,6 +396,8 @@ describe('eai deploy app --target eai', () => {
       { cwd: projectRoot },
     );
     const { bundle } = await buildCliManagedSourceBundle(projectRoot);
+    const originalReceipt = await readFile(managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), 'utf8');
+    if (recoveryFlag === '--retry') process.env.BASE_URL_PUBLIC_API = 'https://dev-api.au.myenterprise.ai/public';
     const identity = stubManagedOperation().getMockImplementation()!;
     let operationReads = 0;
     const requests: string[] = [];
@@ -427,7 +429,7 @@ describe('eai deploy app --target eai', () => {
             return jsonResponse({
               schemaVersion: "eai.cli_managed_source_operation.v1",
               sourceMode: "eai-cli-generated",
-              operationId: "cli-managed-source-123",
+              operationId: "cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               status: operationReads++ === 0 ? "publishing" : "pending_review",
               tenantId: TENANT_ID,
               targetTenantId: TENANT_ID,
@@ -445,7 +447,7 @@ describe('eai deploy app --target eai', () => {
               },
               expiresAt: new Date(Date.now() + 600_000).toISOString(),
               upload: {
-                url: "https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-source-123",
+                url: "https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 ticket: "original-upload-ticket",
                 expiresAt: new Date(Date.now() + 300_000).toISOString(),
                 sha256: bundle.bundleSha256,
@@ -469,8 +471,8 @@ describe('eai deploy app --target eai', () => {
         TENANT_ID,
         "--source",
         "eai-managed",
-        "--resume",
-        "cli-managed-source-123",
+        recoveryFlag,
+        "cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "--no-wait",
         "--format",
         "json",
@@ -481,14 +483,42 @@ describe('eai deploy app --target eai', () => {
       JSON.parse(output.mock.calls.map(([value]) => String(value)).join("")),
     ).toMatchObject({
       classification: "pending",
-      publicationStatus: "pending_review",
+      publicationStatus: recoveryFlag === '--retry' ? "pending_review" : "publishing",
     });
     expect(
       requests.filter((url) => url.startsWith("https://dev-admin-portal.myenterprise.ai/")),
-    ).toHaveLength(1);
+    ).toHaveLength(recoveryFlag === '--retry' ? 1 : 0);
     expect(
       requests.some((url) => url.endsWith("/cli-managed-source/preparations")),
     ).toBe(false);
+    expect(await readFile(managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), 'utf8')).toBe(originalReceipt);
+    if (recoveryFlag === '--retry') expect(requests.every(url => url.startsWith(API_BASE) || url.startsWith('https://dev-admin-portal.myenterprise.ai/'))).toBe(true);
+  });
+
+  test.each(['accepted', 'publishing'] as const)('resume is read-only for %s even with upload authority and no local source', async status => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    await rm(managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'));
+    const identity = stubManagedOperation().getMockImplementation()!;
+    const requests: Array<{ url: string; method: string }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method || 'GET' });
+      if (url.includes('/cli-managed-source/operations/')) return jsonResponse({
+        ...completedManagedPublication(), status, githubLinkSessionId: 'github-link-123',
+        upload: { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ticket: 'unused-ticket', sha256: `sha256:${'b'.repeat(64)}`, expiresAt: new Date(Date.now() + 300_000).toISOString() },
+      });
+      return identity(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
+      '--resume', 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ publicationStatus: status, classification: 'pending' });
+    expect(requests.every(({ method }) => method === 'GET')).toBe(true);
+    expect(requests.some(({ url }) => url.includes('/github-link-sessions') || url.includes('/uploads/'))).toBe(false);
+    await expect(readFile(join(projectRoot, '.eai/cli-managed-source-receipt.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(process.exitCode).toBe(0);
   });
 
   test.each(['--resume', '--retry'] as const)(
@@ -510,7 +540,7 @@ describe('eai deploy app --target eai', () => {
       await eaiManagedDeployCommand.parseAsync([
         'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
         '--target-tenant-id', TENANT_ID, '--source', 'eai-managed',
-        recoveryFlag, 'cli-managed-source-123', '--no-wait', '--format', 'json',
+        recoveryFlag, 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '--no-wait', '--format', 'json',
       ], { from: 'user' });
 
       expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
@@ -543,7 +573,7 @@ describe('eai deploy app --target eai', () => {
 
   test.each(['dev', 'test', 'prod'] as const)('uses the sealed managed recovery environment %s without a flag', async environment => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
-    const identity = stubManagedOperation(completeUnifiedOperation({ operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated', environment, repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}` })).getMockImplementation()!;
+    const identity = stubManagedOperation(completeUnifiedOperation({ operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', sourceMode: 'eai-cli-generated', environment, repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}` })).getMockImplementation()!;
     const requests: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async input => {
       const url = String(input);
@@ -554,7 +584,7 @@ describe('eai deploy app --target eai', () => {
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await eaiManagedDeployCommand.parseAsync([
       'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
-      '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json',
+      '--resume', 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '--no-wait', '--format', 'json',
     ], { from: 'user' });
     expect(requests.filter(url => url.includes('/cli-managed-source/operations/')).every(url => url.includes(`environment=${environment}`))).toBe(true);
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ classification: 'succeeded' });
@@ -601,7 +631,7 @@ describe('eai deploy app --target eai', () => {
       if (url.includes('/cli-managed-source/operations/')) return jsonResponse(completedManagedPublication());
       if (url.includes('/managed-deployments/operations/')) {
         const operation = completeUnifiedOperation({
-          operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated',
+          operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', sourceMode: 'eai-cli-generated',
           repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
         });
         (operation.doctor as Record<string, unknown>).ready = false;
@@ -610,11 +640,11 @@ describe('eai deploy app --target eai', () => {
       return identity(input);
     }));
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--source', 'eai-managed', '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json'], { from: 'user' });
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--source', 'eai-managed', '--resume', 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '--no-wait', '--format', 'json'], { from: 'user' });
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
       source: 'eai-managed', sourceMode: 'eai-cli-generated', classification: 'pending', publicationStatus: 'completed',
     });
-    expect(requests.some(url => url.includes('/managed-deployments/operations/cli-managed-source-123'))).toBe(true);
+    expect(requests.some(url => url.includes('/managed-deployments/operations/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'))).toBe(true);
     expect(requests.some(url => url.includes('/source-unknown/') || url.endsWith('/github-link-sessions'))).toBe(false);
     expect(process.exitCode).toBe(0);
   });
@@ -628,7 +658,7 @@ describe('eai deploy app --target eai', () => {
       requests.push(url);
       if (url.includes('/cli-managed-source/operations/')) return jsonResponse(completedManagedPublication());
       if (url.includes('/managed-deployments/operations/')) return jsonResponse(completeUnifiedOperation({
-        operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated',
+        operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', sourceMode: 'eai-cli-generated',
         repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
       }));
       return identity(input);
@@ -636,7 +666,7 @@ describe('eai deploy app --target eai', () => {
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await eaiManagedDeployCommand.parseAsync([
       'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
-      '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json',
+      '--resume', 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '--no-wait', '--format', 'json',
     ], { from: 'user' });
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
       source: 'eai-managed', sourceMode: 'eai-cli-generated', status: 'active',
@@ -646,7 +676,7 @@ describe('eai deploy app --target eai', () => {
         artifactDigest: expect.stringMatching(/^sha256:/), imageDigest: expect.stringMatching(/^sha256:/),
       },
     });
-    expect(requests.some(url => url.includes('/managed-deployments/operations/cli-managed-source-123'))).toBe(true);
+    expect(requests.some(url => url.includes('/managed-deployments/operations/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'))).toBe(true);
     expect(process.exitCode).toBe(0);
   });
 
@@ -663,7 +693,7 @@ describe('eai deploy app --target eai', () => {
       const url = String(input);
       if (url.includes('/cli-managed-source/operations/')) return jsonResponse(publication);
       if (url.includes('/managed-deployments/operations/')) return jsonResponse(completeUnifiedOperation({
-        operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated',
+        operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', sourceMode: 'eai-cli-generated',
         repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
       }));
       return identity(input);
@@ -672,7 +702,7 @@ describe('eai deploy app --target eai', () => {
     await eaiManagedDeployCommand.parseAsync([
       'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
       '--target-tenant-id', TENANT_ID, '--source', 'eai-managed',
-      '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json',
+      '--resume', 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '--no-wait', '--format', 'json',
     ], { from: 'user' });
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
       ok: false, error: { code: 'MANAGED_SOURCE_BINDING_MISMATCH' },
@@ -690,7 +720,7 @@ describe('eai deploy app --target eai', () => {
       const url = String(input);
       if (url.includes('/cli-managed-source/operations/')) return jsonResponse(completedManagedPublication());
       if (url.includes('/managed-deployments/operations/')) return jsonResponse(completeUnifiedOperation({
-        operationId: 'cli-managed-source-123', sourceMode: 'eai-cli-generated',
+        operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', sourceMode: 'eai-cli-generated',
         repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
         ...replacement,
       }));
@@ -699,7 +729,7 @@ describe('eai deploy app --target eai', () => {
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await eaiManagedDeployCommand.parseAsync([
       'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
-      '--source', 'eai-managed', '--resume', 'cli-managed-source-123', '--no-wait', '--format', 'json',
+      '--source', 'eai-managed', '--resume', 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '--no-wait', '--format', 'json',
     ], { from: 'user' });
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
       ok: false, error: { code: 'MANAGED_SOURCE_BINDING_MISMATCH' },
@@ -1326,7 +1356,7 @@ fi
   test('tightens recovery directory before saving and reading original endpoint authority', async () => {
     const directory = join(env.dir, '.eai', 'managed-deployments');
     const authority = {
-      schema: 'eai.managed-recovery-authority.v1' as const, operationId: 'cli-managed-source-123',
+      schema: 'eai.managed-recovery-authority.v1' as const, operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal',
       actorId: 'test-user-oid', publicApiUrl: API_BASE,
     };
@@ -1341,13 +1371,13 @@ fi
   });
 
   test.each(['.eai', '.eai/managed-deployments'])('rejects a shared writable recovery parent before authority load or save: %s', async unsafe => {
-    const path = managedDeployStatePath('cli-managed-source-123');
+    const path = managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     const before = await readFile(path, 'utf8');
     await chmod(join(env.dir, unsafe), 0o770);
-    await expect(loadManagedRetryAuthority('cli-managed-source-123', TENANT_ID, TENANT_ID, 'planning-portal'))
+    await expect(loadManagedRetryAuthority('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', TENANT_ID, TENANT_ID, 'planning-portal'))
       .rejects.toMatchObject({ code: 'RETRY_AUTHORITY_UNAVAILABLE' });
     await expect(saveManagedRecoveryAuthority({
-      schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-source-123',
+      schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal',
       actorId: 'test-user-oid', publicApiUrl: API_BASE,
     })).rejects.toThrow('untrusted directory');
