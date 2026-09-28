@@ -288,3 +288,13 @@ underlying token refresh. Protected receipt guards require a trusted same-UID
 namespace and pinned producer; POSIX proof does not certify native Windows.
 The coordinated Installer/private scripted qualification consumes the new
 contract; immutable publication and live qualification are still unexecuted.
+
+The generic private-profile successor authorizes only an explicitly configured
+managedDeploymentApiUrl equal to publicApiUrl. Named auth/API settings share one
+bounded owner-controlled snapshot per command, invalidated on switch/save;
+client fences reject changed profile generations before credentials and fetch.
+Default regional validation adds no profile-file I/O. Named init/readiness routing
+and explicit complete Gofer resources are covered by owned command/unit tests
+and the paired Installer qualifier (DTE-077, DTE-087, DTE-091). No personal gateway
+or identity defaults are introduced. POSIX snapshot proof does not qualify the
+new Windows managed-profile authority. Fresh full checks remain pending.

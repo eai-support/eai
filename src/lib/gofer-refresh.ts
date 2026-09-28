@@ -9,6 +9,7 @@ import {
   installClaudeHooks,
   renderGoferManagedTextFiles,
   resolveGoferResourcesPath,
+  validateGoferResourceOverride,
   updateGitignore,
   updateVSCodeSettings,
 } from './gofer-installer.js';
@@ -342,8 +343,8 @@ async function resolveBundledGoferResourcesSource(warning?: string): Promise<Gof
 
 async function resolveLatestGoferResourcesSource(): Promise<GoferResourcesSource | null> {
   const overridePath = process.env['EAI_GOFER_REFRESH_RESOURCES_PATH'];
-  if (overridePath) {
-    const root = resolve(overridePath);
+  if (overridePath !== undefined) {
+    const root = validateGoferResourceOverride(overridePath);
     await assertCompleteGoferResources(root);
     return {
       root,
@@ -374,6 +375,9 @@ async function resolveLatestGoferResourcesSource(): Promise<GoferResourcesSource
 }
 
 async function resolveGoferResourcesSource(): Promise<GoferResourcesSource> {
+  if (process.env['EAI_GOFER_REFRESH_RESOURCES_PATH'] !== undefined) {
+    return (await resolveLatestGoferResourcesSource())!;
+  }
   if (!shouldUseLatestGoferSource()) {
     return resolveBundledGoferResourcesSource();
   }

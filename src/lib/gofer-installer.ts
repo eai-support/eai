@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
+import { constants, lstatSync, realpathSync, readdirSync } from 'node:fs';
 import {
   access,
   chmod,
@@ -9,8 +9,9 @@ import {
   readdir,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getProfileCaptureGeneration } from './profile.js';
 
 export type GoferWorkflowProfile = 'standard' | 'enterpriseai';
 
@@ -151,8 +152,50 @@ export async function installGoferResources(
 }
 
 export function resolveGoferResourcesPath(): string {
+  const override = process.env.EAI_GOFER_REFRESH_RESOURCES_PATH;
+  if (override !== undefined) return validateGoferResourceOverride(override);
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   return resolve(moduleDir, '..', '..', 'resources', 'gofer');
+}
+
+let capturedOverride: { path: string; generation: number } | undefined;
+
+/** SECURITY: explicit local assets must be a complete regular tree; initial install and refresh use the same source. */
+export function validateGoferResourceOverride(path: string): string {
+  const generation = getProfileCaptureGeneration();
+  if (capturedOverride?.path === path && capturedOverride.generation === generation) return path;
+  if (!isAbsolute(path) || realpathSync(path) !== path || !lstatSync(path).isDirectory()) {
+    throw new Error('Gofer resources override must be a canonical absolute regular directory.');
+  }
+  let files = 0;
+  const populated = new Set<string>();
+  const regularFiles = new Set<string>();
+  const containsFiles = (directory: string): boolean => {
+    let present = false;
+    for (const entry of readdirSync(directory)) {
+      const child = join(directory, entry);
+      const status = lstatSync(child);
+      if (status.isSymbolicLink() || (!status.isDirectory() && !status.isFile()) || (status.isFile() && status.nlink !== 1)) {
+        throw new Error('Gofer resources override cannot contain links or special files.');
+      }
+      if (status.isFile()) regularFiles.add(child);
+      if (++files > 16384) throw new Error('Gofer resources override exceeds its 16,384-entry limit.');
+      present = (status.isDirectory() ? containsFiles(child) : true) || present;
+    }
+    if (present) populated.add(directory);
+    return present;
+  };
+  if (!containsFiles(path)) throw new Error('Gofer resources override is empty.');
+  for (const sourceSubdirectory of [...GOFER_RESOURCE_MAPPINGS.map(({ sourceSubdirectory }) => sourceSubdirectory), 'instruction-templates']) {
+    const directory = join(path, sourceSubdirectory);
+    if (!populated.has(directory)) throw new Error(`Gofer resources override is incomplete: ${sourceSubdirectory}`);
+  }
+  for (const template of ['base/agents-base.md', 'base/claude-base.md', 'base/copilot-base.md',
+    'gofer/gofer-claude.md', 'gofer/gofer-copilot.md', 'workflow/principles.md', 'languages/typescript.md', 'languages/generic.md']) {
+    if (!regularFiles.has(join(path, 'instruction-templates', template))) throw new Error(`Gofer resources override is incomplete: ${template}`);
+  }
+  capturedOverride = { path, generation };
+  return path;
 }
 
 async function assertDirectory(path: string): Promise<void> {

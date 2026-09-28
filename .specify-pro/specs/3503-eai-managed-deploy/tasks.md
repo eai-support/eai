@@ -161,3 +161,10 @@ an unchanged cleanup hook timeout; no timer or skip was changed.
 
 - [x] Compare v2 app-deletion runtime targets with the captured original plan,
   preserving genuine legacy plans and rejecting target drift without extra I/O.
+
+- [x] Add optional named-profile managedDeploymentApiUrl authority, one bounded
+  auth/API snapshot and profile-generation fencing before credentials/provider.
+- [x] Preserve named gateway through init and readiness; apply complete explicit
+  Gofer resources to initial installation, generated instructions and refresh.
+- [ ] Record fresh focused/full CLI checks and producer-pairing proof for this
+  generic routing successor; ordinary regional and bundled defaults stay unchanged.

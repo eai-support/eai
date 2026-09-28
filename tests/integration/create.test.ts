@@ -8,6 +8,7 @@ vi.mock("../../src/lib/tenant-context.js", async (importOriginal) => ({
 
 import {
   buildCreateCompletionSummary,
+  resolveCreateCompletionPublicApiUrl,
   buildForwardedInitArgs,
   buildTemplateInstallArgs,
   canRunTemplateScripts,
@@ -15,6 +16,8 @@ import {
   toKebabCase,
   type CreateCommandOptions,
 } from "../../src/commands/init.js";
+
+import { setActiveProfile } from "../../src/lib/profile.js";
 
 const baseOptions: CreateCommandOptions = {
   from: "https://github.com/eai-support/eai-app-template.git",
@@ -25,6 +28,13 @@ const baseOptions: CreateCommandOptions = {
 };
 
 describe("eai create onboarding helpers", () => {
+  test("readiness preserves named gateway while default follows child runtime region", () => {
+    setActiveProfile("private-selected");
+    expect(resolveCreateCompletionPublicApiUrl("https://private.example.test", "eu")).toBe("https://private.example.test");
+    setActiveProfile("default");
+    expect(resolveCreateCompletionPublicApiUrl("https://api.au.myenterprise.ai/public", "eu")).toBe("https://api.eu.myenterprise.ai/public");
+  });
+
   test("forwards an explicit template release to init", () => {
     expect(
       buildForwardedInitArgs(

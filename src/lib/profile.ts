@@ -10,7 +10,8 @@
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { constants, closeSync, fstatSync, lstatSync, openSync, readSync, realpathSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import type { Command, OptionValues } from 'commander';
 
@@ -22,6 +23,8 @@ export interface ProfileConfig {
   readonly authTenantId: string;
   readonly authClientId: string;
   readonly authScope?: string;
+  /** SECURITY: authorizes one HTTPS managed endpoint, exactly matching this profile's publicApiUrl. */
+  readonly managedDeploymentApiUrl?: string;
 }
 
 interface ProfilesFile {
@@ -31,13 +34,22 @@ interface ProfilesFile {
 // ── Module-level state ───────────────────────────────────────────────────────
 
 let _activeProfileName = 'default';
+const capturedProfiles = new Map<string, ProfileConfig>();
+let captureGeneration = 0;
 
 export function setActiveProfile(name: string): void {
+  capturedProfiles.clear();
+  captureGeneration += 1;
   _activeProfileName = name;
 }
 
 export function getActiveProfile(): string {
   return _activeProfileName;
+}
+
+/** INVARIANT: command/profile changes invalidate captured local input metadata. */
+export function getProfileCaptureGeneration(): number {
+  return captureGeneration;
 }
 
 /** Resolves the root profile option for nested commands while preserving plain-command production defaults. */
@@ -84,27 +96,70 @@ export function getProfileTokensFile(name: string): string {
  * Throws if the config file or requested profile is missing.
  */
 export async function loadProfileConfig(name: string): Promise<ProfileConfig | null> {
-  if (name === 'default') return null;
+  return captureProfileConfig(name);
+}
 
-  const configPath = getConfigFilePath();
-  let raw: string;
+/** SECURITY: auth and managed gateway share one owner-controlled bounded snapshot until the command/profile changes. */
+export function captureProfileConfig(name: string): ProfileConfig | null {
+  if (name === 'default') return null;
+  const configuredPath = getConfigFilePath();
+  const key = `${configuredPath}\n${name}`;
+  const cached = capturedProfiles.get(key);
+  if (cached) return cached;
+  let raw: Buffer;
   try {
-    raw = await readFile(configPath, 'utf-8');
-  } catch {
+    // SECURITY: resolve the trusted home selection (including OS temp-directory aliases), then reject links beneath it.
+    const configPath = join(realpathSync(dirname(dirname(configuredPath))), '.eai', 'config.json');
+    const parentPath = dirname(configPath);
+    if (realpathSync(configPath) !== configPath) throw new Error('Profile path must not contain links.');
+    const parent = lstatSync(parentPath);
+    const leaf = lstatSync(configPath);
+    if (!parent.isDirectory() || parent.isSymbolicLink() || !leaf.isFile() || leaf.isSymbolicLink()
+      || (process.platform !== 'win32' && ((parent.mode & 0o022) !== 0 || (leaf.mode & 0o022) !== 0))
+      || (process.getuid && (parent.uid !== process.getuid() || leaf.uid !== process.getuid()))) {
+      throw new Error('Profile settings must be owned and controlled by the current user.');
+    }
+    if (!constants.O_NOFOLLOW && process.platform !== 'win32') throw new Error('No-follow profile reads are unavailable.');
+    const descriptor = openSync(configPath, constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
+    try {
+      const opened = fstatSync(descriptor);
+      if (!opened.isFile() || opened.nlink !== 1 || opened.size > 64 * 1024
+        || opened.dev !== leaf.dev || opened.ino !== leaf.ino) throw new Error('Profile settings are unsafe or exceed 64 KiB.');
+      const buffer = Buffer.alloc(64 * 1024 + 1);
+      let length = 0;
+      while (length < buffer.length) {
+        const count = readSync(descriptor, buffer, length, buffer.length - length, null);
+        if (count === 0) break;
+        length += count;
+      }
+      const after = fstatSync(descriptor);
+      const bound = lstatSync(configPath);
+      const parentAfter = lstatSync(parentPath);
+      if (length !== opened.size || length > 64 * 1024 || after.nlink !== 1 || bound.nlink !== 1
+        || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs
+        || bound.dev !== opened.dev || bound.ino !== opened.ino || bound.size !== opened.size
+        || bound.mtimeMs !== opened.mtimeMs || bound.ctimeMs !== opened.ctimeMs
+        || parent.dev !== parentAfter.dev || parent.ino !== parentAfter.ino
+        || parentAfter.isSymbolicLink() || parentAfter.uid !== parent.uid || parentAfter.mode !== parent.mode) throw new Error('Profile settings changed during capture.');
+      raw = buffer.subarray(0, length);
+    } finally { closeSync(descriptor); }
+  } catch (cause) {
     throw new Error(
-      `Profile "${name}" requires local profile settings but they are not configured.`,
+      `Profile "${name}" requires safe owner-controlled local profile settings.`, { cause },
     );
   }
 
   let file: ProfilesFile;
   try {
-    file = JSON.parse(raw) as ProfilesFile;
+    file = JSON.parse(raw.toString('utf8')) as ProfilesFile;
+    if (!file || typeof file !== 'object' || Array.isArray(file) || !file.profiles
+      || typeof file.profiles !== 'object' || Array.isArray(file.profiles)) throw new Error('Invalid profiles object.');
   } catch {
     throw new Error('Local profile settings contain invalid JSON.');
   }
 
-  const config = file.profiles?.[name];
-  if (!config) {
+  const config = file.profiles && Object.hasOwn(file.profiles, name) ? file.profiles[name] : undefined;
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
     const available = Object.keys(file.profiles ?? {});
     throw new Error(
       `Profile "${name}" is not configured locally.\n` +
@@ -114,7 +169,18 @@ export async function loadProfileConfig(name: string): Promise<ProfileConfig | n
     );
   }
 
-  return config;
+  if (['publicApiUrl', 'authTenantName', 'authTenantId', 'authClientId'].some((key) => typeof config[key as keyof ProfileConfig] !== 'string'
+    || !(config[key as keyof ProfileConfig] as string).trim())
+    || (config.authScope !== undefined && typeof config.authScope !== 'string')
+    || (config.managedDeploymentApiUrl !== undefined && typeof config.managedDeploymentApiUrl !== 'string')) {
+    throw new Error('Local profile settings contain an invalid public auth/API configuration.');
+  }
+  if (process.platform === 'win32' && config.managedDeploymentApiUrl !== undefined) {
+    throw new Error('Explicit managed profile authorization requires verified owner-controlled no-follow settings; Windows support is not qualified.');
+  }
+  const snapshot = Object.freeze({ ...config });
+  capturedProfiles.set(key, snapshot);
+  return snapshot;
 }
 
 /**
@@ -122,6 +188,8 @@ export async function loadProfileConfig(name: string): Promise<ProfileConfig | n
  * Creates the file and directory if they don't exist.
  */
 export async function saveProfileConfig(name: string, config: ProfileConfig): Promise<void> {
+  capturedProfiles.clear();
+  captureGeneration += 1;
   const dir = getEaiDir();
   await mkdir(dir, { recursive: true });
 
@@ -146,6 +214,8 @@ export async function saveProfileConfig(name: string, config: ProfileConfig): Pr
     encoding: 'utf-8',
     mode: 0o600,
   });
+  capturedProfiles.clear();
+  captureGeneration += 1;
 }
 
 /** Default OAuth scope when none is configured. */

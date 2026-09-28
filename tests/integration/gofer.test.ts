@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -368,7 +368,7 @@ describe("eai gofer refresh", () => {
     );
 
     ctx.env.EAI_GOFER_REFRESH_SOURCE = "latest";
-    ctx.env.EAI_GOFER_REFRESH_RESOURCES_PATH = latestResources;
+    ctx.env.EAI_GOFER_REFRESH_RESOURCES_PATH = await realpath(latestResources);
 
     const result = await runCommand(ctx, "eai gofer refresh --check --format json");
     expectCommandSucceeded(result);

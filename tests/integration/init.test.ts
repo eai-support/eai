@@ -23,6 +23,7 @@ import {
   resolveTemplateClonePlan,
   selectExistingAppSelection,
 } from "../../src/commands/init.js";
+import * as profile from "../../src/lib/profile.js";
 import * as auth from "../../src/lib/auth.js";
 import {
   getNpmExecOptions,
@@ -1435,7 +1436,11 @@ void contractType;
     await expectFileNotExists(ctx, "plain-app/.gemini/extension.json");
   });
 
-  test("HP001 INIT-REGION-001: init stamps BASE_URL_PUBLIC_API from active tenant homeRegion", async () => {
+  test.each(["default", "private-selected"])("HP001 INIT-REGION-001: init preserves selected profile %s or runtime region", async (profileName) => {
+    profile.setActiveProfile(profileName);
+    const config = profileName === "default" ? null : { publicApiUrl: TEST_PUBLIC_API_URL, authTenantName: "profile-test-tenant", authTenantId: "ciam-guid", authClientId: "client-id" };
+    const configSpy = vi.spyOn(profile, "captureProfileConfig").mockReturnValue(config);
+    const loadProfileSpy = vi.spyOn(profile, "loadProfileConfig").mockResolvedValue(config);
     workingDirectoryIs(ctx, env.dir);
 
     const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(false);
@@ -1519,7 +1524,7 @@ void contractType;
         "utf-8",
       );
       expect(envContent).toContain(
-        "BASE_URL_PUBLIC_API=https://api.eu.myenterprise.ai/public",
+        `BASE_URL_PUBLIC_API=${profileName === "default" ? "https://api.eu.myenterprise.ai/public" : TEST_PUBLIC_API_URL}`,
       );
       expect(envContent).toContain(
         "ENTRA_TENANT_NAME=profile-test-tenant",
@@ -1531,6 +1536,7 @@ void contractType;
         "TENANT_PREFILLED_APP_ID=tenant-prefilled-app",
       );
     } finally {
+      configSpy.mockRestore(); loadProfileSpy.mockRestore(); profile.setActiveProfile("default");
       authSpy.mockRestore();
       publicApiSpy.mockRestore();
       tenantSpy.mockRestore();

@@ -1185,8 +1185,7 @@ async function runCreateFlow(
       : resolve(process.cwd(), answers.name);
     await reportCreateCompletion(
       targetDir,
-      publicApiUrlForHomeRegion(binding?.runtimeTenantHomeRegion) ||
-        tenantContext.publicApiUrl,
+      resolveCreateCompletionPublicApiUrl(tenantContext.publicApiUrl, binding?.runtimeTenantHomeRegion),
       binding?.runtimeTenantId || tenantContext.activeTenant.id,
       answers.aiTool,
       options.gofer !== false,
@@ -1195,6 +1194,12 @@ async function runCreateFlow(
     out.error(describeCreateFlowFailure(error));
     process.exit(1);
   }
+}
+
+/** INVARIANT: selected private routing survives runtime-region readiness; public defaults follow the runtime region. */
+export function resolveCreateCompletionPublicApiUrl(publicApiUrl: string, runtimeHomeRegion?: string | null): string {
+  return (getActiveProfile() !== "default" ? publicApiUrl : undefined)
+    || publicApiUrlForHomeRegion(runtimeHomeRegion) || publicApiUrl;
 }
 
 function validateCreateAiTool(value: string | undefined): CreateAiTool | undefined {
@@ -2095,7 +2100,11 @@ async function hydrateEnvFromLoginContext(
   const envKey = appName.replace(/-/g, "_").toUpperCase();
 
   const regionalPublicApiUrl = publicApiUrlForHomeRegion(tenantHomeRegion);
-  if (regionalPublicApiUrl) {
+  const profileName = getActiveProfile();
+  const profileConfig = await loadProfileConfig(profileName);
+  if (profileConfig?.publicApiUrl) {
+    patches.BASE_URL_PUBLIC_API = profileConfig.publicApiUrl;
+  } else if (regionalPublicApiUrl) {
     patches.BASE_URL_PUBLIC_API = regionalPublicApiUrl;
   } else {
     try {
@@ -2105,17 +2114,11 @@ async function hydrateEnvFromLoginContext(
     }
   }
 
-  try {
-    const profileName = getActiveProfile();
-    const profileConfig = await loadProfileConfig(profileName);
-    if (profileConfig?.authTenantName) {
-      patches.ENTRA_TENANT_NAME = profileConfig.authTenantName;
-    }
-    if (profileConfig?.authTenantId) {
-      patches.ENTRA_TENANT_ID = profileConfig.authTenantId;
-    }
-  } catch {
-    // Default profile has no config file.
+  if (profileConfig?.authTenantName) {
+    patches.ENTRA_TENANT_NAME = profileConfig.authTenantName;
+  }
+  if (profileConfig?.authTenantId) {
+    patches.ENTRA_TENANT_ID = profileConfig.authTenantId;
   }
 
   try {

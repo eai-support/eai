@@ -226,7 +226,14 @@
             "src/lib/eai-managed-identifiers.ts",
             "src/lib/source-unknown-evidence-file.ts",
             "src/lib/context.ts",
-            "src/lib/tenant-context.ts"
+            "src/lib/tenant-context.ts",
+            "src/lib/profile.ts",
+            "src/lib/managed-public-api.ts",
+            "src/lib/gofer-installer.ts",
+            "src/lib/gofer-refresh.ts",
+            "tests/unit/managed-profile-gateway.test.ts",
+            "tests/unit/gofer-resource-override.test.ts",
+            "tests/integration/create.test.ts"
           ],
           "required_repo_tests": [
             "tests/unit/eai-managed-deploy.test.ts",
@@ -240,7 +247,10 @@
             "tests/integration/describe-contract.test.ts",
             "tests/integration/full-e2e-smoke.test.ts",
             "tests/integration/release-metadata.test.ts",
-            "tests/unit/eai-managed-source-race.test.ts"
+            "tests/unit/eai-managed-source-race.test.ts",
+            "tests/unit/managed-profile-gateway.test.ts",
+            "tests/unit/gofer-resource-override.test.ts",
+            "tests/integration/create.test.ts"
           ],
           "required_ci_checks": [
             "ci/eai-cli-tests"
