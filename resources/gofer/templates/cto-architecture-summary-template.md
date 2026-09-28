@@ -1,7 +1,7 @@
 ---
-feature: '{{feature-name}}'
-created: '{{ISO-timestamp}}'
-updated: '{{ISO-timestamp}}'
+feature: "{{feature-name}}"
+created: "{{ISO-timestamp}}"
+updated: "{{ISO-timestamp}}"
 audience: cto-architecture
 source_inputs:
   - plan.md
@@ -48,7 +48,7 @@ If a branded Marp deck is produced, use the approved theme path from
 | -------------------- | ------------------------------- | -------- |
 | Authentication       | {{auth-summary}}                | {{path}} |
 | Authorization        | {{authorization-summary}}       | {{path}} |
-| Workspace boundaries    | {{workspace-boundary-summary}}     | {{path}} |
+| Workspace boundaries | {{tenant-boundary-summary}}     | {{path}} |
 | Data model           | {{object-types-and-data-model}} | {{path}} |
 | API/events/contracts | {{contract-summary}}            | {{path}} |
 

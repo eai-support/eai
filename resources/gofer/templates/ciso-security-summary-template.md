@@ -1,7 +1,7 @@
 ---
-feature: '{{feature-name}}'
-created: '{{ISO-timestamp}}'
-updated: '{{ISO-timestamp}}'
+feature: "{{feature-name}}"
+created: "{{ISO-timestamp}}"
+updated: "{{ISO-timestamp}}"
 audience: ciso-risk
 source_inputs:
   - validation-report.md
@@ -31,7 +31,7 @@ logos in CISO/Risk materials.
 | ------------------------ | ------------------------------------ | -------- | ---------------- |
 | Identity                 | {{identity-control}}                 | {{path}} | {{pass-open-na}} |
 | Authorization            | {{authorization-control}}            | {{path}} | {{pass-open-na}} |
-| Workspace isolation         | {{workspace-control}}                   | {{path}} | {{pass-open-na}} |
+| Workspace isolation      | {{tenant-control}}                   | {{path}} | {{pass-open-na}} |
 | Secrets handling         | {{secret-handling}}                  | {{path}} | {{pass-open-na}} |
 | Data handling            | {{data-classification-and-controls}} | {{path}} | {{pass-open-na}} |
 | Logging / audit          | {{audit-controls}}                   | {{path}} | {{pass-open-na}} |
@@ -55,11 +55,11 @@ logos in CISO/Risk materials.
 
 ## Visual Security Evidence
 
-| Visual                                  | Security question answered                                         | Public-safety check            | Freshness             |
-| --------------------------------------- | ------------------------------------------------------------------ | ------------------------------ | --------------------- |
-| Risk heatmap: `visuals/risk-heatmap.md` | Which risks matter most and what controls reduce them?             | {{no-private-data-or-finding}} | {{fresh-stale-or-na}} |
-| Auth/workspace flow visual, if applicable  | Where are identity, authorization, and workspace boundaries enforced? | {{no-private-data-or-finding}} | {{fresh-stale-or-na}} |
-| Data-flow or ERD visual, if applicable  | What sensitive data moves or persists, and where?                  | {{no-private-data-or-finding}} | {{fresh-stale-or-na}} |
+| Visual                                    | Security question answered                                            | Public-safety check            | Freshness             |
+| ----------------------------------------- | --------------------------------------------------------------------- | ------------------------------ | --------------------- |
+| Risk heatmap: `visuals/risk-heatmap.md`   | Which risks matter most and what controls reduce them?                | {{no-private-data-or-finding}} | {{fresh-stale-or-na}} |
+| Auth/workspace flow visual, if applicable | Where are identity, authorization, and workspace boundaries enforced? | {{no-private-data-or-finding}} | {{fresh-stale-or-na}} |
+| Data-flow or ERD visual, if applicable    | What sensitive data moves or persists, and where?                     | {{no-private-data-or-finding}} | {{fresh-stale-or-na}} |
 
 ## CISO Review Ask
 
