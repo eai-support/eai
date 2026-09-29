@@ -52,7 +52,7 @@ describe('CLI help output', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Examples:');
     expect(result.stdout).toContain('eai login --tenant-name myorg --tenant-id');
-    expect(result.stdout).toContain("run 'eai tenant select' to choose the tenant");
+    expect(result.stdout).toContain("run 'eai workspace select' to choose the workspace");
   });
 
   test('create help explains the guided first-run flow', async () => {

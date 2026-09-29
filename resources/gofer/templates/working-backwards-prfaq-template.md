@@ -1,11 +1,11 @@
 ---
-feature: '{{feature-name}}'
-created: '{{ISO-timestamp}}'
-updated: '{{ISO-timestamp}}'
+feature: "{{feature-name}}"
+created: "{{ISO-timestamp}}"
+updated: "{{ISO-timestamp}}"
 status: draft
-stage: '{{gofer-stage}}'
-primary_customer: '{{primary-customer-or-persona}}'
-business_owner: '{{business-owner}}'
+stage: "{{gofer-stage}}"
+primary_customer: "{{primary-customer-or-persona}}"
+business_owner: "{{business-owner}}"
 source_inputs:
   - problem-brief.md
   - discovery.md
@@ -112,7 +112,7 @@ hide uncertainty or change scope.
 - **Architecture direction**: {{architecture-summary}}
 - **EAI Platform fit**: {{eai-platform-components-and-template-use}}
 - **Azure fit**: {{azure-services-and-why}}
-- **Auth, tenancy, data, integration**: {{auth-tenant-data-contract-summary}}
+- **Auth, workspace, data, integration**: {{auth-tenant-data-contract-summary}}
 
 ### CISO / Risk
 

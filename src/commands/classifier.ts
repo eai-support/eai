@@ -1,5 +1,5 @@
 /**
- * eai classifier — author, publish, and manage tenant workflow document classifiers.
+ * eai classifier — author, publish, and manage workspace workflow document classifiers.
  */
 
 import { readFile } from "node:fs/promises";
@@ -199,7 +199,7 @@ function parseClassifierRecord(
   };
 }
 
-/** Validates an untrusted authoring file before any tenant-scoped classifier mutation is attempted. */
+/** Validates an untrusted authoring file before any workspace-scoped classifier mutation is attempted. */
 export function parseClassifierDraft(value: unknown): ClassifierDraft {
   return parseClassifierRecord(value, false);
 }
@@ -322,7 +322,7 @@ async function listClassifiers(
     return;
   }
   if (rows.length === 0) {
-    out.info("No tenant classifier drafts found.");
+    out.info("No workspace classifier drafts found.");
     return;
   }
   for (const classifier of rows) {
@@ -516,7 +516,7 @@ async function deleteClassifier(
 
 export const classifierCommand = new Command("classifier")
   .description(
-    "Create, inspect, publish, target, disable, enable, and delete tenant document classifiers",
+    "Create, inspect, publish, target, disable, enable, and delete workspace document classifiers",
   )
   .addHelpText(
     "after",
@@ -536,15 +536,15 @@ classifierCommand
   .command("save")
   .description("Create or update a provider-neutral classifier draft from JSON")
   .requiredOption("--file <path>", "Classifier draft JSON file")
-  .option("--tenant-id <id>", "Target tenant ID")
+  .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
   .action(saveClassifier);
 
 classifierCommand
   .command("list")
-  .description("List classifier drafts for the active tenant")
-  .option("--tenant-id <id>", "Target tenant ID")
+  .description("List classifier drafts for the active workspace")
+  .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
   .action(listClassifiers);
@@ -552,7 +552,7 @@ classifierCommand
 classifierCommand
   .command("publish <classifier-key>")
   .description("Publish the next immutable reusable classifier version")
-  .option("--tenant-id <id>", "Target tenant ID")
+  .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
   .action(publishClassifier);
@@ -568,7 +568,7 @@ classifierCommand
     "--version <number>",
     "Published version (defaults to the draft pointer)",
   )
-  .option("--tenant-id <id>", "Target tenant ID")
+  .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
   .action(targetClassifier);
@@ -576,7 +576,7 @@ classifierCommand
 classifierCommand
   .command("disable <classifier-key>")
   .description("Reversibly block publication, targets, and runtime use")
-  .option("--tenant-id <id>", "Target tenant ID")
+  .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
   .action(disableClassifier);
@@ -584,7 +584,7 @@ classifierCommand
 classifierCommand
   .command("enable <classifier-key>")
   .description("Re-enable a disabled classifier")
-  .option("--tenant-id <id>", "Target tenant ID")
+  .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
   .action(enableClassifier);
@@ -598,7 +598,7 @@ classifierCommand
     "--confirm <classifier-key>",
     "Exact classifier key required for permanent deletion",
   )
-  .option("--tenant-id <id>", "Target tenant ID")
+  .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
   .action(deleteClassifier);

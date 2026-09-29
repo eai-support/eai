@@ -8,15 +8,18 @@ title: Add AI Chat
 This example adds streaming chat and document-backed RAG to an EAI App Template
 project.
 
-## 1. Confirm Tenant And Workflow
+The template's `tenantId` code field carries the EAI workspace ID. Keep this
+technical field name unchanged.
+
+## 1. Confirm Workspace And Workflow
 
 ```bash
 eai login
-eai tenant select <tenant-slug>
-eai workflow status <workflow-key> --tenant <tenant-id>
+eai workspace select <workspace-slug>
+eai workflow status <workflow-key> --workspace <workspace-id>
 ```
 
-Use the workflow ID from the platform tenant configuration. Store runtime values
+Use the workflow ID from the platform workspace configuration. Store runtime values
 in local or deployment environment configuration, not in committed source.
 
 ## 2. Stream Chat From A Client Component

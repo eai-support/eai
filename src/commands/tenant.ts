@@ -1,5 +1,5 @@
 /**
- * eai tenant — manage tenants on the platform.
+ * eai workspace — manage EAI workspaces.
  */
 
 import { Command } from "commander";
@@ -114,7 +114,7 @@ async function resolveChildTenantHomeRegion(options: {
     {
       type: "select",
       name: "homeRegion",
-      message: "Child tenant home region:",
+      message: "Child workspace home region:",
       default: parentRegion || undefined,
       choices: HOME_REGION_CHOICES,
     },
@@ -127,14 +127,14 @@ export function buildTenantListZeroState(tokens: {
   tenantId?: string;
 }): TenantListZeroState {
   const zeroState: TenantListZeroState = {
-    headline: "No active tenant-admin memberships found for the current login.",
-    hint: "Use `eai whoami` to inspect the authenticated tenant context.",
+    headline: "No active workspace admin memberships found for the current login.",
+    hint: "Use `eai whoami` to inspect the authenticated workspace.",
   };
 
   if (tokens.tenantName || tokens.tenantId) {
-    const tenantName = tokens.tenantName || "current authenticated tenant";
+    const tenantName = tokens.tenantName || "current authenticated workspace";
     const tenantId = tokens.tenantId ? ` (${tokens.tenantId})` : "";
-    zeroState.tenantContext = `Authenticated tenant context: ${tenantName}${tenantId}`;
+    zeroState.tenantContext = `Authenticated workspace: ${tenantName}${tenantId}`;
   }
 
   return zeroState;
@@ -148,31 +148,31 @@ export function buildTenantCreateStatusMessages(
   if (outcome.bootstrap) {
     if (outcome.bootstrap.status === "bootstrapped") {
       messages.push(
-        "Bootstrap: first tenant admin was provisioned for the current login.",
+        "Workspace setup: admin access was added for the current login.",
       );
     } else if (outcome.bootstrap.status === "already-usable") {
       messages.push(
-        "Bootstrap: the current login already had direct tenant-admin on the child tenant.",
+        "Workspace setup: the current login already has admin access to the child workspace.",
       );
     }
   } else if (outcome.bootstrapError) {
     const prefix = outcome.bootstrapError.code
-      ? `${outcome.bootstrapError.code}: `
+      ? ` (${outcome.bootstrapError.code})`
       : "";
     messages.push(
-      `Bootstrap not confirmed: ${prefix}${outcome.bootstrapError.message}`,
+      `Workspace setup was not confirmed${prefix}. The CLI will check workspace admin access before reporting readiness.`,
     );
   }
 
   if (outcome.usability.usable) {
     messages.push(
       outcome.usability.autoSelected
-        ? "Usable: direct tenant-admin confirmed and the new tenant was selected."
-        : "Usable: direct tenant-admin confirmed.",
+        ? "Ready: workspace admin access confirmed and the new workspace is selected."
+        : "Ready: workspace admin access confirmed.",
     );
   } else {
     messages.push(
-      "Usable: not yet confirmed. The tenant exists, but direct tenant-admin membership is not visible yet.",
+      "Workspace access is not confirmed. The workspace exists, but admin access is not visible yet.",
     );
   }
 
@@ -201,45 +201,45 @@ export function buildTenantBootstrapAdminStatusMessages(
 
   if (result.status === "bootstrapped") {
     messages.push(
-      "Bootstrap: tenant-admin access was provisioned for the target user.",
+      "Workspace setup: admin access was added for the target user.",
     );
   } else if (result.status === "already-usable") {
     messages.push(
-      "Bootstrap: the target user already had direct tenant-admin on the child tenant.",
+      "Workspace setup: the target user already has admin access to the child workspace.",
     );
   }
 
   messages.push(
     result.membershipCreated
-      ? "Membership: child tenant membership was created."
-      : "Membership: child tenant membership already existed or did not need creation.",
+      ? "Membership: child workspace membership was created."
+      : "Membership: child workspace membership already existed or did not need creation.",
   );
   messages.push(
     result.adminAssigned
-      ? "Role: tenant-admin was assigned on the child tenant."
-      : "Role: tenant-admin was already assigned or did not need assignment.",
+      ? "Role: workspace admin access was assigned on the child workspace."
+      : "Role: workspace admin access was already present or did not need assignment.",
   );
   messages.push(
     result.usable
-      ? "Usable: direct tenant-admin confirmed for the child tenant."
-      : "Usable: not yet confirmed. Re-run `eai tenant list` or `eai whoami` after membership propagation.",
+      ? "Usable: workspace admin access confirmed for the child workspace."
+      : "Usable: not yet confirmed. Re-run `eai workspace list` or `eai whoami` after membership propagation.",
   );
 
   return messages;
 }
 
-export const tenantCommand = new Command("tenant").description(
-  "Manage tenants on the platform",
+export const tenantCommand = new Command("workspace").alias("tenant").description(
+  "Manage EAI workspaces (the tenant command remains available for compatibility)",
 );
 
 const tenantStorageCommand = new Command("storage").description(
-  "Inspect tenant storage configuration",
+  "Inspect workspace storage configuration",
 );
 
 tenantStorageCommand
   .command("list")
   .description(
-    "List published storage bindings and operational connections for the active tenant",
+    "List published storage bindings and operational connections for the active workspace",
   )
   .option("--format <format>", "Output format (text|json)", "text")
   .action(async (options) => {
@@ -313,7 +313,7 @@ tenantStorageCommand
 
 tenantStorageCommand
   .command("verify")
-  .description("Check tenant storage readiness across published Object Types")
+  .description("Check workspace storage readiness across published Object Types")
   .option("--format <format>", "Output format (text|json)", "text")
   .action(async (options) => {
     const root = await findProjectRoot();
@@ -350,8 +350,8 @@ tenantStorageCommand
 
     out[payload.healthy ? "success" : "warn"](
       payload.healthy
-        ? "Tenant storage is healthy."
-        : "Tenant storage needs attention.",
+        ? "Workspace storage is healthy."
+        : "Workspace storage needs attention.",
     );
     for (const check of payload.checks) {
       const status = check.healthy
@@ -368,20 +368,20 @@ tenantStorageCommand
 
 tenantCommand.addCommand(tenantStorageCommand);
 
-// ─── eai tenant list ──────────────────────────────────────────────────────
+// ─── eai workspace list ──────────────────────────────────────────────────────
 
 tenantCommand
   .command("list")
   .description(
-    "List tenants where the current user is a tenant-admin (default) or all roles with --all",
+    "List workspaces available to the current user, or include all roles with --all",
   )
-  .option("--parent <id>", "Parent tenant ID")
+  .option("--parent <id>", "Parent workspace ID")
   .option(
     "--all",
-    "Include tenants where the user holds non-admin roles (e.g. tenant-viewer)",
+    "Include other workspace roles (for example, the platform role ID tenant-viewer)",
     false,
   )
-  .option("--debug", "Show debug diagnostics for tenant lookup", false)
+  .option("--debug", "Show debug diagnostics for workspace lookup", false)
   .option("--raw-user", "Print raw membership payload in debug mode", false)
   .option("--format <format>", "Output format (text|json)", "text")
   .option("--json", "Output raw JSON (deprecated, use --format json)", false)
@@ -389,12 +389,12 @@ tenantCommand
     "after",
     `
 Examples:
-  $ eai tenant list
-  $ eai tenant list --parent <tenant-id> # show the child hierarchy for a parent
-  $ eai tenant list --all              # include tenant-viewer / tenant-builder memberships
-  $ eai tenant list --debug
-  $ eai tenant list --debug --raw-user
-  $ eai tenant list --format json | jq '.tenants[] | .name'
+  $ eai workspace list
+  $ eai workspace list --parent <workspace-id> # show the child hierarchy for a parent workspace
+  $ eai workspace list --all              # include tenant-viewer / tenant-builder memberships
+  $ eai workspace list --debug
+  $ eai workspace list --debug --raw-user
+  $ eai workspace list --format json | jq '.tenants[] | .name'
   `,
   )
   .action(async (options) => {
@@ -429,7 +429,7 @@ Examples:
     debug("Using Public API URL", publicApiUrl);
 
     const spinner =
-      options.format === "json" ? null : ora("Fetching tenants...").start();
+      options.format === "json" ? null : ora("Fetching workspaces...").start();
 
     try {
       const membershipsResponse =
@@ -447,8 +447,8 @@ Examples:
         : membershipsResponse.memberships;
       debug(
         options.all
-          ? "Tenant entries (all roles, active only)"
-          : "Tenant entries after tenant-admin filtering",
+          ? "Workspace entries (all roles, active only)"
+          : "Workspace entries after admin-access filtering",
         tenants.length,
       );
 
@@ -488,8 +488,8 @@ Examples:
 
       const countLabel =
         visible.length === selectable.length
-          ? `${visible.length} tenant-admin membership${visible.length !== 1 ? "s" : ""}`
-          : `${visible.length} visible tenant${visible.length !== 1 ? "s" : ""} (${selectable.length} selectable tenant-admin membership${selectable.length !== 1 ? "s" : ""})`;
+          ? `${visible.length} workspace admin membership${visible.length !== 1 ? "s" : ""}`
+          : `${visible.length} visible workspace${visible.length !== 1 ? "s" : ""} (${selectable.length} selectable workspace admin membership${selectable.length !== 1 ? "s" : ""})`;
       spinner!.succeed(countLabel);
 
       for (const warning of hierarchy.warnings) {
@@ -501,11 +501,11 @@ Examples:
         out.info(zeroState.headline);
         if (zeroState.tenantContext) {
           out.info(
-            `Authenticated tenant context: ${chalk.cyan(tokens.tenantName || "current authenticated tenant")}${tokens.tenantId ? chalk.dim(` (${tokens.tenantId})`) : ""}`,
+            `Authenticated workspace: ${chalk.cyan(tokens.tenantName || "current authenticated workspace")}${tokens.tenantId ? chalk.dim(` (${tokens.tenantId})`) : ""}`,
           );
         }
         out.info(
-          `Use ${chalk.cyan("eai whoami")} to inspect the authenticated tenant context.`,
+          `Use ${chalk.cyan("eai whoami")} to inspect the authenticated workspace context.`,
         );
         return;
       }
@@ -522,17 +522,17 @@ Examples:
     }
   });
 
-// ─── eai tenant select ───────────────────────────────────────────────────
+// ─── eai workspace select ───────────────────────────────────────────────────
 
 tenantCommand
-  .command("select [tenant]")
-  .description("Select the active tenant to work with")
-  .action(async (tenant) => {
+  .command("select [workspace]")
+  .description("Select the active workspace to work with")
+  .action(async (workspace) => {
     const root = await findProjectRoot();
     const publicApiUrl = await resolvePublicApiUrl(root || undefined);
 
     try {
-      let tenantId = tenant;
+      let tenantId = workspace;
       if (!tenantId) {
         const fetched = await fetchTenantAdminMemberships(publicApiUrl);
         const hierarchy = await loadTenantHierarchy({
@@ -548,13 +548,13 @@ tenantCommand
         );
         if (selectable.length === 0) {
           throw new Error(
-            "No active tenant-admin memberships found for the current login. Run `eai tenant list` to inspect your access.",
+            "No active workspace admin memberships found for the current login. Run `eai workspace list` to inspect your access.",
           );
         }
         if (!process.stdin.isTTY || !process.stdout.isTTY) {
           if (selectable.length !== 1) {
             throw new Error(
-              "Multiple active tenant-admin memberships found. Run `eai tenant select <tenant>` to choose one.",
+              "Multiple active workspace memberships found. Run `eai workspace select <workspace>` to choose one.",
             );
           }
           tenantId = selectable[0]!.id;
@@ -572,7 +572,7 @@ tenantCommand
       });
 
       out.success(
-        `Active tenant set to ${chalk.cyan(context.activeTenant.slug)} (${chalk.dim(context.activeTenant.id)})`,
+        `Active workspace set to ${chalk.cyan(context.activeTenant.slug)} (${chalk.dim(context.activeTenant.id)})`,
       );
       reportPublicApiEnvSync(context.publicApiEnvSync);
     } catch (err) {
@@ -581,11 +581,11 @@ tenantCommand
     }
   });
 
-// ─── eai tenant info <id> ─────────────────────────────────────────────────
+// ─── eai workspace info <id> ─────────────────────────────────────────────────
 
 tenantCommand
   .command("info <id>")
-  .description("Show tenant details")
+  .description("Show workspace details")
   .option("--format <format>", "Output format (text|json)", "text")
   .option("--json", "Output raw JSON (deprecated, use --format json)", false)
   .action(async (id, options) => {
@@ -594,7 +594,7 @@ tenantCommand
     const root = await findProjectRoot();
     const publicApiUrl = await resolvePublicApiUrl(root || undefined);
     const spinner =
-      options.format === "json" ? null : ora("Fetching tenant...").start();
+      options.format === "json" ? null : ora("Fetching workspace...").start();
 
     try {
       const memberships = await fetchTenantAdminMemberships(publicApiUrl);
@@ -610,7 +610,7 @@ tenantCommand
       if (options.format === "json") {
         out.json(tenant);
       } else {
-        spinner!.succeed(`Tenant: ${chalk.cyan(tenant.displayName)}`);
+        spinner!.succeed(`Workspace: ${chalk.cyan(tenant.displayName)}`);
       }
     } catch (err) {
       if (spinner)
@@ -619,18 +619,18 @@ tenantCommand
     }
   });
 
-// ─── eai tenant create ───────────────────────────────────────────────────
+// ─── eai workspace create ───────────────────────────────────────────────────
 
 tenantCommand
   .command("create")
-  .description("Create a new tenant")
-  .requiredOption("--name <name>", "Tenant name")
-  .requiredOption("--slug <slug>", "Tenant slug (kebab-case)")
-  .option("--parent <id>", "Parent tenant ID")
+  .description("Create a workspace")
+  .requiredOption("--name <name>", "Workspace name")
+  .requiredOption("--slug <slug>", "Workspace slug (kebab-case)")
+  .option("--parent <id>", "Parent workspace ID")
   .option("--domain <domains>", "Comma-separated domain list")
   .option(
     "--usecase <usecase>",
-    "Tenant usecase: council|retail|healthcare|finance|manufacturing|generic",
+    "Workspace usecase: council|retail|healthcare|finance|manufacturing|generic",
     "generic",
   )
   .option("--industry <industry>", "Signup/onboarding industry segment")
@@ -639,10 +639,10 @@ tenantCommand
     "Starter application template key",
     "eai-app-template",
   )
-  .option("--home-region <region>", "Tenant home region: au|ca|eu")
+  .option("--home-region <region>", "Workspace home region: au|ca|eu")
   .option(
     "--allow-root",
-    "Allow root tenant creation for administrative backfills",
+    "Allow root workspace creation for administrative backfills",
     false,
   )
   .option("--format <format>", "Output format (text|json)", "text")
@@ -651,7 +651,7 @@ tenantCommand
     if (options.json) options.format = "json";
     if (!options.parent && !options.allowRoot) {
       out.error(
-        "Root tenant creation is guarded. Complete onboarding for the main company tenant, then use `eai init --parent-tenant <id>` or pass --parent for child tenants.",
+        "Root workspace creation is guarded. Complete onboarding for the main company workspace, then use `eai init --parent-tenant <id>` or pass --parent for child workspaces.",
       );
       process.exit(1);
     }
@@ -666,7 +666,7 @@ tenantCommand
       }
       if (!rootHomeRegion) {
         out.error(
-          "--home-region au|ca|eu is required with --allow-root because root tenants cannot inherit a parent region.",
+          "--home-region au|ca|eu is required with --allow-root because root workspaces cannot inherit a parent region.",
         );
         process.exit(1);
       }
@@ -700,7 +700,7 @@ tenantCommand
       spinner =
         options.format === "json"
           ? null
-          : ora(`Creating tenant "${options.name}"...`).start();
+          : ora(`Creating workspace "${options.name}"...`).start();
 
       const res = await client.createTenant({
         name: options.name,
@@ -826,7 +826,7 @@ tenantCommand
         });
       } else {
         spinner!.succeed(
-          `Created tenant ${chalk.cyan(String(createdTenant.slug || options.slug))} (${chalk.dim(String(createdTenant.id || tenantId))})`,
+          `Created workspace ${chalk.cyan(String(createdTenant.slug || options.slug))} (${chalk.dim(String(createdTenant.id || tenantId))})`,
         );
         for (const message of buildTenantCreateStatusMessages(outcome)) {
           if (
@@ -852,15 +852,15 @@ tenantCommand
     }
   });
 
-// ─── eai tenant bootstrap-admin ──────────────────────────────────────────
+// ─── eai workspace bootstrap-admin ──────────────────────────────────────────
 
 tenantCommand
   .command("bootstrap-admin")
   .description(
-    "Bootstrap first tenant-admin access for an existing child tenant",
+    "Repair first workspace admin access for an existing child workspace",
   )
-  .requiredOption("--parent <id>", "Direct parent tenant ID")
-  .requiredOption("--child <id>", "Immediate child tenant ID")
+  .requiredOption("--parent <id>", "Direct parent workspace ID")
+  .requiredOption("--child <id>", "Immediate child workspace ID")
   .option(
     "--user-oid <oid>",
     "Target user object ID (defaults to the current login)",
@@ -875,8 +875,8 @@ tenantCommand
     "after",
     `
 Examples:
-  $ eai tenant bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id>
-  $ eai tenant bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id> --user-oid <entra-user-oid> --user-email user@example.com
+  $ eai workspace bootstrap-admin --parent <parent-workspace-id> --child <child-workspace-id>
+  $ eai workspace bootstrap-admin --parent <parent-workspace-id> --child <child-workspace-id> --user-oid <entra-user-oid> --user-email user@example.com
 `,
   )
   .action(async (options: TenantBootstrapAdminCommandOptions) => {
@@ -915,7 +915,7 @@ Examples:
       options.format === "json"
         ? null
         : ora(
-            `Bootstrapping tenant-admin for ${userEmail || userOid} on child tenant ${options.child}...`,
+            `Setting up workspace admin access for ${userEmail || userOid} on child workspace ${options.child}...`,
           ).start();
 
     try {
@@ -979,9 +979,9 @@ Examples:
 
 tenantCommand
   .command("delete <id>")
-  .description("Delete a tenant")
+  .description("Delete a workspace")
   .option("--force", "Skip confirmation", false)
-  .option("--force-hard-purge", "Permanently purge the tenant and all child tenants", false)
+  .option("--force-hard-purge", "Permanently purge the workspace and all child workspaces", false)
   .option("--format <format>", "Output format (text|json)", "text")
   .option("--json", "Output raw JSON (deprecated, use --format json)", false)
   .action(async (id, options) => {
@@ -990,8 +990,8 @@ tenantCommand
     if (!options.force) {
       const { default: inquirer } = await import("inquirer");
       const promptMessage = options.forceHardPurge
-        ? `Permanently hard purge tenant ${id} and all child tenants? This cannot be undone.`
-        : `Delete tenant ${id}?`;
+        ? `Permanently hard purge workspace ${id} and all child workspaces? This cannot be undone.`
+        : `Delete workspace ${id}?`;
       const { confirm } = await inquirer.prompt([
         {
           type: "confirm",
@@ -1021,7 +1021,7 @@ tenantCommand
     const spinner =
       options.format === "json"
         ? null
-        : ora(`${options.forceHardPurge ? "Hard purging" : "Deleting"} tenant "${id}"...`).start();
+        : ora(`${options.forceHardPurge ? "Hard purging" : "Deleting"} workspace "${id}"...`).start();
 
     try {
       const res = await client.deleteTenant(id, {

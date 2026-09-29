@@ -68,11 +68,11 @@ describe('error guidance catalog', () => {
       operation: 'user provision-me',
       status: 403,
       serverCode: 'CALLING_APPLICATION_NOT_AUTHORIZED',
-      message: 'The calling application is not authorized for this tenant.',
+      message: 'The calling application is not authorized for this workspace.',
     });
 
     expect(guidance?.code).toBe('E247');
-    expect(guidance?.why.join(' ')).toContain('does not evaluate a different tenant app client');
+    expect(guidance?.why.join(' ')).toContain('does not evaluate a different workspace app client');
     expect(guidance?.diagnostics.map((diagnostic) => diagnostic.command)).toContain(
       'eai app auth status <app-key> --tenant-id <tenant-id> --client-id <app-client-id> --format json',
     );
@@ -88,11 +88,11 @@ describe('error guidance catalog', () => {
     });
 
     expect(guidance?.code).toBe('E204');
-    expect(guidance?.title).toContain('tenant-admin access to create an EAI app');
+    expect(guidance?.title).toContain('Workspace admin access is required');
     expect(guidance?.fixes.map((fix) => fix.command)).toEqual(
       expect.arrayContaining([
-        'eai tenant select <tenant>',
-        'Ask the workspace tenant-admin to grant your account tenant-admin access',
+        'eai workspace select <workspace>',
+        'Ask a workspace admin to grant your account workspace admin access',
       ]),
     );
   });
@@ -103,9 +103,9 @@ describe('error guidance catalog', () => {
     const fixCommands = guidance?.fixes.map((fix) => fix.command) ?? [];
     expect(fixCommands).toEqual(
       expect.arrayContaining([
-        'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin',
-        'eai user roles --tenant <tenant-id> --format json',
-        'eai tenant bootstrap-admin --parent <parent-id> --child <child-id>',
+        'eai user invite --email <email> --workspace <workspace-id> --role tenant-admin',
+        'eai user roles --workspace <workspace-id> --format json',
+        'eai workspace bootstrap-admin --parent <parent-id> --child <child-id>',
       ]),
     );
     expect(guidance?.fixes.find((fix) => fix.command.includes('bootstrap-admin'))?.when)
@@ -124,7 +124,7 @@ describe('error guidance catalog', () => {
     expect(guidance?.fixes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin',
+          command: 'eai user invite --email <email> --workspace <workspace-id> --role tenant-admin',
           mutates: true,
         }),
       ]),
@@ -144,7 +144,7 @@ describe('error guidance catalog', () => {
     expect(guidance?.diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          command: 'eai user list --tenant <tenant-id> --search <email> --format json',
+          command: 'eai user list --workspace <workspace-id> --search <email> --format json',
           mutates: false,
         }),
       ]),
@@ -152,7 +152,7 @@ describe('error guidance catalog', () => {
     expect(guidance?.fixes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
+          command: 'eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json',
           mutates: true,
         }),
       ]),
@@ -160,7 +160,7 @@ describe('error guidance catalog', () => {
     expect(guidance?.why.join(' ')).toContain('Auth.js session or JWT');
   });
 
-  test('app-token missing tenant guidance routes agents to tenant-scoped platform paths first', () => {
+  test('app-token missing tenant guidance routes agents to workspace-scoped platform paths first', () => {
     const guidance = findGuidance({
       operation: 'platform user lookup',
       status: 502,
@@ -189,7 +189,7 @@ describe('error guidance catalog', () => {
         'Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions',
       ]),
     );
-    expect(guidance?.why.join(' ')).toContain('Do not treat this as the first signal to edit tenant members');
+    expect(guidance?.why.join(' ')).toContain('Do not treat this as the first signal to edit workspace members');
     expect(findGuidanceByCodeOrReason('app_token_tenant_context_required')?.code).toBe('E246');
   });
 
@@ -197,7 +197,7 @@ describe('error guidance catalog', () => {
     const guidance = findGuidance({
       status: 503,
       serverCode: 'RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH',
-      message: 'install registry did not resolve an active install for this tenant',
+      message: 'install registry did not resolve an active install for this workspace',
     });
 
     expect(guidance?.code).toBe('E244');
@@ -307,13 +307,13 @@ describe('error guidance catalog', () => {
     expect(guidance?.diagnostics.map((item) => item.command)).toEqual(
       expect.arrayContaining([
         'eai update --check',
-        'eai types validate --tenant-key <key> --tenant-id <tenant-id>',
+        'eai types validate --tenant-key <key> --tenant-id <workspace-id>',
       ]),
     );
     expect(guidance?.fixes.map((item) => item.command)).toEqual(
       expect.arrayContaining([
         'eai update',
-        'eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json',
+        'eai types seed --tenant-key <key> --tenant-id <workspace-id> --format json',
       ]),
     );
     expect(guidance?.retry.maxAttempts).toBe(1);
@@ -365,7 +365,7 @@ describe('eai errors command', () => {
     expect(payload.guidance.fixes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
+          command: 'eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json',
           mutates: true,
         }),
       ]),

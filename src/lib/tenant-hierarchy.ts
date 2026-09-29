@@ -258,7 +258,13 @@ function tenantHierarchyStatus(
   activeTenantId?: string,
 ): string {
   const labels: string[] = [];
-  if (item.roles.length) labels.push(item.roles.join(", "));
+  if (item.roles.length) {
+    labels.push(
+      item.roles
+        .map((role) => role.startsWith("tenant-") ? `workspace ${role.slice("tenant-".length)}` : role)
+        .join(", "),
+    );
+  }
   if (!item.directMembership) labels.push("visible via parent");
   if (activeTenantId === item.id) labels.push("active");
   return labels.length ? ` [${labels.join("; ")}]` : "";
@@ -391,7 +397,7 @@ export async function promptForTenantFromHierarchy(
       disabled:
         allowIndirect || item.directMembership
           ? undefined
-          : "Visible through parent hierarchy; direct tenant-admin membership is required to select.",
+          : "Visible through parent hierarchy; direct workspace access is required to select.",
     });
     item.children.forEach((child) => visit(child, depth + 1));
   };
@@ -404,7 +410,7 @@ export async function promptForTenantFromHierarchy(
     {
       type: "select",
       name: "tenantId",
-      message: options?.message ?? "Select the tenant to work with now",
+      message: options?.message ?? "Select the workspace to work with now",
       choices,
     },
   ]);

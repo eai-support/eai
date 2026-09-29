@@ -288,10 +288,10 @@ export function matchPublishedType(
 
 export function buildMissingPublishedTypeMessage(match: PublishedTypeMatch): string {
   if (match.publishedTypeNames.length === 0) {
-    return `No published object types were found for the active tenant. ${match.requestedType} cannot be listed until types are published remotely.`;
+    return `No published object types were found for the active workspace. ${match.requestedType} cannot be listed until types are published remotely.`;
   }
 
-  return `Object type "${match.requestedType}" is not published for the active tenant. Published types: ${match.publishedTypeNames.join(', ')}.`;
+  return `Object type "${match.requestedType}" is not published for the active workspace. Published types: ${match.publishedTypeNames.join(', ')}.`;
 }
 
 async function describeMissingPublishedType(
@@ -387,7 +387,7 @@ export const resourcesCommand = new Command('resources')
 resourcesCommand
   .command('list <type>')
   .description('List resources of a given type')
-  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific workspace')
   .option('--page <n>', 'Page number', '1')
   .option('--limit <n>', 'Items per page', '20')
   .option('--sort <field>', 'Sort field (prefix with - for descending)', '-created_at')
@@ -474,7 +474,7 @@ Examples:
 resourcesCommand
   .command('batch-create <type>')
   .description('Create resources in bulk')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--data <json>', 'Batch payload as JSON array or object')
   .option('--file <path>', 'Read batch payload from JSON file')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -507,7 +507,7 @@ resourcesCommand
 resourcesCommand
   .command('batch-import <type>')
   .description('Import resources through the high-throughput bulk path')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--data <json>', 'Batch payload as JSON array or object')
   .option('--file <path>', 'Read batch payload from JSON file')
   .option('--projection-mode <mode>', 'Search projection mode (deferred|sync)', 'deferred')
@@ -555,7 +555,7 @@ resourcesCommand
 resourcesCommand
   .command('batch-update <type>')
   .description('Update resources in bulk')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--data <json>', 'Batch payload as JSON array or object')
   .option('--file <path>', 'Read batch payload from JSON file')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -588,7 +588,7 @@ resourcesCommand
 resourcesCommand
   .command('batch-delete <type>')
   .description('Delete resources in bulk')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--ids <csv>', 'Comma-separated ids to delete')
   .option('--data <json>', 'Batch payload as JSON array or object')
   .option('--file <path>', 'Read batch payload from JSON file')
@@ -624,7 +624,7 @@ resourcesCommand
 resourcesCommand
   .command('aggregate <type>')
   .description('Run a server-side aggregate query')
-  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific workspace')
   .requiredOption('--group-by <fields>', 'Comma-separated groupBy fields')
   .requiredOption('--metrics <json>', 'Aggregate metrics JSON')
   .option('--where <json>', 'Structured where filter as JSON')
@@ -666,7 +666,7 @@ resourcesCommand
 resourcesCommand
   .command('get <type> <id>')
   .description('Get a single resource')
-  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
@@ -699,7 +699,7 @@ resourcesCommand
 resourcesCommand
   .command('create <type>')
   .description('Create a new resource')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--data <json>', 'Resource data as JSON string')
   .option('--file <path>', 'Read data from JSON file')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -755,7 +755,7 @@ Examples:
 resourcesCommand
   .command('update <type> <id>')
   .description('Update a resource')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--data <json>', 'Updated data as JSON string')
   .option('--version <n>', 'Resource version (for optimistic locking)')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -807,7 +807,7 @@ resourcesCommand
 resourcesCommand
   .command('delete <type> <id>')
   .description('Delete a resource')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--force', 'Skip confirmation', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -858,7 +858,7 @@ resourcesCommand
 resourcesCommand
   .command('query')
   .description('Cross-type query')
-  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific workspace')
   .requiredOption('--types <types>', 'Comma-separated object type names')
   .option('--where <json>', 'Filter conditions as JSON')
   .option('--limit <n>', 'Max results', '20')
@@ -907,7 +907,7 @@ const storageCommand = resourcesCommand
 storageCommand
   .command('status')
   .description('Show storage routing and provisioning status')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
@@ -937,7 +937,7 @@ storageCommand
       return;
     }
 
-    succeedCommand(spinner, `Storage status for tenant ${payload.tenantId || ctx.tenantId}`);
+    succeedCommand(spinner, `Storage status for workspace ${payload.tenantId || ctx.tenantId}`);
     for (const item of payload.objectTypes || []) {
       const status = item.isReady ? chalk.green('ready') : chalk.yellow('not ready');
       out.info(`${chalk.cyan(item.objectType)} ${chalk.dim(item.backend)} ${status}`);
@@ -954,7 +954,7 @@ storageCommand
 storageCommand
   .command('doctor')
   .description('Run storage diagnostics')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
@@ -1010,8 +1010,8 @@ storageCommand
 
 resourcesCommand
   .command('search <query>')
-  .description('Search tenant resource projections')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .description('Search workspace resource projections')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--types <types>', 'Comma-separated object type names')
   .option('--mode <mode>', 'Search mode: fulltext|hybrid|vector', 'hybrid')
   .option('--hybrid', 'Use hybrid full-text + vector search', false)
@@ -1073,7 +1073,7 @@ when the file is a document to process, classify, or index for AI/RAG.
 fileCommand
   .command('upload <type> <id> <property> <path>')
   .description('Upload a file to a resource file property')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, property, filePath, options) => {
@@ -1105,7 +1105,7 @@ fileCommand
 fileCommand
   .command('get <type> <id> <property>')
   .description('Download a resource file property')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--output <path>', 'Write to a specific file path')
   .action(async (type, id, property, options) => {
     const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
@@ -1128,7 +1128,7 @@ fileCommand
 fileCommand
   .command('delete <type> <id> <property>')
   .description('Delete a resource file property')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--force', 'Skip confirmation', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -1170,8 +1170,8 @@ fileCommand
 
 resourcesCommand
   .command('schema')
-  .description('Show published Object Types for tenant')
-  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .description('Show published Object Types for the workspace')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
@@ -1207,8 +1207,8 @@ resourcesCommand
 
 resourcesCommand
   .command('performance-status')
-  .description('Show tenant-scoped resource schema and performance readiness')
-  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .description('Show workspace resource schema and performance readiness')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
@@ -1234,7 +1234,7 @@ resourcesCommand
       const state = typeof payload.state === 'string' ? payload.state : 'unknown';
       const count = typeof payload.objectTypeCount === 'number' ? payload.objectTypeCount : 0;
       succeedCommand(spinner, `Resource schema ${state} — ${count} Object Types visible`);
-      out.info('Tenant-admin: read status and request an index plan.');
+      out.info('Workspace admin access (role ID tenant-admin): read status and request an index plan.');
       out.info('Platform-admin only: apply index changes and force cache refresh.');
       out.info('Raw SQL: disabled.');
     } catch (err) {
@@ -1246,7 +1246,7 @@ resourcesCommand
 resourcesCommand
   .command('indexes-plan')
   .description('Plan validated resource storage/index changes without applying them')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--object-type <slug...>', 'Limit the plan to published Object Type slugs')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .action(async (options) => {
@@ -1263,10 +1263,10 @@ resourcesCommand
 resourcesCommand
   .command('indexes-apply')
   .description('Apply validated resource storage/index changes')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--object-type <slug...>', 'Limit the apply to published Object Type slugs')
   .option('--format <format>', 'Output format (text|json)', 'text')
-  .option('--confirm', 'Confirm the tenant-scoped apply', false)
+  .option('--confirm', 'Confirm the workspace apply', false)
   .action(async (options) => {
     options.format = normalizeFormat(options);
     if (!options.confirm) {
@@ -1284,7 +1284,7 @@ resourcesCommand
 resourcesCommand
   .command('cache-refresh')
   .description('Force a resource cache refresh (system-admin operation)')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--object-type <slug...>', 'Limit the refresh to Object Type slugs')
   .requiredOption('--reason <reason>', 'Audited reason or change ticket')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -1306,7 +1306,7 @@ resourcesCommand
 resourcesCommand
   .command('sync-schema')
   .description('Provision or reconcile storage resources from published Object Type metadata')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--backend <backend>', 'Limit to a backend (postgresql|documentdb|blob|search)')
   .option('--dry-run', 'Show the reconcile plan without mutating storage', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -1348,8 +1348,8 @@ resourcesCommand
 
 resourcesCommand
   .command('doctor')
-  .description('Inspect storage readiness for the active tenant')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .description('Inspect storage readiness for the active workspace')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .action(async (options) => {
     const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });

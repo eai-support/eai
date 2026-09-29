@@ -47,15 +47,15 @@ Before any Gofer stage/helper command does pipeline work:
 1. Treat durable delivery as EAI Platform delivery by default, with Azure second
    and every other stack only by explicit exception.
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
+   and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
-   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   workspace is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.
 4. For EAI app delivery, do not continue into research, specification, planning,
    tasks, implementation, or validation until
-   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   `.specify/specs/{feature}/eai-preflight.md` records login, workspace, template,
    app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+5. Do not write tokens, secrets, private workspace IDs, Entra/CIAM authority tenant IDs, or local `.env` values into
    Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
@@ -743,7 +743,7 @@ mkdir -p .eai
 eai deploy doctor --url <deployed-url> --format json > .eai/deploy-doctor.json
 ```
 
-`/health` alone is not enough. Auth.js, runtime config, tenant/workflow config,
+`/health` alone is not enough. Auth.js, runtime config, workspace/workflow config,
 PublicAPI/BFF reachability, service-identity requirements, and declared smoke
 tests must pass before deployment is complete.
 
@@ -775,7 +775,7 @@ separation from `tasks.md`:
   be justified in the approved plan and approval artifacts.
 - For application delivery, implement on EAI Platform first, including the EAI
   app template, and Azure second: use the EAI scaffold, PublicAPI/object
-  types/workflows/block catalog, ResourceAPI/`eai resources schema`, tenant/app
+  types/workflows/block catalog, ResourceAPI/`eai resources schema`, workspace/app
   enrollment, provisioning, diagnostics, and Azure-compatible
   deployment/supporting services before any non-EAI exception. Do not introduce a
   non-EAI primary runtime, database, hosting platform, or app stack unless
@@ -808,27 +808,27 @@ separation from `tasks.md`:
 - After any failed `eai` command, run `eai errors explain <code-or-reason>
   --format json` when advertised before proposing a fix. If the command is not
   advertised, match `.specify/references/platform/eai-error-catalog.yaml`. Run
-  read-only diagnostics before mutating fixes, ask for approval before tenant
+  read-only diagnostics before mutating fixes, ask for approval before workspace
   membership or admin changes, and stop at the guidance retry/escalation
   condition instead of repeatedly rerunning the same command.
 - Treat resource provisioning, object-type publish, schema/storage health, and preview readiness as separate gates even when the CLI reports progress in a single run.
 - Track workflow readiness alongside those gates; do not collapse it into
   provisioning, schema/storage health, or preview status.
-- Use `eai app provision <key> --tenant-id <tenant-id> --select --format json`,
+- Use `eai app provision <key> --tenant-id <workspace-id> --select --format json`,
   `eai provision entra --force --redirect-uri <confirmed-callback-uri>`,
-  `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json`,
-  `eai resources schema --tenant-id <tenant-id> --format json`,
-  `eai resources storage doctor --tenant-id <tenant-id> --format json`, and
-  `eai verify storage --tenant-id <tenant-id>` in the recovery order recorded
+  `eai types seed --tenant-key <key> --tenant-id <workspace-id> --format json`,
+  `eai resources schema --tenant-id <workspace-id> --format json`,
+  `eai resources storage doctor --tenant-id <workspace-id> --format json`, and
+  `eai verify storage --tenant-id <workspace-id>` in the recovery order recorded
   by the preflight artifact instead of improvising a new sequence. Use EAI
   `--debug` flags only with explicit user approval, and never write private
-  hostnames, tenant IDs, client IDs, tokens, or raw debug output to committed
+  hostnames, workspace IDs, Entra/CIAM authority tenant IDs, client IDs, tokens, or raw debug output to committed
   artifacts.
 - For v4 passive ResourceAPI search, treat `capabilities.search.fulltext`,
   `capabilities.search.hybrid`, and `capabilities.search.vector` from
-  `eai resources storage doctor --tenant-id <tenant-id> --format json` as
+  `eai resources storage doctor --tenant-id <workspace-id> --format json` as
   separate readiness states. If hybrid/vector are unavailable but fulltext is
-  ready, use `eai resources search "<query>" --fulltext --tenant-id <tenant-id>`
+  ready, use `eai resources search "<query>" --fulltext --tenant-id <workspace-id>`
   and record semantic search as a deferred platform capability only when the
   business scenario genuinely requires it. Do not apply this fallback to legacy
   v1/v3 or active ResourceAPI behavior.
@@ -836,14 +836,14 @@ separation from `tasks.md`:
   "reply URL specified in the request does not match", or
   `/api/auth/callback/microsoft-entra-id`, match
   `EAI_ENTRA_REDIRECT_URI_MISMATCH` in the error catalog. Confirm `eai whoami`
-  and tenant selection first, then use EAI Entra provisioning to register the
+  and workspace selection first, then use EAI Entra provisioning to register the
   confirmed callback URI before asking the user to edit Azure manually. Record
   only a redacted callback route pattern and recovery status in implementation
   notes or validation artifacts.
 - If `eai user invite` fails with `EXTERNAL_SERVICE_ERROR`, a 5xx response, or
-  `user_invite_external_service_existing_member`, treat it as a tenant-member
-  recovery flow: run `eai user list --tenant <tenant-id> --search <email>
-  --format json`, use `eai user role set --tenant <tenant-id> --member-id
+  `user_invite_external_service_existing_member`, treat it as a workspace-member
+  recovery flow: run `eai user list --workspace <workspace-id> --search <email>
+  --format json`, use `eai user role set --workspace <workspace-id> --member-id
   <member-id> --role tenant-admin --format json` only when an existing direct
   member is verified and the user approves, verify the read-back, and tell the
   affected app user to sign out and sign back in because Auth.js session or JWT
@@ -861,7 +861,7 @@ separation from `tasks.md`:
   self-review evidence and append it to `{FEATURE_DIR}/ui-review-log.md`.
 - For application delivery, after UI approval and before treating platform
   selection as complete, update `{FEATURE_DIR}/service-fit-matrix.md` with
-  tenant-aware evidence from `eai --describe`, `eai whoami`, `eai tenant
+  workspace context evidence from `eai --describe`, `eai whoami`, `eai workspace
   select`, `eai resources schema --format json`, `eai workflow readiness
   --format json`, `eai verify calls --format json`, or equivalent approved
   platform evidence. The matrix must distinguish

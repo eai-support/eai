@@ -1,7 +1,7 @@
 ---
-feature: '{{feature-name}}'
-created: '{{ISO-timestamp}}'
-updated: '{{ISO-timestamp}}'
+feature: "{{feature-name}}"
+created: "{{ISO-timestamp}}"
+updated: "{{ISO-timestamp}}"
 audience: cto-architecture
 source_inputs:
   - plan.md
@@ -48,7 +48,7 @@ If a branded Marp deck is produced, use the approved theme path from
 | -------------------- | ------------------------------- | -------- |
 | Authentication       | {{auth-summary}}                | {{path}} |
 | Authorization        | {{authorization-summary}}       | {{path}} |
-| Tenant boundaries    | {{tenant-boundary-summary}}     | {{path}} |
+| Workspace boundaries | {{tenant-boundary-summary}}     | {{path}} |
 | Data model           | {{object-types-and-data-model}} | {{path}} |
 | API/events/contracts | {{contract-summary}}            | {{path}} |
 
@@ -79,5 +79,5 @@ EAI Platform evidence.
 CTO / Architecture should approve, revise, or defer:
 
 - EAI Platform and Azure direction.
-- Auth, tenant, data, and integration model.
+- Auth, workspace, data, and integration model.
 - Any non-EAI or non-Azure exception with owner, expiry, and evidence.

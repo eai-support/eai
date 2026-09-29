@@ -108,15 +108,15 @@ action roles.
 
 ---
 
-## Tenants
+## Workspaces
 
 ```bash
-eai tenant list                        # List tenants
-eai tenant info <id>                   # Show tenant details
-eai tenant create \
-  --name "My Tenant" \
+eai workspace list                        # List workspaces
+eai workspace info <id>                   # Show workspace details
+eai workspace create \
+  --name "My Workspace" \
   --slug my-tenant \
-  --parent <parentId>                  # Create tenant
+  --parent <parentId>                  # Create workspace
 ```
 
 ---
@@ -124,8 +124,8 @@ eai tenant create \
 ## Users
 
 ```bash
-eai user invite --email user@co.com --tenant <id>   # Invite user to tenant
-eai user provision-me --tenant <id>                 # Add yourself to tenant
+eai user invite --email user@co.com --workspace <id>   # Invite user to workspace
+eai user provision-me --workspace <id>                 # Add yourself to workspace
 ```
 
 ---
@@ -158,7 +158,7 @@ eai resources delete board-app-user <id> --force # Skip confirmation
 eai resources query --types board-app-user,board-app-project --where '{"status":"active"}' --limit 10
 
 # Schema
-eai resources schema                   # Show published types for tenant
+eai resources schema                   # Show published types for workspace
 ```
 
 ---
@@ -209,7 +209,7 @@ Every command with data output supports `--format json`:
 
 ```bash
 eai resources list board-app-user --format json | jq '.[].id'
-eai tenant list --format json
+eai workspace list --format json
 eai types seed --format json
 eai deploy status --format json
 eai --describe                         # Full CLI schema as JSON
@@ -225,7 +225,7 @@ eai init my-app --skip-prompts                # Use all defaults
 eai init my-app --from https://github.com/org/template.git  # Custom template
 ```
 
-**Interactive prompts cover:** display name, description, tenant structure
+**Interactive prompts cover:** display name, description, workspace structure
 (`single` / `dual` / `multi`), AI chat, document management, auth provider
 (`ciam` / `b2b` / `dual`).
 

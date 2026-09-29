@@ -29,15 +29,15 @@ Before any Gofer stage/helper command does pipeline work:
 1. Treat durable delivery as EAI Platform delivery by default, with Azure second
    and every other stack only by explicit exception.
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
+   and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
-   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   workspace is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.
 4. For EAI app delivery, do not continue into research, specification, planning,
    tasks, implementation, or validation until
-   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   `.specify/specs/{feature}/eai-preflight.md` records login, workspace, template,
    app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+5. Do not write tokens, secrets, private workspace IDs, Entra/CIAM authority tenant IDs, or local `.env` values into
    Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
@@ -409,7 +409,7 @@ Visual quality requirements for all planning visuals:
   three-to-five-bullet executive summary in plain language.
 - Link each visual to the requirement, plan decision, contract, code/test path,
   EAI service/template asset, or validation evidence it summarizes.
-- Do not include tenant-private data, secrets, customer identifiers, or
+- Do not include workspace-private data, secrets, customer identifiers, or
   screenshots containing private content.
 
 ### Dynamic-Only: Workflow DAG Writer
@@ -673,7 +673,7 @@ Before reporting completion, update the stakeholder-facing architecture pack:
    - Explain how the solution uses EAI Platform first, the EAI App Template
      when app delivery applies, Azure as the preferred supporting substrate,
      and any approved exception.
-   - Summarize auth, authorization, tenant boundary, data model, integration,
+   - Summarize auth, authorization, workspace boundary, data model, integration,
      contract, and deployment assumptions in plain language.
 2. Write `{FEATURE_DIR}/prfaq-history/03-plan.md` as an immutable snapshot.
 3. Create or update `{FEATURE_DIR}/cto-architecture-summary.md` from
@@ -682,7 +682,7 @@ Before reporting completion, update the stakeholder-facing architecture pack:
    `service-fit-matrix.md`, and `eai-preflight.md` when present.
 4. Update `{FEATURE_DIR}/stakeholder-review-index.md` and explicitly ask
    CTO / Architecture to approve, revise, or defer the architecture,
-   EAI/Azure fit, auth/tenant model, data model, and integration contracts.
+   EAI/Azure fit, auth/workspace model, data model, and integration contracts.
 5. Preserve the existing loop contract: if planning changed eval commands,
    stop conditions, or escalation rules, update `loop-contract.json` and keep
    those changes visible in the stakeholder index rather than replacing loop
@@ -734,7 +734,7 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
    `{FEATURE_DIR}/eai-preflight.md` before making platform or template
    assumptions. The plan MUST preserve:
    - whether the user is logged in or still needs an EAI Platform account
-   - the selected tenant role/readiness and whether app enrollment is allowed
+   - the selected workspace role/readiness and whether app enrollment is allowed
    - whether the repo already has EAI template markers or still needs
      `eai init <app-name>`
    - whether app creation/selection is confirmed, deferred, or blocked
@@ -742,7 +742,7 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
    - the last completed gate, blocked gate, and next recovery command from the
      EAI preflight artifact
    If EAI readiness is blocked, plan only the smallest unblock task group and
-   do not invent object types, tenant IDs, app keys, or platform capabilities.
+   do not invent object types, workspace IDs, app keys, or platform capabilities.
 3. **EAI app lifecycle ordering handoff** — keep the platform lifecycle
    explicit inside the plan. Resource provisioning, object-type publish,
    schema/storage health, workflow readiness, and preview readiness must remain
@@ -798,7 +798,7 @@ When the workflow profile is `enterpriseai`, `plan.md` MUST capture:
    - purchasable but unavailable now
    - unavailable without new platform work
    The plan must source this evidence from `eai --describe`, `eai whoami`,
-   `eai tenant select`, `eai resources schema --format json`,
+   `eai workspace select`, `eai resources schema --format json`,
    `eai verify calls --format json`, `eai workflow readiness [workflow-key]
    --format json`, `eai workflow status <workflow-key>`, `eai workflow request
    <workflow-key>`, `eai provision entra --rotate-secret`, or documented
@@ -831,7 +831,7 @@ Plan both:
   capability-selection discussion that binds chosen platform services to the
   approved UI and distinguishes accessible now vs purchasable vs unavailable.
 - **Internal orchestration flows**: platform services, ResourceAPI calls,
-  events, data movement, tenant boundaries, deployment steps, and observability.
+  events, data movement, workspace boundaries, deployment steps, and observability.
 
 ### Competitive / market analysis reference
 

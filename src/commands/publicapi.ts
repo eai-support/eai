@@ -41,7 +41,7 @@ Examples:
 Notes:
   - Only /v4 PublicAPI paths are accepted.
   - Existing named commands remain preferred for common workflows.
-  - Authorization is still enforced by PublicAPI and platform tenant policy.
+  - Authorization is still enforced by PublicAPI and workspace access policy.
 `);
 
 function normalizePath(path: string): string {
@@ -221,7 +221,7 @@ for (const method of METHODS) {
   publicApiCommand
     .command(`${method.toLowerCase()} <path>`)
     .description(`${method} an authorized PublicAPI V4 path`)
-    .option('--tenant-id <tenantId>', 'Use a specific tenant instead of the active tenant')
+    .option('--tenant-id <tenantId>', 'Use a specific workspace instead of the active workspace')
     .option('--data <json>', 'JSON request body')
     .option('--file <path>', 'Read JSON request body from a file')
     .option('--param <key=value>', 'Query parameter (repeatable)', (value, previous: string[]) => [...previous, value], [])

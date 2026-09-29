@@ -51,7 +51,7 @@ ${entry.retry.stopWhen.map((item) => `- ${item}`).join('\n')}
 ${entry.escalation.include.map((item) => `- ${item}`).join('\n')}
 `).join('\n');
 
-  return `---
+  const markdown = `---
 title: Error Guidance
 description: Public-safe EAI CLI error explanations and agent recovery commands.
 ---
@@ -73,6 +73,7 @@ ${summaryRows}
 
 ${detailSections}
 `;
+  return `${markdown.trimEnd()}\n`;
 }
 
 function publicEntry(entry) {

@@ -62,15 +62,15 @@ Before any Gofer stage/helper command does pipeline work:
 1. Treat durable delivery as EAI Platform delivery by default, with Azure second
    and every other stack only by explicit exception.
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
+   and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
-   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   workspace is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.
 4. For EAI app delivery, do not continue into research, specification, planning,
    tasks, implementation, or validation until
-   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   `.specify/specs/{feature}/eai-preflight.md` records login, workspace, template,
    app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+5. Do not write tokens, secrets, private workspace IDs, Entra/CIAM authority tenant IDs, or local `.env` values into
    Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
@@ -592,27 +592,27 @@ deploy-doctor evidence exist before any deploy command runs.
 0. **EAI readiness unblock -> `eai-preflight.md`**
    - If `{FEATURE_DIR}/eai-preflight.md` is missing, stale, or blocked, emit
      only the smallest runnable unblock tasks before normal build tasks:
-     install/update `eai`, run `eai login`, run `eai tenant select`, confirm a
-     tenant-admin membership with `eai tenant list --format json`, initialize
+     install/update `eai`, run `eai login`, run `eai workspace select`, confirm a
+     workspace admin membership (platform role ID `tenant-admin`) with `eai workspace list --format json`, initialize
      the EAI app template with `eai init <app-name> --skip-prompts
-     --company-tenant <tenant-id>` when confirmed, and confirm app enrollment
+     --company-workspace <workspace-id>` when confirmed, and confirm app enrollment
      with `eai app list/create/select`.
    - Do not emit object-type, UI, implementation, deployment, or service-fit
      tasks until EAI readiness is `ready` or explicitly deferred by the user.
-   - Never invent tenant IDs, app keys, app URLs, or platform capabilities.
-     Use `eai --describe`, public EAI docs, and the user's confirmed tenant/app
+   - Never invent workspace IDs, app keys, app URLs, or platform capabilities.
+     Use `eai --describe`, public EAI docs, and the user's confirmed workspace/app
      selection as evidence.
    - Do not emit tasks that establish a non-EAI primary runtime, database,
      hosting platform, or app framework. Non-EAI technologies can appear only as
      approved integration/migration/exception tasks after the EAI Platform/Azure
      fit is recorded.
 1. **EAI App Template scaffolding -> `eai init`**
-   - Command: `eai init <app-name> --skip-prompts --company-tenant <tenant-id>`
+   - Command: `eai init <app-name> --skip-prompts --company-workspace <workspace-id>`
    - Produces the working directory and provider-neutral `eai.runtime.json`
      expected by subsequent runtime and deployment tasks.
 2. **Local validation -> `eai runtime validate` and `eai verify`**
    - Commands: `eai runtime validate` and `eai verify`
-   - Confirms the runtime contract, tenant/workflow configuration, and platform
+   - Confirms the runtime contract, workspace/workflow configuration, and platform
      readiness before any deploy attempt.
 3. **Pinned `eai major.minor` deployment tasks -> `eai deploy`**
    - Command: `eai deploy trigger --repo <org/repo>`
@@ -620,7 +620,7 @@ deploy-doctor evidence exist before any deploy command runs.
 4. **Post-deploy smoke gate -> `eai deploy doctor`**
    - Command: `mkdir -p .eai && eai deploy doctor --url <deployed-url> --format json > .eai/deploy-doctor.json`
    - Captures black-box runtime smoke evidence for `/health`, Auth.js,
-     PublicAPI/BFF reachability, tenant/workflow config, and declared smoke
+     PublicAPI/BFF reachability, workspace/workflow config, and declared smoke
      tests.
 
 <!-- prettier-ignore -->
@@ -680,7 +680,7 @@ precondition to downstream implementation tasks:
 - Pinned `eai major.minor` deployment tasks whenever deployment, rollout, or
   environment coordination depends on a specific EAI CLI generation.
 - Contract-pack coverage tasks for actors, object types, workflows/journeys,
-  permissions/tenant boundaries, APIs/events, deployment assumptions, and
+  permissions/workspace boundaries, APIs/events, deployment assumptions, and
   acceptance tests.
 - AI-augmented journey tasks for app delivery: one task group for each of the
   four-or-fewer journey steps covering user experience, chatbot/voice/
@@ -697,7 +697,7 @@ precondition to downstream implementation tasks:
   - update `ui-review-log.md`
   - block downstream work until `ui-approval.md` is approved
 - App-delivery service-fit tasks that update `service-fit-matrix.md` using
-  tenant-aware evidence from `eai --describe`, `eai whoami`, `eai tenant
+  workspace context evidence from `eai --describe`, `eai whoami`, `eai workspace
   select`, `eai resources schema --format json`, `eai workflow readiness
   --format json`, `eai verify calls --format json`, or equivalent approved
   platform evidence.

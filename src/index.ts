@@ -5,7 +5,7 @@
  *
  * Scaffold, seed, deploy, and manage applications.
  * Every command wraps platform API calls — developers work with resources,
- * types, tenants, and chat using simple commands.
+ * types, workspaces, and chat using simple commands.
  */
 
 import { createRequire } from 'node:module';
@@ -138,7 +138,7 @@ ${chalk.bold('Development Workflows:')}
   ${chalk.dim('# Define your types, validate them, then publish them')}
   ${chalk.cyan('eai types validate && eai types seed')}
 
-  ${chalk.dim('# See what is published for the active tenant')}
+  ${chalk.dim('# See what is published for the active workspace')}
   ${chalk.cyan('eai resources schema')}
   ${chalk.cyan('eai app create "My App" --template eai-app-template')}
 
@@ -151,7 +151,7 @@ ${chalk.bold('Development Workflows:')}
   ${chalk.cyan('eai workflow status strategy-monitor')}
   ${chalk.cyan('eai workflow request strategy-monitor --reason "CEO strategy cockpit"')}
 
-  ${chalk.dim('# Check login, tenant, and API connectivity')}
+  ${chalk.dim('# Check login, workspace, and API connectivity')}
   ${chalk.cyan('eai verify && eai doctor')}
 
 ${chalk.bold('Deployment:')}
@@ -169,7 +169,7 @@ ${chalk.bold('Deployment:')}
 ${chalk.bold('Machine-Readable Output:')}
   ${chalk.dim('# Get structured JSON output for automation')}
   ${chalk.cyan('eai resources list User --format json')}
-  ${chalk.cyan('eai tenant list --format json | jq')}
+  ${chalk.cyan('eai workspace list --format json | jq')}
   ${chalk.cyan('eai verify calls --format json')}
   ${chalk.cyan('eai errors explain E101 --format json')}
 

@@ -66,8 +66,3 @@ subscription, and organisation policy are confirmed by the provider.
 ## Current Release
 
 The current CLI release is **v3.18.3** (2026-09-29): Use workspace terminology in customer-facing guidance.
-
-
-
-
-

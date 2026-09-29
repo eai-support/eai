@@ -78,7 +78,7 @@ non-app work, mark this section "Not applicable".
 | ----------- | ------------------- | -------------------------------------- | ------------------ |
 | {{service}} | {{path-or-command}} | Accessible / Purchasable / Unavailable | {{decision}}       |
 
-## Permissions And Tenant Boundaries
+## Permissions And Workspace Boundaries
 
 | Boundary     | Rule     | Evidence              |
 | ------------ | -------- | --------------------- |

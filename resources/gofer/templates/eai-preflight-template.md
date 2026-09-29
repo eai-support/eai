@@ -17,7 +17,7 @@ updated: '{{iso_timestamp}}'
 | CLI release status          | {{current     | upgrade_required      | blocked}}                    | {{eai update --check}}                                                             |
 | CLI capabilities discovered | {{ready       | blocked}}             | {{eai --describe timestamp}} |
 | Logged in                   | {{ready       | login_required        | account_required}}           | {{eai whoami summary, no tokens}}                                                  |
-| Tenant ready                | {{ready       | tenant_required       | operator_required}}          | {{tenant role category, no private payloads}}                                      |
+| Workspace ready                | {{ready       | tenant_required       | operator_required}}          | {{workspace role category, no private payloads}}                                      |
 | Template ready              | {{ready       | template_required     | deferred}}                   | {{template markers or eai verify result}}                                          |
 | Drift readiness             | {{ready       | drift_detected        | not_applicable}}             | {{eai template check / eai gofer refresh --check}}                                 |
 | App enrollment ready        | {{ready       | confirmation_required | blocked                      | deferred}}                                                                         | {{app list/create/select summary}}                                 |
@@ -46,24 +46,24 @@ updated: '{{iso_timestamp}}'
 | Release check             | `eai update --check`                                                                                              | {{result}}            |
 | Capability discovery      | `eai --describe`                                                                                                  | {{result}}            |
 | Login check               | `eai whoami`                                                                                                      | {{result}}            |
-| Tenant check              | `eai tenant list --format json`                                                                                   | {{result}}            |
+| Workspace check              | `eai workspace list --format json`                                                                                   | {{result}}            |
 | Project check             | `eai verify`                                                                                                      | {{result_or_not_run}} |
 | Template drift check      | `eai template check --format json`                                                                                | {{result_or_not_run}} |
 | Gofer drift check         | `eai gofer refresh --check --format json`                                                                         | {{result_or_not_run}} |
 | App enrollment check      | `eai app list --format json`                                                                                      | {{result_or_not_run}} |
 | App selection             | `eai app select <key> --format json`                                                                              | {{result_or_not_run}} |
-| App resource provisioning | `eai app provision <key> --tenant-id <tenant-id> --select --format json`                                          | {{result_or_not_run}} |
+| App resource provisioning | `eai app provision <key> --tenant-id <workspace-id> --select --format json`                                          | {{result_or_not_run}} |
 | Entra provisioning        | `eai provision entra`                                                                                             | {{result_or_not_run}} |
 | Entra redirect recovery   | `eai provision entra --force --redirect-uri <confirmed-callback-uri>`; artifact uses redacted callback route only | {{result_or_not_run}} |
 | Environment pull          | `eai env pull`                                                                                                    | {{result_or_not_run}} |
 | Object-type validation    | `eai types validate`                                                                                              | {{result_or_not_run}} |
-| Object-type publish       | `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json`                                         | {{result_or_not_run}} |
-| Object-type convergence   | `eai types diff --tenant-key <key> --tenant-id <tenant-id>`                                                       | {{result_or_not_run}} |
-| Resource schema           | `eai resources schema --tenant-id <tenant-id> --format json`                                                      | {{result_or_not_run}} |
-| Storage status            | `eai resources storage status --tenant-id <tenant-id> --format json`                                              | {{result_or_not_run}} |
-| Storage doctor            | `eai resources storage doctor --tenant-id <tenant-id> --format json`                                              | {{result_or_not_run}} |
-| Storage verify            | `eai verify storage --tenant-id <tenant-id>`                                                                      | {{result_or_not_run}} |
-| Resource call verify      | `eai verify calls --tenant-id <tenant-id> --resource-type <resource-type>`                                        | {{result_or_not_run}} |
+| Object-type publish       | `eai types seed --tenant-key <key> --tenant-id <workspace-id> --format json`                                         | {{result_or_not_run}} |
+| Object-type convergence   | `eai types diff --tenant-key <key> --tenant-id <workspace-id>`                                                       | {{result_or_not_run}} |
+| Resource schema           | `eai resources schema --tenant-id <workspace-id> --format json`                                                      | {{result_or_not_run}} |
+| Storage status            | `eai resources storage status --tenant-id <workspace-id> --format json`                                              | {{result_or_not_run}} |
+| Storage doctor            | `eai resources storage doctor --tenant-id <workspace-id> --format json`                                              | {{result_or_not_run}} |
+| Storage verify            | `eai verify storage --tenant-id <workspace-id>`                                                                      | {{result_or_not_run}} |
+| Resource call verify      | `eai verify calls --tenant-id <workspace-id> --resource-type <resource-type>`                                        | {{result_or_not_run}} |
 | Workflow readiness check  | `eai workflow readiness --format json`                                                                            | {{result_or_not_run}} |
 | Block catalog check       | `eai blocks list --format json`                                                                                   | {{result_or_not_run}} |
 | Block readiness check     | `eai blocks readiness --package-profile {{profile}} --format json`                                                | {{result_or_not_run}} |
@@ -84,8 +84,8 @@ updated: '{{iso_timestamp}}'
 | --------------------- | -------------------- | ------------------ | --------------------- | ------------------- | ------------------------------------- | ---------- |
 | Initialize template   | {{yes                | no                 | deferred}}            | {{reason}}          |
 | App directory         | {{current_repo       | new_sibling        | existing_eai_app}}    | {{reason}}          |
-| Company tenant        | {{selected           | blocked            | deferred}}            | {{safe label only}} |
-| Child tenant boundary | {{none               | required           | deferred}}            | {{reason}}          |
+| Company workspace        | {{selected           | blocked            | deferred}}            | {{safe label only}} |
+| Child workspace boundary | {{none               | required           | deferred}}            | {{reason}}          |
 | Package profile       | {{external           | internal           | hybrid                | deferred}}          | {{reason}}                            |
 | App enrollment        | {{existing           | create_confirmed   | confirmation_required | blocked             | deferred}}                            | {{reason}} |
 | Entra callback URI    | {{not_required       | confirmed          | blocked               | deferred}}          | {{exact callback URI or safe reason}} |
@@ -107,7 +107,7 @@ updated: '{{iso_timestamp}}'
 
 For app delivery, Gofer builds on EAI Platform first, including the EAI app
 template, and Azure second. Use the EAI app template, CLI, PublicAPI, object
-types, workflows, block catalog, ResourceAPI/resource schema, tenant/app
+types, workflows, block catalog, ResourceAPI/resource schema, workspace/app
 enrollment, provisioning, diagnostics, and Azure-compatible
 deployment/supporting services before any non-EAI exception. Record Firebase,
 Supabase, Vercel primary runtime, AWS, GCP, bespoke backend, unmanaged database,
@@ -121,18 +121,18 @@ rationale, owner, expiry, and validation evidence.
 ## Recovery Rules
 
 - If `eai types seed` fails with an app-resources/provisioning error, return to
-  `eai app provision <key> --tenant-id <tenant-id> --select --format json` and
+  `eai app provision <key> --tenant-id <workspace-id> --select --format json` and
   keep `Object-type publish` blocked.
 - If `eai resources schema`, storage endpoints, app endpoints, or preview URLs
   return `503` or equivalent readiness failures, run
-  `eai resources storage status --tenant-id <tenant-id> --format json`,
-  `eai resources storage doctor --tenant-id <tenant-id> --format json`, and
-  `eai verify storage --tenant-id <tenant-id>` before claiming schema or preview
+  `eai resources storage status --tenant-id <workspace-id> --format json`,
+  `eai resources storage doctor --tenant-id <workspace-id> --format json`, and
+  `eai verify storage --tenant-id <workspace-id>` before claiming schema or preview
   readiness.
 - If v4 passive ResourceAPI search reports `resource_search_embedding_required`,
   `search_embedding_required`, or missing vector embedding readiness, inspect
   `capabilities.search` from storage doctor. Use full-text search when
-  `fulltext` is ready and reserve hybrid/vector search for tenants where storage
+  `fulltext` is ready and reserve hybrid/vector search for workspaces where storage
   doctor reports those modes ready. Do not apply this fallback to legacy v1/v3
   or active ResourceAPI behavior.
 - Do not claim provisioning, seeding, schema readiness, or preview readiness as
@@ -141,4 +141,4 @@ rationale, owner, expiry, and validation evidence.
 ## Privacy Guardrail
 
 Do not record access tokens, refresh tokens, secrets, full `.env.local` values,
-private tenant payloads, or private platform topology in this artifact.
+private workspace payloads, or private platform topology in this artifact.

@@ -243,7 +243,7 @@ function renderContractAudit(report: ContractAuditReport): void {
   out.heading("Platform Call Audit");
   out.info(`PublicAPI: ${report.publicApiUrl}`);
   if (report.tenantId) {
-    out.info(`Tenant: ${report.tenantId}`);
+    out.info(`Workspace: ${report.tenantId}`);
   }
   if (report.workflowId) {
     out.info(`Workflow: ${report.workflowId}`);
@@ -404,7 +404,7 @@ export async function runContractAudit(
     const skippedDueToAuth = [
       [
         "current-user",
-        "Tenant membership contract",
+        "Workspace membership contract",
         "GET",
         "/v4/platform/tenants/{tenantId}/users/{oid}/memberships",
       ],
@@ -431,7 +431,7 @@ export async function runContractAudit(
     const skippedDueToTenant = [
       [
         "current-user",
-        "Tenant membership contract",
+        "Workspace membership contract",
         "GET",
         "/v4/platform/tenants/{tenantId}/users/{oid}/memberships",
       ],
@@ -452,7 +452,7 @@ export async function runContractAudit(
         endpoint,
         status: "skipped",
         details:
-          "Skipped because no active tenant is selected. Run `eai tenant select`.",
+          "Skipped because no active workspace is selected. Run `eai workspace select`.",
       });
     }
   } else {
@@ -471,7 +471,7 @@ export async function runContractAudit(
       }
       addCheck(checks, {
         id: "current-user",
-        label: "Tenant membership contract",
+        label: "Workspace membership contract",
         method: "GET",
         endpoint: "/v4/platform/tenants/{tenantId}/users/{oid}/memberships",
         status: "passed",
@@ -480,7 +480,7 @@ export async function runContractAudit(
     } catch (err) {
       addCheck(checks, {
         id: "current-user",
-        label: "Tenant membership contract",
+        label: "Workspace membership contract",
         method: "GET",
         endpoint: "/v4/platform/tenants/{tenantId}/users/{oid}/memberships",
         status: "failed",
@@ -560,7 +560,7 @@ export async function runContractAudit(
         endpoint: "/v4/data/resources/{tenantId}/{objectType}",
         status: "skipped",
         details:
-          "Skipped because the active tenant has no published Object Types remotely.",
+          "Skipped because the active workspace has no published Object Types remotely.",
       });
       addCheck(checks, {
         id: "resource-query",
@@ -569,7 +569,7 @@ export async function runContractAudit(
         endpoint: "/v4/data/resources/{tenantId}/query",
         status: "skipped",
         details:
-          "Skipped because the active tenant has no published Object Types remotely.",
+          "Skipped because the active workspace has no published Object Types remotely.",
       });
       addCheck(checks, {
         id: "resource-cursor",
@@ -578,7 +578,7 @@ export async function runContractAudit(
         endpoint: "/v4/data/resources/{tenantId}/{objectType}?cursor=...",
         status: "skipped",
         details:
-          "Skipped because the active tenant has no published Object Types remotely.",
+          "Skipped because the active workspace has no published Object Types remotely.",
       });
       addCheck(checks, {
         id: "resource-aggregate",
@@ -587,7 +587,7 @@ export async function runContractAudit(
         endpoint: "/v4/data/resources/{tenantId}/{objectType}/aggregate",
         status: "skipped",
         details:
-          "Skipped because the active tenant has no published Object Types remotely.",
+          "Skipped because the active workspace has no published Object Types remotely.",
       });
     } else {
       let resourceListPayload: Record<string, unknown> | null = null;
@@ -787,7 +787,7 @@ export async function runContractAudit(
         endpoint: "/v4/data/resources/{tenantId}/{objectType}/{id}",
         status: "skipped",
         details:
-          "Skipped because the active tenant has no published Object Types remotely.",
+          "Skipped because the active workspace has no published Object Types remotely.",
       });
     } else {
       try {
@@ -858,7 +858,7 @@ export async function runContractAudit(
       );
       if (!tenant) {
         throw new Error(
-          "Requested tenant was not found in the current tenant-admin memberships",
+          "Requested workspace was not found in the current workspace admin memberships",
         );
       }
       addCheck(checks, {
@@ -1026,7 +1026,7 @@ export async function runContractAudit(
       label: "User provisioning contracts",
       method: "POST",
       endpoint: "/v4/identity/me/provision and /v4/platform/tenants/{tenantId}/users/{oid}/provision",
-      details: "Not auto-executed because they change tenant membership.",
+      details: "Not auto-executed because they change workspace membership.",
     },
     {
       id: "tenant-create",
@@ -1066,7 +1066,7 @@ export const verifyCommand = new Command("verify")
   .description("Run platform connectivity checks")
   .option(
     "--tenant-id <id>",
-    "Run read-only connectivity checks against a specific tenant ID",
+    "Run read-only connectivity checks against a specific workspace ID",
   )
   .addHelpText(
     "after",
@@ -1237,7 +1237,7 @@ Use 'eai verify calls' when you need to inspect the exact API contracts the CLI 
 verifyCommand
   .command("storage")
   .description("Verify storage status and doctor contracts")
-  .option("--tenant-id <id>", "Tenant ID to verify")
+  .option("--tenant-id <id>", "Workspace ID to verify")
   .option("--format <format>", "Output format (text|json)", "text")
   .option("--json", "Output raw JSON (deprecated, use --format json)", false)
   .action(async (options) => {
@@ -1333,7 +1333,7 @@ verifyCommand
   .description("Audit platform-facing API call contracts used by the CLI")
   .option(
     "--tenant-id <id>",
-    "Tenant ID to use for read-only resource and schema checks",
+    "Workspace ID to use for read-only resource and schema checks",
   )
   .option(
     "--resource-type <type>",
@@ -1602,7 +1602,7 @@ Notes:
       out.success(".env.local found for local app runtime");
     } catch {
       out.info(
-        ".env.local not found — CLI auth and tenant selection use stored login context",
+        ".env.local not found — CLI auth and workspace selection use stored login context",
       );
     }
 
@@ -1640,13 +1640,13 @@ Notes:
           interactive: false,
         });
         out.success(
-          `Active tenant selected: ${tenantContext.activeTenant.displayName} ${chalk.dim(`(${tenantContext.activeTenant.id})`)}`,
+          `Active workspace selected: ${tenantContext.activeTenant.displayName} ${chalk.dim(`(${tenantContext.activeTenant.id})`)}`,
         );
       } catch (err) {
         issues.push({
           severity: "warn",
           message: err instanceof Error ? err.message : String(err),
-          fix: "Run `eai tenant list` to inspect memberships, then `eai tenant select` to choose one",
+          fix: "Run `eai workspace list` to inspect memberships, then `eai workspace select` to choose one",
         });
         out.warn(err instanceof Error ? err.message : String(err));
       }

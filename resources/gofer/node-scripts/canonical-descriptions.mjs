@@ -42,7 +42,7 @@ export const CANONICAL_DESCRIPTIONS = {
   'gofer:bootstrap-workspace':
     'Create or update the repo-owned Gofer scaffold.',
   'gofer:eai-first-run':
-    'Check EAI CLI, login, tenant, template, and Gofer readiness.',
+    'Check EAI CLI, login, workspace, template, and Gofer readiness.',
   'gofer:vocabulary':
     'Extract domain terms into a canonical glossary.',
   'gofer:diagnose':

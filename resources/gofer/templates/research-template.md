@@ -134,7 +134,7 @@ Why relevant: [Explanation]
 
 ### Service-Fit Discovery Inputs
 
-- **Capability discovery sources**: [`eai --describe`, `eai whoami`, `eai tenant
+- **Capability discovery sources**: [`eai --describe`, `eai whoami`, `eai workspace
   select`, `eai resources schema`, `eai verify calls --format json`, or
   equivalent]
 - **What must be decided after UI approval**: [service selection questions]

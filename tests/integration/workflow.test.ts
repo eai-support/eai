@@ -112,11 +112,13 @@ describe("eai workflow", () => {
   });
 
   test(
-    "status checks the public workflow status endpoint",
+    "status preserves the machine-readable workflow status contract",
     { timeout: 10000 },
     async () => {
       let requestUrl = "";
-      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const outputSpy = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
 
       mockServer.server.use(
         http.get(
@@ -147,28 +149,62 @@ describe("eai workflow", () => {
   );
 
   test(
-    "readiness checks the public builder readiness endpoint",
+    "status labels the company ID as a workspace in text output",
+    { timeout: 10000 },
+    async () => {
+      mockServer.server.use(
+        http.get(
+          `${API_BASE}/v4/workflows/runtime/strategy-monitor/status`,
+          () =>
+            HttpResponse.json({
+              workflow_key: "strategy-monitor",
+              tenant_id: "test-tenant-id",
+              status: "operator_required",
+              reason_code: "runtime_workflow_not_bound",
+              reason_message: "Workflow is not bound.",
+            }),
+        ),
+      );
+      const outputSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      await workflowCommand.parseAsync(["status", "strategy-monitor"], {
+        from: "user",
+      });
+
+      const output = outputSpy.mock.calls.flat().join("\n");
+      expect(output).toContain("Workspace");
+      expect(output).not.toContain("Tenant");
+    },
+  );
+
+  test(
+    "readiness preserves the machine-readable builder readiness contract",
     { timeout: 10000 },
     async () => {
       let requestUrl = "";
-      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const outputSpy = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
 
       mockServer.server.use(
-        http.get(`${API_BASE}/v4/integrations/builder/readiness`, ({ request }) => {
-          requestUrl = request.url;
-          return HttpResponse.json({
-            tenant_id: "test-tenant-id",
-            status: "operator_required",
-            checks: [
-              {
-                key: "workflow:strategy-monitor",
-                status: "operator_required",
-                reason_code: "runtime_workflow_not_bound",
-                reason_message: "Workflow is not bound.",
-              },
-            ],
-          });
-        }),
+        http.get(
+          `${API_BASE}/v4/integrations/builder/readiness`,
+          ({ request }) => {
+            requestUrl = request.url;
+            return HttpResponse.json({
+              tenant_id: "test-tenant-id",
+              status: "operator_required",
+              checks: [
+                {
+                  key: "workflow:strategy-monitor",
+                  status: "operator_required",
+                  reason_code: "runtime_workflow_not_bound",
+                  reason_message: "Workflow is not bound.",
+                },
+              ],
+            });
+          },
+        ),
       );
 
       await workflowCommand.parseAsync(
@@ -181,6 +217,38 @@ describe("eai workflow", () => {
       const output = outputSpy.mock.calls.flat().join("\n");
       expect(output).toContain('"tenantId": "test-tenant-id"');
       expect(output).toContain('"key": "workflow:strategy-monitor"');
+    },
+  );
+
+  test(
+    "readiness labels the company ID as a workspace in text output",
+    { timeout: 10000 },
+    async () => {
+      mockServer.server.use(
+        http.get(`${API_BASE}/v4/integrations/builder/readiness`, () =>
+          HttpResponse.json({
+            tenant_id: "test-tenant-id",
+            status: "operator_required",
+            checks: [
+              {
+                key: "workflow:strategy-monitor",
+                status: "operator_required",
+                reason_code: "runtime_workflow_not_bound",
+                reason_message: "Workflow is not bound.",
+              },
+            ],
+          }),
+        ),
+      );
+      const outputSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      await workflowCommand.parseAsync(["readiness", "strategy-monitor"], {
+        from: "user",
+      });
+
+      const output = outputSpy.mock.calls.flat().join("\n");
+      expect(output).toContain("Workspace readiness: test-tenant-id");
+      expect(output).not.toContain("Tenant");
     },
   );
 
@@ -231,7 +299,9 @@ describe("eai workflow", () => {
     "HP001 FL-WORKFLOW-001: provision creates shared workflow and vertical config records",
     { timeout: 10000 },
     async () => {
-      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const outputSpy = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
       const listRequests: string[] = [];
       let sharedCreateBody: unknown;
       let verticalCreateBody: unknown;
@@ -371,7 +441,9 @@ describe("eai workflow", () => {
     "HP002 FL-WORKFLOW-002: provision can bind AI runtime records for workflow stages",
     { timeout: 10000 },
     async () => {
-      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const outputSpy = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
       const createdProfiles: unknown[] = [];
       const createdPrompts: unknown[] = [];
 
@@ -487,7 +559,9 @@ describe("eai workflow", () => {
         }),
       });
       expect(createdPrompts).toHaveLength(3);
-      const deprecatedOverrideFieldsKey = ["allowed", "OverrideFields"].join("");
+      const deprecatedOverrideFieldsKey = ["allowed", "OverrideFields"].join(
+        "",
+      );
       for (const createdPrompt of createdPrompts) {
         expect(createdPrompt.data).toMatchObject({
           customizableFields: [
@@ -497,7 +571,9 @@ describe("eai workflow", () => {
             "toolPolicy",
           ],
         });
-        expect(createdPrompt.data).not.toHaveProperty(deprecatedOverrideFieldsKey);
+        expect(createdPrompt.data).not.toHaveProperty(
+          deprecatedOverrideFieldsKey,
+        );
       }
       expect(createdPrompts).toEqual(
         expect.arrayContaining([
