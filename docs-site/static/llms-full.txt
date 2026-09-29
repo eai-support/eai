@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.18.3.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.18.4.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -541,12 +541,10 @@ Windows, macOS, or Ubuntu/Debian computer.
 You download the installer, sign in in your browser, and name your first
 project. EAI Setup prepares the tools and creates the project.
 
-The current CLI release is **v3.18.0** (2026-09-23): Add safe template adoption plans and backed-up Gofer update maintenance.
-
 ## Connect An Existing Project
 
 Use [EAI App Template](./eai-app-template.md) when you already have a project
-and want to add EAI services, documents, or tenant-aware patterns.
+and want to add EAI services, documents, or workspace-aware patterns.
 
 ## Use Manual Or Managed Setup
 
@@ -591,7 +589,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.18.3** (2026-09-29): Use workspace terminology in customer-facing guidance.
+The current CLI release is **v3.18.4** (2026-09-29): Use workspace terminology in customer-facing guidance.
 
 ---
 
@@ -642,10 +640,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.18.3 |
+| Version | 3.18.4 |
 | Released | 2026-09-29 |
 | Last Material Change | Use workspace terminology in customer-facing guidance |
-| Source Commit | `d6a331b361a2bac6591ef56613434a6a8e42e698` |
+| Source Commit | `9c7efe3e4252abf86e0dd5c33dcc4eb8e4f96bb7` |
 
 
 ## Install
@@ -2232,7 +2230,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.18.3. The same catalog powers human stderr output, JSON output for AI
+v3.18.4. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
